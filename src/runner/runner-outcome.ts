@@ -18,7 +18,7 @@ import { resolveRunVerdict } from "../run/run-verdict.js";
 import { modelTrailerLine } from "../git/commit-message.js";
 import { seamAgent } from "../config/config-model-selector.js";
 import { stageRunMerge } from "../run/run-stage.js";
-import { stageCheckFindings } from "../run/stage-check.js";
+import { stageCheckFindings } from "../stage/stage-check.js";
 
 /** Merge the worktree branch on main (see src/merge/merge-to-main.ts for the
  * rebase → verify → ff-merge → conflict-retry flow): delegates with the runner identity, run

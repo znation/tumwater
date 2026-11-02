@@ -194,7 +194,7 @@ test("stripTerminalControls removes ESC/C0/C1/DEL and keeps only newline and tab
 // (describeToolCall and backendKindPhrase moved with their module to test/phrases.test.ts;
 // suggestClosest, didYouMean, and typoSuffix moved with theirs to test/suggest.test.ts)
 
-// pathTokens moved with its function from run/stage-path-checks.ts to text.ts (the shared text
+// pathTokens moved with its function from stage/stage-path-checks.ts to text.ts (the shared text
 // layer run-prompt.ts and the staging self-check both import, so neither reaches into the other).
 test("pathTokens returns each distinct path-shaped token in order", () => {
   assert.deepEqual(pathTokens("see `src/a/b.ts`, src/a/b.ts and (test/c.test.ts)."), ["src/a/b.ts", "test/c.test.ts"]);

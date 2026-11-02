@@ -26,7 +26,7 @@ import { recordDismissedFiling, recordDismissedFlow } from "./run-dismiss.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";
 import { stagedMovedEntries } from "../scheduling/claims.js";
 import { entryKey } from "../backlog/backlog-parts.js";
-import { assignedMovedFinding, heldMovedFinding } from "./stage-backlog-checks.js";
+import { assignedMovedFinding, heldMovedFinding } from "../stage/stage-backlog-checks.js";
 import { archiveNewFinishedEntries } from "../backlog/backlog-archive.js";
 
 /** The most findings one self-check outcome event carries. */

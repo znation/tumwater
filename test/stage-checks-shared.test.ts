@@ -11,9 +11,9 @@ import {
   hasStandalonePathOccurrence,
   isRecordProse,
   standalonePathIndexes,
-} from "../src/run/stage-checks-shared.js";
+} from "../src/stage/stage-checks-shared.js";
 
-/** Unit coverage for src/run/stage-checks-shared.ts — the pure diff/index reading helpers the
+/** Unit coverage for src/stage/stage-checks-shared.ts — the pure diff/index reading helpers the
  * three staging self-check modules (stage-path-checks, stage-name-checks, stage-prose-checks)
  * share. Each helper's edge cases (the `+++ b/` and `/dev/null` path forms, the git grep
  * grammar and its malformed lines, the capped finding lists, and the standalone-path match

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { gitLevelFindings } from "../src/run/stage-path-checks.js";
+import { gitLevelFindings } from "../src/stage/stage-path-checks.js";
 import { pad2 } from "../src/text/datetime.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh } from "./fixtures/repo-fixtures.js";

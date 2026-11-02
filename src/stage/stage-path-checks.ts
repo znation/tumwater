@@ -3,10 +3,10 @@
  * rename or delete, added lines naming paths absent from the resulting tree, a moved-source
  * file whose old path is still named. `gitLevelFindings` also stages the change (`git add -A`)
  * and restores the index to HEAD, and gathers the sibling findings this self-check family owns
- * — the identifier-reference checks (stale-name and moved-name, src/run/stage-name-checks.ts),
+ * — the identifier-reference checks (stale-name and moved-name, src/stage/stage-name-checks.ts),
  * the diff-format and prose checks (lost newline, detached doc, garbled wording,
- * src/run/stage-prose-checks.ts), and the path checks here — into one list. The shared
- * diff/index reading helpers live in src/run/stage-checks-shared.ts so every check module reads
+ * src/stage/stage-prose-checks.ts), and the path checks here — into one list. The shared
+ * diff/index reading helpers live in src/stage/stage-checks-shared.ts so every check module reads
  * them from one place. The path checks skip record prose (isRecordProse), where an old or
  * not-yet-created path is correct as written. The gate does not run any of them. */
 

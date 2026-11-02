@@ -3,20 +3,20 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { FINISHED_ARCHIVES } from "../src/backlog/backlog-md.js";
-import { stageCheckFindings } from "../src/run/stage-check.js";
-import { declaredNames } from "../src/run/stage-name-checks.js";
+import { stageCheckFindings } from "../src/stage/stage-check.js";
+import { declaredNames } from "../src/stage/stage-name-checks.js";
 import {
   finishedDuplicateFindings,
   heldMovedFinding,
   planDependencyFinding,
   strayPlaceholderFinding,
   ungroundedRefusalFinding,
-} from "../src/run/stage-backlog-checks.js";
+} from "../src/stage/stage-backlog-checks.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
-// Unit coverage for src/run/stage-check.ts (PLANS.md "Pre-queue self-check, part 1/2"):
+// Unit coverage for src/stage/stage-check.ts (PLANS.md "Pre-queue self-check, part 1/2"):
 // the merge gate's checks that still refuse a change run before a changed run commits, so the
 // author's still-open session can fix a finding instead of a rejection discarding the work.
 // These tests drive the real checks over a worktree with uncommitted edits.

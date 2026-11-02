@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { acceptanceGrepFindings, emptyGrepCriteria, grepArgv } from "../src/run/acceptance-greps.js";
+import { acceptanceGrepFindings, emptyGrepCriteria, grepArgv } from "../src/stage/acceptance-greps.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 const NOTHING = "finds" + " nothing";

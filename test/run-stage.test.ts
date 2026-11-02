@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { stageRunMerge } from "../src/run/run-stage.js";
-import { stageCheckFindings } from "../src/run/stage-check.js";
+import { stageCheckFindings } from "../src/stage/stage-check.js";
 import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { commitIn, initializedRepo, initializedWorktree, sh, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";

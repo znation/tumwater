@@ -233,6 +233,11 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/run/`: the per-run pipeline (`run-stage.ts`, `run-prompt.ts`, `run-timing.ts`,
   `run-usage.ts`, `run-verdict.ts`, `run-finalize.ts`, `run-apply.ts`, `run-resume.ts`,
   `run-detail.ts`, `run-detail-data.ts`, `run-outcome.ts`).
+- `src/stage/`: the run's pre-queue self-check family — the merge-gate and staging-only checks a
+  changed run performs before it commits (`stage-check.ts` composes them; `stage-backlog-checks.ts`,
+  `stage-name-checks.ts`, `stage-path-checks.ts`, `stage-prose-checks.ts` and
+  `stage-checks-shared.ts` hold the individual findings, `acceptance-greps.ts` the acceptance-grep
+  runner). `run-stage.ts` (the pipeline's staging phase, `src/run/`) drives it via `stageCheck`.
 - `src/pi-extension/`: the bundled pi extensions, loaded on every pi run in this order:
   bounded-output (head+tail cap on oversized tool results), context-shake (reclaims old bulky
   results at 70% of the window), context-budget (context-usage notes at 50/70/85%),

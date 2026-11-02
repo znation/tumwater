@@ -474,7 +474,7 @@ markers of README.md or TUMWATER.md (a block that merely moves passes), or that 
 PRINCIPLES.md from a role whose base is neither `director` nor `steward`, is rejected before
 review — md-only diffs included — and flagged at staging for one fix-up turn.
 
-**Binds.** `src/review/protected-edits.ts`, `src/review/review.ts`, `src/run/stage-check.ts`,
+**Binds.** `src/review/protected-edits.ts`, `src/review/review.ts`, `src/stage/stage-check.ts`,
 `src/baseline/main-watch.ts` (the tip check).
 
 **Pinned by.** `test/protected-edits.test.ts` (the per-case reasons), `test/review.test.ts` — "gate
@@ -492,7 +492,7 @@ content did not hold is rejected before review —
 md-only diffs included — and flagged at staging for one fix-up turn. The reason names the file and
 variable or pi source, never the value.
 
-**Binds.** `src/review/secret-leaks.ts`, `src/review/review.ts`, `src/run/stage-check.ts`,
+**Binds.** `src/review/secret-leaks.ts`, `src/review/review.ts`, `src/stage/stage-check.ts`,
 `src/baseline/main-watch.ts` (the tip check).
 
 **Pinned by.** `test/secret-leaks.test.ts` — "piCredentialValues returns literal apiKey, header,
@@ -531,7 +531,7 @@ parseable headings into the backlog-index block every run prompt carries.
 
 **Binds.** `src/merge/merge-git.ts`, `src/merge/merge-backlog-conflicts.ts`,
 `src/backlog/backlog-structure.ts`, `src/verdict/fix-claim.ts`,
-`src/run/stage-check.ts`,
+`src/stage/stage-check.ts`,
 `src/baseline/main-watch.ts`, `src/merge/merge-to-main.ts`, `src/prompt/principles.ts`, `src/run/run-prompt.ts`,
 `src/doctor/doctor-principles.ts`, `src/status/status-role-notes.ts`,
 `src/roles/role-view.ts`, `src/files/stat-cache.ts`.
@@ -548,7 +548,7 @@ stay deliberately skipped — a symlink is never followed, because a change that
 no content and its target (which could point out of the worktree) is not what the change put
 there.
 
-**Binds.** `src/review/secret-leaks.ts`, `src/review/review.ts`, `src/run/stage-check.ts`.
+**Binds.** `src/review/secret-leaks.ts`, `src/review/review.ts`, `src/stage/stage-check.ts`.
 
 **Pinned by.** `test/secret-leaks.test.ts` — "secretLeakReason names a changed file it cannot
 read, and skips a missing one", "secretLeakReason passes a value already at the merge-base, a
@@ -761,7 +761,7 @@ carries the keyword in its series name and never resolves to the entry's own ser
 names another.
 
 **Binds.** `src/backlog/backlog-parts.ts` (`requiredParts`, `prerequisitesMerged`,
-`planDependencyProblems`), `src/backlog/backlog-eligibility.ts` (`entryHoldAgainst`), `src/run/stage-backlog-checks.ts` and
+`planDependencyProblems`), `src/backlog/backlog-eligibility.ts` (`entryHoldAgainst`), `src/stage/stage-backlog-checks.ts` and
 `src/doctor/doctor-backlog-plans.ts` (where the wording problem is reported).
 
 **Pinned by.** `test/backlog-eligibility.test.ts` — "requiredParts reads the trailing
@@ -800,8 +800,8 @@ own (for an entry with no part, any series-part reference). A refusal already on
 this change's fault and is skipped. A refusal naming only its own entry's conflict with
 PRINCIPLES.md is grounded and passes.
 
-**Binds.** `src/run/stage-backlog-checks.ts` (`ungroundedRefusalFinding`,
-`groundedRefusalReason`), `src/run/stage-check.ts`.
+**Binds.** `src/stage/stage-backlog-checks.ts` (`ungroundedRefusalFinding`,
+`groundedRefusalReason`), `src/stage/stage-check.ts`.
 
 **Pinned by.** `test/stage-check.test.ts` — "ungroundedRefusalFinding flags a Refused note citing
 another part or a role's notes", "ungroundedRefusalFinding flags a cross-series part named without a
@@ -3877,9 +3877,9 @@ the revision and its ref for the next run".
 counts the rest as ` (+N more)`. A stale-reference finding lists at most 10 `file:line` hits. A
 change emits at most 10 stale-reference findings, however many referenced paths it deletes.
 
-**Binds.** `src/run/stage-path-checks.ts` (`gitLevelFindings`, `MAX_MISSING_PATHS`),
-`src/run/stage-checks-shared.ts` (`cappedList`, `MAX_STALE_PATHS`, `MAX_STALE_HITS`) and
-`src/run/stage-prose-checks.ts` (`MAX_NEWLINE_FILES`).
+**Binds.** `src/stage/stage-path-checks.ts` (`gitLevelFindings`, `MAX_MISSING_PATHS`),
+`src/stage/stage-checks-shared.ts` (`cappedList`, `MAX_STALE_PATHS`, `MAX_STALE_HITS`) and
+`src/stage/stage-prose-checks.ts` (`MAX_NEWLINE_FILES`).
 
 **Pinned by.** `test/stage-path-caps.test.ts` — "a missing-path finding names the first ten paths
 and counts the rest", "a lost-final-newline finding names the first ten files and counts the
@@ -3892,7 +3892,7 @@ rest", "a change deleting more referenced paths than the cap reports only the ca
 `gitLevelFindings` resets the index to HEAD in `finally`, so the run's change detection still sees
 the worktree.
 
-**Binds.** `src/run/stage-path-checks.ts` (`gitLevelFindings`); `src/run/stage-check.ts`
+**Binds.** `src/stage/stage-path-checks.ts` (`gitLevelFindings`); `src/stage/stage-check.ts`
 (`stageCheckFindings`, its `.catch(() => [])`).
 
 **Pinned by.** `test/stage-check.test.ts` — "a git failure yields no findings instead of
