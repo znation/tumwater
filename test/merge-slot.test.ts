@@ -552,7 +552,7 @@ test("a queued merge's record names the gate's pre-check stage while it runs", a
   // gone: a merge is a rebase and a fast-forward, so the only build check a queued merge's
   // record names is the verification's gate pre-check (then the fast-forward). With no pre-merge
   // reviewer, the deterministic gate approves on the green pre-check and every merged commit is
-  // reviewed after landing (part 3d/3). The check itself moves main by a code file — the gate's
+  // reviewed after landing (part 3d/3). The pinned change moves main by a file edit — the gate's
   // pre-check judges the rebased tree and the merge's fast-forward lands it.
   const rec = path.join(tmpdir(), "stages");
   const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${mergeStatePath(root)}' | head -n 1`;
