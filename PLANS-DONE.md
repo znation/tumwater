@@ -5,7 +5,7 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
-### Subtract, part 3b/7: The pre-merge verify stops running the project's build check (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3a/7 landed; touches src/review/review.ts src/review/review-precheck.ts src/merge/merge-core.ts src/merge/merge-batch.ts src/merge/merge-verify.ts docs/how-it-works.md docs/invariants.md test/review.test.ts test/review-precheck.test.ts test/review-precheck-watch.test.ts test/merge-pipeline-watch.test.ts)
+### Subtract, part 3b/7: The pre-merge verify stops running the project's build check (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3a/7 landed; touches src/review/review.ts src/review/review-precheck.ts src/merge/merge-core.ts src/merge/merge-batch.ts src/merge/merge-verify.ts docs/how-it-works.md docs/invariants.md test/review.test.ts test/review-precheck.test.ts test/review-precheck-watch.test.ts test/merge-pipeline-watch.test.ts) — done 2026-11-01 by the feature role
 
 **Goal.** A merge's verify judges the diff's deterministic rules and nothing else: it runs no build check, so main has exactly one full check per merged commit, the main watch's post-landing one. Remove `gateBuildPrecheck` and the `verifiedHead`/`knownMainFailures` hand-off it carries; keep `diffRuleReasons`'s three hard rejects (brief block, PRINCIPLES edit, secret leak) and the md-only exempt path.
 
@@ -24,7 +24,6 @@ only grows: search it with grep, or read one entry by its line range. Never read
 - `npm run test:gate` passes.
 
 **Tests.** test/review.test.ts: the approved path approves without a check, the three diff-rule rejects stay. test/review-precheck.test.ts and test/review-precheck-watch.test.ts: delete the pre-check cases (the whole subject is gone) and keep the watch cases that now own build verification. test/merge-pipeline-watch.test.ts: drop the `verifiedHead` seeding assertions. Run those files and the gate.
-— done 2026-11-01 by the feature role
 
 ### `readPostReviews`'s complexity-19 saved-entry parser in src/review/post-merge-review.ts is split into a named module-private `parsePostReview`, so "which fields does a saved post-review entry carry, and when is one dropped as torn?" is read from one named function instead of a nested cache callback (planned 2026-11-01 by the plan role; continues the landed split-large-function family — the 2026-10-31 `eventMessage`/`mergeEventMessage` splits each lifted one dispatcher body into named helpers the same way; independent in file of every `## Planned` entry — before this entry `grep -n 'post-merge-review' PLANS.md` matched only Subtract part 3d/7's prose ("keep the post-merge-review rows") and its touches list names no src/review file, so no planned entry edits this file; PLANS-DONE.md's post-merge-review entries are the ones that created and shaped `reviewMergedCommit`/`readPostReviews`, and none splits `readPostReviews`'s parser (`grep -cE '^### .*readPostReviews' PLANS-DONE.md` prints 0); docs/invariants.md binds `readPostReviews` for INV-BT1, whose guarantee this behavior-preserving move keeps, so it stays unchanged; touches src/review/post-merge-review.ts) — done 2026-11-02 by the feature role
 
