@@ -147,3 +147,15 @@ test("quarantine --release refuses an unknown flag beside it by name", async () 
   assert.equal(r.code, 1);
   assert.ok(r.stderr.includes("--bogus"));
 });
+
+test("quarantine --release <n> -f is refused — the destructive branch keeps its own flag gate", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine release follow test");
+  const now = Date.now();
+  writeQuarantine(repo, [{ test: "test/a.test.ts", firstSeen: now - 24 * 3_600_000, lastSeen: now, count: 1, bug: "" }]);
+  const before = loadQuarantine(repo);
+  const r = await cli(repo, "quarantine", "--release", "1", "-f");
+  assert.equal(r.code, 1, "-f beside --release is refused, not followed");
+  assert.ok(r.stderr.includes("-f"), "the refusal names the -f flag");
+  assert.deepEqual(loadQuarantine(repo), before, "the destructive branch was not run");
+});

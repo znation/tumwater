@@ -290,14 +290,17 @@ Usage:
                                    -f/--follow repaints the backlog every couple of seconds until
                                    Ctrl+C or the process that started it exits, so a backgrounded
                                    follow does not outlive its parent; it refuses --json
-  tumwater quarantine [--release <n>] [--json]
+  tumwater quarantine [-f/--follow] [--release <n>] [--json]
                                    List the flake quarantine — the tests the review gate recorded
                                    as failing then passing on the same tree
                                    (.tumwater/state/quarantine.json), oldest first, each naming
                                    its first-seen and last-seen age, flake count, and the BUGS.md
                                    entry filed for it (or "not filed"); empty prints
                                    "flake quarantine is empty"; --json prints the same rows as
-                                   { tests: [...] }; read-only except --release <n>, which
+                                   { tests: [...] }; -f/--follow repaints the list every couple of
+                                   seconds until Ctrl+C or the process that started it exits, so a
+                                   backgrounded follow does not outlive its parent, and it refuses
+                                   --json; read-only except --release <n>, which
                                    removes the Nth entry the list prints at the user's
                                    request, logging a warning — for a flake fixed or judged gone
                                    before its bug closes; otherwise a test leaves the list when

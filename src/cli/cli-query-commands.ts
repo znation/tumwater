@@ -330,22 +330,33 @@ export async function cmdBacklog(root: string, args: string[], seams: FollowView
   sayJsonOrRender(rest, result.view, () => renderBacklogText(result));
 }
 
-// `tumwater quarantine [--release <n>] [--json]` — the view of the review gate's flake
-// quarantine, read-only except the one destructive `--release <n>` mode that removes the Nth
-// entry the list prints at the operator's request. The read path keeps its no-gate
-// refuseTeamWorkspace stance: loadQuarantine degrades an absent or malformed file to the empty
-// list, so the command prints the empty line in any directory and the read never writes
-// quarantine.json (a test otherwise leaves the list through releaseQuarantine). --json serves
-// the same positioned rows to scripts.
-export async function cmdQuarantine(root: string, args: string[]): Promise<void> {
+// `tumwater quarantine [-f/--follow] [--release <n>] [--json]` — the view of the review
+// gate's flake quarantine, read-only except the one destructive `--release <n>` mode that
+// removes the Nth entry the list prints at the operator's request. `-f/--follow` repaints the
+// list every couple of seconds until Ctrl+C or the process that started it exits, so a
+// backgrounded follow does not outlive its parent (the same rule `queue -f` uses). The read
+// path keeps its no-gate refuseTeamWorkspace stance: loadQuarantine degrades an absent or
+// malformed file to the empty list, so the command prints the empty line in any directory and
+// the read never writes quarantine.json (a test otherwise leaves the list through
+// releaseQuarantine). --json serves the same positioned rows to scripts.
+export async function cmdQuarantine(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   // `--release <n>` is the read-only command's one destructive mode: route it to its own
   // branch before the read gate, exactly as cmdReviews routes `--accept`.
   if (args.includes("--release")) {
     await cmdQuarantineRelease(root, args);
     return;
   }
-  rejectUnknownArgs("quarantine", args, [JSON_FLAG]);
+  rejectUnknownArgs("quarantine", args, [JSON_FLAG, FOLLOW_FLAG]);
   refuseTeamWorkspace(root);
+  const follow = hasFollowFlag(args);
+  if (follow && args.includes("--json")) fail("quarantine --json prints one document; -f/--follow repaints a live view — drop one of them");
+  // Each frame re-reads the quarantine file and reads the clock once, so an entry that
+  // appears, ages toward the ceiling, or leaves when its bug closes shows up in the next
+  // repaint — the same per-frame read `queue -f` uses.
+  if (follow) {
+    await followView(() => renderQuarantine(quarantineRows(loadQuarantine(root)), Date.now()), seams);
+    return;
+  }
   const rows = quarantineRows(loadQuarantine(root));
   sayJsonOrRender(args, { tests: rows }, () => renderQuarantine(rows, Date.now()));
 }

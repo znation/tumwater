@@ -46,6 +46,9 @@ test("completionSpec over the real help", () => {
   assert.deepEqual(spec.subcommands.questions, ["answer"]);
   assert.deepEqual(spec.subcommands.completion, ["bash", "zsh", "fish"]);
   for (const f of ["--failures", "--since", "--role", "--json"]) assert.ok(spec.flags.report?.includes(f), f);
+  // quarantine's -f/--follow: completion offers the long form, the same as every other
+  // follow command (queue, status, backlog, report all offer --follow, not -f).
+  assert.ok(spec.flags.quarantine?.includes("--follow"), "quarantine offers --follow");
   for (const c of ["tui", "version", "role"]) assert.deepEqual(spec.subcommands[c], [], c);
   for (const c of spec.commands) assert.ok(spec.flags[c]?.includes("--help"), c);
 });
