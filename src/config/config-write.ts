@@ -96,6 +96,23 @@ const PLAIN_INTEGER_TOP_LEVEL_KEYS = new Set([
   "worktreeSlots",
 ]);
 
+/** The duration-typed team keys whose value is a plain decimal second count (validateConfig's
+ * DURATION_* rules, config-validation.ts): the top-level run-timing knobs plus the section
+ * fields a dotted key names (`review.timeoutSeconds`, `check.timeoutSeconds`,
+ * `idleBackoff.initialSeconds`/`maxSeconds`) and the per-role
+ * `roles.<id>.minRunIntervalSeconds`. For these, an exponent spelling like "1e2" is itself a
+ * JSON number (100) that setConfigKey's JSON.parse would read past validateConfig's numeric
+ * check and silently write as the misread — the same silent misread the TUI Ctrl+S interval
+ * editor, the CLI's `role --min-run-interval` and the GUI interval drawer refuse — so
+ * setConfigKey refuses it, naming the key and writing nothing. `idleBackoff.factor` is a
+ * multiplier, not a second count, so it is not in this set. */
+const PLAIN_DURATION_KEYS = new Set([
+  "minRunIntervalSeconds",
+  "runTimeoutSeconds",
+  "quietTimeoutSeconds",
+  "toolCallStallSeconds",
+]);
+
 // The result union the config-write verbs return: either the parsed value and the previous
 // one (so a caller can confirm the change; a value equal to the resolved one is a no-op and
 // the result carries `unchanged`), or a failure that left the file untouched. Shared by
@@ -140,6 +157,20 @@ export function setConfigKey(
       (parsed.kind === "section" && parsed.section === "bootstrap" && parsed.field === "untilPlansDone");
     if (isPlainIntegerKey && trimmed !== "" && isExponentSpelling(trimmed))
       return `${key} must be a plain integer — no exponent notation`;
+    // The duration-typed keys: a top-level second-count knob, the section fields a dotted
+    // key names (review/check's timeoutSeconds, idleBackoff's second counts), or the
+    // per-role minRunIntervalSeconds. They take plain decimals, not integers, so the
+    // refusal says "plain second count" — the wording the TUI interval editor, the CLI's
+    // `role --min-run-interval`, and the GUI drawer all use for the same misread.
+    const isPlainDurationKey =
+      (parsed.kind === "top" && PLAIN_DURATION_KEYS.has(key)) ||
+      (parsed.kind === "section" &&
+        ((parsed.section === "review" && parsed.field === "timeoutSeconds") ||
+          (parsed.section === "check" && parsed.field === "timeoutSeconds") ||
+          (parsed.section === "idleBackoff" && (parsed.field === "initialSeconds" || parsed.field === "maxSeconds")))) ||
+      (parsed.kind === "role" && parsed.field === "minRunIntervalSeconds");
+    if (isPlainDurationKey && trimmed !== "" && isExponentSpelling(trimmed))
+      return `${key} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation`;
     return null;
   };
 
@@ -358,10 +389,12 @@ export function setConfigKey(
   key = canonicalConfigKey(key);
   const parsed = parseConfigKey(key);
   if (parsed.kind === "error") return fail(parsed.error);
-  // Shape, before the JSON.parse, for every plain-positive-integer key this verb can write —
-  // the top-level run-concurrency knobs and legacy merge batch cap, plus the integer-bound
-  // team-scope keys that arrive as a dotted key (`roles.<id>.instances`, the
-  // `bootstrap.untilPlansDone` section field): refuse an exponent
+  // Shape, before the JSON.parse, for every plain-positive-integer or plain-second-count
+  // key this verb can write — the top-level run-concurrency knobs and legacy merge batch
+  // cap, the integer-bound team-scope keys that arrive as a dotted key
+  // (`roles.<id>.instances`, the `bootstrap.untilPlansDone` section field), and the
+  // duration-typed keys (the top-level second-count knobs plus `review`/`check`/
+  // `idleBackoff`'s second fields and `roles.<id>.minRunIntervalSeconds`): refuse an exponent
   // spelling ("4e1" → 40) that JSON.parse would read past validateConfig's integer check and
   // silently write, naming the key and writing nothing — the twin of the per-role guards, the
   // TUI team-key editors, and the GUI Settings rows. A non-exponent invalid falls through for
