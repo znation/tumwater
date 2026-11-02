@@ -208,34 +208,47 @@ export class Redeployer {
       s.stale = this.staleness.stale;
       s.aheadCommits = this.staleness.aheadCommits;
       s.checkedHead = this.lastHead;
-      // Why a stale build is still the one running. Staleness alone cannot say: a restart that
-      // is minutes away and one that was refused hours ago look identical, and on 2026-09-08
-      // that gap is what let a blocked restart sit unnoticed while the team ran on stale
-      // code (BUGS.md). Mutually exclusive by construction — block() clears the pending head,
-      // and an episode cannot start inside the cooldown, so no two branches can hold at once.
-      if (this.pendingHead === this.lastHead) {
-        s.restartPending = true;
-        if (this.holdStage) s.restartHold = { ...this.holdStage };
-      } else if (this.blockedHead === this.lastHead && this.blockedReason) s.restartBlocked = this.blockedReason;
-      // Inside the post-restart cooldown the team deliberately keeps running on the stale build
-      // — say so with a deadline, through the same channel as a refused restart
-      // (BUGS.md 2026-09-11).
-      // Past it, a startup gate that keeps failing holds the team on the stale build just as
-      // surely, and says why the same way (BUGS.md 2026-09-23).
-      else if (s.stale && this.autoRestartOn) {
-        const { until, urgent } = this.effectiveCooldownUntil(now);
-        if (now < until)
-          s.restartBlocked =
-            this.cooldownPhrase(until) +
-            (urgent ? ` (the running version's own commit fails its check — cut to ${RESTART_URGENT_COOLDOWN_MIN} min)` : "");
-        else if (this.refusedReason !== null) s.restartBlocked = `the update could not start: ${this.refusedReason}`;
-      }
-      // A tip whose code no passing commit carries yet: nothing above can say so, since the
-      // target is the newest passing commit and the build is current against it.
-      if (!s.stale && this.lastTip !== null && this.lastTip !== this.lastHead && this.tipStaleness?.stale)
-        s.waitingForCheck = { head: this.lastTip, aheadCommits: this.tipStaleness.aheadCommits };
+      this.applyRestartStatus(s, now);
+      this.applyWaitingForCheck(s);
     }
     return s;
+  }
+
+  /** Why a stale build is still the one running — the pending/blocked/cooldown explanation
+   * status publishes beside the staleness verdict (see the branch comments below). */
+  private applyRestartStatus(s: BuildStatus, now: number): void {
+    // Why a stale build is still the one running. Staleness alone cannot say: a restart that
+    // is minutes away and one that was refused hours ago look identical, and on 2026-09-08
+    // that gap is what let a blocked restart sit unnoticed while the team ran on stale
+    // code (BUGS.md). Mutually exclusive by construction — block() clears the pending head,
+    // and an episode cannot start inside the cooldown, so no two branches can hold at once.
+    if (this.pendingHead === this.lastHead) {
+      s.restartPending = true;
+      if (this.holdStage) s.restartHold = { ...this.holdStage };
+    } else if (this.blockedHead === this.lastHead && this.blockedReason) s.restartBlocked = this.blockedReason;
+    // Inside the post-restart cooldown the team deliberately keeps running on the stale build
+    // — say so with a deadline, through the same channel as a refused restart
+    // (BUGS.md 2026-09-11).
+    // Past it, a startup gate that keeps failing holds the team on the stale build just as
+    // surely, and says why the same way (BUGS.md 2026-09-23).
+    else if (s.stale && this.autoRestartOn) {
+      const { until, urgent } = this.effectiveCooldownUntil(now);
+      if (now < until)
+        s.restartBlocked =
+          this.cooldownPhrase(until) +
+          (urgent ? ` (the running version's own commit fails its check — cut to ${RESTART_URGENT_COOLDOWN_MIN} min)` : "");
+      else if (this.refusedReason !== null) s.restartBlocked = `the update could not start: ${this.refusedReason}`;
+    }
+  }
+
+  /** Whether main's tip has code no passing commit carries yet — the uncovered-tip verdict
+   * status publishes (the build is current against the newest passing commit, so only the tip
+   * can show an uncovered one). */
+  private applyWaitingForCheck(s: BuildStatus): void {
+    // A tip whose code no passing commit carries yet: nothing above can say so, since the
+    // target is the newest passing commit and the build is current against it.
+    if (!s.stale && this.lastTip !== null && this.lastTip !== this.lastHead && this.tipStaleness?.stale)
+      s.waitingForCheck = { head: this.lastTip, aheadCommits: this.tipStaleness.aheadCommits };
   }
 
   /** Record main's tip beside the redeploy target poll is given. When the main watch verifies
