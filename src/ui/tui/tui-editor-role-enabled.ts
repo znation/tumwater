@@ -3,7 +3,7 @@ import { setConfigKey } from "../../config/config-write.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../../roles/roles.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
+import { openBlankPromptLine, savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Health view's Ctrl+V enable/disable editor on the shared prompt line, the terminal twin
  * of the dashboard Settings card's Enable and the role drawer's two-click Disable (and of the
@@ -47,12 +47,8 @@ export function createRoleEnabledEditor(session: TuiEditorSession): TuiEditorMod
     }
     if (ctx.view !== ctx.roleIds.length + 7) return false; // off Health, keep the key's other meanings
     if (session.editorEntryDenied("roleEnabled")) return true;
-    draft.save();
     roleEnabledMode = true;
-    session.held.roleEnabled = true;
-    session.input = "";
-    session.cursor = 0;
-    session.flashMessage("enable or disable a role: type the role id, Enter to toggle, Esc to cancel");
+    openBlankPromptLine(session, draft, "roleEnabled", "enable or disable a role: type the role id, Enter to toggle, Esc to cancel");
     return true;
   };
 

@@ -1,6 +1,6 @@
 import { editBriefText } from "../../brief/brief-edit.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import { readEditorPath, savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
+import { openBlankPromptLine, readEditorPath, savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 import { flashReject } from "./tui-guard.js";
 
 /** The Brief view's Ctrl+E replace-the-brief-from-a-file editor on the shared prompt line, the
@@ -41,12 +41,8 @@ export function createBriefEditor(session: TuiEditorSession): TuiEditorModule {
     // Mid-recall, hand the arrows' saved draft back before the brief editor takes the line —
     // the same settle the other editors do — so leaving restores the draft, not a history
     // entry, with no stale recall state riding along.
-    draft.save();
     briefEdit = true;
-    session.held.brief = true;
-    session.input = "";
-    session.cursor = 0;
-    session.flashMessage("replace the brief from a file — Enter to save, Esc to cancel");
+    openBlankPromptLine(session, draft, "brief", "replace the brief from a file — Enter to save, Esc to cancel");
     return true;
   };
 

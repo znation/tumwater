@@ -1,6 +1,6 @@
 import { artifactPhrase, retireRole } from "../../operator/operator-retire.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
+import { openBlankPromptLine, savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 import { flashReject } from "./tui-guard.js";
 
 /** The Health view's Ctrl+X retire editor on the shared prompt line, the terminal twin of
@@ -39,12 +39,8 @@ export function createRetireEditor(session: TuiEditorSession): TuiEditorModule {
     // Mid-recall, hand the arrows' saved draft back before the retire editor takes the line —
     // the same settle the role editors do — so leaving restores the draft, not a
     // history entry, with no stale recall state riding along.
-    draft.save();
     retireMode = true;
-    session.held.retire = true;
-    session.input = "";
-    session.cursor = 0;
-    session.flashMessage("retire a disabled role's leftovers: type the role id, Enter to retire, Esc to cancel");
+    openBlankPromptLine(session, draft, "retire", "retire a disabled role's leftovers: type the role id, Enter to retire, Esc to cancel");
     return true;
   };
 

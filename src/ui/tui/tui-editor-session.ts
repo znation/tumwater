@@ -356,3 +356,23 @@ export function savedPromptDraft(
     restore: () => restoreDraft(),
   };
 }
+
+/** Blank-open the shared prompt line for a single-line editor: park the current draft (settling
+ * recall, via the saved pair's save) to restore on exit, raise the editor's held flag, clear the
+ * line with the caret at its start, and flash the guidance message. Shared by the brief, retire,
+ * release, role-enabled and attach editors, whose open arms all take the line blank. The
+ * caller's own local mode flag (and any per-editor sub-fields) stay the caller's to set: this
+ * helper owns only the session-side half of the open, so a new blank-open editor cannot drift on
+ * the blank-or-prefill, held-flag, or flash contract. */
+export function openBlankPromptLine(
+  session: Pick<TuiEditorSession, "held" | "input" | "cursor" | "flashMessage">,
+  draft: ReturnType<typeof savedPromptDraft>,
+  heldKey: "brief" | "retire" | "release" | "roleEnabled" | "attach",
+  message: string,
+): void {
+  draft.save();
+  session.held[heldKey] = true;
+  session.input = "";
+  session.cursor = 0;
+  session.flashMessage(message);
+}

@@ -2,7 +2,7 @@ import path from "node:path";
 import { imagePromptGuidance } from "../../inbox/inbox-submit.js";
 import { promptImagesCountProblem, readPromptImageFiles, type PromptImageInput } from "../../inbox/inbox-attachments.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
+import { openBlankPromptLine, savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Activity view's Ctrl+V image-attach editor on the shared prompt line, the terminal
  * twin of `tumwater prompt --attach <path>` and the dashboard composer's drop/paste. It owns
@@ -45,12 +45,8 @@ export function createAttachEditor(session: TuiEditorSession): TuiEditorModule {
       // Mid-recall, hand the arrows' saved draft back before the attach editor takes the
       // line — the same settle the role editors do — so leaving restores the
       // draft, not a history entry, with no stale recall state riding along.
-      draft.save();
       attachMode = true;
-      session.held.attach = true;
-      session.input = "";
-      session.cursor = 0;
-      session.flashMessage("attach an image path — Enter to attach, Esc to cancel");
+      openBlankPromptLine(session, draft, "attach", "attach an image path — Enter to attach, Esc to cancel");
     }
     return true;
   };
