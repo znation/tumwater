@@ -7,8 +7,8 @@
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { parseCountFlag } from "../cli/cli-args.js";
 import { knownRoleIdsCached } from "../config/config.js";
-import { HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, historyClass, readRunRows, runRowsOnModels, type HistoryResultClass, type RunRow } from "../history/history-data.js";
-import { parseHistoryModelList, parseHistoryResultList } from "../history/history.js";
+import { HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, historyClass, readRunRows, runRowsOnModels, type HistoryResultClass, type RunRow } from "./history-data.js";
+import { parseHistoryModelList, parseHistoryResultList } from "./history.js";
 import { readRunDetail, type RunDetail } from "./run-detail-data.js";
 import { runDetailPatch, runDetailStat, renderRunDetail, runTranscriptLines } from "./run-detail-render.js";
 import { unknownRoleMessage } from "../roles/roles.js";

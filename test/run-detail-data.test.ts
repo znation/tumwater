@@ -1,4 +1,4 @@
-/** Unit-tier coverage for the run-detail collector (src/run/run-detail-data.ts): the payload
+/** Unit-tier coverage for the run-detail collector (src/history/run-detail-data.ts): the payload
  * behind `tumwater history <role> <n>` and the GUI's History drill-down. Until now its block
  * rules ran in no test — the nearest relatives (history-data.test.ts pins the row view,
  * event-read.test.ts the pairing helpers) never exercise readRunDetail itself, so a slip in
@@ -11,7 +11,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
-import { readRunDetail } from "../src/run/run-detail-data.js";
+import { readRunDetail } from "../src/history/run-detail-data.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { setEnv } from "./helpers/env.js";

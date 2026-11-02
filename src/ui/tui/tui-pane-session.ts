@@ -7,7 +7,7 @@ import type { BrokenPinDrop, LeftoverRetireReport } from "../../doctor/doctor-co
 import type { BacklogCommitReport } from "../../doctor/doctor-backlog.js";
 import type { ArchiveOnMainOutcome } from "../../backlog/backlog-archive.js";
 import type { previewRevert, revertMergedCommit } from "../../operator/operator-revert.js";
-import type { RunDetail } from "../../run/run-detail-data.js";
+import type { RunDetail } from "../../history/run-detail-data.js";
 import { HISTORY_RESULT_CLASSES, HISTORY_RESULT_FLAG_NAMES } from "../../history/history-data.js";
 import type { HistoryResultClass } from "../../history/history-data.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";

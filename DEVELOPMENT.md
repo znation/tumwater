@@ -232,7 +232,7 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   fast-forward).
 - `src/run/`: the per-run pipeline (`run-stage.ts`, `run-prompt.ts`, `run-timing.ts`,
   `run-usage.ts`, `run-verdict.ts`, `run-finalize.ts`, `run-apply.ts`, `run-resume.ts`,
-  `run-detail.ts`, `run-detail-data.ts`, `run-outcome.ts`).
+  `run-outcome.ts`).
 - `src/stage/`: the run's pre-queue self-check family — the merge-gate and staging-only checks a
   changed run performs before it commits (`stage-check.ts` composes them; `stage-backlog-checks.ts`,
   `stage-name-checks.ts`, `stage-path-checks.ts`, `stage-prose-checks.ts` and
@@ -256,11 +256,11 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/ui/`: the shared status table, backlog report, and transcript rendering; `src/ui/gui/`
   holds the browser dashboard's page and client assets and `src/ui/tui/` the ink terminal
   renderer. Imported only by each other and the command layer that drives it — the `cli.ts`
-  dispatcher, the read-only command bodies in `src/cli/`, `src/run/run-detail.ts` (the `tick`/`history`
-  command body, whose transcript it renders via `src/run/run-detail-render.ts`), and the dashboard transport in `src/gui/`; `test/layering.test.ts` pins that importer set.
-- `src/history/history.ts`, `src/run/run-detail.ts`, `src/report/report.ts`: the `history`,
+  dispatcher, the read-only command bodies in `src/cli/`, `src/history/run-detail.ts` (the `tick`/`history`
+  command body, whose transcript it renders via `src/history/run-detail-render.ts`), and the dashboard transport in `src/gui/`; `test/layering.test.ts` pins that importer set.
+- `src/history/history.ts`, `src/history/run-detail.ts`, `src/report/report.ts`: the `history`,
   `tick`, and `report` CLI command bodies, beside the collector modules (`history-data.ts`,
-  `src/run/run-detail-data.ts`, `src/report/report-data.ts`, `src/report/report-since-data.ts`)
+  `src/history/run-detail-data.ts`, `src/report/report-data.ts`, `src/report/report-since-data.ts`)
   whose payloads they print,
   `src/cli/cli-log-commands.ts` (the `logs` command body), and `src/cli/cli-query-commands.ts` (the
   other read-only command bodies; `src/cli/follow-view.ts` holds the repaint loop those

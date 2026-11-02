@@ -2,7 +2,7 @@
  * The dashboard's GET run/event-log drill-down handlers (src/gui/gui-server.ts routes to them):
  * transcript, history, logs, run, and role. Each answers its request and touches no socket
  * beyond its own `res`; the domain work lives one layer down (ui/transcript.ts,
- * history/history-data.ts, run/run-detail-data.ts, events/event-read.ts), so this module only
+ * history/history-data.ts, history/run-detail-data.ts, events/event-read.ts), so this module only
  * adapts HTTP onto it. Barrelled into gui/gui-endpoints.ts beside the other per-family GET
  * endpoint modules.
  */
@@ -27,15 +27,15 @@ import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE, readEventsSince } from "../event
 import { eventRole, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventFeedItem, eventMatchesGrep } from "../events/event-format.js";
-import { readRunDetail, type RunDetail, runCommitSha, runMergedSha } from "../run/run-detail-data.js";
-import { renderRunDetail, runDetailPatch, runDetailStat, runTranscriptLines } from "../run/run-detail-render.js";
+import { readRunDetail, type RunDetail, runCommitSha, runMergedSha } from "../history/run-detail-data.js";
+import { renderRunDetail, runDetailPatch, runDetailStat, runTranscriptLines } from "../history/run-detail-render.js";
 import { resolveRevertTarget } from "../operator/operator-revert.js";
 import { rolePayload } from "../roles/role-view.js";
 import { clampCount, intQuery, rejectBadRole, sinceMsQuery, untilMsQuery } from "./gui-args.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
 import { oneOfMessage } from "../text/suggest.js";
 import { splitCommaList, splitCommaListUnique } from "../text/text.js";
-import { newestRunRow, runNotFoundLastMessage, runNotFoundMessage } from "../run/run-detail.js";
+import { newestRunRow, runNotFoundLastMessage, runNotFoundMessage } from "../history/run-detail.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N[&grep=<text>]: rendered transcript lines for a role's
  * pi log (same rendering as `tumwater logs --transcript <id>`). A present `prompt` flag also

@@ -7,7 +7,7 @@ import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { commitIn, headSha, makeRepo, seedCommit, sh } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
-import { runNotFoundMessage } from "../src/run/run-detail.js";
+import { runNotFoundMessage } from "../src/history/run-detail.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 
 // --- revert: undo one merged change on main ---

@@ -69,7 +69,7 @@ import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } fr
  * Arity is gated before the ready-repo check so a malformed call fails with its usage in any
  * directory; cmdRunDetail owns the value validation and the --last/numbered rivals. */
 async function runTrailCommand(root: string, args: string[]): Promise<void> {
-  const { cmdRunDetail, RUN_DETAIL_USAGE } = await import("./run/run-detail.js");
+  const { cmdRunDetail, RUN_DETAIL_USAGE } = await import("./history/run-detail.js");
   const { HISTORY_GREP_VALUE_ERROR, HISTORY_RESULT_VALUE_ERROR, HISTORY_MODEL_VALUE_ERROR } = await import("./history/history.js");
   // parseGrepFlag removes the pattern token, so `--grep two` cannot read "two" as a positional.
   const { rest: ungrepped, pattern: grep } = parseGrepFlag(args, HISTORY_GREP_VALUE_ERROR);

@@ -1,7 +1,7 @@
 import { LOGS_SINCE_MAX_MS } from "../../events/event-window.js";
 import { HISTORY_MAX_RUNS, type HistoryResultClass, type RunRow } from "../../history/history-data.js";
-import { renderRunDetail, runTranscriptLines } from "../../run/run-detail-render.js";
-import { readRunDetail, type RunDetail } from "../../run/run-detail-data.js";
+import { renderRunDetail, runTranscriptLines } from "../../history/run-detail-render.js";
+import { readRunDetail, type RunDetail } from "../../history/run-detail-data.js";
 import { revertFollowUp, runRevertSha } from "../../operator/operator-revert.js";
 import { shortSha } from "../../text/format.js";
 import { plural } from "../../text/phrases.js";

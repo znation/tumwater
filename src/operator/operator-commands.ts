@@ -6,8 +6,8 @@ import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from ".
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./operator-retire.js";
 import { previewRevert, revertFollowUp, revertMergedCommit, runRevertSha } from "./operator-revert.js";
 import { distinctOrdered } from "../collections.js";
-import { runNotFoundMessage } from "../run/run-detail.js";
-import { readRunDetail } from "../run/run-detail-data.js";
+import { runNotFoundMessage } from "../history/run-detail.js";
+import { readRunDetail } from "../history/run-detail-data.js";
 import { readRunRows } from "../history/history-data.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { agree, plural, teamResumePhrase, pauseReasonSuffix } from "../text/phrases.js";

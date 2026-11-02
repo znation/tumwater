@@ -16,7 +16,7 @@ import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 /** The command-layer modules DEVELOPMENT.md's rule lets drive src/ui/ (beside the cli.ts
  * dispatcher): the read-only command bodies (cli/cli-query-commands.ts, cli/cli-log-commands.ts,
- * run/run-detail.ts) and the
+ * history/run-detail.ts) and the
  * `tumwater gui` HTTP server layer (gui/gui-server.ts, gui/gui-endpoints.ts and the per-family
  * GET endpoint modules it barrells) that
  * gui/gui-command.ts
@@ -24,8 +24,8 @@ import { writeFileDeep } from "./helpers/write-file-deep.js";
 const COMMAND_LAYER = new Set([
   "cli/cli-query-commands.ts",
   "cli/cli-log-commands.ts",
-  "run/run-detail.ts",
-  "run/run-detail-render.ts",
+  "history/run-detail.ts",
+  "history/run-detail-render.ts",
   "gui/gui-server.ts",
   "gui/gui-endpoints.ts",
   "gui/gui-history-endpoints.ts",

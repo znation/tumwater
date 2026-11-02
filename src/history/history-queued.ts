@@ -2,7 +2,7 @@
  * merges or fails, so this module buckets the merge bookkeeping events per role and resolves
  * each queued run to the verdict of the merge attempt that belongs to it. Split out of
  * history-data.ts, which keeps the run-row shape and collectors; the three consumers of the
- * join (history-data.ts's runRows, failure/failure-time-spend.ts, run/run-detail-data.ts) import it
+ * join (history-data.ts's runRows, failure/failure-time-spend.ts, run-detail-data.ts) import it
  * from here. */
 import type { HarnessEvent } from "../events/events.js";
 import { textOr } from "../text/text.js";

@@ -12,7 +12,7 @@ import { headSha, makeRepo, seedCommit, sh, writeConfig } from "./fixtures/repo-
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { stampedRole } from "../src/git/commit-message.js";
 import { previewRevert, revertFollowUp, revertMergedCommit, runRevertSha } from "../src/operator/operator-revert.js";
-import type { RunDetail } from "../src/run/run-detail-data.js";
+import type { RunDetail } from "../src/history/run-detail-data.js";
 
 test("reverting a rename commit commits both halves and leaves the tree clean", async () => {
   const repo = makeRepo();
