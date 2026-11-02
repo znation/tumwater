@@ -171,6 +171,17 @@ export function setConfigKey(
       (parsed.kind === "role" && parsed.field === "minRunIntervalSeconds");
     if (isPlainDurationKey && trimmed !== "" && isExponentSpelling(trimmed))
       return `${key} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation`;
+    // The dollar-typed keys: the team-wide daily cost cap and the per-role cap map. An
+    // exponent spelling like "1e2" is itself the JSON number 100 — a cap no one means when
+    // typing a USD amount — that setConfigKey's JSON.parse would read past
+    // checkDailyBudgetUsd's non-negative check and silently write, the same silent misread
+    // the TUI Ctrl+B budget editor, the CLI's `role --cap`, and the GUI cap drawer refuse —
+    // so the refusal says "plain dollar amount", the wording those surfaces use.
+    const isPlainDollarKey =
+      (parsed.kind === "top" && parsed.key === "maxDailyCostUsd") ||
+      (parsed.kind === "map" && parsed.map === "maxDailyCostUsdPerRole");
+    if (isPlainDollarKey && trimmed !== "" && isExponentSpelling(trimmed))
+      return `${key} must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation`;
     return null;
   };
 
@@ -389,16 +400,18 @@ export function setConfigKey(
   key = canonicalConfigKey(key);
   const parsed = parseConfigKey(key);
   if (parsed.kind === "error") return fail(parsed.error);
-  // Shape, before the JSON.parse, for every plain-positive-integer or plain-second-count
-  // key this verb can write — the top-level run-concurrency knobs and legacy merge batch
-  // cap, the integer-bound team-scope keys that arrive as a dotted key
-  // (`roles.<id>.instances`, the `bootstrap.untilPlansDone` section field), and the
-  // duration-typed keys (the top-level second-count knobs plus `review`/`check`/
-  // `idleBackoff`'s second fields and `roles.<id>.minRunIntervalSeconds`): refuse an exponent
-  // spelling ("4e1" → 40) that JSON.parse would read past validateConfig's integer check and
-  // silently write, naming the key and writing nothing — the twin of the per-role guards, the
-  // TUI team-key editors, and the GUI Settings rows. A non-exponent invalid falls through for
-  // validateConfig (whose message names the key). Empty clears the key below.
+  // Shape, before the JSON.parse, for every plain-positive-integer, plain-second-count or
+  // plain-dollar key this verb can write — the top-level run-concurrency knobs and legacy
+  // merge batch cap, the integer-bound team-scope keys that arrive as a dotted key
+  // (`roles.<id>.instances`, the `bootstrap.untilPlansDone` section field), the duration-typed
+  // keys (the top-level second-count knobs plus `review`/`check`/`idleBackoff`'s second fields
+  // and `roles.<id>.minRunIntervalSeconds`), and the dollar-typed keys
+  // (`maxDailyCostUsd`, the `maxDailyCostUsdPerRole.<role>` map entry): refuse an exponent
+  // spelling ("4e1" → 40, "1e2" → 100) that JSON.parse would read past the key's numeric
+  // check and silently write, naming the key and writing nothing — the twin of the per-role
+  // guards, the TUI team-key and budget editors, and the GUI Settings rows and cap drawer.
+  // A non-exponent invalid falls through for validateConfig (whose message names the key).
+  // Empty clears the key below.
   const trimmed = rawValue.trim();
   const refusal = exponentRefusal(parsed, key, trimmed);
   if (refusal) return fail(refusal);

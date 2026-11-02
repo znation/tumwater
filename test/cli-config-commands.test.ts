@@ -155,6 +155,40 @@ test("set of an exponent spelling of a plain-second-count key fails without writ
   assert.equal(written.minRunIntervalSeconds, 300, "the plain-decimal write lands as the number 300");
 });
 
+test("set of an exponent spelling of a dollar key fails without writing", async () => {
+  const root = makeRepo();
+  writeConfig(root, {});
+  // "1e2" is itself the JSON number 100 — a cap no one means when typing a USD amount — so
+  // `config set maxDailyCostUsd 1e2` must not write 100 past checkDailyBudgetUsd's
+  // non-negative check; the dollar-typed keys share the guard (the team-wide cap and the
+  // per-role maxDailyCostUsdPerRole.<id> map entries). The TUI Ctrl+B budget editor, the
+  // CLI's `role --cap`, and the GUI cap drawer already refuse the shape; `config set` and
+  // the GUI /api/config-set (which rides setConfigKey) now do too.
+  const before = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
+  for (const [key, val] of [
+    ["maxDailyCostUsd", "1e2"],
+    ["maxDailyCostUsdPerRole.feature", "1e2"],
+  ] as const) {
+    const out = await attemptAsync(() => cmdConfig(root, ["set", key, val]));
+    assert.ok(out.exited && out.code === 1, `${key}: an exponent spelling is refused`);
+    assert.match(
+      out.stderr,
+      new RegExp(`${key} must be a plain dollar amount`),
+      `${key}: the message names the key and the plain-dollar rule`,
+    );
+  }
+  assert.equal(
+    fs.readFileSync(path.join(root, "tumwater.json"), "utf8"),
+    before,
+    "the file stays byte-identical after every refused exponent spelling",
+  );
+  // A plain decimal still writes — the refusal is the exponent shape, not the key.
+  const ok = await attemptAsync(() => cmdConfig(root, ["set", "maxDailyCostUsd", "25.5"]));
+  assert.ok(!ok.exited, "a plain dollar amount still writes");
+  const written = JSON.parse(fs.readFileSync(path.join(root, "tumwater.json"), "utf8"));
+  assert.equal(written.maxDailyCostUsd, 25.5, "the plain-decimal write lands as the number 25.5");
+});
+
 test("set of a type-invalid value fails and leaves the file byte-identical", async () => {
   const root = makeRepo();
   writeConfig(root, { model: "m1", maxDailyCostUsd: 5 });
