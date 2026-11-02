@@ -15,6 +15,7 @@ import {
   pollReserveAndExit,
   pollSchedule,
   type PollContext,
+  type PollState,
 } from "./orchestrator-poll.js";
 import { RoleRunner } from "../runner/runner.js";
 import { dropDanglingTumwaterPins, removeLegacyLandWorktrees } from "../git/worktree.js";
@@ -120,9 +121,47 @@ interface OrchestratorExit {
   runsDone?: ReadonlyMap<string, number>;
 }
 
-/** Run all enabled roles until the signal aborts — or until a pending self-redeploy has drained
- * the team and swapped the new build into dist/ (then `restart` is true). */
-export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExit> {
+/** The setup the poll loop and the shutdown need: option normalization, the stop controllers,
+ * the published info file, the runners and the retention pruner. Built once by
+ * prepareOrchestratorRun, before the first poll. */
+interface OrchestratorSetup {
+  root: string;
+  config: TumwaterConfig;
+  mainBranch: string;
+  pollMs: number;
+  modelsPath: string;
+  breakerPolicy: FallbackBreakerPolicy;
+  breakerNow: () => number;
+  enabled: string[];
+  internalStop: AbortController;
+  internalRoleStop: AbortController;
+  signal: AbortSignal;
+  roleSignal: AbortSignal;
+  redeploy: Redeployer | null;
+  launchServicesWatch: LaunchServicesWatch | null;
+  reclaim: ReclaimController;
+  infoFile: string;
+  info: OrchestratorInfo;
+  runners: RoleRunner[];
+  retentionPruner: RetentionPruner;
+}
+
+/** Everything a poll step and the shutdown touch: the setup, the long-lived collaborators
+ * wired into the PollContext, and the poll state. Built once by buildOrchestratorRuntime, after
+ * prepareOrchestratorRun and before the first poll. */
+interface OrchestratorRuntime {
+  setup: OrchestratorSetup;
+  ctx: PollContext;
+  state: PollState;
+  once: OnceRound;
+  modelCheck: ModelCheckGate | null;
+}
+
+/** Normalize the run options, guard the enabled set, stand up the stop controllers, publish the
+ * info file and the start event, run the startup migrations, archive and pin passes, the
+ * worktree retirements, and build the runners and retention pruner — in that exact order, each
+ * awaited where it was before the split. */
+async function prepareOrchestratorRun(opts: RunOptions): Promise<OrchestratorSetup> {
   const { root, config, mainBranch, signal: externalSignal } = opts;
   const pollMs = opts.pollMs ?? POLL_MS;
   const modelsPath = opts.modelsPath ?? piModelsPath();
@@ -165,11 +204,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // the disk gate's poll below. In-process state (the use registry) is enough, because this
   // process is the one that starts runs and merges.
   const reclaim = new ReclaimController(root);
-
-  // The shared concurrency cap: role runs and the merges (each verify, and the merge's conflict
-  // resolver — merge-drain.ts) all hold a permit; see its MergePipelineContext for why a
-  // merge is not exempt.
-  const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));
 
   const infoFile = orchestratorStatePath(root);
   const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: enabled };
@@ -225,6 +259,42 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // startup prune, seeding the once-per-day gate so an unchanged team prunes at most once
   // per day — and 0 disables pruning, the same convention as quietTimeoutSeconds.
   const retentionPruner = new RetentionPruner(root, config.sessionRetentionDays);
+
+  return {
+    root,
+    config,
+    mainBranch,
+    pollMs,
+    modelsPath,
+    breakerPolicy,
+    breakerNow,
+    enabled,
+    internalStop,
+    internalRoleStop,
+    signal,
+    roleSignal,
+    redeploy,
+    launchServicesWatch,
+    reclaim,
+    infoFile,
+    info,
+    runners,
+    retentionPruner,
+  };
+}
+
+/** Wire the long-lived collaborators the poll steps see — the in-flight sets, the merge
+ * pipeline, the once round, the gates, the live config reload, the caches, the main watch, the
+ * notifier, the best-effort logger, the catalog refresh and the model check — into the existing
+ * PollContext, and start the poll state. */
+function buildOrchestratorRuntime(setup: OrchestratorSetup, opts: RunOptions): OrchestratorRuntime {
+  const { root, config, mainBranch } = setup;
+  const { signal, roleSignal, internalStop, internalRoleStop, runners, redeploy, launchServicesWatch, reclaim, info, modelsPath, breakerPolicy, breakerNow, retentionPruner } = setup;
+
+  // The shared concurrency cap: role runs and the merges (each verify, and the merge's conflict
+  // resolver — merge-drain.ts) all hold a permit; see its MergePipelineContext for why a
+  // merge is not exempt.
+  const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));
 
   // In-flight tasks, split by who requested them: the redeploy drain caps role runs at its
   // window but waits for a director run without one — an explicit human prompt outranks the
@@ -345,6 +415,44 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // The flags that outlive one poll (orchestrator-poll.ts's PollState).
   const state = newPollState();
 
+  return { setup, ctx, state, once, modelCheck };
+}
+
+/** The graceful-shutdown drain: wait out the in-flight work to its window, end the model
+ * check's probes, and clean up the stop event, the notifier and the info file. Runs from the
+ * poll loop's finally, on every stop cause. */
+async function shutDownOrchestrator(
+  runtime: OrchestratorRuntime,
+  opts: RunOptions,
+  stopCause: "restart" | "once" | "signal" | "error",
+): Promise<void> {
+  const { setup, ctx, state, modelCheck } = runtime;
+  const { root, infoFile, internalStop } = setup;
+  await drainInFlightWork(
+    root,
+    ctx.roleInFlight,
+    ctx.directorInFlight,
+    mergeTasks(ctx.merges),
+    state.restart,
+    opts.handoffMergeWindowMs ?? HANDOFF_MERGE_WINDOW_MS,
+    () => internalStop.abort(),
+  );
+  // A restart stops no signal the probes watch, so end them here: none outlives its
+  // generation.
+  await modelCheck?.close();
+  ctx.emit({ source: TUMWATER_SOURCE, type: "orchestrator_stop", cause: stopCause });
+  ctx.notifier.dispose();
+  removeQuiet(infoFile);
+}
+
+/** Run all enabled roles until the signal aborts — or until a pending self-redeploy has drained
+ * the team and swapped the new build into dist/ (then `restart` is true). */
+export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExit> {
+  const setup = await prepareOrchestratorRun(opts);
+  const runtime = buildOrchestratorRuntime(setup, opts);
+  const { ctx, state, once } = runtime;
+  const { signal, pollMs } = setup;
+
   // Why the poll loop ended, for the orchestrator_stop event: a throw leaves "error".
   let stopCause: "restart" | "once" | "signal" | "error" = "error";
   try {
@@ -365,21 +473,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     }
     if (stopCause === "error") stopCause = "signal";
   } finally {
-    await drainInFlightWork(
-      root,
-      roleInFlight,
-      directorInFlight,
-      mergeTasks(merges),
-      state.restart,
-      opts.handoffMergeWindowMs ?? HANDOFF_MERGE_WINDOW_MS,
-      () => internalStop.abort(),
-    );
-    // A restart stops no signal the probes watch, so end them here: none outlives its
-    // generation.
-    await modelCheck?.close();
-    emit({ source: TUMWATER_SOURCE, type: "orchestrator_stop", cause: stopCause });
-    notifier.dispose();
-    removeQuiet(infoFile);
+    await shutDownOrchestrator(runtime, opts, stopCause);
   }
   // Only once mode carries the settle reasons and the per-role run counts: the daemon return
   // keeps its exact shape (an e2e test deep-equals it), and a daemon caller has no summary to
@@ -388,7 +482,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     ? {
         restart: state.restart,
         settled: once.reasons,
-        runsDone: new Map(runners.map((r) => [r.role, once.runsDone(r)] as const)),
+        runsDone: new Map(setup.runners.map((r) => [r.role, once.runsDone(r)] as const)),
       }
     : { restart: state.restart };
 }
