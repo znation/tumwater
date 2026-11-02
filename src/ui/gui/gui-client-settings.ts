@@ -291,13 +291,18 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     const card = $("settingscard");
     card.innerHTML = renderSettings(d);
   }
-  // The plain-integer team rows (the run-concurrency knobs): for these the browser's
-  // JSON.parse below would read an exponent spelling ("2e0" → 2) past validateConfig's
-  // integer check before it ever leaves the browser — the same silent misread that the
-  // config-set CLI path and the TUI team-key editors refuse — so refuse it here, naming
-  // the row and leaving the field as typed. A non-exponent invalid still goes to the
-  // server, whose validateConfig names the key.
+  // The plain-numeric team rows: for these the browser's JSON.parse below would read an
+  // exponent spelling ("2e0" → 2, "1e2" → 100) past the key's numeric check before it ever
+  // leaves the browser — the same silent misread the config-set CLI path, the TUI editors,
+  // and the GUI drawers refuse — so refuse it here, naming the row and leaving the field as
+  // typed. A non-exponent invalid still goes to the server, whose validateConfig names the
+  // key. (The server's own exponent guard cannot see the misread on these rows: by the time
+  // the value re-enters setConfigKey it has already been re-encoded from the parsed number.)
   const PLAIN_INTEGER_KEYS = ["maxConcurrent", "roles.feature.instances", "roles.bugfix.instances", "maxConcurrentChecks", "worktreeSlots"];
+  // The daily spend cap row: its misread is the dollar-typed one ("1e2" → 100 — a cap no one
+  // means), refused with the wording setConfigKey's dollar arm and the cap drawer's
+  // parseBudgetField use.
+  const PLAIN_DOLLAR_KEYS = ["maxDailyCostUsd"];
   // The one delegated submit listener for the panel: save the row's key with the field's
   // current text, and flash the outcome — "Saved <key>" on 200 (with the old value when the
   // key was unset before), the server's message otherwise. No polling, no repaint: the
@@ -306,13 +311,18 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     const key = form.dataset.key;
     const input = form.querySelector("input");
     const typed = input.value.trim();
-    if (
-      PLAIN_INTEGER_KEYS.includes(key) &&
+    // The one exponent-shape test the integer and dollar rows share — the browser's mirror of
+    // isExponentSpelling (text.ts), which it cannot import.
+    const isExponent =
       typed !== "" &&
       !/^\d*\.?\d+$/.test(typed) &&
-      /^\d+(\.\d+)?[eE][+-]?\d+$/.test(typed)
-    ) {
+      /^\d+(\.\d+)?[eE][+-]?\d+$/.test(typed);
+    if (isExponent && PLAIN_INTEGER_KEYS.includes(key)) {
       showFlash("error: " + key + " must be a plain integer — no exponent notation");
+      return;
+    }
+    if (isExponent && PLAIN_DOLLAR_KEYS.includes(key)) {
+      showFlash("error: " + key + " must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation");
       return;
     }
     // JSON-or-literal, matching tumwater config set: a field holding 30 or an agents

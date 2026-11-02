@@ -176,6 +176,33 @@ test("saveSetting posts the row's key and value and flashes the outcome", async 
   });
   await saveExponent({ dataset: { key: "roles.feature.instances" }, querySelector: () => ({ value: "2e1" }) });
   assert.deepEqual(exponentFlashes, ["error: roles.feature.instances must be a plain integer — no exponent notation"]);
+  // An exponent spelling on the daily-cap row is refused in the browser with the dollar
+  // wording: the browser's JSON.parse would turn "1e2" into the number 100 before it reaches
+  // setConfigKey, whose exponent guard sees only the re-encoded "100" — so the refusal lives
+  // here, where the shape is still visible.
+  const dollarFlashes: string[] = [];
+  const dollarPosts: Array<{ path: string; body: unknown }> = [];
+  const { saveSetting: saveDollar } = settingsScope({
+    postJson: async (path: string, body: unknown) => {
+      dollarPosts.push({ path, body });
+      return { ok: true };
+    },
+    showFlash: (msg: string) => void dollarFlashes.push(msg),
+  });
+  await saveDollar({ dataset: { key: "maxDailyCostUsd" }, querySelector: () => ({ value: "1e2" }) });
+  assert.deepEqual(dollarFlashes, ["error: maxDailyCostUsd must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation"]);
+  assert.deepEqual(dollarPosts, []);
+  // A plain decimal on the cap row passes the browser screen and posts the parsed number.
+  const dollarOkPosts: Array<{ path: string; body: unknown }> = [];
+  const { saveSetting: saveDollarOk } = settingsScope({
+    postJson: async (path: string, body: unknown) => {
+      dollarOkPosts.push({ path, body });
+      return { ok: true, unchanged: true };
+    },
+    showFlash: () => {},
+  });
+  await saveDollarOk({ dataset: { key: "maxDailyCostUsd" }, querySelector: () => ({ value: "12.50" }) });
+  assert.deepEqual(dollarOkPosts, [{ path: "/api/config-set", body: { key: "maxDailyCostUsd", value: 12.5 } }]);
   // A reply flagged unchanged flashes the no-op wording.
   const { saveSetting: saveSame } = settingsScope({
     postJson: async () => ({ ok: true, key: "model", value: "gpt-5", oldValue: "gpt-5", unchanged: true }),
