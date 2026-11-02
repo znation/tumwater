@@ -59,12 +59,12 @@ gate's build check, they answered: "No, keep the gate." A separate session is lo
 
 - **Subtract part 3b/7** (pre-merge verify stops running the build check) is withdrawn, at the
   user's direction. feature-2 had claimed it; its one run was aborted with nothing committed.
-- **Subtract part 3c/7** now requires Hourly full check part 1/4 instead of 3b/7. Its merge step
+- **Subtract part 3c/7** now requires Hourly full check part 1b/4 instead of 3b/7. Its merge step
   runs the gate, both the diff rules and the build check, outside the merge lock.
   **Parts 3e/7 and 3g/7** say a change reaches main after its one gate check, and the docs keep
   the pre-merge check.
 - **Every commit is verified on main parts 4j/3 and 4k/3** (remove the `main_red` verdict) now
-  require Hourly full check part 1/4 instead of 3b/7: that part is what leaves the gate with no
+  require Hourly full check part 1b/4 instead of 3b/7: that part is what leaves the gate with no
   `main_red` path.
 - **plans/subtract.md** stroke 3 and "How we will know it worked" are amended: the one check per
   change is the gate's, before landing, and the full check runs hourly.
@@ -91,12 +91,13 @@ gate's build check, they answered: "No, keep the gate." A separate session is lo
 
 ## Series
 
-"Hourly full check", parts 1/4–4/4 in PLANS.md:
+"Hourly full check", parts 1a/4–4/4 in PLANS.md:
 
 | Part | What it does | Requires |
 | --- | --- | --- |
-| 1/4 | A twice-failed gate asks main's tip about its own failures at once; no watch wait, no `main_red` | — |
-| 2/4 | The full check runs at most hourly on the latest tip, in its own mirror | part 1/4 |
+| 1a/4 | The gate restores its build check and asks main's tip about its own failures at once; no watch wait | — |
+| 1b/4 | The dead watch-wait and `awaitingWatch` plumbing is removed; no `main_red` producer remains | part 1a/4 |
+| 2/4 | The full check runs at most hourly on the latest tip, in its own mirror | part 1b/4 |
 | 3/4 | Bisect a red's opener, re-run only the open failures on each new head, and confirm a cleared red with one full run | part 2/4 |
 | 4/4 | Status, doctor and the dashboard say how old main's full verdict is and when the next is due | part 3/4 |
 
