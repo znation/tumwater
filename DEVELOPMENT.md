@@ -155,6 +155,29 @@ Neither is part of `npm test`; both name the `npm run build` fix when `dist/` is
 `npm run tumwater <args>` runs the compiled CLI from a checkout (the same `dist/src/cli.js`
 build) with its exit code, for trying a change before `npm link`.
 
+## Writing tests
+
+A test catches only the bugs its expected values are independent of. A value computed by the
+code under test, or pasted from what it printed, passes whatever that code does, so the test
+pins the very bug it should catch. A 2026-11-02 sample of the suite found such an assertion in
+about one test in eleven, from every author at about the same rate. The team's prompts carry the
+same rule (`TEST_ORACLE_RULE` in `src/prompt/prompt.ts`, review check 3 in
+`src/prompt/gate-prompts.ts`), and operator sessions should follow it too:
+
+- Work each expected value out from the inputs or the contract: a number computed by hand, an
+  invariant or round-trip, a file on disk, an exit code. Never compare against the function under
+  test run on the same input (an endpoint's payload deep-equal to `summarizeRunRows(rows)` checks
+  only that the endpoint calls it).
+- Against a fake, check what the code does with the fake's reply: the value it derives, the
+  decision it makes, the file it writes. A test that only checks a spy was called, or that the
+  fake's canned reply came back out, tests the fake.
+- Pin exact wording only where the text is the contract: a flag, a file format, a field another
+  program reads. Elsewhere match the part that matters.
+- Exercise the case the test's name promises. Before finishing, name one plausible bug in the
+  change (an off-by-one, a swapped branch, a wrong field) and make sure a test fails on it.
+- When a new test disagrees with existing code, decide which side is wrong before changing
+  either: the test may have found a bug.
+
 ## Keeping the suite fast
 
 The suite is bound by process creation, not by its own code: a run starts ~16,000 git processes
