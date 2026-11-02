@@ -1,6 +1,6 @@
 import { fail, say, sayJsonLine } from "./cli-output.js";
 import { hasFollowFlag, LOGS_TRANSCRIPT_VALUE_ERROR } from "./cli-flag-specs.js";
-import { betweenWindow, durationLabel, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";
+import { betweenWindow, durationLabel, failFollowSinceRival, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,
@@ -268,7 +268,7 @@ function parseLogsFeed(root: string, args: string[]): LogsFeed {
  * prose, the `--count` tally, the per-event print and the sparse-window note. */
 function sayLogsWindow(root: string, feed: LogsFeed, ms: number, untilMs: number | null): void {
   if (feed.follow)
-    failRivalShapes("logs --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');
+    failFollowSinceRival("logs");
   if (feed.rest.includes("-n")) failRivalShapes("logs --since", "-n", "a count and a window are rival shapes");
   rejectTranscriptViewRival(feed.rest, "--since", true);
   // covered is only consulted below when the window has rows (an empty window returns

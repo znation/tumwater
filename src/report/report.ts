@@ -10,7 +10,7 @@ import { renderReportMarkdown } from "./report-render.js";
 import { renderSinceReportMarkdown } from "./report-since-render.js";
 import { fail, say, sayJson, sayJsonOrRender } from "../cli/cli-output.js";
 import { followView, type FollowViewSeams } from "../cli/follow-view.js";
-import { failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
+import { failFollowSinceRival, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
 import { hasFollowFlag } from "../cli/cli-flag-specs.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 
@@ -51,7 +51,7 @@ function sinceReportShape(root: string, args: string[], ms: number, role: string
   // reuses the day digest's own sections, so `report --failures --since <d>` dispatches it
   // through the existing --json / render choice; --until bounds its window's end.
   if (follow)
-    failRivalShapes("report --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');
+    failFollowSinceRival("report");
   if (args.includes("--days"))
     failRivalShapes("report --since", "--days", "--days counts whole local days; --since totals a trailing window");
   if (args.includes("--failures")) {

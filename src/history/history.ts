@@ -1,5 +1,5 @@
 import { fail, say, sayJson, sayJsonLine } from "../cli/cli-output.js";
-import { betweenWindow, durationLabel, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag, rejectFlagLookingValue } from "../cli/cli-args.js";
+import { betweenWindow, durationLabel, failFollowSinceRival, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag, rejectFlagLookingValue } from "../cli/cli-args.js";
 import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readRunRows, readRunRowsSince, runRows, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type HistoryResultClass, type RunRow } from "./history-data.js";
 import { renderModelSummary, renderRow, renderSummary, widenWidths, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
@@ -111,7 +111,7 @@ function parseHistoryQuery(root: string, args: string[]): HistoryQuery {
   const follow = hasFollowFlag(rest);
   if (follow) {
     if (rest.includes("--since"))
-      failRivalShapes("history --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');
+      failFollowSinceRival("history");
     if (rest.includes("--summary"))
       failRivalShapes("history --summary", "-f/--follow", "a summary tallies a bounded set; -f follows from now on");
   }

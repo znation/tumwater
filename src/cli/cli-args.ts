@@ -417,6 +417,19 @@ export function failRivalShapes(subject: string, rival: string, why: string): ne
   fail(`${subject} cannot be combined with ${rival} (${why})`);
 }
 
+/** The shared why-clause for a trailing-window view's `-f/--follow` rival: follow is an
+ * unbounded "from now on" read, while `--since` opens a bounded past window, so the two are
+ * mutually exclusive on the same grounds in all three windowed views (logs, history, report).
+ * One clause so the three sites cannot drift on what follow means and why it excludes
+ * `--since`; the subject keeps the command's own name. */
+export function failFollowSinceRival(command: string): never {
+  return failRivalShapes(
+    `${command} --since`,
+    "-f/--follow",
+    'follow means "from now on"; --since shows a bounded past window',
+  );
+}
+
 /** Guard a trailing-window command's `--until <window>` against its `--since <window>` pair —
  * the shared fail sentences the three windowed views (logs, history, report) print, so the
  * wording cannot drift per command. When `--until` is present but `--since` is not, it fails
