@@ -408,8 +408,9 @@ async function cmdHelpCase(args: string[]): Promise<void> {
  * their own tokens. */
 type CommandHandler = (root: string, command: string, args: string[]) => Promise<void>;
 
-// The version and help alias triples each collapse to one row value, so the aliases cannot
-// drift from the command they name.
+// The start/run pair and the version and help alias triples each collapse to one row value,
+// so the aliases cannot drift from the command they name.
+const startCaseRow: CommandHandler = (root, _command, args) => cmdStartCase(root, args);
 const versionCaseRow: CommandHandler = (_root, _command, args) => cmdVersionCase(args);
 const helpCaseRow: CommandHandler = (_root, _command, args) => cmdHelpCase(args);
 
@@ -436,8 +437,8 @@ const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
     // to the commands that actually boot or serve a team. cli-init.ts stays light for init.
     await (await import("./cli/cli-init.js")).cmdInit(root, args);
   },
-  start: (root, _command, args) => cmdStartCase(root, args),
-  run: (root, _command, args) => cmdStartCase(root, args),
+  start: startCaseRow,
+  run: startCaseRow,
   tui: (root, _command, args) => cmdTuiCase(root, args),
   gui: (root, _command, args) => cmdGuiCase(root, args),
   status: async (root, _command, args) => {
