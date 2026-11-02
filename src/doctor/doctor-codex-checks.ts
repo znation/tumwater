@@ -19,6 +19,7 @@ import {
   codexSeamsInUse,
   loadConfigForCheck,
   minVersionOutcome,
+  probeUnreadableWarning,
   versionFromProbe,
   seamedModels,
 } from "./doctor-model-checks.js";
@@ -101,8 +102,7 @@ export async function checkCodexAuth(
   if (base === null || "level" in base) return base;
   const { home } = base;
   const result = await codexProbe(base.config, ["login", "status"], pathEnv, timeoutMs);
-  if (result?.code !== 0)
-    return warnOutcome("could not check — `codex login status` did not run or its output was unreadable");
+  if (result?.code !== 0) return probeUnreadableWarning("codex login status");
   const status = parseCodexLoginStatus(result.stdout);
   if (status === "subscription") return okOutcome("logged in using ChatGPT — billing: subscription");
   if (status === "api") return failOutcome(codexApiKeyRefusalMessage(home));

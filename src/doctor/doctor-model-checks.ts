@@ -133,11 +133,19 @@ export function minVersionOutcome(
   min: string,
   upgradeHint: string,
 ): CheckOutcome {
-  if (found === undefined)
-    return warnOutcome(`could not check — \`${name} --version\` did not run or its output was unreadable`);
+  if (found === undefined) return probeUnreadableWarning(`${name} --version`);
   if (belowNodeFloor(found, `>=${min}`))
     return failOutcome(`${name} ${found} is older than ${min} — ${upgradeHint}`);
   return okOutcome(`${name} ${found} (>= ${min})`);
+}
+
+/** The warn a backend probe that could not run or whose output was unreadable earns: it says
+ * the check could not happen, naming the command, rather than guessing a verdict. The one home
+ * of that phrase, shared by minVersionOutcome (this file), the claude auth and version rows
+ * (doctor-claude-checks.ts) and the codex login row (doctor-codex-checks.ts), so the wording
+ * cannot drift between the backends' probes. */
+export function probeUnreadableWarning(command: string): CheckOutcome {
+  return warnOutcome(`could not check — \`${command}\` did not run or its output was unreadable`);
 }
 
 /** Whether any seam runs on the claude backend — the doctor's claude checks stand down when
