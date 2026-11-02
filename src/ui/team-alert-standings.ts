@@ -17,6 +17,7 @@
 import type { TeamAlert } from "./team-alert-shared.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
+import type { CheckOutcome } from "../doctor/doctor-outcome.js";
 import { checkBuildCheck } from "../doctor/doctor-project-checks.js";
 import { checkBrief } from "../doctor/doctor-checks.js";
 import { checkRoleNotes } from "../doctor/doctor-role-notes.js";
@@ -39,47 +40,43 @@ interface StandingAlertsInput {
   root: string;
 }
 
-// Each arm: the snapshot's raw flag (the `--json` twin) gates the alert, and the detail is
-// the doctor row's own warn sentence, so alert and row stay twins by construction. A row
-// that reads ok is a state the flag's own read could not see (a concurrent write between the
-// flag's read and the row's) — the alert follows the flag, so it raises nothing.
+// Each arm is gated by the snapshot's raw flag (the `--json` twin). The five arms whose
+// trigger is a doctor row raise their amber alert through pushDoctorTwinAlert — whose doc
+// states how the row's warn level is the trigger and its warn sentence the detail — so the
+// alert and the row stay twins by construction. The instance-pool arm reads the
+// smallPoolProblems selector instead of a doctor row and keeps its own body.
+
+/** Push one standing amber alert off a doctor row that reads `warn`: the row's detail is the
+ * alert's detail and its warn level the trigger, so the alert and the row stay twins by
+ * construction — a row that reads ok is a state the snapshot flag's own read could not see
+ * (a concurrent write between the flag's read and the row's), and it raises nothing. `key`
+ * and `title` are the arm's own; the tone is fixed amber and the actions empty, as every
+ * doctor-twin standing alert is. The five arms that read a CheckOutcome use it: no-check,
+ * no-brief, brief-truncated, role-notes-truncated and principles-truncated. instance-pool is
+ * not one — it reads the smallPoolProblems selector, not a doctor row, so it keeps its own
+ * arm. */
+function pushDoctorTwinAlert(out: TeamAlert[], row: CheckOutcome, key: string, title: string): void {
+  if (row.level !== "warn") return;
+  out.push({ key, tone: "amber", title, detail: row.detail, actions: [] });
+}
 
 function pushNoCheckAlert(out: TeamAlert[], config: TumwaterConfig, root: string): void {
-  const row = checkBuildCheck(root, config.check ? { check: config.check } : null);
-  if (row.level !== "warn") return;
-  out.push({
-    key: "no-check",
-    tone: "amber",
-    title: "No build check declared",
-    detail: row.detail,
-    actions: [],
-  });
+  pushDoctorTwinAlert(
+    out,
+    checkBuildCheck(root, config.check ? { check: config.check } : null),
+    "no-check",
+    "No build check declared",
+  );
 }
 
 function pushNoBriefAlert(out: TeamAlert[], root: string): void {
-  const row = checkBrief(root);
-  if (row.level !== "warn") return;
-  out.push({
-    key: "no-brief",
-    tone: "amber",
-    title: "No project brief",
-    detail: row.detail,
-    actions: [],
-  });
+  pushDoctorTwinAlert(out, checkBrief(root), "no-brief", "No project brief");
 }
 
 // checkBrief's warn for an over-cap block is only reachable with a non-empty prompt — the
 // same state snap.briefTruncated names — so the row's detail is the over-cap sentence here.
 function pushBriefTruncatedAlert(out: TeamAlert[], root: string): void {
-  const row = checkBrief(root);
-  if (row.level !== "warn") return;
-  out.push({
-    key: "brief-truncated",
-    tone: "amber",
-    title: "Brief over its read cap — every role sees only its head",
-    detail: row.detail,
-    actions: [],
-  });
+  pushDoctorTwinAlert(out, checkBrief(root), "brief-truncated", "Brief over its read cap — every role sees only its head");
 }
 
 // The row's warn sentence names every over-bound role (capped, with "and N more") and the
@@ -90,15 +87,12 @@ function pushRoleNotesAlert(
   over: NonNullable<StatusSnapshot["roleNotesOverCap"]>,
   root: string,
 ): void {
-  const row = checkRoleNotes(root);
-  if (row.level !== "warn") return;
-  out.push({
-    key: "role-notes-truncated",
-    tone: "amber",
-    title: `${plural(over.length, "role note", "role notes")} over the ${ROLE_NOTES_MAX_BYTES}-character read bound`,
-    detail: row.detail,
-    actions: [],
-  });
+  pushDoctorTwinAlert(
+    out,
+    checkRoleNotes(root),
+    "role-notes-truncated",
+    `${plural(over.length, "role note", "role notes")} over the ${ROLE_NOTES_MAX_BYTES}-character read bound`,
+  );
 }
 
 // The doctor's `parallel instances` row carries more than the pool clause (stale and gone
@@ -117,15 +111,12 @@ function pushInstancePoolAlert(out: TeamAlert[], config: TumwaterConfig): void {
 }
 
 function pushPrinciplesAlert(out: TeamAlert[], root: string): void {
-  const row = checkPrinciples(root);
-  if (row.level !== "warn") return;
-  out.push({
-    key: "principles-truncated",
-    tone: "amber",
-    title: "PRINCIPLES.md over its prompt cap — roles see only the head",
-    detail: row.detail,
-    actions: [],
-  });
+  pushDoctorTwinAlert(
+    out,
+    checkPrinciples(root),
+    "principles-truncated",
+    "PRINCIPLES.md over its prompt cap — roles see only the head",
+  );
 }
 
 /** The standing doctor-twin alerts, in emission order: no-check, no-brief,
