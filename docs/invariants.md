@@ -325,7 +325,7 @@ adds a capped view or a terminal outcome updates the record shape in the same co
 
 **Guarantee.** Every failure-digest list section that cuts its list — the top-N error, warning,
 review-failure and rejection clusters, the top-`LOSS_TOP` loss-cause ranking, the newest-
-`STATE_CHANGE_TOP` state transitions, and the newest-`MERGE_DONE_TOP` merges — prints a remainder
+`STATE_CHANGE_TOP` state transitions, and the newest-`MERGED_TOP` merges — prints a remainder
 line whose dropped count is derived from the same list the section itemized, so a cut section
 never reads as a complete itemization of the window.
 
