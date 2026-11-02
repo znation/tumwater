@@ -20,7 +20,7 @@ import {
   newMaintenanceWindowCounter,
 } from "../gates/maintenance-quota-gates.js";
 import { commitTier } from "../roles/roles.js";
-import { currentCiParityState, parityIsCurrent, readCiParity } from "../run/ci-parity.js";
+import { currentCiParityState, parityIsCurrent, readCiParity } from "../observer/ci-parity.js";
 
 /** The per-poll cached readers behind status/status-data.ts's snapshot(): one poll's view of the
  * three inputs that cost real reads — main's newest merge-scope build check (a stat-cached

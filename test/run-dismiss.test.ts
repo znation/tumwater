@@ -5,8 +5,8 @@ import {
   recordDismissedFiling,
   recordDismissedFlow,
 } from "../src/run/run-dismiss.js";
-import { readQaCoverage } from "../src/run/qa-coverage.js";
-import { readFeedbackFilings } from "../src/run/feedback-filings.js";
+import { readQaCoverage } from "../src/observer/qa-coverage.js";
+import { readFeedbackFilings } from "../src/observer/feedback-filings.js";
 import { eventsLogPath, feedbackFilingsPath, qaCoveragePath } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";

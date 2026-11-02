@@ -327,13 +327,14 @@ interface RunPromptInput {
   /** Rendered failure digest (see src/failure/failure-render.ts); selfcheck only, omitted when
    * unreadable. */
   digest?: string;
-  /** Rendered flow-coverage block (see run/qa-coverage.ts); qa only, omitted when unreadable. */
+  /** Rendered flow-coverage block (see observer/qa-coverage.ts); qa only, omitted when
+   * unreadable. */
   coverage?: string;
-  /** Rendered CI-parity block (see run/ci-parity.ts); ci only, omitted when there is no
+  /** Rendered CI-parity block (see observer/ci-parity.ts); ci only, omitted when there is no
    * record yet or the ledger is unreadable. */
   ciParity?: string;
-  /** Rendered previously-filed block (see run/feedback-filings.ts); feedback only, omitted when
-   * the ledger is empty or unreadable. */
+  /** Rendered previously-filed block (see observer/feedback-filings.ts); feedback only, omitted
+   * when the ledger is empty or unreadable. */
   filings?: string;
   /** Rendered stranded-plan block (see backlog-structure.ts); clean only, omitted when the
    * primary checkout's PLANS.md is missing, unreadable, or clean. */

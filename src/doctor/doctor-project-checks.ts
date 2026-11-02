@@ -32,8 +32,8 @@ import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../r
 import { POST_MERGE_REJECT_WINDOW_MS, postMergeChurn } from "../review/post-merge-review.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
-import { readCiParity, currentCiParityState, parityIsCurrent, ciParityStalled, CI_PARITY_STALE_MS } from "../run/ci-parity.js";
-import { readQaCoverage, qaCoverageStalled, QA_COVERAGE_STALE_MS } from "../run/qa-coverage.js";
+import { readCiParity, currentCiParityState, parityIsCurrent, ciParityStalled, CI_PARITY_STALE_MS } from "../observer/ci-parity.js";
+import { readQaCoverage, qaCoverageStalled, QA_COVERAGE_STALE_MS } from "../observer/qa-coverage.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
 /** .tumwater writable — absent is fine (created on first run); present, prove it by writing
@@ -360,9 +360,9 @@ function tipLockPhrase(tip: string, lockHash: string): string {
 }
 
 /** The doctor's `ci parity` row: does the full suite cover main's current tip? Reads the
- * CI-parity ledger (src/run/ci-parity.ts) — the operator surface answering "is main verified by
- * CI?" — and reports whether the last run covered the current main tip @ lock. Missing ledger
- * reads "no CI parity recorded yet" (ok); a failed record is a `warn` naming the covered
+ * CI-parity ledger (src/observer/ci-parity.ts) — the operator surface answering whether main
+ * is verified by CI — and reports whether the last run covered the current main tip @ lock.
+ * Missing ledger reads "no CI parity recorded yet" (ok); a failed record is a `warn` naming the
  * tip/lock (the ci role's contract is to fix or file what it finds, so a lingering failed record
  * is actionable until the next green run); the `current`/`stale` split is `parityIsCurrent`'s
  * one home, so the row and the ci prompt block cannot drift. Stale is normally `ok` — main moves
@@ -408,7 +408,7 @@ export function checkCiParity(
 
 /** The doctor's `qa coverage` row: has the `qa` observer — the team's only flow-level
  * observer — stopped exercising any of the product's own flows? Reads the flow-coverage ledger
- * (src/run/qa-coverage.ts), the operator surface answering "is qa still recording what it
+ * (src/observer/qa-coverage.ts), the operator surface answering "is qa still recording what it
  * exercises?". A missing ledger reads "no qa flow coverage recorded yet" (ok — no record yet
  * is not a stall); a fresh ledger reads ok naming the newest exercised flow and its age. A
  * ledger whose newest exercise is older than `QA_COVERAGE_STALE_MS` (qaCoverageStalled) is a

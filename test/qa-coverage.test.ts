@@ -9,13 +9,13 @@ import {
   readQaCoverage,
   recordFlow,
   renderCoverageBlock,
-} from "../src/run/qa-coverage.js";
-import type { QaCoverage, QaFlowResult } from "../src/run/qa-coverage.js";
+} from "../src/observer/qa-coverage.js";
+import type { QaCoverage, QaFlowResult } from "../src/observer/qa-coverage.js";
 import { qaCoveragePath } from "../src/paths.js";
 import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 
-/** Unit coverage for src/run/qa-coverage.ts — the `qa` observer's flow-coverage ledger
+/** Unit coverage for src/observer/qa-coverage.ts — the `qa` observer's flow-coverage ledger
  * (plans/observer-roles.md 2/2). Every run is a fresh session and a passing cheap check
  * leaves nothing in the repo, so this runtime file is the only memory that rotates the flow
  * menu; its read path must degrade to "no data" rather than fail a run, and its render order

@@ -321,6 +321,13 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   (`prompt.ts`, `prompt-followup.ts`, `gate-prompts.ts`, `gate-notes.ts`) a run's prefill is assembled from.
 - `src/roles/`: the role catalog, its role ids, per-role guidance, and the per-role views the
   CLI and dashboards read.
+- `src/observer/`: the per-observer-role runtime ledgers — the gitignored state each
+  fresh-session observer keeps in `.tumwater/state/` so it is not re-derived every run —
+  `ci-parity.ts` (which main tip and lock hash `ci` last verified), `qa-coverage.ts` (which
+  flow `qa` last exercised), `feedback-filings.ts` (which issues `feedback` already filed),
+  and `selfcheck-digest.ts` (the 24 h failure digest `selfcheck`/`feedback` read as evidence).
+  The run pipeline records them at a run's dismissal (run-stage.ts, run-verdict.ts) and the
+  operator surfaces read them (doctor, status, the role view and prompt).
 - Top-level modules: `src/cli.ts` (the dispatcher), `src/paths.ts` (repo layout constants),
   `src/version.ts`, `src/project-name.ts`, `src/collections.ts`, `src/errno.ts`,
   `src/request-timeouts.ts`, and `src/notes-cli.ts` (the second `bin` entry, `tumwater-notes` —

@@ -367,7 +367,7 @@ never fails the run: a non-cut-off fulfilled `feedback` filing writes the ledger
 `issue_filed` best-effort, while a cut-off run (the `diagnosis.cutOff` guard, as for the FLOW
 line) and a failed ledger write record nothing and warn at most.
 
-**Binds.** `src/verdict/reply-contract.ts` (`extractFiled`), `src/run/feedback-filings.ts`
+**Binds.** `src/verdict/reply-contract.ts` (`extractFiled`), `src/observer/feedback-filings.ts`
 (`readFeedbackFilings`, `recordFiled`), `src/run/run-verdict.ts` (the
 `ctx.filed && !diagnosis.cutOff` guard), `src/run/run-stage.ts` (the changed-branch `ctx.filed`
 recording), `src/events/event-format.ts` (the `issue_filed` line).
@@ -4267,7 +4267,7 @@ the run keeps its `queued` or `no_change` outcome, so a full disk or read-only `
 count toward the role's error streak.
 
 **Binds.** `src/run/run-stage.ts` (`stageRunMerge`), `src/run/run-verdict.ts` (`resolveRunVerdict`),
-`src/run/qa-coverage.ts` (`recordFlow`).
+`src/observer/qa-coverage.ts` (`recordFlow`).
 
 **Pinned by.** `test/run-stage.test.ts` — "a failed qa coverage write warns and the run still ends
 queued" and "a qa flow record from the reply is written into the coverage file" (on the healthy path
@@ -4285,7 +4285,7 @@ tree has not verified main (its work is not on main until the queued merge lands
 unlanded fix cannot leave a false `current` that makes the next ci run skip the full suite.
 
 **Binds.** `src/run/run-verdict.ts` (`resolveRunVerdict`),
-`src/run/ci-parity.ts` (`recordParity`).
+`src/observer/ci-parity.ts` (`recordParity`).
 
 **Pinned by.** `test/run-verdict.test.ts` — "a no_change ci run with a CI line records its parity
 coverage" and "a cut-off ci run's CI line records nothing"; `test/ci-parity.test.ts` — the
@@ -4295,14 +4295,14 @@ field and `recordParity` has a single call site in `resolveRunVerdict`.
 
 ### INV-BW3: the qaCoverageStalled predicate is the one home of the qa stall decision
 
-**Guarantee.** `qaCoverageStalled` (src/run/qa-coverage.ts) is the single predicate deciding when
+**Guarantee.** `qaCoverageStalled` (src/observer/qa-coverage.ts) is the single predicate deciding when
 the `qa` observer's flow coverage has gone quiet, read by the doctor `qa coverage` warn
 (`checkQaCoverage`), so the row and the ledger cannot disagree on when a quiet qa is a problem. It is true only for a non-empty well-formed
 ledger whose newest exercise is older than `QA_COVERAGE_STALE_MS`; an empty ledger — a missing
 file, or a project that never ran qa — is not a stall, mirroring `ciParityStalled`'s rule for a
 missing parity record.
 
-**Binds.** `src/run/qa-coverage.ts` (`qaCoverageStalled`, `QA_COVERAGE_STALE_MS`),
+**Binds.** `src/observer/qa-coverage.ts` (`qaCoverageStalled`, `QA_COVERAGE_STALE_MS`),
 `src/doctor/doctor-project-checks.ts` (`checkQaCoverage`).
 
 **Pinned by.** `test/qa-coverage.test.ts` — the `qaCoverageStalled` cases (empty false, boundary

@@ -8,7 +8,7 @@ import {
   recordFiled,
   renderFilingsBlock,
   filingRows,
-} from "../src/run/feedback-filings.js";
+} from "../src/observer/feedback-filings.js";
 import { feedbackFilingsPath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 

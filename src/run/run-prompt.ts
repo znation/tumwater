@@ -18,10 +18,10 @@ import { donePlans, openBugEntries, plannedPlanEntries, declarationPlanEntry } f
 import { detectBuildCheck, gateCommandOf, type BuildCheck } from "../build/build-check-detect.js";
 import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
 import { readEventsSince } from "../events/event-window.js";
-import { selfcheckDigest } from "./selfcheck-digest.js";
-import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
-import { parityBlockFor } from "./ci-parity.js";
-import { readFeedbackFilings, renderFilingsBlock } from "./feedback-filings.js";
+import { selfcheckDigest } from "../observer/selfcheck-digest.js";
+import { readQaCoverage, renderCoverageBlock } from "../observer/qa-coverage.js";
+import { parityBlockFor } from "../observer/ci-parity.js";
+import { readFeedbackFilings, renderFilingsBlock } from "../observer/feedback-filings.js";
 import { roleNotesPath } from "../paths.js";
 import * as path from "node:path";
 import { pathTokens } from "../text/text.js";

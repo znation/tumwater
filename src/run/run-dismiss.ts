@@ -11,8 +11,8 @@
 
 import { logEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
-import { recordFiled } from "./feedback-filings.js";
-import { recordFlow } from "./qa-coverage.js";
+import { recordFiled } from "../observer/feedback-filings.js";
+import { recordFlow } from "../observer/qa-coverage.js";
 
 /** The dismissal path as a recorder reads it: the role to attribute the issue_filed event and
  * the warn sink for a failed write. Both run-stage.ts's and run-verdict.ts's contexts

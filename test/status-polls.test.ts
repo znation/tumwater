@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ciParityForPoll, configForStatus, liveMergeMarker, mainCheckForPoll } from "../src/status/status-polls.js";
-import { recordParity } from "../src/run/ci-parity.js";
+import { recordParity } from "../src/observer/ci-parity.js";
 import { commitIn, makeRepo, mainSha } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import type { MergeChange, MergeInFlight } from "../src/merge/merge-slot.js";

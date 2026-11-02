@@ -21,7 +21,7 @@ import { diagnoseNoChange, extractNoChangeAnswer } from "../verdict/no-change.js
 import { handleRefusal, refusalContradiction } from "../verdict/refusal.js";
 import { extractSummary } from "../git/commit-message.js";
 import { errorMessage } from "../text/text.js";
-import { recordParity } from "./ci-parity.js";
+import { recordParity } from "../observer/ci-parity.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { recordDismissedFiling, recordDismissedFlow } from "./run-dismiss.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";

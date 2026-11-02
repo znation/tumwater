@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { SELFCHECK_DIGEST_MS, selfcheckDigest } from "../src/run/selfcheck-digest.js";
+import { SELFCHECK_DIGEST_MS, selfcheckDigest } from "../src/observer/selfcheck-digest.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 

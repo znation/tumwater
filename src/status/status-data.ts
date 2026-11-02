@@ -357,7 +357,7 @@ export interface StatusSnapshot {
    * orchestrator runs; absent otherwise, so the surfaces render exactly as before, and the
    * provider part of the team line appears only while any key carries a cap. */
   permits?: PermitSnapshot;
-  /** The ci observer's parity ledger's glance verdict (src/run/ci-parity.ts, read through
+  /** The ci observer's parity ledger's glance verdict (src/observer/ci-parity.ts, read through
    * status-polls.ts's ciParityForPoll): whether the last full-suite run has covered main's
    * current tip with the current lock — the badge's answer to "has the expensive verification
    * behind a green main actually run on this tip?". Absent when no parity record exists (a

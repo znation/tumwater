@@ -50,7 +50,7 @@ construction.
 
 **The model reports its filing on a result line; the harness keeps the memory.** A fresh session
 every run means the only durable record of what this install already filed must live in harness
-state, exactly as `qa`'s flow rotation does (plans/observer-roles.md 2/2; src/run/qa-coverage.ts).
+state, exactly as `qa`'s flow rotation does (plans/observer-roles.md 2/2; src/observer/qa-coverage.ts).
 The reply contract gains a `FILED: #<n> — <title>` line, extracted like qa's `FLOW:` line
 (src/verdict/reply-contract.ts:194, `labeledLine`-anchored, absent/malformed → null so a truncated
 run never records), and persisted to a per-install ledger that the next run's prompt renders back
@@ -107,7 +107,7 @@ as a "previously filed" block. Cross-install dedupe is the charter's job: `gh is
 - **src/run/run-prompt.ts** — line 177 becomes
   `const digest = base === "selfcheck" || base === "feedback" ? selfcheckDigest(root) : undefined;`
   with the comment above it naming both observers.
-- **src/run/selfcheck-digest.ts** — no behavior change; the module doc comment (lines 1-22) names
+- **src/observer/selfcheck-digest.ts** — no behavior change; the module doc comment (lines 1-22) names
   both consumers so the shared window (`SELFCHECK_DIGEST_MS`, trailing 24 h) reads as deliberate.
 - **src/config/config.ts** — `roles.feedback = { enabled: false, minRunIntervalSeconds: 7200 }`
   beside line 59, and the comment at lines 53-58 rewritten: the two opt-in roles, why (selfcheck:
@@ -146,7 +146,7 @@ iteration, lines 86-89).
 - **src/runner/runner-run.ts** — beside the qa extraction at line 731:
   `const filed = ctx.baseRole === "feedback" ? extractFiled(pi.finalText) : null;`, threaded into
   the verdict context beside `flow`.
-- **src/run/feedback-filings.ts** (new, mirroring qa-coverage.ts) — the ledger
+- **src/observer/feedback-filings.ts** (new, mirroring qa-coverage.ts) — the ledger
   `{ filings: [{ issue, title, filedAt }] }`, newest 100; `readFeedbackFilings(root)` (malformed →
   empty), `recordFiled(root, issue, title, now)` (atomic read-modify-write, `writeJsonAtomic`),
   and `renderFilingsBlock(filings, now)` → `undefined` when empty, else a bounded

@@ -11,12 +11,12 @@ import {
   readCiParity,
   recordParity,
   renderParityBlock,
-} from "../src/run/ci-parity.js";
+} from "../src/observer/ci-parity.js";
 import { ciParityPath } from "../src/paths.js";
 import { commitIn, mainSha, makeRepo, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 
-/** Unit coverage for src/run/ci-parity.ts — the `ci` observer's parity ledger (part 3/3).
+/** Unit coverage for src/observer/ci-parity.ts — the `ci` observer's parity ledger (part 3/3).
  * Every `ci` run is a fresh session and a passing run that declares nothing-to-do leaves
  * nothing in the repo, so this runtime file is the only memory of which main tip and lock
  * hash the last green run covered; its read path must degrade to "no data" rather than fail

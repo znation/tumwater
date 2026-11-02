@@ -24,8 +24,8 @@ import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { writeAccount } from "../src/agent/subscription-account.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
-import { recordFlow } from "../src/run/qa-coverage.js";
-import { recordFiled } from "../src/run/feedback-filings.js";
+import { recordFlow } from "../src/observer/qa-coverage.js";
+import { recordFiled } from "../src/observer/feedback-filings.js";
 
 const NO_MODELS = "/nonexistent/tumwater-test-models.json"; // readPiProviders degrades to []
 const NOW = 1_800_000_000_000;

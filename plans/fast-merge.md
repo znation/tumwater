@@ -431,7 +431,7 @@ deleted; only G1 and G3 remain live in `src/baseline/main-guardrails.ts`.
 synchronously from the event log and quarantine.json, so every surface words them the same:
 
 - `tumwater doctor`, the TUI Health pane and the dashboard's doctor view, through the rows above;
-- the selfcheck role's digest (src/run/selfcheck-digest.ts), which ends with a
+- the selfcheck role's digest (src/observer/selfcheck-digest.ts), which ends with a
   `## Fast merge guardrails` section listing the warnings that fire (none: no section). The
   role's charter says each line there is tumwater's own response failing.
 
