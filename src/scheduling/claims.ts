@@ -148,6 +148,93 @@ export async function stagedMovedEntries(
   return movedOutEntries(base, head, section).map((e) => ({ file, ...e }));
 }
 
+/** One memoized eligible-key reader for a root: the first read of a claim-taking base fills
+ * the cache from eligibleEntries, later reads of the same base return the cached set, so each
+ * base is read once per poll. */
+function eligibleKeysByBase(root: string): (base: string) => Set<string> {
+  const eligibleByBase = new Map<string, Set<string>>();
+  return (base: string): Set<string> => {
+    let keys = eligibleByBase.get(base);
+    if (keys === undefined) {
+      keys = new Set(eligibleEntries(root, base).map((e) => e.key));
+      eligibleByBase.set(base, keys);
+    }
+    return keys;
+  };
+}
+
+/** The keys each claim-taking base holds by a claim whose key is still eligible: a claim on an
+ * entry that left or turned ineligible holds nothing for the reserve below, exactly as heldKeys
+ * excludes it in the scheduling pass. */
+function heldClaimKeysByBase(
+  runners: readonly ClaimRunner[],
+  eligibleFor: (base: string) => ReadonlySet<string>,
+): Map<string, Set<string>> {
+  const heldByBase = new Map<string, Set<string>>();
+  for (const r of runners) {
+    const base = baseRoleOf(r.role);
+    if (!INSTANCE_ROLES.has(base)) continue;
+    const key = r.state.claim?.key;
+    if (key === undefined || !eligibleFor(base).has(key)) continue;
+    const held = heldByBase.get(base) ?? new Set<string>();
+    held.add(key);
+    heldByBase.set(base, held);
+  }
+  return heldByBase;
+}
+
+/** One per running runner of each claim-taking base: the running count consumes the base's
+ * `instances` places before any idle runner may reserve one. */
+function runningRunnersByBase(runners: readonly ClaimRunner[]): Map<string, number> {
+  const running = new Map<string, number>();
+  for (const r of runners) {
+    const base = baseRoleOf(r.role);
+    if (INSTANCE_ROLES.has(base) && r.state.running) {
+      running.set(base, (running.get(base) ?? 0) + 1);
+    }
+  }
+  return running;
+}
+
+/** The idle claim-taking runners per base that reserve a permit: enabled, not running, and
+ * either holding a still-eligible claim or seeing a free eligible entry their base does not
+ * already hold. */
+function idleWorkRunnersByBase(
+  runners: readonly ClaimRunner[],
+  enabled: ReadonlySet<string>,
+  eligibleFor: (base: string) => ReadonlySet<string>,
+  heldByBase: ReadonlyMap<string, Set<string>>,
+): Map<string, number> {
+  const idleByBase = new Map<string, number>();
+  for (const r of runners) {
+    const base = baseRoleOf(r.role);
+    if (!INSTANCE_ROLES.has(base)) continue;
+    if (!enabled.has(r.role)) continue;
+    if (r.state.running) continue;
+    const eligible = eligibleFor(base);
+    const holdsClaim = r.state.claim !== undefined && eligible.has(r.state.claim.key);
+    const hasFreeEntry = [...eligible].some((k) => !(heldByBase.get(base)?.has(k) ?? false));
+    if (holdsClaim || hasFreeEntry) idleByBase.set(base, (idleByBase.get(base) ?? 0) + 1);
+  }
+  return idleByBase;
+}
+
+/** The permits to withhold: per idle base, min(idle runners, the `instances` places its running
+ * runners leave free), summed over bases and capped at a third of maxConcurrent. */
+function reserveFromIdleByBase(
+  idleByBase: ReadonlyMap<string, number>,
+  runningByBase: ReadonlyMap<string, number>,
+  maxConcurrent: number,
+  instancesOf: ((base: string) => number) | undefined,
+): number {
+  let count = 0;
+  for (const [base, idle] of idleByBase) {
+    const places = Math.max(0, (instancesOf?.(base) ?? Infinity) - (runningByBase.get(base) ?? 0));
+    count += Math.min(idle, places);
+  }
+  return Math.min(Math.floor(maxConcurrent / 3), count);
+}
+
 /** How many permits to withhold from tier ≥ 1 acquirers this poll so a work role that has work
  * to take can claim one without waiting out a maintenance run (plans/parallel-work-instances.md
  * "Priority headroom", part 7/7). Only the claim-taking roles (feature, bugfix) count: an idle
@@ -167,50 +254,9 @@ export function workReserveCount(
     instancesOf?: (base: string) => number;
   },
 ): number {
-  // Eligible keys per claim-taking base, read once.
-  const eligibleByBase = new Map<string, Set<string>>();
-  const eligibleFor = (base: string): Set<string> => {
-    let keys = eligibleByBase.get(base);
-    if (keys === undefined) {
-      keys = new Set(eligibleEntries(root, base).map((e) => e.key));
-      eligibleByBase.set(base, keys);
-    }
-    return keys;
-  };
-  // The keys held by a claim that is still eligible: an ineligible claim holds nothing for the
-  // size below, exactly as heldKeys excludes it in the scheduling pass.
-  const heldByBase = new Map<string, Set<string>>();
-  for (const r of runners) {
-    const base = baseRoleOf(r.role);
-    if (!INSTANCE_ROLES.has(base)) continue;
-    const key = r.state.claim?.key;
-    if (key === undefined || !eligibleFor(base).has(key)) continue;
-    const held = heldByBase.get(base) ?? new Set<string>();
-    held.add(key);
-    heldByBase.set(base, held);
-  }
-  const running = new Map<string, number>();
-  for (const r of runners) {
-    const base = baseRoleOf(r.role);
-    if (INSTANCE_ROLES.has(base) && r.state.running) {
-      running.set(base, (running.get(base) ?? 0) + 1);
-    }
-  }
-  const idleByBase = new Map<string, number>();
-  for (const r of runners) {
-    const base = baseRoleOf(r.role);
-    if (!INSTANCE_ROLES.has(base)) continue;
-    if (!opts.enabled.has(r.role)) continue;
-    if (r.state.running) continue;
-    const eligible = eligibleFor(base);
-    const holdsClaim = r.state.claim !== undefined && eligible.has(r.state.claim.key);
-    const hasFreeEntry = [...eligible].some((k) => !(heldByBase.get(base)?.has(k) ?? false));
-    if (holdsClaim || hasFreeEntry) idleByBase.set(base, (idleByBase.get(base) ?? 0) + 1);
-  }
-  let count = 0;
-  for (const [base, idle] of idleByBase) {
-    const places = Math.max(0, (opts.instancesOf?.(base) ?? Infinity) - (running.get(base) ?? 0));
-    count += Math.min(idle, places);
-  }
-  return Math.min(Math.floor(opts.maxConcurrent / 3), count);
+  const eligibleFor = eligibleKeysByBase(root);
+  const heldByBase = heldClaimKeysByBase(runners, eligibleFor);
+  const runningByBase = runningRunnersByBase(runners);
+  const idleByBase = idleWorkRunnersByBase(runners, opts.enabled, eligibleFor, heldByBase);
+  return reserveFromIdleByBase(idleByBase, runningByBase, opts.maxConcurrent, opts.instancesOf);
 }
