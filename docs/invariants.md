@@ -3753,6 +3753,22 @@ main-watch's confirming re-run go on with their passing result.
 **Pinned by.** `test/known-flakes-quarantine.test.ts` — "quarantine: a failed quarantine.json write
 warns and records nothing instead of throwing".
 
+### INV-BI6: a quarantine read-modify-write loses no concurrent writer's update
+
+**Guarantee.** Every read-modify-write of `quarantine.json` — `quarantineTests`,
+`releaseQuarantinedTest`, `markQuarantineFiled`, `releaseQuarantine` — holds the cross-process
+`quarantine.lock` for the whole read-and-rewrite, so a writer in the orchestrator (the main-watch
+settlement or the review gate) and a writer in a separate `tumwater quarantine --release` process
+(CLI, TUI, GUI) can never interleave: no release is overwritten back into the list, and no newly
+quarantined flake is dropped by a last-writer overwrite. An update a write cannot land is still
+warned (INV-BI5), never silently lost.
+
+**Binds.** `src/review/known-flakes.ts` (`withQuarantineStore`); `src/paths.ts`
+(`quarantineLockPath`).
+
+**Pinned by.** `test/known-flakes-quarantine.test.ts` — "quarantine: a --release in another process
+is not overwritten by a concurrent quarantineTests".
+
 ## Review verdict and revision finality: a reply without a verdict never approves, a rejected change revises until one objection survives two revisions or the backstop, and a git that could not start never drops a revision
 
 ### INV-BH1: a reply with no verdict line is no verdict, and the last verdict line wins

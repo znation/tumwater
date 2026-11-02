@@ -240,6 +240,16 @@ export function quarantinePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "quarantine.json");
 }
 
+/** The cross-process lock serializing read-modify-write updates of quarantine.json (INV-BI6):
+ * the orchestrator's main-watch settlement and review-gate flake recording and the separate
+ * `tumwater quarantine --release` process (CLI, TUI, GUI) each read the list then rewrite it,
+ * and an unguarded last-writer overwrite drops one side's update — a released test re-enters
+ * the list, or a newly quarantined flake is lost and its later failures are no longer
+ * excused. Same mkdir-and-pid mutex as slotsLockPath. */
+export function quarantineLockPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "quarantine.lock");
+}
+
 /** Marker file `tumwater reset-counters` drops for a running team to consume (it must also
  * zero the runners' in-memory counters, or their next save resurrects the old values). */
 export function resetRequestPath(root: string): string {

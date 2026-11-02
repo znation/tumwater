@@ -4,10 +4,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
-import { quarantinePath } from "../src/paths.js";
+import { spawnLockHolder, stopChild } from "./helpers/child-process.js";
+import { quarantineLockPath, quarantinePath } from "../src/paths.js";
 import { FAILING_TESTS_MAX } from "../src/build/build-check-report.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 import {
@@ -98,4 +100,37 @@ test("quarantine: a failed quarantine.json write warns and records nothing inste
   assert.ok(warnings[0]!.startsWith("could not write quarantine.json"));
   assert.ok(warnings[0]!.includes("disk full"));
   assert.deepEqual(quarantineTests(root, ["a"], "out"), ["a"]);
+});
+
+// INV-BI6: a quarantine read-modify-write holds quarantine.lock for the whole read-and-rewrite,
+// so a concurrent writer in another process — the orchestrator's gate recording a flake while a
+// `tumwater quarantine --release` process removes one — cannot interleave and drop an update. The
+// holder snapshots the store, waits for the parent to quarantinate a new test, then rewrites the
+// snapshot minus the released test; without the lock that stale rewrite drops the parent's entry.
+test("quarantine: a --release in another process is not overwritten by a concurrent quarantineTests", async () => {
+  const root = tmpdir();
+  quarantineTests(root, ["b"], "out-b");
+  const store = quarantinePath(root);
+  const holder = spawnLockHolder({
+    lock: quarantineLockPath(root),
+    ready: path.join(root, "ready"),
+    withLock: "withSyncLock",
+    outside: `const path = require("node:path");
+       fs.mkdirSync(path.join(process.cwd(), ".tumwater", "state"), { recursive: true });`,
+    before: `const snapshot = JSON.parse(fs.readFileSync(${JSON.stringify(store)}, "utf8"));`,
+    until: `fs.readFileSync(${JSON.stringify(store)}, "utf8").includes("\\"a\\"")`,
+    after: `fs.writeFileSync(${JSON.stringify(store)}, JSON.stringify({ tests: snapshot.tests.filter((e) => e.test !== "b") }));`,
+    missingMessage: "the holder child never took the quarantine lock",
+  });
+  try {
+    await holder.ready;
+    assert.deepEqual(quarantineTests(root, ["a"], "out-a"), ["a"]);
+    await holder.exited;
+  } finally {
+    await stopChild(holder);
+  }
+  const tests = loadQuarantine(root).map((e) => e.test);
+  assert.ok(tests.includes("a"), "the parent's quarantine survived the other process's stale rewrite");
+  assert.ok(!tests.includes("b"), "the other process's release of b landed");
+  assert.equal(warningMessages(root).length, 0, "no failed write is warned");
 });

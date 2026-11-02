@@ -16,11 +16,12 @@ import { readEventsSince } from "../events/event-window.js";
 import { increment } from "../collections.js";
 import { normalizeClusterKey } from "../failure/failure-cluster.js";
 import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
+import { withStateLock } from "../concurrency/lock.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { parseEntryDetails } from "../backlog/backlog-md.js";
 import { readTextOrNull } from "../files/files.js";
-import { quarantinePath } from "../paths.js";
+import { quarantineLockPath, quarantinePath } from "../paths.js";
 import path from "node:path";
 
 /** How far back the gate looks for its own flake warnings. One local day: the example in
@@ -137,6 +138,16 @@ function saveQuarantine(root: string, entries: readonly QuarantineEntry[]): void
   writeJsonAtomic(quarantinePath(root), { tests: kept });
 }
 
+/** The one home of a quarantine-store read-modify-write: the list's writers span processes
+ * (the orchestrator's main-watch settlement and review-gate flake recording, and the separate
+ * `tumwater quarantine --release` process behind the CLI, TUI and GUI), and an unguarded
+ * last-writer overwrite drops one side's update — the same mkdir-and-pid mutex slots.json's
+ * read-modify-writes take (slotsLockPath). The section is a single synchronous file RMW, so the
+ * sync lock's busy-wait adds nothing measurable. */
+function withQuarantineStore<T>(root: string, fn: () => T): T {
+  return withStateLock(quarantineLockPath(root), fn);
+}
+
 /** The quarantined test names. */
 export function quarantinedTests(root: string): string[] {
   return loadQuarantine(root).map((e) => e.test);
@@ -157,22 +168,28 @@ export function onlyQuarantined(root: string, failingTests: readonly string[] | 
  * must not fail that check. */
 export function quarantineTests(root: string, tests: readonly string[] | undefined, tail: string | readonly string[] | undefined): string[] {
   if (!tests || tests.length === 0 || tests.length >= FAILING_TESTS_MAX) return [];
-  const entries = loadQuarantine(root);
-  const now = Date.now();
   const added: string[] = [];
-  for (const test of new Set(tests)) {
-    const have = entries.find((e) => e.test === test);
-    if (have) {
-      have.lastSeen = now;
-      have.count += 1;
-    } else {
-      const text = typeof tail === "string" ? tail : (tail ?? []).join("\n");
-      entries.push({ test, firstSeen: now, lastSeen: now, count: 1, bug: "", ...(text ? { tail: text } : {}) });
-      added.push(test);
-    }
-  }
-  if (!tryOrWarn(root, TUMWATER_SOURCE, "write quarantine.json", () => saveQuarantine(root, entries))) return [];
-  return added;
+  // The read-modify-write runs under the store lock: a concurrent --release in another process
+  // that lands between this read and write would otherwise be overwritten (INV-BI6).
+  const ok = tryOrWarn(root, TUMWATER_SOURCE, "write quarantine.json", () =>
+    withQuarantineStore(root, () => {
+      const entries = loadQuarantine(root);
+      const now = Date.now();
+      for (const test of new Set(tests)) {
+        const have = entries.find((e) => e.test === test);
+        if (have) {
+          have.lastSeen = now;
+          have.count += 1;
+        } else {
+          const text = typeof tail === "string" ? tail : (tail ?? []).join("\n");
+          entries.push({ test, firstSeen: now, lastSeen: now, count: 1, bug: "", ...(text ? { tail: text } : {}) });
+          added.push(test);
+        }
+      }
+      saveQuarantine(root, entries);
+    }),
+  );
+  return ok ? added : [];
 }
 
 /** Remove the one quarantined test named `test` at the operator's request — the manual twin
@@ -184,36 +201,47 @@ export function quarantineTests(root: string, tests: readonly string[] | undefin
  * one `warning` under TUMWATER_SOURCE so the doctor's `flaky checks` row stops
  * excusing the name. */
 export function releaseQuarantinedTest(root: string, test: string): boolean {
-  const entries = loadQuarantine(root);
-  const have = entries.some((e) => e.test === test);
-  if (!have) return false;
-  const removed = entries.filter((e) => e.test !== test);
-  if (!tryOrWarn(root, TUMWATER_SOURCE, "write quarantine.json", () => saveQuarantine(root, removed))) return false;
+  let present = false;
+  // Under the store lock, so the presence check and the rewrite are one atomic step against a
+  // concurrent orchestrator write (INV-BI6).
+  const ok = tryOrWarn(root, TUMWATER_SOURCE, "write quarantine.json", () =>
+    withQuarantineStore(root, () => {
+      const entries = loadQuarantine(root);
+      if (!entries.some((e) => e.test === test)) return;
+      present = true;
+      saveQuarantine(root, entries.filter((e) => e.test !== test));
+    }),
+  );
+  if (!ok || !present) return false;
   warnEventBestEffort(root, TUMWATER_SOURCE, `${test} released from the flake quarantine at the user's request — the gate no longer excuses its failures`);
   return true;
 }
 
 /** Record the BUGS.md heading filed for each of `tests`, dropping their kept output. */
 export function markQuarantineFiled(root: string, bugs: ReadonlyMap<string, string>): void {
-  const entries = loadQuarantine(root);
-  for (const e of entries) {
-    const bug = bugs.get(e.test);
-    if (bug === undefined) continue;
-    e.bug = bug;
-    delete e.tail;
-  }
-  saveQuarantine(root, entries);
+  withQuarantineStore(root, () => {
+    const entries = loadQuarantine(root);
+    for (const e of entries) {
+      const bug = bugs.get(e.test);
+      if (bug === undefined) continue;
+      e.bug = bug;
+      delete e.tail;
+    }
+    saveQuarantine(root, entries);
+  });
 }
 
 /** Release the quarantined tests whose filed BUGS.md entry is no longer under `## Open`; a later
  * flake of one puts it back. Returns the released tests. A missing BUGS.md releases nothing. */
 export function releaseQuarantine(root: string): string[] {
-  const entries = loadQuarantine(root);
-  const md = readTextOrNull(path.join(root, "BUGS.md"));
-  if (md === null || entries.length === 0) return [];
-  const open = new Set(parseEntryDetails(md, "Open").map((e) => e.title));
-  const released = entries.filter((e) => e.bug !== "" && !open.has(e.bug));
-  if (released.length === 0) return [];
-  saveQuarantine(root, entries.filter((e) => !released.includes(e)));
-  return released.map((e) => e.test);
+  return withQuarantineStore(root, () => {
+    const entries = loadQuarantine(root);
+    const md = readTextOrNull(path.join(root, "BUGS.md"));
+    if (md === null || entries.length === 0) return [];
+    const open = new Set(parseEntryDetails(md, "Open").map((e) => e.title));
+    const released = entries.filter((e) => e.bug !== "" && !open.has(e.bug));
+    if (released.length === 0) return [];
+    saveQuarantine(root, entries.filter((e) => !released.includes(e)));
+    return released.map((e) => e.test);
+  });
 }
