@@ -15,7 +15,7 @@ import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { buildCheckFixture } from "./fixtures/runner-fixtures.js";
 import { pathPrepend, pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
 import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { flushImmediate, waitFor } from "./helpers/wait.js";
+import { flushImmediate, waitFor, waitForFile } from "./helpers/wait.js";
 
 // Unit coverage for the deterministic build pre-check (src/build/build-check.ts): execution and
 // outcome classification, plus the configured-check.command detection boundary. The walk-up
@@ -749,7 +749,8 @@ test("a scoped check whose caller aborts mid-run settles aborted, without a warn
   // nor a skip warning (warnScopedCheck returns early on "aborted" — the caller fails closed as
   // aborted on its own way out, so no "proceeding" wording may suggest the check still stands).
   const { root, wt } = buildCheckFixture();
-  fs.writeFileSync(path.join(wt, "package.json"), projManifest({ build: "sleep 30" }));
+  const started = path.join(wt, "check-started");
+  fs.writeFileSync(path.join(wt, "package.json"), projManifest({ build: `touch '${started}' && sleep 30` }));
   const controller = new AbortController();
   const pending = runScopedBuildCheck(
     root,
@@ -764,7 +765,10 @@ test("a scoped check whose caller aborts mid-run settles aborted, without a warn
     undefined,
     controller.signal,
   );
-  await new Promise((r) => setTimeout(r, 250)); // the check is spawned and running
+  // Wait for the script itself to start: a fixed sleep races the toolchain probe and npm spawn
+  // under load, and an abort before runScriptGroup attaches its listener would let the check run
+  // to completion instead of exercising the mid-run stop this test exists for.
+  await waitForFile(started);
   controller.abort();
   const result = await pending;
   assert.equal(result!.outcome.status, "skipped", "the abort is a skip, not a verdict about the tree");
