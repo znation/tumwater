@@ -10,7 +10,7 @@ import { baseRoleOf, configuredInstances, runnerPaused } from "../roles/runner-i
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import { deferRunReason, isEligible, type DeferReason } from "./scheduling.js";
 import { inboxSize } from "../inbox/inbox.js";
-import { freshlyWoken } from "../runner/runner-state.js";
+import { freshlyWoken, type SkipReason } from "../runner/runner-state.js";
 import { MERGE_CONFLICT_LIMIT } from "../runner/runner-leftover.js";
 import { noteSkip, type SchedulingScope } from "./scope.js";
 
@@ -27,54 +27,15 @@ type SkipVerdict =
  * Mutates the shared scope — deferredDue, quotaAdmitted, once-mode settlement — and writes skip
  * reasons as its only side effects. */
 export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Promise<SkipVerdict> {
-  const {
-    root,
-    once,
-    now,
-    mainHead,
-    pausedRoles,
-    capPaused,
-    holdForRestart,
-    diskHeld,
-    windowHeldProviders,
-    roleProviders,
-    heldProviders,
-    openBugsNow,
-    workBacklogOpen,
-    planBacklogFull,
-    deferredDue,
-    workMergedSince,
-    pinnedDirector,
-    claimGroups,
-    writing,
-    maintenanceQuota,
-    maintenanceQuotaOverLine,
-    bootstrapHeldNow,
-    operatorPauseBlocks,
-  } = scope;
+  const { root, once, now, mainHead, planBacklogFull, pinnedDirector } = scope;
   // The role's inbox size and operator demand, computed once per runner per poll: every
-  // consumer below (the holds, isEligible's inbox count, the maintenance admission) shares
+  // consumer (the holds, isEligible's inbox count, the maintenance admission) shares
   // this one directory listing + per-file stat read instead of each re-scanning the queue.
   // The queue is append-only while this pass runs (nothing dequeues until launch, after the
   // pass), so one read per runner is stable, and `now` here matches the poll's own clock.
   const inboxCount = inboxSize(root, runner.role);
   const demand = inboxCount > 0 || freshlyWoken(runner.state);
-  // Once mode: a paused role gets no run this round and must be reported as skipped,
-  // so it settles here — before the gates that would otherwise skip it silently (a
-  // once round has to end even when a pause marker is left over; a later resume within
-  // the same round cannot un-settle it, which is the at-most-one-run contract).
-  if (
-    once.active &&
-    !once.isSettled(runner) &&
-    !runner.state.running &&
-    (runnerPaused(pausedRoles, runner.role) ||
-      capPaused.has(runner.role) ||
-      maintenanceQuotaOverLine(runner, demand) ||
-      bootstrapHeldNow(runner, demand) ||
-      operatorPauseBlocks(runner.role))
-  ) {
-    once.settle(runner.role, "paused");
-  }
+  settleOncePaused(scope, runner, demand);
   // Once mode's at-most-one-run contract (src/scheduling/once-round.ts): a role that already had
   // its run — or was settled with a skip reason — runs nothing further this round, even
   // when its backoff has expired or the clock override would admit it again. Without this
@@ -82,33 +43,7 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
   // settles them); a custom role or work role with a short backoff re-qualified every
   // poll and the round never ended.
   if (once.active && !runner.state.running && once.isSettled(runner)) return { skip: true };
-  if (holdForRestart || diskHeld)
-    return { skip: true }; // a restart or a low disk is pending: nothing new starts, on any role
-  // The per-role pause gates BEFORE the team check and exempts nothing — the director
-  // included (the operator named that one role deliberately).
-  if (runnerPaused(pausedRoles, runner.role)) return { skip: true };
-  // The role's own daily cost cap (src/gates/role-cap-gates.ts): no start-gate change — a
-  // parked waiter finishes (in-flight runs finish, NEW runs are gated at scheduling,
-  // exactly like every per-role pause), and there is no fallback-probe exception: the
-  // stop is about spend, and probing it adds noise, not signal. The lift is a live
-  // config edit or local midnight — no marker exists for `resume --role` to touch.
-  if (capPaused.has(runner.role)) return { skip: true };
-  // The maintenance allowance (plans/work-ratio.md, part 1b/4): no new maintenance run while
-  // the rolling 24 h window is over its line. A fresh operator wake or a queued prompt admits
-  // one anyway (maintenanceQuotaOverLine), the same demand override the bootstrap hold honors.
-  if (maintenanceQuotaOverLine(runner, demand)) return { skip: true };
-  // The new-project bootstrap (part 2/2): no new maintenance runs until the plan target is
-  // met; a fresh wake or queued prompt admits one anyway (bootstrapHeldNow).
-  if (bootstrapHeldNow(runner, demand)) return { skip: true };
-  if (operatorPauseBlocks(runner.role))
-    return { skip: true }; // no new role runs while either gate holds
-  // The director honors only the subscription-window hold: the per-run 429 retry that backs
-  // its other exemptions does not answer a window rejection, so its prompt would fail and
-  // re-queue every poll until the repeated-failure pause stops it.
-  if (runner.role === DIRECTOR_ROLE && windowHeldProviders.has(roleProviders.get(runner.role)))
-    return { skip: true };
-  if (runner.role !== DIRECTOR_ROLE && heldProviders.has(roleProviders.get(runner.role)))
-    return { skip: true }; // nor while ITS provider's failure storm holds — the reviewer's hold parks only the post-merge review queue, never a role start
+  if (heldFromStarting(scope, runner, demand)) return { skip: true };
   // The role's OWN queue decides inbox due-ness: the director counts its historical
   // inbox, every other role its per-role queue (tumwater prompt --role <id>) — so a
   // queued prompt makes its role due by itself, no wake marker needed (isEligible).
@@ -124,27 +59,115 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
         runner.state.conflictHandback === undefined
       ),
   });
-  if (!run) {
-    // Not due this poll: any deferral episode has ended (or never started). No event —
-    // the run's own events cover it.
-    if (deferredDue.get(runner.role)) deferredDue.set(runner.role, false);
-    // Once mode: idle and not due — settleSkipped records the skip reason (the caller's
-    // summary reports it).
-    if (once.active && !runner.state.running) once.settleSkipped(runner);
-    // Thread a gate-specific skip through (e.g. the yield-stretched gap) so a runner the
-    // poll declined and will keep declining does not read as "due — starts on the next
-    // poll"; stays undefined for every ordinary not-due path.
-    noteSkip(root, runner, skip);
-    return { skip: true };
+  if (!run) return notDue(scope, runner, skip);
+  if (admissionHolds(scope, runner)) return { skip: true };
+  if (await deferMaintenance(scope, runner, reason)) return { skip: true };
+  if (admitMaintenance(scope, runner, demand)) return { skip: true };
+  return { skip: false, reason: reason as string };
+}
+
+/** The opening once-mode pause settlement: a paused role gets no run this round and must be
+ * reported as skipped, so it settles here — before the gates that would otherwise skip it
+ * silently (a once round has to end even when a pause marker is left over; a later resume
+ * within the same round cannot un-settle it, which is the at-most-one-run contract). */
+function settleOncePaused(scope: SchedulingScope, runner: RoleRunner, demand: boolean): void {
+  const {
+    once,
+    pausedRoles,
+    capPaused,
+    maintenanceQuotaOverLine,
+    bootstrapHeldNow,
+    operatorPauseBlocks,
+  } = scope;
+  if (
+    once.active &&
+    !once.isSettled(runner) &&
+    !runner.state.running &&
+    (runnerPaused(pausedRoles, runner.role) ||
+      capPaused.has(runner.role) ||
+      maintenanceQuotaOverLine(runner, demand) ||
+      bootstrapHeldNow(runner, demand) ||
+      operatorPauseBlocks(runner.role))
+  ) {
+    once.settle(runner.role, "paused");
   }
+}
+
+/** The run of starting holds, in today's order — a restart or low disk, the per-role pause,
+ * the role's cost cap, the maintenance-quota and bootstrap holds, the operator pause, and the
+ * director-window and non-director provider-storm holds. Returns true when any holds, so the
+ * caller skips before the due check. */
+function heldFromStarting(scope: SchedulingScope, runner: RoleRunner, demand: boolean): boolean {
+  const {
+    holdForRestart,
+    diskHeld,
+    pausedRoles,
+    capPaused,
+    windowHeldProviders,
+    roleProviders,
+    heldProviders,
+    maintenanceQuotaOverLine,
+    bootstrapHeldNow,
+    operatorPauseBlocks,
+  } = scope;
+  if (holdForRestart || diskHeld)
+    return true; // a restart or a low disk is pending: nothing new starts, on any role
+  // The per-role pause gates BEFORE the team check and exempts nothing — the director
+  // included (the operator named that one role deliberately).
+  if (runnerPaused(pausedRoles, runner.role)) return true;
+  // The role's own daily cost cap (src/gates/role-cap-gates.ts): no start-gate change — a
+  // parked waiter finishes (in-flight runs finish, NEW runs are gated at scheduling,
+  // exactly like every per-role pause), and there is no fallback-probe exception: the
+  // stop is about spend, and probing it adds noise, not signal. The lift is a live
+  // config edit or local midnight — no marker exists for `resume --role` to touch.
+  if (capPaused.has(runner.role)) return true;
+  // The maintenance allowance (plans/work-ratio.md, part 1b/4): no new maintenance run while
+  // the rolling 24 h window is over its line. A fresh operator wake or a queued prompt admits
+  // one anyway (maintenanceQuotaOverLine), the same demand override the bootstrap hold honors.
+  if (maintenanceQuotaOverLine(runner, demand)) return true;
+  // The new-project bootstrap (part 2/2): no new maintenance runs until the plan target is
+  // met; a fresh wake or queued prompt admits one anyway (bootstrapHeldNow).
+  if (bootstrapHeldNow(runner, demand)) return true;
+  if (operatorPauseBlocks(runner.role)) return true; // no new role runs while either gate holds
+  // The director honors only the subscription-window hold: the per-run 429 retry that backs
+  // its other exemptions does not answer a window rejection, so its prompt would fail and
+  // re-queue every poll until the repeated-failure pause stops it.
+  if (runner.role === DIRECTOR_ROLE && windowHeldProviders.has(roleProviders.get(runner.role)))
+    return true;
+  if (runner.role !== DIRECTOR_ROLE && heldProviders.has(roleProviders.get(runner.role)))
+    return true; // nor while ITS provider's failure storm holds — the reviewer's hold parks only the post-merge review queue, never a role start
+  return false;
+}
+
+/** The not-due bookkeeping: the run was declined, so any deferral episode ends, the once-mode
+ * skip settles, and the gate-specific skip (if any) is noted. Returns the skip verdict. */
+function notDue(scope: SchedulingScope, runner: RoleRunner, skip: SkipReason | undefined): SkipVerdict {
+  const { root, once, deferredDue } = scope;
+  // Not due this poll: any deferral episode has ended (or never started). No event —
+  // the run's own events cover it.
+  if (deferredDue.get(runner.role)) deferredDue.set(runner.role, false);
+  // Once mode: idle and not due — settleSkipped records the skip reason (the caller's
+  // summary reports it).
+  if (once.active && !runner.state.running) once.settleSkipped(runner);
+  // Thread a gate-specific skip through (e.g. the yield-stretched gap) so a runner the
+  // poll declined and will keep declining does not read as "due — starts on the next
+  // poll"; stays undefined for every ordinary not-due path.
+  noteSkip(root, runner, skip);
+  return { skip: true };
+}
+
+/** The two post-due admission holds: the model-check hold (which settles the once-mode
+ * answer) and the role's `instances` limit on concurrent runs. Returns true when either holds. */
+function admissionHolds(scope: SchedulingScope, runner: RoleRunner): boolean {
+  const { root, once, modelCheckHeld, claimGroups, writing } = scope;
   // The model check (src/model-check/model-check-gate.ts): a due role whose pair has not
   // answered the probe — still being checked, or failed it — waits, recorded so its row says
   // why. Placed after the due check so only a role that would otherwise run carries the reason;
   // the check's re-probe lifts the hold by itself, no operator step.
-  if (scope.modelCheckHeld.has(runner.role)) {
+  if (modelCheckHeld.has(runner.role)) {
     if (once.active && !runner.state.running) once.settle(runner.role, "paused");
     noteSkip(root, runner, "model-check");
-    return { skip: true };
+    return true;
   }
   // The role's `instances` limit on concurrent runs: a multi-runner base admits a runner only
   // while fewer than `instances` of its runners are running. A parked runner (queued change)
@@ -153,9 +176,31 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
   if (claimGroups.has(writingBase) && !runner.state.running) {
     if ((writing.get(writingBase) ?? 0) >= configuredInstances(runner.config, runner.role)) {
       noteSkip(root, runner, "instances-full");
-      return { skip: true };
+      return true;
     }
   }
+  return false;
+}
+
+/** The maintenance deferral episode: a due scheduled or main-moved run whose last run did
+ * nothing defers while the backlog is open or no new work has merged; a run that is not in
+ * that shape ends any open episode. Returns true when the run deferred (the caller skips). */
+async function deferMaintenance(
+  scope: SchedulingScope,
+  runner: RoleRunner,
+  reason: string | undefined,
+): Promise<boolean> {
+  const {
+    root,
+    once,
+    now,
+    mainHead,
+    openBugsNow,
+    workBacklogOpen,
+    planBacklogFull,
+    deferredDue,
+    workMergedSince,
+  } = scope;
   // Need-based deferral: a due maintenance run (scheduled or main-moved wake) whose last
   // run did nothing stays deferred while the feature/bugfix backlog is open or no new
   // work has merged to react to — nextRunAt is left untouched, so it re-checks every poll
@@ -205,11 +250,19 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
             ? "deferred-plans-full"
             : "deferred-no-work",
       );
-      return { skip: true };
+      return true;
     }
   } else if (deferredDue.get(runner.role)) {
     deferredDue.set(runner.role, false); // an inbox/resume run ends the episode
   }
+  return false;
+}
+
+/** The allowance's in-flight admission: a due maintenance run without demand spends one of the
+ * remaining `allowance - used` slots; at the cap it is held. Returns true when the run is
+ * held at the cap (the caller skips). */
+function admitMaintenance(scope: SchedulingScope, runner: RoleRunner, demand: boolean): boolean {
+  const { root, maintenanceQuota } = scope;
   // The allowance's in-flight admission (plans/work-ratio.md, part 1b/4): `used` counts the
   // maintenance roles already in flight, so a due maintenance run admitted here spends one
   // of the remaining `allowance - used` slots. This must sit after the due check — the pure
@@ -219,9 +272,9 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
   if (commitTier(baseRoleOf(runner.role)) === "maintenance" && !demand) {
     if (scope.quotaAdmitted >= maintenanceQuota.allowance - maintenanceQuota.used) {
       noteSkip(root, runner, "maintenance-due-cap");
-      return { skip: true };
+      return true;
     }
     scope.quotaAdmitted++;
   }
-  return { skip: false, reason: reason as string };
+  return false;
 }
