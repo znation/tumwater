@@ -418,4 +418,27 @@ _None yet._
 - Update test/completion.test.ts to assert the `quarantine` command's offered flags include both follow spellings; run test/help.test.ts and test/quarantine-render.test.ts.
 - Run the new follow file, test/cli-quarantine.test.ts, test/quarantine-render.test.ts, test/completion.test.ts and test/help.test.ts, then the project's gate, and confirm green.
 
+### `runEventMessage`'s complexity-21 run-family line builder in src/events/event-format.ts is split into one named module-private builder per line concern — run start, run end, resume, counters reset and claim — so "what does a run's feed line carry, and why is a resume's cause spelled out?" is read from named builders instead of one switch body (planned 2026-11-02 by the plan role; continues the landed split-large-function family — the 2026-11-02 `mergeEventMessage` split left this sibling family builder as the file's largest remaining body at complexity 21, and the 2026-10-30 `eventMessage` family-table plan made every family one builder; independent in file of every `## Planned` entry — before this entry `grep -c 'src/events/event-format.ts' PLANS.md` and `grep -c 'runEventMessage' PLANS.md` both print 0, the only event-format mention being Subtract part 6b/6's test/event-format.test.ts case deletions, which never edit the source module, and no heading or touches list names `runEventMessage` or `resumeEventMessage`; PLANS-DONE.md's 2026-11-02 event-format entry splits `mergeEventMessage`, and `grep -cE '^### .*runEventMessage' PLANS-DONE.md` prints 0; docs/invariants.md binds this module only through `eventFeedItem`/`eventMatchesGrep` (INV-A3), the `issue_filed` line and the `image_reroute` lines, never this dispatcher body, so no invariant edit is needed; touches src/events/event-format.ts)
+
+**Goal.** `eventMessage` routes each event type through `EVENT_MESSAGE_FAMILY` to a family builder. `runEventMessage` is the run-family builder: one switch over nine run/role-control event types whose readability is buried under the nested `run_end` payload ternary and the six-cause `resume` ternary. eslint's complexity one-shot reports it at 21. Extract one named module-private builder per line concern, leaving a flat dispatch, with no wording or field-read change.
+
+**Approach.** All edits in src/events/event-format.ts; no export changes and no new import.
+- `function runStartMessage(e: HarnessEvent): string` holds the current `run_start` return verbatim: `run #<n> started` plus ` on <model>` only when `e.model !== undefined`.
+- `function runEndMessage(e: HarnessEvent): string` holds the current `run_end` block verbatim: the `summary`/`error` extra clause and its comment, then `run #<n> <outcome><extra><usagePhrase(e)>`.
+- `function resumeEventMessage(e: HarnessEvent): string` holds the current `resume` block verbatim: the `restored` suffix and the six-cause nested ternary (`cut-off`, `handoff`, `image-reroute`, `salvaged`, `model-check`, else shutdown), with its comment.
+- `function countersResetMessage(e: HarnessEvent): string` holds the current `counters_reset` block verbatim: `rolesPhrase`, the `scope` ternary, and the `counters reset<scope> (runs, merges, tokens, cost)` line.
+- `function claimEventMessage(e: HarnessEvent): string` holds the current `claim` block verbatim: the `released "<title>" (<reason>)` branch, the `assigned "<title>"` branch, and its comment.
+- `runEventMessage` keeps its signature and switch; `run_deferred`, `run_aborted`, `wake`, `permit_reserve` and `default` stay inline verbatim, and each of the five moved cases returns its builder. Every arm stays in today's order.
+
+**Files touched.** src/events/event-format.ts
+
+**Acceptance criteria.**
+- `npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs src/events/event-format.ts` reports `runEventMessage` at 10 or below (it reports 21 today; 10 is this switch's floor — base 1 plus the nine case clauses — with all nine arms kept), and no moved helper above 8.
+- `grep -nE '^(export )?function (runStartMessage|runEndMessage|resumeEventMessage|countersResetMessage|claimEventMessage)' src/events/event-format.ts` matches all five, and none carries `export` (all module-private).
+- Rendering is byte-identical: test/event-format.test.ts passes unedited, including "formatEvent renders run_start's model after the run number, and omits it when absent", the `run_end` per-run usage and summary/error cases, "formatEvent renders the resume event" and "formatEvent renders the image-reroute resume cause as a fresh-session handoff", "formatEvent renders counters_reset plainly, naming all roles when several are affected", and "formatEvent renders claim assignment and release lines".
+- No edit lands outside src/events/event-format.ts; docs/invariants.md is unchanged because its event-format bindings (`eventFeedItem`, `eventMatchesGrep`, the `issue_filed` line and the image-reroute lines) are neither moved nor reworded.
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: the move is behavior-preserving and test/event-format.test.ts drives every moved arm through `formatEvent`. Run test/event-format.test.ts whole, then the project's gate, and confirm green. If a line changes, a field read or a moved string is wrong; fix the move, do not change a test to make it pass.
+
 ## Done
