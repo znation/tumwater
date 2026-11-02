@@ -184,64 +184,137 @@ function resolveRoleId(positional: string | null, flagId: string | null): string
   return id;
 }
 
-/** The flag-parse prelude of `tumwater role <id>`, split out of cmdRole so the collector
- * reads as a flat tally plus a dispatch. Given the flag-only rest (after rejectUnknownArgs
- * and the needs-a-value prelude have run), fold every write flag into its boolean clear
- * twin and its write-kind, tally the enabled write kinds in cmdRole's order, and return
- * the locals each write helper needs plus that tally. Pure: mutates nothing, only reads
- * rest. The both-ids and needs-a-value refusals stay in cmdRole before this runs, so they
- * keep firing regardless of which write (or none) the flags describe. */
-function parseWriteFlags(rest: string[]) {
+/** `tumwater role <id>`'s notes/instructions text-write flag group: the two file-shaped
+ * writes and their clear twins, with each write kind tallied in the notes-then-
+ * instructions order the shared-invocation refusal names them. Owns the group's flag
+ * spellings and write kinds; the rest of parseWriteFlags owns only the field and tally
+ * order. */
+function parseTextWriteFlags(rest: string[]): {
+  fields: { notesWrite: boolean; clear: boolean; notesFile: string | null | undefined; instructionsWrite: boolean; clearInst: boolean; instFile: string | null | undefined };
+  writes: string[];
+} {
   const clear = rest.includes("--clear-notes");
   const notesFile = flagValue(rest, "--notes-file");
   const clearInst = rest.includes("--clear-instructions");
   const instFile = flagValue(rest, "--instructions-file");
+  const notesWrite = clear || rest.includes("--notes-file");
+  const instructionsWrite = clearInst || rest.includes("--instructions-file");
+  const writes: string[] = [];
+  if (notesWrite) writes.push("notes");
+  if (instructionsWrite) writes.push("instructions");
+  return { fields: { notesWrite, clear, notesFile, instructionsWrite, clearInst, instFile }, writes };
+}
+
+/** `tumwater role <id>`'s quiet-hours flag group: the window write and its clear twin,
+ * owning the group's flag spellings and the single `quiet-hours` write kind. */
+function parseQuietHoursFlag(rest: string[]): {
+  fields: { quietWrite: boolean; clearQuiet: boolean };
+  writes: string[];
+} {
   const clearQuiet = rest.includes("--clear-quiet-hours");
+  const quietWrite = clearQuiet || rest.includes("--quiet-hours");
+  const writes: string[] = [];
+  if (quietWrite) writes.push("quiet-hours");
+  return { fields: { quietWrite, clearQuiet }, writes };
+}
+
+/** `tumwater role <id>`'s cap and min-run-interval flag group: the two per-role holds'
+ * writes and their clear twins, with the write kinds tallied in the cap-then-
+ * min-run-interval order the shared-invocation refusal names them. Owns the group's flag
+ * spellings and write kinds. */
+function parseCapAndIntervalFlags(rest: string[]): {
+  fields: { capWrite: boolean; clearCap: boolean; intervalWrite: boolean; clearInterval: boolean };
+  writes: string[];
+} {
   const clearCap = rest.includes("--clear-cap");
   const clearInterval = rest.includes("--clear-min-run-interval");
+  const capWrite = clearCap || rest.includes("--cap");
+  const intervalWrite = clearInterval || rest.includes("--min-run-interval");
+  const writes: string[] = [];
+  if (capWrite) writes.push("cap");
+  if (intervalWrite) writes.push("min-run-interval");
+  return { fields: { capWrite, clearCap, intervalWrite, clearInterval }, writes };
+}
+
+/** `tumwater role <id>`'s instances flag group: the instance-count write and its clear
+ * twin, owning the group's flag spellings and the single `instances` write kind. */
+function parseInstancesFlag(rest: string[]): {
+  fields: { instancesWrite: boolean; clearInstances: boolean };
+  writes: string[];
+} {
   const clearInstances = rest.includes("--clear-instances");
+  const instancesWrite = clearInstances || rest.includes("--instances");
+  const writes: string[] = [];
+  if (instancesWrite) writes.push("instances");
+  return { fields: { instancesWrite, clearInstances }, writes };
+}
+
+/** `tumwater role <id>`'s model-writing flag group: the provider/model/thinking/backend
+ * writes and their clear twins, with the write kinds tallied in the provider, model,
+ * thinking, backend order the shared-invocation refusal names them. Owns the group's flag
+ * spellings and write kinds. */
+function parseModelWriteFlags(rest: string[]): {
+  fields: { providerWrite: boolean; clearProvider: boolean; modelWrite: boolean; clearModel: boolean; thinkingWrite: boolean; clearThinking: boolean; backendWrite: boolean; clearBackend: boolean };
+  writes: string[];
+} {
   const clearProvider = rest.includes("--clear-provider");
   const clearModel = rest.includes("--clear-model");
   const clearThinking = rest.includes("--clear-thinking");
   const clearBackend = rest.includes("--clear-backend");
-  const notesWrite = clear || rest.includes("--notes-file");
-  const instructionsWrite = clearInst || rest.includes("--instructions-file");
-  const quietWrite = clearQuiet || rest.includes("--quiet-hours");
-  const capWrite = clearCap || rest.includes("--cap");
-  const intervalWrite = clearInterval || rest.includes("--min-run-interval");
-  const instancesWrite = clearInstances || rest.includes("--instances");
   const providerWrite = clearProvider || rest.includes("--provider");
   const modelWrite = clearModel || rest.includes("--model");
   const thinkingWrite = clearThinking || rest.includes("--thinking");
   const backendWrite = clearBackend || rest.includes("--backend");
-  const enable = rest.includes("--enable");
-  const disable = rest.includes("--disable");
   const writes: string[] = [];
-  if (notesWrite) writes.push("notes");
-  if (instructionsWrite) writes.push("instructions");
-  if (quietWrite) writes.push("quiet-hours");
-  if (instancesWrite) writes.push("instances");
-  if (capWrite) writes.push("cap");
-  if (intervalWrite) writes.push("min-run-interval");
   if (providerWrite) writes.push("provider");
   if (modelWrite) writes.push("model");
   if (thinkingWrite) writes.push("thinking");
   if (backendWrite) writes.push("backend");
+  return { fields: { providerWrite, clearProvider, modelWrite, clearModel, thinkingWrite, clearThinking, backendWrite, clearBackend }, writes };
+}
+
+/** `tumwater role <id>`'s enable/disable flag group: the two state writes, with the write
+ * kinds tallied in the enable-then-disable order the shared-invocation refusal names
+ * them. Owns the group's flag spellings and write kinds. */
+function parseEnableWriteFlags(rest: string[]): {
+  fields: { enable: boolean; disable: boolean };
+  writes: string[];
+} {
+  const enable = rest.includes("--enable");
+  const disable = rest.includes("--disable");
+  const writes: string[] = [];
   if (enable) writes.push("enable");
   if (disable) writes.push("disable");
+  return { fields: { enable, disable }, writes };
+}
+
+/** The flag-parse prelude of `tumwater role <id>`, split out of cmdRole so the collector
+ * reads as a flat tally plus a dispatch. Given the flag-only rest (after rejectUnknownArgs
+ * and the needs-a-value prelude have run), fold every write flag into its boolean clear
+ * twin and its write-kind, tally the enabled write kinds in cmdRole's order, and return
+ * the locals each write helper needs plus that tally. The parse delegates to six named
+ * helpers — parseTextWriteFlags, parseQuietHoursFlag, parseCapAndIntervalFlags,
+ * parseInstancesFlag, parseModelWriteFlags and parseEnableWriteFlags — each owning its
+ * own flag spellings and write kinds; this body owns only the field order and the tally
+ * order, the latter being the order the shared-invocation refusal names the writes in. Pure:
+ * mutates nothing, only reads rest. The both-ids and needs-a-value refusals stay in
+ * cmdRole before this runs, so they keep firing regardless of which write (or none) the
+ * flags describe. */
+function parseWriteFlags(rest: string[]) {
+  const { fields: text, writes: textWrites } = parseTextWriteFlags(rest);
+  const { fields: quiet, writes: quietWrites } = parseQuietHoursFlag(rest);
+  const { fields: capInterval, writes: capIntervalWrites } = parseCapAndIntervalFlags(rest);
+  const { fields: instances, writes: instancesWrites } = parseInstancesFlag(rest);
+  const { fields: model, writes: modelWrites } = parseModelWriteFlags(rest);
+  const { fields: enableDisable, writes: enableDisableWrites } = parseEnableWriteFlags(rest);
   return {
-    notesWrite, clear, notesFile,
-    instructionsWrite, clearInst, instFile,
-    quietWrite, clearQuiet,
-    capWrite, clearCap,
-    intervalWrite, clearInterval,
-    instancesWrite, clearInstances,
-    providerWrite, clearProvider,
-    modelWrite, clearModel,
-    thinkingWrite, clearThinking,
-    backendWrite, clearBackend,
-    enable, disable,
-    writes,
+    ...text,
+    ...quiet,
+    ...capInterval,
+    ...instances,
+    ...model,
+    ...enableDisable,
+    writes: [...textWrites, ...quietWrites, ...instancesWrites, ...capIntervalWrites, ...modelWrites, ...enableDisableWrites],
   };
 }
 
