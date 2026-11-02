@@ -314,7 +314,12 @@ Check, in this order:
    check and records them — so a count missing from VERIFIED is
    not a finding, and neither is an author-stated count that differs from it: judge whether the
    tests exist and exercise the change (check 3), not the author's arithmetic.
-3. Do new or changed tests exercise the new behavior — would they fail without the change?
+3. Do new or changed tests exercise the new behavior — would they fail if the change were wrong,
+   not merely absent? Each expected value must come from outside the code under test: worked out
+   from the inputs, an invariant or round-trip, or an effect on disk or an exit code. When the
+   new behavior's only test computes its expected value with the code under test, only checks
+   that a call was made or that a fake's canned reply passed through unchanged, or never
+   exercises the case its name promises, that behavior is untested — a finding.
 4. For a planned feature or recorded bug, does the change deliver what its PLANS.md/BUGS.md
    entry promises (files touched, acceptance criteria), and is the entry updated to match? An
    entry records intent at recording time; when the change responds to a newer user instruction

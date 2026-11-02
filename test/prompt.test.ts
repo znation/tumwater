@@ -9,6 +9,7 @@ import {
 import {
   DEFAULT_SCOPE,
   ROOT_FROM_WORKTREE,
+  TEST_ORACLE_RULE,
   TEST_RUNNER_RULE,
   KILL_BY_PID_RULE,
   buildDirectorPrompt,
@@ -550,6 +551,21 @@ test("every run, director, conflict, and review prompt carries the test-runner r
   assert.match(oneLine(TEST_RUNNER_RULE), /never a runner you guessed \(say, `npx vitest` in a suite written for node:test\)/);
   const runText = buildRunPrompt({ role: roleById("bugfix")! });
   assert.match(runText, /re-run the check only after an edit changes the tree\.\n- Run tests only through the project's declared check/, "it follows the verify bullet");
+});
+
+// 2026-11-02 test-oracle audit: ~9% of sampled tests carried an assertion whose expected value
+// came from the code under test, at about the same rate from every role. Every prompt that may
+// write tests says where an expected value comes from; the conflict resolver writes none.
+test("every run and director prompt carries the test-oracle rule once, right after the test-runner rule", () => {
+  for (const p of [...ROLES.map((role) => buildRunPrompt({ role })), buildDirectorPrompt("add x")]) {
+    assert.equal(p.split(TEST_ORACLE_RULE).length - 1, 1, `the rule once, verbatim: ${p.slice(0, 60)}…`);
+    assert.ok(p.includes(`${TEST_RUNNER_RULE}\n${TEST_ORACLE_RULE}`), "it follows the test-runner rule");
+  }
+  assert.ok(!buildConflictPrompt("feature", ["a.txt"]).includes(TEST_ORACLE_RULE));
+  const rule = oneLine(TEST_ORACLE_RULE);
+  assert.match(rule, /work out each expected value from the inputs or the contract — never by calling the code under test to compute it or pasting what it printed/);
+  assert.match(rule, /Pin exact wording only where the text is itself the contract/);
+  assert.match(rule, /name one plausible bug in your change .* confirm, by reading your tests, that one would fail on it/);
 });
 
 // BUGS.md 2026-10-18: agents' `pkill -f "npm run test"` and `pkill -f "dist/test/test-runner.js"`

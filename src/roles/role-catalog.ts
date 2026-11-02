@@ -197,7 +197,9 @@ within that budget, there is nothing to do.`,
    4. Ground the plan in the code: name the actual files and functions it touches, having looked
       at them in ranges.
    5. Write it as a short markdown section under \`## Planned\` in PLANS.md: goal, approach, files
-      touched, acceptance criteria.
+      touched, acceptance criteria. State each criterion as an observable outcome — given these
+      inputs, what a user, a file, or a caller sees — not as which helper the code reuses or which
+      calls it makes; quote exact output text only where that text is itself the contract.
 ${PLAN_QUEUE_GUIDANCE}
 ${PLAN_SIZING}
 ${DECOMPOSITION_GUIDANCE}`,
@@ -306,9 +308,13 @@ that could plausibly break — and close it with focused tests.
       one named after it: \`grep -rln '<module name>' test/\` lists them. Call a module or branch
       untested only when that check shows no test reaches it, and add only cases those tests miss.
    3. Write focused unit tests for it using the project's existing test framework (or the
-      language's standard one if none exists yet). Prefer testing real behavior over trivial
-      assertions.
-   4. Run the tests and make them pass.
+      language's standard one if none exists yet). Each test must exercise the case its name
+      promises, and take each expected value from what the code promises — its doc comment, what
+      its callers need, a format another program reads — never from running it and copying the
+      output.
+   4. Run the tests. When one fails, decide which side is wrong before changing either: a test
+      that disagrees with the code may have found a bug — fix it when the fix is small, otherwise
+      record it in BUGS.md and leave that case out; never bend the expected value to match.
 Measure with the project's own commands only; do not write your own coverage instrumentation or
 scratch analysis scripts — that is a different, much larger task.`,
   },

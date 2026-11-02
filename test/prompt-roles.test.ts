@@ -491,6 +491,13 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   assert.match(find, /refined by the feature run that picks it up/);
   assert.match(find, /at the END of `## Planned`, after every existing entry/);
 });
+test("the plan role states acceptance criteria as observable outcomes", () => {
+  // A criterion naming the helper to reuse ("folding those exact rows (`summarizeTickRows`)")
+  // became a test that deep-equals that helper's output (2026-11-02 test-oracle audit).
+  const find = oneLine(roleById("plan")!.find);
+  assert.match(find, /State each criterion as an observable outcome — given these inputs, what a user, a file, or a caller sees — not as which helper the code reuses or which calls it makes/);
+  assert.match(find, /quote exact output text only where that text is itself the contract/);
+});
 test("the plan role resolves a BUGS.md hold", () => {
   const find = oneLine(roleById("plan")!.find);
   assert.match(find, /BUGS\.md entry/);
@@ -571,6 +578,16 @@ test("the coverage role checks every importing test before calling anything unte
   const find = oneLine(roleById("coverage")!.find);
   assert.match(find, /every test that imports it, not just the one named after it: `grep -rln '<module name>' test\/`/);
   assert.match(find, /Call a module or branch untested only when that check shows no test reaches it/);
+});
+test("the coverage role takes expected values from the contract and treats a disagreeing test as a possible bug", () => {
+  // Tests written against existing code under "make them pass" copy its output, so they pin any
+  // bug it already has (2026-11-02 test-oracle audit).
+  const find = oneLine(roleById("coverage")!.find);
+  assert.match(find, /Each test must exercise the case its name promises/);
+  assert.match(find, /take each expected value from what the code promises .* never from running it and copying the output/);
+  assert.match(find, /decide which side is wrong before changing either/);
+  assert.match(find, /record it in BUGS\.md and leave that case out; never bend the expected value to match/);
+  assert.ok(!find.includes("make them pass"));
 });
 
 test("qa's ending example is a template, never a real flow name a model could copy", () => {

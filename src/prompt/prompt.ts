@@ -89,6 +89,17 @@ export const TEST_RUNNER_RULE = `- Run tests only through the project's declared
   never a runner you guessed (say, \`npx vitest\` in a suite written for node:test): a mismatched
   runner finds no tests at best, and can kill them mid-run, leaking processes and temp files.`;
 
+/** The test-oracle rule every run and director prompt carries (commonRules). A test whose
+ * expected value comes from the code under test — computed by calling it, or pasted from what it
+ * printed — passes whatever that code does, so it pins the very bugs it should catch. The
+ * 2026-11-02 audit found such an assertion in ~9% of sampled tests, written by every role at about
+ * the same rate, and no review had ever rejected one; review check 3 now asks the same question. */
+export const TEST_ORACLE_RULE = `- When you write a test, work out each expected value from the inputs or the contract — never by
+  calling the code under test to compute it or pasting what it printed. Pin exact wording only
+  where the text is itself the contract (a flag, a file format, a field another program reads).
+  Then name one plausible bug in your change (an off-by-one, a swapped branch, a wrong field) and
+  confirm, by reading your tests, that one would fail on it.`;
+
 /** The synthetic-load rule every run that may run commands carries, word for word: the run and
  * director rules (full and compact). The bounding sentence is the point — a loader that ends with
  * the command cannot leak. 2026-10-28: seven leaked \`while :; do :; done\` loops from bugfix runs
@@ -216,6 +227,7 @@ Where you work:
   (\`${gateCommand ? "<gate>" : "<check>"} > <scratch-dir>/check.log 2>&1\`) and \`tail\` it; grep that file for anything else, and
   re-run the check only after an edit changes the tree.
 ${TEST_RUNNER_RULE}
+${TEST_ORACLE_RULE}
 
 Boundaries:
 - Never create, amend, or revert git commits, branches, or merges — tumwater handles all git

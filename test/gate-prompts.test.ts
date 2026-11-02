@@ -296,7 +296,12 @@ test("buildReviewPrompt carries the reviewer checklist and a reading budget", ()
   // A miscounted author-stated total is not a rejection on its own (2026-10-01: several team
   // rejections of correct changes were off-by-one test counts) — the reviewer judges the tests.
   assert.match(prompt, /neither is an author-stated count that differs from it: judge whether the tests exist and exercise the change \(check 3\), not the author's arithmetic/);
-  assert.match(prompt, /3\. Do new or changed tests exercise the new behavior — would they fail without the change\?/);
+  // A test whose expected value mirrors the code passes "would it fail without the change?" (the
+  // function it calls is new), so check 3 asks where the oracle comes from (2026-11-02 audit:
+  // ~9% of sampled tests carried such an assertion; no rejection had ever named one).
+  assert.match(prompt, /3\. Do new or changed tests exercise the new behavior — would they fail if the change were wrong, not merely absent\?/);
+  assert.match(prompt, /Each expected value must come from outside the code under test/);
+  assert.match(prompt, /computes its expected value with the code under test, only checks that a call was made or that a fake's canned reply passed through unchanged, or never exercises the case its name promises, that behavior is untested — a finding\./);
   assert.match(prompt, /4\. For a planned feature or recorded bug, does the change deliver what its PLANS\.md\/BUGS\.md entry promises/);
   // A newer user instruction supersedes an older recorded entry ("latest instruction wins"): the
   // reviewer judges against the newer purpose and only rejects stale entries or incoherent work.
