@@ -347,7 +347,10 @@ test("parseDurationFlag rejects a flag-looking value with the shared wording", (
   // reporting the next flag as a malformed duration.
   const r = expectFail(() => parseDurationFlag("start --for", "--json"));
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /start --for needs a value \(the next token "--json" is a flag, not a value\)/);
+  assert.match(
+    r.stderr,
+    /start --for needs a value \(the next token "--json" is a flag, not a value\)/,
+  );
 });
 
 test("parseDurationFlag accepts composite durations in descending unit order", () => {
