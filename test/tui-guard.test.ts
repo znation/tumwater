@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { guardError, flashReject } from "../src/ui/tui/tui-guard.js";
+import { guardError, flashReject, staleReject } from "../src/ui/tui/tui-guard.js";
 
 // The one home of the try/catch every TUI editor or pane with a disk or marker write used to
 // declare locally (and the rejection handler its async writes pass), so their guards cannot
@@ -81,4 +81,37 @@ test("flashReject flashes every rejection it is handed", () => {
   onReject(new Error("first"));
   onReject("second");
   assert.deepEqual(flashed, [new Error("first"), "second"]);
+});
+
+test("staleReject flashes and repaints while the load is current, settles silently once stale", async () => {
+  const { flashed, session } = makeSession();
+  let rendered = 0;
+  const onReject = staleReject(
+    { ...session, requestRender: () => rendered++ },
+    () => false,
+  );
+  const boom = new Error("collector failed");
+  await Promise.reject(boom).catch(onReject);
+  assert.deepEqual(flashed, [boom]);
+  assert.equal(rendered, 1);
+  // The same handler, once its staleness predicate turns true, drops the rejection: no flash,
+  // no repaint — a superseded load must not overwrite a newer one's paint.
+  const staleFlashed: unknown[] = [];
+  const staleOn = staleReject(
+    { flashError: (err: unknown) => void staleFlashed.push(err), requestRender: () => rendered++ },
+    () => true,
+  );
+  await Promise.reject(boom).catch(staleOn);
+  assert.deepEqual(staleFlashed, []);
+  assert.equal(rendered, 1);
+});
+
+test("staleReject flashes whatever rejection it is handed, string or non-Error", async () => {
+  const { flashed } = makeSession();
+  const onReject = staleReject(
+    { flashError: (err: unknown) => void flashed.push(err), requestRender: () => {} },
+    () => false,
+  );
+  onReject("a bare string reason");
+  assert.deepEqual(flashed, ["a bare string reason"]);
 });

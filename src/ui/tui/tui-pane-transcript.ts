@@ -9,7 +9,7 @@ import { roleInspectMarkdown } from "./tui-pane.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
-import { guardError } from "./tui-guard.js";
+import { guardError, staleReject } from "./tui-guard.js";
 import { paneAtHead, type TuiPaneSession } from "./tui-pane-session.js";
 
 /** The per-role transcript panes (views 1..roleIds.length) of the TUI: the Ctrl+N
@@ -74,11 +74,10 @@ export function createTranscriptPane(session: TuiPaneSession) {
         changeCache = queueText + renderRoleChange(change);
         session.requestRender();
       },
-      (err: unknown) => {
-        if (gen !== changeGen || viewedRole() !== target) return;
-        session.flashError(err);
-        session.requestRender();
-      },
+      staleReject(
+        session,
+        () => gen !== changeGen || viewedRole() !== target,
+      ),
     );
   };
 

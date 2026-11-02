@@ -11,6 +11,7 @@ import { paneAtHead, type TuiPaneSession } from "./tui-pane-session.js";
 import { arrowDir } from "./tui-keymap.js";
 import { distinctOrdered } from "../../collections.js";
 import { createPendingSelection } from "./tui-pane-pending-selection.js";
+import { staleReject } from "./tui-guard.js";
 
 /** The overlapping-files block under the roster: empty for a no-base view (the roster above
  * already says the main branch is missing), else the CLI's renderChangeOverlaps under a
@@ -191,13 +192,9 @@ export function createPendingPane(session: TuiPaneSession) {
         session.paneCache = base;
         session.requestRender();
       },
-      (err: unknown) => {
-        if (gen !== refreshGen || session.view !== session.roleIds.length + 5) return;
-        // Keep the queue visible rather than replacing it with a loading note: it is
-        // already known and unaffected by the git read that failed.
-        session.flashError(err);
-        session.requestRender();
-      },
+      // Keep the queue visible rather than replacing it with a loading note on failure: it is
+      // already known and unaffected by the git read that failed.
+      staleReject(session, () => gen !== refreshGen || session.view !== session.roleIds.length + 5),
     );
   };
 
@@ -313,11 +310,7 @@ export function createPendingPane(session: TuiPaneSession) {
         session.paneCache = heading + "\n\n" + renderRoleChanges({ mainBranch: overlaps.mainBranch, roles: views });
         session.requestRender();
       },
-      (err: unknown) => {
-        if (!current()) return;
-        session.flashError(err);
-        session.requestRender();
-      },
+      staleReject(session, () => !current()),
     );
     return true;
   };

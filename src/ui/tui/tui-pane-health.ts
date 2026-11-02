@@ -10,6 +10,7 @@ import { describeArchivedFile } from "../../backlog/backlog-archive.js";
 import { joinOr, shortSha } from "../../text/format.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import { paneAtHead, type TuiPaneSession } from "./tui-pane-session.js";
+import { staleReject } from "./tui-guard.js";
 
 /** The Health pane (view roleIds.length + 7) of the TUI (src/ui/tui/tui.tsx): the doctor
  * re-run (Ctrl+R), reclaim (Ctrl+E), notify test (Ctrl+N), commit-backlog (Ctrl+A),
@@ -48,11 +49,7 @@ export function createHealthPane(session: TuiPaneSession) {
         session.paneCache = (healthProblems ? renderDoctorProblems : renderDoctor)(report);
         session.requestRender();
       },
-      (err: unknown) => {
-        if (gen !== runGen || session.view !== session.roleIds.length + 7) return;
-        session.flashError(err);
-        session.requestRender();
-      },
+      staleReject(session, () => gen !== runGen || session.view !== session.roleIds.length + 7),
     );
   };
 

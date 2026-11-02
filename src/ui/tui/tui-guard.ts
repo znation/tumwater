@@ -23,3 +23,22 @@ export function flashReject(
 ): (err: unknown) => void {
   return (err: unknown) => session.flashError(err);
 }
+
+/** The rejection handler a pane's async load passes as the second `.then` argument when the
+ * resolution may have been superseded in flight: while `isStale()` is false it flashes the
+ * reason and requests a repaint; a superseded load settles silently. The one home of the
+ * guard-then-flash-then-repaint tail the panes' generation-guarded loads inline per load —
+ * the Health pane's doctor run, the Pending pane's refresh and overlap drill-down, the Trail
+ * pane's trail parts, the Transcript pane's change load — so its order cannot drift; the
+ * session is structural — any widget exposing `flashError` and `requestRender` (same contract
+ * as flashReject). */
+export function staleReject(
+  session: { flashError(err: unknown): void; requestRender(): void },
+  isStale: () => boolean,
+): (err: unknown) => void {
+  return (err: unknown) => {
+    if (isStale()) return;
+    session.flashError(err);
+    session.requestRender();
+  };
+}

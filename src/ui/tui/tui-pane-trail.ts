@@ -6,7 +6,7 @@ import { revertFollowUp, runRevertSha } from "../../operator/operator-revert.js"
 import { shortSha } from "../../text/format.js";
 import { plural } from "../../text/phrases.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
-import { guardError, flashReject } from "./tui-guard.js";
+import { guardError, flashReject, staleReject } from "./tui-guard.js";
 import { promptLineFree, type TuiPaneCtx } from "./tui-pane-ctx.js";
 import { paneAtHead, cycleLabel, HISTORY_WINDOWS, type TuiPaneSession } from "./tui-pane-session.js";
 
@@ -170,11 +170,10 @@ export function createRunTrail(
         composeTrail();
         session.requestRender();
       },
-      (err: unknown) => {
-        if (!trailMode || !keep || gen !== trailGen) return;
-        session.flashError(err);
-        session.requestRender();
-      },
+      staleReject(
+        session,
+        () => !trailMode || !keep || gen !== trailGen,
+      ),
     );
   };
 
