@@ -316,10 +316,16 @@ test("parseBranchFlag: absent returns null, a value passes, a missing value fail
   const noValue = expectFail(() => parseBranchFlag(["--branch"]));
   assert.match(noValue.stderr, /--branch needs a branch name/);
 
-  // A `-`-leading token is another flag, not a branch name — the same rule a missing value
-  // follows: fall back to the checked-out branch is the one thing a typo must never do.
+  // A `--`-token in the slot is the operator's slipped next flag, refused with the shared
+  // wording that names it — the same guard every other value slot applies (parseCountFlag's
+  // test pins the pairing) — rather than a missing-name message that names no value.
   const flagAsValue = expectFail(() => parseBranchFlag(["--branch", "--json"]));
-  assert.match(flagAsValue.stderr, /--branch needs a branch name/);
+  assert.match(flagAsValue.stderr, /--branch needs a value \(the next token "--json" is a flag, not a value\)/);
+
+  // A single-dash token is a malformed name, not a slipped flag: the missing-name wording
+  // still covers it, as parseCountFlag's single-dash case reads as a malformed count.
+  const dashAsValue = expectFail(() => parseBranchFlag(["--branch", "-5"]));
+  assert.match(dashAsValue.stderr, /--branch needs a branch name/);
 });
 
 // --- parseDurationFlag (the timed pause's `--for <duration>`) ---

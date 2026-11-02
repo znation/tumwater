@@ -484,10 +484,15 @@ export function parseRoleFlag(
 
 /** Parse an optional `--branch <name>` flag: the named branch, or null when absent — the same
  * shape as parseRoleFlag, so every command that scopes to one branch validates identically.
- * A missing value fails fast instead of silently falling back to the checked-out branch. */
+ * A missing value fails fast instead of silently falling back to the checked-out branch. A
+ * `--`-token in the slot is the operator's slipped next flag (`run --branch --json`), never a
+ * branch name — a branch name never starts with `-` — so refuse it up front with
+ * rejectFlagLookingValue's shared wording, the same guard every other value slot applies,
+ * instead of reporting the next flag as a missing name. */
 export function parseBranchFlag(args: string[]): string | null {
   const branch = flagValue(args, "--branch");
   if (branch === null) return null;
+  rejectFlagLookingValue("--branch", branch);
   if (!branch || branch.startsWith("-")) fail(BRANCH_VALUE_ERROR);
   return branch;
 }
