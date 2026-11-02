@@ -227,6 +227,69 @@ export function rawRoleField(root: string, roleId: string, field: string): unkno
   return obj[field];
 }
 
+/** "Which id resolves, and which id is unknown?": the catalog/custom/DIRECTOR resolution and
+ * its one unknown-role throw — the first block of the collector, lifted out so the answer to
+ * that question reads from one name. The throw still fires before any account or info read. */
+function resolveRoleIdentity(
+  typedRole: string,
+  cfg: TumwaterConfig,
+): { role: string; resolved: { title: string; find: string } } {
+  const role = canonicalRoleId(typedRole);
+  const catalog = roleById(role);
+  const customEntry = cfg.customRoles.find((c) => c.name === role);
+  // The director is inspectable like any role but has no catalog entry: a pseudo-Role whose
+  // find text is empty (rolePayload nulls it below — the director's queued prompts ARE its
+  // work), so the unknown-role throw only fires for ids nothing can answer.
+  const resolved =
+    catalog ??
+    (customEntry ? customRole(customEntry.name, customEntry.task)
+    : role === DIRECTOR_ROLE ? { id: DIRECTOR_ROLE, title: DIRECTOR_ROLE, find: "" }
+    : undefined);
+  // roleById maps any `feature-N` to its base whatever the config runs, so an instance id
+  // counts only when knownRoleIds (the ids the config runs) holds it.
+  if (!resolved || !knownRoleIds(cfg).includes(role)) {
+    // The one unknown-role answer (unknownRoleMessage): the CLI's main catch turns the throw
+    // into `tumwater: <message>` with exit 1, so the collector keeps the wording and the CLI
+    // stays a thin peel-parse-print layer.
+    throw new Error(unknownRoleMessage(role, knownRoleIds(cfg)));
+  }
+  return { role, resolved };
+}
+
+/** "Whose subscription pays for this role?" — the billing seam: the role's OWN non-pi
+ * backend when it has one, else the review gate's, plus that backend's account and its
+ * subscription window's primary type. Lifted out of the collector's middle block; `account`
+ * is null and `billingWindow` undefined when no non-pi seam is in play, so the caller's
+ * conditional spread stays unchanged. */
+function resolveBillingSeam(
+  root: string,
+  cfg: TumwaterConfig,
+  effective: ResolvedModelConfig,
+): { billingBackend?: string; account: { billing: ClaudeBilling } | null; billingWindow?: string } {
+  // The subscription backend whose billing is in play — the role's OWN seam when it routes
+  // to a non-pi backend, else the review gate's backend when the reviewer runs a non-pi
+  // backend (today's claude precedence generalized off the literal "claude", part 3c/9;
+  // PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7): a pi author on a claude/codex
+  // reviewer still shows where its changes' spend lands. Read that backend's account; the
+  // account file is team-global, so either seam reads the same answer. Its subscription
+  // window's primary type rides along for the renderer's label.
+  const roleBackend = effective.agent !== undefined && effective.agent !== "pi" ? effective.agent : undefined;
+  const reviewAgent = reviewRunConfig(cfg).agent;
+  const reviewBackend =
+    cfg.review.enabled && reviewAgent !== undefined && reviewAgent !== "pi" ? reviewAgent : undefined;
+  const billingBackend = roleBackend ?? reviewBackend;
+  const account = billingBackend !== undefined ? readAccount(root, billingBackend) : null;
+  const billingWindow = account?.billing === "subscription" ? windowEntries(account)[0]?.type : undefined;
+  return { billingBackend, account, billingWindow };
+}
+
+/** "Is this role's tier moved on the orchestrator's chain?" — the chain step for the role's
+ * seam tier: present only while the orchestrator is alive and its chain names the tier. */
+function resolveChainStep(root: string, cfg: TumwaterConfig, role: string): ChainTierInfo | null {
+  const info = readOrchestratorInfo(root);
+  return (orchestratorAlive(root, info) && info?.chain?.[roleSeamTier(cfg, role)]) || null;
+}
+
 /** The identity/config half of the collector — "what is this role, and how is it configured?":
  * the catalog/custom/DIRECTOR resolution (and its one unknown-role throw), the effective model
  * wiring via configForRole, the subscription backend whose billing is in play plus that backend's
@@ -248,42 +311,10 @@ function resolveRoleConfig(
   chainStep: ChainTierInfo | null;
   base: string;
 } {
-  const role = canonicalRoleId(typedRole);
-  const catalog = roleById(role);
-  const customEntry = cfg.customRoles.find((c) => c.name === role);
-  // The director is inspectable like any role but has no catalog entry: a pseudo-Role whose
-  // find text is empty (rolePayload nulls it below — the director's queued prompts ARE its
-  // work), so the unknown-role throw only fires for ids nothing can answer.
-  const resolved =
-    catalog ??
-    (customEntry ? customRole(customEntry.name, customEntry.task)
-    : role === DIRECTOR_ROLE ? { id: DIRECTOR_ROLE, title: DIRECTOR_ROLE, find: "" }
-    : undefined);
-  // roleById maps any `feature-N` to its base whatever the config runs, so an instance id
-  // counts only when knownRoleIds (the ids the config runs) holds it.
-  if (!resolved || !knownRoleIds(cfg).includes(role)) {
-    // The one unknown-role answer (unknownRoleMessage): the CLI's main catch turns the throw
-    // into `tumwater: <message>` with exit 1, so the collector keeps the wording and the CLI
-    // stays a thin peel-parse-print layer.
-    throw new Error(unknownRoleMessage(role, knownRoleIds(cfg)));
-  }
+  const { role, resolved } = resolveRoleIdentity(typedRole, cfg);
   const effective = configForRole(cfg, role);
-  // The subscription backend whose billing is in play — the role's OWN seam when it routes
-  // to a non-pi backend, else the review gate's backend when the reviewer runs a non-pi
-  // backend (today's claude precedence generalized off the literal "claude", part 3c/9;
-  // PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7): a pi author on a claude/codex
-  // reviewer still shows where its changes' spend lands. Read that backend's account; the
-  // account file is team-global, so either seam reads the same answer. Its subscription
-  // window's primary type rides along for the renderer's label.
-  const roleBackend = effective.agent !== undefined && effective.agent !== "pi" ? effective.agent : undefined;
-  const reviewAgent = reviewRunConfig(cfg).agent;
-  const reviewBackend =
-    cfg.review.enabled && reviewAgent !== undefined && reviewAgent !== "pi" ? reviewAgent : undefined;
-  const billingBackend = roleBackend ?? reviewBackend;
-  const account = billingBackend !== undefined ? readAccount(root, billingBackend) : null;
-  const billingWindow = account?.billing === "subscription" ? windowEntries(account)[0]?.type : undefined;
-  const info = readOrchestratorInfo(root);
-  const chainStep = (orchestratorAlive(root, info) && info?.chain?.[roleSeamTier(cfg, role)]) || null;
+  const { billingBackend, account, billingWindow } = resolveBillingSeam(root, cfg, effective);
+  const chainStep = resolveChainStep(root, cfg, role);
   const base = baseRoleOf(role);
   return {
     role,
