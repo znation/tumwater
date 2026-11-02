@@ -113,10 +113,30 @@ export function postMergeChurn(events: readonly HarnessEvent[]): { count: number
 // dev/ino/mtime/size check invalidates it exactly like the other polled files; each caller gets
 // a deep-enough copy (the entry objects and their `rejected` arrays) so treating a read result
 // as one's own cannot poison a later poll.
-/** The queued entries. A torn or hand-edited entry (not an object with a string commit, role and
- * summary, or a `rejected` that is not an array — a non-string `lastFailure` is dropped like the
- * other fields) is dropped, and the next write leaves it out. */
+/** The queued entries, each re-read parsed by `parsePostReview`: a torn or hand-edited entry
+ * (not an object with a string commit, role and summary, or a `rejected` that is not an array —
+ * a non-string `lastFailure` is dropped like the other fields) is dropped, and the next write
+ * leaves it out. */
 const postReviewCache = new Map<string, StatKeyedValue<PostReview[]>>();
+/** One saved entry's re-read: null (drop as torn) when the entry is not an object with string
+ * `commit`, `role` and `summary`, or its `rejected` is present but not an array; otherwise the
+ * `PostReview`, with every optional field (`body`, `failures`, `lastFailure`, `rejected`,
+ * `fixed`, `enqueuedAt`) copied only when its type and range are valid, in the order the
+ * `PostReview` fields list them. */
+function parsePostReview(raw: unknown): PostReview | null {
+  if (!isJsonObject(raw)) return null;
+  const { commit, role, summary, body, failures, lastFailure, rejected, enqueuedAt, fixed } = raw;
+  if (typeof commit !== "string" || typeof role !== "string" || typeof summary !== "string") return null;
+  if (rejected !== undefined && !Array.isArray(rejected)) return null;
+  const entry: PostReview = { commit, role, summary };
+  if (typeof body === "string") entry.body = body;
+  if (typeof failures === "number" && Number.isFinite(failures)) entry.failures = failures;
+  if (typeof lastFailure === "string") entry.lastFailure = lastFailure;
+  if (Array.isArray(rejected)) entry.rejected = rejected.filter((r): r is string => typeof r === "string");
+  if (typeof fixed === "string") entry.fixed = fixed;
+  if (typeof enqueuedAt === "number" && Number.isFinite(enqueuedAt) && enqueuedAt >= 0) entry.enqueuedAt = enqueuedAt;
+  return entry;
+}
 export function readPostReviews(root: string): PostReview[] {
   const file = postReviewPath(root);
   return (
@@ -127,22 +147,7 @@ export function readPostReviews(root: string): PostReview[] {
       () => {
         const saved = readJsonFile<{ pending?: unknown }>(file);
         if (!Array.isArray(saved?.pending)) return [];
-        const entries: PostReview[] = [];
-        for (const raw of saved.pending as unknown[]) {
-          if (!isJsonObject(raw)) continue;
-          const { commit, role, summary, body, failures, lastFailure, rejected, enqueuedAt, fixed } = raw;
-          if (typeof commit !== "string" || typeof role !== "string" || typeof summary !== "string") continue;
-          if (rejected !== undefined && !Array.isArray(rejected)) continue;
-          const entry: PostReview = { commit, role, summary };
-          if (typeof body === "string") entry.body = body;
-          if (typeof failures === "number" && Number.isFinite(failures)) entry.failures = failures;
-          if (typeof lastFailure === "string") entry.lastFailure = lastFailure;
-          if (Array.isArray(rejected)) entry.rejected = rejected.filter((r): r is string => typeof r === "string");
-          if (typeof fixed === "string") entry.fixed = fixed;
-          if (typeof enqueuedAt === "number" && Number.isFinite(enqueuedAt) && enqueuedAt >= 0) entry.enqueuedAt = enqueuedAt;
-          entries.push(entry);
-        }
-        return entries;
+        return (saved.pending as unknown[]).map(parsePostReview).filter((e): e is PostReview => e !== null);
       },
       (entries) => entries.map((e) => ({ ...e, ...(e.rejected !== undefined ? { rejected: [...e.rejected] } : {}) })),
     ) ?? []
