@@ -5,6 +5,7 @@ import path from "node:path";
 import { runBuildCheck } from "../src/build/build-check.js";
 import { runScopedBuildCheck } from "../src/build/build-check-scoped.js";
 import { asTestCounts, parseTestCounts } from "../src/build/build-check-counts.js";
+import { CHECK_TIER, withCheckPermit } from "../src/concurrency/check-permit.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 import { checkFailureReasons } from "../src/build/build-check-report.js";
 import { buildCheckEvent, buildCheckSkipWarning, isPassingFullCheck, starvedDeadlineMs } from "../src/build/build-check-events.js";
@@ -14,7 +15,7 @@ import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { buildCheckFixture } from "./fixtures/runner-fixtures.js";
 import { pathPrepend, pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
 import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { waitFor } from "./helpers/wait.js";
+import { flushImmediate, waitFor } from "./helpers/wait.js";
 
 // Unit coverage for the deterministic build pre-check (src/build/build-check.ts): execution and
 // outcome classification, plus the configured-check.command detection boundary. The walk-up
@@ -685,6 +686,60 @@ test("an unset or blank check.gateCommand leaves the gate running check.command"
 // run carries no deadlineLateMs, and the failure reads as a deterministic rejection of the
 // change. With a measured sleptMs on the run it owes the same clean retry a late-deadline
 // timeout already gets — and a clean retry's verdict stands, exactly like a first-time pass.
+test("a scoped check that waits for a check permit logs a check_wait and hands the caller's wait hooks", async (t) => {
+  // The permit-wait path of runScopedBuildCheck is untested on its own: a scoped check that
+  // parks behind a held permit must log a check_wait (the operator's signal that
+  // maxConcurrentChecks is too small — doctor's contention check consumes it) carrying who held
+  // the permits and the cap, and must hand the wait to the caller's permitWait hooks. No test
+  // drives this through runScopedBuildCheck: check-permit.test.ts pins withCheckPermit's hooks
+  // directly, not this file's wiring of them to logCheckWaitEvent and permitWait.
+  const { root, wt } = buildCheckFixture();
+  fs.mkdirSync(path.join(wt, "node_modules"));
+  fs.writeFileSync(path.join(wt, "package.json"), projManifest({ test: "true" }));
+  const one = { maxConcurrentChecks: 1 };
+  // The holder takes the only permit and parks on a test-controlled gate, so the scoped check
+  // below can only park behind it — the holder cannot release before the scoped check has
+  // parked and snapshotted the holder's label.
+  let release!: () => void;
+  const holder = withCheckPermit(one, CHECK_TIER.other, () => new Promise<void>((r) => (release = r)), undefined, "the held check");
+  await flushImmediate();
+  // The wait is measured by Date.now(); stretch it past the 30s check_wait threshold the way a
+  // host sleep does, so the parked wait is long enough to be worth an event. The clean run that
+  // follows is real-time again.
+  t.mock.timers.enable({ apis: ["Date"] });
+  const calls: string[] = [];
+  const scoped = runScopedBuildCheck(
+    root,
+    ROLE,
+    "gate",
+    wt,
+    one,
+    10_000,
+    undefined,
+    undefined,
+    { waiting: () => calls.push("waiting"), granted: () => calls.push("granted"), waited: () => calls.push("waited") },
+  );
+  await flushImmediate(); // the scoped check now parks behind the holder, recording its start time
+  t.mock.timers.tick(40_000); // the host slept 40s while it waited — past the 30s threshold
+  release();
+  t.mock.timers.reset();
+  const r = await scoped;
+  await holder;
+  assert.equal(r!.outcome.status, "passed");
+  // The wait is logged as a check_wait naming the holder and the cap, with a positive waitedMs.
+  const wait = eventsOfType(root, "check_wait")[0];
+  assert.ok(wait, "a check_wait was logged");
+  assert.equal(wait!.scope, "gate");
+  assert.equal(wait!.role, ROLE);
+  assert.ok(Number(wait!.waitedMs) >= 30_000, "waitedMs crossed the 30s check_wait threshold");
+  assert.deepEqual(wait!.heldBy, ["the held check"]);
+  assert.equal(wait!.limit, 1);
+  // The caller's wait hooks heard the wait and the grant. The waited slot is not forwarded to
+  // the caller — runScopedBuildCheck owns it (it is what logs the check_wait above) — so the
+  // caller's own waited hook is not part of this wiring.
+  assert.deepEqual(calls, ["waiting", "granted"]);
+});
+
 test("a failed check that spanned a host sleep is retried once, and the clean retry's verdict stands", async () => {
   const { root, wt } = buildCheckFixture();
   fs.mkdirSync(path.join(wt, "node_modules"));
