@@ -5,7 +5,7 @@ import path from "node:path";
 import { runBuildCheck } from "../src/build/build-check.js";
 import { runScopedBuildCheck } from "../src/build/build-check-scoped.js";
 import { asTestCounts, parseTestCounts } from "../src/build/build-check-counts.js";
-import { CHECK_TIER, withCheckPermit } from "../src/concurrency/check-permit.js";
+import { CHECK_TIER, checkPermitSnapshot, withCheckPermit } from "../src/concurrency/check-permit.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 import { checkFailureReasons } from "../src/build/build-check-report.js";
 import { buildCheckEvent, buildCheckSkipWarning, isPassingFullCheck, starvedDeadlineMs } from "../src/build/build-check-events.js";
@@ -735,9 +735,51 @@ test("a scoped check that waits for a check permit logs a check_wait and hands t
   assert.deepEqual(wait!.heldBy, ["the held check"]);
   assert.equal(wait!.limit, 1);
   // The caller's wait hooks heard the wait and the grant. The waited slot is not forwarded to
-  // the caller — runScopedBuildCheck owns it (it is what logs the check_wait above) — so the
+  // its caller — runScopedBuildCheck owns it (it is what logs the check_wait above) — so the
   // caller's own waited hook is not part of this wiring.
   assert.deepEqual(calls, ["waiting", "granted"]);
+});
+
+test("a scoped check whose caller aborts mid-run settles aborted, without a warning and without a retry", { timeout: 30_000 }, async () => {
+  // The signal param's mid-run road is untested through runScopedBuildCheck (check-permit.test.ts
+  // pins the wait-abort, not this one): a caller abort (a user stop, a lapsed restart hand-off)
+  // while the check is RUNNING stops the tree as the harness's own abort — skipReason "aborted" —
+  // which neither owes the killed/late-deadline clean retry (owesCleanRetry), nor gets the
+  // merge-scope unverified remap (unverifiedSkipFor only reads timeout/killed/install and sleep),
+  // nor a skip warning (warnScopedCheck returns early on "aborted" — the caller fails closed as
+  // aborted on its own way out, so no "proceeding" wording may suggest the check still stands).
+  const { root, wt } = buildCheckFixture();
+  fs.writeFileSync(path.join(wt, "package.json"), projManifest({ build: "sleep 30" }));
+  const controller = new AbortController();
+  const pending = runScopedBuildCheck(
+    root,
+    ROLE,
+    "merge",
+    wt,
+    undefined,
+    30_000,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    controller.signal,
+  );
+  await new Promise((r) => setTimeout(r, 250)); // the check is spawned and running
+  controller.abort();
+  const result = await pending;
+  assert.equal(result!.outcome.status, "skipped", "the abort is a skip, not a verdict about the tree");
+  assert.equal(result!.outcome.skipReason, "aborted", "classified as the harness's own stop");
+  assert.equal(result!.outcome.unverified, undefined, "an aborted check is never remapped to an unverified reject");
+  assert.ok(result!.outcome.run, "it ran — the run window is recorded, unlike a wait-abort that never spawned");
+  const events = eventsOfType(root, "build_check");
+  assert.equal(events.length, 1, "one attempt, one event — the abort owes no clean retry");
+  assert.equal(events[0]?.status, "skipped");
+  assert.ok(
+    !readEvents(root).some((e) => e.type === "warning"),
+    "no skip warning — the caller fails closed as aborted, and no 'proceeding' wording may stand",
+  );
+  await flushImmediate();
+  assert.equal(checkPermitSnapshot().inUse, 0, "the aborted run's permit is handed back");
 });
 
 test("a failed check that spanned a host sleep is retried once, and the clean retry's verdict stands", async () => {
