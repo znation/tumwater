@@ -13,7 +13,7 @@ import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { envPath, findOnPath, readTextOrNull, treeBytes, xdgConfigHomeDir } from "../files/files.js";
 import { readJsonFile } from "../files/json-files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
-import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
+import { GIT_MISSING_MESSAGE, gitTry } from "../git/git-run.js";
 import {
   branchExists,
   currentBranch,
@@ -133,14 +133,23 @@ export function checkExecPath(execPath: string = process.execPath): CheckOutcome
  * readiness gate cannot drift: not a git repo → no commits yet → detached HEAD. Reports the
  * resolved toplevel (not the cwd — doctor must say where .tumwater/ lives) and the branch the
  * team would target: a configured `baseBranch` wins (`run --branch` is per-invocation), and
- * one that does not exist fails here instead of at the first run. `config` is optional so
- * the check stands alone; runDoctor passes the loaded config behind a guard. */
+ * one that does not exist fails here instead of at the first run. A name git's own rule
+ * rejects (check-ref-format, the same preflight `start`/`run` apply in resolveMainBranch and
+ * init applies before `git init -b`) fails as a name, not as a missing branch: a
+ * shape-invalid `baseBranch` can never hold a branch, and the "does not exist (branches: …)"
+ * verdict would send the operator hunting for a typo when the shape is the problem. `config`
+ * is optional so the check stands alone; runDoctor passes the loaded config behind a guard. */
 export async function checkRepo(root: string, config?: TumwaterConfig): Promise<CheckOutcome> {
   if (!(await isGitRepo(root))) return failOutcome(NOT_A_REPO_MESSAGE);
   if (!(await hasCommits(root))) return failOutcome(NO_COMMITS_MESSAGE);
   const toplevel = (await repoToplevel(root)) ?? root;
   const configured = config?.baseBranch;
   if (configured !== undefined) {
+    if ((await gitTry(root, "check-ref-format", "--branch", configured)) === null) {
+      return failOutcome(
+        `repo at ${toplevel} — baseBranch ${JSON.stringify(configured)} is not a valid git branch name — pick a name like main, trunk, or release/2.0 (git's rules: no spaces, colons, or ~^?*[ characters; no leading/trailing slash or double slash; not a dotted or .lock-suffixed component)`,
+      );
+    }
     if (!(await branchExists(root, configured))) {
       const existing = await branchesPhrase(root);
       return failOutcome(`repo at ${toplevel} — configured baseBranch ${configured} does not exist (branches: ${existing})`);

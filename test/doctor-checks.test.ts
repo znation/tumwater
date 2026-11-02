@@ -323,6 +323,14 @@ test("checkRepo reports the toplevel and honors a configured baseBranch", async 
   assert.match(missing.detail, /configured baseBranch ghost does not exist/);
   assert.match(missing.detail, /branches: .*integration/);
 
+  // A name git's own rule rejects fails as a name, not as a missing branch: the existence
+  // verdict's "(branches: …)" tail would send the operator hunting for a typo when the
+  // shape is the problem — the same preflight start/run apply to --branch/baseBranch.
+  const invalid = await checkRepo(repo, { baseBranch: "not a branch" } as TumwaterConfig);
+  assert.equal(invalid.level, "fail");
+  assert.match(invalid.detail, /not a valid git branch name/);
+  assert.doesNotMatch(invalid.detail, /does not exist/);
+
   // No config (the standalone check) falls back to the checked-out branch, as before.
   const checkedOut = await checkRepo(repo);
   assert.match(checkedOut.detail, /on branch integration$/);
