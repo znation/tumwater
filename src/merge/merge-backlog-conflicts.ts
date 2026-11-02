@@ -273,7 +273,9 @@ function placeTheirAdditions(
   }
 }
 
-/** Merge one section's entries (see mergeBacklogEntries), or null on a same-entry conflict. */
+/** Merge one section's entries (see mergeBacklogEntries), or null on a same-entry conflict.
+ * Three passes run in order — settle the shared entries, keep our deletions, place their
+ * additions — each in its own helper (settleOursEntries, keepOurDeletions, placeTheirAdditions). */
 function mergeSectionEntries(
   base: ParsedBacklog["sections"][number]["entries"],
   ours: ParsedBacklog["sections"][number]["entries"],
