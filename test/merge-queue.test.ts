@@ -415,6 +415,27 @@ test("a torn queue head is dropped and its change re-queued from the recovered p
   assert.match(String(warns2[0]!.message), /0000000000-000000-1\.json/, "the warning still names the file");
 });
 
+test("a torn queue head that cannot be dropped is reported, not thrown out of the poll", async () => {
+  // dropTornHead runs in the drain's poll body with nothing to guard it. A queue head that is a
+  // directory (the shape an ENOSPC or immutable queue file takes) fails dropMerge's non-recursive
+  // rmSync with EISDIR, exactly as it does in settleAbortedApproved's fallback cleanup: the throw
+  // must be reported and the poll must keep going, never end the team. The head stays in place.
+  const repo = makeRepo();
+  const dir = mergeQueueDir(repo);
+  fs.mkdirSync(dir, { recursive: true });
+  const broken = path.join(dir, "0000000000-000000-1.json");
+  fs.mkdirSync(broken);
+  assert.equal(staleHeadFile(repo), broken, "the directory is the unreadable head");
+
+  await dropTornHead(repo); // must resolve, not reject out of the poll
+
+  assert.equal(staleHeadFile(repo), broken, "the undroppable head is left for the operator");
+  const warns = readEvents(repo).filter((e) => e.type === "warning");
+  assert.equal(warns.length, 1, "one warning for the failed drop");
+  assert.match(String(warns[0]!.message), /0000000000-000000-1\.json/, "the warning names the file");
+  assert.match(String(warns[0]!.message), /could not be dropped/, "the warning explains the drop failed");
+});
+
 test("a torn queue head whose re-queue cannot write is still dropped so the queue advances", async () => {
   // An ENOSPC/EMFILE on the re-queue's queue-file write must not wedge the queue or abort the
   // drain poll: the torn head is dropped anyway (the pin survives for next-run leftover

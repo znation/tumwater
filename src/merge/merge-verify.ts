@@ -77,7 +77,11 @@ export function resolveAuthor(ctx: MergePipelineContext, role: string): RoleRunn
  * dropped (the pin survives and leftover recovery re-queues the full shape on the role's next
  * run), and the drain's poll never aborts. A torn head with no recoverable role or no pin drops
  * with the warning alone; the crashed entry's commit, if any, still rides its merge ref into
- * next-run leftover recovery. Exported for test/merge-queue.test.ts's torn-head step. */
+ * next-run leftover recovery. The drop itself can throw (a queue file that is a directory fails
+ * fs.rmSync's non-recursive delete — the shape an ENOSPC or immutable queue file takes), and this
+ * runs in the poll body with nothing to guard it: report it and leave the head in place rather
+ * than end the team, exactly as settleAbortedApproved guards its own drop. Exported for
+ * test/merge-queue.test.ts's torn-head step. */
 export async function dropTornHead(root: string): Promise<void> {
   const stale = staleHeadFile(root);
   if (!stale) return;
@@ -104,7 +108,16 @@ export async function dropTornHead(root: string): Promise<void> {
       }
     }
   }
-  dropMerge(stale);
+  try {
+    dropMerge(stale);
+  } catch (err) {
+    warnEventBestEffort(
+      root,
+      TUMWATER_SOURCE,
+      `merge queue head ${path.basename(stale)} could not be dropped: ${errorMessage(err)}`,
+    );
+    return;
+  }
   const roleNote = !role
     ? ""
     : requeued
