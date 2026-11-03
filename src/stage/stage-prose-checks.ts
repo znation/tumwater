@@ -40,34 +40,63 @@ function closesDocComment(lines: string[], i: number): boolean {
   return false;
 }
 
+/** One parsed `-U0` hunk: `c` is the new-side first line number, `d` its line count, and
+ * `removed` / `added` the body lines, prefix stripped. */
+interface Hunk {
+  c: number;
+  d: number;
+  removed: string[];
+  added: string[];
+}
+
+/** The site an insertion detached: a pure-add hunk whose added code lands between a doc
+ * block and the declaration below it — the hunk's first new-side line sits just under the
+ * doc's close, that line is not itself added, the hunk carries doc-target code, and the
+ * declaration below it (the hunk's last new-side line) is a doc target. */
+function insertedDocSite(file: string, h: Hunk, lines: string[], addedAt: Set<number>): string | null {
+  if (h.removed.length !== 0 || h.d === 0) return null;
+  const target = lines[h.c + h.d - 1];
+  if (
+    h.c < 2 || addedAt.has(h.c - 1) || !closesDocComment(lines, h.c - 2) ||
+    !h.added.some((l) => DOC_TARGET.test(l)) || target === undefined || !DOC_TARGET.test(target)
+  ) return null;
+  return `${file}:${h.c - 1}`;
+}
+
+/** The site a deletion detached: a pure-delete hunk whose removed code includes a doc-target
+ * declaration, leaving the doc block above it to document the next declaration — the hunk's
+ * old-side line is not also an added line and ends a doc block. */
+function deletedDocSite(file: string, h: Hunk, lines: string[], addedAt: Set<number>): string | null {
+  if (h.d !== 0 || !h.removed.some((l) => DOC_TARGET.test(l))) return null;
+  if (h.c < 1 || addedAt.has(h.c) || !closesDocComment(lines, h.c - 1)) return null;
+  return `${file}:${h.c}`;
+}
+
+/** The detached-doc sites one file's hunks produce: the added-line set built once, then each
+ * hunk dispatched to the insertion and deletion shapes, collected in hunk order. */
+function docHunkSites(file: string, hunks: Hunk[], lines: string[]): { inserted: string[]; deleted: string[] } {
+  const addedAt = new Set<number>();
+  for (const h of hunks) for (let k = 0; k < h.d; k++) addedAt.add(h.c + k);
+  const inserted: string[] = [];
+  const deleted: string[] = [];
+  for (const h of hunks) {
+    const i = insertedDocSite(file, h, lines, addedAt);
+    if (i !== null) inserted.push(i);
+    else {
+      const d = deletedDocSite(file, h, lines, addedAt);
+      if (d !== null) deleted.push(d);
+    }
+  }
+  return { inserted, deleted };
+}
+
 /** (e) Doc comments the change detached from their declaration, read from the `-U0` diff of
  * JS/TS files. Insertion: a pure-add hunk lands code between a doc block and the declaration
  * below it, so the doc now describes the inserted code. Deletion: a pure-delete hunk removes a
  * declaration but leaves the doc block above it, which then documents the next declaration. */
 export async function detachedDocFindings(wt: string, diff: string): Promise<string[]> {
-  interface Hunk {
-    c: number;
-    d: number;
-    removed: string[];
-    added: string[];
-  }
   const inserted: string[] = [];
   const deleted: string[] = [];
-  const check = (file: string, hunks: Hunk[], lines: string[]): void => {
-    const addedAt = new Set<number>();
-    for (const h of hunks) for (let k = 0; k < h.d; k++) addedAt.add(h.c + k);
-    for (const h of hunks) {
-      if (h.removed.length === 0 && h.d > 0) {
-        const target = lines[h.c + h.d - 1];
-        if (
-          h.c >= 2 && !addedAt.has(h.c - 1) && closesDocComment(lines, h.c - 2) &&
-          h.added.some((l) => DOC_TARGET.test(l)) && target !== undefined && DOC_TARGET.test(target)
-        ) inserted.push(`${file}:${h.c - 1}`);
-      } else if (h.d === 0 && h.removed.some((l) => DOC_TARGET.test(l))) {
-        if (h.c >= 1 && !addedAt.has(h.c) && closesDocComment(lines, h.c - 1)) deleted.push(`${file}:${h.c}`);
-      }
-    }
-  };
   let file: string | null = null;
   let hunks: Hunk[] = [];
   let cur: Hunk | null = null;
@@ -85,7 +114,11 @@ export async function detachedDocFindings(wt: string, diff: string): Promise<str
       }
       if (isFile) {
         const text = readTextOrNull(full);
-        if (text !== null) check(file, hunks, text.split("\n"));
+        if (text !== null) {
+          const sites = docHunkSites(file, hunks, text.split("\n"));
+          inserted.push(...sites.inserted);
+          deleted.push(...sites.deleted);
+        }
       }
     }
     file = null;
