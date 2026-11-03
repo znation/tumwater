@@ -5,6 +5,110 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `test/supervisor.test.ts` "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" flaked again on 2026-10-16, after its 10-01 and 10-09 Fixed entries and the 10-11 rewrite to a SIGUSR2-driven poll (found by operator session 2026-10-16 from improve's red merge check) — closed 2026-11-03 by the operator
+
+- **Symptom:** at 07:29:28 PDT, improve's in-lock merge check for `d4b62873` failed one test: `✖ startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it — AssertionError [ERR_ASSERTION]: the orphaned grandchild's watch fired and ran its stop path`. The check ran 145 s. Recovery re-landed it green at 07:40, and it merged. That is the same assertion as the Fixed entry "The SIGKILL-grandchild supervisor test flaked twice in one 2026-10-09 window". Since then 4ec5d729 (10-11) replaced the real poll with one driven by SIGUSR2 from the test, and its comment says a loaded host "cannot stretch" the verdict. It still fails.
+- **Reproduce:** no repro; one live failure under the team's normal load.
+- **Cause:** unknown. After SIGKILLing `middle`, the test sends SIGUSR2 up to 200 times, 50 ms apart (about 10 s), and breaks out of the loop early if `process.kill(grandchildPid, …)` throws. The failure reads the same in two cases, and the message cannot tell them apart:
+  - the reparent was not visible to the grandchild's `process.ppid` within those signals;
+  - the grandchild had already exited without writing `gone`, so the loop broke on ESRCH.
+- **Expected / fix sketch:** first make the failure name its case. Record whether the loop broke on ESRCH and how many signals were sent. Have the grandchild write the `ppid()` it saw on each poll. Then fix the case that fires. Re-check the 10-09 entry's mechanism, a watch armed against the wrong baseline, on the handed-down `expectedPpid` path.
+- **Progress 2026-10-16 (bugfix):** the test's failure message now names its case: signals sent, whether the loop broke on ESRCH, the expected ppid, and the ppid the grandchild saw on each poll (a `gone.seen` file). The cause is still unknown, so the entry stays open until the next flake reads out.
+- **Progress 2026-10-16 (bugfix, second):** one candidate cause closed, unconfirmed: the test treated the existence of `started` as ready, but the grandchild created it with `writeFileSync`, so the test could read an empty or partial pid and SIGUSR2 the wrong pid (ESRCH, no `gone`). The grandchild now writes `started.tmp` and renames it. No flake has been seen since, so the entry stays open until the next failure reads out.
+- **Progress 2026-10-16 (bugfix, third):** no repro. 30 concurrent runs of the test beside 8 CPU-spinning node processes all passed (the `timeout` wrapper on the spinners did not exist on this host, so the spinners ran unbounded until `pkill`; the load was real). `startParentDeathWatch` (src/process/supervisor.ts:79-104) reads correctly on the handed-down `expectedPpid` path. No code change; the entry stays open until a flake's failure message (signals sent, ESRCH or not, ppids seen) names the case.
+- **Progress 2026-10-16 (bugfix, fourth):** one more candidate closed, unconfirmed: the signal loop was bounded by a count (200 × 50 ms), so a grandchild starved for longer than that (the 145 s check suggests heavy load) could miss every poll and the verdict was read right after. The loop is now bounded by 60 s of wall clock. The entry stays open until a flake reads out.
+
+**Needs review 2026-10-26 by bugfix: the failure message will show signals sent, whether the loop broke on ESRCH, the expected ppid, and the ppid the grandchild saw on each poll (`gone.seen`).**
+
+**Fix:** closed by the operator: no recurrence in the 18 days since 2026-10-16. Commit 82a0b7dad (2026-10-26) rewrote this test's reap check onto a pid plus start-time identity and ends the signal loop on the reparent it observes, which removes both candidate causes the Progress notes name. Its wait note, first written 2026-10-16 and restamped 2026-10-26 when Subtract 2b/6 renamed "Waiting for the next failure" to "Needs review", could only be lifted by selfcheck, whose digest never shows a flake the main watch's re-run settles, so the bug sat held with nothing able to clear it. If it fails again, the flake quarantine files it afresh with the instrumented failure message.
+
+**Validation gap:** no-repro — never reproduced offline; closed on the landed rewrite and 18 quiet days.
+
+### `a hanging fake rejects within timeoutMs and its child is gone afterwards` failed, then passed on the same tree (quarantined by tumwater 2026-10-23) — closed 2026-11-03 by the operator
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+a hanging fake rejects within timeoutMs and its child is gone afterwards
+~~~~
+
+**Progress 2026-10-23 by bugfix: not reproduced in ~35 runs — the file alone, 8 concurrent copies, and 20 concurrent copies under 6 CPU+spawn-churn load loops (all green). A controlled probe of the same detached direct child showed the SIGKILLed leader is reaped in ~12 ms even after `releaseChildHandles` unrefs it, so the 2 s `gone` poll window covers the reap by orders of magnitude — the reap-lag reading is unlikely. The remaining load-dependent candidate is pid reuse: under the full suite's thousands of concurrent spawns a freed app-server pid can be handed to another process, and `process.kill(pid, 0)` then succeeds for the whole 2 s window no matter how fast the parent reaps. Every assertion's failure message already names its numbers.**
+
+**Needs review 2026-10-26 by bugfix: which assertion fires and its figures — the `gone` assertion's `hanging app-server pid <pid> still alive` (a pid probe that can also hit a reused pid), or the rejects/pid-file assertions' messages**
+
+**Fix:** closed by the operator: quarantined once on 2026-10-23 and never again in 11 days. Commit 82a0b7dad (2026-10-26) replaced the bare-pid probe with a pid plus start-time identity, so a reused pid, the leading candidate in the Progress note, can no longer read as the app-server still alive. Its wait note, first written 2026-10-23 and restamped 2026-10-26 when Subtract 2b/6 renamed "Waiting for the next failure" to "Needs review", could only be lifted by selfcheck, whose digest never shows a flake the main watch's re-run settles, so the bug sat held with nothing able to clear it. If it fails again, the flake quarantine files it afresh.
+
+**Validation gap:** no-repro — not reproduced in about 35 loaded runs; closed on the landed identity probe and 11 quiet days.
+
+### `a revision whose re-apply conflicts reaches the author with markers, not a plain rejection` failed, then passed on the same tree (quarantined by tumwater 2026-10-24) — closed 2026-11-03 by the operator
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+- **Progress 2026-10-24 (bugfix):** not reproduced offline. The failure is `ENOENT` reading `revision-prompts.log` despite an outcome already `queued` — structurally impossible when the fake pi ran, since its first line appends to the file on every invocation; the only pi-less `queued` short-circuits (recovery `enqueued`/`relief_wait`, `stageRunMerge`) need a merge pin or a branch ahead of main, which this fresh-repo test never creates. The test is now instrumented: the fake pi touches a distinct `revision-pi-invoked` marker, and a missing prompts file fails with a dump of that marker's existence, the runner's revision/conflict-handback state, the `revision`/`merge_queued` events, and the queued merge, naming which path short-circuited. Entry stays open.
+
+**Needs review 2026-10-26 by bugfix: a pi-less `queued` short-circuit shows `pi-invoked-marker-exists: false` with the recovery/stage state naming its return; `true` means pi ran and merely wrote elsewhere, splitting the marker from the prompts path.**
+
+~~~~
+a revision whose re-apply conflicts reaches the author with markers, not a plain rejection
+~~~~
+
+**Progress 2026-10-24 by bugfix: not reproduced.** The test's fake pi appends to its prompts log
+on EVERY pi invocation (the shim's first line), and a fresh repo with no merge pin and a branch at
+main cannot reach the two pi-less `"queued"` returns — recovery `enqueued`/`relief_wait` needs a
+merge pin or a branch ahead of main, and `stageRunMerge` runs after the authoring pi — so a
+`"queued"` outcome that leaves the prompts file unwritten is structurally hard to reconcile and
+the cause must be read from the next occurrence. This run instrumented the test so it does: a
+distinct `piRan` marker plus, on a missing prompts file, a dump of the runner's post-run
+revision/conflictHandback state, the `revision`/`conflict_handback`/`merge_queued` events and the
+queued merge — settling whether the fake pi ever ran and, if not, which state/events accompanied
+the short-circuit.
+
+**Needs review 2026-10-26 by bugfix: the test now reports whether the fake pi's
+`piRan` marker exists, the runner's post-run revision/conflictHandback state, the logged
+revision/conflict_handback/merge_queued events, and the queued merge — naming a pi-less `queued`
+short-circuit (marker absent, state/events unmoved) apart from a pi run that wrote the prompts
+elsewhere (marker present).**
+
+**Fix:** closed by the operator: quarantined once on 2026-10-24 and never again in 10 days. The instrumentation that names a pi-less short-circuit stays in the test for the next failure. Its wait note, first written 2026-10-24 and restamped 2026-10-26 when Subtract 2b/6 renamed "Waiting for the next failure" to "Needs review", could only be lifted by selfcheck, whose digest never shows a flake the main watch's re-run settles, so the bug sat held with nothing able to clear it. If it fails again, the flake quarantine files it afresh with that readout.
+
+**Validation gap:** no-repro — the failure was structurally unexplained and never came back to read out.
+
+### `every PLANS.md citation in a src/ or test/ comment names an entry PLANS.md still records` failed, then passed on the same tree (quarantined by tumwater 2026-10-24) — closed 2026-11-03 by the operator
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+every PLANS.md citation in a src/ or test/ comment names an entry PLANS.md still records
+~~~~
+
+- **Progress 2026-10-24 (bugfix):** not reproduced. The gate (`test/plan-citations.test.ts` "every PLANS.md citation…") is pure over file contents: it scans the real `src/**/*.ts` and `test/**/*.ts` comment lines, extracts cited labels (banner, quoted, and bare-parenthetical shapes), and asserts each is a case-insensitive substring of some entry title from the PLANS.md union (PLANS-DONE.md carries ~12k finished plans, so a persistent stale pointer is nearly impossible; the quarantine pattern — failed, then passed on the same tree — reads as a transient label absence, not a genuine stale comment). No test or fixture writes to the real `src/`, `test/`, `PLANS.md`, or `PLANS-DONE.md` (all fixtures write under a per-process mkdtemp), so an intra-suite writer cannot mutate the scanned tree; the untested hypothesis is a cross-process archive race (tumwater's `archiveNewFinishedEntries` moving entries PLANS.md → PLANS-DONE.md concurrently with the gate's module-load read, leaving the two files momentarily inconsistent as a pair). No code change; the entry stays open.
+
+**Needs review 2026-10-26 by bugfix: the failure message already names the cause — the exact `${file}:${line} — PLANS.md "${label}"` of each stale citation; if the named label is present in the current PLANS.md/PLANS-DONE.md union at re-run, it points at the archive window above, not a code bug.**
+
+**Progress 2026-10-24 by bugfix:** not reproduced offline — the test is fully deterministic on file contents: a pure scan of the live `src/**/*.ts` and `test/**/*.ts` comment text against `planEntries` of PLANS.md + PLANS-DONE.md (case-insensitive substring match on 12675 recorded headings/Done bullets), and a scratch reimplementation over this tree reported zero stale citations. Grep of every test file and fixture shows none writes to the real `src/`, `test/`, PLANS.md, or PLANS-DONE.md (all fixtures write under a per-process mkdtemp), so the same-tree failure-then-pass cannot come from within the run. The plausible seed is the cross-process archive step — tumwater moving finished entries out of PLANS.md into the 12k-entry PLANS-DONE.md — catching the gate's module-load read at a moment the two files were momentarily inconsistent. The failure message already names the cause (the exact stale `file:line — "label"` citations), so the next flake reads out which label was transiently unmatched.
+
+**Needs review 2026-10-26 by bugfix: the failure message lists the stale `file:line — "label"` citations it found; check the unmatched label against the PLANS.md+PLANS-DONE.md union — a label that resolves on a re-run and is absent at the read moment points at the cross-process archive window (entry in neither file mid-move) rather than a persistent stale pointer.**
+
+**Fix:** closed by the operator: quarantined once on 2026-10-24 and never again in 10 days. The test's failure message already names each unmatched citation, so a recurrence reads out its cause. Its wait note, first written 2026-10-24 and restamped 2026-10-26 when Subtract 2b/6 renamed "Waiting for the next failure" to "Needs review", could only be lifted by selfcheck, whose digest never shows a flake the main watch's re-run settles, so the bug sat held with nothing able to clear it. If it fails again, the flake quarantine files it afresh.
+
+**Validation gap:** no-repro — the suspected cross-process archive window was never caught.
+
+### `the spawned runner under --coverage ends with node's coverage table and leaves the durations ledger alone` failed, then passed on the same tree (quarantined by tumwater 2026-10-25) — closed 2026-11-03 by the operator
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+the spawned runner under --coverage ends with node's coverage table and leaves the durations ledger alone
+~~~~
+
+- **Progress 2026-10-25 (bugfix):** not reproduced. The test (`test/test-runner.test.ts` "the spawned runner under --coverage …") spawns `dist/test/test-runner.js --coverage json-object` and asserts (a) node's coverage-table structural lines (`running 1 test file(s)`, `ℹ file | line %`, `ℹ all files`, no `ℹ test/`) and (b) `dist/test/.durations.json` byte-identity between two reads. Both are deterministic here: 40 isolated runs green; node's table byte-identical over 30 sequential and 24 concurrent `--coverage json-object` runs (all 24 hashes equal, `all files`/table header always present, `test/` never listed — the `**/test/**` exclude holds); and one full-suite run (the check's own invocation) left this test green (its only failure was an unrelated pre-existing `docs/cli.md` doc test). On the durations side the only writer of the real `.durations.json` is this file's own sequential nested runs (grep: no other test or src writes it; `recordDurations` is skipped whenever `coverage` is set, and `writeAtomic` is tmp+rename), and the outer full-suite runner's final `recordDurations` runs only after its single `spawnSync` of all children returns, so no writer overlaps the test's before/after window. No in-repo race or load-sensitive table flip surfaced; the failure reads as an environmental one-off. No code change; the entry stays open.
+
+**Needs review 2026-10-26 by bugfix: the failure message names the exact assertion, so the next flake reads which line broke — if it is the `.durations.json` byte-identity assert, check whether an outer run's final `recordDurations` overlapped a nested writer (`before` vs `after` diff in the output); if it is a coverage-table line, the `**/test/**` exclude or the `all files` row under peak process contention; if it is `status`, the nested spawn itself.**
+
+**Fix:** closed by the operator: quarantined once on 2026-10-25 and never again in 9 days. The test's failure message names the assertion that broke, so a recurrence reads out its cause. Its wait note, first written 2026-10-25 and restamped 2026-10-26 when Subtract 2b/6 renamed "Waiting for the next failure" to "Needs review", could only be lifted by selfcheck, whose digest never shows a flake the main watch's re-run settles, so the bug sat held with nothing able to clear it. If it fails again, the flake quarantine files it afresh.
+
+**Validation gap:** no-repro — 40 isolated and 24 concurrent runs stayed green; read as an environmental one-off.
+
 ### The Fast-merge-guardrail line names a doc-only merge as the red's opener when the breaking code commit landed in the same poll interval (found by the selfcheck role 2026-11-02) — fixed 2026-11-02 by the bugfix role
 
 - **Symptom:** the 2026-11-02 digest's `## Fast merge guardrails` line reads `main has had no passing full check for 377 min: red since 487d87fc at 03:50 — no exported symbol goes unused outside its own file`. It names 487d87fc (`tumwater(bugfix): Close BUGS.md stranded-plan entry`, diff touching only `BUGS.md` and `BUGS-FIXED.md` — a doc-only commit) as the commit main has been red since. But 487d87fc is the direct child of 8ed0d3ee (`git rev-parse 487d87fc^` = 8ed0d3ee), `tumwater(feature): Remove the gate's pre-merge build check (Subtract part 3b/7)`, a code commit that orphaned 8 exported symbols (e.g. `unverifiedTreeOutcome`, `redCheckHeadline`, `isKnownFlake`, the two `phrases.ts` keys, `warningMessagesOf`, `rowReader`, `checkRunNumber`) — which is exactly what the failing test, `test/exports.test.ts` "no exported symbol goes unused outside its own file", reports. A doc-only diff cannot change an exports verdict, so 487d87fc cannot be the opener; the true opener is 8ed0d3ee.
