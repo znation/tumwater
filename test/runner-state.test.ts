@@ -96,15 +96,17 @@ test("saveRunnerState creates the state dir and round-trips without leaving a te
 test("allLiveClaims serves an unchanged state dir from its map cache and re-derives when a claim write changes it", (t) => {
   const dir = tmpdir();
   const stateDir = path.dirname(statePath(dir, "feature-2"));
-  // Distinct dir stamps regardless of filesystem timestamp granularity: the map cache keys on
-  // the state directory's own stat, and a coarse clock could otherwise hand a tmp+rename the
-  // same stamp as the previous write.
-  const bump = (ms: number): void => backdate(stateDir, ms);
+  // Put the directory's stamp in the past so the next real claim write (a tmp+rename, which
+  // moves the directory's mtime to now) is guaranteed to differ from the stamp the cache
+  // recorded — on a coarse clock too. The write itself, not a manual utimes, must be what
+  // invalidates the map: that is the production mechanism (and the RISK) this test exists to
+  // pin, so a save that failed to bump the directory's stat must fail the test.
+  const ageDir = (ms: number): void => backdate(stateDir, ms);
   const claim = (key: string) => ({ file: "PLANS.md" as const, key, title: key, at: 1, source: "assigned" as const });
 
   assert.deepEqual([...allLiveClaims(dir)], [], "no state directory reads as no claims");
   saveRunnerState(dir, { ...loadRunnerState(dir, "feature-2"), claim: claim("alpha") });
-  bump(-5000);
+  ageDir(5000);
   assert.deepEqual([...allLiveClaims(dir)], [["alpha", "feature-2"]]);
 
   // Cache hit: the state directory's stat is unchanged, so a repeat call must serve the whole
@@ -137,15 +139,17 @@ test("allLiveClaims serves an unchanged state dir from its map cache and re-deri
   }
   assert.equal(roleFileStats, 0, "a hit must not stat the individual role state files");
 
-  // The release reaches the map: the atomic save bumps the directory's stat, so the cached map
-  // must miss and rebuild without the claim.
+  // The release reaches the map: the atomic save's tmp+rename moves the directory's stat to
+  // real now, distinct from the cached past stamp, so the cache must miss and rebuild without
+  // the claim even though nothing else touched the directory.
   saveRunnerState(dir, { ...loadRunnerState(dir, "feature-2"), claim: undefined });
-  bump(-10000);
   assert.deepEqual([...allLiveClaims(dir)], []);
 
-  // A changed claim key is likewise visible.
+  // A changed claim key is likewise visible: seed the cache with a past stamp again, then let
+  // the next real write move it.
+  ageDir(5000);
+  assert.deepEqual([...allLiveClaims(dir)], []);
   saveRunnerState(dir, { ...loadRunnerState(dir, "feature-2"), claim: claim("beta") });
-  bump(-15000);
   assert.deepEqual([...allLiveClaims(dir)], [["beta", "feature-2"]]);
 });
 
