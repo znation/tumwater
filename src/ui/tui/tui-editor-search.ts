@@ -1,6 +1,22 @@
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
+type SearchTarget = "history" | "activity" | "backlog" | "queued" | "transcript";
+
+/** Which pane the shared `/` search feeds on each of its views: over the History pane's run
+ * rows on History, over the Activity feed's events on Activity, and over the Backlog pane's
+ * active entries on Backlog, over the Inbox pane's queued prompts, and over a role's live
+ * transcript on a roster view outside note/change mode. Null on any other view, where `/`
+ * types into the prompt instead. */
+function searchTargetFor(ctx: TuiEditorCtx): SearchTarget | null {
+  if (ctx.view === 0) return "activity";
+  if (ctx.view === ctx.roleIds.length + 1) return "backlog";
+  if (ctx.view === ctx.roleIds.length + 4) return "history";
+  if (ctx.view === ctx.roleIds.length + 6) return "queued";
+  if (ctx.view >= 1 && ctx.view <= ctx.roleIds.length && !ctx.noteMode && !ctx.changeMode) return "transcript";
+  return null;
+}
+
 /** The shared `/` search editor on the prompt line: over the History pane's run rows or the
  * Activity feed's events. It owns its mode flag (`searchMode`), its target pane (`searchFor`),
  * its saved-draft pair, and the applyHistorySearch / applyActivitySearch leaves. Mutually
@@ -10,7 +26,7 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
   // Which pane the shared `/` editor feeds: History's run search, Activity's event search, the
   // Backlog pane's entry search, or a role's live-transcript search. The target is captured when
   // `/` opens so a roster change mid-edit cannot retarget Enter.
-  let searchFor: "history" | "activity" | "backlog" | "queued" | "transcript" = "history";
+  let searchFor: SearchTarget = "history";
   const draft = savedPromptDraft(session);
 
   // Leave the shared search editor (Enter applies, Esc cancels, Ctrl+T cycles): restore the
@@ -25,26 +41,15 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
   };
 
   // `/` opens a free-text search on the prompt line (the pager's search key; this project
-  // already reserves `/` for a meta action): over the History pane's run rows on History,
-  // over the Activity feed's events on Activity, and over the Backlog pane's active entries
-  // on Backlog, over the Inbox pane's queued prompts, and over a role's live transcript.
-  // Guarded to those views and to an empty line, so elsewhere it types into the prompt as
-  // today and a director draft is never disturbed. Pre-fills the applied pattern so Enter
-  // re-submits it and the operator can edit it; Esc cancels without applying.
+  // already reserves `/` for a meta action), over the views searchTargetFor names. Guarded to
+  // those views and to an empty line, so elsewhere it types into the prompt as today and a
+  // director draft is never disturbed. Pre-fills the applied pattern so Enter re-submits it
+  // and the operator can edit it; Esc cancels without applying.
   const openSearchEdit = (ctx: TuiEditorCtx): boolean => {
-    if (
-      searchMode || session.anyEditorHeld() || session.input !== "" ||
-      !(
-        ctx.view === 0 || ctx.view === ctx.roleIds.length + 1 || ctx.view === ctx.roleIds.length + 4 || ctx.view === ctx.roleIds.length + 6 ||
-        (ctx.view >= 1 && ctx.view <= ctx.roleIds.length && !ctx.noteMode && !ctx.changeMode)
-      )
-    ) return false;
+    const target = searchTargetFor(ctx);
+    if (searchMode || session.anyEditorHeld() || session.input !== "" || target === null) return false;
     draft.save();
-    if (ctx.view === 0) searchFor = "activity";
-    else if (ctx.view === ctx.roleIds.length + 1) searchFor = "backlog";
-    else if (ctx.view === ctx.roleIds.length + 4) searchFor = "history";
-    else if (ctx.view === ctx.roleIds.length + 6) searchFor = "queued";
-    else searchFor = "transcript";
+    searchFor = target;
     searchMode = true;
     session.held.search = true;
     const applied = { activity: ctx.activityGrep, history: ctx.trailSearch ? ctx.trailGrep : ctx.historyGrep, backlog: ctx.backlogGrep, queued: ctx.queuedGrep, transcript: ctx.transcriptGrep }[searchFor];
