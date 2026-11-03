@@ -46,9 +46,6 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
     return true;
   };
 
-  // A Ctrl+N on any other state (not the Backlog view's new-entry slot, or an editor
-  // already holding the line) is the notes/change/trail cycle, a pane arm the outer
-  // dispatch handles — this factory returns false so it runs.
   const openNewEntry = (): boolean => {
     draft.save();
     entryEditFor = { kind: "plan", position: null, title: "" };
@@ -204,18 +201,28 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
     return true;
   };
 
+  // A Ctrl+N on any other state (not the Backlog view's new-entry slot, or an editor
+  // already holding the line) is the notes/change/trail cycle, a pane arm the outer
+  // dispatch handles — this factory returns false so it runs.
+  const handleNewEntryKey = (ctx: TuiEditorCtx): boolean => {
+    if (entryEditFor !== null && entryEditFor.position === null) return flipNewEntryKind();
+    if (ctx.view === ctx.roleIds.length + 1 && !session.anyEditorHeld()) return openNewEntry();
+    return false;
+  };
+
+  const handleEditKey = (ctx: TuiEditorCtx): boolean => {
+    if (entryEditFor !== null && entryEditFor.position !== null) return toggleEntryFileField();
+    if (!session.anyEditorHeld() && ctx.view === ctx.roleIds.length + 1 && ctx.selectedEntry !== null) return openSelectedEntry(ctx);
+    return false;
+  };
+
   const handleKey = (
     _str: string | undefined,
     key: { ctrl?: boolean; name?: string },
     ctx: TuiEditorCtx,
   ): boolean => {
-    if (key.ctrl && key.name === "n") {
-      if (entryEditFor !== null && entryEditFor.position === null) return flipNewEntryKind();
-      if (ctx.view === ctx.roleIds.length + 1 && !session.anyEditorHeld()) return openNewEntry();
-      return false;
-    }
-    if (key.ctrl && key.name === "e" && entryEditFor !== null && entryEditFor.position !== null) return toggleEntryFileField();
-    if (key.ctrl && key.name === "e" && !session.anyEditorHeld() && ctx.view === ctx.roleIds.length + 1 && ctx.selectedEntry !== null) return openSelectedEntry(ctx);
+    if (key.ctrl && key.name === "n") return handleNewEntryKey(ctx);
+    if (key.ctrl && key.name === "e") return handleEditKey(ctx);
     if (key.name === "escape" && entryEditFor) return cancelEntryEdit();
     if (key.name === "return" && entryEditFor) return commitEntryEdit();
     return false;
