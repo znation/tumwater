@@ -306,9 +306,8 @@ export const FOLLOW_FLAG: FlagSpec = { names: ["-f", "--follow"] };
 /** Whether an arg array carries the `-f/--follow` flag — the detection every follow-capable
  * command body spelled out as an `includes("-f") || includes("--follow")` one-liner over
  * its own arg array (`args` for status, queue, reviews, report, diff and quarantine; `rest`
- * for logs, history and backlog). Now derived from FOLLOW_FLAG's own spelling, so the detection cannot
- * drift from
- * the gate's accepted vocabulary. */
+ * for logs, history and backlog). Now derived from FOLLOW_FLAG's own spelling, so it cannot
+ * drift from the gate's accepted vocabulary. */
 export function hasFollowFlag(args: readonly string[]): boolean {
   return FOLLOW_FLAG.names.some((name) => args.includes(name));
 }
