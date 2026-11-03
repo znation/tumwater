@@ -5,7 +5,7 @@
 // of both lives one layer up in src/report/report-render.ts (test/report.test.ts); these tests
 // pin the collectors' data contract.
 
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { collectReport } from "../src/report/report-data.js";
@@ -21,6 +21,18 @@ import { patchFsMethod } from "./helpers/fs-faults.js";
 
 // The report buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
 // (never UTC strings) and compute expected keys the same way (dayKey).
+
+// The --since window's cutoff is Date.now() minus sinceMs, and Date.now() also seeds the
+// fixtures — with the live clock, the time between seeding and reading stretches under host
+// load, so the fromIso stamp could only be asserted within a tolerance. Pinning Date for the
+// whole test (node:test's mock, as inbox.test.ts does; the test context restores it after) makes
+// the cutoff exact, so the stamp is asserted as one instant. A fixed epoch (2026, far from the
+// window edges) keeps every local-day key the fixtures expect.
+const PINNED_NOW = Date.UTC(2026, 6, 15, 12, 0, 0);
+function pinDate(t: TestContext): void { // retired-name-ok: node:test mock clock
+  t.mock.timers.enable({ apis: ["Date"], now: PINNED_NOW });
+  t.after(() => t.mock.timers.reset());
+}
 
 test("collectReport buckets run_end/merged events by local day and totals them", () => {
   const root = tmpdir();
@@ -722,9 +734,9 @@ test("collectReport degrades to zeros when every source is missing", () => {
 
 // ---- report --since <duration> ----
 
-test("collectReportSince totals a trailing window: cutoff filter, role split, and coverage proofs", () => {
+test("collectReportSince totals a trailing window: cutoff filter, role split, and coverage proofs", (t) => {
   const root = tmpdir();
-  const cutoff = ago(6 * HOUR); // Recompute the expected cutoff below from the returned sinceMs.
+  pinDate(t); // ago() and the collector's Date.now() then read the same fixed instant
   writeEvents(root, [
     // Oldest: 7h ago — outside the 6h window (and older than the cutoff instant, so it proves
     // the retained log reaches back past the window start even when its local day matches the
@@ -742,11 +754,9 @@ test("collectReportSince totals a trailing window: cutoff filter, role split, an
   const data = collectReportSince(root, 6 * HOUR);
 
   assert.equal(data.sinceMs, 6 * HOUR);
-  const cutoffIso = new Date(cutoff).toISOString();
-  assert.ok(
-    Math.abs(Date.parse(data.fromIso) - Date.parse(cutoffIso)) < 60_000,
-    `fromIso ${data.fromIso} is the window's cutoff instant (±1min for test elapsed time)`,
-  );
+  // With the clock pinned, the cutoff is exactly the pinned instant minus six hours — no
+  // tolerance for the time the test itself takes to run.
+  assert.equal(data.fromIso, new Date(PINNED_NOW - 6 * HOUR).toISOString());
   assert.equal(data.totals.runs, 2);
   assert.equal(data.totals.tokensOut, 100);
   assert.equal(data.totals.commits, 1);

@@ -5,7 +5,7 @@
  * whole suite — src/ui/status-model.ts now has its tests under its own name and its own
  * fixture imports (shared builders live in status-fixtures.ts). The header badges travel
  * with their module in test/badges.test.ts. */
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { backdate } from "./helpers/backdate.js";
@@ -28,6 +28,15 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { GATE_SESSION, SESSION, snapshotWith, toolStart, writePiLog } from "./fixtures/status-fixtures.js";
 
+// Pin the wall clock for the whole test so a fixture's elapsed span — between seeding a
+// start time and reading the label it renders — is exact: the labels read Date.now(), and
+// with the live clock, time stretches between seeding and reading under host load (the same
+// mock-Date pattern inbox.test.ts uses; node:test restores Date after each test, so one
+// test's pin never leaks into its siblings).
+function pinDate(t: TestContext): void { // retired-name-ok: node:test mock clock
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+}
+
 test("a parked waiter renders plain waiting-to-start wording", () => {
   const root = tmpdir();
   const s = freshRunnerState("clean");
@@ -38,13 +47,13 @@ test("a parked waiter renders plain waiting-to-start wording", () => {
   assert.match(phase(s), /^waiting to start 2m/);
 });
 
-test("workingDetail without a pi log shows only the elapsed time", () => {
+test("workingDetail without a pi log shows only the elapsed time", (t) => {
   const root = tmpdir();
   assert.equal(workingDetail(root, freshRunnerState("clean")), "working");
   const s = freshRunnerState("clean");
+  pinDate(t); // then seeding and formatting read the same instant
   s.lastRunStartedAt = Date.now() - 90_000;
-  // ±1s of drift between setting the timestamp and formatting it.
-  assert.match(workingDetail(root, s), /^working 1m(29|30|31)s$/);
+  assert.equal(workingDetail(root, s), "working 1m30s");
 });
 
 test("workingDetail folds live progress into turn, context, and last tool", () => {
@@ -83,8 +92,9 @@ test("workingDetail flags a stalled run only after at least five minutes of sile
   assert.match(workingDetail(root, freshRunnerState("clean")), /no agent output for 6m/);
 });
 
-test("a run's baseline check shows no previous run's detail and no false quiet alarm", () => {
+test("a run's baseline check shows no previous run's detail and no false quiet alarm", (t) => {
   const root = tmpdir();
+  pinDate(t); // then seeding, backdating, and reading all share the same instant
   // The log's newest write is the PREVIOUS run's: 29 minutes old — past the five-minute
   // stall threshold — carrying that run's turn count, context, and last tool call.
   const file = writePiLog(root, "clean", [
@@ -104,7 +114,7 @@ test("a run's baseline check shows no previous run's detail and no false quiet a
   assert.equal(rolePhase(s, true, root), "working 1m39s");
   // Once the current agent run writes its first line, the live detail returns.
   fs.appendFileSync(file, SESSION + "\n" + assistantLine("this run's first words", { tokens: 4_100 }) + "\n");
-  assert.match(workingDetail(root, s), /^working 1m(39|40|41)s · turn 2 · ctx 4100$/, workingDetail(root, s));
+  assert.equal(workingDetail(root, s), "working 1m39s · turn 2 · ctx 4100");
 });
 
 test("a quiet tail predating the run never reaches the token metrics either", async () => {
@@ -232,13 +242,13 @@ test("rolePhase live detail degrades to plain working when the run has no start 
   assert.equal(rolePhase(s, true, root), "working · turn 2 · ctx 3000");
 });
 
-test("rolePhase shows the review gate label without a log to read from", () => {
+test("rolePhase shows the review gate label without a log to read from", (t) => {
   const s = freshRunnerState("feature");
   s.running = true;
   s.phase = "review";
+  pinDate(t); // then seeding and formatting read the same instant
   s.lastRunStartedAt = Date.now() - 90_000;
-  // ±1s of drift between setting the timestamp and formatting it.
-  assert.match(rolePhase(s, true), /^reviewing 1m(29|30|31)s$/);
+  assert.equal(rolePhase(s, true), "reviewing 1m30s");
 
   const bare = freshRunnerState("feature");
   bare.running = true;
@@ -282,7 +292,8 @@ test("rolePhase flags a stalled reviewer run after five minutes of silence", () 
 // table, TUI, and GUI — was untested. The review-gate label is the purest read of it (no log
 // tail involved); the stall flag covers its second call site.
 
-test("elapsed labels bucket into hours once a run passes an hour", () => {
+test("elapsed labels bucket into hours once a run passes an hour", (t) => {
+  pinDate(t); // then each seeded start and its label share the same instant
   const reviewing = (msAgo: number): string => {
     const s = freshRunnerState("feature");
     s.running = true;
@@ -294,9 +305,9 @@ test("elapsed labels bucket into hours once a run passes an hour", () => {
   // Two and a half hours in: floor to whole hours, minutes rounded — not 150m.
   assert.match(reviewing((2 * 3600 + 30 * 60) * 1000), /^reviewing 2h30m$/);
 
-  // The bucket boundary: ten seconds under an hour stays in the minutes branch (59m5Xs),
+  // The bucket boundary: ten seconds under an hour stays in the minutes branch (59m50s),
   // and at exactly an hour the label switches to hours with zero minutes.
-  assert.match(reviewing((3600 - 10) * 1000), /^reviewing 59m(49|50|51)s$/);
+  assert.equal(reviewing((3600 - 10) * 1000), "reviewing 59m50s");
   assert.match(reviewing(3600 * 1000), /^reviewing 1h0m$/);
 
   // The rounding carry at the top of the hour: 1h59m59s rounds to 60 minutes, which must
@@ -816,14 +827,15 @@ test("a parked waiter renders `waiting to start` and stays out of the active set
 // running director must not render as a permit-holder `working` row or inflate the active set
 // an operator counts against the cap. It gets a phase of its own that isActivePhase excludes,
 // ranks ahead of the permit holders (rank -1), and keeps its live work visible.
-test("a running director renders its own phase, outside the cap's active set", () => {
+test("a running director renders its own phase, outside the cap's active set", (t) => {
   const d = freshRunnerState("director");
   d.running = true;
   assert.equal(rolePhase(d, true), "director working");
   assert.equal(rolePhase(freshRunnerState("director"), true), "ready for messages", "an idle director keeps its exempt label");
   const root = tmpdir();
+  pinDate(t); // then seeding and formatting read the same instant
   d.lastRunStartedAt = Date.now() - 90_000;
-  assert.match(rolePhase(d, true, root), /^director working 1m(29|30|31)s$/);
+  assert.equal(rolePhase(d, true, root), "director working 1m30s");
   // Its own label is not a permit-holder phase: the active set against the cap is permit holders.
   assert.equal(isActivePhase(rolePhase(d, true)), false);
   assert.equal(isActivePhase("working 5s"), true);
