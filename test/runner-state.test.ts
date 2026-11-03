@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { freshRunnerState, saveRunnerState, zeroCounters } from "../src/runner/runner-state.js";
-import { loadRunnerState } from "../src/runner/runner-state-load.js";
+import { allLiveClaims, loadRunnerState } from "../src/runner/runner-state-load.js";
 import { isTeamPaused, pauseTeam, resumeTeam } from "../src/team/team-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { dailyCost, todayStamp } from "../src/budget/budget.js";
@@ -17,6 +17,7 @@ import { withIdlePi } from "./fakes/fake-pi.js";
 import { patchFsMethod, errnoError } from "./helpers/fs-faults.js";
 import { writeOrchestratorMarker, warningMessages } from "./fixtures/log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
+import { backdate } from "./helpers/backdate.js";
 
 /** The persisted-state file's own tests (src/runner/runner-state.ts): fresh defaults, the tolerant
  * load,
@@ -90,6 +91,62 @@ test("saveRunnerState creates the state dir and round-trips without leaving a te
   const stateDir = path.dirname(statePath(dir, "feature"));
   assert.deepEqual(fs.readdirSync(stateDir), ["feature.json"], "no .tmp leftovers");
   assert.deepEqual(loadRunnerState(dir, "feature"), s);
+});
+
+test("allLiveClaims serves an unchanged state dir from its map cache and re-derives when a claim write changes it", (t) => {
+  const dir = tmpdir();
+  const stateDir = path.dirname(statePath(dir, "feature-2"));
+  // Distinct dir stamps regardless of filesystem timestamp granularity: the map cache keys on
+  // the state directory's own stat, and a coarse clock could otherwise hand a tmp+rename the
+  // same stamp as the previous write.
+  const bump = (ms: number): void => backdate(stateDir, ms);
+  const claim = (key: string) => ({ file: "PLANS.md" as const, key, title: key, at: 1, source: "assigned" as const });
+
+  assert.deepEqual([...allLiveClaims(dir)], [], "no state directory reads as no claims");
+  saveRunnerState(dir, { ...loadRunnerState(dir, "feature-2"), claim: claim("alpha") });
+  bump(-5000);
+  assert.deepEqual([...allLiveClaims(dir)], [["alpha", "feature-2"]]);
+
+  // Cache hit: the state directory's stat is unchanged, so a repeat call must serve the whole
+  // map without re-reading any role's state file.
+  const original = fs.readFileSync.bind(fs);
+  let reads = 0;
+  t.mock.method(fs, "readFileSync", ((...args: unknown[]) => {
+    if (typeof args[0] === "string" && args[0].startsWith(stateDir + path.sep)) reads++;
+    return original(...(args as [string | URL, "utf8"]));
+  }) as typeof fs.readFileSync);
+  try {
+    assert.deepEqual([...allLiveClaims(dir)], [["alpha", "feature-2"]]);
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.equal(reads, 0, "an unchanged state directory must not re-read the role state files");
+
+  // …and a hit stats no individual role file: the whole-map cache subsumes the per-file stat
+  // walk allLiveClaims used to redo on every call.
+  const originalStat = fs.statSync.bind(fs);
+  let roleFileStats = 0;
+  t.mock.method(fs, "statSync", ((...args: unknown[]) => {
+    if (typeof args[0] === "string" && path.dirname(args[0]) === stateDir) roleFileStats++;
+    return originalStat(...(args as [string]));
+  }) as typeof fs.statSync);
+  try {
+    assert.deepEqual([...allLiveClaims(dir)], [["alpha", "feature-2"]]);
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.equal(roleFileStats, 0, "a hit must not stat the individual role state files");
+
+  // The release reaches the map: the atomic save bumps the directory's stat, so the cached map
+  // must miss and rebuild without the claim.
+  saveRunnerState(dir, { ...loadRunnerState(dir, "feature-2"), claim: undefined });
+  bump(-10000);
+  assert.deepEqual([...allLiveClaims(dir)], []);
+
+  // A changed claim key is likewise visible.
+  saveRunnerState(dir, { ...loadRunnerState(dir, "feature-2"), claim: claim("beta") });
+  bump(-15000);
+  assert.deepEqual([...allLiveClaims(dir)], [["beta", "feature-2"]]);
 });
 
 // A state file whose JSON carries a different `role` than its name — the stale-role split
