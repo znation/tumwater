@@ -141,6 +141,49 @@ function inheritsTierModel(
   );
 }
 
+/** The inherited top selector — the tier's selector when the seam inherits the tier's model,
+ * else none (the seam's own selector or provider stands alone). */
+function inheritedTopSelector(top: TopTier, inherit: boolean): ModelSelector | undefined {
+  return inherit ? top.sel : undefined;
+}
+
+/** The effective backend of the seam: an own model's explicit backend wins; else the tier's
+ * explicit backend when the seam inherits it; else the seam's own (a backend-only seam). */
+function effectiveSeamBackend(
+  top: TopTier,
+  o: { provider?: string; model?: string; backend?: string; thinking?: string },
+  inherit: boolean,
+): string | undefined {
+  return o.model !== undefined ? o.backend : inherit ? top.backend : o.backend;
+}
+
+/** The effective provider/model of the seam: the own selector wins both halves, else the seam's
+ * provider over the inherited selector's over the top-level, and the inherited model. */
+function effectiveSeamSelector(
+  config: TumwaterConfig,
+  o: { provider?: string; model?: string; backend?: string; thinking?: string },
+  ownSel: ModelSelector | undefined,
+  topSel: ModelSelector | undefined,
+): { provider?: string; model?: string } {
+  const provider = ownSel ? ownSel.provider : (o.provider ?? topSel?.provider ?? config.provider);
+  const model = ownSel ? ownSel.model : topSel?.model;
+  return { provider, model };
+}
+
+/** The effective thinking level of the seam: an explicit key beats the own selector's suffix,
+ * which beats the tier's (the tier's thinking rides every path but a backend-only seam whose
+ * tier routes elsewhere), which beats the top level. */
+function effectiveSeamThinking(
+  config: TumwaterConfig,
+  top: TopTier,
+  o: { provider?: string; model?: string; backend?: string; thinking?: string },
+  ownSel: ModelSelector | undefined,
+  inherit: boolean,
+): string | undefined {
+  const topThinking = o.model === undefined && !inherit ? undefined : (top.sel?.thinking ?? top.thinking);
+  return o.thinking ?? ownSel?.thinking ?? topThinking ?? config.thinking;
+}
+
 /** The effective provider/model/thinking resolve — fold the tier's thinking level, the own or
  * inherited selector, the backend, and the routed result into the triple the caller spreads. */
 function resolveEffectiveModel(
@@ -152,19 +195,16 @@ function resolveEffectiveModel(
   ownSel: ModelSelector | undefined,
   inherit: boolean,
 ): { provider?: string; model?: string; thinking?: string; agent: string } {
-  // The tier's thinking level rides every path but a backend-only role whose tier routes elsewhere.
-  const topThinking = o.model === undefined && !inherit ? undefined : (top.sel?.thinking ?? top.thinking);
-  const topSel = inherit ? top.sel : undefined;
-  const backend = o.model !== undefined ? o.backend : inherit ? top.backend : o.backend;
-  const provider = ownSel ? ownSel.provider : (o.provider ?? topSel?.provider ?? config.provider);
-  const model = ownSel ? ownSel.model : topSel?.model;
+  const topSel = inheritedTopSelector(top, inherit);
+  const backend = effectiveSeamBackend(top, o, inherit);
+  const { provider, model } = effectiveSeamSelector(config, o, ownSel, topSel);
   // The routed backend decides whether the provider half survives: a pi provider name is kept,
   // a backend namespace such as `claude` is dropped (that backend takes no provider).
   const routed = routeModel(provider, model, configBackend, tier, backend);
   return {
     provider: routed.agent === "pi" ? provider : undefined,
     model: routed.model,
-    thinking: o.thinking ?? ownSel?.thinking ?? topThinking ?? config.thinking,
+    thinking: effectiveSeamThinking(config, top, o, ownSel, inherit),
     agent: routed.agent,
   };
 }
