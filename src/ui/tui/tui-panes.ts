@@ -83,38 +83,59 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     };
   };
 
+  /** The ordered modules whose leaving-view snapshots a Ctrl+T cycle drops. */
+  const viewResettingPanes = [activity, transcript, backlog, history, pending, queued];
+
+  /** A cycle away drops each pane's leaving-view snapshot first, so re-entering any pane
+   * starts at today's list/head/live tail (the notes/change/trail modes, the entry and
+   * queued-row selections, and the activity scroll all reset here). */
+  const resetPaneViews = (): void => {
+    for (const pane of viewResettingPanes) pane.reset?.();
+  };
+
+  /** True when a usage/failures/history pane painted its cached body. */
+  const enterPaintedPane = (): boolean =>
+    Boolean(report.enter?.() || history.enter?.());
+
+  /** The indexed pane enters: each fires at the roster's length plus its offset. */
+  const indexedPaneEntries = [
+    { offset: 5, enter: () => { pending.enter?.(); } },
+    { offset: 6, enter: () => { queued.enter?.(); } },
+    { offset: 7, enter: () => { health.enter?.(); } },
+    { offset: 8, enter: () => { brief.enter?.(); } },
+  ];
+
+  /** Enter the indexed pane for `view` (pending, queued, health, brief at N+5 through
+   * N+8); true when one matched. The roster length is read at call time, so the four
+   * indices move when the roster changes. */
+  const enterIndexedPane = (view: number): boolean => {
+    for (const entry of indexedPaneEntries) {
+      if (view === session.roleIds.length + entry.offset) {
+        entry.enter();
+        return true;
+      }
+    }
+    return false;
+  };
+
+  /** Enter the view a cycle just advanced to: a painted pane or an indexed pane wins; every
+   * other view clears the Markdown pane cache — computed once per activation (this handler
+   * renders immediately, so a visit's first frame is fresh and later frames only re-window)
+   * and dropped on leaving. */
+  const enterCycledView = (): void => {
+    if (enterPaintedPane()) return;
+    if (enterIndexedPane(session.view)) return;
+    session.paneCache = null;
+  };
+
   /** The pane half of Ctrl+T: the shell has already exited every open editor. */
   const cycleView = (): void => {
-    // A cycle away drops each pane's leaving-view snapshot first, so re-entering any pane
-    // starts at today's list/head/live tail (the notes/change/trail modes, the entry and
-    // queued-row selections, and the activity scroll all reset here).
-    activity.reset?.();
-    transcript.reset?.();
-    backlog.reset?.();
-    history.reset?.();
-    pending.reset?.();
-    queued.reset?.();
+    resetPaneViews();
     // Advance the view: events → each role's transcript → project status → usage report →
     // failures → history → pending → queued → health → brief → events.
     session.view = (session.view + 1) % (session.roleIds.length + 9);
     session.paneScroll = 0; // the Markdown panes always re-enter at their head
-    // Compute the pane's Markdown once per activation (this handler renders immediately), and
-    // drop it on leaving — a visit's first frame is fresh, later frames only re-window. The
-    // usage/failures/history panes paint through their enter; pending, queued, health, and
-    // brief have their own enter bodies; every other view clears the cache.
-    if (report.enter?.() || history.enter?.()) {
-      // a usage/failures/history pane painted its cached body
-    } else if (session.view === session.roleIds.length + 5) {
-      pending.enter?.();
-    } else if (session.view === session.roleIds.length + 6) {
-      queued.enter?.();
-    } else if (session.view === session.roleIds.length + 7) {
-      health.enter?.();
-    } else if (session.view === session.roleIds.length + 8) {
-      brief.enter?.();
-    } else {
-      session.paneCache = null;
-    }
+    enterCycledView();
     session.requestRender();
   };
 
