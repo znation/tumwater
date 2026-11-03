@@ -154,6 +154,150 @@ export function noteSkip(root: string, runner: RoleRunner, reason: SkipReason | 
   saveRunnerStateBestEffort(root, runner.state);
 }
 
+/** Parallel work instances (plans/parallel-work-instances.md "Claims", part 4/7): a base role
+ * with more than one runner assigns each due instance a distinct eligible entry, and releases
+ * the claims whose entry left, turned ineligible, was disabled or went stale. Computed once
+ * per poll and only for a multi-runner base, so a single-runner team is unchanged. The
+ * release runs before the pass's per-runner assignment, so a freed key counts as free. */
+async function collectClaimGroups(
+  root: string,
+  runners: readonly RoleRunner[],
+  pausedRoles: ReadonlySet<string>,
+  now: number,
+): Promise<Map<string, ClaimGroup>> {
+  const claimGroups = new Map<string, ClaimGroup>();
+  const baseCounts = new Map<string, number>();
+  for (const runner of runners) {
+    const base = baseRoleOf(runner.role);
+    increment(baseCounts, base);
+  }
+  for (const [base, count] of baseCounts) {
+    if (count <= 1) continue;
+    const groupRunners = runners.filter((r) => baseRoleOf(r.role) === base);
+    const eligible = eligibleEntries(root, base);
+    const eligibleKeys = new Set(eligible.map((e) => e.key));
+    const listed = listedKeys(root, base);
+    // A group whose runner is mid-entry with no recorded claim (it took the entry while it was
+    // the only runner, before a live reload raised `instances`) cannot be told WHICH entry that
+    // is from state alone. Assigning a free entry to a sibling could then hand it the same
+    // work: hold the whole group's assignment until that runner settles (merges, drops or goes
+    // idle), at which point its own staging may have recorded a claim. A busy runner that DOES
+    // hold a claim is fine — `held` excludes its key and siblings take other entries.
+    const hold = await releaseClaims(root, groupRunners, listed, eligibleKeys, pausedRoles, base, now);
+    claimGroups.set(base, {
+      eligible,
+      eligibleKeys,
+      held: heldKeys(groupRunners, eligibleKeys, listed),
+      hold,
+    });
+  }
+  return claimGroups;
+}
+
+/** One claim group's release pass (the poll's "which claims does this poll release?"): for each
+ * of the group's runners, record the group hold (a mid-entry runner with no claim), test its
+ * claim for a release, and on release persist the runner state, log the release, warn on a
+ * stale release, and drop withdrawn work. Returns whether the group holds. */
+async function releaseClaims(
+  root: string,
+  groupRunners: readonly RoleRunner[],
+  listed: Set<string>,
+  eligibleKeys: Set<string>,
+  pausedRoles: ReadonlySet<string>,
+  base: string,
+  now: number,
+): Promise<boolean> {
+  let hold = false;
+  for (const r of groupRunners) {
+    const busy = r.state.running || hasOutstandingWork(r.state);
+    if (r.state.claim === undefined && busy) hold = true;
+    const released = claimReleaseReason(r, {
+      listedKeys: listed,
+      eligibleKeys,
+      now,
+      // Per instance, not per base role: a lowered `instances` leaves the surplus runner in
+      // place with `runnerEnabled` false, and its idle claim must be released so a sibling can
+      // take the entry instead of the key staying held until the 24h stale sweep.
+      enabled: runnerEnabled(r.config, r.role),
+      // Only this instance paused (not its whole role; instance 1 under `<role>-1`): a sibling
+      // can take the entry. With the base role paused no sibling runs, so the claim stays.
+      paused: runnerPaused(pausedRoles, r.role) && !pausedRoles.has(base),
+    });
+    if (released === null) continue;
+    await applyClaimRelease(root, r, released);
+  }
+  return hold;
+}
+
+/** Land one claim release: clear the runner's claim, drop withdrawn work, persist the state so
+ * a dead claim does not stay on disk for status/doctor or a restart, log the release, and warn
+ * on a stale release. */
+async function applyClaimRelease(root: string, r: RoleRunner, reason: ClaimReleaseReason): Promise<void> {
+  const claim = r.state.claim;
+  const title = claim?.title ?? "";
+  const file = claim?.file ?? "PLANS.md";
+  r.state.claim = undefined;
+  // The entry left main while this runner still owed it a resume or a revision: the operator
+  // withdrew it (or another change took it). Drop that work with the claim, so the run that
+  // resumes is never the withdrawn one, and let this same poll assign the runner its next
+  // free entry.
+  if (reason === "withdrawn" && claim !== undefined) {
+    const dropped = dropWithdrawnWork(r.state, claim);
+    if (dropped.revision) await deleteRef(root, rejectedRefName(r.role));
+    warnEventBestEffort(root, r.role, withdrawnWorkWarning(title, file, dropped));
+  }
+  // Persist the release: an idle extra instance gets no run to save its state, so the dead
+  // claim would stay on disk for status/doctor to show and for a restart to release again.
+  saveRunnerStateBestEffort(root, r.state);
+  logEventBestEffort(root, { source: r.role, type: "claim", action: "released", title, reason });
+  if (reason === "stale") {
+    warnEventBestEffort(
+      root,
+      r.role,
+      `released "${title}", which a stopped instance was working on (idle ${Math.round(CLAIM_IDLE_MAX_MS / HOUR_MS)}h)`,
+    );
+  }
+}
+
+/** Runs writing code per multi-runner base role (plans/fast-merge.md "Lever 1"): a runner in
+ * flight, not one whose change waits in the merge queue. `instances` limits this count, so the
+ * role's extra runner ids start work only while fewer than `instances` are running; admissions
+ * this poll count at once, so one pass cannot overshoot. */
+function countWriters(
+  runners: readonly RoleRunner[],
+  claimGroups: Map<string, ClaimGroup>,
+): Map<string, number> {
+  const writing = new Map<string, number>();
+  for (const r of runners) {
+    if (claimGroups.has(baseRoleOf(r.role)) && r.state.running) {
+      increment(writing, baseRoleOf(r.role));
+    }
+  }
+  return writing;
+}
+
+/** Whether a runner of a multi-runner base holds outstanding work: its base has a claim group
+ * and its state carries a pending revision or conflict hand-back. */
+function ownsOutstandingWork(
+  runner: RoleRunner,
+  claimGroups: Map<string, ClaimGroup>,
+): boolean {
+  return claimGroups.has(baseRoleOf(runner.role)) && hasOutstandingWork(runner.state);
+}
+
+/** Admission order: a runner of a multi-runner base with a pending revision or conflict
+ * hand-back comes first (its change came back; it holds no new claim), then the rest in runner
+ * order, so the lowest-index free runner takes new work. Other roles keep their place. */
+function orderForAdmission(
+  runners: readonly RoleRunner[],
+  claimGroups: Map<string, ClaimGroup>,
+): RoleRunner[] {
+  return [
+    ...runners.filter((r) => ownsOutstandingWork(r, claimGroups)),
+    ...runners.filter((r) => !ownsOutstandingWork(r, claimGroups)),
+  ];
+}
+
 /** Compute the once-per-poll precompute the scheduling pass's per-runner loop reads. Has the
  * same side effects the poll body's own precompute had: the merge-queue snapshot, the
  * hasUnmergedPin director pin, the per-base claim-group build (with its claim-release loop,
@@ -189,79 +333,7 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
   // clock, since its only other run is an operator prompt. The queue is not a scheduling gate,
   // so a queued pin is offered the leftover reason like any other unmerged pin.
   const pinnedDirector = (await hasUnmergedPin(root, DIRECTOR_ROLE));
-  // Parallel work instances (plans/parallel-work-instances.md "Claims", part 4/7): a base role
-  // with more than one runner assigns each due instance a distinct eligible entry, and releases
-  // the claims whose entry left, turned ineligible, was disabled or went stale. Computed once
-  // per poll and only for a multi-runner base, so a single-runner team is unchanged. The
-  // release runs before assignment so a freed key counts as free below.
-  const claimGroups = new Map<string, ClaimGroup>();
-  const baseCounts = new Map<string, number>();
-  for (const runner of runners) {
-    const base = baseRoleOf(runner.role);
-    increment(baseCounts, base);
-  }
-  for (const [base, count] of baseCounts) {
-    if (count <= 1) continue;
-    const groupRunners = runners.filter((r) => baseRoleOf(r.role) === base);
-    const eligible = eligibleEntries(root, base);
-    const eligibleKeys = new Set(eligible.map((e) => e.key));
-    const listed = listedKeys(root, base);
-    // A group whose runner is mid-entry with no recorded claim (it took the entry while it was
-    // the only runner, before a live reload raised `instances`) cannot be told WHICH entry that
-    // is from state alone. Assigning a free entry to a sibling could then hand it the same
-    // work: hold the whole group's assignment until that runner settles (merges, drops or goes
-    // idle), at which point its own staging may have recorded a claim. A busy runner that DOES
-    // hold a claim is fine — `held` excludes its key and siblings take other entries.
-    let hold = false;
-    for (const r of groupRunners) {
-      const busy = r.state.running || hasOutstandingWork(r.state);
-      if (r.state.claim === undefined && busy) hold = true;
-      const released = claimReleaseReason(r, {
-        listedKeys: listed,
-        eligibleKeys,
-        now,
-        // Per instance, not per base role: a lowered `instances` leaves the surplus runner in
-        // place with `runnerEnabled` false, and its idle claim must be released so a sibling can
-        // take the entry instead of the key staying held until the 24h stale sweep.
-        enabled: runnerEnabled(r.config, r.role),
-        // Only this instance paused (not its whole role; instance 1 under `<role>-1`): a sibling
-        // can take the entry. With the base role paused no sibling runs, so the claim stays.
-        paused: runnerPaused(pausedRoles, r.role) && !pausedRoles.has(base),
-      });
-      if (released === null) continue;
-      const claim = r.state.claim;
-      const title = claim?.title ?? "";
-      const file = claim?.file ?? "PLANS.md";
-      r.state.claim = undefined;
-      // The entry left main while this runner still owed it a resume or a revision: the operator
-      // withdrew it (or another change took it). Drop that work with the claim, so the run that
-      // resumes is never the withdrawn one, and let this same poll assign the runner its next
-      // free entry below.
-      if (released === "withdrawn" && claim !== undefined) {
-        const dropped = dropWithdrawnWork(r.state, claim);
-        if (dropped.revision) await deleteRef(root, rejectedRefName(r.role));
-        warnEventBestEffort(root, r.role, withdrawnWorkWarning(title, file, dropped));
-      }
-      // Persist the release: an idle extra instance gets no run to save its state, so the dead
-      // claim would stay on disk for status/doctor to show and for a restart to release again.
-      saveRunnerStateBestEffort(root, r.state);
-      const reason: ClaimReleaseReason = released;
-      logEventBestEffort(root, { source: r.role, type: "claim", action: "released", title, reason });
-      if (reason === "stale") {
-        warnEventBestEffort(
-          root,
-          r.role,
-          `released "${title}", which a stopped instance was working on (idle ${Math.round(CLAIM_IDLE_MAX_MS / HOUR_MS)}h)`,
-        );
-      }
-    }
-    claimGroups.set(base, {
-      eligible,
-      eligibleKeys,
-      held: heldKeys(groupRunners, eligibleKeys, listed),
-      hold,
-    });
-  }
+  const claimGroups = await collectClaimGroups(root, runners, pausedRoles, now);
   // The team gates' block predicate (the director exempt — an explicit human prompt
   // outranks any autonomous gate, quiet hours included): the once-mode settle below and
   // the start gate must agree on exactly when a team gate holds, so the compound lives
@@ -295,25 +367,9 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     commitTier(baseRoleOf(runner.role)) === "maintenance" &&
     maintenanceQuota.used >= maintenanceQuota.allowance &&
     !demand;
-  // Runs writing code per multi-runner base role (plans/fast-merge.md "Lever 1"): a runner in
-  // flight, not one whose change waits in the merge queue. `instances` limits this count, so the
-  // role's extra runner ids start work only while fewer than `instances` are running; admissions
-  // this poll count at once, so one pass cannot overshoot.
-  const writing = new Map<string, number>();
-  for (const r of runners) {
-    if (claimGroups.has(baseRoleOf(r.role)) && r.state.running) {
-      increment(writing, baseRoleOf(r.role));
-    }
-  }
-  // Admission order: a runner of a multi-runner base with a pending revision or conflict
-  // hand-back comes first (its change came back; it holds no new claim), then the rest in runner
-  // order, so the lowest-index free runner takes new work. Other roles keep their place.
-  const ownsOutstanding = (r: RoleRunner): boolean =>
-    claimGroups.has(baseRoleOf(r.role)) && hasOutstandingWork(r.state);
-  const ordered = [
-    ...runners.filter((r) => ownsOutstanding(r)),
-    ...runners.filter((r) => !ownsOutstanding(r)),
-  ];
+  const writing = countWriters(runners, claimGroups);
+  const ownsOutstanding = (r: RoleRunner): boolean => ownsOutstandingWork(r, claimGroups);
+  const ordered = orderForAdmission(runners, claimGroups);
   // The stand-down's eligible lists per base role, read at most once per poll (see the check
   // below).
   const eligibleMemo = new Map<string, EligibleEntry[]>();
