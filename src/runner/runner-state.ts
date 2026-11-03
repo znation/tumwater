@@ -286,6 +286,13 @@ export interface RunnerState {
    * `(prior N)` tag to a count. Absent for a runner with no outstanding rejection, so existing
    * state files read unchanged (and an older file without `reasonCounts` reads as all-new). */
   revision?: { sha: string; round: number; at: number; reasonCounts?: number[] };
+  /** The backlog entry a `withdrawn` claim release dropped this runner's resume or revision for
+   * (scheduling/claims.ts dropWithdrawnWork). The interrupted run may have left unmerged work
+   * that carries no claim: commits on the role's branch, or a merge pin no queue entry holds.
+   * The role's next fresh run sets that work aside under backup refs before leftover recovery
+   * could queue it (runner-leftover.ts setAsideWithdrawnWork), then clears this. Absent
+   * otherwise, so older state files read unchanged. */
+  withdrawn?: { file: "PLANS.md" | "BUGS.md"; key: string; title: string };
 }
 
 /** Why a due runner was skipped by the scheduling poll (RunnerState.skipReason): either a

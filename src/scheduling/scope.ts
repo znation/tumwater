@@ -229,15 +229,16 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
         paused: runnerPaused(pausedRoles, r.role) && !pausedRoles.has(base),
       });
       if (released === null) continue;
-      const title = r.state.claim?.title ?? "";
-      const file = r.state.claim?.file ?? "PLANS.md";
+      const claim = r.state.claim;
+      const title = claim?.title ?? "";
+      const file = claim?.file ?? "PLANS.md";
       r.state.claim = undefined;
       // The entry left main while this runner still owed it a resume or a revision: the operator
       // withdrew it (or another change took it). Drop that work with the claim, so the run that
       // resumes is never the withdrawn one, and let this same poll assign the runner its next
       // free entry below.
-      if (released === "withdrawn") {
-        const dropped = dropWithdrawnWork(r.state);
+      if (released === "withdrawn" && claim !== undefined) {
+        const dropped = dropWithdrawnWork(r.state, claim);
         if (dropped.revision) await deleteRef(root, rejectedRefName(r.role));
         warnEventBestEffort(root, r.role, withdrawnWorkWarning(title, file, dropped));
       }

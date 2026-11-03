@@ -820,7 +820,16 @@ comma", "ungroundedRefusalFinding flags a cross-series part named with comma and
 resume or a revision, the scheduling poll releases the claim as `withdrawn`, drops that resume (its
 cause flags and image reroute) or revision (and its rejected ref), logs a warning naming the
 entry, and assigns the runner its next free entry in the same poll. A resume that owns a re-queued
-user request is the request's and stays. A queued change records the claim its run worked
+user request is the request's and stays. The drop also clears a kept `main_red` pin's re-queue
+record and leaves a `withdrawn` marker on the runner's state (amended 2026-11-02). The runner's next
+fresh run reads the marker before leftover recovery and sets aside the unmerged work the
+interrupted run left with no claim on it: commits on the role's branch ahead of main, a merge pin
+that no queue entry holds, and salvaged patches waiting for the run. Commits and pins are kept
+under `refs/tumwater/withdrawn/<role>/<sha>`, and the patches stay under the salvage directory.
+The pin is deleted and the branch is reset to main, one warning names the refs, and the marker is
+cleared. Recovery then has nothing of the withdrawn work to queue. If a backup ref cannot be
+written, the run fails and keeps both the work and the marker. A queued change records the claim
+its run worked
 (`MergeEntry.claim`; not for a user request). The verify, before its rebase, and the merge, inside
 the merge lock before its rebase, drop a feature or bugfix change whose recorded claim, or any
 entry its diff moved out of the role's section since its merge-base with main, main's tip no
@@ -830,7 +839,9 @@ whose entry is still listed is untouched, and an unreadable `PLANS.md`/`BUGS.md`
 never drops one.
 
 **Binds.** `src/scheduling/claims.ts` (`claimReleaseReason`, `dropWithdrawnWork`),
-`src/scheduling/scope.ts` (the poll's release loop), `src/merge/merge-withdrawn.ts`
+`src/scheduling/scope.ts` (the poll's release loop), `src/runner/runner-leftover.ts`
+(`setAsideWithdrawnWork`), `src/runner/runner-run.ts` (`recoverLeftoversForRun`,
+`restoreSalvagedPhase`), `src/merge/merge-withdrawn.ts`
 (`withdrawnEntries`, `dropWithdrawnPin`), `src/merge/merge-batch.ts` (`verifyRequest`),
 `src/merge/merge-to-main.ts` (`tryMerge`), `src/merge/merge-core.ts` (`mergeApprovedChangeIn`),
 `src/run/run-stage.ts` (the enqueue), `src/run/run-apply.ts` (`applyMergeOutcome`).
@@ -839,7 +850,10 @@ never drops one.
 while its run waits to resume drops the resume and takes the next entry", "a claimed entry the
 operator deletes while its rejected change waits for revision drops the revision and its ref", "a
 run in flight keeps its claim on a deleted entry, and a restart that cuts it short does not resume
-it" and "a deleted claimed entry leaves an interrupted user request's resume alone";
+it", "a deleted claimed entry leaves an interrupted user request's resume alone", "a withdrawn
+run's own commit on the role branch is set aside, not recovered into the merge queue", "a
+withdrawn run's merge pin that no queue entry holds is set aside, not re-queued" and "a withdrawn
+run's salvaged edits are kept for the operator, not restored into the next run";
 `test/merge-withdrawn.test.ts` — "the verify drops a change for a plan the operator deleted from
 main: nothing merges and the pin is gone", "the verify drops a change whose recorded claim main
 deleted, though its diff never touched PLANS.md", "the merge lock drops a change whose plan main
@@ -848,7 +862,7 @@ change that finishes its own entry alone" and "withdrawnEntries reads only the w
 sections, and an unreadable side never drops work"; `test/run-stage.test.ts` — "a queued merge
 records the claim its run worked, so the merge can drop it once main deletes the entry";
 `test/claims.test.ts` — "dropWithdrawnWork clears the resume, its cause flags, the image reroute
-and the revision"; `test/run-apply.test.ts` — "a withdrawn merge ends the change's life without a
+and the revision, and marks the entry"; `test/run-apply.test.ts` — "a withdrawn merge ends the change's life without a
 strike against its author".
 
 ## The backlog archive: finished entries move once, and only the ones a change added

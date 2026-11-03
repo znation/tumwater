@@ -2,7 +2,9 @@ import { aheadOfMain, commitExists, commitMessage, deleteRef, deleteRefIfAt, hea
 import { parseCommitMetadata, type CommitMetadata } from "../git/commit-message.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { enqueueMerge, queuedMerges, type MergeEntry } from "../merge/merge-queue.js";
-import { mergeRefName } from "../paths.js";
+import { mergeRefName, withdrawnRefName } from "../paths.js";
+import { resetWorktreeToMain } from "../git/worktree.js";
+import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { shortSha } from "../text/format.js";
 import type { RunnerState } from "./runner-state.js";
 
@@ -237,6 +239,56 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
   enqueueMerge(ctx.root, entry);
   logEventBestEffort(ctx.root, { source: ctx.role, type: "merge_queued", commit: sha, summary: entry.summary });
   return { kind: "enqueued", entry };
+}
+
+/** Set aside the unmerged work a withdrawn claim's interrupted run left, before leftover
+ * recovery can queue it (the poll dropped the run's resume and left `state.withdrawn`,
+ * claims.ts dropWithdrawnWork). Such work carries no claim the merge could check: an agent
+ * commit on the role's branch, or a merge pin that no queue entry holds (a crash between pin and
+ * enqueue, a conflict hand-back, a main_red wait). Each is kept under a backup ref
+ * (withdrawnRefName), the pin is deleted and the branch in `wt` reset to main, and one warning
+ * names the refs. A pin with a queue entry is left to the merge's own withdrawn check, which reads
+ * the entry's recorded claim. Clears the marker. Returns the backup refs, [] when there was
+ * nothing to set aside. Throws when a backup ref cannot be written, keeping the work and the
+ * marker for the next run: the work must never be dropped unkept, nor left for recovery. */
+export async function setAsideWithdrawnWork(
+  ctx: Pick<LeftoverContext, "root" | "role" | "mainBranch" | "wt">,
+  state: RunnerState,
+): Promise<string[]> {
+  const withdrawn = state.withdrawn;
+  if (withdrawn === undefined) return [];
+  const backups: string[] = [];
+  const keep = async (sha: string): Promise<void> => {
+    const ref = withdrawnRefName(ctx.role, sha);
+    if (backups.includes(ref)) return;
+    if (!(await setRef(ctx.root, ref, sha))) throw new Error(`could not set withdrawn work ${shortSha(sha)} aside as ${ref}`);
+    backups.push(ref);
+  };
+  const pinRef = mergeRefName(ctx.role);
+  const pin = await refSha(ctx.root, pinRef);
+  const queued = queuedMerges(ctx.root).some((e) => e.role === ctx.role);
+  if (pin !== null && !queued && !(await isMergedInto(ctx.root, pin, ctx.mainBranch))) {
+    await keep(pin);
+    await deleteRef(ctx.root, pinRef);
+    // The pin's merge history goes with it: no hand-back re-applies it, and no main_red wait
+    // re-queues it.
+    state.mergeConflicts = undefined;
+    state.conflictHandback = undefined;
+    state.mainRedRetry = undefined;
+  }
+  if ((await aheadOfMain(ctx.wt, ctx.mainBranch)) > 0) {
+    await keep(await headOf(ctx.wt, "HEAD"));
+    await resetWorktreeToMain(ctx.wt, ctx.mainBranch);
+  }
+  state.withdrawn = undefined;
+  if (backups.length > 0) {
+    warnEventBestEffort(
+      ctx.root,
+      ctx.role,
+      `set aside the unmerged work on the withdrawn "${stripEntryStamp(withdrawn.title)}" as ${backups.join(", ")}: ${withdrawn.file} on main no longer lists it, so leftover recovery will not merge it; the role takes its next entry`,
+    );
+  }
+  return backups;
 }
 
 /** The review-gate metadata a pinned leftover commit carries in its own message: its

@@ -155,28 +155,33 @@ test("a claim whose entry left is withdrawn while a resume or revision is owed, 
   assert.equal(reason({ resumePending: true, resumePromptFile: "/q/1.md" }), "left");
 });
 
-test("dropWithdrawnWork clears the resume, its cause flags, the image reroute and the revision", () => {
+test("dropWithdrawnWork clears the resume, its cause flags, the image reroute and the revision, and marks the entry", () => {
   const s = state({ ...claimA }, {
     resumePending: true,
     resumeCause: "image-reroute",
     resumeMissing: true,
     imageReroute: { tier: "strong", model: "m" },
     revision: { sha: "x", round: 1, at: 1 },
+    mainRedRetry: { head: "h", entry: { role: "feature-2", run: 1, summary: "s", enqueuedAt: 1 } },
   });
-  assert.deepEqual(dropWithdrawnWork(s), { resume: true, revision: true });
+  assert.deepEqual(dropWithdrawnWork(s, claimA!), { resume: true, revision: true });
   assert.equal(s.resumePending, false);
   assert.equal(s.resumeCause, undefined);
   assert.equal(s.resumeMissing, undefined);
   assert.equal(s.imageReroute, undefined);
   assert.equal(s.revision, undefined);
-  assert.deepEqual(dropWithdrawnWork(state()), { resume: false, revision: false });
+  assert.equal(s.mainRedRetry, undefined, "a kept main_red pin of the withdrawn work is not re-queued");
+  // The marker the next fresh run reads to set aside committed or pinned work
+  // (setAsideWithdrawnWork).
+  assert.deepEqual(s.withdrawn, { file: "PLANS.md", key: "plan a", title: claimA!.title });
+  assert.deepEqual(dropWithdrawnWork(state(), claimA!), { resume: false, revision: false });
   // A revision owed beside a user request's resume: the revision goes, the request's resume stays.
   const request = state({ ...claimA }, {
     resumePending: true,
     resumePromptFile: "/q/1.md",
     revision: { sha: "x", round: 1, at: 1 },
   });
-  assert.deepEqual(dropWithdrawnWork(request), { resume: false, revision: true });
+  assert.deepEqual(dropWithdrawnWork(request, claimA!), { resume: false, revision: true });
   assert.equal(request.resumePending, true);
   assert.equal(request.resumePromptFile, "/q/1.md");
 });

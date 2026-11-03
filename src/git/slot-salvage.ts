@@ -154,6 +154,13 @@ function settlePatch(root: string, file: string): string {
   }
 }
 
+/** Settle every patch waiting for `role`'s next run under salvageDir for the operator instead
+ * of restoring it: the work it saved belongs to a withdrawn backlog entry (the runner's
+ * `withdrawn` marker). Returns the kept paths, newest first. */
+export function keepSalvagedWorkForOperator(root: string, role: string): string[] {
+  return pendingPatches(root, role).map((file) => settlePatch(root, file));
+}
+
 /** What restoring a salvaged patch into a checkout did: the patch's new path under salvageDir,
  * the files left with conflict markers (`<<<<<<< ours` the branch now, `>>>>>>> theirs` the saved
  * edits), and the hunks git could not place at all, per file, as diff text. */

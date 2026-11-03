@@ -20,7 +20,13 @@ import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { mergeRefName, rejectedRefName } from "../src/paths.js";
-import { initializedRepo, mainSha, tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
+import { headSha, initializedRepo, mainSha, pinOffMain, sh, tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
+import { ensureWorktree } from "../src/git/worktree.js";
+import { queueDepth } from "../src/merge/merge-queue.js";
+import { salvageDir, salvagePendingDir, withdrawnRefName } from "../src/paths.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
+import { withPi } from "./fakes/fake-pi.js";
+import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 import { eventsOfType, unwritableEvents, writeEvents } from "./fixtures/log-fixtures.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
@@ -1104,4 +1110,116 @@ test("a deleted claimed entry leaves an interrupted user request's resume alone"
   const released = eventsOfType(root, "claim").filter((e) => e.source === "feature-2" && e.action === "released");
   assert.deepEqual(released.map((e) => e.reason), ["left"]);
   assert.deepEqual(eventsOfType(root, "warning").filter((e) => e.source === "feature-2"), []);
+});
+
+/** Commit `md` as main's PLANS.md in the primary checkout, staging only that file. */
+function commitPlans(root: string, md: string, message: string): void {
+  fs.writeFileSync(path.join(root, "PLANS.md"), md);
+  sh(root, "git", "add", "PLANS.md");
+  sh(root, "git", "commit", "-m", message);
+}
+
+/** The withdrawn-leftover shape up to the poll: feature-2 holds Beta's claim and an interrupted
+ * run's resume (a restart cut it short), feature holds Alpha, and the operator then deletes Beta
+ * from main. `leave` plants the interrupted run's unmerged work. Returns the real feature-2
+ * runner, after the poll that drops its resume. */
+async function withdrawnLeftover(root: string, leave: () => Promise<void>) {
+  commitPlans(root, fourPlansDoc(), "plans");
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  feature.state.claim = plannedClaim("Alpha");
+  const feature2 = makeRoleRunner(root, "feature-2", config);
+  feature2.state.claim = plannedClaim("Beta");
+  feature2.state.resumePending = true;
+  await leave();
+  commitPlans(root, withdrawnPlan("Beta"), "withdraw beta");
+  await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(feature2.state.resumePending, false, "the poll dropped the withdrawn resume");
+  return feature2;
+}
+
+/** The role's next run on its next entry: fake pi finds nothing to do on Gamma. */
+const NOTHING_TO_DO_PI = [APPROVE_PI, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n");
+
+test("a withdrawn run's own commit on the role branch is set aside, not recovered into the merge queue", async () => {
+  // The agent committed on tumwater/feature-2 without touching PLANS.md, so neither a recorded
+  // claim nor a moved-out entry ties the commit to Beta: leftover recovery would adopt the branch
+  // tip and queue it as recovered work, and the merge would take it.
+  const root = await initializedRepo();
+  let agentCommit = "";
+  const feature2 = await withdrawnLeftover(root, async () => {
+    const wt = await ensureWorktree(root, "feature-2", "main");
+    fs.writeFileSync(path.join(wt, "beta.ts"), "export const beta = true;\n");
+    sh(wt, "git", "add", "-A");
+    sh(wt, "git", "commit", "-m", "half of beta");
+    agentCommit = headSha(wt);
+  });
+
+  await withPi(NOTHING_TO_DO_PI, async () => {
+    const outcome = await feature2.run();
+    assert.equal(outcome.result, "no_change", "the run worked its next entry instead of recovering Beta's commit");
+  });
+
+  assert.equal(queueDepth(root), 0, "nothing of Beta's reached the merge queue");
+  assert.equal(await refSha(root, mergeRefName("feature-2")), null);
+  assert.equal(sh(root, "git", "rev-list", "--count", "main..tumwater/feature-2"), "0", "the branch is back at main");
+  assert.equal(await refSha(root, withdrawnRefName("feature-2", agentCommit)), agentCommit, "the commit is kept for the operator");
+  assert.equal(feature2.state.withdrawn, undefined);
+  const warnings = eventsOfType(root, "warning").filter((e) => e.source === "feature-2").map((e) => String(e.message));
+  assert.ok(
+    warnings.includes(
+      `set aside the unmerged work on the withdrawn "Beta" as ${withdrawnRefName("feature-2", agentCommit)}: PLANS.md on main no longer lists it, so leftover recovery will not merge it; the role takes its next entry`,
+    ),
+    warnings.join("\n"),
+  );
+});
+
+test("a withdrawn run's merge pin that no queue entry holds is set aside, not re-queued", async () => {
+  // A crash between the run's pin and its enqueue leaves the pin alone on disk: recovery would
+  // queue it with no recorded claim, and its diff never touched PLANS.md.
+  const root = await initializedRepo();
+  let pin = "";
+  const feature2 = await withdrawnLeftover(root, async () => {
+    pin = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, "beta.ts"), "export const beta = true;\n"), "beta, pinned");
+    await setRef(root, mergeRefName("feature-2"), pin);
+  });
+
+  await withPi(NOTHING_TO_DO_PI, async () => {
+    assert.equal((await feature2.run()).result, "no_change");
+  });
+
+  assert.equal(queueDepth(root), 0);
+  assert.equal(await refSha(root, mergeRefName("feature-2")), null, "the pin is gone");
+  assert.equal(await refSha(root, withdrawnRefName("feature-2", pin)), pin, "its commit is kept for the operator");
+  assert.equal(sh(root, "git", "log", "--format=%s", "-1", "main"), "withdraw beta", "main never moved past the withdrawal");
+});
+
+test("a withdrawn run's salvaged edits are kept for the operator, not restored into the next run", async () => {
+  // An interrupted run whose slot was released unsettled left its uncommitted edits as a patch
+  // for its role's next run, which would restore them and hand off over the withdrawn work.
+  const root = await initializedRepo();
+  const patchName = "2026-11-02-120000-_slot-1-feature-2.patch";
+  const feature2 = await withdrawnLeftover(root, async () => {
+    fs.writeFileSync(path.join(root, "beta.ts"), "export const beta = true;\n");
+    sh(root, "git", "add", "beta.ts");
+    const patch = sh(root, "git", "diff", "--cached");
+    sh(root, "git", "reset", "-q", "beta.ts");
+    fs.rmSync(path.join(root, "beta.ts"));
+    fs.mkdirSync(salvagePendingDir(root, "feature-2"), { recursive: true });
+    fs.writeFileSync(path.join(salvagePendingDir(root, "feature-2"), patchName), `${patch}\n`);
+  });
+
+  await withPi(NOTHING_TO_DO_PI, async () => {
+    assert.equal((await feature2.run()).result, "no_change");
+  });
+
+  assert.deepEqual(fs.readdirSync(salvagePendingDir(root, "feature-2")), [], "nothing is left waiting");
+  assert.ok(fs.existsSync(path.join(salvageDir(root), patchName)), "the patch is kept for the operator");
+  assert.deepEqual(
+    eventsOfType(root, "resume").filter((e) => e.source === "feature-2"),
+    [],
+    "no run handed off over the withdrawn edits",
+  );
 });

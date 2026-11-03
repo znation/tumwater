@@ -32,7 +32,7 @@ import { imageReroute, seamImageInput } from "../agent/image-input.js";
 import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { planRunStart, planWithSalvagedWork, takesSalvagedWork, type RunStartPlan } from "../run/run-resume.js";
-import { restoreSalvagedWork } from "../git/slot-salvage.js";
+import { keepSalvagedWorkForOperator, restoreSalvagedWork } from "../git/slot-salvage.js";
 import { DEFAULT_BACKEND } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { foldAgentCommitsSince } from "../run/run-stage.js";
@@ -41,7 +41,7 @@ import { finalizeRun } from "../run/run-finalize.js";
 import { errorMessage } from "../text/text.js";
 import { appendPromptNote, prependPromptNote } from "../text/format.js";
 import type { RunUsage } from "../run/run-usage.js";
-import { hasUnmergedPin, recoverLeftover, type LeftoverRecovery } from "./runner-leftover.js";
+import { hasUnmergedPin, recoverLeftover, setAsideWithdrawnWork, type LeftoverRecovery } from "./runner-leftover.js";
 import { applyRevision, applyWithConflicts } from "./runner-revision.js";
 import { conflictedFileHunks, hasConflictMarkers, mainCommitsTouching } from "../merge/merge-git.js";
 import { changedFiles } from "../git/git-diff.js";
@@ -429,6 +429,12 @@ async function runOnceInLeasePhase(
  * has none waiting or cannot restore it now, keeps its plan. */
 async function restoreSalvagedPhase(ctx: RunnerRunContext, plan: RunStartPlan, dir: string): Promise<RunStartPlan> {
   if (!takesSalvagedWork(plan)) return plan;
+  // The waiting patch is a withdrawn claim's unfinished edits: kept for the operator, never
+  // restored, so this run starts on its next entry like every other withdrawn run's successor.
+  if (ctx.state.withdrawn !== undefined) {
+    keepSalvagedWorkForOperator(ctx.root, ctx.role);
+    return plan;
+  }
   const restored = await restoreSalvagedWork(ctx.root, ctx.role, dir);
   if (restored === null) return plan;
   const note = buildSalvageRestoreNote(conflictedFileHunks(dir, restored.conflicted), restored.unplaced, restored.patch);
@@ -513,6 +519,9 @@ async function recoverLeftoversForRun(
 ): Promise<{ action: "end"; outcome: RunOutcome } | { action: "continue"; prompt: string } | null> {
   const s = ctx.state;
   let prompt = plan.prompt ?? "";
+  // A withdrawn claim's interrupted run may have committed or pinned work that carries no claim
+  // for the merge to check: set it aside first, so the recovery below has nothing of it to queue.
+  await setAsideWithdrawnWork({ root: ctx.root, role: ctx.role, mainBranch: ctx.mainBranch, wt }, s);
   const recovered = await recoverLeftover({
     root: ctx.root,
     role: ctx.role,

@@ -601,6 +601,14 @@ export function rejectedRefName(role: string): string {
   return `refs/tumwater/rejected/${role}`;
 }
 
+/** A backup ref for unmerged work set aside because its backlog entry was withdrawn
+ * (runner-leftover.ts setAsideWithdrawnWork): one per set-aside commit, so the work stays
+ * reachable for the operator, who deletes the ref once it is not needed, and no role queues
+ * it again. */
+export function withdrawnRefName(role: string, sha: string): string {
+  return `refs/tumwater/withdrawn/${role}/${shortSha(sha)}`;
+}
+
 /** The ref holding a post-merge reviewer's repair while it lands (Forward never back 1a/6):
  * set to the reviewed commit C at review start, advanced to the ONE `tumwater(reviewer): Fix …`
  * commit the reviewer's worktree edit makes, and merged through the ordinary change path before

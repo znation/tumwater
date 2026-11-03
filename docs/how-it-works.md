@@ -186,7 +186,9 @@ never has to wait a parked check out.
   entry back and a sibling takes it; pausing the whole role keeps every claim.
   Deleting a claimed entry from `## Planned` or `## Open` withdraws it. An instance that still owes
   it a resume or a revision drops that work with a warning and takes its next entry on the same
-  poll. A run in flight keeps its claim until it settles. A change for the entry that is queued,
+  poll. Its next run first sets aside what the interrupted run left unmerged (branch commits, an
+  unqueued pin) under `refs/tumwater/withdrawn/<role>/<sha>`, so leftover recovery cannot merge
+  it; delete those refs once you no longer need the work. A run in flight keeps its claim until it settles. A change for the entry that is queued,
   or that reaches the queue later, is dropped unmerged (`withdrawn`) by its verify, or inside the
   merge lock if the entry goes after the verify.
 - `maxConcurrent` caps parallel runs and approvals together. Merges go first, then
