@@ -1,56 +1,44 @@
-# tumwater 0.4.5
+# tumwater 0.4.6
 
 ## Highlights
 
-- **Merging is rebase + fast-forward.** The batch/stack/bisect merge path, the merge
-  attribution module and the merge slot's in-lock gate check are deleted; a check whose
-  merge was aborted while it waited for a permit is never run, and a settle-path throw no
-  longer leaves the merge slot held.
-- **A red main stops holding changes back.** `check.rerunCommand` re-runs only the failing
-  tests named to it, so the main watch confirms a red and the gate tells main's failures
-  from the change's without a second full check. A twice-failed gate is attributed from the
-  watch's verdicts, and an ongoing red stays pinned to the tip that opened it.
-- **Every model pair is checked before it runs.** A short known-answer probe tests a pair
-  before a run starts; a tier whose primary fails its model check moves to the first free
-  step that passed, and an unanswered model request re-checks the pair and hands the waiting
-  run back.
-- **Feature and bugfix can run several instances at once.** `roles.<role>.instances` (1–8,
-  feature and bugfix only) has dashboard Settings rows, and the scheduler no longer
-  interlocks a role on its own queued merge.
-- **The post-merge reviewer's budget scales with the reviewed diff's size** as well as the
-  host's load, so a large diff is not killed at the wall for either reason.
-- **The six standing amber alerts render on status, the dashboard and the TUI**, and the
-  codex/claude subscription usage windows (5h/7d) are displayed again.
-- **Cheaper polling.** The per-second status read stat-caches what it used to re-read:
-  slots, the in-flight merge marker, the queue listing, runner-state instances, the
-  ci-parity ledger, account bodies, role notes, PRINCIPLES.md and build-check detection.
+- **Withdrawn work stays withdrawn.** When the operator deletes a claimed backlog entry, its
+  run's pending resume or revision is dropped, a queued change whose entry left main settles
+  `withdrawn` instead of merging, and leftover commits or pins are set aside under
+  `refs/tumwater/withdrawn/<role>/<sha>` rather than recovered into a merge.
+- **A post-merge reviewer's repair lands when it approves**, not only when it rejects — about
+  one approval in seven carried a FIX line whose edit used to be wiped by the next review.
+- **Prompts ask where a test's expected value comes from.** Review check 3 asks whether the
+  tests would fail if the change were wrong, the coverage role takes expected values from what
+  the code promises, and plans state acceptance criteria as observable outcomes.
+- **ci's inbox holds at most one heal prompt.** A long red main no longer queues a prompt per
+  red commit, and a green main drops every waiting heal prompt it has already passed.
+- **Cheaper polling.** The quarantine release reads BUGS.md through a stat cache and takes its
+  lock only when it releases, and live claims are cached on the state directory's stat.
 
 ## Fixes
 
-- The orphan scan spares a live run's own backgrounded command tree instead of reaping it
-  mid-run.
-- `init` no longer claims it is "adopting an existing repo" when it seeds the repo itself.
-- A bugfix run that cannot reproduce a bug queues a director prompt before parking.
-- An over-cap `director-request` body is fitted to the prompt cap instead of dropped.
-- `--branch`/`baseBranch` names are refused with git's own rule at startup, and a
-  shape-invalid `baseBranch` is reported as a bad name, not a missing branch.
-- A broken symlink can no longer walk the write guard out of the worktree, and opencode's
-  `write` action is guarded like `edit`.
+- Concurrent `tumwater quarantine --release` and the main watch no longer drop each other's
+  quarantine.json updates; writes are locked across processes.
+- An abort cleanup that hits an fs error no longer throws out of the poll and kills the
+  orchestrator.
+- `config set` and the dashboard's daily spend cap row refuse exponent spellings (`1e2`) for
+  dollar and duration keys instead of silently writing 100.
+- A reviewer's `FIX:` line is no longer read as its reason, so fix commits and review events
+  name the actual finding; reviewer replies' code fences follow CommonMark's rules.
+- A sha-less operator_revert, main_check or main_culprit event renders `?`, not a blank.
 
 ## CLI
 
-- Flag-looking values (a bare `--`, or a `-x` token) are refused for count, position,
-  duration, port, `--role`, `--file`, `--path`, `--by`, `--reason` and `--attach`, naming
-  the offending value.
-- The prompt's `--grep` is listed in the help, and completion's path flags are derived from
-  the help text.
-- The TUI role-model editor suggests a "did you mean" for an unknown key.
+- `tumwater quarantine -f/--follow` repaints live, like `queue -f`.
+- `--branch` refuses a flag-looking `--` value, naming the token.
+- `prompt --top 1`'s "already first" refusal names the queue's role.
 
 ## Build and tests
 
-- The build compiles with TypeScript 7's native compiler.
-- `npm run test:gate` runs the nearest tests that fit a 20 s budget, counts each suite once,
-  and lints only the changed files alongside the run.
-- The test-durations ledger lives in the git dir, shared by every worktree.
+- DEVELOPMENT.md has a Writing tests section.
+- Internals: long functions split into named helpers (runOrchestrator, resolveRoleConfig,
+  mergeEventMessage, Redeployer.status and more), repeated code folded into shared helpers,
+  and run-detail, observer and self-check modules moved to their own directories.
 
-353 files changed, +17,927 / −9,396 over 295 commits since v0.4.4.
+170 files changed, +3,608 / −758 over 79 commits since v0.4.5.
