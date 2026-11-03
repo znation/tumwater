@@ -178,7 +178,9 @@ test("init --dry-run prints the file lists and exits 0 without writing; --adopt 
   const listing = fs.readdirSync(repo).sort();
   const dry = await cli(repo, "init", "--adopt", "--dry-run", "Adopt me.");
   assert.equal(dry.code, 0, dry.stderr);
-  assert.match(dry.stdout, /would adopt an existing repo: the project brief goes in TUMWATER\.md/);
+  // The repo's own README.md is the adoption target — it is left untouched — so the banner
+  // names the README (the pre-2026-11-02 keying named the repo instead, see BUGS.md).
+  assert.match(dry.stdout, /would adopt the existing README\.md: the project brief goes in TUMWATER\.md/);
   assert.match(dry.stdout, /dry run — would create: .*TUMWATER\.md/);
   assert.match(dry.stdout, /would leave alone: README\.md/);
   assert.match(dry.stdout, /nothing written; re-run without --dry-run to apply/);
@@ -188,7 +190,7 @@ test("init --dry-run prints the file lists and exits 0 without writing; --adopt 
   // The real run takes the path the dry run described, and the flag never reaches the brief.
   const r = await cli(repo, "init", "--adopt", "Adopt me.");
   assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, /adopting an existing repo/);
+  assert.match(r.stdout, /adopting the existing README\.md/);
   assert.match(r.stdout, /created .*TUMWATER\.md/);
   assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), "# theirs\n");
   assert.equal(readBriefText(repo), "Adopt me.");
@@ -265,6 +267,27 @@ test("init on a README.md directory with no git repo does not claim an existing 
   assert.doesNotMatch(r.stdout, /adopting an existing repo/);
   assert.equal(fs.readFileSync(path.join(dir, "README.md"), "utf8"), "# mine\n");
   assert.equal(readBriefText(dir), "Build a thing.");
+});
+
+test("init --adopt in an empty non-git directory does not claim to adopt a README.md", async () => {
+  // Regression for BUGS.md 2026-11-02: --adopt on a directory with no README.md adopts nothing
+  // to preserve, yet the banner said "adopting the existing README.md" because it keyed the
+  // target on repoInitialized, which init sets for every empty directory it seeds.
+  const dir = tmpdir();
+  const r = await cli(dir, "init", "--adopt", "Adopt an empty dir.");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /initialized a new git repository on branch main/);
+  assert.match(r.stdout, /the project brief goes in TUMWATER\.md/);
+  assert.doesNotMatch(r.stdout, /existing README\.md/);
+  assert.ok(!fs.existsSync(path.join(dir, "README.md")), "--adopt never creates a README.md");
+  assert.equal(readBriefText(dir), "Adopt an empty dir.");
+
+  // The dry run makes the same false claim in the would tense.
+  const dryDir = tmpdir();
+  const dry = await cli(dryDir, "init", "--adopt", "Adopt an empty dir.", "--dry-run");
+  assert.equal(dry.code, 0, dry.stderr);
+  assert.doesNotMatch(dry.stdout, /existing README\.md/);
+  assert.deepEqual(fs.readdirSync(dryDir), [], "the dry run wrote nothing");
 });
 
 test("init --template names the seeded template in its report and creates its starter dirs", async () => {

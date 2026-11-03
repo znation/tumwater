@@ -107,6 +107,13 @@ interface InitResult {
    * (plans/portability.md §7/7) — asked for with `--adopt`, or automatic for a README.md
    * without the tumwater markers. */
   adopted: boolean;
+  /** Whether a README.md existed at `root` before this run — the adoption target only when
+   * true; `--adopt` sets `adopted` even without one (plans/portability.md §7/7). */
+  readmeExists: boolean;
+  /** Whether `root` was already a git repository before this run; `repoInitialized` is its
+   * negation, so the two keep the adoption banner apart (it may name an existing README.md
+   * or an existing repo, but a seeded repo is neither). */
+  wasRepo: boolean;
   /** True when nothing was written: `created` is what a real run would create. */
   dryRun: boolean;
   /** The template id the brief and backlog were seeded from — "blank" unless --template named
@@ -566,5 +573,12 @@ export async function initProject(
 ): Promise<InitResult> {
   const plan = await resolveInitPlan(root, briefText, branch, opts);
   const seeded = await seedProject(root, plan);
-  return { ...seeded, adopted: plan.adopted, dryRun: plan.dryRun, template: plan.tpl.id };
+  return {
+    ...seeded,
+    adopted: plan.adopted,
+    readmeExists: plan.readmeExists,
+    wasRepo: plan.wasRepo,
+    dryRun: plan.dryRun,
+    template: plan.tpl.id,
+  };
 }

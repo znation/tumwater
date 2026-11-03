@@ -255,6 +255,16 @@ test("initProject --adopt writes TUMWATER.md even with no README, and never crea
   assert.ok(!fs.existsSync(path.join(repo, "README.md")), "no README.md on the adopt path");
   assert.equal(briefFile(repo), "TUMWATER.md");
 
+  // The same against a directory with neither README nor repo: the banner that keys on
+  // adoption must not claim an existing README.md, so the result says whether one existed
+  // (BUGS.md 2026-11-02).
+  const empty = tmpdir();
+  const emptyResult = await initProject(empty, "Adopt an empty dir.", undefined, { adopt: true });
+  assert.ok(emptyResult.adopted);
+  assert.ok(!emptyResult.readmeExists);
+  assert.ok(emptyResult.repoInitialized);
+  assert.ok(!fs.existsSync(path.join(empty, "README.md")), "--adopt never creates a README.md");
+
   // Against a repo tumwater created (marked README.md), --adopt is today's no-op: the brief
   // already has a home, so no TUMWATER.md appears to shadow it.
   const created = makeRepo();
