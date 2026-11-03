@@ -467,7 +467,11 @@ export async function mainTipGateVerdict(
     if (result?.outcome.status === "passed") return { status: "green", sha };
     if (result?.outcome.status === "failed")
       return { status: "red", sha, failingTests: result.outcome.failingTests ?? [] };
-    return { status: "unavailable", why: "its gate check was skipped" };
+    if (!result) return { status: "unavailable", why: "it declares no check" };
+    const why = result.outcome.skipReason
+      ? `its check was skipped (${result.outcome.skipReason})`
+      : "its check was skipped";
+    return { status: "unavailable", why };
   }).catch((err: unknown) => ({ status: "unavailable" as const, why: errorMessage(err) }));
 }
 

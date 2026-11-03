@@ -13,13 +13,12 @@ import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { checkFailureReasons, FAILING_TESTS_MAX, redCheckHeadline } from "../build/build-check-report.js";
 import { sleptPhrase, UNVERIFIED_TREE, unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { sampleSleepClock } from "../build/host-sleep.js";
-import { recordReview } from "../run/run-apply.js";
-import { mainRedNotMine, mainRedNotTheseFailures, mainUncheckedNotJudged } from "../text/phrases.js";
+import { mainRedNotTheseFailures } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { checkWaitStage, setMergeStage } from "../merge/merge-slot.js";
-import { mainTipFailures, namedFailures, rerunAtMainTip, watchedMainVerdict } from "../baseline/main-red.js";
+import { mainTipFailures, mainTipGateVerdict, namedFailures, rerunAtMainTip } from "../baseline/main-red.js";
 import { knownMainFailures, onlyKnownMainFailures } from "../baseline/main-watch.js";
-import { watchedBaseline, watchVerifiesMain } from "../baseline/main-baseline.js";
+import { watchedBaseline } from "../baseline/main-baseline.js";
 import { changeBaseRev } from "../git/git.js";
 import { FLAKY_WARNING_PREFIX, isKnownFlake, quarantineTests } from "./known-flakes.js";
 
@@ -67,18 +66,16 @@ async function staleBaseFailures(
 /** Whose failure a twice-failed gate check is when main is red too, from the gate's complete list
  * of failing tests and main's (`mainFailing`; each empty when it names none or may have been cut
  * short): `main` — every test the gate names is one main fails, or a known main failure; `own` —
- * it fails more than main does: the named tests main does not fail, or, when the gate named no
- * test, a failure outside main's named ones (a compile or lint error, a crash); `unknown` — main
- * names no failure the gate's can be told apart from. A red main excuses only its own failures,
- * so it never blocks a change on failures of the change's own. */
-type RedAttribution = { kind: "main" } | { kind: "own"; tests: string[] } | { kind: "unknown" };
+ * it fails more than main does: the named tests main does not fail. A nameless check never reaches
+ * here: it is decided by running the gate command at main's tip (mainTipGateVerdict), so a red
+ * that names no failure cannot make the change's failure indistinguishable. A red main excuses
+ * only its own failures, so it never blocks a change on failures of the change's own. */
+type RedAttribution = { kind: "main" } | { kind: "own"; tests: string[] };
 
 function attributeOnRedMain(root: string, failed: readonly string[], mainFailing: readonly string[]): RedAttribution {
-  if (failed.length === 0) return mainFailing.length > 0 ? { kind: "own", tests: [] } : { kind: "unknown" };
   const known = new Set([...mainFailing, ...knownMainFailures(root)]);
   const own = failed.filter((t) => !known.has(t));
-  if (own.length === 0) return { kind: "main" };
-  return mainFailing.length > 0 ? { kind: "own", tests: own } : { kind: "unknown" };
+  return own.length === 0 ? { kind: "main" } : { kind: "own", tests: own };
 }
 
 /** Run the gate's deterministic build pre-check. `reject` is the gate's one shared rejection
@@ -87,7 +84,7 @@ function attributeOnRedMain(root: string, failed: readonly string[], mainFailing
  * model-verdict path. */
 export async function gateBuildPrecheck(
   ctx: ReviewContext,
-  state: RunnerState,
+  _state: RunnerState,
   head: string,
   reject: (reasons: string[], durationMs?: number) => Promise<GateResult>,
 ): Promise<GatePrecheckResult> {
@@ -197,21 +194,22 @@ export async function gateBuildPrecheck(
       // whole queue waits on is no place for a model run (the in-slot build-fix run this
       // replaces held it for hours and never once led to a merge — PLANS.md "Land-queue
       // speed 1/3"). The question is whose failure it is, and main's own verdict at its tip
-      // answers it. When the main watch verifies main, the gate runs no full check of its own:
-      // the watch's verdicts answer, and a change the watch has not caught up with yet is kept
-      // until it has (watchedMainVerdict). Otherwise — or when that wait timed out — main is
-      // asked here (mainTipFailures): the failing tests alone are re-run on main's tip when they
-      // can be, else main's full check runs fresh, bypassing the per-SHA cache, because a clock-
-      // or load-sensitive test can pass on an immutable SHA early and fail later, and a cached
-      // green — usually seeded by an earlier merge — rejected an unrelated change (BUGS.md
-      // 2026-10-06). A shutdown already under way skips the question and fails closed like any
-      // abort.
+      // answers it at once, never by waiting on the main watch: named failures are re-run alone
+      // on main's tip when they can be (mainTipFailures), else main's full check runs fresh,
+      // bypassing the per-SHA cache, because a clock- or load-sensitive test can pass on an
+      // immutable SHA early and fail later, and a cached green — usually seeded by an earlier
+      // merge — rejected an unrelated change (BUGS.md 2026-10-06). A failure that names no test
+      // runs the gate command itself at main's tip (mainTipGateVerdict). A shutdown already under
+      // way skips the question and fails closed like any abort.
       if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
-      const base = await changeBaseRev(wt, mainBranch, head);
       const failed = { tests: namedFailures(outcome), files: outcome.failingTestFiles };
-      let main = watchVerifiesMain(root, config)
-        ? await watchedMainVerdict(root, role, wt, mainBranch, config, base, ctx.watchWait, failed)
-        : await mainTipFailures(root, role, wt, mainBranch, config, failed);
+      // A nameless failure (a compile or lint error, a crash) is decided by the gate command
+      // itself at main's tip. A named one is asked about by re-running only those tests there,
+      // and only falls back to main's full check when they cannot be re-run.
+      let main =
+        failed.tests.length === 0
+          ? await mainTipGateVerdict(root, role, mainBranch, config)
+          : await mainTipFailures(root, role, wt, mainBranch, config, failed);
       // A red that names no test (main's check died before its tests ran, or its list may have
       // been cut short) cannot be subtracted from the change's named failures: ask main's tip
       // about just those tests instead.
@@ -220,14 +218,25 @@ export async function gateBuildPrecheck(
       }
       // A check killed by that shutdown reads as a skip, never as evidence against the author.
       if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
-      if (main.status === "awaiting") {
-        // Nothing judged this diff yet: keep it with no strike — the pin stays — and name the
-        // commit it waits on, so the merge pipeline re-queues it once the watch's verdict covers
-        // that commit (merge-requeue.ts's requeueMainRedPin).
-        const detail = mainUncheckedNotJudged(base, main.sha);
-        recordReview(state, "failed", [detail], head);
-        warnEventBestEffort(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; merge kept`);
-        return { resolved: { decision: "failed", detail, mainRed: true, awaitingWatch: base } };
+      if (failed.tests.length === 0) {
+        // The gate command ran at main's tip. Green there convicts the change; red there makes
+        // the failure main's, whatever test names either side did or did not print; an
+        // unavailable verdict cannot attribute it, so the author's failure is the safe default.
+        if (main.status === "green") return { resolved: await reject(reasons) };
+        if (main.status === "red") {
+          warnEventBestEffort(
+            root,
+            role,
+            `gate check fails on main ${shortSha(main.sha)} too, with no test named; going on to review`,
+          );
+          return {};
+        }
+        return {
+          resolved: await reject([
+            ...reasons,
+            `main's baseline was unavailable (${main.why}), so the failure is attributed to this change`,
+          ]),
+        };
       }
       // Main is red too: it excuses only its own failures. A change that fails nothing main does
       // not goes on to review exactly as a known failure does; one that fails more is judged
@@ -241,17 +250,6 @@ export async function gateBuildPrecheck(
           `gate check fails only tests main ${shortSha(main.sha)} fails too: ${failed.tests.join(", ")}; going on to review`,
         );
         return { knownMainFailures: [...failed.tests] };
-      }
-      if (main.status === "red" && red?.kind === "unknown") {
-        // Neither check names a test, so nothing tells this failure from main's: keep the commit
-        // (and with it the pin) and do not advance the discard counter — the transport-failure
-        // rule (BUGS.md 2026-09-20): nothing judged this diff. The orchestrator poll
-        // (requeueMainRedPin) re-queues the kept pin once main's head moves; leftover recovery
-        // holds it until then.
-        const detail = mainRedNotMine(main.sha);
-        recordReview(state, "failed", [detail], head);
-        warnEventBestEffort(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; merge kept`);
-        return { resolved: { decision: "failed", detail, mainRed: true } };
       }
       const own = red?.kind === "own" ? red.tests : outcome.failingTests;
       if (main.status === "green" || main.status === "red") {

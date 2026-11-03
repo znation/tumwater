@@ -16,61 +16,37 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { reviewAheadOfMain } from "../src/review/review.js";
-import { aheadOfMain, headOf } from "../src/git/git.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
-import { readEvents } from "../src/events/event-read.js";
 import { createMainWatch } from "../src/baseline/main-watch.js";
-import { shortSha } from "../src/text/format.js";
-import { eventsOfType, warningMessages, warningMessagesOf } from "./fixtures/log-fixtures.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
 import { commitIn, mainSha } from "./fixtures/repo-fixtures.js";
-import { piRanMarker, withPi } from "./fakes/fake-pi.js";
+import { withPi } from "./fakes/fake-pi.js";
 import { gateCtx, ROLE } from "./fixtures/gate-fixtures.js";
 import { buildCheckEvents, gateBuildFixture, uniqueMain } from "./fixtures/precheck-fixtures.js";
 
-// A red MAIN must not reject every queued change for a failure none of their authors caused —
-// the goal the in-slot build-fix run served, now met by attribution: the change keeps its commit
-// (and the merger its pin), no strike is counted, and main-red.ts's healer hand-off
-// (`mainRedHealNote`) and the bugfix handoff own the repair.
-test("a pre-check that fails twice on a red main fails without a strike and keeps the commit", async () => {
+// A nameless failure (a compile error) is decided at once by running the gate command at main's
+// tip: a red tip means the failure is main's too, so the change goes on to review instead of
+// waiting on the main watch or keeping the pin.
+test("a nameless pre-check failure that also fails main's tip goes on to review", async () => {
   // The tool fails everywhere — on the change's tree AND on main's, which the attribution check
   // runs in its own worktree because this unique main SHA has no cached verdict.
   const { root, wt } = await gateBuildFixture(
     "buildcheck-tool --fail",
     "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n",
   );
-  const movedMainSha = uniqueMain(root);
-  const marker = piRanMarker();
-  await withPi(`touch '${marker}'`, async () => {
+  uniqueMain(root);
+  await withPi('true', async () => {
     const state = freshRunnerState(ROLE);
-    state.unreviewFailures = 1; // an earlier reviewer strike against this head stays exactly as it was
-    const head = await headOf(wt, "HEAD");
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
-    assert.equal(result.decision, "failed");
-    assert.equal(result.detail, `main ${shortSha(movedMainSha)} is red — not this change's failure`);
-    assert.equal(result.aborted, undefined);
-    assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
-    assert.equal(result.mainRed, true, "the merge reports main_red, not a reviewer failure");
-    assert.ok(!fs.existsSync(marker), "no pi run: nothing was spent on main's failure");
-    assert.equal(state.unreviewFailures, 1, "no strike: nothing judged this diff");
-    assert.equal(state.lastReview?.verdict, "failed", "no rejection recorded against the author");
-    assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-merge");
-    assert.equal(await aheadOfMain(wt, "main"), 1);
-    const events = readEvents(root);
-    assert.ok(!events.some((e) => e.type === "review_rejected"), "no rejection logged");
-    // The change's check ran twice; main's once, in the attribution worktree, priced as a baseline
-    // run.
-    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "baseline:failed"]);
-    const warnings = warningMessagesOf(events);
-    const holds = eventsOfType(root, "main_red_hold").map((e) => String(e.message));
+    assert.equal(result.decision, "approved");
+    assert.equal(result.mainRed, undefined, "no red-main hold: the tip was asked and failed too");
+    // The change's check ran twice; main's gate command ran once, in the attribution worktree.
+    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "gate:failed"]);
     assert.ok(
-      holds.some((m) => m.startsWith(`main ${shortSha(movedMainSha)} is red (build: error TS2345: boom)`)),
-      `the team-wide main_red_hold fires; got: ${JSON.stringify(holds)}`,
-    );
-    assert.ok(
-      warnings.includes(`gate check failed on ${shortSha(head)}, but main ${shortSha(movedMainSha)} is red — not this change's failure; merge kept`),
-      `the role's warning names both heads; got: ${JSON.stringify(warnings)}`,
+      warningMessages(root).some((m) => m.includes("with no test named; going on to review")),
+      "the role's warning says main's tip fails the same check",
     );
   });
 });
@@ -111,20 +87,16 @@ test("a gate failure of a known failure plus another test is rejected for the ot
   });
 });
 
-// A gate that names no test while main's red names its own failed outside them — a compile or lint
-// error, a crash — so it is the change's, not main's.
-test("a gate failure naming no test on a main red with named tests is rejected", async () => {
+// A gate that names no test while main's red names some of its own is still decided by the gate
+// command at main's tip: if that command fails there too, the nameless failure is main's.
+test("a gate failure naming no test goes on to review when main's gate command fails too", async () => {
   const { root, wt } = await knownRedFixture(false);
   fs.writeFileSync(path.join(wt, "package.json"), projManifest({ build: "echo 'error TS2345: boom' >&2; exit 1" }));
   commitIn(wt, "break the compile");
   await withPi('true', async () => {
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
-    assert.equal(result.decision, "rejected");
+    assert.equal(result.decision, "approved");
     assert.equal(result.mainRed, undefined);
-    assert.match(
-      state.lastReview?.reasons.at(-1) ?? "",
-      /^main [0-9a-f]{8} is red too, but this check failed outside the tests main fails, so the failure is this change's own$/,
-    );
   });
 });

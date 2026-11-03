@@ -79,12 +79,11 @@ and one serial merge step merges them, so other roles keep running while a chang
   in parallel. Only when neither check names a test is the pin kept, and it is retried as soon as
   main moves. Optionally, `check.gateCommand` names a cheaper check (say, only the
   tests a diff touches) that this per-change step runs instead. It is off by default; tumwater's
-  own team sets it to `npm run test:gate`. With a gate command set, the main watch verifies
-  main, so a repeated failure is attributed from the watch's verdicts instead of a run of main's
-  own check: a verdict on the commit the change was rebased onto, or on a later one, decides at
-  once; a change the watch has not reached yet is kept without a strike and re-queued as soon as
-  the watch has checked that commit (after 15 minutes without that, main is asked for the retry:
-  only the failing tests re-run on main's tip when they can be, else main's whole check). `check.timeoutSeconds` (default 300) bounds every
+  own team sets it to `npm run test:gate`. A repeated failure is attributed at main's tip at
+  once, never by waiting on the main watch: a check that names tests re-runs just those there
+  when they can be re-run alone, else main's whole check runs fresh; a check that names no test
+  (a compile or lint error, a crash) runs the gate command at main's tip. A green tip rejects the
+  change; a red tip means the failure is main's too and the change goes on to review. `check.timeoutSeconds` (default 300) bounds every
   check, the detected `npm test` included.
 
   The per-change verify gate is the only check a merge depends on: since part 4l/3 the merge

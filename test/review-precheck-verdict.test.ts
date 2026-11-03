@@ -44,9 +44,9 @@ test("gate pre-check rejects a failing build with zero reviewer runs", async () 
     assert.ok(!fs.existsSync(marker), "no pi run: the check and main's verdict decided alone");
     assert.equal(result.run, undefined, "the reviewer never ran");
     // The failure is re-run once before it is attributed, both runs priced as gate build_check
-    // events; main's fresh re-check (BUGS.md 2026-10-06) passes against the root manifest, so a
-    // baseline run is priced too.
-    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "baseline:passed"]);
+    // events; the gate command then passes at main's tip (BUGS.md 2026-10-06), so a third gate
+    // event is priced there.
+    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "gate:passed"]);
     assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
     assert.match(result.detail ?? "", /^check failed \(\`npm run build\`\): /);
     assert.equal(state.lastReview?.verdict, "reject");

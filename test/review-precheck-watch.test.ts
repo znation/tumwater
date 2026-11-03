@@ -1,25 +1,22 @@
-/** The review gate's attribution when the main watch verifies main (a `check.gateCommand`, so
- * `check.mergeCommand` falls back to it): a pre-check that fails twice is judged from the watch's
- * verdicts, never from a full check of the gate's own (main-red.ts's watchedMainVerdict). A
- * verdict covering the change's base answers at once; a watch still behind that base keeps the
- * change with no strike, naming the commit it waits on; the retry after that wait decides from
- * the newest verdict, or runs main's check itself when the wait timed out. The attribution with
- * no watch (the full check in the merge lock) lives in review-precheck.test.ts (a red main) and
- * review-precheck-green.test.ts (a green main or none). */
+/** The review gate's attribution under a config where the main watch used to verify main (a
+ * `check.gateCommand`, so `check.mergeCommand` falls back to it): a pre-check that fails twice is
+ * decided at main's tip at once, never by waiting on the watch. Named failures are re-run alone
+ * when a re-run command exists, else main's full check runs fresh; a nameless failure runs the
+ * gate command at the tip. The other attribution slices are review-precheck.test.ts (a red
+ * main) and review-precheck-green.test.ts (a green main or none). */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { reviewAheadOfMain } from "../src/review/review.js";
-import { aheadOfMain, headOf } from "../src/git/git.js";
+import { headOf } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { CheckConfig } from "../src/config/config-schema.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { createMainWatch } from "../src/baseline/main-watch.js";
-import { mainRedNotMine, mainRedNotTheseFailures, mainUncheckedNotJudged } from "../src/text/phrases.js";
-import { shortSha } from "../src/text/format.js";
+import { mainRedNotTheseFailures } from "../src/text/phrases.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { commitIn, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
@@ -78,7 +75,7 @@ const gateRuns = (root: string): string[] =>
     .filter((e) => e.type === "build_check" && e.scope === "gate")
     .map((e) => String(e.status));
 
-test("a twice-failed gate whose base the watch checked green is rejected with no run of main's own", async () => {
+test("a twice-failed gate with no re-run command runs main's check fresh", async () => {
   const root = watchedRepo();
   await watchMain(root);
   const watched = baselineRuns(root);
@@ -91,7 +88,7 @@ test("a twice-failed gate whose base the watch checked green is rejected with no
     assert.equal(result.decision, "rejected");
     assert.ok(!fs.existsSync(marker), "no pi run");
     assert.deepEqual(gateRuns(root), ["failed", "failed"]);
-    assert.equal(baselineRuns(root), watched, "the watch's green answered: main's check did not run again");
+    assert.equal(baselineRuns(root), watched + 1, "main's check ran fresh at its tip");
     assert.match(state.lastReview?.reasons[0] ?? "", /X/);
   });
 });
@@ -108,66 +105,48 @@ test("a twice-failed gate whose base the watch checked red is rejected for the f
     assert.equal(result.decision, "rejected", "main fails Y, not X: X is the change's own");
     assert.equal(result.mainRed, undefined, "a red main does not hold the change");
     assert.equal(state.lastReview?.reasons.at(-1), mainRedNotTheseFailures(red, ["X"]));
-    assert.equal(baselineRuns(root), watched, "main's check did not run again");
+    assert.equal(baselineRuns(root), watched + 1, "main's check ran fresh at its tip");
   });
 });
 
-test("a twice-failed gate on a red main that names no test is kept, as nothing tells the failures apart", async () => {
+test("a twice-failed gate on a red main that names no test goes on to review", async () => {
   const root = makeRepo();
   fs.mkdirSync(path.join(root, "node_modules", ".bin"), { recursive: true });
   writeScript(path.join(root, "node_modules", ".bin", "buildcheck-tool"), "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n");
   fs.writeFileSync(path.join(root, "package.json"), projManifest({ build: "buildcheck-tool" }));
   sh(root, "git", "add", "package.json");
   sh(root, "git", "commit", "-m", "declare a check that never compiles");
-  const red = commitOnMain(root, "unique.txt");
+  commitOnMain(root, "unique.txt");
   await watchMain(root);
-  const { wt, head } = await breakingChange(root);
+  const { wt } = await breakingChange(root);
   await withPi("true", async () => {
     const state = freshRunnerState(ROLE);
-    state.unreviewFailures = 1;
     const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config: WATCH_CONFIG }, state);
-    assert.equal(result.decision, "failed");
-    assert.equal(result.mainRed, true);
-    assert.equal(result.detail, mainRedNotMine(red));
-    assert.equal(state.unreviewFailures, 1, "no strike");
-    assert.equal(await headOf(wt, "HEAD"), head, "the commit stays");
+    assert.equal(result.decision, "approved", "main's gate command fails too: the failure is main's");
+    assert.equal(result.mainRed, undefined);
+    assert.deepEqual(gateRuns(root), ["failed", "failed", "failed"], "the gate command ran at main's tip");
   });
 });
 
-test("a twice-failed gate the watch has not caught up with is kept, naming the commit it waits on", async () => {
+test("a twice-failed gate asks main's tip even when the watch has not caught up", async () => {
   const root = watchedRepo();
   await watchMain(root);
-  const checked = mainSha(root);
-  const base = commitOnMain(root, "moved.txt"); // main moves on; the watch has not run on it yet
+  commitOnMain(root, "moved.txt"); // main moves on; the watch has not run on it yet
   const watched = baselineRuns(root);
-  const { wt, head } = await breakingChange(root);
+  const { wt } = await breakingChange(root);
   const marker = piRanMarker();
   await withPi(`touch '${marker}'`, async () => {
     const state = freshRunnerState(ROLE);
-    state.unreviewFailures = 1;
     const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config: WATCH_CONFIG }, state);
-    assert.equal(result.decision, "failed");
-    assert.equal(result.mainRed, true, "kept exactly as a red main keeps it");
-    assert.equal(result.awaitingWatch, base);
-    assert.equal(result.detail, mainUncheckedNotJudged(base, checked));
-    assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
+    assert.equal(result.decision, "rejected", "main's tip answers at once, with no watch wait");
+    assert.equal(result.awaitingWatch, undefined);
     assert.ok(!fs.existsSync(marker), "no pi run");
-    assert.equal(state.unreviewFailures, 1, "no strike: nothing judged this diff");
-    assert.equal(state.lastReview?.verdict, "failed", "no rejection recorded against the author");
-    assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-merge");
-    assert.equal(await aheadOfMain(wt, "main"), 1);
-    assert.equal(baselineRuns(root), watched, "the gate ran no check of main's own");
-    assert.ok(!readEvents(root).some((e) => e.type === "review_rejected"), "no rejection logged");
-    assert.ok(
-      warningMessages(root).includes(
-        `gate check failed on ${shortSha(head)}, but ${mainUncheckedNotJudged(base, checked)}; merge kept`,
-      ),
-      "the role's warning names the change and the commit it waits on",
-    );
+    assert.equal(baselineRuns(root), watched + 1, "the gate ran main's check at its tip");
+    assert.match(state.lastReview?.reasons[0] ?? "", /X/);
   });
 });
 
-test("after a covered wait the newest verdict answers even when main moved past it again", async () => {
+test("a covered watchWait no longer changes the attribution: main's tip runs fresh", async () => {
   const root = watchedRepo();
   await watchMain(root);
   commitOnMain(root, "moved.txt");
@@ -177,8 +156,8 @@ test("after a covered wait the newest verdict answers even when main moved past 
     const state = freshRunnerState(ROLE);
     const ctx = { ...gateCtx(root, wt), config: WATCH_CONFIG, watchWait: "covered" as const };
     const result = await reviewAheadOfMain(ctx, state);
-    assert.equal(result.decision, "rejected", "the watch's newest green answers: no second wait");
-    assert.equal(baselineRuns(root), watched, "main's check did not run");
+    assert.equal(result.decision, "rejected", "main's tip answers at once");
+    assert.equal(baselineRuns(root), watched + 1, "main's check ran at its tip");
   });
 });
 

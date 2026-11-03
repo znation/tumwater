@@ -1,9 +1,9 @@
-/** The review gate's attribution on a main not known red, when the main watch does not verify
- * main: a pre-check failure that survives its one re-run is judged from main's own verdict at its
- * tip. With no verdict for main (its check skipped) the failure is the change's, and the reasons
- * say the baseline was unavailable; a repeat matching no recorded flake does not trust main's
- * cached green but re-runs main's check fresh; and a change that fails beyond its red base's
- * failures is rejected once main's tip is green. Split from review-precheck.test.ts (a red
+/** The review gate's attribution on a main not known red: a pre-check failure that survives its
+ * one re-run is judged from main's own verdict at its tip. With no verdict for main (its check
+ * skipped) the failure is the change's, and the reasons say the baseline was unavailable; a
+ * nameless repeat matching no recorded flake does not trust main's cached green but runs the gate
+ * command fresh at the tip; and a change that fails beyond its red base's failures is rejected
+ * once main's tip is green. Split from review-precheck.test.ts (a red
  * main); the other sibling slices are review-precheck-verdict.test.ts (the gate deciding
  * alone), review-precheck-closed.test.ts (a pre-check with no verdict about the tree fails
  * closed) and review-precheck-watch.test.ts (the attribution when the main watch verifies
@@ -14,7 +14,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { reviewAheadOfMain } from "../src/review/review.js";
-import { headOf } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
@@ -65,37 +64,28 @@ test("a pre-check that fails twice with no verdict for main rejects, saying the 
       reasons.at(-1),
       "main's baseline was unavailable (its check was skipped (toolchain)), so the failure is attributed to this change",
     );
-    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "baseline:skipped"]);
+    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "gate:skipped"]);
   });
 });
 
-// BUGS.md 2026-10-06: main's cached green can go stale for a clock- or load-sensitive test,
-// and the attribution then rejected an unrelated change. A repeated failure matching no
-// recorded flake must run main's check fresh, bypassing the cached green: here main fails the
-// same check but its SHA was seeded green, so the pre-fix gate rejected the change while main
-// was really red.
-test("a repeat failure with no recorded flake re-runs main fresh instead of trusting its cached green", async () => {
+// BUGS.md 2026-10-06: a nameless failure matching no recorded flake is decided by the gate
+// command at main's tip, never by main's cached verdict: even a SHA seeded green is asked fresh,
+// and a failing tip makes the change's failure main's too.
+test("a repeat nameless failure asks the gate command at main's tip fresh, not its cached green", async () => {
   const { root, wt } = await gateBuildFixture(
     "buildcheck-tool --fail",
     "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n",
   );
   seedGreenMain(root); // an earlier merge verified this SHA green; the test now fails on it
-  const marker = piRanMarker();
-  await withPi(`touch '${marker}'`, async () => {
+  await withPi("true", async () => {
     const state = freshRunnerState(ROLE);
-    state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it was
-    const head = await headOf(wt, "HEAD");
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
-    assert.equal(result.decision, "failed");
-    assert.equal(result.mainRed, true, "the fresh run finds main red, not this change's failure");
-    assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
-    assert.equal(state.unreviewFailures, 1, "no strike: nothing judged this diff");
-    assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-merge");
-    assert.ok(!fs.existsSync(marker), "no pi run: main's fresh verdict decided alone");
+    assert.equal(result.decision, "approved");
+    assert.equal(result.mainRed, undefined, "main's tip fails the same check, so it is not held");
     assert.deepEqual(
       buildCheckEvents(root),
-      ["gate:failed", "gate:failed", "baseline:failed"],
-      "the cached green is bypassed and main's check runs",
+      ["gate:failed", "gate:failed", "gate:failed"],
+      "the cached green is bypassed and the gate command runs at main's tip",
     );
   });
 });
