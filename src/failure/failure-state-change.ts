@@ -34,14 +34,14 @@ const STATE_CHANGE_FAMILY: Partial<
   budget_paused: budgetStateChange,
   budget_fallback: budgetStateChange,
   budget_resumed: budgetStateChange,
-  // Pauses and resumes of teams, roles and caps.
-  team_paused: pauseStateChange,
-  team_resumed: pauseStateChange,
-  role_paused: pauseStateChange,
-  role_resumed: pauseStateChange,
-  role_streak_paused: pauseStateChange,
-  role_cap_paused: pauseStateChange,
-  role_cap_resumed: pauseStateChange,
+  // Pauses and resumes of teams, roles and caps (team, role, streak and cap builders).
+  team_paused: teamPauseStateChange,
+  team_resumed: teamPauseStateChange,
+  role_paused: rolePauseStateChange,
+  role_resumed: rolePauseStateChange,
+  role_streak_paused: roleStreakStateChange,
+  role_cap_paused: roleCapStateChange,
+  role_cap_resumed: roleCapStateChange,
   // Model and fallback wiring.
   model_changed: modelStateChange,
   fallback_switched: modelStateChange,
@@ -231,7 +231,7 @@ function budgetStateChange(ev: HarnessEvent): string {
   return text;
 }
 
-function pauseStateChange(ev: HarnessEvent): string {
+function teamPauseStateChange(ev: HarnessEvent): string {
   let text: string;
   switch (ev.type) {
     case "team_paused":
@@ -241,17 +241,44 @@ function pauseStateChange(ev: HarnessEvent): string {
     case "team_resumed":
       text = teamResumePhrase() + (ev.expired === true ? PAUSE_EXPIRED_SUFFIX : "");
       break;
+    default:
+      return ev.type;
+  }
+  return text;
+}
+
+function rolePauseStateChange(ev: HarnessEvent): string {
+  let text: string;
+  switch (ev.type) {
     case "role_paused":
       text = rolePausePhrase(field(ev.role ?? "?")) + untilClockSuffix(ev.until);
       break;
     case "role_resumed":
       text = roleResumePhrase(field(ev.role ?? "?")) + (ev.expired === true ? PAUSE_EXPIRED_SUFFIX : "");
       break;
+    default:
+      return ev.type;
+  }
+  return text;
+}
+
+function roleStreakStateChange(ev: HarnessEvent): string {
+  let text: string;
+  switch (ev.type) {
     case "role_streak_paused":
       // The error-streak breaker auto-paused the role; the digest names the depth so the
       // operator can connect the pause to the failing runs the clusters above show.
       text = `role ${field(ev.role ?? "?")} paused — ${field(ev.streak ?? "?")} runs failed in a row`;
       break;
+    default:
+      return ev.type;
+  }
+  return text;
+}
+
+function roleCapStateChange(ev: HarnessEvent): string {
+  let text: string;
+  switch (ev.type) {
     case "role_cap_paused":
       // The role reached its own daily spend cap and stopped starting runs.
       text = `role ${field(ev.role ?? "?")} paused — ${budgetPhrase(ev.spentUsd, ev.capUsd)} of its daily cap spent`;
