@@ -124,7 +124,7 @@ export interface LeftoverContext {
  * - `main_red_wait`: a merge kept the pin because main was red, and main's head has not moved
  *   since — the pin stays, nothing is queued, and the run ends `main_red` on the idle ladder
  *   until the orchestrator poll re-queues the pin. */
-export type LeftoverRecovery =
+type LeftoverRecovery =
   | { kind: "enqueued"; entry: MergeEntry }
   | { kind: "already_queued"; entry: MergeEntry }
   | { kind: "relief_wait"; entry: MergeEntry }
