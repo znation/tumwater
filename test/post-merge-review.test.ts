@@ -644,16 +644,17 @@ test("postMergeRejectionCounts folds instance runner ids into their base role", 
   ]);
 });
 
-/** A post-merge reviewer that repairs what it rejected: writes `x.txt` into the review worktree
- * and replies with a `FIX:` line alongside a rejecting verdict (Forward never back 1a/6). */
-function fixingRunner(role: string): RoleRunner {
+/** A post-merge reviewer that repairs what it found: writes `x.txt` into the review worktree
+ * and replies with `reply`, by default a `FIX:` line alongside a rejecting verdict (Forward never
+ * back 1a/6). */
+function fixingRunner(role: string, reply = "VERDICT: reject\n1. breaks the contract\nFIX: x.txt"): RoleRunner {
   return {
     role,
     baseRole: role,
     state: freshRunnerState(role),
     runGatePi: async (opts: { cwd: string }) => {
       fs.writeFileSync(path.join(opts.cwd, "x.txt"), "fixed\n");
-      return { ok: true, verdictText: "VERDICT: reject\n1. breaks the contract\nFIX: x.txt" };
+      return { ok: true, verdictText: reply };
     },
   } as unknown as RoleRunner;
 }
@@ -688,6 +689,50 @@ test("the harness commits and lands a reviewer's edit as one fix", async () => {
   // commit (round 0), so the fix is round 1.
   assert.match(sh(root, "git", "log", "-1", "--format=%B", tip).trim(), /^Revision: 1$/m, "the fix carries the next revision round");
   assert.equal(sh(root, "git", "for-each-ref", reviewFixRef(commit)).trim(), "", "the review-fix ref is deleted once the merge settles");
+});
+
+test("an approving review that repaired a finding still lands its repair as one fix", async () => {
+  // The live reviewer's usual shape (600749317, 2026-11-02): it repairs what it found, judges the
+  // repaired change sound, and approves with a FIX line. The FIX line plus the edit is the repair,
+  // whatever the verdict, so it lands exactly as a rejecting reviewer's does.
+  const { root, commit, ctx } = setup("VERDICT: approve\n1. fine");
+  (ctx as { runners: RoleRunner[] }).runners = [
+    fixingRunner("improve", "VERDICT: approve\n1. x.txt held a stale value; I rewrote it\n2. the rest matches the summary\nFIX: x.txt"),
+  ];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  const tip = headSha(root);
+  assert.equal(sh(root, "git", "rev-parse", `${tip}^`).trim(), commit, "the fix's parent is the reviewed commit");
+  assert.equal(fs.readFileSync(path.join(root, "x.txt"), "utf8"), "fixed\n", "the repair landed on main");
+  assert.equal(
+    sh(root, "git", "log", "-1", "--format=%B", tip).trim(),
+    `tumwater(reviewer): Fix ${commit.slice(0, 8)} — x.txt held a stale value; I rewrote it\n\n` +
+      "1. x.txt held a stale value; I rewrote it\n2. the rest matches the summary\nRevision: 1",
+  );
+  // The reviewed commit's own record is the approval the reviewer gave, not a rejection.
+  assert.deepEqual(
+    eventsOfType(root, "review_verdict").map((e) => [e.head, e.afterMerge]),
+    [[commit, true]],
+  );
+  assert.equal(eventsOfType(root, "review_rejected").length, 0);
+  const settled = readPostReviews(root);
+  assert.equal(settled.find((e) => e.commit === commit)?.fixed, tip, "the reviewed entry settles fixed");
+  assert.ok(settled.some((e) => e.commit === tip && e.fixed === undefined), "the landed fix is queued for its own review");
+});
+
+test("an approving review that edits the worktree without a FIX line lands nothing", async () => {
+  // The FIX line is the repair's declaration: an edit the reply never names (a scratch write)
+  // is not committed, and the approval ends the entry.
+  const { root, commit, ctx } = setup("VERDICT: approve\n1. fine");
+  (ctx as { runners: RoleRunner[] }).runners = [fixingRunner("improve", "VERDICT: approve\n1. fine")];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(headSha(root), commit, "main stays at the reviewed commit");
+  assert.equal(fs.readFileSync(path.join(root, "x.txt"), "utf8"), "x");
+  assert.equal(readPostReviews(root).length, 0);
+  assert.equal(sh(root, "git", "for-each-ref", reviewFixRef(commit)).trim(), "", "no review-fix ref is left");
 });
 
 test("a fix that lands on a main which moved under the review records the actually-merged sha", async () => {

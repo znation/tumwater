@@ -274,12 +274,14 @@ export async function reviewMergedCommit(
       } else {
         logEventBestEffort(root, { source: role, type: "review_verdict", head: commit, reason: verdict.reasons[0], durationMs, afterMerge: true });
       }
-      // A rejecting review whose reply carries a FIX: line and whose worktree holds an edit
-      // survives as one fix commit on the review ref, kept for
-      // merge-post-review-drain.ts to land on main through the ordinary change path. A clean
-      // worktree or a reply with no FIX line keeps today's outcomes and deletes the ref.
+      // A review whose reply carries a FIX: line and whose worktree holds an edit survives as one
+      // fix commit on the review ref, kept for merge-post-review-drain.ts to land on main through
+      // the ordinary change path. The verdict does not decide it: a reviewer that repairs what it
+      // found and then judges the repaired change sound approves with a FIX line, and dropping
+      // that repair lost real fixes (BUGS-FIXED.md 2026-11-02). A clean worktree or a reply with
+      // no FIX line keeps the plain approve/reject outcome and deletes the ref.
       const paths = pi.ok && !pi.aborted ? fixLine(pi.verdictText ?? "") : null;
-      if (paths && verdict.verdict === "reject" && (await gitTry(wt, "status", "--porcelain"))?.trim().length) {
+      if (paths && (await gitTry(wt, "status", "--porcelain"))?.trim().length) {
         // The self-fix chain's round is one past the reviewed commit's `Revision:` trailer; at
         // REVISION_BACKSTOP the reviewer stops fixing and records the surviving findings — the
         // same terminal stop as a rejection's exhaustion, one shared counter, never a second
