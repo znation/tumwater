@@ -157,12 +157,26 @@ interface OrchestratorRuntime {
   modelCheck: ModelCheckGate | null;
 }
 
-/** Normalize the run options, guard the enabled set, stand up the stop controllers, publish the
- * info file and the start event, run the startup migrations, archive and pin passes, the
- * worktree retirements, and build the runners and retention pruner — in that exact order, each
- * awaited where it was before the split. */
-async function prepareOrchestratorRun(opts: RunOptions): Promise<OrchestratorSetup> {
-  const { root, config, mainBranch, signal: externalSignal } = opts;
+/** The setup fields the startup sequence builds from the run options: the paths and config it
+ * runs with, the polled cadence and breaker seams, the enabled set, and the daemon-only
+ * collaborators a once round forces null. */
+interface NormalizedRunOptions {
+  root: string;
+  config: TumwaterConfig;
+  mainBranch: string;
+  pollMs: number;
+  modelsPath: string;
+  breakerPolicy: FallbackBreakerPolicy;
+  breakerNow: () => number;
+  enabled: string[];
+  redeploy: Redeployer | null;
+  launchServicesWatch: LaunchServicesWatch | null;
+}
+
+/** Default the option seams, resolve the enabled set against the role filter, throw the
+ * empty-set guard, and force the daemon-only collaborators null in a once round. */
+function normalizedRunOptions(opts: RunOptions): NormalizedRunOptions {
+  const { root, config, mainBranch } = opts;
   const pollMs = opts.pollMs ?? POLL_MS;
   const modelsPath = opts.modelsPath ?? piModelsPath();
   const breakerPolicy = opts.fallbackBreakerPolicy ?? FALLBACK_BREAKER_POLICY;
@@ -179,7 +193,22 @@ async function prepareOrchestratorRun(opts: RunOptions): Promise<OrchestratorSet
     throw new Error(
       'no roles enabled in tumwater.json — enable at least one role in its "roles" section (e.g. `"feature": { "enabled": true }`), or remove that section to restore every role\'s default',
     );
+  // A once round is a one-shot by definition: it never self-redeploys, and the hand-off
+  // machinery stays daemon-only. Forcing null here keeps the whole poll loop's redeploy
+  // branches inert no matter what a caller passes.
+  const redeploy = opts.once ? null : (opts.redeploy ?? null);
+  const launchServicesWatch = opts.once ? null : (opts.launchServicesWatch ?? null);
+  return { root, config, mainBranch, pollMs, modelsPath, breakerPolicy, breakerNow, enabled, redeploy, launchServicesWatch };
+}
 
+/** The two internal stop controllers beside the caller's signal, and the two combined signals
+ * the runners, timed run wrapper, and merge tasks each watch. */
+function runStopSignals(externalSignal: AbortSignal): {
+  internalStop: AbortController;
+  internalRoleStop: AbortController;
+  signal: AbortSignal;
+  roleSignal: AbortSignal;
+} {
   // Two internal stop controllers ride beside the caller's (Ctrl+C/SIGTERM): internalStop, the
   // graceful shutdown the once-mode exit and the hand-off's deadline abort fire — it cuts role
   // runs and merges alike — and internalRoleStop, which ONLY the restart drain fires when it
@@ -195,16 +224,16 @@ async function prepareOrchestratorRun(opts: RunOptions): Promise<OrchestratorSet
   const internalRoleStop = new AbortController();
   const signal = AbortSignal.any([externalSignal, internalStop.signal]);
   const roleSignal = AbortSignal.any([signal, internalRoleStop.signal]);
-  // A once round is a one-shot by definition: it never self-redeploys, and the hand-off
-  // machinery stays daemon-only. Forcing null here keeps the whole poll loop's redeploy
-  // branches inert no matter what a caller passes.
-  const redeploy = opts.once ? null : (opts.redeploy ?? null);
-  const launchServicesWatch = opts.once ? null : (opts.launchServicesWatch ?? null);
-  // Pressure reclaim (plans/disk-floor.md, part 2/4): one background pass at a time, driven by
-  // the disk gate's poll below. In-process state (the use registry) is enough, because this
-  // process is the one that starts runs and merges.
-  const reclaim = new ReclaimController(root);
+  return { internalStop, internalRoleStop, signal, roleSignal };
+}
 
+/** Build and write the info file (after reading the prior one, which the startup reap is the
+ * only later reader of), then log the best-effort start event. */
+function publishRunStart(
+  options: NormalizedRunOptions,
+  opts: RunOptions,
+): { infoFile: string; info: OrchestratorInfo; previous: OrchestratorInfo | null } {
+  const { root, enabled, redeploy } = options;
   const infoFile = orchestratorStatePath(root);
   const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: enabled };
   if (redeploy) info.build = redeploy.status();
@@ -225,7 +254,15 @@ async function prepareOrchestratorRun(opts: RunOptions): Promise<OrchestratorSet
     roles: enabled,
     ...(redeploy ? { build: redeploy.build.sha } : {}),
   });
+  return { infoFile, info, previous };
+}
 
+/** The startup passes before any run: the persisted-name migrations, the dangling-pin drop, the
+ * crashed-predecessor reap, and the backlog archive. */
+async function runStartupPasses(
+  root: string,
+  previous: OrchestratorInfo | null,
+): Promise<void> {
   // The first per-runner state read is each RoleRunner constructor's loadRunnerState, so the
   // persisted-name migrations run before it. (After the info write and start event above, which
   // an in-process test or a second `tumwater start` probe reads synchronously.)
@@ -240,7 +277,11 @@ async function prepareOrchestratorRun(opts: RunOptions): Promise<OrchestratorSet
   // repository migrates on its first start with this build, and an entry a hand commit moved is
   // swept. One commit on main, or a warning; the team starts either way.
   await archiveAtTeamStart(root);
-  const runners = enabled.map((role) => new RoleRunner(root, role, config, mainBranch, roleSignal));
+}
+
+/** The worktree cleanups before any run leases a slot: the legacy land removals, the legacy role
+ * retirements, and the crashed-run pins. */
+async function runWorktreeCleanup(root: string, config: TumwaterConfig): Promise<void> {
   // Legacy merger checkouts (`_land-<role>`) from a pre-pool build hold nothing now that verifies
   // and merges lease pooled slots: remove them once, before any run, so the retired layout
   // never lingers on disk. (After the info write and start event above, so startup's published
@@ -254,7 +295,24 @@ async function prepareOrchestratorRun(opts: RunOptions): Promise<OrchestratorSet
   await retireLegacyRoleWorktrees(root, runnerIds(config));
   // A run the previous process died in resumes in its own slot: pin it before any run leases.
   pinCrashedRuns(root, runnerIds(config));
+}
 
+/** Normalize the run options, stand up the stop controllers, publish the info file and start
+ * event, run the startup passes and worktree cleanups, and build the reclaim controller,
+ * runners, and retention pruner — in that exact order, each awaited where it was before the
+ * split. */
+async function prepareOrchestratorRun(opts: RunOptions): Promise<OrchestratorSetup> {
+  const normalized = normalizedRunOptions(opts);
+  const { root, config, mainBranch, enabled, redeploy, launchServicesWatch } = normalized;
+  const { internalStop, internalRoleStop, signal, roleSignal } = runStopSignals(opts.signal);
+  // Pressure reclaim (plans/disk-floor.md, part 2/4): one background pass at a time, driven by
+  // the disk gate's poll below. In-process state (the use registry) is enough, because this
+  // process is the one that starts runs and merges.
+  const reclaim = new ReclaimController(root);
+  const { infoFile, info, previous } = publishRunStart(normalized, opts);
+  await runStartupPasses(root, previous);
+  const runners = enabled.map((role) => new RoleRunner(root, role, config, mainBranch, roleSignal));
+  await runWorktreeCleanup(root, config);
   // Session retention (src/orchestrator/retention.ts owns the whole concern): construction runs the
   // startup prune, seeding the once-per-day gate so an unchanged team prunes at most once
   // per day — and 0 disables pruning, the same convention as quietTimeoutSeconds.
@@ -264,10 +322,10 @@ async function prepareOrchestratorRun(opts: RunOptions): Promise<OrchestratorSet
     root,
     config,
     mainBranch,
-    pollMs,
-    modelsPath,
-    breakerPolicy,
-    breakerNow,
+    pollMs: normalized.pollMs,
+    modelsPath: normalized.modelsPath,
+    breakerPolicy: normalized.breakerPolicy,
+    breakerNow: normalized.breakerNow,
     enabled,
     internalStop,
     internalRoleStop,
