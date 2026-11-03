@@ -99,13 +99,18 @@ test("an aborted approved change settles despite an unwritable state file: no th
 
     // The abort's outcome write hits an unwritable state file: the state path becomes a
     // non-empty directory, so writeJsonAtomic's rename fails (EISDIR) — the shape an ENOSPC or
-    // an immutable state path takes. settleAbortedApproved runs in the poll body with nothing to
-    // guard it, so a throw here would end the team, and the operator's abort must still drop
-    // the change and its pin rather than leave it to be re-verified and merged next poll.
+    // an immutable state path takes. The queue file is broken the same way, so the catch's
+    // fallback cleanup (dropMerge → fs.rmSync, not recursive) fails too. settleAbortedApproved
+    // runs in the poll body with nothing to guard it, so a throw anywhere here would end the
+    // team, and the operator's abort must still drop the change and its pin rather than leave
+    // it to be re-verified and merged next poll.
     const stateFile = statePath(root, "alpha");
     fs.rmSync(stateFile, { recursive: true, force: true });
     fs.mkdirSync(stateFile, { recursive: true });
     fs.writeFileSync(path.join(stateFile, "keep"), "");
+    const queueFile = queuedMergeFiles(root).find((q) => q.entry.role === "alpha")!.file;
+    fs.rmSync(queueFile);
+    fs.mkdirSync(queueFile);
 
     writeJsonFile(abortRequestPath(root, "alpha"), { at: Date.now() });
     consumeAbortRequests(root, [], abortableMerges(pipeline));
@@ -125,7 +130,18 @@ test("an aborted approved change settles despite an unwritable state file: no th
       ),
       "the failed state write is warned about, not swallowed",
     );
+    assert.ok(
+      readEvents(root).some(
+        (e) => e.type === "warning" && String(e.message).includes("the stopped merge for alpha could not be dropped"),
+      ),
+      "the failed fallback cleanup is warned about, not thrown",
+    );
   } finally {
+    // The planted directory queue file would break the settled tasks' cleanup; restore a
+    // usable queue directory before they run it.
+    const dir = mergeQueueDir(root);
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
     await bg.stop();
     await Promise.allSettled(allTasks(pipeline));
     restore();

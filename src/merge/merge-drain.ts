@@ -71,8 +71,17 @@ export async function settleAbortedApproved(root: string, p: MergePipeline): Pro
       await settleMergeOutcome(root, v.entry, v.author.state, "aborted", Date.now() - v.startedAt, v.usage, v.file);
     } catch (err) {
       warnEventBestEffort(root, TUMWATER_SOURCE, `the stopped merge for ${role} could not be settled: ${errorMessage(err)}`);
-      dropMerge(v.file);
-      removeMergeChange(root, role);
+      // The abort is honored by hand — drop the queue file and marker. That cleanup can itself
+      // throw (a queue file that is a directory fails fs.rmSync's non-recursive delete, the
+      // shape an ENOSPC or immutable queue file takes): report it and still discard the pin,
+      // so this settle never throws out of the poll body and the next poll does not re-verify
+      // and merge the change the operator stopped.
+      try {
+        dropMerge(v.file);
+        removeMergeChange(root, role);
+      } catch (cleanupErr) {
+        warnEventBestEffort(root, TUMWATER_SOURCE, `the stopped merge for ${role} could not be dropped: ${errorMessage(cleanupErr)}`);
+      }
     }
     await discardPinnedRefs(root, [role]);
   }
