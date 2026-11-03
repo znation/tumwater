@@ -54,6 +54,37 @@ interface BudgetGateWiringInput {
   view: BudgetGateWiringView;
 }
 
+function budgetDemotions(
+  breakers: BudgetGateState["breakers"],
+): Record<string, FallbackDemotion> {
+  const demotions: Record<string, FallbackDemotion> = {};
+  for (const [name, b] of Object.entries(breakers)) {
+    const d = fallbackDemotion(b);
+    if (d) demotions[name] = d;
+  }
+  return demotions;
+}
+
+function budgetChainChanges(
+  prevChain: BudgetGateState["prevChain"],
+  chain: BudgetGateWiringView["chain"],
+): Record<string, { from: string | null; to: string | null; reason: string }> {
+  // One fallback_switched per poll in which a tier's pair or step changed (a return to the
+  // primary reads `to: null`, reason "available").
+  const switched: Record<string, { from: string | null; to: string | null; reason: string }> = {};
+  for (const tier of MODEL_TIERS) {
+    const was = prevChain[tier];
+    const cur = chain[tier];
+    if (was?.pair === cur?.pair && was?.step === cur?.step) continue;
+    switched[tier] = {
+      from: was?.pair ?? null,
+      to: cur?.pair ?? null,
+      reason: cur?.reason ?? "available",
+    };
+  }
+  return switched;
+}
+
 function publishBudgetWiring(
   root: string,
   info: OrchestratorInfo,
@@ -69,11 +100,7 @@ function publishBudgetWiring(
   // persisted-file reader lags by the in-flight runs' charges. Both rewritten only when they
   // change, like the build status; the exit removes the whole file, so no stale pair survives
   // a stop.
-  const demotions: Record<string, FallbackDemotion> = {};
-  for (const [name, b] of Object.entries(budget.breakers)) {
-    const d = fallbackDemotion(b);
-    if (d) demotions[name] = d;
-  }
+  const demotions = budgetDemotions(budget.breakers);
   const engagedDemotion = budget.engaged !== null ? demotions[budget.engaged] : undefined;
   const spend = { spentUsd: view.spentUsd, capUsd: view.capUsd };
   publishInfoFields(root, info, [
@@ -82,20 +109,7 @@ function publishBudgetWiring(
     ["budget", spend],
     ["chain", Object.keys(view.chain).length > 0 ? view.chain : undefined],
   ]);
-  // One fallback_switched per poll in which a tier's pair or step changed (a return to the
-  // primary reads `to: null`, reason "available").
-  const switched: Record<string, { from: string | null; to: string | null; reason: string }> = {};
-  const prevChain = budget.prevChain;
-  for (const tier of MODEL_TIERS) {
-    const was = prevChain[tier];
-    const cur = view.chain[tier];
-    if (was?.pair === cur?.pair && was?.step === cur?.step) continue;
-    switched[tier] = {
-      from: was?.pair ?? null,
-      to: cur?.pair ?? null,
-      reason: cur?.reason ?? "available",
-    };
-  }
+  const switched = budgetChainChanges(budget.prevChain, view.chain);
   if (Object.keys(switched).length > 0)
     logEventBestEffort(root, {
       source: TUMWATER_SOURCE,
