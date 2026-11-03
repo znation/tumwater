@@ -57,6 +57,21 @@ export function promptLineFree(es: TuiPaneEditorState): boolean {
   );
 }
 
+/** The shared Ctrl+letter dispatch guard the panes that carry a one-argument ctrl route table
+ * restate inline: a non-Ctrl key, or a Ctrl key whose name the table lacks, routes nowhere
+ * (null), otherwise the named route runs against the pane ctx and its boolean result passes
+ * through. The 2-arg-route variant in tui-panes.ts (its routes take the key too) is a
+ * different shape and stays local there. */
+export function ctrlRouteFor(
+  ctrlRoutes: Record<string, (ctx: TuiPaneCtx) => boolean>,
+  key: { ctrl?: boolean; name?: string },
+  ctx: TuiPaneCtx,
+): boolean | null {
+  if (!key.ctrl || key.name === undefined) return null;
+  const route = ctrlRoutes[key.name];
+  return route === undefined ? null : route(ctx);
+}
+
 /** The shared contract every per-pane module returns to the aggregator (createTuiPanes), the
  * analog of `TuiEditorModule`: its `handleKey` arms (true when the pane consumed the key,
  * false to fall through to the next module in the aggregator's dispatch order), the `enter`

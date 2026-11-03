@@ -16,7 +16,7 @@ import {
 import { renderModelSummary, renderSummary } from "../../history/history-render.js";
 import { historyPaneText } from "./tui-history.js";
 import { pageDir } from "./tui-keymap.js";
-import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
+import { ctrlRouteFor, promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import { nextInCycle, cycleLabel, steppedWindowBounds, HISTORY_WINDOWS, HISTORY_RESULTS, type TuiPaneSession } from "./tui-pane-session.js";
 import { createRunTrail, type RunTrailSelection } from "./tui-pane-trail.js";
 
@@ -386,16 +386,11 @@ export function createHistoryPane(
     x: historyModelCycle,
     y: historySummaryCycle,
   };
-  const ctrlRoute = (key: { ctrl?: boolean; name?: string }, ctx: TuiPaneCtx): boolean | null => {
-    if (!key.ctrl || key.name === undefined) return null;
-    const route = ctrlRoutes[key.name];
-    return route === undefined ? null : route(ctx);
-  };
   const handleKey = (
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
   ): boolean => {
-    const ctrl = ctrlRoute(key, ctx);
+    const ctrl = ctrlRouteFor(ctrlRoutes, key, ctx);
     if (ctrl !== null) return ctrl;
     const page = pageDir(key.name);
     if (page !== null) return trail.page(page);

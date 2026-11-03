@@ -6,7 +6,7 @@ import { renderChangeOverlaps, renderRoleChanges, renderTeamChange } from "../..
 import { scopeChangeOverlaps, type ChangeOverlapsView } from "../../change/change-data.js";
 import { readPostReviews, type PostReview } from "../../review/post-merge-review.js";
 import { renderPostReviews, scopePostReviews, POST_REVIEW_STATES, postReviewState, type PostReviewState } from "../../review/post-merge-review-render.js";
-import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
+import { ctrlRouteFor, promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import { paneAtHead, type TuiPaneSession } from "./tui-pane-session.js";
 import { arrowDir } from "./tui-keymap.js";
 import { distinctOrdered } from "../../collections.js";
@@ -324,16 +324,11 @@ export function createPendingPane(session: TuiPaneSession) {
     a: selection.pendingAcceptReview,
     v: selection.pendingMoveToTop,
   };
-  const ctrlRoute = (key: { ctrl?: boolean; name?: string }, ctx: TuiPaneCtx): boolean | null => {
-    if (!key.ctrl || key.name === undefined) return null;
-    const route = ctrlRoutes[key.name];
-    return route === undefined ? null : route(ctx);
-  };
   const handleKey = (
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
   ): boolean => {
-    const ctrl = ctrlRoute(key, ctx);
+    const ctrl = ctrlRouteFor(ctrlRoutes, key, ctx);
     if (ctrl !== null) return ctrl;
     const arrow = arrowDir(key.name);
     if (arrow !== null) return selection.pendingSelectRow(arrow, ctx);

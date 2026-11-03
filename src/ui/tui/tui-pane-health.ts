@@ -8,7 +8,7 @@ import { resyncRootInstall, rootInstallResyncLines } from "../../build/dep-insta
 import { brokenPinDropLines, leftoverRetireLines } from "../../doctor/doctor-contention-checks.js";
 import { describeArchivedFile } from "../../backlog/backlog-archive.js";
 import { joinOr, shortSha } from "../../text/format.js";
-import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
+import { ctrlRouteFor, promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import { paneAtHead, type TuiPaneSession } from "./tui-pane-session.js";
 import { staleReject } from "./tui-guard.js";
 
@@ -331,16 +331,11 @@ export function createHealthPane(session: TuiPaneSession) {
     b: healthArchiveBacklog,
     o: healthToggleProblems,
   };
-  const ctrlRoute = (key: { ctrl?: boolean; name?: string }, ctx: TuiPaneCtx): boolean | null => {
-    if (!key.ctrl || key.name === undefined) return null;
-    const route = ctrlRoutes[key.name];
-    return route === undefined ? null : route(ctx);
-  };
   const handleKey = (
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
   ): boolean => {
-    return ctrlRoute(key, ctx) ?? false;
+    return ctrlRouteFor(ctrlRoutes, key, ctx) ?? false;
   };
 
   return {
