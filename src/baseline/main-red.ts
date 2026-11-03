@@ -5,6 +5,7 @@ import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { liveConfig } from "../config/config.js";
 import { mergeCommandOf, rerunCommandOf } from "../build/build-check-detect.js";
 import { canRerun, rerunCommandLine, rerunTests } from "../build/build-check-rerun.js";
+import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { failureHeadline, FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { baselineCheckEventLogger, type BaselineCheckRun } from "../build/build-check-events.js";
 import { checkMainBaseline, newestObservedBaseline, watchedBaseline } from "./main-baseline.js";
@@ -291,7 +292,7 @@ export async function mainRedHealNote(root: string, role: string, wt: string): P
  * too, so the failure is not the change's and the ci healer's hand-off (`mainRedHealNote`) and
  * the main watch own the repair; `unavailable` — no verdict could be had, with `why` for the
  * rejection's reasons. */
-type MainTipVerdict =
+export type MainTipVerdict =
   | { status: "green"; sha: string }
   | { status: "red"; sha: string; failingTests?: string[] }
   | { status: "unavailable"; why: string };
@@ -445,6 +446,29 @@ export async function rerunAtMainTip(
   if (!rerun) return null;
   const { result, sha } = rerun;
   return result.failing.length === 0 ? { status: "green", sha } : { status: "red", sha, failingTests: result.failing };
+}
+
+/** Main's tip's verdict on the gate's own command — for a twice-failed gate check that names no
+ * test (a compile or lint error, a crash): the gate command runs fresh at main's tip in the
+ * `_gate-main` mirror, and its outcome is main's (Hourly full check, part 1a/4). Built on
+ * runScopedBuildCheck at scope "gate" (the gate's declared check) and queued behind the shared
+ * `_gate-main` work like rerunAtMainTip, so it never overlaps a watch or gate run in that mirror.
+ * `passed` → green; `failed` → red with the named tests; a skipped run or no declared command →
+ * unavailable. Never throws. */
+export async function mainTipGateVerdict(
+  root: string,
+  role: string,
+  mainBranch: string,
+  config: TumwaterConfig,
+): Promise<MainTipVerdict> {
+  return withMainTipWorktree(root, mainBranch, async (mirror): Promise<MainTipVerdict> => {
+    const result = await runScopedBuildCheck(root, role, "gate", mirror, config);
+    const sha = await headOf(mirror, "HEAD");
+    if (result?.outcome.status === "passed") return { status: "green", sha };
+    if (result?.outcome.status === "failed")
+      return { status: "red", sha, failingTests: result.outcome.failingTests ?? [] };
+    return { status: "unavailable", why: "its gate check was skipped" };
+  }).catch((err: unknown) => ({ status: "unavailable" as const, why: errorMessage(err) }));
 }
 
 /** How a change kept for the main watch's verdict came back to the gate (MergeEntry.watchWait):
