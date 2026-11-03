@@ -96,6 +96,42 @@ test("a doc-exempt tip re-checking an open red does not re-name the culprit: the
   assert.equal(eventsOfType(root, "main_culprit").length, 1, "a repeat poll does not attribute again");
 });
 
+test("a doc-exempt tip on top of a code commit that broke main names the code commit as the opener", async () => {
+  // The 2026-11-02 guardrail mis-attribution: the code commit that broke main and a doc-exempt
+  // commit land in one poll interval, so the watch checks the DOC tip (the tree is still red) and
+  // never checks the code tip in isolation. The doc tip's diff cannot have changed the suite, so
+  // the red it reports was opened by the code commit: the watch names the code commit as the
+  // culprit (the spell opener, the main_culprit event, and the recorded main_check), not the doc
+  // tip. (INV-AZ4's doc-exempt re-check of an already-open spell keeps the opener; this is the
+  // case where the spell's own opener is a doc tip and must be attributed back to code.)
+  const root = baselineFixture(
+    "improve",
+    `[ -f .red-flag ] && { ${FAILING_OUTPUT}; exit 1; }; echo ok`,
+  ).root;
+  const watch = createMainWatch(root, "main");
+  const poll = async () => {
+    watch.poll(headSha(root), false, defaultConfig());
+    await watch.idle();
+  };
+  await poll(); // the seed commit: no flag, green, cached
+  fs.writeFileSync(path.join(root, ".red-flag"), "red\n");
+  sh(root, "git", "add", "--", ".red-flag");
+  const code = change(root, ".red-flag", "red\n"); // the code commit that breaks the suite
+  logEvent(root, { source: "improve", type: "merged", commit: code, summary: "breaks a test" });
+  const doc = change(root, "README.md", "a doc-only move\n"); // a doc-exempt tip on top, same interval
+  logEvent(root, { source: "improve", type: "merged", commit: doc, summary: "doc only" });
+  await poll(); // the watch checks the doc tip; the tree is red
+  const culprits = eventsOfType(root, "main_culprit");
+  assert.equal(culprits.length, 1, "the red is attributed exactly once");
+  assert.equal(culprits[0]?.commit, code, "the code commit opens the red, not the doc tip");
+  assert.equal(culprits[0]?.runner, "improve", "the runner is the one that merged the opener");
+  assert.deepEqual(culprits[0]?.failingTests, ["first", "second", "third"]);
+  const checks = eventsOfType(root, "main_check");
+  assert.equal(checks.length, 2, "seed green, then the doc-tip red");
+  assert.equal(checks[1]?.status, "failed");
+  assert.equal(checks[1]?.sha, code, "the red main_check is re-attributed to the code commit, not the doc tip");
+});
+
 test("a green that closes the open red lets a later red name its own opener again", async () => {
   const root = baselineFixture(
     "improve",

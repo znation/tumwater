@@ -3408,23 +3408,29 @@ culprit names it and adds the failing and tail clauses only when it has them".
 
 ### INV-AZ4: an ongoing red keeps the commit that opened it as its named culprit
 
-**Guarantee.** The main watch's `main_culprit` names the commit that OPENED the red — the first
-red tip since the last green — not the newest red tip: while a red spell is open, a tip that
-re-settles red (a doc-exempt tip that cannot change the suite, or a code tip that does not open a
-second spell) logs no new culprit and re-queues no heal prompt; the opener's `main_culprit`
-stays the one blame. A settled green closes the spell, so the next red names its own opener.
-The G1 clause and the dashboard red detail publish a blame whose commit is the spell's opener or
-its newest red tip, so a red re-checked on a later tip keeps naming the opener instead of
-dropping or moving its blame.
+**Guarantee.** The main watch names the commit that OPENED the red as its culprit — never a
+doc-exempt (review-exempt) tip, whose diff cannot change the suite. The opener is the checked tip
+when its own diff is non-exempt; when the tip is doc-exempt (a code commit and a doc commit landed
+in one poll interval, so the red was first seen at the doc tip) it is the nearest first-parent
+ancestor of the tip whose own diff is not exempt — the commit whose change the suite could react
+to. That same opener is named in the `main_culprit` event AND stamped as the sha of the
+spell's first-red `main_check`, so G1's "red since <sha>", the dashboard red detail and ci's heal
+prompt all name the breaker. While a red spell is open, a tip that re-settles red re-checks the
+suite without re-naming the culprit and its `main_check` keeps its own tip sha (no re-attribution);
+a green closes the spell, so the next red names its own opener. The G1 clause and the dashboard
+red detail publish a blame whose commit is the spell's opener or its newest red tip, so a red
+re-checked on a later tip keeps naming the opener instead of dropping or moving its blame.
 
-**Binds.** `src/baseline/main-watch.ts` (`reportCulprit`, the `redSpellOpeners` map),
+**Binds.** `src/baseline/main-watch.ts` (`redOpener`, `reportCulprit`, the `redSpellOpeners` map),
 `src/baseline/main-guardrails.ts` (`redBlameClause`), `src/status/status-polls.ts`
 (`scanMainCheck`'s `spellOpener`, `mainCheckForPoll`'s red detail).
 
 **Pinned by.** `test/main-watch-spells.test.ts` — "a doc-exempt tip that lands after a red
-keeps the opener as the named culprit" and "a settled green closes the red spell, so the next red
-names its own opener"; `test/main-guardrails.test.ts` — "redMainWarning: a culprit that names the spell's
-opener blames the opener, not the newest tip"; `test/status-polls.test.ts` — "a main_culprit
+keeps the opener as the named culprit", "a settled green closes the red spell, so the next red
+names its own opener" and "a doc-exempt tip on top of a code commit that broke main names the
+code commit as the opener"; `test/main-watch.test.ts` — "a red whose breaking commit is
+intermediate still names the newest tip as the culprit"; `test/main-guardrails.test.ts` —
+"redMainWarning: a culprit that names the spell's opener blames the opener, not the newest tip"; `test/status-polls.test.ts` — "a main_culprit
 naming the open spell's opener carries red detail even when it is not the newest tip" and "a
 main_culprit whose spell a later passing check closed carries no red detail".
 

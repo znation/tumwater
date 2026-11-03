@@ -1,5 +1,5 @@
 import { distinctOrdered } from "../collections.js";
-import { checkMainBaseline, settleRedByRerun } from "./main-baseline.js";
+import { checkMainBaseline, firstParentWalk, INHERIT_WALK_MAX, settleRedByRerun } from "./main-baseline.js";
 import { canRerun, rerunTests } from "../build/build-check-rerun.js";
 import { baselineCheckLogger, clearHealKeyOnGreen, dropHealPromptsCoveredBy, withMainTipWorktree } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
@@ -54,6 +54,10 @@ function mainCheckEvent(
   quarantined: readonly string[] | null,
   covered: number,
   durationMs: number,
+  /** The commit the red is attributed to: the opener of a freshly-opened red spell (redOpener),
+   * which differs from the checked tip only when the tip is doc-exempt; undefined otherwise.
+   * A green or a re-check of an open spell keeps the tip (baseline.sha). */
+  sha?: string,
 ): {
   source: typeof TUMWATER_SOURCE;
   type: "main_check";
@@ -68,7 +72,7 @@ function mainCheckEvent(
   return {
     source: TUMWATER_SOURCE,
     type: "main_check",
-    sha: baseline.sha,
+    sha: sha ?? baseline.sha,
     status: red ? "failed" : "passed",
     durationMs,
     covered,
@@ -282,41 +286,70 @@ export function createMainWatch(
     }
 
     /** Settle the verdict for a checked baseline: distinguish quarantined-only reds, record
-     * main's known failures, count the covered commits, and log the main_check event. Returns
-     * whether the tip settled red (a red naming tests that are not all quarantined). */
+     * main's known failures, count the covered commits, and log the main_check event. For a
+     * freshly-opened red spell the event's sha is the spell's opener (redOpener), not the tip
+     * checked, so G1's "red since <sha>" names the commit that broke the suite; a green or a
+     * re-check of an already-open spell keeps the tip. Returns whether the tip settled red (a
+     * red naming tests that are not all quarantined). */
     async function recordMainCheck(
       wt: string,
       baseline: MainBaseline,
       previous: string | undefined,
       ran: boolean,
       started: number,
+      openerSha?: string,
     ): Promise<boolean> {
       // A red naming only quarantined tests counts as green: no redeploy hold.
       const quarantined = baseline.status === "red" ? onlyQuarantined(root, baseline.failingTests) : null;
       const red = baseline.status === "red" && !quarantined;
       knownFailures.set(root, red ? (baseline.failingTests ?? []) : []);
       const covered = await countCovered(wt, previous, baseline.sha);
-      logEventBestEffort(root, mainCheckEvent(baseline, red, quarantined, covered, ran ? Date.now() - started : 0));
+      logEventBestEffort(
+        root,
+        mainCheckEvent(baseline, red, quarantined, covered, ran ? Date.now() - started : 0, openerSha),
+      );
       return red;
+    }
+
+    /** The commit that OPENED a settled red: the checked tip when its own diff could have
+     * changed the suite, else — for a review-exempt (doc-only) tip that cannot have — the
+     * nearest first-parent ancestor (the tip itself first) whose own diff is not exempt, i.e.
+     * the most recent commit whose change the suite could react to. The watch checks the tip,
+     * not each merged commit, so when a code commit and a doc commit land in one poll interval
+     * the red is first seen at the doc tip (BUGS.md 2026-11-02: the guardrail named the doc
+     * merge as the red's opener), and the code commit that broke it is a first-parent ancestor
+     * of the tip. A non-exempt tip is returned at once (no walk); only a doc-exempt tip walks
+     * its ancestors, bounded at INHERIT_WALK_MAX like the inheritance walks, and a git failure
+     * or an all-exempt walk reads as "the tip itself". Never throws. */
+    async function redOpener(wt: string, tip: string, exemptPaths: readonly string[]): Promise<string> {
+      const tipFiles = (await treeDiffFiles(wt, `${tip}^`, tip)) ?? [];
+      if (!isExemptDiff(tipFiles, [...exemptPaths])) return tip;
+      for (const ancestor of await firstParentWalk(wt, tip, INHERIT_WALK_MAX)) {
+        const files = (await treeDiffFiles(wt, `${ancestor}^`, ancestor)) ?? [];
+        if (!isExemptDiff(files, [...exemptPaths])) return ancestor;
+      }
+      return tip;
     }
 
     /** Name a settled red tip's spell as the culprit: the merging runner, the main_culprit
      * event, and the onCulprit callback with the tip and its failing tests. The commit named is
-     * the one that OPENED the red — the first red tip since the last green — not the newest red
-     * tip: a doc-exempt tip that lands after the red opened cannot have changed the suite, so
-     * blaming it would name a merge in the G1 phrase (src/baseline/main-guardrails.ts) and the
-     * ci heal prompt (src/baseline/main-red.ts) that did not break anything. The opener is named
-     * once per spell with the tip's failing tests and, when the newest merged event names the
-     * opener, its runner; while the spell is open a later tip re-settling red re-attributes
-     * nothing. */
-    function reportCulprit(baseline: MainBaseline): void {
+     * the one that OPENED the red (redOpener) — the first red tip since the last green, or, when
+     * that tip is review-exempt (a doc-only diff that cannot have changed the suite), the nearest
+     * first-parent commit before it whose own diff is not exempt — never a doc-only tip: blaming
+     * one would name a merge in the G1 phrase (src/baseline/main-guardrails.ts) and the ci heal
+     * prompt (src/baseline/main-red.ts) that did not break anything. `culprit` is that opener
+     * (already computed by redOpener in the red branch and shared with the first-red
+     * main_check's sha), so the blame and the re-attributed red event name the same commit.
+     * The opener is named once per spell with the tip's failing tests and, when the newest
+     * merged event names the opener, its runner; while the spell is open a later tip
+     * re-settling red re-attributes nothing. */
+    function reportCulprit(baseline: MainBaseline, culprit: string): void {
       // A red spell that is already open keeps its opener named: the first red tip since the
       // last green caused the red, so a later tip re-settling red (a doc-exempt tip cannot
       // change the suite, and a code tip does not open a SECOND spell until a green closed the
       // first) is not re-attributed — no new event, no new heal prompt (the heal dedup already
       // re-queues when the failing set returns after a green).
       if (redSpellOpeners.has(root)) return;
-      const culprit = baseline.sha;
       redSpellOpeners.set(root, culprit);
       const runner = mergingRoleOf(root, culprit);
       logEventBestEffort(root, {
@@ -356,7 +389,12 @@ export function createMainWatch(
         return void (lastWatched = tip);
       }
       lastWatched = baseline.sha;
-      const red = await recordMainCheck(wt, baseline, previous, ran, started);
+      // A freshly-settled red (no spell open yet) is the spell's opener: its main_check is
+      // recorded at the commit that OPENED the red (redOpener) so G1's "red since <sha>" names
+      // the breaker, not a doc tip that only happened to be current. A re-check of an already-open
+      // spell keeps the tip's sha (INV-AZ4: the re-check re-checks without re-attributing).
+      const opener = redSpellOpeners.has(root) ? undefined : await redOpener(wt, baseline.sha, config.review.exemptPaths);
+      const red = await recordMainCheck(wt, baseline, previous, ran, started, opener);
       // The diff rules judge the tip whether the build is green or red; the build-red path below
       // names the whole tip as the culprit, so the two red kinds are judged independently.
       await watchRules(wt, previous, baseline.sha);
@@ -371,11 +409,13 @@ export function createMainWatch(
         return;
       }
       // The spell's opener is blamed once: the first settled red tip since the last green names
-      // itself, and a later tip re-settling the same open red re-checks the suite without re-
-      // naming the culprit (BUGS.md 2026-10-30 mis-attribution). The map holds the open spell's
-      // opener, so a second red while the spell is still open re-checks without re-naming; a
-      // green clears the entry (above) so a later red names its own opener.
-      reportCulprit(baseline);
+      // the opener (or the nearest non-exempt commit before it, when the checked tip is
+      // doc-exempt) and a later tip re-settling the same open red re-checks the suite without
+      // re-naming the culprit (BUGS.md 2026-10-30 mis-attribution). The map holds the open
+      // spell's opener, so a second red while the spell is still open re-checks without
+      // re-naming; a green clears the entry (above) so a later red names its own opener.
+      if (redSpellOpeners.has(root)) return;
+      reportCulprit(baseline, opener ?? baseline.sha);
     });
   }
 
