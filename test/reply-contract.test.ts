@@ -9,6 +9,7 @@ import {
   extractRefusal,
   fixLine,
   hasVerdictLine,
+  isFixLine,
   isNegatedRefusal,
   isNothingToDo,
   labeledLine,
@@ -398,4 +399,16 @@ test("fixLine does not borrow the next line as paths (fail-closed on a bare FIX)
   assert.equal(fixLine("FIX:\nnext line is reply prose"), null);
   // A path that ends cleanly on its own line is still parsed.
   assert.deepEqual(fixLine("VERDICT: reject\nFIX: a.ts\nmore prose"), ["a.ts"]);
+});
+
+// isFixLine is the per-line test parseVerdict uses to keep the FIX line out of a reviewer's
+// reasons: the same line-anchored label fixLine reads, so a mention or a list item stays a reason.
+
+test("isFixLine matches the FIX line's shape on a single line only", () => {
+  assert.equal(isFixLine("FIX: a.ts"), true);
+  assert.equal(isFixLine("  FIX: src/a.ts, src/b.ts"), true);
+  assert.equal(isFixLine("FIX:"), false); // bare: no content on the line
+  assert.equal(isFixLine("I considered FIX: a.ts but did not edit it"), false); // mid-sentence
+  assert.equal(isFixLine("- FIX: a.ts"), false); // a list item, not the contract line
+  assert.equal(isFixLine("FIXME: a.ts"), false);
 });

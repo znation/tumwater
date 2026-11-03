@@ -1,10 +1,10 @@
 /** Parsing of the reviewer's reply into a verdict — split out of review.ts so the review gate
- * (reviewAheadOfMain) and the reply-shape contract it reads (reply-contract.ts's verdictLines)
- * each have a single responsibility: this module knows how a reviewer reply is shaped, the
+ * (reviewAheadOfMain) and the reply-shape contract it reads (reply-contract.ts's verdictLines and
+ * isFixLine) each have a single responsibility: this module knows how a reviewer reply is shaped, the
  * gate knows what to do about one. It depends only on the reply contract and build-check-report's
  * clipReason (the shared per-line cap for persisted machine text). */
 
-import { verdictLines, type VerdictMatch } from "../verdict/reply-contract.js";
+import { isFixLine, verdictLines, type VerdictMatch } from "../verdict/reply-contract.js";
 import { clipReason } from "../build/build-check-report.js";
 
 /** A parsed reviewer verdict with its reasons (numbered lines after the VERDICT line; any
@@ -64,9 +64,12 @@ export function parseVerdict(text: string): ReviewVerdict | null {
  * of a reviewer reply. The prose fallback skips lead-ins and headings (isPreamble), so the
  * first reason is the reply's first finding, not "…Findings:" or "## Review"; a region of
  * nothing but those still yields them, since a lead-in beats recording no reason at all.
- * Empty when the region carries no lines at all. */
+ * A `FIX: <files>` line (isFixLine) is never a reason: it declares a post-merge reviewer's
+ * repair, and read as prose it became reasons[0] and so the fix commit's subject
+ * (`tumwater(reviewer): Fix 38887ca4 — FIX: test/build-check.test.ts`). Empty when the region
+ * carries no other lines. */
 function reasonsFrom(region: string): string[] {
-  const lines = withoutQuotedCode(region);
+  const lines = withoutQuotedCode(region).filter((l) => !isFixLine(l));
   const numbered = lines.map(listItemText).filter((r): r is string => Boolean(r));
   if (numbered.length > 0) return numbered;
   const findings = lines.filter((l) => !isPreamble(l));

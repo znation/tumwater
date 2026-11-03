@@ -221,6 +221,11 @@ export function extractCiResult(text: string): CiResult | null {
   return { sha: match[1].toLowerCase(), result: match[2]!.toLowerCase() as "passed" | "failed" };
 }
 
+/** The FIX line's shape — a line-anchored label with its content on the same line (see fixLine).
+ * One source for fixLine and isFixLine, so the line review-verdict.ts's parseVerdict drops from
+ * a reviewer's reasons is the line fixLine reads. */
+const FIX_LINE_SOURCE = "^[ \\t]*FIX:[ \\t]*(.+?)[ \\t]*$";
+
 /** The paths a post-merge review's rejecting reply pairs with its verdict to declare a repair
  * (Forward never back 1a/6): `FIX: <comma-separated paths>` naming the files the reviewer edited
  * in the review worktree. Unlike `labeledLine` — whose `\s` can span the newline, so
@@ -231,10 +236,18 @@ export function extractCiResult(text: string): CiResult | null {
  * carries none) records nothing and the review stays a plain reject, the same fail-closed lesson
  * as qa's FLOW line (BUGS.md 2026-09-23). null when no usable one-line list exists. */
 export function fixLine(text: string): string[] | null {
-  const match = /^[ \t]*FIX:[ \t]*(.+?)[ \t]*$/m.exec(text);
+  const match = new RegExp(FIX_LINE_SOURCE, "m").exec(text);
   if (!match) return null;
   const paths = splitCommaList(match[1]!);
   return paths.length > 0 ? paths : null;
+}
+
+/** True when the single `line` has the FIX line's shape. parseVerdict drops such a line from a
+ * reviewer's reasons: it declares the repair, and read as prose it became reasons[0] and so the
+ * post-merge fix commit's subject (`tumwater(reviewer): Fix 38887ca4 — FIX: …`, BUGS-FIXED.md
+ * 2026-11-02). */
+export function isFixLine(line: string): boolean {
+  return new RegExp(FIX_LINE_SOURCE).test(line);
 }
 /** The result of one `feedback` run's filing: which GitHub issue it filed, and its title. */
 export interface FiledResult {

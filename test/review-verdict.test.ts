@@ -126,6 +126,52 @@ test("parseVerdict prefers reasons after the verdict when both regions carry the
   assert.deepEqual(v, { verdict: "reject", reasons: ["the real reason below"] });
 });
 
+// A post-merge reviewer that repaired its finding ends with a `FIX: <files>` line (fixLine in
+// reply-contract.ts). That line declares the repair; it is not a reason. Read as prose, it
+// became reasons[0] and so the fix commit's subject (7375d2cc4, 2026-11-02:
+// "tumwater(reviewer): Fix 38887ca4 — FIX: test/build-check.test.ts").
+
+test("parseVerdict reads the finding above the verdict, not the FIX line below it", () => {
+  // The live 38887ca4 reply's shape: the numbered finding above the verdict, only the FIX line
+  // after it.
+  const text = [
+    "1. The new test relied on a fixed 250 ms sleep; I replaced it with a start marker.",
+    "",
+    "VERDICT: reject",
+    "FIX: test/build-check.test.ts",
+  ].join("\n");
+  assert.deepEqual(parseVerdict(text), {
+    verdict: "reject",
+    reasons: ["The new test relied on a fixed 250 ms sleep; I replaced it with a start marker."],
+  });
+});
+
+test("parseVerdict returns no reasons when the FIX line is the reply's only other content", () => {
+  assert.deepEqual(parseVerdict("VERDICT: approve\nFIX: x.txt"), { verdict: "approve", reasons: [] });
+  assert.deepEqual(parseVerdict("FIX: a.ts, b.ts\nVERDICT: reject\n  FIX: a.ts, b.ts\n"), {
+    verdict: "reject",
+    reasons: [],
+  });
+});
+
+test("parseVerdict drops the FIX line from prose reasons in either region", () => {
+  assert.deepEqual(parseVerdict("VERDICT: reject\nThe guard is inverted.\nFIX: src/a.ts"), {
+    verdict: "reject",
+    reasons: ["The guard is inverted."],
+  });
+  assert.deepEqual(parseVerdict("The cap was off by one; I fixed it.\nFIX: src/a.ts\nVERDICT: approve"), {
+    verdict: "approve",
+    reasons: ["The cap was off by one; I fixed it."],
+  });
+});
+
+test("parseVerdict keeps a reason that only mentions FIX: mid-line", () => {
+  assert.deepEqual(parseVerdict("VERDICT: reject\nThe reply's FIX: line names no file."), {
+    verdict: "reject",
+    reasons: ["The reply's FIX: line names no file."],
+  });
+});
+
 // A revision re-review is asked to check the prior objections FIRST, so a reviewer may open
 // its numbered reasons with a statement that they are resolved. That is not an objection, yet
 // every reasons[0] consumer would name it as the rejection and the author's note would tell

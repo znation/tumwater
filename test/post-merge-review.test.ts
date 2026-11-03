@@ -721,6 +721,47 @@ test("an approving review that repaired a finding still lands its repair as one 
   assert.ok(settled.some((e) => e.commit === tip && e.fixed === undefined), "the landed fix is queued for its own review");
 });
 
+test("a fix commit's subject and recorded reasons name the finding, never the FIX line", async () => {
+  // The live 38887ca4 reply's shape (7375d2cc4, 2026-11-02): the finding sits above the verdict
+  // and only the FIX line follows it, which once made the subject "— FIX: x.txt".
+  const { root, commit, ctx } = setup("VERDICT: approve\n1. fine");
+  (ctx as { runners: RoleRunner[] }).runners = [
+    fixingRunner("improve", "1. x.txt held a stale value; I rewrote it\n\nVERDICT: reject\nFIX: x.txt"),
+  ];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  const tip = headSha(root);
+  assert.equal(sh(root, "git", "rev-parse", `${tip}^`).trim(), commit, "the fix's parent is the reviewed commit");
+  assert.equal(
+    sh(root, "git", "log", "-1", "--format=%B", tip).trim(),
+    `tumwater(reviewer): Fix ${commit.slice(0, 8)} — x.txt held a stale value; I rewrote it\n\n` +
+      "1. x.txt held a stale value; I rewrote it\nRevision: 1",
+  );
+  assert.deepEqual(
+    eventsOfType(root, "review_rejected").map((e) => e.reasons),
+    [["x.txt held a stale value; I rewrote it"]],
+  );
+});
+
+test("a fix whose reply carries no reason besides its FIX line names the reviewed change", async () => {
+  const { root, commit, ctx } = setup("VERDICT: approve\n1. fine");
+  (ctx as { runners: RoleRunner[] }).runners = [fixingRunner("improve", "VERDICT: approve\nFIX: x.txt")];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  const tip = headSha(root);
+  assert.equal(sh(root, "git", "rev-parse", `${tip}^`).trim(), commit, "the fix's parent is the reviewed commit");
+  assert.equal(
+    sh(root, "git", "log", "-1", "--format=%B", tip).trim(),
+    `tumwater(reviewer): Fix ${commit.slice(0, 8)} — the reviewed change\n\nRevision: 1`,
+  );
+  assert.deepEqual(
+    eventsOfType(root, "review_verdict").map((e) => [e.head, e.reason]),
+    [[commit, undefined]],
+  );
+});
+
 test("an approving review that edits the worktree without a FIX line lands nothing", async () => {
   // The FIX line is the repair's declaration: an edit the reply never names (a scratch write)
   // is not committed, and the approval ends the entry.
