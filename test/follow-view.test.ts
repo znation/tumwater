@@ -124,3 +124,76 @@ test("followView rides through a sync frame throw on a tick and repaints on the 
     cap.restore();
   }
 });
+
+// A SLOW async frame (one still in flight when the next tick lands) must not be stacked: the
+// `painting` guard is checked BEFORE the read, so a tick that arrives mid-frame skips its repaint
+// entirely rather than starting a second (git-spawning) read on top of the first — which would
+// write a second frame over the first and leave the stacked read's rejections unhandled. The two
+// earlier tests pin the first-frame failure and the sync tick throw; this one pins the async
+// in-flight guard, the only path that sets `painting` to true and so the only one that exercises
+// the guard's skip. Only setInterval is mocked, so each repaint and parent-death poll is a
+// mock-clock tick and the slow frame is held open by a promise the test resolves on cue.
+test("followView skips a repaint that lands while an async frame is still in flight", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  // Match the watch's expected ppid (the suite runner's suiteEnv deletes the mark) so the death
+  // watch stays down across the slow-frame ticks; flipping it to a distinct value ends the follow.
+  const expected = process.env.TUMWATER_SUPERVISOR_PID
+    ? Number(process.env.TUMWATER_SUPERVISOR_PID)
+    : 4242;
+  const parent = { value: expected };
+  let calls = 0;
+  let done = false;
+  let failure: unknown = null;
+  let resolveSlow: (v: string) => void = () => {};
+  const cap = captureStdout();
+  const promise = followView(
+    () => {
+      calls += 1;
+      if (calls === 1) return Promise.resolve("frame1"); // first paint, settles fast
+      if (calls === 2) return new Promise<string>((r) => { resolveSlow = r; }); // the slow frame
+      return `frame${calls}`; // frame3+ — sync, painted once the slow frame is done
+    },
+    { ppid: () => parent.value, intervalMs: 5, tty: false },
+  ).then(
+    () => (done = true),
+    (err: unknown) => {
+      failure = err;
+      done = true;
+    },
+  );
+  try {
+    // Settle the first-paint chain so the repaint interval and parent-death poll register.
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+    // Tick 1 (parent alive): the first paint already landed, so this tick starts the slow async
+    // frame — frameText returns an unresolved promise, `painting` is set true.
+    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
+    // Tick 2 lands while that frame is still in flight: the guard must skip this repaint, so no
+    // third read is started and `calls` stays at 2 — the assertion the guard exists for.
+    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
+    assert.equal(calls, 2, "a tick mid-frame starts no stacked read");
+    // Let the slow frame finish: paint runs, `painting` clears in the `.finally`.
+    resolveSlow("frame2");
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+    assert.match(cap.out(), /frame2/, "the in-flight frame paints once it resolves");
+    // Tick 3: no frame is in flight now, so the next tick repaints and starts the next read.
+    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
+    assert.equal(calls, 3, "repainting resumes once the slow frame is done");
+    assert.match(cap.out(), /frame3/, "the post-frame repaint paints");
+    // End the follow.
+    parent.value = 1;
+    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
+    await promise;
+    assert.ok(done, "the follow resolves after the slow frame settled");
+    assert.equal(failure, null, "an in-flight frame never rejects the follow");
+  } finally {
+    parent.value = 1;
+    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
+    try {
+      await promise;
+    } catch {
+      // Rejection already recorded above.
+    }
+    t.mock.timers.reset();
+    cap.restore();
+  }
+});
