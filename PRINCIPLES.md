@@ -21,3 +21,26 @@ what to do, not what to avoid.
 - Latest instruction wins: a newer user request supersedes older recorded bugs, plans, and docs —
   synthesize it with the existing entries and update them in place so the record reflects current
   intent.
+
+## Budgets
+
+The steward's standing measure of where the codebase stands (measured from the repo, not vibes —
+refresh the numbers with `wc -l` and `find` when this section is touched, and note the date).
+
+- **Code size**: 503 src modules / ~123,000 lines; 635 test modules / ~183,000 lines. Trend:
+  grows with every merge; the split-large-function family below is the standing driver of
+  per-function (not per-file) growth.
+- **Module-size ceiling**: 20 src files exceed 600 lines, 8 exceed 700, 3 exceed 800; the largest
+  is src/roles/role-view.ts at 882. The ceiling holds because complexity is extracted into named
+  helpers, not by shrinking files — a file may stay large while its functions stay small; do not
+  re-split an already-small function to chase a line count.
+- **Dependencies**: 2 runtime (ink, react) — the ink decision of 2026-10-01 and the react that
+  ships with it; 5 dev. Zero incidental runtime deps: any new one needs an explicit user decision
+  recorded here, matching the principle above.
+- **Per-function complexity**: the split-large-function family is the team's main complexity
+  pressure — 168 such plans have landed and more sit in `## Planned`. A split earns a plan only
+  when a named function is genuinely large and a reader's question is answered better by a name;
+  a complexity-N number alone is not the reason. This keeps the family finite instead of a
+  bottomless re-split of already-named helpers.
+
+_Last measured 2026-11-03 by the steward role._
