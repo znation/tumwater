@@ -70,4 +70,6 @@ jobs:
           # `--notes` is prepended to the generated notes, so the warning leads and the
           # hand-written bullets follow it, ahead of the generated Full Changelog link.
           notes=$(printf '%s\n\n' "$RELEASE_WARNING"; cat RELEASE_NOTES.md)
-          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --notes "$notes" tumwater-*.tgz
+          # Attach this version's tarball by name: a `tumwater-*.tgz` glob also picked up a
+          # stale tumwater-0.4.5.tgz committed to the repo and shipped it on v0.4.6.
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --notes "$notes" "tumwater-${GITHUB_REF_NAME#v}.tgz"

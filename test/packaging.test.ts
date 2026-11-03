@@ -78,3 +78,14 @@ test("every release prepends the token warning and the hand-written notes", () =
   assert.ok(yml.includes("billion tokens a day or more"), "release.yml's warning must state the billion-token figure");
   assert.ok(yml.includes("Require release notes for this tag"), "release.yml must guard the notes before publishing");
 });
+
+test("a release attaches only its own version's tarball", () => {
+  const yml = fs.readFileSync(
+    new URL("../../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+  const create = yml.split("\n").find((line) => line.includes("gh release create")) ?? "";
+  assert.ok(create.endsWith(' "tumwater-${GITHUB_REF_NAME#v}.tgz"'), "attach the tag's own tarball by name");
+  // v0.4.6 shipped a stale tumwater-0.4.5.tgz committed to the repo because the glob matched it.
+  assert.ok(!create.includes("*.tgz"), "a tarball glob attaches any stray .tgz in the checkout");
+});
