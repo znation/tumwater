@@ -41,7 +41,7 @@ import { finalizeRun } from "../run/run-finalize.js";
 import { errorMessage } from "../text/text.js";
 import { appendPromptNote, prependPromptNote } from "../text/format.js";
 import type { RunUsage } from "../run/run-usage.js";
-import { hasUnmergedPin, recoverLeftover, setAsideWithdrawnWork, type LeftoverRecovery } from "./runner-leftover.js";
+import { hasUnmergedPin, recoverLeftover, setAsideWithdrawnWork, type FinishableRecovery } from "./runner-leftover.js";
 import { applyRevision, applyWithConflicts } from "./runner-revision.js";
 import { conflictedFileHunks, hasConflictMarkers, mainCommitsTouching } from "../merge/merge-git.js";
 import { changedFiles } from "../git/git-diff.js";
@@ -92,7 +92,7 @@ export interface RunnerRunContext {
   finishAbortedRun(userPrompt: string | null, wt: string): Promise<RunOutcome>;
   pinAndReset(wt: string, sha: string): Promise<boolean>;
   finishRecoveryRun(
-    recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" } | { kind: "already_queued" }>,
+    recovered: FinishableRecovery,
     userPrompt: string | null,
     wt: string,
     priorMergeFailure: string | undefined,

@@ -29,7 +29,7 @@ import {
   finishRecoveryRunPhase,
   pinAndResetPhase,
 } from "./runner-recovery.js";
-import type { LeftoverRecovery } from "./runner-leftover.js";
+import type { FinishableRecovery } from "./runner-leftover.js";
 
 /** One role runner: owns a persistent worktree + branch and runs one run at a time. */
 export class RoleRunner {
@@ -288,7 +288,7 @@ export class RoleRunner {
 
   /** Thin delegate to finishRecoveryRunPhase (src/runner/runner-recovery.ts). */
   private async finishRecoveryRun(
-    recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" } | { kind: "already_queued" }>,
+    recovered: FinishableRecovery,
     userPrompt: string | null,
     wt: string,
     priorMergeFailure: string | undefined,

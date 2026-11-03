@@ -5,7 +5,7 @@ import { aheadOfMain, headOf, setRef } from "../git/git.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { mergeRefName } from "../paths.js";
 import { shortSha } from "../text/format.js";
-import type { LeftoverRecovery } from "./runner-leftover.js";
+import type { FinishableRecovery } from "./runner-leftover.js";
 
 /** What the recovery phases need from their `RoleRunner` host. `setRecoveryFailure` writes the
  * merge failure back to the runner's field (which `run` reads at finalize time) instead of
@@ -93,7 +93,7 @@ export async function pinAndResetPhase(ctx: RecoveryContext, wt: string, sha: st
  * arm is `recoveredLeftover`: no model ran, so the run is no evidence about the backend. */
 export async function finishRecoveryRunPhase(
   ctx: RecoveryContext,
-  recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" } | { kind: "already_queued" }>,
+  recovered: FinishableRecovery,
   userPrompt: string | null,
   wt: string,
   priorMergeFailure: string | undefined,

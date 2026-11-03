@@ -133,6 +133,16 @@ export type LeftoverRecovery =
   | { kind: "handback"; sha: string; summary: string; attempts: number }
   | { kind: "discarded"; sha: string; summary: string; attempts: number };
 
+/** The recovery arms that end the run through the recovery-finishing phase (runner-recovery.ts
+ * `finishRecoveryRunPhase`): `enqueued`, `relief_wait`, `unpinned`, and `main_red_wait`. The other
+ * three arms never reach it — `handback` and `discarded` are resolved inline before the phase
+ * (runner-run.ts), and `already_queued` falls through to authoring — so their exclusion from the
+ * parameter type is stated once here and shared by the three `finishRecoveryRun` declarations. */
+export type FinishableRecovery = Exclude<
+  LeftoverRecovery,
+  { kind: "discarded" } | { kind: "handback" } | { kind: "already_queued" }
+>;
+
 /** Whether the role holds a kept merge pin — the ref `recoverLeftover` reads. Ref presence is the
  * whole answer: a pin main already holds is left to `recoverLeftover`, which deletes it. */
 export async function hasUnmergedPin(root: string, role: string): Promise<boolean> {
