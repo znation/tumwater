@@ -8,7 +8,7 @@
 
 import { fail, say, sayJson, warnIfUncommitted } from "../cli/cli-output.js";
 import { parsePositionFlag, rejectRepeatFlag, scanPositionArgs } from "../cli/cli-args.js";
-import { promptFileValue, readPromptFileArg } from "../cli/cli-command-args.js";
+import { promptFileValue, readPromptFileArg } from "../cli/cli-prompt-file.js";
 import { plannedPlanEntries } from "./backlog.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
 import { backlogHolds, cancelledClaimNote, stillHeldNote } from "./backlog-eligibility.js";

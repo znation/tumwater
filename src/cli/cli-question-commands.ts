@@ -11,7 +11,7 @@ import { fail, say, sayJson, warnIfUncommitted } from "./cli-output.js";
 import { parseCountFlag, parsePositionFlag, rejectRepeatFlag } from "./cli-args.js";
 import { JSON_FLAG, rejectEqualsForm } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
-import { promptFileValue, readPromptFileArg } from "./cli-command-args.js";
+import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
 import { editInEditor } from "./cli-editor.js";
 import { gotSuffix, parsePositiveInt } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";

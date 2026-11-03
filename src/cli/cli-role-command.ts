@@ -19,7 +19,7 @@ import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
 import { errorMessage, isExponentSpelling, isPlainDecimal } from "../text/text.js";
-import { readPromptFileArg } from "./cli-command-args.js";
+import { readPromptFileArg } from "./cli-prompt-file.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
 import { setConfigKey, unsetConfigKey } from "../config/config-write.js";

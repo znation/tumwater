@@ -5,11 +5,12 @@
  * silently baked into the prompt that every role then runs from. Both parsers therefore
  * hand-roll the same discipline (a double-dash token must be a known flag, given at most
  * once; single-dash tokens are content) and share failStrayArg, so they live together
- * apart from cli/cli-args.ts's generic machinery — which also keeps that module, minus these
- * two, free of I/O: --file's readFileSync is the one read in the CLI's arg layer. */
+ * apart from cli/cli-args.ts's generic machinery. The one --file I/O in the CLI's arg layer —
+ * the prompt-file reads and the stdin memo — lives beside them in cli/cli-prompt-file.ts, the
+ * cross-command prompt-source module. */
 
-import fs from "node:fs";
 import { failOverDurationCap, parseBranchFlag, parseDurationFlag, parsePositionFlag, rejectFlagLookingValue, rejectRepeatFlag } from "./cli-args.js";
+import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import {
   type FlagSpec,
@@ -22,7 +23,6 @@ import { fail } from "./cli-output.js";
 import { DOCTOR_CHECK_NAMES, type DoctorCheckName } from "../doctor/doctor-check-names.js";
 import { typoSuffix } from "../text/suggest.js";
 import { templateIds, unknownTemplateError } from "../init/init-templates.js";
-import { errorMessage } from "../text/text.js";
 
 /** Peel a positional-first command's bare tokens off the argument list: every flag-shaped
  * token rides in rest for rejectUnknownArgs, every bare token is a positional. For commands
@@ -92,55 +92,6 @@ function failStrayArg(args: string[], reason: string, ...claimed: number[]): voi
  * ("claimed like --role's": each site is this same pair) — so no site can drift from the others. */
 function pairClaim(flagIndex: number): number[] {
   return flagIndex >= 0 ? [flagIndex, flagIndex + 1] : [];
-}
-
-/** Read a `--file <path>` prompt file: fail naming the file when it cannot be read. A raw
- * ENOENT/EISDIR names the path but not its role, so the message says this was the --file
- * prompt. Shared by the init and prompt parsers' path branches; the prompt parser's stdin
- * branch (`-`) reads fd 0 itself — its read must be cached and its read-error names stdin —
- * and both parsers check emptiness through failEmptyPromptFile (via readPromptFileChecked
- * for real paths). */
-function readPromptFile(file: string): string {
-  try {
-    return fs.readFileSync(file, "utf8");
-  } catch (err) {
-    fail(`cannot read prompt file ${JSON.stringify(file)}: ${errorMessage(err)}`);
-  }
-}
-
-/** A `--file <path>` value that must be present: the one home of the missing-value refusal
- * shared by every `--file`-taking parser — init, prompt's edit and enqueue branches, plan/bug
- * add and edit (fileAndAnnounce / editAndAnnounce), and the questions command — so the wording
- * cannot drift between them. The flag token itself is claimed by each parser's stray-argument
- * accounting; this helper only owns the value. A flag-shaped token (`--file --json`) is
- * refused up front via rejectFlagLookingValue instead of being read as a path that fails deep
- * with a misleading "cannot read prompt file" about a flag nobody intended as a file. */
-export function promptFileValue(file: string | undefined): string {
-  rejectFlagLookingValue("--file", file);
-  if (!file) fail("--file needs a path");
-  return file;
-}
-
-/** The read+emptiness pair both parsers apply to a real `--file <path>`: read through
- * readPromptFile (whose error names the file's role) and refuse an empty file through
- * failEmptyPromptFile, in one place so the two parsers' path branches cannot drift apart.
- * The prompt parser's stdin branch (`-`) keeps its own read — it must be cached and its
- * read-error names stdin — and calls failEmptyPromptFile itself. */
-function readPromptFileChecked(file: string): string {
-  const contents = readPromptFile(file);
-  failEmptyPromptFile(file, contents);
-  return contents;
-}
-
-/** Fail when a read `--file` prompt holds no text: an empty (or whitespace-only) file reads
- * as an empty prompt, which the bare-init path would then treat as "re-seed from README.md"
- * (the operator's --file argument silently ignored on an initialized repo), and a generic
- * "a brief is required" (which never names the file) on a fresh one; the prompt
- * queue would enqueue nothing. Names the file, like every other bad --file shape. Shared by
- * the init and prompt parsers, so the message cannot drift between them. */
-function failEmptyPromptFile(file: string, contents: string): void {
-  if (contents.trim() === "")
-    fail(`the prompt file ${JSON.stringify(file)} is empty — it carries no prompt text`);
 }
 
 /** init's flag vocabulary (plans/portability.md §7/7, correction 1): --file and --branch take
@@ -233,7 +184,7 @@ function resolveInitFileArg(args: string[], base: Omit<InitArgs, "prompt">): Ini
     if (args.includes(flag)) claimed.push(args.indexOf(flag));
   }
   failStrayArg(args, "with --file the prompt comes from the file", ...claimed);
-  const contents = readPromptFileChecked(file);
+  const contents = readPromptFileArg(file);
   if (base.listTemplates) {
     fail(LIST_TEMPLATES_PROMPT_ERROR);
   }
@@ -287,27 +238,6 @@ type PromptArgs =
   | { mode: "cancel"; role: string | null; position: number }
   | { mode: "edit"; role: string | null; position: number; text: string | null; attachPaths: string[] }
   | { mode: "top"; role: string | null; position: number };
-
-/** The stdin prompt read once per process: cli.ts pre-parses prompt's args and cmdPrompt
- * re-parses them, and a second readFileSync(0) on a drained pipe would see an empty prompt. */
-let stdinPrompt: string | null = null;
-
-/** Read a `--file` value: `-` reads stdin (memoized in stdinPrompt, with the stdin read error
- * and emptiness check beside the read), any other path goes through readPromptFileChecked.
- * Shared by `prompt --file` and the `bug`/`plan` file forms. */
-export function readPromptFileArg(file: string): string {
-  if (file !== "-") return readPromptFileChecked(file);
-  if (stdinPrompt === null) {
-    try {
-      stdinPrompt = fs.readFileSync(0, "utf8");
-    } catch (err) {
-      stdinPrompt = "";
-      fail(`cannot read prompt file "-" (stdin): ${errorMessage(err)}`);
-    }
-  }
-  failEmptyPromptFile(file, stdinPrompt);
-  return stdinPrompt;
-}
 
 /** prompt's flag vocabulary, one definition shared by the unknown-flag loop and the
  * equals-form refusal inside it (ROLE_FLAG rides in with its shared missing-value wording). */

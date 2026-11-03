@@ -2,7 +2,7 @@ import path from "node:path";
 import { readBrief, renderBrief } from "../brief/brief.js";
 import { editBriefText } from "../brief/brief-edit.js";
 import { editInEditor } from "./cli-editor.js";
-import { readPromptFileArg } from "./cli-command-args.js";
+import { readPromptFileArg } from "./cli-prompt-file.js";
 import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { fail, say, sayJson } from "./cli-output.js";
 import { requireReadyRepo } from "./cli-repo-gate.js";

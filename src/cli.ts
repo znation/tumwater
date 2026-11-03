@@ -339,7 +339,7 @@ async function cmdPromptCase(root: string, args: string[]): Promise<void> {
   // the same masking every other command's spec-based missing-value check avoids.
   // cmdPrompt re-running the parse below cannot drift from what this pre-parse accepted,
   // and --file's reads are idempotent across the two parses (a file is re-read; the
-  // stdin read is memoized in cli/cli-command-args.ts, so a drained pipe is not re-read
+  // stdin read is memoized in cli/cli-prompt-file.ts, so a drained pipe is not re-read
   // as an empty prompt).
   parsePromptArgs(args);
   await requireReadyRepo(root);
