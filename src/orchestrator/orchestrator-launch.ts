@@ -15,6 +15,7 @@ import {
   abandonFallbackProbeAt,
   recordFallbackRunAt,
   startFallbackProbeAt,
+  type FallbackBreaker,
   type FallbackBreakerPolicy,
 } from "../budget/fallback-breaker.js";
 import { seamHoldKey, seamPairName } from "../config/config-views.js"
@@ -28,6 +29,7 @@ import type { Semaphore } from "../concurrency/semaphore.js";
 import { withRunPermit } from "../concurrency/run-permit.js";
 import { DIRECTOR_ROLE, roleTier } from "../roles/roles.js";
 import { runTimedRoleRun } from "../run/run-timing.js";
+import type { RunOutcome } from "../run/run-outcome.js";
 
 /** How many recent work-bearing run durations the p75 sample keeps (drainInFlightWork's
  * HANDOFF_MERGE_WINDOW_MS input): the drain window tracks recent run pace, not all-time
@@ -95,6 +97,90 @@ interface LaunchContext {
   suspectPair?: (pair: string) => void;
 }
 
+/** The pair a started run actually ran on, resolved from the runner's config at start
+ * time — the budget-fallback pair when a cap episode is active, since the gate's per-tier
+ * view was installed in the runner's config — plus the breaker entry for that pair, read
+ * before the run. Null when no evidence pair applies: the budget is not active, the
+ * resolved config names no model, or the run is the director's. A per-pair breaker fed a
+ * fallback run under the primary's name would misprice a healthy pair and miss a dead one
+ * (PLANS.md "Mixed claude + pi fleets, part 2/4"). */
+function startedPairFor(
+  ctx: LaunchContext,
+  runner: RoleRunner,
+): { pair: string; entry: FallbackBreaker | undefined } | null {
+  const cfg = runner.role === DIRECTOR_ROLE ? null : runner.runConfig();
+  if (!ctx.budgetActive || cfg?.model === undefined) return null;
+  // The breaker is keyed by the seam that ran (seamHoldKey), like the run pair and
+  // the team-hold stamps (PLANS.md "Mixed claude + pi fleets, part 2/4"): a claude
+  // fallback run demotes the `claude/<model>` breaker entry, never `?/…`.
+  const pair = modelPairName({ provider: seamHoldKey(cfg), model: cfg.model });
+  return { pair, entry: ctx.gateStates.budget.breakers[pair] };
+}
+
+/** The pair the run starts on, for the model check's re-check trigger (any role, the
+ * director included: its runs are evidence about its pair too). Resolved before the run,
+ * as the check reads it, so a config change made during the run cannot change the pair
+ * the check later names. Null while the check is off. */
+function startedCheckPair(ctx: LaunchContext, runner: RoleRunner): string | null {
+  return ctx.suspectPair ? seamPairName(runner.runConfig()) : null;
+}
+
+/** Execute the role's run under the team run permit when it holds a slot, or bare
+ * otherwise: its lease rides in the run-permit store for the length of the run, so an idle wait
+ * inside it (a failed review's in-place retry pause) can hand the team permit back and
+ * re-take it before the next attempt. The director holds no lease. */
+async function runUnderPermit(
+  runner: RoleRunner,
+  usesSlot: boolean,
+  lease: Awaited<ReturnType<Semaphore["acquireLease"]>>,
+): Promise<RunOutcome> {
+  return usesSlot ? withRunPermit(lease, () => runner.run()) : runner.run();
+}
+
+/** Notify the model check's re-check trigger with the pair the run started on when the
+ * run ended without changes and without declaring nothing-to-do (RunOutcome.undeclared),
+ * or failed before its model replied at all (RunOutcome.unanswered); other outcomes name
+ * no pair. */
+function noteSuspectPair(
+  ctx: LaunchContext,
+  checkPair: string | null,
+  outcome: RunOutcome,
+): void {
+  if (checkPair !== null && (outcome.undeclared || outcome.unanswered)) ctx.suspectPair?.(checkPair);
+}
+
+/** Fold the started run's outcome into the fallback breaker's evidence: record it on the
+ * pair the run actually ran on (a recovered leftover counts as "skipped", not the run's
+ * result), or, for a probe that started on no engaged pair, hand its claim back. */
+function foldStartEvidence(
+  ctx: LaunchContext,
+  startedPair: { pair: string; entry: FallbackBreaker | undefined } | null,
+  outcome: RunOutcome,
+  probe: boolean,
+): void {
+  if (startedPair?.entry !== undefined) {
+    const evidence = outcome.recoveredLeftover ? "skipped" : outcome.result;
+    ctx.gateStates.budget.breakers = recordFallbackRunAt(
+      ctx.gateStates.budget.breakers,
+      startedPair.pair,
+      startedPair.entry,
+      evidence,
+      probe,
+      ctx.breakerNow(),
+      ctx.breakerPolicy,
+    );
+  } else if (probe && ctx.probePair !== null) {
+    // A probe whose run started on no engaged pair — the budget gate reopened
+    // between admission and start (the cap raised, or midnight reset spend) — folds
+    // no evidence, so its claim would hang on the pair's entry forever: probing
+    // blocks both fallbackProbeDuePair and startFallbackProbeAt, and nothing but a
+    // rekey clears it, so the demoted fallback could never earn another probe. Hand
+    // the claim back exactly as the !started path below does for a run turned away
+    // at its permit.
+    ctx.gateStates.budget.breakers = abandonFallbackProbeAt(ctx.gateStates.budget.breakers, ctx.probePair);
+  }
+}
+
 /** Launch one due runner's run: reserve it, park it in the semaphore, and start it under
  * runTimedRoleRun with the breaker-evidence wiring. Returns the task promise already added
  * to its in-flight bucket (its `finally` self-removes and folds the duration sample). */
@@ -104,11 +190,8 @@ export function launchDueRuns(ctx: LaunchContext): void {
     reasons,
     signal,
     gateStates,
-    breakerPolicy,
-    breakerNow,
     probePair,
     probeRoles,
-    budgetActive,
     semaphore,
     rolePermitHolders,
     roleInFlight,
@@ -198,54 +281,11 @@ export function launchDueRuns(ctx: LaunchContext): void {
           : () => {},
         async () => {
           started = true;
-          // A role run that starts while the budget holds uses the fallback pair its tier
-          // resolved to (the gate's per-tier view was installed in its config). Its outcome
-          // is the evidence for the pair it ACTUALLY ran on, so read it from the runner's
-          // resolved config (runConfig), which names the budget-fallback pair when a cap
-          // episode is active: a per-pair breaker fed a fallback run under the primary's
-          // name would misprice a healthy pair and miss a dead one (PLANS.md "Mixed claude +
-          // pi fleets, part 2/4").
-          const cfg = runner.role === DIRECTOR_ROLE ? null : runner.runConfig();
-          // The breaker is keyed by the seam that ran (seamHoldKey), like the run pair and
-          // the team-hold stamps (PLANS.md "Mixed claude + pi fleets, part 2/4"): a claude
-          // fallback run demotes the `claude/<model>` breaker entry, never `?/…`.
-          const ranPair = budgetActive && cfg?.model !== undefined
-              ? modelPairName({ provider: seamHoldKey(cfg), model: cfg.model })
-              : null;
-          const ranOn = ranPair !== null ? gateStates.budget.breakers[ranPair] : undefined;
-          // The pair the run starts on, for the model check's re-check trigger (any role, the
-          // director included: its runs are evidence about its pair too).
-          const checkPair = ctx.suspectPair ? seamPairName(runner.runConfig()) : null;
-          // The run's lease rides in the run-permit store for the length of the run, so an
-          // idle wait inside it (a failed review's in-place retry pause) can hand the team
-          // permit back and re-take it before the next attempt. The director holds no lease.
-          const outcome =
-            usesSlot
-              ? await withRunPermit(lease!, () => runner.run())
-              : await runner.run();
-          if (checkPair !== null && (outcome.undeclared || outcome.unanswered)) ctx.suspectPair?.(checkPair);
-          if (ranPair !== null && ranOn !== undefined) {
-            const at = breakerNow();
-            const evidence = outcome.recoveredLeftover ? "skipped" : outcome.result;
-            gateStates.budget.breakers = recordFallbackRunAt(
-              gateStates.budget.breakers,
-              ranPair,
-              ranOn,
-              evidence,
-              probe,
-              at,
-              breakerPolicy,
-            );
-          } else if (probe && probePair !== null) {
-            // A probe whose run started on no engaged pair — the budget gate reopened
-            // between admission and start (the cap raised, or midnight reset spend) — folds
-            // no evidence, so its claim would hang on the pair's entry forever: probing
-            // blocks both fallbackProbeDuePair and startFallbackProbeAt, and nothing but a
-            // rekey clears it, so the demoted fallback could never earn another probe. Hand
-            // the claim back exactly as the !started path below does for a run turned away
-            // at its permit.
-            gateStates.budget.breakers = abandonFallbackProbeAt(gateStates.budget.breakers, probePair);
-          }
+          const pair = startedPairFor(ctx, runner);
+          const checkPair = startedCheckPair(ctx, runner);
+          const outcome = await runUnderPermit(runner, usesSlot, lease!);
+          noteSuspectPair(ctx, checkPair, outcome);
+          foldStartEvidence(ctx, pair, outcome, probe);
           return outcome;
         },
         Date.now,
