@@ -255,7 +255,7 @@ Usage:
                                    execution order (so it merges next when ready), preserving any
                                    notBefore deferral, refusing an entry a live merge is merging and
                                    --role/-f, and answering already-first for position 1
-  tumwater reviews [--accept <n>] [--role <id>[,<id>...]] [--status <state>[,<state>...]] [--json]
+  tumwater reviews [-f/--follow] [--accept <n>] [--role <id>[,<id>...]] [--status <state>[,<state>...]] [--json]
                                    List the post-merge review queue (\.tumwater/state
                                    /post-review.json) in FIFO order: one line per merged commit
                                    waiting for its review — position, role, short sha, summary,
@@ -269,7 +269,10 @@ Usage:
                                    queue; --status keeps only the entries in the listed states
                                    (waiting, failing, rejected; an entry turned back is rejected
                                    first), each under its position in the whole queue, and
-                                   composes with --role; --accept <n>
+                                   composes with --role; -f/--follow repaints the queue every
+                                   couple of seconds until Ctrl+C or the process that started it
+                                   exits, so a backgrounded follow does not outlive its parent;
+                                   it refuses --json; --accept <n>
                                    removes the Nth queued entry (the position \`tumwater reviews\`
                                    prints) as deliberately accepted unreviewed, logging a warning;
                                    it refuses an entry whose repair already merged (\`fixed\`);

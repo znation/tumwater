@@ -269,6 +269,17 @@ test("reviews --accept failures leave the file unchanged", async () => {
   assert.deepEqual(readPostReviews(repo), before, "unknown flag changes no file");
 });
 
+test("reviews --accept <n> -f is refused — the destructive branch keeps its own flag gate", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews accept follow test");
+  seed(repo);
+  const before = readPostReviews(repo);
+  const r = await cli(repo, "reviews", "--accept", "1", "-f");
+  assert.equal(r.code, 1, "-f beside --accept is refused, not followed");
+  assert.ok(r.stderr.includes("-f"), "the refusal names the -f flag");
+  assert.deepEqual(readPostReviews(repo), before, "the destructive branch was not run");
+});
+
 test("reviews --accept retires a rejected entry like any pending one", async () => {
   const repo = makeRepo();
   await initProject(repo, "reviews accept reject test");

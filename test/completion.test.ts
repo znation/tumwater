@@ -49,6 +49,7 @@ test("completionSpec over the real help", () => {
   // quarantine's -f/--follow: completion offers the long form, the same as every other
   // follow command (queue, status, backlog, report all offer --follow, not -f).
   assert.ok(spec.flags.quarantine?.includes("--follow"), "quarantine offers --follow");
+  assert.ok(spec.flags.reviews?.includes("--follow"), "reviews offers --follow");
   for (const c of ["tui", "version", "role"]) assert.deepEqual(spec.subcommands[c], [], c);
   for (const c of spec.commands) assert.ok(spec.flags[c]?.includes("--help"), c);
 });

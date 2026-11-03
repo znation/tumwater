@@ -294,7 +294,8 @@ export const N_FLAG: FlagSpec = {
 export const JSON_FLAG: FlagSpec = { names: ["--json"] };
 
 /** The `-f/--follow` flag spec, shared by every command with a follow view (logs, history,
- * status, queue, report, backlog, diff and quarantine — each snapshot command's `-f/--follow`
+ * status, queue, reviews, report, backlog, diff and quarantine — each snapshot command's
+ * `-f/--follow`
  * twin): one
  * definition of the flag's spelling, beside ROLE_FLAG and JSON_FLAG, so the gate's accepted
  * vocabulary cannot drift apart. It takes no value, like JSON_FLAG; each body renders its
@@ -304,8 +305,8 @@ export const FOLLOW_FLAG: FlagSpec = { names: ["-f", "--follow"] };
 
 /** Whether an arg array carries the `-f/--follow` flag — the detection every follow-capable
  * command body spelled out as an `includes("-f") || includes("--follow")` one-liner over
- * its own arg array (`args` for status, queue, report, diff and quarantine; `rest` for logs,
- * history and backlog). Now derived from FOLLOW_FLAG's own spelling, so the detection cannot
+ * its own arg array (`args` for status, queue, reviews, report, diff and quarantine; `rest`
+ * for logs, history and backlog). Now derived from FOLLOW_FLAG's own spelling, so the detection cannot
  * drift from
  * the gate's accepted vocabulary. */
 export function hasFollowFlag(args: readonly string[]): boolean {

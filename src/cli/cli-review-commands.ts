@@ -9,7 +9,8 @@
  * the read path and gates the write with `requireReadyRepo`. Unlike `cmdQueue`'s `--cancel`, the
  * read case still writes no file. */
 
-import { JSON_FLAG, ROLE_FLAG, rejectUnknownArgs, statusFlagSpec } from "./cli-flag-specs.js";
+import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, rejectUnknownArgs, statusFlagSpec } from "./cli-flag-specs.js";
+import { followView, type FollowViewSeams } from "./follow-view.js";
 import { sayJsonOrRender, say, sayJson, fail } from "./cli-output.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { parseRoleListScope, parseStatusFlag, scanPositionArgs } from "./cli-args.js";
@@ -49,41 +50,62 @@ function parseReviewStatusList(raw: string): PostReviewState[] {
   return out;
 }
 
-/** `tumwater reviews [--json]`: the post-merge review queue, oldest first.*/
-export async function cmdReviews(root: string, args: string[]): Promise<void> {
+/** `tumwater reviews [-f/--follow] [--json]`: the post-merge review queue, oldest first.
+ * `-f/--follow` repaints the queue every couple of seconds until Ctrl+C or the process that
+ * started it exits, so a backgrounded follow does not outlive its parent (the same rule
+ * `queue -f` uses). */
+export async function cmdReviews(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   // `tumwater reviews --accept <n>` is the read-only command's one destructive mode: route it
   // to its own branch before the read gate, so --accept never leaks into the view parsing.
   if (args.includes("--accept")) {
     await cmdReviewsAccept(root, args);
     return;
   }
-  rejectUnknownArgs("reviews", args, [ROLE_FLAG, statusFlagSpec(REVIEWS_STATUS_VALUE_ERROR), JSON_FLAG]);
+  rejectUnknownArgs("reviews", args, [ROLE_FLAG, statusFlagSpec(REVIEWS_STATUS_VALUE_ERROR), JSON_FLAG, FOLLOW_FLAG]);
   refuseTeamWorkspace(root);
+  const follow = hasFollowFlag(args);
+  if (follow && args.includes("--json")) fail("reviews --json prints one document; -f/--follow repaints a live view — drop one of them");
   // `--role` keeps only the listed roles' entries (a base id taking its instances too) under
   // their whole-queue positions, so `--accept <n>` still addresses the position the unscoped
   // read prints. Absent a ready config `parseRoleListScope` falls back to the built-in catalog.
   const roles = parseRoleListScope(root, args);
   const { raw: statusRaw } = parseStatusFlag(args, REVIEWS_STATUS_VALUE_ERROR);
-  const whole = readPostReviews(root);
-  let entries: PostReview[] = whole;
-  let scope: { roles: readonly string[]; positions: readonly number[]; total: number; filter?: string } | undefined;
-  if (statusRaw === null) {
-    const scoped = roles ? scopePostReviews(whole, roles, (e) => roleInScope(e.role, roles)) : undefined;
-    entries = scoped ? scoped.entries : whole;
-    scope = scoped?.scope;
-  } else {
-    // `--status <state>[,...]` keeps only the listed states (the same precedence
-    // postReviewStatusLabel prints: a rejected-and-failing entry is rejected) under their
-    // whole-queue positions, composing with `--role`. roles=[] when unscoped.
-    const states = parseReviewStatusList(statusRaw);
-    const keep = (e: PostReview) => (!roles || roleInScope(e.role, roles)) && states.includes(postReviewState(e));
-    const filterText = [roles ? `--role ${roles.join(",")}` : "", `--status ${states.join(",")}`]
-      .filter(Boolean)
-      .join(" ");
-    const scoped = scopePostReviews(whole, roles ?? [], keep, filterText);
-    entries = scoped.entries;
-    scope = scoped.scope;
+  // The scoped read shared by the follow and the one-shot branches, so the render's age and
+  // the scope text share one clock read and each follow frame re-reads the queue file.
+  const readScoped = (): { entries: PostReview[]; scope: { roles: readonly string[]; positions: readonly number[]; total: number; filter?: string } | undefined } => {
+    const whole = readPostReviews(root);
+    let entries: PostReview[] = whole;
+    let scope: { roles: readonly string[]; positions: readonly number[]; total: number; filter?: string } | undefined;
+    if (statusRaw === null) {
+      const scoped = roles ? scopePostReviews(whole, roles, (e) => roleInScope(e.role, roles)) : undefined;
+      entries = scoped ? scoped.entries : whole;
+      scope = scoped?.scope;
+    } else {
+      // `--status <state>[,...]` keeps only the listed states (the same precedence
+      // postReviewStatusLabel prints: a rejected-and-failing entry is rejected) under their
+      // whole-queue positions, composing with `--role`. roles=[] when unscoped.
+      const states = parseReviewStatusList(statusRaw);
+      const keep = (e: PostReview) => (!roles || roleInScope(e.role, roles)) && states.includes(postReviewState(e));
+      const filterText = [roles ? `--role ${roles.join(",")}` : "", `--status ${states.join(",")}`]
+        .filter(Boolean)
+        .join(" ");
+      const scoped = scopePostReviews(whole, roles ?? [], keep, filterText);
+      entries = scoped.entries;
+      scope = scoped.scope;
+    }
+    return { entries, scope };
+  };
+  if (follow) {
+    // Each frame re-reads the queue file and reads the clock once, so an entry that appears,
+    // ages toward the failure limit, or leaves when its repair merges shows in the next
+    // repaint — the same per-frame read `queue -f` uses.
+    await followView(() => {
+      const { entries, scope } = readScoped();
+      return renderPostReviews(entries, scope, Date.now());
+    }, seams);
+    return;
   }
+  const { entries, scope } = readScoped();
   sayJsonOrRender(args, { pending: entries }, () => renderPostReviews(entries, scope, Date.now()));
 }
 
