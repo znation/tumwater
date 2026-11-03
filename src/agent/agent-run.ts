@@ -34,7 +34,7 @@ import { codexBackend } from "./codex/codex-backend.js";
 import { opencodeBackend } from "./opencode/opencode-backend.js";
 import { setupFailureResult, settleClose, settleError, settleExit } from "./agent-settle.js";
 import { openAppendLog, spawnPiRun, type AppendLog, type SpawnedRun } from "./agent-spawn.js";
-import { createAgentStream } from "./agent-stream.js";
+import { createAgentStream, type AgentStream } from "./agent-stream.js";
 
 // The streaming pipeline's over-long-native-line cap stays reachable from here, the historical
 // home the test suite still imports it from, even though the value now lives in agent-stream.ts.
@@ -156,6 +156,151 @@ export interface PiRunOptions {
   maxBudgetUsd?: number;
 }
 
+/** The run's opened files — the session dir's two append logs and the private per-run TMPDIR —
+ * or the setup failure (INV-CQ1) that closed whatever opened before it. */
+type RunFiles =
+  | { ok: true; rawLog: AppendLog; nativeLog: AppendLog; runTmp: string }
+  | { ok: false; error: string };
+
+/** Open the run's files — the session dir, the raw log, the backend-native log, and a private
+ * per-run TMPDIR — before anything is spawned. A throw closes whichever logs opened and is
+ * returned as a setup failure so the executor resolves a failed run instead of rejecting. */
+function openRunFiles(opts: PiRunOptions): RunFiles {
+  let rawLog: AppendLog | undefined;
+  let nativeLog: AppendLog | undefined;
+  try {
+    ensureDir(opts.sessionDir);
+    // A broken raw log (EACCES, ENOSPC) must not crash the process on an unhandled 'error'
+    // nor hang the run: openAppendLog marks it so finish() resolves without waiting for a
+    // 'finish' that will never come — a lost transcript is acceptable, a stuck runner is not.
+    rawLog = openAppendLog(opts.rawLogFile, opts.config.logMaxBytes);
+    // The backend-native stdout, kept beside the canonical raw log for debugging: every
+    // complete native line is written before it is translated, so the two logs line up. A
+    // broken native log degrades to a lost debug log, never a stuck or failed run.
+    nativeLog = openAppendLog(opts.nativeLogFile, opts.config.logMaxBytes);
+    // A private TMPDIR per run: concurrent agents default to literal /tmp names, and a shared
+    // per-user TMPDIR would still collide. Removed when the run settles.
+    const runTmp = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-run-"));
+    return { ok: true, rawLog, nativeLog, runTmp };
+  } catch (err) {
+    // Nothing is spawned yet: close what opened and fail the run instead of rejecting it.
+    rawLog?.stream.end();
+    nativeLog?.stream.end();
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/** Assemble the live run state the settlement-half handlers (agent-settle.ts) read when their
+ * event fires. The getters read through to the run's still-mutating feed state — the stream's
+ * stderr buffer and fallback-clone flag, the blind-read getter, the aborted flag and the kill
+ * classification — so a handler sees the current value rather than a snapshot taken when its
+ * listener was registered. */
+function buildSettleState(input: {
+  opts: PiRunOptions;
+  backend: AgentBackend;
+  spawned: SpawnedRun;
+  stream: AgentStream;
+  wd: ReturnType<typeof startPiWatchdogs>;
+  isAborted: () => boolean;
+  wasKilled: () => boolean;
+  blindRead: () => string | undefined;
+}): RunSettleState {
+  const { opts, backend, spawned, stream, wd } = input;
+  return {
+    child: spawned.child,
+    resolved: spawned.resolved,
+    backend,
+    runMarker: spawned.runMarker,
+    parser: spawned.parser,
+    translator: spawned.translator,
+    decoder: spawned.decoder,
+    wd,
+    finish: stream.finish,
+    feedCanonical: stream.feedCanonical,
+    onLine: stream.onLine,
+    runSpec: spawned.runSpec,
+    invocation: spawned.invocation,
+    stderr: stream.stderr,
+    fallbackClone: stream.fallbackClone,
+    settled: stream.settled,
+    blindRead: () => input.blindRead(),
+    aborted: () => input.isAborted(),
+    wasKilled: () => input.wasKilled(),
+    kind: opts.kind,
+    config: opts.config,
+    onLeftoversSwept: opts.onLeftoversSwept,
+  };
+}
+
+/** Register the child's `error`/`exit`/`close` settlement listeners (agent-settle.ts) in their
+ * original order — error, exit, then close. */
+function wireChildSettlement(child: ChildProcess, state: RunSettleState): void {
+  child.on("error", (err) => {
+    settleError(state, err);
+  });
+
+  // Sweep the run however it ended, a normal exit included, in two passes:
+  //
+  // 1. The group pi led: pi exits before its orphans — a tool call's `(server &)` or
+  //    `cd … && server &` is reparented to PID 1 but stays in pi's group — and the harness
+  //    cannot rely on the model's own cleanup (BUGS.md 2026-09-23: qa's unauthenticated
+  //    `gui --all-interfaces` listened on the LAN for 7.5 hours after a run that ended
+  //    "Everything checked out"). On 'exit', not 'close': pi has just been reaped, so the
+  //    pgid still names only its group (never reissued while a member lives), and an orphan
+  //    holding pi's stdio open dies now instead of holding 'close' — and the run — open.
+  //    Synchronous, so it adds nothing to the run's resolution; on the kill paths it
+  //    re-sends a SIGTERM the group already had.
+  //
+  // 2. The marker sweep: pi 0.87.1's bash tool starts every command detached, in its own
+  //    process group, so whatever a tool call backgrounds sits in a group whose leader is
+  //    not pi and pass 1 never reaches it (BUGS.md 2026-09-30 — leaked servers and test
+  //    workers outlived their runs by hours). Every process the run started carries the
+  //    run's TUMWATER_RUN mark in its environment, so the same-user scan finds them
+  //    wherever they were reparented. Fire-and-forget: one process-table scan, never
+  //    awaited — the run resolves on pi's output, and the sweep's own SIGKILL escalation
+  //    (10 s) is unref'd like signalTree's.
+  child.on("exit", () => {
+    settleExit(state);
+  });
+
+  child.on("close", (code) => {
+    settleClose(state, code);
+  });
+}
+
+/** The cleanup a synchronous throw in the build-and-spawn stage does before the run rejects:
+ * remove the private TMPDIR and end the two transcript streams, then reject. */
+function rejectFailedSpawn(
+  files: { runTmp: string; rawLog: AppendLog; nativeLog: AppendLog },
+  err: unknown,
+  reject: (reason: Error) => void,
+): void {
+  // A synchronous throw in the run's build-and-spawn stage (claude's invocation rejects a
+  // run with no resolved model) rejects the run, preserving the contract a synchronous
+  // executor's throw used to get from the Promise constructor. No child was spawned, so no
+  // `error`/`close` ever fires and the settle path that removes the private TMPDIR
+  // (agent-stream.ts's finish) never runs — remove it here, best-effort like finish does, so
+  // a broken run does not leave a `tumwater-run-*` temp dir behind.
+  try {
+    removeTree(files.runTmp);
+  } catch {
+    /* left for the OS temp sweep */
+  }
+  // The two append-log streams opened before the build-and-spawn stage (the raw and
+  // backend-native transcripts) are never handed to a stream-settlement path on this throw
+  // — there is no child and no finish(), so nothing else would ever end them — end them
+  // here best-effort (the same cleanup the outer setup-failure catch makes) or every
+  // rejected run leaks two open transcript descriptors that accumulate in the
+  // long-lived orchestrator process.
+  try {
+    files.rawLog.stream.end();
+    files.nativeLog.stream.end();
+  } catch {
+    /* best-effort */
+  }
+  reject(err instanceof Error ? err : new Error(`runAgent: ${String(err)}`));
+}
+
 /** Run the configured agent backend non-interactively in a worktree and distill the result.
  * Never throws: a setup failure (session dir, log file, scratch dir) resolves as a failed run
  * whose errorMessage names it. */
@@ -170,29 +315,15 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // The `agent` selector is optional: default to pi, the historical backend. An unregistered
     // id also falls back to pi rather than rejecting the run.
     const backend = backendById(opts.config.agent ?? DEFAULT_BACKEND) ?? piBackend;
-    let rawLog: AppendLog | undefined;
-    let nativeLog: AppendLog | undefined;
-    let runTmp: string;
-    try {
-      ensureDir(opts.sessionDir);
-      // A broken raw log (EACCES, ENOSPC) must not crash the process on an unhandled 'error'
-      // nor hang the run: openAppendLog marks it so finish() resolves without waiting for a
-      // 'finish' that will never come — a lost transcript is acceptable, a stuck runner is not.
-      rawLog = openAppendLog(opts.rawLogFile, opts.config.logMaxBytes);
-      // The backend-native stdout, kept beside the canonical raw log for debugging: every
-      // complete native line is written before it is translated, so the two logs line up. A
-      // broken native log degrades to a lost debug log, never a stuck or failed run.
-      nativeLog = openAppendLog(opts.nativeLogFile, opts.config.logMaxBytes);
-      // A private TMPDIR per run: concurrent agents default to literal /tmp names, and a shared
-      // per-user TMPDIR would still collide. Removed when the run settles.
-      runTmp = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-run-"));
-    } catch (err) {
-      // Nothing is spawned yet: close what opened and fail the run instead of rejecting it.
-      rawLog?.stream.end();
-      nativeLog?.stream.end();
-      resolve(setupFailureResult(backend.id, `could not prepare the agent run: ${errorMessage(err)}`));
+    // The run's files — the session dir, the raw and backend-native logs, and a private
+    // TMPDIR — are opened up front (openRunFiles). A setup failure (INV-CQ1) closes whatever
+    // opened and resolves a failed run naming it instead of rejecting.
+    const files = openRunFiles(opts);
+    if (!files.ok) {
+      resolve(setupFailureResult(backend.id, `could not prepare the agent run: ${files.error}`));
       return;
     }
+    const { rawLog, nativeLog, runTmp } = files;
     try {
     // The whole build-and-spawn stage — the marker write, parser construction, run marker,
     // backend-bin resolution, notes shim, run spec, the backend's optional `prepare`, the
@@ -209,16 +340,12 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // WITH a `prepare` (codex) returns a promise that resolves after its trust is settled.
     const spawnedResult = spawnPiRun(backend, { raw: rawLog }, runTmp, opts);
     const spawned: SpawnedRun = spawnedResult instanceof Promise ? await spawnedResult : spawnedResult;
-    // Bind the coordinator's objects from the bundle, then hand the stream-side objects (parser,
-    // translator, decoders) to createAgentStream below, which owns them with the pipeline.
+    // Bind the coordinator's objects from the bundle — the child the watchdogs and the
+    // settlement wiring drive, the parser the watchdogs read, and the blind-read getter the
+    // kill classification reads. The stream-side objects (translator, decoders) travel with
+    // the bundle into createAgentStream below, which owns them with the pipeline.
     const child = spawned.child;
-    const resolved = spawned.resolved;
-    const runSpec = spawned.runSpec;
-    const invocation = spawned.invocation;
     const parser = spawned.parser;
-    const translator = spawned.translator;
-    const decoder = spawned.decoder;
-    const runMarker = spawned.runMarker;
     const blindRead = spawned.blindRead;
 
     // The run's two watchdog clocks (src/pi/pi-watchdogs.ts): the run deadline and the quiet
@@ -273,90 +400,19 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     child.stdout?.on("data", (chunk: Buffer) => stream.feedStdout(chunk));
     child.stderr?.on("data", (chunk: Buffer) => stream.feedStderr(chunk));
 
-    // The run state the settlement-half handlers (agent-settle.ts) read when their event
-    // fires. The getters read through to the run's still-mutating feed state, so a handler
-    // sees the current value rather than a snapshot taken when its listener was registered.
-    const state: RunSettleState = {
-      child,
-      resolved,
+    const state = buildSettleState({
+      opts,
       backend,
-      runMarker,
-      parser,
-      translator,
-      decoder,
+      spawned,
+      stream,
       wd,
-      finish: stream.finish,
-      feedCanonical: stream.feedCanonical,
-      onLine: stream.onLine,
-      runSpec,
-      invocation,
-      stderr: stream.stderr,
-      fallbackClone: stream.fallbackClone,
-      settled: stream.settled,
-      blindRead: () => blindRead(),
-      aborted: () => aborted,
-      wasKilled: () => wasKilled(),
-      kind: opts.kind,
-      config: opts.config,
-      onLeftoversSwept: opts.onLeftoversSwept,
-    };
-
-    child.on("error", (err) => {
-      settleError(state, err);
+      isAborted: () => aborted,
+      wasKilled,
+      blindRead,
     });
-
-    // Sweep the run however it ended, a normal exit included, in two passes:
-    //
-    // 1. The group pi led: pi exits before its orphans — a tool call's `(server &)` or
-    //    `cd … && server &` is reparented to PID 1 but stays in pi's group — and the harness
-    //    cannot rely on the model's own cleanup (BUGS.md 2026-09-23: qa's unauthenticated
-    //    `gui --all-interfaces` listened on the LAN for 7.5 hours after a run that ended
-    //    "Everything checked out"). On 'exit', not 'close': pi has just been reaped, so the
-    //    pgid still names only its group (never reissued while a member lives), and an orphan
-    //    holding pi's stdio open dies now instead of holding 'close' — and the run — open.
-    //    Synchronous, so it adds nothing to the run's resolution; on the kill paths it
-    //    re-sends a SIGTERM the group already had.
-    //
-    // 2. The marker sweep: pi 0.87.1's bash tool starts every command detached, in its own
-    //    process group, so whatever a tool call backgrounds sits in a group whose leader is
-    //    not pi and pass 1 never reaches it (BUGS.md 2026-09-30 — leaked servers and test
-    //    workers outlived their runs by hours). Every process the run started carries the
-    //    run's TUMWATER_RUN mark in its environment, so the same-user scan finds them
-    //    wherever they were reparented. Fire-and-forget: one process-table scan, never
-    //    awaited — the run resolves on pi's output, and the sweep's own SIGKILL escalation
-    //    (10 s) is unref'd like signalTree's.
-    child.on("exit", () => {
-      settleExit(state);
-    });
-
-    child.on("close", (code) => {
-      settleClose(state, code);
-    });
+    wireChildSettlement(child, state);
     } catch (err) {
-      // A synchronous throw in the run's build-and-spawn stage (claude's invocation rejects a
-      // run with no resolved model) rejects the run, preserving the contract a synchronous
-      // executor's throw used to get from the Promise constructor. No child was spawned, so no
-      // `error`/`close` ever fires and the settle path that removes the private TMPDIR
-      // (agent-stream.ts's finish) never runs — remove it here, best-effort like finish does, so
-      // a broken run does not leave a `tumwater-run-*` temp dir behind.
-      try {
-        removeTree(runTmp);
-      } catch {
-        /* left for the OS temp sweep */
-      }
-      // The two append-log streams opened before the build-and-spawn stage (the raw and
-      // backend-native transcripts) are never handed to a stream-settlement path on this throw
-      // — there is no child and no finish(), so nothing else would ever end them — end them
-      // here best-effort (the same cleanup the outer setup-failure catch makes) or every
-      // rejected run leaks two open transcript descriptors that accumulate in the
-      // long-lived orchestrator process.
-      try {
-        rawLog?.stream.end();
-        nativeLog?.stream.end();
-      } catch {
-        /* best-effort */
-      }
-      reject(err instanceof Error ? err : new Error(`runAgent: ${String(err)}`));
+      rejectFailedSpawn(files, err, reject);
     }
   });
 }
