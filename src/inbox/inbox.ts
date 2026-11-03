@@ -4,6 +4,7 @@ import { listQueueFiles, queueFileName, queueFileStamp, removeQueueFile } from "
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { roleInboxDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { roleLabel } from "../roles/role-labels.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { humanAgo, humanSeconds, secondsUntil } from "../text/datetime.js";
 import { errorMessage, truncate } from "../text/text.js";
@@ -98,10 +99,12 @@ export function queuedFileAtPosition(root: string, role: string, position: numbe
   const files = queuedFiles(root, role);
   const file = files[position - 1];
   if (position < 1 || position > files.length || !file) {
-    // Name the valid range when the queue is non-empty, so the operator sees the fix in the
-    // same line instead of deriving `1..N` from the count; an empty queue needs no range.
+    // Name the role this queue belongs to (the sibling movePromptToTop "already first" refusal
+    // names it too) so a --role-scoped cancel/edit/top that misses says which queue it meant,
+    // and the valid range when the queue is non-empty, so the operator sees the fix in the same
+    // line instead of deriving `1..N` from the count; an empty queue needs no range.
     const range = files.length > 0 ? ` — valid: 1-${files.length}` : "";
-    throw new Error(`no prompt at position ${position} (${files.length} in the inbox)${range}`);
+    throw new Error(`no prompt at position ${position} for ${roleLabel(role)} (${files.length} in the inbox)${range}`);
   }
   return file;
 }

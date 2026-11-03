@@ -385,7 +385,7 @@ test("prompt --cancel --role fails on an out-of-range position with the role's c
   submitRolePrompt(repo, "qa", "qa task one");
   const r = await cli(repo, "prompt", "--cancel", "5", "--role", "qa");
   assert.equal(r.code, 1, `expected a failed exit:\n${r.stdout}`);
-  assert.match(r.stderr, /no prompt at position 5 \(1 in the inbox\)/);
+  assert.match(r.stderr, /no prompt at position 5 for qa \(1 in the inbox\)/);
 
   // No side effects: the sole prompt is still queued and nothing was logged.
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one"]);
@@ -490,7 +490,7 @@ test("prompt --top resolves a bad position and a list-wide miss/ambiguity exactl
   // A role-scoped out-of-range reports the role's own count.
   r = await cli(repo, "prompt", "--top", "5", "--role", "qa");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /no prompt at position 5 \(1 in the inbox\)/);
+  assert.match(r.stderr, /no prompt at position 5 for qa \(1 in the inbox\)/);
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa first"]);
 });
 

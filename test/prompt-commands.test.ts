@@ -216,7 +216,8 @@ test("prompt cancel --role succeeds in scope and fails out of range with the que
   assert.equal(stdout, "cancelled: a\n");
   assert.equal(inboxSize(root, "clean"), 1);
   const o = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "5", "--role", "clean"]));
-  assert.match(o, /no prompt at position 5 \(1 in the inbox\) — valid: 1-1\n$/);
+  // The out-of-range miss names the queue it meant (clean), like the sibling --top refusal does.
+  assert.match(o, /no prompt at position 5 for clean \(1 in the inbox\) — valid: 1-1\n$/);
 });
 
 // ── prompt --top <n>: move one queued prompt to its role's head ────────────────
@@ -439,7 +440,7 @@ test("prompt --edit refuses the sibling modes and out-of-range positions exit no
   assert.match((await expectFailAsync(() => cmdPrompt(root, ["old", "--edit", "1", "new"]))), /unexpected argument "old"/);
 
   const outOfRange = await expectFailAsync(() => cmdPrompt(root, ["--role", "bugfix", "--edit", "9", "new"]));
-  assert.match(outOfRange, /no prompt at position 9 \(1 in the inbox\)/);
+  assert.match(outOfRange, /no prompt at position 9 for bugfix \(1 in the inbox\)/);
   assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a failed edit");
 });
 
@@ -755,7 +756,7 @@ test("prompt --edit <n> with --role and an out-of-range position fails before an
   // position; an out-of-range position fails on that read (naming the count) before an
   // editor ever opens, so the failure must not depend on $EDITOR being configured.
   const res = await withEditor(root, "", () => expectFailAsync(() => cmdPrompt(root, ["--role", "clean", "--edit", "5"])));
-  assert.match(res.result, /no prompt at position 5 \(1 in the inbox\)/);
+  assert.match(res.result, /no prompt at position 5 for clean \(1 in the inbox\)/);
   assert.equal(res.received, null, "the editor never opened");
 });
 
