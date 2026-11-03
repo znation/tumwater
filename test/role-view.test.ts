@@ -527,8 +527,8 @@ test("agent labels: a claude model job names the backend, pi stays byte-identica
   writeConfig(dir, { backend: "claude" });
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.backend, "claude");
-  assert.equal(p.model, "claude-sonnet-5-5", "routeModel fills the default tier's model");
-  assert.match(renderRoleMarkdown(p), /- Model: claude\/claude-sonnet-5-5 \(default tier\)/m);
+  assert.equal(p.model, "claude-haiku-5-5", "routeModel fills the default tier's model");
+  assert.match(renderRoleMarkdown(p), /- Model: claude\/claude-haiku-5-5 \(default tier\)/m);
   assert.match(
     renderRoleMarkdown({ ...p, provider: undefined, model: undefined }),
     /- Model: claude default \(default tier\)/m,

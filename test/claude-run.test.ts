@@ -150,7 +150,7 @@ test("agent: claude with no model resolves the author tier default that reaches 
     assert.equal(result.ok, true, `${result.errorMessage}`);
     const argv = readRunBlocks(fake.argvFile);
     assert.equal(argv.length, 1);
-    assert.equal(argValue(argv[0]!, "--model"), "claude-sonnet-5-5", "the default-tier claude model runs");
+    assert.equal(argValue(argv[0]!, "--model"), "claude-haiku-5-5", "the default-tier claude model runs");
     assert.equal(result.agent, "claude", "a claude run names its backend");
   });
 });

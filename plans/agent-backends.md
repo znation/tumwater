@@ -14,7 +14,7 @@ Claude authors with an oMLX fallback. Selecting it is one line of config:
 
 With no `model` set, that runs each seam on claude's model for the seam's tier:
 
-- Sonnet 5.5 (`claude-sonnet-5-5`) for the default tier, which most seams use
+- Haiku 5.5 (`claude-haiku-5-5`) for the default tier, which most seams use
 - Opus 5.5 (`claude-opus-5-5`) for the strong tier: reviewer, plan role and conflict resolver
 - Haiku 5.5 (`claude-haiku-5-5`) for the small tier: the readme role
 
@@ -236,7 +236,7 @@ spellings: they still load, and part 5/5 of the backend/model split turns them i
     pi; `anthropic/claude-…` keeps pi, because a named provider still wins (rule 2). The docs'
     "Mixing providers" example now spells it `{ "backend": "claude", "model": "claude-opus-5-5" }`.
 4. With **no `model` key at all**, each seam uses `agent`'s default model for its tier. For
-   claude those are `small` → `claude-haiku-5-5`, `default` → `claude-sonnet-5-5` and `strong` →
+   claude those are `small` → `claude-haiku-5-5`, `default` → `claude-haiku-5-5` and `strong` →
    `claude-opus-5-5`; pi has none, and pi's own default applies as today.
    - Once the operator sets `model` (a string or a map), today's tier rules apply unchanged: a
      tier left out inherits the map's `default`, so `"model": "claude-sonnet-5-5"` still means
@@ -544,5 +544,4 @@ model's minimum CLI version (`minVersion`), which matters doubly because fleet r
 3. **Target repo settings are honored:** `--setting-sources project`, so the repo's
    `CLAUDE.md` and its committed `.claude/settings.json` apply.
 4. **Telemetry off** for fleet runs (`DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`).
-5. **Tier defaults on claude:** Opus 5.5 for strong, Sonnet 5.5 for default, Haiku 5.5 for small
-   (§3).
+5. **Tier defaults on claude:** Opus 5.5 for strong, Haiku 5.5 for default and small (§3).

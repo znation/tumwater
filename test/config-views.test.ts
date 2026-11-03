@@ -579,7 +579,7 @@ test("applyFallbackModel keeps a free seam's ambient thinking level", () => {
 
 test("applyFallbackModel keeps a free agent-default tier's ambient thinking", () => {
   // `agent: "claude"` with no top-level `model`: each seam rides its agent's tier default
-  // (sonnet/haiku/opus), and the ambient thinking level applies to all of them. A free seam has
+  // (haiku/haiku/opus), and the ambient thinking level applies to all of them. A free seam has
   // no own selector to carry the level, so the kept tier must name the routed default plus it.
   const config: TumwaterConfig = defaultConfig();
   config.backend = "claude";
@@ -587,7 +587,7 @@ test("applyFallbackModel keeps a free agent-default tier's ambient thinking", ()
   config.fallback = "free/qwen-free";
   const resolved = resolveTierFallbacks(config, () => true);
   const out = applyFallbackModel(config, resolved, (seam) => seam.agent === "claude");
-  assert.equal(configForRole(out, "feature").model, "claude-sonnet-5-5");
+  assert.equal(configForRole(out, "feature").model, "claude-haiku-5-5");
   assert.equal(configForRole(out, "feature").thinking, "high");
   assert.equal(configForRole(out, "readme").model, "claude-haiku-5-5");
   assert.equal(configForRole(out, "readme").thinking, "high");
@@ -676,10 +676,10 @@ test("routeModel: the backend is the explicit one, else the config's; a model id
 test("agent: claude with no model runs each seam on its tier's claude default", () => {
   const config: TumwaterConfig = defaultConfig();
   config.backend = "claude";
-  // Author (default tier), readme (small), plan (strong): sonnet, haiku, opus.
+  // Author (default tier), readme (small), plan (strong): haiku, haiku, opus.
   const feature = configForRole(config, "feature");
   assert.equal(feature.agent, "claude");
-  assert.equal(feature.model, "claude-sonnet-5-5");
+  assert.equal(feature.model, "claude-haiku-5-5");
   assert.equal(feature.provider, undefined, "the claude namespace is not a pi provider");
   assert.equal(configForRole(config, "readme").model, "claude-haiku-5-5");
   assert.equal(configForRole(config, "plan").model, "claude-opus-5-5");
@@ -869,9 +869,8 @@ const ROUTING_GOLDENS: Record<string, string[]> = {
     "claude|-|anthropic/claude-sonnet-5-5|- <- 18:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward,director,review,resolver"
   ],
   "claude backend no model": [
-    "claude|-|claude-sonnet-5-5|- <- 13:feature,bugfix,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward",
-    "claude|-|claude-opus-5-5|- <- 4:plan,director,review,resolver",
-    "claude|-|claude-haiku-5-5|- <- 1:readme"
+    "claude|-|claude-haiku-5-5|- <- 14:feature,bugfix,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward",
+    "claude|-|claude-opus-5-5|- <- 4:plan,director,review,resolver"
   ],
   "opencode backend no model": [
     "opencode|-|-|- <- 18:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward,director,review,resolver"

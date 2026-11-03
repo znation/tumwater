@@ -547,7 +547,7 @@ test("checkClaudeAuth and checkClaudeVersion stand down without a claude seam", 
 // so these stood down and the fallback's binary/auth/version were never verified.
 test("claude checks run when claude appears only as a fallback", async () => {
   const root = readyRepo();
-  writeConfig(root, { model: "local/free-model", fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] });
+  writeConfig(root, { model: "local/free-model", fallback: [{ backend: "claude", model: "claude-opus-5-5" }] });
   const bin = tmpdir("doctor-claude-fallback-");
   writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
   const auth = await checkClaudeAuth(root, bin);

@@ -71,7 +71,7 @@ const BACKEND_DEFAULT_MODELS: Record<BackendId, Partial<Record<ModelTier, string
   pi: {},
   claude: {
     small: "claude-haiku-5-5",
-    default: "claude-sonnet-5-5",
+    default: "claude-haiku-5-5",
     strong: "claude-opus-5-5",
   },
   // opencode has no tier defaults (design decision 3): with no model, OpenCode's own default

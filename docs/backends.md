@@ -152,8 +152,8 @@ model on pi. codex likewise has no namespace spelling: write the bare model id
 (`gpt-6.1-sol`), since a whole `codex/<id>` string parses to a `codex` provider that codex,
 like pi, drops, leaving the model half. A fallback step with no `backend` inherits its tier primary's backend (the tier
 entry's, else the top level's).
-Each tier has a claude default — Opus 5.5 strong, Sonnet 5.5
-default, Haiku 5.5 small — so `backend: "claude"` with no `model` still resolves a concrete model
+Each tier has a claude default — Opus 5.5 strong, Haiku
+5.5 default, Haiku 5.5 small — so `backend: "claude"` with no `model` still resolves a concrete model
 per job; the director runs at the strong tier. The observability surfaces display the backend ahead of the model id (`claude/claude-sonnet-5-5`
 in `tumwater status`, the dashboards, and the event feed), and a job with no model at all reads
 `claude default`.
