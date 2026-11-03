@@ -150,6 +150,63 @@ export interface UsageFold {
   deferredByReason: Record<string, number>;
 }
 
+/** Every accumulator a fold writes, at zero — the one home of the usage accumulator's empty
+ * shape, so the three sites that start a fold from scratch (the trailing-window collector's
+ * acc, the per-day fold's day slot, and the fold contract test's fixture) cannot drift apart.
+ * The two optional window-total fields are left out on purpose: `runs` (the day slot keeps
+ * none — the series derives runs from runsByRole) and `mergeFailed` (absent until the first
+ * merge_failed, on every target). A target that counts runs adds `runs: 0` itself. */
+export function zeroUsageFold(): Omit<
+  UsageFold,
+  "runs" | "mergeFailed" | "mergeRuns" | "mergeTokens" | "mergeCostUsd"
+> & {
+  mergeRuns: number;
+  mergeTokens: number;
+  mergeCostUsd: number;
+} {
+  return {
+    runsByRole: {},
+    rejectionsByRole: {},
+    postMergeRejectionsByRole: {},
+    revisionsByRole: {},
+    refusalsByRole: {},
+    checkDurationsMs: [],
+    checkFailures: 0,
+    mergeWaitsMs: [],
+    mergeDurationsMs: [],
+    runDurationsMs: [],
+    providerWaitsMs: [],
+    slotWaitsMs: [],
+    checkWaitsMs: [],
+    reviewDurationsMs: [],
+    failedRunsByRole: {},
+    imageReroutesByRole: {},
+    tokensByRole: {},
+    promptTokensByRole: {},
+    cacheReadTokensByRole: {},
+    costByRole: {},
+    tokensOut: 0,
+    commits: 0,
+    commitsByRole: {},
+    workCommits: 0,
+    maintenanceCommits: 0,
+    costUsd: 0,
+    notionalCostUsd: 0,
+    notionalByRole: {},
+    mergeRuns: 0,
+    mergeTokens: 0,
+    mergeCostUsd: 0,
+    mergedByRole: {},
+    mergeFailedByRole: {},
+    mergeFailedByReason: {},
+    costByProvider: {},
+    notionalByProvider: {},
+    notionalByBackend: {},
+    runsByModel: {},
+    deferredByReason: {},
+  };
+}
+
 /** Fold one event's `providerCost` map (`Record<provider, {costUsd, notionalCostUsd}>` — the
  * shape run-finalize.ts's run_end and merge-slot.ts's merge_done/merge_failed emit) into the
  * per-provider tallies, one addTo per provider per nonzero figure so zero stays absent. A

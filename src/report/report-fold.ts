@@ -18,7 +18,7 @@ import { isPassingMainCheck, isRedMain } from "../baseline/main-guardrails.js";
 import { addTo, distinctOrdered, memoSetLru } from "../collections.js";
 import { asList } from "../text/text.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
-import { foldUsageEvent } from "./report-usage-fold.js";
+import { foldUsageEvent, zeroUsageFold } from "./report-usage-fold.js";
 /** One day's worth of folded events, the event-log half of a ReportDay: everything
  * foldUsageEvent accumulates for a single local day (runs are not tracked — the series
  * derives them from runsByRole). Cached across calls by foldWindowEvents so an appended
@@ -221,42 +221,10 @@ export function scopedByRole(
 function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
   let fold = entry.days.get(dayKey);
   if (!fold) {
-    fold = {
-      tokensOut: 0,
-      ...zeroCommitCounts(),
-      costUsd: 0,
-      notionalCostUsd: 0,
-      runsByRole: {},
-      rejectionsByRole: {},
-      postMergeRejectionsByRole: {},
-      revisionsByRole: {},
-      refusalsByRole: {},
-      checkDurationsMs: [],
-      checkFailures: 0,
-      mergeWaitsMs: [],
-      mergeDurationsMs: [],
-      runDurationsMs: [],
-      providerWaitsMs: [],
-      slotWaitsMs: [],
-      checkWaitsMs: [],
-      reviewDurationsMs: [],
-      failedRunsByRole: {},
-      imageReroutesByRole: {},
-      tokensByRole: {},
-      promptTokensByRole: {},
-      cacheReadTokensByRole: {},
-      costByRole: {},
-      notionalByRole: {},
-      ...zeroMergeCounts(),
-      mergedByRole: {},
-      mergeFailedByRole: {},
-      mergeFailedByReason: {},
-      costByProvider: {},
-      notionalByProvider: {},
-      notionalByBackend: {},
-      runsByModel: {},
-      deferredByReason: {},
-    };
+    // zeroUsageFold's shared shape minus the window totals DayFold keeps none of: no `runs`
+    // (the series derives runs from runsByRole) and no `mergeFailed` (absent until the
+    // first merge_failed).
+    fold = { ...zeroUsageFold() };
     entry.days.set(dayKey, fold);
   }
   return fold;

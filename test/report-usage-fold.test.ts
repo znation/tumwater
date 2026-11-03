@@ -6,52 +6,15 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { foldUsageEvent, type UsageFold } from "../src/report/report-usage-fold.js";
+import { foldUsageEvent, type UsageFold, zeroUsageFold } from "../src/report/report-usage-fold.js";
 import type { HarnessEvent } from "../src/events/events.js";
 
 /** A fresh accumulator with every field the fold writes, in the shape the day/window
  * collectors hand it. `runs` is set (not left undefined) so the total-run increment is
  * exercised too. */
 function fresh(): UsageFold {
-  return {
-    runs: 0,
-    runsByRole: {},
-    rejectionsByRole: {},
-    postMergeRejectionsByRole: {},
-    revisionsByRole: {},
-    refusalsByRole: {},
-    checkDurationsMs: [],
-    checkFailures: 0,
-    mergeWaitsMs: [],
-    mergeDurationsMs: [],
-    runDurationsMs: [],
-    providerWaitsMs: [],
-    slotWaitsMs: [],
-    checkWaitsMs: [],
-    reviewDurationsMs: [],
-    failedRunsByRole: {},
-    imageReroutesByRole: {},
-    tokensByRole: {},
-    promptTokensByRole: {},
-    cacheReadTokensByRole: {},
-    tokensOut: 0,
-    commits: 0,
-    commitsByRole: {},
-    workCommits: 0,
-    maintenanceCommits: 0,
-    costUsd: 0,
-    costByRole: {},
-    notionalCostUsd: 0,
-    notionalByRole: {},
-    mergedByRole: {},
-    mergeFailedByRole: {},
-    mergeFailedByReason: {},
-    costByProvider: {},
-    notionalByProvider: {},
-    notionalByBackend: {},
-    runsByModel: {},
-    deferredByReason: {},
-  };
+  // runs: 0 so the total-run increment is exercised too — see the function comment.
+  return { ...zeroUsageFold(), runs: 0 };
 }
 
 /** Build a minimal HarnessEvent; the fold reads only the fields each family needs. */

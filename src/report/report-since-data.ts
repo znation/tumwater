@@ -17,10 +17,9 @@ import {
   roleSum,
   scopeBases,
   scopedByRole,
-  zeroCommitCounts,
   zeroMergeCounts,
 } from "./report-fold.js";
-import { foldUsageEvent, type UsageFold } from "./report-usage-fold.js";
+import { foldUsageEvent, type UsageFold, zeroUsageFold } from "./report-usage-fold.js";
 import { mainRedCulpritsByDay, mainRedFailingTestsByDay, mainRedMinutesByDay } from "./report-main-red.js";
 import type { ReportTotals, SinceReport } from "./report-types.js";
 
@@ -86,43 +85,9 @@ function foldSinceWindow(
   // here too, matching collectReport (its day map only holds the window's days).
   const fromKey = dayKey(cutoff);
   const raw = readWindowEvents(root, fromKey);
-  const acc: UsageFold = {
-    runs: 0,
-    runsByRole: {},
-    rejectionsByRole: {},
-    postMergeRejectionsByRole: {},
-    revisionsByRole: {},
-    refusalsByRole: {},
-    checkDurationsMs: [],
-    checkFailures: 0,
-    mergeWaitsMs: [],
-    mergeDurationsMs: [],
-    runDurationsMs: [],
-    providerWaitsMs: [],
-    slotWaitsMs: [],
-    checkWaitsMs: [],
-    reviewDurationsMs: [],
-    failedRunsByRole: {},
-    imageReroutesByRole: {},
-    tokensByRole: {},
-    promptTokensByRole: {},
-    cacheReadTokensByRole: {},
-    costByRole: {},
-    tokensOut: 0,
-    ...zeroCommitCounts(),
-    costUsd: 0,
-    notionalCostUsd: 0,
-    notionalByRole: {},
-    ...zeroMergeCounts(),
-    mergedByRole: {},
-    mergeFailedByRole: {},
-    mergeFailedByReason: {},
-    costByProvider: {},
-    notionalByProvider: {},
-    notionalByBackend: {},
-    runsByModel: {},
-    deferredByReason: {},
-  };
+  // runs: 0 — the window counts its total runs, so the target opts into the fold's
+  // optional run total (zeroUsageFold leaves it out for targets that keep none).
+  const acc: UsageFold = { ...zeroUsageFold(), runs: 0 };
   for (const ev of raw.events) {
     if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now || (untilMs !== undefined && ev.ts >= end)) continue;
     foldUsageEvent(acc, ev);
