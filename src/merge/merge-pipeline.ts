@@ -216,8 +216,6 @@ export async function settleMergeOutcome(
   usage: MergeUsage,
   file: string,
   mainBranch?: string,
-  /** The commit a `main_red` change's gate kept it waiting on (GateResult.awaitingWatch). */
-  awaitingWatch?: string,
 ): Promise<void> {
   writeMergeOutcome(root, entry, state, result, durationMs, usage, file);
   // A revision that merges ends the rejected change's life: drop the rejected ref (plans/revise-
@@ -235,7 +233,7 @@ export async function settleMergeOutcome(
   // above already happened, so a failure here must not lose the settled outcome.
   if (mainBranch !== undefined) {
     try {
-      await requeueKeptChange(root, mainBranch, entry, state, result, awaitingWatch);
+      await requeueKeptChange(root, mainBranch, entry, state, result);
     } catch (err) {
       warnEventBestEffort(root, entry.role, `could not re-queue the kept change: ${errorMessage(err)}`);
     }

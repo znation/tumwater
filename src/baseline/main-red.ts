@@ -8,7 +8,7 @@ import { canRerun, rerunCommandLine, rerunTests } from "../build/build-check-rer
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { failureHeadline, FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { baselineCheckEventLogger, type BaselineCheckRun } from "../build/build-check-events.js";
-import { checkMainBaseline, newestObservedBaseline, watchedBaseline } from "./main-baseline.js";
+import { checkMainBaseline, watchedBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "../prompt/gate-notes.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
@@ -475,73 +475,3 @@ export async function mainTipGateVerdict(
   }).catch((err: unknown) => ({ status: "unavailable" as const, why: errorMessage(err) }));
 }
 
-/** How a change kept for the main watch's verdict came back to the gate (MergeEntry.watchWait):
- * `covered` — the watch's newest observed verdict reached the commit its gate check had run on
- * top of; `timed_out` — MAIN_RED_VERDICT_WAIT_MS passed with no such verdict
- * (merge-requeue.ts's requeueMainRedPin). */
-export type WatchWait = "covered" | "timed_out";
-
-/** The main watch's newest observed verdict at or below `tip` (newestObservedBaseline), and
- * whether it covers `base`: it was observed on `base` itself or on a commit that contains it, so
- * the tree the change was rebased onto is part of what the watch checked. Shared by the gate's
- * attribution and the kept change's re-queue, so the two agree on when the wait is over. Never
- * throws: a git failure reads as not covered. */
-export async function watchVerdictCovering(
-  wt: string,
-  tip: string,
-  base: string,
-): Promise<{ verdict: Awaited<ReturnType<typeof newestObservedBaseline>>; covers: boolean }> {
-  const verdict = await newestObservedBaseline(wt, tip);
-  const covers = verdict !== null && (verdict.sha === base || (await isMergedInto(wt, base, verdict.sha)));
-  return { verdict, covers };
-}
-
-/** What the gate's attribution decides when the main watch verifies main (watchVerifiesMain):
- * mainTipVerdict's three answers, or `awaiting` — the watch has not yet checked the commit the
- * change's gate ran on top of, so nothing can say whose failure it is yet. `sha` is the newest
- * verdict the watch has, when it has one. */
-type WatchedMainVerdict = MainTipVerdict | { status: "awaiting"; sha?: string };
-
-/** Main's verdict for attributing a gate check that failed twice, read from the main watch's
- * verdicts instead of a full check of the gate's own (plans/fast-merge.md part 6/14). The gate
- * used to run main's whole suite here, queued behind the watch's own runs in `_gate-main`: on
- * 2026-10-30 that took 166–2,282 s for a 30 s gate, and two of five runs repeated a commit the
- * watch or an earlier attribution had just checked.
- *
- * `base` is the commit the change was rebased onto (its merge-base with main). When the watch's
- * newest observed verdict covers it (watchVerdictCovering), that verdict answers at once. When the
- * watch is still behind it, the answer is `awaiting`: the gate keeps the change with no strike
- * and the merge pipeline re-queues it once the watch catches up. Waiting instead of judging
- * against an older verdict matters: a commit the watch has not reached yet may be what broke the
- * test, and the change would be rejected for main's failure.
- *
- * `waited` is set on the retry after such a wait, and the gate does not wait twice: after
- * `covered` the newest observed verdict answers even if main moved past it again; after
- * `timed_out` (the watch never got there — held, failing, or main's tip only carried doc commits
- * past its last observed check) main is asked here (mainTipFailures: the gate's `failed` tests
- * re-run alone on main's tip when they can be, else main's full check). The same fallback answers a
- * `covered` retry that finds no observed verdict at all. A red is not warned again here: the watch
- * that observed it reported it. Never throws. */
-export async function watchedMainVerdict(
-  root: string,
-  role: string,
-  wt: string,
-  mainBranch: string,
-  config: TumwaterConfig,
-  base: string,
-  waited?: WatchWait,
-  failed?: FailedTests,
-): Promise<WatchedMainVerdict> {
-  const fallback = () => mainTipFailures(root, role, wt, mainBranch, config, failed);
-  if (waited === "timed_out") return fallback();
-  const tip = await branchHead(root, mainBranch);
-  if (!tip) return { status: "unavailable", why: `${mainBranch} is unreadable` };
-  const { verdict, covers } = await watchVerdictCovering(wt, tip, base);
-  if (verdict && (covers || waited === "covered")) {
-    return verdict.status === "red"
-      ? { status: "red", sha: verdict.sha, failingTests: verdict.failingTests ?? [] }
-      : { status: "green", sha: verdict.sha };
-  }
-  if (waited === "covered") return fallback();
-  return { status: "awaiting", ...(verdict ? { sha: verdict.sha } : {}) };
-}

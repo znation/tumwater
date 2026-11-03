@@ -296,9 +296,9 @@ export const INHERIT_WALK_MAX = 64;
  * first-parent scans in this module share (plus the main watch's red-opener walk, main-watch.ts),
  * spelled the same on purpose so a change to the walk shape (the bound, the `--first-parent` flag)
  * lands once. `inheritedGreen` and `watchedBaseline` walk a commit's ancestors (`${sha}^` /
- * `${tip}^`, the commit itself excluded); `newestObservedBaseline` and the red-opener walk start at
- * a commit and walk down. Never throws: a git failure is an empty list, and every caller already
- * treats that as a no-inheritance / no-verdict / no-re-attribution answer. */
+ * `${tip}^`, the commit itself excluded); the red-opener walk starts at a commit and walks down.
+ * Never throws: a git failure is an empty list, and every caller already treats that as a
+ * no-inheritance / no-verdict / no-re-attribution answer. */
 export async function firstParentWalk(wt: string, ref: string, max: number): Promise<string[]> {
   return gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${max}`, ref));
 }
@@ -360,21 +360,6 @@ export async function watchedBaseline(wt: string, sha?: string): Promise<MainBas
   for (const ancestor of ancestors) {
     const verdict = baselineCache.get(ancestor);
     if (verdict) return verdict;
-  }
-  return null;
-}
-
-/** The newest verdict a check OBSERVED on `tip` or its first-parent ancestors — `tip` itself
- * first, looking at most INHERIT_WALK_MAX commits down — WITHOUT running anything; null when
- * there is none. An inherited green is walked past: no check ran on that tree, and a doc edit can
- * break a test that reads the docs (checkMainBaseline's `observedOnly`). The review gate's
- * attribution reads this when the main watch verifies main (main-red.ts's watchedMainVerdict):
- * with `check.mergeCommand` in effect every observed verdict is a full check the watch or
- * another consumer ran. Never throws: a git failure reads as no verdict. */
-export async function newestObservedBaseline(wt: string, tip: string): Promise<MainBaseline | null> {
-  for (const sha of await firstParentWalk(wt, tip, INHERIT_WALK_MAX)) {
-    const verdict = baselineCache.get(sha);
-    if (verdict && verdict.inheritedFrom === undefined) return verdict;
   }
   return null;
 }

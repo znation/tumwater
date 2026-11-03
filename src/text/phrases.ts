@@ -131,14 +131,6 @@ export function mainRedNotTheseFailures(sha: unknown, own: readonly string[]): s
   return `${mainRedPhrase(sha)} too, but ${what}`;
 }
 
-/** The review pre-check's detail when it keeps a change for the main watch (review-precheck.ts):
- * the watch has not checked `base`, the commit the change was rebased onto, so nothing judged
- * the failure yet. `newest` is the watch's newest observed verdict, when it has one. */
-export function mainUncheckedNotJudged(base: unknown, newest?: unknown): string {
-  const since = newest === undefined ? "it has no verdict yet" : `its newest verdict is ${shortSha(newest)}`;
-  return `the main watch has not checked main ${shortSha(base)} yet (${since}) — not judged until it has`;
-}
-
 /** The ` — "<reason>"` suffix the operator's pause reason (`pause --reason <text>`) rides on —
  * one home so the CLI's confirmation line (operator/operator-commands.ts), the status header's
  * pause badge (ui/badges.ts), and the paused alert's title (ui/team-alert-tail.ts) cannot

@@ -19,7 +19,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunResult } from "../run/run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { PriorReview } from "./merge-queue.js";
-import type { WatchWait } from "../baseline/main-red.js";
+
 import { dropWithdrawnPin, withdrawnPinReason, type MergeClaim } from "./merge-withdrawn.js";
 
 /** Reviewing and merging a pinned commit outside the author's worktree (plans/merge-queue.md,
@@ -61,9 +61,6 @@ export interface MergeRequest {
    * (GateResult.verifiedHead, carried by merge-batch.ts's VerifyVerdict) — so a merge whose
    * in-lock rebase is a no-op seeds the red-main baseline with the SHA that becomes main. */
   verifiedHead?: string;
-  /** How this change came back after its gate kept it for the main watch's verdict, carried
-   * from the MergeEntry (MergeEntry.watchWait) to the gate's attribution. */
-  watchWait?: WatchWait;
   /** The backlog entry the authoring run was assigned (MergeEntry.claim): the verify and the
    * in-lock merge drop the change as `withdrawn` once main no longer lists it. */
   claim?: MergeClaim;
@@ -108,7 +105,7 @@ export interface MergerContext extends PiRunWiring, MergeScopeContext {
  * under-cap one (ref kept for recovery). */
 type GateOutcome =
   | { kind: "gate"; gate: GateResult; sha: string }
-  | { kind: "result"; result: RunResult; discarded?: true; awaitingWatch?: string };
+  | { kind: "result"; result: RunResult; discarded?: true };
 
 /** The identity every gate invocation needs from its caller — merge-batch.ts's BatchContext
  * (and MergerContext) satisfies it, so the gate never hand-assembles its ReviewContext
@@ -182,7 +179,6 @@ function reviewContextFor(
     ...(ctx.reviewHeld ? { reviewHeld: () => ctx.reviewHeld!() } : {}),
     revisionRound: req.revisionRound,
     priorReview: req.priorReview,
-    ...(req.watchWait !== undefined ? { watchWait: req.watchWait } : {}),
   };
 }
 
@@ -275,13 +271,10 @@ export async function reviewPinnedChange(
 
   if (gate.decision === "failed" && gate.mainRed) {
     // Main is red at its tip: nothing judged this diff and nothing is wrong with the reviewer,
-    // so it is main_red, not review_error — the pin stays; the poll's
-    // requeueMainRedPin re-queues it once main's head moves and the watch has not found it red.
-    // A change kept for the watch's verdict (awaitingWatch) is kept the same way, and the
-    // commit it waits on rides along so the re-queue waits for that verdict instead.
+    // so it is main_red, not review_error — the pin stays; the poll's requeueMainRedPin
+    // re-queues it once main moves to a head with a cached verdict, or once the wait times out.
     state.lastError = `gate check failed: ${gate.detail}`;
-    const awaiting = gate.awaitingWatch !== undefined ? { awaitingWatch: gate.awaitingWatch } : {};
-    return { kind: "result", result: "main_red", ...awaiting };
+    return { kind: "result", result: "main_red" };
   }
 
   if (gate.decision === "failed") {

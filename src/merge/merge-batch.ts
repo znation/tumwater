@@ -47,7 +47,7 @@ export interface BatchRoleWiring extends PiRunWiring {
  * discard), main_red, a lost-pin "error", or aborted. */
 export type VerifyVerdict =
   | { kind: "approved"; sha: string; verifiedHead?: string }
-  | { kind: "result"; result: RunResult; discarded?: true; awaitingWatch?: string };
+  | { kind: "result"; result: RunResult; discarded?: true };
 
 /** Verify one request — the whole of a verify-stage task: lease a pooled slot for the role, check
  * its pin out detached there, rebase it onto main's current tip (syncPinToMain — so the head

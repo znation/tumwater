@@ -139,40 +139,9 @@ test("a twice-failed gate asks main's tip even when the watch has not caught up"
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config: WATCH_CONFIG }, state);
     assert.equal(result.decision, "rejected", "main's tip answers at once, with no watch wait");
-    assert.equal(result.awaitingWatch, undefined);
     assert.ok(!fs.existsSync(marker), "no pi run");
     assert.equal(baselineRuns(root), watched + 1, "the gate ran main's check at its tip");
     assert.match(state.lastReview?.reasons[0] ?? "", /X/);
-  });
-});
-
-test("a covered watchWait no longer changes the attribution: main's tip runs fresh", async () => {
-  const root = watchedRepo();
-  await watchMain(root);
-  commitOnMain(root, "moved.txt");
-  const watched = baselineRuns(root);
-  const { wt } = await breakingChange(root);
-  await withPi("true", async () => {
-    const state = freshRunnerState(ROLE);
-    const ctx = { ...gateCtx(root, wt), config: WATCH_CONFIG, watchWait: "covered" as const };
-    const result = await reviewAheadOfMain(ctx, state);
-    assert.equal(result.decision, "rejected", "main's tip answers at once");
-    assert.equal(baselineRuns(root), watched + 1, "main's check ran at its tip");
-  });
-});
-
-test("after a timed-out wait the gate runs main's check itself", async () => {
-  const root = watchedRepo();
-  await watchMain(root);
-  commitOnMain(root, "moved.txt");
-  const watched = baselineRuns(root);
-  const { wt } = await breakingChange(root);
-  await withPi("true", async () => {
-    const state = freshRunnerState(ROLE);
-    const ctx = { ...gateCtx(root, wt), config: WATCH_CONFIG, watchWait: "timed_out" as const };
-    const result = await reviewAheadOfMain(ctx, state);
-    assert.equal(result.decision, "rejected", "main's own run is green: the change broke X");
-    assert.equal(baselineRuns(root), watched + 1, "the fallback ran main's check once");
   });
 });
 
@@ -184,7 +153,7 @@ const rerunRuns = (root: string): string[] =>
     .filter((e) => e.type === "build_check" && e.scope === "rerun")
     .map((e) => String(e.status));
 
-test("after a timed-out wait the gate re-runs only its failing tests on main's tip, not main's check", async () => {
+test("a twice-failed gate re-runs only its failing tests on main's tip, not main's check", async () => {
   const root = watchedRepo();
   await watchMain(root);
   commitOnMain(root, "moved.txt");
@@ -192,8 +161,7 @@ test("after a timed-out wait the gate re-runs only its failing tests on main's t
   const { wt } = await breakingChange(root);
   await withPi("true", async () => {
     const state = freshRunnerState(ROLE);
-    const ctx = { ...gateCtx(root, wt), config: RERUN_CONFIG, watchWait: "timed_out" as const };
-    const result = await reviewAheadOfMain(ctx, state);
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config: RERUN_CONFIG }, state);
     assert.equal(result.decision, "rejected", "X passes on main's tip: the change broke it");
     assert.equal(baselineRuns(root), watched, "main's full check did not run");
     assert.deepEqual(rerunRuns(root), ["passed"], "only X ran on main's tip");
@@ -208,8 +176,7 @@ test("a failing test the re-run finds failing on main's tip too is main's, and t
   const { wt } = await breakingChange(root);
   await withPi("true", async () => {
     const state = freshRunnerState(ROLE);
-    const ctx = { ...gateCtx(root, wt), config: RERUN_CONFIG, watchWait: "timed_out" as const };
-    const result = await reviewAheadOfMain(ctx, state);
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config: RERUN_CONFIG }, state);
     assert.notEqual(result.decision, "rejected");
     assert.equal(result.mainRed, undefined, "not kept either");
     assert.equal(baselineRuns(root), watched, "main's full check did not run");
