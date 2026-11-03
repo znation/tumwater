@@ -212,6 +212,76 @@ async function commitReviewerFix(wt: string, commit: string, reasons: string[], 
   return commitAll(wt, `${subject}\n\n${withRound}`);
 }
 
+/** The reviewer run's reply, read once: a usable reply is one whose pi run succeeded and was
+ * not aborted, and only a usable reply yields a parsed verdict and its FIX line's paths — the
+ * single home of the `pi.ok && !pi.aborted` gate, so the verdict and the fix paths cannot drift
+ * apart. */
+function reviewerReplyOf(
+  pi: Awaited<ReturnType<GateRunsPi["runGatePi"]>>,
+): { verdict: NonNullable<ReturnType<typeof parseVerdict>> | null; paths: string[] | null } {
+  const usable = pi.ok && !pi.aborted;
+  return { verdict: usable ? parseVerdict(pi.verdictText ?? "") : null, paths: usable ? fixLine(pi.verdictText ?? "") : null };
+}
+
+/** One record for the reviewed commit C whatever way the review ends — reject or approve — so
+ * the fix-forward landing does not lose the verdict that motivated it: `review_rejected` with
+ * the full reasons on a rejection, `review_verdict` with the first reason otherwise, both
+ * stamped `afterMerge: true` with the run's duration. */
+function logReviewVerdict(
+  root: string,
+  role: string,
+  commit: string,
+  verdict: NonNullable<ReturnType<typeof parseVerdict>>,
+  durationMs: number,
+): void {
+  if (verdict.verdict === "reject") {
+    logEventBestEffort(root, { source: role, type: "review_rejected", head: commit, reasons: verdict.reasons, durationMs, afterMerge: true });
+  } else {
+    logEventBestEffort(root, { source: role, type: "review_verdict", head: commit, reason: verdict.reasons[0], durationMs, afterMerge: true });
+  }
+}
+
+/** The reviewer's repair, when its reply carries a FIX: line and its worktree holds an edit:
+ * the verdict does not decide it — a reviewer that repairs what it found and then judges the
+ * repaired change sound approves with a FIX line, and dropping that repair lost real fixes
+ * (BUGS-FIXED.md 2026-11-02). Returns the `fixed` outcome when the repair lands as a fix
+ * commit on the review ref, and null when the reply names no fix or the worktree is clean;
+ * the caller deletes the ref on that path. */
+async function applyReviewFix(
+  root: string,
+  entry: PostReview,
+  verdict: NonNullable<ReturnType<typeof parseVerdict>>,
+  paths: string[] | null,
+  diffWorktree: string,
+  fixRef: string,
+): Promise<PostReviewOutcome | null> {
+  if (!(paths && (await gitTry(diffWorktree, "status", "--porcelain"))?.trim().length)) return null;
+  // The self-fix chain's round is one past the reviewed commit's `Revision:` trailer; at
+  // REVISION_BACKSTOP the reviewer stops fixing and records the surviving findings — the
+  // same terminal stop as a rejection's exhaustion, one shared counter, never a second
+  // one (Forward never back 2/6). The answered plan is deliberately NOT held here: it was
+  // already archived to PLANS-DONE.md when its implementation landed, so it is no longer
+  // under `## Planned` and there is nothing left to hold or re-pick.
+  const reviewedMessage = (await gitTry(root, "log", "-1", "--format=%B", entry.commit)) ?? "";
+  const nextRound = (revisionRoundOf(reviewedMessage) ?? 0) + 1;
+  if (nextRound >= REVISION_BACKSTOP) {
+    await deleteRef(root, fixRef); // the chain stops here; nothing to land
+    logEventBestEffort(root, {
+      source: entry.role,
+      type: "revision",
+      action: "exhausted",
+      round: nextRound,
+      sha: entry.commit,
+    });
+    return { kind: "exhausted", reasons: verdict.reasons };
+  }
+  const fix = await commitReviewerFix(diffWorktree, entry.commit, verdict.reasons, nextRound);
+  // Advance the review-fix ref from C to the new fix commit, so the repair is reachable and
+  // the merge-post-review-drain landing (which checks the fix out by this sha) finds it.
+  await setRef(root, fixRef, fix);
+  return { kind: "fixed", fix, reasons: verdict.reasons };
+}
+
 /** Review the merged commit C: the usual reviewer prompt over `git diff C^ C`, run in a detached
  * checkout of C. Logs `review_start` and `review_verdict` / `review_rejected` with
  * `afterMerge: true`. A diff git fails to produce is a failed review with no reviewer run: read
@@ -261,52 +331,20 @@ export async function reviewMergedCommit(
         label: "review",
         signal,
       });
-      const verdict = pi.ok && !pi.aborted ? parseVerdict(pi.verdictText ?? "") : null;
+      const reply = reviewerReplyOf(pi);
+      const verdict = reply.verdict;
       if (!verdict) {
         await deleteRef(root, fixRef);
         return { kind: "failed", detail: pi.errorMessage ?? "no parseable VERDICT line in the reviewer's reply" };
       }
       const durationMs = Date.now() - startedAt;
-      // One record for the reviewed commit C whatever way the review ends — reject or approve —
-      // so the fix-forward landing does not lose the verdict that motivated it.
-      if (verdict.verdict === "reject") {
-        logEventBestEffort(root, { source: role, type: "review_rejected", head: commit, reasons: verdict.reasons, durationMs, afterMerge: true });
-      } else {
-        logEventBestEffort(root, { source: role, type: "review_verdict", head: commit, reason: verdict.reasons[0], durationMs, afterMerge: true });
-      }
+      logReviewVerdict(root, role, commit, verdict, durationMs);
       // A review whose reply carries a FIX: line and whose worktree holds an edit survives as one
       // fix commit on the review ref, kept for merge-post-review-drain.ts to land on main through
-      // the ordinary change path. The verdict does not decide it: a reviewer that repairs what it
-      // found and then judges the repaired change sound approves with a FIX line, and dropping
-      // that repair lost real fixes (BUGS-FIXED.md 2026-11-02). A clean worktree or a reply with
-      // no FIX line keeps the plain approve/reject outcome and deletes the ref.
-      const paths = pi.ok && !pi.aborted ? fixLine(pi.verdictText ?? "") : null;
-      if (paths && (await gitTry(wt, "status", "--porcelain"))?.trim().length) {
-        // The self-fix chain's round is one past the reviewed commit's `Revision:` trailer; at
-        // REVISION_BACKSTOP the reviewer stops fixing and records the surviving findings — the
-        // same terminal stop as a rejection's exhaustion, one shared counter, never a second
-        // one (Forward never back 2/6). The answered plan is deliberately NOT held here: it was
-        // already archived to PLANS-DONE.md when its implementation landed, so it is no longer
-        // under `## Planned` and there is nothing left to hold or re-pick.
-        const reviewedMessage = (await gitTry(root, "log", "-1", "--format=%B", commit)) ?? "";
-        const nextRound = (revisionRoundOf(reviewedMessage) ?? 0) + 1;
-        if (nextRound >= REVISION_BACKSTOP) {
-          await deleteRef(root, fixRef); // the chain stops here; nothing to land
-          logEventBestEffort(root, {
-            source: entry.role,
-            type: "revision",
-            action: "exhausted",
-            round: nextRound,
-            sha: commit,
-          });
-          return { kind: "exhausted", reasons: verdict.reasons };
-        }
-        const fix = await commitReviewerFix(wt, commit, verdict.reasons, nextRound);
-        // Advance the review-fix ref from C to the new fix commit, so the repair is reachable and
-        // the merge-post-review-drain landing (which checks the fix out by this sha) finds it.
-        await setRef(root, fixRef, fix);
-        return { kind: "fixed", fix, reasons: verdict.reasons };
-      }
+      // the ordinary change path. A clean worktree or a reply with no FIX line keeps the plain
+      // approve/reject outcome and deletes the ref.
+      const fixed = await applyReviewFix(root, entry, verdict, reply.paths, wt, fixRef);
+      if (fixed !== null) return fixed;
       await deleteRef(root, fixRef);
       if (verdict.verdict === "reject") return { kind: "reject", reasons: verdict.reasons };
       return { kind: "approve", reasons: verdict.reasons };
