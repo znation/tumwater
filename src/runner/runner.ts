@@ -13,9 +13,9 @@ import { RunnerPi } from "./runner-pi.js";
 import {
   configForRole,
   seamHoldKey,
-  withModelOverrides,
   type ResolvedModelConfig,
 } from "../config/config-views.js";
+import { rerouteSeamConfig } from "../agent/image-input.js";
 import { PendingPrompt } from "../inbox/pending-prompt.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import { RunUsage } from "../run/run-usage.js";
@@ -236,13 +236,7 @@ export class RoleRunner {
     // tier: the next run starts on the image-capable target the blind-read run recorded,
     // rebuilt from the stored seam over the live config.
     if (this.state.imageReroute) {
-      const r = this.state.imageReroute;
-      return withModelOverrides(this.config, r.tier, {
-        backend: r.backend,
-        provider: r.provider,
-        model: r.model,
-        thinking: r.thinking,
-      });
+      return rerouteSeamConfig(this.config, this.state.imageReroute);
     }
     return configForRole(this.config, this.role);
   }

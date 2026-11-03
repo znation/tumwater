@@ -16,6 +16,7 @@ import { piModelImageInput, piPairFree, piModelsPath, readPiProviders, type PiMo
 import { piListedImageInput, type PiListedModels } from "../pi/pi-listed-models.js";
 import type { ClaudeAccount } from "./claude/claude-account.js";
 import { backendById } from "./agent-backend.js";
+import type { RunnerState } from "../runner/runner-state.js";
 
 /** The subset of a resolved seam the capability resolver reads: an `agent` when the config
  * routed one, else a `provider`/`model` pair. ResolvedModelConfig and the doctor's SeamPair
@@ -123,6 +124,23 @@ export function imageRerouteTarget(
   listed: PiListedModels | null = null,
 ): ResolvedModelConfig | null {
   return imageReroute(config, role, regime, modelsPath, account, providers, listed)?.config ?? null;
+}
+
+/** The seam a pending image-input reroute marker names, rebuilt as a resolved config
+ * (plans/image-input.md part 4/5): the marker's `tier` resolves over the live config with the
+ * marker's stored `backend`/`provider`/`model`/`thinking` as overrides. One home for the
+ * projection runner.ts's runConfig and runner-run.ts's planRunStart both apply, so a rerouted
+ * run and the role's own run can never read the marker two different ways. */
+export function rerouteSeamConfig(
+  config: TumwaterConfig,
+  reroute: NonNullable<RunnerState["imageReroute"]>,
+): ResolvedModelConfig {
+  return withModelOverrides(config, reroute.tier, {
+    backend: reroute.backend,
+    provider: reroute.provider,
+    model: reroute.model,
+    thinking: reroute.thinking,
+  });
 }
 
 /** A seam's model as one readable token, the same label the doctor's `image input` check used

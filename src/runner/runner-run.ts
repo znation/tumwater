@@ -25,10 +25,9 @@ import {
   resolvedBackendConfig,
   scheduleConfigForRole,
   seamHoldKey,
-  withModelOverrides,
   type ResolvedModelConfig,
 } from "../config/config-views.js";
-import { imageReroute, seamImageInput } from "../agent/image-input.js";
+import { imageReroute, rerouteSeamConfig, seamImageInput } from "../agent/image-input.js";
 import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { planRunStart, planWithSalvagedWork, takesSalvagedWork, type RunStartPlan } from "../run/run-resume.js";
@@ -173,13 +172,7 @@ export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
   s.imageRerouteActive = false;
   let preflightBlocked = false;
   if (s.imageReroute) {
-    const r = s.imageReroute;
-    cfg = withModelOverrides(ctx.config, r.tier, {
-      backend: r.backend,
-      provider: r.provider,
-      model: r.model,
-      thinking: r.thinking,
-    });
+    cfg = rerouteSeamConfig(ctx.config, s.imageReroute);
     // The marker is NOT cleared here: planRunStart reads its `from`/`path` when it builds
     // the handoff note (and clears it then), so a run skipped before the plan (an empty
     // inbox) leaves the reroute pending for the next eligible run.
