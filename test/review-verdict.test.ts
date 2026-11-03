@@ -453,11 +453,12 @@ test("parseVerdict skips a quoted multi-line JSDoc comment and keeps the prose f
   assert.deepEqual(parseVerdict(text)?.reasons, ["Fix it."]);
 });
 
-// The fence scan goes through backlog-md.ts's shared fenceTracker, so a backtick fence line
-// whose info string itself contains a backtick is paragraph text that opens nothing — a local
-// `^(```+|~~~+)` scan would swallow every finding after it as fenced content.
+// review-verdict.ts strips fences with its own stripFencedBlocks, not backlog-md.ts's
+// fenceTracker: only an opener with a matching closer drops a block, and a lone fence marker
+// drops just its own line. So a fence line whose info string carries a backtick, with no closer
+// below it, cannot swallow the findings after it.
 
-test("parseVerdict reads past a backtick fence info string the shared fenceTracker rejects", () => {
+test("parseVerdict keeps the findings after an unclosed fence line whose info string has a backtick", () => {
   const text = ["VERDICT: reject", "```md / ## Done / ```", "1. real finding"].join("\n");
   assert.deepEqual(parseVerdict(text)?.reasons, ["real finding"]);
 });
