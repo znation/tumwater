@@ -1,11 +1,13 @@
 /** Parsing of the reviewer's reply into a verdict — split out of review.ts so the review gate
  * (reviewAheadOfMain) and the reply-shape contract it reads (reply-contract.ts's verdictLines and
  * isFixLine) each have a single responsibility: this module knows how a reviewer reply is shaped,
- * the gate knows what to do about one. It depends only on the reply contract and
- * build-check-report's clipReason (the shared per-line cap for persisted machine text). */
+ * the gate knows what to do about one. It depends only on the reply contract,
+ * build-check-report's clipReason (the shared per-line cap for persisted machine text) and
+ * backlog-md.ts's CommonMark fence rules. */
 
 import { isFixLine, verdictLines, type VerdictMatch } from "../verdict/reply-contract.js";
 import { clipReason } from "../build/build-check-report.js";
+import { closesFence, fenceOpener } from "../backlog/backlog-md.js";
 
 /** A parsed reviewer verdict with its reasons (numbered lines after the VERDICT line; any
  * other non-empty prose as a fallback). */
@@ -99,24 +101,27 @@ function withoutQuotedCode(region: string): string[] {
 }
 
 /** Drop each fenced code block whose opener has a matching closer, and drop a lone fence
- * marker's line. Content after an unmatched opener is kept as text — a fence is a quote
- * boundary, not a switch that swallows the rest of the reply. */
+ * opener's line. Content after an unmatched opener is kept as text — a fence is a quote
+ * boundary, not a switch that swallows the rest of the reply, which is why this pairs fences
+ * itself instead of using backlog-md.ts's fenceTracker (an unclosed fence runs to EOF there).
+ * What counts as an opener or a closer is CommonMark's rule, shared with fenceTracker
+ * (fenceOpener, closesFence): a backtick line whose info string holds a backtick opens nothing,
+ * and only a bare fence line closes. Read by a looser rule, such a line paired with a later
+ * fence, or a ```` ```ts ```` line inside a quote ended it early, and the findings between were
+ * dropped as quoted code. Lines are trimmed first, so a fence indented inside a list item
+ * counts. */
 function stripFencedBlocks(region: string): string {
   const lines = region.split("\n");
   const kept: string[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const mark = (/^(`{3,}|~{3,})/.exec((lines[i] ?? "").trim()))?.[1];
-    if (!mark) {
+    const fence = fenceOpener((lines[i] ?? "").trim());
+    if (!fence) {
       kept.push(lines[i] ?? "");
       continue;
     }
     let close = i + 1;
-    while (close < lines.length) {
-      const end = (/^(`{3,}|~{3,})/.exec((lines[close] ?? "").trim()))?.[1];
-      if (end && end.startsWith(mark.charAt(0)) && end.length >= mark.length) break;
-      close++;
-    }
-    if (close < lines.length) i = close; // matched: drop opener..closer; unmatched: drop the marker only
+    while (close < lines.length && !closesFence((lines[close] ?? "").trim(), fence)) close++;
+    if (close < lines.length) i = close; // matched: drop opener..closer; unmatched: drop the opener only
   }
   return kept.join("\n");
 }

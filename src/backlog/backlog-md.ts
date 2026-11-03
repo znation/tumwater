@@ -64,31 +64,53 @@ export interface BacklogEntry {
  * read is fence-degraded (the region's tail quoted real structure). */
 export function fenceTracker(): { inside(line: string): boolean; open(): boolean } {
   // The open fence's marker (null = none): only a matching bare fence line closes it.
-  let fence: { char: string; length: number } | null = null;
+  let fence: FenceMarker | null = null;
   return {
     open(): boolean {
       return fence !== null;
     },
     inside(line: string): boolean {
-      const fenceLine = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-      if (fenceLine) {
-        const marker = fenceLine[1] ?? ""; // The group always participates; "" keeps types honest.
-        if (fence === null) {
-          // CommonMark: an info string for a backtick fence cannot contain a backtick, so a
-          // line like ````md / ## Done / ````` quoted in prose is paragraph text, not a fence
-          // opener — taken as one, no later bare fence line can close it and the fence runs to
-          // EOF, swallowing the rest of the document as fenced content.
-          const info = line.replace(/^ {0,3}/, "").slice(marker.length);
-          if (marker.startsWith("`") && info.includes("`")) return false;
-          fence = { char: marker.charAt(0), length: marker.length };
-        }
-        else if (marker.startsWith(fence.char) && marker.length >= fence.length && line.trim() === marker)
-          fence = null;
-        return true; // The fence line itself is fence syntax, never structure.
+      if (fence === null) {
+        fence = fenceOpener(line);
+        return fence !== null; // An opener is fence syntax, never structure.
       }
-      return fence !== null;
+      if (closesFence(line, fence)) fence = null;
+      return true; // Inside a fence, every line (its closer too) is fence syntax or content.
     },
   };
+}
+
+/** An open fence's marker: its character and run length. */
+interface FenceMarker {
+  char: string;
+  length: number;
+}
+
+/** A CommonMark fence line's leading marker run, or null: ```` ``` ```` or `~~~` (three or more)
+ * after at most three spaces of indent. */
+function fenceMarkerRun(line: string): string | null {
+  return /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1] ?? null;
+}
+
+/** The fence `line` opens, or null when it opens none — CommonMark's opening rule, shared by
+ * fenceTracker and review-verdict.ts's quoted-code stripping. An info string may follow the
+ * marker, except that a backtick fence's info string may not contain a backtick: a line like
+ * ````md / ## Done / ````` quoted in prose is paragraph text. Taken as an opener, no later bare
+ * fence line could close it and the fence would run to EOF, swallowing the rest of the document
+ * as fenced content. */
+export function fenceOpener(line: string): FenceMarker | null {
+  const marker = fenceMarkerRun(line);
+  if (!marker) return null;
+  const info = line.replace(/^ {0,3}/, "").slice(marker.length);
+  if (marker.startsWith("`") && info.includes("`")) return null;
+  return { char: marker.charAt(0), length: marker.length };
+}
+
+/** Whether `line` closes `fence` — CommonMark's closing rule: a bare fence line (no info
+ * string) of the same character, at least as long as the opener. */
+export function closesFence(line: string, fence: FenceMarker): boolean {
+  const marker = fenceMarkerRun(line);
+  return marker !== null && marker.startsWith(fence.char) && marker.length >= fence.length && line.trim() === marker;
 }
 
 /** The title of a markdown heading line at `prefix` level — or the empty string when the heading

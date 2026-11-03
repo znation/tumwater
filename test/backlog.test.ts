@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  closesFence,
   entryDates,
   entryLags,
+  fenceOpener,
   fenceTracker,
   validationGapTag,
 } from "../src/backlog/backlog-md.js";
@@ -300,6 +302,28 @@ test("fenceTracker: backtick info strings reject backticks, tilde info strings d
   assert.equal(t.inside("## Done"), true); // ...so this one is fenced content.
   assert.equal(t.inside("~~~"), true); // A bare ~~~ closes it — but is fence syntax itself.
   assert.equal(t.inside("## Done"), false); // ...so this is structure again.
+});
+
+// fenceOpener and closesFence are the per-line CommonMark rules fenceTracker applies, exported so
+// review-verdict.ts's quoted-code stripping reads fence lines the same way.
+
+test("fenceOpener opens at a fence line unless a backtick info string holds a backtick", () => {
+  assert.deepEqual(fenceOpener("```ts"), { char: "`", length: 3 });
+  assert.deepEqual(fenceOpener("   ````"), { char: "`", length: 4 }); // three spaces of indent
+  assert.deepEqual(fenceOpener("~~~md `x` ~~~"), { char: "~", length: 3 }); // tilde info is free-form
+  assert.equal(fenceOpener("```md / ## Done / ```"), null); // backtick in a backtick info string
+  assert.equal(fenceOpener("    ```"), null); // four spaces of indent: not a fence line
+  assert.equal(fenceOpener("``"), null);
+  assert.equal(fenceOpener("text ```"), null);
+});
+
+test("closesFence closes only at a bare fence line of the same character, at least as long", () => {
+  const backtick3 = { char: "`", length: 3 };
+  assert.equal(closesFence("```", backtick3), true);
+  assert.equal(closesFence("````  ", backtick3), true); // longer, trailing spaces allowed
+  assert.equal(closesFence("```ts", backtick3), false); // an info string: not a closer
+  assert.equal(closesFence("~~~", backtick3), false); // the other fence character
+  assert.equal(closesFence("```", { char: "`", length: 4 }), false); // shorter than the opener
 });
 
 test("a ### heading inside a fenced code block is body content, not an entry boundary", () => {

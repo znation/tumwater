@@ -453,14 +453,46 @@ test("parseVerdict skips a quoted multi-line JSDoc comment and keeps the prose f
   assert.deepEqual(parseVerdict(text)?.reasons, ["Fix it."]);
 });
 
-// review-verdict.ts strips fences with its own stripFencedBlocks, not backlog-md.ts's
-// fenceTracker: only an opener with a matching closer drops a block, and a lone fence marker
-// drops just its own line. So a fence line whose info string carries a backtick, with no closer
-// below it, cannot swallow the findings after it.
+// stripFencedBlocks reads fence lines by backlog-md.ts's CommonMark rules (fenceOpener,
+// closesFence) but pairs them itself: only an opener with a matching closer drops a block, and an
+// unclosed opener drops just its own line, never the rest of the reply. A backtick line whose
+// info string holds a backtick opens nothing, and only a bare fence line closes a block.
 
-test("parseVerdict keeps the findings after an unclosed fence line whose info string has a backtick", () => {
+test("parseVerdict keeps the findings after a backtick-info line with no closer below it", () => {
   const text = ["VERDICT: reject", "```md / ## Done / ```", "1. real finding"].join("\n");
   assert.deepEqual(parseVerdict(text)?.reasons, ["real finding"]);
+});
+
+test("parseVerdict does not pair a backtick-info line with a later fence and drop the findings between", () => {
+  const text = [
+    "VERDICT: reject",
+    "```md / ## Done / ``` is quoted in the entry as one line.",
+    "1. The archive drops the entry.",
+    "```ts",
+    "const kept = 1;",
+    "```",
+    "2. The test pins the wrong count.",
+  ].join("\n");
+  assert.deepEqual(parseVerdict(text)?.reasons, [
+    "The archive drops the entry.",
+    "The test pins the wrong count.",
+  ]);
+});
+
+test("parseVerdict ends a quoted block only at a bare fence line, not at one with an info string", () => {
+  const text = [
+    "VERDICT: reject",
+    "1. The README example is quoted below.",
+    "```md",
+    "```ts",
+    "2. quoted text, not a finding",
+    "```",
+    "3. The real second finding.",
+  ].join("\n");
+  assert.deepEqual(parseVerdict(text)?.reasons, [
+    "The README example is quoted below.",
+    "The real second finding.",
+  ]);
 });
 
 // The comment-continuation guard must not drop a genuine bullet: only a `*`-led line closed
