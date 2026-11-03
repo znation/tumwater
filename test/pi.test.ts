@@ -940,6 +940,8 @@ test("runPi captures pi's fallback-clone stderr warning for an undefined model i
   );
   assert.equal(r.ok, true);
   assert.match(r.fallbackClone ?? "", /not found for provider "huggingface"/);
+  // The capture names the unresolved id itself, so the operator knows which entry to add.
+  assert.match(r.fallbackClone ?? "", /^Model "deepseek-ai\/DeepSeek-V4\.1-Flash:deepinfra" not found/);
   // The pattern itself is what the runner relies on: pin the spelling pi emits.
   assert.ok(MODEL_FALLBACK_CLONE.test(r.fallbackClone ?? ""));
 

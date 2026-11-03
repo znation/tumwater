@@ -308,6 +308,7 @@ test("a fallback-clone warning from pi surfaces as one runner warning", async ()
       assert.equal(warns.length, 1, "one warning for the one agent run");
       assert.match(warns[0]!, /could not resolve the model id exactly/);
       assert.match(warns[0]!, /not found for provider "huggingface"/);
+      assert.match(warns[0]!, /\(Model "x:deepinfra" not found/, "the warning names the unresolved id");
       assert.equal(usage.length, 1, "the warning does not change the agent run's accounting");
     },
   );

@@ -28,9 +28,10 @@ export const TRANSIENT_PI_CRASH =
 
 /** pi's stderr warning when a requested model id has no exact definition and pi falls back to
  * the provider's default model, inheriting that default's price and context window — the silent
- * mispricing of BUGS.md 2026-10-06. Matched against the child's stderr at exit; exported for
- * tests. */
-export const MODEL_FALLBACK_CLONE = /not found for provider[^\n]*Using custom model id/i;
+ * mispricing of BUGS.md 2026-10-06. The match keeps pi's leading `Model "<id>"` so the runner's
+ * warning names the id to add, not only the provider. Matched against the child's stderr at
+ * exit; exported for tests. */
+export const MODEL_FALLBACK_CLONE = /(?:Model "[^"\n]*" )?not found for provider[^\n]*Using custom model id/i;
 
 
 /** pi's identity translator: every native line is already a canonical line. */
