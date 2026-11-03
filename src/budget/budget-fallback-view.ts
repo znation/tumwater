@@ -302,11 +302,70 @@ function movedTierPosition(
   return { step: idx + 1, of: own.length, prior, priorName: prior ? modelPairName(prior) : "" };
 }
 
+/** The prior step was demoted by its breaker, so it no longer serves. Carries no `returnsAt`
+ * (a demotion lifts when the breaker's probe answers, not at a clock time). */
+function demotedPriorReason(
+  a: Parameters<typeof chainInfo>[0],
+  priorName: string,
+): { reason: "demoted" } | null {
+  if (a.breakers[priorName] !== undefined && !fallbackServingPair(a.breakers, priorName))
+    return { reason: "demoted" };
+  return null;
+}
+
+/** The prior step's own daily cap is spent, so it cannot run until the local day rolls over.
+ * Pins `returnsAt` to `midnight` (INV-BN2: local midnight only for step-cap and cap). */
+function stepCapPriorReason(
+  a: Parameters<typeof chainInfo>[0],
+  prior: FallbackModelConfig,
+  priorName: string,
+  midnight: number,
+): { reason: "step-cap"; returnsAt: number } | null {
+  if (prior.maxDailyCostUsd !== undefined && pairDailyCost(a.states, priorName, a.now) >= prior.maxDailyCostUsd)
+    return { reason: "step-cap", returnsAt: midnight };
+  return null;
+}
+
+/** The prior step is an extra-usage Claude step on an account that refuses overage, so it
+ * cannot run. Carries no `returnsAt` (a refusal lifts when the account's window changes). */
+function overagePriorReason(
+  a: Parameters<typeof chainInfo>[0],
+  prior: FallbackModelConfig,
+): { reason: "overage" } | null {
+  if (
+    subscriptionBackendOf(prior, a.accounts) !== null &&
+    prior.extraUsage &&
+    a.accounts("claude") &&
+    claudeOverageRefused(a.accounts("claude")!)
+  )
+    return { reason: "overage" };
+  return null;
+}
+
+/** The prior step failed its model check, or the tier moved on a check and the prior step's
+ * check has not verified it yet. Carries no `returnsAt` (a model check lifts when a re-check
+ * answers, not at a clock time). */
+function modelCheckPriorReason(
+  a: Parameters<typeof chainInfo>[0],
+  tier: ModelTier,
+  prior: FallbackModelConfig | null,
+  priorName: string,
+): { reason: "model-check" } | null {
+  const checkMoved = a.checkMoved?.has(tier) === true;
+  const priorChecked =
+    prior === null
+      ? checkMoved
+      : a.modelCheckFailed?.(priorName) === true || (checkMoved && a.modelCheckVerified?.(priorName) !== true);
+  if (priorChecked) return { reason: "model-check" };
+  return null;
+}
+
 /** Why the position before the active step cannot run, in INV-BN1's fixed order (demoted,
- * step-cap, overage, model-check, cap). A demoted, overage or model-check result carries no
- * `returnsAt` (a model check lifts when a re-check answers, not at a clock time); a step-cap or
- * cap result pins it to `midnight` (INV-BN2: local midnight only for step-cap and cap).
- * Answers "why can't the position before the active step run, and when does it come back?". */
+ * step-cap, overage, model-check, cap): the first arm that names the prior step wins, and the
+ * cap is the fallback when none does. A demoted, overage or model-check result carries no
+ * `returnsAt`; a step-cap or cap result pins it to `midnight` (INV-BN2: local midnight only
+ * for step-cap and cap). Answers "why can't the position before the active step run, and when
+ * does it come back?". */
 function movedTierReason(
   a: Parameters<typeof chainInfo>[0],
   tier: ModelTier,
@@ -314,28 +373,13 @@ function movedTierReason(
   priorName: string,
   midnight: number,
 ): { reason: ChainTierInfo["reason"]; returnsAt?: number } {
-  if (prior && a.breakers[priorName] !== undefined && !fallbackServingPair(a.breakers, priorName)) {
-    return { reason: "demoted" };
-  }
-  if (prior?.maxDailyCostUsd !== undefined && pairDailyCost(a.states, priorName, a.now) >= prior.maxDailyCostUsd) {
-    return { reason: "step-cap", returnsAt: midnight };
-  }
-  if (
-    prior &&
-    subscriptionBackendOf(prior, a.accounts) !== null &&
-    prior.extraUsage &&
-    a.accounts("claude") &&
-    claudeOverageRefused(a.accounts("claude")!)
-  ) {
-    return { reason: "overage" };
-  }
-  const checkMoved = a.checkMoved?.has(tier) === true;
-  const priorChecked =
-    prior === null
-      ? checkMoved
-      : a.modelCheckFailed?.(priorName) === true || (checkMoved && a.modelCheckVerified?.(priorName) !== true);
-  if (priorChecked) return { reason: "model-check" };
-  return { reason: "cap", returnsAt: midnight };
+  return (
+    (prior !== null ? demotedPriorReason(a, priorName) : null) ??
+    (prior !== null ? stepCapPriorReason(a, prior, priorName, midnight) : null) ??
+    (prior !== null ? overagePriorReason(a, prior) : null) ??
+    modelCheckPriorReason(a, tier, prior, priorName) ??
+    { reason: "cap", returnsAt: midnight }
+  );
 }
 
 /** What the active step has spent against its own cap: both keys absent unless the step is a
