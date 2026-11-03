@@ -580,6 +580,18 @@ function notesAndWindowsOf(
   return { note, noteSavedAt, quietHours, contextWindow };
 }
 
+/** The role's persisted schedule (runner-state.ts) surfaced read-only in the payload: the
+ * epoch-ms instant before which it must not run again, the backoff it is currently serving
+ * (0 when not), the yield multiplier its recent-yield ring earns right now, and — absent until
+ * the role has run — when its last run ended. One shape, shared by `previewRun`'s return and
+ * `AssemblePayloadParams`, so the two read the same four fields. */
+interface RoleScheduleView {
+  nextRunAt: number;
+  backoffSeconds: number;
+  yieldMultiplier: number;
+  lastRunEndedAt?: number;
+}
+
 /** The run preview and schedule half — "what will its next run look like?": the one
  * loadRunnerState read for this role (its own state file, shared with the cap helper's sibling
  * set), the prompt assembled through the preview seam (read, never consumed, so an inspection
@@ -592,12 +604,7 @@ function previewRun(
 ): {
   state: RunnerState;
   nextPrompt: string | null;
-  schedule: {
-    nextRunAt: number;
-    backoffSeconds: number;
-    yieldMultiplier: number;
-    lastRunEndedAt?: number;
-  };
+  schedule: RoleScheduleView;
 } {
   // One state read serves the next-run preview below.
   const state = loadRunnerState(root, role);
@@ -686,12 +693,7 @@ interface AssemblePayloadParams {
   filings?: FilingRow[];
   contextWindow: number | null;
   nextPrompt: string | null;
-  schedule: {
-    nextRunAt: number;
-    backoffSeconds: number;
-    yieldMultiplier: number;
-    lastRunEndedAt?: number;
-  };
+  schedule: RoleScheduleView;
   quietHours: NonNullable<RoleViewPayload["quietHours"]>;
   recentOutcomes: NonNullable<RoleViewPayload["recentOutcomes"]>;
   usage: NonNullable<RoleViewPayload["usage"]>;
