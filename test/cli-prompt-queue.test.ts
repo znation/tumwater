@@ -474,7 +474,8 @@ test("prompt --top resolves a bad position and a list-wide miss/ambiguity exactl
   // Position 1 fails as "already first" — the moveEntryToTop precedent.
   r = await cli(repo, "prompt", "--top", "1");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /prompt 1 is already first/);
+  // Position 1 with no --role resolves to the director, whose queue the message names.
+  assert.match(r.stderr, /prompt 1 for director is already first/);
 
   // A list-wide ambiguity when several roles hold the position names them and the --role
   // escape hatch, touching nothing.

@@ -4,6 +4,7 @@ import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { lowestStampName, queueFileStamp, removeQueueFile } from "../files/file-queue.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { roleInboxDir } from "../paths.js";
+import { roleLabel } from "../roles/role-labels.js";
 import { assertQueueFileName } from "./inbox-cancel.js";
 import { promptPreview, queuedFileAtPosition, queuedFiles } from "./inbox.js";
 import { movePromptImages, stripVanishedImageReferences } from "./inbox-attachments.js";
@@ -86,7 +87,7 @@ function moveFileToTop(root: string, role: string, file: string): TopOutcome {
  * error. */
 export function movePromptToTop(root: string, role: string, position: number): TopOutcome {
   const file = queuedFileAtPosition(root, role, position);
-  if (position === 1) throw new Error(`prompt ${position} is already first`);
+  if (position === 1) throw new Error(`prompt ${position} for ${roleLabel(role)} is already first`);
   return moveFileToTop(root, role, file);
 }
 

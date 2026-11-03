@@ -264,7 +264,7 @@ test("prompt --top on position 1 refuses already-first for the role with no writ
   enqueueRolePrompt(root, "clean", "a");
   enqueueRolePrompt(root, "clean", "b");
   const o = await expectFailAsync(() => cmdPrompt(root, ["--role", "clean", "--top", "1"]));
-  assert.match(o, /prompt 1 is already first/);
+  assert.match(o, /prompt 1 for clean is already first/);
   // The refusal writes nothing: both prompts keep their order.
   assert.deepEqual([dequeueRolePrompt(root, "clean"), dequeueRolePrompt(root, "clean")], ["a", "b"]);
 });
