@@ -292,7 +292,7 @@ export async function mainRedHealNote(root: string, role: string, wt: string): P
  * too, so the failure is not the change's and the ci healer's hand-off (`mainRedHealNote`) and
  * the main watch own the repair; `unavailable` — no verdict could be had, with `why` for the
  * rejection's reasons. */
-export type MainTipVerdict =
+type MainTipVerdict =
   | { status: "green"; sha: string }
   | { status: "red"; sha: string; failingTests?: string[] }
   | { status: "unavailable"; why: string };
