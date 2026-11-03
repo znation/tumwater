@@ -177,50 +177,69 @@ export function createTranscriptRenderer(opts: { includePrompts?: boolean } = {}
     return [separatorLine()];
   };
 
+  const feedAgentStart = (): string[] => {
+    runOpen = true;
+    runTime = null;
+    runLabel = pendingLabel; // captured, then consumed unconditionally — a stale marker
+    pendingLabel = null; // (no agent_start of its own) can mislabel at most this one separator
+    return []; // separator is stamped from the first user message, then emitted lazily
+  };
+
+  interface FeedMessage { role?: unknown; timestamp?: unknown; content?: unknown }
+
+  const feedAssistantMessage = (message: FeedMessage): string[] => {
+    const turn = renderAssistantMessage(message.content);
+    return [...emitSeparator(), ...turn];
+  };
+
+  const feedUserMessage = (message: FeedMessage): string[] => {
+    if (runOpen && runTime === null && typeof message.timestamp === "number") {
+      runTime = formatTimestamp(message.timestamp);
+    }
+    if (!includePrompts) return []; // never render user content (the run prompt)
+    // emitSeparator() runs here for the first time in this run, so the assistant's
+    // later call returns [] — the separator is not duplicated.
+    return [...emitSeparator(), ...renderUserPrompt(message.content)];
+  };
+
+  const feedMessageEnd = (event: Record<string, unknown>): string[] => {
+    const message = event.message as FeedMessage | undefined;
+    if (!message || typeof message !== "object") return [];
+    if (message.role === "assistant") return feedAssistantMessage(message);
+    if (message.role !== "user") return [];
+    return feedUserMessage(message);
+  };
+
+  const feedAutoRetry = (event: Record<string, unknown>): string[] => {
+    const attempt = typeof event.attempt === "number" ? event.attempt : "?";
+    const maxAttempts = typeof event.maxAttempts === "number" ? event.maxAttempts : "?";
+    // A torn or hand-edited non-string errorMessage renders the shared corrupt-field
+    // placeholder (textOr), never String(object)'s literal "[object Object]".
+    const error = squash(textOr(event.errorMessage, "unknown error"), 120);
+    return [...emitSeparator(), `⚠ retry ${attempt}/${maxAttempts}: ${error}`];
+  };
+
+  const feedRunMarker = (event: Record<string, unknown>): string[] => {
+    const label = event.label;
+    // A kind-only marker (no label) leaves any pending label untouched, exactly as a full
+    // re-read does; it never renders a line of its own.
+    if (typeof label === "string" && label) pendingLabel = label;
+    return [];
+  };
+
   return {
     feed(line: string): string[] {
       const event = parsePiEventLine<Record<string, unknown>>(line, RENDERABLE_TYPES);
       if (!event) return []; // Blank, unparseable, or a type this renderer does not act on.
       switch (event.type) {
         case "agent_start":
-          runOpen = true;
-          runTime = null;
-          runLabel = pendingLabel; // captured, then consumed unconditionally — a stale marker
-          pendingLabel = null; // (no agent_start of its own) can mislabel at most this one separator
-          return []; // separator is stamped from the first user message, then emitted lazily
-        case "message_end": {
-          const message = event.message as
-            | { role?: unknown; timestamp?: unknown; content?: unknown }
-            | undefined;
-          if (!message || typeof message !== "object") return [];
-          if (message.role === "assistant") {
-            const turn = renderAssistantMessage(message.content);
-            return [...emitSeparator(), ...turn];
-          }
-          if (message.role !== "user") return [];
-          if (runOpen && runTime === null && typeof message.timestamp === "number") {
-            runTime = formatTimestamp(message.timestamp);
-          }
-          if (!includePrompts) return []; // never render user content (the run prompt)
-          // emitSeparator() runs here for the first time in this run, so the assistant's
-          // later call returns [] — the separator is not duplicated.
-          return [...emitSeparator(), ...renderUserPrompt(message.content)];
-        }
-        case "auto_retry_start": {
-          const attempt = typeof event.attempt === "number" ? event.attempt : "?";
-          const maxAttempts = typeof event.maxAttempts === "number" ? event.maxAttempts : "?";
-          // A torn or hand-edited non-string errorMessage renders the shared corrupt-field
-          // placeholder (textOr), never String(object)'s literal "[object Object]".
-          const error = squash(textOr(event.errorMessage, "unknown error"), 120);
-          return [...emitSeparator(), `⚠ retry ${attempt}/${maxAttempts}: ${error}`];
-        }
-        case "tumwater_run": {
-          const label = event.label;
-          // A kind-only marker (no label) leaves any pending label untouched, exactly as a full
-          // re-read does; it never renders a line of its own.
-          if (typeof label === "string" && label) pendingLabel = label;
-          return [];
-        }
+          return feedAgentStart();
+        case "message_end":
+          return feedMessageEnd(event);
+        case "auto_retry_start":
+          return feedAutoRetry(event);
+        case "tumwater_run":
+          return feedRunMarker(event);
         default:
           return []; // message_update deltas, tool_execution_*, turn_*, agent_end, session, …
       }
