@@ -31,9 +31,9 @@ import {
 } from "../config/config-fallbacks.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { piPairFree, readPiProviders } from "../pi/pi-models.js";
-import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
-import { readAccount } from "../agent/subscription-account.js";
+import { piPairFree, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
+import { readOpencodeCache, type OpencodeCatalogCache } from "../agent/opencode/opencode-catalog.js";
+import { readAccount, type SubscriptionAccount } from "../agent/subscription-account.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import type { ChainTierInfo } from "../team/team-orchestrator-info.js";
 import {
@@ -309,37 +309,38 @@ export function gateRoleConfig(
   return role === DIRECTOR_ROLE ? directorConfig : roleConfig;
 }
 
-/** Poll the daily cost budget gate: once the team's spend for the local day has reached
- * maxDailyCostUsd, roles either switch to the configured cost-free fallback model and
- * keep working, or — with no usable one — start no new runs at all (scheduled, main-moved
- * wake, or startup). The director is outside both: an explicit human prompt outranks the
- * autonomous-spend cap, so it keeps its budgeted model and keeps running. In-flight runs
- * finish; only NEW runs are gated — and when the gate reopens, the orchestrator hands the
- * runs still running on the fallback back to the primary (the `budget_handback` event).
- * Resume is live — raising/disabling the cap (reloaded
- * live each poll), fixing the fallback, or crossing local midnight re-evaluates this on the
- * next poll — and the one piece of state, the fallback breaker, is re-keyed by the same
- * inputs, so nothing can get stuck. Apart from the cap, a tier whose own primary failed its
- * model check runs on a verified step of its chain while it has one, and moves back once a
- * re-check of the primary answers (budget-fallback-view.ts, plans/model-check.md). */
-export function pollBudgetGate(
-  state: BudgetGateState,
-  ctx: {
-    root: string;
-    states: RunnerState[];
-    liveConfig: TumwaterConfig;
-    modelsPath: string;
-    /** Whether a pair failed its last model check (src/model-check/model-check.ts): the
-     * serving resolution steps past it like a demoted pair. Absent while the check is off. */
-    modelCheckFailed?: (pair: string) => boolean;
-    /** Whether a pair answered its last model check: a tier whose primary failed moves only to
-     * a verified step. Absent while the check is off, so nothing moves. */
-    modelCheckVerified?: (pair: string) => boolean;
-  },
-): BudgetGatePoll {
-  const { root, states, liveConfig, modelsPath } = ctx;
-  const checkFailed = ctx.modelCheckFailed ?? (() => false);
-  const checkVerified = ctx.modelCheckVerified ?? (() => false);
+/** The single per-poll snapshot that serves the whole verdict: one spend read, the live
+ * review flag, the pi provider catalog, the billing-account closure, and the opencode
+ * catalog (the opening reads of pollBudgetGate, moved here so "what one spend read, provider
+ * catalog and billing snapshot serves this poll?" is read from a name). The spend number
+ * serves the verdict, the event, and the returned figures; the states are not mutated
+ * between, so all three are the same number by construction. The billing answer (6a/7) is a
+ * subscription claude seam being free money, so the free-ness predicates never move it to a
+ * fallback and accept a subscription claude pair as a budget fallback — one read per poll, an
+ * absent file reading as "no subscription". The free-ness predicates judge a seam by its own
+ * backend's subscription account (part 2a/9): today only claude asks, and this lookup
+ * returns claude's account for "claude" and null otherwise. The cached opencode models
+ * catalog (part 6b/7) is seeded at the startup gate and read once per poll so every free-ness
+ * verdict prices opencode seams against the same snapshot; absent (no cache yet), an opencode
+ * seam reads NOT free — the safe direction until the startup seed fills the file in. */
+interface BudgetPollInputs {
+  now: number;
+  spentUsd: number;
+  capUsd: number;
+  reached: boolean;
+  reviewOn: boolean;
+  providers: Map<string, PiModelDef[]> | null;
+  accounts: (backend: string) => SubscriptionAccount | null;
+  catalog: OpencodeCatalogCache | null;
+  states: RunnerState[];
+}
+
+function budgetPollInputs(
+  root: string,
+  states: RunnerState[],
+  liveConfig: TumwaterConfig,
+  modelsPath: string,
+): BudgetPollInputs {
   const now = Date.now();
   // One spend read serves the verdict, the transition event, and the returned figures: the
   // states are not mutated between, so all three are the same number by construction.
@@ -364,6 +365,16 @@ export function pollBudgetGate(
   // Absent (no cache yet), an opencode seam reads NOT free — the safe direction until the
   // startup seed fills the file in.
   const catalog = readOpencodeCache(root);
+  return { now, spentUsd, capUsd, reached, reviewOn, providers, accounts, catalog, states };
+}
+
+/** Is a fallback pair free or within its own cap at this poll? The subscription-backend
+ * branch (its subscription-only first model, then an extra-usage model's cap and overage
+ * arms), then pi's zero-price, then the cap and per-pair cap arms — the nested free-ness
+ * predicate moved out of pollBudgetGate so "is this pair free or within its own cap?" is
+ * read from a name. */
+function pairFreeAt(p: FallbackModelConfig, inputs: BudgetPollInputs): boolean {
+  const { providers, accounts, catalog, reached, states, now } = inputs;
   // The usable predicate's two halves (part 5b/8): pi prices the pair at zero — a pair
   // routed to a non-pi backend (e.g. `claude/<id>`) is never free, the same predicate the
   // badge uses — and its breaker entry holds no demotion, tiers sharing a pair share the
@@ -375,40 +386,156 @@ export function pollBudgetGate(
   // A priced step (one pi does not price at zero, or claude on API billing) is usable only
   // while the team is under its cap and the step is under its own `maxDailyCostUsd`, so no cap
   // can be passed; at the cap only free steps remain, as before.
-  const pairFreeAt = (p: FallbackModelConfig) => {
-    const subBackend = subscriptionBackendOf(p, accounts);
-    if (subBackend !== null) {
-      // The first model of a subscription backend runs on the subscription only; a later one
-      // (extraUsage, claude-only) may spend extra usage within its cap while no window is
-      // rejected or refuses overage.
-      if (!p.extraUsage) return piPairFree(providers, p, accounts, catalog);
-      const subAccount = accounts(subBackend)!;
-      return (
-        !reached &&
-        !claudeOverageRefused(subAccount) &&
-        (p.maxDailyCostUsd === undefined || pairDailyCost(states, modelPairName(p), now) < p.maxDailyCostUsd)
-      );
-    }
-    // The subscription rule lives entirely in the branch above (it returns early for
-    // any subscription pair); below that branch a pair is never a subscription, so only the
-    // free-ness and cap rules apply.
-    if (piPairFree(providers, p, accounts, catalog)) return true;
-    if (reached) return false;
+  const subBackend = subscriptionBackendOf(p, accounts);
+  if (subBackend !== null) {
+    // The first model of a subscription backend runs on the subscription only; a later one
+    // (extraUsage, claude-only) may spend extra usage within its cap while no window is
+    // rejected or refuses overage.
+    if (!p.extraUsage) return piPairFree(providers, p, accounts, catalog);
+    const subAccount = accounts(subBackend)!;
     return (
-      p.maxDailyCostUsd === undefined ||
-      pairDailyCost(states, modelPairName(p), now) < p.maxDailyCostUsd
+      !reached &&
+      !claudeOverageRefused(subAccount) &&
+      (p.maxDailyCostUsd === undefined || pairDailyCost(states, modelPairName(p), now) < p.maxDailyCostUsd)
     );
-  };
-  // The breaker map is keyed by every pair the tiers would run on absent a demotion
-  // (resolveTierFallbacks over the price check alone), re-keyed per pair each poll: a pair's
-  // judgment survives while its subject (pair + cap) is unchanged, and a changed cap, a pair
-  // leaving the resolution, or no fallback at all re-trusts or drops it (part 5b/8). The
-  // engaged pair is always among the keys, so the gate's serving verdict has an entry. This
-  // price-based resolution also drives the fallback view (below) and the handback pairs: the
-  // view must keep the free pairs installed even while one of them is demoted — its probe run
-  // runs on it — and the paused tiers the demotion produces are held by the scheduler's
-  // per-role set, so nobody but the probe ever reaches the demoted pair.
-  const priceResolved = resolveTierFallbacks(liveConfig, pairFreeAt);
+  }
+  // The subscription rule lives entirely in the branch above (it returns early for
+  // any subscription pair); below that branch a pair is never a subscription, so only the
+  // free-ness and cap rules apply.
+  if (piPairFree(providers, p, accounts, catalog)) return true;
+  if (reached) return false;
+  return (
+    p.maxDailyCostUsd === undefined ||
+    pairDailyCost(states, modelPairName(p), now) < p.maxDailyCostUsd
+  );
+}
+
+/** The pair names the breaker map tracks: every resolved tier pair, then every price-free
+ * chain step, each unique, in tier order — the two loops that built `pairNames`, moved so
+ * "which pair names get a breaker entry?" is read from a name. The breaker map is keyed by
+ * every pair the tiers would run on absent a demotion (resolveTierFallbacks over the price
+ * check alone), re-keyed per pair each poll: a pair's judgment survives while its subject
+ * (pair + cap) is unchanged, and a changed cap, a pair leaving the resolution, or no
+ * fallback at all re-trusts or drops it (part 5b/8). The engaged pair is always among the
+ * keys, so the gate's serving verdict has an entry. This price-based resolution also drives
+ * the fallback view (below) and the handback pairs: the view must keep the free pairs
+ * installed even while one of them is demoted — its probe run still uses it — and the paused
+ * tiers the demotion produces are held by the scheduler's per-role set, so nobody but the
+ * probe ever reaches the demoted pair. */
+function breakerPairNames(
+  priceResolved: TierFallbackMap,
+  chainPairs: FallbackModelConfig[],
+): string[] {
+  const pairNames: string[] = [];
+  for (const tier of MODEL_TIERS) {
+    const p = priceResolved[tier].pair;
+    if (p) {
+      const n = modelPairName(p);
+      if (!pairNames.includes(n)) pairNames.push(n);
+    }
+  }
+  // Every price-free step of every tier's chain gets a breaker entry too: a demoted step's
+  // successor must have one, or fallbackServingPair would read it as not serving.
+  for (const p of chainPairs) {
+    const n = modelPairName(p);
+    if (!pairNames.includes(n)) pairNames.push(n);
+  }
+  return pairNames;
+}
+
+/** The demotion- and check-aware serving resolution: the full usable predicate (price-free
+ * AND its breaker entry serving AND not check-failed) over the tiers, plus the serving
+ * resolution and the verified-only check resolution, returned together — moved so "which
+ * pair may each tier run on once demotions and model checks are considered?" is read from a
+ * name. The demotion-aware resolution (part 5c/8): the same engine over the FULL usable
+ * predicate — priced at zero AND its breaker entry serving — so a demoted pair re-resolves
+ * only the tiers that use it: a demoted strong pair holds the strong roles beside the
+ * per-role cap set while small and default keep their own pairs, instead of the team-wide
+ * pause the single-pair gate produced.
+ * A pair that failed its model check is not serving either: it answered a short probe with
+ * nothing or with the wrong word, so the tier steps to its next chain step (or pauses) until a
+ * re-check passes, exactly as for a breaker demotion. A pair still being checked stays usable
+ * — the check holds its roles until the verdict.
+ * Where a tier whose own primary failed its model check runs instead, at any spend: the
+ * serving resolution narrowed to steps the check has verified, so the move never lands on a
+ * pair that has not answered yet. A tier with no verified step stays held on its primary. */
+function budgetResolutions(
+  liveConfig: TumwaterConfig,
+  state: BudgetGateState,
+  pairFreeAt: (p: FallbackModelConfig) => boolean,
+  checkFailed: (pair: string) => boolean,
+  checkVerified: (pair: string) => boolean,
+): { servingResolved: TierFallbackMap; checkResolved: TierFallbackMap } {
+  const usable = (p: FallbackModelConfig) =>
+    pairFreeAt(p) && fallbackServingPair(state.breakers, modelPairName(p)) && !checkFailed(modelPairName(p));
+  const servingResolved = resolveTierFallbacks(liveConfig, usable);
+  const checkResolved = resolveTierFallbacks(liveConfig, (p) => usable(p) && checkVerified(modelPairName(p)));
+  return { servingResolved, checkResolved };
+}
+
+/** The cap's check-aware installed view: the price resolution stepped past the pairs that
+ * failed their model check, so a cap-moved tier's roles run on the first free step that has
+ * not failed — undefined while the check is off. Moved so "which free step stays installed
+ * when every free step failed its model check?" is read from a name. Unlike `usable` it
+ * never reads `fallbackServingPair`, so a breaker-demoted cap pair stays installed for its
+ * half-open probe and a run parked on it. Absent while the check is off. */
+function checkFreeResolution(
+  liveConfig: TumwaterConfig,
+  priceResolved: TierFallbackMap,
+  pairFreeAt: (p: FallbackModelConfig) => boolean,
+  checkFailed: (pair: string) => boolean,
+  checkOn: boolean,
+): TierFallbackMap | undefined {
+  if (!checkOn) return undefined;
+  const checkFreeResolved = resolveTierFallbacks(liveConfig, (p) => pairFreeAt(p) && !checkFailed(modelPairName(p)));
+  // When every free step of a tier failed its check, keep the price view's step installed:
+  // the serving resolution still resolves the tier to pause, but the installed view must keep
+  // a free pair so a parked merge or probe can never fall through to the priced primary the
+  // cap already spent. Its model check holds the roles on the failed step until a re-check
+  // answers.
+  for (const tier of MODEL_TIERS) {
+    if (checkFreeResolved[tier].pair === null) checkFreeResolved[tier] = priceResolved[tier];
+  }
+  return checkFreeResolved;
+}
+
+/** Poll the daily cost budget gate: once the team's spend for the local day has reached
+ * maxDailyCostUsd, roles either switch to the configured cost-free fallback model and
+ * keep working, or — with no usable one — start no new runs at all (scheduled, main-moved
+ * wake, or startup). The director is outside both: an explicit human prompt outranks the
+ * autonomous-spend cap, so it keeps its budgeted model and keeps running. In-flight runs
+ * finish; only NEW runs are gated — and when the gate reopens, the orchestrator hands the
+ * in-flight runs on the fallback back to the primary (the `budget_handback` event).
+ * Resume is live — raising/disabling the cap (reloaded
+ * live each poll), fixing the fallback, or crossing local midnight re-evaluates this on the
+ * next poll — and the one piece of state, the fallback breaker, is re-keyed by the same
+ * inputs, so nothing can get stuck. Apart from the cap, a tier whose own primary failed its
+ * model check runs on a verified step of its chain while it has one, and moves back once a
+ * re-check of the primary answers (budget-fallback-view.ts, plans/model-check.md). */
+export function pollBudgetGate(
+  state: BudgetGateState,
+  ctx: {
+    root: string;
+    states: RunnerState[];
+    liveConfig: TumwaterConfig;
+    modelsPath: string;
+    /** Whether a pair failed its last model check (src/model-check/model-check.ts): the
+     * serving resolution steps past it like a demoted pair. Absent while the check is off. */
+    modelCheckFailed?: (pair: string) => boolean;
+    /** Whether a pair answered its last model check: a tier whose primary failed moves only to
+     * a verified step. Absent while the check is off, so nothing moves. */
+    modelCheckVerified?: (pair: string) => boolean;
+  },
+): BudgetGatePoll {
+  const { root, states, liveConfig } = ctx;
+  const checkFailed = ctx.modelCheckFailed ?? (() => false);
+  const checkVerified = ctx.modelCheckVerified ?? (() => false);
+  const inputs = budgetPollInputs(root, states, liveConfig, ctx.modelsPath);
+  const { now, spentUsd, capUsd, reached, reviewOn, providers, accounts, catalog } = inputs;
+  // The price resolution alone (the map's keys are the pairs that would run absent a demotion,
+  // so a demotion cannot churn them), the same free-ness predicate the breaker re-key and the
+  // installed view below share.
+  const priceResolved = resolveTierFallbacks(liveConfig, (p) => pairFreeAt(p, inputs));
   // The team-level engagement is the price-resolved `default` tier's pair: a map with no
   // `default` entry still reports the free pair the tier borrows, so state.engaged and the
   // budget_fallback event name what the gate actually engages instead of reading null while
@@ -420,60 +547,29 @@ export function pollBudgetGate(
   const pairName = modelPairName(pair);
   const rejectedPair = fallbackPair(liveConfig);
 
-  const pairNames: string[] = [];
-  for (const tier of MODEL_TIERS) {
-    const p = priceResolved[tier].pair;
-    if (p) {
-      const n = modelPairName(p);
-      if (!pairNames.includes(n)) pairNames.push(n);
-    }
-  }
-  // Every price-free step of every tier's chain gets a breaker entry too: a demoted step's
-  // successor must have one, or fallbackServingPair would read it as not serving.
+  // Every price-free step of every tier's chain gets a breaker entry too (see breakerPairNames).
   const chainPairs = tierChainSteps(liveConfig)
     .map((s) => s.pair)
-    .filter(pairFreeAt);
-  for (const p of chainPairs) {
-    const n = modelPairName(p);
-    if (!pairNames.includes(n)) pairNames.push(n);
-  }
+    .filter((p) => pairFreeAt(p, inputs));
+  const pairNames = breakerPairNames(priceResolved, chainPairs);
   state.breakers = rekeyFallbackBreakers(state.breakers, pairNames, liveConfig.maxDailyCostUsd);
   state.engaged = reached && fallbackReady ? pairName : null;
-  // The demotion-aware resolution (part 5c/8): the same engine over the FULL usable predicate —
-  // priced at zero AND its breaker entry serving — so a demoted pair re-resolves only the tiers
-  // that use it: a demoted strong pair holds the strong roles beside the per-role cap set while
-  // small and default keep their own pairs, instead of the team-wide pause the single-pair
-  // gate produced.
-  // A pair that failed its model check is not serving either: it answered a short probe with
-  // nothing or with the wrong word, so the tier steps to its next chain step (or pauses) until a
-  // re-check passes, exactly as for a breaker demotion. A pair still being checked stays usable
-  // — the check holds its roles until the verdict.
-  const usable = (p: FallbackModelConfig) =>
-    pairFreeAt(p) && fallbackServingPair(state.breakers, modelPairName(p)) && !checkFailed(modelPairName(p));
-  const servingResolved = resolveTierFallbacks(liveConfig, usable);
-  // Where a tier whose own primary failed its model check runs instead, at any spend: the
-  // serving resolution narrowed to steps the check has verified, so the move never lands on a
-  // pair that has not answered yet. A tier with no verified step stays held on its primary.
-  const checkResolved = resolveTierFallbacks(liveConfig, (p) => usable(p) && checkVerified(modelPairName(p)));
-  // The cap's installed view, check-aware: the price resolution stepped past the pairs that
-  // failed their model check, so a cap-moved tier's roles run on the first free step that has
-  // not failed. Unlike `usable` it never reads `fallbackServingPair`, so a breaker-demoted cap
-  // pair stays installed for its half-open probe and a run parked on it. Absent while the
-  // check is off.
-  const checkFreeResolved =
-    ctx.modelCheckFailed === undefined
-      ? undefined
-      : resolveTierFallbacks(liveConfig, (p) => pairFreeAt(p) && !checkFailed(modelPairName(p)));
-  if (checkFreeResolved !== undefined) {
-    // When every free step of a tier failed its check, keep the price view's step installed:
-    // the serving resolution still resolves the tier to pause, but the installed view must keep
-    // a free pair so a parked merge or probe can never fall through to the priced primary the
-    // cap already spent. Its model check holds the roles on the failed step until a re-check
-    // answers.
-    for (const tier of MODEL_TIERS) {
-      if (checkFreeResolved[tier].pair === null) checkFreeResolved[tier] = priceResolved[tier];
-    }
-  }
+  // The demotion- and check-aware serving and verified resolutions (see budgetResolutions).
+  const { servingResolved, checkResolved } = budgetResolutions(
+    liveConfig,
+    state,
+    (p) => pairFreeAt(p, inputs),
+    checkFailed,
+    checkVerified,
+  );
+  // The cap's check-aware installed view (see checkFreeResolution); absent while the check is off.
+  const checkFreeResolved = checkFreeResolution(
+    liveConfig,
+    priceResolved,
+    (p) => pairFreeAt(p, inputs),
+    checkFailed,
+    ctx.modelCheckFailed !== undefined,
+  );
   // Free is not enough: the breaker demotes a fallback whose runs keep failing, and a gate
   // whose `default` (or, with review on, `strong`) tier resolves to pause is `paused`, exactly
   // as with no fallback at all (budgetGate, part 5c/8).
