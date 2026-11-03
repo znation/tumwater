@@ -101,8 +101,11 @@ export function isKnownFlake(root: string, headline: string): boolean {
 
 /** One quarantined test: it failed, then passed on the same tree. `bug` is the heading of the
  * BUGS.md entry filed for it, empty until the filing is committed; `tail` is the failing output
- * kept only until then. Exported so the read-only `tumwater quarantine` renderer (and its
- * json feed) can name each entry's fields the operator sees. */
+ * kept only until then. `recurred` marks a filed test that flaked again since its bug last heard
+ * of it, so the main watch's next settlement records the flake under that bug when the bug waits
+ * for one (backlog-file-bugs.ts recordRecurrence); its `tail` is that flake's output. Exported so
+ * the read-only `tumwater quarantine` renderer (and its json feed) can name each entry's fields
+ * the operator sees. */
 export interface QuarantineEntry {
   test: string;
   firstSeen: number;
@@ -110,6 +113,7 @@ export interface QuarantineEntry {
   count: number;
   bug: string;
   tail?: string;
+  recurred?: true;
 }
 
 /** How many quarantined tests are kept; the oldest by lastSeen fall off. */
@@ -153,6 +157,7 @@ export function loadQuarantine(root: string): QuarantineEntry[] {
       count: num(e.count) || 1,
       bug: typeof e.bug === "string" ? e.bug : "",
       ...(typeof e.tail === "string" ? { tail: e.tail } : {}),
+      ...(e.recurred === true ? { recurred: true as const } : {}),
     });
   }
   return out;
@@ -187,7 +192,8 @@ export function onlyQuarantined(root: string, failingTests: readonly string[] | 
 }
 
 /** Quarantine each test of a check that failed and then passed on the same tree. A test already
- * listed counts another flake; `tail` is kept for the BUGS.md entry of a new one. Returns the
+ * listed counts another flake, and one already filed is marked `recurred` with this flake's
+ * output; `tail` is kept for the BUGS.md entry of a new one. Returns the
  * newly quarantined tests. Nothing is recorded for an empty or possibly truncated list. A failed
  * write warns and returns no tests: the callers run this after a re-run passed, so a lost record
  * must not fail that check. */
@@ -200,13 +206,17 @@ export function quarantineTests(root: string, tests: readonly string[] | undefin
     withQuarantineStore(root, () => {
       const entries = loadQuarantine(root);
       const now = Date.now();
+      const text = typeof tail === "string" ? tail : (tail ?? []).join("\n");
       for (const test of new Set(tests)) {
         const have = entries.find((e) => e.test === test);
         if (have) {
           have.lastSeen = now;
           have.count += 1;
+          if (have.bug !== "") {
+            have.recurred = true;
+            if (text) have.tail = text;
+          }
         } else {
-          const text = typeof tail === "string" ? tail : (tail ?? []).join("\n");
           entries.push({ test, firstSeen: now, lastSeen: now, count: 1, bug: "", ...(text ? { tail: text } : {}) });
           added.push(test);
         }
@@ -242,7 +252,8 @@ export function releaseQuarantinedTest(root: string, test: string): boolean {
   return true;
 }
 
-/** Record the BUGS.md heading filed for each of `tests`, dropping their kept output. */
+/** Record the BUGS.md heading filed for each of `tests`, dropping their kept output and any
+ * `recurred` mark the filing has now recorded. */
 export function markQuarantineFiled(root: string, bugs: ReadonlyMap<string, string>): void {
   withQuarantineStore(root, () => {
     const entries = loadQuarantine(root);
@@ -251,6 +262,7 @@ export function markQuarantineFiled(root: string, bugs: ReadonlyMap<string, stri
       if (bug === undefined) continue;
       e.bug = bug;
       delete e.tail;
+      delete e.recurred;
     }
     saveQuarantine(root, entries);
   });

@@ -138,6 +138,13 @@ export const VALIDATION_GAP_QUERY = `grep -snE '\\*\\*Validation gap:\\*\\* (${V
  * note and is classified by entryHold accordingly. */
 export const NEEDS_REVIEW_PREFIX = `**Needs review `;
 
+/** How many days a bugfix wait (`**Needs review <date> by bugfix: …**`) may go without a
+ * recurrence before tumwater closes its bug (backlog-bug-waits.ts). A week of hourly full checks
+ * on main is well over a hundred runs of the test, so a flake that stays away that long is gone
+ * or too rare to chase from evidence; if it comes back it is filed afresh. Shared with the bugfix
+ * charter, which tells the role how its wait ends, and the doctor's `held bugs` row. */
+export const BUGFIX_WAIT_QUIET_DAYS = 7;
+
 /** The markdown note the feature role appends to a plan it cannot finish in one run, so the plan
  * role can split it. Mirrors the **Refused …** note convention: a note the next fresh run reads,
  * with no code parsing it. Defined once so the feature and plan texts and the director's routing

@@ -137,6 +137,7 @@ function holdWording(state: PartState): string {
   if (state === null) return "eligible";
   if (state === "refused") return "refused (only the operator clears it)"; // vocabulary-ok: the plan-mandated refused hold wording refers to the tumwater operator
   if (state === "needs-review") return "needs review";
+  if (state === "awaiting-recurrence") return "waiting for a recurrence";
   return `waits on ${state.blockedBy.join(", ")}`;
 }
 

@@ -7,6 +7,7 @@
 
 import {
   backlogMoveGuidance,
+  BUGFIX_WAIT_QUIET_DAYS,
   CHECK_DECLARATION_MARKER,
   CONVERGENCE_HOLD_MARKER,
   DECOMPOSITION_GUIDANCE,
@@ -118,7 +119,8 @@ should not be done at all, which is the user's call to decide.`,
       evidence. Skip an entry whose newest Progress note names a director handoff and that carries no
       **Needs review … by director: …** note: it is with the director until the director resolves or parks it.
       If the request file cannot be written, keep the old park: write a **Needs review <YYYY-MM-DD> by bugfix: <what the next failure's message
-      will show>** note as its own line under the heading (the last resort) and end the run.
+      will show>** note as its own line under the heading (the last resort) and end the run. tumwater lifts that
+      wait itself when the test fails again, and closes the bug after ${BUGFIX_WAIT_QUIET_DAYS} days without a recurrence.
       A \`post-merge review of <sha> never reached a verdict\` entry has no next failure: settle it as its body says.
    3. Fix it, and add a regression test that fails without the fix — run that test to watch it
       fail before the fix and pass after.

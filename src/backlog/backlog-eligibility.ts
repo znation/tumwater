@@ -21,8 +21,12 @@ import { entryKey, partKey, plannedPartKeys, plansWaitingOn, requiredParts, seri
 import { finishedFiles, openBugEntries, plannedPlanEntries } from "./backlog.js";
 
 /** Why an entry is held, or null when it is eligible. `blockedBy` names the unmerged
- * prerequisites in the form `Series i/n` so a renderer can show `requires …`. */
-export type EntryHold = "refused" | "needs-review" | { blockedBy: string[] } | null;
+ * prerequisites in the form `Series i/n` so a renderer can show `requires …`.
+ * `awaiting-recurrence` is a bug whose only Needs-review notes are the bugfix role's waits for
+ * the next failure (bugfixWaitDate): nothing is asked of a reviewer, and tumwater lifts the
+ * wait itself when the test fails again or closes the bug when it stays quiet
+ * (backlog-bug-waits.ts). */
+export type EntryHold = "refused" | "needs-review" | "awaiting-recurrence" | { blockedBy: string[] } | null;
 
 /** One entry the reader may take: `key` is the stamp-free identity a claim can match on
  * (entryKey), `title` the verbatim heading, and `start`/`end` the 1-based line range the role
@@ -74,20 +78,35 @@ export function needsReviewNote(body: string): string | null {
   return noteText(body, NEEDS_REVIEW_PREFIX);
 }
 
+/** The bugfix role's wait for the next failure: a Needs-review note line written by bugfix
+ * (`**Needs review <YYYY-MM-DD> by bugfix: …`), with its date in group 1. Matched on the trimmed
+ * line, the same line-prefix rule as every hold note. */
+const BUGFIX_WAIT_RE = /^\*\*Needs review (\d{4}-\d{2}-\d{2}) by bugfix\b/;
+
+/** True when the trimmed note line is a bugfix wait (BUGFIX_WAIT_RE). */
+function isBugfixWaitLine(trimmed: string): boolean {
+  return BUGFIX_WAIT_RE.test(trimmed);
+}
+
+/** The newest date among `body`'s bugfix wait notes, or null when it carries none — the day the
+ * entry's wait for a recurrence began. */
+export function bugfixWaitDate(body: string): string | null {
+  const dates = body.split("\n").flatMap((line) => BUGFIX_WAIT_RE.exec(line.trimStart())?.[1] ?? []);
+  return dates.length === 0 ? null : dates.sort().at(-1)!;
+}
+
 /** True when `entry` is parked with the plan role — its Needs-review note is the feature
  * role's too-large note, the automatic convergence hold, or a final-round rejection, all of
  * which the plan role clears by splitting or replanning (role-catalog.ts `plan` find). False
- * for the bugfix role's wait-for-the-next-failure note ("by bugfix: …"), which parks the
- * entry for selfcheck to lift when the cluster fails again (selfcheck step 4) and which no
- * role can act on until then, and for the director's user fallback ("by director: …", the
+ * for the bugfix role's wait-for-the-next-failure note ("by bugfix: …"), which tumwater lifts
+ * when the test fails again or closes when it stays quiet (backlog-bug-waits.ts), and for the
+ * director's user fallback ("by director: …", the
  * director-request handoff's final park) — the director has already reviewed the entry and the
- * park names what the user must decide, so it is not plan-role work either. entryHold returns
- * "needs-review" for every such note (all of them park the entry), so the doctor's `stalled
+ * park names what the user must decide, so it is not plan-role work either. The doctor's `stalled
  * entries` row (checkStalledEntries) — the
  * stalled-with-the-plan-role surface — classifies by this agreed subset, keeping the bugfix
  * parks out of the plan-role blame. Reads the note's text after the NEEDS_REVIEW_PREFIX once,
- * so the row cannot disagree on which notes the plan role clears; the eligibility mark
- * (holdMark) continues to hold every needs-review note, a by-bugfix park included. */
+ * so the row cannot disagree on which notes the plan role clears. */
 export function isPlanStalled(entry: BacklogEntry): boolean {
   const note = needsReviewNote(entry.body);
   if (note === null) return false;
@@ -96,26 +115,49 @@ export function isPlanStalled(entry: BacklogEntry): boolean {
   return !note.includes("by bugfix") && !note.includes("by director");
 }
 
-/** `lines` without any line starting with `prefix` (the same line-prefix rule hasNoteLine
- * applies). When a dropped note sat between two blank lines, the blank line after it goes too,
- * so releasing leaves one blank line where the note was. Every other line is kept. */
-function withoutNoteLines(lines: string[], prefix: string): string[] {
+/** The index just past the note that opens at `lines[i]`. A note is one bold span, so it runs to
+ * the line holding its closing `**`: the opening line itself for a one-line note, a later line
+ * for a note wrapped across lines. It never runs past its paragraph (a blank line), so an
+ * unclosed note takes only its own paragraph. */
+function noteEnd(lines: readonly string[], i: number): number {
+  if ((lines[i] ?? "").trimStart().slice(2).includes("**")) return i + 1;
+  let j = i + 1;
+  while (j < lines.length && (lines[j] as string).trim() !== "") {
+    if ((lines[j] as string).includes("**")) return j + 1;
+    j++;
+  }
+  return j;
+}
+
+/** `lines` without every note whose trimmed opening line `isNote` accepts, each with its wrapped
+ * continuation lines (noteEnd). When a run of dropped notes sat between two blank lines, the
+ * blank line after it goes too, so a lift leaves one blank line where the notes were. Every
+ * other line is kept. */
+function withoutNotes(lines: string[], isNote: (trimmed: string) => boolean): string[] {
   const out: string[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] as string;
-    if (!line.trimStart().startsWith(prefix)) {
-      out.push(line);
+    if (!isNote((lines[i] as string).trimStart())) {
+      out.push(lines[i] as string);
       continue;
     }
-    if ((lines[i - 1] ?? "x").trim() === "" && (lines[i + 1] ?? "x").trim() === "") i++;
+    let j = noteEnd(lines, i);
+    while (j < lines.length && isNote((lines[j] as string).trimStart())) j = noteEnd(lines, j);
+    if (j < lines.length && (lines[i - 1] ?? "x").trim() === "" && (lines[j] as string).trim() === "") j++;
+    i = j - 1;
   }
   return out;
 }
 
-/** `lines` without any Refused note line. Every other line, Needs-review notes included, is
+/** `lines` without any Refused note. Every other line, Needs-review notes included, is
  * kept, so refusal lifting never lifts another hold. */
 export function withoutRefusalNotes(lines: string[]): string[] {
-  return withoutNoteLines(lines, REFUSED_PREFIX);
+  return withoutNotes(lines, (trimmed) => trimmed.startsWith(REFUSED_PREFIX));
+}
+
+/** `lines` without its bugfix wait notes (BUGFIX_WAIT_RE), the lift a recorded recurrence
+ * makes. Every other note, a plan-role or director Needs-review note included, is kept. */
+export function withoutBugfixWaitNotes(lines: string[]): string[] {
+  return withoutNotes(lines, isBugfixWaitLine);
 }
 
 /** `lines` without its Needs-review note lines and the legacy `**Previously held N**`
@@ -130,27 +172,9 @@ export function withoutNeedsReviewNotes(lines: string[]): string[] {
   // A lift only happens when the slice carries a Needs-review note; without one, the slice
   // (and any legacy prior-held marker on it) is left byte for byte.
   if (!lines.some((raw) => raw.trimStart().startsWith(NEEDS_REVIEW_PREFIX))) return lines;
-  const drop = new Set<number>();
-  lines.forEach((raw, i) => {
-    const trimmed = raw.trimStart();
-    // Every Needs-review note goes, and so does each `**Previously held N**` marker the old
-    // increment rule wrote with it.
-    if (trimmed.startsWith(NEEDS_REVIEW_PREFIX) || trimmed.startsWith(PRIOR_HELD_PREFIX)) drop.add(i);
-  });
-  const out: string[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (!drop.has(i)) {
-      out.push(lines[i] as string);
-      continue;
-    }
-    let j = i;
-    while (j < lines.length && drop.has(j)) j++;
-    // A dropped run between two blank lines drops the blank after it too, so the lift leaves
-    // one blank line where the note was (the same rule withoutNoteLines applies to one note).
-    if (j < lines.length && (lines[i - 1] ?? "x").trim() === "" && (lines[j] ?? "x").trim() === "") j++;
-    i = j - 1;
-  }
-  return out;
+  // Every Needs-review note goes, and so does each `**Previously held N**` marker the old
+  // increment rule wrote with it.
+  return withoutNotes(lines, (trimmed) => trimmed.startsWith(NEEDS_REVIEW_PREFIX) || trimmed.startsWith(PRIOR_HELD_PREFIX));
 }
 
 /** The Done entries of the parts `title` requires, in the order its requires clause names them:
@@ -221,7 +245,9 @@ export function entryHoldAgainst(
   if (hasNoteLine(entry.body, REFUSED_PREFIX)) return "refused";
   // A Needs-review note — the feature role's too-large note or the convergence hold's — parks the
   // entry for the plan role to split or replan, at any count: nothing escalates to the operator.
-  if (hasNoteLine(entry.body, NEEDS_REVIEW_PREFIX)) return "needs-review";
+  // One whose every Needs-review note is a bugfix wait waits for its test to fail again instead.
+  const notes = entry.body.split("\n").map((line) => line.trimStart()).filter((line) => line.startsWith(NEEDS_REVIEW_PREFIX));
+  if (notes.length > 0) return notes.every(isBugfixWaitLine) ? "awaiting-recurrence" : "needs-review";
   const refs = requiredParts(entry.title);
   if (refs.length === 0) return null;
   const blocked = refs.filter((ref) => plannedParts.has(partKey(ref.series, ref.part)));
@@ -238,6 +264,7 @@ export function holdMark(hold: EntryHold): string {
   if (hold === null) return "";
   if (hold === "refused") return " [blocked: refused]";
   if (hold === "needs-review") return " [blocked: needs review]";
+  if (hold === "awaiting-recurrence") return " [blocked: waiting for a recurrence]";
   return ` [blocked: requires ${hold.blockedBy.join(", ")}]`;
 }
 

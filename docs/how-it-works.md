@@ -219,9 +219,13 @@ never has to wait a parked check out.
   or, when it cannot resolve it, parks the entry with a `**Needs review <date> by director: …**`
   note naming what the user must decide. Only when the request file cannot be written does
   bugfix keep the old park: a `**Needs review <date> by bugfix: …**` note naming what the next
-  failure's message will show, which the backlog index marks `[blocked: needs review]` and which
-  lifts when a new occurrence is recorded (the recorder deletes the note line, which selfcheck
-  does).
+  failure's message will show, which the backlog index marks `[blocked: waiting for a recurrence]`.
+  Nothing is asked of a reviewer: the wait ends on its own. When the flake quarantine sees the
+  bug's test fail and pass again — the bug's own quarantine entry, or a bug whose heading quotes
+  the test name — tumwater records the occurrence (with its output) under the entry and deletes
+  the wait note, so bugfix takes the bug again; selfcheck does the same for a failure it finds in
+  its digest. A wait that sees no recurrence for 7 days closes the bug to BUGS-FIXED.md
+  (`— closed <date> by tumwater`); if it fails again later it is filed afresh.
 - A maintenance role whose last run did nothing is deferred until feature, bugfix, director,
   you, or another human's work merges to main (your own `tumwater brief`, `plan`, `bug` and
   `questions answer` edits count as human work), and stays deferred while PLANS.md or BUGS.md has

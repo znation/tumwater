@@ -10,6 +10,8 @@ import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { errorMessage } from "../text/text.js";
 import { fileQuarantineBugsOnMain } from "../backlog/backlog-file-bugs.js";
+import { closeQuietBugWaitsOnMain } from "../backlog/backlog-bug-waits.js";
+import { BUGFIX_WAIT_QUIET_DAYS } from "../roles/role-guidance.js";
 import {
   loadQuarantine,
   markQuarantineFiled,
@@ -147,10 +149,12 @@ export function createMainWatch(
   let inFlight: Promise<void> | null = null;
   let housekeeping: Promise<void> | null = null;
   let lastFilingWarning = "";
+  let lastCloseWarning = "";
 
-  /** Release quarantined tests whose bug left `## Open`, and file the bugs of newly quarantined
-   * ones on main. A filing the primary checkout cannot take warns (once per reason) and is
-   * retried on a later poll. Never throws. */
+  /** Release quarantined tests whose bug left `## Open`, file the bugs of newly quarantined
+   * ones on main — recording a filed test's new flake under its bug when that bug waits for one —
+   * and close the bugs whose bugfix wait went quiet (backlog-bug-waits.ts). A write the primary
+   * checkout cannot take warns (once per reason) and is retried on a later poll. Never throws. */
   async function settleQuarantine(): Promise<void> {
     try {
       const released = releaseQuarantine(root);
@@ -161,27 +165,59 @@ export function createMainWatch(
           message: `quarantine released ${released.join(", ")}: its BUGS.md entry is no longer open`,
         });
       }
-      const pending = loadQuarantine(root).filter((e) => e.bug === "");
-      if (pending.length === 0) return;
-      const outcome = await fileQuarantineBugsOnMain(root, pending);
-      if (outcome.status === "filed") {
-        markQuarantineFiled(root, outcome.bugs);
-        lastFilingWarning = "";
-        return;
-      }
-      if (outcome.reason !== lastFilingWarning) {
-        lastFilingWarning = outcome.reason;
-        logEventBestEffort(root, {
-          source: TUMWATER_SOURCE,
-          type: "warning",
-          message: `quarantined flaky tests are not filed in BUGS.md yet: ${outcome.reason}`,
-        });
-      }
+      await filePendingQuarantine();
+      await closeQuietWaits();
     } catch (err: unknown) {
       logEventBestEffort(root, {
         source: TUMWATER_SOURCE,
         type: "warning",
         message: `quarantine housekeeping failed: ${errorMessage(err)}`,
+      });
+    }
+  }
+
+  /** File the quarantined tests no bug has heard of yet: new ones, and filed ones marked
+   * `recurred`. */
+  async function filePendingQuarantine(): Promise<void> {
+    const pending = loadQuarantine(root).filter((e) => e.bug === "" || e.recurred === true);
+    if (pending.length === 0) return;
+    const outcome = await fileQuarantineBugsOnMain(root, pending);
+    if (outcome.status === "filed") {
+      markQuarantineFiled(root, outcome.bugs);
+      lastFilingWarning = "";
+      return;
+    }
+    if (outcome.reason !== lastFilingWarning) {
+      lastFilingWarning = outcome.reason;
+      logEventBestEffort(root, {
+        source: TUMWATER_SOURCE,
+        type: "warning",
+        message: `quarantined flaky tests are not filed in BUGS.md yet: ${outcome.reason}`,
+      });
+    }
+  }
+
+  /** Close the bugs whose bugfix wait saw no recurrence for BUGFIX_WAIT_QUIET_DAYS, naming them in
+   * one warning; a close the primary checkout cannot take warns once per reason. */
+  async function closeQuietWaits(): Promise<void> {
+    const outcome = await closeQuietBugWaitsOnMain(root);
+    if (outcome.status === "closed") {
+      lastCloseWarning = "";
+      logEventBestEffort(root, {
+        source: TUMWATER_SOURCE,
+        type: "warning",
+        message:
+          `closed ${outcome.titles.join("; ")}: its bugfix wait saw no recurrence in ` +
+          `${BUGFIX_WAIT_QUIET_DAYS} days`,
+      });
+      return;
+    }
+    if (outcome.status === "skipped" && outcome.reason !== lastCloseWarning) {
+      lastCloseWarning = outcome.reason;
+      logEventBestEffort(root, {
+        source: TUMWATER_SOURCE,
+        type: "warning",
+        message: `bugs whose bugfix wait went quiet are not closed yet: ${outcome.reason}`,
       });
     }
   }

@@ -466,7 +466,7 @@ test("checkStalledEntries does not warn on a bugfix wait-for-the-next-failure no
 });
 
 test("checkStalledEntries reads ok with no notes, and ignores Done, Refused, and bodyless headings", () => {
-  const ok = { level: "ok", detail: "no planned plan or open bug is held by a Needs-review note" };
+  const ok = { level: "ok", detail: "no planned plan or open bug is held for the plan role by a Needs-review note" };
   assert.deepEqual(checkStalledEntries(tmpdir("doctor-stalled-none-")), ok);
   const dir = tmpdir("doctor-stalled-closed-");
   const note = "**Needs review 2026-10-14 by feature: too large for one run**";
@@ -550,7 +550,7 @@ test("checkStaleBugs warns once on several stale bugs, naming the first's positi
 });
 
 test("checkStaleBugs ignores refused, undated, fresh and fixed bugs, and a missing BUGS.md", () => {
-  const ok = { level: "ok", detail: "no open bug has waited more than 3 days for a fix" };
+  const ok = { level: "ok", detail: "no open bug free for the bugfix role has waited more than 3 days for a fix" };
   assert.deepEqual(checkStaleBugs(tmpdir("doctor-stale-bugs-none-")), { level: "ok", detail: "no BUGS.md — nothing to verify" });
   const dir = tmpdir("doctor-stale-bugs-ok-");
   fs.writeFileSync(path.join(dir, "BUGS.md"),
@@ -566,15 +566,16 @@ test("checkHeldBugs warns when every open bug is held, counting each kind of hol
   fs.writeFileSync(path.join(dir, "PLANS.md"), "## Planned\n\n### Disk floor, part 1/2: first (planned 2026-10-20)\n\nbody\n");
   fs.writeFileSync(path.join(dir, "BUGS.md"),
     "## Open\n\n### Flake one\n\n**Needs review 2026-10-26 by bugfix: the next failure names the line**\n\n" +
-    "### Flake two\n\n**Needs review 2026-10-28 by bugfix: the next failure names the signal**\n\n" +
+    "### Parked\n\n**Needs review 2026-10-28 by director: the user decides the signal**\n\n" +
     "### Not a bug\n\n**Refused 2026-10-20 by bugfix: working as intended**\n\n" +
     "### Waits (found by bugfix 2026-10-21; requires Disk floor 1/2 landed)\n\nbody\n\n## Fixed\n\n### Old\n\nbody\n");
   const out = checkHeldBugs(dir);
   assert.equal(out.level, "warn");
   assert.equal(out.detail,
-    "every one of the 4 open bugs in BUGS.md is held (2 by a Needs review note, 1 by a Refused note, 1 by a planned prerequisite), " +
-    "so the bugfix role skips every run and hunts for no new bug — list them with `tumwater bug --list` and lift each note that " +
-    "no longer applies with `tumwater bug --release <n>`");
+    "every one of the 4 open bugs in BUGS.md is held (1 waiting for a recurrence, 1 by a Needs review note, 1 by a Refused note, " +
+    "1 by a planned prerequisite), so the bugfix role skips every run and hunts for no new bug — a bug waiting for a recurrence " +
+    "is taken again when its test fails again, and closed after 7 days without one — list them with `tumwater bug --list` and " +
+    "lift each note that no longer applies with `tumwater bug --release <n>`");
 });
 
 test("checkHeldBugs reads ok while any open bug is free, with none open, and with no BUGS.md", () => {
@@ -926,7 +927,7 @@ const NEEDS_REVIEW = `**Needs review ${daysAgoStamp(0)} by bugfix: the message n
 test("checkStaleBugs skips a bug held by a Needs review note", () => {
   const dir = tmpdir("doctor-stale-bugs-needs-review-");
   fs.writeFileSync(path.join(dir, "BUGS.md"), `## Open\n\n### Held (found by bugfix ${daysAgoStamp(9)})\n\n${NEEDS_REVIEW}\n`);
-  assert.deepEqual(checkStaleBugs(dir), { level: "ok", detail: "no open bug has waited more than 3 days for a fix" });
+  assert.deepEqual(checkStaleBugs(dir), { level: "ok", detail: "no open bug free for the bugfix role has waited more than 3 days for a fix" });
 });
 
 const FLAKY_TEST = "startParentDeathWatch takes a grandchild down";

@@ -10,11 +10,13 @@ import { commitAuthorArgs, committerIdentArgs, git, gitTry } from "../git/git-ru
 import { stampedSubject } from "../git/commit-message.js";
 import { mergeLockDir } from "../paths.js";
 import { plural } from "../text/phrases.js";
-import { collapseWhitespace, errorFirstLine } from "../text/text.js";
+import { collapseWhitespace, errorFirstLine, trimTrailingBlankLines } from "../text/text.js";
 import { formatDate } from "../text/datetime.js";
 import { parseEntryDetails } from "./backlog-md.js";
 import { appendBugEntryLocked } from "./backlog-write.js";
 import { primaryOffBaseBranchReason } from "./backlog-archive.js";
+import { actionableEntryRanges } from "./backlog-index-data.js";
+import { withoutBugfixWaitNotes } from "./backlog-eligibility.js";
 
 /** What fileQuarantineBugsOnMain did: the headings filed, or why nothing was. */
 type QuarantineFilingOutcome =
@@ -35,6 +37,10 @@ interface BugEntry {
   /** When given, called with the `## Open` headings already present (read under the merge lock);
    * a returned string reuses that heading instead of appending a duplicate. */
   ifOpen?: (open: string[]) => string | undefined;
+  /** When given and `ifOpen` reused a heading, called with BUGS.md's current text and that
+   * heading; a returned text replaces BUGS.md (an occurrence recorded under the existing entry),
+   * null leaves it as it is. */
+  amend?: (md: string, heading: string) => string | null;
 }
 
 /** The start of a quarantine entry's title for `test`, up to the date. appendBugEntryLocked
@@ -49,6 +55,32 @@ function fencedTail(tail: string): string {
   return ["~~~~", ...tail.replaceAll("~~~~", "~~~").split("\n").slice(-30), "~~~~"].join("\n");
 }
 
+/** `md` with a recurrence of `test` recorded under the `## Open` entry headed `heading` when that
+ * entry waits for one — it carries a bugfix wait note (`**Needs review … by bugfix: …**`, the
+ * backlog-bug-waits.ts park): the wait notes go and a dated occurrence, with the failing output
+ * when there is one, closes the body, so the bugfix role takes the bug again with the failure it
+ * was waiting for. null, leaving BUGS.md as it is, when the entry is gone or waits for nothing —
+ * a bug some role is already working on needs no commit per flake. Pure. */
+export function recordRecurrence(md: string, heading: string, test: string, date: string, tail?: string): string | null {
+  const entry = actionableEntryRanges(md, "Open").find((e) => e.title === heading);
+  if (entry === undefined) return null;
+  const lines = md.split("\n");
+  const slice = lines.slice(entry.start - 1, entry.end);
+  const lifted = withoutBugfixWaitNotes(slice);
+  if (lifted.length === slice.length) return null;
+  const hadGap = (slice.at(-1) ?? "").trim() === "";
+  trimTrailingBlankLines(lifted);
+  lifted.push(
+    "",
+    `**Failed again ${date} (tumwater):** \`${test}\` failed, then passed on a re-run of the same tree, so the ` +
+      `wait for a recurrence is lifted and the bugfix role takes this bug again.`,
+    ...(tail ? ["", fencedTail(tail)] : []),
+    ...(hadGap ? [""] : []),
+  );
+  lines.splice(entry.start - 1, slice.length, ...lifted);
+  return lines.join("\n");
+}
+
 /** File one BUGS.md `## Open` entry per given entry and commit BUGS.md on the base branch as one
  * `tumwater(operator):` commit (the subject built from the number of entries actually appended is
  * stamped under the operator role), under the merge lock and the primary-worktree lock exactly as
@@ -56,12 +88,13 @@ function fencedTail(tail: string): string {
  * writing nothing, when the primary checkout is off the base branch, BUGS.md has uncommitted
  * changes, or BUGS.md exists but cannot be read; a failed append or commit restores BUGS.md.
  * Every entry is appended verbatim as its own `## Open` heading — unless its `ifOpen` dedupe
- * matches an existing heading, which is reused instead — and the returned headings are the
- * entry headings in input order. */
+ * matches an existing heading, which is reused instead and may be amended in place (`amend`) —
+ * and the returned headings are the entry headings in input order. `subject` sizes the commit by
+ * the entries appended and amended; with neither, nothing is committed. */
 export async function fileBugsOnMain(
   root: string,
   entries: readonly BugEntry[],
-  subject: (appended: number) => string,
+  subject: (appended: number, amended: number) => string,
   opts: { lockTimeoutMs?: number } = {},
 ): Promise<BugsFilingOutcome> {
   return withLock(
@@ -85,6 +118,7 @@ export async function fileBugsOnMain(
         const open = before === null ? [] : parseEntryDetails(before, "Open").map((e) => e.title);
         const headings: string[] = [];
         let appended = 0;
+        let amended = 0;
         const restoreBugs = async (): Promise<void> => {
           await gitTry(root, "reset", "-q", "--", "BUGS.md");
           if (before === null) fs.rmSync(file, { force: true });
@@ -96,6 +130,11 @@ export async function fileBugsOnMain(
               const existing = entry.ifOpen(open);
               if (existing !== undefined) {
                 headings.push(existing);
+                const next = entry.amend?.(readTextIfExists(file) ?? "", existing) ?? null;
+                if (next !== null) {
+                  writeTextAtomic(file, next);
+                  amended++;
+                }
                 continue;
               }
             }
@@ -106,10 +145,10 @@ export async function fileBugsOnMain(
           await restoreBugs();
           return { status: "skipped", reason: `a BUGS.md entry could not be written: ${errorFirstLine(err)}` };
         }
-        if (appended === 0) return { status: "filed", headings };
+        if (appended === 0 && amended === 0) return { status: "filed", headings };
         const commitSubject = stampedSubject(
           "operator", // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
-          subject(appended),
+          subject(appended, amended),
         );
         try {
           await git(root, "add", "--", "BUGS.md");
@@ -126,11 +165,13 @@ export async function fileBugsOnMain(
 
 /** File one BUGS.md `## Open` entry per newly quarantined test and commit BUGS.md on the base
  * branch as one `tumwater(operator):` commit, delegating the locked write/commit to
- * fileBugsOnMain and preserving the existing subject. A test whose quarantine entry is already
- * under `## Open` (a filing whose markQuarantineFiled failed after the commit) gets that heading
- * back and is not filed again — the dedupe runs inside fileBugsOnMain under the merge lock (via
- * each entry's `ifOpen`), so concurrent quarantine filings cannot both append a duplicate, and
- * the real skip on a dirty or off-base BUGS.md is enforced under the same lock. */
+ * fileBugsOnMain and preserving the existing subject. A test an open bug already covers — its
+ * quarantine entry (a filing whose markQuarantineFiled failed after the commit, a flake of a test
+ * released or quarantined again), or a bug whose heading quotes the test name — gets that heading
+ * back and is not filed again; when that bug waits for a recurrence, the flake is recorded under
+ * it and the wait lifted (recordRecurrence). The dedupe runs inside fileBugsOnMain under the
+ * merge lock (via each entry's `ifOpen`), so concurrent quarantine filings cannot both append a
+ * duplicate, and the real skip on a dirty or off-base BUGS.md is enforced under the same lock. */
 export async function fileQuarantineBugsOnMain(
   root: string,
   tests: readonly { test: string; tail?: string }[],
@@ -149,16 +190,22 @@ export async function fileQuarantineBugsOnMain(
       body,
       // Dedupe under the lock, against the headings fileBugsOnMain reads: the reused heading
       // (not a duplicate) is returned in headings and zipped back to this test below.
-      ifOpen: (open: string[]) => open.find((t) => t.startsWith(prefix)),
+      ifOpen: (open: string[]) =>
+        open.find((t) => t.startsWith(prefix)) ?? open.find((t) => t.includes(`"${test}"`) || t.includes(`\`${test}\``)),
+      amend: (md: string, heading: string) => recordRecurrence(md, heading, test, date, tail),
     });
   }
   const outcome = await fileBugsOnMain(
     root,
     toFile,
-    // Size the subject by what was actually appended: tests whose `## Open` entry was already
+    // Size the subject by what was actually written: tests whose `## Open` entry was already
     // present are reused, not filed, so a mixed batch keeps the original "File N …" wording
-    // with N the count of new entries only.
-    (appended) => `File ${plural(appended, "quarantined flaky test", "quarantined flaky tests")} in BUGS.md`,
+    // with N the count of new entries only, and names the recurrences it recorded.
+    (appended, amended) => {
+      const filed = appended > 0 ? `File ${plural(appended, "quarantined flaky test", "quarantined flaky tests")}` : "";
+      const recurred = amended > 0 ? `${filed === "" ? "Record" : "record"} ${plural(amended, "recurrence of a waiting bug", "recurrences of waiting bugs")}` : "";
+      return `${[filed, recurred].filter((p) => p !== "").join(" and ")} in BUGS.md`;
+    },
     opts,
   );
   if (outcome.status === "skipped") return { status: "skipped", reason: outcome.reason };

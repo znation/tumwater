@@ -309,7 +309,7 @@ export function checkStalledEntries(root: string): CheckOutcome {
     ...openBugEntries(root).map((e) => collect(e, "bugs")),
   ].filter((x): x is { file: "plans" | "bugs"; entry: BacklogEntry } => x !== null);
   const [first, ...rest] = stalled;
-  if (!first) return okOutcome("no planned plan or open bug is held by a Needs-review note");
+  if (!first) return okOutcome("no planned plan or open bug is held for the plan role by a Needs-review note");
   const more = andMore(rest, (s) => quoteHeading(s.entry.title));
   const kind = entryKindLabel(first.file); // "Bug" | "Plan"
   const head = `${first.file === "bugs" ? "BUGS.md" : "PLANS.md"} ${kind.toLowerCase()}`;

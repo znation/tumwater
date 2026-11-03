@@ -35,7 +35,7 @@ current one, so history, old logs and old scripts stay readable.
 | idle: waiting out its yield gap ×N | A scalable role is held back by its yield-stretched minimum gap. |
 | waiting to merge | A run's commit is in the merge queue; it holds the role's next run only while the change is pre-approval or in a conflict or main-red hold — once approved and waiting to land the role is admitted again. |
 | waiting: <reason> | A role is held by a condition, such as "waiting: low disk" or "waiting: maintenance allowance used". |
-| blocked | A backlog entry that cannot be picked: `[blocked: refused]`, `[blocked: needs review]`, `[blocked: requires …]`. |
+| blocked | A backlog entry that cannot be picked: `[blocked: refused]`, `[blocked: needs review]`, `[blocked: waiting for a recurrence]` (a bug bugfix could not reproduce, waiting for its failure to come back), `[blocked: requires …]`. |
 | sleeping | A role is between runs ("sleeping — next check in 12m"). "Wake sleeping roles" ends the sleep. |
 | stalled | A run was stopped for producing nothing ("Stalled, resumed"). |
 | paused | Only a pause you set. |

@@ -3850,6 +3850,46 @@ writer's update, because the actual write still recomputes under the lock from a
 **Pinned by.** `test/known-flakes-quarantine.test.ts` — "quarantine: a --release in another process
 is not overwritten by a concurrent quarantineTests".
 
+### INV-BI7: a flake of a test whose open bug waits for a recurrence is recorded under that bug and lifts the wait
+
+**Guarantee.** A bug held only by bugfix wait notes (`**Needs review <date> by bugfix: …**`) is
+held as `awaiting-recurrence`, marked `[blocked: waiting for a recurrence]`, never as needs review.
+When the quarantine records a flake of a test that an open bug covers — the test's own quarantine
+entry, whether newly quarantined again or already filed and marked `recurred`, or a bug whose
+heading quotes the test name — the main watch's settlement records the flake (date and output)
+under that bug and drops every bugfix wait note, wrapped lines included, in one
+`tumwater(operator):` commit, so the bugfix role takes the bug again. Nothing new is filed for it,
+and a bug that waits for nothing gets no commit.
+
+**Binds.** `src/backlog/backlog-eligibility.ts` (`entryHoldAgainst`, `holdMark`,
+`withoutBugfixWaitNotes`), `src/backlog/backlog-file-bugs.ts` (`recordRecurrence`,
+`fileQuarantineBugsOnMain`), `src/review/known-flakes.ts` (`quarantineTests`,
+`markQuarantineFiled`), `src/baseline/main-watch.ts` (`settleQuarantine`).
+
+**Pinned by.** `test/bug-waits.test.ts` — "a bugfix wait is held as waiting for a recurrence, and
+any other Needs-review note keeps it needs review", "recordRecurrence lifts a bugfix wait, wrapped
+lines included, and records the flake with its output under the entry", "recordRecurrence leaves a
+bug that waits for nothing, or is gone, untouched", "a flake of a test whose waiting bug is open is
+recorded under it on main, and a heading that quotes the test counts" and "quarantine: a flake of a
+filed test is marked recurred, and the main watch records it under its waiting bug".
+
+### INV-BI8: a bugfix wait that sees no recurrence for `BUGFIX_WAIT_QUIET_DAYS` closes its bug
+
+**Guarantee.** An open bug held only by bugfix wait notes whose newest note is at least
+`BUGFIX_WAIT_QUIET_DAYS` days old leaves `## Open` and lands at the top of BUGS-FIXED.md's
+`## Fixed` as `<heading> — closed <date> by tumwater`, its body kept, with a `**Fix:**` paragraph
+that names no code and a `no-repro` validation-gap line, in one `tumwater(operator):` commit. A
+younger wait, a director or plan-role Needs-review note, and a Refused note never close. A dirty
+BUGS.md or BUGS-FIXED.md, or a checkout off the base branch, closes nothing.
+
+**Binds.** `src/backlog/backlog-bug-waits.ts` (`closeQuietWaitsText`, `closeQuietBugWaitsOnMain`),
+`src/roles/role-guidance.ts` (`BUGFIX_WAIT_QUIET_DAYS`), `src/baseline/main-watch.ts`
+(`settleQuarantine`).
+
+**Pinned by.** `test/bug-waits.test.ts` — "closeQuietWaitsText closes only a bugfix wait past the
+quiet days, into the archive with a Fix and a validation-gap line" and "closeQuietBugWaitsOnMain
+commits the close on main, does nothing while every wait is young, and skips a dirty BUGS.md".
+
 ## Review verdict and revision finality: a reply without a verdict never approves, a rejected change revises until one objection survives two revisions or the backstop, and a git that could not start never drops a revision
 
 ### INV-BH1: a reply with no verdict line is no verdict, and the last verdict line wins

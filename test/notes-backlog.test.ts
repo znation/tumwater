@@ -137,7 +137,8 @@ test("an entry named by a bug matches through its Open title's first six words",
   const bug = { title: "Dashboard newest failure renders wrong counts (reported 2026-10-01)", body: "**Needs review 2026-10-23 by bugfix: x**" };
   const block = notesBacklogBlock("Dashboard newest failure renders wrong counts", empty({ openBugs: [bug] }));
   assert.ok(block);
-  assert.match(block, /- Dashboard newest failure renders wrong counts \(reported 2026-10-01\) — needs review/);
+  // A bugfix wait reads as what it is: a wait for the failure to come back, not a review.
+  assert.match(block, /- Dashboard newest failure renders wrong counts \(reported 2026-10-01\) — waiting for a recurrence/);
 });
 
 test("a held-for-operator note reads as needs review, not a held-for-operator release", () => {

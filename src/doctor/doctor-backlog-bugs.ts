@@ -6,6 +6,7 @@ import { questionFilingDate } from "../backlog/backlog-question-answer.js";
 import { entryHoldAgainst, needsReviewNote, refusalNote } from "../backlog/backlog-eligibility.js";
 import { plannedPartKeys, plansWaitingOn, prerequisitesMerged } from "../backlog/backlog-parts.js";
 import { lastDate } from "../backlog/backlog-md.js";
+import { BUGFIX_WAIT_QUIET_DAYS } from "../roles/role-guidance.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { stringList } from "../files/json-object.js";
 import { readEventsSince } from "../events/event-window.js";
@@ -65,7 +66,7 @@ export function checkStaleBugs(root: string): CheckOutcome {
     return days >= STALE_BUG_DAYS ? [{ position: index + 1, title: entry.title, days }] : [];
   });
   const [first, ...rest] = stale;
-  if (!first) return okOutcome("no open bug has waited more than 3 days for a fix");
+  if (!first) return okOutcome("no open bug free for the bugfix role has waited more than 3 days for a fix");
   const more = andMore(rest, (b) => `#${b.position} ${quoteHeading(b.title)}`);
   return warnOutcome(`BUGS.md bug #${first.position} ${quoteHeading(first.title)} has waited ${first.days} d for a fix${more} — ` +
       `no role is fixing it: check that the bugfix role is enabled and not failing, or retract it with \`tumwater bug --cancel ${first.position}\``);
@@ -90,16 +91,23 @@ export function checkHeldBugs(root: string): CheckOutcome {
     return okOutcome(`${free} of ${plural(open.length, "open bug")} ${agree(free, "is", "are")} free for the bugfix role`);
   }
   const review = holds.filter((hold) => hold === "needs-review").length;
+  const recurrence = holds.filter((hold) => hold === "awaiting-recurrence").length;
   const refused = holds.filter((hold) => hold === "refused").length;
-  const waiting = open.length - review - refused;
+  const prerequisite = open.length - review - recurrence - refused;
   const counts = [
+    recurrence > 0 ? `${recurrence} waiting for a recurrence` : "",
     review > 0 ? `${review} by a Needs review note` : "",
     refused > 0 ? `${refused} by a Refused note` : "",
-    waiting > 0 ? `${waiting} by a planned prerequisite` : "",
+    prerequisite > 0 ? `${prerequisite} by a planned prerequisite` : "",
   ].filter((c) => c !== "").join(", ");
+  // A wait for a recurrence clears on its own (backlog-bug-waits.ts), so the row says when.
+  const clears = recurrence > 0
+    ? ` — a bug waiting for a recurrence is taken again when its test fails again, and closed after ` +
+      `${BUGFIX_WAIT_QUIET_DAYS} days without one`
+    : "";
   return warnOutcome(`every one of the ${plural(open.length, "open bug")} in BUGS.md is held (${counts}), so the bugfix role ` +
-      `skips every run and hunts for no new bug — list them with \`tumwater bug --list\` and lift each note that no longer ` +
-      `applies with \`tumwater bug --release <n>\``);
+      `skips every run and hunts for no new bug${clears} — list them with \`tumwater bug --list\` and lift each note that no ` +
+      `longer applies with \`tumwater bug --release <n>\``);
 }
 
 /** The first span between straight double quotes in a bug heading that is at least 12
