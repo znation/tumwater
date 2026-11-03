@@ -17,7 +17,7 @@
  * never passed, so no `reasoning` event appears; the mapping below still recognizes one so a
  * future `--thinking` run degrades gracefully. */
 
-import { transientProseKind } from "../backend-traits.js";
+import { recordWarningOnce, transientProseKind } from "../backend-traits.js";
 import { canonicalUsageBlock, isJsonObject, nonNegativeNumber, objectOrEmpty, parseJsonObject } from "../../files/json-object.js";
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
@@ -162,11 +162,7 @@ export function opencodeTranslator(opts: { cwd?: string } = {}): OpencodeStreamT
   const warnings = new Set<string>();
   let sawFreeTier = false;
 
-  const record = (kind: string): void => {
-    if (seen.has(kind)) return;
-    seen.add(kind);
-    warnings.add(kind);
-  };
+  const record = (kind: string): void => recordWarningOnce(seen, warnings, kind);
 
   /** Emit the open step (if any) as ONE canonical `message_end` (role assistant) carrying
    * its buffered blocks and, when `withUsage`, its usage; then one `tool_execution_start`

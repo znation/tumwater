@@ -118,3 +118,16 @@ export function transientProseKind(
   if (/timed out|timeout/i.test(text)) return { kind: "transientBackend", backendKind: "timeout" };
   return undefined;
 }
+
+/** Add `kind` to a run's warning set once — first-seen order, no repeats. The one home of
+ * the "record it once" guard the native stream translators keep per run (claude's and
+ * opencode's `record`, codex's `recordEvent`/`recordItem`): an unmapped native type or a
+ * malformed line surfaces as a warning at settle, each distinct kind exactly once, in the
+ * order it was first seen. The translator passes its own `seen` and `warnings` sets — one
+ * translator may keep more than one `seen` set over a single `warnings` set (codex's items
+ * and events), so the pairing stays with the caller. */
+export function recordWarningOnce(seen: Set<string>, warnings: Set<string>, kind: string): void {
+  if (seen.has(kind)) return;
+  seen.add(kind);
+  warnings.add(kind);
+}

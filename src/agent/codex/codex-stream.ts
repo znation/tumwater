@@ -20,7 +20,7 @@ import { secondsUntilUnixStamp } from "../../text/datetime.js";
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
-import { SERVER_TRANSIENT_STATUS } from "../backend-traits.js";
+import { SERVER_TRANSIENT_STATUS, recordWarningOnce } from "../backend-traits.js";
 
 type Json = Record<string, unknown>;
 
@@ -230,16 +230,10 @@ export function codexTranslator(opts: { contextWindow?: unknown; cwd?: string } 
   const seenItems = new Set<string>();
   const warnings = new Set<string>();
 
-  const recordEvent = (type: string): void => {
-    if (seenEvents.has(type)) return;
-    seenEvents.add(type);
-    warnings.add(type);
-  };
+  const recordEvent = (type: string): void => recordWarningOnce(seenEvents, warnings, type);
   const recordItem = (item: Json): void => {
     const key = `item:${typeof item.type === "string" ? item.type : "unknown"}`;
-    if (seenItems.has(key)) return;
-    seenItems.add(key);
-    warnings.add(key);
+    recordWarningOnce(seenItems, warnings, key);
   };
   /** Record one distinct `error` item message as a run warning (never a failure). */
   const recordErrorItem = (message: string): void => {

@@ -21,7 +21,7 @@ import { canonicalUsageBlock, isJsonObject, nonNegativeNumber, objectOrEmpty, op
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
-import { SERVER_TRANSIENT_STATUS, transientProseKind } from "../backend-traits.js";
+import { SERVER_TRANSIENT_STATUS, recordWarningOnce, transientProseKind } from "../backend-traits.js";
 
 type Json = Record<string, unknown>;
 
@@ -234,11 +234,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
       args: block.arguments,
     });
 
-  const record = (kind: string): void => {
-    if (seen.has(kind)) return;
-    seen.add(kind);
-    warnings.add(kind);
-  };
+  const record = (kind: string): void => recordWarningOnce(seen, warnings, kind);
 
   const handleSystem = (event: Json): string[] => {
     const subtype = optionalString(event.subtype);
