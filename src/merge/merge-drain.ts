@@ -195,6 +195,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
             sha: v.sha,
             runNumber: v.entry.run,
             summary: v.entry.summary,
+            ...(v.entry.claim !== undefined ? { claim: v.entry.claim } : {}),
             body: v.entry.body,
             highFriction: v.entry.highFriction,
             ...entryRevisionFields(v.entry),

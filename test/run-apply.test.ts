@@ -290,6 +290,24 @@ test("applyMergeOutcome folds the merge's result into the authoring state", () =
   assert.equal(a.phase, "review");
 });
 
+test("a withdrawn merge ends the change's life without a strike against its author", () => {
+  // merge-withdrawn.ts dropped the change because main no longer lists its backlog entry: not a
+  // verdict about the author, so no streak, no backoff and no merged commit; the pin is gone,
+  // so the conflict streak and any hand-back for it end with it.
+  const change = { sha: PINNED, summary: "implement beta" };
+  const s = freshRunnerState("feature-2");
+  s.consecutiveErrors = 1;
+  s.mergeConflicts = { sha: PINNED, count: 1 };
+  s.conflictHandback = { sha: PINNED, at: 1, reason: "merge", applied: true };
+  applyMergeOutcome(s, "withdrawn", change);
+  assert.equal(s.lastResult, "withdrawn");
+  assert.equal(s.commits, 0);
+  assert.equal(s.consecutiveErrors, 1, "the streak neither grows nor resets");
+  assert.equal(s.backoffSeconds, 0);
+  assert.equal(s.mergeConflicts, undefined);
+  assert.equal(s.conflictHandback, undefined);
+});
+
 // A stale reject must not outlive the merge that supersedes it: a review-exempt (or
 // review-disabled) merge records no verdict, so before this fix lastReview stayed "reject"
 // and run-prompt.ts injected the rejected note on every later run, long after main had moved

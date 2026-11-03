@@ -111,6 +111,7 @@ export const RUN_RESULT_LABELS: Readonly<Record<RunResult, string>> = {
   quiet_killed: "stalled, resumed",
   user_aborted: "stopped by you",
   main_red: "main's check is failing",
+  withdrawn: "entry withdrawn, dropped",
 };
 
 /** The words for an event type or run result code: its own-property label, else the code with

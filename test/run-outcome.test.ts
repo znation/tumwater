@@ -27,6 +27,7 @@ const MEANING: Record<RunResult, string> = {
   user_aborted: "a user-initiated abort killed the run mid-run",
   main_red: "main's build/test suite is red",
   skipped: "nothing to run",
+  withdrawn: "the change works on a backlog entry main no longer lists; dropped unmerged",
 };
 
 test("the RunResult vocabulary registry names every result exactly once", () => {
@@ -36,7 +37,7 @@ test("the RunResult vocabulary registry names every result exactly once", () => 
     assert.match(name, /^[a-z_]+$/, "results are lowercase snake_case tokens");
     assert.match(MEANING[name as RunResult], /\S/, "each result carries a human meaning");
   }
-  // The registry is the union, not a superset: 14 results, and the compile-time Record above
+  // The registry is the union, not a superset: 15 results, and the compile-time Record above
   // is what keeps this list in lockstep with the type.
-  assert.equal(names.length, 14);
+  assert.equal(names.length, 15);
 });

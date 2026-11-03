@@ -239,6 +239,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
                 highFriction: entry.highFriction,
                 ...entryRevisionFields(entry),
                 ...(entry.watchWait !== undefined ? { watchWait: entry.watchWait } : {}),
+                ...(entry.claim !== undefined ? { claim: entry.claim } : {}),
               },
               { state: author.state, foldUsage, runPi: (w, prompt, s, cfg) => author.runMergePi(w, prompt, s, cfg), runGatePi: (opts) => author.runGatePi(opts) },
             ),

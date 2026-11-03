@@ -184,6 +184,11 @@ never has to wait a parked check out.
   `worktreeSlots` sits below `maxConcurrent` — is the same row's pool clause.
   An idle instance that is paused on its own (by you, or by the repeated-failure pause) gives its
   entry back and a sibling takes it; pausing the whole role keeps every claim.
+  Deleting a claimed entry from `## Planned` or `## Open` withdraws it. An instance that still owes
+  it a resume or a revision drops that work with a warning and takes its next entry on the same
+  poll. A run in flight keeps its claim until it settles. A change for the entry that is queued,
+  or that reaches the queue later, is dropped unmerged (`withdrawn`) by its verify, or inside the
+  merge lock if the entry goes after the verify.
 - `maxConcurrent` caps parallel runs and approvals together. Merges go first, then
   work roles (feature, bugfix, plan), then maintenance roles.
 - **No merge interlock.** A role with a queued or in-flight change still authors on the next

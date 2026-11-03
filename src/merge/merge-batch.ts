@@ -15,6 +15,7 @@ import {
   type MergeScopeContext,
 } from "./merge-core.js";
 import { errorMessage } from "../text/text.js";
+import { dropWithdrawnPin, withdrawnPinReason } from "./merge-withdrawn.js";
 import type { MergeChangeStatus } from "./merge-slot.js";
 import type { RunResult } from "../run/run-outcome.js";
 import type { GateRunsPi, PiRunWiring } from "../runner/runner-pi.js";
@@ -59,6 +60,14 @@ export type VerifyVerdict =
  * a commit. leaseSlot holds the slot through the disk-floor registry and resets it to the pin, so
  * two verifies rebasing at once — or one rebasing while a merge moves main — cannot interfere. */
 export async function verifyRequest(ctx: BatchContext, req: MergeRequest, w: BatchRoleWiring): Promise<VerifyVerdict> {
+  // A change whose backlog entry main no longer lists never merges (merge-withdrawn.ts). Asked
+  // before the slot lease and syncPinToMain's rebase, while the pin's merge-base with main still
+  // lists every entry the change moved: the rebase would carry its base past the removal.
+  const withdrawn = await withdrawnPinReason(ctx.root, ctx.mainBranch, req, req.sha);
+  if (withdrawn !== null) {
+    await dropWithdrawnPin(ctx.root, req.role, w.state, withdrawn);
+    return { kind: "result", result: "withdrawn" };
+  }
   let lease: SlotLeaseHandle;
   try {
     lease = await leaseSlot(ctx.root, {

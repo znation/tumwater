@@ -20,6 +20,7 @@ import type { RunResult } from "../run/run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { PriorReview } from "./merge-queue.js";
 import type { WatchWait } from "../baseline/main-red.js";
+import { dropWithdrawnPin, withdrawnPinReason, type MergeClaim } from "./merge-withdrawn.js";
 
 /** Reviewing and merging a pinned commit outside the author's worktree (plans/merge-queue.md,
  * entry 2/5). A run commits in its role worktree, pins the sha by `refs/tumwater/landing/<role>`,
@@ -63,6 +64,9 @@ export interface MergeRequest {
   /** How this change came back after its gate kept it for the main watch's verdict, carried
    * from the MergeEntry (MergeEntry.watchWait) to the gate's attribution. */
   watchWait?: WatchWait;
+  /** The backlog entry the authoring run was assigned (MergeEntry.claim): the verify and the
+   * in-lock merge drop the change as `withdrawn` once main no longer lists it. */
+  claim?: MergeClaim;
 }
 
 /** The repo scope every merge step reads from its caller: the worktree root, the branch
@@ -406,6 +410,14 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
       mainBranch: ctx.mainBranch,
       config: ctx.config,
       runNumber: req.runNumber,
+      // Main may have dropped the change's backlog entry since its verify: checked again in the
+      // lock, where a withdrawn change deletes its pin and the merge settles `withdrawn`.
+      withdrawn: async (mergeWt) => {
+        const reason = await withdrawnPinReason(mergeWt, ctx.mainBranch, req, "HEAD");
+        if (reason === null) return false;
+        await dropWithdrawnPin(ctx.root, req.role, ctx.state, reason);
+        return true;
+      },
       runPi: ctx.runPi,
       recheckResolved: async (resolvedWt) => {
         if (ctx.signal().aborted) return { verdict: "retry" };
@@ -466,6 +478,8 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
     await deleteRef(ctx.root, mergeRefName(req.role)); // merged: the pin has done its job
     return result;
   }
+  // Withdrawn in the lock: the closure above already deleted the pin and wrote the lastError.
+  if (result === "withdrawn") return result;
   // merge_conflict / merge_blocked: keep the ref — the next run's recovery re-merges it.
   // (The deterministic cross-check blocks — fix-claim and backlog structure — no longer come
   // through here: since part 3m/3 they are repairable and land for the main watch.)

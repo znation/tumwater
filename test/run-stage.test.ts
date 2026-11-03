@@ -495,6 +495,28 @@ test("a revision run's queued merge carries the prior review's objections", asyn
   assert.equal(state.revision, undefined, "the revision is now in flight");
 });
 
+test("a queued merge records the claim its run worked, so the merge can drop it once main deletes the entry", async () => {
+  // The poll releases a claim whose entry left main while the change waits in the queue
+  // (claims.ts), so the merge reads this copy (merge-withdrawn.ts).
+  const claim = { file: "PLANS.md" as const, key: "alpha", title: "Alpha (planned 2026-01-01 by operator)", at: 5, source: "assigned" as const };
+  const worked = await setup();
+  const state: RunnerState = { ...freshRunnerState("feature-2"), claim: { ...claim } };
+  const { ctx } = makeCtx(worked.root, worked.wt, state, { role: "feature-2", finalText: "SUMMARY: implement alpha\n" });
+  assert.equal((await stageRunMerge(ctx)).result, "queued");
+  assert.deepEqual(queuedMerges(worked.root)[0]!.claim, { file: "PLANS.md", key: "alpha", title: claim.title });
+
+  // A run executing a user request keeps its claim for a later run and works something else.
+  const request = await setup();
+  const requestState: RunnerState = { ...freshRunnerState("feature-2"), claim: { ...claim } };
+  const { ctx: requestCtx } = makeCtx(request.root, request.wt, requestState, {
+    role: "feature-2",
+    userPrompt: "rename the flag",
+    finalText: "SUMMARY: rename the flag\n",
+  });
+  assert.equal((await stageRunMerge(requestCtx)).result, "queued");
+  assert.equal(queuedMerges(request.root)[0]!.claim, undefined);
+});
+
 test("a missing SUMMARY is recovered with one follow-up turn", async () => {
   const { root, wt } = await setup();
   const state: RunnerState = freshRunnerState("improve");

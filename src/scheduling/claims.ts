@@ -1,7 +1,8 @@
 /** Work-instance claims (plans/parallel-work-instances.md "Claims", part 4/7): which backlog
  * entry each runner of a multi-instance base role may take, whether it must drop the entry, and
  * which entry a staged diff moved. The pure policies live here — assignment is the first free
- * entry in file order, release is `left` / `ineligible` / `disabled` / `stale` — so
+ * entry in file order, release is `left` / `withdrawn` / `ineligible` / `disabled` / `paused` /
+ * `stale` — so
  * scheduling/admit.ts and run-stage.ts share one definition and the rules are unit
  * tested without a team. The claim itself is persisted on RunnerState, so it survives a crash,
  * resume, revision and leftover recovery. */
@@ -13,6 +14,7 @@ import { hasOutstandingWork, type RunnerState } from "../runner/runner-state.js"
 import { type EligibleEntry, backlogHolds, eligibleEntries, roleSection } from "../backlog/backlog-eligibility.js";
 import { entryKey } from "../backlog/backlog-parts.js";
 import { actionableEntryRanges, actionableEntryRangesFor } from "../backlog/backlog-index-data.js";
+import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { readTextOrNull } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";
@@ -96,12 +98,27 @@ interface ClaimReleaseCtx {
 }
 
 /** Why a runner drops its queued-merge claim; claimReleaseReason below decides each arm. */
-export type ClaimReleaseReason = "left" | "ineligible" | "disabled" | "paused" | "stale";
+export type ClaimReleaseReason = "left" | "withdrawn" | "ineligible" | "disabled" | "paused" | "stale";
+
+/** Whether a runner that is not running still owes work to its claimed entry: a revision of
+ * its rejected change, or the resume of an interrupted run that worked the claim. A resume that
+ * owns a re-queued user request (resumePromptFile) worked that request instead: the claim was
+ * only kept for a later run, so it owes the entry nothing. */
+function owesClaimedWork(s: RunnerState): boolean {
+  return s.revision !== undefined || (s.resumePending === true && s.resumePromptFile === undefined);
+}
 
 /** Why a runner must drop its claim, or null when it keeps it. A runner is idle when it is not
  * running, has no outstanding revision and no pending resume; `disabled`, `paused` and `stale`
- * only release an idle runner, while a claim whose entry left or turned ineligible is released
- * outright (there is nothing left to do). */
+ * only release an idle runner, and a claim whose entry turned ineligible is released outright.
+ * A claim whose entry left the section depends on what the runner still owes it. A run in
+ * progress keeps the claim, so the run that settles it is still known to be this entry's: its
+ * queued change records the claim for the merge, and a restart that cuts it short leaves a resume
+ * the next poll withdraws. A resume or revision still owed to the entry is `withdrawn`: the
+ * operator deleted the entry, or another change finished it, and the poll drops that work with
+ * the claim (dropWithdrawnWork). Otherwise the claim is `left`: the change merged, or it waits in
+ * the merge queue, which drops it there once main no longer lists the entry
+ * (merge-withdrawn.ts). */
 export function claimReleaseReason(
   runner: ClaimRunner,
   ctx: ClaimReleaseCtx,
@@ -109,12 +126,50 @@ export function claimReleaseReason(
   const claim = runner.state.claim;
   if (!claim) return null;
   const idle = !runner.state.running && !hasOutstandingWork(runner.state);
-  if (!ctx.listedKeys.has(claim.key)) return "left";
+  if (!ctx.listedKeys.has(claim.key)) {
+    if (runner.state.running) return null;
+    return owesClaimedWork(runner.state) ? "withdrawn" : "left";
+  }
   if (!ctx.eligibleKeys.has(claim.key)) return "ineligible";
   if (!ctx.enabled && idle) return "disabled";
   if (ctx.paused && idle) return "paused";
   if (idle && ctx.now - claim.at > CLAIM_IDLE_MAX_MS) return "stale";
   return null;
+}
+
+/** What a `withdrawn` release dropped with the claim, for its warning. */
+interface WithdrawnWork {
+  resume: boolean;
+  revision: boolean;
+}
+
+/** Drop the work a runner still owes a claim released as `withdrawn`: the resume of a run that
+ * worked the claim (with its cause flags and the one-shot image reroute it would hand off to)
+ * and the rejected change's revision. A resume that owns a re-queued user request is the
+ * request's, not the claim's, and stays. The next run then starts fresh, on whatever entry the
+ * poll assigns, and its fresh lease salvages the kept slot's edits for the operator instead of
+ * resuming them. Mutates `state`; the caller deletes the revision's rejected ref and saves. */
+export function dropWithdrawnWork(state: RunnerState): WithdrawnWork {
+  const resume = state.resumePending === true && state.resumePromptFile === undefined;
+  const dropped = { resume, revision: state.revision !== undefined };
+  if (resume) {
+    state.resumePending = false;
+    state.resumeCause = undefined;
+    state.resumeMissing = undefined;
+    state.imageReroute = undefined;
+  }
+  state.revision = undefined;
+  return dropped;
+}
+
+/** The warning a `withdrawn` release logs: what it dropped, the entry, and why. */
+export function withdrawnWorkWarning(title: string, file: "PLANS.md" | "BUGS.md", dropped: WithdrawnWork): string {
+  const what = [
+    ...(dropped.resume ? ["the interrupted run"] : []),
+    ...(dropped.revision ? ["the rejected change's revision"] : []),
+  ].join(" and ");
+  const section = file === "BUGS.md" ? "Open" : "Planned";
+  return `dropped ${what || "the work"} on "${stripEntryStamp(title)}": ${file} on main no longer lists it under ## ${section}, so it will not resume or merge; the role takes its next entry`;
 }
 
 /** One entry a changed diff moved out of its actionable section: the key and the heading. */

@@ -36,6 +36,7 @@ const RESULT_ORDER: Record<RunResult, number> = {
   quiet_killed: 11,
   aborted: 12,
   user_aborted: 13,
+  withdrawn: 14,
 };
 
 /** The digest table's columns: every RunResult that at least one role logged in the window, ranked

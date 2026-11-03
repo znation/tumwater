@@ -28,7 +28,7 @@ export function phaseTone(phase: string): Tone | undefined {
 
 /** A run result's tone (run-outcome.ts RunResult): a completed merge (changed) green,
  * queued to merge cyan, the failures red, the held-back outcomes (refused, rejected, aborted,
- * quiet_killed) yellow. */
+ * quiet_killed, withdrawn) yellow. */
 export function resultTone(result: string | undefined | null): Tone | undefined {
   switch (result) {
     case "changed":
@@ -45,6 +45,7 @@ export function resultTone(result: string | undefined | null): Tone | undefined 
     case "rejected":
     case "aborted":
     case "quiet_killed":
+    case "withdrawn":
       return "yellow";
     default:
       return undefined;

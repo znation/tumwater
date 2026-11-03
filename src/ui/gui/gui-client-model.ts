@@ -72,6 +72,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     quiet_killed: "amber",
     user_aborted: "gray",
     main_red: "red",
+    withdrawn: "amber",
   };
   function resultInfo(result) {
     const words = result ? eventTypeLabel(result) : "—";

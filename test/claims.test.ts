@@ -9,12 +9,14 @@ import {
   CLAIM_IDLE_MAX_MS,
   assignNext,
   claimReleaseReason,
+  dropWithdrawnWork,
   heldKeys,
   listedKeys,
   movedOutEntries,
   planBacklogFull,
   stagedMovedEntries,
   workReserveCount,
+  withdrawnWorkWarning,
   type ClaimRunner,
 } from "../src/scheduling/claims.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -125,6 +127,69 @@ test("an idle extra with a revision, a resume or a run in progress keeps its cla
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { revision: { sha: "x", round: 1, at: 1 } })), paused), null);
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { resumePending: true })), paused), null);
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { running: true })), paused), null);
+});
+
+test("a claim whose entry left is withdrawn while a resume or revision is owed, kept while its run runs, else left", () => {
+  // 2026-11-01: the operator deleted feature-2's claimed "Subtract, part 3b/7" while its
+  // interrupted run waited to resume. The release read `left` and the resume went ahead; the
+  // entry leaving under owed work is a withdrawal, since a runner whose change waits in the merge
+  // queue never runs and so never owes a resume or revision when its own merge lands.
+  const gone = {
+    listedKeys: new Set<string>(),
+    eligibleKeys: new Set<string>(),
+    now: 1000,
+    enabled: true,
+    paused: false,
+  };
+  const reason = (overrides: Partial<RunnerState>) =>
+    claimReleaseReason(runner("feature-2", state({ ...claimA }, overrides)), gone);
+  assert.equal(reason({ resumePending: true }), "withdrawn");
+  assert.equal(reason({ revision: { sha: "x", round: 1, at: 1 } }), "withdrawn");
+  // A run in flight keeps the claim: if a restart cuts it short, the next poll sees the owed
+  // resume and withdraws it; if it stages, its queue entry records the claim for the merge.
+  assert.equal(reason({ running: true }), null);
+  assert.equal(reason({ running: true, resumePending: true }), null);
+  // Idle with nothing owed: its change merged, or it waits in the queue (the merge drops it).
+  assert.equal(reason({}), "left");
+  // A resume that owns a re-queued user request worked that request; the claim was only kept.
+  assert.equal(reason({ resumePending: true, resumePromptFile: "/q/1.md" }), "left");
+});
+
+test("dropWithdrawnWork clears the resume, its cause flags, the image reroute and the revision", () => {
+  const s = state({ ...claimA }, {
+    resumePending: true,
+    resumeCause: "image-reroute",
+    resumeMissing: true,
+    imageReroute: { tier: "strong", model: "m" },
+    revision: { sha: "x", round: 1, at: 1 },
+  });
+  assert.deepEqual(dropWithdrawnWork(s), { resume: true, revision: true });
+  assert.equal(s.resumePending, false);
+  assert.equal(s.resumeCause, undefined);
+  assert.equal(s.resumeMissing, undefined);
+  assert.equal(s.imageReroute, undefined);
+  assert.equal(s.revision, undefined);
+  assert.deepEqual(dropWithdrawnWork(state()), { resume: false, revision: false });
+  // A revision owed beside a user request's resume: the revision goes, the request's resume stays.
+  const request = state({ ...claimA }, {
+    resumePending: true,
+    resumePromptFile: "/q/1.md",
+    revision: { sha: "x", round: 1, at: 1 },
+  });
+  assert.deepEqual(dropWithdrawnWork(request), { resume: false, revision: true });
+  assert.equal(request.resumePending, true);
+  assert.equal(request.resumePromptFile, "/q/1.md");
+});
+
+test("withdrawnWorkWarning names what was dropped, the stamp-free entry and its section", () => {
+  assert.equal(
+    withdrawnWorkWarning("Plan A (planned 2026-01-01 by operator)", "PLANS.md", { resume: true, revision: false }),
+    'dropped the interrupted run on "Plan A": PLANS.md on main no longer lists it under ## Planned, so it will not resume or merge; the role takes its next entry',
+  );
+  assert.match(
+    withdrawnWorkWarning("A bug (found 2026-01-01)", "BUGS.md", { resume: true, revision: true }),
+    /^dropped the interrupted run and the rejected change's revision on "A bug": BUGS\.md on main no longer lists it under ## Open,/,
+  );
 });
 
 test("movedOutEntries names the entries a staged change dropped from its section", () => {

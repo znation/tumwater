@@ -773,20 +773,23 @@ planned", "entryHold reports blocked, refused and needs-review, and null when
 eligible", "entryHold resolves a <Series> parts a/n and b/n clause to the named series, not the entry's own", "planDependencyProblems does not dangle a <Series> parts a/n and b/n clause" and
 "planDependencyProblems flags a still-planned prerequisite named without a requires clause".
 
-### INV-N3: a claim on an entry that left or turned ineligible is released outright; disabled, paused and stale release only an idle runner
+### INV-N3: a claim on an entry that turned ineligible is released outright, one on an entry that left once its run has settled; disabled, paused and stale release only an idle runner
 
-**Guarantee.** `claimReleaseReason` returns `left` or `ineligible` whatever the runner is doing. It
-returns `disabled`, `paused` (own instance id paused while the base role is not) or `stale` (idle
-past `CLAIM_IDLE_MAX_MS`) only for an idle runner: one that is not running and has no outstanding
-work. Pausing the whole base role keeps every claim. A released claim is saved before the runner
-runs again.
+**Guarantee.** `claimReleaseReason` returns `ineligible` whatever the runner is doing. For an
+entry that left its section it returns null while the runner is running (amended 2026-11-02: it
+used to return `left` here too), `withdrawn` while the runner owes the entry a resume or a
+revision (INV-N5), and `left` otherwise. It returns `disabled`, `paused` (own instance id paused
+while the base role is not) or `stale` (idle past `CLAIM_IDLE_MAX_MS`) only for an idle runner: one
+that is not running and has no outstanding work. Pausing the whole base role keeps every claim. A
+released claim is saved before the runner runs again.
 
 **Binds.** `src/scheduling/claims.ts` (`claimReleaseReason`, `CLAIM_IDLE_MAX_MS`),
 `src/runner/runner-state.ts` (`hasOutstandingWork`).
 
 **Pinned by.** `test/claims.test.ts` — "claimReleaseReason releases left, ineligible,
-disabled-idle, paused-idle and stale-idle claims" and "an idle extra with a revision, a resume or a
-run in progress keeps its claim"; `test/orchestrator-scheduling.test.ts` — "a
+disabled-idle, paused-idle and stale-idle claims", "an idle extra with a revision, a resume or a
+run in progress keeps its claim" and "a claim whose entry left is withdrawn while a resume or
+revision is owed, kept while its run runs, else left"; `test/orchestrator-scheduling.test.ts` — "a
 claimed entry that merges releases the claim on the next poll", "pausing one instance releases its
 claim so a sibling can take the entry", "pausing the whole feature role keeps every instance's
 claim" and "a released claim is saved to disk before the runner runs again".
@@ -810,6 +813,43 @@ comma", "ungroundedRefusalFinding flags a cross-series part named with comma and
 "ungroundedRefusalFinding stays quiet for a PRINCIPLES-grounded refusal and a pre-existing one",
 "ungroundedRefusalFinding names a BUGS.md bug and counts the others" and
 "stageCheckFindings flags a PLANS.md refusal citing another part, for any role".
+
+### INV-N5: work on a backlog entry main no longer lists never resumes and never merges
+
+**Guarantee.** When a claimed `## Planned` / `## Open` entry leaves main while its runner owes it a
+resume or a revision, the scheduling poll releases the claim as `withdrawn`, drops that resume (its
+cause flags and image reroute) or revision (and its rejected ref), logs a warning naming the
+entry, and assigns the runner its next free entry in the same poll. A resume that owns a re-queued
+user request is the request's and stays. A queued change records the claim its run worked
+(`MergeEntry.claim`; not for a user request). The verify, before its rebase, and the merge, inside
+the merge lock before its rebase, drop a feature or bugfix change whose recorded claim, or any
+entry its diff moved out of the role's section since its merge-base with main, main's tip no
+longer lists there: the pin is deleted, main does not move, the role's `lastError` and a warning
+carry the reason, and the merge settles `withdrawn` with no error streak and no revision. A change
+whose entry is still listed is untouched, and an unreadable `PLANS.md`/`BUGS.md` on either side
+never drops one.
+
+**Binds.** `src/scheduling/claims.ts` (`claimReleaseReason`, `dropWithdrawnWork`),
+`src/scheduling/scope.ts` (the poll's release loop), `src/merge/merge-withdrawn.ts`
+(`withdrawnEntries`, `dropWithdrawnPin`), `src/merge/merge-batch.ts` (`verifyRequest`),
+`src/merge/merge-to-main.ts` (`tryMerge`), `src/merge/merge-core.ts` (`mergeApprovedChangeIn`),
+`src/run/run-stage.ts` (the enqueue), `src/run/run-apply.ts` (`applyMergeOutcome`).
+
+**Pinned by.** `test/orchestrator-scheduling.test.ts` — "a claimed entry the operator deletes
+while its run waits to resume drops the resume and takes the next entry", "a claimed entry the
+operator deletes while its rejected change waits for revision drops the revision and its ref", "a
+run in flight keeps its claim on a deleted entry, and a restart that cuts it short does not resume
+it" and "a deleted claimed entry leaves an interrupted user request's resume alone";
+`test/merge-withdrawn.test.ts` — "the verify drops a change for a plan the operator deleted from
+main: nothing merges and the pin is gone", "the verify drops a change whose recorded claim main
+deleted, though its diff never touched PLANS.md", "the merge lock drops a change whose plan main
+deleted after its verify approved it", "a plan still listed on main merges: the guard leaves a
+change that finishes its own entry alone" and "withdrawnEntries reads only the work roles' own
+sections, and an unreadable side never drops work"; `test/run-stage.test.ts` — "a queued merge
+records the claim its run worked, so the merge can drop it once main deletes the entry";
+`test/claims.test.ts` — "dropWithdrawnWork clears the resume, its cause flags, the image reroute
+and the revision"; `test/run-apply.test.ts` — "a withdrawn merge ends the change's life without a
+strike against its author".
 
 ## The backlog archive: finished entries move once, and only the ones a change added
 

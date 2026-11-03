@@ -367,8 +367,9 @@ export function applyMergeOutcome(
       }
     }
   }
-  // A merge or a rejection is the end of the change's life; a merge_conflict keeps its pin.
-  const changeGone = result === "changed" || result === "rejected";
+  // A merge, a rejection or a withdrawn drop is the end of the change's life; a merge_conflict
+  // keeps its pin. A withdrawn change is no verdict about its author: no streak, no backoff.
+  const changeGone = result === "changed" || result === "rejected" || result === "withdrawn";
   // The conflict streak counts failed resolutions of one pinned sha; a merge or a rejection
   // ends that pin's life. Every other outcome kept the pin as it was, so its count stands.
   if (result === "merge_conflict") {

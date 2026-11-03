@@ -71,6 +71,11 @@ export interface MergeContext extends RunsPi {
   recheckResolved?(wt: string): Promise<{
     verdict: "approved" | "rejected" | "retry";
   }>;
+  /** Asked under the merge lock before each rebase, with the worktree on the change's head:
+   * true drops the change as `withdrawn` (its backlog entry is no longer listed on main,
+   * merge-withdrawn.ts) and nothing merges. The closure owns the pin and the role's lastError.
+   * Optional: without it every change goes on to the rebase. */
+  withdrawn?(wt: string): Promise<boolean>;
 }
 
 /** Merge the worktree branch on main under the shared merge lock: rebase it onto main (keeping
@@ -120,6 +125,9 @@ async function tryMerge(
     // and compare, so the diff is exact; on the conflict path only the second tryMerge call ever
     // reaches the post-ff code, so nothing double-emits.
     const before = openQuestions(ctx.root);
+    // In the lock, so no withdrawal can land between this check and the fast-forward; before the
+    // rebase, so the change's merge-base still lists the entries it moved.
+    if (ctx.withdrawn && (await ctx.withdrawn(wt))) return "withdrawn";
     if (!(await rebaseOntoMain(wt, ctx.mainBranch))) return "merge_conflict";
     // The worktree's POST-REBASE HEAD: a pinned bare sha does not move when git
     // rebase rewrites it — ff'ing main to the original pin would fail as merge_blocked whenever

@@ -189,6 +189,7 @@ test("fallbackEvidence: only error is a backend failure; only a model reply is s
     merge_conflict: "none",
     merge_blocked: "none",
     review_error: "none",
+    withdrawn: "none",
   };
   for (const [result, evidence] of Object.entries(expected))
     assert.equal(fallbackEvidence(result as RunResult), evidence, result);

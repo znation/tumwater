@@ -41,6 +41,10 @@ export type RunResult =
   /** Main's build/test suite is red: a merge's check failed on a red main (pin kept, no
    * strike). */
   | "main_red"
+  /** The change works on a backlog entry main no longer lists (the operator withdrew it, or
+   * another change took it): the merge dropped it unmerged and deleted its pin, with no strike
+   * and no revision (src/merge/merge-withdrawn.ts). */
+  | "withdrawn"
   /** Nothing to run (e.g. director with an empty inbox). */
   | "skipped";
 

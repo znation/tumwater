@@ -446,6 +446,12 @@ async function pinAndEnqueueChange(
       body: change.body ? formatCommitBody(change.body) : undefined,
       highFriction: change.highFriction || undefined,
       ...entryRevisionFields({ revisionRound: change.revisionRound, priorReview: change.priorReview }),
+      // The entry this run worked (a run executing a user request keeps its claim for a later
+      // run and works something else): the poll may release the claim while the change waits,
+      // so the merge checks this copy against main (merge-withdrawn.ts).
+      ...(s.claim !== undefined && ctx.userPrompt === null
+        ? { claim: { file: s.claim.file, key: s.claim.key, title: s.claim.title } }
+        : {}),
       enqueuedAt: Date.now(),
     });
     // The revision is now in flight: the rejected ref's lifecycle continues in the merger

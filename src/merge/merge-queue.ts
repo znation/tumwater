@@ -10,6 +10,7 @@ import type { MigrationNotes } from "../orchestrator/startup-migrations.js";
 import { mergeQueueDir, legacyLandQueueDir } from "../paths.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import type { WatchWait } from "../baseline/main-red.js";
+import type { MergeClaim } from "./merge-withdrawn.js";
 
 /** The durable merge queue (plans/merge-queue.md 3/5): a changed run commits, pins its sha by
  * `refs/tumwater/landing/<role>`, and enqueues one entry here — then the run ENDS, holding no
@@ -86,6 +87,12 @@ export interface MergeEntry {
    * the gate, whose attribution then does not wait again (main-red.ts's watchedMainVerdict).
    * Absent on every other entry, and dropped when the entry is re-queued again. */
   watchWait?: WatchWait;
+  /** The backlog entry the authoring run was assigned, recorded at enqueue (run-stage.ts) only
+   * for a run that worked its claim, not a queued user request. The poll releases the claim
+   * while the change waits, so this copy is what the merge checks: a change whose claimed
+   * entry main no longer lists is dropped as `withdrawn` (merge-withdrawn.ts). Carried by
+   * re-queues; absent on a recovery merge, whose authoring run is gone. */
+  claim?: MergeClaim;
 }
 
 let seq = 0;
@@ -205,7 +212,17 @@ function isMergeEntry(v: unknown): v is MergeEntry {
     (e.notBefore === undefined || nonNegativeNumber(e.notBefore, null) !== null) &&
     (e.retry === undefined || typeof e.retry === "string") &&
     (e.retryCount === undefined || nonNegativeNumber(e.retryCount, null) !== null) &&
-    (e.watchWait === undefined || e.watchWait === "covered" || e.watchWait === "timed_out")
+    (e.watchWait === undefined || e.watchWait === "covered" || e.watchWait === "timed_out") &&
+    (e.claim === undefined || isMergeClaim(e.claim))
+  );
+}
+
+function isMergeClaim(v: unknown): v is MergeClaim {
+  return (
+    isJsonObject(v) &&
+    (v.file === "PLANS.md" || v.file === "BUGS.md") &&
+    typeof v.key === "string" &&
+    typeof v.title === "string"
   );
 }
 

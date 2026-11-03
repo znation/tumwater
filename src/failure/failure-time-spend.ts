@@ -33,6 +33,7 @@ export const OUTCOME_CLASS: Record<RunResult, "merged" | "no_change" | "error"> 
   quiet_killed: "error",
   aborted: "error",
   user_aborted: "error",
+  withdrawn: "no_change",
 };
 
 /** One cell of the time-and-spend table: the runs that ended on one outcome class, their

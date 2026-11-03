@@ -222,10 +222,11 @@ export async function settleMergeOutcome(
   writeMergeOutcome(root, entry, state, result, durationMs, usage, file);
   // A revision that merges ends the rejected change's life: drop the rejected ref (plans/revise-
   // rejected.md). A rejection repoints or deletes it in merge-core.ts, so this is the only
-  // ref cleanup a merged revision needs here. Guarded on the entry's revisionRound, not just a
-  // `changed` result: a fresh change can merge while a different rejection's revision is still
-  // pending, and its merge must leave that pending revision's ref alone.
-  if (result === "changed" && entry.revisionRound !== undefined) {
+  // ref cleanup a merged revision needs here; a withdrawn revision ends it the same way.
+  // Guarded on the entry's revisionRound, not just a `changed` result: a fresh change can merge
+  // while a different rejection's revision is still pending, and its merge must leave that
+  // pending revision's ref alone.
+  if ((result === "changed" || result === "withdrawn") && entry.revisionRound !== undefined) {
     await deleteRef(root, rejectedRefName(entry.role));
   }
   removeMergeChange(root, entry.role);

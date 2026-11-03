@@ -18,8 +18,8 @@ import { statePath } from "../src/paths.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
 import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
-import { setRef } from "../src/git/git.js";
-import { mergeRefName } from "../src/paths.js";
+import { refSha, setRef } from "../src/git/git.js";
+import { mergeRefName, rejectedRefName } from "../src/paths.js";
 import { initializedRepo, mainSha, tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { eventsOfType, unwritableEvents, writeEvents } from "./fixtures/log-fixtures.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
@@ -993,4 +993,115 @@ test("a claim release that cannot be saved warns and leaves the poll running", a
   }
   assert.equal(feature2.state.claim, undefined);
   assert.match(JSON.stringify(eventsOfType(root, "warning")), /state write refused/);
+});
+
+/** fourPlansDoc with `name`'s entry deleted from `## Planned` — the operator's withdrawal
+ * (ab7f54cf8, 2026-11-01), not a merge: the entry does not move to `## Done`, it is gone. */
+function withdrawnPlan(name: string): string {
+  return fourPlansDoc().replace(`### ${name} (planned 2026-01-01 by operator)\n\nBody.\n\n`, "");
+}
+
+function plannedClaim(name: string): NonNullable<RoleRunner["state"]["claim"]> {
+  return { file: "PLANS.md", key: name.toLowerCase(), title: `${name} (planned 2026-01-01 by operator)`, at: T0, source: "assigned" };
+}
+
+test("a claimed entry the operator deletes while its run waits to resume drops the resume and takes the next entry", async () => {
+  // The 2026-11-01 incident: feature-2 claimed "Subtract, part 3b/7", a restart aborted the run,
+  // the operator deleted the entry, and the next poll released the claim as `left` while the
+  // resume went ahead. Four resumes later the withdrawn change merged (8ed0d3eec).
+  const root = await initializedRepo();
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  feature.state.claim = plannedClaim("Alpha");
+  feature2.state.claim = plannedClaim("Beta");
+  feature2.state.resumePending = true;
+  fs.writeFileSync(path.join(root, "PLANS.md"), withdrawnPlan("Beta"));
+
+  const reasons = await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+
+  assert.equal(feature2.state.resumePending, false, "the withdrawn run does not resume");
+  assert.equal(loadRunnerState(root, "feature-2").resumePending, false, "the drop reached the state file");
+  // Self-healing: the same poll hands the runner the next free entry (Alpha is feature's).
+  assert.equal(feature2.state.claim?.key, "gamma");
+  assert.equal(reasons.has(feature2), true, "the runner starts on its next entry at once");
+  const released = eventsOfType(root, "claim").filter((e) => e.source === "feature-2" && e.action === "released");
+  assert.deepEqual(released.map((e) => e.reason), ["withdrawn"]);
+  const warnings = eventsOfType(root, "warning").filter((e) => e.source === "feature-2").map((e) => String(e.message));
+  assert.deepEqual(warnings, [
+    'dropped the interrupted run on "Beta": PLANS.md on main no longer lists it under ## Planned, so it will not resume or merge; the role takes its next entry',
+  ]);
+  assert.equal(feature.state.claim?.key, "alpha", "a sibling's listed claim is untouched");
+});
+
+test("a claimed entry the operator deletes while its rejected change waits for revision drops the revision and its ref", async () => {
+  const root = await initializedRepo();
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  feature.state.claim = plannedClaim("Alpha");
+  feature2.state.claim = plannedClaim("Beta");
+  feature2.state.revision = { sha: mainSha(root), round: 1, at: T0 };
+  await setRef(root, rejectedRefName("feature-2"), mainSha(root));
+  fs.writeFileSync(path.join(root, "PLANS.md"), withdrawnPlan("Beta"));
+
+  await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+
+  assert.equal(feature2.state.revision, undefined, "the withdrawn change is not revised");
+  assert.equal(await refSha(root, rejectedRefName("feature-2")), null, "its rejected diff is gone");
+  assert.equal(feature2.state.claim?.key, "gamma");
+  const warnings = eventsOfType(root, "warning").filter((e) => e.source === "feature-2").map((e) => String(e.message));
+  assert.match(warnings.join("\n"), /^dropped the rejected change's revision on "Beta": /);
+});
+
+test("a run in flight keeps its claim on a deleted entry, and a restart that cuts it short does not resume it", async () => {
+  const root = await initializedRepo();
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  feature.state.claim = plannedClaim("Alpha");
+  feature2.state.claim = plannedClaim("Beta");
+  feature2.state.running = true;
+  fs.writeFileSync(path.join(root, "PLANS.md"), withdrawnPlan("Beta"));
+  const roles = () => new Map([["feature", undefined], ["feature-2", undefined]]);
+
+  await pollRunnerReasons(schedulingCtx(root, [feature, feature2], roles()));
+  // Kept, not released: the run that settles it is still known to be Beta's — its queue entry
+  // records the claim for the merge, or (below) its interrupted resume is dropped.
+  assert.equal(feature2.state.claim?.key, "beta");
+  assert.equal(eventsOfType(root, "claim").filter((e) => e.source === "feature-2").length, 0);
+
+  // A restart aborts the run: it would resume on the next poll.
+  feature2.state.running = false;
+  feature2.state.resumePending = true;
+  await pollRunnerReasons(schedulingCtx(root, [feature, feature2], roles()));
+  assert.equal(feature2.state.resumePending, false);
+  assert.equal(feature2.state.claim?.key, "gamma");
+});
+
+test("a deleted claimed entry leaves an interrupted user request's resume alone", async () => {
+  // A run executing `tumwater prompt --role feature-2 …` keeps the claim for a later run and
+  // works the request; its resume owns the re-queued request, not the claimed entry.
+  const root = await initializedRepo();
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  feature.state.claim = plannedClaim("Alpha");
+  feature2.state.claim = plannedClaim("Beta");
+  feature2.state.resumePending = true;
+  feature2.state.resumePromptFile = path.join(root, "queued-request.md");
+  fs.writeFileSync(path.join(root, "PLANS.md"), withdrawnPlan("Beta"));
+
+  await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+
+  assert.equal(feature2.state.resumePending, true, "the request's resume goes ahead");
+  const released = eventsOfType(root, "claim").filter((e) => e.source === "feature-2" && e.action === "released");
+  assert.deepEqual(released.map((e) => e.reason), ["left"]);
+  assert.deepEqual(eventsOfType(root, "warning").filter((e) => e.source === "feature-2"), []);
 });

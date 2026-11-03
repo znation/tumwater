@@ -19,10 +19,14 @@ import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibil
 import {
   CLAIM_IDLE_MAX_MS,
   claimReleaseReason,
+  dropWithdrawnWork,
   heldKeys,
   listedKeys,
+  withdrawnWorkWarning,
   type ClaimReleaseReason,
 } from "./claims.js";
+import { deleteRef } from "../git/git.js";
+import { rejectedRefName } from "../paths.js";
 
 /** One poll's gate verdicts and context, exactly the local view the poll body holds when
  * the scheduling pass runs (TeamGatePoll's fields beside the pass's own inputs). */
@@ -226,7 +230,17 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
       });
       if (released === null) continue;
       const title = r.state.claim?.title ?? "";
+      const file = r.state.claim?.file ?? "PLANS.md";
       r.state.claim = undefined;
+      // The entry left main while this runner still owed it a resume or a revision: the operator
+      // withdrew it (or another change took it). Drop that work with the claim, so the run that
+      // resumes is never the withdrawn one, and let this same poll assign the runner its next
+      // free entry below.
+      if (released === "withdrawn") {
+        const dropped = dropWithdrawnWork(r.state);
+        if (dropped.revision) await deleteRef(root, rejectedRefName(r.role));
+        warnEventBestEffort(root, r.role, withdrawnWorkWarning(title, file, dropped));
+      }
       // Persist the release: an idle extra instance gets no run to save its state, so the dead
       // claim would stay on disk for status/doctor to show and for a restart to release again.
       saveRunnerStateBestEffort(root, r.state);
