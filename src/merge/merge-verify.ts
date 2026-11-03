@@ -178,7 +178,15 @@ export async function drainVerify(ctx: MergePipelineContext, p: MergePipeline): 
     // A re-queued review_error waits out its delay; the entry stays queued and holds its author.
     if (entry.notBefore !== undefined && Date.now() < entry.notBefore) continue;
     if (await mergedIntoMain(ctx.root, entry.sha, ctx.mainBranch, mainHead)) {
-      dropMerge(file);
+      // The drop can throw (a queue file that is a directory or locked fails fs.rmSync, the
+      // shape an ENOSPC or immutable queue file takes); this runs in the poll body with nothing
+      // to guard it — report it and leave the entry for the next poll, as dropTornHead and
+      // settleAbortedApproved guard their own drops.
+      try {
+        dropMerge(file);
+      } catch (err) {
+        warnEventBestEffort(ctx.root, TUMWATER_SOURCE, `merge queue entry ${path.basename(file)} could not be dropped: ${errorMessage(err)}`);
+      }
       removeMergeChange(ctx.root, entry.role);
       continue;
     }
