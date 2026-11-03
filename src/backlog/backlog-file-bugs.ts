@@ -28,6 +28,10 @@ type BugsFilingOutcome =
   | { status: "filed"; headings: string[] }
   | { status: "skipped"; reason: string };
 
+/** filingPreflight's result: the lock held and BUGS.md read — its prior text (null when absent)
+ * and its current `## Open` headings — or the skip reason that ends the filing before a write. */
+type FilingPreflight = { status: "ok"; file: string; before: string | null; open: string[] } | { status: "skipped"; reason: string };
+
 /** One BUGS.md `## Open` entry to file: a heading title and body, plus an optional quarantine
  * dedupe against the `## Open` headings already present. The headings are read under the merge
  * lock, so two concurrent quarantine filings cannot both append a duplicate entry. */
@@ -81,6 +85,112 @@ export function recordRecurrence(md: string, heading: string, test: string, date
   return lines.join("\n");
 }
 
+/** fileBugsLocked's first step, under the merge and primary-worktree locks: the primary must be
+ * on the base branch, git status must be readable and show no tracked changes to BUGS.md (an
+ * untracked BUGS.md is a fresh file the filing may create), and BUGS.md must read. Returns the
+ * same skip reasons in the same order as before the split. */
+async function filingPreflight(root: string): Promise<FilingPreflight> {
+  const offBase = await primaryOffBaseBranchReason(root);
+  if (offBase !== null) return { status: "skipped", reason: offBase };
+  const status = await gitTry(root, "status", "--porcelain", "--", "BUGS.md");
+  if (status === null) return { status: "skipped", reason: "could not read git status" };
+  if (status.trim() !== "" && !status.startsWith("??")) {
+    return { status: "skipped", reason: "BUGS.md has uncommitted changes" };
+  }
+  const file = path.join(root, "BUGS.md");
+  let before: string | null;
+  try {
+    before = readTextIfExists(file);
+  } catch (err) {
+    return { status: "skipped", reason: `BUGS.md could not be read: ${errorFirstLine(err)}` };
+  }
+  const open = before === null ? [] : parseEntryDetails(before, "Open").map((e) => e.title);
+  return { status: "ok", file, before, open };
+}
+
+/** Undo a failed filing: unstage BUGS.md, then put it back — remove it when it was absent,
+ * otherwise rewrite its prior text. */
+async function restoreBugsFile(root: string, file: string, before: string | null): Promise<void> {
+  await gitTry(root, "reset", "-q", "--", "BUGS.md");
+  if (before === null) fs.rmSync(file, { force: true });
+  else writeTextAtomic(file, before);
+}
+
+/** fileBugsLocked's write step: append or amend each entry in order (an `ifOpen` match reuses
+ * the existing heading and may `amend` it in place), returning the headings in input order and
+ * the append/amend counts; a write failure restores BUGS.md and ends the filing. */
+async function applyFilingEntries(
+  root: string,
+  file: string,
+  before: string | null,
+  open: string[],
+  entries: readonly BugEntry[],
+): Promise<{ headings: string[]; appended: number; amended: number } | { status: "skipped"; reason: string }> {
+  const headings: string[] = [];
+  let appended = 0;
+  let amended = 0;
+  try {
+    for (const entry of entries) {
+      if (entry.ifOpen !== undefined) {
+        const existing = entry.ifOpen(open);
+        if (existing !== undefined) {
+          headings.push(existing);
+          const next = entry.amend?.(readTextIfExists(file) ?? "", existing) ?? null;
+          if (next !== null) {
+            writeTextAtomic(file, next);
+            amended++;
+          }
+          continue;
+        }
+      }
+      headings.push(appendBugEntryLocked(root, entry.title, entry.body));
+      appended++;
+    }
+  } catch (err) {
+    await restoreBugsFile(root, file, before);
+    return { status: "skipped", reason: `a BUGS.md entry could not be written: ${errorFirstLine(err)}` };
+  }
+  return { headings, appended, amended };
+}
+
+/** fileBugsLocked's commit step: commit BUGS.md once, under the operator role, with the subject
+ * sized by the entries appended and amended (with neither, nothing is committed); a failure
+ * restores BUGS.md. */
+async function commitFiling(
+  root: string,
+  file: string,
+  before: string | null,
+  appended: number,
+  amended: number,
+  subject: (appended: number, amended: number) => string,
+): Promise<{ status: "filed" } | { status: "skipped"; reason: string }> {
+  if (appended === 0 && amended === 0) return { status: "filed" };
+  const commitSubject = stampedSubject(
+    "operator", // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
+    subject(appended, amended),
+  );
+  try {
+    await git(root, "add", "--", "BUGS.md");
+    await git(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "--only", "-m", commitSubject, "--", "BUGS.md");
+  } catch (err) {
+    await restoreBugsFile(root, file, before);
+    return { status: "skipped", reason: `the commit failed: ${errorFirstLine(err)}` };
+  }
+  return { status: "filed" };
+}
+
+/** What fileBugsOnMain does under the merge lock and the primary-worktree lock, in order:
+ * preflight, write the entries, commit them, restore BUGS.md on a failed write or commit. */
+async function fileBugsLocked(root: string, entries: readonly BugEntry[], subject: (appended: number, amended: number) => string): Promise<BugsFilingOutcome> {
+  const preflight = await filingPreflight(root);
+  if (preflight.status === "skipped") return preflight;
+  const applied = await applyFilingEntries(root, preflight.file, preflight.before, preflight.open, entries);
+  if ("status" in applied) return applied;
+  const committed = await commitFiling(root, preflight.file, preflight.before, applied.appended, applied.amended, subject);
+  if (committed.status === "skipped") return committed;
+  return { status: "filed", headings: applied.headings };
+}
+
 /** File one BUGS.md `## Open` entry per given entry and commit BUGS.md on the base branch as one
  * `tumwater(operator):` commit (the subject built from the number of entries actually appended is
  * stamped under the operator role), under the merge lock and the primary-worktree lock exactly as
@@ -99,66 +209,7 @@ export async function fileBugsOnMain(
 ): Promise<BugsFilingOutcome> {
   return withLock(
     mergeLockDir(root),
-    () =>
-      withPrimaryWorktreeLockAsync(root, async (): Promise<BugsFilingOutcome> => {
-        const offBase = await primaryOffBaseBranchReason(root);
-        if (offBase !== null) return { status: "skipped", reason: offBase };
-        const status = await gitTry(root, "status", "--porcelain", "--", "BUGS.md");
-        if (status === null) return { status: "skipped", reason: "could not read git status" };
-        if (status.trim() !== "" && !status.startsWith("??")) {
-          return { status: "skipped", reason: "BUGS.md has uncommitted changes" };
-        }
-        const file = path.join(root, "BUGS.md");
-        let before: string | null;
-        try {
-          before = readTextIfExists(file);
-        } catch (err) {
-          return { status: "skipped", reason: `BUGS.md could not be read: ${errorFirstLine(err)}` };
-        }
-        const open = before === null ? [] : parseEntryDetails(before, "Open").map((e) => e.title);
-        const headings: string[] = [];
-        let appended = 0;
-        let amended = 0;
-        const restoreBugs = async (): Promise<void> => {
-          await gitTry(root, "reset", "-q", "--", "BUGS.md");
-          if (before === null) fs.rmSync(file, { force: true });
-          else writeTextAtomic(file, before);
-        };
-        try {
-          for (const entry of entries) {
-            if (entry.ifOpen !== undefined) {
-              const existing = entry.ifOpen(open);
-              if (existing !== undefined) {
-                headings.push(existing);
-                const next = entry.amend?.(readTextIfExists(file) ?? "", existing) ?? null;
-                if (next !== null) {
-                  writeTextAtomic(file, next);
-                  amended++;
-                }
-                continue;
-              }
-            }
-            headings.push(appendBugEntryLocked(root, entry.title, entry.body));
-            appended++;
-          }
-        } catch (err) {
-          await restoreBugs();
-          return { status: "skipped", reason: `a BUGS.md entry could not be written: ${errorFirstLine(err)}` };
-        }
-        if (appended === 0 && amended === 0) return { status: "filed", headings };
-        const commitSubject = stampedSubject(
-          "operator", // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
-          subject(appended, amended),
-        );
-        try {
-          await git(root, "add", "--", "BUGS.md");
-          await git(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "--only", "-m", commitSubject, "--", "BUGS.md");
-        } catch (err) {
-          await restoreBugs();
-          return { status: "skipped", reason: `the commit failed: ${errorFirstLine(err)}` };
-        }
-        return { status: "filed", headings };
-      }),
+    () => withPrimaryWorktreeLockAsync(root, () => fileBugsLocked(root, entries, subject)),
     opts.lockTimeoutMs,
   );
 }
