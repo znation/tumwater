@@ -249,6 +249,16 @@ export function loadRunnerState(root: string, role: string): RunnerState {
  * so a team poll's allLiveClaims does no read I/O once every claim is known. */
 const liveClaimCache = new Map<string, StatKeyedValue<{ role: string; key: string }>>();
 
+/** The whole allLiveClaims map, keyed on the state directory's own stat — the one stat that
+ * changes whenever any state file is added, removed or renamed (a claim write's atomic
+ * tmp+rename bumps it too), so it subsumes the per-file stat walk allLiveClaims would otherwise
+ * redo on every call. A team poll calls allLiveClaims several times (eligibleEntries per claim
+ * base, workReserveCount) and a status/TUI render calls it through backlogMarks and
+ * backlogInProgress; without this each call re-stat-ed every role and instance state file (~400µs
+ * of syscalls here, 2–3× per poll). cachedByStat keys on dev/ino/mtime/size, so an unchanged
+ * steady state serves the whole map from one stat per call; bounded like the other caches. */
+const liveClaimsMapCache = new Map<string, StatKeyedValue<Map<string, string>>>();
+
 /** One stat-keyed cache of the state directory's instance listing, keyed by the directory's
  * own stat. The per-instance claim files are stat-cached above, but every allLiveClaims pass
  * also re-listed the state directory (readdir) to learn which instance ids exist — the one
@@ -307,20 +317,31 @@ function liveClaimRunnerIds(root: string): string[] {
  * eligible for its release rules. A `feature-2` instance's claim is therefore read and keyed
  * under `feature-2`; callers fold it to its base. */
 export function allLiveClaims(root: string): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const id of liveClaimRunnerIds(root)) {
-    const file = statePath(root, id);
-    const claim = cachedByStat(
-      liveClaimCache,
-      file,
-      file,
+  const stateDir = path.join(root, STATE_DIR, "state");
+  return (
+    cachedByStat(
+      liveClaimsMapCache,
+      stateDir,
+      stateDir,
       () => {
-        const s = loadRunnerState(root, id);
-        return s.claim ? { role: id, key: s.claim.key } : null;
+        const out = new Map<string, string>();
+        for (const id of liveClaimRunnerIds(root)) {
+          const file = statePath(root, id);
+          const claim = cachedByStat(
+            liveClaimCache,
+            file,
+            file,
+            () => {
+              const s = loadRunnerState(root, id);
+              return s.claim ? { role: id, key: s.claim.key } : null;
+            },
+            (v) => ({ ...v }),
+          );
+          if (claim) out.set(claim.key, id);
+        }
+        return out;
       },
-      (v) => ({ ...v }),
-    );
-    if (claim) out.set(claim.key, id);
-  }
-  return out;
+      (m) => new Map(m), // A copy: callers may treat the result as their own.
+    ) ?? new Map<string, string>()
+  );
 }
