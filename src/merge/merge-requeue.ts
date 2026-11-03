@@ -83,6 +83,19 @@ export async function requeueKeptChange(
  * at most this long from the moment it was kept. */
 export const MAIN_RED_VERDICT_WAIT_MS = 15 * 60_000;
 
+/** The wait-start/timeout gate shared by requeueMainRedPin and requeueAwaitingWatch: if the kept
+ * record has no wait start yet, record `now` as one (and save) and hold this poll; otherwise hold
+ * while MAIN_RED_VERDICT_WAIT_MS has not passed since the start. Returns true only when the pin may
+ * proceed to re-queue. */
+function mainRedWaitElapsed(kept: NonNullable<RunnerState["mainRedRetry"]>, root: string, state: RunnerState, now: number): boolean {
+  if (kept.waitingSince === undefined) {
+    state.mainRedRetry = { ...kept, waitingSince: now };
+    saveRunnerStateBestEffort(root, state);
+    return false;
+  }
+  return now - kept.waitingSince >= MAIN_RED_VERDICT_WAIT_MS;
+}
+
 /** Re-queue a `main_red` pin once main's head differs from the one recorded when its attempt
  * settled (the orchestrator poll calls this for every runner), by the head's cached verdict: a
  * verdict — green or red — re-queues at once; no verdict starts (and saves) a wait at `now`, and
@@ -107,14 +120,7 @@ export async function requeueMainRedPin(
     return;
   }
   if (mainHead === kept.head) return;
-  if (cachedBaselineVerdict(mainHead) === undefined) {
-    if (kept.waitingSince === undefined) {
-      state.mainRedRetry = { ...kept, waitingSince: now };
-      saveRunnerStateBestEffort(root, state);
-      return;
-    }
-    if (now - kept.waitingSince < MAIN_RED_VERDICT_WAIT_MS) return;
-  }
+  if (cachedBaselineVerdict(mainHead) === undefined && !mainRedWaitElapsed(kept, root, state, now)) return;
   await requeueKeptPin(root, mainBranch, state);
 }
 
@@ -134,14 +140,7 @@ async function requeueAwaitingWatch(
   const kept = state.mainRedRetry;
   if (kept?.awaitingWatch === undefined) return;
   const { covers } = await watchVerdictCovering(root, mainHead, kept.awaitingWatch);
-  if (!covers) {
-    if (kept.waitingSince === undefined) {
-      state.mainRedRetry = { ...kept, waitingSince: now };
-      saveRunnerStateBestEffort(root, state);
-      return;
-    }
-    if (now - kept.waitingSince < MAIN_RED_VERDICT_WAIT_MS) return;
-  }
+  if (!covers && !mainRedWaitElapsed(kept, root, state, now)) return;
   await requeueKeptPin(root, mainBranch, state, covers ? "covered" : "timed_out");
 }
 
