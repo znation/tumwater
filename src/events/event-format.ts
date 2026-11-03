@@ -308,7 +308,7 @@ function conflictHandbackMessage(e: HarnessEvent): string {
 }
 function operatorRevertMessage(e: HarnessEvent): string {
   const undid = typeof e.runner === "string" && e.runner !== "" ? `, undid ${e.runner}` : "";
-  return `reverted ${shortSha(String(e.commit ?? ""))} (by operator) as ${shortSha(String(e.revert ?? ""))}${undid}`; // vocabulary-ok: the deliberate-revert writer is the operator role
+  return `reverted ${shortSha(e.commit)} (by operator) as ${shortSha(e.revert)}${undid}`; // vocabulary-ok: the deliberate-revert writer is the operator role
 }
 function mainCheckMessage(e: HarnessEvent): string {
   const failing = Array.isArray(e.failingTests) ? e.failingTests.map(String) : [];
@@ -319,11 +319,11 @@ function mainCheckMessage(e: HarnessEvent): string {
   const covered = coveredN !== null && coveredN > 1 ? ` (${coveredN} commits)` : "";
   const verdict = e.status === "failed" ? "failed" : "passed";
   const names = failing.length > 0 ? `: ${joinWithMore(failing, 3, "; ")}` : "";
-  return `main ${shortSha(String(e.sha ?? ""))}${covered} full check ${verdict}${names}`;
+  return `main ${shortSha(e.sha)}${covered} full check ${verdict}${names}`;
 }
 function mainCulpritMessage(e: HarnessEvent): string {
   const by = typeof e.runner === "string" && e.runner !== "" ? ` (merged by ${e.runner})` : "";
-  return `main turned red at ${shortSha(String(e.commit ?? ""))}${by}`;
+  return `main turned red at ${shortSha(e.commit)}${by}`;
 }
 function mergeEventMessage(e: HarnessEvent): string {
   switch (e.type) {

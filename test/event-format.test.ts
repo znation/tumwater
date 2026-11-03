@@ -109,6 +109,19 @@ test("formatEvent renders operator_revert naming the revert, the inverse, and th
   assert.doesNotMatch(unstamped, /undid/);
 });
 
+test("formatEvent renders a sha-less operator_revert / main_check / main_culprit as ?", () => {
+  // A torn or hand-edited event drops its commit field; shortSha's missing-hash rule (INV-AA2)
+  // reads it as "?", the same placeholder every other shortSha site in this file uses. The
+  // old String(e.x ?? "") wrapper turned the missing field into an empty string, printing a
+  // blank where the "?" belongs.
+  const revert = formatEvent({ ts: 0, source: "tumwater", type: "operator_revert", subject: "hand-made change" } as never);
+  assert.match(revert, /reverted \? \(by operator\) as \?/);
+  const check = formatEvent({ ts: 0, source: "tumwater", type: "main_check", status: "failed" } as never);
+  assert.match(check, /main \? full check failed/);
+  const culprit = formatEvent({ ts: 0, source: "tumwater", type: "main_culprit" } as never);
+  assert.match(culprit, /main turned red at \?$/);
+});
+
 test("formatEvent prints an instance id as its role label and the harness source as tumwater", () => {
   const run = formatEvent({ ts: 0, source: "feature-2", type: "run_end", run: 12, result: "no_change" } as never);
   assert.match(run, /^\S+ \S+ feature #2 run #12 no change$/);
