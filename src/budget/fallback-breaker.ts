@@ -119,7 +119,8 @@ export function abandonFallbackProbe(b: FallbackBreaker): FallbackBreaker {
  * probe wins the pause back.) `served` is a result only a model reply produces: a change bound
  * for merge (`queued`, `changed`), an explicit decision (`no_change`, `refused`), or a
  * reviewer's rejection. Everything else is no evidence: harness and operator kills (`aborted`,
- * `user_aborted`), runs that never reached the model (`skipped`, `main_red`), a quiet kill
+ * `user_aborted`), runs that never reached the model (`skipped`, the historical
+ * red-main verdict), a quiet kill
  * (the model had answered before the stall — a tool call or the stream stopped), and the
  * merge results (`merge_conflict`, `merge_blocked`, `review_error`) — a run no longer
  * returns them since leftover recovery queues its pin instead of merging it, and they would

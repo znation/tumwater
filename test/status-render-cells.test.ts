@@ -7,10 +7,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { lastRunCell, lastMergedCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
-import { rolePhase } from "../src/ui/status-model.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
-import { applyMergeOutcome, applyRunOutcome } from "../src/run/run-apply.js";
-import { defaultConfig } from "../src/config/config.js";
+import { applyMergeOutcome } from "../src/run/run-apply.js";
 import { teamDailyCost, todayStamp } from "../src/budget/budget.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { displayWidth } from "../src/text/text-width.js";
@@ -260,20 +258,6 @@ test("the last-result cell shows the merge's outcome beside the summary of the c
   }
 });
 
-test("a pending change after a main-red run does not keep the state cell reading main red", () => {
-  // The last-result cell keeps the main_red pair (it IS the last completed outcome), but the
-  // state cell's "main's check is failing" says the role is blocked NOW — and a queued change
-  // saw a green main wake, so main was green at its run.
-  const s = freshRunnerState("feature");
-  applyRunOutcome(s, defaultConfig(), "feature", { result: "main_red", summary: "code merges blocked until main is green" });
-  assert.equal(rolePhase(s, true), "main's check is failing", "fixture sanity: the main-red run reads main red");
-  applyRunOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
-  assert.match(rolePhase(s, true), /^sleeping/, "the pending change's run was not blocked");
-  const row = rowOf(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, mergeQueue: { depth: 1 } }), "feature");
-  assert.doesNotMatch(row, /^feature\s+main's check is failing/);
-  const { headers, cellAt, lines } = tableCells(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, mergeQueue: { depth: 1 } }));
-  assert.equal(cellAt(lines.find((l) => l.startsWith("feature ")) ?? "", headers.indexOf("last result")), "main's check is failing — code merges blocked until main is green", `prior pair kept: ${row}`);
-});
 // The `next run` column: nextRunCell's rules — a due idle
 // role reads `now`, a future one its remaining time (`backoff `-prefixed while backing off),
 // in-flight roles and a stopped team read `-` — and the column is appended last so

@@ -2,7 +2,6 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import type { StatusSnapshot } from "../status/status-data.js";
-import { heldByMainRed } from "../status/status-polls.js";
 import { errorStreakAtWarn, QUIET_KILL_RESUME_LIMIT } from "../run/run-apply.js";
 import { readLiveProgress, type LiveProgress } from "./progress-data.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
@@ -80,14 +79,10 @@ export function idleClaimText(s: { claim?: RunnerState["claim"]; role: string },
  * merge slot. (A queued change whose verification is still parked for a permit has no record:
  * it reads
  * plainly queued.)
- * `mainCheck`, when given (roleRowCells passes the snapshot's), lets the main-red label
- * retire itself between runs: main's newest merge-scope check passing AFTER this role's red
- * run ended means main is green now — the role's `main_red` verdict is stale until its next
- * run, which sleep, a full slot pool, a pause, or a spent budget can defer for hours
- * (BUGS.md 2026-09-30), so the label falls through to the ordinary idle state and the
- * teamAlerts banner follows. A check that is newer but failed keeps the label (main is
- * genuinely red); so does one older than the red run or with no known pass at all — the
- * blockage stands until the role's own next run re-verdicts it.
+ * `_mainCheck` (roleRowCells still passes the snapshot's check positionally): the
+ * red-main verdict it once let the main-red label retire itself between runs has no
+ * producer left — the parameter is dead and unread here; part 4n/3 removes it and shifts
+ * the later arguments.
  * Otherwise its elapsed is the CHANGE's own merge (its record's startedAt — from its verification's
  * start, never another change's), never the authoring run's,
  * and its stage scopes the cell to the phase the merge is actually in: `reviewing` carries
@@ -120,7 +115,7 @@ export function rolePhase(
   live?: LiveProgress | null,
   userPaused = false,
   merge?: MergeCell | null,
-  mainCheck?: StatusSnapshot["mainCheck"],
+  _mainCheck?: StatusSnapshot["mainCheck"],
   capPaused = false,
   quietHold?: string,
   diskHeld = false,
@@ -219,19 +214,6 @@ export function rolePhase(
   // figures so the operator sees how far over the window is; the string is preformatted by the
   // snapshot's holder, like roleQuietPaused's window.
   if (maintenanceQuotaHold) return maintenanceQuotaHold;
-  // Main's own suite is known red at this role's last run: main_red is the last completed
-  // outcome. Shown before sleep/queue
-  // because it explains why the role keeps waking and merge nothing; self-correcting, since
-  // each run re-records main_red while red and a green wake overwrites lastResult.
-  // Except a green wake that queues a change: `queued` is in flight, not a completed result,
-  // so it leaves the main_red pair in place until its merge resolves (run-apply.ts's
-  // applyRunOutcome) — its stashed summary is the tell that the role's latest run saw
-  // main green, so "main red" would be stale.
-  // Except too when main's newest merge-scope check PASSED after this role's red run ended:
-  // the team-level verdict is fresher than the role's own, so the label is stale until the
-  // role's next run — which can be hours away (BUGS.md 2026-09-30). A check older than the
-  // red run, a failed or skipped one, or an unknown run end all keep the label.
-  if (heldByMainRed(s, mainCheck)) return "main's check is failing";
   // An error streak at or past the warning threshold (run-apply.ts's ERROR_STREAK_WARN): the
   // role is retrying the same failure on the error ladder, and the operator must see
   // "failing" — not a sleepy label — while it is stuck (BUGS.md 2026-09-15). The streak

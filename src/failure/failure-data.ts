@@ -518,19 +518,12 @@ function deltaRows(current: HarnessEvent[], prior: HarnessEvent[]): DeltaRow[] {
 
 /** Only runs that ENDED as errors carry a run error: `state.lastError` is shared state the
  * merge slot also writes, so a successful run's `run_end` can carry a leftover merge failure's
- * text (BUGS.md 2026-09-21). `main_red` joins them because its cause is written for that result
- * — the baseline gate's own text (src/baseline/main-red.ts), never a leftover — so the
- * section itemizes the outcome that blocks every merge instead of leaving it a bare count
- * (BUGS.md 2026-09-28). The total therefore equals the Outcome table's error column PLUS its
- * main_red cells; the render's section title says so, and merge failures still surface below.
- * The selection predicate is the Outcome table's own — raw `error`/`main_red` results, no
- * error-text test — so a malformed run_end that skipped the text can never be counted above
- * but itemized nowhere: those events cluster under a placeholder cause, keeping the section's
- * total equal to the tables it cross-checks against (BUGS.md 2026-09-30). */
+ * text (BUGS.md 2026-09-21). The selection predicate is the Outcome table's own — raw `error`
+ * results, no error-text test — so a malformed run_end that skipped the text can never be
+ * counted above but itemized nowhere: those events cluster under a placeholder cause, keeping
+ * the section's total equal to the tables it cross-checks against (BUGS.md 2026-09-30). */
 function errorSection(runEvents: HarnessEvent[]): ClusterSection {
-  const errorEvents = runEvents.filter(
-    (ev) => ev.result === "error" || ev.result === "main_red",
-  );
+  const errorEvents = runEvents.filter((ev) => ev.result === "error");
   return section(
     clusterMessages(
       errorEvents.map((ev) => ({

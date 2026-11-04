@@ -269,45 +269,14 @@ test("checkErrorStreaks: a second instance is reported under its own id", () => 
   assert.match(r.detail, /feature #2: 5 failed runs/);
 });
 
-const RED = "main abc is red (npm test: 2 failing) — authoring skipped until main is green";
-
-function redRoot(extra: Record<string, unknown> = {}): string {
-  const root = tmpdir("tw-mainred-");
-  saveRunnerState(root, { ...freshRunnerState("feature"), lastResult: "main_red", lastError: RED, lastRunEndedAt: 1000, ...extra });
-  return root;
-}
-
 test("checkMainRed: unreadable config is not checked", () => {
   const r = checkMainRed(tmpdir("tw-mainred-"), undefined);
   assert.equal(r.level, "ok");
   assert.match(r.detail, /not checked/);
 });
 
-test("checkMainRed: no role at main_red is ok", () => {
+test("checkMainRed: no red spell is ok", () => {
   assert.deepEqual(checkMainRed(tmpdir("tw-mainred-"), bcfg({})), { level: "ok", detail: "no role waiting on main's check" });
-});
-
-test("checkMainRed: a held code role warns naming it, the count, and the squashed error", () => {
-  const r = checkMainRed(redRoot(), bcfg({}));
-  assert.equal(r.level, "warn");
-  assert.match(r.detail, /main's check is failing; 1 code role waiting: feature — main abc is red \(npm test: 2 failing\)/);
-});
-
-test("checkMainRed: a role with a queued summary is ok", () => {
-  assert.equal(checkMainRed(redRoot({ queuedSummary: "x" }), bcfg({})).level, "ok");
-});
-
-test("checkMainRed: a passed merge check newer than the red run retires the hold", () => {
-  const root = redRoot();
-  writeEvents(root, [{ ts: 2000, loop: "feature", type: "build_check", scope: "merge", status: "passed" }]); // retired-name-ok: legacy event field in a fixture
-  assert.equal(checkMainRed(root, bcfg({})).level, "ok");
-});
-
-test("checkMainRed: the detail names the ci role as repairer only when one is enabled", () => {
-  const without = checkMainRed(redRoot(), bcfg({}));
-  assert.match(without.detail, /no ci role is enabled/);
-  const withCi = checkMainRed(redRoot(), qcfg({ roles: { feature: { enabled: true }, ci: { enabled: true } } }));
-  assert.match(withCi.detail, /the ci role is exempt and repairs it/);
 });
 
 test("checkMainRed: a 31-min red with no role held warns (the G1 guardrail)", () => {
@@ -323,15 +292,6 @@ test("checkMainRed: a 31-min red with no role held warns (the G1 guardrail)", ()
   assert.match(r.detail, /the main watch blames feature's merge abcdef12/);
 });
 
-test("checkMainRed: one row joins the held-role phrase and the red-main phrase", () => {
-  const root = redRoot();
-  const now = Date.now();
-  writeEvents(root, [{ ts: now - 31 * 60_000, source: "tumwater", type: "main_red_hold", sha: "abcdef123456" }]);
-  const r = checkMainRed(root, bcfg({}), now);
-  assert.equal(r.level, "warn");
-  assert.match(r.detail, /1 code role waiting/);
-  assert.match(r.detail, /main has had no passing full check for 31 min/);
-});
 
 
 const PH_NOW = Date.now();

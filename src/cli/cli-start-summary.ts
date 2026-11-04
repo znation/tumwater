@@ -95,7 +95,6 @@ export const ONCE_FAILURE_RESULTS: ReadonlySet<RunResult> = new Set<RunResult>([
   "review_error",
   "merge_conflict",
   "merge_blocked",
-  "main_red",
 ]);
 
 function runsThisRound(

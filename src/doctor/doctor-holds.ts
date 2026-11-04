@@ -7,7 +7,7 @@ import { commitTier, DIRECTOR_ROLE } from "../roles/roles.js";
 import { budgetReached, budgetWarning, teamDailyCost } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota-gates.js";
-import { heldByMainRed, mainCheckForPoll, maintenanceQuotaForPoll } from "../status/status-polls.js";
+import { maintenanceQuotaForPoll } from "../status/status-polls.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { baseRoleOf, runnerIds, runnerPaused } from "../roles/runner-ids.js";
@@ -16,7 +16,7 @@ import { squash } from "../text/text.js";
 import { usd } from "../text/format.js";
 import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DAY_MS, HOUR_MS, humanUntil } from "../text/datetime.js";
-import { budgetPhrase, pauseReasonSuffix, plural } from "../text/phrases.js";
+import { budgetPhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
@@ -224,35 +224,17 @@ export function checkErrorStreaks(root: string, config: TumwaterConfig | undefin
   return warnOutcome(`failing run after run: ${phrases.join("; ")}`);
 }
 
-/** The `main red` check: the row lists the runs the merge-side `main_red` pin ended — a red
- * main is still recorded as the `main_red` outcome that ended those runs until part 3f/3
- * lands — and warns when main has been red over RED_MAIN_WARN_MS even with no role held (the
- * guardrail, G1). Read-only: it asks heldByMainRed, the predicate the status phase's `main red`
- * label reads, so the two cannot disagree on the held runs, and redMainWarning over the event
- * trail, so both phrases can appear in one row. A warn, not a fail: a red main does not stop
- * the team from running. `now` is injected so a test can pin a red's age. */
+/** The `main red` check: warns when main has been red over RED_MAIN_WARN_MS (the guardrail,
+ * G1), read from redMainWarning over the event trail. A warn, not a fail: a red main does not
+ * stop the team from running. `now` is injected so a test can pin a red's age. */
 export function checkMainRed(
   root: string,
   config: TumwaterConfig | undefined,
   now: number = Date.now(),
 ): CheckOutcome {
   if (config === undefined) return uncheckedConfigOutcome();
-  const mainCheck = mainCheckForPoll(root, config);
-  const ids = runnerIds(config);
-  const held = loadRunnerStates(root, config)
-    .filter((s) => heldByMainRed(s, mainCheck));
-  const phrases: string[] = [];
-  if (held.length > 0) {
-    const err = held.find((s) => s.lastError)?.lastError;
-    const cause = err ? ` — ${squash(err, 160)}` : "";
-    const healer = ids.some((id) => baseRoleOf(id) === "ci")
-      ? "; the ci role is exempt and repairs it"
-      : "; no ci role is enabled to repair it — fix main by hand or enable ci";
-    phrases.push(`main's check is failing; ${plural(held.length, "code role")} waiting: ${held.map((s) => roleLabel(s.role)).join(", ")}${cause}${healer}`);
-  }
   const events = readEventsSince(root, DAY_MS).events;
   const red = redMainWarning(events, now);
-  if (red !== null) phrases.push(red);
-  if (phrases.length === 0) return okOutcome("no role waiting on main's check");
-  return warnOutcome(phrases.join("; "));
+  if (red === null) return okOutcome("no role waiting on main's check");
+  return warnOutcome(red);
 }

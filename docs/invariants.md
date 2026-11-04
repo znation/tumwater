@@ -281,19 +281,18 @@ When a classifier groups outcomes into classes, every result shape that belongs 
 be treated as that class. A shape added later is easy to leave behind, and the omission shows as
 a count that does not match the table it summarizes.
 
-### INV-C1: the error section itemizes the `error` and `main_red` run outcomes
+### INV-C1: the error section itemizes the `error` run outcomes
 
 **Guarantee.** The failure report's error section selects exactly the run outcomes whose
-`result` is `error` or `main_red` — caused or cause-less, with no error-text test — so its total
-equals the Outcome table's error column plus its `main_red` cells, and a run counted in the
-table never vanishes from the section built to itemize it.
+`result` is `error` — caused or cause-less, with no error-text test — so its total equals the
+Outcome table's error column, and a run counted in the table never vanishes from the section
+built to itemize it.
 
 **Binds.** `src/failure/failure-data.ts` (`collectFailureReport`), `src/failure/failure-render.ts`
 (`renderFailureMarkdown`), `src/failure/failure-cluster.ts`.
 
-**Pinned by.** `test/failure-render.test.ts` — "a main_red run's cause is clustered with the
-run errors, not left a bare count" (asserts the section total equals the Outcome tables' error
-column plus `main_red` cells).
+**Pinned by.** `test/failure-render.test.ts` — "the error section itemizes the error runs,
+caused or cause-less" (asserts the section total equals the Outcome table's error column).
 
 ### INV-C2: every failed merge prices its authoring span as error-class
 
@@ -1278,22 +1277,6 @@ numeric ts reads as no check.
 merge-scope build_check event" and "a merge-scope check with a foreign status reads as no
 mainCheck"; `test/status-header.test.ts` — "the status header carries a mainCheck badge only after
 a merge-scope check".
-
-### INV-T2: a red-main hold stands until a newer passed check retires it, and status and doctor agree
-
-**Guarantee.** `heldByMainRed` is true only when the role's last result is `main_red`, it has no
-queued summary, and no passed check is stamped strictly after its last run ended
-(`mainCheckRecovered`). It is the one predicate behind the status phase's red-main label and
-doctor's `checkMainRed`.
-
-**Binds.** `src/status/status-polls.ts` (`heldByMainRed`, `mainCheckRecovered`),
-`src/ui/status-model.ts` (`rolePhase`), `src/doctor/doctor-holds.ts` (`checkMainRed`).
-
-**Pinned by.** `test/status-model.test.ts` — "rolePhase shows main red for idle roles whose last
-run read main red", "rolePhase retires a stale main red when main's newest check passed
-after it" and "roleRowCells retires the stale main red and teamAlerts raises no banner for it";
-`test/doctor-holds.test.ts` — "checkMainRed: a role with a queued summary is ok" and "checkMainRed:
-a passed merge check newer than the red run retires the hold".
 
 ### INV-T3: the merge marker displays only while the orchestrator lives and a queued change it names is unfinished
 

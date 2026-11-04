@@ -103,7 +103,6 @@ test("a pre-check that sleeps and fails on every attempt keeps the commit and re
   const result = await reviewAheadOfMain({ ...gateCtx(root, wt), sampleSleep: sampler }, state);
   assert.equal(result.decision, "failed");
   assert.equal(result.unverified, true, "the failure is unverified, not the change's");
-  assert.equal(result.mainRed, undefined, "main was never consulted — the check made no verdict");
   assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
   assert.equal(state.unreviewFailures, 1, "no strike: nothing judged this diff");
   assert.equal(state.lastReview, undefined, "no rejection recorded against the author");

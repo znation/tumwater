@@ -88,10 +88,6 @@ export interface GateResult {
    * leaves this absent — its commit stays for re-review. The discard is invisible in the
    * decision alone, which is the same "failed" shape an under-cap failure reports. */
   discarded?: boolean;
-  /** The pre-check failed twice on a tree whose main is red at its tip ("failed"): not this
-   * change's failure, so its merge reports `main_red` — pin kept, no strike, and none of the
-   * error streak a dead reviewer backend feeds (the batch's own attribution says the same). */
-  mainRed?: boolean;
   /** The pre-check's every attempt spanned a host sleep, so nothing judged the tree
    * ("failed"): not this change's failure either — its merge keeps the pin for a re-merge
    * with no strike, and the detail names the sleep (BUGS.md 2026-09-30). */

@@ -144,7 +144,6 @@ test("role trouble and questions, most urgent first", () => {
     { role: "bugfix", phase: "failing", errorStreak: true, inFlight: false, lastError: "429 Rate limit exceeded" },
     { role: "qa", phase: "failing", errorStreak: true, inFlight: false },
     { role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash", errorStreak: false, inFlight: true, stuckMs: 720_000 },
-    { role: "coverage", phase: "main's check is failing", errorStreak: false, inFlight: false },
     { role: "docs", phase: "working 1m · turn 1 · no agent output for 6m00s", errorStreak: false, inFlight: true, stuckMs: 360_000 },
     { role: "idle", phase: "sleeping (for 5m)", errorStreak: false, inFlight: false },
   ];
@@ -154,10 +153,8 @@ test("role trouble and questions, most urgent first", () => {
     roles,
     now,
   );
-  assert.deepEqual(alerts.map((a) => a.key), ["mainred", "failing", "stuck", "questions"]);
+  assert.deepEqual(alerts.map((a) => a.key), ["failing", "stuck", "questions"]);
   const by = Object.fromEntries(alerts.map((a) => [a.key, a]));
-  assert.equal(by.mainred?.title, "main's check is failing — 1 role is blocked");
-  assert.equal(by.mainred?.detail, "Code roles keep authoring on top of a red main; the ci healer owns the failing check.");
   assert.equal(by.failing?.title, "bugfix and qa are failing run after run");
   assert.equal(by.failing?.detail, "bugfix: 429 Rate limit exceeded · qa: see its transcript");
   assert.deepEqual(by.failing?.actions.map((a) => [a.act, a.arg]), [["role", "bugfix"], ["role", "qa"]], "each failing role opens from the alert");
@@ -168,26 +165,10 @@ test("role trouble and questions, most urgent first", () => {
   assert.equal(by.stuck?.detail, "feature: tool call stalled: bash for 12m00s · docs: no agent output for 6m00s");
   assert.equal(by.questions?.title, "2 questions need your answer");
   assert.equal(by.questions?.detail, "Q1: which database? — and 1 more", "a question's date note is metadata, not the question");
-  assert.equal(alerts.filter(alertNeedsYou).length, 4);
+  assert.equal(alerts.filter(alertNeedsYou).length, 3);
 });
 
-// The always-on red `mainred` alert names the failing test and the merge the main watch
-// blamed from the snapshot's mainCheck.red detail, when the data exists; with none, today's
-// generic wording stands (covered by the healthy/no-mainCheck cases above).
-test("the mainred alert names the failing test and the culprit", () => {
-  const now = Date.now();
-  const alerts = teamAlerts(
-    { ...base, mainCheck: { status: "failed", at: now, red: { failingTests: ["test/merge.test.ts"], culprit: { commit: "abc123", runner: "feature" } } } },
-    [],
-    [{ role: "coverage", phase: "main's check is failing", errorStreak: false, inFlight: false }],
-    now,
-  );
-  const red = alerts.find((a) => a.key === "mainred");
-  assert.equal(red?.title, "main's check is failing — 1 role is blocked");
-  assert.match(red?.detail ?? "", /test\/merge\.test\.ts/);
-  assert.match(red?.detail ?? "", /feature/);
-  assert.deepEqual(red?.actions.map((a) => [a.act, a.arg]), [["view", "failures"]]);
-});
+
 
 // The alert copy's count forms beyond the two-role case above: a lone role reads singular,
 // three or more list as "a, b, and c", and a failing set where no role recorded an error
@@ -265,7 +246,7 @@ test("the terminal's tones and the dashboard's tell the same story", () => {
     resultInfo(result: string): { tone: string };
   }>(["format", "labels", "view-model"], ["phaseInfo", "resultInfo"]);
   const family: Record<string, string | undefined> = { blue: "blue", violet: "blue", orange: "blue", indigo: "blue", red: "red", amber: "yellow", gray: undefined };
-  for (const phase of ["working 1m", "reviewing 2m", "merging 1m · merging", "approved, waiting to merge", "waiting to start 5s", "failing", "main's check is failing",
+  for (const phase of ["working 1m", "reviewing 2m", "merging 1m · merging", "approved, waiting to merge", "waiting to start 5s", "failing",
     "paused", "waiting: budget spent", "waiting: daily cap spent", "waiting: low disk", "waiting: bootstrap", "sleeping (for 5m)", "due", "ready for messages", "stopped"]) {
     const page = phaseInfo(phase).tone;
     // Awaiting a slot is pipeline work (blue) in the terminal; the page draws it quietly gray.
@@ -274,7 +255,7 @@ test("the terminal's tones and the dashboard's tell the same story", () => {
   }
   const resultFamily: Record<string, string | undefined> = { green: "green", indigo: "cyan", red: "red", amber: "yellow", gray: undefined };
   for (const result of ["changed", "queued", "refused", "no_change", "merge_conflict", "merge_blocked", "rejected", "review_error", "error",
-    "aborted", "quiet_killed", "user_aborted", "main_red", "skipped"]) {
+    "aborted", "quiet_killed", "user_aborted", "skipped"]) {
     assert.equal(resultTone(result), resultFamily[resultInfo(result).tone], result);
   }
 });

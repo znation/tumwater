@@ -72,7 +72,8 @@ export interface MergeEntry {
    * once. Set on the pipeline's own re-queue of a `review_error` change, so a flaky reviewer is
    * not hit again within 60 s; drainVerify skips the entry until then. */
   notBefore?: number;
-  /** The retriable result (`merge_blocked`, `review_error`, `merge_conflict`, `main_red`) whose
+  /** The retriable result (`merge_blocked`, `review_error`, `merge_conflict`, a legacy
+   * `main_red`) whose
    * attempt this entry re-queues, absent for an author's or a recovery's entry. Logged on the
    * re-queue's `merge_queued` event only. */
   retry?: string;

@@ -217,7 +217,8 @@ export interface RunnerState {
    * tier. Read by the verdict's one-hop guard, which fails a blind read during a rerouted
    * run instead of rerouting it again. Transient: reset at every run start. */
   imageRerouteActive?: boolean;
-  /** A `main_red` merge's kept pin, waiting for main to move: `head` is main's head when the
+  /** A kept pin from a `main_red` settle (a historical verdict, or a recovery of a leftover
+   * that still returns one), waiting for main to move: `head` is main's head when the
    * attempt settled and `entry` the dropped queue entry (minus its sha, which is the pin's
    * current one). The orchestrator poll re-queues it on the first poll whose main head differs
    * (merge-requeue.ts requeueMainRedPin) and has a cached verdict, red or green, or once

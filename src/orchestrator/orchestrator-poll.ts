@@ -374,7 +374,8 @@ export async function pollMergeDrain(
 ): Promise<void> {
   if (state.holdForRestart || state.diskHeld) return;
   const { root, mainBranch } = ctx;
-  // A `main_red` pin the pipeline kept goes back on the queue once main's head has moved.
+  // A kept pin from a historical `main_red` settle goes back on the queue once main's head
+  // has moved.
   for (const r of ctx.runners) await requeueMainRedPin(root, mainBranch, r.state, mainHead);
   await drainMergeQueue(
     {

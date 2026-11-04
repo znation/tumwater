@@ -269,14 +269,6 @@ export async function reviewPinnedChange(
     return { kind: "result", result: "rejected" };
   }
 
-  if (gate.decision === "failed" && gate.mainRed) {
-    // Main is red at its tip: nothing judged this diff and nothing is wrong with the reviewer,
-    // so it is main_red, not review_error — the pin stays; the poll's requeueMainRedPin
-    // re-queues it once main moves to a head with a cached verdict, or once the wait times out.
-    state.lastError = `gate check failed: ${gate.detail}`;
-    return { kind: "result", result: "main_red" };
-  }
-
   if (gate.decision === "failed") {
     state.lastError = `review failed: ${gate.detail}`;
     // Strike-cap discard: the gate says so directly (it reset the worktree off the pin) — the

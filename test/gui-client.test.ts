@@ -52,7 +52,6 @@ test("every phase label rolePhase renders maps to a known status on the page", (
     [rolePhase(at({}), true, undefined, true, null, false, undefined, undefined, true), "cap", false],
     [rolePhase(at({}), true, undefined, false, null, false, undefined, undefined, true), "cap", false],
     [rolePhase(at({}), true, undefined, false, null, false, undefined, undefined, false, undefined, false, true), "bootstrap", false],
-    [rolePhase(at({ lastResult: "main_red" }), true), "mainred", false],
     [rolePhase(at({ consecutiveErrors: 9 }), true), "failing", false],
     [rolePhase(at({ nextRunAt: now + 600_000 }), true), "sleeping", false],
     [rolePhase(at({ nextRunAt: now - 1_000 }), true), "queued", false],
@@ -83,7 +82,6 @@ test("every phase label rolePhase renders maps to a known status on the page", (
   assert.equal(model.phaseInfo("working 3m12s · turn 4 · ctx 18.2k · bash npm test").detail, "3m12s · turn 4 · ctx 18.2k · bash npm test");
   assert.equal(model.phaseInfo("merging 1m · checking").detail, "1m · checking");
   assert.equal(model.phaseInfo("waiting to start 2m").detail, "for 2m");
-  assert.equal(model.phaseInfo("main's check is failing").detail, "change pinned until main goes green");
   // The per-role cap's label reads with the other held states (amber) and its own detail.
   const cap = model.phaseInfo("waiting: daily cap spent");
   assert.deepEqual([cap.label, cap.tone, cap.live], ["Waiting", "amber", false], "waiting: daily cap spent reads like waiting: budget spent");
@@ -126,7 +124,6 @@ test("the page's role order is status-model's, rank by rank", () => {
     { role: "vetted-v", phase: "approved, waiting to merge", lastRunEndedAt: t(4) },
     { role: "parked-p", phase: "waiting to start 10s", lastRunEndedAt: t(6) },
     { role: "never-ran", phase: "stopped", lastRunEndedAt: null },
-    { role: "main-red", phase: "main's check is failing", lastRunEndedAt: t(0) },
     { role: "broken", phase: "failing", lastRunEndedAt: t(2) },
     { role: "held", phase: "paused", lastRunEndedAt: t(9) },
     { role: "timed", phase: "paused · resumes in 2m", lastRunEndedAt: t(8) },
@@ -139,7 +136,7 @@ test("the page's role order is status-model's, rank by rank", () => {
     "director", // its own live work, outside the permit-holder group
     "working-b", "landing-x", "reviewing-a", // live work, newest run first, never-ran last
     "parked-p", "vetted-v", // waiting in the pipeline
-    "broken", "main-red", // needs attention
+    "broken", // needs attention
     "held", "timed", "capped", "broke", "bootstrapped", // paused, newest run first
     "queued-z", "sleepy", "never-ran", // idle
   ]);

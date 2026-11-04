@@ -28,7 +28,6 @@ export const OUTCOME_CLASS: Partial<Record<RunResult, "merged" | "no_change" | "
   review_error: "error",
   merge_conflict: "error",
   merge_blocked: "error",
-  main_red: "error",
   error: "error",
   quiet_killed: "error",
   aborted: "error",
@@ -79,15 +78,14 @@ function sumMs(classes: TimeSpendRow["classes"]): number {
 /** The loss-cause cut, like ERROR_TOP above: the five most expensive causes by time. */
 const LOSS_TOP = 5;
 
-/** The raw results whose loss attributes to a cluster — an error, an abort, a quiet kill, or
- * a red-main skip, each carrying its own message on the run_end (main_red's is the
- * redMainMessage the error-clusters section already itemizes, BUGS.md 2026-10-07). A queued
- * run's merge outcomes are owned by the joins below instead: review_error through its
+/** The raw results whose loss attributes to a cluster — an error, an abort, or a quiet kill,
+ * each carrying its own message on the run_end. A queued run's merge outcomes are owned by the
+ * joins below instead: review_error through its
  * matching `review_failed` message, review-rejected through its review reasons, and
  * merge_conflict/merge_blocked by the result itself (BUGS.md 2026-10-10). (A raw
  * `user_aborted` run_end is also error-class but is not in this set, so it stays out of the
  * ranking.) */
-const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "quiet_killed", "main_red"]);
+const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "quiet_killed"]);
 
 /** A loss cause while collecting; `roles` is a set until the final sort. */
 interface LossDraft {

@@ -41,7 +41,6 @@ test("a nameless pre-check failure that also fails main's tip goes on to review"
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
     assert.equal(result.decision, "approved");
-    assert.equal(result.mainRed, undefined, "no red-main hold: the tip was asked and failed too");
     // The change's check ran twice; main's gate command ran once, in the attribution worktree.
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "gate:failed"]);
     assert.ok(
@@ -80,7 +79,6 @@ test("a gate failure of a known failure plus another test is rejected for the ot
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
     assert.equal(result.decision, "rejected");
-    assert.equal(result.mainRed, undefined, "not kept: main's red does not explain Y");
     assert.ok(!warningMessages(root).some((m) => m.includes("known failures")));
     const reasons = state.lastReview?.reasons ?? [];
     assert.match(reasons.at(-1) ?? "", /^main [0-9a-f]{8} is red too, but these failures are this change's own: Y$/);
@@ -97,6 +95,5 @@ test("a gate failure naming no test goes on to review when main's gate command f
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
     assert.equal(result.decision, "approved");
-    assert.equal(result.mainRed, undefined);
   });
 });

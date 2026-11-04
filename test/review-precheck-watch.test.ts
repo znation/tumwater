@@ -103,7 +103,6 @@ test("a twice-failed gate whose base the watch checked red is rejected for the f
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config: WATCH_CONFIG }, state);
     assert.equal(result.decision, "rejected", "main fails Y, not X: X is the change's own");
-    assert.equal(result.mainRed, undefined, "a red main does not hold the change");
     assert.equal(state.lastReview?.reasons.at(-1), mainRedNotTheseFailures(red, ["X"]));
     assert.equal(baselineRuns(root), watched + 1, "main's check ran fresh at its tip");
   });
@@ -123,7 +122,6 @@ test("a twice-failed gate on a red main that names no test goes on to review", a
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config: WATCH_CONFIG }, state);
     assert.equal(result.decision, "approved", "main's gate command fails too: the failure is main's");
-    assert.equal(result.mainRed, undefined);
     assert.deepEqual(gateRuns(root), ["failed", "failed", "failed"], "the gate command ran at main's tip");
   });
 });
@@ -178,7 +176,6 @@ test("a failing test the re-run finds failing on main's tip too is main's, and t
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config: RERUN_CONFIG }, state);
     assert.notEqual(result.decision, "rejected");
-    assert.equal(result.mainRed, undefined, "not kept either");
     assert.equal(baselineRuns(root), watched, "main's full check did not run");
     assert.deepEqual(rerunRuns(root), ["failed"]);
     assert.ok(

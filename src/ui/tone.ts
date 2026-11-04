@@ -39,7 +39,6 @@ export function resultTone(result: string | undefined | null): Tone | undefined 
     case "merge_conflict":
     case "merge_blocked":
     case "review_error":
-    case "main_red":
       return "red";
     case "refused":
     case "rejected":
@@ -62,7 +61,7 @@ type EventKind = "landing" | "problem" | "attention" | "info" | "routine";
  * dashboard's browser twin (gui-client-model.ts interpolates it into its script, both for
  * eventKind and for resultWhy's "does this result carry an error" check), so a newly problem
  * result cannot be classified on one surface and not the other. */
-export const PROBLEM_RESULTS: readonly RunResult[] = ["refused", "rejected", "review_error", "merge_conflict", "merge_blocked", "error", "aborted", "quiet_killed", "main_red"];
+export const PROBLEM_RESULTS: readonly RunResult[] = ["refused", "rejected", "review_error", "merge_conflict", "merge_blocked", "error", "aborted", "quiet_killed"];
 
 /** The named event types that are routine bookkeeping — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */

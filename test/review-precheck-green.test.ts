@@ -81,7 +81,6 @@ test("a repeat nameless failure asks the gate command at main's tip fresh, not i
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
     assert.equal(result.decision, "approved");
-    assert.equal(result.mainRed, undefined, "main's tip fails the same check, so it is not held");
     assert.deepEqual(
       buildCheckEvents(root),
       ["gate:failed", "gate:failed", "gate:failed"],

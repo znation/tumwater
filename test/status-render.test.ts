@@ -280,17 +280,6 @@ test("rolePhase shows failing for idle roles stuck on an error streak, not sleep
   assert.match(out, /feature\s+failing/);
 });
 
-test("renderStatus shows the main-red blockage in a blocked role's state cell and last-result line", () => {
-  const snap = snapshotWith([
-    { role: "feature", lastResult: "main_red", lastSummary: "code merges blocked until main is green" },
-    { role: "bugfix" }, // exempt roles keep their ordinary phase
-  ]);
-  const out = renderStatus(tmpdir(), { ...snap, running: true });
-  assert.match(out, /feature\s+main's check is failing/);
-  assert.match(out, /main's check is failing — code merges blocked until main is green/);
-  assert.match(out, /bugfix\s+due/);
-});
-
 test("renderStatus shows waiting: budget spent in idle roles' state cells while the cap is reached", () => {
   const root = tmpdir();
   // Spend below the cap: ordinary labels.
@@ -367,14 +356,13 @@ test("renderStatus shows paused in idle roles' state cells ahead of waiting: bud
   assert.match(unpaused, /feature\s+due/);
   assert.doesNotMatch(unpaused, /\bpaused\b/);
 
-  // Marker present with the cap also reached and main red: idle roles read `paused`
-  // ahead of both; the director keeps its own phase. (The last-result column still carries
-  // the raw main_red string — only the state cell is overridden.)
+  // Marker present with the cap also reached: idle roles read `paused` ahead of the
+  // budget label; the director keeps its own phase.
   const paused = renderStatus(
     root,
     {
       ...snapshotWith(
-        [{ role: "feature", lastResult: "main_red" }, { role: "director" }],
+        [{ role: "feature" }, { role: "director" }],
         { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: null },
         true,
       ),
@@ -383,7 +371,6 @@ test("renderStatus shows paused in idle roles' state cells ahead of waiting: bud
   );
   assert.match(paused, /feature\s+paused/);
   assert.doesNotMatch(paused, /waiting: budget spent/);
-  assert.doesNotMatch(paused, /feature\s+main's check is failing/);
   assert.match(paused, /director\s+ready for messages/);
 });
 

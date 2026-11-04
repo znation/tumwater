@@ -426,101 +426,11 @@ test("rolePhase reads waiting: daily cap spent for idle roles held by their own 
   assert.equal(roleRank("waiting: daily cap spent"), 3);
 });
 
-test("rolePhase shows main red for idle roles whose last run read main red", () => {
-  // The label explains why the role keeps waking and merge nothing — ahead of its
-  // sleep/queue state, like waiting: budget spent.
-  const s = freshRunnerState("feature");
-  s.lastResult = "main_red";
-  assert.equal(rolePhase(s, true), "main's check is failing", "queued role reads main red");
-  s.nextRunAt = Date.now() + 3_600_000;
-  assert.equal(rolePhase(s, true), "main's check is failing", "sleeping role reads main red too");
 
-  // Other results keep their ordinary labels; a green wake overwrites lastResult and self-corrects.
-  const other = freshRunnerState("feature");
-  other.lastResult = "no_change";
-  assert.equal(rolePhase(other, true), "due");
 
-  // In-flight runs are untouched (the label describes the finished run only).
-  const running = freshRunnerState("feature");
-  running.running = true;
-  running.lastResult = "main_red";
-  assert.equal(rolePhase(running, true), "working");
 
-  // A stopped orchestrator still reads stopped.
-  assert.equal(rolePhase(s, false), "stopped");
-});
 
-// BUGS.md 2026-09-30 — a main_red verdict outlived main's recovery: the phase came from the
-// role's own last run result and nothing compared it with main's newer green check, so the
-// GUI raised "main is red — 1 role is blocked" while the sidebar read "Main green". Main's
-// newest merge-scope check (mainCheck) is fresher team-level evidence; only a PASSED one
-// stamped after the red run ended retires the label.
-test("rolePhase retires a stale main red when main's newest check passed after it", () => {
-  const s = freshRunnerState("feature");
-  s.lastResult = "main_red";
-  s.lastRunEndedAt = Date.now() - 300_000; // the red run ended 5m ago
-  s.nextRunAt = Date.now() + 3_600_000; // and its next run is an hour away
-  // A green merge-scope check merged AFTER the red run: main is green now, so the label
-  // falls through to the ordinary sleep state and the banner never raises.
-  assert.match(
-    rolePhase(s, true, undefined, false, undefined, false, undefined, { status: "passed", at: Date.now() - 60_000 }),
-    /^sleeping/,
-    "a newer passed check is fresher evidence than the role's own red",
-  );
-  // A passed check from BEFORE the red run says nothing about main now.
-  assert.equal(
-    rolePhase(s, true, undefined, false, undefined, false, undefined, { status: "passed", at: Date.now() - 600_000 }),
-    "main's check is failing",
-    "a check older than the red run keeps the blockage",
-  );
-  // A newer failed check means main is genuinely still red.
-  assert.equal(
-    rolePhase(s, true, undefined, false, undefined, false, undefined, { status: "failed", at: Date.now() - 60_000 }),
-    "main's check is failing",
-  );
-  // A skipped check is not green evidence either.
-  assert.equal(
-    rolePhase(s, true, undefined, false, undefined, false, undefined, { status: "skipped", at: Date.now() - 60_000 }),
-    "main's check is failing",
-  );
-  // No recorded run end: the comparison cannot be made, so the blockage stands.
-  const undated = freshRunnerState("feature");
-  undated.lastResult = "main_red";
-  assert.equal(
-    rolePhase(undated, true, undefined, false, undefined, false, undefined, { status: "passed", at: Date.now() }),
-    "main's check is failing",
-    "no run end keeps the blockage (conservative)",
-  );
-  // Without a mainCheck at all the old behavior stands (direct callers, hand-built states).
-  assert.equal(rolePhase(s, true), "main's check is failing");
-});
 
-// The same staleness through the single-homed row derivation and the alert it feeds: the
-// banner (teamAlerts) reads the rendered phase, so a retired phase must raise no mainred.
-test("roleRowCells retires the stale main red and teamAlerts raises no banner for it", () => {
-  const s = freshRunnerState("feature");
-  s.lastResult = "main_red";
-  s.lastRunEndedAt = Date.now() - 300_000;
-  const snap = snapshotWith([{ role: "feature", lastResult: "main_red", lastRunEndedAt: s.lastRunEndedAt }]);
-  snap.running = true;
-  snap.mainCheck = { status: "passed", at: Date.now() - 60_000 };
-  const cells = roleRowCells(snap, tmpdir(), s);
-  assert.notEqual(cells.phase, "main's check is failing", "the row derivation sees the snapshot's newer green check");
-  assert.equal(
-    teamAlerts(snap, [], [{ role: "feature", phase: cells.phase, errorStreak: false, inFlight: false }], Date.now())
-      .some((a) => a.key === "mainred"),
-    false,
-    "no 'main is red' banner for a role whose blockage main has already recovered from",
-  );
-  // And the banner still raises while the phase genuinely reads main red (an older check).
-  snap.mainCheck = { status: "passed", at: Date.now() - 600_000 };
-  const stale = roleRowCells(snap, tmpdir(), s).phase;
-  assert.equal(stale, "main's check is failing");
-  assert.ok(
-    teamAlerts(snap, [], [{ role: "feature", phase: stale, errorStreak: false, inFlight: false }], Date.now())
-      .some((a) => a.key === "mainred"),
-  );
-});
 
 test("rolePhase shows failing for a quiet-kill streak at the give-up threshold", () => {
   // BUGS.md 2026-09-18: a role stuck retrying a session the backend will not schedule looked
@@ -610,18 +520,12 @@ test("rolePhase appends the per-role pause resume countdown only for a live dead
   assert.equal(phaseTone("paused · resumes in 2m"), "yellow", "the timed pause keeps the paused yellow tone");
 });
 
-test("rolePhase prefers paused over waiting: budget spent and main red", () => {
+test("rolePhase prefers paused over waiting: budget spent", () => {
   const s = freshRunnerState("feature");
-  // All three hold: the user pause wins — while both gates block, `paused` names the fix.
-  s.lastResult = "main_red";
+  // The user pause wins — while both gates block, `paused` names the fix.
   assert.equal(rolePhase(s, true, undefined, true, undefined, true), "paused");
 
-  // User-paused + main-red without budget reads paused too.
-  const red = freshRunnerState("feature");
-  red.lastResult = "main_red";
-  assert.equal(rolePhase(red, true, undefined, false, undefined, true), "paused");
-
-  // Without the user pause the other labels keep their own precedence (budget before main red).
+  // Without the user pause the budget label keeps its own precedence.
   assert.equal(rolePhase(s, true, undefined, true), "waiting: budget spent");
 });
 

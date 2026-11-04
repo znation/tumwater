@@ -59,7 +59,7 @@ export function namedFailures(red: { failingTests?: string[] }): string[] {
 }
 
 /** The red-main message's shared spine — the SHA, script, and failure headline a red baseline
- * carries, phrased once so the once-per-SHA warning and the main_red outcome cannot drift apart
+ * carries, phrased once so the once-per-SHA warning and the event's text cannot drift apart
  * over what main looks like. `action` is the consequence each caller names. */
 function redMainMessage(red: { sha: string; script?: string; outputTail?: string[] }, action: string): string {
   const firstLine = failureHeadline(red.outputTail);

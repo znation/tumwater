@@ -31,7 +31,6 @@ const RESULT_ORDER: Partial<Record<RunResult, number>> = {
   review_error: 6,
   merge_conflict: 7,
   merge_blocked: 8,
-  main_red: 9,
   error: 10,
   quiet_killed: 11,
   aborted: 12,
@@ -338,11 +337,7 @@ function pushDeltas(lines: string[], data: FailureReportData): void {
 /** The five cluster sections in their current order, plus the post-merge-rejection line between
  * the review/rejection clusters and the merge-failure section. */
 function pushClusterSections(lines: string[], data: FailureReportData): void {
-  // The title restates the section's contract: its total now covers the Outcome table's error
-  // column AND its main_red cells (the baseline gate's own cause rides the run, BUGS.md
-  // 2026-09-28), so an operator cross-checking counts against the tables above is not misled
-  // by a title that reads as the error column alone.
-  renderClusters(lines, "Top error clusters (red-main causes included)", data.errors, "run errors");
+  renderClusters(lines, "Top error clusters", data.errors, "run errors");
   renderClusters(lines, "Top warning clusters", data.warnings, "warnings");
   renderClusters(lines, "Top review failure clusters", data.reviewFailures, "review failures");
   renderClusters(lines, "Top rejection clusters", data.rejections, "rejections");
