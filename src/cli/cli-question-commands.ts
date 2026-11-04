@@ -317,6 +317,7 @@ export async function cmdQuestions(root: string, args: string[], seams: FollowVi
     if (inv.jsonFlag) failFollowJsonRival("questions --json");
     if (inv.show !== undefined) fail("-f/--follow repaints the list; --show prints one question in full — drop one of them");
     if (inv.words.length > 0) fail("-f/--follow repaints the list; questions answer writes one change — drop the follow");
+    if (inv.file !== undefined) fail("--file only applies to questions answer <n>");
   }
   if (inv.show !== undefined) {
     sayShownQuestion(root, inv);

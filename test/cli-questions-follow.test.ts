@@ -254,6 +254,19 @@ test("questions -f --show is refused with no frame", async () => {
   }
 });
 
+test("questions --answered -f --file is refused like the one-shot list", async () => {
+  const repo = await seedQuestionsRepo(ANSWERED_ONE, "questions follow answered file");
+  const cap = captureStdout();
+  try {
+    const err = await expectFailAsync(() => cmdQuestions(repo, ["--answered", "-f", "--file", "answer.md"], { ppid: () => 4242, intervalMs: 5 }));
+    assert.match(err, /--file only applies to questions answer <n>/);
+    assert.ok(!cap.out().includes(CLEAR), "no clear-screen printed");
+    assert.ok(!cap.out().includes("Cap the spend?"), "no frame printed");
+  } finally {
+    cap.restore();
+  }
+});
+
 test("questions answer 1 -f keeps the follow token as decision text", async () => {
   const repo = await seedQuestionsRepo(OPEN_ONE, "questions follow answer prose");
   // The answer form's decision is free-form prose, so `-f` past the question's number is a
