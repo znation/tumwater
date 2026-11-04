@@ -120,8 +120,9 @@ function parseListArgs(args: string[], command: string): {
 
 /** The `--done` half of the list shell's frame builder: the newest finished entries (BUGS.md
  * ## Fixed or PLANS.md ## Done), filtered by `--grep`, limited by `-n`, as the exact `--json`
- * document or prose `say` prints — re-read per call so a follow frame renumbers as a fresh
- * list would. */
+ * payload or prose text — re-read per call so a follow frame renumbers as a fresh list would.
+ * The caller serializes the payload through sayJson (one-shot, byte-exact) or the follow's
+ * frame wrapper; only prose passes through say's terminal sanitization. */
 function renderFinishedList(
   root: string,
   fileName: string,
@@ -129,7 +130,7 @@ function renderFinishedList(
   grep: string | null,
   count: number | null,
   json: boolean,
-): string {
+): string | object {
   const numbered = (bugSection ? fixedBugEntries(root) : donePlanEntries(root)).map((entry, i) => ({
     entry,
     position: i + 1,
@@ -141,19 +142,15 @@ function renderFinishedList(
   const older = matches.length - shown.length;
   if (json) {
     const dateRe = bugSection ? FIXED_DATE_RE : DONE_DATE_RE;
-    return JSON.stringify(
-      {
-        entries: shown.map(({ entry: e, position }) => ({
-          position,
-          title: e.title,
-          body: e.body,
-          completedOn: completionDate(e.title, dateRe),
-        })),
-        older,
-      },
-      null,
-      2,
-    );
+    return {
+      entries: shown.map(({ entry: e, position }) => ({
+        position,
+        title: e.title,
+        body: e.body,
+        completedOn: completionDate(e.title, dateRe),
+      })),
+      older,
+    };
   }
   const what = bugSection ? "fixed bugs" : "done plans";
   if (shown.length === 0) return pattern === null ? `no ${what}` : `no ${what} match "${pattern}"`;
@@ -284,7 +281,7 @@ function activeListProse(view: ActiveListView, fileName: string, command: string
 
 /** The active half of the list shell's frame builder: the open entries with their holds,
  * in-progress claim marks and age suffixes, optionally reduced to the ready ones, as the exact
- * `--json` document or prose `say` prints, grouping a plan's blocked parts into one line
+ * `--json` payload or prose text, grouping a plan's blocked parts into one line
  * (groupBlockedSeries) — re-read per call so a follow frame renumbers as a fresh list would.
  * Orchestrates the four named phases below — the read-and-filter view (activeListView), the
  * `--json` body (activeListJson), the empty-list prose line (activeListEmptyLine) and the
@@ -298,9 +295,9 @@ function renderActiveList(
   grep: string | null,
   ready: boolean,
   json: boolean,
-): string {
+): string | object {
   const view = activeListView(root, bugSection, sectionTitle, grep, ready);
-  if (json) return JSON.stringify(activeListJson(view), null, 2);
+  if (json) return activeListJson(view);
   const empty = activeListEmptyLine(view, command);
   if (empty !== null) return empty;
   return activeListProse(view, fileName, command, bugSection);
@@ -347,8 +344,8 @@ export async function listAndAnnounce(
 ): Promise<void> {
   const { json, done, ready, count, grep, follow, rest } = parseListArgs(args, command);
   // rejectUnknownArgs names a stray positional and an unknown flag with this command's (empty)
-  // valid-flag list: the vocabulary a list invocation accepts is exactly --list and --json,
-  // both consumed above.
+  // valid-flag list: every flag a list invocation accepts is consumed above, so anything left
+  // is outside the vocabulary.
   rejectUnknownArgs(command, rest, []);
   refuseTeamWorkspace(root);
   if (count !== null && !done) fail("-n needs --done (it limits the finished entries listed)");
@@ -356,15 +353,24 @@ export async function listAndAnnounce(
   if (ready && done) fail("--ready needs the active list (finished entries carry no holds)");
   if (follow && json) failFollowJsonRival(`${command} --list --json`);
   const bugSection = sectionTitle === "Open";
-  const frame = (): string =>
+  const build = (): string | object =>
     done
       ? renderFinishedList(root, fileName, bugSection, grep, count, json)
       : renderActiveList(root, fileName, command, bugSection, sectionTitle, grep, ready, json);
   if (follow) {
-    await followView(frame, seams);
+    // follow refuses --json above, so every frame is prose here; stringify defensively for the
+    // union the one-shot branch shares with it.
+    await followView(() => {
+      const frame = build();
+      return typeof frame === "string" ? frame : JSON.stringify(frame, null, 2);
+    }, seams);
     return;
   }
-  say(frame());
+  const frame = build();
+  // Prose goes through say's terminal sanitization; the JSON document keeps its raw bytes
+  // through sayJson, the data-surface rule every --json command follows.
+  if (typeof frame === "string") say(frame);
+  else sayJson(frame);
 }
 
 /** The shell of `bug --show` and `plan --show`: `--show <n>` (once), an optional `--json`
