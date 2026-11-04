@@ -1,8 +1,8 @@
-/** The repaint loop every `-f/--follow` view shares (`status -f`, `queue -f`,
- * `backlog -f`, `report -f`, `diff -f`): render once, then repaint on a fixed interval until
- * Ctrl+C or the process that started the command exits. Lifted out of
- * cli-query-commands.ts when `report -f` landed so the follow views have one leaf
- * home instead of a per-command copy. */
+/** The repaint loop every `-f/--follow` view shares — `status -f`, `report -f`, `prompt
+ * --list -f`, and the rest all drive it (grep for `followView`): render once, then repaint on a
+ * fixed interval until Ctrl+C or the process that started the command exits. Lifted out of
+ * cli-query-commands.ts when `report -f` landed so the follow views have one leaf home instead
+ * of a per-command copy. */
 
 import { expectedSupervisorPid, startParentDeathWatch } from "../process/supervisor.js";
 import { stripTerminalControls } from "../text/text.js";
