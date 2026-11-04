@@ -601,27 +601,6 @@ _None yet._
 
 **Tests.** Run test/invariants-doc.test.ts and test/docs-links.test.ts, then the gate.
 
-### Subtract verify collapse, part 2/5: The merge queue drains one change at a time, gating the queue head through the existing verify path before it merges (planned 2026-11-03 by the plan role, splitting the 2026-10-31 `Subtract part 3c/7` after feature held it too large for one run; requires Subtract verify collapse part 1/5 landed, so queue health and tiers are importable from their new homes; the verify stage is not yet deleted from the types — part 4/5 removes it — touches src/merge/merge-drain.ts src/merge/merge-pipeline.ts test/merge-drain.test.ts test/merge-requeue.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts)
-
-**Goal.** A poll takes the first queued change, runs the existing gate for that one change inside the merge task, and merges it if the gate clears; the next queued change waits for the next poll. The parallel verify/approve fan-out stops, but the verify modules still exist for part 4/5 to delete.
-
-**Approach.**
-- In `drainMergeQueue`, call `dropTornHead` directly, then `drainPostReviews` and `drainMerge`; stop calling `drainVerify`. Keep `settleAbortedApproved` working for any map it still reads in this part.
-- In `drainMerge`, take the first queued file whose sha main does not already contain (using the moved `mergedIntoMain`; drop such an entry with a warning as `drainVerify` did), build one `ApprovedMerge`-shaped pick from `resolveAuthor`, and start the merge task. Do not read or populate `p.approved`.
-- In `startMerge`, before `mergeApprovedChange`, run `verifyRequest` with the same author wiring the merge uses; an approval proceeds to `mergeApprovedChange` with the verdict's `sha`/`verifiedHead`, and any other verdict settles through `settleMergeOutcome` and drops the entry exactly as the verify stage did. The task still holds the merge slot and still settles `aborted`/`conflict` outcomes through the existing merge path.
-- Leave `startVerify`, `drainVerify`, `p.verifying` and `p.approved` in the types for this part; they are now unpopulated by the drain.
-
-**Files touched.** src/merge/merge-drain.ts src/merge/merge-pipeline.ts test/merge-drain.test.ts test/merge-requeue.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts
-
-**Acceptance criteria.**
-- A poll with two queued changes starts one merge task: it gates and merges the first change, and the second remains queued (with its pin) until a later poll; no separate verification task is started.
-- A queued change whose gate rejects, fails or is withdrawn never reaches `mergeToMain`; its entry is dropped and its outcome written as before.
-- A queue entry main already contains is dropped without a gate run; a torn head is still dropped and the healthy entries behind it stay queued.
-- A merge that ends in a conflict, block or user abort keeps the existing pin/entry semantics.
-- `npm run test:gate` passes.
-
-**Tests.** Update test/merge-drain.test.ts and the pipeline cases that drain the queue to assert one gated merge per poll and no verify task. Keep test/merge-requeue.test.ts's `drainVerify` unit cases for part 4/5, but make its queue-drain cases drive `drainMergeQueue`. Run those files plus test/merge-pipeline.test.ts and test/merge-pipeline-2.test.ts, then the gate.
-
 ### Subtract, part 3d/7: `tumwater queue`, its cancel/top keys and the browser queue controls go (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract verify collapse part 4/5 landed; touches src/cli/cli-query-commands.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/ui/tui/tui-pane-pending.ts src/ui/tui/tui-pane-pending-selection.ts src/ui/tui/tui-pane-transcript.ts src/merge/merge-cancel.ts src/merge/merge-top.ts src/merge/merge-queue-render.ts docs/cli.md test/cli-queue.test.ts test/cli-queue-follow.test.ts test/gui-queue-cancel.test.ts test/gui-queue-top.test.ts test/merge-cancel.test.ts test/merge-top.test.ts test/tui-pane-pending.test.ts test/tui-operator-keys.test.ts)
 
 **Goal.** The operator stops steering a queue that becomes a lock and a fast-forward: delete the `tumwater queue` command, its `--cancel` and `--top` flags, the GUI Merge queue card's Cancel/Move-to-top handlers, the TUI pending pane's queue rows and keys, and the three modules that implement cancel/top/queue rendering. The queue reader itself stays for status, doctor and the CLI surfaces this part does not own until part 3f.
