@@ -11,8 +11,11 @@ import {
   RESYNC_INSTALL_FLAG,
   DROP_BROKEN_PINS_FLAG,
   RETIRE_LEFTOVERS_FLAG,
+  FOLLOW_FLAG,
+  hasFollowFlag,
 } from "./cli-flag-specs.js";
-import { say, sayJsonOrRender } from "./cli-output.js";
+import { fail, say, sayJsonOrRender } from "./cli-output.js";
+import { followView, type FollowViewSeams } from "./follow-view.js";
 import { parseDoctorChecks, peelPositionals } from "./cli-command-args.js";
 import { loadConfigSafe } from "../config/config.js";
 
@@ -102,12 +105,37 @@ function doctorPayload<T extends object>(payload: T, parts: DoctorOptionalParts)
 /** `tumwater doctor`: report what in the environment is keeping the team from running, and
  * run the optional repair side-effects. No ready-repo gate: doctor's job is to report WHY the
  * environment isn't ready, so it must run outside a git repo and print fail lines rather than
- * throwing. */
-export async function cmdDoctor(root: string, args: string[]): Promise<void> {
+ * throwing. `-f/--follow` reruns the checks every couple of seconds and repaints the report
+ * until Ctrl+C or the process that started it exits — the live form is read-only, so `--json`
+ * and every repair flag are refused with it (the repaint can never repair anything).
+ * `seams` is the follow view's test seam (interval and parent-death watch), unused by the
+ * one-shot forms. */
+export async function cmdDoctor(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   const { positionals: checkNames, rest: doctorFlags } = peelPositionals(args);
-  rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG, DROP_BROKEN_PINS_FLAG, RETIRE_LEFTOVERS_FLAG]);
+  rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG, DROP_BROKEN_PINS_FLAG, RETIRE_LEFTOVERS_FLAG, FOLLOW_FLAG]);
+  const follow = hasFollowFlag(args);
   const only = parseDoctorChecks(checkNames);
   const { runDoctor } = await import("../doctor/doctor.js");
+  if (follow && args.includes("--json"))
+    fail("doctor --json prints one document; -f/--follow repaints a live view — drop one of them");
+  if (follow) {
+    const repair = ["--kill-orphans", "--commit-backlog", "--resync-install", "--drop-broken-pins", "--retire-leftovers"].find((f) =>
+      args.includes(f),
+    );
+    if (repair !== undefined) fail(`-f/--follow repaints the report read-only; ${repair} repairs — drop one of them`);
+    // The live form is the one-shot report repainted: each frame re-runs the named checks
+    // (or all) afresh, and followView serializes a slow frame so ticks cannot stack.
+    await followView(
+      async () => {
+        const { renderDoctor, renderDoctorProblems } = await import("../doctor/doctor-render.js");
+        const report = await runDoctor(root, undefined, undefined, only);
+        return (args.includes("--problems") ? renderDoctorProblems : renderDoctor)(report);
+      },
+      seams,
+    );
+    return; // A Ctrl+C or parent-death end leaves process.exitCode untouched (the one-shot exit contract below is the one-shot's).
+  }
+  const { renderDoctor, renderDoctorProblems, problemsOnly } = await import("../doctor/doctor-render.js");
   const parts: DoctorOptionalParts = {
     orphanKill: await doctorKillOrphans(root, args),
     backlogCommit: await doctorCommitBacklog(root, args),
@@ -115,9 +143,6 @@ export async function cmdDoctor(root: string, args: string[]): Promise<void> {
     brokenPinDrop: await doctorDropBrokenPins(root, args),
     leftoverRetire: await doctorRetireLeftovers(root, args),
   };
-  const { renderDoctor, renderDoctorProblems, problemsOnly } = await import(
-    "../doctor/doctor-render.js"
-  );
   const report = await runDoctor(root, undefined, undefined, only);
   // --json prints the collector's own payload (the DoctorReport object), not a re-parse of
   // the render — the `report --json` precedent. The exit-code contract below holds in both

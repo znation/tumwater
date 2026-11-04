@@ -89,9 +89,13 @@ Usage:
                                    (merge runs and backlog tallies omitted); --until <duration>
                                    ends that window the given duration ago (requires --since);
                                    not combinable with --days
-  tumwater doctor [<check>...] [--json] [--problems] [--kill-orphans] [--commit-backlog] [--resync-install] [--drop-broken-pins] [--retire-leftovers]
+  tumwater doctor [<check>...] [-f/--follow] [--json] [--problems] [--kill-orphans] [--commit-backlog] [--resync-install] [--drop-broken-pins] [--retire-leftovers]
                                    Pre-flight check: node, git, repo, config, fallback
                                    model, pi, locks, update, orphans, macOS port leak
+                                   (-f/--follow reruns the named checks (or all) and repaints the report
+                                   every couple of seconds until Ctrl+C or its parent exits, composing with
+                                   check names and --problems; it refuses --json and every repair flag —
+                                   the live form is read-only);
                                    (read-only unless --kill-orphans, --commit-backlog
                                    or --resync-install or --drop-broken-pins or --retire-leftovers:
                                    --kill-orphans first kills the orphaned processes the orphans
