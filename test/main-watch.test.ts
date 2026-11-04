@@ -73,6 +73,11 @@ test("a doc-only commit on a checked head inherits green without a run", async (
   const checks = eventsOfType(root, "main_check");
   assert.equal(checks.length, 2);
   assert.equal(checks[1]?.status, "passed");
+  assert.equal(
+    checks[1]?.sha,
+    headSha(root),
+    "the green main_check keeps the doc tip's sha, not an earlier commit",
+  );
   assert.equal(checks[1]?.inherited, true);
   assert.equal(runsOf(counter), 1);
 });
