@@ -92,7 +92,7 @@ test("a fresh full run stamps checkedAt, and it survives a restart on green and 
   persistBaselineVerdicts(root);
   const green = await checkMainBaseline(wt, defaultConfig());
   const greenAt = green.baseline?.checkedAt;
-  assert.ok(greenAt === undefined || Number.isFinite(greenAt), "the observed green carries a checkedAt");
+  assert.ok(typeof greenAt === "number" && Number.isFinite(greenAt), "the observed green carries a checkedAt");
   const savedGreen = (savedGreens(root) as { greens: Array<{ sha: string; checkedAt?: number }> })
     .greens.find((g) => g.sha === headSha(root));
   assert.ok(savedGreen?.checkedAt === greenAt, "the saved green carries the same checkedAt");
@@ -103,7 +103,7 @@ test("a fresh full run stamps checkedAt, and it survives a restart on green and 
   sh(wt, "git", "commit", "-m", "bump");
   const red = await checkMainBaseline(wt, { ...defaultConfig(), check: { command: "exit 1" } }, undefined, true);
   const redAt = red.baseline?.checkedAt;
-  assert.ok(redAt === undefined || Number.isFinite(redAt), "the observed red carries a checkedAt");
+  assert.ok(typeof redAt === "number" && Number.isFinite(redAt), "the observed red carries a checkedAt");
   if (greenAt !== undefined && redAt !== undefined) assert.ok(redAt >= greenAt);
   const savedRed = (savedGreens(root) as { reds: Array<{ sha: string; checkedAt?: number }> })
     .reds.find((r) => r.sha === headSha(wt));
