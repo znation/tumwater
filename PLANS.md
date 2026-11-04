@@ -6,6 +6,216 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
+### No duplicate plans, part 1/6: A plan closed without being built is stamped `retired`, and every backlog reader that tells finished from open accepts it (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 2; independent of every other planned entry; edits only the clean role's text in role-catalog.ts, not the plan or feature charters parts 3/6, 4/6 and 6/6 edit; touches src/backlog/backlog.ts src/backlog/backlog-structure.ts src/backlog/backlog-parts.ts src/stage/stage-check.ts src/stage/stage-backlog-checks.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/backlog-eligibility.test.ts test/stage-check.test.ts test/doctor-backlog.test.ts)
+
+**Goal.** The backlog gets a closed-without-building state. A role can then retire a duplicate or disproved plan and leave an audit record. The clean role's stranded-entry repair must not stamp it `done`, and a `requires … landed` clause must not count it as built. Today the only ways out of `## Planned` are deletion (`plan --cancel`) and a `done` stamp. On 10-31 a steward-retired duplicate was moved back to `## Planned` and built again (`ea5adbbae`, `e99a97e40`, `bc908095e`).
+
+**Approach.**
+- The shape (plans/duplicate-plans.md, Decision 2):
+  - The heading carries `retired YYYY-MM-DD` with the same delimiters a `done` stamp uses (`…, retired 2026-11-05 by the plan role)` or `… — retired 2026-11-05`).
+  - The first body line is `**Retired YYYY-MM-DD by <role>: <evidence>**`.
+  - Beside `DONE_DATE_RE` in src/backlog/backlog.ts, export `RETIRED_DATE_RE` (`/\bretired (\d{4}-\d{2}-\d{2})/`) and `isRetiredTitle(title)`. `isRetiredTitle` is delimiter-introduced like backlog-structure.ts's `DONE_STAMP`, so prose such as "the retired 2026-10-30 entry" does not match.
+- `strandedPlanEntries` (src/backlog/backlog-structure.ts) treats a retired stamp like a done stamp in both directions:
+  - A `## Done` entry with `(planned …)` and a retired stamp is not stranded.
+  - A `## Planned` entry with a retired stamp is stranded: it was retired and never moved.
+- Add `retired` to `ENTRY_STAMP_META_SOURCE`'s verb list, so `stripEntryStamp` drops it like `done`. The dashboard's `splitTitle` twin interpolates the same source, so it needs no edit.
+- Export `FINISHED_PLAN_RE` (`/\b(?:done|retired) (\d{4}-\d{2}-\d{2})/`) beside `DONE_DATE_RE`. The two places that key finished PLANS.md entries pass it to `finishedKey`/`finishedTitle` instead of `DONE_DATE_RE`, so a retired copy and a done copy of one heading share a key. Those places are `finishedDuplicateFindings` (stage-backlog-checks.ts) and `archiveFindings` (stage-check.ts).
+- `archiveFindings` skips retired entries when it runs `acceptanceGrepFindings` over the plans a change finished. A retired plan was never built, so its acceptance greps are expected to fail.
+- `dependencyKnownParts` (src/backlog/backlog-parts.ts) skips done titles where `isRetiredTitle` holds. Then a `requires … landed` clause naming a retired part is dangling for both `planDependencyFinding` (staging) and the doctor's `plan dependencies` row (`planDependencyProblem`), and the retiring change must point its dependents at the survivor. Entry holds do not change: a dependent stays held while any still-planned entry carries the part label.
+- `DONE_DATE_RE` stays as it is, so the report's `featuresDone` and completion lags count only built plans.
+- In src/roles/role-catalog.ts, the clean role's `<backlog-structure>` paragraph gets one sentence: an entry under `## Done` with a retired stamp is finished; never add a `done` date to it.
+- docs/how-it-works.md "The backlog files" gains one paragraph: what retired means, its shape, and that `requires` does not count it as built.
+
+**Files touched.** src/backlog/backlog.ts src/backlog/backlog-structure.ts src/backlog/backlog-parts.ts src/stage/stage-check.ts src/stage/stage-backlog-checks.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/backlog-eligibility.test.ts test/stage-check.test.ts test/doctor-backlog.test.ts
+
+**Acceptance criteria.**
+- `strandedPlanEntries` returns nothing for a `## Done` entry headed `### X (planned 2026-11-01 by the plan role, retired 2026-11-04 by the plan role)`. It returns that entry when it sits under `## Planned`.
+- `isRetiredTitle` is true for both delimiter shapes and false for a heading whose prose mentions "the retired 2026-10-30 entry".
+- With `### S, part 1/2: … (…, retired 2026-11-04 …)` in PLANS-DONE.md, a planned `### S, part 2/2: … (…; requires S part 1/2 landed)` is reported dangling by `planDependencyProblems` and by `planDependencyFinding` when the change adds that clause. The same title stamped `done` is not reported.
+- `finishedKey(title, FINISHED_PLAN_RE)` gives the same key for one heading stamped `done` and stamped `retired`.
+- A change that moves a plan to `## Done` with a retired stamp gets no acceptance-grep finding from `stageCheckFindings`. The same move with a `done` stamp still runs its greps.
+- The report's `featuresDone` does not count a retired entry.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/backlog-structure.test.ts: the stranded cases and `stripEntryStamp` dropping `(…, retired …)`.
+- test/backlog-eligibility.test.ts: `planDependencyProblems` with retired and with done prerequisites.
+- test/stage-check.test.ts: `planDependencyFinding` naming a retired part, and a retired move skipping the acceptance greps.
+- test/doctor-backlog.test.ts: the `plan dependencies` row warns on it.
+- Run those files and the gate.
+
+### No duplicate plans, part 2/6: The plan role's stop count and its Needs-review check read `## Planned` as it will be once every unmerged change merges (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 1; independent of part 1/6; reads merge pins (`refs/tumwater/merge/<role>`) and role branches, never the merge queue, so Subtract parts 3e/7 and 3f/7 do not affect it; the edits to claims.ts, run-prompt.ts and runner-run.ts are a few lines each beside "Every commit is verified on main" parts 4k/3 and 4m/3's edits there, and whichever merges second rebases; touches src/backlog/backlog-pending.ts src/backlog/backlog-eligibility.ts src/scheduling/claims.ts src/orchestrator/orchestrator-poll.ts src/runner/runner-run.ts src/run/run-prompt.ts docs/how-it-works.md test/backlog-pending.test.ts test/claims.test.ts test/run-prompt.test.ts)
+
+**Goal.** A plan run must stop counting a plan that is on a merge pin or held on a branch as missing. It must also stop re-splitting an entry whose split is waiting to merge. From 10-30 20:30 to 11-04, 47 of 64 plan runs that queued a plan started while an earlier plan change was unmerged. `planBacklogFull` and the stop-target note read only main's `## Planned`, so the plan role kept running with a zero gap and re-planned the same top-ranked item: 8 functions got same-day duplicate refactor plans. "Subtract verify collapse" 2/5–5/5 and "Every commit is verified on main" 4k/4m/4n/3 were each split twice, because the first split's removal of the `Needs review` entry had not merged.
+
+**Approach.**
+- New src/backlog/backlog-pending.ts holds one snapshot per root of what unmerged changes do to PLANS.md `## Planned`.
+  - `refreshPendingPlans(root, mainBranch): Promise<void>` runs one `git for-each-ref --no-merged=<mainBranch> --format='%(refname) %(objectname)' refs/tumwater/merge/ refs/heads/tumwater/`.
+  - For each SHA not already in a SHA-keyed memo (commits never change), it reads the merge-base with main and checks whether PLANS.md changed (`git diff --name-only`). It then reads PLANS.md at the merge-base and at the SHA, and records a `PendingPlanChange`: `{ ref, role, sha, subject, added: BacklogEntry[], removedKeys: string[], changed: BacklogEntry[] }`. The keys come from `entryKey`; `changed` is an entry whose body differs, such as a lifted note.
+  - A branch whose tip is the same SHA as that role's pin counts once.
+  - Git failures leave the previous snapshot in place. A failure never throws into the poll.
+- Sync readers over the snapshot:
+  - `pendingPlanChanges(root)`.
+  - `projectedPlannedEntries(root)`: main's `plannedPlanEntries(root)` with each change applied in ref order. Drop `removedKeys`, replace `changed` bodies, and append `added` entries not already present by key.
+- `planBacklogFull` (src/scheduling/claims.ts) computes the eligible count and the `needs-review` check over `projectedPlannedEntries`. Use the same `entryHoldAgainst` against the projection's `plannedPartKeys`, and the same claimed-elsewhere rule `eligibleEntries` applies. Factor that loop out of `eligibleEntries` as `eligibleAmong(entries, parts, claims)` in backlog-eligibility.ts, so the two counts cannot drift. `eligibleEntries` itself, which feature's claims and line ranges read, keeps reading main.
+- Refresh points:
+  - `pollSchedule` in src/orchestrator/orchestrator-poll.ts awaits `refreshPendingPlans` once per poll before `pollDeferralInputs`.
+  - `runPhase` in src/runner/runner-run.ts awaits it before `planBacklogFull`, so a run admitted right after a pin is written sees that pin.
+- `collectRoleDirectives`'s plan stop-target note in src/run/run-prompt.ts reports the projected count (the same figure that defers the run). When the projection adds entries, it says how many are unmerged.
+- docs/how-it-works.md: one sentence in the plan role's scheduling description.
+
+**Files touched.** src/backlog/backlog-pending.ts src/backlog/backlog-eligibility.ts src/scheduling/claims.ts src/orchestrator/orchestrator-poll.ts src/runner/runner-run.ts src/run/run-prompt.ts docs/how-it-works.md test/backlog-pending.test.ts test/claims.test.ts test/run-prompt.test.ts
+
+**Acceptance criteria.**
+- In a temp repo, main's `## Planned` holds 1 eligible entry, and `refs/tumwater/merge/plan` points at a commit adding a second. With one feature instance (target 2), `planBacklogFull` is true after `refreshPendingPlans`. Without the pin it is false.
+- Main holds a `Needs review … too large` entry, and the plan role's branch `tumwater/plan` is ahead of main with a commit that removes it and adds two split parts. `planBacklogFull` no longer reports a `needs-review` hold, and the projection lists the two parts.
+- A pin already contained in main contributes nothing. A pin whose PLANS.md cannot be read contributes nothing and leaves the earlier snapshot.
+- A second `refreshPendingPlans` with unchanged refs re-reads no commit: it runs only the one `for-each-ref`.
+- The plan prompt's stop-target note shows the projected count.
+- `eligibleEntries(root, "feature")` is unchanged by a pending change.
+- `npm run test:gate` passes.
+
+**Tests.**
+- New test/backlog-pending.test.ts, against a temp git repo:
+  - a pinned addition;
+  - a held-branch split that removes a `Needs review` entry;
+  - a contained pin;
+  - a branch and a pin on one SHA;
+  - the memo (an injectable git runner parameter on `refreshPendingPlans` is fine for counting calls).
+- test/claims.test.ts: `planBacklogFull` over the projection.
+- test/run-prompt.test.ts: the stop-target note's count.
+- Run those files and the gate.
+
+### No duplicate plans, part 3/6: The plan role's prompt lists what unmerged changes add to and remove from `## Planned`, and its charter treats them as already planned (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 1; requires No duplicate plans part 2/6 landed; touches src/backlog/backlog-pending.ts src/run/run-prompt.ts src/roles/role-catalog.ts test/backlog-pending.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts)
+
+**Goal.** Part 2/6 stops the scheduler from admitting a plan run that has nothing to plan. This part makes an admitted run see the unmerged plans, so its dedupe step (the plan charter's step 3: "confirm with grep … that no Planned entry … already covers it") also checks them. It also keeps the run from splitting or replanning an entry that an unmerged change already splits or removes. The `<backlog-index>` block is rendered from main, and every role's prompt shares it with line ranges into main's PLANS.md, so this is a separate block, not a change to the index.
+
+**Approach.**
+- Add `renderPendingPlansBlock(root): string | undefined` to src/backlog/backlog-pending.ts. It returns undefined when `pendingPlanChanges(root)` is empty.
+- Otherwise it lists one line per unmerged change: `<role> <short sha>: <subject>`. Under each line it lists that change's effects on `## Planned`: `adds "<title>"`, `removes "<title>"` and `edits "<title>"`.
+- Titles go through `stripEntryStamp`, like the index block's rows. Cap the block at 40 lines and end with a count of anything omitted.
+- `collectRoleDirectives` (or a sibling collector, like `collectBacklogStructureBlock`) in src/run/run-prompt.ts adds the block for base role `plan` only.
+- The plan charter in src/roles/role-catalog.ts gets one bullet at the top of step 1. Entries a `<pending-plans>` block adds are already planned: count them toward the eligible-plan stop, include them in step 3's dedupe, and never plan the same change again. An entry it removes or edits is being handled by that change: never split, replan, retire or refuse it.
+- No other role's prompt changes.
+
+**Files touched.** src/backlog/backlog-pending.ts src/run/run-prompt.ts src/roles/role-catalog.ts test/backlog-pending.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts
+
+**Acceptance criteria.**
+- With the plan role pinned to a commit that adds `### A` and removes `### B`, the plan role's assembled prompt holds a `<pending-plans>` block naming the role, the short SHA, `adds "A"` and `removes "B"`. The feature and clean prompts do not have it.
+- With no unmerged change touching PLANS.md, the plan prompt is byte-identical to the prompt before this part.
+- The plan charter text names `<pending-plans>` in step 1, and the dedupe step names it too.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/backlog-pending.test.ts: the block's rendering, including the cap and the empty case.
+- test/run-prompt.test.ts: the block appears in the plan prompt only.
+- test/prompt-roles.test.ts: the charter bullet.
+- Run those files and the gate.
+
+### No duplicate plans, part 4/6: Duplicate `## Planned` entries are found by reading the markdown alone, and the plan role retires the extra copy before planning anything new (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 3; requires No duplicate plans part 1/6 landed; touches src/backlog/backlog-structure.ts src/run/run-prompt.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts)
+
+**Goal.** Duplicates that already reached main get cleaned up by the plan role, not left for the user to cancel or for feature to build twice. On 11-04, main's `## Planned` holds two copies each of "Every commit is verified on main" parts 4k/3, 4m/3 and 4n/3 and of "Subtract verify collapse" parts 2/5–5/5. feature-2 and feature-6 each claimed a different 4m/3. In the 11-03 incident, 2 of the 12 refused plans were exact copies of a still-planned entry.
+
+**Approach.**
+- Add `duplicatePlannedEntries(md): DuplicateGroup[]` to src/backlog/backlog-structure.ts. It groups `## Planned` entries that share an `entryKey`, or a series part label (`seriesPart` → `partKey`). Each group lists its titles in file order. It reads fences the same way, through `sectionBodyLines`.
+- Add `duplicatePlannedEntriesFor(root)`, stat-cached like `strandedPlanEntriesFor`.
+- Add `renderDuplicatePlansBlock(root)`, which lists each group under a `<duplicate-plans>` tag. Each title is followed by `[claimed by <runner>]` when `allLiveClaims` has it.
+- src/run/run-prompt.ts adds the block for base role `plan` only, the way `collectBacklogStructureBlock` adds the clean role's block.
+- The plan charter in src/roles/role-catalog.ts gets a bullet in step 1, ranked above adding a plan and below the `Needs review` and plan-defect bullets. For each group:
+  - Keep the claimed copy. If both or neither is claimed, keep the one earlier in file order.
+  - Fold any acceptance criterion or file the survivor lacks into the survivor.
+  - Retire every other copy in the same change, using part 1/6's shape with evidence `duplicate of "<surviving title>"`.
+  - Point any `requires … landed` clause that named a retired copy's label at the survivor. Copies sharing one part label need no re-pointing.
+  - That retire is this run's task.
+- docs/how-it-works.md: one sentence in "The backlog files".
+- The doctor's existing `duplicateHeadings` check covers `## ` sections only and stays as it is. A doctor row is not needed, because the plan role acts on this block every run.
+
+**Files touched.** src/backlog/backlog-structure.ts src/run/run-prompt.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts
+
+**Acceptance criteria.**
+- `duplicatePlannedEntries` groups:
+  - two entries headed `### S, part 4m/3: X (…)` and `### S, part 4m/3: Y (…)`;
+  - two entries headed `### Z (planned 2026-11-01 …)` and `### Z (planned 2026-11-02 …)`.
+- It does not group:
+  - `### S, part 4m/3: …` with `### S, part 4n/3: …`;
+  - a `### ` line inside a fenced block.
+- The plan prompt carries `<duplicate-plans>` with each group's titles and claim marks. With no duplicates it is byte-identical to before.
+- The plan charter names the block and the retire rule. The feature and clean prompts do not carry the block.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/backlog-structure.test.ts: the grouping cases.
+- test/run-prompt.test.ts: the block in the plan prompt only, with a claimed copy marked.
+- test/prompt-roles.test.ts: the charter bullet.
+- Run those files and the gate.
+
+### No duplicate plans, part 5/6: Staging gives the author one fix-up turn when its change adds a duplicate `## Planned` entry or retires a plan on evidence that does not check out (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 3 and 4; requires No duplicate plans part 2/6 and No duplicate plans part 4/6 landed; touches src/stage/stage-backlog-checks.ts src/stage/stage-check.ts src/runner/runner-outcome.ts test/stage-check.test.ts)
+
+**Goal.** Catch a duplicate before it commits, not after it merges. In the 11-03 incident's clearest pair, run 700's sibling plan merged while run 700 was still running. A staging check reading main at staging time, together with part 2/6's snapshot, would have named it. Also check the evidence a retire cites, so a retire that rests on a SHA main lacks, or on a "survivor" that does not exist, never lands.
+
+**Approach.**
+- Add `duplicatePlanFinding(head, base, pending): string | undefined` to src/stage/stage-backlog-checks.ts, beside `planDependencyFinding`.
+  - `head` is the run's PLANS.md, `base` is main's at staging, and `pending` is the unmerged changes the caller passes (below).
+  - For each `## Planned` entry the head adds, by `entryKey` over the base, it reports when the entry's key or part label is already in base's `## Planned` or added by a pending change.
+  - The finding names the existing entry, and the unmerged change's role and SHA when there is one. It says to drop the copy, or fold what it adds into the existing entry.
+  - Only new entries count: a duplicate already on main stays part 4/6's to retire.
+- Add `retireEvidenceFinding(wt, head, base)`. For each entry the head newly retires, it reads the first `**Retired …: <evidence>**` line and runs two checks.
+  - Every short SHA in the evidence must resolve to a commit that main's tip contains (`git merge-base --is-ancestor` in `wt`).
+  - Every double-quoted title must match a `## Planned` heading in head, or a done (not retired) heading in PLANS-DONE.md, by `finishedKey`.
+  - Evidence with neither a SHA nor a quoted title passes. The post-merge review judges prose.
+- `stageCheckFindings` (src/stage/stage-check.ts) gains an optional `pending: readonly PendingPlanChange[]` argument and hands it to `plansFindings`, which appends both findings. Like every staging check, a git error yields no finding.
+- src/runner/runner-outcome.ts's `stageCheck` passes `pendingPlanChanges(ctx.root)`. It drops any change whose SHA the run's worktree HEAD already contains (`git merge-base --is-ancestor`), such as a held commit the run builds on, because those entries already appear in the head-over-base diff. The plan role's own earlier unmerged plan stays in the list: re-planning it is the case this part exists for.
+- This is not a merge-gate rule: since part 3m/3 the gate refuses only what a later commit cannot repair.
+
+**Files touched.** src/stage/stage-backlog-checks.ts src/stage/stage-check.ts src/runner/runner-outcome.ts test/stage-check.test.ts
+
+**Acceptance criteria.**
+- A head adding `### S, part 2/3: …` while base's `## Planned` already holds `### S, part 2/3: …` gets a finding naming the base entry.
+- A head adding `### T (planned …)` while a pending feature-2 change adds `### T (planned …)` gets a finding naming feature-2 and the SHA.
+- A head that only edits an existing entry gets no finding.
+- A head retiring `### X` with `**Retired 2026-11-05 by the plan role: duplicate of abc1234**`:
+  - gets a finding when `abc1234` is not on main;
+  - gets none when it is.
+- Evidence `duplicate of "No such entry"` gets a finding. Evidence quoting a planned heading gets none.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/stage-check.test.ts:
+  - each case above, against a temp repo for the SHA checks;
+  - `stageCheckFindings` returning both findings.
+- Run the file and the gate.
+
+### No duplicate plans, part 6/6: Feature hands a plan with nothing to build back to the plan role, which retires it; `Refused` is kept for the user's own decisions (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 4 and 5; requires No duplicate plans part 1/6 landed, and the running build must already carry that part's readers before this merges; touches src/roles/role-catalog.ts src/roles/role-guidance.ts src/prompt/prompt.ts docs/how-it-works.md test/prompt-roles.test.ts test/role-guidance.test.ts test/prompt-rules.test.ts)
+
+**Goal.** A plan whose deliverable already exists, that another entry already carries, or that a measurement disproves ends up retired by the plan role, not refused for the user. In the 11-03 incident, all 12 refused plans were of that kind, and the user cancelled every one. In tumwater's own repo, feature has also stamped such entries `done` ("Mark the landed `historyPaneCache` split done", `d1e8c44a9`), which records work that never happened.
+
+**Approach.**
+- In the feature charter in src/roles/role-catalog.ts, after the plan-defect paragraph: a plan with nothing to build is a plan defect. Append `PLAN_DEFECT_NOTE` and name the evidence in the objection: the landed commit's short SHA, the other entry's quoted heading, or the measurement. Then skip the plan. Never refuse it, and never mark it done.
+- `Refused …` stays reserved for a plan that should not be done at all because of a product or design decision that is the user's to make.
+- In the plan charter's plan-defect bullet, add retire to "rewrite/split/refuse".
+  - When the objection says the deliverable exists or another entry carries it, check that with grep or `git log`. If it holds, retire the entry with part 1/6's shape, using the checked evidence.
+  - In the same change, point any `requires … landed` clause that named the entry at the survivor. Refuse only for a user's decision.
+- The shared refusal bullet in src/prompt/prompt.ts says once: a plan with nothing to build is a plan defect, not a refusal.
+- In src/roles/role-guidance.ts, beside `PLAN_DEFECT_NOTE`, define `RETIRED_NOTE` (`**Retired <YYYY-MM-DD> by <role>: <evidence>**`), so the plan charter and part 5/6's wording share one shape.
+- docs/how-it-works.md, wherever it describes refusals: retire versus refuse.
+- Prompt strings must pass test/vocabulary.test.ts. Say "the user", not "the operator".
+
+**Files touched.** src/roles/role-catalog.ts src/roles/role-guidance.ts src/prompt/prompt.ts docs/how-it-works.md test/prompt-roles.test.ts test/role-guidance.test.ts test/prompt-rules.test.ts
+
+**Acceptance criteria.**
+- The feature charter tells a run to append the plan-defect note, with evidence, for a plan whose deliverable already exists or that duplicates another entry. It forbids refusing such a plan and forbids marking it done.
+- The plan charter's plan-defect bullet offers retire, requires checking the evidence first, and requires re-pointing dependents.
+- `RETIRED_NOTE` is exported once and embedded in the plan charter.
+- `Refused` wording in both charters and in the shared rule names only the user's decisions.
+- No string under src/ uses a retired word.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/prompt-roles.test.ts: the feature and plan charter sentences.
+- test/role-guidance.test.ts: `RETIRED_NOTE`'s shape.
+- test/prompt-rules.test.ts: the shared refusal bullet.
+- Run those files, test/vocabulary.test.ts and the gate.
+
 ### Hourly full check, part 2b/4: The watch runs the full check at most once per `check.fullIntervalMinutes` on main's latest tip, and still runs the diff rules on every new head (planned 2026-11-03 by the plan role, splitting the 2026-11-01 part 2/4 after feature held it too large for one run; requires Hourly full check part 2a/4 landed, so the newest full verdict carries its `checkedAt`; the mirror/concurrency move is part 2c/4, not this entry; touches src/baseline/main-watch.ts src/config/config-schema.ts src/config/config-validation.ts docs/config.md docs/how-it-works.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts test/main-watch-rules.test.ts test/config-validation-check.test.ts)
 
 **Goal.** Each change is still checked once before landing by the gate's build check. The full check on main runs at most once per `check.fullIntervalMinutes` (default 60), only when main has a first-parent code commit the newest full verdict does not cover. Every new head still gets the diff rules, which judge each head and never wait for a full run in this part.
