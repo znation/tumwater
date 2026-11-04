@@ -14,6 +14,7 @@ import { assertClean, mainSha, pinOffMain, sh, tmpdir, makeRepo } from "./fixtur
 import { ensureWorktree } from "../src/git/worktree.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { withPi } from "./fakes/fake-pi.js";
+import { waitForFile } from "./helpers/wait.js";
 import {
   ROLE,
   REF,
@@ -24,6 +25,7 @@ import {
   verifyAndMerge,
   declareCheck,
   advanceMain,
+  parkUntil,
 } from "./fixtures/merger-fixtures.js";
 
 // These tests pin the sequential merge stages (the check, then the review).
@@ -343,6 +345,38 @@ test("a merge pinned behind main's advance is rebased onto main BEFORE the gate 
       assert.equal(await refSha(root, REF), null, "the pin was deleted on merge");
     },
   );
+});
+
+test("a synced rebase moves the merge ref so a gate that keeps the pin keeps the tree that can merge", async () => {
+  // The strike-cap tell compares the merger worktree's HEAD against req.sha: when the
+  // pre-gate rebase rewrote the pin, the request (and the ref) must name the synced head, or
+  // an under-cap failure would look like a strike-cap discard and delete the pinned work. A
+  // shutdown mid-check is the gate outcome that keeps the pin (fail closed for the next run's
+  // re-merge), so the declared check parks until the test aborts the verify under it.
+  const dir = tmpdir("merger-sync-");
+  const started = path.join(dir, "started");
+  const never = path.join(dir, "never");
+  const { root, sha } = await pinnedFixture();
+  declareCheck(root, `#!/bin/sh\n${parkUntil(started, never)}\necho ok\n`);
+  fs.writeFileSync(path.join(root, "fix.txt"), "main fix\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "fix main");
+  const fixSha = mainSha(root);
+  const state = freshRunnerState(ROLE);
+  const { ctx, controller } = makeCtx(root, state);
+
+  const verdict = verifyAndMerge(ctx, request(sha));
+  await waitForFile(started); // the gate's check is running, so the pre-gate sync is done
+  controller.abort();
+  assert.equal(await verdict, "aborted");
+
+  // Nothing merged, and the ref names the rebased commit: main's fix underneath, the work on top.
+  assert.equal(mainSha(root), fixSha, "nothing merged on main");
+  const pinned = await refSha(root, REF);
+  assert.ok(pinned, "an aborted gate keeps the pin");
+  assert.notEqual(pinned, sha, "the ref tracks the rebased commit, not the stale pin");
+  assert.equal(sh(root, "git", "rev-parse", `${pinned}~1`), fixSha, "rebased onto main's fix");
+  assert.ok(sh(root, "git", "show", `${pinned}:seed.txt`).includes("the work"), "the pin still names the work");
 });
 
 test("the merge checkout is shared, kept detached, and persists at a terminal outcome", async () => {
