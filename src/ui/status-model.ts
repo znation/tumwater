@@ -60,8 +60,8 @@ export function idleClaimText(s: { claim?: RunnerState["claim"]; role: string },
  * merge (the role's run already ended "queued" while its change merges, so the marker
  * supplies the label); an in-flight run ("working", or "reviewing" while the review gate holds
  * it — in-flight work finishes through both team gates); the director's "waiting for
- * prompts" (exempt from those gates); user pause; budget pause; a red main ("main red"); an
- * error or quiet-kill streak at its threshold ("failing"); sleep; then the scheduling
+ * prompts" (exempt from those gates); user pause; budget pause;
+ * an error or quiet-kill streak at its threshold ("failing"); sleep; then the scheduling
  * poll's recorded skip (`idle: …` / `deferred (…)`, from RunnerState.skipReason), else
  * "queued".
  * Pass `root` so an in-flight run expands into live detail (elapsed · turn · ctx · tool);
@@ -79,10 +79,6 @@ export function idleClaimText(s: { claim?: RunnerState["claim"]; role: string },
  * merge slot. (A queued change whose verification is still parked for a permit has no record:
  * it reads
  * plainly queued.)
- * `_mainCheck` (roleRowCells still passes the snapshot's check positionally): the
- * red-main verdict it once let the main-red label retire itself between runs has no
- * producer left — the parameter is dead and unread here; part 4n/3 removes it and shifts
- * the later arguments.
  * Otherwise its elapsed is the CHANGE's own merge (its record's startedAt — from its verification's
  * start, never another change's), never the authoring run's,
  * and its stage scopes the cell to the phase the merge is actually in: `reviewing` carries
@@ -115,7 +111,6 @@ export function rolePhase(
   live?: LiveProgress | null,
   userPaused = false,
   merge?: MergeCell | null,
-  _mainCheck?: StatusSnapshot["mainCheck"],
   capPaused = false,
   quietHold?: string,
   diskHeld = false,
@@ -330,9 +325,6 @@ export function roleRowCells(
     // rolePhase covers both gates (status-model has no per-role branch of its own).
     snap.paused || snap.pausedRunners.includes(s.role),
     mergeForRole(snap.mergeQueue, s.role),
-    // The snapshot's newest merge-scope check lets a stale main-red phase retire itself
-    // between runs (BUGS.md 2026-09-30) — the banner (teamAlerts) reads this same phase.
-    snap.mainCheck,
     // The per-role cap's verdict, computed once per poll in the snapshot (status/status-data.ts
     // roleCapPaused): an idle role over its own cap reads `cap paused` on every surface.
     snap.capPaused.includes(s.role),

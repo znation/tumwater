@@ -43,7 +43,7 @@ test("a parked waiter renders plain waiting-to-start wording", () => {
   s.running = true;
   s.parkedSince = Date.now() - 120_000;
   const phase = (s2: typeof s) =>
-    rolePhase(s2, true, root, false, null, false, null, undefined, false, undefined, false, false, undefined);
+    rolePhase(s2, true, root, false, null, false, null, false, undefined, false, false, undefined);
   assert.match(phase(s), /^waiting to start 2m/);
 });
 
@@ -399,28 +399,28 @@ test("rolePhase reads waiting: budget spent for idle roles while the cap is reac
 test("rolePhase reads waiting: daily cap spent for idle roles held by their own per-role cap", () => {
   const s = freshRunnerState("feature");
   // Not held: ordinary phase labels are untouched.
-  assert.equal(rolePhase(s, true, undefined, false, null, false, undefined, undefined, false), "due");
+  assert.equal(rolePhase(s, true, undefined, false, null, false, undefined, false), "due");
   // Held by its own cap: the label names the specific spend state, ahead of its sleep/queue
   // state and ahead of the team's budget pause (which is the less specific one).
-  assert.equal(rolePhase(s, true, undefined, false, null, false, undefined, undefined, true), "waiting: daily cap spent");
-  assert.equal(rolePhase(s, true, undefined, true, null, false, undefined, undefined, true), "waiting: daily cap spent");
+  assert.equal(rolePhase(s, true, undefined, false, null, false, undefined, true), "waiting: daily cap spent");
+  assert.equal(rolePhase(s, true, undefined, true, null, false, undefined, true), "waiting: daily cap spent");
 
   // User intent still wins: an operator-paused role reads `paused` even while over its cap.
-  assert.equal(rolePhase(s, true, undefined, false, null, true, undefined, undefined, true), "paused");
+  assert.equal(rolePhase(s, true, undefined, false, null, true, undefined, true), "paused");
 
   // A sleeping role is cap-paused too (the cap holds it past nextRunAt).
   const sleeping = freshRunnerState("clean");
   sleeping.nextRunAt = Date.now() + 3_600_000;
-  assert.equal(rolePhase(sleeping, true, undefined, false, null, false, undefined, undefined, true), "waiting: daily cap spent");
+  assert.equal(rolePhase(sleeping, true, undefined, false, null, false, undefined, true), "waiting: daily cap spent");
 
   // The director is exempt from the cap, like the scheduler's gate: its phase never changes.
   const d = freshRunnerState("director");
-  assert.equal(rolePhase(d, true, undefined, false, null, false, undefined, undefined, true), "ready for messages");
+  assert.equal(rolePhase(d, true, undefined, false, null, false, undefined, true), "ready for messages");
 
   // In-flight runs finish even while held — only NEW runs are blocked.
   const running = freshRunnerState("feature");
   running.running = true;
-  assert.equal(rolePhase(running, true, undefined, false, null, false, undefined, undefined, true), "working");
+  assert.equal(rolePhase(running, true, undefined, false, null, false, undefined, true), "working");
 
   // The held role groups with the other paused states in the shared rank.
   assert.equal(roleRank("waiting: daily cap spent"), 3);
@@ -493,19 +493,19 @@ test("rolePhase appends the per-role pause resume countdown only for a live dead
   // A future deadline renders the countdown in the team-header wording family.
   const future = now + 120_000; // ~120s → humanSeconds → "2m" (mid-bucket, deterministic)
   assert.equal(
-    rolePhase(s, true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, future),
+    rolePhase(s, true, undefined, false, null, true, undefined, false, undefined, false, false, undefined, future),
     "paused · resumes in 2m",
   );
 
   // An indefinite per-role pause (no deadline) keeps the bare `paused`.
   assert.equal(
-    rolePhase(s, true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, undefined),
+    rolePhase(s, true, undefined, false, null, true, undefined, false, undefined, false, false, undefined, undefined),
     "paused",
   );
 
   // An expired marker never renders a stale `resumes in 0s` — the guard drops it.
   assert.equal(
-    rolePhase(s, true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, now - 1_000),
+    rolePhase(s, true, undefined, false, null, true, undefined, false, undefined, false, false, undefined, now - 1_000),
     "paused",
   );
 
@@ -777,27 +777,27 @@ test("a stalled running director still raises the stuck alert", () => {
 test("rolePhase reads quiet until <end> for idle roles held by their own quietHoursPerRole window", () => {
   const s = freshRunnerState("feature");
   // Not held: ordinary phase labels are untouched.
-  assert.equal(rolePhase(s, true, undefined, false, null, false, undefined, undefined, false), "due");
+  assert.equal(rolePhase(s, true, undefined, false, null, false, undefined, false), "due");
   // Held by its own wrapping window: the team badge's wording with the role's own end.
   assert.equal(
-    rolePhase(s, true, undefined, false, null, false, undefined, undefined, false, "23:00-07:00"),
+    rolePhase(s, true, undefined, false, null, false, undefined, false, "23:00-07:00"),
     "quiet until 07:00",
   );
   // The role's own schedule is more specific than the team's budget pause.
   assert.equal(
-    rolePhase(s, true, undefined, true, null, false, undefined, undefined, false, "23:00-07:00"),
+    rolePhase(s, true, undefined, true, null, false, undefined, false, "23:00-07:00"),
     "quiet until 07:00",
   );
   // User intent still wins: an operator-paused role reads `paused` even inside its window.
   assert.equal(
-    rolePhase(s, true, undefined, false, null, true, undefined, undefined, false, "23:00-07:00"),
+    rolePhase(s, true, undefined, false, null, true, undefined, false, "23:00-07:00"),
     "paused",
   );
   // In-flight runs finish even while held — only NEW runs are blocked.
   const running = freshRunnerState("feature");
   running.running = true;
   assert.equal(
-    rolePhase(running, true, undefined, false, null, false, undefined, undefined, false, "23:00-07:00"),
+    rolePhase(running, true, undefined, false, null, false, undefined, false, "23:00-07:00"),
     "working",
   );
 });
@@ -808,14 +808,14 @@ test("rolePhase reads quiet until <end> for idle roles held by their own quietHo
 // stopped.
 test("rolePhase reads waiting: low disk for idle roles while the disk floor holds", () => {
   const s = freshRunnerState("feature");
-  assert.equal(rolePhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, false), "due");
-  assert.equal(rolePhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, true), "waiting: low disk");
+  assert.equal(rolePhase(s, true, undefined, false, null, false, undefined, false, undefined, false), "due");
+  assert.equal(rolePhase(s, true, undefined, false, null, false, undefined, false, undefined, true), "waiting: low disk");
   const d = freshRunnerState("director");
-  assert.equal(rolePhase(d, true, undefined, false, null, false, undefined, undefined, false, undefined, true), "ready for messages");
+  assert.equal(rolePhase(d, true, undefined, false, null, false, undefined, false, undefined, true), "ready for messages");
   const running = freshRunnerState("feature");
   running.running = true;
-  assert.equal(rolePhase(running, true, undefined, false, null, false, undefined, undefined, false, undefined, true), "working");
-  assert.equal(rolePhase(s, false, undefined, false, null, false, undefined, undefined, false, undefined, true), "stopped");
+  assert.equal(rolePhase(running, true, undefined, false, null, false, undefined, false, undefined, true), "working");
+  assert.equal(rolePhase(s, false, undefined, false, null, false, undefined, false, undefined, true), "stopped");
 });
 
 // A self-redeploy holding new runs (BuildStatus.restartHold): every idle role names the hold and
@@ -826,7 +826,7 @@ test("rolePhase and roleRowCells read waiting: update with the hold's step while
   const s = freshRunnerState("feature");
   const hold = "waiting: update — checking main bbbbbbbb";
   const phase = (state: typeof s, diskHeld: boolean) =>
-    rolePhase(state, true, undefined, false, null, false, undefined, undefined, false, undefined, diskHeld, false, undefined, undefined, hold);
+    rolePhase(state, true, undefined, false, null, false, undefined, false, undefined, diskHeld, false, undefined, undefined, hold);
   assert.equal(phase(s, false), hold);
   assert.equal(roleRank(hold), 3, "a hold ranks with the other waiting states");
   assert.equal(phase(s, true), "waiting: low disk", "the disk floor names itself first");
@@ -852,9 +852,9 @@ test("rolePhase and roleRowCells read waiting: update with the hold's step while
 // runs keep their detail, and a stopped orchestrator still reads stopped.
 test("rolePhase reads waiting: bootstrap for idle roles while bootstrap holds", () => {
   const s = freshRunnerState("clean");
-  assert.equal(rolePhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, false), "due");
+  assert.equal(rolePhase(s, true, undefined, false, null, false, undefined, false, undefined, false), "due");
   assert.equal(
-    rolePhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, false, true),
+    rolePhase(s, true, undefined, false, null, false, undefined, false, undefined, false, true),
     "waiting: bootstrap",
   );
   assert.equal(roleRank("waiting: bootstrap"), 3, "the hold ranks with the other paused states");
@@ -862,11 +862,11 @@ test("rolePhase reads waiting: bootstrap for idle roles while bootstrap holds", 
   const running = freshRunnerState("clean");
   running.running = true;
   assert.equal(
-    rolePhase(running, true, undefined, false, null, false, undefined, undefined, false, undefined, false, true),
+    rolePhase(running, true, undefined, false, null, false, undefined, false, undefined, false, true),
     "working",
   );
   assert.equal(
-    rolePhase(s, false, undefined, false, null, false, undefined, undefined, false, undefined, false, true),
+    rolePhase(s, false, undefined, false, null, false, undefined, false, undefined, false, true),
     "stopped",
   );
 });

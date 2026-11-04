@@ -5,6 +5,24 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 4n/3: `rolePhase`'s dead `mainCheck` parameter and the positional arguments after it are removed (planned 2026-11-03 by the plan role, splitting the 2026-11-03 too-large part 4j/3 after feature held it; requires part 4m/3 landed, so nothing reads the parameter; touches src/ui/status-model.ts test/status-model.test.ts test/gui-client.test.ts) — done 2026-11-04 by the feature role
+
+**Goal.** Part 4m/3 leaves `rolePhase`'s `mainCheck` parameter as `_mainCheck` because its only reader is gone. Remove it and shift every positional argument after it, so `capPaused` becomes the eighth parameter and `restartHold` the last.
+
+**Approach.**
+- src/ui/status-model.ts: delete `_mainCheck?: StatusSnapshot["mainCheck"]` from `rolePhase`, delete the comment above it, and in `roleRowCells` stop passing `snap.mainCheck` while keeping every later argument in its new position.
+- test/status-model.test.ts and test/gui-client.test.ts: at every call site that passes the `mainCheck` slot, delete that argument and shift the later positional arguments by one; calls that stop before that slot are unchanged.
+- No other behavior change: each remaining label comes from the same argument values it did before.
+
+**Files touched.** src/ui/status-model.ts test/status-model.test.ts test/gui-client.test.ts
+
+**Acceptance criteria.**
+- `grep -n 'mainCheck' src/ui/status-model.ts` prints nothing, and `rolePhase` declares no parameter between `merge` and `capPaused`.
+- Every caller's later positional arguments land in the same-named parameter as before; the existing label expectations (including the cap-pause, quiet, disk and restart-hold cases) are unchanged and still pass.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/status-model.test.ts, test/gui-client.test.ts, test/status-render.test.ts, test/status-render-cells.test.ts and test/model-check.test.ts, then the gate. Restore any shifted argument that changes a label.
+
 ### No duplicate plans, part 1/6: A plan closed without being built is stamped `retired`, and every backlog reader that tells finished from open accepts it (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 2; independent of every other planned entry; edits only the clean role's text in role-catalog.ts, not the plan or feature charters parts 3/6, 4/6 and 6/6 edit; touches src/backlog/backlog.ts src/backlog/backlog-structure.ts src/backlog/backlog-parts.ts src/stage/stage-check.ts src/stage/stage-backlog-checks.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/backlog-eligibility.test.ts test/stage-check.test.ts test/doctor-backlog.test.ts test/backlog.test.ts) — done 2026-11-04 by the feature role
 
 

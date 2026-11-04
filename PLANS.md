@@ -426,24 +426,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Run test/doctor-checks.test.ts, test/doctor.test.ts, test/event-format.test.ts, test/retention.test.ts, test/config.test.ts and test/config-aliases.test.ts, then the project's gate. If a surviving row or key loses its case, restore it; do not weaken an assertion to make the gate pass.
 
-### Every commit is verified on main, part 4n/3: `rolePhase`'s dead `mainCheck` parameter and the positional arguments after it are removed (planned 2026-11-03 by the plan role, splitting the 2026-11-03 too-large part 4j/3 after feature held it; requires part 4m/3 landed, so nothing reads the parameter; touches src/ui/status-model.ts test/status-model.test.ts test/gui-client.test.ts)
-
-**Goal.** Part 4m/3 leaves `rolePhase`'s `mainCheck` parameter as `_mainCheck` because its only reader is gone. Remove it and shift every positional argument after it, so `capPaused` becomes the eighth parameter and `restartHold` the last.
-
-**Approach.**
-- src/ui/status-model.ts: delete `_mainCheck?: StatusSnapshot["mainCheck"]` from `rolePhase`, delete the comment above it, and in `roleRowCells` stop passing `snap.mainCheck` while keeping every later argument in its new position.
-- test/status-model.test.ts and test/gui-client.test.ts: at every call site that passes the `mainCheck` slot, delete that argument and shift the later positional arguments by one; calls that stop before that slot are unchanged.
-- No other behavior change: each remaining label comes from the same argument values it did before.
-
-**Files touched.** src/ui/status-model.ts test/status-model.test.ts test/gui-client.test.ts
-
-**Acceptance criteria.**
-- `grep -n 'mainCheck' src/ui/status-model.ts` prints nothing, and `rolePhase` declares no parameter between `merge` and `capPaused`.
-- Every caller's later positional arguments land in the same-named parameter as before; the existing label expectations (including the cap-pause, quiet, disk and restart-hold cases) are unchanged and still pass.
-- `npm run test:gate` passes.
-
-**Tests.** Run test/status-model.test.ts, test/gui-client.test.ts, test/status-render.test.ts, test/status-render-cells.test.ts and test/model-check.test.ts, then the gate. Restore any shifted argument that changes a label.
-
 ### Every commit is verified on main, part 4k/3: the `main_red` union member and the run/runner plumbing that names it are removed (planned 2026-10-29 by the plan role, split from the too-large part 3f/3; requires part 4n/3 landed, so no merge produces the verdict, no surface reads it and `rolePhase` no longer takes it; touches src/run/run-outcome.ts src/scheduling/claims.ts docs/invariants.md src/runner/runner-recovery.ts src/merge/merge-requeue.ts src/runner/runner-leftover.ts src/runner/runner-state-load.ts src/runner/runner-run.ts src/run/run-apply.ts src/run/run-finalize.ts src/run/run-prompt.ts src/orchestrator/orchestrator-poll.ts src/runner/runner-state.ts src/events/event-notify.ts src/inbox/pending-prompt.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-queue.ts src/budget/fallback-breaker.ts src/baseline/main-red.ts test/run-outcome.test.ts test/run-apply.test.ts test/run-finalize.test.ts test/runner-recovery.test.ts test/runner-red-main.test.ts test/runner-leftover.test.ts test/merge-requeue.test.ts test/merge-pipeline-2.test.ts test/merger.test.ts test/budget.test.ts test/claims.test.ts test/fallback-breaker.test.ts)
 
 **Goal.** The `main_red` run result no longer has a producer (Hourly full check part 1b/4 removed the gate's `mainRed` path, whose dead branch part 4m/3 deletes; the recovered-pin return removed here is the last one) or a reader (part 4m/3), so the union member itself is dead vocabulary. Remove it and let the compiler name any site still constructing or narrowing it.
