@@ -238,31 +238,108 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 _None yet._
 
-### Subtract, part 3c/7: The queue's verify stage collapses into the merge step (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Hourly full check part 1b/4 landed (re-pointed 2026-11-01 by the operator: Subtract part 3b/7 is withdrawn, since the user keeps the gate's build check, so the merge step carries that check); touches src/merge/merge-drain.ts src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-pipeline.ts src/merge/merge-core.ts src/merge/merge-slot.ts docs/how-it-works.md docs/invariants.md test/merge-drain.test.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merger.test.ts test/fixtures/orchestrator-fixtures.ts test/fixtures/merger-fixtures.ts)
+### Subtract verify collapse, part 1/5: The queue-health and tier/author helpers move out of the verify modules, so deleting the verify stage later is a small, behavior-preserving cut (planned 2026-11-03 by the plan role, splitting the 2026-10-31 `Subtract part 3c/7` after feature held it too large for one run; requires Hourly full check part 1b/4 landed; touches src/merge/merge-verify.ts src/merge/merge-queue-health.ts src/merge/merge-tiers.ts src/merge/merge-drain.ts src/merge/merge-post-review-drain.ts src/merge/merge-core.ts test/merge-queue.test.ts test/merge-pipeline.test.ts test/merge-requeue.test.ts)
 
-**Needs review 2026-11-03 by feature: too large for one run**
-
-**Goal.** A queued entry goes straight from the queue to the merge step: no separate verify task, no `approved`/`verifying` map, no stage events. `drainMerge` takes the head entry, runs the gate in the merge worktree — the deterministic diff rules and the gate's build check (`gateBuildPrecheck`, the declared gate command; user, 2026-11-01: "it should gate each commit") — and calls `mergeApprovedChange`; a rejected entry is settled as today. The durable queue still orders entries and the pin still carries the commit.
+**Goal.** The helpers the rest of the merge code needs after the verify stage goes live in their own modules, with the same behavior: queue health (torn-head drop and the merged-into-main dedupe) and the merge tiers/author resolution. Nothing is deleted from the running path in this part.
 
 **Approach.**
-- Delete src/merge/merge-verify.ts and src/merge/merge-batch.ts; move the tier constants still needed by merge-drain/merge-post-review-drain (`MERGE_TIER`, `resolveAuthor`) beside the drain.
-- In merge-core.ts, keep `reviewPinnedChange`'s gate (the diff rules and `gateBuildPrecheck`) as a small `reviewQueuedChange(ctx, req, wt, state)` without the approval/stage bookkeeping; call it from `mergeApprovedChangeIn` before `mergeToMain`, outside the merge lock. A rejected result deletes the pin and returns `rejected`; an approval proceeds to the merge.
-- In merge-drain.ts, delete `drainMergeQueue`'s `drainVerify` leg and the `p.approved`/`p.verifying` handling; `drainMerge` starts the next queued entry directly. In merge-pipeline.ts, remove `verifying`/`approved` and their types; keep `InFlightMerge`, abort, guard and outcome plumbing. In merge-slot.ts, remove the verify stage records and `checkWaitStage`/`resolveWaitStage` hooks, keeping the merge in-flight marker the operator surfaces read.
-- Keep `drainPostReviews` and the post-merge review path untouched.
-- docs/how-it-works.md's Parallel approval and Merge sections describe the one-step drain; docs/invariants.md re-points the verify-stage bindings to the merge step.
+- Create src/merge/merge-queue-health.ts with `dropTornHead` and the `mergedIntoMain` cache/dedupe helper, moved verbatim from src/merge/merge-verify.ts; keep the exported `dropTornHead` name and its warning text.
+- Create src/merge/merge-tiers.ts with `VERIFY_TIER`, `MERGE_TIER`, `verifyLimit` and `resolveAuthor`, moved from merge-verify.ts; `VERIFY_TIER`/`MERGE_TIER` stay because the post-merge review drain uses them.
+- Import the moved symbols in merge-verify.ts, merge-drain.ts, merge-post-review-drain.ts and the tests; update the doc comments that name the old home. Do not change any wait tier, cache key, warning or resolution rule.
 
-**Files touched.** src/merge/merge-drain.ts src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-pipeline.ts src/merge/merge-core.ts src/merge/merge-slot.ts docs/how-it-works.md docs/invariants.md test/merge-drain.test.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merger.test.ts test/fixtures/orchestrator-fixtures.ts test/fixtures/merger-fixtures.ts
+**Files touched.** src/merge/merge-verify.ts src/merge/merge-queue-health.ts src/merge/merge-tiers.ts src/merge/merge-drain.ts src/merge/merge-post-review-drain.ts src/merge/merge-core.ts test/merge-queue.test.ts test/merge-pipeline.test.ts test/merge-requeue.test.ts
 
 **Acceptance criteria.**
-- One queued entry produces `merge_queued → merged` with no verify-start/approved stage event; a merge is a rebase and a fast-forward through `mergeApprovedChange`.
-- A queued diff that edits the brief block, PRINCIPLES.md or a credential, or whose gate check fails for a test of its own, is rejected before it merges; every other queued diff merges without a second review.
-- `grep -rn 'drainVerify\|startVerify\|verifyRequest\|MERGE_TIER\|VERIFY_TIER' src/merge` prints only the moved constants if any, never a verify stage.
-- test/merge-drain-verify.test.ts is deleted with its subject; the surviving merge-drain/pipeline tests assert the one-step drain.
+- `dropTornHead` and `resolveAuthor` are defined once, in the new modules; merge-verify.ts imports them rather than redefining them, and the same is true of the tier constants.
+- The torn-head warning, the merged-into-main cache invalidation and every permit tier read exactly as before; the tests that pin them pass unchanged in behavior.
+- No production call site or test imports a moved symbol from merge-verify.ts after this part.
 - `npm run test:gate` passes.
 
-**Tests.** Delete test/merge-drain-verify.test.ts. Update test/merge-drain.test.ts, test/merge-pipeline.test.ts, test/merge-pipeline-2.test.ts, test/merge-pipeline-seams.test.ts and test/merger.test.ts to drive an entry from queue to merge without the verify/approved map; update the fixtures' `mergeHead` to the same path. Run those files and the gate.
+**Tests.** Run test/merge-queue.test.ts, test/merge-pipeline.test.ts and test/merge-requeue.test.ts whole, then the project's gate.
 
-### Subtract, part 3d/7: `tumwater queue`, its cancel/top keys and the browser queue controls go (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3c/7 landed; touches src/cli/cli-query-commands.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/ui/tui/tui-pane-pending.ts src/ui/tui/tui-pane-pending-selection.ts src/ui/tui/tui-pane-transcript.ts src/merge/merge-cancel.ts src/merge/merge-top.ts src/merge/merge-queue-render.ts docs/cli.md test/cli-queue.test.ts test/cli-queue-follow.test.ts test/gui-queue-cancel.test.ts test/gui-queue-top.test.ts test/merge-cancel.test.ts test/merge-top.test.ts test/tui-pane-pending.test.ts test/tui-operator-keys.test.ts)
+### Subtract verify collapse, part 2/5: The merge queue drains one change at a time, gating the queue head through the existing verify path before it merges (planned 2026-11-03 by the plan role, splitting the 2026-10-31 `Subtract part 3c/7` after feature held it too large for one run; requires Subtract verify collapse part 1/5 landed, so queue health and tiers are importable from their new homes; the verify stage is not yet deleted from the types — part 4/5 removes it — touches src/merge/merge-drain.ts src/merge/merge-pipeline.ts test/merge-drain.test.ts test/merge-requeue.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts)
+
+**Goal.** A poll takes the first queued change, runs the existing gate for that one change inside the merge task, and merges it if the gate clears; the next queued change waits for the next poll. The parallel verify/approve fan-out stops, but the verify modules still exist for part 4/5 to delete.
+
+**Approach.**
+- In `drainMergeQueue`, call `dropTornHead` directly, then `drainPostReviews` and `drainMerge`; stop calling `drainVerify`. Keep `settleAbortedApproved` working for any map it still reads in this part.
+- In `drainMerge`, take the first queued file whose sha main does not already contain (using the moved `mergedIntoMain`; drop such an entry with a warning as `drainVerify` did), build one `ApprovedMerge`-shaped pick from `resolveAuthor`, and start the merge task. Do not read or populate `p.approved`.
+- In `startMerge`, before `mergeApprovedChange`, run `verifyRequest` with the same author wiring the merge uses; an approval proceeds to `mergeApprovedChange` with the verdict's `sha`/`verifiedHead`, and any other verdict settles through `settleMergeOutcome` and drops the entry exactly as the verify stage did. The task still holds the merge slot and still settles `aborted`/`conflict` outcomes through the existing merge path.
+- Leave `startVerify`, `drainVerify`, `p.verifying` and `p.approved` in the types for this part; they are now unpopulated by the drain.
+
+**Files touched.** src/merge/merge-drain.ts src/merge/merge-pipeline.ts test/merge-drain.test.ts test/merge-requeue.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts
+
+**Acceptance criteria.**
+- A poll with two queued changes starts one merge task: it gates and merges the first change, and the second remains queued (with its pin) until a later poll; no separate verification task is started.
+- A queued change whose gate rejects, fails or is withdrawn never reaches `mergeToMain`; its entry is dropped and its outcome written as before.
+- A queue entry main already contains is dropped without a gate run; a torn head is still dropped and the healthy entries behind it stay queued.
+- A merge that ends in a conflict, block or user abort keeps the existing pin/entry semantics.
+- `npm run test:gate` passes.
+
+**Tests.** Update test/merge-drain.test.ts and the pipeline cases that drain the queue to assert one gated merge per poll and no verify task. Keep test/merge-requeue.test.ts's `drainVerify` unit cases for part 4/5, but make its queue-drain cases drive `drainMergeQueue`. Run those files plus test/merge-pipeline.test.ts and test/merge-pipeline-2.test.ts, then the gate.
+
+### Subtract verify collapse, part 3/5: The gate lives in `mergeApprovedChange` as `reviewQueuedChange`, so a merge cannot start without the diff rules and build check (planned 2026-11-03 by the plan role, splitting the 2026-10-31 `Subtract part 3c/7` after feature held it too large for one run; requires Subtract verify collapse part 2/5 landed, so the drain has one inline gate call to replace; touches src/merge/merge-core.ts src/merge/merge-drain.ts test/merger.test.ts test/merge-drain.test.ts)
+
+**Goal.** `mergeApprovedChangeIn` runs the review gate itself before `mergeToMain`, so the gate is part of the only path that writes main. The drain stops calling `verifyRequest` directly; its one task calls `mergeApprovedChange` and gets the rejection/approval outcome from there.
+
+**Approach.**
+- In merge-core.ts, extract the gate invocation and its immediate bookkeeping from `reviewPinnedChange` into `reviewQueuedChange(ctx, req, wt, state, foldUsage)`: the diff rules and `gateBuildPrecheck`, the rejection record/pin delete, the review_error/main_red/aborted results, and the synced head. `reviewPinnedChange` calls it until part 4/5 deletes that wrapper.
+- Call `reviewQueuedChange` from `mergeApprovedChangeIn` after `ensureDetachedWorktree` and before `mergeToMain`; a gate result other than approval returns that result and keeps or deletes the pin exactly as the verify path did, while an approval proceeds into `mergeToMain` with the gate's synced sha.
+- In merge-drain.ts, remove part 2's direct `verifyRequest` call; the merge task calls `mergeApprovedChange` and settles its `RunResult` through `settleMergeOutcome` as every other merge outcome is settled.
+- Do not gate a merge twice: the inline verify call is gone, so one `reviewQueuedChange` covers one merge.
+
+**Files touched.** src/merge/merge-core.ts src/merge/merge-drain.ts test/merger.test.ts test/merge-drain.test.ts
+
+**Acceptance criteria.**
+- A direct `mergeApprovedChange` on a pinned change whose diff edits the brief block, PRINCIPLES.md or a credential is rejected before `mergeToMain` and its pin is deleted; an approved or exempt change merges once.
+- A gate failure under the strike cap keeps the pin and returns the same `review_error` result as before; a failed gate on a red main returns `main_red` with the pin kept.
+- The drain path spends one gate per merge: a fake reviewer is invoked once, and the merged head is the one the gate approved.
+- `grep -rn 'verifyRequest' src/merge/merge-drain.ts` prints nothing.
+- `npm run test:gate` passes.
+
+**Tests.** Update test/merger.test.ts to drive rejection, `review_error`, `main_red` and approval through `mergeApprovedChange` alone (no preceding verify), and the drain case in test/merge-drain.test.ts to assert the same one-gate path. Run those files and the gate.
+
+### Subtract verify collapse, part 4/5: The dead verify stage, its modules, its maps and its tests are deleted (planned 2026-11-03 by the plan role, splitting the 2026-10-31 `Subtract part 3c/7` after feature held it too large for one run; requires Subtract verify collapse part 3/5 landed, so no merge path needs the verify modules; touches src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/merge/merge-slot.ts src/merge/merge-queue-render.ts src/orchestrator/orchestrator-poll.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merge-requeue.test.ts test/merge-slot.test.ts test/merge-queue.test.ts test/fixtures/orchestrator-fixtures.ts test/fixtures/merger-fixtures.ts)
+
+**Goal.** With the drain gating inside `mergeApprovedChange`, nothing starts a verification or parks an approved change. Delete those modules and their pipeline/marker plumbing so the merge pipeline holds only the one merge task and the post-merge review task.
+
+**Approach.**
+- Delete src/merge/merge-verify.ts and src/merge/merge-batch.ts; `drainVerify`, `startVerify`, `verifyRequest`, `verifyLimit` and `reviewPinnedChange` go with them (the gate itself already lives in merge-core.ts).
+- In merge-pipeline.ts delete `verifying`, `approved`, `ApprovedMerge`, `liveRoles`, the verify branches of `mergeTasks`/`abortableMerges`, and `newMergePipeline`'s empty maps; keep `InFlightMerge`, `postReview`, abort, guard and `settleMergeOutcome`.
+- In merge-drain.ts delete `settleAbortedApproved` and the old approved-map handling; in orchestrator-poll.ts drop its call. Remove the verify-only `approved` status from merge-slot.ts and its label from merge-queue-render.ts. Keep `checkWaitStage` (the gate's build-check wait) and `resolveWaitStage` (the merge conflict resolver).
+- Update the fixtures: `mergeHead` drives `drainMergeQueue` (or an equivalent one-change drain) instead of `startVerify`, and merger-fixtures' `verifyRequest` helper is replaced by the merge path. Delete test/merge-drain-verify.test.ts.
+
+**Files touched.** src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/merge/merge-slot.ts src/merge/merge-queue-render.ts src/orchestrator/orchestrator-poll.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merge-requeue.test.ts test/merge-slot.test.ts test/merge-queue.test.ts test/fixtures/orchestrator-fixtures.ts test/fixtures/merger-fixtures.ts
+
+**Acceptance criteria.**
+- `grep -rn 'drainVerify\|startVerify\|verifyRequest\|verifyLimit\|reviewPinnedChange\|ApprovedMerge' src/` prints nothing; the compiler is clean.
+- `MergePipeline` has only `merge` and `postReview` as task slots, and no code reads or writes `verifying`/`approved`.
+- A queued change still reaches main through one gate and one merge, and a torn head, already-merged entry and conflicted pin still settle as in parts 2–3.
+- test/merge-drain-verify.test.ts is deleted with its subject; the surviving pipeline/drain/requeue tests assert the one-change drain, and no test asserts a deleted verify stage.
+- `npm run test:gate` passes.
+
+**Tests.** Delete test/merge-drain-verify.test.ts. Update test/merge-pipeline.test.ts, test/merge-pipeline-2.test.ts, test/merge-pipeline-seams.test.ts, test/merge-requeue.test.ts, test/merge-slot.test.ts and test/merge-queue.test.ts to the surviving pipeline shape; update both fixtures. Run those files and the gate.
+
+### Subtract verify collapse, part 5/5: The live docs and invariant bindings describe the one-task merge queue, not a verify stage (planned 2026-11-03 by the plan role, splitting the 2026-10-31 `Subtract part 3c/7` after feature held it too large for one run; requires Subtract verify collapse part 4/5 landed; the broad Subtract part 3g/7 sweep still follows this series; touches docs/how-it-works.md docs/invariants.md test/invariants-doc.test.ts)
+
+**Goal.** A reader of the live docs sees the merge the code now runs: one task per poll takes the queue head, gates it (the deterministic diff rules and the declared gate command), and merges it by rebase and fast-forward under the merge lock. No prose or binding names a verify stage, `merge-verify`, `merge-batch`, an approved-and-waiting change or a parallel approval.
+
+**Approach.**
+- docs/how-it-works.md: replace the Parallel approval and Merge sections with the one-task drain; keep the facts the series did not change — one merge writer, one lock, linear history, the pre-merge gate keeping its build check, and the main watch's post-landing checks (do not restate a full check per commit).
+- docs/invariants.md: re-point every merge-gate binding that names `merge-verify.ts` or `merge-batch.ts` at `src/merge/merge-core.ts` (`reviewQueuedChange`) and the drain; keep `checkWaitStage`/`build-check` bindings, since the gate still waits for its check permit. Drop any guarantee that only the verify stage could keep.
+- Leave docs/cli.md, docs/glossary.md and README.md to the broad Subtract part 3g/7 sweep; this part changes only the merge-gate prose and bindings.
+
+**Files touched.** docs/how-it-works.md docs/invariants.md test/invariants-doc.test.ts
+
+**Acceptance criteria.**
+- `grep -rniE 'merge-verify|merge-batch|verify stage|parallel approval|approved, waiting to merge' docs/how-it-works.md docs/invariants.md` prints nothing.
+- Every docs/invariants.md binding that describes the pre-merge gate names `src/merge/merge-core.ts` and a test that still exists; the invariants-doc test is green.
+- The docs say a queued change waits for the one merge task, is gated with the diff rules and the declared gate command, and merges by rebase and fast-forward under the merge lock.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/invariants-doc.test.ts whole, then the project's gate.
+
+### Subtract, part 3d/7: `tumwater queue`, its cancel/top keys and the browser queue controls go (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract verify collapse part 4/5 landed; touches src/cli/cli-query-commands.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/ui/tui/tui-pane-pending.ts src/ui/tui/tui-pane-pending-selection.ts src/ui/tui/tui-pane-transcript.ts src/merge/merge-cancel.ts src/merge/merge-top.ts src/merge/merge-queue-render.ts docs/cli.md test/cli-queue.test.ts test/cli-queue-follow.test.ts test/gui-queue-cancel.test.ts test/gui-queue-top.test.ts test/merge-cancel.test.ts test/merge-top.test.ts test/tui-pane-pending.test.ts test/tui-operator-keys.test.ts)
 
 **Goal.** The operator stops steering a queue that becomes a lock and a fast-forward: delete the `tumwater queue` command, its `--cancel` and `--top` flags, the GUI Merge queue card's Cancel/Move-to-top handlers, the TUI pending pane's queue rows and keys, and the three modules that implement cancel/top/queue rendering. The queue reader itself stays for status, doctor and the CLI surfaces this part does not own until part 3f.
 
