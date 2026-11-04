@@ -18,7 +18,10 @@ import { isPassingMainCheck, isRedMain } from "../baseline/main-guardrails.js";
 import { addTo, distinctOrdered, memoSetLru } from "../collections.js";
 import { asList } from "../text/text.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
-import { foldUsageEvent, zeroUsageFold } from "./report-usage-fold.js";
+import { foldUsageEvent, zeroCommitCounts, zeroMergeCounts, zeroUsageFold } from "./report-usage-fold.js";
+// Re-exported for the day/window total builders, which start from the same empty commit and
+// merge counter groups: their one home is now beside the fold that writes them.
+export { zeroCommitCounts, zeroMergeCounts };
 /** One day's worth of folded events, the event-log half of a ReportDay: everything
  * foldUsageEvent accumulates for a single local day (runs are not tracked — the series
  * derives them from runsByRole). Cached across calls by foldWindowEvents so an appended
@@ -115,31 +118,6 @@ interface ReportFoldEntry {
  * insertion order) keeps the memory bound to a handful of per-day accumulator maps. */
 const reportFoldCache = new Map<string, ReportFoldEntry>();
 const REPORT_FOLD_CACHE_MAX = 8;
-
-/** The empty commit-family counters every accumulator starts from: the total and per-base-role
- * merged-commit count plus the work/maintenance split (Work ratio 4/4). Four shapes carry them —
- * DayFold, UsageFold, the ReportDay series slots, and the window totals — so the empty quartet
- * lives once here and a new commit counter is added in one place. */
-export function zeroCommitCounts(): {
-  commits: number;
-  commitsByRole: Record<string, number>;
-  workCommits: number;
-  maintenanceCommits: number;
-} {
-  return { commits: 0, commitsByRole: {}, workCommits: 0, maintenanceCommits: 0 };
-}
-
-/** The empty merge-run counters every accumulator starts from: the merge slot's run count
- * and its own token/cost share (foldUsageEvent's merge_done/merge_failed branch). Four shapes carry
- * them — DayFold, UsageFold, the scoped window totals, and the window totals — so the empty
- * triple lives once here and a new merge counter is added in one place. */
-export function zeroMergeCounts(): {
-  mergeRuns: number;
-  mergeTokens: number;
-  mergeCostUsd: number;
-} {
-  return { mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
-}
 
 /** Build one object-literal spread cell for a per-slice role/product map only when the map has
  * entries (`map` non-empty), so an entry-free window omits the field instead of carrying an

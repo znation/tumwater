@@ -150,6 +150,31 @@ export interface UsageFold {
   deferredByReason: Record<string, number>;
 }
 
+/** The empty commit-family counters every accumulator starts from: the total and per-base-role
+ * merged-commit count plus the work/maintenance split (Work ratio 4/4). Four shapes carry them —
+ * DayFold, UsageFold, the ReportDay series slots, and the window totals — so the empty quartet
+ * lives once here and a new commit counter is added in one place. */
+export function zeroCommitCounts(): {
+  commits: number;
+  commitsByRole: Record<string, number>;
+  workCommits: number;
+  maintenanceCommits: number;
+} {
+  return { commits: 0, commitsByRole: {}, workCommits: 0, maintenanceCommits: 0 };
+}
+
+/** The empty merge-run counters every accumulator starts from: the merge slot's run count
+ * and its own token/cost share (foldUsageEvent's merge_done/merge_failed branch). Four shapes carry
+ * them — DayFold, UsageFold, the scoped window totals, and the window totals — so the empty
+ * triple lives once here and a new merge counter is added in one place. */
+export function zeroMergeCounts(): {
+  mergeRuns: number;
+  mergeTokens: number;
+  mergeCostUsd: number;
+} {
+  return { mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+}
+
 /** Every accumulator a fold writes, at zero — the one home of the usage accumulator's empty
  * shape, so the three sites that start a fold from scratch (the trailing-window collector's
  * acc, the per-day fold's day slot, and the fold contract test's fixture) cannot drift apart.
@@ -165,6 +190,8 @@ export function zeroUsageFold(): Omit<
   mergeCostUsd: number;
 } {
   return {
+    ...zeroCommitCounts(),
+    ...zeroMergeCounts(),
     runsByRole: {},
     rejectionsByRole: {},
     postMergeRejectionsByRole: {},
@@ -186,16 +213,9 @@ export function zeroUsageFold(): Omit<
     cacheReadTokensByRole: {},
     costByRole: {},
     tokensOut: 0,
-    commits: 0,
-    commitsByRole: {},
-    workCommits: 0,
-    maintenanceCommits: 0,
     costUsd: 0,
     notionalCostUsd: 0,
     notionalByRole: {},
-    mergeRuns: 0,
-    mergeTokens: 0,
-    mergeCostUsd: 0,
     mergedByRole: {},
     mergeFailedByRole: {},
     mergeFailedByReason: {},
