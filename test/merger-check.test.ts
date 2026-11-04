@@ -38,9 +38,9 @@ process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
 
 test("a failing pre-check on a green main rejects the merge and spends no pi run", async () => {
   const { root, sha } = await pinnedFixture();
-  // The gate scope fails while main is green: with a gate command set the main watch verifies
-  // main, and its green verdict on the tip the pin is rebased onto answers the attribution — the
-  // change's failure is its own, and main's check does not run again for it.
+  // A nameless gate failure is attributed through main's own tip: main's tip passes the gate
+  // command, so the failure is the change's own and the gate rejects it without a pi run or a
+  // re-run of main's check (the gate command is the change's own, so it is the attribution).
   const tip = advanceMain(root, `main-green-${process.pid}-${Date.now()}.txt`, "main moves on\n");
   noteGreenBaseline(tip);
   const marker = piRanMarker();
@@ -50,12 +50,15 @@ test("a failing pre-check on a green main rejects the merge and spends no pi run
   await withPi(`touch '${marker}'\n`, async () => {
     const state = freshRunnerState(ROLE);
     const { ctx } = makeCtx(root, state);
-    ctx.config = { ...ctx.config, check: { command: "echo ok", gateCommand: "echo 'error TS2345: boom' >&2; exit 1" } };
+    // The gate command is change-specific: it fails on the change's tree (seed.txt carries
+    // "the work") and passes on main's tip (seed.txt does not), so a nameless failure is the
+    // change's own — not main's — and the gate rejects it.
+    ctx.config = { ...ctx.config, check: { command: "echo ok", gateCommand: "! grep -q 'the work' seed.txt" } };
     assert.equal(await verifyAndMerge(ctx, request(sha)), "rejected");
     assert.equal(await refSha(root, REF), null, "rejected: the pin is gone");
     assert.ok(!fs.existsSync(marker), "no pi run: the check and main's verdict decided alone");
     const baselineRuns = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "baseline");
-    assert.equal(baselineRuns.length, 0, "the watch's verdict answered: main's check did not run");
+    assert.equal(baselineRuns.length, 0, "the gate command answered: main's check did not run");
   });
 });
 
@@ -124,29 +127,28 @@ test("a repairable false-fix md-only change merges through the real merge flow",
   assert.equal(calls.length, 0, "no model run — no resolver, no reviewer");
 });
 
-test("a failing pre-check on a red main keeps the pin, records no rejection, and spends no pi run", async () => {
+test("a nameless pre-check failure that also fails main's tip is main's: the change merges and spends no pi run", async () => {
   const { root, sha } = await pinnedFixture();
-  declareCheck(root, "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n");
-  const unique = `main-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`;
-  fs.writeFileSync(path.join(root, unique), "main moved\n");
-  sh(root, "git", "add", unique);
+  // The declared gate command fails wherever x-broken.txt is present; main moves to a commit that
+  // adds it, so the gate command fails on main's tip too — a nameless failure is main's, not the
+  // change's, so the gate goes on and the change merges (no main_red keep: the gate now judges
+  // every twice-failed nameless check at main's tip and never holds the pin for a watch verdict).
+  declareCheck(root, "#!/bin/sh\ntest -f x-broken.txt\n");
+  fs.writeFileSync(path.join(root, "x-broken.txt"), "main moved\n");
+  sh(root, "git", "add", "x-broken.txt");
   sh(root, "git", "commit", "-m", "main moves on its own");
   const newMainSha = mainSha(root);
   const marker = piRanMarker();
-  // A fake pi on PATH that WOULD touch the marker if the merge path invoked it: the red-main keep
-  // is the deterministic gate's, so pi never runs and the marker's absence is the meaningful proof
-  // of "no pi run" (part 3p/3; no reviewer drives it).
+  // A fake pi on PATH that WOULD touch the marker if the merge path invoked it: the gate's
+  // main-tip verdict (the gate command failing at main's tip) decides the change merges, so pi
+  // never runs and the marker's absence is the meaningful proof of "no pi run".
   await withPi(`touch '${marker}'\n`, async () => {
     const state = freshRunnerState(ROLE);
     const { ctx } = makeCtx(root, state);
-    assert.equal(await verifyAndMerge(ctx, request(sha)), "main_red", "not a reviewer failure");
-    const pinned = await refSha(root, REF);
-    assert.ok(pinned, "the pin survives a red main");
-    // The pre-gate sync rebased the pin onto the moved main; the gate left it exactly there.
-    assert.equal(sh(root, "git", "rev-parse", `${pinned}~1`), newMainSha);
-    assert.ok(sh(root, "git", "show", `${pinned}:seed.txt`).includes("the work"), "the pin still names the work");
+    assert.equal(await verifyAndMerge(ctx, request(sha)), "changed", "a nameless failure main's tip also fails is main's: the change merges");
+    assert.equal(await refSha(root, REF), null, "the pin is gone — the change merged");
+    assert.notEqual(mainSha(root), newMainSha, "the change reached main for the main watch");
     assert.ok(!fs.existsSync(marker), "no pi run");
-    assert.match(state.lastError ?? "", /^gate check failed: main [0-9a-f]+ is red — not this change's failure$/);
-    assert.ok(!readEvents(root).some((e) => e.type === "review_rejected"));
+    assert.ok(!readEvents(root).some((e) => e.type === "review_rejected"), "no rejection: the gate went on to merge");
   });
 });

@@ -6,12 +6,11 @@ import path from "node:path";
 import { MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { mergeApprovedChange } from "../src/merge/merge-core.js";
 import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
-import { readSlotsState } from "../src/git/slots-state.js";
 import { mergeWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
-import { assertClean, headSha, mainSha, pinOffMain, sh, tmpdir, makeRepo } from "./fixtures/repo-fixtures.js";
+import { assertClean, mainSha, pinOffMain, sh, tmpdir, makeRepo } from "./fixtures/repo-fixtures.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { withPi } from "./fakes/fake-pi.js";
@@ -342,41 +341,6 @@ test("a merge pinned behind main's advance is rebased onto main BEFORE the gate 
       const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
       assert.equal(seen[0], mainHead, "the gate reviewed the rebased tree, not the stale pin");
       assert.equal(await refSha(root, REF), null, "the pin was deleted on merge");
-    },
-  );
-});
-
-test("a synced rebase moves the merge ref so a failed gate keeps the tree that can merge", async () => {
-  // The strike-cap tell compares the merger worktree's HEAD against req.sha: when the
-  // pre-gate rebase rewrote the pin, the request (and the ref) must name the synced head, or
-  // an under-cap failure would look like a strike-cap discard and delete the pinned work.
-  await withPi(
-    reviewerPi("VERDICT: approve"), // never reached: the failing declared check keeps the pin (main_red)
-    async () => {
-      const { root, sha } = await pinnedFixture();
-      // The deterministic gate: a failing declared check on a red main reports main_red and keeps
-      // the pin, so the "failed gate keeps the tree that can merge" outcome rides the gate, not a
-      // reviewer failure (part 3p/3).
-      declareCheck(root, "#!/bin/sh\necho 'error TS9001: boom' >&2\nexit 1\n");
-      fs.writeFileSync(path.join(root, "fix.txt"), "main fix\n");
-      sh(root, "git", "add", "-A");
-      sh(root, "git", "commit", "-m", "fix main");
-      const state = freshRunnerState(ROLE);
-      const { ctx } = makeCtx(root, state);
-
-      assert.equal(await verifyAndMerge(ctx, request(sha)), "main_red");
-
-      // Nothing merged (main still holds the fix commit), so the synced head is not main's
-      // head — it is the rebased commit the verify's pooled slot sits at.
-      const slot = readSlotsState(root).slots.find((s) => s.lastRole === ROLE)?.dir;
-      assert.ok(slot, "the verify released the pooled slot it leased");
-      const syncedHead = headSha(slot);
-      assert.notEqual(syncedHead, sha, "the rebase rewrote the pin onto main's fix");
-      assert.equal(
-        await refSha(root, REF),
-        syncedHead,
-        "the ref tracks the rebased commit, not the stale pin",
-      );
     },
   );
 });
