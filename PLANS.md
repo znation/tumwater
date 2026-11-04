@@ -238,6 +238,106 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 _None yet._
 
+### Subtract verify collapse, part 1/5: The torn-head drop, already-merged dedupe, merge tier constants and author resolver move out of merge-verify.ts into modules a one-step drain keeps (planned 2026-11-03 by the plan role, splitting the 2026-10-31 too-large Subtract part 3c/7 after feature held it too large for one run; opens the series Subtract verify collapse parts 1/5–5/5, whose parts 2/5–5/5 each require the part before them landed; requires Hourly full check part 1b/4 landed; touches src/merge/merge-verify.ts src/merge/merge-head.ts src/merge/merge-author.ts src/merge/merge-drain.ts src/merge/merge-post-review-drain.ts test/merge-queue.test.ts src/gates/budget-gates.ts src/runner/runner-leftover.ts src/git/commit-message.ts src/concurrency/check-permit.ts src/concurrency/semaphore.ts)
+
+**Goal.** The queue hygiene and author/tier helpers that outlive the verify stage live in modules the later parts keep, with the same behavior. `dropTornHead` and the already-merged dedupe stay with the queue; `VERIFY_TIER`, `MERGE_TIER` and `resolveAuthor` stay available to the drain and the post-merge review drain after `merge-verify.ts` is deleted.
+
+**Approach.**
+- Add src/merge/merge-head.ts with `dropTornHead` and the private `mergedIntoMain` cache/helper moved verbatim from src/merge/merge-verify.ts; `drainVerify` imports `dropTornHead` from it.
+- Add src/merge/merge-author.ts with `VERIFY_TIER`, `MERGE_TIER` and `resolveAuthor` moved verbatim; merge-verify.ts, merge-drain.ts and merge-post-review-drain.ts import them from there.
+- Re-point the comments that name merge-verify.ts for these symbols in src/gates/budget-gates.ts, src/runner/runner-leftover.ts, src/git/commit-message.ts, src/concurrency/check-permit.ts and src/concurrency/semaphore.ts.
+- test/merge-queue.test.ts imports `dropTornHead` from merge-head.ts.
+
+**Files touched.** src/merge/merge-verify.ts src/merge/merge-head.ts src/merge/merge-author.ts src/merge/merge-drain.ts src/merge/merge-post-review-drain.ts test/merge-queue.test.ts src/gates/budget-gates.ts src/runner/runner-leftover.ts src/git/commit-message.ts src/concurrency/check-permit.ts src/concurrency/semaphore.ts
+
+**Acceptance criteria.**
+- `grep -n 'export async function dropTornHead\|async function mergedIntoMain\|export const VERIFY_TIER\|export const MERGE_TIER\|export function resolveAuthor' src/merge/merge-verify.ts` prints nothing; the declarations exist in merge-head.ts and merge-author.ts.
+- The torn-head, dedupe-cache and post-merge-review tests keep their behavior: no test expectation changes beyond the import path.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/merge-queue.test.ts, test/merge-pipeline.test.ts and test/post-merge-review.test.ts, then the gate.
+
+### Subtract verify collapse, part 2/5: The queued change's gate has one named home, `reviewQueuedChange` in merge-core.ts, so the merge step can run it in the merge worktree (planned 2026-11-03 by the plan role, splitting the 2026-10-31 too-large Subtract part 3c/7 after feature held it too large for one run; requires part 1/5 landed; touches src/merge/merge-core.ts src/merge/merge-batch.ts)
+
+**Goal.** The gate a queued change runs before merging is one function, `reviewQueuedChange(ctx, req, wt, state, foldUsage)`, in merge-core.ts: it rebases the pinned tree onto main's current head (`syncPinToMain`) and runs `reviewPinnedChange`, returning its `GateOutcome`. `verifyRequestIn` in merge-batch.ts calls it, so the existing verify stage and the later one-step drain run the same code; no behavior changes.
+
+**Approach.**
+- Export `GateOutcome` and add `reviewQueuedChange` in merge-core.ts as the composition of `syncPinToMain` and `reviewPinnedChange` with the arguments verifyRequestIn passes today.
+- In merge-batch.ts, `verifyRequestIn` calls `reviewQueuedChange(ctx, req, wt, w.state, w.foldUsage)` and keeps only the `VerifyVerdict` shaping (`gate` to `approved`, otherwise `result`).
+- No other caller or test expectation changes; the withdrawn pre-check, the pooled slot lease and the lease release stay in verifyRequest.
+
+**Files touched.** src/merge/merge-core.ts src/merge/merge-batch.ts
+
+**Acceptance criteria.**
+- `reviewQueuedChange` is declared once in merge-core.ts and called by verifyRequestIn; no second copy of the sync-then-review sequence remains in merge-batch.ts.
+- test/merge-drain-verify.test.ts and test/merger.test.ts still pass with their existing expectations: an approved change still reaches the merge at the synced head, and a rejected or failed one still settles as before.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/merge-drain-verify.test.ts, test/merger.test.ts and test/merger-check.test.ts, then the gate.
+
+### Subtract verify collapse, part 3/5: The merge queue drains one entry at a time through the gate and the merge in a single task; the verify stage, its maps and its modules are deleted (planned 2026-11-03 by the plan role, splitting the 2026-10-31 too-large Subtract part 3c/7 after feature held it too large for one run; requires part 2/5 landed; touches src/merge/merge-drain.ts src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-pipeline.ts src/merge/merge-core.ts src/orchestrator/orchestrator-poll.ts test/merge-drain.test.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merger.test.ts test/merge-requeue.test.ts test/fixtures/orchestrator-fixtures.ts)
+
+**Goal.** A queued entry goes from the queue to the gate to the merge in one task: `drainMerge` starts the head entry, `mergeApprovedChange` runs `reviewQueuedChange` in the merge worktree before `mergeToMain`, and a rejected entry settles as today. No `verifying`/`approved` maps, no separate verify task, no second review. The durable queue still orders entries and the pin still carries the commit.
+
+**Approach.**
+- merge-core.ts: in `mergeApprovedChangeIn`, check the withdrawn entry (`withdrawnPinReason` plus `dropWithdrawnPin`, as `mergeToMain` does) and run `reviewQueuedChange(ctx, req, wt, ctx.state, ctx.foldUsage)` before `mergeToMain`; return its result when it is not an approval, otherwise merge the approved head. Update `mergeApprovedChange`'s "already passed its own gate" comment.
+- merge-drain.ts: `drainMergeQueue` becomes `drainPostReviews` plus `drainMerge`; `drainMerge` takes `headMerge` and starts one single-change `startMerge` task; the task resolves the author, calls `mergeApprovedChange`, settles each outcome through `settleMergeOutcome`, queues the post-merge review on a `merged` event as today, and handles user abort and shutdown as today. Delete `settleAbortedApproved` and the `approved`/`verifying` branches.
+- merge-pipeline.ts: `MergePipeline` becomes `{ merge, postReview }`; delete `ApprovedMerge`; `mergeTasks` and `abortableMerges` read those; drop `liveRoles` if no caller remains.
+- src/orchestrator/orchestrator-poll.ts: remove the `settleAbortedApproved` import and its per-poll call.
+- Delete src/merge/merge-verify.ts and src/merge/merge-batch.ts; delete test/merge-drain-verify.test.ts.
+- test/fixtures/orchestrator-fixtures.ts's `mergeHead` drives the queue head through `drainMergeQueue` (or the one merge task) instead of `startVerify` plus `drainMerge`; update the merge-drain/pipeline/merger tests to assert the one-step path.
+
+**Files touched.** src/merge/merge-drain.ts src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-pipeline.ts src/merge/merge-core.ts src/orchestrator/orchestrator-poll.ts test/merge-drain.test.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merger.test.ts test/merge-requeue.test.ts test/fixtures/orchestrator-fixtures.ts
+
+**Acceptance criteria.**
+- One queued entry produces `merge_queued → merged` with no verify-start or approved stage event; a merge is a rebase and a fast-forward through `mergeApprovedChange`.
+- A queued diff that edits the brief block, PRINCIPLES.md or a credential, or whose gate check fails for a test of its own, is rejected before it merges; every other queued diff merges without a second review.
+- `grep -rn 'drainVerify\|startVerify\|verifyRequest\|ApprovedMerge\|p\.verifying\|p\.approved' src/` prints nothing, and `ls src/merge/merge-verify.ts src/merge/merge-batch.ts` fails.
+- test/merge-drain-verify.test.ts is gone with its subject; the surviving merge-drain and pipeline tests drive an entry from queue to merge.
+- `npm run test:gate` passes.
+
+**Tests.** Delete test/merge-drain-verify.test.ts. Update test/merge-drain.test.ts, test/merge-pipeline.test.ts, test/merge-pipeline-2.test.ts, test/merge-pipeline-seams.test.ts, test/merger.test.ts and test/merge-requeue.test.ts to drive an entry from queue to merge without the verify/approved map, and update the fixtures' `mergeHead` to the same path. Run those files and the gate.
+
+### Subtract verify collapse, part 4/5: The `approved` in-flight status and the status, GUI and queue surfaces that wait on it are removed (planned 2026-11-03 by the plan role, splitting the 2026-10-31 too-large Subtract part 3c/7 after feature held it too large for one run; requires part 3/5 landed; touches src/merge/merge-slot.ts src/merge/merge-queue-render.ts src/ui/status-model.ts src/ui/gui/gui-client-model.ts src/cli/help.ts test/merge-slot.test.ts test/status-model.test.ts test/status-data-inbox.test.ts test/gui-client.test.ts test/help.test.ts test/team-alerts.test.ts test/merge-queue.test.ts test/status-polls.test.ts)
+
+**Goal.** No operator surface or marker type advertises a change waiting for a merge slot that no longer exists: `MergeChangeStatus` is `"merging" | "done"`, and status, GUI, help and the merge-queue cell render only live states. `checkWaitStage` and `resolveWaitStage` stay because the gate build check (review-precheck.ts) and the conflict resolver still wait on permits.
+
+**Approach.**
+- merge-slot.ts: drop `"approved"` from `MergeChangeStatus`, from `isMergeChange`'s accepted statuses and from the comments; keep `setMergeChangeStatus` for merging/done and keep both wait-stage hooks.
+- merge-queue-render.ts: drop the `change.status === "approved"` branch (Subtract part 3d/7 later deletes this module; whichever lands first rebases).
+- status-model.ts and gui-client-model.ts: remove the `approved, waiting to merge` phase mapping and rank; update the comments that describe the verify-to-approval wait.
+- cli/help.ts: remove the `[approved, waiting to merge]` stage example.
+- Update the tests above that pin the removed string or status; add no new status.
+
+**Files touched.** src/merge/merge-slot.ts src/merge/merge-queue-render.ts src/ui/status-model.ts src/ui/gui/gui-client-model.ts src/cli/help.ts test/merge-slot.test.ts test/status-model.test.ts test/status-data-inbox.test.ts test/gui-client.test.ts test/help.test.ts test/team-alerts.test.ts test/merge-queue.test.ts test/status-polls.test.ts
+
+**Acceptance criteria.**
+- `grep -rn 'approved, waiting to merge\|status === "approved"' src/` prints nothing for the merge marker and operator surfaces; the review gate's own `approved` verdict is out of scope and stays.
+- A marker record whose status is `approved` is no longer accepted as a live change; the status, GUI and help tests assert only merging and done states.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/merge-slot.test.ts, test/status-model.test.ts, test/status-data-inbox.test.ts, test/gui-client.test.ts, test/help.test.ts, test/merge-queue.test.ts and test/status-polls.test.ts, then the gate.
+
+### Subtract verify collapse, part 5/5: docs/how-it-works.md and docs/invariants.md describe one gate-then-merge step and bind only modules that survive (planned 2026-11-03 by the plan role, splitting the 2026-10-31 too-large Subtract part 3c/7 after feature held it too large for one run; requires part 4/5 landed; touches docs/how-it-works.md docs/invariants.md docs/glossary.md test/invariants-doc.test.ts)
+
+**Goal.** The live prose and invariant bindings describe the landing that exists after parts 1/5–4/5: a queued pin is gated in the merge worktree (the deterministic diff rules plus the declared gate command), then rebased and fast-forwarded under the merge lock; no sentence promises a separate verify stage or an approval wait. The post-landing review and the main watch keep their guarantees.
+
+**Approach.**
+- docs/how-it-works.md's merge pipeline section: replace "Queued changes are approved in parallel and one serial merge step merges them" and the Review/Merge paragraphs that describe a separate verify stage with one step per queued head: gate (diff rules plus build check, and the withdrawn check) then merge; keep the post-merge review, the main watch and the permit accounting.
+- docs/invariants.md: re-point every binding that names src/merge/merge-verify.ts, src/merge/merge-batch.ts, `verifyRequest`, `dropTornHead`, `ApprovedMerge` or a verify-stage marker to the surviving module and test (merge-head.ts, merge-drain.ts, merge-core.ts, merge-slot.ts); keep the guarantees whose code survives (withdrawn pin drop, torn-head drop, gate build-check abort, post-merge review permit). Do not delete a guarantee just because its binding moves.
+- docs/glossary.md's retired-name row for `landing-vetting.ts` names `merge-verify.ts`; point it at the surviving merge-core.ts (Subtract part 3g/7 later re-sweeps the glossary).
+- test/invariants-doc.test.ts's expectations follow the re-pointed bindings.
+
+**Files touched.** docs/how-it-works.md docs/invariants.md docs/glossary.md test/invariants-doc.test.ts
+
+**Acceptance criteria.**
+- `grep -rniE 'verify stage|approval stage|approved in parallel|approved, waiting to merge' docs/ README.md` prints no claim that a separate verify stage or approval wait exists.
+- Every docs/invariants.md binding names an existing src file and test file; no binding names merge-verify.ts or merge-batch.ts.
+- The prose still states the gate's build check, the one merge lock, linear history and the main watch's post-landing check.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/invariants-doc.test.ts and test/docs-links.test.ts, then the gate.
+
 ### Subtract verify collapse, part 1/5: The queue-health and tier/author helpers move out of the verify modules, so deleting the verify stage later is a small, behavior-preserving cut (planned 2026-11-03 by the plan role, splitting the 2026-10-31 `Subtract part 3c/7` after feature held it too large for one run; requires Hourly full check part 1b/4 landed; touches src/merge/merge-verify.ts src/merge/merge-queue-health.ts src/merge/merge-tiers.ts src/merge/merge-drain.ts src/merge/merge-post-review-drain.ts src/merge/merge-core.ts test/merge-queue.test.ts test/merge-pipeline.test.ts test/merge-requeue.test.ts)
 
 **Goal.** The helpers the rest of the merge code needs after the verify stage goes live in their own modules, with the same behavior: queue health (torn-head drop and the merged-into-main dedupe) and the merge tiers/author resolution. Nothing is deleted from the running path in this part.
