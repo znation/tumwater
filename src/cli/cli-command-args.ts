@@ -10,7 +10,7 @@
  * cross-command prompt-source module. */
 
 import { failOverDurationCap, parseBranchFlag, parseDurationFlag, parsePositionFlag, rejectFlagLookingValue, rejectRepeatFlag } from "./cli-args.js";
-import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
+import { promptFileValue, readPromptFileArg, readPromptFileChecked } from "./cli-prompt-file.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import {
   type FlagSpec,
@@ -190,7 +190,9 @@ function resolveInitFileArg(args: string[], base: Omit<InitArgs, "prompt">): Ini
     if (args.includes(flag)) claimed.push(args.indexOf(flag));
   }
   failStrayArg(args, "with --file the prompt comes from the file", ...claimed);
-  const contents = readPromptFileArg(file);
+  // init keeps the plain file read: unlike prompt/plan/bug/brief/questions, its help does
+  // not offer "-" for stdin, and a literal path named "-" was what this branch always read.
+  const contents = readPromptFileChecked(file);
   if (base.listTemplates) {
     fail(LIST_TEMPLATES_PROMPT_ERROR);
   }

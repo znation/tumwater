@@ -44,7 +44,7 @@ export function promptFileValue(file: string | undefined): string {
  * failEmptyPromptFile, in one place so the two parsers' path branches cannot drift apart.
  * The prompt parser's stdin branch (`-`) keeps its own read — it must be cached and its
  * read-error names stdin — and calls failEmptyPromptFile itself. */
-function readPromptFileChecked(file: string): string {
+export function readPromptFileChecked(file: string): string {
   const contents = readPromptFile(file);
   failEmptyPromptFile(file, contents);
   return contents;
