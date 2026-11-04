@@ -321,14 +321,17 @@ test("an unranked result's outcome column sorts after every ranked result", () =
   // columns sort must put it after every ranked result rather than leaving it wherever the
   // window happened to encounter it (or sorting it first with a zero fallback). The unknown
   // run is written first so an insertion-order or NaN-comparator sort would leave it first.
+  // `withdrawn` carries the highest rank, so a fallback tied with the last rank (which the
+  // alphabetical tie-break would put before `retired_code`) fails here too.
   const root = tmpdir();
   writeEvents(root, [
     { ts: at(0), loop: "feature", type: "run_end", result: "retired_code" },
     { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
     { ts: at(0), loop: "feature", type: "run_end", result: "error" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "withdrawn" },
   ]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
-  assert.deepEqual(markdownTables(md)[0]!.header, ["role", "merged", "error", "retired code"]);
+  assert.deepEqual(markdownTables(md)[0]!.header, ["role", "merged", "error", "entry withdrawn, dropped", "retired code"]);
 });
 
 test("every digest table's separator has one delimiter cell per header cell", () => {
