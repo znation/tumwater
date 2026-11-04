@@ -1,44 +1,50 @@
-# tumwater 0.4.6
+# tumwater 0.4.7
 
 ## Highlights
 
-- **Withdrawn work stays withdrawn.** When the operator deletes a claimed backlog entry, its
-  run's pending resume or revision is dropped, a queued change whose entry left main settles
-  `withdrawn` instead of merging, and leftover commits or pins are set aside under
-  `refs/tumwater/withdrawn/<role>/<sha>` rather than recovered into a merge.
-- **A post-merge reviewer's repair lands when it approves**, not only when it rejects — about
-  one approval in seven carried a FIX line whose edit used to be wiped by the next review.
-- **Prompts ask where a test's expected value comes from.** Review check 3 asks whether the
-  tests would fail if the change were wrong, the coverage role takes expected values from what
-  the code promises, and plans state acceptance criteria as observable outcomes.
-- **ci's inbox holds at most one heal prompt.** A long red main no longer queues a prompt per
-  red commit, and a green main drops every waiting heal prompt it has already passed.
-- **Cheaper polling.** The quarantine release reads BUGS.md through a stat cache and takes its
-  lock only when it releases, and live claims are cached on the state directory's stat.
+- **A twice-failed gate check is decided at main's tip right away.** The named failing tests re-run
+  alone there, and a failure that names no test (compile, lint, crash) runs the gate command
+  there. A green tip rejects the change and a red tip sends it on to review. Nothing waits on the
+  main watch any more, and no pin is kept until the watch gets there.
+- **Bugfix waits end on their own.** A bug that bugfix could not reproduce is now marked
+  `[blocked: waiting for a recurrence]` instead of `needs review`. When the quarantine sees its
+  test flake, the occurrence and its output go into the entry and bugfix takes the bug again.
+  Seven quiet days close it to BUGS-FIXED.md. The five bugs that had sat 8–18 days behind such
+  notes are closed.
+- **The claude backend's default tier is now Haiku 5.5.** Strong stays Opus 5.5, and explicit
+  `model` settings are unaffected.
+- **More live views.** `reviews`, both `questions` list forms and `prompt --list` gain
+  `-f/--follow`.
 
 ## Fixes
 
-- Concurrent `tumwater quarantine --release` and the main watch no longer drop each other's
-  quarantine.json updates; writes are locked across processes.
-- An abort cleanup that hits an fs error no longer throws out of the poll and kills the
-  orchestrator.
-- `config set` and the dashboard's daily spend cap row refuse exponent spellings (`1e2`) for
-  dollar and duration keys instead of silently writing 100.
-- A reviewer's `FIX:` line is no longer read as its reason, so fix commits and review events
-  name the actual finding; reviewer replies' code fences follow CommonMark's rules.
-- A sha-less operator_revert, main_check or main_culprit event renders `?`, not a blank.
+- A merge-queue entry whose file cannot be removed no longer throws out of the poll and ends the
+  team's run. drainVerify's dedupe drop is now guarded like its sibling settle paths.
+- `init --adopt` in an empty directory no longer claims to adopt a README.md that doesn't exist.
+- pi's fallback-clone warning names the unresolved model id, so it says which id needs a
+  models.json entry.
+- A Needs-review or Refused note wrapped across lines now lifts whole. `bug --release` used to
+  leave its continuation lines behind.
+- Doctor's `held bugs` counts waits separately and says how they clear. `stale bugs` and
+  `stalled entries` no longer say no bug is held while every bug is.
+- A GitHub release attaches only its own tarball. 0.4.6 also carried a stray 0.4.5 tarball, and
+  `*.tgz` is now ignored.
 
 ## CLI
 
-- `tumwater quarantine -f/--follow` repaints live, like `queue -f`.
-- `--branch` refuses a flag-looking `--` value, naming the token.
-- `prompt --top 1`'s "already first" refusal names the queue's role.
+- `reviews -f`, `questions -f` and `prompt --list -f` repaint until Ctrl+C or their parent exits.
+- `init --template` refuses a flag-looking value and names the slip.
+- An out-of-range `prompt --cancel/--edit/--top <n>` names the role whose inbox it addressed.
 
 ## Build and tests
 
-- DEVELOPMENT.md has a Writing tests section.
-- Internals: long functions split into named helpers (runOrchestrator, resolveRoleConfig,
-  mergeEventMessage, Redeployer.status and more), repeated code folded into shared helpers,
-  and run-detail, observer and self-check modules moved to their own directories.
+- Full-run baseline verdicts record `checkedAt`, persisted across restarts (groundwork for the
+  hourly full check).
+- "About now" test assertions use an injected clock instead of fixed tolerances.
+- PRINCIPLES.md gains a Budgets section.
+- Internals: about 20 long functions split into named helpers (runAgent, prepareOrchestratorRun,
+  launchDueRuns, pollBudgetGate, gateBuildPrecheck, buildSchedulingScope and more). Repeated code
+  is folded into shared helpers, merge-verify helpers and the bug/plan CLI shells have their own
+  modules, and dead exports are removed.
 
-170 files changed, +3,608 / −758 over 79 commits since v0.4.5.
+147 files changed, +5,978 / −3,148 over 89 commits since v0.4.6.
