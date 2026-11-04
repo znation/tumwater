@@ -43,7 +43,7 @@ import { rolePayload } from "../src/roles/role-view.js";
 import { readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel } from "../src/history/history-data.js";
 import { bugWakeText, planWakeText } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
-import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
+import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
 import { ROLE_INSTRUCTIONS_MAX_CHARS } from "../src/config/config-schema.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 

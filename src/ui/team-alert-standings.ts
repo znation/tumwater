@@ -24,7 +24,7 @@ import { checkRoleNotes } from "../doctor/doctor-role-notes.js";
 import { checkPrinciples } from "../doctor/doctor-principles.js";
 import { smallPoolProblems } from "../doctor/doctor-contention-checks.js";
 import { plural } from "../text/phrases.js";
-import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
+import { ROLE_NOTES_MAX_BYTES } from "../roles/role-notes-write.js";
 
 /** The standing-alert half of the snapshot: exactly the fields this builder reads. `config`
  * is the observer's config (configForStatus's last-known-good read) — instance-pool's

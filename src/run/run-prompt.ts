@@ -28,7 +28,7 @@ import { pathTokens } from "../text/text.js";
 import { isDirectory, readRegularTextOrNull, readTextOrNull, statOrNull } from "../files/files.js";
 import { dayKey } from "../text/datetime.js";
 import { appendPromptNote, prependPromptNote } from "../text/format.js";
-import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
+import { ROLE_NOTES_MAX_BYTES } from "../roles/role-notes-write.js";
 import { truncateWithNote } from "../text/text.js";
 import { renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
 import { renderBacklogIndexBlock } from "../backlog/backlog-index.js";

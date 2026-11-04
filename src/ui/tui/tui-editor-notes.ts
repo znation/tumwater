@@ -1,4 +1,4 @@
-import { saveRoleNote } from "../../agent/role-notes-write.js";
+import { saveRoleNote } from "../../roles/role-notes-write.js";
 import { roleNotesPath } from "../../paths.js";
 import type { TuiEditorModule } from "./tui-editor-ctx.js";
 import { createRoleFileEditor } from "./tui-editor-role-file.js";

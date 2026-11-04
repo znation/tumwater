@@ -12,7 +12,7 @@ import { briefTemplate, readmeTemplate } from "../src/brief/brief.js";
 import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { qaCoveragePath, roleNotesPath, feedbackFilingsPath } from "../src/paths.js";
-import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
+import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { applyMergeOutcome } from "../src/run/run-apply.js";
 import { CHECK_DECLARATION_MARKER } from "../src/roles/role-guidance.js";

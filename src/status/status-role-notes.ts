@@ -3,7 +3,7 @@ import path from "node:path";
 import { readRegularTextOrNull } from "../files/files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { roleNotesPath } from "../paths.js";
-import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
+import { ROLE_NOTES_MAX_BYTES } from "../roles/role-notes-write.js";
 
 /** One role's notes file that the run prompt would truncate on read: the role's id and the
  * file's length in UTF-16 *characters* (the unit truncateWithNote cuts on, so this can never

@@ -15,7 +15,7 @@ import { dropBrokenPins, brokenPinDropLines, type BrokenPinDrop, retireLeftovers
 import { commitUncommittedBacklog, backlogCommitMessage, type BacklogCommitReport } from "../doctor/doctor-backlog.js";
 import { archiveFinishedOnMain, describeArchivedFile, type ArchiveOnMainOutcome } from "../backlog/backlog-archive.js";
 import { loadConfigSafe } from "../config/config.js";
-import { saveRoleNote } from "../agent/role-notes-write.js";
+import { saveRoleNote } from "../roles/role-notes-write.js";
 import { roleNotesPath, MERGE_LOCK_WAIT_MS } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { artifactPhrase, retireRole } from "../operator/operator-retire.js";

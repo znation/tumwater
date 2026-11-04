@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { withThrowingFs } from "./helpers/fs-faults.js";
-import { ROLE_NOTES_MAX_BYTES, saveRoleNote, validateRoleNote, writeRoleNote } from "../src/agent/role-notes-write.js";
+import { ROLE_NOTES_MAX_BYTES, saveRoleNote, validateRoleNote, writeRoleNote } from "../src/roles/role-notes-write.js";
 
 // From dist/test/ this is dist/src/notes-cli.js — the compiled file package.json's second bin.
 const cli = fileURLToPath(new URL("../src/notes-cli.js", import.meta.url));
@@ -213,7 +213,7 @@ test("an unknown subcommand exits 2 with usage", () => {
   assert.match(res.stderr, /usage: tumwater-notes/);
 });
 
-// The shared validate-and-atomic-write helpers (src/agent/role-notes-write.ts) are the same
+// The shared validate-and-atomic-write helpers (src/roles/role-notes-write.ts) are the same
 // code the command runs, so their pure contracts are pinned here beside the CLI tests.
 
 test("validateRoleNote accepts the 4,096-byte boundary and rejects one byte past it", () => {

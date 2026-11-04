@@ -6,7 +6,7 @@ import { alertNeedsYou, teamAlerts, type AlertRole } from "../src/ui/team-alerts
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
 import { defaultConfig } from "../src/config/config.js";
-import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
+import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
 import { roleNotesPath } from "../src/paths.js";
 import { PRINCIPLES_MAX_CHARS } from "../src/prompt/principles.js";
 import { BRIEF_TEXT_MAX_CHARS, PROMPT_END, PROMPT_START } from "../src/brief/brief.js";

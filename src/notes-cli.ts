@@ -20,7 +20,7 @@
 import fs from "node:fs";
 import { readTextIfExists } from "./files/files.js";
 import { errorMessage, stripTerminalControls } from "./text/text.js";
-import { validateRoleNote, writeRoleNote } from "./agent/role-notes-write.js";
+import { validateRoleNote, writeRoleNote } from "./roles/role-notes-write.js";
 
 /** The note's path, read ONLY from the environment — never from an argument. */
 const NOTES_PATH = process.env.TUMWATER_NOTES_PATH;

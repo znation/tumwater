@@ -16,7 +16,7 @@ import { defaultConfig, knownRoleIds, loadConfigSafe } from "../config/config.js
 import { rolePayload } from "../roles/role-view.js";
 import { renderRoleMarkdown } from "../roles/role-render.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
-import { saveRoleNote } from "../agent/role-notes-write.js";
+import { saveRoleNote } from "../roles/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
 import { errorMessage, isExponentSpelling, isPlainDecimal } from "../text/text.js";
 import { readPromptFileArg } from "./cli-prompt-file.js";

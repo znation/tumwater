@@ -26,7 +26,7 @@ TUMWATER_NOTES
 | Claude Code | the `mcp__tumwater__role_notes` tool from tumwater's stdio MCP server | the role-notes MCP server, attached by src/agent/claude/claude-backend.ts (`--mcp-config`) |
 | OpenCode | `tumwater_role_notes` from the same MCP server (OpenCode part 5b/7) | src/agent/opencode/opencode-config.ts (`mcp.servers.tumwater`) |
 
-- All three share one validator and writer (src/agent/role-notes-write.ts).
+- All three share one validator and writer (src/roles/role-notes-write.ts).
 - Each needs its own registration code, its own tool name in the prompt (`notesTool` in
   src/prompt/dialect.ts), and its own tests.
 - MCP has its own failure mode: OpenCode lists no MCP tools in a run's first model request

@@ -33,7 +33,7 @@ import { makeRepo, tmpdir, writeBacklogFile, writeConfig } from "./fixtures/repo
 import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { fakeProbe } from "./fixtures/doctor-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
-import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
+import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 

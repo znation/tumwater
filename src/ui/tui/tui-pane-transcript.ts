@@ -1,4 +1,4 @@
-import { saveRoleNote } from "../../agent/role-notes-write.js";
+import { saveRoleNote } from "../../roles/role-notes-write.js";
 import { roleNotesPath } from "../../paths.js";
 import { renderRoleChange } from "../../change/change-render.js";
 import { readMergeQueue } from "../../merge/merge-queue.js";

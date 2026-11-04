@@ -64,7 +64,7 @@ import { CI_PARITY_STALE_MS, recordParity } from "../src/observer/ci-parity.js";
 import { QA_COVERAGE_STALE_MS, recordFlow } from "../src/observer/qa-coverage.js";
 import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
 import { checkRoleNotes } from "../src/doctor/doctor-role-notes.js";
-import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
+import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
 import { roleNotesPath } from "../src/paths.js";
 import { BRIEF_TEXT_MAX_CHARS } from "../src/brief/brief.js";
 import { fakeGh } from "./fakes/fake-gh.js";
