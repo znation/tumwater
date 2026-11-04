@@ -43,7 +43,7 @@ export interface BatchRoleWiring extends PiRunWiring {
  * change merges at `sha` (the synced pin, which the merge ref now names), with `verifiedHead`
  * set when the gate's pre-check ran green on exactly that head; `result` — an outcome that
  * keeps the change out of the merge: rejected, review_error (`discarded` on a strike-cap
- * discard), main_red, a lost-pin "error", or aborted. */
+ * discard), a lost-pin "error", or aborted. */
 export type VerifyVerdict =
   | { kind: "approved"; sha: string; verifiedHead?: string }
   | { kind: "result"; result: RunResult; discarded?: true };

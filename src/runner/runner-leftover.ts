@@ -95,9 +95,6 @@ export interface LeftoverContext {
   /** The role's outstanding hand-back (RunnerState.conflictHandback): when one exists, a pin at
    * the cap means this lineage already used its one hand-back, so it is discarded. */
   conflictHandback?: RunnerState["conflictHandback"];
-  /** The record of a `main_red` pin waiting for the orchestrator poll's `requeueMainRedPin`
-   * (RunnerState.mainRedRetry): while set, recovery holds the pin instead of re-queuing it. */
-  mainRedRetry?: RunnerState["mainRedRetry"];
 }
 
 /** What recovery did with a leftover, for the run to end on:
@@ -120,21 +117,17 @@ export interface LeftoverContext {
  * - `handback`: the pin's last MERGE_CONFLICT_LIMIT merges all ended in a conflict and its
  *   lineage has not been handed back yet — the ref stays, and the run re-applies the diff over
  *   current main with the markers in place so the author resolves them; the run logs a
- *   `conflict_handback` `queued` event;
- * - `main_red_wait`: a merge kept the pin because main was red, and main's head has not moved
- *   since — the pin stays, nothing is queued, and the run ends `main_red` on the idle ladder
- *   until the orchestrator poll re-queues the pin. */
+ *   `conflict_handback` `queued` event. */
 type LeftoverRecovery =
   | { kind: "enqueued"; entry: MergeEntry }
   | { kind: "already_queued"; entry: MergeEntry }
   | { kind: "relief_wait"; entry: MergeEntry }
   | { kind: "unpinned"; sha: string }
-  | { kind: "main_red_wait"; sha: string; message: string }
   | { kind: "handback"; sha: string; summary: string; attempts: number }
   | { kind: "discarded"; sha: string; summary: string; attempts: number };
 
 /** The recovery arms that end the run through the recovery-finishing phase (runner-recovery.ts
- * `finishRecoveryRunPhase`): `enqueued`, `relief_wait`, `unpinned`, and `main_red_wait`. The other
+ * `finishRecoveryRunPhase`): `enqueued`, `relief_wait`, and `unpinned`. The other
  * three arms never reach it — `handback` and `discarded` are resolved inline before the phase
  * (runner-run.ts), and `already_queued` falls through to authoring — so their exclusion from the
  * parameter type is stated once here and shared by the three `finishRecoveryRun` declarations. */
@@ -147,18 +140,6 @@ export type FinishableRecovery = Exclude<
  * whole answer: a pin main already holds is left to `recoverLeftover`, which deletes it. */
 export async function hasUnmergedPin(root: string, role: string): Promise<boolean> {
   return (await refSha(root, mergeRefName(role)).catch(() => null)) !== null;
-}
-
-/** The main_red wait outcome a kept change returns while `ctx.mainRedRetry` is the only
- * outstanding hold — same kept sha and same "waits for main to move past red" message for both
- * recovery paths (the pinned ref and the no-pin adopted tip), so the wording cannot drift per
- * path and the two branches stay byte-stable. */
-function mainRedWait(sha: string, head: string): LeftoverRecovery {
-  return {
-    kind: "main_red_wait",
-    sha,
-    message: `kept change ${shortSha(sha)} waits for main to move past red ${shortSha(head)} before its next merge`,
-  };
 }
 
 /** Queue a commit a previous run left unmerged. Entry condition: the merge ref exists and
@@ -199,13 +180,6 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     if (ahead <= 0) return null;
     sha = await headOf(ctx.wt, "HEAD").catch(() => null);
     if (!sha) return null;
-    // Hold checks BEFORE adopting: when a main_red retry names this tip, adopting it into the
-    // merge ref would create/repoint the pin and lose the kept sha the wait exists to preserve.
-    // Return the wait path without touching the ref (BUGS.md 2026-10-06, the main_red wait),
-    // leaving the commit on the branch.
-    if (ctx.mainRedRetry) {
-      return mainRedWait(sha, ctx.mainRedRetry.head);
-    }
     // Adopt the unpinned commit into the pin scheme so every downstream outcome — kept on an
     // under-cap review failure (the strike cap's retry), deleted on reject/merge/discard,
     // discarded on a user abort — behaves exactly as for a normally pinned one. A failed
@@ -220,11 +194,6 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     }
   }
   const meta = await recoveredMetadata(ctx.root, sha);
-  // `requeueMainRedPin` owns the re-queue of a main_red pin, once main's head moves. Queuing it
-  // here would pay a full gate check against the same red head, whose result is already known.
-  if (ctx.mainRedRetry) {
-    return mainRedWait(sha, ctx.mainRedRetry.head);
-  }
   const attempts = conflictAttempts(ctx.mergeConflicts, sha);
   if (attempts >= MERGE_CONFLICT_LIMIT) {
     const summary = meta.subject ?? `leftover ${shortSha(sha)}`;
@@ -255,7 +224,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
  * recovery can queue it (the poll dropped the run's resume and left `state.withdrawn`,
  * claims.ts dropWithdrawnWork). Such work carries no claim the merge could check: an agent
  * commit on the role's branch, or a merge pin that no queue entry holds (a crash between pin and
- * enqueue, a conflict hand-back, a main_red wait). Each is kept under a backup ref
+ * enqueue, a conflict hand-back). Each is kept under a backup ref
  * (withdrawnRefName), the pin is deleted and the branch in `wt` reset to main, and one warning
  * names the refs. A pin with a queue entry is left to the merge's own withdrawn check, which reads
  * the entry's recorded claim. Clears the marker. Returns the backup refs, [] when there was
@@ -280,11 +249,9 @@ export async function setAsideWithdrawnWork(
   if (pin !== null && !queued && !(await isMergedInto(ctx.root, pin, ctx.mainBranch))) {
     await keep(pin);
     await deleteRef(ctx.root, pinRef);
-    // The pin's merge history goes with it: no hand-back re-applies it, and no main_red wait
-    // re-queues it.
+    // The pin's merge history goes with it: no hand-back re-applies it.
     state.mergeConflicts = undefined;
     state.conflictHandback = undefined;
-    state.mainRedRetry = undefined;
   }
   if ((await aheadOfMain(ctx.wt, ctx.mainBranch)) > 0) {
     await keep(await headOf(ctx.wt, "HEAD"));

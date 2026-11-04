@@ -161,8 +161,8 @@ interface WithdrawnWork {
 
 /** Drop the work a runner still owes `entry`, whose claim was released as `withdrawn`: the
  * resume of a run that worked the claim (with its cause flags and the one-shot image reroute it
- * would hand off to), the rejected change's revision, and a kept `main_red` pin's re-queue
- * record. A resume that owns a re-queued user request is the request's, not the claim's, and
+ * would hand off to) and the rejected change's revision. A resume that owns a re-queued user
+ * request is the request's, not the claim's, and
  * stays. The next run then starts fresh, on whatever entry the poll assigns. Its fresh lease
  * salvages the kept slot's edits for the operator instead of resuming them, and the `withdrawn`
  * marker set here has it set aside whatever the interrupted run committed or pinned before
@@ -178,7 +178,6 @@ export function dropWithdrawnWork(state: RunnerState, entry: NonNullable<RunnerS
     state.imageReroute = undefined;
   }
   state.revision = undefined;
-  state.mainRedRetry = undefined;
   state.withdrawn = { file: entry.file, key: entry.key, title: entry.title };
   return dropped;
 }

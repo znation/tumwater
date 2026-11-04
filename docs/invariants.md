@@ -819,8 +819,8 @@ comma", "ungroundedRefusalFinding flags a cross-series part named with comma and
 resume or a revision, the scheduling poll releases the claim as `withdrawn`, drops that resume (its
 cause flags and image reroute) or revision (and its rejected ref), logs a warning naming the
 entry, and assigns the runner its next free entry in the same poll. A resume that owns a re-queued
-user request is the request's and stays. The drop also clears a kept `main_red` pin's re-queue
-record and leaves a `withdrawn` marker on the runner's state (amended 2026-11-02). The runner's next
+user request is the request's and stays. The drop also leaves a `withdrawn` marker on the
+runner's state (amended 2026-11-02). The runner's next
 fresh run reads the marker before leftover recovery and sets aside the unmerged work the
 interrupted run left with no claim on it: commits on the role's branch ahead of main, a merge pin
 that no queue entry holds, and salvaged patches waiting for the run. Commits and pins are kept
@@ -4297,17 +4297,6 @@ leaves the poll running" and "a claim release that cannot be saved warns and lea
 the saves still land when the disk is fine: "a released claim is saved to disk before the runner runs
 again" and "a sibling held by an unclaimed mid-entry runner records claim-hold, cleared once admitted".
 
-### INV-BR2: a main_red re-queue never throws
-
-**Guarantee.** `requeueMainRedPin` never throws: a failed state save still re-queues the change, and a
-failed queue write warns and leaves the kept pin to the role's leftover recovery.
-
-**Binds.** `src/merge/merge-requeue.ts` (`requeueMainRedPin`).
-
-**Pinned by.** `test/merge-requeue.test.ts` — "a main_red re-queue whose state save fails still queues
-the change", "a main_red re-queue whose queue write fails warns instead of throwing" and "a main_red
-pin is re-queued once main's head moves, and not before".
-
 ## Post-merge reviews: post-review.json never throws out of the merge drain, and a commit is never reviewed over a diff git could not produce
 
 ### INV-BT1: a torn post-review.json entry is dropped
@@ -4845,23 +4834,15 @@ instead of skipping its re-review".
 
 **Pinned by.** `test/review-precheck-watch.test.ts` — "a twice-failed gate with no re-run command runs main's check fresh", "a twice-failed gate whose base the watch checked red is rejected for the failures main does not share", "a twice-failed gate asks main's tip even when the watch has not caught up" and "a twice-failed gate re-runs only its failing tests on main's tip, not main's check"; `test/review-precheck-main-tip.test.ts` — "mainTipGateVerdict is green when the gate command passes at main's tip", "mainTipGateVerdict is red with the failing tests when the gate command fails at main's tip" and "mainTipGateVerdict is unavailable when the check is skipped (no declared check)".
 
-### INV-CY2: a kept `main_red` pin is re-queued once main moves to a head with a cached verdict, or MAIN_RED_VERDICT_WAIT_MS after the wait started
-
-**Guarantee.** `requeueMainRedPin` re-queues a `mainRedRetry` once main's head differs from the recorded one and the head has a cached verdict — green or red — and otherwise starts (and saves) a wait at `waitingSince`, re-queueing once `MAIN_RED_VERDICT_WAIT_MS` has passed. The re-queued entry carries no watch-wait mark: the gate's attribution always decides at main's tip at once (INV-CY1), so a re-queue never tells it to skip that. Re-queuing clears the record.
-
-**Binds.** `src/merge/merge-requeue.ts` (`requeueKeptChange`, `requeueMainRedPin`), `src/runner/runner-state.ts` (`mainRedRetry`), `src/runner/runner-state-load.ts`.
-
-**Pinned by.** `test/merge-requeue.test.ts` — "a main_red pin is re-queued once main's head moves, and not before", "a main_red pin re-queues as soon as main moves to a head cached red" and "a main_red pin waits for a moved head's verdict, then re-queues past MAIN_RED_VERDICT_WAIT_MS".
-
 ## Red main: it excuses only its own failures, and its failures are re-run alone
 
 ### INV-CZ1: a red main never keeps a change for a failure main does not share
 
-**Guarantee.** A pre-check that fails twice while main's verdict is red is judged against main's failures (the red's named tests, the watch's newest known failures and the quarantined tests): a check that names only those goes on to review; one that names any other test is rejected for those tests, as on a green main. A check that names no test is decided by the gate command at main's tip: failing there too makes it main's, while passing there rejects it. A red that names no test is first asked about the change's named tests by re-running them on main's tip, when they can be. A kept `main_red` pin is re-queued as soon as main moves to a head with a verdict, red or green.
+**Guarantee.** A pre-check that fails twice while main's verdict is red is judged against main's failures (the red's named tests, the watch's newest known failures and the quarantined tests): a check that names only those goes on to review; one that names any other test is rejected for those tests, as on a green main. A check that names no test is decided by the gate command at main's tip: failing there too makes it main's, while passing there rejects it. A red that names no test is first asked about the change's named tests by re-running them on main's tip, when they can be.
 
-**Binds.** `src/review/review-precheck.ts` (`gateBuildPrecheck`, `attributeOnRedMain`), `src/baseline/main-red.ts` (`rerunAtMainTip`), `src/merge/merge-requeue.ts` (`requeueMainRedPin`).
+**Binds.** `src/review/review-precheck.ts` (`gateBuildPrecheck`, `attributeOnRedMain`), `src/baseline/main-red.ts` (`rerunAtMainTip`).
 
-**Pinned by.** `test/review-precheck.test.ts` — "a gate failure of a known failure plus another test is rejected for the other test", "a gate failure naming no test goes on to review when main's gate command fails too" and "a nameless pre-check failure that also fails main's tip goes on to review"; `test/review-precheck-watch.test.ts` — "a failing test the re-run finds failing on main's tip too is main's, and the change goes on" and "a twice-failed gate on a red main that names no test goes on to review"; `test/merge-requeue.test.ts` — "a main_red pin re-queues as soon as main moves to a head cached red".
+**Pinned by.** `test/review-precheck.test.ts` — "a gate failure of a known failure plus another test is rejected for the other test", "a gate failure naming no test goes on to review when main's gate command fails too" and "a nameless pre-check failure that also fails main's tip goes on to review"; `test/review-precheck-watch.test.ts` — "a failing test the re-run finds failing on main's tip too is main's, and the change goes on" and "a twice-failed gate on a red main that names no test goes on to review".
 
 ### INV-CZ2: the main watch runs the full check at most once per `check.fullIntervalMinutes` when the failing tests can be re-run alone
 

@@ -164,7 +164,6 @@ test("dropWithdrawnWork clears the resume, its cause flags, the image reroute an
     resumeMissing: true,
     imageReroute: { tier: "strong", model: "m" },
     revision: { sha: "x", round: 1, at: 1 },
-    mainRedRetry: { head: "h", entry: { role: "feature-2", run: 1, summary: "s", enqueuedAt: 1 } },
   });
   assert.deepEqual(dropWithdrawnWork(s, claimA!), { resume: true, revision: true });
   assert.equal(s.resumePending, false);
@@ -172,7 +171,6 @@ test("dropWithdrawnWork clears the resume, its cause flags, the image reroute an
   assert.equal(s.resumeMissing, undefined);
   assert.equal(s.imageReroute, undefined);
   assert.equal(s.revision, undefined);
-  assert.equal(s.mainRedRetry, undefined, "a kept main_red pin of the withdrawn work is not re-queued");
   // The marker the next fresh run reads to set aside committed or pinned work
   // (setAsideWithdrawnWork).
   assert.deepEqual(s.withdrawn, { file: "PLANS.md", key: "plan a", title: claimA!.title });

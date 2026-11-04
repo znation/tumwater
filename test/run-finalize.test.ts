@@ -318,19 +318,6 @@ test("a leftover recovery failure feeds the error streak but never rides the run
   assert.match(warnings[0]!.message as string, /3 runs failed in a row: review gate errored$/);
 });
 
-test("finalizeRun folds a main_red cause onto lastError so run_end logs it", async () => {
-  const root = await initializedRepo();
-  const s = freshRunnerState("organize");
-  await run(root, "organize", s, {
-    result: "main_red",
-    summary: "main is red",
-    error: "build failed on main",
-  });
-  const end = eventsOfType(root, "run_end")[0]!;
-  assert.equal(end.error, "build failed on main");
-  assert.equal(loadRunnerState(root, "organize").lastError, "build failed on main");
-});
-
 test("finalizeRun restores a mid-run wake instead of making it wait out the interval", async () => {
   const root = await initializedRepo();
   // Control: no mid-run wake — the outcome schedules the next run an interval out.

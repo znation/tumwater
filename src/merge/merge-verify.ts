@@ -70,7 +70,7 @@ export async function drainVerify(ctx: MergePipelineContext, p: MergePipeline): 
  * marker record and verify it — checkout at the pin, rebase onto main, gate check, review
  * (verifyRequest), the verdict persisted by the gate. An approval moves it to `approved` (record
  * `approved, awaiting merge`). Any other verdict — rejected, a review_error of either kind,
- * a legacy main_red, a lost pin's "error", aborted — is final for this queue entry, so its
+ * a lost pin's "error", aborted — is final for this queue entry, so its
  * outcome is
  * written at once and its entry dropped, which frees its author on the next poll while the
  * other verifications run on (BUGS.md 2026-09-23's early-rejection rule). A user-aborted

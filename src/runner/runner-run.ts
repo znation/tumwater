@@ -537,7 +537,6 @@ async function recoverLeftoversForRun(
     wt,
     mergeConflicts: s.mergeConflicts,
     conflictHandback: s.conflictHandback,
-    mainRedRetry: s.mainRedRetry,
   });
   if (recovered?.kind === "handback" && plan.prompt === null) {
     // A promptless recovery run has no authoring run to hand the pin back to: leave the pin and

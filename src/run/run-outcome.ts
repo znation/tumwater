@@ -38,9 +38,6 @@ export type RunResult =
   /** A user-initiated abort (tumwater abort) killed the run mid-run; work discarded,
    * role backed off. */
   | "user_aborted"
-  /** Main's build/test suite is red: a merge's check failed on a red main (pin kept, no
-   * strike). */
-  | "main_red"
   /** The change works on a backlog entry main no longer lists (the operator withdrew it, or
    * another change took it): the merge dropped it unmerged and deleted its pin, with no strike
    * and no revision (src/merge/merge-withdrawn.ts). */
@@ -77,11 +74,9 @@ export interface RunOutcome {
    * so the failure never rides its `run_end` (the sibling mislabel fix). */
   recoveryFailure?: string;
   /** The outcome's own cause, written deliberately for this result — never a leftover merge
-   * failure (those ride `state.lastError` and the recoveryFailure field above). Set when a
-   * recovered `main_red_wait` pin records a red main (runner-recovery.ts — pin kept, no strike)
-   * so the run's `run_end` names what broke:
-   * the failure digest's error clusters include main_red runs, and without a cause on the event
-   * the Outcome table's main_red cells would read as a bare count (BUGS.md 2026-09-28). */
+   * failure (those ride `state.lastError` and the recoveryFailure field above), so the run's
+   * `run_end` names what broke and the failure digest's error clusters carry the detail
+   * (BUGS.md 2026-09-28). */
   error?: string;
   /** Why a resumed session's bridge prompt names its cause, when the resume's result itself is
    * not specific enough to derive it: a quiet_killed run can be a hung tool call (the default

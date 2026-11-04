@@ -104,12 +104,6 @@ export async function finishRecoveryRunPhase(
     ctx.state.lastError = `failed to pin leftover ${shortSha(recovered.sha)} by its merge ref; left for the next run's recovery`;
     return { result: "error", summary: ctx.state.lastError, recoveredLeftover: true };
   }
-  if (recovered.kind === "main_red_wait") {
-    // The pin waits for the orchestrator poll to re-queue it once main moves; `main_red` takes
-    // the idle ladder, and the worktree stays as it is.
-    ctx.state.lastError = recovered.message;
-    return { result: "main_red", summary: recovered.message, error: recovered.message, recoveredLeftover: true };
-  }
   const { entry } = recovered;
   if (recovered.kind === "relief_wait") {
     // The role still has a queued change and its branch holds a second commit ahead of main

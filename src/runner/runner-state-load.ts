@@ -127,7 +127,7 @@ function healVocabulary(s: RunnerState): void {
 }
 
 /** Heal every nested scheduling/recovery record of a persisted state in place: lastReview,
- * claim, revision, the torn retry record mainRedRetry, mergeConflicts, conflictDiscard, the
+ * claim, revision, mergeConflicts, conflictDiscard, the
  * withdrawn marker, conflictHandback (with the legacy "landing" → "merge" rename). Each
  * is a plain object whose numeric slots heal to 0; a present non-object is dropped and an
  * absent record stays absent — "which nested records are validated and how?" is answered by
@@ -163,19 +163,6 @@ function healNestedRecords(s: RunnerState): void {
         ? v.reasonCounts.map((c) => healNumber(c, 0))
         : undefined;
     });
-  // A torn retry record reads as none: leftover recovery is the backstop for the pin.
-  if (
-    s.mainRedRetry !== undefined &&
-    !(
-      isJsonObject(s.mainRedRetry) &&
-      typeof s.mainRedRetry.head === "string" &&
-      isJsonObject(s.mainRedRetry.entry) &&
-      typeof s.mainRedRetry.entry.role === "string" &&
-      typeof s.mainRedRetry.entry.summary === "string" &&
-      (s.mainRedRetry.waitingSince === undefined || typeof s.mainRedRetry.waitingSince === "number")
-    )
-  )
-    s.mainRedRetry = undefined;
   if (s.mergeConflicts !== undefined)
     s.mergeConflicts = healRecord(s.mergeConflicts, (v) => {
       v.count = healNumber(v.count, 0);

@@ -87,29 +87,12 @@ test("a pinned commit not in main is put on the merge queue, not merged", async 
   assert.equal(events.filter((e) => e.type === "merged").length, 0, "no in-run merge");
 });
 
-test("a pin waiting on a main_red retry is held, not re-queued", async () => {
-  const { root, sha } = await pinnedFixture();
-  const wt = await ensureWorktree(root, ROLE, "main");
-  const mainRedRetry = { head: headSha(root), entry: { role: ROLE, run: 1, summary: "x", enqueuedAt: 0 } };
-
-  const recovered = await recoverLeftover({ ...makeCtx(root, wt), mainRedRetry });
-
-  assert.equal(recovered?.kind, "main_red_wait");
-  assert.equal(recovered?.kind === "main_red_wait" ? recovered.sha : null, sha);
-  assert.match(recovered?.kind === "main_red_wait" ? recovered.message : "", /waits for main to move past red/);
-  assert.deepEqual(queuedMerges(root), [], "nothing is queued");
-  assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin is kept");
-  assert.equal(readEvents(root).filter((e) => e.type === "merge_queued").length, 0);
-  assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued", "without the record it queues");
-});
-
-test("a stale pin is still dropped while a main_red retry is recorded", async () => {
+test("a stale pin is dropped", async () => {
   const { root } = await pinnedFixture();
   sh(root, "git", "merge", "--ff-only", "stray");
   const wt = await ensureWorktree(root, ROLE, "main");
-  const mainRedRetry = { head: headSha(root), entry: { role: ROLE, run: 1, summary: "x", enqueuedAt: 0 } };
 
-  assert.equal(await recoverLeftover({ ...makeCtx(root, wt), mainRedRetry }), null);
+  assert.equal(await recoverLeftover(makeCtx(root, wt)), null);
   assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the stale pin was deleted");
 });
 
@@ -292,7 +275,7 @@ test("an unpinned commit ahead of main (crash in the commit→pin window) is ado
   assert.equal(await refSha(root, mergeRefName(ROLE)), tip, "the fallback adopts the pin");
 });
 
-test("a no-pin ahead-of-main commit named by a main_red retry is not adopted", async () => {
+test("a no-pin ahead-of-main commit is adopted into the pin scheme and queued", async () => {
   const root = makeRepo();
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.appendFileSync(path.join(wt, "held.txt"), "held work\n");
@@ -301,14 +284,11 @@ test("a no-pin ahead-of-main commit named by a main_red retry is not adopted", a
   const tip = headSha(wt);
   assert.equal(await refSha(root, mergeRefName(ROLE)), null, "fixture sanity: no pin");
 
-  const mainRedRetry = { head: headSha(root), entry: { role: ROLE, run: 1, summary: "x", enqueuedAt: 0 } };
-  const red = await recoverLeftover({ ...makeCtx(root, wt), mainRedRetry });
+  const recovered = await recoverLeftover(makeCtx(root, wt));
 
-  assert.equal(red?.kind, "main_red_wait");
-  assert.equal(red?.kind === "main_red_wait" ? red.sha : null, tip);
-  assert.deepEqual(queuedMerges(root), [], "nothing is queued");
-  assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the main_red tip is not adopted into a pin");
-  assert.equal(headSha(wt), tip, "the commit stays on the branch");
+  assert.equal(recovered?.kind, "enqueued");
+  assert.equal(recovered?.kind === "enqueued" ? recovered.entry.sha : null, tip);
+  assert.equal(await refSha(root, mergeRefName(ROLE)), tip, "the tip is adopted into a pin");
 });
 
 test("a pin is never held by a reviewer config: a formerly-held leftover re-queues as any other pin", async () => {

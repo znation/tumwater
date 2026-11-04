@@ -184,7 +184,6 @@ test("fallbackEvidence: only error is a backend failure; only a model reply is s
     aborted: "none",
     user_aborted: "none",
     skipped: "none",
-    main_red: "none",
     quiet_killed: "none",
     merge_conflict: "none",
     merge_blocked: "none",
@@ -223,7 +222,7 @@ test("the fallback breaker counts consecutive failures: any served run resets th
   assert.equal(b.failures, 1);
   assert.equal(fallbackServing(b), true);
   // No-evidence results neither reset nor extend the streak.
-  b = fold(engaged(), ["error", "aborted", "quiet_killed", "error", "main_red", "skipped"]);
+  b = fold(engaged(), ["error", "aborted", "quiet_killed", "error", "skipped"]);
   assert.equal(b.failures, 2);
   assert.equal(fallbackServing(b), true);
   b = fold(b, ["error"]);

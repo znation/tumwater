@@ -406,18 +406,6 @@ test("loadRunnerState drops a nested record that is not a plain object, keeping 
   assert.equal(s.claim?.key, "k");
 });
 
-test("loadRunnerState drops a mainRedRetry with a foreign-typed waitingSince", () => {
-  const dir = tmpdir();
-  const file = statePath(dir, "parked");
-  ensureParentDir(file);
-  const retry = { head: "h", entry: { role: "parked", summary: "s" } };
-  fs.writeFileSync(file, JSON.stringify({ role: "parked", mainRedRetry: { ...retry, waitingSince: "9" } }));
-  assert.equal(loadRunnerState(dir, "parked").mainRedRetry, undefined);
-
-  fs.writeFileSync(file, JSON.stringify({ role: "parked", mainRedRetry: { ...retry, waitingSince: 9 } }));
-  assert.equal(loadRunnerState(dir, "parked").mainRedRetry?.waitingSince, 9);
-});
-
 test("loadRunnerState recovers from torn or non-object JSON", () => {
   const dir = tmpdir();
   const file = statePath(dir, "dedupe");

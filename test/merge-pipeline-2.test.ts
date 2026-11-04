@@ -539,8 +539,8 @@ test("an unwritable state file on a settling merge warns instead of rejecting th
   // Part 3s/3: the rejection comes from the deterministic gate (a failing declared check), not a
   // reviewer verdict, so the settle still writes the rejected outcome into the unwritable state.
   // The check fails only on the change's own tree (where improve.txt exists), so the gate's
-  // attribution re-check on main's tip — which holds no change file — stays green and the settle
-  // records `rejected`, not `main_red`.
+  // attribution re-check on main's tip — which holds no change file — stays green and the
+  // settle records `rejected`.
   const config = { ...defaultConfig(), check: { command: `if [ -f improve.txt ]; then printf '%s\n' "planted failure: the change is red"; exit 1; fi` } };
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role], undefined, config), { cap: 1, config });
   const restore = fakePi(APPROVE());

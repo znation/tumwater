@@ -90,7 +90,6 @@ test("fallbackEvidence maps the RunResult vocabulary: error alone fails, a model
     "aborted",
     "quiet_killed",
     "user_aborted",
-    "main_red",
     "skipped",
   ] as const) {
     assert.equal(fallbackEvidence(none), "none", none);
@@ -170,7 +169,7 @@ test("recordFallbackRun frees the probe slot when the probe produced no evidence
   assert.deepEqual(b, { pair: "free/qwen", capUsd: 5, failures: 3, probeAt: 5_000, cooldownMs: 100, probing: false });
   // A non-probe run with no evidence changes nothing at all.
   const demotedIdle = demoted(5_000);
-  assert.equal(recordFallbackRun(demotedIdle, demotedIdle, "main_red", false, 6_000, policy), demotedIdle);
+  assert.equal(recordFallbackRun(demotedIdle, demotedIdle, "skipped", false, 6_000, policy), demotedIdle);
 });
 
 test("fallbackDemotion publishes a demotion and nothing while trusted or unengaged", () => {

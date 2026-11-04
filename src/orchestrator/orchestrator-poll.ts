@@ -15,7 +15,6 @@ import { launchDueRuns } from "./orchestrator-launch.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { branchHead, currentBranch } from "../git/git.js";
 import { queuedMergeFiles } from "../merge/merge-queue.js";
-import { requeueMainRedPin } from "../merge/merge-requeue.js";
 import { drainMergeQueue, settleAbortedApproved } from "../merge/merge-drain.js";
 import { abortableMerges, mergeTasks, type MergePipeline } from "../merge/merge-pipeline.js";
 import { TUMWATER_SOURCE, type HarnessEventInput } from "../events/events.js";
@@ -370,14 +369,11 @@ export async function pollRedeploy(
 export async function pollMergeDrain(
   ctx: PollContext,
   state: PollState,
-  { liveConfig, mainHead }: PollInputs,
+  { liveConfig }: PollInputs,
   gates: PollGates,
 ): Promise<void> {
   if (state.holdForRestart || state.diskHeld) return;
   const { root, mainBranch } = ctx;
-  // A kept pin from a historical `main_red` settle goes back on the queue once main's head
-  // has moved.
-  for (const r of ctx.runners) await requeueMainRedPin(root, mainBranch, r.state, mainHead);
   await drainMergeQueue(
     {
       root,

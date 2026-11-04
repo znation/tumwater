@@ -1,5 +1,4 @@
 import type { RunResult } from "../run/run-outcome.js";
-import type { MergeEntry } from "../merge/merge-queue.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { statePath } from "../paths.js";
 import { tryOrWarn } from "../events/events.js";
@@ -217,15 +216,6 @@ export interface RunnerState {
    * tier. Read by the verdict's one-hop guard, which fails a blind read during a rerouted
    * run instead of rerouting it again. Transient: reset at every run start. */
   imageRerouteActive?: boolean;
-  /** A kept pin from a `main_red` settle (a historical verdict, or a recovery of a leftover
-   * that still returns one), waiting for main to move: `head` is main's head when the
-   * attempt settled and `entry` the dropped queue entry (minus its sha, which is the pin's
-   * current one). The orchestrator poll re-queues it on the first poll whose main head differs
-   * (merge-requeue.ts requeueMainRedPin) and has a cached verdict, red or green, or once
-   * MAIN_RED_VERDICT_WAIT_MS has passed with no verdict; cleared then, or when the pin is gone.
-   * `waitingSince` is the ms epoch of the first poll that saw main moved with no cached verdict
-   * for its head. */
-  mainRedRetry?: { head: string; entry: Omit<MergeEntry, "sha">; waitingSince?: number };
   /** Tokens the model generated in this runner's current or last completed run — a per-run
    * window (runner-run.ts resets it at run start), not a lifetime total. */
   generatedTokens: number;

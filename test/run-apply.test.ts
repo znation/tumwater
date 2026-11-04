@@ -453,7 +453,7 @@ test("applyMergeOutcome counts consecutive merge conflicts per pinned sha", () =
   applyMergeOutcome(s, "merge_conflict", { sha: "aaa", summary: "x" });
   assert.deepEqual(s.mergeConflicts, { sha: "aaa", count: 2 });
   // Outcomes that keep the pin as it was leave the count standing.
-  for (const result of ["review_error", "merge_blocked", "main_red", "aborted"] as const) {
+  for (const result of ["review_error", "merge_blocked", "aborted"] as const) {
     applyMergeOutcome(s, result, { sha: "aaa", summary: "x" });
   }
   assert.deepEqual(s.mergeConflicts, { sha: "aaa", count: 2 });
@@ -657,7 +657,7 @@ test("applyRunOutcome: a no_change run grows the no-change streak; any other res
   assert.equal(s.noChangeStreak, 2, "consecutive no_change runs grow the streak");
   // Every completed result other than no_change resets it, so a role that merges between
   // no-ops never shows a stale streak.
-  for (const result of ["changed", "queued", "error", "aborted", "quiet_killed", "user_aborted", "skipped", "refused", "main_red"] as const) {
+  for (const result of ["changed", "queued", "error", "aborted", "quiet_killed", "user_aborted", "skipped", "refused"] as const) {
     const r = freshRunnerState("feature");
     r.noChangeStreak = 3;
     applyRunOutcome(r, cfg, "feature", { result });
