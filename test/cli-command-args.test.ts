@@ -439,6 +439,12 @@ test("parseInitArgs --template: never prompt content, validated against the cata
   const unknown = expectFail(() => parseInitArgs(["--template", "nope", "Build a thing."]));
   assert.match(unknown.stderr, /unknown template "nope" — valid templates: blank, python-cli, node-cli, static-site/);
 
+  // A flag-shaped value is a slipped flag, never a template id — the same refusal the sibling
+  // init value slots (--file via promptFileValue, --branch via parseBranchFlag) apply, instead
+  // of reporting the dropped flag as an unknown template.
+  const slipped = expectFail(() => parseInitArgs(["--template", "--dry-run", "Build a thing."]));
+  assert.match(slipped.stderr, /--template needs a value \(the next token "--dry-run" is a flag, not a value\)/);
+
   // A missing value fails by name, like the other valued flags.
   assert.match(expectFail(() => parseInitArgs(["--template"])).stderr, /--template needs an id/);
 

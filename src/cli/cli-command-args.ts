@@ -155,6 +155,11 @@ function resolveInitTemplate(args: string[], listTemplates: boolean): string | n
   const templateFlag = args.indexOf("--template");
   let template: string | null = null;
   if (templateFlag >= 0) {
+    // The same slipped-`--`-flag guard the sibling init value slots apply (--file via
+    // promptFileValue, --branch via parseBranchFlag): a template id never starts with `-`,
+    // so `--template --dry-run` names its own slipped flag rather than reporting it as an
+    // unknown template.
+    rejectFlagLookingValue("--template", args[templateFlag + 1]);
     template = args[templateFlag + 1] ?? "";
     if (!template) fail("--template needs an id");
     if (!templateIds().includes(template)) {
