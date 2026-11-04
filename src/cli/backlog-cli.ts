@@ -6,25 +6,25 @@
  * surgery and the locked read-modify-write live in backlog-write.ts. The wake of the role that
  * should act stays in cli.ts beside the other command bodies. */
 
-import { fail, say, sayJson, warnIfUncommitted } from "../cli/cli-output.js";
-import { parsePositionFlag, rejectRepeatFlag, scanPositionArgs } from "../cli/cli-args.js";
-import { promptFileValue, readPromptFileArg } from "../cli/cli-prompt-file.js";
-import { plannedPlanEntries } from "./backlog.js";
+import { fail, say, sayJson, warnIfUncommitted } from "./cli-output.js";
+import { parsePositionFlag, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
+import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
+import { plannedPlanEntries } from "../backlog/backlog.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
-import { backlogHolds, cancelledClaimNote, stillHeldNote } from "./backlog-eligibility.js";
-import { entryKey, plansReleasedBy, releasedPartsNote } from "./backlog-parts.js";
-import { liftedNotePhrase, type LiftableHold } from "./backlog-release.js";
+import { backlogHolds, cancelledClaimNote, stillHeldNote } from "../backlog/backlog-eligibility.js";
+import { entryKey, plansReleasedBy, releasedPartsNote } from "../backlog/backlog-parts.js";
+import { liftedNotePhrase, type LiftableHold } from "../backlog/backlog-release.js";
 import { collapseWhitespace } from "../text/text.js";
-import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
-import { requireReadyRepo } from "../cli/cli-repo-gate.js";
-import { editInEditor } from "../cli/cli-editor.js";
+import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
+import { requireReadyRepo } from "./cli-repo-gate.js";
+import { editInEditor } from "./cli-editor.js";
 import { requestWake, submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
-import { commitOperatorBacklogEdit } from "./backlog-commit.js";
+import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
-import { type FiledEntry, showEntry, splitEntryFile } from "./backlog-write.js";
+import { type FiledEntry, showEntry, splitEntryFile } from "../backlog/backlog-write.js";
 import { renderShownEntry } from "./backlog-cli-view.js";
-import { archiveFinishedOnMain, describeArchivedFile } from "./backlog-archive.js";
+import { archiveFinishedOnMain, describeArchivedFile } from "../backlog/backlog-archive.js";
 import { MERGE_LOCK_WAIT_MS } from "../paths.js";
 import { shortSha } from "../text/format.js";
 

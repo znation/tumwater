@@ -223,7 +223,7 @@ async function cmdHistoryCase(root: string, args: string[]): Promise<void> {
 async function cmdArchiveCase(root: string, args: string[]): Promise<void> {
   rejectUnknownArgs("archive", args, [JSON_FLAG]);
   await requireReadyRepo(root);
-  await (await import("./backlog/backlog-cli.js")).cmdArchive(root, args);
+  await (await import("./cli/backlog-cli.js")).cmdArchive(root, args);
 }
 
 /** The `bug` and `plan` argument shells are identical — the same --show/--list/--edit/
@@ -255,8 +255,8 @@ interface BacklogCommandSpec {
  * entry by default. */
 async function runBacklogCommand(root: string, args: string[], s: BacklogCommandSpec): Promise<void> {
   const { cancelAndAnnounce, editAndAnnounce, fileAndAnnounce, releaseAndAnnounce, topAndAnnounce } =
-    await import("./backlog/backlog-cli.js");
-  const { listAndAnnounce, showAndAnnounce } = await import("./backlog/backlog-cli-view.js");
+    await import("./cli/backlog-cli.js");
+  const { listAndAnnounce, showAndAnnounce } = await import("./cli/backlog-cli-view.js");
   if (args.includes("--show")) {
     showAndAnnounce(root, args, s.command);
     return;
@@ -288,7 +288,7 @@ async function cmdBugCase(root: string, args: string[]): Promise<void> {
   const { OPERATOR_FILE_KINDS, bugWakeText, cancelBug, editBug, editBugFromText, fileBug, fileBugFromText } =
     await import("./backlog/backlog-write.js");
   const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
-  const { bugTitleOf } = await import("./backlog/backlog-cli.js");
+  const { bugTitleOf } = await import("./cli/backlog-cli.js");
   const usage = 'tumwater bug "<symptom>"';
   await runBacklogCommand(root, args, {
     command: "bug",
@@ -312,7 +312,7 @@ async function cmdPlanCase(root: string, args: string[]): Promise<void> {
   const { OPERATOR_FILE_KINDS, cancelPlan, editPlan, editPlanFromText, filePlan, filePlanFromText, planWakeText } =
     await import("./backlog/backlog-write.js");
   const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
-  const { planTitleOf } = await import("./backlog/backlog-cli.js");
+  const { planTitleOf } = await import("./cli/backlog-cli.js");
   const usage = 'tumwater plan "<title>" [body...]';
   await runBacklogCommand(root, args, {
     command: "plan",

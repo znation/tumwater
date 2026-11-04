@@ -3,8 +3,8 @@
  * shells (file, cancel, release, top, edit). Neither shell gates on a ready repo, commits, or
  * wakes a role. cli.ts reaches them through listAndAnnounce and showAndAnnounce. */
 
-import { fail, say, sayJson } from "../cli/cli-output.js";
-import { parseCountFlag, rejectRepeatFlag, scanPositionArgs } from "../cli/cli-args.js";
+import { fail, say, sayJson } from "./cli-output.js";
+import { parseCountFlag, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import {
   type BacklogEntry,
   DONE_DATE_RE,
@@ -18,12 +18,12 @@ import {
   entryAgeSuffix,
   entryMatches,
   filingDate,
-} from "./backlog.js";
-import { backlogHolds, backlogInProgress, holdMark, inProgressMark, type EntryHold } from "./backlog-eligibility.js";
-import { groupBlockedSeries, partsLabel } from "./backlog-index-data.js";
-import { rejectUnknownArgs } from "../cli/cli-flag-specs.js";
-import { refuseTeamWorkspace } from "../cli/cli-repo-gate.js";
-import { sectionNoun, showEntry } from "./backlog-write.js";
+} from "../backlog/backlog.js";
+import { backlogHolds, backlogInProgress, holdMark, inProgressMark, type EntryHold } from "../backlog/backlog-eligibility.js";
+import { groupBlockedSeries, partsLabel } from "../backlog/backlog-index-data.js";
+import { rejectUnknownArgs } from "./cli-flag-specs.js";
+import { refuseTeamWorkspace } from "./cli-repo-gate.js";
+import { sectionNoun, showEntry } from "../backlog/backlog-write.js";
 
 /** `bug --list --done -n` / `plan --list --done -n` ceiling: bounds how many finished
  * entries one list shows, so a typo'd huge count fails fast with the shared `must be between

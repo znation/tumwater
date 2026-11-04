@@ -2,7 +2,7 @@
  * fast on the first unmet precondition (startup-gates.ts's repoNotReady — the repo half of
  * `tumwater start`'s startup gate). One named home beside the argument gate (cli-flag-specs.ts):
  * the dispatcher (cli.ts), the marker commands (cli-marker-commands.ts), the write commands
- * (backlog/backlog-cli.ts), and the read-only command bodies (cli-query-commands.ts) all
+ * (backlog-cli.ts), and the read-only command bodies (cli-query-commands.ts) all
  * import it, so a command layer never reaches into a sibling command module for a gate. */
 import { fail } from "./cli-output.js";
 import { teamWorkspaceMessage } from "../gates/readiness.js";
