@@ -129,7 +129,7 @@ export function imageRerouteTarget(
 /** The seam a pending image-input reroute marker names, rebuilt as a resolved config
  * (plans/image-input.md part 4/5): the marker's `tier` resolves over the live config with the
  * marker's stored `backend`/`provider`/`model`/`thinking` as overrides. One home for the
- * projection runner.ts's runConfig and runner-run.ts's planRunStart both apply, so a rerouted
+ * projection runner.ts's runConfig and runner-run.ts's runPhase both apply, so a rerouted
  * run and the role's own run can never read the marker two different ways. */
 export function rerouteSeamConfig(
   config: TumwaterConfig,

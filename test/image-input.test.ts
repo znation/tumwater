@@ -9,7 +9,7 @@ import { loadConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { readPiProviders } from "../src/pi/pi-models.js";
 import type { PiListedModels } from "../src/pi/pi-listed-models.js";
-import { imageReroute, imageRerouteTarget, seamImageInput } from "../src/agent/image-input.js";
+import { imageReroute, imageRerouteTarget, rerouteSeamConfig, seamImageInput } from "../src/agent/image-input.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { readyRepo } from "./fixtures/doctor-fixtures.js";
 
@@ -126,6 +126,26 @@ test("imageReroute exposes the tier a surface names", () => {
   assert.ok(rr);
   assert.equal(rr?.tier, "strong");
   assert.equal(rr?.config.model, "vision");
+});
+
+test("rerouteSeamConfig rebuilds the marker's stored seam over the live tier, not the tier's own model", () => {
+  // The pending marker names the seam the blind-read run actually chose, which can differ from
+  // what the tier resolves to now (the config may have moved since). Every stored field must
+  // win over the live tier: a fixture where the marker equals the tier's current model would
+  // pass even if the helper dropped the override entirely.
+  const config = rerouteConfig({ model: { default: "local/text", strong: "local/live" } });
+  const seam = rerouteSeamConfig(config, {
+    tier: "strong",
+    backend: "claude",
+    provider: "stored",
+    model: "stored-model",
+    thinking: "marker-high",
+  });
+  assert.equal(seam.agent, "claude", "the stored backend wins");
+  // routeModel gives a non-pi backend the whole provider/model id and drops the provider half.
+  assert.equal(seam.model, "stored/stored-model", "the stored provider/model wins");
+  assert.equal(seam.provider, undefined);
+  assert.equal(seam.thinking, "marker-high", "the stored thinking wins");
 });
 
 // ── Pi's built-in catalog (plans/image-input.md "Capability"): a pair models.json does not
