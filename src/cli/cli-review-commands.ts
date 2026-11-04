@@ -70,13 +70,16 @@ export async function cmdReviews(root: string, args: string[], seams: FollowView
   // read prints. Absent a ready config `parseRoleListScope` falls back to the built-in catalog.
   const roles = parseRoleListScope(root, args);
   const { raw: statusRaw } = parseStatusFlag(args, REVIEWS_STATUS_VALUE_ERROR);
+  // Validate the state list once, before the follow branch: a bad `--status` value must fail
+  // like the one-shot read, not become a follow whose every frame throws and is skipped.
+  const states = statusRaw === null ? null : parseReviewStatusList(statusRaw);
   // The scoped read shared by the follow and the one-shot branches, so the render's age and
   // the scope text share one clock read and each follow frame re-reads the queue file.
   const readScoped = (): { entries: PostReview[]; scope: { roles: readonly string[]; positions: readonly number[]; total: number; filter?: string } | undefined } => {
     const whole = readPostReviews(root);
     let entries: PostReview[] = whole;
     let scope: { roles: readonly string[]; positions: readonly number[]; total: number; filter?: string } | undefined;
-    if (statusRaw === null) {
+    if (states === null) {
       const scoped = roles ? scopePostReviews(whole, roles, (e) => roleInScope(e.role, roles)) : undefined;
       entries = scoped ? scoped.entries : whole;
       scope = scoped?.scope;
@@ -84,7 +87,6 @@ export async function cmdReviews(root: string, args: string[], seams: FollowView
       // `--status <state>[,...]` keeps only the listed states (the same precedence
       // postReviewStatusLabel prints: a rejected-and-failing entry is rejected) under their
       // whole-queue positions, composing with `--role`. roles=[] when unscoped.
-      const states = parseReviewStatusList(statusRaw);
       const keep = (e: PostReview) => (!roles || roleInScope(e.role, roles)) && states.includes(postReviewState(e));
       const filterText = [roles ? `--role ${roles.join(",")}` : "", `--status ${states.join(",")}`]
         .filter(Boolean)

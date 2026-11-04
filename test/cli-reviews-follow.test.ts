@@ -145,6 +145,24 @@ test("reviews -f --json is refused before any frame", async () => {
   }
 });
 
+test("reviews -f --status with an unknown state is refused before any frame", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews follow status test");
+  writeReviews(repo, seedPending());
+  await sleep(50);
+  const cap = captureStdout();
+  try {
+    const err = await expectFailAsync(() => cmdReviews(repo, ["-f", "--status", "bogus"], { ppid: () => 4242, intervalMs: 5 }));
+    assert.match(err, /waiting/);
+    assert.match(err, /failing/);
+    assert.match(err, /rejected/);
+    const out = cap.out();
+    assert.doesNotMatch(out, /post-merge review queue/, "no queue frame before the refusal");
+  } finally {
+    cap.restore();
+  }
+});
+
 test("reviews -f clears the screen only on a TTY", async () => {
   const seed = (repo: string) => writeReviews(repo, seedPending());
   await withReviewsFollow(seed, ["-f"], 5, true, async ({ cap, done, stop }) => {
