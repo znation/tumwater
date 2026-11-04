@@ -64,10 +64,10 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
   // The run's last authoring agent run failed before its model replied: the orchestrator has
   // the model check look at the run's pair again (RunOutcome.unanswered).
   if (usage.endedUnanswered) outcome.unanswered = true;
-  // A run's error (a historical `main_red` run's cause was written for that result, src/baseline/main-red.ts)
-  // is not a leftover merge failure: fold it onto the state here so `run_end` logs it like
-  // every other failure's. runOnce cleared `lastError` at its start, so nothing foreign can
-  // precede this.
+  // A run's error (a historical `main_red` run's cause was written for that result,
+  // src/baseline/main-red.ts) is not a leftover merge failure: fold it onto the state here so
+  // `run_end` logs it like every other failure's. runOnce cleared `lastError` at its start, so
+  // nothing foreign can precede this.
   if (outcome.error !== undefined) s.lastError = outcome.error;
 
   // Read main's current head while this run is still reserved (running=true): the
