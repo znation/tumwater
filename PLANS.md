@@ -6,6 +6,120 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
+### Remote CI, part 1/3: The ci role reads GitHub Actions' verdict on main's newest pushed commit with the operator's `gh`, and the harness records its `REMOTE:` line (planned 2026-11-04 by the operator at the user's direction; design in plans/remote-ci.md "Shape"; edits only the ci role's text in role-catalog.ts, not the clean, plan or feature charters that No duplicate plans parts 1/6, 3/6, 4/6 and 6/6 edit; the runner-run.ts and runner-outcome.ts edits are a few lines each beside No duplicate plans parts 2/6 and 5/6 and Every commit is verified on main part 4k/3, and the paths.ts edit is one function beside Hourly full check part 2c/4's, so whichever merges second rebases; touches src/observer/remote-ci.ts src/paths.ts src/verdict/reply-contract.ts src/runner/runner-run.ts src/runner/runner-outcome.ts src/run/run-verdict.ts src/run/run-stage.ts src/run/run-dismiss.ts src/roles/role-catalog.ts src/config/config-schema.ts src/config/config-validation-roles.ts docs/how-it-works.md docs/config.md docs/invariants.md test/remote-ci.test.ts test/reply-contract.test.ts test/run-dismiss.test.ts test/run-verdict.test.ts test/run-stage.test.ts test/runner-remote-ci.test.ts test/config-validation.test.ts)
+
+**Goal.** The ci role runs the workflow's steps on this machine and never asks GitHub whether Actions passed. It cannot see a failure that happens only on the hosted runner. 47 of the last 100 GitHub CI runs on znation/tumwater failed (2026-10-08 to 11-04). One test failed on GitHub on four pushes over 21 hours because the Linux runner leaves `TMPDIR` unset, and no local run could show it. After this part, each ci run checks the hosted CI's verdict on the newest pushed commit of the base branch, using the operator's own `gh` login. It reproduces and fixes or files a new failure, and reports a `REMOTE:` line that the harness records. The harness gains no GitHub client and stores no credentials (decision 2 in the design).
+
+**Approach.**
+- New src/observer/remote-ci.ts:
+  - `githubRepoOf(url: string): string | null` returns `owner/name` for `https://github.com/o/r`, `http://…`, `git@github.com:o/r` and `ssh://git@github.com[:port]/o/r`, with or without `.git` or a trailing `/`. The host is matched case-insensitively. Any other host, or a path that is not exactly two segments, returns null.
+  - `remoteCiTarget(root: string, config: TumwaterConfig): Promise<{ repo: string; branch: string } | null>`. It returns null when `config.roles.ci?.remote === false`, when `<root>/.github/workflows/` holds no `*.yml` or `*.yaml` file, or when the remote URL is unreadable or not on GitHub. The branch is `targetBranch(config.baseBranch, currentBranchFromHeadFile(root))`, the same resolution `currentCiParityState` uses. The remote is `git config --get branch.<branch>.remote`, defaulting to `origin`. The URL is `git config --get remote.<remote>.url`, read through `git` in src/git/git-run.ts. A failed read returns null and never throws.
+  - The ledger record is `RemoteCiEntry = { repo: string; sha?: string; result: "passed" | "failed" | "pending" | "unavailable"; reason?: string; checkedAt: number }`. `readRemoteCi(root)` returns null for a missing, torn or wrong-shaped file. A record needs `sha` unless it is `unavailable`, and a `reason` when it is. `recordRemoteCi(root, repo, result, now = Date.now())` writes atomically with `writeJsonAtomic` and returns the previous record (part 2/3's event reads it).
+  - `renderRemoteCiBlock(target, entry, now)` renders the block from plans/remote-ci.md "Shape". The first line is `Remote CI (GitHub Actions on <repo>, branch <branch>; from this team's own record):`. The second is `  last checked <sha7> — <result> <age> ago`, or `  last checked — unavailable <age> ago: <reason>`, or `  no result recorded yet`. The third is `  Check it this run with: gh run list --repo <repo> --branch <branch> --event push --limit 20 --json headSha,status,conclusion,workflowName,databaseId,url,createdAt`.
+  - `remoteCiBlockFor(root, config, now): Promise<string | undefined>` returns undefined when the target is null.
+- src/paths.ts: `remoteCiPath(root)` returns `.tumwater/state/remote-ci.json`, beside `ciParityPath`.
+- src/verdict/reply-contract.ts: `RemoteResult = { sha: string; result: "passed" | "failed" | "pending" } | { result: "unavailable"; reason: string }`. `extractRemoteResult(text)` is built on `labeledLine(text, "REMOTE")`. It accepts a 7–64-character hex sha, a dash or em-dash, and `passed`, `failed` or `pending`. It also accepts `unavailable`, a dash or em-dash, and a non-empty reason, clipped to 200 characters. Anything else, including a bare or truncated line, returns null, the same fail-closed rule as `extractCiResult`.
+- src/runner/runner-run.ts:
+  - In the ci branch that appends `mainRedHealNote`, append `await remoteCiBlockFor(ctx.root, ctx.config)` after the heal note when it is defined. Wrap it so a throw appends nothing.
+  - Where `ci` is extracted, resolve `remoteCiTarget` again for ci runs. When it is non-null and `extractRemoteResult(pi.finalText)` reads a result, `remote` is `{ repo: target.repo, result }`; otherwise it is null. A run whose prompt carried no block therefore records nothing, even if its reply has a REMOTE line. Thread `remote` the way `filed` is threaded, through `handlePiResultPhase` (src/runner/runner-outcome.ts) into the `resolveRunVerdict` and `stageRunMerge` contexts.
+- src/run/run-dismiss.ts: add `recordDismissedRemote(ctx, root, remote)`. It calls `recordRemoteCi(root, remote.repo, remote.result)` and, on a throw, warns `remote CI result not recorded: <error>`. The module comment says why this recorder, unlike parity, is shared by both paths. The record is what GitHub reported on a pushed sha, which a run's own diff cannot make false. Recording it on the changed path stops the next run from fixing the same red again while the first fix waits to merge.
+- Call it from `recordNoChangeBookkeeping` (src/run/run-verdict.ts) when `ctx.remote && !cutOff`, and from `recordStageRecords` (src/run/run-stage.ts) when `ctx.remote` is set.
+- src/roles/role-catalog.ts, the ci charter:
+  - Its "current" sentence keeps skipping the suite, but now says the remote check below still runs.
+  - Add a "Remote CI" step that applies only when the prompt carries the Remote CI block. It holds the four rules in plans/remote-ci.md "Shape": which sha and verdict to judge, and that `cancelled` is not a failure; the same sha and verdict means already handled; how to triage a new failure (`gh run view <id> --repo <repo> --log-failed | tail -n 200`, then fails-here, already-fixed, or runner-specific); and that `gh` is read-only for this role.
+  - The runner-specific branch names the OS from the workflow's `runs-on`, the runtime version, and environment differences such as an unset `TMPDIR`. tumwater runs on any codebase, so the TMPDIR case is an example, not the rule, and the step names the project's declared check rather than npm.
+  - Add the line paragraph. When the block is present, the reply carries `REMOTE: <sha> — <passed|failed|pending>` or `REMOTE: unavailable — <reason>` just before the `CI:` line. A passing run's ending shows three lines: REMOTE, CI, then the nothing-to-do sentinel.
+- src/config/config-schema.ts: add `RoleConfig.remote?: boolean` with a doc comment (ci only; false stops the ci role reading the hosted CI; absent means on when detectable), and add `"remote"` to `ROLE_ENTRY_KEYS`. In src/config/config-validation-roles.ts, `remote` under any role but `ci` is rejected with the wording the `instances` rule uses. Under `ci` it goes through `checkBoolean`.
+- Docs:
+  - docs/config.md: the `roles.<id>` table gains a `remote` row.
+  - docs/how-it-works.md: the ci paragraph gains two sentences on the remote check, the `REMOTE:` line and its ledger.
+  - docs/invariants.md: add INV-BW4, "a failed remote-ci write warns and the run keeps its outcome; a cut-off run records nothing; both dismissal paths record". It binds src/run/run-dismiss.ts (`recordDismissedRemote`) and src/observer/remote-ci.ts (`recordRemoteCi`), and is pinned by the run-dismiss, run-verdict and run-stage tests below.
+
+**Files touched.** src/observer/remote-ci.ts src/paths.ts src/verdict/reply-contract.ts src/runner/runner-run.ts src/runner/runner-outcome.ts src/run/run-verdict.ts src/run/run-stage.ts src/run/run-dismiss.ts src/roles/role-catalog.ts src/config/config-schema.ts src/config/config-validation-roles.ts docs/how-it-works.md docs/config.md docs/invariants.md test/remote-ci.test.ts test/reply-contract.test.ts test/run-dismiss.test.ts test/run-verdict.test.ts test/run-stage.test.ts test/runner-remote-ci.test.ts test/config-validation.test.ts
+
+**Acceptance criteria.**
+- `githubRepoOf` returns `znation/tumwater` for `https://github.com/znation/tumwater.git`, `git@github.com:znation/tumwater.git`, `ssh://git@github.com/znation/tumwater` and `https://GitHub.com/znation/tumwater/`. It returns null for `https://gitlab.com/a/b.git`, `https://github.com/a` and `/srv/git/repo.git`.
+- In a fixture repo with `origin` on github.com and `.github/workflows/ci.yml`, `remoteCiTarget` returns `{ repo, branch: "main" }`. It returns null with `roles.ci.remote: false`, with no workflow file, and with `origin` on another host.
+- `extractRemoteResult` reads `REMOTE: 3e450b0c4 — failed` and `REMOTE: unavailable — gh is not logged in`. It returns null for `REMOTE: 3e450b0c4`, `REMOTE: 3e450b0c4 — pa`, `REMOTE: unavailable —` and a mid-sentence `REMOTE:`.
+- A ci run in such a fixture repo starts with a prompt that ends in the Remote CI block, naming the repo, the branch and the `gh run list` command. The same run in a repo with no GitHub remote has a prompt byte-identical to today's.
+- A no_change ci run whose reply carries a REMOTE line records it in `.tumwater/state/remote-ci.json`. A cut-off one records nothing. A ci run that commits a change also records it. A failed write warns `remote CI result not recorded` and the run keeps its outcome.
+- `recordRemoteCi` returns the previous record, and null on the first write.
+- `roles.ci.remote: true` and `false` validate. `roles.feature.remote: false` and `roles.ci.remote: "no"` are each rejected with one problem naming the key.
+- `grep -n 'REMOTE: <sha> — <passed|failed|pending>' src/roles/role-catalog.ts` and `grep -n -- '--log-failed' src/roles/role-catalog.ts` each find a line of the ci charter.
+- `npm run test:gate` passes.
+
+**Tests.**
+- New test/remote-ci.test.ts: `githubRepoOf` cases; `remoteCiTarget` on fixture repos (use `git remote add` in a temp repo, and write the workflow file); `readRemoteCi`/`recordRemoteCi` round trip and malformed-file cases; `renderRemoteCiBlock` for no record, passed, failed and unavailable.
+- test/reply-contract.test.ts: the `extractRemoteResult` cases.
+- test/run-dismiss.test.ts, test/run-verdict.test.ts and test/run-stage.test.ts: record, cut-off and failed-write cases, mirroring the existing `filed` cases.
+- New test/runner-remote-ci.test.ts, modelled on test/runner-red-main.test.ts "the ci healer's fresh prompt carries the red-main handoff": the ci run's prompt carries the block in a GitHub-remote fixture and does not without one.
+- test/config-validation.test.ts: the `remote` key cases.
+- Run those files and the gate.
+
+### Remote CI, part 2/3: A hosted-CI failure pages the operator once per commit, and `tumwater doctor` gains a `remote CI` row (planned 2026-11-04 by the operator at the user's direction; design in plans/remote-ci.md "Shape"; requires Remote CI part 1/3 landed; the event-notify.ts edit is one list entry beside the ones Every commit is verified on main part 4k/3 and Subtract part 3f/7 remove, so whichever merges second rebases; touches src/observer/remote-ci.ts src/run/run-dismiss.ts src/events/events.ts src/events/event-notify.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/doctor/doctor-project-checks.ts src/doctor/doctor.ts docs/config.md docs/how-it-works.md docs/invariants.md test/remote-ci.test.ts test/run-dismiss.test.ts test/event-format.test.ts test/event-labels.test.ts test/event-notify.test.ts test/doctor-checks.test.ts)
+
+**Goal.** Part 1/3 records GitHub's verdict, but only the next ci prompt reads it. An operator should hear when a pushed main goes red on GitHub, and `tumwater doctor` should answer "is GitHub CI green on what I pushed?" next to the `ci parity` row.
+
+**Approach.**
+- New event type `remote_ci_failed`, carrying `sha` and `repo`. Register it everywhere `issue_filed` is registered: the event-type union in src/events/events.ts, src/events/event-labels.ts (label `remote CI failed`), src/events/event-format.ts and src/failure/failure-state-change.ts. Also add it to `NOTIFY_EVENT_TYPES` in src/events/event-notify.ts, with a one-line comment, so it pages.
+- `recordDismissedRemote` (src/run/run-dismiss.ts) logs the event with `logEventBestEffort` when the new result is `failed` and the previous record, as `recordRemoteCi` returns it, is not `failed` at the same sha. The message reads `GitHub CI failed at <sha7> on <repo>; the ci role reproduces it and fixes or files it — https://github.com/<repo>/commit/<sha>`, with the repo from the recorded result. Re-recording the same failed sha logs nothing. A failed ledger write still logs the event, the way `recordDismissedFiling` logs `issue_filed` before its write.
+- src/observer/remote-ci.ts: `remoteCiStalled(entry, now)` is true when `now - entry.checkedAt > CI_PARITY_STALE_MS` (imported from ci-parity.ts). It is the one stall predicate, the same shape as `ciParityStalled`.
+- src/doctor/doctor-project-checks.ts: `checkRemoteCi(root, config, now)` returns null when the ci role is disabled or `remoteCiTarget` is null, so the row is omitted the way `checkFeedbackFiling` omits its row. Otherwise:
+  - no record: ok, `no remote CI result recorded yet — the ci role reads GitHub Actions on <repo> on its next run`;
+  - stalled (checked before `failed`, so it applies to every result): warn, `no remote CI check recorded in over 3 days — the ci role is disabled, paused, or not reporting its REMOTE line`;
+  - `failed`: warn, `GitHub CI failed at <sha7> on <repo> (checked <age> ago) — the ci role fixes or files it; it stays failed until a newer push passes`;
+  - `pending`: ok, `GitHub CI was still running on <sha7> (checked <age> ago)`;
+  - `passed`: ok, `GitHub CI passed at <sha7> on <repo> (checked <age> ago)`;
+  - `unavailable`: ok (decision 3: the operator never opted in, so a missing `gh` is information), `the ci role could not read GitHub Actions: <reason> — run gh auth login, or set roles.ci.remote to false`.
+- Register the row as `remote CI` right after `ci parity` in src/doctor/doctor.ts.
+- Docs:
+  - docs/config.md "Notify events" gains a `remote_ci_failed` row.
+  - docs/how-it-works.md names the doctor row next to the `ci parity` row.
+  - docs/invariants.md adds INV-BW5, "remoteCiStalled is the one home of the remote CI stall decision", binding src/observer/remote-ci.ts and `checkRemoteCi`.
+
+**Files touched.** src/observer/remote-ci.ts src/run/run-dismiss.ts src/events/events.ts src/events/event-notify.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/doctor/doctor-project-checks.ts src/doctor/doctor.ts docs/config.md docs/how-it-works.md docs/invariants.md test/remote-ci.test.ts test/run-dismiss.test.ts test/event-format.test.ts test/event-labels.test.ts test/event-notify.test.ts test/doctor-checks.test.ts
+
+**Acceptance criteria.**
+- Recording `failed` at sha A after `passed` at A logs one `remote_ci_failed` event naming A and the repo. Recording `failed` at A again logs none. Recording `failed` at a newer sha B logs one more.
+- `NOTIFY_EVENT_TYPES` contains `remote_ci_failed`, and `formatEvent` renders its message with the commit URL.
+- `checkRemoteCi` returns null in a repo without a GitHub remote. In a GitHub-remote fixture it returns each row above for each ledger state, and a `failed` record checked 4 days ago reads as stalled.
+- `tumwater doctor` lists `remote CI` right after `ci parity` in a GitHub-remote fixture, and leaves it out otherwise.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/run-dismiss.test.ts: the event-once cases.
+- test/remote-ci.test.ts: `remoteCiStalled` at the boundary, one past it, and on a fresh record.
+- test/event-format.test.ts, test/event-labels.test.ts and test/event-notify.test.ts: the new type.
+- test/doctor-checks.test.ts: `checkRemoteCi` for every state, plus the omitted case.
+- Run those files and the gate.
+
+### Remote CI, part 3/3: The status line, TUI header and dashboard show GitHub's verdict on the pushed main beside the ci parity badge (planned 2026-11-04 by the operator at the user's direction; design in plans/remote-ci.md "Shape"; requires Remote CI part 1/3 landed; independent of part 2/3; the badges.ts, status-payload.ts, status-render.ts and gui-client-team.ts edits sit beside the ci parity badge and Hourly full check part 4/4's main-check age edits, and the status-polls.ts and status-data.ts edits are one field beside Subtract part 3f/7's removals, so whichever merges second rebases; touches src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/badges.test.ts test/status-payload.test.ts test/status-render.test.ts test/gui-client-team.test.ts)
+
+**Goal.** The ci parity badge says whether the local full suite covered main's tip. Nothing at a glance says whether GitHub CI is green on what was pushed. Add a second badge from part 1/3's ledger, so a red push shows on `tumwater status`, the TUI header and the dashboard team panel without opening doctor.
+
+**Approach.**
+- src/status/status-polls.ts: `remoteCiForPoll(root)` returns `{ result, sha?, checkedAt }` from `readRemoteCi`, or undefined when there is no record. It reads only the ledger (no git, no `gh`) and uses the stat-keyed cache the parity reader uses (`cachedByStat`), so a per-second poll costs one stat.
+- src/status/status-data.ts: the snapshot gains `remoteCi?` beside `ciParity`, filled by `remoteCiForPoll`.
+- src/ui/badges.ts:
+  - `remoteCiBadge(remote, now)` returns ` · github: passed at <sha7> <age>`, ` · github: failed at <sha7> <age>` or ` · github: running at <sha7> <age>`. It returns `""` for an `unavailable` record or no record, so a header without a GitHub remote stays byte-identical.
+  - `remoteCiTone(remote)` maps passed to green, failed to red and pending to blue.
+- src/ui/status-payload.ts carries `remoteCiBadge` and `remoteCiTone` preformatted, the way `ciParityBadge` and `ciParityTone` are carried. src/ui/status-render.ts renders the badge right after the ci parity badge. src/ui/gui/gui-client-team.ts adds a row after the ci parity row, the same way.
+- docs/how-it-works.md names the badge in the ci paragraph.
+
+**Files touched.** src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/badges.test.ts test/status-payload.test.ts test/status-render.test.ts test/gui-client-team.test.ts
+
+**Acceptance criteria.**
+- With a `failed` record at sha A, `tumwater status` shows ` · github: failed at <A7> <age>` in red right after the ci parity badge. The TUI header and the dashboard team panel show the same text and tone.
+- With no record or an `unavailable` record, the status header, the payload's badge field and the dashboard panel are byte-identical to today's.
+- `remoteCiForPoll` reads the ledger once while it is unchanged (one stat per poll) and re-reads it after a write.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/badges.test.ts: each state, plus the empty cases.
+- test/status-polls.test.ts: the cache.
+- test/status-payload.test.ts, test/status-render.test.ts and test/gui-client-team.test.ts: the badge rides after the ci parity badge with its tone, and is absent without a record.
+- Run those files and the gate.
+
 ### No duplicate plans, part 1/6: A plan closed without being built is stamped `retired`, and every backlog reader that tells finished from open accepts it (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 2; independent of every other planned entry; edits only the clean role's text in role-catalog.ts, not the plan or feature charters parts 3/6, 4/6 and 6/6 edit; touches src/backlog/backlog.ts src/backlog/backlog-structure.ts src/backlog/backlog-parts.ts src/stage/stage-check.ts src/stage/stage-backlog-checks.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/backlog-eligibility.test.ts test/stage-check.test.ts test/doctor-backlog.test.ts)
 
 **Goal.** The backlog gets a closed-without-building state. A role can then retire a duplicate or disproved plan and leave an audit record. The clean role's stranded-entry repair must not stamp it `done`, and a `requires … landed` clause must not count it as built. Today the only ways out of `## Planned` are deletion (`plan --cancel`) and a `done` stamp. On 10-31 a steward-retired duplicate was moved back to `## Planned` and built again (`ea5adbbae`, `e99a97e40`, `bc908095e`).
