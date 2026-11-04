@@ -11,6 +11,7 @@ import {
   strandedPlanEntries,
   renderBacklogStructureBlock,
   readdedHeadings,
+  stripEntryStamp,
   type StrandedPlanEntry,
 } from "../src/backlog/backlog-structure.js";
 import {
@@ -18,7 +19,8 @@ import {
   groupBlockedSeries,
 } from "../src/backlog/backlog-index-data.js";
 import { renderBacklogIndexBlock } from "../src/backlog/backlog-index.js";
-import { DONE_DATE_RE, FIXED_DATE_RE } from "../src/backlog/backlog.js";
+import { FINISHED_PLAN_RE, isRetiredTitle, DONE_DATE_RE, FIXED_DATE_RE } from "../src/backlog/backlog.js";
+import { finishedKey } from "../src/stage/stage-backlog-checks.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
@@ -135,6 +137,56 @@ _None yet._`);
   assert.deepEqual(strandedPlanEntries(md), [
     { title: "Build a quick queue (planned 2026-10-01 by the x role; done 2026-10-02 by the feature role)", section: "Planned" },
   ]);
+});
+
+test("a ## Done entry with a retired stamp is finished and not stranded", () => {
+  const md = plansDoc(`## Done
+
+### No duplicate plans, part 9/9: retired copy (planned 2026-11-01 by the plan role, retired 2026-11-04 by the plan role)
+
+**Retired 2026-11-04 by the plan role: duplicate of the surviving part 9/9 built in 0a1b2c3.
+
+## Planned
+
+_None yet._`);
+  assert.deepEqual(strandedPlanEntries(md), []);
+});
+
+test("a ## Planned entry with a retired stamp was retired and never moved — it is stranded", () => {
+  const md = plansDoc(`## Planned
+
+### No duplicate plans, part 9/9: retired copy (planned 2026-11-01 by the plan role; retired 2026-11-04 by the plan role)
+
+**Goal.** It was retired and never moved to ## Done.
+
+## Done
+
+_None yet._`);
+  assert.deepEqual(strandedPlanEntries(md), [
+    { title: "No duplicate plans, part 9/9: retired copy (planned 2026-11-01 by the plan role; retired 2026-11-04 by the plan role)", section: "Planned" },
+  ]);
+});
+
+test("isRetiredTitle matches both delimiter shapes and not a prose mention", () => {
+  assert.equal(isRetiredTitle("X (planned 2026-11-01 by the plan role, retired 2026-11-04 by the plan role)"), true);
+  assert.equal(isRetiredTitle("X (planned 2026-11-01 by the plan role) — retired 2026-11-04"), true);
+  assert.equal(isRetiredTitle("Re-read the retired 2026-10-30 entry (planned 2026-11-01)"), false);
+  assert.equal(isRetiredTitle("X (planned 2026-11-01 by the plan role, done 2026-11-04 by the feature role)"), false);
+});
+
+test("stripEntryStamp drops a (…, retired …) stamp suffix; finishedKey shares the done/retired key", () => {
+  const t = "No duplicate plans, part 9/9: retired copy (planned 2026-11-01 by the plan role, retired 2026-11-04 by the plan role)";
+  assert.equal(stripEntryStamp(t), "No duplicate plans, part 9/9: retired copy");
+  // finishedKey carries no date: a done copy and a retired copy of one heading key equal under
+  // FINISHED_PLAN_RE, whether or not the (planned …) parenthetical is present.
+  assert.equal(
+    finishedKey("S, part 1/2: a (planned 2026-11-01, done 2026-11-02)", FINISHED_PLAN_RE),
+    finishedKey("S, part 1/2: a (planned 2026-11-01, retired 2026-11-03)", FINISHED_PLAN_RE),
+  );
+  assert.equal(
+    finishedKey("S, part 1/2: a (planned 2026-11-01, done 2026-11-02)", FINISHED_PLAN_RE),
+    finishedKey("S, part 1/2: a — retired 2026-11-03 by the plan role", FINISHED_PLAN_RE),
+  );
 });
 
 test("a stranded-looking heading inside a fenced block is ignored", () => {

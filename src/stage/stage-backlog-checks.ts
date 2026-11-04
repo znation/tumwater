@@ -12,7 +12,7 @@ import {
   sectionBodyLines,
   type FinishedArchive,
 } from "../backlog/backlog-md.js";
-import { DONE_DATE_RE, FIXED_DATE_RE } from "../backlog/backlog.js";
+import { FINISHED_PLAN_RE, FIXED_DATE_RE } from "../backlog/backlog.js";
 import { refusalNote } from "../backlog/backlog-eligibility.js";
 import { entryKey, partKey, planDependencyProblems, seriesPart, type PartRef } from "../backlog/backlog-parts.js";
 import { moreSuffix, plural } from "../text/phrases.js";
@@ -74,7 +74,11 @@ export function finishedDuplicateFindings(
   live: { head: string; base: string },
   archive: { head: string; base: string },
 ): string[] {
-  const dateRe = spec.file === "PLANS.md" ? DONE_DATE_RE : FIXED_DATE_RE;
+  // FINISHED_PLAN_RE (done or retired with its date) for PLANS.md: a retired copy and a done
+  // copy of one heading share a finishedKey, so a change that retires a plan whose done copy is
+  // already on the other side is not read as a second copy. BUGS.md keeps FIXED_DATE_RE — there
+  // is no retired bug state ("No duplicate plans" part 1/6 leaves BUGS.md out).
+  const dateRe = spec.file === "PLANS.md" ? FINISHED_PLAN_RE : FIXED_DATE_RE;
   const keyed = (md: string) =>
     parseEntryDetails(md, spec.section).map((e) => ({ ...e, key: finishedKey(e.title, dateRe) }));
   const findings: string[] = [];

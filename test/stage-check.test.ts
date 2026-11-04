@@ -1076,3 +1076,57 @@ test("a finished plan whose matches-nothing grep still matches yields the accept
   const again = await stageCheckFindings(held.wt, "main", "feature");
   assert.deepEqual(again.filter((f) => f.includes("src/a.ts:1")), []);
 });
+
+test("a plan moved to ## Done with a retired stamp skips its acceptance greps; a done stamp still runs them", async () => {
+  const planned = `### S: build it (planned 2026-11-01)
+
+**Acceptance.** \`grep -rn oldName src\` ${"finds" + " nothing"}.
+`;
+  const baseDoc = `# Plans\n\n## Planned\n\n${planned}\n## Done\n\n_None yet._\n`;
+  const doc = (planned: string, done: string) => `# Plans\n\n## Planned\n\n${planned}\n## Done\n\n${done}\n`;
+  const retired = `### S: build it (planned 2026-11-01, retired 2026-11-04 by the plan role)
+
+**Retired 2026-11-04 by the plan role: duplicate of the surviving S part built in 0a1b2c3.**
+
+**Acceptance.** \`grep -rn oldName src\` ${"finds" + " nothing"}.
+`;
+  const done = `### S: build it (planned 2026-11-01, done 2026-11-04 by the feature role)
+
+**Acceptance.** \`grep -rn oldName src\` ${"finds" + " nothing"}.
+`;
+
+  // Retired move: the plan was never built, so its acceptance grep is expected to fail and is skipped.
+  const { wt } = await repoWith({ "PLANS.md": baseDoc, "src/a.ts": "oldName\n" });
+  fs.writeFileSync(path.join(wt, "PLANS.md"), doc("_None yet._", retired));
+  const findings = await stageCheckFindings(wt, "main", "plan");
+  assert.deepEqual(findings.filter((f) => f.includes("src/a.ts:1")), []);
+
+  // The same move stamped done still runs its greps and reports the failing one.
+  const { wt: wtDone } = await repoWith({ "PLANS.md": baseDoc, "src/a.ts": "oldName\n" });
+  fs.writeFileSync(path.join(wtDone, "PLANS.md"), doc("_None yet._", done));
+  const doneFindings = (await stageCheckFindings(wtDone, "main", "plan")).filter((f) => f.includes("src/a.ts:1"));
+  assert.equal(doneFindings.length, 1);
+  assert.match(doneFindings[0]!, /S: build it/);
+});
+
+test("planDependencyFinding reports a requires clause naming a part the archive holds only as retired", async () => {
+  // The base already carries the retired part under ## Done; the change adds a dependent whose
+  // requires clause names it. A done-stamped prerequisite would not dangle.
+  const base = `# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n### S, part 1/2: a (planned 2026-11-01, retired 2026-11-04)\n\nbody\n`;
+  const head = base.replace(
+    "## Planned\n\n_None yet._",
+    "## Planned\n\n### S, part 2/2: b (requires part 1/2 landed)\n\nbody",
+  );
+  const f = planDependencyFinding(head, base)!;
+  assert.match(f, /S, part 2\/2: b/);
+  assert.match(f, /S 1\/2/);
+  assert.match(f, /which no PLANS.md heading carries/);
+
+  // The same prerequisite stamped done is not dangling.
+  const baseDone = base.replace("retired 2026-11-04", "done 2026-11-03");
+  const headDone = baseDone.replace(
+    "## Planned\n\n_None yet._",
+    "## Planned\n\n### S, part 2/2: b (requires part 1/2 landed)\n\nbody",
+  );
+  assert.equal(planDependencyFinding(headDone, baseDone), undefined);
+});

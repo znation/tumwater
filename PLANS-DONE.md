@@ -5,6 +5,45 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### No duplicate plans, part 1/6: A plan closed without being built is stamped `retired`, and every backlog reader that tells finished from open accepts it (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 2; independent of every other planned entry; edits only the clean role's text in role-catalog.ts, not the plan or feature charters parts 3/6, 4/6 and 6/6 edit; touches src/backlog/backlog.ts src/backlog/backlog-structure.ts src/backlog/backlog-parts.ts src/stage/stage-check.ts src/stage/stage-backlog-checks.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/backlog-eligibility.test.ts test/stage-check.test.ts test/doctor-backlog.test.ts test/backlog.test.ts) — done 2026-11-04 by the feature role
+
+
+**Goal.** The backlog gets a closed-without-building state. A role can then retire a duplicate or disproved plan and leave an audit record. The clean role's stranded-entry repair must not stamp it `done`, and a `requires … landed` clause must not count it as built. Today the only ways out of `## Planned` are deletion (`plan --cancel`) and a `done` stamp. On 10-31 a steward-retired duplicate was moved back to `## Planned` and built again (`ea5adbbae`, `e99a97e40`, `bc908095e`).
+
+**Approach.**
+- The shape (plans/duplicate-plans.md, Decision 2):
+  - The heading carries `retired YYYY-MM-DD` with the same delimiters a `done` stamp uses (`…, retired 2026-11-05 by the plan role)` or `… — retired 2026-11-05`).
+  - The first body line is `**Retired YYYY-MM-DD by <role>: <evidence>**`.
+  - Beside `DONE_DATE_RE` in src/backlog/backlog.ts, export `RETIRED_DATE_RE` (`/\bretired (\d{4}-\d{2}-\d{2})/`) and `isRetiredTitle(title)`. `isRetiredTitle` is delimiter-introduced like backlog-structure.ts's `DONE_STAMP`, so prose such as "the retired 2026-10-30 entry" does not match.
+- `strandedPlanEntries` (src/backlog/backlog-structure.ts) treats a retired stamp like a done stamp in both directions:
+  - A `## Done` entry with `(planned …)` and a retired stamp is not stranded.
+  - A `## Planned` entry with a retired stamp is stranded: it was retired and never moved.
+- Add `retired` to `ENTRY_STAMP_META_SOURCE`'s verb list, so `stripEntryStamp` drops it like `done`. The dashboard's `splitTitle` twin interpolates the same source, so it needs no edit.
+- Export `FINISHED_PLAN_RE` (`/\b(?:done|retired) (\d{4}-\d{2}-\d{2})/`) beside `DONE_DATE_RE`. The two places that key finished PLANS.md entries pass it to `finishedKey`/`finishedTitle` instead of `DONE_DATE_RE`, so a retired copy and a done copy of one heading share a key. Those places are `finishedDuplicateFindings` (stage-backlog-checks.ts) and `archiveFindings` (stage-check.ts).
+- `archiveFindings` skips retired entries when it runs `acceptanceGrepFindings` over the plans a change finished. A retired plan was never built, so its acceptance greps are expected to fail.
+- `dependencyKnownParts` (src/backlog/backlog-parts.ts) skips done titles where `isRetiredTitle` holds. Then a `requires … landed` clause naming a retired part is dangling for both `planDependencyFinding` (staging) and the doctor's `plan dependencies` row (`planDependencyProblem`), and the retiring change must point its dependents at the survivor. Entry holds do not change: a dependent stays held while any still-planned entry carries the part label.
+- `DONE_DATE_RE` stays as it is, so the report's `featuresDone` and completion lags count only built plans.
+- In src/roles/role-catalog.ts, the clean role's `<backlog-structure>` paragraph gets one sentence: an entry under `## Done` with a retired stamp is finished; never add a `done` date to it.
+- docs/how-it-works.md "The backlog files" gains one paragraph: what retired means, its shape, and that `requires` does not count it as built.
+
+**Files touched.** src/backlog/backlog.ts src/backlog/backlog-structure.ts src/backlog/backlog-parts.ts src/stage/stage-check.ts src/stage/stage-backlog-checks.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/backlog-eligibility.test.ts test/stage-check.test.ts test/doctor-backlog.test.ts test/backlog.test.ts — the last one added at implementation, where the report's completion reads are tested.
+
+**Acceptance criteria.**
+- `strandedPlanEntries` returns nothing for a `## Done` entry headed `### X (planned 2026-11-01 by the plan role, retired 2026-11-04 by the plan role)`. It returns that entry when it sits under `## Planned`.
+- `isRetiredTitle` is true for both delimiter shapes and false for a heading whose prose mentions "the retired 2026-10-30 entry".
+- With `### S, part 1/2: … (…, retired 2026-11-04 …)` in PLANS-DONE.md, a planned `### S, part 2/2: … (…; requires S part 1/2 landed)` is reported dangling by `planDependencyProblems` and by `planDependencyFinding` when the change adds that clause. The same title stamped `done` is not reported.
+- `finishedKey(title, FINISHED_PLAN_RE)` gives the same key for one heading stamped `done` and stamped `retired`.
+- A change that moves a plan to `## Done` with a retired stamp gets no acceptance-grep finding from `stageCheckFindings`. The same move with a `done` stamp still runs its greps.
+- The report's `featuresDone` does not count a retired entry.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/backlog-structure.test.ts: the stranded cases and `stripEntryStamp` dropping `(…, retired …)`.
+- test/backlog-eligibility.test.ts: `planDependencyProblems` with retired and with done prerequisites.
+- test/stage-check.test.ts: `planDependencyFinding` naming a retired part, and a retired move skipping the acceptance greps.
+- test/doctor-backlog.test.ts: the `plan dependencies` row warns on it.
+- test/backlog.test.ts: the completion reads under `DONE_DATE_RE` count only the built entry beside the retired one; `FINISHED_PLAN_RE` and `isRetiredTitle` keying.
+
 ### Every commit is verified on main, part 4m/3: the dead `main_red` producer, its status/doctor readers and its display keys are removed (planned 2026-11-03 by the plan role, splitting the 2026-11-03 too-large part 4j/3 after feature held it; requires part 4l/3 landed, so the three verdict-keyed tables accept a missing key; touches src/review/review.ts src/merge/merge-core.ts src/ui/tone.ts src/events/event-labels.ts src/ui/gui/gui-client-model.ts src/failure/failure-data.ts src/failure/failure-time-spend.ts src/failure/failure-render.ts src/cli/cli-start-summary.ts src/status/status-polls.ts src/ui/status-model.ts src/doctor/doctor-holds.ts src/inbox/pending-prompt.ts src/run/run-finalize.ts src/run/run-prompt.ts src/orchestrator/orchestrator-poll.ts src/merge/merge-verify.ts src/merge/merge-queue.ts src/runner/runner-state.ts src/budget/fallback-breaker.ts src/events/event-notify.ts src/baseline/main-red.ts docs/invariants.md test/merger-check.test.ts test/doctor-holds.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts test/gui-client.test.ts test/status-model.test.ts test/status-render-cells.test.ts test/status-render.test.ts test/team-alerts.test.ts) — done 2026-11-03 by the feature role
 
 **Goal.** With Hourly full check part 1b/4 deciding every twice-failed gate check at once (and deleting `awaitingWatch`), the merge gate has no path that sets `mainRed`, so no merge produces a `main_red` run result. Remove the dead merge branch and the fields it read, then delete the surfaces that read or render the verdict. Leave the `RunResult` member, the recovered-pin plumbing and `rolePhase`'s parameter for parts 4k/3 and 4n/3, so this part merges on its own without the run/runner sweep or the argument cascade.

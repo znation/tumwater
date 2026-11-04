@@ -67,7 +67,7 @@ export interface StrandedPlanEntry {
  * verb must reach both renders.
  * Kept as pattern SOURCE rather than a RegExp so the browser twin (a String.raw template
  * that cannot import runtime code) can interpolate it into its own compiled regex. */
-export const ENTRY_STAMP_META_SOURCE = String.raw`\s*\(((?:planned|reported|found|refined|asked|posted|filed|opened|done)\b[^)]*)\)\s*$`;
+export const ENTRY_STAMP_META_SOURCE = String.raw`\s*\(((?:planned|reported|found|refined|asked|posted|filed|opened|done|retired)\b[^)]*)\)\s*$`;
 
 /** ENTRY_STAMP_META_SOURCE compiled: the one server-side home of the stamp-suffix match
  * (case-insensitive, note captured), read through stripEntryStamp below. */
@@ -112,6 +112,12 @@ const DONE_DATE = /\bdone \d{4}-\d{2}-\d{2}/;
  * narrower regex does not match it and a mention inside a heading's own `(planned …)` prose
  * cannot strand the entry. */
 const DONE_STAMP = /[—,(;]\s*done \d{4}-\d{2}-\d{2}/;
+/** A retired stamp: `retired YYYY-MM-DD` delimiter-introduced exactly like DONE_STAMP (plans,
+ * "No duplicate plans" part 1/6). A `## Done` entry carrying it was closed without being built,
+ * so it is finished and not stranded; a `## Planned` entry carrying it was retired and never
+ * moved, so it is stranded. The same delimiter rule keeps a prose mention ("the retired
+ * 2026-10-30 entry") from matching. */
+const RETIRED_STAMP = /[—,(;]\s*\bretired \d{4}-\d{2}-\d{2}/;
 
 /** The `### ` headings of `md`'s PLANS.md that sit under the wrong section, in file order:
  * (a) entries under `## Done` whose heading carries a `(planned YYYY-MM-DD…)` parenthetical
@@ -146,8 +152,8 @@ export function strandedPlanEntries(md: string): StrandedPlanEntry[] {
       // merely describes PRIOR merged work ("…both done 2026-10-16, …") follows an English word,
       // not a delimiter, so DONE_STAMP does not match it and the entry is not stranded.
       const misplaced = section === "Done"
-        ? PLANNED_DATE.test(text) && !DONE_DATE.test(text)
-        : DONE_STAMP.test(text);
+        ? PLANNED_DATE.test(text) && !DONE_DATE.test(text) && !RETIRED_STAMP.test(text)
+        : DONE_STAMP.test(text) || RETIRED_STAMP.test(text);
       if (misplaced)
         stranded.push({ title: headingTitle(line, "### "), section });
     }

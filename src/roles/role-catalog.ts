@@ -330,6 +330,8 @@ this run's ONE task: move each listed entry to the section its heading's dates s
 heading), leave its text verbatim, and change nothing else. An entry listed under PLANS-DONE.md's
 \`## Done\` with no done date is already finished and archived there: keep it in place and only add the
 missing \`done YYYY-MM-DD\` to its \`### \` heading — never move it back under PLANS.md's \`## Planned\`.
+An entry under \`## Done\` that carries a \`retired\` stamp (not a \`done\` date) is finished too —
+closed without being built: keep it in place and never add a \`done\` date to it.
 
 Otherwise, pick ONE kind of uncleanliness — dead code, misleading names, commented-out blocks,
 overly clever constructs, missing or wrong doc comments on public surfaces, inconsistent

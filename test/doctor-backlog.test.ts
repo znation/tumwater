@@ -901,6 +901,20 @@ test("checkPlanDependencies warns on a dangling ref", () => {
   assert.match(out.detail, /requires T 1\/2, which no PLANS\.md heading carries — the hold is void, so the plan is claimable now/);
 });
 
+test("checkPlanDependencies warns on a requires clause naming a retired part, not on a done one", () => {
+  // A retired part was never built, so a `requires … landed` clause naming it dangles — the
+  // retiring change must point its dependents at the survivor. A done part does not dangle.
+  const out = checkPlanDependencies(
+    plansWith("### S, part 2/2: b (requires part 1/2 landed)\n\nbody\n", "### S, part 1/2: a (planned 2026-11-01, retired 2026-11-04)\n"),
+  );
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /requires S 1\/2, which no PLANS\.md heading carries — the hold is void, so the plan is claimable now/);
+  const ok = checkPlanDependencies(
+    plansWith("### S, part 2/2: b (requires part 1/2 landed)\n\nbody\n", "### S, part 1/2: a (planned 2026-11-01, done 2026-11-03)\n"),
+  );
+  assert.equal(ok.level, "ok");
+});
+
 test("checkPlanDependencies warns on a misworded dependency", () => {
   const out = checkPlanDependencies(plansWith("### S, part 1/2: a\n\nbody\n\n### S, part 2/2: b (blocked by part 1/2 above)\n\nbody\n"));
   assert.equal(out.level, "warn");

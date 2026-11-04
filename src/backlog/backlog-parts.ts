@@ -4,6 +4,7 @@
 
 import { collapseWhitespace } from "../text/text.js";
 import { openParenthetical, trailingParenthetical, type BacklogEntry } from "./backlog-md.js";
+import { isRetiredTitle } from "./backlog.js";
 import { stripEntryStamp } from "./backlog-structure.js";
 
 /** A `series, part i/n` pair: the series name, the part token (`5`, or `2a` for the historical
@@ -212,13 +213,17 @@ export function planDependencyProblems(
 }
 
 /** The part keys that count as known for dangling checks: every still-planned entry's part plus
- * every done title's part — a dangling ref is one no planned or done heading carries. */
+ * every done title's part — a dangling ref is one no planned or done heading carries. A done
+ * title carrying a `retired` stamp (plans, "No duplicate plans" part 1/6) was never built, so
+ * it does not count: a `requires … landed` clause naming it is dangling, and the retiring
+ * change must point its dependents at the survivor. */
 function dependencyKnownParts(
   planned: readonly BacklogEntry[],
   doneTitles: readonly string[],
 ): Set<string> {
   const known = plannedPartKeys(planned);
   for (const t of doneTitles) {
+    if (isRetiredTitle(t)) continue;
     const part = seriesPart(t);
     if (part !== null) known.add(partKey(part.series, part.part));
   }

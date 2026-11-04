@@ -147,6 +147,25 @@ export function filingDate(title: string): string | null {
 
 /** The completion stamp of a `## Done` plan heading. */
 export const DONE_DATE_RE = /done (\d{4}-\d{2}-\d{2})/;
+/** A `## Done` plan heading's retired stamp: the close-without-building state (plans,
+ * "No duplicate plans" part 1/6). A retired plan was never built, so `DONE_DATE_RE` stays the
+ * built-only verb — the report's `featuresDone` and completion lags count only done entries —
+ * while the finished-from-open readers that key one heading across its stamps take
+ * FINISHED_PLAN_RE below instead. */
+export const RETIRED_DATE_RE = /\bretired (\d{4}-\d{2}-\d{2})/;
+/** True when a plan heading carries a `retired YYYY-MM-DD` stamp: the close-without-building
+ * state (plans, "No duplicate plans" part 1/6). Delimiter-introduced, the same way
+ * backlog-structure.ts's DONE_STAMP is — a structural delimiter (`— retired`, `, retired`,
+ * `; retired`, `(retired`) opens the stamp, so prose that merely mentions "the retired
+ * 2026-10-30 entry" does not match and an unretired entry is never read as closed. */
+export function isRetiredTitle(title: string): boolean {
+  return /[—,(;]\s*\bretired \d{4}-\d{2}-\d{2}/.test(title);
+}
+/** The finished-from-open keying of a `## Done` plan heading: `done` or `retired` with its date,
+ * so a retired copy and a done copy of one heading share a finishedKey. The finished readers
+ * (stage-check.ts's archiveFindings, stage-backlog-checks.ts's finishedDuplicateFindings) pass it
+ * instead of DONE_DATE_RE; the report and lag reads keep DONE_DATE_RE alone. */
+export const FINISHED_PLAN_RE = /\b(?:done|retired) (\d{4}-\d{2}-\d{2})/;
 // The completion verbs track the phrasing the harness's own roles actually write: the bugfix prompt
 // pins the date, not the verb, and the re-merge flow's own epitaph — "re-merged <date>" on an entry
 // whose first merge was rejected in review — is a completion the report must count (a rejected
@@ -207,9 +226,12 @@ export function finishedFiles(file: "PLANS.md" | "BUGS.md"): [string, string] {
   return [file, finishedArchiveOf(file).archive];
 }
 
-/** Done plans: the `### ` headings under `## Done` in PLANS.md and PLANS-DONE.md. The bootstrap
- * gate (src/gates/bootstrap-gates.ts) counts these to decide when to latch bootstrap complete;
- * the stat-keyed cache means unchanged files cost one syscall each per poll, not a re-read. */
+/** Done plans: the `### ` headings under `## Done` in PLANS.md and PLANS-DONE.md — the finished
+ * views, which keep a retired entry visible with its audit body ("No duplicate plans" part 1/6);
+ * counting BUILT plans only is the report's job through DONE_DATE_RE, not this reader's. The
+ * bootstrap gate (src/gates/bootstrap-gates.ts) counts these to decide when to latch bootstrap
+ * complete; the stat-keyed cache means unchanged files cost one syscall each per poll, not a
+ * re-read. */
 export function donePlans(root: string): string[] {
   return finishedEntries(root, "PLANS.md").map((e) => e.title);
 }

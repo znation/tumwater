@@ -505,6 +505,26 @@ test("planDependencyProblems finds dangling refs, unparsed clauses and cycles", 
   assert.deepEqual(planDependencyProblems([e("Free plan")], []), { cycle: null, dangling: [], unparsed: [], misworded: [] });
 });
 
+test("planDependencyProblems: a requires clause naming a retired part dangles; the done one does not", () => {
+  const e = (title: string): BacklogEntry => ({ title, body: "" }) as BacklogEntry;
+  const dependent = "S, part 2/2: b (requires S part 1/2 landed)"; // vocabulary-ok: PLANS.md heading syntax
+  // A done prerequisite counts as known: nothing dangles.
+  assert.deepEqual(
+    planDependencyProblems([e(dependent)], ["S, part 1/2: a (planned 2026-11-01, done 2026-11-03)"]).dangling,
+    [],
+  );
+  // A retired prerequisite was never built: the clause is dangling.
+  assert.deepEqual(
+    planDependencyProblems([e(dependent)], ["S, part 1/2: a (planned 2026-11-01, retired 2026-11-04)"]).dangling,
+    [{ title: dependent, ref: "S 1/2" }],
+  );
+  // The retired shape with the em-dash delimiter dangles too.
+  assert.deepEqual(
+    planDependencyProblems([e(dependent)], ["S, part 1/2: a (planned 2026-11-01) — retired 2026-11-04"]).dangling,
+    [{ title: dependent, ref: "S 1/2" }],
+  );
+});
+
 test("backlogInProgress names the runner holding each entry's claim; inProgressMark labels it", () => {
   const dir = tmpdir();
   fs.writeFileSync(

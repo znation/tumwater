@@ -61,6 +61,14 @@ then the archive, and roles search the archives or read one entry by its line ra
 files and each side only added, removed or edited different `### ` entries, tumwater merges the
 entries itself; the same entry edited on both sides still goes to the conflict resolver.
 
+A plan closed without being built is retired: it moves to `## Done` with a `retired YYYY-MM-DD`
+heading stamp (`, retired …`, `; retired …` or `…) — retired …)`) and a first body line reading
+`**Retired YYYY-MM-DD by <role>: <evidence>**`, whose evidence names the landed commit or the
+surviving entry. `done` keeps meaning built — the report's features-done counts only built plans —
+but every reader that tells finished entries from open ones accepts `retired`: a `## Done` entry
+with a retired stamp is not stranded, and a `requires … landed` clause naming a retired part
+counts as dangling, so the change that retires a part must point its dependents at the survivor.
+
 ## The merge pipeline
 
 A run ends as soon as its commit is in the merge queue. Queued changes are approved in parallel

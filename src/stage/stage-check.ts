@@ -69,7 +69,7 @@ import {
   finishedArchiveOf,
   parseEntryDetails,
 } from "../backlog/backlog-md.js";
-import { DONE_DATE_RE } from "../backlog/backlog.js";
+import { FINISHED_PLAN_RE, isRetiredTitle } from "../backlog/backlog.js";
 import { acceptanceGrepFindings } from "./acceptance-greps.js";
 import {
   PLACEHOLDER_FILES,
@@ -145,13 +145,18 @@ async function archiveFindings(wt: string, mainBranch: string, files: string[]):
     if (spec.file !== "PLANS.md") continue;
     const greps = await (async () => {
       const finished = async (f: string, section: string) => {
+        // FINISHED_PLAN_RE (done or retired with its date) instead of DONE_DATE_RE: a retired
+        // copy and a done copy of one heading share a key, so the change that retires a plan
+        // whose done copy is already on the other side is not re-read as a new finished entry.
         const keyed = (md: string) =>
-          parseEntryDetails(md, section).map((e) => ({ ...e, key: finishedKey(e.title, DONE_DATE_RE) }));
+          parseEntryDetails(md, section).map((e) => ({ ...e, key: finishedKey(e.title, FINISHED_PLAN_RE) }));
         const seen = new Set(keyed((await fileContentAt(wt, baseRev, f)) ?? "").map((e) => e.key));
         return keyed(readTextOrNull(path.join(wt, f)) ?? "").filter((e) => !seen.has(e.key));
       };
       const entries = [...(await finished(spec.file, spec.section)), ...(await finished(spec.archive, spec.section))];
-      return acceptanceGrepFindings(wt, entries);
+      // A retired plan was never built, so its acceptance greps are expected to fail: it is
+      // closed without being built, not verified. A done move still runs its greps.
+      return acceptanceGrepFindings(wt, entries.filter((e) => !isRetiredTitle(e.title)));
     })().catch(() => []);
     findings.push(...greps);
   }

@@ -12,16 +12,20 @@ import {
 } from "../src/backlog/backlog-md.js";
 import {
   DONE_DATE_RE,
+  FINISHED_PLAN_RE,
   FIXED_DATE_RE,
+  RETIRED_DATE_RE,
   completionDate,
   donePlanEntries,
   fixedBugEntries,
+  isRetiredTitle,
   openBugEntries,
   openBugs,
   openQuestions,
   openQuestionEntries,
   plannedPlanEntries,
   plannedPlans,
+  sectionCompletionDates,
   sectionCompletionLags,
   sectionFilingDates,
 } from "../src/backlog/backlog.js";
@@ -542,6 +546,37 @@ test("sectionCompletionLags reads finished entries' filing-to-done lags; missing
   ]);
   // A missing section/file yields [] — a render path must never throw on backlog state.
   assert.deepEqual(sectionCompletionLags(root, "PLANS.md", "Fixed", FIXED_DATE_RE), []);
+});
+
+test("the retired stamp: RETIRED_DATE_RE / FINISHED_PLAN_RE keying, and DONE_DATE_RE counts only built plans", () => {
+  // The report's featuresDone and completion lags count BUILT plans through DONE_DATE_RE:
+  // a retired entry — closed without being built — contributes nothing to either read, while
+  // the done entry beside it keeps counting. FINISHED_PLAN_RE is the finished-from-open twin:
+  // it matches both verbs so the finished readers key a retired copy and a done copy equal.
+  const root = tmpdir("tw-retired-");
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    `# Plans
+
+## Done
+
+### Built (planned 2026-10-01; done 2026-10-04)
+
+### Duplicate copy (planned 2026-10-01; retired 2026-10-05)
+`,
+  );
+  assert.deepEqual(sectionCompletionDates(root, "PLANS.md", "Done", DONE_DATE_RE), ["2026-10-04"]);
+  assert.deepEqual(sectionCompletionLags(root, "PLANS.md", "Done", DONE_DATE_RE), [
+    { date: "2026-10-04", lagDays: 3 },
+  ]);
+  // The retired and finished keying: the retired date parses through RETIRED_DATE_RE and both
+  // verbs parse through FINISHED_PLAN_RE.
+  assert.equal(completionDate("Duplicate copy (planned 2026-10-01; retired 2026-10-05)", RETIRED_DATE_RE), "2026-10-05");
+  assert.equal(completionDate("Built (planned 2026-10-01; done 2026-10-04)", FINISHED_PLAN_RE), "2026-10-04");
+  assert.equal(completionDate("Duplicate copy (planned 2026-10-01; retired 2026-10-05)", FINISHED_PLAN_RE), "2026-10-05");
+  // isRetiredTitle is delimiter-introduced: prose that merely mentions a retired entry does not match.
+  assert.equal(isRetiredTitle("Re-read the retired 2026-10-05 entry (planned 2026-10-01)"), false);
+  assert.equal(isRetiredTitle("Duplicate copy (planned 2026-10-01; retired 2026-10-05)"), true);
 });
 
 test("sectionFilingDates reads each entry's FIRST stamp date, matching filingDate", () => {
