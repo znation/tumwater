@@ -316,6 +316,21 @@ function markdownTables(md: string): { header: string[]; separator: string[]; bo
   return tables;
 }
 
+test("an unranked result's outcome column sorts after every ranked result", () => {
+  // A result retired from RESULT_ORDER while still in the RunResult union has no rank; the
+  // columns sort must put it after every ranked result rather than leaving it wherever the
+  // window happened to encounter it (or sorting it first with a zero fallback). The unknown
+  // run is written first so an insertion-order or NaN-comparator sort would leave it first.
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "run_end", result: "retired_code" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error" },
+  ]);
+  const md = renderFailureMarkdown(collectFailureReport(root, 1));
+  assert.deepEqual(markdownTables(md)[0]!.header, ["role", "merged", "error", "retired code"]);
+});
+
 test("every digest table's separator has one delimiter cell per header cell", () => {
   // One result column (the join has nothing to separate, so the defect cannot show), one role
   // across several results, and several roles across several results — the shape the

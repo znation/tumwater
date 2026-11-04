@@ -155,7 +155,7 @@ only grows: search it with grep, or read one entry by its line range. Never read
 - Make `OUTCOME_CLASS` a `Readonly<Partial<Record<RunResult, "merged" | "no_change" | "error">>>` (src/failure/failure-time-spend.ts); keep the existing `cls === undefined` skip and `resolvedCls !== undefined` guard in `timeAndSpend`, and the `=== "error"` comparison in src/report/report-usage-fold.ts, so an unclassified result is counted by the Outcome table but not priced.
 - Refresh the three declarations' comments: the full-record compile closure is deliberately relaxed here because a result may be retired from the surface tables while still in the `RunResult` union until part 4k/3; every current member still has its key.
 
-**Files touched.** src/events/event-labels.ts src/failure/failure-render.ts src/failure/failure-time-spend.ts test/event-labels.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts test/report-usage-fold.test.ts
+**Files touched.** src/events/event-labels.ts src/failure/failure-render.ts src/failure/failure-time-spend.ts test/failure-render.test.ts test/report-usage-fold.test.ts
 
 **Acceptance criteria.**
 - The three declarations type their keys as `Partial<Record<RunResult, …>>`, and no lookup indexes one without handling a missing key: an unlabeled result renders its underscores as spaces, an unranked result sorts after the ranked ones, and an unclassified result is omitted from the time-and-spend rows.
