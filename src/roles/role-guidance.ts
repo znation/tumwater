@@ -43,8 +43,9 @@ export function backlogMoveGuidance(file: string, openSection: string, resolvedS
 }
 
 /** The heading clause requiredParts parses, spelled as the parser reads it. Interpolated because
- * a comment inside the template would become prompt text. */
-const REQUIRES_PART_FORM = "requires part N/M landed"; // vocabulary-ok: requiredParts parses this heading syntax
+ * a comment inside the template would become prompt text. Exported so the plan charter's retire
+ * clause (part 6/6) names the same spelling. */
+export const REQUIRES_PART_FORM = "requires part N/M landed"; // vocabulary-ok: requiredParts parses this heading syntax
 
 /** Shared sizing rule for anyone writing a plan (the plan role and the director): the feature
  * role is one mid-sized local model working alone in one run, and the review gate rejects a
@@ -179,6 +180,14 @@ export const PLAN_DEFECT_MARKER = "plan defect";
  * objection the feature role recorded goes after the marker's dash, so the plan charter can name
  * it (`the objection after the marker`) without parsing the note body itself. */
 export const PLAN_DEFECT_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: ${PLAN_DEFECT_MARKER} — <objection>**`;
+
+/** The template for the first body line of a plan closed without being built: the plan role
+ * retires it (plans/duplicate-plans.md "Decision" 2) — the heading takes the `retired` stamp the
+ * structure rule and backlog readers of part 1/6 parse, and this line records who closed it and
+ * the evidence. Defined once so the plan charter (which tells the plan role to write it) and the
+ * staging evidence check of part 5/6 (which validates it) share one shape, the way
+ * ${PLAN_DEFECT_NOTE} is shared by the feature and plan charters. */
+export const RETIRED_NOTE = `**Retired <YYYY-MM-DD> by <role>: <evidence>**`;
 
 /** The literal marker the plan role writes as its own line under the PLANS.md `## Planned` entry
  * that declares this project's deterministic check, and the feature role reads as that entry's

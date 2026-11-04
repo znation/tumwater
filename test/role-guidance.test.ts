@@ -12,6 +12,8 @@ import {
   PLAN_DEFECT_MARKER,
   PLAN_DEFECT_NOTE,
   PLAN_QUEUE_GUIDANCE,
+  REQUIRES_PART_FORM,
+  RETIRED_NOTE,
   PLAN_SIZING,
   searchGuidance,
   VALIDATION_GAP_GUIDANCE,
@@ -181,6 +183,17 @@ test("the plan-defect marker is embedded in the feature and plan charters and pi
   assert.ok(PLAN_DEFECT_NOTE.startsWith(NEEDS_REVIEW_PREFIX), "plan-defect note is a Needs-review note");
   assert.ok(oneLine(roleById("feature")!.find).includes(PLAN_DEFECT_MARKER), "feature charter offers the replan note");
   assert.ok(oneLine(roleById("plan")!.find).includes(PLAN_DEFECT_MARKER), "plan charter reads the replan note");
+});
+
+test("the retired note template is pinned to its shape and embedded in the plan charter", () => {
+  assert.equal(RETIRED_NOTE, "**Retired <YYYY-MM-DD> by <role>: <evidence>**");
+  assert.match(RETIRED_NOTE, /^\*\*Retired <YYYY-MM-DD> by <role>: <evidence>\*\*$/);
+  assert.ok(oneLine(roleById("plan")!.find).includes(RETIRED_NOTE), "plan charter embeds the retired note shape");
+});
+
+test("the requires-part form is pinned and embedded in the plan charter's retire clause", () => {
+  assert.equal(REQUIRES_PART_FORM, "requires part N/M landed");
+  assert.ok(oneLine(roleById("plan")!.find).includes(REQUIRES_PART_FORM), "plan charter names the clause form");
 });
 
 test("the Needs review marker is embedded in the feature, plan, and director prompts", () => {

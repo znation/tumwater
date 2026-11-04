@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildDirectorPrompt, buildRunPrompt } from "../src/prompt/prompt.js";
 import { NOTHING_TO_DO, SUMMARY_BLOCK } from "../src/verdict/reply-contract.js";
 import { ROLES, roleById } from "../src/roles/roles.js";
-import { CONVERGENCE_HOLD_MARKER, NEEDS_REVIEW_NOTE, PLAN_DEFECT_MARKER, VALIDATION_GAP_QUERY } from "../src/roles/role-guidance.js";
+import { CONVERGENCE_HOLD_MARKER, NEEDS_REVIEW_NOTE, PLAN_DEFECT_MARKER, REQUIRES_PART_FORM, RETIRED_NOTE, VALIDATION_GAP_QUERY } from "../src/roles/role-guidance.js";
 import { oneLine } from "./helpers/oracles.js";
 
 // What each role's own prompt says: the per-role find text and content contracts (qa,
@@ -97,6 +97,26 @@ test("the feature find text hands a defective plan back to the plan role and res
   assert.ok(prompt.includes(PLAN_DEFECT_MARKER), "feature offers the replan note for a plan defect");
   assert.match(prompt, /Reserve \*\*Refused …\*\* for a plan that should not be done at all/);
   assert.match(prompt, /Skip plans whose entry carries a Refused note/);
+});
+test("the feature find text hands a plan with nothing to build to the plan role, not a refusal", () => {
+  const find = oneLine(roleById("feature")!.find);
+  assert.match(find, /A plan whose approach or criteria are wrong is a finding the plan role owns, not a refusal/);
+  assert.match(find, /So is a plan with nothing to build/);
+  assert.match(find, /deliverable already exists on main, that another entry already carries, or that a measurement disproves/);
+  assert.match(find, /naming the evidence in the objection \(the commit's short SHA on main, the other entry's quoted heading, or the measurement\)/);
+  assert.match(find, /Never refuse such a plan, and never mark it done/);
+  assert.match(find, /the plan role checks the evidence and retires the entry/);
+  assert.match(find, /because of a product or design decision that is the user's to make/);
+});
+test("the plan charter's plan-defect bullet offers retire, checks the evidence, and re-points dependents", () => {
+  const find = oneLine(roleById("plan")!.find);
+  assert.match(find, /approach or criteria wrong, or the plan has nothing to build/);
+  assert.match(find, /check that first with grep or `git log`/);
+  assert.match(find, /retire the entry/);
+  assert.match(find, /`retired` heading stamp/);
+  assert.ok(find.includes(RETIRED_NOTE), "plan charter embeds the retired note shape");
+  assert.match(find, /point any `requires part N\/M landed` clause that named the entry at the survivor/);
+  assert.ok(find.includes(REQUIRES_PART_FORM), "plan charter names the requires clause form");
 });
 test("the bugfix find text refuses harmful fixes and skips refused bugs", () => {
   const role = roleById("bugfix");
@@ -480,6 +500,8 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   assert.match(find, /read the objection after the marker and the code it names and rewrite the plan/);
   assert.match(find, /outranks adding another plan/);
   assert.match(find, /split it into independently mergeable sub-plans that cross-reference each other/);
+  assert.ok(find.includes(RETIRED_NOTE), "the plan-defect bullet names the retired note");
+  assert.match(find, /in the same change, point any `requires part N\/M landed` clause that named the entry at the survivor/);
   assert.match(find, /read the quoted objections and the code they name and rewrite the plan/);
   assert.match(find, /then remove the note/);
   assert.ok(!find.includes('refining the weakest'), "the refine-the-weakest clause is gone");

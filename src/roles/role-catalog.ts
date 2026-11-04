@@ -16,6 +16,8 @@ import {
   PLAN_DEFECT_NOTE,
   PLAN_QUEUE_GUIDANCE,
   PLAN_SIZING,
+  REQUIRES_PART_FORM,
+  RETIRED_NOTE,
   searchGuidance,
   VALIDATION_GAP_GUIDANCE,
   VALIDATION_GAP_QUERY,
@@ -95,8 +97,13 @@ export const ROLES: Role[] = [
       you changed (see "Leave the project working" below).
 A plan whose approach or criteria are wrong is a finding the plan role owns, not a refusal:
 append ${PLAN_DEFECT_NOTE} under its heading with the objection recorded, skip it, and implement
-the next available plan that fits — do not force it. Reserve **Refused …** for a plan that
-should not be done at all, which is the user's call to decide.`,
+the next available plan that fits — do not force it. So is a plan with nothing to build — one
+whose deliverable already exists on main, that another entry already carries, or that a
+measurement disproves: append the same note naming the evidence in the objection (the commit's
+short SHA on main, the other entry's quoted heading, or the measurement), skip it, and implement
+the next available plan that fits. Never refuse such a plan, and never mark it done — the plan
+role checks the evidence and retires the entry. Reserve **Refused …** for a plan that should not
+be done at all because of a product or design decision that is the user's to make.`,
   },
   {
     id: "bugfix",
@@ -170,11 +177,17 @@ within that budget, there is nothing to do.`,
         following it would answer each — correcting the approach or the anchors, tightening the
         acceptance criteria, or splitting it per PLAN_SIZING — then remove the note.
       - A plan carrying a ${PLAN_DEFECT_MARKER} note (the feature implementer found the plan's
-        approach or criteria wrong) also outranks adding another plan: read the objection after the
-        marker and the code it names and rewrite the plan so an implementation following it would
-        answer it — correcting the approach or the anchors, tightening the acceptance criteria,
-        splitting it per PLAN_SIZING, or refusing it with the objection recorded when it should not
-        be done at all — then remove the note. That replan is this run's task.
+        approach or criteria wrong, or the plan has nothing to build) also outranks adding another
+        plan: read the objection after the marker and the code it names and rewrite the plan so an
+        implementation following it would answer it — correcting the approach or the anchors,
+        tightening the acceptance criteria, splitting it per PLAN_SIZING, or refusing it with the
+        objection recorded when it should not be done at all because
+        of a product or design decision that is the user's to make. When the objection says the
+        deliverable already exists or that another entry already carries it, check that first with
+        grep or \`git log\`: if it holds, retire the entry — move it to \`## Done\` with the
+        \`retired\` heading stamp and a ${RETIRED_NOTE} line using the checked evidence — and in
+        the same change, point any \`${REQUIRES_PART_FORM}\` clause that named the entry at the
+        survivor. Then remove the note. That is this run's task.
       - A plan carrying a **Needs review …** note that quotes the reviewer's surviving objections
         (a final-round rejection — \`rejected after <N> review rounds\`) also outranks adding another
         plan: read the quoted objections and the code they name, then rewrite the plan so an

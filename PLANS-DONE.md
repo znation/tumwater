@@ -5,6 +5,37 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### No duplicate plans, part 6/6: Feature hands a plan with nothing to build back to the plan role, which retires it; `Refused` is kept for the user's own decisions (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 4 and 5; requires No duplicate plans part 1/6 landed, and the running build must already carry that part's readers before this merges; touches src/roles/role-catalog.ts src/roles/role-guidance.ts src/prompt/prompt.ts docs/how-it-works.md test/prompt-roles.test.ts test/role-guidance.test.ts test/prompt-rules.test.ts) — done 2026-11-04 by the feature role
+
+**Goal.** A plan whose deliverable already exists, that another entry already carries, or that a measurement disproves ends up retired by the plan role, not refused for the user. In the 11-03 incident, all 12 refused plans were of that kind, and the user cancelled every one. In tumwater's own repo, feature has also stamped such entries `done` ("Mark the landed `historyPaneCache` split done", `d1e8c44a9`), which records work that never happened.
+
+**Approach.**
+- In the feature charter in src/roles/role-catalog.ts, after the plan-defect paragraph: a plan with nothing to build is a plan defect. Append `PLAN_DEFECT_NOTE` and name the evidence in the objection: the landed commit's short SHA, the other entry's quoted heading, or the measurement. Then skip the plan. Never refuse it, and never mark it done.
+- `Refused …` stays reserved for a plan that should not be done at all because of a product or design decision that is the user's to make.
+- In the plan charter's plan-defect bullet, add retire to "rewrite/split/refuse".
+  - When the objection says the deliverable exists or another entry carries it, check that with grep or `git log`. If it holds, retire the entry with part 1/6's shape, using the checked evidence.
+  - In the same change, point any `requires … landed` clause that named the entry at the survivor. Refuse only for a user's decision.
+- The shared refusal bullet in src/prompt/prompt.ts says once: a plan with nothing to build is a plan defect, not a refusal.
+- In src/roles/role-guidance.ts, beside `PLAN_DEFECT_NOTE`, define `RETIRED_NOTE` (`**Retired <YYYY-MM-DD> by <role>: <evidence>**`), so the plan charter and part 5/6's wording share one shape.
+- docs/how-it-works.md, wherever it describes refusals: retire versus refuse.
+- Prompt strings must pass test/vocabulary.test.ts. Say "the user", not "the operator".
+
+**Files touched.** src/roles/role-catalog.ts src/roles/role-guidance.ts src/prompt/prompt.ts docs/how-it-works.md test/prompt-roles.test.ts test/role-guidance.test.ts test/prompt-rules.test.ts
+
+**Acceptance criteria.**
+- The feature charter tells a run to append the plan-defect note, with evidence, for a plan whose deliverable already exists or that duplicates another entry. It forbids refusing such a plan and forbids marking it done.
+- The plan charter's plan-defect bullet offers retire, requires checking the evidence first, and requires re-pointing dependents.
+- `RETIRED_NOTE` is exported once and embedded in the plan charter.
+- `Refused` wording in both charters and in the shared rule names only the user's decisions.
+- No string under src/ uses a retired word.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/prompt-roles.test.ts: the feature and plan charter sentences.
+- test/role-guidance.test.ts: `RETIRED_NOTE`'s shape.
+- test/prompt-rules.test.ts: the shared refusal bullet.
+- Run those files, test/vocabulary.test.ts and the gate.
+
 ### Hourly gate restore, part 2/2: The gate attributes a twice-failed check by asking main's tip about exactly what failed, never by waiting on the watch (planned 2026-11-02 by the plan role, splitting the too-large Hourly full check part 1a/4 entry after feature held it; requires Hourly gate restore part 1/2 landed, so the check and its failed/aborted outcomes already run (re-pointed 2026-11-02 by the operator: reverting 8ed0d3eec restored the pre-check whole from that commit's parent, watch-wait attribution included, so this part replaces that attribution rather than adding to a bare check); design in plans/main-check-cadence.md; user direction 2026-11-01: a twice-failed check is decided on the spot, never by waiting on the main watch; touches src/review/review-precheck.ts src/baseline/main-red.ts docs/how-it-works.md docs/invariants.md test/review-precheck.test.ts test/review-precheck-main-tip.test.ts test/review-precheck-watch.test.ts) — done 2026-11-03 by the post-merge review
 
 **Goal.** Replace the restored watch-wait attribution (`watchVerifiesMain` → `watchedMainVerdict`, the `status === "awaiting"` keep with `mainRed`/`awaitingWatch`, and `attributeOnRedMain`'s `unknown` arm) with attribution at main's tip, with no watch and no keep-the-pin-until-the-watch outcome. When a gate check fails twice:

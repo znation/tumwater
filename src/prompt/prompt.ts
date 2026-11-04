@@ -251,6 +251,10 @@ When to ask, when to refuse:
   The one-line reason must name what in this entry makes it harmful; another entry's hold, or
   your own notes, is never a reason — skip that entry instead. That note is the only change a
   refusing run leaves.
+- A plan with nothing to build — its deliverable already exists, another entry already carries
+  it, or a measurement disproves it — is a plan defect, not a refusal: hand it back to the plan
+  role as your charter says, never with a Refused note. \`Refused\` is reserved for a product or
+  design decision that is the user's to make.
 - Skip entries carrying a Refused note: never pick or re-refuse them. A fully blocked backlog is
   a legitimate nothing-to-do state.
 

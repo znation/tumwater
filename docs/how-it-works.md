@@ -69,6 +69,13 @@ but every reader that tells finished entries from open ones accepts `retired`: a
 with a retired stamp is not stranded, and a `requires … landed` clause naming a retired part
 counts as dangling, so the change that retires a part must point its dependents at the survivor.
 
+Retiring and refusing are different closes. A plan with nothing to build — its deliverable
+already exists, another entry already carries it, or a measurement disproves it — is a plan
+defect: the feature role hands it back to the plan role with the plan-defect note naming the
+evidence, and the plan role checks the evidence and retires the entry. A `Refused` note is
+reserved for a product or design decision that is the user's to make; the refused-entries alert
+and `plan|bug --release` cover that set.
+
 ## The merge pipeline
 
 A run ends as soon as its commit is in the merge queue. Queued changes are approved in parallel
