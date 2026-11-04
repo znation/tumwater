@@ -12,10 +12,16 @@ import { createMainWatch } from "../src/baseline/main-watch.js";
 import { queueCulpritHeal } from "../src/baseline/main-red.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { defaultConfig } from "../src/config/config.js";
+import type { CheckConfig } from "../src/config/config-schema.js";
 import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
 import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
-import { change, culpritFixture, watchAt } from "./fixtures/main-watch-fixtures.js";
+import { change, clockAt, culpritFixture, watchAt, watchAtWith } from "./fixtures/main-watch-fixtures.js";
+
+// The hourly cadence (part 2b/4): every watch here carries an injected clock, and a test
+// advances it past the interval (an hour) before each head that must run the full check — the
+// per-head cadence these tests assert is now the hourly cadence with the clock moved past it.
+const HOUR = 7_200_000; // 2h: clears the seed run's checkedAt (real Date.now, stamped after the clock starts)
 import { logEvent } from "../src/events/events.js";
 import { shortSha } from "../src/text/format.js";
 
@@ -26,7 +32,8 @@ import { shortSha } from "../src/text/format.js";
 test("a new head is checked once and logged as one passed main_check; a repeat poll does nothing", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root } = baselineFixture("improve", `echo run >> ${counter}; echo ok`);
-  const watch = createMainWatch(root, "main");
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
   await watchAt(watch, root);
   await watchAt(watch, root);
   const checks = eventsOfType(root, "main_check");
@@ -39,10 +46,12 @@ test("a new head is checked once and logged as one passed main_check; a repeat p
 test("two merges before a run cover both commits in one watch run", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root } = baselineFixture("improve", `echo run >> ${counter}; echo ok`);
-  const watch = createMainWatch(root, "main");
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
   await watchAt(watch, root);
   change(root, "a.txt", "a");
   const tip = change(root, "b.txt", "b");
+  clock.advance(HOUR);
   await watchAt(watch, root);
   const checks = eventsOfType(root, "main_check");
   assert.equal(checks.length, 2);
@@ -54,9 +63,12 @@ test("two merges before a run cover both commits in one watch run", async () => 
 test("a doc-only commit on a checked head inherits green without a run", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root } = baselineFixture("improve", `echo run >> ${counter}; echo ok`);
-  const watch = createMainWatch(root, "main");
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
   await watchAt(watch, root);
   change(root, "README.md", "docs");
+  // Within the hour: the doc-only head settles its inherited green without a run (as today),
+  // the full check is due for a code head, not a doc-only one.
   await watchAt(watch, root);
   const checks = eventsOfType(root, "main_check");
   assert.equal(checks.length, 2);
@@ -68,7 +80,7 @@ test("a doc-only commit on a checked head inherits green without a run", async (
 test("a held team starts no watch run", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root } = baselineFixture("improve", `echo run >> ${counter}; echo ok`);
-  const watch = createMainWatch(root, "main");
+  const watch = createMainWatch(root, "main", undefined, clockAt().now);
   await watchAt(watch, root, true);
   assert.equal(eventsOfType(root, "main_check").length, 0);
   assert.equal(runsOf(counter), 0);
@@ -98,10 +110,12 @@ test("a main whose branch is unreadable warns once through the poll catch and is
 
 test("a red tip names itself as the culprit, with its merging runner and the failing tests", async () => {
   const { root } = culpritFixture();
-  const watch = createMainWatch(root, "main");
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
   await watchAt(watch, root); // the seed commit G: green, cached
   const b = change(root, "bad.txt", "b"); // the red tip itself
   logEvent(root, { source: "improve", type: "merged", commit: b, summary: "breaks a test" });
+  clock.advance(HOUR); // past the interval: the code head is checked
   await watchAt(watch, root);
   const culprits = eventsOfType(root, "main_culprit");
   assert.equal(culprits.length, 1);
@@ -117,11 +131,13 @@ test("the watch's onCulprit hands a red culprit straight to ci's heal queue and 
   // to ci's heal queue with the existing wording, and nothing is ever reverted (Forward, never
   // back, part 4/6).
   const { root } = culpritFixture();
+  const clock = clockAt();
   const watch = createMainWatch(root, "main", (culprit) => {
     queueCulpritHeal(root, culprit.tip, { culprit: culprit.commit, failingTests: culprit.failingTests });
-  });
+  }, clock.now);
   await watchAt(watch, root); // the seed commit G: green, cached
   const b = change(root, "bad.txt", "b"); // the red tip itself
+  clock.advance(HOUR);
   await watchAt(watch, root);
   const queued = queuedRolePrompts(root, "ci");
   assert.equal(queued.length, 1, "the red culprit queued exactly one heal prompt for ci");
@@ -134,11 +150,13 @@ test("the watch's onCulprit hands a red culprit straight to ci's heal queue and 
 test("a culprit's heal prompt names the command that re-runs only its failing tests", async () => {
   const { root } = culpritFixture();
   fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify({ check: { rerunCommand: "npm run test:rerun --" } }));
+  const clock = clockAt();
   const watch = createMainWatch(root, "main", (culprit) => {
     queueCulpritHeal(root, culprit.tip, { culprit: culprit.commit, failingTests: culprit.failingTests });
-  });
+  }, clock.now);
   await watchAt(watch, root);
   change(root, "bad.txt", "b");
+  clock.advance(HOUR);
   await watchAt(watch, root);
   const prompt = queuedRolePrompts(root, "ci")[0] ?? "";
   assert.ok(prompt.includes("with: npm run test:rerun -- '#first' '#second' '#third'"), prompt);
@@ -150,9 +168,11 @@ function mainRedCulpritClause(sha: string): string {
 
 test("a red tip with no merged event is named without a runner", async () => {
   const { root } = culpritFixture();
-  const watch = createMainWatch(root, "main");
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
   await watchAt(watch, root);
   const b = change(root, "bad.txt", "b");
+  clock.advance(HOUR);
   await watchAt(watch, root);
   const culprit = eventsOfType(root, "main_culprit")[0];
   assert.equal(culprit?.commit, b, "the tip is its own culprit");
@@ -162,11 +182,13 @@ test("a red tip with no merged event is named without a runner", async () => {
 
 test("a red whose breaking commit is intermediate still names the newest tip as the culprit", async () => {
   const { root } = culpritFixture();
-  const watch = createMainWatch(root, "main");
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
   await watchAt(watch, root); // the seed commit G: green, cached
   change(root, "bad.txt", "b"); // the intermediate commit that actually breaks the build
   const tip = change(root, "good.txt", "g"); // a later commit on top; its tree is still red
   logEvent(root, { source: "improve", type: "merged", commit: tip, summary: "breaks a test" });
+  clock.advance(HOUR);
   await watchAt(watch, root);
   const culprits = eventsOfType(root, "main_culprit");
   assert.equal(culprits.length, 1);
@@ -175,4 +197,93 @@ test("a red whose breaking commit is intermediate still names the newest tip as 
   assert.deepEqual(culprits[0]?.failingTests, ["first", "second", "third"]);
   await watchAt(watch, root);
   assert.equal(eventsOfType(root, "main_culprit").length, 1, "a repeat poll does not attribute again");
+});
+
+// The hourly full-check cadence (Hourly full check, part 2b/4): the full check runs at most once
+// per check.fullIntervalMinutes (default 60), on main's latest tip, and only while a non-exempt
+// code commit sits above the newest verdict a full check actually produced (checkedAt, part 2a/4).
+// A doc-only range inherits green and starts no run; a verdict without checkedAt reads as due now;
+// 0 restores one full run per new code head. The deterministic diff rules still run on every new
+// head, even while the full check is suspended — so the skip path is the one that proves the
+// rules are judged independently of the build's verdict.
+
+test("within the interval, a code head above a green anchor suspends the full check but still runs the rules", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root } = baselineFixture("improve", `echo run >> ${counter}; echo ok`);
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
+  await watchAt(watch, root); // the seed commit: green, checkedAt stamped
+  change(root, "a.txt", "a"); // a code head above the green anchor, within the interval
+  // A conflict marker in the same commit proves the diff rules ran on this head even though the
+  // full check is suspended — the rules are judged independently of the build's verdict.
+  change(root, "bad.txt", "line one\n<<<<<<< HEAD\n");
+  await watchAt(watch, root); // within the interval: no run, but the rules still judge the tip
+  assert.equal(runsOf(counter), 1, "the full check is suspended within the interval");
+  assert.equal(eventsOfType(root, "main_check").length, 1, "no new verdict while the full check is suspended");
+  // The diff rules still ran on the tip despite the suspended full check.
+  const warnings = warningMessages(root);
+  assert.ok(
+    warnings.some((m) => m.includes("conflict markers remain in")),
+    "the diff rules run on the tip even while the full check is suspended",
+  );
+});
+
+test("after the interval passes, the full check covers every commit above the anchor it skipped past", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root } = baselineFixture("improve", `echo run >> ${counter}; echo ok`);
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
+  await watchAt(watch, root); // the seed commit: green, checkedAt stamped
+  change(root, "a.txt", "a"); // a code head above the green anchor, within the interval
+  await watchAt(watch, root); // suspended: no run
+  assert.equal(runsOf(counter), 1, "within the interval the full check is suspended");
+  clock.advance(HOUR); // the interval passes
+  await watchAt(watch, root); // due now: the check covers the commit above the anchor
+  assert.equal(runsOf(counter), 2, "the full check ran once the interval passed");
+  const checks = eventsOfType(root, "main_check");
+  assert.equal(checks.length, 2);
+  assert.equal(checks[1]?.covered, 1, "the check covers the code commit above the anchor");
+});
+
+test("fullIntervalMinutes 0 restores one full run per new code head", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root } = baselineFixture("improve", `echo run >> ${counter}; echo ok`);
+  const clock = clockAt();
+  // The command stays undeclared (the fixture's package.json drives npm detection); only the
+  // cadence is set. CheckConfig requires `command` in its type, but the watch reads
+  // fullIntervalMinutes independently, so the cast is honest.
+  const config = { ...defaultConfig(), check: { fullIntervalMinutes: 0 } as CheckConfig };
+  const watch = createMainWatch(root, "main", undefined, clock.now);
+  await watchAtWith(watch, root, config); // the seed commit: green, checkedAt stamped
+  change(root, "a.txt", "a"); // a code head, immediately (the clock is not advanced)
+  await watchAtWith(watch, root, config);
+  assert.equal(runsOf(counter), 2, "interval 0: every new code head runs the full check");
+  const checks = eventsOfType(root, "main_check");
+  assert.equal(checks.length, 2);
+  assert.equal(checks[1]?.covered, 1);
+});
+
+test("a restart honoring a saved checkedAt starts no full run until the interval passes", async () => {
+  // The acceptance criterion's restart: a full verdict saved 20 minutes before a restart starts no
+  // full run in the first 40 minutes after it, and the first poll past the hour starts one. The
+  // baseline cache is process-wide, so a second watch object (the "restart") reads the checkedAt
+  // the first watch stamped, and the injected clock plays the wall time since that stamp.
+  const counter = path.join(tmpdir(), "runs");
+  const { root } = baselineFixture("improve", `echo run >> ${counter}; echo ok`);
+  const firstClock = clockAt();
+  const first = createMainWatch(root, "main", undefined, firstClock.now);
+  await watchAt(first, root); // the seed commit: green, checkedAt stamped (real time)
+  const restart = clockAt(); // the wall clock 20 minutes on (well inside the hour)
+  restart.advance(20 * 60_000);
+  const second = createMainWatch(root, "main", undefined, restart.now); // the restart
+  change(root, "a.txt", "a"); // a code head above the green anchor
+  await watchAt(second, root); // still within 40 minutes of the saved verdict: suspended
+  assert.equal(runsOf(counter), 1, "the restart does not re-run the full check within the interval");
+  assert.equal(eventsOfType(root, "main_check").length, 1, "no new verdict while the interval holds");
+  restart.advance(45 * 60_000); // now 65 minutes on: past the hour
+  await watchAt(second, root);
+  assert.equal(runsOf(counter), 2, "the first poll past the hour runs the full check");
+  const checks = eventsOfType(root, "main_check");
+  assert.equal(checks.length, 2);
+  assert.equal(checks[1]?.covered, 1);
 });

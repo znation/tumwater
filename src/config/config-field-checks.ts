@@ -121,6 +121,10 @@ export const POSITIVE_INTEGER: NumberRule = {
   ok: (n) => Number.isInteger(n) && n >= 1,
   what: "an integer of at least 1",
 };
+export const NON_NEGATIVE_INTEGER: NumberRule = {
+  ok: (n) => Number.isInteger(n) && n >= 0,
+  what: "a whole number of 0 or more",
+};
 export const AT_LEAST_ONE: NumberRule = { ok: (n) => n >= 1, what: "a number of at least 1" };
 
 /** The upper bound every seconds field that feeds a ×1000 duration shares: 2147483 s

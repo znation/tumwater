@@ -12,19 +12,24 @@ import { defaultConfig } from "../src/config/config.js";
 import { baselineFixture } from "./fixtures/runner-fixtures.js";
 import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { change, culpritFixture, FAILING_OUTPUT, watchAt } from "./fixtures/main-watch-fixtures.js";
+import { change, clockAt, culpritFixture, FAILING_OUTPUT, watchAt } from "./fixtures/main-watch-fixtures.js";
 import { logEvent } from "../src/events/events.js";
 
 // The main watch (src/baseline/main-watch.ts) records the full check's verdict on main's tip in the
 // background. The suite's process-wide verdict cache is keyed by SHA, and every fixture repo has
-// its own, so these tests share no state.
+// its own, so these tests share no state. The hourly cadence (part 2b/4): every watch here carries
+// an injected clock, and a test advances it past the interval before each head whose check must
+// actually run — a red anchor is re-checked on every new head, never delayed by the hour.
+const HOUR = 7_200_000; // 2h: clears the seed run's checkedAt (real Date.now, stamped after the clock starts)
 
 test("a doc-exempt tip that lands after a red keeps the opener as the named culprit", async () => {
   const { root } = culpritFixture();
-  const watch = createMainWatch(root, "main");
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
   await watchAt(watch, root); // the seed commit G: green, cached
   const b = change(root, "bad.txt", "b"); // the tip that opens the red
   logEvent(root, { source: "improve", type: "merged", commit: b, summary: "breaks a test" });
+  clock.advance(HOUR);
   await watchAt(watch, root);
   const doc = change(root, "README.md", "docs"); // a doc-only tip after the red opened
   await watchAt(watch, root);
@@ -43,18 +48,21 @@ test("a settled green closes the red spell, so the next red names its own opener
   const flag = path.join(tmpdir(), "red");
   const script = `if [ -f ${flag} ]; then ${FAILING_OUTPUT}; exit 1; fi; echo ok`;
   const { root } = baselineFixture("improve", script);
-  const watch = createMainWatch(root, "main");
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
   await watchAt(watch, root); // the seed commit: green (no flag)
   fs.writeFileSync(flag, ""); // the failure goes live
   change(root, "a.txt", "a"); // the tip that opens the red
+  clock.advance(HOUR);
   await watchAt(watch, root);
   fs.rmSync(flag); // the failure goes away
-  change(root, "b.txt", "g"); // the tip that turns main green
+  change(root, "b.txt", "g"); // the tip that turns main green (the red anchor is re-checked, hour or not)
   await watchAt(watch, root);
   assert.equal(eventsOfType(root, "main_check")[2]?.status, "passed", "the green tip settled");
   assert.equal(eventsOfType(root, "main_culprit").length, 1);
   fs.writeFileSync(flag, ""); // the failure returns on a NEW red
   const c = change(root, "c.txt", "c");
+  clock.advance(HOUR);
   await watchAt(watch, root);
   const culprits = eventsOfType(root, "main_culprit");
   assert.equal(culprits.length, 2, "the reopened red names its own culprit");
@@ -72,7 +80,8 @@ test("a doc-exempt tip re-checking an open red does not re-name the culprit: the
     "improve",
     `[ -f .red-flag ] && { ${FAILING_OUTPUT}; exit 1; }; echo ok`,
   ).root;
-  const watch = createMainWatch(root, "main");
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
   const poll = async () => {
     watch.poll(headSha(root), false, defaultConfig());
     await watch.idle();
@@ -81,6 +90,7 @@ test("a doc-exempt tip re-checking an open red does not re-name the culprit: the
   fs.writeFileSync(path.join(root, ".red-flag"), "red\n");
   sh(root, "git", "add", "--", ".red-flag");
   change(root, "notes.md", "doc one\n");
+  clock.advance(HOUR);
   await poll();
   const culprits = eventsOfType(root, "main_culprit");
   assert.equal(culprits.length, 1, "the first red tip is named exactly once");
@@ -108,7 +118,8 @@ test("a doc-exempt tip on top of a code commit that broke main names the code co
     "improve",
     `[ -f .red-flag ] && { ${FAILING_OUTPUT}; exit 1; }; echo ok`,
   ).root;
-  const watch = createMainWatch(root, "main");
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
   const poll = async () => {
     watch.poll(headSha(root), false, defaultConfig());
     await watch.idle();
@@ -120,6 +131,7 @@ test("a doc-exempt tip on top of a code commit that broke main names the code co
   logEvent(root, { source: "improve", type: "merged", commit: code, summary: "breaks a test" });
   const doc = change(root, "README.md", "a doc-only move\n"); // a doc-exempt tip on top, same interval
   logEvent(root, { source: "improve", type: "merged", commit: doc, summary: "doc only" });
+  clock.advance(HOUR);
   await poll(); // the watch checks the doc tip; the tree is red
   const culprits = eventsOfType(root, "main_culprit");
   assert.equal(culprits.length, 1, "the red is attributed exactly once");
@@ -137,7 +149,8 @@ test("a green that closes the open red lets a later red name its own opener agai
     "improve",
     `[ -f .red-flag ] && { ${FAILING_OUTPUT}; exit 1; }; echo ok`,
   ).root;
-  const watch = createMainWatch(root, "main");
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
   const poll = async () => {
     watch.poll(headSha(root), false, defaultConfig());
     await watch.idle();
@@ -146,6 +159,7 @@ test("a green that closes the open red lets a later red name its own opener agai
   fs.writeFileSync(path.join(root, ".red-flag"), "red\n");
   sh(root, "git", "add", "--", ".red-flag");
   const red1 = change(root, "notes.md", "r1\n");
+  clock.advance(HOUR);
   await poll();
   assert.equal(eventsOfType(root, "main_culprit")[0]?.commit, red1);
   sh(root, "git", "rm", "-q", "--", ".red-flag");
@@ -155,6 +169,7 @@ test("a green that closes the open red lets a later red name its own opener agai
   fs.writeFileSync(path.join(root, ".red-flag"), "red again\n");
   sh(root, "git", "add", "--", ".red-flag");
   const red2 = change(root, "notes.md", "r1\ng\nr2\n");
+  clock.advance(HOUR);
   await poll();
   const culprits = eventsOfType(root, "main_culprit");
   assert.equal(culprits.length, 2, "the later red names its own opener");

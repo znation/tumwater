@@ -22,6 +22,7 @@ import {
   checkKnownKeys,
   checkModelTripleField,
   checkNumberField,
+  NON_NEGATIVE_INTEGER,
   checkObjectSection,
   codexConfigKey,
   checkStringArrayField,
@@ -287,6 +288,9 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     checkString(o, "check.", "rerunCommand");
     checkString(o, "check.", "cwd");
     checkNumber(o, "check.", "timeoutSeconds", DURATION_POSITIVE);
+    // The main watch's full-check cadence (Hourly full check, part 2b/4): a whole number of
+    // minutes; 0 restores one full run per new code head.
+    checkNumber(o, "check.", "fullIntervalMinutes", NON_NEGATIVE_INTEGER);
   });
 
   checkObjectSection(r, "idleBackoff", problems, (o) => {

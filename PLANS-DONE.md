@@ -5,6 +5,33 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Hourly full check, part 2b/4: The watch runs the full check at most once per `check.fullIntervalMinutes` on main's latest tip, and still runs the diff rules on every new head (planned 2026-11-03 by the plan role, splitting the 2026-11-01 part 2/4 after feature held it too large for one run; requires Hourly full check part 2a/4 landed, so the newest full verdict carries its `checkedAt`; the mirror/concurrency move is part 2c/4, not this entry; touches src/baseline/main-watch.ts src/config/config-schema.ts src/config/config-validation.ts docs/config.md docs/how-it-works.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts test/main-watch-rules.test.ts test/config-validation-check.test.ts) — done 2026-11-03 by the feature role
+
+**Goal.** Each change is still checked once before landing by the gate's build check. The full check on main runs at most once per `check.fullIntervalMinutes` (default 60), only when main has a first-parent code commit the newest full verdict does not cover. Every new head still gets the diff rules, which judge each head and never wait for a full run in this part.
+
+**Approach.**
+- Add `fullIntervalMinutes?: number` to `CheckConfig` and `CHECK_KEYS` (src/config/config-schema.ts), and validate it in src/config/config-validation.ts as a non-negative integer. `0` restores one full run per new code head.
+- Add a clock seam: `createMainWatch(root, mainBranch, onCulprit?, now = Date.now)`. The due decision reads `now()`; the `checkedAt` stamp stays real time as part 2a/4 wrote it.
+- Add a module-private due rule in src/baseline/main-watch.ts: find the newest first-parent commit whose cached observed verdict carries `checkedAt`; it is due when that time plus `fullIntervalMinutes` is not in the future and main has a non-exempt code commit above that commit. A doc-only range still inherits green and starts no run. A verdict without `checkedAt` reads as due now.
+- In `watchOnce`, when the full check is not due, still enter the mirror and run `watchRules` on the tip, advance `lastWatched`, and record no `main_check` and no run. When due, run `runBaselineCheck`, `recordMainCheck`, the heal/culprit path and `watchRules` as today.
+- Docs: docs/config.md and tumwater.example.json name the key; docs/how-it-works.md's main-watch bullet describes the cadence; docs/invariants.md's INV-CZ2 changes "at most once per main commit" to "at most once per `fullIntervalMinutes`" and states the uncovered-code and doc-only-inheritance clauses.
+
+**Files touched.** src/baseline/main-watch.ts src/config/config-schema.ts src/config/config-validation.ts docs/config.md docs/how-it-works.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts test/main-watch-rules.test.ts test/config-validation-check.test.ts
+
+**Acceptance criteria.**
+- Two code heads whose range sits within the interval of the newest full verdict start one full run between them: the second starts none, yet its diff rules still run and a rule failure is still logged.
+- The first poll after the interval with an uncovered code commit starts exactly one full run, on the latest tip, covering every uncovered commit.
+- A full verdict saved 20 minutes before a restart starts no full run in the first 40 minutes after it, and the first poll past the hour starts one.
+- A doc-only head above the newest verdict starts no run and records an inherited green as today.
+- `check.fullIntervalMinutes: 0` restores one full run per new code head.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/main-watch.test.ts, test/main-watch-failures.test.ts and test/main-watch-spells.test.ts: re-point the existing once-per-head `runsOf` assertions to the hourly model with the injected clock (advance past the interval where a run is expected), and add the within-the-hour, past-the-hour, restart-with-saved-`checkedAt`, doc-only and `fullIntervalMinutes: 0` cases.
+- test/main-watch-rules.test.ts: the diff rules run on a head the full check skips.
+- test/config-validation-check.test.ts: the key's integer bounds (0 accepted, negative and fraction rejected) and the unknown-key list.
+- Run those files and the project's gate.
+
 ### `tumwater plan --list` and `tumwater bug --list` gain `-f/--follow`, repainting the active list and the `--done` list until Ctrl+C or its parent exits, so an operator watching the queue sees a plan filed, an entry claimed, or an entry finished without rerunning the command (planned 2026-11-03 by the plan role; continues the landed follow-view family — `status`, `report`, `logs`, `history`, `queue`, `reviews`, `quarantine`, `backlog` and `diff` all follow through `followView` in src/cli/follow-view.ts, and `questions` is gaining it in flight — `plan --list`/`bug --list` are the remaining backlog list forms with no live form; independent in file of the in-flight `tumwater prompt --list` follow (src/inbox/prompt-commands.ts, src/cli/cli-command-args.ts) and the in-flight `questions` follow (src/cli/cli-question-commands.ts); all three touch src/cli/help.ts and docs/cli.md but in different stanzas and rows, so whichever lands second rebases there; `awk '/^## Planned/,/^## Done/' PLANS.md | grep -cE 'backlog-cli-view|listAndAnnounce|parseListArgs'` prints 0 before this entry, and `grep -cE '^### .*(plan --list.*follow|bug --list.*follow|follow.*(plan --list|bug --list))' PLANS-DONE.md` prints 0 — its two `plan --list.*follow` matches are the unrelated `backlog --ready` plan and the dashboard done-plans plan; touches src/cli/backlog-cli-view.ts src/cli.ts src/cli/help.ts docs/cli.md test/cli-backlog-list-follow.test.ts test/backlog-write-list.test.ts) — done 2026-11-03 by the feature role
 
 **Goal.** `tumwater plan --list` and `tumwater bug --list` print the waiting entries once, numbered so `--show`/`--edit`/`--cancel`/`--top` can address them, with their eligibility and "working on it" marks and, for plans, blocked series compressed to one line. They are the operator's view of what the team will pick next: another role files an entry, a feature or bugfix run claims one, a merge finishes one, or an unblocking part lands, and the only way to see it today is to rerun the command. Every sibling list command already has a live form through `followView`. Add `-f/--follow` to both active lists and to the `--done` form, repainting every couple of seconds until Ctrl+C or the parent process exits, leaving the one-shot prose, `--json`, `--ready`, `--grep`, `-n` and every write form unchanged.

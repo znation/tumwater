@@ -216,33 +216,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/prompt-rules.test.ts: the shared refusal bullet.
 - Run those files, test/vocabulary.test.ts and the gate.
 
-### Hourly full check, part 2b/4: The watch runs the full check at most once per `check.fullIntervalMinutes` on main's latest tip, and still runs the diff rules on every new head (planned 2026-11-03 by the plan role, splitting the 2026-11-01 part 2/4 after feature held it too large for one run; requires Hourly full check part 2a/4 landed, so the newest full verdict carries its `checkedAt`; the mirror/concurrency move is part 2c/4, not this entry; touches src/baseline/main-watch.ts src/config/config-schema.ts src/config/config-validation.ts docs/config.md docs/how-it-works.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts test/main-watch-rules.test.ts test/config-validation-check.test.ts)
-
-**Goal.** Each change is still checked once before landing by the gate's build check. The full check on main runs at most once per `check.fullIntervalMinutes` (default 60), only when main has a first-parent code commit the newest full verdict does not cover. Every new head still gets the diff rules, which judge each head and never wait for a full run in this part.
-
-**Approach.**
-- Add `fullIntervalMinutes?: number` to `CheckConfig` and `CHECK_KEYS` (src/config/config-schema.ts), and validate it in src/config/config-validation.ts as a non-negative integer. `0` restores one full run per new code head.
-- Add a clock seam: `createMainWatch(root, mainBranch, onCulprit?, now = Date.now)`. The due decision reads `now()`; the `checkedAt` stamp stays real time as part 2a/4 wrote it.
-- Add a module-private due rule in src/baseline/main-watch.ts: find the newest first-parent commit whose cached observed verdict carries `checkedAt`; it is due when that time plus `fullIntervalMinutes` is not in the future and main has a non-exempt code commit above that commit. A doc-only range still inherits green and starts no run. A verdict without `checkedAt` reads as due now.
-- In `watchOnce`, when the full check is not due, still enter the mirror and run `watchRules` on the tip, advance `lastWatched`, and record no `main_check` and no run. When due, run `runBaselineCheck`, `recordMainCheck`, the heal/culprit path and `watchRules` as today.
-- Docs: docs/config.md and tumwater.example.json name the key; docs/how-it-works.md's main-watch bullet describes the cadence; docs/invariants.md's INV-CZ2 changes "at most once per main commit" to "at most once per `fullIntervalMinutes`" and states the uncovered-code and doc-only-inheritance clauses.
-
-**Files touched.** src/baseline/main-watch.ts src/config/config-schema.ts src/config/config-validation.ts docs/config.md docs/how-it-works.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts test/main-watch-rules.test.ts test/config-validation-check.test.ts
-
-**Acceptance criteria.**
-- Two code heads whose range sits within the interval of the newest full verdict start one full run between them: the second starts none, yet its diff rules still run and a rule failure is still logged.
-- The first poll after the interval with an uncovered code commit starts exactly one full run, on the latest tip, covering every uncovered commit.
-- A full verdict saved 20 minutes before a restart starts no full run in the first 40 minutes after it, and the first poll past the hour starts one.
-- A doc-only head above the newest verdict starts no run and records an inherited green as today.
-- `check.fullIntervalMinutes: 0` restores one full run per new code head.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/main-watch.test.ts, test/main-watch-failures.test.ts and test/main-watch-spells.test.ts: re-point the existing once-per-head `runsOf` assertions to the hourly model with the injected clock (advance past the interval where a run is expected), and add the within-the-hour, past-the-hour, restart-with-saved-`checkedAt`, doc-only and `fullIntervalMinutes: 0` cases.
-- test/main-watch-rules.test.ts: the diff rules run on a head the full check skips.
-- test/config-validation-check.test.ts: the key's integer bounds (0 accepted, negative and fraction rejected) and the unknown-key list.
-- Run those files and the project's gate.
-
 ### Hourly full check, part 2c/4: The full check runs in its own `_main-full` mirror with its own in-flight pass, so a suite run never holds `_gate-main` (planned 2026-11-03 by the plan role, splitting the 2026-11-01 part 2/4 after feature held it too large for one run; requires Hourly full check part 2b/4 landed, so the full check is due-gated before it moves mirrors; touches src/paths.ts src/baseline/main-red.ts src/baseline/main-watch.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-rules.test.ts test/main-watch-mirror.test.ts)
 
 **Goal.** A full suite run, which can take 3–20 minutes, no longer holds the `_gate-main` mirror the per-head diff rules and the gate's main-tip attribution use. The full check runs in a detached mirror of its own, `_main-full`, with its own in-flight promise; `poll` starts each pass independently and `idle()` waits for both.

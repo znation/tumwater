@@ -263,8 +263,12 @@ never has to wait a parked check out.
   doctor `qa coverage` warn through the one `qaCoverageStalled`
   predicate. The `feedback` observer's per-install filing ledger gets the same operator read: the
   issues it filed are visible in `tumwater role feedback` and the dashboards' role detail.
-- A main watch runs the full check on main's tip in the background whenever the head moves (one run
-  at a time, covering every commit since the last watched head, so at most once per main commit; a
+- A main watch runs the full check on main's tip in the background (one run
+  at a time, covering every commit since the last watched head; the full check runs at most once per
+  `check.fullIntervalMinutes` — default 60 — on main's latest tip, only while a non-exempt code
+  commit sits above the newest verdict a full check actually produced; `0` restores one full run per
+  new code head; the deterministic diff rules still run on every new head, and a red anchor is
+  re-checked on the next new head, never delayed by the hour; a
   red is confirmed once before it counts — by re-running only its failing tests when the project
   declares a re-run command (`check.rerunCommand`, or an npm `test:rerun` script), else the whole
   check; a doc-only tip inherits its green). The heal prompt and ci's `<main-red>` note name that

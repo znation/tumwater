@@ -44,7 +44,7 @@ test("validateConfig rejects a non-object check section", () => {
 test("validateConfig rejects a typo'd key inside check", () => {
   assert.match(
     validationError({ provider: "p", model: "m", check: { command: "cargo test", timeOut: 5 } }),
-    /unknown key "timeOut" in check \(valid keys: command, gateCommand, mergeCommand, rerunCommand, cwd, timeoutSeconds\)/,
+    /unknown key "timeOut" in check \(valid keys: command, gateCommand, mergeCommand, rerunCommand, cwd, timeoutSeconds, fullIntervalMinutes\)/,
   );
 });
 
@@ -94,6 +94,29 @@ test("validateConfig rejects a wrongly-typed check.cwd and non-positive timeoutS
   assert.match(
     validationError({ provider: "p", model: "m", check: { command: "x", timeoutSeconds: -30 } }),
     /check\.timeoutSeconds must be a number greater than 0, at most 2147483 \(got -30\)/,
+  );
+});
+
+// check.fullIntervalMinutes (Hourly full check, part 2b/4): the main watch's full-check
+// cadence. A whole number of minutes; 0 is meaningful — it restores the pre-cadence
+// one-full-run-per-new-code-head behavior — so the rule is non-negative integer, not positive.
+test("validateConfig accepts a non-negative integer check.fullIntervalMinutes and rejects a bad one", () => {
+  for (const fullIntervalMinutes of [0, 60, 90]) {
+    assert.doesNotThrow(() =>
+      validateConfig({ provider: "p", model: "m", check: { fullIntervalMinutes } }),
+    );
+  }
+  assert.match(
+    validationError({ provider: "p", model: "m", check: { fullIntervalMinutes: -1 } }),
+    /check\.fullIntervalMinutes must be a whole number of 0 or more \(got -1\)/,
+  );
+  assert.match(
+    validationError({ provider: "p", model: "m", check: { fullIntervalMinutes: 1.5 } }),
+    /check\.fullIntervalMinutes must be a whole number of 0 or more \(got 1\.5\)/,
+  );
+  assert.match(
+    validationError({ provider: "p", model: "m", check: { fullIntervalMinutes: "60" } }),
+    /check\.fullIntervalMinutes must be a whole number of 0 or more \(got "60"\)/,
   );
 });
 

@@ -220,6 +220,12 @@ export interface CheckConfig {
   /** Hard cap on one run, in seconds; defaults to the built-in 300 s. It bounds whichever check
    * runs: `command`, `gateCommand`, or the npm script detected when no command is set. */
   timeoutSeconds?: number;
+  /** Minutes between the main watch's full checks on main (Hourly full check, part 2b/4); the
+   * watch re-runs the full check at most once per interval, on main's latest tip, and only while a
+   * non-exempt code commit sits above the newest verdict a full check actually produced. `0`
+   * restores the old cadence — one full run per new code head. Defaults to 60. Every new head
+   * still gets the deterministic diff rules, which never wait for a full run. */
+  fullIntervalMinutes?: number;
 }
 
 /** The config slice the build-check family reads (src/build/build-check-detect.ts's
@@ -542,7 +548,7 @@ export const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "back
 /** The `check` section's keys (plans/portability.md §6/7): the project's own verification
  * command, the optional cheaper gate-only and merge commands, the optional command that re-runs
  * named tests, their working directory (relative to the worktree), and their timeout. */
-export const CHECK_KEYS = ["command", "gateCommand", "mergeCommand", "rerunCommand", "cwd", "timeoutSeconds"];
+export const CHECK_KEYS = ["command", "gateCommand", "mergeCommand", "rerunCommand", "cwd", "timeoutSeconds", "fullIntervalMinutes"];
 
 /** The provider/model/thinking triple every model-override section shares — top level,
  * `review`, `fallbackModel` (plans/fallback-model.md), and each `roles.<id>` entry — so one

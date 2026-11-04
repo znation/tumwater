@@ -28,6 +28,26 @@ export async function watchAt(watch: ReturnType<typeof createMainWatch>, root: s
   await watch.idle();
 }
 
+/** Poll `watch` at main's current head with `config` and wait until it settles: the slice for
+ * tests that drive the watch's full-check cadence (Hourly full check, part 2b/4), which vary
+ * `check.fullIntervalMinutes` and the injected clock the due decision reads. */
+export async function watchAtWith(
+  watch: ReturnType<typeof createMainWatch>,
+  root: string,
+  config: ReturnType<typeof defaultConfig>,
+): Promise<void> {
+  watch.poll(headSha(root), false, config);
+  await watch.idle();
+}
+
+/** The injected clock the watch's due decision reads (Hourly full check, part 2b/4): starts at
+ * the real wall clock and advances by `advance` — tests move past `fullIntervalMinutes` where a
+ * full run is expected and leave it put while the hour holds. */
+export function clockAt(start = Date.now()): { now: () => number; advance: (ms: number) => void } {
+  let t = start;
+  return { now: () => t, advance: (ms: number) => (t += ms) };
+}
+
 /** A baseline fixture whose check fails with FAILING_OUTPUT while bad.txt is tracked, so a test
  * turns main red with a commit and asserts which tip the watch names as the culprit. */
 export function culpritFixture(): { root: string } {

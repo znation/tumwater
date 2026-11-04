@@ -13,8 +13,12 @@ import { createMainWatch } from "../src/baseline/main-watch.js";
 import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
 import { gitInit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
-import { change, watchAt } from "./fixtures/main-watch-fixtures.js";
+import { change, clockAt, watchAt } from "./fixtures/main-watch-fixtures.js";
 import { logEvent } from "../src/events/events.js";
+
+// The hourly cadence (Hourly full check, part 2b/4): a test advancing the injected clock past
+// the interval makes the next head's full check run — the run-count assertions below expect it.
+const HOUR = 7_200_000; // 2h: clears the seed run's checkedAt (real Date.now, stamped after the clock starts)
 import { shortSha } from "../src/text/format.js";
 
 // The main watch (src/baseline/main-watch.ts) records the full check's verdict on main's tip in the
@@ -29,9 +33,11 @@ import { shortSha } from "../src/text/format.js";
 test("the watch runs the precheck rules on the tip: a conflict marker names the rule and the head", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root } = baselineFixture("improve", `echo run >> ${counter}; echo ok`);
-  const watch = createMainWatch(root, "main");
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
   await watchAt(watch, root);
   const tip = change(root, "bad.txt", "line one\n<<<<<<< HEAD\n");
+  clock.advance(HOUR); // past the interval: this head's full check runs (the run count below)
   await watchAt(watch, root);
   const warnings = warningMessages(root);
   assert.ok(
@@ -80,12 +86,14 @@ test("the watch runs the precheck rules on the tip: a protected edit names the r
 test("the watch runs the precheck rules on the tip: a broken backlog structure names the rule and the head", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root } = baselineFixture("improve", `echo run >> ${counter}; echo ok`);
-  const watch = createMainWatch(root, "main");
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
   await watchAt(watch, root);
   // A code file keeps the tip's build check running (a doc-only tip would inherit green with no
   // run), so the run count below tells a rule failure apart from a confirming re-run.
   change(root, "a.txt", "a");
   const tip = change(root, "BUGS.md", "# Bugs\n\n## Open\n\nentry one\n\n## Open\n\nentry two\n");
+  clock.advance(HOUR); // past the interval: this head's full check runs (the run count below)
   await watchAt(watch, root);
   const warnings = warningMessages(root);
   assert.ok(

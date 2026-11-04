@@ -1,5 +1,5 @@
 import { distinctOrdered } from "../collections.js";
-import { checkMainBaseline, firstParentWalk, INHERIT_WALK_MAX, settleRedByRerun } from "./main-baseline.js";
+import { baselineCache, checkMainBaseline, firstParentWalk, INHERIT_WALK_MAX, settleRedByRerun } from "./main-baseline.js";
 import { canRerun, rerunTests } from "../build/build-check-rerun.js";
 import { baselineCheckLogger, clearHealKeyOnGreen, dropHealPromptsCoveredBy, withMainTipWorktree } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
@@ -96,12 +96,15 @@ function mainCheckEvent(
  * orchestrator wires to ci's heal prompt (Forward, never back, part 4/6): a red main is healed
  * forward, never reverted.
  *
- * One watch run is in flight at a time, and it covers every commit since the last watched head; a
- * head that moves during a run is watched next, so the full check runs at most once per main
- * commit. The run goes through checkMainBaseline, so a cached verdict (every merge seeds a green)
- * and a doc-only tip's inherited green answer without a run, and a red is confirmed once before it
- * is final — by re-running only its failing tests when it can (build-check-rerun.ts), else the
- * whole check again (`reverifyRed`). The check queues at the merge tier of the check permits. */
+ * One watch run is in flight at a time, and it covers every commit since the last watched head;
+ * a head that moves during a run is watched next. The full check runs at most once per
+ * `check.fullIntervalMinutes` (default 60), on main's latest tip, and only while a non-exempt
+ * code commit sits above the newest verdict a full check actually produced — `checkedAt` (part
+ * 2a/4) is the age; a doc-only range inherits green and starts no run; a verdict without
+ * `checkedAt` reads as due now; `0` restores one full run per new code head. The diff rules run on
+ * every new head either way, and a red is confirmed once before it is final — by re-running only
+ * its failing tests when it can (build-check-rerun.ts), else the whole check again
+ * (`reverifyRed`). The check queues at the merge tier of the check permits. */
 interface MainWatch {
   /** Look at main's head; starts a background watch run when it is unwatched and none is in
    * flight. `held` (a restart pending, or the disk hold) starts nothing; `config` is the live
@@ -144,6 +147,10 @@ export function createMainWatch(
   root: string,
   mainBranch: string,
   onCulprit?: (culprit: MainCulprit) => void,
+  /** The clock the full check's due decision reads (Hourly full check, part 2b/4); defaults to
+   * the real wall clock. Tests advance it to cross the interval. The `checkedAt` stamp a full
+   * run carries stays real time (part 2a/4). */
+  now: () => number = Date.now,
 ): MainWatch {
   let lastWatched: string | undefined;
   let inFlight: Promise<void> | null = null;
@@ -413,10 +420,26 @@ export function createMainWatch(
       return;
     }
     await withMainTipWorktree(root, mainBranch, async (wt) => {
+      const previous = lastWatched;
+      const tip = await headOf(wt);
+      // The due rule (Hourly full check, part 2b/4): the full check runs at most once per
+      // check.fullIntervalMinutes (default 60), on main's latest tip, and only while a
+      // non-exempt code commit sits above the newest verdict a full check actually produced
+      // (checkedAt, part 2a/4). A doc-only range inherits green and starts no run; a verdict
+      // without checkedAt reads as due now; 0 restores one full run per new code head.
+      const plan = await fullCheckPlan(wt, tip, config, now());
+      if (plan.skip) {
+        // The full check is within the hour and code is uncovered (part 2b/4): the diff rules
+        // still judge this head, and the head counts as watched at the anchor — the newest
+        // verdict the hour is measured from — so the next poll's rules start above it. No
+        // main_check, no full run, until the interval passes or main turns red.
+        await watchRules(wt, previous, tip);
+        lastWatched = plan.anchorSha ?? tip;
+        return;
+      }
       const started = Date.now();
       const { check, ran } = await runBaselineCheck(wt);
       const baseline = check.baseline;
-      const previous = lastWatched;
       // A skipped or sleep-spanned run made no verdict: the head still counts as watched, so the
       // next poll does not start another run for it — but the diff rules still run on this tip.
       if (!baseline) {
@@ -482,6 +505,60 @@ export function createMainWatch(
       while (inFlight || housekeeping) await (inFlight ?? housekeeping);
     },
   };
+}
+
+/** The interval in milliseconds the full check's due decision measures against: the config's
+ * `check.fullIntervalMinutes`, the default 60 when absent or a torn slice, or 0 — one full run
+ * per new code head — when the operator set it to 0 (Hourly full check, part 2b/4). */
+function fullIntervalMs(config: TumwaterConfig): number {
+  const minutes = config.check?.fullIntervalMinutes;
+  return (typeof minutes === "number" && Number.isFinite(minutes) ? minutes : 60) * 60_000;
+}
+
+/** The full check's scheduling for `tip` (Hourly full check, part 2b/4): find the newest
+ * first-parent commit (tip first, bounded at INHERIT_WALK_MAX) whose cached verdict a full check
+ * actually produced — one that carries `checkedAt` (part 2a/4); inherited and merge-seeded
+ * verdicts carry none and are skipped, as are verdicts a previous generation saved before it
+ * carried the field. The anchor's kind decides:
+ * - no anchor in range — nothing to measure the hour from; the full check runs.
+ * - a RED anchor — a red is cleared only by checking a new tree, so the full check runs on
+ *   every new head (a confirming re-run, or a cache answer on the same tip); the hour never
+ *   delays a re-check (part 3/4's per-head narrowing builds on that).
+ * - a GREEN anchor within the interval — the full check is SUSPENDED while a non-exempt code
+ *   commit sits uncovered above it (`skip`): the diff rules still judge the head, and no
+ *   `main_check` is recorded until the interval passes. A doc-only range above the anchor is
+ *   NOT suspended: it goes through the check as today, where it records its inherited green
+ *   without a run, so a doc head still settles green as before.
+ * - a GREEN anchor past the interval (or interval 0, due while any code commit is uncovered) —
+ *   the full check runs on the latest tip, covering every uncovered commit.
+ * Never throws: a git failure reads as due, so the cadence can never silently starve the check. */
+async function fullCheckPlan(
+  wt: string,
+  tip: string,
+  config: TumwaterConfig,
+  clock: number,
+): Promise<{ skip: boolean; anchorSha?: string }> {
+  const intervalMs = fullIntervalMs(config);
+  const exempt = config.review?.exemptPaths ?? [];
+  // firstParentWalk lists newest-first and stops at the bound, so the first anchor it names is
+  // the newest full-verdict commit — the one the interval is measured from.
+  const commits = await firstParentWalk(wt, tip, INHERIT_WALK_MAX);
+  let anchor: { sha: string; checkedAt: number; red: boolean } | undefined;
+  for (const commit of commits) {
+    const verdict = baselineCache.get(commit);
+    if (verdict?.checkedAt !== undefined) {
+      anchor = { sha: commit, checkedAt: verdict.checkedAt, red: verdict.status === "red" };
+      break;
+    }
+  }
+  if (anchor === undefined) return { skip: false };
+  if (anchor.red) return { skip: false };
+  if (intervalMs !== 0 && clock < anchor.checkedAt + intervalMs) {
+    const files = (await treeDiffFiles(wt, anchor.sha, tip)) ?? [];
+    const codeUncovered = !isExemptDiff(files, [...exempt]);
+    if (codeUncovered) return { skip: true, anchorSha: anchor.sha };
+  }
+  return { skip: false };
 }
 
 async function headOf(wt: string): Promise<string> {
