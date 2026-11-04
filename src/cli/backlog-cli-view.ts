@@ -4,7 +4,7 @@
  * wakes a role. cli.ts reaches them through listAndAnnounce and showAndAnnounce. */
 
 import { fail, say, sayJson } from "./cli-output.js";
-import { parseCountFlag, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
+import { failFollowJsonRival, parseCountFlag, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { FOLLOW_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
 import {
@@ -354,7 +354,7 @@ export async function listAndAnnounce(
   if (count !== null && !done) fail("-n needs --done (it limits the finished entries listed)");
   // BUGS.md's `## Open` is the one section whose noun is "bug"; every other caller is a plan.
   if (ready && done) fail("--ready needs the active list (finished entries carry no holds)");
-  if (follow && json) fail(`${command} --list --json prints one document; -f/--follow repaints a live view — drop one of them`);
+  if (follow && json) failFollowJsonRival(`${command} --list --json`);
   const bugSection = sectionTitle === "Open";
   const frame = (): string =>
     done

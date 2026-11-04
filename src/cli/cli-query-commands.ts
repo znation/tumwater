@@ -8,7 +8,7 @@ import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { cancelQueuedMerge, type CancelQueuedOutcome } from "../merge/merge-cancel.js";
 import { moveQueuedMergeToTop, type TopQueuedOutcome } from "../merge/merge-top.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
-import { flagValue, parseGrepFlag, parseRoleListScope, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
+import { failFollowJsonRival, flagValue, parseGrepFlag, parseRoleListScope, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
@@ -38,7 +38,7 @@ import { roleInScope } from "../roles/runner-ids.js";
 export async function cmdStatus(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   rejectUnknownArgs("status", args, [ROLE_FLAG, JSON_FLAG, FOLLOW_FLAG]);
   const follow = hasFollowFlag(args);
-  if (follow && args.includes("--json")) fail("status --json prints one document; -f/--follow repaints a live view — drop one of them");
+  if (follow && args.includes("--json")) failFollowJsonRival("status --json");
   await requireReadyRepo(root);
   const scope = parseRoleListScope(root, args);
   if (follow) {
@@ -78,7 +78,7 @@ export async function cmdDiff(root: string, args: string[], seams: FollowViewSea
   await requireReadyRepo(root);
   rejectRepeatFlag(args.filter((a) => a === "--path").length > 1, "--path");
   const follow = hasFollowFlag(args);
-  if (follow && args.includes("--json")) fail("diff --json prints one document; -f/--follow repaints a live view — drop one of them");
+  if (follow && args.includes("--json")) failFollowJsonRival("diff --json");
   if (args.includes("--overlaps")) {
     if (args.includes("--stat")) fail("diff --overlaps prints paths, not patches; drop --stat");
     // Overlaps are computed across every role; --role only filters which entries print.
@@ -168,7 +168,7 @@ export async function cmdQueue(root: string, args: string[], seams: FollowViewSe
   await requireReadyRepo(root);
   const roles = parseRoleListScope(root, args);
   const follow = hasFollowFlag(args);
-  if (follow && args.includes("--json")) fail("queue --json prints one document; -f/--follow repaints a live view — drop one of them");
+  if (follow && args.includes("--json")) failFollowJsonRival("queue --json");
   // Scoped read shared by the follow and the one-shot branches, so the render's age and the
   // in-flight marker share one clock read and each frame re-reads the queue. --role keeps
   // the listed roles' entries (a base id taking its instances too) under their whole-queue
@@ -301,7 +301,7 @@ export async function cmdBacklog(root: string, args: string[], seams: FollowView
   const { rest, pattern } = parseGrepFlag(args, BACKLOG_GREP_VALUE_ERROR);
   const ready = rest.includes("--ready");
   const follow = hasFollowFlag(rest);
-  if (follow && rest.includes("--json")) fail("backlog --json prints one document; -f/--follow repaints a live view — drop one of them");
+  if (follow && rest.includes("--json")) failFollowJsonRival("backlog --json");
   // Machine-readable backlog — the three entry arrays the Markdown view renders and the
   // GUI's /api/backlog serves (status --json's "print the endpoint's payload" pattern),
   // plus `holds.plans`/`holds.bugs` parallel to the entry arrays so a skipped entry's
@@ -349,7 +349,7 @@ export async function cmdQuarantine(root: string, args: string[], seams: FollowV
   rejectUnknownArgs("quarantine", args, [JSON_FLAG, FOLLOW_FLAG]);
   refuseTeamWorkspace(root);
   const follow = hasFollowFlag(args);
-  if (follow && args.includes("--json")) fail("quarantine --json prints one document; -f/--follow repaints a live view — drop one of them");
+  if (follow && args.includes("--json")) failFollowJsonRival("quarantine --json");
   // Each frame re-reads the quarantine file and reads the clock once, so an entry that
   // appears, ages toward the ceiling, or leaves when its bug closes shows up in the next
   // repaint — the same per-frame read `queue -f` uses.

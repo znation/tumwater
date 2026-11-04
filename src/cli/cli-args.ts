@@ -430,6 +430,15 @@ export function failFollowSinceRival(command: string): never {
   );
 }
 
+/** The shared failure for a `-f/--follow` view asked for with `--json`: a live view repaints
+ * one document, so it cannot also print a single JSON snapshot. One sentence so the eleven
+ * follow views (status, diff, queue, backlog, quarantine, doctor, reviews, report, questions,
+ * prompt --list, and plan|bug --list) cannot drift on why the pair is refused; the label is
+ * the operator-facing name of the view, as each command spells it. Declared never like fail(). */
+export function failFollowJsonRival(label: string): never {
+  return fail(`${label} prints one document; -f/--follow repaints a live view — drop one of them`);
+}
+
 /** Guard a trailing-window command's `--until <window>` against its `--since <window>` pair —
  * the shared fail sentences the three windowed views (logs, history, report) print, so the
  * wording cannot drift per command. When `--until` is present but `--since` is not, it fails

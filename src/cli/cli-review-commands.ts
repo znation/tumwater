@@ -13,7 +13,7 @@ import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, rejectUnknownArgs, st
 import { followView, type FollowViewSeams } from "./follow-view.js";
 import { sayJsonOrRender, say, sayJson, fail } from "./cli-output.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
-import { parseRoleListScope, parseStatusFlag, scanPositionArgs } from "./cli-args.js";
+import { failFollowJsonRival, parseRoleListScope, parseStatusFlag, scanPositionArgs } from "./cli-args.js";
 import { readPostReviews, type PostReview } from "../review/post-merge-review.js";
 import { acceptPostReview, type AcceptPostReviewOutcome } from "../review/post-merge-review-accept.js";
 import {
@@ -64,7 +64,7 @@ export async function cmdReviews(root: string, args: string[], seams: FollowView
   rejectUnknownArgs("reviews", args, [ROLE_FLAG, statusFlagSpec(REVIEWS_STATUS_VALUE_ERROR), JSON_FLAG, FOLLOW_FLAG]);
   refuseTeamWorkspace(root);
   const follow = hasFollowFlag(args);
-  if (follow && args.includes("--json")) fail("reviews --json prints one document; -f/--follow repaints a live view — drop one of them");
+  if (follow && args.includes("--json")) failFollowJsonRival("reviews --json");
   // `--role` keeps only the listed roles' entries (a base id taking its instances too) under
   // their whole-queue positions, so `--accept <n>` still addresses the position the unscoped
   // read prints. Absent a ready config `parseRoleListScope` falls back to the built-in catalog.

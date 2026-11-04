@@ -8,9 +8,9 @@ import { collectFailureReport, collectFailureReportSince } from "../failure/fail
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderReportMarkdown } from "./report-render.js";
 import { renderSinceReportMarkdown } from "./report-since-render.js";
-import { fail, say, sayJson, sayJsonOrRender } from "../cli/cli-output.js";
+import { say, sayJson, sayJsonOrRender } from "../cli/cli-output.js";
 import { followView, type FollowViewSeams } from "../cli/follow-view.js";
-import { failFollowSinceRival, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
+import { failFollowJsonRival, failFollowSinceRival, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
 import { hasFollowFlag } from "../cli/cli-flag-specs.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 
@@ -28,18 +28,12 @@ export async function cmdReport(root: string, args: string[], seams: FollowViewS
   // digest, whose day and --since collectors take the same optional list of base roles.
   const role = parseRoleListScope(root, args);
   const follow = hasFollowFlag(args);
-  failOnFollowJson(follow, args);
+  if (follow && args.includes("--json")) failFollowJsonRival("report --json");
   if (ms !== null) {
     sinceReportShape(root, args, ms, role, untilMs, follow);
     return;
   }
   await dayReportShape(root, args, reportDays(args), role, follow, seams);
-}
-
-/** `-f/--follow` with `--json` is refused before either shape dispatches: the live view
- * repaints a document, `--json` prints one — drop one of them. */
-function failOnFollowJson(follow: boolean, args: string[]): void {
-  if (follow && args.includes("--json")) fail("report --json prints one document; -f/--follow repaints a live view — drop one of them");
 }
 
 /** The `--since`/`--until` trailing-window shape: its rival-shape guards against
@@ -84,7 +78,7 @@ function reportDays(args: string[]): number {
 
 /** The whole-day report shape: the `-f/--follow` live repaint, the `--failures --json`
  * digest, the plain `--json` payload, or the day Markdown/failure-digest render. Fatal on a
- * `follow && --json` clash (already refused by cmdReport's failOnFollowJson); returns only
+ * `follow && --json` clash (already refused by cmdReport's failFollowJsonRival); returns only
  * after printing. */
 async function dayReportShape(root: string, args: string[], days: number, role: string[] | null, follow: boolean, seams: FollowViewSeams): Promise<void> {
   // --failures --json prints the collector's own payload (the FailureReportData object), the

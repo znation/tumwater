@@ -18,6 +18,7 @@ import { fail, say, sayJsonOrRender } from "./cli-output.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
 import { parseDoctorChecks, peelPositionals } from "./cli-command-args.js";
 import { loadConfigSafe } from "../config/config.js";
+import { failFollowJsonRival } from "./cli-args.js";
 
 /** The optional side-effect results `tumwater doctor --kill-orphans`,
  * `--commit-backlog`, `--resync-install`, `--drop-broken-pins`, `--retire-leftovers`
@@ -117,7 +118,7 @@ export async function cmdDoctor(root: string, args: string[], seams: FollowViewS
   const only = parseDoctorChecks(checkNames);
   const { runDoctor } = await import("../doctor/doctor.js");
   if (follow && args.includes("--json"))
-    fail("doctor --json prints one document; -f/--follow repaints a live view — drop one of them");
+    failFollowJsonRival("doctor --json");
   if (follow) {
     const repair = ["--kill-orphans", "--commit-backlog", "--resync-install", "--drop-broken-pins", "--retire-leftovers"].find((f) =>
       args.includes(f),

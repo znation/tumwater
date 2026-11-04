@@ -29,7 +29,7 @@ import {
 import { movePromptToTop, type TopOutcome } from "./inbox-top.js";
 import { editInEditor } from "../cli/cli-editor.js";
 import { listWideScope, queuedFileAtPosition, promptPreview, queuedListRows, queuedRowsMatching, renderQueuedList } from "./inbox.js";
-import { durationLabel, parseRoleListFlag } from "../cli/cli-args.js";
+import { durationLabel, failFollowJsonRival, parseRoleListFlag } from "../cli/cli-args.js";
 import { followView, type FollowViewSeams } from "../cli/follow-view.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { errorMessage } from "../text/text.js";
@@ -180,7 +180,7 @@ function promptListFrame(root: string, args: string[], grep: string | null, vali
  * helper so `--list`'s rules are found by name. */
 function runPromptList(root: string, args: string[], json: boolean, grep: string | null, validIds: string[] | null, follow: boolean, seams: FollowViewSeams): Promise<void> | void {
   if (follow && json) {
-    fail("prompt --json prints one document; -f/--follow repaints a live view — drop one of them");
+    failFollowJsonRival("prompt --json");
   }
   if (follow) {
     return followView(() => promptListFrame(root, args, grep, validIds), seams);

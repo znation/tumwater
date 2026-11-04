@@ -8,7 +8,7 @@
  * routed to by src/cli.ts.
  */
 import { fail, say, sayJson, warnIfUncommitted } from "./cli-output.js";
-import { parseCountFlag, parsePositionFlag, rejectRepeatFlag } from "./cli-args.js";
+import { failFollowJsonRival, parseCountFlag, parsePositionFlag, rejectRepeatFlag } from "./cli-args.js";
 import { FOLLOW_FLAG, JSON_FLAG, rejectEqualsForm } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
@@ -314,7 +314,7 @@ export async function cmdQuestions(root: string, args: string[], seams: FollowVi
   // document (--json), one question in full (--show), or the answer form, which writes one
   // change rather than re-reading one. Refuse each naming the conflict, before any output.
   if (inv.followFlag) {
-    if (inv.jsonFlag) fail("questions --json prints one document; -f/--follow repaints a live view — drop one of them");
+    if (inv.jsonFlag) failFollowJsonRival("questions --json");
     if (inv.show !== undefined) fail("-f/--follow repaints the list; --show prints one question in full — drop one of them");
     if (inv.words.length > 0) fail("-f/--follow repaints the list; questions answer writes one change — drop the follow");
   }
