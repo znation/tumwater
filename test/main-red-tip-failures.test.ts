@@ -10,6 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { mainTipFailures } from "../src/baseline/main-red.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -125,6 +126,10 @@ test("a re-run that names none of the asked tests falls back to main's fresh ful
       }),
     );
     commitIn(root, "declare the re-run");
+    // A green cached for this very tip (normally seeded by an earlier merge) must not answer the
+    // fallback: a clock- or load-sensitive test can pass early and fail later (BUGS.md
+    // 2026-10-06), which is the reason mainTipFailures's fallback asks with forceFresh.
+    noteGreenBaseline(mainSha(root));
     const verdict = await mainTipFailures(root, ROLE, wt, "main", defaultConfig(), {
       tests: ["X"],
       files: { X: "t.test.js" },
