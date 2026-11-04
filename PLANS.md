@@ -167,6 +167,98 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Run test/doctor-checks.test.ts, test/doctor.test.ts, test/event-format.test.ts, test/retention.test.ts, test/config.test.ts and test/config-aliases.test.ts, then the project's gate. If a surviving row or key loses its case, restore it; do not weaken an assertion to make the gate pass.
 
+### Every commit is verified on main, part 4l/3: the three verdict-keyed tables accept a result with no entry, so part 4m/3 can drop `main_red` (planned 2026-11-03 by the plan role, splitting the 2026-11-03 too-large part 4j/3 after feature held it; opens the three-part replacement of part 4j/3, whose parts 4m/3 and 4n/3 each require the part before them landed; requires Hourly full check part 1b/4 landed; touches src/events/event-labels.ts src/failure/failure-render.ts src/failure/failure-time-spend.ts test/event-labels.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts)
+
+**Goal.** `main_red` must leave three exhaustive `Record<RunResult, …>` tables in the next part without the compile error a missing key causes. Widen those tables so a `RunResult` may have no entry, and give each consumer a defined fallback. Every current key stays in this part, so no displayed output changes; only a result with no entry (none today) takes the fallback.
+
+**Approach.**
+- src/events/event-labels.ts: type `RUN_RESULT_LABELS` as `Readonly<Partial<Record<RunResult, string>>>`; in `eventTypeLabel`, read the entry once and fall through to the existing underscores-as-spaces fallback when it is `undefined`, rather than assuming own-property implies a string.
+- src/failure/failure-render.ts: type `RESULT_ORDER` as `Partial<Record<RunResult, number>>`; in `columns`, sort an unranked result after every ranked one (`RESULT_ORDER[x] ?? Number.MAX_SAFE_INTEGER`) with the existing alphabetical tie-break, so the comparator never yields `NaN`.
+- src/failure/failure-time-spend.ts: type `OUTCOME_CLASS` as `Partial<Record<RunResult, "merged" | "no_change" | "error">>`; keep the two existing `undefined` guards in the cost fold and adjust the doc comment that promises a full Record.
+- Do not remove any key or touch another module; part 4m/3 drops the `main_red` entries once these types allow it.
+
+**Files touched.** src/events/event-labels.ts src/failure/failure-render.ts src/failure/failure-time-spend.ts test/event-labels.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts
+
+**Acceptance criteria.**
+- A result code absent from each table falls back as described: `eventTypeLabel` returns it with underscores as spaces, the Outcome table places it after every ranked result with alphabetical ties, and the time-spend fold leaves its runs out of the class totals instead of reading `undefined`; each fallback has a unit test using a synthetic unlisted code.
+- Every currently labeled result still renders its existing label, and every currently ranked result keeps its existing order with the `main_red` key still present, so no displayed output changes in this part.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/event-labels.test.ts, test/failure-render.test.ts and test/failure-time-spend.test.ts, then the gate. Keep every existing expectation; add only the synthetic-unlisted-code cases.
+
+### Every commit is verified on main, part 4m/3: the dead `main_red` producer, its status/doctor readers and its display keys are removed (planned 2026-11-03 by the plan role, splitting the 2026-11-03 too-large part 4j/3 after feature held it; requires part 4l/3 landed, so the three verdict-keyed tables accept a missing key; touches src/review/review.ts src/merge/merge-core.ts src/ui/tone.ts src/events/event-labels.ts src/ui/gui/gui-client-model.ts src/failure/failure-data.ts src/failure/failure-time-spend.ts src/failure/failure-render.ts src/cli/cli-start-summary.ts src/status/status-polls.ts src/ui/status-model.ts src/doctor/doctor-holds.ts src/inbox/pending-prompt.ts src/run/run-finalize.ts src/run/run-prompt.ts src/orchestrator/orchestrator-poll.ts src/merge/merge-verify.ts src/merge/merge-queue.ts src/runner/runner-state.ts src/budget/fallback-breaker.ts src/events/event-notify.ts src/baseline/main-red.ts docs/invariants.md test/merger-check.test.ts test/doctor-holds.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts test/gui-client.test.ts test/status-model.test.ts test/status-render-cells.test.ts test/status-render.test.ts test/team-alerts.test.ts)
+
+**Goal.** With Hourly full check part 1b/4 deciding every twice-failed gate check at once (and deleting `awaitingWatch`), the merge gate has no path that sets `mainRed`, so no merge produces a `main_red` run result. Remove the dead merge branch and the fields it read, then delete the surfaces that read or render the verdict. Leave the `RunResult` member, the recovered-pin plumbing and `rolePhase`'s parameter for parts 4k/3 and 4n/3, so this part merges on its own without the run/runner sweep or the argument cascade.
+
+**Approach.**
+- Delete the now-unreachable producer: the `mainRed` and `awaitingWatch` fields and their comments in src/review/review.ts's `GateResult` (only `gateBuildPrecheck` set them), and src/merge/merge-core.ts's `if (gate.decision === "failed" && gate.mainRed)` branch that returns `result: "main_red"` (with its comment and the `awaitingWatch` spread). The plain `gate.decision === "failed"` branch stays.
+- Remove the verdict from the tables part 4l/3 widened: `main_red: "main's check is failing"` from `RUN_RESULT_LABELS` (src/events/event-labels.ts), `main_red: 9` from `RESULT_ORDER` (src/failure/failure-render.ts), and `main_red: "error"` from `OUTCOME_CLASS` plus `"main_red"` from `CLUSTERED_RESULTS` (src/failure/failure-time-spend.ts). Also remove `resultTone`'s `case "main_red"` and `"main_red"` in `PROBLEM_RESULTS` (src/ui/tone.ts), `main_red: "red"` from the dashboard's `RESULT_TONES` (src/ui/gui/gui-client-model.ts), the `ev.result === "main_red"` clause (src/failure/failure-data.ts) and `"main_red"` from the start-summary list (src/cli/cli-start-summary.ts). With the verdict retired from the failure digest, narrow the error section to `error` alone.
+- Delete the status/doctor readers: `heldByMainRed` and `mainCheckRecovered` (src/status/status-polls.ts), the `main red` label branch and its import (`src/ui/status-model.ts`), and `checkMainRed`'s held-role phrase plus the `mainCheckForPoll` read that fed it (`src/doctor/doctor-holds.ts`); keep `redMainWarning` and the row's unheld red-main warning. The `main_red_hold` event machinery stays.
+- Because the project builds with `noUnusedParameters` and `rolePhase` still declares the now-unread `mainCheck` parameter, rename that parameter `_mainCheck` in this part; callers pass it positionally, so no call site changes. Part 4n/3 removes it and shifts the later arguments.
+- The `RunResult` member `main_red` (`src/run/run-outcome.ts`) stays, as do `runner-recovery.ts`'s recovered-pin producer, `merge-requeue.ts`'s `result === "main_red"` branch and the run/runner/review plumbing — part 4k/3 removes them.
+- Refresh comments that name the verdict as a live status in `src/ui/status-model.ts`, `src/inbox/pending-prompt.ts`, `src/review/review.ts`, `src/run/run-finalize.ts`, `src/run/run-prompt.ts`, `src/orchestrator/orchestrator-poll.ts`, `src/merge/merge-verify.ts`, `src/merge/merge-queue.ts`, `src/runner/runner-state.ts`, `src/budget/fallback-breaker.ts`, `src/events/event-notify.ts` and `src/baseline/main-red.ts`.
+- docs/invariants.md: narrow INV-C1 to the `error` outcome alone (guarantee, binds and pinned case), and delete INV-T2, whose predicate (`heldByMainRed`/`mainCheckRecovered`) and `rolePhase` binding this part removes.
+
+**Files touched.** src/review/review.ts src/merge/merge-core.ts src/ui/tone.ts src/events/event-labels.ts src/ui/gui/gui-client-model.ts src/failure/failure-data.ts src/failure/failure-time-spend.ts src/failure/failure-render.ts src/cli/cli-start-summary.ts src/status/status-polls.ts src/ui/status-model.ts src/doctor/doctor-holds.ts src/inbox/pending-prompt.ts src/run/run-finalize.ts src/run/run-prompt.ts src/orchestrator/orchestrator-poll.ts src/merge/merge-verify.ts src/merge/merge-queue.ts src/runner/runner-state.ts src/budget/fallback-breaker.ts src/events/event-notify.ts src/baseline/main-red.ts docs/invariants.md test/merger-check.test.ts test/doctor-holds.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts test/gui-client.test.ts test/status-model.test.ts test/status-render-cells.test.ts test/status-render.test.ts test/team-alerts.test.ts
+
+**Acceptance criteria.**
+- No status, doctor, UI, failure or CLI surface reads or renders the `main_red` verdict: `heldByMainRed` and `mainCheckRecovered` are gone, and `grep -rnE '\bmain_red\b' src/ui src/status src/doctor src/failure src/cli src/events src/inbox src/budget` finds no verdict reference (`main_red_hold` does not match `\bmain_red\b` and stays).
+- The merge gate no longer returns `main_red`: `grep -rn 'result: "main_red"' src/merge` prints nothing, and `GateResult` declares neither `mainRed` nor `awaitingWatch`.
+- `rolePhase` still accepts the (unused) `_mainCheck` parameter and every caller compiles unchanged; the `RunResult` member `main_red` still exists, so the tree compiles without the run/runner sweep.
+- docs/invariants.md no longer guarantees a `main_red` error section or the `heldByMainRed` hold; INV-C1 names only `error`, and INV-T2 is gone.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/merger-check.test.ts: the `verifyAndMerge` `main_red` case goes; the surviving merge cases stay.
+- test/doctor-holds.test.ts / test/status-model.test.ts / test/status-render.test.ts / test/status-render-cells.test.ts / test/team-alerts.test.ts: the held-by-main-red and `main_red` phase cases go; the unheld red-main warning cases stay.
+- test/failure-render.test.ts / test/failure-time-spend.test.ts: the historical `main_red` digest and loss cases go; the `error` cases stay and INV-C1's pinned case now asserts the error-only section.
+- test/gui-client.test.ts: drop `main_red` from the result-word and result-tone lists; the surviving result cases stay.
+
+### Every commit is verified on main, part 4n/3: `rolePhase`'s dead `mainCheck` parameter and the positional arguments after it are removed (planned 2026-11-03 by the plan role, splitting the 2026-11-03 too-large part 4j/3 after feature held it; requires part 4m/3 landed, so nothing reads the parameter; touches src/ui/status-model.ts test/status-model.test.ts test/gui-client.test.ts)
+
+**Goal.** Part 4m/3 leaves `rolePhase`'s `mainCheck` parameter as `_mainCheck` because its only reader is gone. Remove it and shift every positional argument after it, so `capPaused` becomes the eighth parameter and `restartHold` the last.
+
+**Approach.**
+- src/ui/status-model.ts: delete `_mainCheck?: StatusSnapshot["mainCheck"]` from `rolePhase`, delete the comment above it, and in `roleRowCells` stop passing `snap.mainCheck` while keeping every later argument in its new position.
+- test/status-model.test.ts and test/gui-client.test.ts: at every call site that passes the `mainCheck` slot, delete that argument and shift the later positional arguments by one; calls that stop before that slot are unchanged.
+- No other behavior change: each remaining label comes from the same argument values it did before.
+
+**Files touched.** src/ui/status-model.ts test/status-model.test.ts test/gui-client.test.ts
+
+**Acceptance criteria.**
+- `grep -n 'mainCheck' src/ui/status-model.ts` prints nothing, and `rolePhase` declares no parameter between `merge` and `capPaused`.
+- Every caller's later positional arguments land in the same-named parameter as before; the existing label expectations (including the cap-pause, quiet, disk and restart-hold cases) are unchanged and still pass.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/status-model.test.ts, test/gui-client.test.ts, test/status-render.test.ts, test/status-render-cells.test.ts and test/model-check.test.ts, then the gate. Restore any shifted argument that changes a label.
+
+### Every commit is verified on main, part 4k/3: the `main_red` union member and the run/runner plumbing that names it are removed (planned 2026-10-29 by the plan role, split from the too-large part 3f/3; requires part 4n/3 landed, so no merge produces the verdict, no surface reads it and `rolePhase` no longer takes it; touches src/run/run-outcome.ts src/scheduling/claims.ts docs/invariants.md src/runner/runner-recovery.ts src/merge/merge-requeue.ts src/runner/runner-leftover.ts src/runner/runner-state-load.ts src/runner/runner-run.ts src/run/run-apply.ts src/run/run-finalize.ts src/run/run-prompt.ts src/orchestrator/orchestrator-poll.ts src/runner/runner-state.ts src/events/event-notify.ts src/inbox/pending-prompt.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-queue.ts src/budget/fallback-breaker.ts src/baseline/main-red.ts test/run-outcome.test.ts test/run-apply.test.ts test/run-finalize.test.ts test/runner-recovery.test.ts test/runner-red-main.test.ts test/runner-leftover.test.ts test/merge-requeue.test.ts test/merge-pipeline-2.test.ts test/merger.test.ts test/budget.test.ts test/claims.test.ts test/fallback-breaker.test.ts)
+
+**Goal.** The `main_red` run result no longer has a producer (Hourly full check part 1b/4 removed the gate's `mainRed` path, whose dead branch part 4m/3 deletes; the recovered-pin return removed here is the last one) or a reader (part 4m/3), so the union member itself is dead vocabulary. Remove it and let the compiler name any site still constructing or narrowing it.
+
+**Approach.**
+- Remove `| "main_red"` and its doc comment from `RunResult` (src/run/run-outcome.ts). Deleting the member makes every remaining construction or `result === "main_red"` narrowing a compile error, which is the work list.
+- Remove the last producer: `runner-recovery.ts`'s recovered-`main_red` return, with the `main_red_wait` result in src/runner/runner-leftover.ts and the `mainRedRetry` record in src/merge/merge-requeue.ts, src/runner/runner-state.ts and src/runner/runner-state-load.ts that feed it. With merge-requeue.ts's `result === "main_red"` branch gone, nothing sets the record any more, so the pin's wait/recovery path, its state key, the orchestrator poll's `requeueMainRedPin` call and the leftover's `mainRedWait` return go with it; keep the stale/dangling pin cleanup and conflict hand-back. Fix any surviving switch/type-narrowing the compiler flags (run-apply, run-finalize and the run prompt), keeping each site's non-`main_red` behavior.
+- Drop the record's last writer: src/scheduling/claims.ts's `dropWithdrawnWork` clears `state.mainRedRetry`; with the record gone that line goes. In docs/invariants.md, delete INV-BR2 and INV-CY2, remove INV-CZ1's stale sentence and binding that name a kept `main_red` pin's re-queue (its other red-main guarantees stay), and drop INV-N5's sentence about clearing a kept `main_red` pin's re-queue record (the rest of INV-N5 stays).
+- Refresh the comments that still name the verdict as a live outcome in `src/runner/runner-state.ts`, `src/runner/runner-recovery.ts`, `src/run/run-finalize.ts`, `src/run/run-prompt.ts`, `src/orchestrator/orchestrator-poll.ts`, `src/events/event-notify.ts`, `src/inbox/pending-prompt.ts`, `src/review/review.ts`, `src/merge/merge-verify.ts`, `src/merge/merge-queue.ts`, `src/budget/fallback-breaker.ts` and `src/baseline/main-red.ts`.
+
+**Files touched.** src/run/run-outcome.ts src/runner/runner-recovery.ts src/merge/merge-requeue.ts src/runner/runner-leftover.ts src/runner/runner-state-load.ts src/runner/runner-run.ts src/run/run-apply.ts src/run/run-finalize.ts src/run/run-prompt.ts src/orchestrator/orchestrator-poll.ts src/runner/runner-state.ts src/scheduling/claims.ts src/events/event-notify.ts src/inbox/pending-prompt.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-queue.ts src/budget/fallback-breaker.ts src/baseline/main-red.ts docs/invariants.md test/run-outcome.test.ts test/run-apply.test.ts test/run-finalize.test.ts test/runner-recovery.test.ts test/runner-red-main.test.ts test/runner-leftover.test.ts test/merge-requeue.test.ts test/merge-pipeline-2.test.ts test/merger.test.ts test/budget.test.ts test/claims.test.ts test/fallback-breaker.test.ts
+
+**Acceptance criteria.**
+- `RunResult` has no `main_red` member, and `grep -rnE '\bmain_red\b' src/` prints nothing (the `main_red_hold` event and its machinery stay; `\bmain_red\b` does not match `main_red_hold`).
+- No code path returns or narrows on a `main_red` run result, and nothing writes `mainRedRetry`; the compiler is clean.
+- docs/invariants.md no longer binds `requeueMainRedPin` or `mainRedRetry`: INV-BR2 and INV-CY2 are gone, INV-CZ1 keeps only its red-main attribution guarantees, and INV-N5 no longer promises to clear a `main_red` re-queue record.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/run-outcome.test.ts: the `main_red` membership case goes; the surviving `RunResult` cases stay.
+- test/runner-recovery.test.ts / test/runner-red-main.test.ts: the recovered-`main_red` cases go; the surviving recovery cases stay.
+- test/run-apply.test.ts / test/run-finalize.test.ts / test/merge-pipeline-2.test.ts / test/merger.test.ts: drop the `main_red` assertions; the surviving cases stay.
+- test/budget.test.ts / test/fallback-breaker.test.ts: drop `main_red` from the `fallbackEvidence` result rows and the run-result vocabulary list; the surviving mappings stay.
+- test/claims.test.ts: the withdrawn-work case drops its `mainRedRetry` fixture assertion; the surviving withdrawal assertions stay.
+
+_None yet._
+
 ### Every commit is verified on main, part 4l/3: the run-result display tables accept a missing `main_red` key, so the later surface removal drops it without a compile error (planned 2026-11-03 by the plan role, splitting the 2026-10-29 part 4j/3 after feature held it too large for one run; touches src/events/event-labels.ts src/failure/failure-render.ts src/failure/failure-time-spend.ts test/event-labels.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts test/report-usage-fold.test.ts)
 
 **Goal.** `RUN_RESULT_LABELS`, `RESULT_ORDER` and `OUTCOME_CLASS` are three exhaustive `Record<RunResult, …>` tables that part 4m/3 must delete the `main_red` key from while `main_red` is still a `RunResult` member (part 4k/3 removes the member last). Widen each table so a missing key is representable, with the lookup fallbacks stated explicitly, so part 4m/3 is a plain key deletion rather than a type refactor.
