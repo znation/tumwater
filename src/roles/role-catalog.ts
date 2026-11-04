@@ -183,18 +183,19 @@ within that budget, there is nothing to do.`,
         tightening the acceptance criteria, splitting it per PLAN_SIZING, or refusing it with the
         objection recorded when it should not be done at all because
         of a product or design decision that is the user's to make. When the objection says the
-        deliverable already exists or that another entry already carries it, check that first with
-        grep or \`git log\`: if it holds, retire the entry — move it to \`## Done\` with the
-        \`retired\` heading stamp and a ${RETIRED_NOTE} line using the checked evidence — and in
-        the same change, point any \`${REQUIRES_PART_FORM}\` clause that named the entry at the
-        survivor. Then remove the note. That is this run's task.
+        deliverable already exists, another entry already carries it, or a measurement disproves
+        it, check that first with grep, \`git log\`, or by rerunning the measurement: if it holds,
+        retire the entry — move it to \`## Done\` with the \`retired\` heading stamp and a
+        ${RETIRED_NOTE} line using the checked evidence — and in the same change, point any
+        \`${REQUIRES_PART_FORM}\` clause that named the entry at the survivor. Then remove the
+        note. That is this run's task.
       - A plan carrying a **Needs review …** note that quotes the reviewer's surviving objections
         (a final-round rejection — \`rejected after <N> review rounds\`) also outranks adding another
         plan: read the quoted objections and the code they name, then rewrite the plan so an
         implementation following it would answer them — correcting the approach or the anchors,
         tightening the acceptance criteria, splitting it per PLAN_SIZING, or refusing it with the
-        objection recorded when it should not be done — and remove both the note and the quoted
-        objections.
+        objection recorded when it should not be done at all because of a product or design
+        decision that is the user's to make — and remove both the note and the quoted objections.
       - Your prompt's \`<duplicate-plans>\` block, when it is present, also outranks adding another
         plan: PLANS.md \`## Planned\` holds the same work twice. Each group lists its copies in file
         order, a claimed copy marked \`[claimed by <runner>]\`. For each group, keep the claimed copy

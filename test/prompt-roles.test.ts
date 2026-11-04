@@ -111,7 +111,8 @@ test("the feature find text hands a plan with nothing to build to the plan role,
 test("the plan charter's plan-defect bullet offers retire, checks the evidence, and re-points dependents", () => {
   const find = oneLine(roleById("plan")!.find);
   assert.match(find, /approach or criteria wrong, or the plan has nothing to build/);
-  assert.match(find, /check that first with grep or `git log`/);
+  assert.match(find, /deliverable already exists, another entry already carries it, or a measurement disproves it/);
+  assert.match(find, /check that first with grep, `git log`, or by rerunning the measurement/);
   assert.match(find, /retire the entry/);
   assert.match(find, /`retired` heading stamp/);
   assert.ok(find.includes(RETIRED_NOTE), "plan charter embeds the retired note shape");
@@ -503,6 +504,7 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   assert.ok(find.includes(RETIRED_NOTE), "the plan-defect bullet names the retired note");
   assert.match(find, /in the same change, point any `requires part N\/M landed` clause that named the entry at the survivor/);
   assert.match(find, /read the quoted objections and the code they name and rewrite the plan/);
+  assert.ok((find.match(/because of a product or design decision that is the user's to make/g) ?? []).length >= 2, "both plan refusal routes are the user's call");
   assert.match(find, /then remove the note/);
   assert.ok(!find.includes('refining the weakest'), "the refine-the-weakest clause is gone");
   assert.match(find, /holds one more eligible plan than there are feature instances/);
