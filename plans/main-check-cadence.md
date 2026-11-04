@@ -99,8 +99,10 @@ gate's build check, they answered: "No, keep the gate." A separate session is lo
 | Hourly gate restore 1/2 | The gate runs its build check again, rejects a twice-failed change, and keeps the pin on an abort or host sleep | — |
 | Hourly gate restore 2/2 | A twice-failed check is attributed at main's tip (named tests re-run alone, else the gate command); no watch wait | Hourly gate restore 1/2 |
 | 1b/4 | The dead watch-wait and `awaitingWatch` plumbing is removed; no `main_red` producer remains | Hourly gate restore 2/2 |
-| 2/4 | The full check runs at most hourly on the latest tip, in its own mirror | part 1b/4 |
-| 3/4 | Bisect a red's opener, re-run only the open failures on each new head, and confirm a cleared red with one full run | part 2/4 |
+| 2a/4 | A full verdict records its `checkedAt` time and persists it across a restart; no run-count change | part 1b/4 |
+| 2b/4 | The full check runs at most once per `fullIntervalMinutes` on the latest tip, with the clock seam and config key; diff rules still run on every head | part 2a/4 |
+| 2c/4 | The full check moves to its own `_main-full` mirror and in-flight pass, so it never holds `_gate-main` | part 2b/4 |
+| 3/4 | Bisect a red's opener, re-run only the open failures on each new head, and confirm a cleared red with one full run | part 2c/4 |
 | 4/4 | Status, doctor and the dashboard say how old main's full verdict is and when the next is due | part 3/4 |
 
 ## How we will know it worked

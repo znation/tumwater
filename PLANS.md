@@ -6,45 +6,83 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Hourly full check, part 2/4: The main watch runs the full check on main's latest tip at most once an hour, in a mirror of its own (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 1b/4 landed, since until then a twice-failed gate waits for a watch verdict covering its base, which an hourly cadence leaves missing for up to an hour; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/paths.ts src/config/config-schema.ts src/config/config-validation.ts docs/how-it-works.md docs/config.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/main-watch-rules.test.ts test/main-baseline-persist.test.ts test/config-validation-check.test.ts)
+### Hourly full check, part 2a/4: Every full verdict records when it was checked, persisted so an hourly cadence can survive a restart (planned 2026-11-03 by the plan role, splitting the 2026-11-01 part 2/4 after feature held it too large for one run; behavior-preserving groundwork for part 2b/4, independent in files of it — this part touches no config or watch scheduling — and of every `## Planned` entry; touches src/baseline/main-baseline.ts test/main-baseline-persist.test.ts)
 
-**Needs review 2026-11-03 by feature: too large for one run** — the entry's test blast radius exceeds its files-touched list: ~25 existing tests across test/main-watch.test.ts, main-watch-failures.test.ts and main-watch-spells.test.ts (none named here except main-watch.test.ts) assert the once-per-head full run (`runsOf(counter), 2` for two heads; a red confirmed on the next head; doc-only inheritance per head), and the Tests section requires re-pointing them to the hourly model with a fake clock (no clock seam exists yet), a restart-with-`checkedAt` case, and `fullIntervalMinutes: 0`. On top of that the `poll`/`idle` split into two independent in-flight passes running in a new `_main-full` mirror worktree alongside `_gate-main` is a concurrency-sensitive change to the watch's run model, and the persisted `checkedAt` field touches main-baseline.ts's verdict cache and the baseline-verdicts.json shape. Correct in intent; too many coupled, behavior-changing edits for one run.
-
-**Goal.** The full check (`check.command`) stops running on every new main head (user, 2026-11-01: "relax the once per main commit (for non-gate tests) and make it more like once per hour on latest main"). Each change is still checked once, by the pre-merge gate's build check. The full check runs on main's latest tip at most once per `check.fullIntervalMinutes` (default 60), and only when main has a code commit its newest full verdict does not cover. It runs in a mirror of its own, so it never holds `_gate-main`, where the watch's per-head diff rules and the gate's re-runs on main's tip run. The diff rules still judge every new head.
+**Goal.** A verdict a full check actually produced records when it was produced (`checkedAt`, epoch ms), and that time survives `persistBaselineVerdicts` and `baseline-verdicts.json`. An hourly cadence (part 2b/4) can then tell how old the newest full verdict is after a restart. Run counts do not change: the watch still runs the full check on each new code head.
 
 **Approach.**
-- Split `createMainWatch` (src/baseline/main-watch.ts) into a per-head pass and a due full check, each with its own in-flight promise. `poll` starts each independently, and `idle()` waits for both.
-  - The per-head pass keeps `watchRules` in `_gate-main` on every new head, exactly as today.
-  - The full check runs `checkMainBaseline` in a new mirror worktree, `_main-full` (a `fullMainWorktreePath` beside `gateMainWorktreePath` in src/paths.ts), at the check-permit tier the watch uses today. It confirms a red, records the verdict and reports the culprit as today.
-- The full check is due when the newest observed full verdict's `checkedAt` plus the interval is in the past and main has a first-parent code commit above that verdict's SHA. A doc-only range still inherits green with no run.
-  - `checkedAt` is a new field on `MainBaseline`, persisted in baseline-verdicts.json; an entry without it reads as due now.
-  - So a restart within the hour starts no extra run.
-- Add `check.fullIntervalMinutes` (an integer ≥ 0, default 60) to `CheckConfig`, `CHECK_KEYS`, config-validation, docs/config.md and tumwater.example.json. `0` restores a full run per new head.
-- The redeployer is unchanged: `redeployTarget`'s watched branch already targets only commits with a cached green full verdict, so the team's build follows the hourly greens.
-- docs/how-it-works.md's main watch bullet describes the cadence. In docs/invariants.md, INV-CZ2's "at most once per main commit" becomes "at most once per `fullIntervalMinutes`", and a new INV-DA2 says: the full check runs at most once per interval, on the latest tip, in its own mirror, and never while no code commit is uncovered.
+- Add `checkedAt?: number` to `MainBaseline` (src/baseline/main-baseline.ts). Stamp it with `Date.now()` in `baselineFromOutcome`, which every full run's fresh green or red is built from.
+- `settleRedByRerun` is not a full run: carry the prior red's `checkedAt` through both the narrowed red and the green a rerun promotes, so a confirmation never extends the hour.
+- Do not stamp `noteInheritedGreen`/`inheritedGreen` or the merge-seeded `noteGreenBaseline`: those are green facts about a tree no full check ran on, and part 2b/4's due rule must ignore them.
+- Mirror the field in `saveGreens` for both greens and reds, and read it back in `restoreGreenVerdict`/`restoreRedVerdict`. A saved entry without the field loads with it absent (an older file, and a verdict from before this part), not as 0.
+- Keep `checkMainBaseline`'s signature unchanged: the stamp is unconditional on an observed verdict, so no caller grows a parameter.
 
-**Files touched.** src/baseline/main-watch.ts src/baseline/main-baseline.ts src/paths.ts src/config/config-schema.ts src/config/config-validation.ts docs/how-it-works.md docs/config.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/main-watch-rules.test.ts test/main-baseline-persist.test.ts test/config-validation-check.test.ts
+**Files touched.** src/baseline/main-baseline.ts test/main-baseline-persist.test.ts
 
 **Acceptance criteria.**
-- Code commits landing within an hour of the newest full verdict start no full run. The first poll past the hour with an uncovered code commit starts one, on the latest tip only.
-- Every new head still gets the diff rules, and a gate's re-run on main's tip never waits for a `_main-full` run in flight.
-- A full verdict persisted 20 minutes before a restart starts no full run in the first 40 minutes after it.
-- `check.fullIntervalMinutes: 0` restores one full run per head.
+- After the watch runs a check and records a green or a red, both the cached entry for that SHA and the saved `baseline-verdicts.json` entry carry the same `checkedAt` epoch-ms value.
+- `persistBaselineVerdicts` on a file whose entries lack `checkedAt` loads them without error and without inventing a timestamp.
+- Entries written by `noteInheritedGreen` and `noteGreenBaseline` still carry no `checkedAt`.
+- The existing main-watch run counts are unchanged: every new code head still runs the check once.
 - `npm run test:gate` passes.
 
 **Tests.**
-- test/main-watch.test.ts:
-  - the within-the-hour and past-the-hour cases with a fake clock;
-  - a restart with a persisted `checkedAt`;
-  - `fullIntervalMinutes: 0`.
-- test/main-watch-rules.test.ts:
-  - diff rules on every head, including heads the full check skips;
-  - a `_gate-main` step that does not wait behind a slow full check.
-- test/main-baseline-persist.test.ts: `checkedAt` survives a restart through baseline-verdicts.json, and an entry saved without it reads as due now.
-- test/config-validation-check.test.ts: the new key's type and bounds.
-- Run those files and the gate.
+- test/main-baseline-persist.test.ts: a fresh observed green and a fresh red each save `checkedAt`, and a reload keeps it; a hand-written file without `checkedAt` loads with the field absent; an inherited green saves without it.
+- Run that file and test/main-watch.test.ts, then the project's gate.
 
-### Hourly full check, part 3/4: Main's failures are narrowed and cleared by re-running only the failing tests — the watch bisects a red's opener, re-runs only the open failures on each new head, and confirms a cleared red with one full run at once (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 2/4 landed; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts test/main-red-heal.test.ts)
+### Hourly full check, part 2b/4: The watch runs the full check at most once per `check.fullIntervalMinutes` on main's latest tip, and still runs the diff rules on every new head (planned 2026-11-03 by the plan role, splitting the 2026-11-01 part 2/4 after feature held it too large for one run; requires Hourly full check part 2a/4 landed, so the newest full verdict carries its `checkedAt`; the mirror/concurrency move is part 2c/4, not this entry; touches src/baseline/main-watch.ts src/config/config-schema.ts src/config/config-validation.ts docs/config.md docs/how-it-works.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts test/main-watch-rules.test.ts test/config-validation-check.test.ts)
+
+**Goal.** Each change is still checked once before landing by the gate's build check. The full check on main runs at most once per `check.fullIntervalMinutes` (default 60), only when main has a first-parent code commit the newest full verdict does not cover. Every new head still gets the diff rules, which judge each head and never wait for a full run in this part.
+
+**Approach.**
+- Add `fullIntervalMinutes?: number` to `CheckConfig` and `CHECK_KEYS` (src/config/config-schema.ts), and validate it in src/config/config-validation.ts as a non-negative integer. `0` restores one full run per new code head.
+- Add a clock seam: `createMainWatch(root, mainBranch, onCulprit?, now = Date.now)`. The due decision reads `now()`; the `checkedAt` stamp stays real time as part 2a/4 wrote it.
+- Add a module-private due rule in src/baseline/main-watch.ts: find the newest first-parent commit whose cached observed verdict carries `checkedAt`; it is due when that time plus `fullIntervalMinutes` is not in the future and main has a non-exempt code commit above that commit. A doc-only range still inherits green and starts no run. A verdict without `checkedAt` reads as due now.
+- In `watchOnce`, when the full check is not due, still enter the mirror and run `watchRules` on the tip, advance `lastWatched`, and record no `main_check` and no run. When due, run `runBaselineCheck`, `recordMainCheck`, the heal/culprit path and `watchRules` as today.
+- Docs: docs/config.md and tumwater.example.json name the key; docs/how-it-works.md's main-watch bullet describes the cadence; docs/invariants.md's INV-CZ2 changes "at most once per main commit" to "at most once per `fullIntervalMinutes`" and states the uncovered-code and doc-only-inheritance clauses.
+
+**Files touched.** src/baseline/main-watch.ts src/config/config-schema.ts src/config/config-validation.ts docs/config.md docs/how-it-works.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts test/main-watch-rules.test.ts test/config-validation-check.test.ts
+
+**Acceptance criteria.**
+- Two code heads whose range sits within the interval of the newest full verdict start one full run between them: the second starts none, yet its diff rules still run and a rule failure is still logged.
+- The first poll after the interval with an uncovered code commit starts exactly one full run, on the latest tip, covering every uncovered commit.
+- A full verdict saved 20 minutes before a restart starts no full run in the first 40 minutes after it, and the first poll past the hour starts one.
+- A doc-only head above the newest verdict starts no run and records an inherited green as today.
+- `check.fullIntervalMinutes: 0` restores one full run per new code head.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/main-watch.test.ts, test/main-watch-failures.test.ts and test/main-watch-spells.test.ts: re-point the existing once-per-head `runsOf` assertions to the hourly model with the injected clock (advance past the interval where a run is expected), and add the within-the-hour, past-the-hour, restart-with-saved-`checkedAt`, doc-only and `fullIntervalMinutes: 0` cases.
+- test/main-watch-rules.test.ts: the diff rules run on a head the full check skips.
+- test/config-validation-check.test.ts: the key's integer bounds (0 accepted, negative and fraction rejected) and the unknown-key list.
+- Run those files and the project's gate.
+
+### Hourly full check, part 2c/4: The full check runs in its own `_main-full` mirror with its own in-flight pass, so a suite run never holds `_gate-main` (planned 2026-11-03 by the plan role, splitting the 2026-11-01 part 2/4 after feature held it too large for one run; requires Hourly full check part 2b/4 landed, so the full check is due-gated before it moves mirrors; touches src/paths.ts src/baseline/main-red.ts src/baseline/main-watch.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-rules.test.ts test/main-watch-mirror.test.ts)
+
+**Goal.** A full suite run, which can take 3–20 minutes, no longer holds the `_gate-main` mirror the per-head diff rules and the gate's main-tip attribution use. The full check runs in a detached mirror of its own, `_main-full`, with its own in-flight promise; `poll` starts each pass independently and `idle()` waits for both.
+
+**Approach.**
+- Add `fullMainWorktreePath(root)` to src/paths.ts: `_main-full` beside `_gate-main`, documented the same way.
+- In src/baseline/main-red.ts add `withFullMainTipWorktree`, shaped like `withMainTipWorktree` but pinning `fullMainWorktreePath` and queuing on its own promise, never `gateMainQueue`, so a gate's main-tip re-run and a full check can overlap.
+- In `createMainWatch`, replace the single `inFlight` promise with a per-head rules pass in `_gate-main` and a due full-check pass in `_main-full`. `poll` starts the rules pass on every new head and the full-check pass when part 2b/4 says it is due, each behind its own in-flight guard. `idle()` waits for both plus housekeeping.
+- Keep one `lastWatched` for the rules pass, so each head's diff is judged once; the full pass derives its own due state from `checkedAt`, so a head already checked starts no second run.
+- docs/how-it-works.md says the full check owns its mirror; docs/invariants.md adds INV-DA2: the full check runs at most once per interval, on the latest tip, in `_main-full`, only while a code commit is uncovered, and a `_gate-main` diff-rule or gate step never waits behind it.
+
+**Files touched.** src/paths.ts src/baseline/main-red.ts src/baseline/main-watch.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-rules.test.ts test/main-watch-mirror.test.ts
+
+**Acceptance criteria.**
+- With a full check that sleeps before exiting, a new head's diff rules finish and a gate's main-tip re-run completes while that full run is still in flight.
+- The full check runs in `_main-full`; no full run holds `_gate-main`.
+- `idle()` returns only after the rules pass, the full-check pass and housekeeping have all finished.
+- A head that moves while a full run is in flight is checked on the latest tip by the next poll, as today.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/main-watch-mirror.test.ts: a slow full check and a concurrent `mainTipVerdict` call overlap (the gate's answer arrives before the full run ends), and the two worktree paths differ.
+- test/main-watch.test.ts and test/main-watch-rules.test.ts: existing per-head cases pass with the split passes, including `idle()` draining a slow full run.
+- Run those files and the project's gate.
+
+### Hourly full check, part 3/4: Main's failures are narrowed and cleared by re-running only the failing tests — the watch bisects a red's opener, re-runs only the open failures on each new head, and confirms a cleared red with one full run at once (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 2c/4 landed; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts test/main-red-heal.test.ts)
 
 **Goal.** With the full check hourly, one red verdict covers up to an hour of commits. Narrowing it and closing it must not cost more full runs (user, 2026-11-01: "when fixing failures, re-run only the failed tests"):
 - A confirmed red's opener is found by bisection that re-runs only the failing tests, so `main_culprit` and ci's heal prompt name one commit.
