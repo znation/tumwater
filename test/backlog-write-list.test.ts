@@ -224,13 +224,13 @@ test("help topics name the --list forms", async () => {
   const repo = makeRepo();
   let r = await cli(repo, "help", "bug");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /tumwater bug --list \[--ready\] \[--grep <text>\] \[--json\]/);
+  assert.match(r.stdout, /tumwater bug --list \[-f\/--follow\] \[--ready\] \[--grep <text>\] \[--json\]/);
   r = await cli(repo, "help", "plan");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /tumwater plan --list \[--ready\] \[--grep <text>\] \[--json\]/);
-  assert.match(r.stdout, /tumwater plan --list --done/);
+  assert.match(r.stdout, /tumwater plan --list \[-f\/--follow\] \[--ready\] \[--grep <text>\] \[--json\]/);
+  assert.match(r.stdout, /tumwater plan --list --done \[-f\/--follow\]/);
   r = await cli(repo, "help", "bug");
-  assert.match(r.stdout, /tumwater bug --list --done/);
+  assert.match(r.stdout, /tumwater bug --list --done \[-f\/--follow\]/);
   assert.match(r.stdout, /--grep <text>/);
   assert.match((await cli(repo, "help", "plan")).stdout, /--grep <text>/);
   assert.match((await cli(repo, "help", "questions")).stdout, /--grep <text>/);

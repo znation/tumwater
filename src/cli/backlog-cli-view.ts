@@ -5,6 +5,8 @@
 
 import { fail, say, sayJson } from "./cli-output.js";
 import { parseCountFlag, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
+import { FOLLOW_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
+import { followView, type FollowViewSeams } from "./follow-view.js";
 import {
   type BacklogEntry,
   DONE_DATE_RE,
@@ -21,7 +23,6 @@ import {
 } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress, holdMark, inProgressMark, type EntryHold } from "../backlog/backlog-eligibility.js";
 import { groupBlockedSeries, partsLabel } from "../backlog/backlog-index-data.js";
-import { rejectUnknownArgs } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
 import { sectionNoun, showEntry } from "../backlog/backlog-write.js";
 
@@ -45,17 +46,21 @@ function positionRuns(positions: readonly number[]): string {
   return runs.join(", ");
 }
 
-/** Scans the `--list` flag vocabulary (`--list`, `--json`, `--done`, `--ready`, `-n`, `--grep`,
- * each once, plus tolerated `--help`/`-h`) into the parsed locals and returns them with `rest`,
- * the leftover args rejectUnknownArgs will refuse. Reads no entry, filters nothing, prints
- * nothing; the `fail` calls it makes are the flag-usage refusals (a repeat or a `--grep`/`-n`
- * with missing text). */
+/** Scans the `--list` flag vocabulary (`--list`, `--json`, `--done`, `--ready`, `-n`,
+ * `--grep`, `-f/--follow`, each once, plus tolerated `--help`/`-h`) into the parsed locals and
+ * returns them with `rest`, the leftover args rejectUnknownArgs will refuse. The follow flag
+ * is recognized only as an unconsumed token — a `--grep` that consumed the next token as its
+ * pattern never sees `-f` (so `--list --grep -f` greps the literal "-f"), exactly as the
+ * `backlog` and `questions` follows do. Reads no entry, filters nothing, prints nothing; the
+ * `fail` calls it makes are the flag-usage refusals (a repeat or a `--grep`/`-n` with missing
+ * text). */
 function parseListArgs(args: string[], command: string): {
   json: boolean;
   done: boolean;
   ready: boolean;
   count: number | null;
   grep: string | null;
+  follow: boolean;
   rest: string[];
 } {
   let json = false;
@@ -64,6 +69,7 @@ function parseListArgs(args: string[], command: string): {
   let ready = false;
   let count: number | null = null;
   let grep: string | null = null;
+  let follow = false;
   const rest: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
@@ -101,22 +107,29 @@ function parseListArgs(args: string[], command: string): {
       json = true;
       continue;
     }
+    if (FOLLOW_FLAG.names.includes(arg)) {
+      rejectRepeatFlag(follow, "-f/--follow");
+      follow = true;
+      continue;
+    }
     if (arg === "--help" || arg === "-h") continue;
     rest.push(arg);
   }
-  return { json, done, ready, count, grep, rest };
+  return { json, done, ready, count, grep, follow, rest };
 }
 
-/** The `--done` half of the list shell: the newest finished entries (BUGS.md ## Fixed or
- * PLANS.md ## Done), filtered by `--grep`, limited by `-n`, printed as `--json` or prose. */
-function announceFinishedList(
+/** The `--done` half of the list shell's frame builder: the newest finished entries (BUGS.md
+ * ## Fixed or PLANS.md ## Done), filtered by `--grep`, limited by `-n`, as the exact `--json`
+ * document or prose `say` prints — re-read per call so a follow frame renumbers as a fresh
+ * list would. */
+function renderFinishedList(
   root: string,
   fileName: string,
   bugSection: boolean,
   grep: string | null,
   count: number | null,
   json: boolean,
-): void {
+): string {
   const numbered = (bugSection ? fixedBugEntries(root) : donePlanEntries(root)).map((entry, i) => ({
     entry,
     position: i + 1,
@@ -128,26 +141,26 @@ function announceFinishedList(
   const older = matches.length - shown.length;
   if (json) {
     const dateRe = bugSection ? FIXED_DATE_RE : DONE_DATE_RE;
-    sayJson({
-      entries: shown.map(({ entry: e, position }) => ({
-        position,
-        title: e.title,
-        body: e.body,
-        completedOn: completionDate(e.title, dateRe),
-      })),
-      older,
-    });
-    return;
+    return JSON.stringify(
+      {
+        entries: shown.map(({ entry: e, position }) => ({
+          position,
+          title: e.title,
+          body: e.body,
+          completedOn: completionDate(e.title, dateRe),
+        })),
+        older,
+      },
+      null,
+      2,
+    );
   }
   const what = bugSection ? "fixed bugs" : "done plans";
-  if (shown.length === 0) {
-    say(pattern === null ? `no ${what}` : `no ${what} match "${pattern}"`);
-    return;
-  }
+  if (shown.length === 0) return pattern === null ? `no ${what}` : `no ${what} match "${pattern}"`;
   const lines = shown.map((m) => `${m.position}. ${m.entry.title}`);
   if (older > 0) lines.push(`(${older} older; -n ${matches.length} shows more)`);
   const header = pattern === null ? `${what} in ${fileName}, newest first:` : `${what} in ${fileName} matching "${pattern}", newest first:`;
-  say(`${header}\n${lines.join("\n")}`);
+  return `${header}\n${lines.join("\n")}`;
 }
 
 /** One numbered entry as the active list prints it: `position` is the unfiltered 1-based
@@ -269,13 +282,14 @@ function activeListProse(view: ActiveListView, fileName: string, command: string
   return `${noun}s in ${fileName}:\n${lines.join("\n")}`;
 }
 
-/** The active half of the list shell: the open entries with their holds, in-progress claim
- * marks and age suffixes, optionally reduced to the ready ones, as `--json` or prose, grouping
- * a plan's blocked parts into one line (groupBlockedSeries). Orchestrates the four named
- * phases below — the read-and-filter view (activeListView), the `--json` body (activeListJson),
- * the empty-list prose line (activeListEmptyLine) and the bug/plan prose body
- * (activeListProse). */
-function announceActiveList(
+/** The active half of the list shell's frame builder: the open entries with their holds,
+ * in-progress claim marks and age suffixes, optionally reduced to the ready ones, as the exact
+ * `--json` document or prose `say` prints, grouping a plan's blocked parts into one line
+ * (groupBlockedSeries) — re-read per call so a follow frame renumbers as a fresh list would.
+ * Orchestrates the four named phases below — the read-and-filter view (activeListView), the
+ * `--json` body (activeListJson), the empty-list prose line (activeListEmptyLine) and the
+ * bug/plan prose body (activeListProse). */
+function renderActiveList(
   root: string,
   fileName: string,
   command: string,
@@ -284,18 +298,12 @@ function announceActiveList(
   grep: string | null,
   ready: boolean,
   json: boolean,
-): void {
+): string {
   const view = activeListView(root, bugSection, sectionTitle, grep, ready);
-  if (json) {
-    sayJson(activeListJson(view));
-    return;
-  }
+  if (json) return JSON.stringify(activeListJson(view), null, 2);
   const empty = activeListEmptyLine(view, command);
-  if (empty !== null) {
-    say(empty);
-    return;
-  }
-  say(activeListProse(view, fileName, command, bugSection));
+  if (empty !== null) return empty;
+  return activeListProse(view, fileName, command, bugSection);
 }
 
 /** The shared shell of the `bug --list` and `plan --list` CLI cases — the read half of the
@@ -321,15 +329,23 @@ function announceActiveList(
  * `completedOn` heading date. `--grep` keeps the entries whose heading or body contains the
  * text (case-insensitive); each keeps its unfiltered number, so it is the `--show <n> --done`
  * number, and `older` counts matches left out. `plan --list` prose
- * groups a series' blocked parts into one line (groupBlockedSeries). */
-export function listAndAnnounce(
+ * groups a series' blocked parts into one line (groupBlockedSeries).
+ *
+ * `-f/--follow` (the shared FOLLOW_FLAG, recognized only from an unconsumed token) repaints
+ * the active or `--done` list every couple of seconds until Ctrl+C or the process that started
+ * it exits — each frame re-reads the entries, the holds and the claims and renumbers as a
+ * fresh list would. It composes with `--ready`, `--grep` and `-n`, and refuses `--json`
+ * (a live view is one repainted document, not one snapshot). The one-shot branch prints
+ * exactly the frame text through `say`. */
+export async function listAndAnnounce(
   root: string,
   args: string[],
   command: string,
   fileName: string,
   sectionTitle: string,
-): void {
-  const { json, done, ready, count, grep, rest } = parseListArgs(args, command);
+  seams: FollowViewSeams = {},
+): Promise<void> {
+  const { json, done, ready, count, grep, follow, rest } = parseListArgs(args, command);
   // rejectUnknownArgs names a stray positional and an unknown flag with this command's (empty)
   // valid-flag list: the vocabulary a list invocation accepts is exactly --list and --json,
   // both consumed above.
@@ -338,9 +354,17 @@ export function listAndAnnounce(
   if (count !== null && !done) fail("-n needs --done (it limits the finished entries listed)");
   // BUGS.md's `## Open` is the one section whose noun is "bug"; every other caller is a plan.
   if (ready && done) fail("--ready needs the active list (finished entries carry no holds)");
+  if (follow && json) fail(`${command} --list --json prints one document; -f/--follow repaints a live view — drop one of them`);
   const bugSection = sectionTitle === "Open";
-  if (done) announceFinishedList(root, fileName, bugSection, grep, count, json);
-  else announceActiveList(root, fileName, command, bugSection, sectionTitle, grep, ready, json);
+  const frame = (): string =>
+    done
+      ? renderFinishedList(root, fileName, bugSection, grep, count, json)
+      : renderActiveList(root, fileName, command, bugSection, sectionTitle, grep, ready, json);
+  if (follow) {
+    await followView(frame, seams);
+    return;
+  }
+  say(frame());
 }
 
 /** The shell of `bug --show` and `plan --show`: `--show <n>` (once), an optional `--json`

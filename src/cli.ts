@@ -262,7 +262,7 @@ async function runBacklogCommand(root: string, args: string[], s: BacklogCommand
     return;
   }
   if (args.includes("--list")) {
-    listAndAnnounce(root, args, s.command, s.file, s.section);
+    await listAndAnnounce(root, args, s.command, s.file, s.section);
     return;
   }
   if (args.includes("--edit")) {

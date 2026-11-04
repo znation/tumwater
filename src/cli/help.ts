@@ -347,7 +347,7 @@ Usage:
                                    With neither text nor --file, open the Nth entry as --show
                                    prints it in $VISUAL or $EDITOR and write it back on save;
                                    an unchanged buffer writes nothing
-  tumwater bug --list [--ready] [--grep <text>] [--json]
+  tumwater bug --list [-f/--follow] [--ready] [--grep <text>] [--json]
                                    List the entries in BUGS.md ## Open, numbered (the read
                                    half of --edit/--cancel), each with its eligibility mark;
                                    --json prints the {entries} array — position, title, body,
@@ -356,13 +356,18 @@ Usage:
                                    no hold keeps from being picked (entries a role is working
                                    on stay), under their unfiltered numbers; --grep keeps the
                                    entries whose heading or body contains the text,
-                                   case-insensitively
-  tumwater bug --list --done [-n <count>] [--grep <text>] [--json]
+                                   case-insensitively; -f/--follow repaints the list every
+                                   couple of seconds until Ctrl+C or the process that started
+                                   it exits, composing with --ready and --grep and refusing
+                                   --json
+  tumwater bug --list --done [-f/--follow] [-n <count>] [--grep <text>] [--json]
                                    List the newest entries, numbered, in BUGS.md ## Fixed, newest first
                                    (default 10); --json prints {entries, older}, each entry
                                    with position, title, body, completedOn
                                    --grep keeps the entries whose heading or body contains the
-                                   text, case-insensitively, numbered as without it
+                                   text, case-insensitively, numbered as without it; -f/--follow
+                                   repaints the list until Ctrl+C or the process that started
+                                   it exits and refuses --json
   tumwater bug --show <n> [--json] Print the Nth entry as the markdown file --edit <n> --file
                                    reads (title, blank line, body with indentation kept);
                                    --json prints {position, title, body, hold}
@@ -403,7 +408,7 @@ Usage:
                                    With neither text nor --file, open the Nth entry as --show
                                    prints it in $VISUAL or $EDITOR and write it back on save;
                                    an unchanged buffer writes nothing
-  tumwater plan --list [--ready] [--grep <text>] [--json]
+  tumwater plan --list [-f/--follow] [--ready] [--grep <text>] [--json]
                                    List the entries in PLANS.md ## Planned, numbered (the
                                    read half of --edit/--cancel), each with its eligibility
                                    mark; --json prints the {entries} array — position, title,
@@ -413,13 +418,18 @@ Usage:
                                    only the entries no hold keeps from being picked (entries a
                                    role is working on stay), under their unfiltered numbers;
                                    --grep keeps the entries whose heading or body contains the
-                                   text, case-insensitively
-  tumwater plan --list --done [-n <count>] [--grep <text>] [--json]
+                                   text, case-insensitively; -f/--follow repaints the list
+                                   every couple of seconds until Ctrl+C or the process that
+                                   started it exits, composing with --ready and --grep and
+                                   refusing --json
+  tumwater plan --list --done [-f/--follow] [-n <count>] [--grep <text>] [--json]
                                    List the newest entries, numbered, in PLANS.md ## Done, newest first
                                    (default 10); --json prints {entries, older}, each entry
                                    with position, title, body, completedOn
                                    --grep keeps the entries whose heading or body contains the
-                                   text, case-insensitively, numbered as without it
+                                   text, case-insensitively, numbered as without it; -f/--follow
+                                   repaints the list until Ctrl+C or the process that started
+                                   it exits and refuses --json
   tumwater plan --show <n> [--json]
                                    Print the Nth entry as the markdown file --edit <n> --file
                                    reads (title, blank line, body with indentation kept);
