@@ -16,7 +16,8 @@ import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { applyMergeOutcome } from "../src/run/run-apply.js";
 import { CHECK_DECLARATION_MARKER } from "../src/roles/role-guidance.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { tmpdir, makeRepo, commitIn, headSha, sh } from "./fixtures/repo-fixtures.js";
+import { refreshPendingPlans } from "../src/backlog/backlog-pending.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 /** Unit coverage for src/run/run-prompt.ts — the assembly of what one role's run actually runs
@@ -789,6 +790,31 @@ test("the plan charter's stop target scales with feature.instances", () => {
   const scaled = promptFor(dir, "plan", { config });
   assert.ok(scaled);
   assert.match(scaled.prompt, /4 or more eligible plans/);
+});
+
+test("the plan stop-target note counts the projection, naming unmerged entries", async () => {
+  const dir = makeRepo();
+  sh(dir, "git", "config", "core.logAllRefUpdates", "true");
+  const entry = (title: string) => `### ${title} (planned 2026-01-01 by plan)\nBody.\n`;
+  const write = (entries: string[]): void => {
+    fs.writeFileSync(path.join(dir, "PLANS.md"), `# Plans\n\n## Planned\n\n${entries.join("\n")}\n## Done\n\n_None yet._\n`);
+    commitIn(dir, "plans");
+  };
+  write([entry("A")]);
+  await refreshPendingPlans(dir, "main");
+  const atMain = promptFor(dir, "plan");
+  assert.ok(atMain);
+  assert.match(atMain.prompt, /It holds 1 now/);
+  // A pin adds a second entry: the note counts it and names it as still unmerged.
+  sh(dir, "git", "checkout", "--detach");
+  write([entry("A"), entry("B")]);
+  sh(dir, "git", "update-ref", "refs/tumwater/merge/plan", headSha(dir));
+  sh(dir, "git", "checkout", "main");
+  await refreshPendingPlans(dir, "main");
+  const atPin = promptFor(dir, "plan");
+  assert.ok(atPin);
+  assert.match(atPin.prompt, /It holds 2 now/);
+  assert.match(atPin.prompt, /counting 1 planned entry still unmerged/);
 });
 
 test("a director preview peeks its inbox and an empty inbox still assembles to null", () => {

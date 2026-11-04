@@ -10,6 +10,7 @@ import type { newLiveConfigReload } from "../config/config-live.js";
 import type { FallbackBreakerPolicy } from "../budget/fallback-breaker.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { reviewHoldKey, pollDeferralInputs, pollRunnerReasons } from "./orchestrator-scheduling.js";
+import { refreshPendingPlans } from "../backlog/backlog-pending.js";
 import { launchDueRuns } from "./orchestrator-launch.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { branchHead, currentBranch } from "../git/git.js";
@@ -401,7 +402,13 @@ export async function pollSchedule(
   { liveConfig, mainHead, now }: PollInputs,
   gates: PollGates,
 ): Promise<void> {
-  const { root, runners, gateStates } = ctx;
+  const { root, runners, gateStates, mainBranch } = ctx;
+  // The plan role's stop count reads `## Planned` as it will be once every unmerged change
+  // merges (refreshPendingPlans, plans/duplicate-plans.md "Decision" 1): one refresh per poll
+  // before the deferral inputs, so a pin written by a merge this poll is seen before the
+  // plan deferral decides. A git failure leaves the previous snapshot in place and never
+  // throws into the poll.
+  await refreshPendingPlans(root, mainBranch);
   const inputs = pollDeferralInputs(root, runners, liveConfig, gateStates, gates, ctx.breakerNow());
   const reasons = await pollRunnerReasons({
     root,

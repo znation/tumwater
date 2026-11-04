@@ -179,7 +179,10 @@ never has to wait a parked check out.
   `no free entry`. A bugfix instance does the same while BUGS.md has open bugs but none is
   eligible (with no open bugs at all it keeps searching for latent bugs). The plan role keeps
   `instances(feature) + 1` eligible plans ahead so every feature instance has something to
-  take (a due plan run defers while that many are waiting and none is marked needs-review). The
+  take (a due plan run defers while that many are waiting and none is marked needs-review).
+  Both counts read `## Planned` as it will be once every unmerged change merges — the merge
+  pins and the role branches, never the merge queue — so a plan already waiting to merge stops
+  the plan role instead of being re-planned (plans/duplicate-plans.md "Decision" 1). The
   plan run's prompt gives both the target and the current count, the same
   count the deferral uses. `tumwater status`, the TUI and the dashboard name each instance's assigned entry
   while it is idle or merging, `tumwater logs` renders the `claim` assigned/released events, and

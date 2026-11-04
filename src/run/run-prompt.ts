@@ -2,7 +2,8 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage, type Role } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
-import { planBacklogTarget } from "../scheduling/claims.js";
+import { planBacklogTarget, projectedPlanEligibleCount } from "../scheduling/claims.js";
+import { projectedPlannedEntries } from "../backlog/backlog-pending.js";
 import { configForRole } from "../config/config-views.js";
 import { NOTHING_TO_DO } from "../verdict/reply-contract.js";
 import { dequeuePromptEntry, dequeueRolePromptEntry, peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
@@ -328,12 +329,20 @@ function collectRoleDirectives(root: string, config: TumwaterConfig, base: strin
   // instances.md "…keeping the plan role ahead", part 5c/7). The catalog text stays a
   // config-free description of the rule; this note supplies the concrete eligible-plan count
   // so the plan role stops only once every configured feature instance has a plan waiting.
+  // The count is the projection's — projectedPlanEligibleCount over main's `## Planned` with
+  // every unmerged change applied — the same figure planBacklogFull defers on, so the note a
+  // run reads is the count that decides its deferral, not main's alone.
+  const projectedEligible = projectedPlanEligibleCount(root);
+  const pendingAdds = projectedPlannedEntries(root).length - plannedPlanEntries(root).length;
   const planTargetNote =
     base === "plan"
       ? `This run's stop target: when PLANS.md \`## Planned\` already holds ` +
         `${planBacklogTarget(config)} or more eligible plans, end with ${NOTHING_TO_DO}. ` +
-        `It holds ${eligibleEntries(root, "feature").length} now (tumwater's count of entries ` +
-        `feature could take, the same count that decides whether a plan run is deferred).`
+        `It holds ${projectedEligible} now (tumwater's count of entries feature could take, ` +
+        `the same count that decides whether a plan run is deferred)${
+          pendingAdds > 0
+            ? `, counting ${pendingAdds} planned ${pendingAdds === 1 ? "entry" : "entries"} still unmerged`
+            : ""}.`
       : undefined;
   const flakyChecks = base === "bugfix" ? flakyChecksNote(root) : undefined;
   // The no-check note: when the project declares no deterministic check and the team is

@@ -120,47 +120,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/status-payload.test.ts, test/status-render.test.ts and test/gui-client-team.test.ts: the badge rides after the ci parity badge with its tone, and is absent without a record.
 - Run those files and the gate.
 
-### No duplicate plans, part 2/6: The plan role's stop count and its Needs-review check read `## Planned` as it will be once every unmerged change merges (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 1; independent of part 1/6; reads merge pins (`refs/tumwater/merge/<role>`) and role branches, never the merge queue, so Subtract parts 3e/7 and 3f/7 do not affect it; the edits to claims.ts, run-prompt.ts and runner-run.ts are a few lines each beside "Every commit is verified on main" parts 4k/3 and 4m/3's edits there, and whichever merges second rebases; touches src/backlog/backlog-pending.ts src/backlog/backlog-eligibility.ts src/scheduling/claims.ts src/orchestrator/orchestrator-poll.ts src/runner/runner-run.ts src/run/run-prompt.ts docs/how-it-works.md test/backlog-pending.test.ts test/claims.test.ts test/run-prompt.test.ts)
-
-**Goal.** A plan run must stop counting a plan that is on a merge pin or held on a branch as missing. It must also stop re-splitting an entry whose split is waiting to merge. From 10-30 20:30 to 11-04, 47 of 64 plan runs that queued a plan started while an earlier plan change was unmerged. `planBacklogFull` and the stop-target note read only main's `## Planned`, so the plan role kept running with a zero gap and re-planned the same top-ranked item: 8 functions got same-day duplicate refactor plans. "Subtract verify collapse" 2/5–5/5 and "Every commit is verified on main" 4k/4m/4n/3 were each split twice, because the first split's removal of the `Needs review` entry had not merged.
-
-**Approach.**
-- New src/backlog/backlog-pending.ts holds one snapshot per root of what unmerged changes do to PLANS.md `## Planned`.
-  - `refreshPendingPlans(root, mainBranch): Promise<void>` runs one `git for-each-ref --no-merged=<mainBranch> --format='%(refname) %(objectname)' refs/tumwater/merge/ refs/heads/tumwater/`.
-  - For each SHA not already in a SHA-keyed memo (commits never change), it reads the merge-base with main and checks whether PLANS.md changed (`git diff --name-only`). It then reads PLANS.md at the merge-base and at the SHA, and records a `PendingPlanChange`: `{ ref, role, sha, subject, added: BacklogEntry[], removedKeys: string[], changed: BacklogEntry[] }`. The keys come from `entryKey`; `changed` is an entry whose body differs, such as a lifted note.
-  - A branch whose tip is the same SHA as that role's pin counts once.
-  - Git failures leave the previous snapshot in place. A failure never throws into the poll.
-- Sync readers over the snapshot:
-  - `pendingPlanChanges(root)`.
-  - `projectedPlannedEntries(root)`: main's `plannedPlanEntries(root)` with each change applied in ref order. Drop `removedKeys`, replace `changed` bodies, and append `added` entries not already present by key.
-- `planBacklogFull` (src/scheduling/claims.ts) computes the eligible count and the `needs-review` check over `projectedPlannedEntries`. Use the same `entryHoldAgainst` against the projection's `plannedPartKeys`, and the same claimed-elsewhere rule `eligibleEntries` applies. Factor that loop out of `eligibleEntries` as `eligibleAmong(entries, parts, claims)` in backlog-eligibility.ts, so the two counts cannot drift. `eligibleEntries` itself, which feature's claims and line ranges read, keeps reading main.
-- Refresh points:
-  - `pollSchedule` in src/orchestrator/orchestrator-poll.ts awaits `refreshPendingPlans` once per poll before `pollDeferralInputs`.
-  - `runPhase` in src/runner/runner-run.ts awaits it before `planBacklogFull`, so a run admitted right after a pin is written sees that pin.
-- `collectRoleDirectives`'s plan stop-target note in src/run/run-prompt.ts reports the projected count (the same figure that defers the run). When the projection adds entries, it says how many are unmerged.
-- docs/how-it-works.md: one sentence in the plan role's scheduling description.
-
-**Files touched.** src/backlog/backlog-pending.ts src/backlog/backlog-eligibility.ts src/scheduling/claims.ts src/orchestrator/orchestrator-poll.ts src/runner/runner-run.ts src/run/run-prompt.ts docs/how-it-works.md test/backlog-pending.test.ts test/claims.test.ts test/run-prompt.test.ts
-
-**Acceptance criteria.**
-- In a temp repo, main's `## Planned` holds 1 eligible entry, and `refs/tumwater/merge/plan` points at a commit adding a second. With one feature instance (target 2), `planBacklogFull` is true after `refreshPendingPlans`. Without the pin it is false.
-- Main holds a `Needs review … too large` entry, and the plan role's branch `tumwater/plan` is ahead of main with a commit that removes it and adds two split parts. `planBacklogFull` no longer reports a `needs-review` hold, and the projection lists the two parts.
-- A pin already contained in main contributes nothing. A pin whose PLANS.md cannot be read contributes nothing and leaves the earlier snapshot.
-- A second `refreshPendingPlans` with unchanged refs re-reads no commit: it runs only the one `for-each-ref`.
-- The plan prompt's stop-target note shows the projected count.
-- `eligibleEntries(root, "feature")` is unchanged by a pending change.
-- `npm run test:gate` passes.
-
-**Tests.**
-- New test/backlog-pending.test.ts, against a temp git repo:
-  - a pinned addition;
-  - a held-branch split that removes a `Needs review` entry;
-  - a contained pin;
-  - a branch and a pin on one SHA;
-  - the memo (an injectable git runner parameter on `refreshPendingPlans` is fine for counting calls).
-- test/claims.test.ts: `planBacklogFull` over the projection.
-- test/run-prompt.test.ts: the stop-target note's count.
-- Run those files and the gate.
 
 ### No duplicate plans, part 3/6: The plan role's prompt lists what unmerged changes add to and remove from `## Planned`, and its charter treats them as already planned (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 1; requires No duplicate plans part 2/6 landed; touches src/backlog/backlog-pending.ts src/run/run-prompt.ts src/roles/role-catalog.ts test/backlog-pending.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts)
 

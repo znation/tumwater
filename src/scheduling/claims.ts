@@ -11,8 +11,9 @@ import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { DAY_MS } from "../text/datetime.js";
 import { hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";
-import { type EligibleEntry, backlogHolds, eligibleEntries, roleSection } from "../backlog/backlog-eligibility.js";
-import { entryKey } from "../backlog/backlog-parts.js";
+import { type EligibleEntry, claimedElsewhereKeys, eligibleAmong, eligibleEntries, entryHoldAgainst, roleSection } from "../backlog/backlog-eligibility.js";
+import { entryKey, plannedPartKeys } from "../backlog/backlog-parts.js";
+import { projectedPlannedEntries } from "../backlog/backlog-pending.js";
 import { actionableEntryRanges, actionableEntryRangesFor } from "../backlog/backlog-index-data.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { readTextOrNull } from "../files/files.js";
@@ -34,12 +35,27 @@ export function planBacklogTarget(config: TumwaterConfig): number {
 }
 
 /** Does PLANS.md already hold the plan role's target (planBacklogTarget eligible plans), with no
- * plan marked needs-review? The charter makes splitting or replanning a marked
- * plan outrank the stop, so a marked entry keeps the plan role running; otherwise a plan run can
- * only end in TUMWATER_NOTHING_TO_DO and the scheduler defers it (deferRunReason). */
+ * plan marked needs-review? Both counts run over the projection — `## Planned` with every
+ * unmerged change applied (projectedPlannedEntries, refreshed by refreshPendingPlans) — so a
+ * plan already waiting to merge, or a split that removes a `Needs review` entry, stops the
+ * plan role instead of being re-planned (plans/duplicate-plans.md "Decision" 1). The charter
+ * makes splitting or replanning a marked plan outrank the stop, so a marked entry keeps the
+ * plan role running; otherwise a plan run can only end in TUMWATER_NOTHING_TO_DO and the
+ * scheduler defers it (deferRunReason). The stop count and the needs-review check read the
+ * same projected list, so they cannot disagree on what is planned. */
 export function planBacklogFull(root: string, config: TumwaterConfig): boolean {
-  if (eligibleEntries(root, "feature").length < planBacklogTarget(config)) return false;
-  return !backlogHolds(root).plans.some((h) => h === "needs-review");
+  if (projectedPlanEligibleCount(root) < planBacklogTarget(config)) return false;
+  const parts = plannedPartKeys(projectedPlannedEntries(root));
+  return !projectedPlannedEntries(root).some((e) => entryHoldAgainst(e, parts) === "needs-review");
+}
+
+/** How many entries of the projected `## Planned` (projectedPlannedEntries) feature could
+ * take now — the same eligibleAmong decision planBacklogFull defers on, over the same
+ * projection, so a surface that reports the figure (the plan run's stop-target note) cannot
+ * disagree with the deferral. */
+export function projectedPlanEligibleCount(root: string): number {
+  const projected = projectedPlannedEntries(root);
+  return eligibleAmong(projected, plannedPartKeys(projected), claimedElsewhereKeys(root, "feature")).length;
 }
 
 /** The runner fields the claim policies read (structural stand-in for RoleRunner, so claims.ts

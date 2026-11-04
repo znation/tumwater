@@ -22,7 +22,9 @@ import {
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { buildAssignmentNote } from "../src/prompt/gate-notes.js";
-import { makeRepo, commitIn } from "./fixtures/repo-fixtures.js";
+import { refreshPendingPlans } from "../src/backlog/backlog-pending.js";
+import { makeRepo, commitIn, headSha, sh } from "./fixtures/repo-fixtures.js";
+import { eligibleEntries } from "../src/backlog/backlog-eligibility.js";
 
 const PLANNED = [
   "# Plans",
@@ -359,6 +361,28 @@ test("planBacklogFull: eligible plans reach the target and no plan is marked", (
     false,
     "a plan blocked by a prerequisite does not count",
   );
+});
+
+test("planBacklogFull reads the projection, not main alone", async () => {
+  const repo = makeRepo();
+  sh(repo, "git", "config", "core.logAllRefUpdates", "true");
+  const entry = (title: string) => `### ${title} (planned 2026-01-01 by plan)\nBody.\n`;
+  const write = (entries: string[]): void => {
+    fs.writeFileSync(path.join(repo, "PLANS.md"), `# Plans\n\n## Planned\n\n${entries.join("\n")}\n## Done\n\n_None yet._\n`);
+    commitIn(repo, "plans");
+  };
+  const cfg = defaultConfig();
+  write([entry("A")]);
+  await refreshPendingPlans(repo, "main");
+  assert.equal(planBacklogFull(repo, cfg), false, "one eligible entry, target two");
+  // A pin adds a second entry: the projection sees it even though main holds one.
+  sh(repo, "git", "checkout", "--detach");
+  write([entry("A"), entry("B")]);
+  sh(repo, "git", "update-ref", "refs/tumwater/merge/feature", headSha(repo));
+  sh(repo, "git", "checkout", "main");
+  await refreshPendingPlans(repo, "main");
+  assert.equal(planBacklogFull(repo, cfg), true, "the projection counts the pinned entry");
+  assert.equal(eligibleEntries(repo, "feature").length, 1, "eligibleEntries still reads main");
 });
 
 test("workReserveCount counts only the places instances leaves free, not every idle runner id", () => {

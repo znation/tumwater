@@ -452,23 +452,12 @@ export function eligibleEntries(root: string, role: string): EligibleEntry[] {
   const { file, section } = roleSection(role);
   const entries = section === "Open" ? openBugEntries(root) : plannedPlanEntries(root);
   const ranges = actionableEntryRangesFor(root, file, section);
-  const planned = plannedPlanEntries(root);
-  const parts = plannedPartKeys(planned);
-  // The cross-role in-flight hold (BUGS.md 2026-10-09): an entry another role's base has
-  // claimed is not eligible here. Same-base claims are excluded from the hold — the scheduling
-  // pass's claim groups and run-stage's staged claims already hold those — so the queried
-  // role's own claim (and a sibling instance's) stays eligible and its release rules are
-  // unchanged; only a plan another base currently owns is taken off this base's hands.
-  const ownBase = baseRoleOf(role);
-  const claimedElsewhere = new Set<string>();
-  for (const [key, claimer] of allLiveClaims(root)) {
-    if (baseRoleOf(claimer) !== ownBase) claimedElsewhere.add(key);
-  }
+  const parts = plannedPartKeys(plannedPlanEntries(root));
+  const claimedElsewhere = claimedElsewhereKeys(root, baseRoleOf(role));
   const out: EligibleEntry[] = [];
   for (let i = 0; i < entries.length && i < ranges.length; i++) {
     const entry = entries[i]!;
-    if (entryHoldAgainst(entry, parts) !== null) continue;
-    if (claimedElsewhere.has(entryKey(entry.title))) continue;
+    if (!isEntryEligible(entry, parts, claimedElsewhere)) continue;
     const range = ranges[i]!;
     out.push({
       key: entryKey(entry.title),
@@ -478,4 +467,43 @@ export function eligibleEntries(root: string, role: string): EligibleEntry[] {
     });
   }
   return out;
+}
+
+/** The keys claimed by a live claim whose claimer's base role is not `base` — the
+ * cross-role in-flight hold (BUGS.md 2026-10-09): an entry another base has claimed is not
+ * eligible here. Same-base claims are excluded — the scheduling pass's claim groups and
+ * run-stage's staged claims already hold those — so the queried role's own claim (and a
+ * sibling instance's) stays eligible and its release rules are unchanged. */
+export function claimedElsewhereKeys(root: string, base: string): Set<string> {
+  const out = new Set<string>();
+  for (const [key, claimer] of allLiveClaims(root)) {
+    if (baseRoleOf(claimer) !== base) out.add(key);
+  }
+  return out;
+}
+
+/** The per-entry decision of eligibleEntries and its projection-side twin: held by
+ * entryHoldAgainst against `parts`, or claimed by another role's base. Factored out so the
+ * plan role's stop count and the claims reader apply one rule and cannot drift. */
+function isEntryEligible(
+  entry: BacklogEntry,
+  parts: ReadonlySet<string>,
+  claimedElsewhere: ReadonlySet<string>,
+): boolean {
+  if (entryHoldAgainst(entry, parts) !== null) return false;
+  return !claimedElsewhere.has(entryKey(entry.title));
+}
+
+/** The entries among `entries` that may be taken now, over any entry list — main's, or a
+ * projection of it (backlog-pending's projectedPlannedEntries): every entry isEntryEligible
+ * against `parts` (plannedPartKeys over the same list) and `claimedElsewhere`. The one home
+ * of the hold-and-claim decision beside eligibleEntries (main's entries), so the plan role's
+ * stop count (claims.ts over the projection) and the claims reader cannot drift. Order is
+ * `entries`' order. */
+export function eligibleAmong(
+  entries: readonly BacklogEntry[],
+  parts: ReadonlySet<string>,
+  claimedElsewhere: ReadonlySet<string>,
+): BacklogEntry[] {
+  return entries.filter((entry) => isEntryEligible(entry, parts, claimedElsewhere));
 }
