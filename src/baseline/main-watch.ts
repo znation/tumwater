@@ -349,7 +349,7 @@ export function createMainWatch(
       const covered = await countCovered(wt, previous, baseline.sha);
       logEventBestEffort(
         root,
-        mainCheckEvent(baseline, red, quarantined, covered, ran ? Date.now() - started : 0, openerSha),
+        mainCheckEvent(baseline, red, quarantined, covered, ran ? Date.now() - started : 0, red ? openerSha : undefined),
       );
       return red;
     }
