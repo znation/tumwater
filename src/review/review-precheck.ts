@@ -78,6 +78,224 @@ function attributeOnRedMain(root: string, failed: readonly string[], mainFailing
   return own.length === 0 ? { kind: "main" } : { kind: "own", tests: own };
 }
 
+/** The one scoped gate build-check run: the pre-check and its flake re-run are the same call in
+ * the same scope, worktree, and config, so a result is the check plus its outcome. */
+type GateCheckRun = NonNullable<Awaited<ReturnType<typeof runScopedBuildCheck>>>;
+type GateOutcome = GateCheckRun["outcome"];
+/** Main's tip verdict on the attribution question (main-red.ts's MainTipVerdict, kept private
+ * there): green, red (with its failing tests), or unavailable (with why). */
+type MainTip = Awaited<ReturnType<typeof mainTipFailures>>;
+/** The gate's one shared rejection path (review.ts's reject closure). */
+type GateReject = (reasons: string[], durationMs?: number) => Promise<GateResult>;
+
+/** The failed check's one re-run, and when it changes the verdict: a failure naming only known
+ * tests (main's, or quarantined) is judged as it stands — a re-run could only repeat it; a
+ * passing re-run warns the flake (or the host sleep that is the real story, BUGS.md 2026-09-30)
+ * and quarantines the named tests, then the tree is verified like a first-time pass; a re-run
+ * that fails again stands in for the first outcome; a skipped re-run says nothing, so the first
+ * failure stands. */
+async function retriedGateOutcome(
+  root: string,
+  role: string,
+  check: GateCheckRun["check"],
+  outcome: GateOutcome,
+  runGateCheck: () => Promise<GateCheckRun | null>,
+): Promise<GateOutcome> {
+  if (outcome.status !== "failed") return outcome;
+  // A failure that does not reproduce on one immediate re-run is a flake, not a red tree:
+  // the suite has load-sensitive assertions, and most failures the gate met on the loaded
+  // host were exactly that (BUGS.md 2026-09-23). The re-run is one more check, priced as
+  // its own build_check event; if it passes, the tree is verified exactly like a
+  // first-time pass and the flake is named in a warning (the headline clusters in the
+  // digest, so selfcheck and bugfix can go after the flaky test). A re-run that fails
+  // again goes to attribution below; a skipped one says nothing about the tree, so the
+  // first failure stands.
+  // A failure naming only known tests (main's, or quarantined) is judged below as it stands:
+  // a re-run could only repeat it.
+  const retry = onlyKnownMainFailures(root, outcome.failingTests) ? undefined : await runGateCheck();
+  if (retry?.outcome.status === "passed") {
+    // When the failed run spanned a host sleep, the pass says the tree is fine and the
+    // sleep is the story — not a flaky test (BUGS.md 2026-09-30): the digest clusters
+    // these warnings, and a sleep is weather, not an assertion to hunt.
+    if (unverifiedTreeOutcome(outcome)) {
+      warnEventBestEffort(root, role, sleptPhrase("gate check", outcome.run!.sleptMs!, "then passed on retry"));
+    } else {
+      const flaky = redCheckHeadline(check, outcome.outputTail);
+      warnEventBestEffort(root, role, `${FLAKY_WARNING_PREFIX}${flaky}`);
+      // Each test the failed run named failed and then passed on this same tree: quarantined.
+      quarantineTests(root, outcome.failingTests, outcome.outputTail);
+    }
+    return retry.outcome;
+  }
+  if (retry?.outcome.status === "failed") return retry.outcome;
+  return outcome;
+}
+
+/** A failure that spanned a host sleep past the tolerance, with no clean attempt to judge the
+ * tree (runScopedBuildCheck already retried once): nothing here is the change's failure, so the
+ * gate attributes nothing — it keeps the commit and reports the sleep, and the merge path keeps
+ * the pin for a re-merge (BUGS.md 2026-09-30). Null when the outcome is not such a failure. */
+function unverifiedSleepResult(
+  root: string,
+  role: string,
+  outcome: GateOutcome,
+): GatePrecheckResult | null {
+  if (outcome.status === "failed" && unverifiedTreeOutcome(outcome)) {
+    const detail = sleptPhrase("gate check", outcome.run!.sleptMs!, UNVERIFIED_TREE);
+    warnEventBestEffort(root, role, `${detail}; keeping the commit for another merge attempt`);
+    return { resolved: { decision: "failed", detail, unverified: true } };
+  }
+  return null;
+}
+
+/** A failed check the gate itself already knows is not the change's: one naming only tests main
+ * already fails goes on to review as a known main failure (no fresh run on main), and a headline
+ * the gate recorded as flaky within the window keeps the merge. The excuse is not a failure of
+ * the gate — no verifiedHead is carried, so the merge path's own check still judges the tree —
+ * so the change goes on to the model review instead of ending the merge attempt as review_error
+ * and paying a requeue (BUGS.md 2026-10-06). Null when neither arm fires. */
+function knownFailureResult(
+  root: string,
+  role: string,
+  check: GateCheckRun["check"],
+  outcome: GateOutcome,
+): GatePrecheckResult | null {
+  const flaky = redCheckHeadline(check, outcome.outputTail);
+  // A failure that names only tests main already fails is main's, not this change's: it goes
+  // on to review with no fresh run on main. No verifiedHead — the tree did not pass, so the
+  // merge path must not seed a green for it — and the merge check judges it by the same rule.
+  const known = onlyKnownMainFailures(root, outcome.failingTests);
+  if (known) {
+    warnEventBestEffort(root, role, `gate check fails only main's known failures: ${known.join(", ")}`);
+    return { knownMainFailures: known };
+  }
+  // The headline excuse stays for a failure that names no test: quarantine covers named ones.
+  if (isKnownFlake(root, flaky)) {
+    warnEventBestEffort(root, role, `known-flaky failure, merge kept: ${flaky}`);
+    return {};
+  }
+  return null;
+}
+
+/** What main's tip says about a twice-failed check's named tests — the attribution question,
+ * answered by running something on main's tip, never by waiting on the main watch: named
+ * failures are re-run alone on main's tip when they can be (mainTipFailures), else main's full
+ * check runs fresh, bypassing the per-SHA cache, because a clock- or load-sensitive test can
+ * pass on an immutable SHA early and fail later, and a cached green — usually seeded by an
+ * earlier merge — rejected an unrelated change (BUGS.md 2026-10-06). A failure that names no
+ * test runs the gate command itself at main's tip (mainTipGateVerdict). */
+async function mainVerdictForFailure(
+  ctx: ReviewContext,
+  failed: { tests: string[]; files: Record<string, string> | undefined },
+): Promise<MainTip> {
+  const { root, role, mainBranch, config, wt } = ctx;
+  // A nameless failure (a compile or lint error, a crash) is decided by the gate command
+  // itself at main's tip. A named one is asked about by re-running only those tests there,
+  // and only falls back to main's full check when they cannot be re-run.
+  let main =
+    failed.tests.length === 0
+      ? await mainTipGateVerdict(root, role, mainBranch, config)
+      : await mainTipFailures(root, role, wt, mainBranch, config, failed);
+  // A red that names no test (main's check died before its tests ran, or its list may have
+  // been cut short) cannot be subtracted from the change's named failures: ask main's tip
+  // about just those tests instead.
+  if (main.status === "red" && namedFailures(main).length === 0 && failed.tests.length > 0) {
+    main = (await rerunAtMainTip(root, role, wt, mainBranch, config, failed)) ?? main;
+  }
+  return main;
+}
+
+/** The nameless-failure decision — a compile or lint error, a crash — from the gate command's
+ * own verdict at main's tip: green there convicts the change (rejected through the shared
+ * reject path); red there makes the failure main's, whatever test names either side printed, so
+ * the change goes on to review; an unavailable verdict cannot attribute it, so the author's
+ * failure is the safe default and the reasons say the baseline could not be had. */
+async function namelessFailureResult(
+  root: string,
+  role: string,
+  main: MainTip,
+  reasons: string[],
+  reject: GateReject,
+): Promise<GatePrecheckResult> {
+  if (main.status === "green") return { resolved: await reject(reasons) };
+  if (main.status === "red") {
+    warnEventBestEffort(
+      root,
+      role,
+      `gate check fails on main ${shortSha(main.sha)} too, with no test named; going on to review`,
+    );
+    return {};
+  }
+  return {
+    resolved: await reject([
+      ...reasons,
+      `main's baseline was unavailable (${main.why}), so the failure is attributed to this change`,
+    ]),
+  };
+}
+
+/** A named failure's decision from main's tip verdict: main is red only to excuse its own
+ * failures (attributeOnRedMain), so a change that fails nothing main does not goes on to review
+ * as a known main failure, and one that fails more is judged like a change on a green main — a
+ * red main never holds back a change for a failure of the change's own (main is healed in
+ * parallel by ci, main-red.ts's heal hand-offs). A failure whose base already failed, on a main
+ * tip green or red, is the base's (staleBaseFailures) and goes on to review the same way;
+ * otherwise the change broke the check and is rejected deterministically through the shared
+ * reject path, no pi run consumed, reasons injected into the author's next run. */
+async function namedFailureResult(
+  ctx: ReviewContext,
+  head: string,
+  failed: { tests: string[] },
+  outcome: GateOutcome,
+  main: MainTip,
+  reasons: string[],
+  reject: GateReject,
+): Promise<GatePrecheckResult> {
+  const { root, role, wt, mainBranch } = ctx;
+  const red = main.status === "red" ? attributeOnRedMain(root, failed.tests, namedFailures(main)) : null;
+  if (main.status === "red" && red?.kind === "main") {
+    warnEventBestEffort(
+      root,
+      role,
+      `gate check fails only tests main ${shortSha(main.sha)} fails too: ${failed.tests.join(", ")}; going on to review`,
+    );
+    return { knownMainFailures: [...failed.tests] };
+  }
+  const own = red?.kind === "own" ? red.tests : outcome.failingTests;
+  if (main.status === "green" || main.status === "red") {
+    const stale = await staleBaseFailures(wt, mainBranch, head, main.sha, own);
+    if (stale) {
+      // Same hand-off as the known-failure branch: no verifiedHead, so the merge check on the
+      // rebased tree still judges it.
+      warnEventBestEffort(
+        root,
+        role,
+        `gate check fails only tests its base ${shortSha(stale.base)} already failed, and main ${shortSha(main.sha)} is ${main.status}: ${stale.tests.join(", ")}; going on to review`,
+      );
+      return { knownMainFailures: main.status === "red" ? [...failed.tests] : stale.tests };
+    }
+  }
+  // Main green, or red with fewer failures: the change broke the check — rejected
+  // deterministically through the shared reject path, no pi run consumed, reasons injected
+  // into the author's next run. With no verdict for main the author's failure is still the
+  // safe default, and the reasons say the attribution could not be made.
+  return { resolved: await reject(rejectionReasons(reasons, main, own)) };
+}
+
+/** The three-arm final rejection reasons: on a green main, the check's own reasons; on a red
+ * main, those plus which failures are the change's own (mainRedNotTheseFailures); with no
+ * verdict for main, those plus that the baseline could not be had and the failure is the
+ * change's. Same text and order as the original attribution. */
+function rejectionReasons(
+  reasons: string[],
+  main: MainTip,
+  own: readonly string[] | undefined,
+): string[] {
+  if (main.status === "green") return reasons;
+  if (main.status === "red") return [...reasons, mainRedNotTheseFailures(main.sha, own ?? [])];
+  return [...reasons, `main's baseline was unavailable (${main.why}), so the failure is attributed to this change`];
+}
+
 /** Run the gate's deterministic build pre-check. `reject` is the gate's one shared rejection
  * path (review.ts's reject closure): the pre-check routes a reproduced failure through it so
  * the bookkeeping (lastReview, branch reset, review_rejected event) cannot drift from the
@@ -88,7 +306,7 @@ export async function gateBuildPrecheck(
   head: string,
   reject: (reasons: string[], durationMs?: number) => Promise<GateResult>,
 ): Promise<GatePrecheckResult> {
-  const { root, role, wt, mainBranch, config } = ctx;
+  const { root, role, wt, config } = ctx;
   // The merge cell's stage (a no-op outside a queued merge — see setMergeStage): the
   // pre-check, its one re-run, and any attribution check behind them are the gate's first
   // long phase.
@@ -111,182 +329,56 @@ export async function gateBuildPrecheck(
       ctx.signal,
     );
   const preCheck = await runGateCheck();
+  if (!preCheck) return {};
   // A check the harness stopped on the verify's abort (a user abort or a shutdown) is not the
   // tree's verdict and not a flake: fail closed as aborted before the re-run, the quarantine
   // and the attribution — the signal fires MID-check (runScriptGroup returns an `aborted`
   // skip), and `reviewPinnedChange` settles the verify `aborted` on this result so an abort
   // never has to wait a parked check out — nor a queued one: a check still waiting for a check
-  // permit when the signal fires never spawns, and settles `aborted` here too. A check that finds
-  // its permit free under an already-aborted signal still runs and reaches its own verdict, caught
-  // by the `aborted` checks in the attribution path below, so the pre-existing shutdown case keeps
-  // its two attempts.
-  if (preCheck?.outcome.skipReason === "aborted") {
+  // permit when the signal fires never spawns, and settles `aborted` here too. A check that
+  // finds its permit free under an already-aborted signal still runs and reaches its own
+  // verdict, caught by the `aborted` checks in the attribution path below, so the
+  // pre-existing shutdown case keeps its two attempts.
+  if (preCheck.outcome.skipReason === "aborted") {
     return { resolved: { decision: "failed", aborted: true } };
   }
-  if (preCheck) {
-    const { check } = preCheck;
-    let { outcome } = preCheck;
-    if (outcome.status === "failed") {
-      // A failure that does not reproduce on one immediate re-run is a flake, not a red tree:
-      // the suite has load-sensitive assertions, and most failures the gate met on the loaded
-      // host were exactly that (BUGS.md 2026-09-23). The re-run is one more check, priced as
-      // its own build_check event; if it passes, the tree is verified exactly like a
-      // first-time pass and the flake is named in a warning (the headline clusters in the
-      // digest, so selfcheck and bugfix can go after the flaky test). A re-run that fails
-      // again goes to attribution below; a skipped one says nothing about the tree, so the
-      // first failure stands.
-      // A failure naming only known tests (main's, or quarantined) is judged below as it stands:
-      // a re-run could only repeat it.
-      const retry = onlyKnownMainFailures(root, outcome.failingTests) ? undefined : await runGateCheck();
-      if (retry?.outcome.status === "passed") {
-        // When the failed run spanned a host sleep, the pass says the tree is fine and the
-        // sleep is the story — not a flaky test (BUGS.md 2026-09-30): the digest clusters
-        // these warnings, and a sleep is weather, not an assertion to hunt.
-        if (unverifiedTreeOutcome(outcome)) {
-          warnEventBestEffort(root, role, sleptPhrase("gate check", outcome.run!.sleptMs!, "then passed on retry"));
-        } else {
-          const flaky = redCheckHeadline(check, outcome.outputTail);
-          warnEventBestEffort(root, role, `${FLAKY_WARNING_PREFIX}${flaky}`);
-          // Each test the failed run named failed and then passed on this same tree: quarantined.
-          quarantineTests(root, outcome.failingTests, outcome.outputTail);
-        }
-        outcome = retry.outcome;
-      } else if (retry?.outcome.status === "failed") {
-        outcome = retry.outcome;
-      }
-    }
-    if (outcome.status === "failed" && unverifiedTreeOutcome(outcome)) {
-      // The run spanned a host sleep past the tolerance and no clean attempt judged the tree
-      // (runScopedBuildCheck already retried once): nothing here is the change's failure, so
-      // the gate attributes nothing — it keeps the commit and reports the sleep, and the
-      // merge path keeps the pin for a re-merge (BUGS.md 2026-09-30).
-      const detail = sleptPhrase("gate check", outcome.run!.sleptMs!, UNVERIFIED_TREE);
-      warnEventBestEffort(root, role, `${detail}; keeping the commit for another merge attempt`);
-      return { resolved: { decision: "failed", detail, unverified: true } };
-    }
-    if (outcome.status === "failed") {
-      // A claimed failure the gate itself already recorded as flaky within the window (its own
-      // re-run passed on this exact headline) says nothing about this change: attribute nothing
-      // — keep the commit and the pin, count no strike — and name the flake, exactly as the
-      // host-sleep path above does. Before this, the repeat was attributed through main's
-      // per-SHA baseline cache (usually a green seeded by an earlier merge), so a load- or
-      // clock-sensitive test rejected whichever unrelated change hit it (BUGS.md 2026-10-06).
-      // The excuse is not a failure of the gate, so the change goes on to the model review
-      // instead of ending the merge attempt as review_error and paying a requeue. It carries no
-      // verifiedHead — the tree was not verified — so the merge
-      // path's own check still judges the tree before it reaches main.
-      const flaky = redCheckHeadline(check, outcome.outputTail);
-      // A failure that names only tests main already fails is main's, not this change's: it goes
-      // on to review with no fresh run on main. No verifiedHead — the tree did not pass, so the
-      // merge path must not seed a green for it — and the merge check judges it by the same rule.
-      const known = onlyKnownMainFailures(root, outcome.failingTests);
-      if (known) {
-        warnEventBestEffort(root, role, `gate check fails only main's known failures: ${known.join(", ")}`);
-        return { knownMainFailures: known };
-      }
-      // The headline excuse stays for a failure that names no test: quarantine covers named ones.
-      if (isKnownFlake(root, flaky)) {
-        warnEventBestEffort(root, role, `known-flaky failure, merge kept: ${flaky}`);
-        return {};
-      }
-      const reasons = checkFailureReasons(check, outcome);
-      // A failure that reproduced is attributed, never fixed here: the one merge slot the
-      // whole queue waits on is no place for a model run (the in-slot build-fix run this
-      // replaces held it for hours and never once led to a merge — PLANS.md "Land-queue
-      // speed 1/3"). The question is whose failure it is, and main's own verdict at its tip
-      // answers it at once, never by waiting on the main watch: named failures are re-run alone
-      // on main's tip when they can be (mainTipFailures), else main's full check runs fresh,
-      // bypassing the per-SHA cache, because a clock- or load-sensitive test can pass on an
-      // immutable SHA early and fail later, and a cached green — usually seeded by an earlier
-      // merge — rejected an unrelated change (BUGS.md 2026-10-06). A failure that names no test
-      // runs the gate command itself at main's tip (mainTipGateVerdict). A shutdown already under
-      // way skips the question and fails closed like any abort.
-      if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
-      const failed = { tests: namedFailures(outcome), files: outcome.failingTestFiles };
-      // A nameless failure (a compile or lint error, a crash) is decided by the gate command
-      // itself at main's tip. A named one is asked about by re-running only those tests there,
-      // and only falls back to main's full check when they cannot be re-run.
-      let main =
-        failed.tests.length === 0
-          ? await mainTipGateVerdict(root, role, mainBranch, config)
-          : await mainTipFailures(root, role, wt, mainBranch, config, failed);
-      // A red that names no test (main's check died before its tests ran, or its list may have
-      // been cut short) cannot be subtracted from the change's named failures: ask main's tip
-      // about just those tests instead.
-      if (main.status === "red" && namedFailures(main).length === 0 && failed.tests.length > 0) {
-        main = (await rerunAtMainTip(root, role, wt, mainBranch, config, failed)) ?? main;
-      }
-      // A check killed by that shutdown reads as a skip, never as evidence against the author.
-      if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
-      if (failed.tests.length === 0) {
-        // The gate command ran at main's tip. Green there convicts the change; red there makes
-        // the failure main's, whatever test names either side did or did not print; an
-        // unavailable verdict cannot attribute it, so the author's failure is the safe default.
-        if (main.status === "green") return { resolved: await reject(reasons) };
-        if (main.status === "red") {
-          warnEventBestEffort(
-            root,
-            role,
-            `gate check fails on main ${shortSha(main.sha)} too, with no test named; going on to review`,
-          );
-          return {};
-        }
-        return {
-          resolved: await reject([
-            ...reasons,
-            `main's baseline was unavailable (${main.why}), so the failure is attributed to this change`,
-          ]),
-        };
-      }
-      // Main is red too: it excuses only its own failures. A change that fails nothing main does
-      // not goes on to review exactly as a known failure does; one that fails more is judged
-      // like a change on a green main, so a red main never holds back a change for a failure of
-      // the change's own — main is healed in parallel by ci (main-red.ts's heal hand-offs).
-      const red = main.status === "red" ? attributeOnRedMain(root, failed.tests, namedFailures(main)) : null;
-      if (main.status === "red" && red?.kind === "main") {
-        warnEventBestEffort(
-          root,
-          role,
-          `gate check fails only tests main ${shortSha(main.sha)} fails too: ${failed.tests.join(", ")}; going on to review`,
-        );
-        return { knownMainFailures: [...failed.tests] };
-      }
-      const own = red?.kind === "own" ? red.tests : outcome.failingTests;
-      if (main.status === "green" || main.status === "red") {
-        const stale = await staleBaseFailures(wt, mainBranch, head, main.sha, own);
-        if (stale) {
-          // Same hand-off as the known-failure branch: no verifiedHead, so the merge check on the
-          // rebased tree still judges it.
-          warnEventBestEffort(
-            root,
-            role,
-            `gate check fails only tests its base ${shortSha(stale.base)} already failed, and main ${shortSha(main.sha)} is ${main.status}: ${stale.tests.join(", ")}; going on to review`,
-          );
-          return { knownMainFailures: main.status === "red" ? [...failed.tests] : stale.tests };
-        }
-      }
-      // Main green, or red with fewer failures: the change broke the check — rejected
-      // deterministically through the shared reject path, no pi run consumed, reasons injected
-      // into the author's next run. With no verdict for main the author's failure is still the
-      // safe default, and the reasons say the attribution could not be made.
-      return {
-        resolved: await reject(
-          main.status === "green"
-            ? reasons
-            : main.status === "red"
-              ? [...reasons, mainRedNotTheseFailures(main.sha, own ?? [])]
-              : [...reasons, `main's baseline was unavailable (${main.why}), so the failure is attributed to this change`],
-        ),
-      };
-    }
-    if (outcome.status === "passed") {
-      // Passed: this exact tree just went green under the project's own declared check. Hand
-      // the verdict to the merge path via verifiedHead — it seeds the red-main baseline with
-      // the SHA that actually becomes main (the rebased head, which may differ from `head`),
-      // so every role's next fresh run is a cache hit instead of one redundant full-suite
-      // re-run on an already-verified tree.
-      return { verifiedHead: head };
-    }
+  const { check, outcome } = preCheck;
+  const settled = await retriedGateOutcome(root, role, check, outcome, runGateCheck);
+  // A failed run that spanned a host sleep past the tolerance leaves the tree unverified: the
+  // gate attributes nothing and keeps the commit for a re-merge.
+  const sleep = unverifiedSleepResult(root, role, settled);
+  if (sleep) return sleep;
+  if (settled.status === "passed") {
+    // Passed: this exact tree just went green under the project's own declared check. Hand
+    // the verdict to the merge path via verifiedHead — it seeds the red-main baseline with
+    // the SHA that actually becomes main (the rebased head, which may differ from `head`),
+    // so every role's next fresh run is a cache hit instead of one redundant full-suite
+    // re-run on an already-verified tree.
+    return { verifiedHead: head };
   }
-  return {};
+  // A check the harness skipped for a reason other than the verify's abort (a killed run) is
+  // not the tree's verdict either: it falls through to the same "no verdict" return.
+  if (settled.status !== "failed") return {};
+  // A failed check the gate already knows is not the change's — main's known failures or a
+  // recorded flake — goes on to review without a fresh run on main.
+  const known = knownFailureResult(root, role, check, settled);
+  if (known) return known;
+  const reasons = checkFailureReasons(check, settled);
+  // A failure that reproduced is attributed, never fixed here: the one merge slot the whole
+  // queue waits on is no place for a model run (the in-slot build-fix run this replaces held
+  // it for hours and never once led to a merge — PLANS.md "Land-queue speed 1/3"). The
+  // question is whose failure it is, and main's own verdict at its tip answers it at once,
+  // never by waiting on the main watch. A shutdown already under way skips the question and
+  // fails closed like any abort.
+  if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
+  const failed = { tests: namedFailures(settled), files: settled.failingTestFiles };
+  const main = await mainVerdictForFailure(ctx, failed);
+  // A check killed by that shutdown reads as a skip, never as evidence against the author.
+  if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
+  // The nameless failure is the gate command's verdict at main's tip; the named one is judged
+  // against main's own failures there.
+  if (failed.tests.length === 0) {
+    return namelessFailureResult(root, role, main, reasons, reject);
+  }
+  return namedFailureResult(ctx, head, failed, settled, main, reasons, reject);
 }
