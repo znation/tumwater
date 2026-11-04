@@ -388,8 +388,8 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   (`prompt.ts`, `prompt-followup.ts`, `gate-prompts.ts`, `gate-notes.ts`) a run's prefill is assembled from.
 - `src/roles/`: the role catalog, its role ids, per-role guidance, the per-role views the
   CLI and dashboards read, and the shared role-notes write path (`role-notes-write.ts` —
-  the 4 KB cap, validation, and atomic write every operator surface and the run prompt
-  share).
+  the 4 KB cap, validation, and atomic write every operator surface shares; the run
+  prompt reads the same cap).
 - `src/observer/`: the per-observer-role runtime ledgers — the gitignored state each
   fresh-session observer keeps in `.tumwater/state/` so it is not re-derived every run —
   `ci-parity.ts` (which main tip and lock hash `ci` last verified), `qa-coverage.ts` (which
