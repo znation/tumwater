@@ -6,30 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Hourly full check, part 2a/4: Every full verdict records when it was checked, persisted so an hourly cadence can survive a restart (planned 2026-11-03 by the plan role, splitting the 2026-11-01 part 2/4 after feature held it too large for one run; behavior-preserving groundwork for part 2b/4, independent in files of it — this part touches no config or watch scheduling — and of every `## Planned` entry; touches src/baseline/main-baseline.ts test/main-baseline-persist.test.ts)
-
-**Goal.** A verdict a full check actually produced records when it was produced (`checkedAt`, epoch ms), and that time survives `persistBaselineVerdicts` and `baseline-verdicts.json`. An hourly cadence (part 2b/4) can then tell how old the newest full verdict is after a restart. Run counts do not change: the watch still runs the full check on each new code head.
-
-**Approach.**
-- Add `checkedAt?: number` to `MainBaseline` (src/baseline/main-baseline.ts). Stamp it with `Date.now()` in `baselineFromOutcome`, which every full run's fresh green or red is built from.
-- `settleRedByRerun` is not a full run: carry the prior red's `checkedAt` through both the narrowed red and the green a rerun promotes, so a confirmation never extends the hour.
-- Do not stamp `noteInheritedGreen`/`inheritedGreen` or the merge-seeded `noteGreenBaseline`: those are green facts about a tree no full check ran on, and part 2b/4's due rule must ignore them.
-- Mirror the field in `saveGreens` for both greens and reds, and read it back in `restoreGreenVerdict`/`restoreRedVerdict`. A saved entry without the field loads with it absent (an older file, and a verdict from before this part), not as 0.
-- Keep `checkMainBaseline`'s signature unchanged: the stamp is unconditional on an observed verdict, so no caller grows a parameter.
-
-**Files touched.** src/baseline/main-baseline.ts test/main-baseline-persist.test.ts
-
-**Acceptance criteria.**
-- After the watch runs a check and records a green or a red, both the cached entry for that SHA and the saved `baseline-verdicts.json` entry carry the same `checkedAt` epoch-ms value.
-- `persistBaselineVerdicts` on a file whose entries lack `checkedAt` loads them without error and without inventing a timestamp.
-- Entries written by `noteInheritedGreen` and `noteGreenBaseline` still carry no `checkedAt`.
-- The existing main-watch run counts are unchanged: every new code head still runs the check once.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/main-baseline-persist.test.ts: a fresh observed green and a fresh red each save `checkedAt`, and a reload keeps it; a hand-written file without `checkedAt` loads with the field absent; an inherited green saves without it.
-- Run that file and test/main-watch.test.ts, then the project's gate.
-
 ### Hourly full check, part 2b/4: The watch runs the full check at most once per `check.fullIntervalMinutes` on main's latest tip, and still runs the diff rules on every new head (planned 2026-11-03 by the plan role, splitting the 2026-11-01 part 2/4 after feature held it too large for one run; requires Hourly full check part 2a/4 landed, so the newest full verdict carries its `checkedAt`; the mirror/concurrency move is part 2c/4, not this entry; touches src/baseline/main-watch.ts src/config/config-schema.ts src/config/config-validation.ts docs/config.md docs/how-it-works.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts test/main-watch-rules.test.ts test/config-validation-check.test.ts)
 
 **Goal.** Each change is still checked once before landing by the gate's build check. The full check on main runs at most once per `check.fullIntervalMinutes` (default 60), only when main has a first-parent code commit the newest full verdict does not cover. Every new head still gets the diff rules, which judge each head and never wait for a full run in this part.

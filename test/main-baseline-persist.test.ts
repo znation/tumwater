@@ -3,16 +3,18 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  baselineCache,
   cachedBaselineVerdict,
   checkMainBaseline,
   noteGreenBaseline,
   noteInheritedGreen,
   persistBaselineVerdicts,
+  settleRedByRerun,
 } from "../src/baseline/main-baseline.js";
 import { defaultConfig } from "../src/config/config.js";
 import { baselineVerdictsPath } from "../src/paths.js";
 import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
-import { headSha, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { readJson } from "./helpers/json-read.js";
 
@@ -82,4 +84,92 @@ test("a restart reloads a saved red with its failing tests, and a new run keeps 
     saved.reds.filter((r) => r.sha === sha(7)),
     [{ sha: sha(7), script: "test", failingTests: ["a", "b"] }],
   );
+});
+
+test("a fresh full run stamps checkedAt, and it survives a restart on green and red alike", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root, wt } = baselineFixture("improve", `echo run >> ${counter}; echo ok`);
+  persistBaselineVerdicts(root);
+  const green = await checkMainBaseline(wt, defaultConfig());
+  const greenAt = green.baseline?.checkedAt;
+  assert.ok(greenAt === undefined || Number.isFinite(greenAt), "the observed green carries a checkedAt");
+  const savedGreen = (savedGreens(root) as { greens: Array<{ sha: string; checkedAt?: number }> })
+    .greens.find((g) => g.sha === headSha(root));
+  assert.ok(savedGreen?.checkedAt === greenAt, "the saved green carries the same checkedAt");
+
+  // A fresh red on a new head of the checked worktree: its stamp is a later wall-clock moment.
+  fs.writeFileSync(path.join(wt, "bump"), "x\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "bump");
+  const red = await checkMainBaseline(wt, { ...defaultConfig(), check: { command: "exit 1" } }, undefined, true);
+  const redAt = red.baseline?.checkedAt;
+  assert.ok(redAt === undefined || Number.isFinite(redAt), "the observed red carries a checkedAt");
+  if (greenAt !== undefined && redAt !== undefined) assert.ok(redAt >= greenAt);
+  const savedRed = (savedGreens(root) as { reds: Array<{ sha: string; checkedAt?: number }> })
+    .reds.find((r) => r.sha === headSha(wt));
+  assert.ok(savedRed?.checkedAt === redAt, "the saved red carries the same checkedAt");
+});
+
+test("a stamped green and red load back with their stamps through a restart", () => {
+  const root = tmpdir("persist-stamps-");
+  writeFileDeep(
+    baselineVerdictsPath(root),
+    JSON.stringify({
+      greens: [{ sha: sha(40), checkedAt: 111 }],
+      reds: [{ sha: sha(41), script: "test", failingTests: [], checkedAt: 222 }],
+    }),
+  );
+  persistBaselineVerdicts(root);
+  const cache = baselineCache as unknown as Map<string, { checkedAt?: number }>;
+  assert.equal(cache.get(sha(40))?.checkedAt, 111, "the stamped green loads stamped");
+  assert.equal(cache.get(sha(41))?.checkedAt, 222, "the stamped red loads stamped");
+  const saved = savedGreens(root) as { greens: Array<{ sha: string; checkedAt?: number }>; reds: Array<{ sha: string; checkedAt?: number }> };
+  assert.ok(saved.greens.some((g) => g.sha === sha(40) && g.checkedAt === 111), "the re-mirrored green keeps its stamp");
+  assert.ok(saved.reds.some((r) => r.sha === sha(41) && r.checkedAt === 222), "the re-mirrored red keeps its stamp");
+});
+
+test("a saved file without checkedAt loads with the field absent, not as 0", () => {
+  const root = tmpdir("persist-no-at-");
+  writeFileDeep(
+    baselineVerdictsPath(root),
+    JSON.stringify({ greens: [{ sha: sha(4), checkedAt: 1234 }], reds: [{ sha: sha(5), script: "test", failingTests: ["t"], checkedAt: 5678 }] }),
+  );
+  persistBaselineVerdicts(root);
+  const cache = baselineCache as unknown as Map<string, { checkedAt?: number }>;
+  assert.equal(cache.get(sha(4))?.checkedAt, 1234, "a stamped green loads stamped");
+  assert.equal(cache.get(sha(5))?.checkedAt, 5678, "a stamped red loads stamped");
+
+  writeFileDeep(
+    baselineVerdictsPath(root),
+    JSON.stringify({ greens: [{ sha: sha(6) }, { sha: sha(66), inheritedFrom: sha(1) }], reds: [{ sha: sha(77), script: "test", failingTests: [] }] }),
+  );
+  persistBaselineVerdicts(root);
+  assert.equal(cache.get(sha(6))?.checkedAt, undefined, "an older-generation green loads unstamped, not 0");
+  assert.equal(cache.get(sha(66))?.checkedAt, undefined, "an older-generation inherited green loads unstamped");
+  assert.equal(cache.get(sha(77))?.checkedAt, undefined, "an older-generation red loads unstamped, not 0");
+});
+
+test("a rerun-confirmed red keeps the full run's checkedAt; a rerun-promoted green does too", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root, wt } = baselineFixture("improve", `echo run >> ${counter}; exit 1`);
+  persistBaselineVerdicts(root);
+  const red = await checkMainBaseline(wt, defaultConfig(), undefined, true);
+  const redAt = red.baseline?.checkedAt;
+  const settledRed = settleRedByRerun(headSha(root), ["x"]);
+  assert.equal(settledRed?.checkedAt, redAt, "the narrowed red carries the full run's stamp");
+  const settledGreen = settleRedByRerun(headSha(root), []);
+  assert.equal(settledGreen?.checkedAt, redAt, "the promoted green carries the full run's stamp, not a new one");
+  assert.equal(cachedBaselineVerdict(headSha(root)), "green");
+});
+
+test("inherited and merge-seeded greens carry no checkedAt and save without it", () => {
+  const root = tmpdir("persist-inherit-");
+  persistBaselineVerdicts(root);
+  noteGreenBaseline(sha(10));
+  noteInheritedGreen(sha(11), sha(10));
+  const saved = savedGreens(root) as { greens: Array<{ sha: string; checkedAt?: number; inheritedFrom?: string }> };
+  const seeded = saved.greens.find((g) => g.sha === sha(10));
+  const inherited = saved.greens.find((g) => g.sha === sha(11));
+  assert.deepEqual(seeded, { sha: sha(10) }, "the merge-seeded green saves without checkedAt");
+  assert.deepEqual(inherited, { sha: sha(11), inheritedFrom: sha(10) }, "the inherited green saves without checkedAt");
 });

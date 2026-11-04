@@ -43,6 +43,12 @@ interface MainBaseline {
   status: "green" | "red";
   /** The main HEAD this verdict covers. */
   sha: string;
+  /** Set when a full check actually RAN and produced this verdict: the epoch-ms wall clock it
+   * completed at. An hourly cadence reads it to tell how old main's newest full verdict is across
+   * a restart. Absent on a verdict no full check produced — an inherited green, a merge-seeded
+   * green, and a verdict a previous generation saved before it carried this field — so its
+   * absence, not 0, is the "never checked" signal. */
+  checkedAt?: number;
   /** Red only: the script that failed. */
   script?: string;
   /** Red only: clipped failure tail (clipBuildTail) — failureHeadline
@@ -158,11 +164,20 @@ function saveGreens(): void {
   if (greensFile === undefined) return;
   const greens = [...baselineCache.values()]
     .filter((b) => b.status === "green")
-    .map((b) => (b.inheritedFrom === undefined ? { sha: b.sha } : { sha: b.sha, inheritedFrom: b.inheritedFrom }));
+    .map((b) => ({
+      sha: b.sha,
+      ...(b.inheritedFrom !== undefined ? { inheritedFrom: b.inheritedFrom } : {}),
+      ...(b.checkedAt !== undefined ? { checkedAt: b.checkedAt } : {}),
+    }));
   const reds = [...baselineCache.values()]
     .filter((b) => b.status === "red")
     .slice(-SAVED_REDS_MAX)
-    .map((b) => ({ sha: b.sha, script: b.script, failingTests: b.failingTests ?? [] }));
+    .map((b) => ({
+      sha: b.sha,
+      script: b.script,
+      failingTests: b.failingTests ?? [],
+      ...(b.checkedAt !== undefined ? { checkedAt: b.checkedAt } : {}),
+    }));
   try {
     writeJsonAtomic(greensFile, { greens, reds });
   } catch {
@@ -203,7 +218,8 @@ function restoreGreenVerdict(entry: unknown): void {
   const parsed = storedVerdictEntry(entry);
   if (parsed === null || baselineCache.has(parsed.sha)) return;
   const from = typeof parsed.inheritedFrom === "string" ? { inheritedFrom: parsed.inheritedFrom } : {};
-  rememberBaseline(parsed.sha, { status: "green", sha: parsed.sha, ...from });
+  const checkedAt = typeof parsed.checkedAt === "number" ? { checkedAt: parsed.checkedAt } : {};
+  rememberBaseline(parsed.sha, { status: "green", sha: parsed.sha, ...from, ...checkedAt });
 }
 
 /** Restore one saved red: optional `script` and failing tests, unless the cache holds it. */
@@ -214,7 +230,8 @@ function restoreRedVerdict(entry: unknown): void {
     ? parsed.failingTests.filter((t): t is string => typeof t === "string")
     : [];
   const script = typeof parsed.script === "string" ? { script: parsed.script } : {};
-  rememberBaseline(parsed.sha, { status: "red", sha: parsed.sha, ...script, failingTests });
+  const checkedAt = typeof parsed.checkedAt === "number" ? { checkedAt: parsed.checkedAt } : {};
+  rememberBaseline(parsed.sha, { status: "red", sha: parsed.sha, ...script, ...checkedAt, failingTests });
 }
 
 /** In-flight dedup: concurrent runs on the same not-yet-cached SHA (a fresh main move wakes
@@ -268,7 +285,11 @@ export function noteGreenBaseline(sha: string): void {
 export function settleRedByRerun(sha: string, failing: readonly string[]): MainBaseline | null {
   const red = baselineCache.get(sha);
   if (red?.status !== "red") return null;
-  const settled: MainBaseline = failing.length === 0 ? { status: "green", sha } : { ...red, failingTests: [...failing] };
+  // A re-run confirms the red, it is not a fresh full run: carry the prior red's checkedAt through
+  // both outcomes, so a confirmation never extends the hour an hourly cadence measures from.
+  const settled: MainBaseline = failing.length === 0
+    ? { status: "green", sha, ...(red.checkedAt !== undefined ? { checkedAt: red.checkedAt } : {}) }
+    : { ...red, failingTests: [...failing] };
   rememberBaseline(sha, settled);
   return settled;
 }
@@ -518,11 +539,13 @@ async function detectedBaselineOutcome(
 function baselineFromOutcome(sha: string, wt: string, outcome: BuildCheckOutcome): MainBaseline {
   const prior = baselineCache.get(sha);
   const priorRedFrom = prior?.status === "red" ? (prior.redFrom ?? []) : [];
+  const checkedAt = Date.now(); // a full check just ran on this tree: stamp when it finished
   return outcome.status === "passed"
-    ? { status: "green", sha }
+    ? { status: "green", sha, checkedAt }
     : {
         status: "red",
         sha,
+        checkedAt,
         script: outcome.script,
         outputTail: outcome.outputTail,
         failingTests: outcome.failingTests ?? [],

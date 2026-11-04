@@ -36,10 +36,15 @@ test("a red tip with no re-run command is re-run once in full, then logged faile
   assert.equal(checks[0]?.status, "failed");
   assert.deepEqual(checks[0]?.failingTests, ["first", "second", "third"]);
   assert.equal(runsOf(counter), 2, "the red was confirmed by one more run");
-  const saved = readJson(baselineVerdictsPath(root)) as { reds: unknown[] };
-  assert.deepEqual(saved.reds, [
+  const saved = readJson(baselineVerdictsPath(root)) as { reds: Array<{ sha: string; script: string; failingTests: string[]; checkedAt?: number }> };
+  // A full-run red stamps when the full check produced it (checkedAt), so the persisted shape
+  // carries it — the hourly cadence (part 2b/4) reads it to tell the verdict's age after a restart.
+  assert.equal(saved.reds.length, 1);
+  assert.ok(Number.isFinite(saved.reds[0]?.checkedAt), "the persisted red carries the full run's checkedAt");
+  assert.deepEqual(
+    { sha: saved.reds[0]?.sha, script: saved.reds[0]?.script, failingTests: saved.reds[0]?.failingTests },
     { sha: headSha(root), script: "test", failingTests: ["first", "second", "third"] },
-  ]);
+  );
 });
 
 /** A config whose re-run command is `script`: the watch confirms a red with it, appending one

@@ -5,6 +5,30 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Hourly full check, part 2a/4: Every full verdict records when it was checked, persisted so an hourly cadence can survive a restart (planned 2026-11-03 by the plan role, splitting the 2026-11-01 part 2/4 after feature held it too large for one run; behavior-preserving groundwork for part 2b/4, independent in files of it — this part touches no config or watch scheduling — and of every `## Planned` entry; touches src/baseline/main-baseline.ts test/main-baseline-persist.test.ts) — done 2026-11-03 by the feature role
+
+**Goal.** A verdict a full check actually produced records when it was produced (`checkedAt`, epoch ms), and that time survives `persistBaselineVerdicts` and `baseline-verdicts.json`. An hourly cadence (part 2b/4) can then tell how old the newest full verdict is after a restart. Run counts do not change: the watch still runs the full check on each new code head.
+
+**Approach.**
+- Add `checkedAt?: number` to `MainBaseline` (src/baseline/main-baseline.ts). Stamp it with `Date.now()` in `baselineFromOutcome`, which every full run's fresh green or red is built from.
+- `settleRedByRerun` is not a full run: carry the prior red's `checkedAt` through both the narrowed red and the green a rerun promotes, so a confirmation never extends the hour.
+- Do not stamp `noteInheritedGreen`/`inheritedGreen` or the merge-seeded `noteGreenBaseline`: those are green facts about a tree no full check ran on, and part 2b/4's due rule must ignore them.
+- Mirror the field in `saveGreens` for both greens and reds, and read it back in `restoreGreenVerdict`/`restoreRedVerdict`. A saved entry without the field loads with it absent (an older file, and a verdict from before this part), not as 0.
+- Keep `checkMainBaseline`'s signature unchanged: the stamp is unconditional on an observed verdict, so no caller grows a parameter.
+
+**Files touched.** src/baseline/main-baseline.ts test/main-baseline-persist.test.ts (test/main-watch-failures.test.ts's pinned saved-red shape also gains the field, since a full-run red now persists its stamp)
+
+**Acceptance criteria.**
+- After the watch runs a check and records a green or a red, both the cached entry for that SHA and the saved `baseline-verdicts.json` entry carry the same `checkedAt` epoch-ms value.
+- `persistBaselineVerdicts` on a file whose entries lack `checkedAt` loads them without error and without inventing a timestamp.
+- Entries written by `noteInheritedGreen` and `noteGreenBaseline` still carry no `checkedAt`.
+- The existing main-watch run counts are unchanged: every new code head still runs the check once.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/main-baseline-persist.test.ts: a fresh observed green and a fresh red each save `checkedAt`, and a reload keeps it; a hand-written file without `checkedAt` loads with the field absent; an inherited green saves without it.
+- Run that file and test/main-watch.test.ts, then the project's gate.
+
 ### `tumwater questions` gains `-f/--follow` on both list forms, repainting the open or answered outbox until Ctrl+C or its parent exits, so an operator watching QUESTIONS.md sees a question appear or an answer land without rerunning the command (planned 2026-11-03 by the plan role; continues the landed follow-view family — `status`, `report`, `logs`, `history`, `queue`, `reviews`, `quarantine`, `backlog` and `diff` all follow through `followView` in src/cli/follow-view.ts, and `questions` is the remaining list command with no live form; independent in file of every `## Planned` entry — before this entry, `awk '/^## Planned/,/^## Done/' PLANS.md | grep -c 'cli-question-commands'` and the same for `questions --follow` both print 0, and no waiting heading or touches list names src/cli/cli-question-commands.ts or the `cmdQuestions` body (the in-flight splits take src/review/review-precheck.ts, src/agent/agent-run.ts, src/stage, src/orchestrator and test/report-data.ts plus test/status-model.test.ts; the blocked `Hourly full check`, `Subtract` and `Every commit is verified on main` parts name src/merge, src/runner, src/status, src/doctor, src/config, src/baseline, src/review, src/run, src/ui, src/gui, src/roles and src/orchestrator modules, never this command); PLANS-DONE.md records the `backlog -f`, `reviews -f` and `quarantine -f` additions but `grep -cE '^###.*questions.*follow|^###.*follow.*questions' PLANS-DONE.md` prints 0; docs/invariants.md names no symbol of the command (`grep -c 'cmdQuestions' docs/invariants.md` prints 0), so its bindings stay unchanged; the blocked `Subtract` parts share docs/cli.md and src/cli/help.ts in different rows and lines, so whichever lands second rebases there; touches src/cli/cli-question-commands.ts src/cli/help.ts docs/cli.md test/cli-questions-follow.test.ts test/cli-questions-strictness.test.ts) — done 2026-11-03 by the feature role
 
 **Goal.** `tumwater questions` prints the open outbox once, and `tumwater questions --answered` prints the newest answers once. Both are the human-decision surface: an operator asks a question in the dashboards and later reruns the CLI to see whether a role answered, while every other read-only command (`status`, `report`, `logs`, `history`, `queue`, `reviews`, `quarantine`, `backlog`, `diff`) has a `-f/--follow` live form. Add the same follow to both question list forms, reusing `followView`, so an answer landing in QUESTIONS.md or a new question arriving appears in the next frame; leave the one-shot text and JSON output, `--grep`, `--show` and `questions answer` unchanged.
