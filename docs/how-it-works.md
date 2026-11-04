@@ -79,18 +79,19 @@ and one serial merge step merges them, so other roles keep running while a chang
 - **Check.** The project's declared check runs: `check.command` in tumwater.json, else
   `npm test`, else typecheck/build. A failure is re-run once; one that then passes is warned
   as a flake and proceeds; the bugfix run's prompt lists the checks excused as flakes in the last
-  24 h, with their counts. A repeated failure is attributed at main's tip at once, never by
-  waiting on the main watch: a check that names tests re-runs just those there when they can be
-  re-run alone, else main's whole check runs fresh; a check that names no test (a compile or lint
-  error, a crash) runs the gate command at main's tip. With named failures, a tip that reproduces
-  them makes them main's and the change goes on; one that passes them, or fails only other tests,
-  leaves them the change's, so the change is rejected as on a green main (unless its own old base
-  already failed them and main has since fixed them). A nameless failure is
-  main's when the gate command fails at the tip too, and the change's when it passes there. An
-  unavailable tip rejects, with the reason attribution could not be made. Optionally, `check.gateCommand` names a cheaper check (say, only the
-  tests a diff touches) that this per-change step runs instead. It is off by default; tumwater's
-  own team sets it to `npm run test:gate`. `check.timeoutSeconds` (default 300) bounds every
-  check, the detected `npm test` included.
+  24 h, with their counts. A repeated failure not already known as main's or a recorded flake
+  is attributed at main's tip at once, never by waiting on the main watch: a check that names
+  tests re-runs just those there when they can be re-run alone, else main's whole check runs
+  fresh; a check that names no test (a compile or lint error, a crash) runs the gate command at
+  main's tip. With named failures, a tip that reproduces them makes them main's and the change
+  goes on; one that passes them, or fails only other tests, leaves them the change's, so the
+  change is rejected as on a green main (unless its own old base already failed them and main has
+  since fixed them). A nameless failure is main's when the gate command fails at the tip too, and
+  the change's when it passes there. An unavailable tip rejects, with the reason attribution could
+  not be made. Optionally, `check.gateCommand` names a cheaper check (say, only the tests a diff
+  touches) that this per-change step runs instead. It is off by default; tumwater's own team sets
+  it to `npm run test:gate`. `check.timeoutSeconds` (default 300) bounds every check, the detected
+  `npm test` included.
 
   The per-change verify gate is the only check a merge depends on: since part 4l/3 the merge
   itself runs no in-lock build re-check (a merge is a rebase and a fast-forward — see below).
