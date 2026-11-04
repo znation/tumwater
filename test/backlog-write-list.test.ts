@@ -155,6 +155,46 @@ test("plan/bug --list --json carries positions, verbatim bodies, and holds", asy
   assert.equal(bugs.entries[1]!.hold, null);
 });
 
+test("plan --list --json keeps DEL/C1 bytes that the prose list strips", async () => {
+  const repo = makeRepo();
+  // DEL and a C1 control are legal JSON string bytes but terminal controls: the prose list
+  // sanitizes them at say(), while --json is a data surface that must stay byte-exact.
+  const controls = "\u007f\u0085";
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    [
+      "# Plans",
+      "",
+      "## Planned",
+      "",
+      "### Active plan (planned 2026-10-01)",
+      "",
+      `active body ${controls} tail`,
+      "",
+      "## Done",
+      "",
+      "### Done plan (done 2026-10-02)",
+      "",
+      `done body ${controls} tail`,
+      "",
+    ].join("\n"),
+  );
+  const activeProse = await cli(repo, "plan", "--list");
+  assert.equal(activeProse.code, 0);
+  assert.ok(!activeProse.stdout.includes(controls), "prose strips the control characters");
+  const activeJson = await cli(repo, "plan", "--list", "--json");
+  assert.equal(activeJson.code, 0);
+  assert.ok(activeJson.stdout.includes(controls), "the JSON document keeps the raw bytes");
+  assert.equal((JSON.parse(activeJson.stdout) as { entries: { body: string }[] }).entries[0]!.body, `active body ${controls} tail`);
+  const doneProse = await cli(repo, "plan", "--list", "--done");
+  assert.equal(doneProse.code, 0);
+  assert.ok(!doneProse.stdout.includes(controls), "the done prose strips the control characters");
+  const doneJson = await cli(repo, "plan", "--list", "--done", "--json");
+  assert.equal(doneJson.code, 0);
+  assert.ok(doneJson.stdout.includes(controls), "the done JSON document keeps the raw bytes");
+  assert.equal((JSON.parse(doneJson.stdout) as { entries: { body: string }[] }).entries[0]!.body, `done body ${controls} tail`);
+});
+
 test("a --list position is the entry --cancel and --edit act on", async () => {
   const repo = makeRepo();
   await initProject(repo, "list position cancel edit");
