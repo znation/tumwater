@@ -346,7 +346,7 @@ test("renderStatus never reads waiting: budget spent while the cap is disabled, 
   assert.match(headerOf(out), /· budget: \$999\.00 today · no cap$/);
 });
 
-test("renderStatus shows paused in idle roles' state cells ahead of waiting: budget spent and main red", () => {
+test("renderStatus shows paused in idle roles' state cells ahead of waiting: budget spent", () => {
   const root = tmpdir();
   // No pause: ordinary labels.
   const unpaused = renderStatus(

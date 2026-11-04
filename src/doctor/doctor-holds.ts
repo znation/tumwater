@@ -235,6 +235,6 @@ export function checkMainRed(
   if (config === undefined) return uncheckedConfigOutcome();
   const events = readEventsSince(root, DAY_MS).events;
   const red = redMainWarning(events, now);
-  if (red === null) return okOutcome("no role waiting on main's check");
+  if (red === null) return okOutcome("no red spell on main over 30 minutes");
   return warnOutcome(red);
 }

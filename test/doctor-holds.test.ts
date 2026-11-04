@@ -276,10 +276,10 @@ test("checkMainRed: unreadable config is not checked", () => {
 });
 
 test("checkMainRed: no red spell is ok", () => {
-  assert.deepEqual(checkMainRed(tmpdir("tw-mainred-"), bcfg({})), { level: "ok", detail: "no role waiting on main's check" });
+  assert.deepEqual(checkMainRed(tmpdir("tw-mainred-"), bcfg({})), { level: "ok", detail: "no red spell on main over 30 minutes" });
 });
 
-test("checkMainRed: a 31-min red with no role held warns (the G1 guardrail)", () => {
+test("checkMainRed: a 31-min red warns (the G1 guardrail)", () => {
   const root = tmpdir("tw-mainred-");
   const now = Date.now();
   writeEvents(root, [
