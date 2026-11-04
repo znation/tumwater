@@ -335,7 +335,12 @@ function scanPromptFlags(args: string[]): PromptScan {
   // single pair, so the pairs ride out of the prompt text in every mode.
   const attachFlags = args.flatMap((a, i) => (a === "--attach" ? [i] : []));
   const roleFlag = args.indexOf("--role");
-  const known = PROMPT_FLAG_SPECS.flatMap((s) => s.names).filter((f) => f !== "--attach"); // repeatable: the once-check skips it
+  // --attach is repeatable, so the once-check skips it. Follow is checked by parsePromptFollow
+  // instead of the raw occurrence count here: a `-f` in a valued flag's slot is that flag's
+  // value, so only an unconsumed follow token is a repeat.
+  const known = PROMPT_FLAG_SPECS.flatMap((s) => s.names).filter(
+    (f) => f !== "--attach" && !FOLLOW_FLAG.names.includes(f),
+  );
   rejectDuplicateFlags(args, known);
   return { jsonFlags, listFlag, cancelFlag, editFlag, topFlag, fileFlag, atFlag, grepFlag, attachFlags, roleFlag, followFlags };
 }
@@ -401,6 +406,9 @@ function parsePromptFollow(args: string[], scan: PromptScan): { followClaim: num
   }
   const followClaim = scan.followFlags.filter((i) => !valueSlots.has(i));
   if (scan.listFlag < 0 && args.includes("--follow")) fail("--follow only applies to --list");
+  // Outside --list the -f spelling is free-form prompt content, so repeats are text; only a
+  // list-mode occurrence is the flag and subject to the shared once-check.
+  rejectRepeatFlag(scan.listFlag >= 0 && followClaim.length > 1, "-f/--follow");
   return { followClaim };
 }
 

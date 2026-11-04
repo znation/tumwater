@@ -249,6 +249,16 @@ test("parsePromptArgs --list: -f in --grep's value slot is the pattern, not the 
     grep: "-f",
     follow: true,
   });
+  // The short spelling works too: the grep value does not count as a repeated follow flag.
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--list", "-f", "--grep", "-f"])), {
+    mode: "list",
+    role: null,
+    json: false,
+    grep: "-f",
+    follow: true,
+  });
+  // Two unconsumed follow tokens are still a repeat.
+  assert.match(expectFail(() => parsePromptArgs(["--list", "-f", "--follow"])).stderr, /-f\/--follow may only be given once/);
 });
 
 test("parsePromptArgs --cancel: position validation and exclusivity", () => {
