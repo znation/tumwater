@@ -664,25 +664,6 @@ _None yet._
 
 **Tests.** Delete test/merge-drain-verify.test.ts. Update test/merge-pipeline.test.ts, test/merge-pipeline-2.test.ts, test/merge-pipeline-seams.test.ts, test/merge-requeue.test.ts, test/merge-slot.test.ts and test/merge-queue.test.ts to the surviving pipeline shape; update both fixtures. Run those files and the gate.
 
-### Subtract verify collapse, part 5/5: The live docs and invariant bindings describe the one-task merge queue, not a verify stage (planned 2026-11-03 by the plan role, splitting the 2026-10-31 `Subtract part 3c/7` after feature held it too large for one run; requires Subtract verify collapse part 4/5 landed; the broad Subtract part 3g/7 sweep still follows this series; touches docs/how-it-works.md docs/invariants.md test/invariants-doc.test.ts)
-
-**Goal.** A reader of the live docs sees the merge the code now runs: one task per poll takes the queue head, gates it (the deterministic diff rules and the declared gate command), and merges it by rebase and fast-forward under the merge lock. No prose or binding names a verify stage, `merge-verify`, `merge-batch`, an approved-and-waiting change or a parallel approval.
-
-**Approach.**
-- docs/how-it-works.md: replace the Parallel approval and Merge sections with the one-task drain; keep the facts the series did not change — one merge writer, one lock, linear history, the pre-merge gate keeping its build check, and the main watch's post-landing checks (do not restate a full check per commit).
-- docs/invariants.md: re-point every merge-gate binding that names `merge-verify.ts` or `merge-batch.ts` at `src/merge/merge-core.ts` (`reviewQueuedChange`) and the drain; keep `checkWaitStage`/`build-check` bindings, since the gate still waits for its check permit. Drop any guarantee that only the verify stage could keep.
-- Leave docs/cli.md, docs/glossary.md and README.md to the broad Subtract part 3g/7 sweep; this part changes only the merge-gate prose and bindings.
-
-**Files touched.** docs/how-it-works.md docs/invariants.md test/invariants-doc.test.ts
-
-**Acceptance criteria.**
-- `grep -rniE 'merge-verify|merge-batch|verify stage|parallel approval|approved, waiting to merge' docs/how-it-works.md docs/invariants.md` prints nothing.
-- Every docs/invariants.md binding that describes the pre-merge gate names `src/merge/merge-core.ts` and a test that still exists; the invariants-doc test is green.
-- The docs say a queued change waits for the one merge task, is gated with the diff rules and the declared gate command, and merges by rebase and fast-forward under the merge lock.
-- `npm run test:gate` passes.
-
-**Tests.** Run test/invariants-doc.test.ts whole, then the project's gate.
-
 ### Subtract, part 3d/7: `tumwater queue`, its cancel/top keys and the browser queue controls go (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract verify collapse part 4/5 landed; touches src/cli/cli-query-commands.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/ui/tui/tui-pane-pending.ts src/ui/tui/tui-pane-pending-selection.ts src/ui/tui/tui-pane-transcript.ts src/merge/merge-cancel.ts src/merge/merge-top.ts src/merge/merge-queue-render.ts docs/cli.md test/cli-queue.test.ts test/cli-queue-follow.test.ts test/gui-queue-cancel.test.ts test/gui-queue-top.test.ts test/merge-cancel.test.ts test/merge-top.test.ts test/tui-pane-pending.test.ts test/tui-operator-keys.test.ts)
 
 **Goal.** The operator stops steering a queue that becomes a lock and a fast-forward: delete the `tumwater queue` command, its `--cancel` and `--top` flags, the GUI Merge queue card's Cancel/Move-to-top handlers, the TUI pending pane's queue rows and keys, and the three modules that implement cancel/top/queue rendering. The queue reader itself stays for status, doctor and the CLI surfaces this part does not own until part 3f.
