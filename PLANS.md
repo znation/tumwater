@@ -423,24 +423,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 _None yet._
 
-### Subtract verify collapse, part 2/5: The queued change's gate has one named home, `reviewQueuedChange` in merge-core.ts, so the merge step can run it in the merge worktree (planned 2026-11-03 by the plan role, splitting the 2026-10-31 too-large Subtract part 3c/7 after feature held it too large for one run; requires part 1/5 landed; touches src/merge/merge-core.ts src/merge/merge-batch.ts)
-
-**Goal.** The gate a queued change runs before merging is one function, `reviewQueuedChange(ctx, req, wt, state, foldUsage)`, in merge-core.ts: it rebases the pinned tree onto main's current head (`syncPinToMain`) and runs `reviewPinnedChange`, returning its `GateOutcome`. `verifyRequestIn` in merge-batch.ts calls it, so the existing verify stage and the later one-step drain run the same code; no behavior changes.
-
-**Approach.**
-- Export `GateOutcome` and add `reviewQueuedChange` in merge-core.ts as the composition of `syncPinToMain` and `reviewPinnedChange` with the arguments verifyRequestIn passes today.
-- In merge-batch.ts, `verifyRequestIn` calls `reviewQueuedChange(ctx, req, wt, w.state, w.foldUsage)` and keeps only the `VerifyVerdict` shaping (`gate` to `approved`, otherwise `result`).
-- No other caller or test expectation changes; the withdrawn pre-check, the pooled slot lease and the lease release stay in verifyRequest.
-
-**Files touched.** src/merge/merge-core.ts src/merge/merge-batch.ts
-
-**Acceptance criteria.**
-- `reviewQueuedChange` is declared once in merge-core.ts and called by verifyRequestIn; no second copy of the sync-then-review sequence remains in merge-batch.ts.
-- test/merge-drain-verify.test.ts and test/merger.test.ts still pass with their existing expectations: an approved change still reaches the merge at the synced head, and a rejected or failed one still settles as before.
-- `npm run test:gate` passes.
-
-**Tests.** Run test/merge-drain-verify.test.ts, test/merger.test.ts and test/merger-check.test.ts, then the gate.
-
 ### Subtract verify collapse, part 3/5: The merge queue drains one entry at a time through the gate and the merge in a single task; the verify stage, its maps and its modules are deleted (planned 2026-11-03 by the plan role, splitting the 2026-10-31 too-large Subtract part 3c/7 after feature held it too large for one run; requires part 2/5 landed; touches src/merge/merge-drain.ts src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-pipeline.ts src/merge/merge-core.ts src/orchestrator/orchestrator-poll.ts test/merge-drain.test.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merger.test.ts test/merge-requeue.test.ts test/fixtures/orchestrator-fixtures.ts)
 
 **Goal.** A queued entry goes from the queue to the gate to the merge in one task: `drainMerge` starts the head entry, `mergeApprovedChange` runs `reviewQueuedChange` in the merge worktree before `mergeToMain`, and a rejected entry settles as today. No `verifying`/`approved` maps, no separate verify task, no second review. The durable queue still orders entries and the pin still carries the commit.

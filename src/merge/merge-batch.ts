@@ -9,8 +9,7 @@
 import { leaseSlot, type SlotLeaseHandle } from "../git/worktree-pool.js";
 import { slotCount } from "../config/config.js";
 import {
-  reviewPinnedChange,
-  syncPinToMain,
+  reviewQueuedChange,
   type MergeRequest,
   type MergeScopeContext,
 } from "./merge-core.js";
@@ -100,8 +99,7 @@ export async function verifyRequest(ctx: BatchContext, req: MergeRequest, w: Bat
 }
 
 async function verifyRequestIn(ctx: BatchContext, req: MergeRequest, w: BatchRoleWiring, wt: string): Promise<VerifyVerdict> {
-  const synced = await syncPinToMain(ctx, wt, req);
-  const outcome = await reviewPinnedChange(ctx, synced, wt, w.state, w.foldUsage);
+  const outcome = await reviewQueuedChange(ctx, req, wt, w.state, w.foldUsage);
   if (outcome.kind === "result") return outcome;
   // The gate's green pre-check names the head it ran on; it rides to the merge, which seeds the
   // red-main baseline with it when nothing moved in between (mergeToMain).

@@ -103,7 +103,7 @@ export interface MergerContext extends PiRunWiring, MergeScopeContext {
  * terminal (aborted, rejected, or review_error).
  * `discarded` tells a strike-cap review_error (ref deleted — as final as a rejection) from an
  * under-cap one (ref kept for recovery). */
-type GateOutcome =
+export type GateOutcome =
   | { kind: "gate"; gate: GateResult; sha: string }
   | { kind: "result"; result: RunResult; discarded?: true };
 
@@ -292,6 +292,22 @@ export async function reviewPinnedChange(
     req = { ...req, sha };
   }
   return { kind: "gate", gate, sha };
+}
+
+/** The gate a queued change runs before it may merge: rebase its pinned tree onto main's
+ * current head (syncPinToMain) and run the review gate (reviewPinnedChange) in its leased
+ * pool slot, returning the gate's outcome. One named home for the sync-then-review sequence,
+ * so the verify stage (merge-batch.ts's verifyRequestIn) and the later one-step drain run the
+ * same code. */
+export async function reviewQueuedChange(
+  ctx: ReviewGateContext,
+  req: MergeRequest,
+  wt: string,
+  state: RunnerState,
+  foldUsage: (run: PiRunResult) => void,
+): Promise<GateOutcome> {
+  const synced = await syncPinToMain(ctx, wt, req);
+  return reviewPinnedChange(ctx, synced, wt, state, foldUsage);
 }
 
 /** The failed merge outcomes that KEEP the pin for another attempt: an under-cap review

@@ -5,6 +5,24 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract verify collapse, part 2/5: The queued change's gate has one named home, `reviewQueuedChange` in merge-core.ts, so the merge step can run it in the merge worktree (planned 2026-11-03 by the plan role, splitting the 2026-10-31 too-large Subtract part 3c/7 after feature held it too large for one run; requires part 1/5 landed; touches src/merge/merge-core.ts src/merge/merge-batch.ts) — done 2026-11-04 by the feature role
+
+**Goal.** The gate a queued change runs before merging is one function, `reviewQueuedChange(ctx, req, wt, state, foldUsage)`, in merge-core.ts: it rebases the pinned tree onto main's current head (`syncPinToMain`) and runs `reviewPinnedChange`, returning its `GateOutcome`. `verifyRequestIn` in merge-batch.ts calls it, so the existing verify stage and the later one-step drain run the same code; no behavior changes.
+
+**Approach.**
+- Export `GateOutcome` and add `reviewQueuedChange` in merge-core.ts as the composition of `syncPinToMain` and `reviewPinnedChange` with the arguments verifyRequestIn passes today.
+- In merge-batch.ts, `verifyRequestIn` calls `reviewQueuedChange(ctx, req, wt, w.state, w.foldUsage)` and keeps only the `VerifyVerdict` shaping (`gate` to `approved`, otherwise `result`).
+- No other caller or test expectation changes; the withdrawn pre-check, the pooled slot lease and the lease release stay in verifyRequest.
+
+**Files touched.** src/merge/merge-core.ts src/merge/merge-batch.ts
+
+**Acceptance criteria.**
+- `reviewQueuedChange` is declared once in merge-core.ts and called by verifyRequestIn; no second copy of the sync-then-review sequence remains in merge-batch.ts.
+- test/merge-drain-verify.test.ts and test/merger.test.ts still pass with their existing expectations: an approved change still reaches the merge at the synced head, and a rejected or failed one still settles as before.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/merge-drain-verify.test.ts, test/merger.test.ts and test/merger-check.test.ts, then the gate.
+
 ### No duplicate plans, part 6/6: Feature hands a plan with nothing to build back to the plan role, which retires it; `Refused` is kept for the user's own decisions (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 4 and 5; requires No duplicate plans part 1/6 landed, and the running build must already carry that part's readers before this merges; touches src/roles/role-catalog.ts src/roles/role-guidance.ts src/prompt/prompt.ts docs/how-it-works.md test/prompt-roles.test.ts test/role-guidance.test.ts test/prompt-rules.test.ts) — done 2026-11-04 by the feature role
 
 **Goal.** A plan whose deliverable already exists, that another entry already carries, or that a measurement disproves ends up retired by the plan role, not refused for the user. In the 11-03 incident, all 12 refused plans were of that kind, and the user cancelled every one. In tumwater's own repo, feature has also stamped such entries `done` ("Mark the landed `historyPaneCache` split done", `d1e8c44a9`), which records work that never happened.
