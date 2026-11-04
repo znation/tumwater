@@ -592,6 +592,30 @@ test("mergedPrerequisiteRanges names each merged prerequisite's newest Done entr
   assert.deepEqual(mergedPrerequisiteRanges(tmpdir(), c), []);
 });
 
+test("mergedPrerequisiteRanges skips a retired Done entry and names the built survivor", () => {
+  // A retired part was never built, so the assignment prompt must not call it an already-merged
+  // prerequisite. With a built copy of the same part beside it, the built entry is still named.
+  const dir = tmpdir();
+  const c = "S, part 3/3: c (requires part 1/3 landed)";
+  const lines = [
+    "# Plans", "## Planned", `### ${c}`, "body c", "## Done",
+    "### S, part 1/3: a (planned 2026-10-01, retired 2026-10-05)", "retired body",
+    "### S, part 1/3: a (planned 2026-09-20, done 2026-09-25)", "built body",
+  ];
+  fs.writeFileSync(path.join(dir, "PLANS.md"), lines.join("\n") + "\n");
+  assert.deepEqual(
+    mergedPrerequisiteRanges(dir, c).map((e) => e.title),
+    ["S, part 1/3: a (planned 2026-09-20, done 2026-09-25)"],
+  );
+  // Only a retired copy exists: nothing reads as a merged prerequisite.
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    ["# Plans", "## Planned", `### ${c}`, "body c", "## Done",
+      "### S, part 1/3: a (planned 2026-10-01, retired 2026-10-05)", "retired body"].join("\n") + "\n",
+  );
+  assert.deepEqual(mergedPrerequisiteRanges(dir, c), []);
+});
+
 test("waitingPartRanges names the planned parts that wait on an entry, with their ranges", () => {
   const dir = tmpdir();
   const lines = [

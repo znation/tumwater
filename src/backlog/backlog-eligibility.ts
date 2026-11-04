@@ -18,7 +18,7 @@ import { roleLabel } from "../roles/role-labels.js";
 import type { BacklogEntry } from "./backlog-md.js";
 import { actionableEntryRangesFor } from "./backlog-index-data.js";
 import { entryKey, partKey, plannedPartKeys, plansWaitingOn, requiredParts, seriesPart } from "./backlog-parts.js";
-import { finishedFiles, openBugEntries, plannedPlanEntries } from "./backlog.js";
+import { finishedFiles, isRetiredTitle, openBugEntries, plannedPlanEntries } from "./backlog.js";
 
 /** Why an entry is held, or null when it is eligible. `blockedBy` names the unmerged
  * prerequisites in the form `Series i/n` so a renderer can show `requires …`.
@@ -181,7 +181,10 @@ export function withoutNeedsReviewNotes(lines: string[]): string[] {
  * for each requiredParts ref, the first `## Done` entry whose seriesPart has the same partKey,
  * searching PLANS.md's live section and then PLANS-DONE.md (plans/backlog-archive.md), each
  * carrying the file it was found in. Done is newest-first, so the first match is the most recent
- * merge. A ref with no Done match (still planned, or renamed) adds nothing, so a title with no
+ * merge. A retired Done entry (plans, "No duplicate plans" part 1/6) was never built, so it is
+ * skipped: a built copy of the same part still matches, and a retired-only part yields nothing —
+ * its dependents' `requires … landed` clause is dangling. A ref with no Done match (still planned,
+ * or renamed) adds nothing, so a title with no
  * requires clause, or missing files, gives []. Lets the assignment prompt point at the exact
  * range to read instead of leaving the implementer to search a history that runs to thousands of
  * lines. */
@@ -195,6 +198,7 @@ export function mergedPrerequisiteRanges(root: string, title: string): EligibleE
   for (const ref of refs) {
     const want = partKey(ref.series, ref.part);
     const hit = done.find((e) => {
+      if (isRetiredTitle(e.title)) return false;
       const part = seriesPart(e.title);
       return part !== null && partKey(part.series, part.part) === want;
     });
