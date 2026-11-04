@@ -378,8 +378,8 @@ export function isActivePhase(phase: string): boolean {
  * DIRECTOR — live work of its own, outside the maxConcurrent cap it bypasses, so it groups
  * apart and never inflates the permit-holder count (BUGS.md 2026-10-06); 0 live work —
  * working, reviewing, merge (isActivePhase); 1 work waiting in the pipeline — an approved change
- * awaiting the merge slot, or a run parked awaiting a permit; 2 needs attention — failing, or
- * its last run read main red; 3 paused — by the operator, by the budget, or by the role's own
+ * awaiting the merge slot, or a run parked awaiting a permit; 2 needs attention — failing;
+ * 3 paused — by the operator, by the budget, or by the role's own
  * per-role cap; 4 everything else (idle: sleeping, queued, the director waiting for prompts, a
  * stopped team). The dashboard groups its role table by these ranks; the TUI/status table
  * orders by them.
@@ -396,7 +396,7 @@ export const ROLE_RANK_RULES: ReadonlyArray<{
   { rank: -1, prefixes: ["director working"] },
   { rank: 0, active: true },
   { rank: 1, prefixes: ["approved", "waiting to start"] },
-  { rank: 2, phases: ["failing", "main's check is failing"] },
+  { rank: 2, phases: ["failing"] },
   { rank: 3, phases: ["paused"] },
   { rank: 3, prefixes: ["paused", "waiting:"] },
 ];

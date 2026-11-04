@@ -41,10 +41,9 @@ export interface MainCheckStatus {
   status: "passed" | "failed" | "skipped";
   counts?: TestCounts;
   at: number;
-  /** The red-main evidence the always-on `mainred` alert surfaces (read by
-   * team-alert-status.ts's buildStatusAlerts; it also rides the machine-readable `status
-   * --json` output through
-   * status-payload.ts's wholesale spread of mainCheck): present only when `status` is
+  /** The red-main evidence the status payload carries (it rides the machine-readable
+   * `status --json` output through status-payload.ts's wholesale spread of mainCheck):
+   * present only when `status` is
    * "failed" and a main_culprit verdict names the red this poll derived a sha for — the tip
    * itself, or the open spell's opener the tip re-checked (a doc-exempt re-check; INV-AZ4) —
    * with a well-formed failingTests list. `failingTests` is the main watch's list for that

@@ -1515,7 +1515,7 @@ test("collectReport and collectReportSince rank main's red by failing test, team
     // the same day, both naming the same failing test.
     JSON.stringify({ ts: at(2), source: "tumwater", type: "main_check", status: "failed", durationMs: 2000, sha: "a".repeat(40), failingTests: ["test/a.test.ts"] }),
     JSON.stringify({ ts: at(2), source: "tumwater", type: "main_check", status: "failed", durationMs: 2000, sha: "b".repeat(40), failingTests: ["test/a.test.ts"] }),
-    // A main_culprit blame (the live mainred alert's event) names the merge the watch blamed.
+    // A main_culprit blame names the merge the watch blamed.
     JSON.stringify({ ts: at(2), source: "tumwater", type: "main_culprit", commit: "abc1234567", runner: "feature" }),
     // A second blame without a runner labels it `merge <shortSha>`; at a different day too.
     JSON.stringify({ ts: at(2), source: "tumwater", type: "main_culprit", commit: "deadbeef9999" }),

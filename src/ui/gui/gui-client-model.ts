@@ -31,7 +31,6 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p.startsWith("approved")) return { key: "vetted", label: "Approved", tone: "indigo", live: false, detail: "waiting to merge" }; // vocabulary-ok: internal key the row classes and filters match
     if (p.startsWith("waiting to start")) return { key: "awaiting", label: "Waiting to start", tone: "gray", live: false, detail: after(16) ? "for " + after(16) : "" };
     if (p === "failing") return { key: "failing", label: "Failing", tone: "red", live: false, detail: "failed runs in a row" };
-    if (p === "main's check is failing") return { key: "mainred", label: "Main's check failing", tone: "red", live: false, detail: "change pinned until main goes green" };
     if (p.startsWith("paused")) return { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new runs" };
     if (p === "waiting: budget spent") return { key: "budget", label: "Waiting", tone: "amber", live: false, detail: "budget" };
     if (p === "waiting: daily cap spent") return { key: "cap", label: "Waiting", tone: "amber", live: false, detail: "daily cap" };
@@ -88,7 +87,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // Role order — status-model.ts's roleRank/sortRolesByState, the TUI's order too: the running
   // director first (its own live work, outside the maxConcurrent cap it bypasses — BUGS.md
   // 2026-10-06), then live work (working, reviewing, merge), then work waiting in the pipe
-  // line (approved, awaiting a slot), then roles that need attention (failing, main red), then
+  // line (approved, awaiting a slot), then roles that need attention (failing), then
   // paused, then idle; within a rank the most recent run first, a never-ran role last, ties
   // by name. The phase → rank rules are status-model.ts's ROLE_RANK_RULES (interpolated at
   // module build, like STALL/PROBLEM_RESULTS above), so the literals cannot drift from the
@@ -126,7 +125,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   function pageAlerts(d, offline) {
     return (offline ? [OFFLINE_ALERT] : []).concat((d && d.alerts) || []);
   }
-  const ALERT_ICONS = { offline: "offline", budget: "dollar", fallback: "info", mainred: "fail", failing: "fail", stuck: "clock",
+  const ALERT_ICONS = { offline: "offline", budget: "dollar", fallback: "info", failing: "fail", stuck: "clock",
     build: "refresh", questions: "question", paused: "pause", quiet: "pause", stopped: "info" };
   // needs-you:start
   // Alerts that ask something of the operator (the page title counts them); blue and gray ones

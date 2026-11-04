@@ -1,19 +1,19 @@
 /** The status and role-phase team alerts, in emission order: a spent budget
- * (chain/fallback/budget), a failed model check, disk, install, and main-red holds, roles
- * failing run after run or stuck. One of the per-domain builders split out of
+ * (chain/fallback/budget), a failed model check, disk, and install, roles failing run after
+ * run or stuck. One of the per-domain builders split out of
  * src/ui/team-alerts.ts; the shared types and wording helpers live in team-alert-shared.ts. */
 
 import type { StatusSnapshot } from "../status/status-data.js";
 import {
-  openRoleActions, seeFailures, listRoles, listRoleIds, stuckDetail,
+  openRoleActions, listRoles, listRoleIds, stuckDetail,
   type TeamAlert, type AlertRole,
 } from "./team-alert-shared.js";
 import { chainFragments } from "./badges.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
-import { agree, moreSuffix, plural } from "../text/phrases.js";
-import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
-import { joinWithMore, squash } from "../text/text.js";
+import { agree, plural } from "../text/phrases.js";
+import { formatGB, usd, usdCap } from "../text/format.js";
+import { joinWithMore } from "../text/text.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { STALL_RE } from "./run-progress-model.js";
 import { modelCheckFault } from "../model-check/model-check.js";
@@ -22,7 +22,7 @@ import { formatClock } from "../text/datetime.js";
 interface StatusAlertsInput {
   snap: Pick<
     StatusSnapshot,
-    "budget" | "chain" | "disk" | "rootInstallDrift" | "budgetPausedRoles" | "mainCheck" | "modelChecks"
+    "budget" | "chain" | "disk" | "rootInstallDrift" | "budgetPausedRoles" | "modelChecks"
   >;
   roles: readonly AlertRole[];
 }
@@ -137,28 +137,6 @@ function pushInstallDriftAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]
   }
 }
 
-function pushMainRedAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"], roles: readonly AlertRole[]): void {
-  const red = roles.filter((l) => l.phase === "main's check is failing");
-  if (red.length) {
-    const redDetail = snap.mainCheck?.red;
-    let detail = "Code roles keep authoring on top of a red main; the ci healer owns the failing check.";
-    if (redDetail) {
-      const more = moreSuffix(redDetail.failingTests.length - 1);
-      const blamed = redDetail.culprit?.runner
-        ? `; the main watch blames ${roleLabel(redDetail.culprit.runner)}'s merge ${shortSha(redDetail.culprit.commit)}`
-        : "";
-      detail = `A full check failed on main: ${squash(redDetail.failingTests[0] ?? "", 80)}${more}${blamed}`;
-    }
-    out.push({
-      key: "mainred",
-      tone: "red",
-      title: `main's check is failing — ${plural(red.length, "role is", "roles are")} blocked`,
-      detail,
-      actions: seeFailures(),
-    });
-  }
-}
-
 // A role whose own failure streak is at or past the alarm threshold (onErrorStreak — an
 // error streak at ERROR_STREAK_WARN, or a quiet-kill streak): the red "failing run after
 // run" banner. Keyed on the streak, not on the rendered phase, so it stays up while the
@@ -198,8 +176,8 @@ function pushStuckRoleAlert(out: TeamAlert[], roles: readonly AlertRole[]): void
 }
 
 /** The status and role-phase alerts, in emission order: a spent budget
- * (chain/fallback/budget), a failed model check, disk, install, and main-red holds, roles
- * failing run after run or stuck. Extracted from teamAlerts (part 1/5 of the teamAlerts split)
+ * (chain/fallback/budget), a failed model check, disk, and install, roles failing run after
+ * run or stuck. Extracted from teamAlerts (part 1/5 of the teamAlerts split)
  * so the shared module stays small; the input names exactly the fields this run reads. The
  * caller pushes the returned alerts at the position this run used to occupy, so the emitted key
  * order is unchanged. */
@@ -211,7 +189,6 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
   pushModelCheckAlert(out, snap);
   pushDiskAlert(out, snap);
   pushInstallDriftAlert(out, snap);
-  pushMainRedAlert(out, snap, roles);
   pushFailingStreakAlert(out, roles);
   pushStuckRoleAlert(out, roles);
   return out;

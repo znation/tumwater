@@ -168,7 +168,7 @@ test("the running director buckets outside the In-progress group", () => {
 
 test("run results read as words with the tone of their outcome", () => {
   const all = ["changed", "queued", "refused", "no_change", "merge_conflict", "merge_blocked", "rejected", "review_error", "error",
-    "aborted", "quiet_killed", "user_aborted", "main_red", "skipped"];
+    "aborted", "quiet_killed", "user_aborted", "skipped"];
   for (const r of all) {
     const info = model.resultInfo(r);
     assert.ok(info.label && !info.label.includes("_"), `${r} has a label`);

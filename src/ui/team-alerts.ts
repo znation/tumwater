@@ -38,8 +38,8 @@ interface StandingAlertInputs {
   root: string;
 }
 
-/** Everything about the team that needs the operator, most urgent first: a spent budget, a red
- * main, roles failing run after run, roles that look stuck, disk and install drift, the six
+/** Everything about the team that needs the operator, most urgent first: a spent budget,
+ * roles failing run after run, roles that look stuck, disk and install drift, the six
  * standing doctor twins (no-check, no-brief, brief-truncated, role-notes-truncated,
  * instance-pool, principles-truncated), open questions, refused entries, orphaned processes,
  * and a stopped team.
@@ -53,7 +53,6 @@ export function teamAlerts(
     | "disk"
     | "rootInstallDrift"
     | "budgetPausedRoles"
-    | "mainCheck"
     | "modelChecks"
   >,
   questions: readonly string[],

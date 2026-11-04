@@ -122,9 +122,8 @@ export function mainRedFailingTestsByDay(
  * that is a `main_culprit` whose `commit` is a non-empty string, label it
  * `<roleLabel(runner)> <shortSha(commit)>` when `runner` is a non-empty string, else
  * `merge <shortSha(commit)>`, and count it once into that event's day (`dayKey`). This is the
- * live `mainred` alert's own event (`src/status/status-polls.ts`'s `MainCheckStatus.red
- * .culprit`), so the report names the very merge the watch blamed, not just the tests it
- * named. A `main_culprit` with no `commit` or an empty/non-string one contributes nothing, so
+ * main watch's `main_culprit` event, so the report names the very merge the watch blamed,
+ * not just the tests it named. A `main_culprit` with no `commit` or an empty/non-string one contributes nothing, so
  * the loose event log can never emit `undefined` as a key. Shares `dayKey` with the sibling
  * walks (`mainRedMinutesByDay`, `mainRedFailingTestsByDay`), so the three cannot disagree
  * about which day an event lands on. This is main's own blame, not any role's, so the report

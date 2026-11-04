@@ -24,7 +24,7 @@ Usage:
                                    --once does one round of runs, finishes the
                                    merges it produced, and exits (for cron/CI);
                                    exits 3 when a run ended in error, review failed,
-                                   a merge conflicted or was blocked, or main's check is failing;
+                                   a merge conflicted or was blocked;
                                    --once --role <id>[,<id>...] limits that round to the listed roles;
                                    --once --json prints the round's totals, per-result counts, skipped roles and failures as one JSON object on stdout (no banner or event stream) (the --once report; --json is refused without --once or --for);
                                    --for <duration> runs for that window then finishes current work, prints a per-role summary
