@@ -7,7 +7,7 @@ import { drainMergeQueue } from "../src/merge/merge-drain.js";
 import {
   mergeTasks,
 } from "../src/merge/merge-pipeline.js";
-import { verifyLimit } from "../src/merge/merge-tiers.js";
+import { verifyLimit } from "../src/merge/merge-author.js";
 import { enqueueMerge, queuedMergeFiles } from "../src/merge/merge-queue.js";
 import { mergeQueueDir, mergeRefName } from "../src/paths.js";
 import { isMergedInto, refSha, setRef } from "../src/git/git.js";

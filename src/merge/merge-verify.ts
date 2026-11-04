@@ -8,8 +8,7 @@ import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { verifyRequest, type VerifyVerdict } from "./merge-batch.js";
 import { dropTornHead, mergedIntoMain } from "./merge-head.js";
-import { VERIFY_TIER, resolveAuthor } from "./merge-author.js";
-import { verifyLimit } from "./merge-tiers.js";
+import { VERIFY_TIER, resolveAuthor, verifyLimit } from "./merge-author.js";
 import {
   abortOnShutdown,
   acquireUnlessAborted,
