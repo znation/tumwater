@@ -622,27 +622,6 @@ _None yet._
 
 **Tests.** Update test/merge-drain.test.ts and the pipeline cases that drain the queue to assert one gated merge per poll and no verify task. Keep test/merge-requeue.test.ts's `drainVerify` unit cases for part 4/5, but make its queue-drain cases drive `drainMergeQueue`. Run those files plus test/merge-pipeline.test.ts and test/merge-pipeline-2.test.ts, then the gate.
 
-### Subtract verify collapse, part 3/5: The gate lives in `mergeApprovedChange` as `reviewQueuedChange`, so a merge cannot start without the diff rules and build check (planned 2026-11-03 by the plan role, splitting the 2026-10-31 `Subtract part 3c/7` after feature held it too large for one run; requires Subtract verify collapse part 2/5 landed, so the drain has one inline gate call to replace; touches src/merge/merge-core.ts src/merge/merge-drain.ts test/merger.test.ts test/merge-drain.test.ts)
-
-**Goal.** `mergeApprovedChangeIn` runs the review gate itself before `mergeToMain`, so the gate is part of the only path that writes main. The drain stops calling `verifyRequest` directly; its one task calls `mergeApprovedChange` and gets the rejection/approval outcome from there.
-
-**Approach.**
-- In merge-core.ts, extract the gate invocation and its immediate bookkeeping from `reviewPinnedChange` into `reviewQueuedChange(ctx, req, wt, state, foldUsage)`: the diff rules and `gateBuildPrecheck`, the rejection record/pin delete, the review_error/main_red/aborted results, and the synced head. `reviewPinnedChange` calls it until part 4/5 deletes that wrapper.
-- Call `reviewQueuedChange` from `mergeApprovedChangeIn` after `ensureDetachedWorktree` and before `mergeToMain`; a gate result other than approval returns that result and keeps or deletes the pin exactly as the verify path did, while an approval proceeds into `mergeToMain` with the gate's synced sha.
-- In merge-drain.ts, remove part 2's direct `verifyRequest` call; the merge task calls `mergeApprovedChange` and settles its `RunResult` through `settleMergeOutcome` as every other merge outcome is settled.
-- Do not gate a merge twice: the inline verify call is gone, so one `reviewQueuedChange` covers one merge.
-
-**Files touched.** src/merge/merge-core.ts src/merge/merge-drain.ts test/merger.test.ts test/merge-drain.test.ts
-
-**Acceptance criteria.**
-- A direct `mergeApprovedChange` on a pinned change whose diff edits the brief block, PRINCIPLES.md or a credential is rejected before `mergeToMain` and its pin is deleted; an approved or exempt change merges once.
-- A gate failure under the strike cap keeps the pin and returns the same `review_error` result as before; a failed gate on a red main returns `main_red` with the pin kept.
-- The drain path spends one gate per merge: a fake reviewer is invoked once, and the merged head is the one the gate approved.
-- `grep -rn 'verifyRequest' src/merge/merge-drain.ts` prints nothing.
-- `npm run test:gate` passes.
-
-**Tests.** Update test/merger.test.ts to drive rejection, `review_error`, `main_red` and approval through `mergeApprovedChange` alone (no preceding verify), and the drain case in test/merge-drain.test.ts to assert the same one-gate path. Run those files and the gate.
-
 ### Subtract, part 3d/7: `tumwater queue`, its cancel/top keys and the browser queue controls go (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract verify collapse part 4/5 landed; touches src/cli/cli-query-commands.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/ui/tui/tui-pane-pending.ts src/ui/tui/tui-pane-pending-selection.ts src/ui/tui/tui-pane-transcript.ts src/merge/merge-cancel.ts src/merge/merge-top.ts src/merge/merge-queue-render.ts docs/cli.md test/cli-queue.test.ts test/cli-queue-follow.test.ts test/gui-queue-cancel.test.ts test/gui-queue-top.test.ts test/merge-cancel.test.ts test/merge-top.test.ts test/tui-pane-pending.test.ts test/tui-operator-keys.test.ts)
 
 **Goal.** The operator stops steering a queue that becomes a lock and a fast-forward: delete the `tumwater queue` command, its `--cancel` and `--top` flags, the GUI Merge queue card's Cancel/Move-to-top handlers, the TUI pending pane's queue rows and keys, and the three modules that implement cancel/top/queue rendering. The queue reader itself stays for status, doctor and the CLI surfaces this part does not own until part 3f.
