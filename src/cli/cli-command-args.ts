@@ -14,6 +14,7 @@ import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import {
   type FlagSpec,
+  FOLLOW_FLAG,
   JSON_FLAG,
   ROLE_FLAG,
   ROLE_VALUE_ERROR,
@@ -239,7 +240,7 @@ export function parseInitArgs(args: string[]): InitArgs {
  * machine-readable render of the same listing. */
 type PromptArgs =
   | { mode: "enqueue"; role: string | null; text: string; atDelayMs: number | null; attachPaths: string[] }
-  | { mode: "list"; role: string | null; json: boolean; grep: string | null }
+  | { mode: "list"; role: string | null; json: boolean; grep: string | null; follow: boolean }
   | { mode: "cancel"; role: string | null; position: number }
   | { mode: "edit"; role: string | null; position: number; text: string | null; attachPaths: string[] }
   | { mode: "top"; role: string | null; position: number };
@@ -250,6 +251,7 @@ const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
   ROLE_FLAG,
   { names: ["--list"] },
   JSON_FLAG,
+  FOLLOW_FLAG,
   { names: ["--cancel"], value: true, valueName: "<n>" },
   { names: ["--edit"], value: true, valueName: "<n>" },
   { names: ["--top"], value: true, valueName: "<n>" },
@@ -266,6 +268,7 @@ interface PromptFlags {
   role: string | null;
   jsonFlags: number[];
   listFlag: number;
+  followClaim: number[];
   cancelFlag: number;
   editFlag: number;
   topFlag: number;
@@ -292,6 +295,7 @@ interface PromptScan {
   grepFlag: number;
   attachFlags: number[];
   roleFlag: number;
+  followFlags: number[];
 }
 
 /** The six `--list`/`--cancel`/`--edit`/`--top` mode pairs that may not combine, in today's
@@ -321,13 +325,17 @@ function scanPromptFlags(args: string[]): PromptScan {
   const fileFlag = args.indexOf("--file");
   const atFlag = args.indexOf("--at");
   const grepFlag = args.indexOf("--grep");
+  // -f/--follow's positions, like --json's: the list branch claims them in its stray-argument
+  // accounting, and the enqueue branch refuses the --follow spelling by name before it can be
+  // baked into the queued text (the -f spelling stays free-form content in that mode).
+  const followFlags = args.flatMap((a, i) => (FOLLOW_FLAG.names.includes(a) ? [i] : []));
   // --attach is repeatable: every occurrence claims itself and its value token, like --role's
   // single pair, so the pairs ride out of the prompt text in every mode.
   const attachFlags = args.flatMap((a, i) => (a === "--attach" ? [i] : []));
   const roleFlag = args.indexOf("--role");
   const known = PROMPT_FLAG_SPECS.flatMap((s) => s.names).filter((f) => f !== "--attach"); // repeatable: the once-check skips it
   rejectDuplicateFlags(args, known);
-  return { jsonFlags, listFlag, cancelFlag, editFlag, topFlag, fileFlag, atFlag, grepFlag, attachFlags, roleFlag };
+  return { jsonFlags, listFlag, cancelFlag, editFlag, topFlag, fileFlag, atFlag, grepFlag, attachFlags, roleFlag, followFlags };
 }
 
 /** The six mode mutual exclusions: the mutually-exclusive `--list`/`--cancel`/`--edit`/
@@ -375,6 +383,17 @@ function parsePromptGrep(args: string[], scan: PromptScan): { grepRaw: string | 
   }
   const grepClaim = pairClaim(scan.grepFlag);
   return { grepRaw, grepClaim };
+}
+
+/** The `-f/--follow` pair: its list-only refusal and the positions it claims. Outside the
+ * list mode the `-f` spelling is free-form content (the free-form rule), while the `--follow`
+ * spelling names the missing `--list` instead of being baked into the queued text. When the
+ * follow token sits in `--grep`'s value slot (`--list --grep -f`) it is the literal pattern,
+ * not the flag — claimed by grepClaim, unclaimed here. */
+function parsePromptFollow(args: string[], scan: PromptScan): { followClaim: number[] } {
+  if (scan.grepFlag >= 0 && scan.followFlags.includes(scan.grepFlag + 1)) return { followClaim: [] };
+  if (scan.listFlag < 0 && args.includes("--follow")) fail("--follow only applies to --list");
+  return { followClaim: scan.followFlags };
 }
 
 /** The queue-only-mode refusals: --file and --at have nothing to mean except in the enqueue
@@ -445,6 +464,7 @@ function parsePromptFlags(args: string[]): PromptFlags {
   const { role, roleClaim } = parsePromptRole(args, scan.roleFlag);
   assertPromptJsonListOnly(scan);
   const { grepRaw, grepClaim } = parsePromptGrep(args, scan);
+  const { followClaim } = parsePromptFollow(args, scan);
   assertPromptQueueOnlyFlags(scan);
   const { attachPaths, attachClaims } = parsePromptAttachments(args, scan.attachFlags);
   const { atDelayMs, atClaim } = parsePromptDeferral(args, scan.atFlag);
@@ -453,6 +473,7 @@ function parsePromptFlags(args: string[]): PromptFlags {
     role,
     jsonFlags: scan.jsonFlags,
     listFlag: scan.listFlag,
+    followClaim,
     cancelFlag: scan.cancelFlag,
     editFlag: scan.editFlag,
     topFlag: scan.topFlag,
@@ -467,10 +488,11 @@ function parsePromptFlags(args: string[]): PromptFlags {
   };
 }
 
-/** `--list`: the queue listing, optionally machine-readable and filtered by --grep. */
+/** `--list`: the queue listing, optionally machine-readable, filtered by --grep, and
+ * optionally a live follow view (-f/--follow). */
 function listPromptArgs(args: string[], f: PromptFlags): PromptArgs {
-  failStrayArg(args, "with --list there is no prompt text", f.listFlag, ...f.jsonFlags, ...f.roleClaim, ...f.grepClaim);
-  return { mode: "list", role: f.role, json: f.jsonFlags.length > 0, grep: f.grepRaw ?? null };
+  failStrayArg(args, "with --list there is no prompt text", f.listFlag, ...f.jsonFlags, ...f.roleClaim, ...f.grepClaim, ...f.followClaim);
+  return { mode: "list", role: f.role, json: f.jsonFlags.length > 0, grep: f.grepRaw ?? null, follow: f.followClaim.length > 0 };
 }
 
 /** The shared `--cancel <n>` / `--top <n>` mode: each takes exactly one 1-based position

@@ -30,6 +30,7 @@ import { movePromptToTop, type TopOutcome } from "./inbox-top.js";
 import { editInEditor } from "../cli/cli-editor.js";
 import { listWideScope, queuedFileAtPosition, promptPreview, queuedListRows, queuedRowsMatching, renderQueuedList } from "./inbox.js";
 import { durationLabel, parseRoleListFlag } from "../cli/cli-args.js";
+import { followView, type FollowViewSeams } from "../cli/follow-view.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { errorMessage } from "../text/text.js";
 import { plural } from "../text/phrases.js";
@@ -147,38 +148,52 @@ function readPromptImages(paths: readonly string[]): PromptImageInput[] {
   }
 }
 
-/** `--list` mode — the inspection verb: filter the list-wide rows by `--role a,b` and `--grep`,
- * then print the prose list, the `--json` document, or one of the empty/no-match lines. One
- * helper so `--list`'s rules are found by name. */
-function runPromptList(root: string, args: string[], json: boolean, grep: string | null, validIds: string[] | null): void {
-  // One payload, two shapes: the prose render and the --json output both come from the
-  // same array, so the per-role positions --cancel consumes can never disagree with the
-  // data a script reads. Full text, verbatim: this is the inspection command that tells
-  // you what a queued prompt actually says before you cancel it.
-  // `--role a,b` filters the list-wide rows, so section order and each section's own
-  // numbering stay what `--cancel <n> --role <id>` takes.
+/** `--list`'s one frame: filter the list-wide rows by `--role a,b` and `--grep`, then render
+ * the prose list or one of the empty/no-match lines, reading the clock per frame so positions
+ * and ages match what a fresh `prompt --list` would print. `--role a,b` filters the list-wide
+ * rows, so section order and each section's own numbering stay what `--cancel <n> --role
+ * <id>` takes. One payload, two shapes: the prose render and the --json output both come from
+ * the same array, so the per-role positions --cancel consumes can never disagree with the
+ * data a script reads. */
+function promptListFrame(root: string, args: string[], grep: string | null, validIds: string[] | null): string {
   const listRoles = parseRoleListFlag(args, validIds as string[]);
   const allRows = queuedListRows(root, null, validIds as string[]);
   const scoped = listRoles === null ? allRows : allRows.filter((row) => listRoles.includes(row.role));
   const prompts = queuedRowsMatching(scoped, grep ?? null);
-  if (json) {
-    // An empty queue still prints the document, the history --json empty-rows precedent.
-    sayJson({ prompts });
-    return;
-  }
   if (prompts.length === 0 && scoped.length > 0) {
-    say(`no queued prompt matches "${grep}"`);
-    return;
+    return `no queued prompt matches "${grep}"`;
   }
   if (prompts.length === 0) {
-    say(listRoles === null
+    return listRoles === null
       ? "every inbox is empty"
       : listRoles.length === 1
         ? `${roleLabel(listRoles[0]!)}'s inbox is empty`
-        : `every listed inbox is empty (${listRoles.join(", ")})`);
+        : `every listed inbox is empty (${listRoles.join(", ")})`;
+  }
+  return renderQueuedList(prompts, Date.now());
+}
+
+/** `--list` mode — the list-mode dispatcher: `-f/--follow` repaints the same view every
+ * couple of seconds until Ctrl+C or the parent process exits (the followView family),
+ * composing with `--role` and `--grep` and refusing `--json` (a live view is one repainted
+ * document, not one snapshot); without it the one-shot prose or --json print, unchanged. One
+ * helper so `--list`'s rules are found by name. */
+function runPromptList(root: string, args: string[], json: boolean, grep: string | null, validIds: string[] | null, follow: boolean, seams: FollowViewSeams): Promise<void> | void {
+  if (follow && json) {
+    fail("prompt --json prints one document; -f/--follow repaints a live view — drop one of them");
+  }
+  if (follow) {
+    return followView(() => promptListFrame(root, args, grep, validIds), seams);
+  }
+  if (json) {
+    // An empty queue still prints the document, the history --json empty-rows precedent.
+    const listRoles = parseRoleListFlag(args, validIds as string[]);
+    const allRows = queuedListRows(root, null, validIds as string[]);
+    const scoped = listRoles === null ? allRows : allRows.filter((row) => listRoles.includes(row.role));
+    sayJson({ prompts: queuedRowsMatching(scoped, grep ?? null) });
     return;
   }
-  say(renderQueuedList(prompts, Date.now()));
+  say(promptListFrame(root, args, grep, validIds));
 }
 
 /** `--cancel <n>` mode — remove a queued prompt by position, list-wide or `--role`-scoped. One
@@ -359,7 +374,10 @@ function runPromptSubmit(root: string, text: string, atDelayMs: number | null, a
  * delegates here; list output is grouped by role — the director first (its queue is
  * the shared one every pre-1/2 prompt landed in), then each role with queued prompts — so a
  * per-role queue's position numbering stays unambiguous. */
-export async function cmdPrompt(root: string, args: string[]): Promise<void> {
+/** Optional follow-view test seams (the `cmdBacklog`/`cmdStatus` shape): the repaint
+ * interval and parent-death watch a test drives without real seconds or a real TTY. The
+ * two-argument call in cli.ts is unchanged. */
+export async function cmdPrompt(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   const parsed = parsePromptArgs(args);
   // --list takes a comma list (parseRoleListFlag below); every other mode keeps one id.
   if (parsed.role !== null && parsed.mode !== "list") parsed.role = canonicalRoleId(parsed.role);
@@ -388,7 +406,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   }
   const role = parsed.role;
   if (parsed.mode === "list") {
-    runPromptList(root, args, parsed.json, parsed.grep, validIds);
+    await runPromptList(root, args, parsed.json, parsed.grep, validIds, parsed.follow, seams);
     return;
   }
   if (parsed.mode === "cancel") {
