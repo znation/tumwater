@@ -154,7 +154,7 @@ like pi, drops, leaving the model half. A fallback step with no `backend` inheri
 entry's, else the top level's).
 Each tier has a claude default — Opus 5.5 strong, Haiku
 5.5 default, Haiku 5.5 small — so `backend: "claude"` with no `model` still resolves a concrete model
-per job; the director runs at the strong tier. The observability surfaces display the backend ahead of the model id (`claude/claude-sonnet-5-5`
+per job; the director runs at the strong tier. The observability surfaces display the backend ahead of the model id (`claude/claude-haiku-5-5`
 in `tumwater status`, the dashboards, and the event feed), and a job with no model at all reads
 `claude default`.
 

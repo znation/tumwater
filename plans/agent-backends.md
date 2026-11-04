@@ -493,7 +493,7 @@ model's minimum CLI version (`minVersion`), which matters doubly because fleet r
 | Conflict resolver, refusal-note resolver | `runLandingPi`, `runRolePi` | ledger `kind` keeps their sessions from shadowing the author's |
 | Doctor | src/doctor/doctor-model-checks.ts, src/doctor/doctor-checks.ts | per used agent: binary resolvable; claude `auth status` loggedIn (with the scrubbed env) and its billing (subscription type, or API key); installed CLI ≥ every configured claude model's `minVersion`; claude selectors skip models.json lookup; a pi provider named `claude` warns |
 | Startup gate | src/gates/startup-gate.ts | checks the binary of every agent any resolved seam uses, not only pi's |
-| Status, TUI, GUI, events | role-view, status-data, badges, event-format | "pi default" → "`<agent>` default"; `tick_start`/`review_start` `model` selectors carry the agent (`claude/claude-sonnet-5-5`); the window replaces or joins the daily spend (§8) |
+| Status, TUI, GUI, events | role-view, status-data, badges, event-format | "pi default" → "`<agent>` default"; `tick_start`/`review_start` `model` selectors carry the agent (`claude/claude-haiku-5-5`); the window replaces or joins the daily spend (§8) |
 | Reports | report-data, history-data | subscription runs' cost appears as notional, never in spend totals (§7) |
 
 ## Testing

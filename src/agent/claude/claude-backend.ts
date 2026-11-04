@@ -84,19 +84,22 @@ export function claudeTranscriptPath(
 
 /** The CLI version every gated claude model needs (plans/agent-backends.md finding 9): on
  * 2.1.216 Opus 5.5 is refused outright and Haiku 5.5 is mispriced about 250×, and team runs
- * set DISABLE_AUTOUPDATER so they never update themselves. The gated models are the three
- * tier defaults, derived from BACKEND_DEFAULT_MODELS through the same routing the config uses
- * rather than listed again, so this table cannot drift from the models a seam resolves. */
+ * set DISABLE_AUTOUPDATER so they never update themselves. The gated models are the tier
+ * defaults, derived from BACKEND_DEFAULT_MODELS through the same routing the config uses
+ * rather than listed again, plus Sonnet 5.5, which an explicit `model` can still select even
+ * though it is no longer a tier default. */
 const CLAUDE_MIN_VERSION = "2.1.280";
 
 const CLAUDE_GATED_MODELS = new Set(
-  MODEL_TIERS.map((tier) => routeModel(undefined, undefined, "claude", tier).model).filter(
-    (model): model is string => model !== undefined,
-  ),
+  [
+    ...MODEL_TIERS.map((tier) => routeModel(undefined, undefined, "claude", tier).model),
+    "claude-sonnet-5-5",
+  ].filter((model): model is string => model !== undefined),
 );
 
 /** The minimum CLI version `model` needs, or undefined when this adapter gates no floor for
- * it (a model outside the three tier defaults). Doctor reads it through `claudeBackend`. */
+ * it (a model outside the gated tier defaults and Sonnet 5.5). Doctor reads it through
+ * `claudeBackend`. */
 function claudeMinVersion(model: string): string | undefined {
   return CLAUDE_GATED_MODELS.has(model) ? CLAUDE_MIN_VERSION : undefined;
 }

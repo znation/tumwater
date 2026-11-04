@@ -598,6 +598,12 @@ test("checkClaudeVersion fails a CLI below a configured model's floor", async ()
   assert.equal(old.level, "fail");
   assert.match(old.detail, /claude 2\.1\.216 is older than 2\.1\.280 required by claude-/);
 
+  // Sonnet is no longer a tier default, but an explicit sonnet seam still needs the floor.
+  writeConfig(root, { backend: "claude", model: "claude-sonnet-5-5" });
+  const sonnetOld = await checkClaudeVersion(root, bin);
+  assert.equal(sonnetOld.level, "fail");
+  assert.match(sonnetOld.detail, /required by claude-sonnet-5-5/);
+
   writeScript(path.join(bin, "claude"), 'echo "2.1.295 (Claude Code)"');
   const fresh = await checkClaudeVersion(root, bin);
   assert.equal(fresh.level, "ok");
