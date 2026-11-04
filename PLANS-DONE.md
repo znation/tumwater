@@ -126,25 +126,6 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 **Tests.** Run test/merge-queue.test.ts, test/merge-pipeline.test.ts and test/merge-requeue.test.ts whole, then the project's gate.
 
-### Every commit is verified on main, part 4l/3: the three verdict-keyed tables accept a result with no entry, so part 4m/3 can drop `main_red` (planned 2026-11-03 by the plan role, splitting the 2026-11-03 too-large part 4j/3 after feature held it; opens the three-part replacement of part 4j/3, whose parts 4m/3 and 4n/3 each require the part before them landed; requires Hourly full check part 1b/4 landed; touches src/events/event-labels.ts src/failure/failure-render.ts src/failure/failure-time-spend.ts test/event-labels.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts) — done 2026-11-03 by the feature role
-
-**Goal.** `main_red` must leave three exhaustive `Record<RunResult, …>` tables in the next part without the compile error a missing key causes. Widen those tables so a `RunResult` may have no entry, and give each consumer a defined fallback. Every current key stays in this part, so no displayed output changes; only a result with no entry (none today) takes the fallback.
-
-**Approach.**
-- src/events/event-labels.ts: type `RUN_RESULT_LABELS` as `Readonly<Partial<Record<RunResult, string>>>`; in `eventTypeLabel`, read the entry once and fall through to the existing underscores-as-spaces fallback when it is `undefined`, rather than assuming own-property implies a string.
-- src/failure/failure-render.ts: type `RESULT_ORDER` as `Partial<Record<RunResult, number>>`; in `columns`, sort an unranked result after every ranked one (`RESULT_ORDER[x] ?? Number.MAX_SAFE_INTEGER`) with the existing alphabetical tie-break, so the comparator never yields `NaN`.
-- src/failure/failure-time-spend.ts: type `OUTCOME_CLASS` as `Partial<Record<RunResult, "merged" | "no_change" | "error">>`; keep the two existing `undefined` guards in the cost fold and adjust the doc comment that promises a full Record.
-- Do not remove any key or touch another module; part 4m/3 drops the `main_red` entries once these types allow it.
-
-**Files touched.** src/events/event-labels.ts src/failure/failure-render.ts src/failure/failure-time-spend.ts test/event-labels.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts
-
-**Acceptance criteria.**
-- A result code absent from each table falls back as described: `eventTypeLabel` returns it with underscores as spaces, the Outcome table places it after every ranked result with alphabetical ties, and the time-spend fold leaves its runs out of the class totals instead of reading `undefined`; each fallback has a unit test using a synthetic unlisted code.
-- Every currently labeled result still renders its existing label, and every currently ranked result keeps its existing order with the `main_red` key still present, so no displayed output changes in this part.
-- `npm run test:gate` passes.
-
-**Tests.** Run test/event-labels.test.ts, test/failure-render.test.ts and test/failure-time-spend.test.ts, then the gate. Keep every existing expectation; add only the synthetic-unlisted-code cases.
-
 ### Every commit is verified on main, part 4l/3: the run-result display tables accept a missing `main_red` key, so the later surface removal drops it without a compile error (planned 2026-11-03 by the plan role, splitting the 2026-10-29 part 4j/3 after feature held it too large for one run; touches src/events/event-labels.ts src/failure/failure-render.ts src/failure/failure-time-spend.ts test/event-labels.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts test/report-usage-fold.test.ts) — done 2026-11-03 by the feature role
 
 **Goal.** `RUN_RESULT_LABELS`, `RESULT_ORDER` and `OUTCOME_CLASS` are three exhaustive `Record<RunResult, …>` tables that part 4m/3 must delete the `main_red` key from while `main_red` is still a `RunResult` member (part 4k/3 removes the member last). Widen each table so a missing key is representable, with the lookup fallbacks stated explicitly, so part 4m/3 is a plain key deletion rather than a type refactor.

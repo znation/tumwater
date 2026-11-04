@@ -21,7 +21,7 @@ const ROLES_SHOWN = 4;
  * src/run/run-outcome.ts and not ranked here is not a compile error — the columns sort places
  * it after every ranked result, alphabetical among the unranked. The ranked order runs from
  * "made progress" through "did not" to the operator/shutdown outcomes. */
-const RESULT_ORDER: Partial<Record<RunResult, number>> = {
+const RESULT_ORDER: Readonly<Partial<Record<RunResult, number>>> = {
   changed: 0,
   queued: 1,
   no_change: 2,

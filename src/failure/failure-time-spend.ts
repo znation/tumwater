@@ -18,7 +18,7 @@ import { getOrCreate, groupBy, rankByCount, topAndHidden } from "../collections.
  * hard failure or the review gate. Typed as a Partial, so a result added to
  * src/run/run-outcome.ts and not listed here is not a compile error — the cost fold leaves
  * its runs out of the class totals instead of reading `undefined`. */
-export const OUTCOME_CLASS: Partial<Record<RunResult, "merged" | "no_change" | "error">> = {
+export const OUTCOME_CLASS: Readonly<Partial<Record<RunResult, "merged" | "no_change" | "error">>> = {
   changed: "merged",
   queued: "merged",
   no_change: "no_change",
