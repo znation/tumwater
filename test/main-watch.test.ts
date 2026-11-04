@@ -218,14 +218,14 @@ test("within the interval, a code head above a green anchor suspends the full ch
   // full check is suspended — the rules are judged independently of the build's verdict.
   change(root, "bad.txt", "line one\n<<<<<<< HEAD\n");
   await watchAt(watch, root); // within the interval: no run, but the rules still judge the tip
+  // A repeat poll of the same suspended head must be a no-op: re-judging the range would log
+  // the same rule warning again every poll until the interval passes.
+  await watchAt(watch, root);
   assert.equal(runsOf(counter), 1, "the full check is suspended within the interval");
   assert.equal(eventsOfType(root, "main_check").length, 1, "no new verdict while the full check is suspended");
-  // The diff rules still ran on the tip despite the suspended full check.
-  const warnings = warningMessages(root);
-  assert.ok(
-    warnings.some((m) => m.includes("conflict markers remain in")),
-    "the diff rules run on the tip even while the full check is suspended",
-  );
+  // The diff rules still ran on the tip despite the suspended full check, exactly once.
+  const warnings = warningMessages(root).filter((m) => m.includes("conflict markers remain in"));
+  assert.equal(warnings.length, 1, "the diff rules judge the suspended head once, not once per poll");
 });
 
 test("after the interval passes, the full check covers every commit above the anchor it skipped past", async () => {

@@ -153,6 +153,15 @@ export function createMainWatch(
   now: () => number = Date.now,
 ): MainWatch {
   let lastWatched: string | undefined;
+  /** While a full check is suspended for the interval (part 2b/4), the clock time it becomes
+   * due again. `lastWatched` still advances to the tip, so repeat polls of the same head do
+   * nothing until this time passes — no duplicate diff-rule warnings every poll — and the poll
+   * that crosses it starts the full check on the latest tip. */
+  let fullCheckDueAt: number | undefined;
+  /** The anchor a suspended full check must cover from: the newest full verdict the interval is
+   * measured from. It overrides `lastWatched` for the covered-commit count when the check finally
+   * runs, so the event reports every commit the skip passed over. */
+  let fullCheckBase: string | undefined;
   let inFlight: Promise<void> | null = null;
   let housekeeping: Promise<void> | null = null;
   let lastFilingWarning = "";
@@ -417,6 +426,8 @@ export function createMainWatch(
         await watchRules(wt, lastWatched, await headOf(wt));
       });
       lastWatched = mainHead; // no declared check: nothing else to watch until main moves
+      fullCheckDueAt = undefined;
+      fullCheckBase = undefined;
       return;
     }
     await withMainTipWorktree(root, mainBranch, async (wt) => {
@@ -429,12 +440,16 @@ export function createMainWatch(
       // without checkedAt reads as due now; 0 restores one full run per new code head.
       const plan = await fullCheckPlan(wt, tip, config, now());
       if (plan.skip) {
-        // The full check is within the hour and code is uncovered (part 2b/4): the diff rules
-        // still judge this head, and the head counts as watched at the anchor — the newest
-        // verdict the hour is measured from — so the next poll's rules start above it. No
-        // main_check, no full run, until the interval passes or main turns red.
+        // The full check is within the interval and code is uncovered (part 2b/4): the diff
+        // rules still judge this head, and the head counts as watched so repeat polls do nothing.
+        // `fullCheckDueAt` keeps the due decision alive across those polls without regressing
+        // `lastWatched` to the anchor (which would re-judge the same range and re-log its rule
+        // warnings every poll). No main_check, no full run, until the interval passes or main
+        // turns red.
         await watchRules(wt, previous, tip);
-        lastWatched = plan.anchorSha ?? tip;
+        lastWatched = tip;
+        fullCheckDueAt = plan.dueAt;
+        fullCheckBase = plan.anchorSha;
         return;
       }
       const started = Date.now();
@@ -445,15 +460,22 @@ export function createMainWatch(
       if (!baseline) {
         const tip = await headOf(wt);
         await watchRules(wt, previous, tip);
+        fullCheckDueAt = undefined;
+        fullCheckBase = undefined;
         return void (lastWatched = tip);
       }
       lastWatched = baseline.sha;
+      fullCheckDueAt = undefined;
+      // A check that follows a suspended interval covers every commit the skip passed over, not
+      // just those since the last watched tip.
+      const coveredFrom = fullCheckBase ?? previous;
+      fullCheckBase = undefined;
       // A freshly-settled red (no spell open yet) is the spell's opener: its main_check is
       // recorded at the commit that OPENED the red (redOpener) so G1's "red since <sha>" names
       // the breaker, not a doc tip that only happened to be current. A re-check of an already-open
       // spell keeps the tip's sha (INV-AZ4: the re-check re-checks without re-attributing).
       const opener = redSpellOpeners.has(root) ? undefined : await redOpener(wt, baseline.sha, config.review.exemptPaths);
-      const red = await recordMainCheck(wt, baseline, previous, ran, started, opener);
+      const red = await recordMainCheck(wt, baseline, coveredFrom, ran, started, opener);
       // The diff rules judge the tip whether the build is green or red; the build-red path below
       // names the whole tip as the culprit, so the two red kinds are judged independently.
       await watchRules(wt, previous, baseline.sha);
@@ -485,12 +507,16 @@ export function createMainWatch(
           housekeeping = null;
         });
       }
-      if (held || mainHead === "" || inFlight || mainHead === lastWatched) return;
+      if (held || mainHead === "" || inFlight) return;
+      // A head already watched is a no-op unless a suspended full check has now come due.
+      if (mainHead === lastWatched && (fullCheckDueAt === undefined || now() < fullCheckDueAt)) return;
       inFlight = watchOnce(mainHead, config)
         .catch((err: unknown) => {
           // A failed watch (main unreadable, checkout refused) records nothing and is not
           // retried until main moves, so a persistent failure warns once per head.
           lastWatched = mainHead;
+          fullCheckDueAt = undefined;
+          fullCheckBase = undefined;
           logEventBestEffort(root, {
             source: TUMWATER_SOURCE,
             type: "warning",
@@ -537,7 +563,7 @@ async function fullCheckPlan(
   tip: string,
   config: TumwaterConfig,
   clock: number,
-): Promise<{ skip: boolean; anchorSha?: string }> {
+): Promise<{ skip: boolean; anchorSha?: string; dueAt?: number }> {
   const intervalMs = fullIntervalMs(config);
   const exempt = config.review?.exemptPaths ?? [];
   // firstParentWalk lists newest-first and stops at the bound, so the first anchor it names is
@@ -556,7 +582,7 @@ async function fullCheckPlan(
   if (intervalMs !== 0 && clock < anchor.checkedAt + intervalMs) {
     const files = (await treeDiffFiles(wt, anchor.sha, tip)) ?? [];
     const codeUncovered = !isExemptDiff(files, [...exempt]);
-    if (codeUncovered) return { skip: true, anchorSha: anchor.sha };
+    if (codeUncovered) return { skip: true, anchorSha: anchor.sha, dueAt: anchor.checkedAt + intervalMs };
   }
   return { skip: false };
 }
