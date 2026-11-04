@@ -37,4 +37,5 @@ test("mainTipGateVerdict is unavailable when the check is skipped (no declared c
   const root = await mainRepo(null);
   const v = await mainTipGateVerdict(root, "feature", "main", defaultConfig());
   assert.equal(v.status, "unavailable");
+  assert.equal(v.status === "unavailable" ? v.why : "", "it declares no check");
 });
