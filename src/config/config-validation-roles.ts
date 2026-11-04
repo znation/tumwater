@@ -213,6 +213,14 @@ function validateRoleEntries(
         } else {
           checkNumber(o, `roles.${id}.`, "instances", INSTANCE_COUNT);
         }
+        // Only ci may read the hosted CI (plans/remote-ci.md): a remote key under any other
+        // role would never be read, so reject it with the same wording shape the instances
+        // rule uses, and checkBoolean the value under ci.
+        if ("remote" in o && id !== "ci") {
+          problems.push(`roles.${id}.remote is only valid for ci (got ${show(o.remote)})`);
+        } else {
+          checkBoolean(o, `roles.${id}.`, "remote");
+        }
       }
     }
   }

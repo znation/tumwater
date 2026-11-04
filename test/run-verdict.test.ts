@@ -9,9 +9,10 @@ import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { loadConfig } from "../src/config/config.js";
-import { configRequestPath, directorRequestPath, qaCoveragePath, feedbackFilingsPath, ciParityPath } from "../src/paths.js";
+import { configRequestPath, directorRequestPath, qaCoveragePath, feedbackFilingsPath, ciParityPath, remoteCiPath } from "../src/paths.js";
 import { readQaCoverage } from "../src/observer/qa-coverage.js";
 import { readCiParity } from "../src/observer/ci-parity.js";
+import { readRemoteCi } from "../src/observer/remote-ci.js";
 import { readFeedbackFilings } from "../src/observer/feedback-filings.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { writeConfig } from "./fixtures/repo-fixtures.js";
@@ -42,6 +43,7 @@ function makeCtx(root: string, wt: string, role: string, over: Record<string, un
     flow: null,
     filed: null,
     ci: null,
+    remote: null,
     warn: (m: string) => warns.push(m),
     merge: async (w: string, summary: string) => {
       merges.push({ wt: w, summary });
@@ -333,6 +335,64 @@ test("a failed ci parity write warns and the no_change run stands", async () => 
   assert.equal(readCiParity(root), null, "the ledger write failed");
   assert.equal(warns.length, 1);
   assert.match(warns[0]!, /ci parity not recorded: EACCES fake/);
+});
+
+test("a no_change ci run with a REMOTE line records its remote-CI verdict", async () => {
+  const { root, wt } = await initializedWorktree("ci");
+  const pi: PiRunResult = piRunResult({ nothingToDo: true, finalText: "TUMWATER_NOTHING_TO_DO" });
+
+  const { ctx } = makeCtx(root, wt, "ci", {
+    pi,
+    remote: { repo: "znation/tumwater", sha: "3e450b0c4", result: "passed" },
+  });
+  const outcome = await resolveRunVerdict(ctx);
+
+  assert.equal(outcome?.result, "no_change");
+  const entry = readRemoteCi(root);
+  assert.ok(entry, "the ci run's declared remote verdict is recorded");
+  assert.equal(entry!.repo, "znation/tumwater");
+  assert.equal(entry!.sha, "3e450b0c4");
+  assert.equal(entry!.result, "passed");
+  assert.ok(fs.existsSync(remoteCiPath(root)), "the ledger lives under .tumwater/state");
+});
+
+test("a cut-off ci run's REMOTE line records nothing", async () => {
+  const { root, wt } = await initializedWorktree("ci");
+  // Truncation is not a verdict the run declared, so the REMOTE line it left mid-stream must not
+  // advance the ledger (the same guard the CI line carries).
+  const pi: PiRunResult = piRunResult({
+    nothingToDo: false,
+    finalMessageContentless: true,
+    finalText: "REMOTE: 3e450b0c4 — passed",
+  });
+  const { ctx } = makeCtx(root, wt, "ci", {
+    pi,
+    remote: { repo: "znation/tumwater", sha: "3e450b0c4", result: "passed" },
+  });
+  await resolveRunVerdict(ctx);
+  assert.equal(readRemoteCi(root), null, "a cut-off run records no remote verdict");
+});
+
+test("a failed remote-CI ledger write warns and the no_change run stands", async () => {
+  const { root, wt } = await initializedWorktree("ci");
+  const pi: PiRunResult = piRunResult({ nothingToDo: true, finalText: "TUMWATER_NOTHING_TO_DO" });
+
+  const { ctx, warns } = makeCtx(root, wt, "ci", {
+    pi,
+    remote: { repo: "znation/tumwater", sha: "3e450b0c4", result: "passed" },
+  });
+  const undo = failRenameSyncOn(remoteCiPath(root), "EACCES fake");
+  let outcome;
+  try {
+    outcome = await resolveRunVerdict(ctx);
+  } finally {
+    undo();
+  }
+
+  assert.equal(outcome?.result, "no_change");
+  assert.equal(readRemoteCi(root), null, "the ledger write failed");
+  assert.equal(warns.length, 1);
+  assert.match(warns[0]!, /remote CI result not recorded: EACCES fake/);
 });
 
 test("a cut-off feedback run with filed records nothing", async () => {

@@ -278,7 +278,13 @@ never has to wait a parked check out.
   `warn` when a `stale` verdict has stayed stale past the stall window — the full suite has silently
   stopped covering new tips, reading the same `parityIsCurrent`
   rule for `current`/`stale` and the shared `ciParityStalled` predicate for the stall, so a `current`
-  badge and a `current` prompt block cannot disagree. The `qa` observer keeps its own flow-coverage
+  badge and a `current` prompt block cannot disagree. Separately, the `ci` role reads the hosted CI's
+  verdict on the newest pushed commit of the base branch with the operator's own `gh` (read-only,
+  only when the base branch's remote is on GitHub and the repo has a `.github/workflows` file, and
+  `roles.ci.remote` is not false): its prompt ends with a Remote CI block naming the repo, the
+  branch and the `gh run list` command, its reply carries a `REMOTE:` line just before the `CI:`
+  line, and the harness records the verdict in the remote-CI ledger (`.tumwater/state/remote-ci.json`).
+  The `qa` observer keeps its own flow-coverage
   ledger the same way, and a coverage ledger whose newest exercise is over three days old raises the
   doctor `qa coverage` warn through the one `qaCoverageStalled`
   predicate. The `feedback` observer's per-install filing ledger gets the same operator read: the

@@ -11,8 +11,9 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readQaCoverage } from "../src/observer/qa-coverage.js";
+import { readRemoteCi } from "../src/observer/remote-ci.js";
 import { readFeedbackFilings } from "../src/observer/feedback-filings.js";
-import { qaCoveragePath, feedbackFilingsPath } from "../src/paths.js";
+import { qaCoveragePath, feedbackFilingsPath, remoteCiPath } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { queueDepth, queuedMerges, enqueueMerge } from "../src/merge/merge-queue.js";
 import { setRef, refSha } from "../src/git/git.js";
@@ -52,6 +53,12 @@ interface CtxOverrides {
   finalText?: string;
   flow?: { flow: string; result: "passed" | "bug" } | null;
   filed?: { issue: number; title: string } | null;
+  remote?: {
+    repo?: string;
+    result: "passed" | "failed" | "pending" | "unavailable";
+    sha?: string;
+    reason?: string;
+  } | null;
   followUp?: PiRunResult | null;
   /** When true, requestSummary commits every change in the worktree before it replies. */
   followUpCommits?: boolean;
@@ -129,6 +136,7 @@ function buildCtx(
     piStartedAt: over.piStartedAt ?? Date.now(),
     flow: over.flow ?? null,
     filed: over.filed ?? null,
+    remote: over.remote ?? null,
     warn: (message: string) => calls.warnings.push(message),
     requestSummary: async (requestWt: string, overLength?: number) => {
       calls.summaryRequests.push(requestWt);
@@ -761,6 +769,49 @@ test("a changed-branch feedback run still records its filing", async () => {
   const filings = readFeedbackFilings(root);
   assert.equal(filings.length, 1);
   assert.deepEqual(filings[0], { issue: 12, title: "a bug", filedAt: filings[0]!.filedAt });
+});
+
+test("a changed-branch ci run still records its remote-CI verdict", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("ci");
+  const { ctx } = makeCtx(root, wt, state, {
+    role: "ci",
+    finalText: "SUMMARY: fixed the remote red\n",
+    remote: { repo: "znation/tumwater", sha: "3e450b0c4", result: "failed" },
+  });
+
+  const outcome = await stageRunMerge(ctx);
+
+  assert.equal(outcome.result, "queued");
+  // Unlike parity, the remote record is filed on the changed path too: it records what GitHub
+  // reported on a pushed sha, which the run's own diff cannot make false.
+  const entry = readRemoteCi(root);
+  assert.ok(entry, "a run that changed the tree still advances the remote ledger");
+  assert.equal(entry!.repo, "znation/tumwater");
+  assert.equal(entry!.sha, "3e450b0c4");
+  assert.equal(entry!.result, "failed");
+});
+
+test("a failed remote-CI ledger write warns and the run still ends queued", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("ci");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    role: "ci",
+    finalText: "SUMMARY: fixed the remote red\n",
+    remote: { repo: "znation/tumwater", sha: "3e450b0c4", result: "failed" },
+  });
+  const undo = failRenameSyncOn(remoteCiPath(root), "EACCES fake");
+  let outcome;
+  try {
+    outcome = await stageRunMerge(ctx);
+  } finally {
+    undo();
+  }
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(readRemoteCi(root), null, "the ledger write failed");
+  assert.equal(calls.warnings.length, 1);
+  assert.match(calls.warnings[0]!, /remote CI result not recorded: EACCES fake/);
 });
 
 test("a failed feedback ledger write warns and the run still ends queued", async () => {

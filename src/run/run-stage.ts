@@ -22,7 +22,7 @@ import type { PriorReview } from "../merge/merge-queue.js";
 import { hasUnmergedPin } from "../runner/runner-leftover.js";
 import { plural } from "../text/phrases.js";
 import { squash } from "../text/text.js";
-import { recordDismissedFiling, recordDismissedFlow } from "./run-dismiss.js";
+import { recordDismissedFiling, recordDismissedFlow, recordDismissedRemote } from "./run-dismiss.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";
 import { stagedMovedEntries } from "../scheduling/claims.js";
 import { entryKey } from "../backlog/backlog-parts.js";
@@ -509,6 +509,14 @@ function recordStageRecords(
   // making the next ci run skip the full suite while main still fails it. The sole recorder
   // of parity is resolveRunVerdict's no_change path, which runs only when main actually
   // passed and nothing needed changing.
+  // The remote-CI record IS filed here too: it records what GitHub reported on a pushed sha
+  // (plans/remote-ci.md "The ledger"), a fact the run's own diff cannot make false — so a run
+  // that committed a fix for a remote red still advances the ledger, stopping the next run
+  // from re-fixing the same remote red while this fix waits to merge (recorded on both the
+  // no-change and the changed path, unlike parity).
+  if (ctx.remote) {
+    recordDismissedRemote(ctx, ctx.root, ctx.remote);
+  }
   return finalSummary;
 }
 
@@ -524,6 +532,16 @@ interface RunFlow {
 interface RunFiled {
   issue: number;
   title: string;
+}
+
+/** The pi reply's remote-CI record, as extracted by reply-contract.ts's extractRemoteResult
+ * and tagged with the target repo (plans/remote-ci.md "The ledger"); mirrored here so the
+ * run staging needs no export from reply-contract. */
+interface RunRemote {
+  repo?: string;
+  result: "passed" | "failed" | "pending" | "unavailable";
+  sha?: string;
+  reason?: string;
 }
 
 /** The shared role wiring a changed worktree's staging needs (src/runner/runner-outcome.ts):
@@ -563,6 +581,11 @@ interface RunStageContext {
   flow: RunFlow | null;
   /** The `feedback` observer's FILED record, or null for every other role. */
   filed: RunFiled | null;
+  /** The `ci` observer's REMOTE record, or null for every other role and for a ci run whose
+   * prompt carried no Remote CI block (plans/remote-ci.md "The ledger"). Recorded on the
+   * changed path too — the record is what GitHub reported on a pushed sha, which the run's
+   * own diff cannot make false — so a run that fixes a remote red still advances the ledger. */
+  remote: RunRemote | null;
   warn(message: string): void;
   /** One bounded follow-up turn in the still-open session, to produce a missing SUMMARY. */
   requestSummary(wt: string, overLength?: number): Promise<PiRunResult | null>;

@@ -4413,6 +4413,32 @@ missing parity record.
 false, one past true, mixed fresh+old false, malformed-only reads empty); `test/doctor-checks.test.ts`
 — "checkQaCoverage reads ok for a missing or fresh ledger and warns once stale past the window".
 
+### INV-BW4: a failed remote-ci write warns and the run keeps its outcome; a cut-off run records nothing; both dismissal paths record
+
+**Guarantee.** A `recordRemoteCi` write failure in `recordDismissedRemote` warns once (`remote CI
+result not recorded`) and the run keeps its outcome, so a full disk or read-only `.tumwater` does
+not count toward the role's error streak — the same degraded-bookkeeping policy as the ci-parity
+ledger (INV-BW2). Unlike parity, the remote-CI record is filed on BOTH dismissal paths: the
+no-change path records only when the run is not cut-off (`ctx.remote && !cutOff` in
+`recordNoChangeBookkeeping`), and the changed path records whenever `ctx.remote` is set
+(`recordStageRecords`). The record says what GitHub reported on a pushed sha, which a run's own
+diff cannot make false, so a run that committed a fix for a remote red still advances the ledger —
+stopping the next run from re-fixing the same remote red while the first fix waits to merge. A
+cut-off run records nothing: truncation is not a verdict the run declared (the same guard the CI
+line carries). The runner tags `remote.repo` only when the run's prompt carried the Remote CI
+block, so a stray `REMOTE:` line in a block-less reply records nothing.
+
+**Binds.** `src/run/run-dismiss.ts` (`recordDismissedRemote`),
+`src/observer/remote-ci.ts` (`recordRemoteCi`), `src/run/run-verdict.ts` (`recordNoChangeBookkeeping`),
+`src/run/run-stage.ts` (`recordStageRecords`).
+
+**Pinned by.** `test/run-dismiss.test.ts` — the `recordDismissedRemote` record and failed-write
+cases; `test/run-verdict.test.ts` — "a no_change ci run with a REMOTE line records its remote-CI
+verdict", "a cut-off ci run's REMOTE line records nothing" and "a failed remote-CI ledger write
+warns and the no_change run stands"; `test/run-stage.test.ts` — "a changed-branch ci run still
+records its remote-CI verdict" and "a failed remote-CI ledger write warns and the run still ends
+queued".
+
 ## OpenCode catalog cache: a foreign entry reads as an unknown model
 
 ### INV-BV1: readOpencodeCache returns only well-formed catalog entries

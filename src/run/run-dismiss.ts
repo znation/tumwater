@@ -7,11 +7,16 @@
  * the run — a failed write warns and the run's outcome stands — and the caller keeps its own
  * guard (the cut-off runs record nothing, the changed path records even when the merge is
  * queued). The ci-parity recorder is deliberately NOT shared: only the no-change path writes
- * it, because a run that changed the tree has not verified main (run-stage.ts's comment). */
+ * it, because a run that changed the tree has not verified main (run-stage.ts's comment). The
+ * remote-CI recorder, by contrast, IS shared: the record is what GitHub reported on a pushed
+ * sha, which a run's own diff cannot make false, so recording it on the changed path stops the
+ * next run from fixing the same remote red again while the first fix waits to merge (the same
+ * reasoning as the filing record above). */
 
 import { logEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { recordFiled } from "../observer/feedback-filings.js";
+import { recordRemoteCi } from "../observer/remote-ci.js";
 import { recordFlow } from "../observer/qa-coverage.js";
 
 /** The dismissal path as a recorder reads it: the role to attribute the issue_filed event and
@@ -37,6 +42,28 @@ export function recordDismissedFlow(
     recordFlow(root, flow, result, result === "bug" ? summary : undefined);
   } catch (err) {
     ctx.warn(`qa flow "${flow}" not recorded: ${errorMessage(err)}`);
+  }
+}
+
+/** Record a dismissed run's remote-CI verdict (remote-ci.ts's recordRemoteCi) — a failed
+ * ledger write warns with the same wording on both dismissal paths. Unlike the ci-parity
+ * recorder (deliberately no-change-only), this one is shared by both paths: the record is what
+ * GitHub reported on a pushed sha, which a run's own diff cannot make false, so a changed run
+ * still writes it — recording it when a run commits a fix stops the next run from fixing the
+ * same remote red again while the first fix waits to merge. */
+export function recordDismissedRemote(
+  ctx: RunDismissCtx,
+  root: string,
+  remote: { repo?: string; result: "passed" | "failed" | "pending" | "unavailable"; sha?: string; reason?: string },
+): void {
+  // `repo` is tagged by the runner only when the run's prompt carried the Remote CI block —
+  // a record without it cannot be attributed to a repo, so it records nothing (the runner
+  // never produces one without a target, so this is type honesty, not a live branch).
+  if (remote.repo === undefined) return;
+  try {
+    recordRemoteCi(root, remote.repo, remote.result, Date.now(), remote.sha, remote.reason);
+  } catch (err) {
+    ctx.warn(`remote CI result not recorded: ${errorMessage(err)}`);
   }
 }
 

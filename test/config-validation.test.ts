@@ -659,7 +659,7 @@ test("validateConfig rejects unknown keys with the valid ones listed", () => {
   const roleEntry = validationError({ roles: { feature: { enabed: true } } });
   assert.match(
     roleEntry,
-    /unknown key "enabed" in roles\.feature \(valid keys: enabled, instructions, provider, model, backend, thinking, minRunIntervalSeconds, instances\)/,
+    /unknown key "enabed" in roles\.feature \(valid keys: enabled, instructions, provider, model, backend, thinking, minRunIntervalSeconds, instances, remote\)/,
   );
   assert.match(roleEntry, /— did you mean `enabled`\?/);
 
@@ -685,6 +685,20 @@ test("validateConfig bounds the per-role instances field to feature/bugfix and 1
   // Only feature and bugfix may split; the message names both and the offending value.
   const plan = validationError({ roles: { plan: { instances: 2 } } });
   assert.match(plan, /roles\.plan\.instances is only valid for feature and bugfix \(got 2\)/);
+});
+
+test("validateConfig bounds the per-role remote field to ci and booleans", () => {
+  // Accepted: both boolean values under ci (absent means on when detectable).
+  assert.doesNotThrow(() => validateConfig({ roles: { ci: { remote: true } } }));
+  assert.doesNotThrow(() => validateConfig({ roles: { ci: { remote: false } } }));
+
+  // Only ci may read the hosted CI; a remote under any other role is rejected naming the key.
+  const feature = validationError({ roles: { feature: { remote: false } } });
+  assert.match(feature, /roles\.feature\.remote is only valid for ci \(got false\)/);
+
+  // A non-boolean under ci is a boolean problem naming the key.
+  const no = validationError({ roles: { ci: { remote: "no" } } });
+  assert.match(no, /roles\.ci\.remote must be true or false \(got "no"\)/);
 });
 
 test("validateConfig rejects unknown role ids (a typo would spawn a phantom erroring role)", () => {

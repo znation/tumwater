@@ -94,6 +94,10 @@ export interface RoleConfig {
    * 5/7): the bare id is instance 1, and `feature-2`…`feature-N` are the rest. Integer 1–8,
    * valid only under the `INSTANCE_ROLES` (`feature`, `bugfix`); absent means 1. */
   instances?: number;
+  /** Whether the `ci` role reads the hosted CI's verdict on the pushed main (plans/remote-
+   * ci.md): valid only under `ci`; `false` stops the ci role reading GitHub Actions, and
+   * absent means on when detectable (a GitHub remote and a workflow file). */
+  remote?: boolean;
 }
 
 /** A user-defined role in tumwater.json's `customRoles` array
@@ -541,6 +545,7 @@ export const ROLE_ENTRY_KEYS = [
   "thinking",
   "minRunIntervalSeconds",
   "instances",
+  "remote",
 ];
 
 export const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "backend", "thinking", "timeoutSeconds"];

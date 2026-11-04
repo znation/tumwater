@@ -475,7 +475,8 @@ The parity block and the CI line — both required on every run: your prompt car
 block from this team's own record naming the main tip and lock hash the last run covered. When it
 says \`current\` (main unmoved since the last green run covered exactly this tip with exactly this
 lock), declare nothing-to-do in ONE model run without running the suite — that is the cheap no-op
-the block exists for. When it is stale (main moved, the lock changed, or the last run failed), run
+the block exists for; the Remote CI check below still runs. When it is stale (main moved, the
+lock changed, or the last run failed), run
 the full workflow as the steps above say. Your final reply then carries one result-carrying line —
 \`CI: <sha> — <passed|failed>\` — naming the main tip you covered and whether it passed or failed,
 placed just before your ending (the nothing-to-do line, or the SUMMARY block when you committed a
@@ -483,6 +484,39 @@ fix). The verdict is required and the sha must be a hex id: a bare \`CI: <sha>\`
 is not recorded, so the parity block cannot advance on a truncated reply (the same rule as qa's
 FLOW line). tumwater records it for the next run's parity block. A passing run's reply ends with two
 lines in this form:
+   CI: <sha> — passed
+   ${NOTHING_TO_DO}
+
+The Remote CI check — only when your prompt carries the Remote CI block: it names the GitHub repo
+and branch the operator pushed, what this team's own record last said about it, and the read-only
+\`gh run list\` command to re-check it.
+   1. Judge the newest pushed sha on the branch only. It is \`pending\` while any of its runs is
+      queued or in progress. It is \`failed\` when any completed run concluded \`failure\`,
+      \`timed_out\` or \`startup_failure\`; \`cancelled\` and \`skipped\` are not failures.
+      Otherwise it is \`passed\`. If \`gh\` is missing, logged out or errors, report
+      \`unavailable\` with the reason and carry on.
+   2. The same sha and verdict as the block's record means an earlier run already handled it —
+      there is nothing new to do for it.
+   3. For a newly failed sha, read the failure with
+      \`gh run view <id> --repo <repo> --log-failed | tail -n 200\` (never the whole log), then
+      run the failing tests at main's tip:
+      - They fail here too: it is a local red, and you fix it as step 2 above says.
+      - They pass here, and \`git log --oneline <sha>..HEAD\` shows a commit that already fixed
+        it: nothing to do — the next push shows it.
+      - Otherwise it is specific to the hosted runner: its OS (the workflow's \`runs-on\`), its
+        runtime version, or its environment (an unset \`TMPDIR\`, a case-sensitive filesystem, a
+        missing tool — each an example, not the rule; the difference to reproduce is whatever the
+        failing step shows). Reproduce that difference here when you can (e.g. run the project's
+        declared check under \`env -u TMPDIR\`) and fix it. When the cause cannot be shown, file
+        ONE BUGS.md entry quoting the failing test, its assertion and the run URL, after checking
+        that no open entry names that test.
+      - A failing step that is not a test (install, build, packaging) is judged the same way.
+   4. \`gh\` is read-only for this role. It never re-runs, cancels or dispatches workflows,
+      pushes, or comments on GitHub.
+When the block is present, your final reply carries the result-carrying line
+\`REMOTE: <sha> — <passed|failed|pending>\`, or \`REMOTE: unavailable — <reason>\`, just before
+the \`CI:\` line. A passing run's reply then ends with three lines in this form:
+   REMOTE: <sha> — passed
    CI: <sha> — passed
    ${NOTHING_TO_DO}
 `,

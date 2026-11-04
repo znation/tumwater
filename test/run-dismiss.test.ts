@@ -4,10 +4,12 @@ import fs from "node:fs";
 import {
   recordDismissedFiling,
   recordDismissedFlow,
+  recordDismissedRemote,
 } from "../src/run/run-dismiss.js";
 import { readQaCoverage } from "../src/observer/qa-coverage.js";
 import { readFeedbackFilings } from "../src/observer/feedback-filings.js";
-import { eventsLogPath, feedbackFilingsPath, qaCoveragePath } from "../src/paths.js";
+import { readRemoteCi } from "../src/observer/remote-ci.js";
+import { eventsLogPath, feedbackFilingsPath, qaCoveragePath, remoteCiPath } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -98,4 +100,57 @@ test("a failed filing ledger write warns with the shared wording and records not
   assert.deepEqual(readFeedbackFilings(root), []);
   assert.equal(sink.warns.length, 1);
   assert.match(sink.warns[0]!, /feedback filing #12 not recorded: EACCES fake/);
+});
+
+test("recordDismissedRemote writes the ledger with the repo, sha and result", () => {
+  const root = tmpdir();
+  const sink = warnSink();
+  recordDismissedRemote(sink.ctx, root, {
+    repo: "znation/tumwater",
+    sha: "3e450b0c4",
+    result: "failed",
+  });
+  assert.deepEqual(sink.warns, []);
+  const entry = readRemoteCi(root);
+  assert.ok(entry);
+  assert.equal(entry!.repo, "znation/tumwater");
+  assert.equal(entry!.sha, "3e450b0c4");
+  assert.equal(entry!.result, "failed");
+  assert.ok(entry!.checkedAt > 0, "a fresh checkedAt is recorded");
+});
+
+test("recordDismissedRemote rides an unavailable reason and no repo records nothing", () => {
+  const root = tmpdir();
+  const sink = warnSink();
+  recordDismissedRemote(sink.ctx, root, { result: "unavailable", reason: "gh is not logged in" });
+  // No repo: the record cannot be attributed, so nothing is written (type honesty, not a live branch).
+  assert.equal(readRemoteCi(root), null, "a block-less record writes nothing");
+  recordDismissedRemote(sink.ctx, root, {
+    repo: "znation/tumwater",
+    result: "unavailable",
+    reason: "gh is not logged in",
+  });
+  const entry = readRemoteCi(root);
+  assert.ok(entry);
+  assert.equal(entry!.result, "unavailable");
+  assert.equal(entry!.reason, "gh is not logged in");
+  assert.equal(entry!.sha, undefined);
+});
+
+test("a failed remote-CI ledger write warns with the shared wording and records nothing", () => {
+  const root = tmpdir();
+  const sink = warnSink();
+  const undo = failRenameSyncOn(remoteCiPath(root), "EACCES fake");
+  try {
+    recordDismissedRemote(sink.ctx, root, {
+      repo: "znation/tumwater",
+      sha: "3e450b0c4",
+      result: "passed",
+    });
+  } finally {
+    undo();
+  }
+  assert.equal(readRemoteCi(root), null);
+  assert.equal(sink.warns.length, 1);
+  assert.match(sink.warns[0]!, /remote CI result not recorded: EACCES fake/);
 });

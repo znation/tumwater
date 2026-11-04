@@ -177,6 +177,14 @@ export function ciParityPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "ci-parity.json");
 }
 
+/** The `ci` observer's remote-CI ledger (observer/remote-ci.ts): the verdict the role last
+ * read from GitHub Actions on the newest pushed commit of the base branch. Runtime state under
+ * .tumwater/state/, never committed — the role's own `gh` run is its only write, and a record
+ * must leave the repo untouched (the same policy as the ci-parity ledger above). */
+export function remoteCiPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "remote-ci.json");
+}
+
 /** The `feedback` observer's per-install filing ledger (observer/feedback-filings.ts): which GitHub
  * issues this install already filed on znation/tumwater, so the next fresh session's prompt can
  * render a "previously filed" block without re-deriving its dedupe from the network alone.

@@ -7,6 +7,7 @@ import {
   extractFiled,
   extractFlow,
   extractRefusal,
+  extractRemoteResult,
   fixLine,
   hasVerdictLine,
   isFixLine,
@@ -341,6 +342,34 @@ test("extractCiResult requires the verdict and a hex sha", () => {
   assert.equal(extractCiResult("CI: abc1234"), null, "bare sha records nothing");
   assert.equal(extractCiResult("CI: abc1234 — pa"), null, "truncated mid-verdict");
   assert.equal(extractCiResult("CI: nothex — passed"), null, "non-hex sha");
+});
+
+test("extractRemoteResult reads a result-carrying REMOTE line", () => {
+  assert.deepEqual(
+    extractRemoteResult("checked the remote\nREMOTE: 3e450b0c4 — failed"),
+    { sha: "3e450b0c4", result: "failed" },
+  );
+  assert.deepEqual(extractRemoteResult("REMOTE: 3e450b0c4 — pending"), {
+    sha: "3e450b0c4",
+    result: "pending",
+  });
+  assert.deepEqual(extractRemoteResult("REMOTE: unavailable — gh is not logged in"), {
+    result: "unavailable",
+    reason: "gh is not logged in",
+  });
+});
+
+test("extractRemoteResult is fail-closed on a bare or truncated line", () => {
+  // A bare sha — or a reply truncated mid-verdict — is not a result: returning null leaves the
+  // ledger unadvanced rather than latching a verdict the run never declared (extractCiResult's rule).
+  assert.equal(extractRemoteResult("REMOTE: 3e450b0c4"), null, "bare sha records nothing");
+  assert.equal(extractRemoteResult("REMOTE: 3e450b0c4 — pa"), null, "truncated mid-verdict");
+  assert.equal(extractRemoteResult("REMOTE: unavailable —"), null, "an empty reason is not a result");
+  assert.equal(
+    extractRemoteResult("I reported the REMOTE: 3e450b0c4 — passed check"),
+    null,
+    "a mid-sentence mention is anchored out",
+  );
 });
 
 test("extractCiResult returns null when absent, empty, or only mid-sentence", () => {

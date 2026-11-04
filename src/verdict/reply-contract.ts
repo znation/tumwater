@@ -221,6 +221,40 @@ export function extractCiResult(text: string): CiResult | null {
   return { sha: match[1].toLowerCase(), result: match[2]!.toLowerCase() as "passed" | "failed" };
 }
 
+/** The result of one `ci` run's remote-CI check: the pushed sha it judged and the verdict it
+ * read, or the reason GitHub could not be read at all (plans/remote-ci.md "The line"). */
+export interface RemoteResult {
+  /** The target's `owner/name`, tagged by the runner when the run's prompt carried the
+   * Remote CI block (plans/remote-ci.md "The ledger"); absent when the line came from a
+   * block-less reply and records nothing. */
+  repo?: string;
+  sha?: string;
+  result: "passed" | "failed" | "pending" | "unavailable";
+  reason?: string;
+}
+
+/** Extract the `ci` run's result-carrying `REMOTE: <sha> — <passed|failed|pending>` line
+ * (plans/remote-ci.md "The line"); null when absent. The `REMOTE: unavailable — <reason>`
+ * shape is also a result: a non-empty reason clipped to 200 characters. Built on `labeledLine`,
+ * so the label is anchored at line start and a mid-sentence mention is ignored. The verdict is
+ * required and the sha must be a 7–64-character hex id: a bare `REMOTE: <sha>` — or a reply
+ * truncated mid-verdict (`REMOTE: 3e450b0c4 — pa`) — is not a result, and returning null leaves
+ * the ledger unadvanced rather than latching a verdict the run never declared (the same
+ * fail-closed rule as `extractCiResult`). */
+export function extractRemoteResult(text: string): RemoteResult | null {
+  const value = labeledLine(text, "REMOTE");
+  if (!value) return null;
+  const unavailable = /^unavailable\s*[—-]\s*(.+)$/i.exec(value);
+  if (unavailable?.[1]) {
+    const reason = unavailable[1].trim();
+    if (reason === "") return null;
+    return { result: "unavailable", reason: reason.slice(0, 200) };
+  }
+  const match = /^([0-9a-f]{7,64})\s*[—-]\s*(passed|failed|pending)\s*$/i.exec(value);
+  if (!match?.[1]) return null;
+  return { sha: match[1].toLowerCase(), result: match[2]!.toLowerCase() as "passed" | "failed" | "pending" };
+}
+
 /** The FIX line's shape — a line-anchored label with its content on the same line (see fixLine).
  * One source for fixLine and isFixLine, so the line review-verdict.ts's parseVerdict drops from
  * a reviewer's reasons is the line fixLine reads. */

@@ -10,7 +10,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { imageReroute } from "../agent/image-input.js";
 import type { RunOutcome } from "./run-outcome.js";
-import type { CiResult, FlowResult, FiledResult } from "../verdict/reply-contract.js";
+import type { CiResult, FlowResult, FiledResult, RemoteResult } from "../verdict/reply-contract.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
@@ -23,7 +23,7 @@ import { extractSummary } from "../git/commit-message.js";
 import { errorMessage } from "../text/text.js";
 import { recordParity } from "../observer/ci-parity.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
-import { recordDismissedFiling, recordDismissedFlow } from "./run-dismiss.js";
+import { recordDismissedFiling, recordDismissedFlow, recordDismissedRemote } from "./run-dismiss.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { rejectedRefName } from "../paths.js";
 import { logEventBestEffort } from "../events/events.js";
@@ -67,6 +67,9 @@ interface RunVerdictContext {
   filed: FiledResult | null;
   /** The `ci` observer's CI record, or null for every other role. */
   ci: CiResult | null;
+  /** The `ci` observer's REMOTE record, or null for every other role and for a ci run whose
+   * prompt carried no Remote CI block (plans/remote-ci.md "The ledger"). */
+  remote: RemoteResult | null;
   warn(message: string): void;
   /** Merge the worktree branch on main with the role's shared wiring (refusal-note merges). */
   merge(wt: string, summary: string): Promise<RunOutcome["result"]>;
@@ -557,6 +560,13 @@ function recordNoChangeBookkeeping(
     } catch (err) {
       ctx.warn(`ci parity not recorded: ${errorMessage(err)}`);
     }
+  }
+  // A fulfilled ci run that checked the hosted CI records its verdict in the remote-CI ledger
+  // (plans/remote-ci.md "The ledger"). Recorded like the filing above — the record is what
+  // GitHub reported on a pushed sha, which this no-change run cannot have made false. A
+  // cut-off run records nothing: truncation is not a verdict the run declared.
+  if (ctx.remote && !cutOff) {
+    recordDismissedRemote(ctx, ctx.root, ctx.remote);
   }
 }
 

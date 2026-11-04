@@ -47,8 +47,19 @@ import { conflictedFileHunks, hasConflictMarkers, mainCommitsTouching } from "..
 import { changedFiles } from "../git/git-diff.js";
 import { handlePiResultPhase } from "./runner-outcome.js";
 import { mainRedHealNote, namedFailures } from "../baseline/main-red.js";
+import { remoteCiBlockFor } from "../observer/remote-ci.js";
 import { watchedBaseline } from "../baseline/main-baseline.js";
-import { extractCiResult, extractFlow, extractFiled, type CiResult, type FiledResult, type FlowResult } from "../verdict/reply-contract.js";
+import {
+  extractCiResult,
+  extractFlow,
+  extractFiled,
+  extractRemoteResult,
+  type CiResult,
+  type FiledResult,
+  type FlowResult,
+  type RemoteResult,
+} from "../verdict/reply-contract.js";
+import { remoteCiTarget } from "../observer/remote-ci.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 
 /** Everything the run-pipeline phases need from their `RoleRunner` host. The runner builds one
@@ -494,9 +505,9 @@ async function runWithWorktreePhase(
 
   prompt = (await resendHandoffNote(ctx, plan, wt, prompt)).prompt;
 
-  const { pi, flow, filed, ci } = await authorRun(ctx, plan, cfg, wt, prompt);
+  const { pi, flow, filed, ci, remote } = await authorRun(ctx, plan, cfg, wt, prompt);
 
-  return handlePiResultPhase(ctx, pi, plan.userPrompt, revisionRound, wt, flow, filed, ci, piStartedAt, cfg);
+  return handlePiResultPhase(ctx, pi, plan.userPrompt, revisionRound, wt, flow, filed, ci, remote, piStartedAt, cfg);
 }
 
 /** How does a run recover a leftover? A previous run may have left a commit unmerged
@@ -577,6 +588,16 @@ async function recoverLeftoversForRun(
   if (ctx.baseRole === "ci") {
     const note = await mainRedHealNote(ctx.root, ctx.role, wt);
     if (note) prompt = appendPromptNote(prompt, note);
+    // The Remote CI block (plans/remote-ci.md "Shape"): detection spawns git, and the prompt
+    // builder is synchronous, so the block rides this ci-only async hook beside the heal note.
+    // It holds facts and one read-only command, never instructions; a throw appends nothing —
+    // a detection failure must never fail the run (the same wrap policy the heal note gets).
+    try {
+      const block = await remoteCiBlockFor(ctx.root, ctx.config);
+      if (block) prompt = appendPromptNote(prompt, block);
+    } catch {
+      // no block — the run proceeds without the remote check
+    }
   } else {
     // Every other role proceeds on the red main, told which tests already fail (the
     // <main-known-red> note, restored 2026-10-25): a pure read of the main watch's persisted
@@ -752,7 +773,13 @@ async function authorRun(
   cfg: ResolvedModelConfig,
   wt: string,
   prompt: string,
-): Promise<{ pi: PiRunResult; flow: FlowResult | null; filed: FiledResult | null; ci: CiResult | null }> {
+): Promise<{
+  pi: PiRunResult;
+  flow: FlowResult | null;
+  filed: FiledResult | null;
+  ci: CiResult | null;
+  remote: RemoteResult | null;
+}> {
   const s = ctx.state;
   const runBase = await headOf(wt, "HEAD");
   // The stray-write warning only reports, so a `git status` that fails on either side skips it.
@@ -784,5 +811,23 @@ async function authorRun(
   // interrupted or failed run must not record a coverage it never declared. The harness
   // records it, never pi.
   const ci = ctx.baseRole === "ci" ? extractCiResult(pi.finalText) : null;
-  return { pi, flow, filed, ci };
+  // The `ci` observer's reply also ends with a result-carrying `REMOTE:` line (plans/remote-
+  // ci.md "The line"). It records only when the run's own prompt carried the Remote CI block:
+  // re-resolve the target, and record the extracted result only when it is non-null and the
+  // reply actually carries a REMOTE line — a stray REMOTE line in a block-less reply records
+  // nothing. The harness records it, never pi.
+  let remote: RemoteResult | null = null;
+  if (ctx.baseRole === "ci") {
+    const line = extractRemoteResult(pi.finalText);
+    if (line) {
+      let target: { repo: string; branch: string } | null = null;
+      try {
+        target = await remoteCiTarget(ctx.root, ctx.config);
+      } catch {
+        target = null; // a detection failure records nothing
+      }
+      if (target) remote = { repo: target.repo, ...line };
+    }
+  }
+  return { pi, flow, filed, ci, remote };
 }
