@@ -19,6 +19,12 @@ test("eventTypeLabel serves both families and falls back to spaced words", () =>
   assert.equal(eventTypeLabel("constructor"), "constructor");
 });
 
+test("a result code with no table entry falls back to spaced words", () => {
+  // The table is a Partial: a RunResult the table does not list (none today) takes the
+  // underscores-as-spaces fallback instead of an assumed string.
+  assert.equal(eventTypeLabel("mystery_code"), "mystery code");
+});
+
 test("issue_filed labels as a lowercase phrase", () => {
   assert.equal(EVENT_TYPE_LABELS.issue_filed, "issue filed");
   assert.equal(eventTypeLabel("issue_filed"), "issue filed");

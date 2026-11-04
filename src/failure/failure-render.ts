@@ -17,12 +17,11 @@ import { markdownTable, type ColumnAlign } from "../text/markdown.js";
 /** A cluster's role list shows at most this many names before a "+N more" remainder. */
 const ROLES_SHOWN = 4;
 
-/** Every `RunResult`, mapped to its display/column rank. `Partial` relaxes the compile
- * closure: a result retired from the surface tables while still in the `RunResult` union
- * (parts 4m/3 → 4k/3) would otherwise be a compile error here. Every current member still
- * has its key. Order runs from "made progress" through "did not" to the operator/shutdown
- * outcomes. */
-const RESULT_ORDER: Readonly<Partial<Record<RunResult, number>>> = {
+/** Each ranked `RunResult`'s display/column rank. Typed as a `Partial`, so a result added to
+ * src/run/run-outcome.ts and not ranked here is not a compile error — the columns sort places
+ * it after every ranked result, alphabetical among the unranked. The ranked order runs from
+ * "made progress" through "did not" to the operator/shutdown outcomes. */
+const RESULT_ORDER: Partial<Record<RunResult, number>> = {
   changed: 0,
   queued: 1,
   no_change: 2,
@@ -48,8 +47,11 @@ function columns(outcomes: OutcomeRow[]): RunResult[] {
   for (const row of outcomes) {
     for (const k of Object.keys(row.counts)) present.add(k as RunResult);
   }
-  const rank = (r: RunResult): number => RESULT_ORDER[r] ?? Number.MAX_SAFE_INTEGER;
-  return [...present].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  // An unranked result sorts after every ranked one; the alphabetical tie-break then orders the
+  // unranked among themselves (and can never see a NaN from a missing rank).
+  return [...present].sort(
+    (a, b) => (RESULT_ORDER[a] ?? Number.MAX_SAFE_INTEGER) - (RESULT_ORDER[b] ?? Number.MAX_SAFE_INTEGER) || a.localeCompare(b),
+  );
 }
 
 /** A delta cell: `prev → cur`, with "—" on a side where the role had no runs (the "new role"

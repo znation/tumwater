@@ -363,6 +363,22 @@ test("every digest table's separator has one delimiter cell per header cell", ()
   }
 });
 
+test("a result with no rank sorts after every ranked one, alphabetical among the unranked", () => {
+  // RESULT_ORDER is a Partial: an unranked result (none today) sorts after every ranked one —
+  // the comparator's ?? MAX_SAFE_INTEGER keeps it NaN-free — and the alphabetical tie-break
+  // orders the unranked among themselves.
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "run_end", result: "alpha_ghost" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "beta_ghost" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "error" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const md = renderFailureMarkdown(collectFailureReport(root, 1));
+  const outcome = markdownTables(md)[0]!;
+  assert.deepEqual(outcome.header, ["role", "merged", "error", "alpha ghost", "beta ghost"]);
+});
+
 test("deltas report new roles as absent, not an infinite increase", () => {
   const root = tmpdir();
   writeEvents(root, [

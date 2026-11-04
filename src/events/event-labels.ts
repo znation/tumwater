@@ -95,10 +95,9 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   warning: "warning",
 };
 
-/** The words for each run result code, shown in the result cells. `Partial` relaxes the
- * compile closure: a result retired from the surface tables while still in the `RunResult`
- * union (parts 4m/3 → 4k/3) would otherwise be a compile error here. Every current member
- * still has its key. */
+/** The words for each run result code, shown in the result cells. Typed as a `Partial`, so a
+ * `RunResult` that has no entry is not a compile error — `eventTypeLabel` serves it with the
+ * underscores-as-spaces fallback instead. */
 export const RUN_RESULT_LABELS: Readonly<Partial<Record<RunResult, string>>> = {
   changed: "merged",
   queued: "waiting to merge",
@@ -118,12 +117,13 @@ export const RUN_RESULT_LABELS: Readonly<Partial<Record<RunResult, string>>> = {
 };
 
 /** The words for an event type or run result code: its own-property label, else the code with
- * underscores as spaces. The two code families are disjoint, so one lookup serves both. */
+ * underscores as spaces. The two code families are disjoint, so one lookup serves both; the
+ * result table is a `Partial`, so a result code with no entry falls through to that fallback. */
 export function eventTypeLabel(code: string): string {
   if (Object.hasOwn(EVENT_TYPE_LABELS, code)) return EVENT_TYPE_LABELS[code as HarnessEvent["type"]];
   if (Object.hasOwn(RUN_RESULT_LABELS, code)) {
-    const label = RUN_RESULT_LABELS[code as RunResult];
-    if (label !== undefined) return label;
+    const resultLabel = RUN_RESULT_LABELS[code as RunResult];
+    if (resultLabel !== undefined) return resultLabel; // An own entry is a string today; a future undefined entry falls through.
   }
   return code.replace(/_/g, " ");
 }

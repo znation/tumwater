@@ -49,6 +49,29 @@ test("outcome classes fold per role: merged, no_change, error; unknown results c
   ]);
 });
 
+test("a queued run that resolves to a result the class map does not know keeps its merged reading, not a crash", () => {
+  // The queued→merge join resolves the run to its outcome's result; the `resolvedCls !== undefined`
+  // guard must skip an unlisted resolution rather than read `undefined` into the class. The join
+  // matches the pin and the outcome on sha, not on the result text, so a foreign outcome result
+  // still claims the run.
+  const queued = ev({ ts: 100, source: "feature", run: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
+  const { timeSpend, lossCauses } = timeAndSpend(
+    [queued],
+    [
+      ev({ ts: 95, source: "feature", type: "merge_queued", commit: "sha1" }),
+      queued,
+      ev({ ts: 120, source: "feature", type: "merge_done", commit: "sha1", result: "mystery_merge" }),
+    ],
+  );
+  // The unlisted resolution is not a class, so the run stays on its raw merged reading, priced and
+  // itemized under no loss cause — not dropped by the first guard, not guessed into a class by the
+  // second.
+  assert.deepEqual(timeSpend[0]!.classes.merged, { runs: 1, ms: 5000, costUsd: 0.25 });
+  assert.equal(timeSpend[0]!.classes.no_change.runs, 0);
+  assert.equal(timeSpend[0]!.classes.error.runs, 0);
+  assert.deepEqual(lossCauses, []);
+});
+
 test("duration source chain: own durationMs, else the run_start pairing, else 0", () => {
   const { timeSpend } = timeAndSpend(
     [
