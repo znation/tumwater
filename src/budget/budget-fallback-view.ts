@@ -374,9 +374,9 @@ function movedTierReason(
   midnight: number,
 ): { reason: ChainTierInfo["reason"]; returnsAt?: number } {
   return (
-    (prior !== null ? demotedPriorReason(a, priorName) : null) ??
-    (prior !== null ? stepCapPriorReason(a, prior, priorName, midnight) : null) ??
-    (prior !== null ? overagePriorReason(a, prior) : null) ??
+    (prior ? demotedPriorReason(a, priorName) : null) ??
+    (prior ? stepCapPriorReason(a, prior, priorName, midnight) : null) ??
+    (prior ? overagePriorReason(a, prior) : null) ??
     modelCheckPriorReason(a, tier, prior, priorName) ??
     { reason: "cap", returnsAt: midnight }
   );
