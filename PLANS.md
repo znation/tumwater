@@ -476,25 +476,6 @@ _None yet._
 - test/doctor-holds.test.ts / test/status-model.test.ts / test/status-render.test.ts / test/status-render-cells.test.ts / test/team-alerts.test.ts: the held-by-main-red cases go; the unheld red-main warning cases and the surviving phase cases stay.
 - test/failure-render.test.ts / test/failure-time-spend.test.ts / test/gui-client.test.ts: the `main_red` rows, labels and tone cases go; the surviving result cases stay.
 
-### Every commit is verified on main, part 4n/3: `rolePhase` loses its now-dead `mainCheck` parameter and every caller shifts its trailing positional arguments (planned 2026-11-03 by the plan role, splitting the 2026-10-29 part 4j/3 after feature held it too large for one run; requires part 4m/3 landed, so `heldByMainRed` is gone and no reader of the parameter remains; touches src/ui/status-model.ts test/status-model.test.ts test/gui-client.test.ts)
-
-**Goal.** `rolePhase` still takes a `mainCheck` parameter whose only reader was `heldByMainRed`, deleted in part 4m/3. Drop the parameter and update the positional call sites so the later flags (`capPaused`, `quietHold`, `diskHeld`, `bootstrapHeld`, `maintenanceQuotaHold`, `pausedUntilMs`, `restartHold`) keep their meaning and no caller silently passes a value one slot off.
-
-**Approach.**
-- Remove `mainCheck?: StatusSnapshot["mainCheck"],` from `rolePhase`'s signature and `snap.mainCheck,` from `roleRowCells`'s call (src/ui/status-model.ts); update the doc comment that names `mainCheck` as what lets the main-red label retire.
-- Update every `rolePhase` call that passes an argument at or after the old `mainCheck` slot (8th positional): remove the `mainCheck` argument and shift the later arguments left by one. Calls that stop before it (the common `rolePhase(s, true)`) are unchanged.
-- Re-derive each updated test call's argument list by the flag it means to exercise, not by deleting the first `undefined`: test/status-model.test.ts's cap, quiet, disk, bootstrap, quota and paused-until cases, and test/gui-client.test.ts's paused-until, cap, bootstrap and main-red rows, must still exercise the same flag at the same label.
-- The main-red label rows themselves are deleted with part 4m/3; this part changes only the argument positions in the rows that remain.
-
-**Files touched.** src/ui/status-model.ts test/status-model.test.ts test/gui-client.test.ts
-
-**Acceptance criteria.**
-- `grep -n 'mainCheck' src/ui/status-model.ts` prints nothing, and `rolePhase`'s declaration and `roleRowCells` call no longer pass a main-check value.
-- Every `rolePhase` call compiles, and each test row that passed a flag after the old `mainCheck` slot still asserts the same phase label for that flag (cap pause, quiet hold, disk hold, bootstrap, quota and paused-until).
-- `npm run test:gate` passes.
-
-**Tests.** Run test/status-model.test.ts, test/gui-client.test.ts and test/status-render.test.ts, then the project's gate.
-
 ### Subtract verify collapse, part 2/5: The queued change's gate has one named home, `reviewQueuedChange` in merge-core.ts, so the merge step can run it in the merge worktree (planned 2026-11-03 by the plan role, splitting the 2026-10-31 too-large Subtract part 3c/7 after feature held it too large for one run; requires part 1/5 landed; touches src/merge/merge-core.ts src/merge/merge-batch.ts)
 
 **Goal.** The gate a queued change runs before merging is one function, `reviewQueuedChange(ctx, req, wt, state, foldUsage)`, in merge-core.ts: it rebases the pinned tree onto main's current head (`syncPinToMain`) and runs `reviewPinnedChange`, returning its `GateOutcome`. `verifyRequestIn` in merge-batch.ts calls it, so the existing verify stage and the later one-step drain run the same code; no behavior changes.
