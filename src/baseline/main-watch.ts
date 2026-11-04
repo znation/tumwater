@@ -508,8 +508,13 @@ export function createMainWatch(
         });
       }
       if (held || mainHead === "" || inFlight) return;
-      // A head already watched is a no-op unless a suspended full check has now come due.
-      if (mainHead === lastWatched && (fullCheckDueAt === undefined || now() < fullCheckDueAt)) return;
+      // A head already watched is a no-op unless a suspended full check has now come due, or
+      // another check (the gate's main-tip attribution) recorded that same head red: a red is
+      // settled and healed at once, never held back by the interval.
+      if (mainHead === lastWatched) {
+        if (fullCheckDueAt === undefined) return;
+        if (now() < fullCheckDueAt && baselineCache.get(mainHead)?.status !== "red") return;
+      }
       inFlight = watchOnce(mainHead, config)
         .catch((err: unknown) => {
           // A failed watch (main unreadable, checkout refused) records nothing and is not

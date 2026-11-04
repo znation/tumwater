@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { createMainWatch } from "../src/baseline/main-watch.js";
-import { queueCulpritHeal } from "../src/baseline/main-red.js";
+import { mainTipVerdict, queueCulpritHeal } from "../src/baseline/main-red.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { CheckConfig } from "../src/config/config-schema.js";
@@ -231,6 +231,22 @@ test("within the interval, a code head above a green anchor suspends the full ch
   // The diff rules still ran on the tip despite the suspended full check, exactly once.
   const warnings = warningMessages(root).filter((m) => m.includes("conflict markers remain in"));
   assert.equal(warnings.length, 1, "the diff rules judge the suspended head once, not once per poll");
+});
+
+test("a suspended head another check records red is settled without waiting for the interval", async () => {
+  const { root } = culpritFixture();
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
+  await watchAt(watch, root); // the seed commit: green, checkedAt stamped
+  change(root, "bad.txt", "b"); // a code head that is actually red, above the green anchor
+  await watchAt(watch, root); // within the interval: suspended, so the watch has not seen the red
+  assert.equal(eventsOfType(root, "main_check").length, 1, "the watch itself made no verdict yet");
+  // The gate's main-tip attribution shares the same per-SHA cache and can observe this red while
+  // the watch waits out the interval (mainTipVerdict's checkMainBaseline).
+  assert.equal((await mainTipVerdict(root, "improve", "main", defaultConfig())).status, "red");
+  await watchAt(watch, root); // the same head: the cached red must be settled now, not in an hour
+  assert.equal(eventsOfType(root, "main_check").length, 2, "the suspended head's red is recorded");
+  assert.equal(eventsOfType(root, "main_culprit").length, 1, "the red names its culprit at once");
 });
 
 test("after the interval passes, the full check covers every commit above the anchor it skipped past", async () => {
