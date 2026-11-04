@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract verify collapse, part 1/5: The queue-health and tier/author helpers move out of the verify modules, so deleting the verify stage later is a small, behavior-preserving cut (planned 2026-11-03 by the plan role, splitting the 2026-10-31 `Subtract part 3c/7` after feature held it too large for one run; requires Hourly full check part 1b/4 landed; touches src/merge/merge-verify.ts src/merge/merge-queue-health.ts src/merge/merge-tiers.ts src/merge/merge-drain.ts src/merge/merge-post-review-drain.ts src/merge/merge-core.ts test/merge-queue.test.ts test/merge-pipeline.test.ts test/merge-requeue.test.ts) — done 2026-11-03 by the feature role
+
+**Goal.** The helpers the rest of the merge code needs after the verify stage goes live in their own modules, with the same behavior: queue health (torn-head drop and the merged-into-main dedupe) and the merge tiers/author resolution. Nothing is deleted from the running path in this part.
+
+**Approach.**
+- Create src/merge/merge-queue-health.ts with `dropTornHead` and the `mergedIntoMain` cache/dedupe helper, moved verbatim from src/merge/merge-verify.ts; keep the exported `dropTornHead` name and its warning text.
+- Create src/merge/merge-tiers.ts with `VERIFY_TIER`, `MERGE_TIER`, `verifyLimit` and `resolveAuthor`, moved from merge-verify.ts; `VERIFY_TIER`/`MERGE_TIER` stay because the post-merge review drain uses them.
+- Import the moved symbols in merge-verify.ts, merge-drain.ts, merge-post-review-drain.ts and the tests; update the doc comments that name the old home. Do not change any wait tier, cache key, warning or resolution rule.
+
+**Files touched.** src/merge/merge-verify.ts src/merge/merge-queue-health.ts src/merge/merge-tiers.ts src/merge/merge-drain.ts src/merge/merge-post-review-drain.ts src/merge/merge-core.ts test/merge-queue.test.ts test/merge-pipeline.test.ts test/merge-requeue.test.ts
+
+**Acceptance criteria.**
+- `dropTornHead` and `resolveAuthor` are defined once, in the new modules; merge-verify.ts imports them rather than redefining them, and the same is true of the tier constants.
+- The torn-head warning, the merged-into-main cache invalidation and every permit tier read exactly as before; the tests that pin them pass unchanged in behavior.
+- No production call site or test imports a moved symbol from merge-verify.ts after this part.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/merge-queue.test.ts, test/merge-pipeline.test.ts and test/merge-requeue.test.ts whole, then the project's gate.
+
 ### Every commit is verified on main, part 4l/3: the three verdict-keyed tables accept a result with no entry, so part 4m/3 can drop `main_red` (planned 2026-11-03 by the plan role, splitting the 2026-11-03 too-large part 4j/3 after feature held it; opens the three-part replacement of part 4j/3, whose parts 4m/3 and 4n/3 each require the part before them landed; requires Hourly full check part 1b/4 landed; touches src/events/event-labels.ts src/failure/failure-render.ts src/failure/failure-time-spend.ts test/event-labels.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts) — done 2026-11-03 by the feature role
 
 **Goal.** `main_red` must leave three exhaustive `Record<RunResult, …>` tables in the next part without the compile error a missing key causes. Widen those tables so a `RunResult` may have no entry, and give each consumer a defined fallback. Every current key stays in this part, so no displayed output changes; only a result with no entry (none today) takes the fallback.

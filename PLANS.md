@@ -391,25 +391,6 @@ _None yet._
 
 **Tests.** Run test/invariants-doc.test.ts and test/docs-links.test.ts, then the gate.
 
-### Subtract verify collapse, part 1/5: The queue-health and tier/author helpers move out of the verify modules, so deleting the verify stage later is a small, behavior-preserving cut (planned 2026-11-03 by the plan role, splitting the 2026-10-31 `Subtract part 3c/7` after feature held it too large for one run; requires Hourly full check part 1b/4 landed; touches src/merge/merge-verify.ts src/merge/merge-queue-health.ts src/merge/merge-tiers.ts src/merge/merge-drain.ts src/merge/merge-post-review-drain.ts src/merge/merge-core.ts test/merge-queue.test.ts test/merge-pipeline.test.ts test/merge-requeue.test.ts)
-
-**Goal.** The helpers the rest of the merge code needs after the verify stage goes live in their own modules, with the same behavior: queue health (torn-head drop and the merged-into-main dedupe) and the merge tiers/author resolution. Nothing is deleted from the running path in this part.
-
-**Approach.**
-- Create src/merge/merge-queue-health.ts with `dropTornHead` and the `mergedIntoMain` cache/dedupe helper, moved verbatim from src/merge/merge-verify.ts; keep the exported `dropTornHead` name and its warning text.
-- Create src/merge/merge-tiers.ts with `VERIFY_TIER`, `MERGE_TIER`, `verifyLimit` and `resolveAuthor`, moved from merge-verify.ts; `VERIFY_TIER`/`MERGE_TIER` stay because the post-merge review drain uses them.
-- Import the moved symbols in merge-verify.ts, merge-drain.ts, merge-post-review-drain.ts and the tests; update the doc comments that name the old home. Do not change any wait tier, cache key, warning or resolution rule.
-
-**Files touched.** src/merge/merge-verify.ts src/merge/merge-queue-health.ts src/merge/merge-tiers.ts src/merge/merge-drain.ts src/merge/merge-post-review-drain.ts src/merge/merge-core.ts test/merge-queue.test.ts test/merge-pipeline.test.ts test/merge-requeue.test.ts
-
-**Acceptance criteria.**
-- `dropTornHead` and `resolveAuthor` are defined once, in the new modules; merge-verify.ts imports them rather than redefining them, and the same is true of the tier constants.
-- The torn-head warning, the merged-into-main cache invalidation and every permit tier read exactly as before; the tests that pin them pass unchanged in behavior.
-- No production call site or test imports a moved symbol from merge-verify.ts after this part.
-- `npm run test:gate` passes.
-
-**Tests.** Run test/merge-queue.test.ts, test/merge-pipeline.test.ts and test/merge-requeue.test.ts whole, then the project's gate.
-
 ### Subtract verify collapse, part 2/5: The merge queue drains one change at a time, gating the queue head through the existing verify path before it merges (planned 2026-11-03 by the plan role, splitting the 2026-10-31 `Subtract part 3c/7` after feature held it too large for one run; requires Subtract verify collapse part 1/5 landed, so queue health and tiers are importable from their new homes; the verify stage is not yet deleted from the types — part 4/5 removes it — touches src/merge/merge-drain.ts src/merge/merge-pipeline.ts test/merge-drain.test.ts test/merge-requeue.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts)
 
 **Goal.** A poll takes the first queued change, runs the existing gate for that one change inside the merge task, and merges it if the gate clears; the next queued change waits for the next poll. The parallel verify/approve fan-out stops, but the verify modules still exist for part 4/5 to delete.

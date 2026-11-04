@@ -9,6 +9,7 @@ import { errorMessage } from "../text/text.js";
 import { verifyRequest, type VerifyVerdict } from "./merge-batch.js";
 import { dropTornHead, mergedIntoMain } from "./merge-head.js";
 import { VERIFY_TIER, resolveAuthor } from "./merge-author.js";
+import { verifyLimit } from "./merge-tiers.js";
 import {
   abortOnShutdown,
   acquireUnlessAborted,
@@ -20,14 +21,6 @@ import {
   type MergePipeline,
   type MergePipelineContext,
 } from "./merge-pipeline.js";
-
-/** How many verifications may be in flight (parked or running) at once: every `maxConcurrent`
- * permit but one, so a deep merge queue never takes the last slot from the roles that could
- * author — at least one, so `maxConcurrent` 1 still merges. The merge's short conflict-resolution
- * run is not counted: it is the one serial step every queued change waits on. */
-export function verifyLimit(maxConcurrent: number): number {
-  return Math.max(1, maxConcurrent - 1);
-}
 
 /** Start a verification, in queue order, for every queued entry whose role the pipeline does not
  * already hold, up to verifyLimit — the shared semaphore bounds how many of them run. The torn-head
