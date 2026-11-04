@@ -15,10 +15,10 @@ import { getOrCreate, groupBy, rankByCount, topAndHidden } from "../collections.
 /** How the Outcome table's results collapse for costing:
  * "merged" made progress, "no_change" spent a run and merged nothing, and every remaining
  * result is "error-class" — it burned agent time without merge, whether the cause was a
- * hard failure or the review gate. Typed as a full Record so a result added to
- * src/run/run-outcome.ts and forgotten here is a compile error, like RESULT_ORDER in
- * src/failure/failure-render.ts. */
-export const OUTCOME_CLASS: Record<RunResult, "merged" | "no_change" | "error"> = {
+ * hard failure or the review gate. `Partial` relaxes the compile closure: a result retired
+ * from the surface tables while still in the `RunResult` union (parts 4m/3 → 4k/3) would
+ * otherwise be a compile error here. Every current member still has its key. */
+export const OUTCOME_CLASS: Readonly<Partial<Record<RunResult, "merged" | "no_change" | "error">>> = {
   changed: "merged",
   queued: "merged",
   no_change: "no_change",

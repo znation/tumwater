@@ -52,6 +52,19 @@ test("run_end: an error-class result and a refusal are their own parallel tallie
   assert.deepEqual(f.costByRole, {});
 });
 
+test("run_end: a result the OUTCOME_CLASS table lacks is a run, not a failed run", () => {
+  // A result retired from the digest's OUTCOME_CLASS table while still in the RunResult
+  // union (part 4m/3 removes main_red's key; 4k/3 removes the member) keeps counting as a
+  // run, but its absence from the table means the error tally must not count it: `===
+  // "error"` reads undefined, not "error".
+  const f = fresh();
+  foldUsageEvent(f, ev("run_end", { source: "feature", result: "retired_code", tokens: 0, costUsd: 0 }));
+  assert.equal(f.runs, 1);
+  assert.deepEqual(f.runsByRole, { feature: 1 });
+  assert.deepEqual(f.failedRunsByRole, {});
+  assert.deepEqual(f.refusalsByRole, {});
+});
+
 test("run_end: the notional backend comes from agent, else a subscription default", () => {
   const byAgent = fresh();
   foldUsageEvent(

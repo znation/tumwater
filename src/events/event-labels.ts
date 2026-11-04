@@ -95,8 +95,11 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   warning: "warning",
 };
 
-/** The words for each run result code, shown in the result cells. */
-export const RUN_RESULT_LABELS: Readonly<Record<RunResult, string>> = {
+/** The words for each run result code, shown in the result cells. `Partial` relaxes the
+ * compile closure: a result retired from the surface tables while still in the `RunResult`
+ * union (parts 4m/3 → 4k/3) would otherwise be a compile error here. Every current member
+ * still has its key. */
+export const RUN_RESULT_LABELS: Readonly<Partial<Record<RunResult, string>>> = {
   changed: "merged",
   queued: "waiting to merge",
   no_change: "no change",
@@ -118,6 +121,9 @@ export const RUN_RESULT_LABELS: Readonly<Record<RunResult, string>> = {
  * underscores as spaces. The two code families are disjoint, so one lookup serves both. */
 export function eventTypeLabel(code: string): string {
   if (Object.hasOwn(EVENT_TYPE_LABELS, code)) return EVENT_TYPE_LABELS[code as HarnessEvent["type"]];
-  if (Object.hasOwn(RUN_RESULT_LABELS, code)) return RUN_RESULT_LABELS[code as RunResult];
+  if (Object.hasOwn(RUN_RESULT_LABELS, code)) {
+    const label = RUN_RESULT_LABELS[code as RunResult];
+    if (label !== undefined) return label;
+  }
   return code.replace(/_/g, " ");
 }

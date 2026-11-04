@@ -17,11 +17,12 @@ import { markdownTable, type ColumnAlign } from "../text/markdown.js";
 /** A cluster's role list shows at most this many names before a "+N more" remainder. */
 const ROLES_SHOWN = 4;
 
-/** Every `RunResult`, mapped to its display/column rank. Typed as a `Record<RunResult, …>`,
- * so adding a result to src/run/run-outcome.ts and forgetting it here is a compile error — the
- * vocabulary is closed by the type checker, not by a comment. Order runs from "made progress"
- * through "did not" to the operator/shutdown outcomes. */
-const RESULT_ORDER: Record<RunResult, number> = {
+/** Every `RunResult`, mapped to its display/column rank. `Partial` relaxes the compile
+ * closure: a result retired from the surface tables while still in the `RunResult` union
+ * (parts 4m/3 → 4k/3) would otherwise be a compile error here. Every current member still
+ * has its key. Order runs from "made progress" through "did not" to the operator/shutdown
+ * outcomes. */
+const RESULT_ORDER: Readonly<Partial<Record<RunResult, number>>> = {
   changed: 0,
   queued: 1,
   no_change: 2,
@@ -47,7 +48,8 @@ function columns(outcomes: OutcomeRow[]): RunResult[] {
   for (const row of outcomes) {
     for (const k of Object.keys(row.counts)) present.add(k as RunResult);
   }
-  return [...present].sort((a, b) => RESULT_ORDER[a] - RESULT_ORDER[b] || a.localeCompare(b));
+  const rank = (r: RunResult): number => RESULT_ORDER[r] ?? Number.MAX_SAFE_INTEGER;
+  return [...present].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 }
 
 /** A delta cell: `prev → cur`, with "—" on a side where the role had no runs (the "new role"
