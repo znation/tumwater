@@ -147,43 +147,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/prompt-roles.test.ts: the charter bullet.
 - Run those files and the gate.
 
-### No duplicate plans, part 4/6: Duplicate `## Planned` entries are found by reading the markdown alone, and the plan role retires the extra copy before planning anything new (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 3; requires No duplicate plans part 1/6 landed; touches src/backlog/backlog-structure.ts src/run/run-prompt.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts)
-
-**Goal.** Duplicates that already reached main get cleaned up by the plan role, not left for the user to cancel or for feature to build twice. On 11-04, main's `## Planned` holds two copies each of "Every commit is verified on main" parts 4k/3, 4m/3 and 4n/3 and of "Subtract verify collapse" parts 2/5–5/5. feature-2 and feature-6 each claimed a different 4m/3. In the 11-03 incident, 2 of the 12 refused plans were exact copies of a still-planned entry.
-
-**Approach.**
-- Add `duplicatePlannedEntries(md): DuplicateGroup[]` to src/backlog/backlog-structure.ts. It groups `## Planned` entries that share an `entryKey`, or a series part label (`seriesPart` → `partKey`). Each group lists its titles in file order. It reads fences the same way, through `sectionBodyLines`.
-- Add `duplicatePlannedEntriesFor(root)`, stat-cached like `strandedPlanEntriesFor`.
-- Add `renderDuplicatePlansBlock(root)`, which lists each group under a `<duplicate-plans>` tag. Each title is followed by `[claimed by <runner>]` when `allLiveClaims` has it.
-- src/run/run-prompt.ts adds the block for base role `plan` only, the way `collectBacklogStructureBlock` adds the clean role's block.
-- The plan charter in src/roles/role-catalog.ts gets a bullet in step 1, ranked above adding a plan and below the `Needs review` and plan-defect bullets. For each group:
-  - Keep the claimed copy. If both or neither is claimed, keep the one earlier in file order.
-  - Fold any acceptance criterion or file the survivor lacks into the survivor.
-  - Retire every other copy in the same change, using part 1/6's shape with evidence `duplicate of "<surviving title>"`.
-  - Point any `requires … landed` clause that named a retired copy's label at the survivor. Copies sharing one part label need no re-pointing.
-  - That retire is this run's task.
-- docs/how-it-works.md: one sentence in "The backlog files".
-- The doctor's existing `duplicateHeadings` check covers `## ` sections only and stays as it is. A doctor row is not needed, because the plan role acts on this block every run.
-
-**Files touched.** src/backlog/backlog-structure.ts src/run/run-prompt.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts
-
-**Acceptance criteria.**
-- `duplicatePlannedEntries` groups:
-  - two entries headed `### S, part 4m/3: X (…)` and `### S, part 4m/3: Y (…)`;
-  - two entries headed `### Z (planned 2026-11-01 …)` and `### Z (planned 2026-11-02 …)`.
-- It does not group:
-  - `### S, part 4m/3: …` with `### S, part 4n/3: …`;
-  - a `### ` line inside a fenced block.
-- The plan prompt carries `<duplicate-plans>` with each group's titles and claim marks. With no duplicates it is byte-identical to before.
-- The plan charter names the block and the retire rule. The feature and clean prompts do not carry the block.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/backlog-structure.test.ts: the grouping cases.
-- test/run-prompt.test.ts: the block in the plan prompt only, with a claimed copy marked.
-- test/prompt-roles.test.ts: the charter bullet.
-- Run those files and the gate.
-
 ### No duplicate plans, part 5/6: Staging gives the author one fix-up turn when its change adds a duplicate `## Planned` entry or retires a plan on evidence that does not check out (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 3 and 4; requires No duplicate plans part 2/6 and No duplicate plans part 4/6 landed; touches src/stage/stage-backlog-checks.ts src/stage/stage-check.ts src/runner/runner-outcome.ts test/stage-check.test.ts)
 
 **Goal.** Catch a duplicate before it commits, not after it merges. In the 11-03 incident's clearest pair, run 700's sibling plan merged while run 700 was still running. A staging check reading main at staging time, together with part 2/6's snapshot, would have named it. Also check the evidence a retire cites, so a retire that rests on a SHA main lacks, or on a "survivor" that does not exist, never lands.

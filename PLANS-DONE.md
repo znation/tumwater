@@ -5,6 +5,43 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### No duplicate plans, part 4/6: Duplicate `## Planned` entries are found by reading the markdown alone, and the plan role retires the extra copy before planning anything new (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 3; requires No duplicate plans part 1/6 landed; touches src/backlog/backlog-structure.ts src/run/run-prompt.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts) — done 2026-11-04 by the feature role
+
+**Goal.** Duplicates that already reached main get cleaned up by the plan role, not left for the user to cancel or for feature to build twice. On 11-04, main's `## Planned` holds two copies each of "Every commit is verified on main" parts 4k/3, 4m/3 and 4n/3 and of "Subtract verify collapse" parts 2/5–5/5. feature-2 and feature-6 each claimed a different 4m/3. In the 11-03 incident, 2 of the 12 refused plans were exact copies of a still-planned entry.
+
+**Approach.**
+- Add `duplicatePlannedEntries(md): DuplicateGroup[]` to src/backlog/backlog-structure.ts. It groups `## Planned` entries that share an `entryKey`, or a series part label (`seriesPart` → `partKey`). Each group lists its titles in file order. It reads fences the same way, through `sectionBodyLines`.
+- Add `duplicatePlannedEntriesFor(root)`, stat-cached like `strandedPlanEntriesFor`.
+- Add `renderDuplicatePlansBlock(root)`, which lists each group under a `<duplicate-plans>` tag. Each title is followed by `[claimed by <runner>]` when `allLiveClaims` has it.
+- src/run/run-prompt.ts adds the block for base role `plan` only, the way `collectBacklogStructureBlock` adds the clean role's block.
+- The plan charter in src/roles/role-catalog.ts gets a bullet in step 1, ranked above adding a plan and below the `Needs review` and plan-defect bullets. For each group:
+  - Keep the claimed copy. If both or neither is claimed, keep the one earlier in file order.
+  - Fold any acceptance criterion or file the survivor lacks into the survivor.
+  - Retire every other copy in the same change, using part 1/6's shape with evidence `duplicate of "<surviving title>"`.
+  - Point any `requires … landed` clause that named a retired copy's label at the survivor. Copies sharing one part label need no re-pointing.
+  - That retire is this run's task.
+- docs/how-it-works.md: one sentence in "The backlog files".
+- The doctor's existing `duplicateHeadings` check covers `## ` sections only and stays as it is. A doctor row is not needed, because the plan role acts on this block every run.
+
+**Files touched.** src/backlog/backlog-structure.ts src/run/run-prompt.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts
+
+**Acceptance criteria.**
+- `duplicatePlannedEntries` groups:
+  - two entries headed `### S, part 4m/3: X (…)` and `### S, part 4m/3: Y (…)`;
+  - two entries headed `### Z (planned 2026-11-01 …)` and `### Z (planned 2026-11-02 …)`.
+- It does not group:
+  - `### S, part 4m/3: …` with `### S, part 4n/3: …`;
+  - a `### ` line inside a fenced block.
+- The plan prompt carries `<duplicate-plans>` with each group's titles and claim marks. With no duplicates it is byte-identical to before.
+- The plan charter names the block and the retire rule. The feature and clean prompts do not carry the block.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/backlog-structure.test.ts: the grouping cases.
+- test/run-prompt.test.ts: the block in the plan prompt only, with a claimed copy marked.
+- test/prompt-roles.test.ts: the charter bullet.
+- Run those files and the gate.
+
 ### No duplicate plans, part 2/6: The plan role's stop count and its Needs-review check read `## Planned` as it will be once every unmerged change merges (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 1; independent of part 1/6; reads merge pins (`refs/tumwater/merge/<role>`) and role branches, never the merge queue, so Subtract parts 3e/7 and 3f/7 do not affect it; the edits to claims.ts, run-prompt.ts and runner-run.ts are a few lines each beside "Every commit is verified on main" parts 4k/3 and 4m/3's edits there, and whichever merges second rebases; touches src/backlog/backlog-pending.ts src/backlog/backlog-eligibility.ts src/scheduling/claims.ts src/orchestrator/orchestrator-poll.ts src/runner/runner-run.ts src/run/run-prompt.ts docs/how-it-works.md test/backlog-pending.test.ts test/claims.test.ts test/run-prompt.test.ts) — done 2026-11-04 by the feature role
 
 **Goal.** A plan run must stop counting a plan that is on a merge pin or held on a branch as missing. It must also stop re-splitting an entry whose split is waiting to merge. From 10-30 20:30 to 11-04, 47 of 64 plan runs that queued a plan started while an earlier plan change was unmerged. `planBacklogFull` and the stop-target note read only main's `## Planned`, so the plan role kept running with a zero gap and re-planned the same top-ranked item: 8 functions got same-day duplicate refactor plans. "Subtract verify collapse" 2/5–5/5 and "Every commit is verified on main" 4k/4m/4n/3 were each split twice, because the first split's removal of the `Needs review` entry had not merged.

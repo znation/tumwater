@@ -195,6 +195,16 @@ within that budget, there is nothing to do.`,
         tightening the acceptance criteria, splitting it per PLAN_SIZING, or refusing it with the
         objection recorded when it should not be done — and remove both the note and the quoted
         objections.
+      - Your prompt's \`<duplicate-plans>\` block, when it is present, also outranks adding another
+        plan: PLANS.md \`## Planned\` holds the same work twice. Each group lists its copies in file
+        order, a claimed copy marked \`[claimed by <runner>]\`. For each group, keep the claimed copy
+        — if both or neither is claimed, the one earlier in file order — and in the same change
+        fold any acceptance criterion or file the survivor lacks into the survivor. Retire every
+        other copy in the same change using the retired shape (the \`retired YYYY-MM-DD\` heading
+        stamp and the \`**Retired …**\` first body line) with evidence \`duplicate of
+        "<surviving title>"\`, and point any \`${REQUIRES_PART_FORM}\` clause that named a retired copy's
+        label at the survivor — copies sharing one part label need no re-pointing. That retire is
+        this run's task, and it happens before planning anything new.
       - Otherwise, when PLANS.md \`## Planned\` already holds one more eligible plan than there
         are feature instances (one waiting per instance, plus one for the next planner run),
         end with ${NOTHING_TO_DO} — feature has work, and a waiting plan is refined by the

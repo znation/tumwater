@@ -355,6 +355,10 @@ interface RunPromptInput {
   /** Rendered stranded-plan block (see backlog-structure.ts); clean only, omitted when the
    * primary checkout's PLANS.md is missing, unreadable, or clean. */
   backlogStructure?: string;
+  /** Rendered duplicate-plans block (see backlog-structure.ts's renderDuplicatePlansBlock);
+   * plan only, omitted when PLANS.md `## Planned` holds no duplicate groups — the common case,
+   * where the prompt is byte-identical. */
+  duplicatePlans?: string;
   /** Rendered actionable backlog index (see backlog-index.ts); every run carries it. */
   backlogIndex?: string;
   /** The role's notes (roleNotesPath, read by run-prompt.ts): the note its own earlier
@@ -482,7 +486,7 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   return parts;
 }
 
-/** The six rendered evidence blocks, in the fixed order. */
+/** The rendered evidence blocks, in the fixed order. */
 function runEvidenceBlocks(input: RunPromptInput): string[] {
   const parts: string[] = [];
   if (input.coverage) parts.push(input.coverage);
@@ -490,6 +494,7 @@ function runEvidenceBlocks(input: RunPromptInput): string[] {
   if (input.filings) parts.push(input.filings);
   if (input.digest) parts.push(digestBlock(input.digest));
   if (input.backlogStructure) parts.push(input.backlogStructure);
+  if (input.duplicatePlans) parts.push(input.duplicatePlans);
   if (input.backlogIndex) parts.push(input.backlogIndex);
   return parts;
 }

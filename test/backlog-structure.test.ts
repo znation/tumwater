@@ -12,6 +12,8 @@ import {
   renderBacklogStructureBlock,
   readdedHeadings,
   stripEntryStamp,
+  duplicatePlannedEntries,
+  renderDuplicatePlansBlock,
   type StrandedPlanEntry,
 } from "../src/backlog/backlog-structure.js";
 import {
@@ -165,6 +167,141 @@ _None yet._`);
   assert.deepEqual(strandedPlanEntries(md), [
     { title: "No duplicate plans, part 9/9: retired copy (planned 2026-11-01 by the plan role; retired 2026-11-04 by the plan role)", section: "Planned" },
   ]);
+});
+
+// --- duplicate ## Planned detection (plans, "No duplicate plans" part 4/6) ---
+
+test("two ## Planned entries sharing a series part label are one duplicate group", () => {
+  const md = plansDoc(`## Planned
+
+### No duplicate plans, part 4m/3: X (planned 2026-11-04 by the plan role)
+
+body
+
+### No duplicate plans, part 4m/3: Y (planned 2026-11-04 by the plan role)
+
+body
+
+## Done
+
+_None yet._`);
+  assert.deepEqual(duplicatePlannedEntries(md), [
+    {
+      key: "no duplicate plans\u00004m",
+      titles: [
+        "No duplicate plans, part 4m/3: X (planned 2026-11-04 by the plan role)",
+        "No duplicate plans, part 4m/3: Y (planned 2026-11-04 by the plan role)",
+      ],
+    },
+  ]);
+});
+
+test("two ## Planned entries with the same heading but different stamps are one duplicate group", () => {
+  const md = plansDoc(`## Planned
+
+### Z (planned 2026-11-01 by the plan role)
+
+body
+
+### Z (planned 2026-11-02 by the plan role)
+
+body
+
+## Done
+
+_None yet._`);
+  assert.deepEqual(duplicatePlannedEntries(md), [
+    { key: "z", titles: ["Z (planned 2026-11-01 by the plan role)", "Z (planned 2026-11-02 by the plan role)"] },
+  ]);
+});
+
+test("different part labels of one series are not grouped, and a lone entry is no group", () => {
+  const md = plansDoc(`## Planned
+
+### S, part 4m/3: a (planned 2026-11-01)
+
+body
+
+### S, part 4n/3: b (planned 2026-11-01)
+
+body
+
+## Done
+
+_None yet._`);
+  assert.deepEqual(duplicatePlannedEntries(md), []);
+});
+
+test("a ### heading inside a fenced block under ## Planned is not a duplicate", () => {
+  const md = plansDoc(`## Planned
+
+### Z (planned 2026-11-01)
+
+body quoting the template:
+
+\`\`\`md
+### Z (planned 2026-11-02)
+\`\`\`
+
+## Done
+
+_None yet._`);
+  assert.deepEqual(duplicatePlannedEntries(md), []);
+});
+
+test("entries under ## Done never group, even with a shared key", () => {
+  const md = plansDoc(`## Done
+
+### Z (planned 2026-11-01, done 2026-11-02)
+
+body
+
+### Z (planned 2026-11-01, done 2026-11-02)
+
+body
+
+## Planned
+
+_None yet._`);
+  assert.deepEqual(duplicatePlannedEntries(md), []);
+});
+
+test("the plan block lists each group in file order and marks a claimed copy", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    plansDoc(`## Planned
+
+### S, part 2/3: a (planned 2026-11-01)
+
+body
+
+### S, part 2/3: b (planned 2026-11-01)
+
+body
+
+## Done
+
+_None yet._`),
+  );
+  const owner = {
+    ...loadRunnerState(dir, "feature-2"),
+    claim: { file: "PLANS.md", key: "s, part 2/3: b", title: "S, part 2/3: b", at: 1, source: "assigned" } as const,
+  };
+  saveRunnerState(dir, owner);
+  const block = renderDuplicatePlansBlock(dir);
+  assert.ok(block);
+  assert.match(block, /<duplicate-plans>\nS, part 2\/3: a \(planned 2026-11-01\)\nS, part 2\/3: b \(planned 2026-11-01\) \[claimed by feature-2\]\n<\/duplicate-plans>/);
+  // No duplicate: no block at all, so the plan prompt stays byte-identical in the common case.
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    plansDoc("## Planned\n\n### S, part 2/3: a (planned 2026-11-01)\n\nbody\n\n## Done\n\n_None yet._"),
+  );
+  assert.equal(renderDuplicatePlansBlock(dir), undefined);
+});
+
+test("renderDuplicatePlansBlock gives no block for a missing PLANS.md", () => {
+  assert.equal(renderDuplicatePlansBlock(tmpdir()), undefined);
 });
 
 test("isRetiredTitle matches both delimiter shapes and not a prose mention", () => {

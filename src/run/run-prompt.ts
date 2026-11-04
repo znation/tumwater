@@ -31,7 +31,7 @@ import { dayKey } from "../text/datetime.js";
 import { appendPromptNote, prependPromptNote } from "../text/format.js";
 import { ROLE_NOTES_MAX_BYTES } from "../roles/role-notes-write.js";
 import { truncateWithNote } from "../text/text.js";
-import { renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
+import { renderBacklogStructureBlock, renderDuplicatePlansBlock } from "../backlog/backlog-structure.js";
 import { renderBacklogIndexBlock } from "../backlog/backlog-index.js";
 
 /** One role's inputs for assembling its run prompt: read-only views of what RoleRunner
@@ -161,6 +161,7 @@ function buildRoleRunPrompt(
   const ciParity = collectCiParityBlock(root, config, base);
   const filings = collectFeedbackFilingsBlock(root, base);
   const backlogStructure = collectBacklogStructureBlock(root, base);
+  const duplicatePlans = collectDuplicatePlansBlock(root, base);
   const { notes, notesSavedDay, notesBacklog } = readPromptNotes(root, role);
   const { planTargetNote, flakyChecks, noCheck } = collectRoleDirectives(root, config, base, check);
   // A run holding a claim with no queued request is assigned its one entry (the assignment
@@ -177,6 +178,7 @@ function buildRoleRunPrompt(
     ciParity,
     filings,
     backlogStructure,
+    duplicatePlans,
     backlogIndex: assigned ? undefined : backlogIndex,
     notes,
     notesSavedDay,
@@ -293,6 +295,15 @@ function collectFeedbackFilingsBlock(root: string, base: string): string | undef
 function collectBacklogStructureBlock(root: string, base: string): string | undefined {
   // An unreadable or clean file gives no block, so the prompt is unchanged in the common case.
   return base === "clean" ? renderBacklogStructureBlock(root) : undefined;
+}
+
+/** The plan role's duplicate-plans block (plans, "No duplicate plans" part 4/6): the
+ * `## Planned` groups that share an entry key or series part label, with each copy's claim
+ * marked. The plan role alone acts on it (its charter names the retire rule); every other
+ * role — feature included — gets no block, so their prompts stay byte-identical. An
+ * unchanged or clean PLANS.md gives no block either. */
+function collectDuplicatePlansBlock(root: string, base: string): string | undefined {
+  return base === "plan" ? renderDuplicatePlansBlock(root) : undefined;
 }
 
 /** Read the role's own notes plus their saved day and live backlog state (notes-backlog.ts),

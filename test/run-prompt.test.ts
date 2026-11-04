@@ -13,7 +13,8 @@ import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { qaCoveragePath, roleNotesPath, feedbackFilingsPath } from "../src/paths.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
-import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState, type RunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { applyMergeOutcome } from "../src/run/run-apply.js";
 import { CHECK_DECLARATION_MARKER } from "../src/roles/role-guidance.js";
 import { tmpdir, makeRepo, commitIn, headSha, sh } from "./fixtures/repo-fixtures.js";
@@ -730,6 +731,66 @@ test("a clean run on a clean PLANS.md has no <backlog-structure> block", () => {
   assert.ok(result);
   // The role's find text names the block, so assert on the rendered block's evidence lines.
   assert.ok(!result.prompt.includes("(now under ##"));
+});
+
+// The plan role's duplicate-plans block (src/backlog/backlog-structure.ts, "No duplicate
+// plans" part 4/6): the ## Planned copies that share a key or part label ride in the plan
+// prompt only, a claimed copy marked.
+
+const DUPLICATE_PLANS = `# Plans
+
+## Planned
+
+### S, part 2/3: a (planned 2026-11-01)
+
+body
+
+### S, part 2/3: b (planned 2026-11-01)
+
+body
+
+## Done
+
+_None yet._
+`;
+
+test("a plan run's prompt carries the <duplicate-plans> block with the claimed copy marked", () => {
+  const dir = root();
+  fs.writeFileSync(path.join(dir, "PLANS.md"), DUPLICATE_PLANS);
+  // feature-2 holds the second copy while its merge waits, so the plan prompt must mark it.
+  saveRunnerState(dir, {
+    ...loadRunnerState(dir, "feature-2"),
+    claim: { file: "PLANS.md", key: "s, part 2/3: b", title: "S, part 2/3: b", at: 1, source: "assigned" } as const,
+  });
+  const result = promptFor(dir, "plan");
+  assert.ok(result);
+  assert.match(
+    result.prompt,
+    /<duplicate-plans>\nS, part 2\/3: a \(planned 2026-11-01\)\nS, part 2\/3: b \(planned 2026-11-01\) \[claimed by feature-2\]\n<\/duplicate-plans>/,
+  );
+});
+
+test("a plan run on a duplicate-free PLANS.md has no <duplicate-plans> block", () => {
+  const dir = root();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "# Plans\n\n## Planned\n\n### S, part 2/3: a (planned 2026-11-01)\n\nbody\n\n## Done\n\n_None yet._\n",
+  );
+  const result = promptFor(dir, "plan");
+  assert.ok(result);
+  // The plan charter names the block, so assert on the rendered block's evidence, like the
+  // clean-block test does: no group listing means no block.
+  assert.ok(!result.prompt.includes("Duplicate PLANS.md ## Planned entries"));
+});
+
+test("the feature and clean prompts do not carry the <duplicate-plans> block", () => {
+  const dir = root();
+  fs.writeFileSync(path.join(dir, "PLANS.md"), DUPLICATE_PLANS);
+  for (const role of ["feature", "clean"]) {
+    const result = promptFor(dir, role);
+    assert.ok(result);
+    assert.ok(!result.prompt.includes("Duplicate PLANS.md ## Planned entries"), role);
+  }
 });
 
 test("other roles never see the <backlog-structure> block, and the clean find text names it", () => {

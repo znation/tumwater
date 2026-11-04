@@ -513,6 +513,17 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   assert.match(find, /refined by the feature run that picks it up/);
   assert.match(find, /at the END of `## Planned`, after every existing entry/);
 });
+test("the plan charter names the <duplicate-plans> block and the retire rule, ranked above adding a plan", () => {
+  const find = oneLine(roleById("plan")!.find);
+  assert.match(find, /`<duplicate-plans>` block, when it is present, also outranks adding another plan/);
+  assert.match(find, /keep the claimed copy — if both or neither is claimed, the one earlier in file order/);
+  assert.match(find, /with evidence `duplicate of "<surviving title>"`/);
+  assert.ok(find.includes(`point any \`${REQUIRES_PART_FORM}\` clause that named a retired copy's label at the survivor`));
+  assert.match(find, /That retire is this run's task, and it happens before planning anything new/);
+  // feature and clean never carry the block or the retire rule.
+  assert.ok(!roleById("feature")!.find.includes("<duplicate-plans>"));
+  assert.ok(!roleById("clean")!.find.includes("<duplicate-plans>"));
+});
 test("the plan role states acceptance criteria as observable outcomes", () => {
   // A criterion naming the helper to reuse ("folding those exact rows (`summarizeTickRows`)")
   // became a test that deep-equals that helper's output (2026-11-02 test-oracle audit).

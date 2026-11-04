@@ -14,6 +14,8 @@ import {
   headingTitle,
 } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
+import { allLiveClaims } from "../runner/runner-state-load.js";
+import { entryKey, partKey, seriesPart } from "./backlog-parts.js";
 import { plural } from "../text/phrases.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 
@@ -461,6 +463,113 @@ export async function backlogStructureReason(
     if (reason !== undefined) return reason;
   }
   return undefined;
+}
+
+/** One group of duplicate PLANS.md `## Planned` entries (plans, "No duplicate plans",
+ * part 4/6): two or more planned entries that share an entry key (entryKey) or a series part
+ * label (seriesPart → partKey). `titles` is each copy's full heading text, in file order —
+ * the first copy is the file-order survivor the plan role keeps. The group is found by reading
+ * the markdown alone (no pi, no git): exact keys and part labels only, so a drifted wording that
+ * shares neither is not grouped (the design's "Not in this plan" — that one reaches the plan
+ * role through feature's hand-back, part 6/6). */
+export interface DuplicateGroup {
+  /** What unites the copies: the shared entry key or series part label. */
+  key: string;
+  /** The group's heading texts, in file order (first = the file-order survivor). */
+  titles: string[];
+}
+
+/** The duplicate `## Planned` groups of PLANS.md markdown `md`, in first-appearance order, or []
+ * when none: two or more `## Planned` entries sharing an entryKey, or a series part label
+ * (seriesPart → partKey). The 11-03/04 incident's shape — two plan runs splitting the same
+ * too-large entry while the first split was unmerged — lands pairs like
+ * `### S, part 4m/3: X (…)` and `### S, part 4m/3: Y (…)` (same part label, different
+ * headings) or `### Z (planned …)` twice with different stamps (same key). The `## Planned`
+ * body is read through sectionBodyLines, the same fence-aware walk the section readers use, so
+ * a `### ` line quoted inside a fenced code block is body text, never an entry. The plan role
+ * retires the extra copy (its charter names the rule); this function only finds the group. */
+export function duplicatePlannedEntries(md: string): DuplicateGroup[] {
+  const lines = sectionBodyLines(md, "Planned");
+  const groups = new Map<string, DuplicateGroup>();
+  const out: DuplicateGroup[] = []; // in the order each group is first seen
+  const push = (key: string, title: string): void => {
+    let g = groups.get(key);
+    if (g === undefined) {
+      g = { key, titles: [] };
+      groups.set(key, g);
+      out.push(g);
+    }
+    g.titles.push(title);
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (!line.startsWith("### ")) continue;
+    // The identity reads the heading line alone (entryKey and seriesPart both stamp-free it);
+    // a wrapped heading's continuation holds no identity of its own.
+    const title = headingTitle(line, "### ");
+    // Two independent identity spaces: the entry key (stamp removed, collapsed, lowercased)
+    // and, for a series title, the part label. A pair sharing EITHER is a duplicate group;
+    // one entry can therefore open two groups (a same-key pair where one copy also renamed
+    // the other's part label) — each group retires its own extra copies.
+    push(entryKey(title), title);
+    const part = seriesPart(title);
+    if (part !== null) push(partKey(part.series, part.part), title);
+  }
+  return out.filter((g) => g.titles.length > 1);
+}
+
+/** Per-file cache of PLANS.md's duplicate `## Planned` groups (duplicatePlannedEntriesFor). */
+const duplicatePlannedCache = new Map<string, StatKeyedValue<DuplicateGroup[]>>();
+
+/** `duplicatePlannedEntries` for the primary checkout's PLANS.md, stat-cached like
+ * strandedPlanEntriesFor: the plan role asks for it every run and the file is otherwise
+ * unchanged between plan runs. A missing or unreadable file reads as no groups. The result is
+ * copied out, so each caller owns its data. */
+export function duplicatePlannedEntriesFor(root: string): DuplicateGroup[] {
+  const full = path.join(root, "PLANS.md");
+  return (
+    cachedTextByStat(
+      duplicatePlannedCache,
+      full,
+      full,
+      (md) => duplicatePlannedEntries(md),
+      (groups) => groups.slice(), // A copy: callers may treat the result as their own.
+    ) ?? []
+  );
+}
+
+/** The plan role's `<duplicate-plans>` prompt block for the primary checkout at `root`: each
+ * duplicate group's titles in file order, with `[claimed by <runner>]` after a title another
+ * runner has claimed (allLiveClaims, keyed by entryKey — the same key the index block's
+ * in-flight marks use). Undefined when there are no duplicates, so the plan prompt is
+ * byte-identical in the common case. The task wording lives in the plan charter
+ * (src/roles/role-catalog.ts); the block carries only the evidence, like the clean role's
+ * <backlog-structure> block. */
+export function renderDuplicatePlansBlock(root: string): string | undefined {
+  const groups = duplicatePlannedEntriesFor(root);
+  if (groups.length === 0) return undefined;
+  let claims: Map<string, string>;
+  try {
+    claims = allLiveClaims(root);
+  } catch {
+    claims = new Map(); // Unreadable runner state: the group listing alone still names the copies.
+  }
+  const listed = groups
+    .map((g) =>
+      g.titles
+        .map((t) => {
+          const claimer = claims.get(entryKey(t));
+          return claimer === undefined ? t : `${t} [claimed by ${claimer}]`;
+        })
+        .join("\n"),
+    )
+    .join("\n\n");
+  return `Duplicate PLANS.md ## Planned entries — the same work planned twice, found by reading
+the markdown alone. The plan role retires every extra copy (keeping one per group) before
+planning anything new:
+<duplicate-plans>
+${listed}
+</duplicate-plans>`;
 }
 
 /** Per-file cache of PLANS.md's and PLANS-DONE.md's stranded entries (strandedPlanEntriesFor). */

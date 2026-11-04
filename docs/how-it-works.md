@@ -68,6 +68,9 @@ surviving entry. `done` keeps meaning built — the report's features-done count
 but every reader that tells finished entries from open ones accepts `retired`: a `## Done` entry
 with a retired stamp is not stranded, and a `requires … landed` clause naming a retired part
 counts as dangling, so the change that retires a part must point its dependents at the survivor.
+Duplicate `## Planned` entries — two copies sharing an entry key or a series part label, found by
+reading the markdown alone — are shown to the plan role in its prompt's `<duplicate-plans>` block,
+which it retires before planning anything new.
 
 Retiring and refusing are different closes. A plan with nothing to build — its deliverable
 already exists, another entry already carries it, or a measurement disproves it — is a plan
