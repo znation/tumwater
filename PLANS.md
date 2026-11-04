@@ -643,27 +643,6 @@ _None yet._
 
 **Tests.** Update test/merger.test.ts to drive rejection, `review_error`, `main_red` and approval through `mergeApprovedChange` alone (no preceding verify), and the drain case in test/merge-drain.test.ts to assert the same one-gate path. Run those files and the gate.
 
-### Subtract verify collapse, part 4/5: The dead verify stage, its modules, its maps and its tests are deleted (planned 2026-11-03 by the plan role, splitting the 2026-10-31 `Subtract part 3c/7` after feature held it too large for one run; requires Subtract verify collapse part 3/5 landed, so no merge path needs the verify modules; touches src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/merge/merge-slot.ts src/merge/merge-queue-render.ts src/orchestrator/orchestrator-poll.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merge-requeue.test.ts test/merge-slot.test.ts test/merge-queue.test.ts test/fixtures/orchestrator-fixtures.ts test/fixtures/merger-fixtures.ts)
-
-**Goal.** With the drain gating inside `mergeApprovedChange`, nothing starts a verification or parks an approved change. Delete those modules and their pipeline/marker plumbing so the merge pipeline holds only the one merge task and the post-merge review task.
-
-**Approach.**
-- Delete src/merge/merge-verify.ts and src/merge/merge-batch.ts; `drainVerify`, `startVerify`, `verifyRequest`, `verifyLimit` and `reviewPinnedChange` go with them (the gate itself already lives in merge-core.ts).
-- In merge-pipeline.ts delete `verifying`, `approved`, `ApprovedMerge`, `liveRoles`, the verify branches of `mergeTasks`/`abortableMerges`, and `newMergePipeline`'s empty maps; keep `InFlightMerge`, `postReview`, abort, guard and `settleMergeOutcome`.
-- In merge-drain.ts delete `settleAbortedApproved` and the old approved-map handling; in orchestrator-poll.ts drop its call. Remove the verify-only `approved` status from merge-slot.ts and its label from merge-queue-render.ts. Keep `checkWaitStage` (the gate's build-check wait) and `resolveWaitStage` (the merge conflict resolver).
-- Update the fixtures: `mergeHead` drives `drainMergeQueue` (or an equivalent one-change drain) instead of `startVerify`, and merger-fixtures' `verifyRequest` helper is replaced by the merge path. Delete test/merge-drain-verify.test.ts.
-
-**Files touched.** src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/merge/merge-slot.ts src/merge/merge-queue-render.ts src/orchestrator/orchestrator-poll.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merge-requeue.test.ts test/merge-slot.test.ts test/merge-queue.test.ts test/fixtures/orchestrator-fixtures.ts test/fixtures/merger-fixtures.ts
-
-**Acceptance criteria.**
-- `grep -rn 'drainVerify\|startVerify\|verifyRequest\|verifyLimit\|reviewPinnedChange\|ApprovedMerge' src/` prints nothing; the compiler is clean.
-- `MergePipeline` has only `merge` and `postReview` as task slots, and no code reads or writes `verifying`/`approved`.
-- A queued change still reaches main through one gate and one merge, and a torn head, already-merged entry and conflicted pin still settle as in parts 2–3.
-- test/merge-drain-verify.test.ts is deleted with its subject; the surviving pipeline/drain/requeue tests assert the one-change drain, and no test asserts a deleted verify stage.
-- `npm run test:gate` passes.
-
-**Tests.** Delete test/merge-drain-verify.test.ts. Update test/merge-pipeline.test.ts, test/merge-pipeline-2.test.ts, test/merge-pipeline-seams.test.ts, test/merge-requeue.test.ts, test/merge-slot.test.ts and test/merge-queue.test.ts to the surviving pipeline shape; update both fixtures. Run those files and the gate.
-
 ### Subtract, part 3d/7: `tumwater queue`, its cancel/top keys and the browser queue controls go (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract verify collapse part 4/5 landed; touches src/cli/cli-query-commands.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/ui/tui/tui-pane-pending.ts src/ui/tui/tui-pane-pending-selection.ts src/ui/tui/tui-pane-transcript.ts src/merge/merge-cancel.ts src/merge/merge-top.ts src/merge/merge-queue-render.ts docs/cli.md test/cli-queue.test.ts test/cli-queue-follow.test.ts test/gui-queue-cancel.test.ts test/gui-queue-top.test.ts test/merge-cancel.test.ts test/merge-top.test.ts test/tui-pane-pending.test.ts test/tui-operator-keys.test.ts)
 
 **Goal.** The operator stops steering a queue that becomes a lock and a fast-forward: delete the `tumwater queue` command, its `--cancel` and `--top` flags, the GUI Merge queue card's Cancel/Move-to-top handlers, the TUI pending pane's queue rows and keys, and the three modules that implement cancel/top/queue rendering. The queue reader itself stays for status, doctor and the CLI surfaces this part does not own until part 3f.
