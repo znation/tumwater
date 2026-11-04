@@ -427,18 +427,26 @@ Usage:
   tumwater plan --show <n> --done [--json]
                                    Print the Nth entry of \`plan --list --done\` (newest first) in
                                    full; --json prints {position, title, body, completedOn}
-  tumwater questions [--grep <text>] [--json]
+  tumwater questions [-f/--follow] [--grep <text>] [--json]
                                    List open questions numbered (the read half of the
                                    question outbox); --grep keeps the questions whose
                                    heading or body contains the text, case-insensitively,
                                    numbered as without it; --json prints the {questions}
                                    array — position, title, body — as data
-  tumwater questions --answered [-n <count>] [--grep <text>] [--json]
+                                   -f/--follow repaints the outbox every couple of seconds
+                                   until Ctrl+C or the process that started it exits, so a
+                                   backgrounded follow does not outlive its parent; it refuses
+                                   --json, --show and the answer form
+  tumwater questions --answered [-f/--follow] [-n <count>] [--grep <text>] [--json]
                                    List the newest answered questions, numbered, newest first
                                    (default 10), each with its answer line; --json prints {questions,
                                    older}, each with position, title, body, answeredOn
                                    --grep keeps the questions whose heading or body contains the
                                    text, case-insensitively, numbered as without it
+                                   -f/--follow repaints the list every couple of seconds until
+                                   Ctrl+C or the process that started it exits, so a backgrounded
+                                   follow does not outlive its parent; it refuses --json, --show
+                                   and the answer form
   tumwater questions --show <n> --answered [--json]
                                    Print the Nth entry of "questions --answered" (newest
                                    first) in full, context and recorded answer; --json

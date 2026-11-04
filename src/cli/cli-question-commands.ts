@@ -9,7 +9,8 @@
  */
 import { fail, say, sayJson, warnIfUncommitted } from "./cli-output.js";
 import { parseCountFlag, parsePositionFlag, rejectRepeatFlag } from "./cli-args.js";
-import { JSON_FLAG, rejectEqualsForm } from "./cli-flag-specs.js";
+import { FOLLOW_FLAG, JSON_FLAG, rejectEqualsForm } from "./cli-flag-specs.js";
+import { followView, type FollowViewSeams } from "./follow-view.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
 import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
 import { editInEditor } from "./cli-editor.js";
@@ -97,6 +98,7 @@ const FILE_SPEC = { names: ["--file"], value: true, valueName: "<path>" };
 interface QuestionsInvocation {
   words: string[];
   jsonFlag: boolean;
+  followFlag: boolean;
   file: string | undefined;
   answeredFlag: boolean;
   limit: number | undefined;
@@ -104,7 +106,7 @@ interface QuestionsInvocation {
   show: number | undefined;
 }
 
-/** The scanner's mutable state as one pass walks `args`: the seven returned fields (the
+/** The scanner's mutable state as one pass walks `args`: the eight returned fields (the
  * exact shape `QuestionsInvocation` holds) plus `numbered` — the marker that the question's
  * number positional has been seen, which is not a returned field. */
 interface QuestionsScan extends QuestionsInvocation {
@@ -126,6 +128,11 @@ function readPreNumberFlag(scan: QuestionsScan, args: string[], i: number): numb
   if (arg === "--answered") {
     rejectRepeatFlag(scan.answeredFlag, "--answered");
     scan.answeredFlag = true;
+    return i;
+  }
+  if (FOLLOW_FLAG.names.includes(arg)) {
+    rejectRepeatFlag(scan.followFlag, "-f/--follow");
+    scan.followFlag = true;
     return i;
   }
   if (arg === "-n") {
@@ -159,13 +166,13 @@ function readAnywhereFlag(scan: QuestionsScan, args: string[], i: number): numbe
     return i;
   }
   if (arg.startsWith("--") && arg !== "--json") {
-    rejectEqualsForm(arg, [JSON_FLAG, FILE_SPEC, { names: ["--show"], value: true, valueName: "<n>" }, { names: ["--grep"], value: true, valueName: "<text>" }]);
+    rejectEqualsForm(arg, [JSON_FLAG, FILE_SPEC, { names: ["--show"], value: true, valueName: "<n>" }, { names: ["--grep"], value: true, valueName: "<text>" }, FOLLOW_FLAG]);
     // The complete flag set (this gate only sees `--`-flags, but `-n` is a real flag the
     // list should not omit) plus the same did-you-mean hint the sibling commands'
     // unknown-argument gate (cli-flag-specs's failUnknownArgument) attaches, so a mistyped
     // `--ansered` names `--answered` instead of only printing the valid list — the missing
     // treatment the questions gate was the one unknown-argument caller without.
-    const spellings = ["--json", "--file", "--answered", "--show", "--grep", "-n"];
+    const spellings = ["--json", "--file", "--answered", "--show", "--grep", "-n", ...FOLLOW_FLAG.names];
     fail(`unknown argument: ${arg} (valid flags for tumwater questions: ${spellings.join(", ")})${typoSuffix(arg, spellings)}`);
   }
   return undefined;
@@ -195,7 +202,7 @@ function assertQuestionsFlags(scan: QuestionsScan): void {
  * into JSON mode. Unknown `--`-prefixed tokens stay refused even there, so a misspelled
  * flag is still an error rather than silent decision text. */
 function parseQuestionsInvocation(args: string[]): QuestionsInvocation {
-  const scan: QuestionsScan = { words: [], jsonFlag: false, numbered: false, file: undefined, answeredFlag: false, limit: undefined, grep: undefined, show: undefined };
+  const scan: QuestionsScan = { words: [], jsonFlag: false, followFlag: false, numbered: false, file: undefined, answeredFlag: false, limit: undefined, grep: undefined, show: undefined };
   for (let i = 0; i < args.length; i++) {
     const consumed = readPreNumberFlag(scan, args, i) ?? readAnywhereFlag(scan, args, i);
     if (consumed !== undefined) {
@@ -212,7 +219,7 @@ function parseQuestionsInvocation(args: string[]): QuestionsInvocation {
     scan.words.push(args[i] as string);
   }
   assertQuestionsFlags(scan);
-  return { words: scan.words, jsonFlag: scan.jsonFlag, file: scan.file, answeredFlag: scan.answeredFlag, limit: scan.limit, grep: scan.grep, show: scan.show };
+  return { words: scan.words, jsonFlag: scan.jsonFlag, followFlag: scan.followFlag, file: scan.file, answeredFlag: scan.answeredFlag, limit: scan.limit, grep: scan.grep, show: scan.show };
 }
 
 /** The `--show` output branch: one open (or, with `--answered`, answered) question in full. */
@@ -298,20 +305,39 @@ async function runQuestionsAnswer(root: string, inv: QuestionsInvocation): Promi
   await commitAndReportAnswer(root, n, jsonFlag, title, writtenDecision);
 }
 
-/** `tumwater questions`: list open questions, or answer one with `answer <n> <decision>`. */
-export async function cmdQuestions(root: string, args: string[]): Promise<void> {
+/** `tumwater questions`: list open questions (with `-f/--follow` repainting the outbox until
+ * Ctrl+C or the parent exits), or answer one with `answer <n> <decision>`. */
+export async function cmdQuestions(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   const inv = parseQuestionsInvocation(args);
   refuseTeamWorkspace(root);
+  // A follow repaints a LIST; it cannot compose with a mode that is not a list — a JSON
+  // document (--json), one question in full (--show), or the answer form, which writes one
+  // change rather than re-reading one. Refuse each naming the conflict, before any output.
+  if (inv.followFlag) {
+    if (inv.jsonFlag) fail("questions --json prints one document; -f/--follow repaints a live view — drop one of them");
+    if (inv.show !== undefined) fail("-f/--follow repaints the list; --show prints one question in full — drop one of them");
+    if (inv.words.length > 0) fail("-f/--follow repaints the list; questions answer writes one change — drop the follow");
+  }
   if (inv.show !== undefined) {
     sayShownQuestion(root, inv);
     return;
   }
   if (inv.answeredFlag) {
+    // Each frame re-reads QUESTIONS.md, so a newly answered entry appears in the next repaint.
+    if (inv.followFlag) {
+      await followView(() => answeredQuestionList(root, inv.limit ?? 10, inv.grep), seams);
+      return;
+    }
     sayAnsweredQuestions(root, inv);
     return;
   }
   if (inv.words.length === 0) {
     if (inv.file !== undefined) fail("--file only applies to questions answer <n>");
+    // Each frame re-reads QUESTIONS.md, so an answered question leaves the next repaint.
+    if (inv.followFlag) {
+      await followView(() => openQuestionList(root, inv.grep), seams);
+      return;
+    }
     sayQuestionList(root, inv.jsonFlag, inv.grep);
     return;
   }

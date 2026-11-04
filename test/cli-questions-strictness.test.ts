@@ -208,14 +208,14 @@ test("questions unknown flags list every valid flag and hint a near miss", async
   assert.match(near.stderr, /unknown argument: --ansered .*did you mean `--answered`\?/);
   assert.match(
     near.stderr,
-    /valid flags for tumwater questions: --json, --file, --answered, --show, --grep, -n/,
+    /valid flags for tumwater questions: --json, --file, --answered, --show, --grep, -n, -f, --follow/,
   );
   // A far-off word is a typo of nothing, so it stays hint-free but still names the full list.
   const far = await cli(repo, "questions", "--totally");
   assert.equal(far.code, 1);
   assert.match(
     far.stderr,
-    /unknown argument: --totally \(valid flags for tumwater questions: --json, --file, --answered, --show, --grep, -n\)/,
+    /unknown argument: --totally \(valid flags for tumwater questions: --json, --file, --answered, --show, --grep, -n, -f, --follow\)/,
   );
   assert.doesNotMatch(far.stderr, /did you mean/);
 });
