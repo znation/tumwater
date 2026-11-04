@@ -24,29 +24,48 @@ import type { RunResult } from "../run/run-outcome.js";
 
 /** One poll of the post-merge reviews: a rejected-and-not-fixed commit is
  * answered by the reviewer's own landed fix (Forward, never back 1/6) — never by a revert — and
- * the next unreviewed commit starts its review when a permit is free right now. One review at a
- * time; starts a task and returns. */
+ * the next unreviewed commit starts its review task. One review at a time, parked or running;
+ * starts a task and returns. */
 export function drainPostReviews(ctx: MergePipelineContext, p: MergePipeline): void {
   const pending = readPostReviews(ctx.root);
   if (pending.length === 0) return;
   if (p.postReview !== null || ctx.startHeld()) return;
-  // A `fixed` entry is a settled record naming both shas (the reviewed commit and its landed fix)
-  // — it is not a pending unreviewed commit, so it is never re-reviewed (Forward never back 1a/6).
-  const next = pending.find((e) => e.rejected === undefined && e.fixed === undefined);
-  if (next) p.postReview = startPostReview(ctx, p, next);
+  const next = pending.find(unreviewed);
+  if (next) startPostReview(ctx, p, next);
 }
 
-function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: PostReview): InFlightMerge {
+/** Whether an entry still awaits its review. A `fixed` entry is a settled record naming both shas
+ * (the reviewed commit and its landed fix) and a rejected one is answered by its fix, so neither
+ * is ever re-reviewed (Forward never back 1a/6). */
+function unreviewed(e: PostReview): boolean {
+  return e.rejected === undefined && e.fixed === undefined;
+}
+
+/** Start one review task and record it in `p.postReview` until it settles. It parks for a team
+ * permit at VERIFY_TIER, ahead of every queued role run, as a pre-merge verification does. It
+ * used to start only when a permit was free at the poll and never queue, and the peek's
+ * synchronous return cleared `p.postReview` before the drain stored the task, leaving a settled
+ * task in the slot. On 2026-11-03 that stopped every review until the next restart: 2 reviews
+ * against 81 merges, 68 commits waiting. */
+function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: PostReview): void {
   const { root, semaphore } = ctx;
   const task: InFlightMerge = { promise: Promise.resolve(), controller: new AbortController(), roles: [], userAborted: false, parked: true };
+  p.postReview = task;
   const detach = abortOnShutdown(ctx.signal, task.controller);
   const author = resolveAuthor(ctx, entry.role);
   const run = (async () => {
     try {
-      if (!semaphore.canLeaseAtOnce(VERIFY_TIER)) return; // permits are busy; try again next poll
       const lease = await acquireUnlessAborted(semaphore, VERIFY_TIER, task.controller.signal);
       task.parked = false;
-      if (lease === null) return;
+      if (lease === null) return; // a shutdown while parked: the entry stays for the next generation
+      // A busy team's wait can be long. A restart or team hold that closed the gate meanwhile, or
+      // an entry settled meanwhile (`tumwater review --accept`), hands the permit straight back.
+      const stale = task.controller.signal.aborted || ctx.startHeld() ||
+        !readPostReviews(root).some((e) => e.commit === entry.commit && unreviewed(e));
+      if (stale) {
+        lease.release();
+        return;
+      }
       let outcome;
       try {
         outcome = await reviewMergedCommit(root, ctx.liveConfig, entry, (opts) => author.runGatePi(opts), task.controller.signal);
@@ -74,11 +93,10 @@ function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: Pos
       warnEventBestEffort(root, TUMWATER_SOURCE, `the post-merge review of ${shortSha(entry.commit)} could not run: ${errorMessage(err)}`);
     } finally {
       detach();
-      p.postReview = null;
+      if (p.postReview === task) p.postReview = null;
     }
   })();
   task.promise = guardMergeTask(root, `post-merge review of ${shortSha(entry.commit)}`, run);
-  return task;
 }
 
 /** How a dropped review's BUGS.md entry is settled, written into the entry itself. The drain

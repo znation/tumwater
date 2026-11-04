@@ -5,6 +5,14 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Post-merge reviews stop until the next restart once the team is busy: `drainPostReviews` only peeked for a free permit, and the peek's synchronous return left a settled task in `p.postReview`, so no later poll started a review (found by an operator session 2026-11-04 in a token-use audit) — fixed 2026-11-04 by the operator
+
+- **Symptom:** on 2026-11-03, 2 post-merge reviews ran against 81 merges, and `.tumwater/state/post-review.json` held 68 unreviewed commits (oldest 10-30 21:20). Every restart produced a burst of reviews and then none at all: after the 11-03 05:25 start, one review ran, and the next came 22 h later at the 11-04 03:24 restart. With the local default tier (8 slots, ~30 roles) the team is always full.
+- **Cause:** `startPostReview` returned at once when `canLeaseAtOnce(VERIFY_TIER)` was false. The return ran inside the async IIFE before its first `await`, so its `finally` set `p.postReview = null` before `drainPostReviews` stored the task. The slot then held a settled task, and `p.postReview !== null` stopped every later poll until a restart built a fresh pipeline. Even without that, a review that only peeks never queues, so with roles parked on every permit each release went to a role run.
+- **Fix:** the review now parks for its permit at VERIFY_TIER, ahead of every queued role run, as a pre-merge verification does. `startPostReview` records the task before it starts and clears the slot only if it still holds that task. After the grant it hands the permit back and runs nothing when the start gate closed or the entry settled during the wait. Covered by test/post-merge-review-permit.test.ts.
+
+**Validation gap:** no-observability — the stalled queue raised no warning; it showed only by counting `review_start` events against `merged`.
+
 ### `test/supervisor.test.ts` "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" flaked again on 2026-10-16, after its 10-01 and 10-09 Fixed entries and the 10-11 rewrite to a SIGUSR2-driven poll (found by operator session 2026-10-16 from improve's red merge check) — closed 2026-11-03 by the operator
 
 - **Symptom:** at 07:29:28 PDT, improve's in-lock merge check for `d4b62873` failed one test: `✖ startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it — AssertionError [ERR_ASSERTION]: the orphaned grandchild's watch fired and ran its stop path`. The check ran 145 s. Recovery re-landed it green at 07:40, and it merged. That is the same assertion as the Fixed entry "The SIGKILL-grandchild supervisor test flaked twice in one 2026-10-09 window". Since then 4ec5d729 (10-11) replaced the real poll with one driven by SIGUSR2 from the test, and its comment says a loaded host "cannot stretch" the verdict. It still fails.

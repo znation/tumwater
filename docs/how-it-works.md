@@ -299,8 +299,9 @@ never has to wait a parked check out.
   **Review.**) — and is reviewed after merging: its change passes the deterministic rejects and
   the gate check, then merges. The `merged` commit
   is recorded in `.tumwater/state/post-review.json`, and the merge poll runs one review at a time
-  over `git diff <commit>^ <commit>` when a permit is free (`review_start`, `review_verdict` and
-  `review_rejected` carry `afterMerge: true`). An approval ends it. A rejection never reverts:
+  over `git diff <commit>^ <commit>`. It waits for a team permit ahead of every queued role run, as
+  a pre-merge verification does (`review_start`, `review_verdict` and `review_rejected` carry
+  `afterMerge: true`). An approval ends it. A rejection never reverts:
   the reviewer's own minimal fix is landed on top of main in the same run, and where the review
   records a finding it cannot repair, the commit stays on main with the reviewer's reasons read as
   that recorded finding. A review that ends three times with no verdict is dropped with a warning.
