@@ -40,7 +40,7 @@ test("release pushes main, tags the CI-green commit locally and on origin", () =
   const { root } = pushedRepo("0.1.0");
   const restore = fakeGh("success");
   try {
-    const r = runRelease(root, []);
+    const r = runRelease(root, ["patch"]);
 
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /releasing 0\.1\.0 → tag v0\.1\.0/);
@@ -67,7 +67,7 @@ test("release refuses to tag when CI is red, leaving no tag on either side", () 
   sh(root, "git", "push", "origin", "main");
   const restore = fakeGh("failure");
   try {
-    const r = runRelease(root, []);
+    const r = runRelease(root, ["patch"]);
 
     assert.equal(r.status, 1);
     assert.match(r.stderr, /CI run 4242 concluded failure — fix and re-cut/);
@@ -90,7 +90,7 @@ test("release dies naming the command when gh exits 0 with non-JSON", () => {
   writeScript(path.join(bin, "gh"), `printf '%s' 'not json'`);
   const restore = pathPrepend(bin);
   try {
-    const r = runRelease(root, []);
+    const r = runRelease(root, ["patch"]);
 
     assert.equal(r.status, 1);
     assert.match(r.stderr, /gh run list .* exited 0 but printed non-JSON/);
@@ -113,7 +113,7 @@ test("release dies naming a gh it cannot execute instead of waiting for CI that 
 
   const restore = pathReplace(bin);
   try {
-    const r = runRelease(root, []);
+    const r = runRelease(root, ["patch"]);
 
     assert.equal(r.status, 1);
     assert.match(r.stderr, /could not run `gh`/);
@@ -121,6 +121,81 @@ test("release dies naming a gh it cannot execute instead of waiting for CI that 
   } finally {
     restore();
   }
+});
+
+// --- the release level: a cut names it, and main's version must be that step -----------------
+// Main carries a patch placeholder after each cut, so the level is decided at the cut. These
+// pin that the named level is checked against the last release tag before anything is pushed.
+
+test("release cuts a minor over the last release tag and names the level", () => {
+  const { root } = pushedRepo("0.2.0");
+  sh(root, "git", "tag", "v0.1.0");
+  const restore = fakeGh("success");
+  try {
+    const r = runRelease(root, ["minor"]);
+
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /releasing 0\.2\.0 → tag v0\.2\.0 .* — a minor release over v0\.1\.0/);
+    assert.equal(sh(root, "git", "rev-parse", "v0.2.0^{commit}"), headSha(root));
+  } finally {
+    restore();
+  }
+});
+
+test("release refuses a level main's version is not, before pushing or tagging", () => {
+  const { root, origin } = pushedRepo("0.1.1");
+  sh(root, "git", "tag", "v0.1.0");
+  // A local commit origin has not seen: the refusal must come before the release pushes main.
+  seedCommit(root, "feature.txt", "feature\n", "add a feature");
+  const restore = fakeGh("success");
+  try {
+    const r = runRelease(root, ["minor"]);
+
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /main carries 0\.1\.1, but a minor release over v0\.1\.0 is 0\.2\.0/);
+    assert.match(r.stderr, /node scripts\/release\.mjs bump minor/, "the refusal names the re-level");
+    assert.equal(r.stdout, "", "nothing is printed before the refusal");
+    assert.notEqual(
+      sh(origin, "git", "rev-parse", "main"),
+      headSha(root),
+      "main was not pushed",
+    );
+    assert.equal(sh(root, "git", "tag", "-l", "v0.1.1"), "", "no tag was made");
+  } finally {
+    restore();
+  }
+});
+
+test("release counts from origin's last tag when this clone never fetched it", () => {
+  const { root } = pushedRepo("0.3.0");
+  sh(root, "git", "tag", "v0.2.0");
+  sh(root, "git", "push", "origin", "v0.2.0");
+  sh(root, "git", "tag", "-d", "v0.2.0");
+  sh(root, "git", "tag", "v0.1.0");
+  const restore = fakeGh("success");
+  try {
+    // Over the local v0.1.0 alone, 0.3.0 would be no single step; over origin's v0.2.0 it is a
+    // minor, so the cut goes ahead.
+    const r = runRelease(root, ["minor"]);
+
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /a minor release over v0\.2\.0/);
+  } finally {
+    restore();
+  }
+});
+
+test("release with no level refuses and states the rule for choosing one", () => {
+  const { root } = pushedRepo("0.1.0");
+
+  const r = runRelease(root, []);
+
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /name the release level: node scripts\/release\.mjs <patch\|minor\|major>/);
+  assert.match(r.stderr, /major +the release carries a major, remarkable feature/);
+  assert.match(r.stderr, /minor +otherwise, it carries any feature/);
+  assert.match(r.stderr, /patch +otherwise: bug fixes only/);
+  assert.equal(sh(root, "git", "tag", "-l"), "", "no tag was made");
 });
 
 // --- bump: the version commit that follows a release -------------------------
@@ -207,4 +282,54 @@ test("bump replays on the new main when the first push is rejected", () => {
     headSha(root),
     "the retried push landed the bump commit",
   );
+});
+
+// --- re-levelling: bump counts from the last release tag, not from main's version -------------
+
+test("bump minor raises a patch placeholder to the next minor over the last release", () => {
+  const { root } = pushedRepoWithLock("0.1.1");
+  sh(root, "git", "tag", "v0.1.0");
+
+  const r = runRelease(root, ["bump", "minor"]);
+
+  assert.equal(r.status, 0, r.stderr);
+  // Over main's 0.1.1 a minor is also 0.2.0, so the lowering test below is what tells the two
+  // bases apart; this one pins the message naming the tag it counted from.
+  assert.match(r.stdout, /bumped 0\.1\.1 → 0\.2\.0 \(minor over v0\.1\.0\); committed and pushed/);
+  assert.equal(readJson<{ version: string }>(path.join(root, "package.json")).version, "0.2.0");
+  assert.equal(sh(root, "git", "log", "-1", "--format=%s"), "tumwater(release): 0.2.0");
+});
+
+test("bump patch lowers a minor back to the next patch over the last release", () => {
+  const { root } = pushedRepoWithLock("0.2.0");
+  sh(root, "git", "tag", "v0.1.0");
+
+  const r = runRelease(root, ["bump", "patch"]);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /bumped 0\.2\.0 → 0\.1\.1 \(patch over v0\.1\.0\)/);
+  assert.equal(readJson<{ version: string }>(path.join(root, "package.json")).version, "0.1.1");
+  assert.equal(readJson<{ version: string }>(path.join(root, "package-lock.json")).version, "0.1.1");
+});
+
+test("bump major goes to the next major over the last release", () => {
+  const { root } = pushedRepoWithLock("0.4.8");
+  sh(root, "git", "tag", "v0.4.7");
+
+  const r = runRelease(root, ["bump", "major"]);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /bumped 0\.4\.8 → 1\.0\.0 \(major over v0\.4\.7\)/);
+});
+
+test("bump to the level main already carries changes nothing", () => {
+  const { root } = pushedRepoWithLock("0.1.1");
+  sh(root, "git", "tag", "v0.1.0");
+  const before = headSha(root);
+
+  const r = runRelease(root, ["bump", "patch"]);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /main already carries 0\.1\.1 \(patch over v0\.1\.0\); nothing to bump/);
+  assert.equal(headSha(root), before, "no commit was made");
 });

@@ -103,11 +103,23 @@ push (`v*`) runs the release workflow, which attaches the packed tarball to a Gi
 
 Main always carries the **next** version; a release tags the version main already has:
 
-    node scripts/release.mjs                  # release: push main, wait for CI, tag v<version>
-    node scripts/release.mjs bump [patch|minor|major]   # right after a release: bump, commit, push
-    node scripts/release.mjs --status         # report version/tag/CI state without acting
+    node scripts/release.mjs <patch|minor|major>        # release: check the level, push main, wait for CI, tag v<version>
+    node scripts/release.mjs bump [patch|minor|major]   # set the version to last release + level, commit, push
+    node scripts/release.mjs --status                   # report version/level/tag/CI state without acting
 
-The release flow refuses a dirty tree or a non-main branch, pushes main, waits for CI to
+A cut, in order:
+
+1. Choose the release's level from what changed since the last release tag (see
+   [Choosing the version](#choosing-the-version)).
+2. If main's version is not that level over the last release (`--status` prints the level
+   it is), re-level it: `node scripts/release.mjs bump <level>`.
+3. Write `RELEASE_NOTES.md` for that version (see [Release notes](#release-notes)) and
+   merge it to main.
+4. Cut: `node scripts/release.mjs <level>`.
+5. Once Release succeeds, `node scripts/release.mjs bump` sets main to the next patch.
+
+The release flow refuses a missing level, a dirty tree, a non-main branch, or a version
+that is not the named level over the last release tag. It then pushes main, waits for CI to
 go green, then tags `v<version>` — the tag push triggers Release, which re-runs the suite
 on the same Node the CI gate uses (lts/*), publishes to npm with `--provenance` (OIDC
 trusted publishing; no token involved), and attaches the tarball to a GitHub release.
@@ -120,6 +132,30 @@ Prerequisites (once): `gh` authenticated locally, and the trusted publisher regi
 on npm (`npm trust github tumwater --file release.yml --repo znation/tumwater
 --allow-publish`, package must already exist on the registry; first `npm trust`
 commands prompt for an interactive 2FA challenge).
+
+### Choosing the version
+
+Every cut decides its version number from what the release carries since the last release
+tag. Take the first rule that applies:
+
+1. **Major** (`1.4.2` → `2.0.0`): the release carries a major, remarkable feature. Use this
+   very rarely. The feature must be noteworthy enough to change what tumwater is or how
+   people use it. Being the biggest thing in this release is not enough.
+2. **Minor** (`1.4.2` → `1.5.0`): otherwise, the release carries any feature. A feature is
+   something a user can newly do or see: a command, flag, setting, view, backend or
+   behavior.
+3. **Patch** (`1.4.2` → `1.4.3`): otherwise, the release has only bug fixes. Changes that
+   touch only the build, the tests or the docs count as fixes here.
+
+Judge by what a user of the release gets, not by the commit prefixes:
+`tumwater(feature): …` commits are often internal cleanups, and a fix can arrive under any
+role. If the notes have a feature under Highlights or CLI, the release is at least minor.
+
+The bump right after each cut is a patch placeholder, chosen before anything new has
+merged, so main's version is not a decision. The cut is. `release.mjs` takes the level as
+a required argument and refuses when main's version is not that step over the last release
+tag. `bump <level>` counts from that tag too, not from main's version, so it raises a
+placeholder or lowers one, and running it twice changes nothing.
 
 ### Release notes
 

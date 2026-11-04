@@ -149,6 +149,75 @@ test("--status reports an origin/main it cannot count instead of leaking a git f
   assert.doesNotMatch(r.stderr, /fatal:/, "no raw git fatal line leaks beside the report");
 });
 
+// --- the level line: what step main's version is over the last release tag ------------------
+// A cut must name this level, so --status shows it. Offline repos read local tags only and say
+// so; the highest MAJOR.MINOR.PATCH tag counts, compared numerically, other tag names ignored.
+
+test("--status prints the level main's version is over the last release tag", () => {
+  const root = makeRepo();
+  seedPackage(root, "0.2.0");
+  sh(root, "git", "tag", "v0.1.0");
+
+  const r = status(root);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^level: minor over v0\.1\.0 \(local tags only\)$/m);
+});
+
+test("--status counts from the numerically highest release tag and skips other tag names", () => {
+  const root = makeRepo();
+  seedPackage(root, "0.10.1");
+  // String order puts v0.9.0 last; the pre-release and non-version names are not releases.
+  for (const t of ["v0.10.0", "v0.9.0", "v1.0.0-rc.1", "vnext", "release-2"]) sh(root, "git", "tag", t);
+
+  const r = status(root);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^level: patch over v0\.10\.0 \(local tags only\)$/m);
+});
+
+test("--status names each step when main's version is no single step over the last release", () => {
+  const root = makeRepo();
+  seedPackage(root, "0.1.5");
+  sh(root, "git", "tag", "v0.1.0");
+
+  const r = status(root);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(
+    r.stdout,
+    /^level: 0\.1\.5 is no single step over v0\.1\.0 \(local tags only\) — patch 0\.1\.1, minor 0\.2\.0, major 1\.0\.0$/m,
+  );
+});
+
+test("--status says there is no release tag yet", () => {
+  const root = makeRepo();
+  seedPackage(root, "0.1.0");
+
+  const r = status(root);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^level: no release tag yet \(local tags only\)$/m);
+});
+
+test("--status counts origin's release tags when origin answers", () => {
+  const { root } = pushedRepo("0.2.0");
+  sh(root, "git", "tag", "v0.1.0");
+  sh(root, "git", "push", "origin", "v0.1.0");
+  sh(root, "git", "tag", "-d", "v0.1.0");
+  const bin = tmpdir("release-gh-");
+  writeScript(path.join(bin, "gh"), `printf '%s' '[]'`);
+
+  const restore = pathPrepend(bin);
+  try {
+    const r = status(root);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^level: minor over v0\.1\.0$/m);
+  } finally {
+    restore();
+  }
+});
+
 test("--status refuses a bump instead of silently reporting and changing nothing", () => {
   const root = makeRepo();
   seedPackage(root, "0.1.0");
@@ -164,7 +233,7 @@ test("the release path still refuses to act offline rather than treating the tag
   const root = makeRepo();
   seedPackage(root, "0.1.0");
 
-  const r = spawnSync(process.execPath, [SCRIPT], { cwd: root, encoding: "utf8" });
+  const r = spawnSync(process.execPath, [SCRIPT, "patch"], { cwd: root, encoding: "utf8" });
 
   assert.equal(r.status, 1);
   assert.match(
@@ -239,7 +308,7 @@ test("release refuses when the version's tag already exists locally", () => {
   const { root } = pushedRepo("0.1.0");
   sh(root, "git", "tag", "v0.1.0");
 
-  const r = runRelease(root, []);
+  const r = runRelease(root, ["patch"]);
 
   assert.equal(r.status, 1);
   assert.match(r.stderr, /tag v0\.1\.0 already exists/);
@@ -260,4 +329,12 @@ test("argument validation refuses unknown flags, arguments, and bump levels", ()
   const level = runRelease(root, ["bump", "huge"]);
   assert.equal(level.status, 1);
   assert.match(level.stderr, /unknown bump level: huge/);
+
+  const extra = runRelease(root, ["patch", "now"]);
+  assert.equal(extra.status, 1);
+  assert.match(extra.stderr, /unknown argument\(s\): patch now/);
+
+  const statusLevel = runRelease(root, ["--status", "minor"]);
+  assert.equal(statusLevel.status, 1);
+  assert.match(statusLevel.stderr, /--status only reports state and never releases/);
 });

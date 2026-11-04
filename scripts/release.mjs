@@ -1,9 +1,9 @@
 // Cut releases and bump for the next one. Main always carries the NEXT version; a
 // release tags the version main already has:
 //
-//   node scripts/release.mjs                          # release: push main, wait for CI, tag `v<version>`
-//   node scripts/release.mjs bump [patch|minor|major] # right after a release: bump, commit `tumwater(release): <version>`, push
-//   node scripts/release.mjs --status                 # report version/tag/CI state, change nothing
+//   node scripts/release.mjs <patch|minor|major>      # release: check the level, push main, wait for CI, tag `v<version>`
+//   node scripts/release.mjs bump [patch|minor|major] # set the version to last release + level, commit `tumwater(release): <version>`, push
+//   node scripts/release.mjs --status                 # report version/level/tag/CI state, change nothing
 //
 // The bump is a separate commit AFTER the tag, never part of the release: a tag then
 // always names the exact commit CI green-lit while package.json still said the released
@@ -13,8 +13,16 @@
 // This script never publishes: publishing lives in the Release workflow (trusted
 // publishing OIDC), so npm only ever ships what CI just tested.
 //
-// Refuses to act when: the tree is dirty, HEAD is not on main, main diverged from
-// origin/main, or the version's tag already exists locally or on the remote.
+// The level is decided at each cut from what the release carries (DEVELOPMENT.md "Choosing
+// the version"): major for a rare, remarkable feature, else minor for any feature, else
+// patch for fixes only. The bump right after a cut is a patch placeholder, so the release
+// path takes the level as a required argument and refuses when main's version is not that
+// step over the last release tag. `bump <level>` counts from that tag rather than from
+// main's version, so at cut time it re-levels the placeholder up or down.
+//
+// Refuses to act when: no level is named, the tree is dirty, HEAD is not on main, main
+// diverged from origin/main, the version's tag already exists locally or on the remote, or
+// the version is not the named level over the last release tag.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -133,23 +141,40 @@ async function ciWait(runId) {
 
 // --- arguments ---------------------------------------------------------------
 
-const usage = "usage: node scripts/release.mjs [--status]\n       node scripts/release.mjs bump [patch|minor|major]";
+const usage =
+  "usage: node scripts/release.mjs <patch|minor|major>\n" +
+  "       node scripts/release.mjs bump [patch|minor|major]\n" +
+  "       node scripts/release.mjs --status";
 const LEVELS = ["patch", "minor", "major"];
+/** The rule a cut decides its level by, first match wins — printed when the level is missing
+ * so the operator decides it here rather than taking whatever main happens to carry. */
+const LEVEL_RULE =
+  "  major  the release carries a major, remarkable feature (rare: it must be truly noteworthy)\n" +
+  "  minor  otherwise, it carries any feature\n" +
+  "  patch  otherwise: bug fixes only\n" +
+  'See DEVELOPMENT.md "Choosing the version".';
 const args = process.argv.slice(2);
 const positional = args.filter((a) => !a.startsWith("-"));
 const flags = args.filter((a) => a.startsWith("-"));
 const statusOnly = flags.includes("--status");
 if (flags.some((f) => f !== "--status")) die(`unknown flag: ${flags.find((f) => f !== "--status")}\n${usage}`);
-if (positional.length > 2 || (positional[0] && positional[0] !== "bump")) die(`unknown argument(s): ${positional.join(" ")}\n${usage}`);
 const bumpMode = positional[0] === "bump";
-// --status reports and exits before the bump path runs, so `--status bump` would silently
-// report state and change nothing — a no-op a user reads as a successful bump. The two are
-// mutually exclusive; refuse the combination instead of dropping the bump.
+const releaseLevel = !bumpMode && LEVELS.includes(positional[0]) ? positional[0] : null;
+if (positional.length > (bumpMode ? 2 : 1) || (positional[0] && !bumpMode && !releaseLevel)) {
+  die(`unknown argument(s): ${positional.join(" ")}\n${usage}`);
+}
+// --status reports and exits before the bump and release paths run, so `--status bump` (or
+// `--status minor`) would silently report state and change nothing — a no-op a user reads as
+// a successful bump or cut. Refuse the combination instead of dropping the action.
 if (statusOnly && bumpMode) die(`--status only reports state and never bumps — drop \`bump\`, or drop --status to bump\n${usage}`);
+if (statusOnly && releaseLevel) die(`--status only reports state and never releases — drop \`${releaseLevel}\`, or drop --status to cut\n${usage}`);
 if (bumpMode && positional[1] && !LEVELS.includes(positional[1])) {
   die(`unknown bump level: ${positional[1]}\n${usage}`);
 }
 const bumpLevel = bumpMode ? (positional[1] ?? "patch") : null;
+if (!statusOnly && !bumpMode && !releaseLevel) {
+  die(`name the release level: node scripts/release.mjs <patch|minor|major>\n${LEVEL_RULE}`);
+}
 
 // --- state -------------------------------------------------------------------
 
@@ -162,6 +187,51 @@ const tag = `v${version}`;
  * proceeds as if a tag it cannot see were free. `--status` does its own tolerant probes. */
 function tagTaken() {
   return Boolean(sh("tag", "-l", tag) || sh("ls-remote", "--tags", "origin", `refs/tags/${tag}`));
+}
+
+/** [major, minor, patch] of a plain MAJOR.MINOR.PATCH version, or null for anything else. */
+function parseVersion(v) {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(v);
+  return m ? m.slice(1).map(Number) : null;
+}
+
+/** The version one `level` step over `base`: major and minor zero the parts below them. */
+function nextVersion(base, level) {
+  const [major, minor, patch] = parseVersion(base);
+  if (level === "major") return `${major + 1}.0.0`;
+  if (level === "minor") return `${major}.${minor + 1}.0`;
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+/** The level that takes `base` to `version`, or null when no single step does. */
+function levelOf(base, version) {
+  return LEVELS.find((level) => nextVersion(base, level) === version) ?? null;
+}
+
+/** Negative, zero or positive as parsed version `a` sorts before, with, or after `b`. */
+function compareVersions(a, b) {
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i];
+  return 0;
+}
+
+/** The highest released version among `v<MAJOR.MINOR.PATCH>` tags, or null when there is none
+ * yet. Takes `git tag -l` output (bare names) and `git ls-remote --tags --refs` output
+ * (`<sha>\trefs/tags/<name>`) alike; any other tag name is ignored. */
+function lastRelease(...tagLists) {
+  let best = null;
+  for (const line of tagLists.join("\n").split("\n")) {
+    const name = (line.trim().split(/\s+/).pop() ?? "").replace(/^refs\/tags\//, "");
+    const parts = name.startsWith("v") ? parseVersion(name.slice(1)) : null;
+    if (parts && (!best || compareVersions(parts, best) > 0)) best = parts;
+  }
+  return best ? best.join(".") : null;
+}
+
+/** The last release the strict release and bump paths count from: local tags and origin's,
+ * since a tag cut from another clone may not be fetched here. `sh` dies on an unreachable
+ * origin, like tagTaken. */
+function lastReleaseStrict() {
+  return lastRelease(sh("tag", "-l", "v*"), sh("ls-remote", "--tags", "--refs", "origin"));
 }
 
 function guardMain() {
@@ -204,7 +274,22 @@ if (statusOnly) {
         : remoteTagProbe === null
           ? "local state only (remote tag probe failed)"
           : "not yet created";
+  // The level main's version is over the last release: the step a cut must name. Origin's
+  // tags join the local ones when origin answers; otherwise the line says it saw local only.
+  const remoteTags = remoteReachable ? probe("ls-remote", "--tags", "--refs", "origin") : null;
+  const released = lastRelease(sh("tag", "-l", "v*"), remoteTags ?? "");
+  const seen = remoteTags === null ? " (local tags only)" : "";
+  const level = released && parseVersion(version) ? levelOf(released, version) : null;
+  const levelLine = !parseVersion(version)
+    ? `${version} is not MAJOR.MINOR.PATCH`
+    : !released
+      ? `no release tag yet${seen}`
+      : level
+        ? `${level} over v${released}${seen}`
+        : `${version} is no single step over v${released}${seen} — ` +
+          LEVELS.map((l) => `${l} ${nextVersion(released, l)}`).join(", ");
   console.log(`version ${version} → tag ${tag} @ ${head().slice(0, 8)} on ${branch}${dirty ? " (dirty!)" : ""}`);
+  console.log(`level: ${levelLine}`);
   console.log(
     `origin/main: ${
       remoteMain
@@ -219,11 +304,23 @@ if (statusOnly) {
   process.exit(0);
 }
 
-// --- bump: the version commit that follows a release -------------------------
+// --- bump: the version commit that follows a release, or re-levels one -------
+// The target counts from the last release tag, not from main's version: right after a cut the
+// two agree, and at the next cut `bump minor` over a 0.4.8 placeholder (last release 0.4.7)
+// yields 0.5.0, while `bump patch` over a 0.5.0 yields 0.4.8. Re-running is a no-op.
 
 if (bumpMode) {
   const ahead = guardMain();
-  const out = spawnSync("npm", ["version", "--no-git-tag-version", bumpLevel], { cwd: root, encoding: "utf8" });
+  const released = lastReleaseStrict();
+  const base = released ?? version;
+  if (!parseVersion(base)) die(`package.json version ${version} is not MAJOR.MINOR.PATCH — set it by hand.`);
+  const target = nextVersion(base, bumpLevel);
+  const over = released ? ` over v${released}` : "";
+  if (target === version) {
+    console.log(`main already carries ${version} (${bumpLevel}${over}); nothing to bump.`);
+    process.exit(0);
+  }
+  const out = spawnSync("npm", ["version", "--no-git-tag-version", target], { cwd: root, encoding: "utf8" });
   // A spawn failure (npm not on PATH, a non-executable npm) leaves status null and stdout/
   // stderr undefined, so the message below would throw a bare TypeError instead of naming
   // the cause — the same distinction ghSpawn draws for gh. Check the spawn error first.
@@ -238,8 +335,11 @@ if (bumpMode) {
     if (soft("pull", "--rebase", "origin", "main") === null) die("could not rebase onto origin/main — reconcile manually, then re-run.");
     if (soft("push", "origin", "main") === null) die("push still rejected after rebase — reconcile manually, then re-run.");
   }
-  console.log(`bumped ${version} → ${newVersion} (${bumpLevel}); committed and pushed (was ${ahead} commit(s) ahead).`);
-  console.log("cut it when ready: node scripts/release.mjs");
+  console.log(`bumped ${version} → ${newVersion} (${bumpLevel}${over}); committed and pushed (was ${ahead} commit(s) ahead).`);
+  console.log(
+    `cut it with RELEASE_NOTES.md headed "# tumwater ${newVersion}": node scripts/release.mjs ${bumpLevel}` +
+      ' — re-level first if what it carries calls for another level (DEVELOPMENT.md "Choosing the version").',
+  );
   process.exit(0);
 }
 
@@ -247,8 +347,21 @@ if (bumpMode) {
 
 const ahead = guardMain();
 if (tagTaken()) die(`tag ${tag} already exists — if it is wrong, delete it on both sides and re-cut.`);
+if (!parseVersion(version)) die(`package.json version ${version} is not MAJOR.MINOR.PATCH — set it by hand.`);
+// The named level is the decision; main's version must already be that step over the last
+// release, so a patch placeholder never ships a release that carries features (or the reverse).
+const released = lastReleaseStrict();
+if (released && nextVersion(released, releaseLevel) !== version) {
+  const want = nextVersion(released, releaseLevel);
+  die(
+    `main carries ${version}, but a ${releaseLevel} release over v${released} is ${want}.\n` +
+      `Re-level first: node scripts/release.mjs bump ${releaseLevel}, head RELEASE_NOTES.md ` +
+      `"# tumwater ${want}", then re-run node scripts/release.mjs ${releaseLevel}.`,
+  );
+}
+const kind = released ? `a ${releaseLevel} release over v${released}` : `the first release (${releaseLevel})`;
 
-console.log(`releasing ${version} → tag ${tag} @ ${head().slice(0, 8)} (${ahead} commit(s) to push)`);
+console.log(`releasing ${version} → tag ${tag} @ ${head().slice(0, 8)} (${ahead} commit(s) to push) — ${kind}`);
 
 console.log("pushing main…");
 sh("push", "origin", "main");
