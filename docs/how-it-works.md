@@ -162,8 +162,8 @@ never has to wait a parked check out.
   `tumwater status`, the TUI header and the dashboard's team panel show `workspaces
   <leased>/<worktreeSlots>`, plus `, <n> waiting` when runs queue for one. Outside the pool sit the director's
   own `.tumwater/worktrees/director`, the merge step's `_merge`, the review gate's `_gate-main`,
-  and the update mirror and witness (`_main`, `_build`). Size the disk for about `worktreeSlots`
-  + 3 warm checkouts of the project.
+  the main watch's full-check mirror `_main-full`, and the update mirror and witness (`_main`,
+  `_build`). Size the disk for about `worktreeSlots` + 3 warm checkouts of the project.
 - **Parallel work instances.** `roles.feature.instances` and `roles.bugfix.instances` (1–8)
   run that many instances of the role — `feature`, `feature-2`, … (shown as `feature #2`) — each
   with its own branch and state. The scheduler assigns each due instance one eligible backlog
@@ -293,8 +293,10 @@ never has to wait a parked check out.
   at a time, covering every commit since the last watched head; the full check runs at most once per
   `check.fullIntervalMinutes` — default 60 — on main's latest tip, only while a non-exempt code
   commit sits above the newest verdict a full check actually produced; `0` restores one full run per
-  new code head; the deterministic diff rules still run on every new head, and a red anchor is
-  re-checked on the next new head, never delayed by the hour; a
+  new code head; the full check owns its own `_main-full` mirror and its own in-flight pass, so a
+  per-head diff-rules pass and the review gate's main-tip verdict run in the shared `_gate-main`
+  mirror and never wait behind a slow full run; the deterministic diff rules still run on every new
+  head, and a red anchor is re-checked on the next new head, never delayed by the hour; a
   red is confirmed once before it counts — by re-running only its failing tests when the project
   declares a re-run command (`check.rerunCommand`, or an npm `test:rerun` script), else the whole
   check; a doc-only tip inherits its green). The heal prompt and ci's `<main-red>` note name that

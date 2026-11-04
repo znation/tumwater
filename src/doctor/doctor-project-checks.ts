@@ -441,7 +441,7 @@ export function checkQaCoverage(root: string, now: number = Date.now()): CheckOu
  * every event-reading doctor row uses, so a diff-rule failure the main watch logged stays a
  * standing warn until a day passes. Owned here (the check that reads it). */
 const MAIN_RULE_FAILURE_WINDOW_MS = DAY_MS;
-/** The exact substring src/baseline/main-watch.ts's `watchRules` logs in its warning, so this
+/** The exact substring src/baseline/main-watch.ts's `rulesPass` logs in its warning, so this
  * check matches a real rule failure and cannot drift from the wording the watch writes. */
 const MAIN_RULE_FAILURE_MARKER = "fails the diff rules";
 /** The doctor's `main diff rules` row: a `warning` the main watch logged when the review gate's

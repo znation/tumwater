@@ -1,7 +1,7 @@
 import { distinctOrdered } from "../collections.js";
 import { baselineCache, checkMainBaseline, firstParentWalk, INHERIT_WALK_MAX, settleRedByRerun } from "./main-baseline.js";
 import { canRerun, rerunTests } from "../build/build-check-rerun.js";
-import { baselineCheckLogger, clearHealKeyOnGreen, dropHealPromptsCoveredBy, withMainTipWorktree } from "./main-red.js";
+import { baselineCheckLogger, clearHealKeyOnGreen, dropHealPromptsCoveredBy, withFullMainTipWorktree, withMainTipWorktree } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
 import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
@@ -84,8 +84,8 @@ function mainCheckEvent(
   };
 }
 
-/** The main watch: after main's head moves, run the full check on the new tip in the `_gate-main`
- * mirror and record the verdict — a `main_check` event, and the failing tests on the red baseline
+/** The main watch: after main's head moves, run the full check on the new tip in its own
+ * `_main-full` mirror and record the verdict — a `main_check` event, and the failing tests on the red baseline
  * (which persists beside the greens). The watch checks every new red tip, but the CULPRIT for an
  * ongoing red is the commit that opened it — the first red tip since the last green: a doc-exempt
  * tip that lands after the red opened cannot have changed the suite, so re-naming it would blame
@@ -104,7 +104,13 @@ function mainCheckEvent(
  * `checkedAt` reads as due now; `0` restores one full run per new code head. The diff rules run on
  * every new head either way, and a red is confirmed once before it is final — by re-running only
  * its failing tests when it can (build-check-rerun.ts), else the whole check again
- * (`reverifyRed`). The check queues at the merge tier of the check permits. */
+ * (`reverifyRed`). The check queues at the merge tier of the check permits.
+ *
+ * The two passes run in separate mirrors (Hourly full check, part 2c/4): the per-head diff-rules
+ * pass runs in the shared `_gate-main` mirror (withMainTipWorktree), and the full-check pass runs
+ * in its own `_main-full` mirror (withFullMainTipWorktree) on its own queue, so a rules pass or a
+ * gate's main-tip verdict never waits behind a full run. `poll` starts each pass independently and
+ * `idle()` waits for both, plus housekeeping. */
 interface MainWatch {
   /** Look at main's head; starts a background watch run when it is unwatched and none is in
    * flight. `held` (a restart pending, or the disk hold) starts nothing; `config` is the live
@@ -162,7 +168,11 @@ export function createMainWatch(
    * measured from. It overrides `lastWatched` for the covered-commit count when the check finally
    * runs, so the event reports every commit the skip passed over. */
   let fullCheckBase: string | undefined;
-  let inFlight: Promise<void> | null = null;
+  let rulesInFlight: Promise<void> | null = null;
+  let fullInFlight: Promise<void> | null = null;
+  /** The newest head for which the rules pass has been started, independent of the full pass's
+   * `lastWatched`: a rules pass that was busy when a head arrived must still judge that head. */
+  let lastRulesWatched: string | undefined;
   let housekeeping: Promise<void> | null = null;
   let lastFilingWarning = "";
   let lastCloseWarning = "";
@@ -238,21 +248,130 @@ export function createMainWatch(
     }
   }
 
-  async function watchOnce(mainHead: string, config: TumwaterConfig): Promise<void> {
+  /** The shared settlement helpers, captured once per watch so the rules pass and the full-check
+   * pass (Hourly full check, part 2c/4) settle a verdict identically. */
+  /** Run the declared build check on main's tip, confirming a red once and quarantining a flake
+   * whose confirmation passes. A red whose failing tests can be re-run on their own (canRerun) is
+   * confirmed by re-running just those tests, so the full check runs once per tip: a test that
+   * passes there is quarantined, and the red narrows to the tests that failed again (or turns
+   * green when none did). A re-run that reaches no verdict leaves the first red standing. Without
+   * a re-run command the whole check runs again, as before. Returns the check's result and
+   * whether any full run actually executed (false for a cache hit, a skip, or a sleep-spanned
+   * run). `config` is the live one at the moment of the run. */
+  async function runBaselineCheck(wt: string, config: TumwaterConfig): Promise<{ check: BaselineCheck; ran: boolean }> {
+    let ran = false;
+    const onRun = baselineCheckLogger(root, TUMWATER_SOURCE);
+    const hook: typeof onRun = (run) => {
+      ran = true;
+      onRun(run);
+    };
+    let check = await checkMainBaseline(wt, config, hook, false, false, undefined, false, CHECK_TIER.merge);
+    if (check.baseline?.status !== "red") return { check, ran };
+    const first = check.baseline;
+    const named = first.failingTests ?? [];
+    if (canRerun(wt, config, named)) {
+      const rerun = await rerunTests(root, TUMWATER_SOURCE, wt, config, named, first.failingTestFiles, CHECK_TIER.merge);
+      if (rerun) {
+        // Each test that failed and then passed on this same tree is a flake.
+        const passed = named.filter((t) => !rerun.failing.includes(t));
+        if (passed.length > 0) quarantineTests(root, passed, passed.join("\n"));
+        const settled = settleRedByRerun(first.sha, rerun.failing);
+        if (settled) check = { baseline: settled };
+      }
+      return { check, ran };
+    }
+    check = await checkMainBaseline(wt, config, hook, true, false, undefined, false, CHECK_TIER.merge);
+    // A red the same tree's confirming re-run turns green is a flake: quarantine its tests.
+    if (check.baseline?.status === "green") quarantineTests(root, named, named.join("\n"));
+    return { check, ran };
+  }
+
+  /** The covered-commit count for a main_check event: the first-parent commits between the
+   * previous and new watched heads, or 1 when there is no previous head. */
+  async function countCovered(wt: string, previous: string | undefined, sha: string): Promise<number> {
+    if (previous === undefined) return 1;
+    const counted = Number(((await gitTry(wt, "rev-list", "--first-parent", "--count", `${previous}..${sha}`)) ?? "").trim());
+    return Number.isFinite(counted) && counted > 0 ? counted : 1;
+  }
+
+  /** Settle the verdict for a checked baseline: distinguish quarantined-only reds, record
+   * main's known failures, count the covered commits, and log the main_check event. For a
+   * freshly-opened red spell the event's sha is the spell's opener (redOpener), not the tip
+   * checked, so G1's "red since <sha>" names the commit that broke the suite; a green or a
+   * re-check of an already-open spell keeps the tip. Returns whether the tip settled red (a
+   * red naming tests that are not all quarantined). */
+  async function recordMainCheck(
+    wt: string,
+    baseline: MainBaseline,
+    previous: string | undefined,
+    ran: boolean,
+    started: number,
+    openerSha?: string,
+  ): Promise<boolean> {
+    // A red naming only quarantined tests counts as green: no redeploy hold.
+    const quarantined = baseline.status === "red" ? onlyQuarantined(root, baseline.failingTests) : null;
+    const red = baseline.status === "red" && !quarantined;
+    knownFailures.set(root, red ? (baseline.failingTests ?? []) : []);
+    const covered = await countCovered(wt, previous, baseline.sha);
+    logEventBestEffort(
+      root,
+      mainCheckEvent(baseline, red, quarantined, covered, ran ? Date.now() - started : 0, openerSha),
+    );
+    return red;
+  }
+
+  /** The commit that OPENED a settled red: the checked tip when its own diff could have
+   * changed the suite, else — for a review-exempt (doc-only) tip that cannot have — the
+   * nearest first-parent ancestor (the tip itself first) whose own diff is not exempt, i.e. the
+   * most recent commit whose change the suite could react to. The watch checks the tip,
+   * not each merged commit, so when a code commit and a doc commit land in one poll interval
+   * the red is first seen at the doc tip (BUGS.md 2026-11-02: the guardrail named the doc
+   * merge as the red's opener), and the code commit that broke it is a first-parent ancestor
+   * of the tip. A non-exempt tip is returned at once (no walk); only a doc-exempt tip walks
+   * its ancestors, bounded at INHERIT_WALK_MAX like the inheritance walks, and a git failure
+   * or an all-exempt walk reads as "the tip itself". Never throws. */
+  async function redOpener(wt: string, tip: string, config: TumwaterConfig): Promise<string> {
+    const tipFiles = (await treeDiffFiles(wt, `${tip}^`, tip)) ?? [];
+    if (!isExemptDiff(tipFiles, [...config.review.exemptPaths])) return tip;
+    for (const ancestor of await firstParentWalk(wt, tip, INHERIT_WALK_MAX)) {
+      const files = (await treeDiffFiles(wt, `${ancestor}^`, ancestor)) ?? [];
+      if (!isExemptDiff(files, [...config.review.exemptPaths])) return ancestor;
+    }
+    return tip;
+  }
+
+  /** The per-head pass (Hourly full check, part 2c/4): the deterministic diff rules run in the
+   * shared `_gate-main` mirror on every new head, covering every commit since the last watched
+   * head. The full check no longer runs here — its own pass (fullPass) owns it in `_main-full` —
+   * so a slow full run never holds this mirror behind the gate's main-tip verdicts. `previous`
+   * is the newest head the rules pass has already been started for (lastRulesWatched), so a head
+   * whose pass was busy when it arrived is still judged once rather than dropped. */
+  async function rulesPass(mainHead: string, previous: string | undefined, config: TumwaterConfig): Promise<void> {
+    if (!detectBuildCheck(root, config)) {
+      // No declared build check: nothing to watch for a build red, but the diff rules still run on
+      // the tip, and the head counts as watched (the full-check pass never runs here, so it owns
+      // no lastWatched either). No suspended full check can be due without a build check.
+      lastWatched = mainHead;
+      fullCheckDueAt = undefined;
+      fullCheckBase = undefined;
+    }
     // The deterministic diff rules ("Every commit is verified on main, part 1/3"): run the full
     // five-check set the watch and gate share — the gate now runs only the three a later commit
-    // cannot repair — against main's new tip. A rule failure is a
-    // deterministic red — it takes no confirming re-run and never quarantines — reported as a
-    // warning naming the rule and the head (and each committing role, when a recent merged event
-    // names one). It runs on every tip the watch covers in a poll — a build green, a build
-    // red, and a head with no verdict (a skipped or sleep-spanned check) or no declared build
-    // check at all — because a tip counts as watched (lastWatched) either way, so this is the one
-    // chance to judge its diff before the next head moves.
-    const watchRules = async (wt: string, base: string | undefined, tip: string): Promise<void> => {
+    // cannot repair — against main's new tip. A rule failure is a deterministic red — it takes no
+    // confirming re-run and never quarantines — reported as a warning naming the rule and the
+    // head (and each committing role, when a recent merged event names one). It runs on every tip
+    // the watch covers in a poll — a build green, a build red, and a head with no verdict (a
+    // skipped or sleep-spanned check) or no declared build check at all — because a tip counts as
+    // watched (lastWatched) either way, so this is the one chance to judge its diff before the
+    // next head moves. The full check no longer runs here — its own pass (fullPass) owns it in
+    // `_main-full` — so a slow full run never holds this mirror behind the gate's main-tip
+    // verdicts (Hourly full check, part 2c/4).
+    await withMainTipWorktree(root, mainBranch, async (wt) => {
+      const tip = await headOf(wt);
       // Judge each first-parent commit in the range by its own diff and its own merged-event role,
       // not the tip's: a multi-commit range's union diff attributed to whichever role merged the
       // tip would report a legitimate director/steward PRINCIPLES.md edit in an intermediate commit
-      // as unauthorized by the role that merged later. base is undefined only before the first
+      // as unauthorized by the role that merged later. previous is undefined only before the first
       // watched head, when the range is the tip's own commit.
       //
       // The diff rules read the change's "head" side from the worktree (conflict markers,
@@ -261,9 +380,9 @@ export function createMainWatch(
       // commit would be compared against the tip's content of its touched files rather than its
       // own. The range is walked oldest-first and ends back on the tip.
       const commits =
-        base === undefined
+        previous === undefined
           ? [tip]
-          : ((await gitTry(wt, "rev-list", "--first-parent", "--reverse", `${base}..${tip}`)) ?? "")
+          : ((await gitTry(wt, "rev-list", "--first-parent", "--reverse", `${previous}..${tip}`)) ?? "")
               .trim()
               .split(/\s+/)
               .filter(Boolean);
@@ -291,147 +410,56 @@ export function createMainWatch(
           return;
         }
       }
-    };
+    });
+  }
 
-    /** Run the declared build check on main's tip, confirming a red once and quarantining a flake
-     * whose confirmation passes. A red whose failing tests can be re-run on their own (canRerun) is
-     * confirmed by re-running just those tests, so the full check runs once per tip: a test that
-     * passes there is quarantined, and the red narrows to the tests that failed again (or turns
-     * green when none did). A re-run that reaches no verdict leaves the first red standing. Without
-     * a re-run command the whole check runs again, as before. Returns the check's result and
-     * whether any full run actually executed (false for a cache hit, a skip, or a sleep-spanned
-     * run). `config` and `root` are captured from `watchOnce`. */
-    async function runBaselineCheck(wt: string): Promise<{ check: BaselineCheck; ran: boolean }> {
-      let ran = false;
-      const onRun = baselineCheckLogger(root, TUMWATER_SOURCE);
-      const hook: typeof onRun = (run) => {
-        ran = true;
-        onRun(run);
-      };
-      let check = await checkMainBaseline(wt, config, hook, false, false, undefined, false, CHECK_TIER.merge);
-      if (check.baseline?.status !== "red") return { check, ran };
-      const first = check.baseline;
-      const named = first.failingTests ?? [];
-      if (canRerun(wt, config, named)) {
-        const rerun = await rerunTests(root, TUMWATER_SOURCE, wt, config, named, first.failingTestFiles, CHECK_TIER.merge);
-        if (rerun) {
-          // Each test that failed and then passed on this same tree is a flake.
-          const passed = named.filter((t) => !rerun.failing.includes(t));
-          if (passed.length > 0) quarantineTests(root, passed, passed.join("\n"));
-          const settled = settleRedByRerun(first.sha, rerun.failing);
-          if (settled) check = { baseline: settled };
-        }
-        return { check, ran };
-      }
-      check = await checkMainBaseline(wt, config, hook, true, false, undefined, false, CHECK_TIER.merge);
-      // A red the same tree's confirming re-run turns green is a flake: quarantine its tests.
-      if (check.baseline?.status === "green") quarantineTests(root, named, named.join("\n"));
-      return { check, ran };
-    }
+  /** Name a settled red tip's spell as the culprit: the merging runner, the main_culprit
+   * event, and the onCulprit callback with the tip and its failing tests. The commit named is
+   * the one that OPENED the red (redOpener) — the first red tip since the last green, or, when
+   * that tip is review-exempt (a doc-only diff that cannot have changed the suite), the nearest
+   * first-parent commit before it whose own diff is not exempt — never a doc-only tip: blaming
+   * one would name a merge in the G1 phrase (src/baseline/main-guardrails.ts) and the ci heal
+   * prompt (src/baseline/main-red.ts) that did not break anything. `culprit` is that opener
+   * (already computed by redOpener in the red branch and shared with the first-red
+   * main_check's sha), so the blame and the re-attributed red event name the same commit.
+   * The opener is named once per spell with the tip's failing tests and, when the newest
+   * merged event names the opener, its runner; while the spell is open a later tip
+   * re-settling red re-attributes nothing. */
+  function reportCulprit(baseline: MainBaseline, culprit: string): void {
+    // A red spell that is already open keeps its opener named: the first red tip since the
+    // last green caused the red, so a later tip re-settling red (a doc-exempt tip cannot
+    // change the suite, and a code tip does not open a SECOND spell until a green closed the
+    // first) is not re-attributed — no new event, no new heal prompt (the heal dedup already
+    // re-queues when the failing set returns after a green).
+    if (redSpellOpeners.has(root)) return;
+    redSpellOpeners.set(root, culprit);
+    const runner = mergingRoleOf(root, culprit);
+    logEventBestEffort(root, {
+      source: TUMWATER_SOURCE,
+      type: "main_culprit",
+      commit: culprit,
+      ...(runner !== undefined ? { runner } : {}),
+      failingTests: baseline.failingTests ?? [],
+    });
+    onCulprit?.({
+      commit: culprit,
+      failingTests: baseline.failingTests ?? [],
+      ...(baseline.failingTestFiles ? { failingTestFiles: baseline.failingTestFiles } : {}),
+      tip: baseline.sha,
+    });
+  }
 
-    /** The covered-commit count for a main_check event: the first-parent commits between the
-     * previous and new watched heads, or 1 when there is no previous head. */
-    async function countCovered(wt: string, previous: string | undefined, sha: string): Promise<number> {
-      if (previous === undefined) return 1;
-      const counted = Number(((await gitTry(wt, "rev-list", "--first-parent", "--count", `${previous}..${sha}`)) ?? "").trim());
-      return Number.isFinite(counted) && counted > 0 ? counted : 1;
-    }
-
-    /** Settle the verdict for a checked baseline: distinguish quarantined-only reds, record
-     * main's known failures, count the covered commits, and log the main_check event. For a
-     * freshly-opened red spell the event's sha is the spell's opener (redOpener), not the tip
-     * checked, so G1's "red since <sha>" names the commit that broke the suite; a green or a
-     * re-check of an already-open spell keeps the tip. Returns whether the tip settled red (a
-     * red naming tests that are not all quarantined). */
-    async function recordMainCheck(
-      wt: string,
-      baseline: MainBaseline,
-      previous: string | undefined,
-      ran: boolean,
-      started: number,
-      openerSha?: string,
-    ): Promise<boolean> {
-      // A red naming only quarantined tests counts as green: no redeploy hold.
-      const quarantined = baseline.status === "red" ? onlyQuarantined(root, baseline.failingTests) : null;
-      const red = baseline.status === "red" && !quarantined;
-      knownFailures.set(root, red ? (baseline.failingTests ?? []) : []);
-      const covered = await countCovered(wt, previous, baseline.sha);
-      logEventBestEffort(
-        root,
-        mainCheckEvent(baseline, red, quarantined, covered, ran ? Date.now() - started : 0, red ? openerSha : undefined),
-      );
-      return red;
-    }
-
-    /** The commit that OPENED a settled red: the checked tip when its own diff could have
-     * changed the suite, else — for a review-exempt (doc-only) tip that cannot have — the
-     * nearest first-parent ancestor (the tip itself first) whose own diff is not exempt, i.e.
-     * the most recent commit whose change the suite could react to. The watch checks the tip,
-     * not each merged commit, so when a code commit and a doc commit land in one poll interval
-     * the red is first seen at the doc tip (BUGS.md 2026-11-02: the guardrail named the doc
-     * merge as the red's opener), and the code commit that broke it is a first-parent ancestor
-     * of the tip. A non-exempt tip is returned at once (no walk); only a doc-exempt tip walks
-     * its ancestors, bounded at INHERIT_WALK_MAX like the inheritance walks, and a git failure
-     * or an all-exempt walk reads as "the tip itself". Never throws. */
-    async function redOpener(wt: string, tip: string, exemptPaths: readonly string[]): Promise<string> {
-      const tipFiles = (await treeDiffFiles(wt, `${tip}^`, tip)) ?? [];
-      if (!isExemptDiff(tipFiles, [...exemptPaths])) return tip;
-      for (const ancestor of await firstParentWalk(wt, tip, INHERIT_WALK_MAX)) {
-        const files = (await treeDiffFiles(wt, `${ancestor}^`, ancestor)) ?? [];
-        if (!isExemptDiff(files, [...exemptPaths])) return ancestor;
-      }
-      return tip;
-    }
-
-    /** Name a settled red tip's spell as the culprit: the merging runner, the main_culprit
-     * event, and the onCulprit callback with the tip and its failing tests. The commit named is
-     * the one that OPENED the red (redOpener) — the first red tip since the last green, or, when
-     * that tip is review-exempt (a doc-only diff that cannot have changed the suite), the nearest
-     * first-parent commit before it whose own diff is not exempt — never a doc-only tip: blaming
-     * one would name a merge in the G1 phrase (src/baseline/main-guardrails.ts) and the ci heal
-     * prompt (src/baseline/main-red.ts) that did not break anything. `culprit` is that opener
-     * (already computed by redOpener in the red branch and shared with the first-red
-     * main_check's sha), so the blame and the re-attributed red event name the same commit.
-     * The opener is named once per spell with the tip's failing tests and, when the newest
-     * merged event names the opener, its runner; while the spell is open a later tip
-     * re-settling red re-attributes nothing. */
-    function reportCulprit(baseline: MainBaseline, culprit: string): void {
-      // A red spell that is already open keeps its opener named: the first red tip since the
-      // last green caused the red, so a later tip re-settling red (a doc-exempt tip cannot
-      // change the suite, and a code tip does not open a SECOND spell until a green closed the
-      // first) is not re-attributed — no new event, no new heal prompt (the heal dedup already
-      // re-queues when the failing set returns after a green).
-      if (redSpellOpeners.has(root)) return;
-      redSpellOpeners.set(root, culprit);
-      const runner = mergingRoleOf(root, culprit);
-      logEventBestEffort(root, {
-        source: TUMWATER_SOURCE,
-        type: "main_culprit",
-        commit: culprit,
-        ...(runner !== undefined ? { runner } : {}),
-        failingTests: baseline.failingTests ?? [],
-      });
-      onCulprit?.({
-        commit: culprit,
-        failingTests: baseline.failingTests ?? [],
-        ...(baseline.failingTestFiles ? { failingTestFiles: baseline.failingTestFiles } : {}),
-        tip: baseline.sha,
-      });
-    }
-
-    if (!detectBuildCheck(root, config)) {
-      // No declared build check: nothing to watch for a build red, but the diff rules still run on
-      // the tip. The build-red path below is what never runs here.
-      await withMainTipWorktree(root, mainBranch, async (wt) => {
-        await watchRules(wt, lastWatched, await headOf(wt));
-      });
-      lastWatched = mainHead; // no declared check: nothing else to watch until main moves
-      fullCheckDueAt = undefined;
-      fullCheckBase = undefined;
-      return;
-    }
-    await withMainTipWorktree(root, mainBranch, async (wt) => {
-      const previous = lastWatched;
+  /** The full-check pass (Hourly full check, part 2c/4): runs in the `_main-full` mirror on its
+   * own queue, so the per-head rules pass and a gate's main-tip verdict in `_gate-main` never
+   * wait behind it. The due rule (part 2b/4) decides whether the full check runs at all this
+   * poll: within the interval and code uncovered, the head counts as watched at the anchor with
+   * no run; otherwise the declared check runs on the latest tip, a red is confirmed once, the
+   * verdict is settled and the spell's opener named. `previous` is the last watched head at the
+   * moment of the poll. */
+  async function fullPass(previous: string | undefined, config: TumwaterConfig): Promise<void> {
+    // Called only when a build check is declared (poll gates it); the rules pass owns the
+    // no-check path. The full check runs in the `_main-full` mirror, on its own queue.
+    await withFullMainTipWorktree(root, mainBranch, async (wt) => {
       const tip = await headOf(wt);
       // The due rule (Hourly full check, part 2b/4): the full check runs at most once per
       // check.fullIntervalMinutes (default 60), on main's latest tip, and only while a
@@ -441,28 +469,27 @@ export function createMainWatch(
       const plan = await fullCheckPlan(wt, tip, config, now());
       if (plan.skip) {
         // The full check is within the interval and code is uncovered (part 2b/4): the diff
-        // rules still judge this head, and the head counts as watched so repeat polls do nothing.
-        // `fullCheckDueAt` keeps the due decision alive across those polls without regressing
-        // `lastWatched` to the anchor (which would re-judge the same range and re-log its rule
-        // warnings every poll). No main_check, no full run, until the interval passes or main
-        // turns red.
-        await watchRules(wt, previous, tip);
+        // rules still judge this head, in their own pass, and the head counts as watched so
+        // repeat polls do nothing. `fullCheckDueAt` keeps the due decision alive across those
+        // polls without regressing `lastWatched` to the anchor (which would re-judge the same
+        // range and re-log its rule warnings every poll). No main_check, no full run, until the
+        // interval passes or main turns red.
         lastWatched = tip;
         fullCheckDueAt = plan.dueAt;
         fullCheckBase = plan.anchorSha;
         return;
       }
       const started = Date.now();
-      const { check, ran } = await runBaselineCheck(wt);
+      const { check, ran } = await runBaselineCheck(wt, config);
       const baseline = check.baseline;
       // A skipped or sleep-spanned run made no verdict: the head still counts as watched, so the
-      // next poll does not start another run for it — but the diff rules still run on this tip.
+      // next poll does not start another run for it. The diff rules still run on this tip, in
+      // the rules pass.
       if (!baseline) {
-        const tip = await headOf(wt);
-        await watchRules(wt, previous, tip);
+        lastWatched = tip;
         fullCheckDueAt = undefined;
         fullCheckBase = undefined;
-        return void (lastWatched = tip);
+        return;
       }
       lastWatched = baseline.sha;
       fullCheckDueAt = undefined;
@@ -474,11 +501,8 @@ export function createMainWatch(
       // recorded at the commit that OPENED the red (redOpener) so G1's "red since <sha>" names
       // the breaker, not a doc tip that only happened to be current. A re-check of an already-open
       // spell keeps the tip's sha (INV-AZ4: the re-check re-checks without re-attributing).
-      const opener = redSpellOpeners.has(root) ? undefined : await redOpener(wt, baseline.sha, config.review.exemptPaths);
+      const opener = redSpellOpeners.has(root) ? undefined : await redOpener(wt, baseline.sha, config);
       const red = await recordMainCheck(wt, baseline, coveredFrom, ran, started, opener);
-      // The diff rules judge the tip whether the build is green or red; the build-red path below
-      // names the whole tip as the culprit, so the two red kinds are judged independently.
-      await watchRules(wt, previous, baseline.sha);
       // A settled non-red verdict (a green, or a red naming only quarantined tests) clears the
       // heal-dedup key, so a failing set that returns after a green main is healed again, and
       // drops the heal prompts still waiting for a red this tip has passed. A settled red
@@ -507,33 +531,60 @@ export function createMainWatch(
           housekeeping = null;
         });
       }
-      if (held || mainHead === "" || inFlight) return;
+      if (held || mainHead === "") return;
       // A head already watched is a no-op unless a suspended full check has now come due, or
       // another check (the gate's main-tip attribution) recorded that same head red: a red is
-      // settled and healed at once, never held back by the interval.
-      if (mainHead === lastWatched) {
-        if (fullCheckDueAt === undefined) return;
-        if (now() < fullCheckDueAt && baselineCache.get(mainHead)?.status !== "red") return;
-      }
-      inFlight = watchOnce(mainHead, config)
-        .catch((err: unknown) => {
-          // A failed watch (main unreadable, checkout refused) records nothing and is not
-          // retried until main moves, so a persistent failure warns once per head.
-          lastWatched = mainHead;
-          fullCheckDueAt = undefined;
-          fullCheckBase = undefined;
-          logEventBestEffort(root, {
-            source: TUMWATER_SOURCE,
-            type: "warning",
-            message: `main watch could not check main: ${errorMessage(err)}`,
+      // settled and healed at once, never held back by the interval. The rules pass may still
+      // owe this head a run when a previous poll's pass was busy as the head arrived.
+      const rulesCovered = lastRulesWatched === mainHead;
+      const fullDue =
+        fullCheckDueAt !== undefined &&
+        (now() >= fullCheckDueAt || baselineCache.get(mainHead)?.status === "red");
+      if (mainHead === lastWatched && rulesCovered && !fullDue) return;
+      // Two independent passes (Hourly full check, part 2c/4): the per-head rules pass and the
+      // due full-check pass, each behind its own in-flight guard, so a slow full run never holds
+      // the `_gate-main` mirror a later poll's rules pass or a gate's main-tip verdict needs.
+      if (!rulesInFlight && !rulesCovered) {
+        const previous = lastRulesWatched;
+        lastRulesWatched = mainHead;
+        rulesInFlight = rulesPass(mainHead, previous, config)
+          .catch((err: unknown) => {
+            // A failed rules pass (main unreadable, checkout refused) is not retried until main
+            // moves, so a persistent failure warns once per head.
+            logEventBestEffort(root, {
+              source: TUMWATER_SOURCE,
+              type: "warning",
+              message: `main watch could not check main: ${errorMessage(err)}`,
+            });
+          })
+          .finally(() => {
+            rulesInFlight = null;
           });
-        })
-        .finally(() => {
-          inFlight = null;
-        });
+      }
+      if (detectBuildCheck(root, config) && !fullInFlight && (mainHead !== lastWatched || fullDue)) {
+        const previous = lastWatched;
+        fullInFlight = fullPass(previous, config)
+          .catch((err: unknown) => {
+            // A failed full pass (main unreadable, checkout refused) records nothing and is not
+            // retried until main moves, so a persistent failure warns once per head.
+            lastWatched = mainHead;
+            fullCheckDueAt = undefined;
+            fullCheckBase = undefined;
+            logEventBestEffort(root, {
+              source: TUMWATER_SOURCE,
+              type: "warning",
+              message: `main watch could not check main: ${errorMessage(err)}`,
+            });
+          })
+          .finally(() => {
+            fullInFlight = null;
+          });
+      }
     },
     idle: async () => {
-      while (inFlight || housekeeping) await (inFlight ?? housekeeping);
+      while (rulesInFlight || fullInFlight || housekeeping) {
+        await (rulesInFlight ?? fullInFlight ?? housekeeping);
+      }
     },
   };
 }

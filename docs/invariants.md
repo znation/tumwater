@@ -3372,7 +3372,7 @@ the main watch's settled green calls `clearHealKeyOnGreen`, and the ci hand-off'
 observation clears it too. A red that ci found itself queues nothing.
 
 **Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedHealNote`, `clearHealKeyOnGreen`);
-`src/baseline/main-watch.ts` (`watchOnce`).
+`src/baseline/main-watch.ts` (`fullPass`).
 
 **Pinned by.** `test/main-red.test.ts` — "ci's own red-main note queues nothing and still returns
 the note and warning"; `test/main-red-heal.test.ts` — "a failing set queues one heal prompt in any order, and queues
@@ -3427,7 +3427,7 @@ does not contain. Each removal logs a `prompt_cancelled` under ci; other prompts
 are never touched. The cap holds across restarts because it reads the inbox, not process memory.
 
 **Binds.** `src/baseline/main-red.ts` (`queueHealPrompt`, `dropHealPromptsCoveredBy`,
-`queuedHealPrompts`, `mainRedHealNote`); `src/baseline/main-watch.ts` (`watchOnce`).
+`queuedHealPrompts`, `mainRedHealNote`); `src/baseline/main-watch.ts` (`fullPass`).
 
 **Pinned by.** `test/main-red-heal.test.ts` — "a heal prompt for a new failing set replaces the
 heal prompt waiting, and other prompts stay", "queueCulpritHeal replaces the heal prompt
@@ -4851,3 +4851,11 @@ instead of skipping its re-review".
 **Binds.** `src/baseline/main-watch.ts` (`createMainWatch`), `src/baseline/main-baseline.ts` (`settleRedByRerun`), `src/build/build-check-rerun.ts` (`rerunTests`, `rerunCommandLine`), `src/build/build-check-detect.ts` (`rerunCommandOf`), `src/baseline/main-red.ts` (`queueCulpritHeal`, `mainRedHealNote`).
 
 **Pinned by.** `test/main-watch-failures.test.ts` — "a red tip is confirmed by re-running only its failing tests: the full check runs once", "a red whose failing tests all pass when re-run alone is recorded passed and quarantined" and "a re-run that reaches no verdict leaves the first red standing, with no second full run"; `test/main-watch.test.ts` — "a culprit's heal prompt names the command that re-runs only its failing tests".
+
+### INV-CZ3: the main watch's full check runs in its own mirror, so no `_gate-main` pass waits behind it
+
+**Guarantee.** The main watch's full check — which runs at most once per `check.fullIntervalMinutes`, on main's latest tip, and only while a non-exempt code commit sits above the newest verdict a full check actually produced — runs in its own `_main-full` mirror, queued on its own in-flight pass. The per-head deterministic diff rules and the review gate's main-tip verdict (`mainTipVerdict`) run in the shared `_gate-main` mirror and never wait behind a full run: a new head's diff rules finish and a gate's main-tip re-run completes while a full run is still in flight. `poll` starts the rules pass and, when the full check is due, the full-check pass independently; `idle()` resolves only after both passes and the watch's housekeeping have finished. A head that moves while a full run is in flight is checked on the latest tip by the next poll.
+
+**Binds.** `src/paths.ts` (`fullMainWorktreePath`), `src/baseline/main-red.ts` (`withFullMainTipWorktree`, `queueBehindFullMain`), `src/baseline/main-watch.ts` (`createMainWatch`'s rules pass and full pass).
+
+**Pinned by.** `test/main-watch-mirror.test.ts` — "the full check runs in _main-full, a mirror the gate's main-tip verdict does not use" and "the full check's run happens in _main-full, and the gate's main-tip verdict is served from _gate-main"; `test/main-watch.test.ts` — "idle() drains a slow full run".

@@ -541,6 +541,15 @@ export function gateMainWorktreePath(root: string): string {
   return path.join(worktreesDir(root), "_gate-main");
 }
 
+/** Detached worktree pinned at main's head for the main watch's FULL check (main-watch.ts):
+ * the full suite run, which can take minutes, gets its own mirror instead of the gate's
+ * `_gate-main` above, so a per-head diff-rules pass or a gate's main-tip verdict never waits
+ * behind it in that mirror (Hourly full check, part 2c/4). Named with a leading underscore
+ * like the mirrors above, so it can never collide with a role. */
+export function fullMainWorktreePath(root: string): string {
+  return path.join(worktreesDir(root), "_main-full");
+}
+
 /** Detached worktree pinned at the RUNNING build's own SHA for the redeployer's urgency
  * carve-out (redeploy.ts's buildRed): the baseline check that decides whether the build the
  * team is executing is red runs here — its own checkout, not the redeploy mirror above, so a

@@ -308,3 +308,23 @@ test("a restart honoring a saved checkedAt starts no full run until the interval
   assert.equal(checks.length, 2);
   assert.equal(checks[1]?.covered, 1);
 });
+
+// The full check runs in its own in-flight pass (Hourly full check, part 2c/4): `idle()` waits
+// for the full-check pass as well as the per-head rules pass, so a slow full run is not left
+// behind when a caller drains the watch.
+test("idle() drains a slow full run", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root } = baselineFixture("improve", `echo run >> ${counter}; sleep 1`);
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
+  await watchAt(watch, root); // the seed commit: green
+  change(root, "a.txt", "a"); // a code head: its full check is due and slow
+  clock.advance(HOUR);
+  watch.poll(headSha(root), false, defaultConfig()); // starts the rules pass and the full pass
+  const done = watch.idle(); // must wait for the slow full run, not just the rules pass
+  await done;
+  const checks = eventsOfType(root, "main_check");
+  assert.equal(checks.length, 2, "the slow full run settled before idle() resolved");
+  assert.equal(checks[1]?.status, "passed");
+  assert.equal(runsOf(counter), 2);
+});

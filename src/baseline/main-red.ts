@@ -17,7 +17,7 @@ import { mainRedPhrase, plural } from "../text/phrases.js";
 import { clipToWidth } from "../text/text-width.js";
 import { shortSha } from "../text/format.js";
 import { branchHead, headOf, isMergedInto } from "../git/git.js";
-import { gateMainWorktreePath } from "../paths.js";
+import { fullMainWorktreePath, gateMainWorktreePath } from "../paths.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 
@@ -350,6 +350,42 @@ export function withMainTipWorktree<T>(
       const tip = await branchHead(root, mainBranch);
       if (!tip) throw new Error(`${mainBranch} is unreadable`);
       return fn(await ensureDetachedWorktree(root, gateMainWorktreePath(root), tip));
+    }),
+  );
+}
+
+/** The `_main-full` mirror's own queue, separate from gateMainQueue (Hourly full check,
+ * part 2c/4): the full check's pass is the long one (minutes), and nothing a gate or a diff-rules
+ * pass does may wait behind it — so it serializes its own passes and never joins the gate's.
+ * Shaped like gateMainQueue: each link is bounded (one full run, killed at its timeout) and
+ * takes no other lock, so a second full pass waits at most for the first to finish. */
+let fullMainQueue: Promise<unknown> = Promise.resolve();
+
+/** Run `task` after every earlier `_main-full` task has settled, and make it the queue's new
+ * tail. A task's rejection reaches only its own caller; the next task still runs. */
+function queueBehindFullMain<T>(task: () => Promise<T>): Promise<T> {
+  const run = fullMainQueue.then(task);
+  fullMainQueue = run.catch(() => undefined);
+  return run;
+}
+
+/** Run `fn` in the `_main-full` mirror re-pointed at `mainBranch`'s tip, on the mirror's own
+ * queue: the main watch's full-check pass (main-watch.ts) runs its long full run here, so a
+ * per-head diff-rules pass or a gate's main-tip verdict in `_gate-main` never waits behind it
+ * (Hourly full check, part 2c/4). Shaped like withMainTipWorktree, minus the shared gate queue;
+ * rejects when main is unreadable or the checkout fails — the caller is a background task that
+ * must catch.
+ */
+export function withFullMainTipWorktree<T>(
+  root: string,
+  mainBranch: string,
+  fn: (wt: string) => Promise<T>,
+): Promise<T> {
+  return queueBehindFullMain(() =>
+    useWorktree(root, fullMainWorktreePath(root), async () => {
+      const tip = await branchHead(root, mainBranch);
+      if (!tip) throw new Error(`${mainBranch} is unreadable`);
+      return fn(await ensureDetachedWorktree(root, fullMainWorktreePath(root), tip));
     }),
   );
 }
