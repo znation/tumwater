@@ -389,13 +389,19 @@ function parsePromptGrep(args: string[], scan: PromptScan): { grepRaw: string | 
 
 /** The `-f/--follow` pair: its list-only refusal and the positions it claims. Outside the
  * list mode the `-f` spelling is free-form content (the free-form rule), while the `--follow`
- * spelling names the missing `--list` instead of being baked into the queued text. When the
- * follow token sits in `--grep`'s value slot (`--list --grep -f`) it is the literal pattern,
- * not the flag — claimed by grepClaim, unclaimed here. */
+ * spelling names the missing `--list` instead of being baked into the queued text. A token in
+ * a valued flag's value slot is that flag's value, not the follow flag: `--list --grep -f`
+ * keeps `-f` as the literal pattern (claimed by grepClaim, unclaimed here), and
+ * `--list --follow --grep -f` still follows with that pattern. Only the value-slot occurrence
+ * is excluded; any other `-f`/`--follow` token still claims itself. */
 function parsePromptFollow(args: string[], scan: PromptScan): { followClaim: number[] } {
-  if (scan.grepFlag >= 0 && scan.followFlags.includes(scan.grepFlag + 1)) return { followClaim: [] };
+  const valueSlots = new Set<number>();
+  for (const flagIndex of [scan.grepFlag, scan.roleFlag, scan.fileFlag, scan.atFlag, scan.cancelFlag, scan.editFlag, scan.topFlag, ...scan.attachFlags]) {
+    if (flagIndex >= 0) valueSlots.add(flagIndex + 1);
+  }
+  const followClaim = scan.followFlags.filter((i) => !valueSlots.has(i));
   if (scan.listFlag < 0 && args.includes("--follow")) fail("--follow only applies to --list");
-  return { followClaim: scan.followFlags };
+  return { followClaim };
 }
 
 /** The queue-only-mode refusals: --file and --at have nothing to mean except in the enqueue

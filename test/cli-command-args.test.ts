@@ -233,6 +233,24 @@ test("parsePromptArgs --list: exact mode, no text allowed", () => {
   assert.match(dup.stderr, /--list may only be given once/);
 });
 
+test("parsePromptArgs --list: -f in --grep's value slot is the pattern, not the follow flag", () => {
+  // The value-slot token is grep's literal pattern; a separate follow token still follows.
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--list", "--grep", "-f"])), {
+    mode: "list",
+    role: null,
+    json: false,
+    grep: "-f",
+    follow: false,
+  });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--list", "--follow", "--grep", "-f"])), {
+    mode: "list",
+    role: null,
+    json: false,
+    grep: "-f",
+    follow: true,
+  });
+});
+
 test("parsePromptArgs --cancel: position validation and exclusivity", () => {
   assert.deepEqual(expectOk(() => parsePromptArgs(["--cancel", "2"])), { mode: "cancel", role: null, position: 2 });
 
