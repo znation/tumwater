@@ -6,7 +6,7 @@ import { cmdDoctor } from "../src/cli/cli-doctor-command.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { diskHermeticRepo, hermeticHostBins } from "./fixtures/doctor-fixtures.js";
 import { pathPrepend } from "./fakes/fake-commands.js";
-import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
+import { attemptAsync, captureStdout } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
 import { cli, spawnCli, exitCode } from "./helpers/cli-harness.js";
 
@@ -228,7 +228,9 @@ test("doctor -f clears the screen only on a TTY", async (t) => {
 
 test("doctor -f ends by parent death leaving the exit code untouched", async (t) => {
   // A single fast check keeps the frame quick, so its in-flight paint cannot bleed into the
-  // next test's stdout; the exit-code contract is independent of how many checks run.
+  // next test's stdout; the exit-code contract is independent of how many checks run. Name
+  // `init`, which fails on a bare makeRepo tree (no tumwater.json), so this pins the contract
+  // the acceptance names: a failing last frame still leaves the exit code untouched.
   const repo = makeRepo();
   await sleep(50);
   const parent = { value: 4242 };
@@ -237,7 +239,7 @@ test("doctor -f ends by parent death leaving the exit code untouched", async (t)
   let done = false;
   let failure: unknown = null;
   t.mock.timers.enable({ apis: ["setInterval"] });
-  const promise = cmdDoctor(repo, ["brief", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }).then(
+  const promise = cmdDoctor(repo, ["init", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }).then(
     () => (done = true),
     (err: unknown) => {
       failure = err;
@@ -247,6 +249,7 @@ test("doctor -f ends by parent death leaving the exit code untouched", async (t)
   try {
     for (let i = 0; i < 3000 && frames(cap.out()) < 1 && !done; i++) await sleep(10);
     assert.ok(frames(cap.out()) >= 1, "first frame rendered");
+    assert.match(cap.out(), /^fail\s+init/m, "the last frame shows a failing check");
     parent.value = 1;
     t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
     await promise;
@@ -269,31 +272,29 @@ test("doctor -f ends by parent death leaving the exit code untouched", async (t)
 test("doctor -f --json is refused before any frame", async () => {
   const repo = makeRepo();
   await sleep(50);
-  const cap = captureStdout();
-  try {
-    const err = await expectFailAsync(() => cmdDoctor(repo, ["-f", "--json"], { ppid: () => 4242, intervalMs: 5 }));
-    assert.match(err, /doctor --json prints one document/);
-    assert.equal(cap.out(), "", "no frame printed");
-    assert.ok(!cap.out().includes(CLEAR), "no clear-screen printed");
-  } finally {
-    cap.restore();
-  }
+  // Inspect the outcome's own stdout: attemptAsync stubs process.stdout.write for the call, so
+  // a separate captureStdout around it would stay empty even if the command painted a frame.
+  const out = await attemptAsync(() => cmdDoctor(repo, ["-f", "--json"], { ppid: () => 4242, intervalMs: 5 }));
+  if (!out.exited) assert.fail("expected the --json conflict to fail the command");
+  assert.equal(out.code, 1);
+  assert.match(out.stderr, /doctor --json prints one document/);
+  assert.equal(out.stdout, "", "no frame printed");
+  assert.ok(!out.stdout.includes(CLEAR), "no clear-screen printed");
 });
 
 test("doctor -f with a repair flag is refused naming the flag, before any side effect or frame", async () => {
   const repo = makeRepo();
   await sleep(50);
-  const cap = captureStdout();
-  try {
-    for (const flag of ["--kill-orphans", "--commit-backlog", "--resync-install", "--drop-broken-pins", "--retire-leftovers"]) {
-      const err = await expectFailAsync(() => cmdDoctor(repo, ["-f", flag], { ppid: () => 4242, intervalMs: 5 }));
-      assert.match(err, new RegExp(`${flag} repairs`), `${flag} is named in the refusal`);
-      assert.match(err, /read-only/);
-    }
-    assert.equal(cap.out(), "", "no frame printed for any refused shape");
-    assert.ok(!cap.out().includes(CLEAR), "no clear-screen printed");
-  } finally {
-    cap.restore();
+  for (const flag of ["--kill-orphans", "--commit-backlog", "--resync-install", "--drop-broken-pins", "--retire-leftovers"]) {
+    // The outcome's own stdout, not an outer captureStdout (attemptAsync replaces the stream):
+    // an outer capture would be empty even when a frame painted before the refusal.
+    const out = await attemptAsync(() => cmdDoctor(repo, ["-f", flag], { ppid: () => 4242, intervalMs: 5 }));
+    if (!out.exited) assert.fail(`expected ${flag} to fail the command`);
+    assert.equal(out.code, 1);
+    assert.match(out.stderr, new RegExp(`${flag} repairs`), `${flag} is named in the refusal`);
+    assert.match(out.stderr, /read-only/);
+    assert.equal(out.stdout, "", "no frame printed for any refused shape");
+    assert.ok(!out.stdout.includes(CLEAR), "no clear-screen printed");
   }
 });
 
