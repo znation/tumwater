@@ -5,6 +5,36 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Hourly gate restore, part 2/2: The gate attributes a twice-failed check by asking main's tip about exactly what failed, never by waiting on the watch (planned 2026-11-02 by the plan role, splitting the too-large Hourly full check part 1a/4 entry after feature held it; requires Hourly gate restore part 1/2 landed, so the check and its failed/aborted outcomes already run (re-pointed 2026-11-02 by the operator: reverting 8ed0d3eec restored the pre-check whole from that commit's parent, watch-wait attribution included, so this part replaces that attribution rather than adding to a bare check); design in plans/main-check-cadence.md; user direction 2026-11-01: a twice-failed check is decided on the spot, never by waiting on the main watch; touches src/review/review-precheck.ts src/baseline/main-red.ts docs/how-it-works.md docs/invariants.md test/review-precheck.test.ts test/review-precheck-main-tip.test.ts test/review-precheck-watch.test.ts) — done 2026-11-03 by the post-merge review
+
+**Goal.** Replace the restored watch-wait attribution (`watchVerifiesMain` → `watchedMainVerdict`, the `status === "awaiting"` keep with `mainRed`/`awaitingWatch`, and `attributeOnRedMain`'s `unknown` arm) with attribution at main's tip, with no watch and no keep-the-pin-until-the-watch outcome. When a gate check fails twice:
+
+- Named failing tests are asked about alone on main's tip (`mainTipFailures`, via `rerunAtMainTip`). A test that fails there too is main's; a test that passes there is the change's, and the change is rejected with its reasons.
+- A failure that names no test (compile, lint, crash) runs the gate command at main's tip through a new `mainTipGateVerdict`: a pass there rejects the change, a fail there too approves it, and an unavailable verdict rejects with the reason attribution could not be made.
+- When every named failure is main's, the change approves without a second full check of main. A failure whose tests are also red on the change's base but not at main's tip passes through as the base's (the `staleBaseFailures` rule), and no `awaitingWatch`, `mainRed` or `status === "awaiting"` path is added.
+
+**Approach.**
+- src/baseline/main-red.ts: add `export async function mainTipGateVerdict(root, role, mainBranch, config): Promise<MainTipVerdict>` beside `mainTipFailures`, built on `withMainTipWorktree` so it is queued behind `_gate-main` work. Inside the mirror it calls `runScopedBuildCheck(root, role, "gate", mirror, config)`, reads `headOf(mirror, "HEAD")`, and maps `passed` to green, `failed` to red with `failingTests` (default `[]`), and `null`/`skipped` to unavailable with its `skipReason`; a throw reads as unavailable with `errorMessage`. It is exported and read only by `review-precheck.ts`.
+- src/review/review-precheck.ts: keep the restored `staleBaseFailures` and `attributeOnRedMain`, dropping `attributeOnRedMain`'s `unknown` arm and the `watchedMainVerdict`/`watchedBaseline`/`watchVerifiesMain` imports: named failures are compared with `knownMainFailures`/`namedFailures(main)`, and a nameless gate failure is decided by `mainTipGateVerdict` alone.
+- Replace the reproduced-failure branch's watch wait (`watchVerifiesMain(root, config) ? await watchedMainVerdict(...)` and its `awaiting` keep) with: if named failures exist, `main = await mainTipFailures(root, role, wt, mainBranch, config, failed)`; if `main.status === "red"` and `namedFailures(main).length === 0`, retry with `rerunAtMainTip`; if `main.status === "red"` and every failure is main's, warn and return `{}` (approve); if `main.status === "green"` or a red that names fewer failures, run `staleBaseFailures` and either return `{}` or reject with `checkFailureReasons` plus `mainRedNotTheseFailures(main.sha, own)`. If no named failures exist, `main = await mainTipGateVerdict(...)`; green rejects with the check reasons, red warns and returns `{}`, unavailable rejects with `main's baseline was unavailable (<why>), so the failure is attributed to this change`.
+- Keep the restored abort checks around the attribution: an abort before or after a main-tip run returns `failed`/`aborted`, never a rejection.
+- docs/how-it-works.md's Review section says a twice-failed gate check is decided at once by main's tip about exactly its failures (named tests re-run alone, else the gate command), never by waiting on the watch. docs/invariants.md rewrites INV-CY1/CY2 (judged from the watch's verdicts, kept for the watch) as the main-tip guarantee, re-pinned to this part's tests.
+
+**Files touched.** src/review/review-precheck.ts src/baseline/main-red.ts docs/how-it-works.md docs/invariants.md test/review-precheck.test.ts test/review-precheck-main-tip.test.ts test/review-precheck-flake.test.ts
+
+**Acceptance criteria.**
+- A code change that fails twice on named test X, where X passes on main's tip, is rejected after the change's two gate attempts plus one `rerun`-scope run of X on main's tip; it starts no `baseline`-scope run of main and waits on no watch verdict.
+- If X also fails on main's tip, the change approves without a second full check of main.
+- A failure that names no test is rejected when main's tip passes the gate command and approves when main's tip fails it too; an unavailable main-tip verdict rejects with a reason naming why.
+- A change whose named failures are all red on its own base but not at main's tip approves through `staleBaseFailures`.
+- `grep -n 'awaitingWatch\|watchedMainVerdict\|watchVerdictCovering\|watchVerifiesMain\|status === "awaiting"' src/review/review-precheck.ts` prints nothing (main-red.ts's watch helpers stay for part 1b/4 to remove); `grep -n 'mainTipGateVerdict' src/review/review-precheck.ts src/baseline/main-red.ts` matches the definition and the one gate call.
+- `npm run test:gate` passes.
+
+**Tests.**
+- Extend test/review-precheck.test.ts with the named-failure attribution: X rejected against a green tip; X that also fails on the tip approved; a nameless failure decided by the gate command on the tip both ways; an unavailable tip rejects with its reason.
+- Add test/review-precheck-main-tip.test.ts for `mainTipGateVerdict` itself: green when the gate command passes at main's tip, red with the failing tests when it fails, unavailable when the check is skipped.
+- Re-point test/review-precheck-watch.test.ts's kept-for-the-watch cases to the main-tip outcomes, or delete those that only assert the wait. Keep the restored flake and known-main-failure cases in test/review-precheck*.test.ts green; run these files and the gate.
+
 ### Every commit is verified on main, part 4n/3: `rolePhase`'s dead `mainCheck` parameter and the positional arguments after it are removed (planned 2026-11-03 by the plan role, splitting the 2026-11-03 too-large part 4j/3 after feature held it; requires part 4m/3 landed, so nothing reads the parameter; touches src/ui/status-model.ts test/status-model.test.ts test/gui-client.test.ts) — done 2026-11-04 by the feature role
 
 **Goal.** Part 4m/3 leaves `rolePhase`'s `mainCheck` parameter as `_mainCheck` because its only reader is gone. Remove it and shift every positional argument after it, so `capPaused` becomes the eighth parameter and `restartHold` the last.
