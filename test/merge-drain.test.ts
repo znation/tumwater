@@ -39,7 +39,7 @@ test("an empty queue drains nothing", async () => {
 });
 
 test("a torn merge-queue head is dropped and the drain continues when the events feed is unwritable", async () => {
-  // dropTornHead (merge-verify.ts) removes the unreadable head and then warns; an EISDIR on
+  // dropTornHead (merge-head.ts) removes the unreadable head and then warns; an EISDIR on
   // that warning must not reject the whole drain poll, or one torn file plus a full disk stops
   // every role's queued merge from being verified. The drop itself still happens.
   const root = makeRepo();

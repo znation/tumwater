@@ -1,17 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
-import { gateRoleConfig } from "../gates/budget-gates.js";
 import { withRunPermit } from "../concurrency/run-permit.js";
-import { RoleRunner } from "../runner/runner.js";
-import { branchHead, commitMessage, isMergedInto, refSha } from "../git/git.js";
-import { commitRunOf } from "../git/commit-message.js";
-import { recoveredMergeEntry, recoveredMetadata } from "../runner/runner-leftover.js";
+import { branchHead } from "../git/git.js";
 import { addMergeChange, mergeUsage, removeMergeChange, setMergeChangeStatus } from "./merge-slot.js";
-import { dropMerge, enqueueMerge, entryRevisionFields, queuedMergeFiles, staleHeadFile, tornHeadRole, type MergeEntry } from "./merge-queue.js";
-import { mergeRefName } from "../paths.js";
+import { dropMerge, entryRevisionFields, queuedMergeFiles, type MergeEntry } from "./merge-queue.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { verifyRequest, type VerifyVerdict } from "./merge-batch.js";
+import { dropTornHead, mergedIntoMain } from "./merge-head.js";
+import { VERIFY_TIER, resolveAuthor } from "./merge-author.js";
 import {
   abortOnShutdown,
   acquireUnlessAborted,
@@ -24,140 +21,12 @@ import {
   type MergePipelineContext,
 } from "./merge-pipeline.js";
 
-/** The semaphore tier a verification waits at, below every roleTier (0/1): committed work whose
- * author the interlock has already blocked jumps ahead of parked role waiters rather than starving
- * behind them (BUGS.md 2026-09-18). Exported for merge-drain.ts, whose merge tier sits one
- * below it. */
-export const VERIFY_TIER = -1;
-
-/** The tier the merge's conflict-resolution runs wait at, one below VERIFY_TIER: ahead of any
- * verification parked for a permit, because the merge is the one serial step every queued change
- * waits on. (Nothing that holds a permit ever waits on the merge: no verification takes the merge
- * lock, and the resolver runs outside it — merge-to-main.ts's mergeToMain — so this cannot
- * deadlock.) Shared by merge-drain.ts's merge slot and merge-post-review-drain.ts's fix
- * landing, so the reviewer's fix-merge resolver rides the same tier and the two cannot
- * drift. */
-export const MERGE_TIER = VERIFY_TIER - 1;
-
 /** How many verifications may be in flight (parked or running) at once: every `maxConcurrent`
  * permit but one, so a deep merge queue never takes the last slot from the roles that could
  * author — at least one, so `maxConcurrent` 1 still merges. The merge's short conflict-resolution
  * run is not counted: it is the one serial step every queued change waits on. */
 export function verifyLimit(maxConcurrent: number): number {
   return Math.max(1, maxConcurrent - 1);
-}
-
-/** Resolve a merge entry's authoring runner: the live runner when the role is enabled
- * (runners are never removed from the array on disable — only a warning event fires); a role
- * disabled before this process started has no runner, so a throwaway one supplies the same
- * wiring (runner-pi.ts, runMergePi, foldMergeUsage) and a disk-loaded state to fold and save
- * on. Both share the live config, like every runner — the director takes directorConfig (the live
- * config, its budget-gate exemption, unless a used-up window moved it), every other role takes
- * roleConfig (gateRoleConfig's single home for the rule; the scheduler assigns the live runners
- * by it every poll). */
-export function resolveAuthor(ctx: MergePipelineContext, role: string): RoleRunner {
-  const { root, mainBranch, signal, runners, liveConfig, roleConfig, directorConfig } = ctx;
-  return (
-    runners.find((r) => r.role === role) ??
-    new RoleRunner(root, role, gateRoleConfig(role, liveConfig, roleConfig, directorConfig), mainBranch, signal)
-  );
-}
-
-/** Drop a torn queue head. A torn head (torn or foreign — a partial write an older build left,
- * a hand-placed file) makes headMerge read null forever — nothing else drops it, stranding
- * every live entry behind it and pinning their authors' runs via the interlock. Drop it with
- * one warning naming the file (and, when the head's raw bytes still carry a role, that role);
- * the healthy entries behind it are verified in the same poll. When a role is recovered, that
- * role's merge pin is read and, if it resolves, the change is re-queued fresh — in the same
- * shape leftover recovery builds (recoveredMergeEntry: the commit message's real summary,
- * body, high-friction flag, and revision round, plus the authoring run from its Run trailer) —
- * before the drop, so the same poll's queuedMergeFiles sees it and no landing waits forever on
- * the one unreadable file (BUGS.md 2026-09-17). The re-queue is best-effort: a write failure
- * (ENOSPC/EMFILE) or an unreadable commit must not wedge the queue, so the torn head is still
- * dropped (the pin survives and leftover recovery re-queues the full shape on the role's next
- * run), and the drain's poll never aborts. A torn head with no recoverable role or no pin drops
- * with the warning alone; the crashed entry's commit, if any, still rides its merge ref into
- * next-run leftover recovery. The drop itself can throw (a queue file that is a directory fails
- * fs.rmSync's non-recursive delete — the shape an ENOSPC or immutable queue file takes), and this
- * runs in the poll body with nothing to guard it: report it and leave the head in place rather
- * than end the team, exactly as settleAbortedApproved guards its own drop. Exported for
- * test/merge-queue.test.ts's torn-head step. */
-export async function dropTornHead(root: string): Promise<void> {
-  const stale = staleHeadFile(root);
-  if (!stale) return;
-  const role = tornHeadRole(stale);
-  let requeued = false;
-  let requeueFailed = false;
-  if (role) {
-    const sha = await refSha(root, mergeRefName(role)).catch(() => null);
-    if (sha) {
-      try {
-        // The shape leftover recovery builds. `run` is recovered from the commit's Run trailer
-        // (the drain has no run number of its own) so session naming keeps the authoring run;
-        // a hand-made commit with no trailer falls back to the zero slot.
-        const meta = await recoveredMetadata(root, sha);
-        const message = await commitMessage(root, sha);
-        const run = message === null ? 0 : (commitRunOf(message) ?? 0);
-        enqueueMerge(root, recoveredMergeEntry(role, sha, meta, run));
-        requeued = true;
-      } catch {
-        // A re-queue that cannot be built or written (ENOSPC/EMFILE on the queue write, an
-        // unreadable commit) must not abort the poll or strand the head: drop it anyway and let
-        // the still-held pin feed next-run leftover recovery, which rebuilds the full shape.
-        requeueFailed = true;
-      }
-    }
-  }
-  try {
-    dropMerge(stale);
-  } catch (err) {
-    warnEventBestEffort(
-      root,
-      TUMWATER_SOURCE,
-      `merge queue head ${path.basename(stale)} could not be dropped: ${errorMessage(err)}`,
-    );
-    return;
-  }
-  const roleNote = !role
-    ? ""
-    : requeued
-      ? `; ${role}'s pinned change was re-queued`
-      : requeueFailed
-        ? `; ${role}'s pinned change could not be re-queued — left for leftover recovery`
-        : `; ${role}'s pin is unreadable — left for leftover recovery`;
-  warnEventBestEffort(
-    root,
-    TUMWATER_SOURCE,
-    `merge queue head ${path.basename(stale)} is unreadable (torn or foreign) — dropped so the queue keeps moving${roleNote}`,
-  );
-}
-
-/** Already-merged verdicts cached per (root, sha) against the main head they were computed
- * against. drainVerify re-runs its dedupe against main every poll, but a queued entry's sha is
- * fixed and merge-base --is-ancestor against the same head always returns the same answer — the
- * verdict can only change when main itself moves (a merge's fast-forward). Serving the verdict
- * from this cache makes a poll whose queue is waiting on busy authors or the merge slot cost one
- * branchHead ref-file read instead of one git spawn per entry, and a moved main recomputes each
- * entry's verdict once (the new head misses the cache). Bounded: verdicts computed against an
- * older head are stale falses no future poll can reuse, so they are the first pruned. */
-const mergedIntoMainCache = new Map<string, { head: string; merged: boolean }>();
-const MERGED_INTO_MAIN_CACHE_MAX = 128;
-
-/** The cached dedupe verdict for `sha` against main at `head`, computing it through
- * isMergedInto on a cache miss. `head` is the caller's already-resolved main head ("" when main
- * does not exist yet — isMergedInto then fails and reads false, a verdict worth caching like any
- * other since the key matches). */
-async function mergedIntoMain(root: string, sha: string, mainBranch: string, head: string): Promise<boolean> {
-  const key = `${root}\u0000${sha}`;
-  const hit = mergedIntoMainCache.get(key);
-  if (hit?.head === head) return hit.merged;
-  const merged = await isMergedInto(root, sha, mainBranch);
-  if (mergedIntoMainCache.size >= MERGED_INTO_MAIN_CACHE_MAX && !mergedIntoMainCache.has(key)) {
-    for (const [k, v] of mergedIntoMainCache) if (v.head !== head) mergedIntoMainCache.delete(k);
-    if (mergedIntoMainCache.size >= MERGED_INTO_MAIN_CACHE_MAX) mergedIntoMainCache.clear();
-  }
-  mergedIntoMainCache.set(key, { head, merged });
-  return merged;
 }
 
 /** Start a verification, in queue order, for every queued entry whose role the pipeline does not

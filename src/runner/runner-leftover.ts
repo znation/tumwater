@@ -316,7 +316,7 @@ export async function recoveredMetadata(root: string, sha: string): Promise<Comm
 /** The queue entry leftover recovery builds for a recovered commit: the pinned sha plus the
  * summary, body, and high-friction flag read back from its commit message, and the revision
  * round from its Revision trailer. Also the exact shape the merge drain's torn-head step
- * (dropTornHead, merge-verify.ts) re-queues through — so a torn file whose change is
+ * (dropTornHead, merge-head.ts) re-queues through — so a torn file whose change is
  * re-queued keeps the flag/round its authoring run stamped and is never silently reviewed as
  * routine (BUGS.md 2026-09-19). A recovery never carries `priorReview` (run-stage fills it
  * only from RunnerState.lastReview on a run that held the rejected diff; a recovery's author

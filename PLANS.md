@@ -348,25 +348,6 @@ _None yet._
 
 _None yet._
 
-### Subtract verify collapse, part 1/5: The torn-head drop, already-merged dedupe, merge tier constants and author resolver move out of merge-verify.ts into modules a one-step drain keeps (planned 2026-11-03 by the plan role, splitting the 2026-10-31 too-large Subtract part 3c/7 after feature held it too large for one run; opens the series Subtract verify collapse parts 1/5–5/5, whose parts 2/5–5/5 each require the part before them landed; requires Hourly full check part 1b/4 landed; touches src/merge/merge-verify.ts src/merge/merge-head.ts src/merge/merge-author.ts src/merge/merge-drain.ts src/merge/merge-post-review-drain.ts test/merge-queue.test.ts src/gates/budget-gates.ts src/runner/runner-leftover.ts src/git/commit-message.ts src/concurrency/check-permit.ts src/concurrency/semaphore.ts)
-
-**Goal.** The queue hygiene and author/tier helpers that outlive the verify stage live in modules the later parts keep, with the same behavior. `dropTornHead` and the already-merged dedupe stay with the queue; `VERIFY_TIER`, `MERGE_TIER` and `resolveAuthor` stay available to the drain and the post-merge review drain after `merge-verify.ts` is deleted.
-
-**Approach.**
-- Add src/merge/merge-head.ts with `dropTornHead` and the private `mergedIntoMain` cache/helper moved verbatim from src/merge/merge-verify.ts; `drainVerify` imports `dropTornHead` from it.
-- Add src/merge/merge-author.ts with `VERIFY_TIER`, `MERGE_TIER` and `resolveAuthor` moved verbatim; merge-verify.ts, merge-drain.ts and merge-post-review-drain.ts import them from there.
-- Re-point the comments that name merge-verify.ts for these symbols in src/gates/budget-gates.ts, src/runner/runner-leftover.ts, src/git/commit-message.ts, src/concurrency/check-permit.ts and src/concurrency/semaphore.ts.
-- test/merge-queue.test.ts imports `dropTornHead` from merge-head.ts.
-
-**Files touched.** src/merge/merge-verify.ts src/merge/merge-head.ts src/merge/merge-author.ts src/merge/merge-drain.ts src/merge/merge-post-review-drain.ts test/merge-queue.test.ts src/gates/budget-gates.ts src/runner/runner-leftover.ts src/git/commit-message.ts src/concurrency/check-permit.ts src/concurrency/semaphore.ts
-
-**Acceptance criteria.**
-- `grep -n 'export async function dropTornHead\|async function mergedIntoMain\|export const VERIFY_TIER\|export const MERGE_TIER\|export function resolveAuthor' src/merge/merge-verify.ts` prints nothing; the declarations exist in merge-head.ts and merge-author.ts.
-- The torn-head, dedupe-cache and post-merge-review tests keep their behavior: no test expectation changes beyond the import path.
-- `npm run test:gate` passes.
-
-**Tests.** Run test/merge-queue.test.ts, test/merge-pipeline.test.ts and test/post-merge-review.test.ts, then the gate.
-
 ### Subtract verify collapse, part 2/5: The queued change's gate has one named home, `reviewQueuedChange` in merge-core.ts, so the merge step can run it in the merge worktree (planned 2026-11-03 by the plan role, splitting the 2026-10-31 too-large Subtract part 3c/7 after feature held it too large for one run; requires part 1/5 landed; touches src/merge/merge-core.ts src/merge/merge-batch.ts)
 
 **Goal.** The gate a queued change runs before merging is one function, `reviewQueuedChange(ctx, req, wt, state, foldUsage)`, in merge-core.ts: it rebases the pinned tree onto main's current head (`syncPinToMain`) and runs `reviewPinnedChange`, returning its `GateOutcome`. `verifyRequestIn` in merge-batch.ts calls it, so the existing verify stage and the later one-step drain run the same code; no behavior changes.

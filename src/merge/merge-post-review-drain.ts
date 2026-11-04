@@ -19,7 +19,7 @@ import { fileBugsOnMain } from "../backlog/backlog-file-bugs.js";
 import { abortOnShutdown, acquireUnlessAborted, guardMergeTask, type InFlightMerge, type MergePipeline, type MergePipelineContext } from "./merge-pipeline.js";
 import { resolveWaitStage } from "./merge-slot.js";
 import { mergeToMain } from "./merge-to-main.js";
-import { MERGE_TIER, resolveAuthor, VERIFY_TIER } from "./merge-verify.js";
+import { MERGE_TIER, resolveAuthor, VERIFY_TIER } from "./merge-author.js";
 import type { RunResult } from "../run/run-outcome.js";
 
 /** One poll of the post-merge reviews: a rejected-and-not-fixed commit is

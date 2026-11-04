@@ -2255,7 +2255,7 @@ reads the re-queued entry, never null forever. A torn head with no readable role
 role with no resolvable pin, is dropped with the warning alone. In every case exactly one warning
 names the torn file and, when a role was recovered, that role.
 
-**Binds.** `src/merge/merge-verify.ts` (`dropTornHead`), `src/merge/merge-queue.ts` (`tornHeadRole`).
+**Binds.** `src/merge/merge-head.ts` (`dropTornHead`), `src/merge/merge-queue.ts` (`tornHeadRole`).
 
 **Pinned by.** `test/merge-queue.test.ts` — "a torn queue head is dropped and its change re-queued
 from the recovered pin in leftover-recovery shape, or dropped with no re-queue".

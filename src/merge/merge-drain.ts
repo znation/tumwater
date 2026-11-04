@@ -22,7 +22,8 @@ import {
   type MergePipelineContext,
   type ApprovedMerge,
 } from "./merge-pipeline.js";
-import { drainVerify, MERGE_TIER } from "./merge-verify.js";
+import { drainVerify } from "./merge-verify.js";
+import { MERGE_TIER } from "./merge-author.js";
 import type { RunResult } from "../run/run-outcome.js";
 
 /** Whether a merged change still needs a post-merge review: the pre-merge gate skips review when

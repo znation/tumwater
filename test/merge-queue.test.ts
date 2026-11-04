@@ -18,7 +18,7 @@ import {
   staleHeadFile,
 } from "../src/merge/merge-queue.js";
 import { queueEntryMergeLabel, renderMergeQueue, revisionNote, retryNote } from "../src/merge/merge-queue-render.js";
-import { dropTornHead } from "../src/merge/merge-verify.js";
+import { dropTornHead } from "../src/merge/merge-head.js";
 import { mergeQueueDir, mergeRefName } from "../src/paths.js";
 import { setRef } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
