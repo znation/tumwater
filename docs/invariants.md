@@ -292,11 +292,11 @@ stream closes rotates the grown log, so rotation is deferred, never lost.
 native logs it opens).
 
 **Pinned by.** `test/agent-append-log.test.ts` — "openAppendLog does not rotate a log another
-live run in the process still writes" (a held second open leaves the live file and makes no second
-generation, and the first open after both streams close rotates it), "openAppendLog rotates
-again once the only holder of a just-rotated file has closed" (a held open does not shift the
-first generation), and "openAppendLog still rotates an oversized file nobody else in the process
-holds" (an unheld oversized file rotates as before).
+live run in the process still writes" (a held second open leaves the live file and the earlier
+`.1` generation unchanged, and the first open after both streams close rotates the grown log),
+"openAppendLog rotates again once the only holder of a just-rotated file has closed" (a held open
+does not shift the first generation), and "openAppendLog still rotates an oversized file nobody
+else in the process holds" (an unheld oversized file rotates as before).
 
 ## Sibling result shapes a classifier treats alike
 
