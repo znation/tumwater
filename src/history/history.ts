@@ -380,6 +380,12 @@ function rowKept(row: RunRow, grep: string | null, classes: HistoryResultClass[]
 async function followHistorySummary(root: string, q: HistoryQuery, seams: FollowViewSeams): Promise<void> {
   if (q.rest.includes("--json")) failFollowJsonRival("history --summary --json");
   historySummaryGroup(q);
+  // Read the one-shot view once before entering the repaint loop. The flags still validated
+  // inside collectFilteredHistoryRows (-n's count, --role, --result, --model) must fail here
+  // with their one-shot wording, not be swallowed by followView's per-frame catch — which
+  // would leave a malformed follow silently repainting nothing forever. This mirrors the
+  // non-summary follow, whose seed read runs the same collect before its loop.
+  collectFilteredHistoryRows(root, q);
   await followView(
     () => {
       const { rows, covered, filtering } = collectFilteredHistoryRows(root, q);

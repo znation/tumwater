@@ -192,6 +192,27 @@ test("history --summary -f --json is refused before any frame", async () => {
   assert.equal(cap.out(), "", "no frame, clear-screen escape or JSON document printed");
 });
 
+test("history --summary -f fails a malformed -n or --result before any frame", async () => {
+  const repo = makeRepo();
+  const file = eventsLogPath(repo);
+  ensureParentDir(file);
+  fs.writeFileSync(file, seed);
+  const cap = captureStdout();
+  try {
+    assert.match(
+      await expectFailAsync(() => cmdHistory(repo, ["--summary", "-f", "-n", "0"])),
+      /-n needs a positive integer/,
+    );
+    assert.match(
+      await expectFailAsync(() => cmdHistory(repo, ["--summary", "-f", "--result", "bogus"])),
+      /--result/,
+    );
+  } finally {
+    cap.restore();
+  }
+  assert.equal(cap.out(), "", "no frame printed");
+});
+
 test("history --summary -f with a bad --by fails before any frame, one-shot wording", async () => {
   const repo = makeRepo();
   const file = eventsLogPath(repo);
