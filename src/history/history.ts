@@ -1,9 +1,10 @@
 import { fail, say, sayJson, sayJsonLine } from "../cli/cli-output.js";
-import { betweenWindow, durationLabel, failFollowSinceRival, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag, rejectFlagLookingValue } from "../cli/cli-args.js";
+import { betweenWindow, durationLabel, failFollowJsonRival, failFollowSinceRival, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag, rejectFlagLookingValue } from "../cli/cli-args.js";
 import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readRunRows, readRunRowsSince, runRows, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type HistoryResultClass, type RunRow } from "./history-data.js";
 import { renderModelSummary, renderRow, renderSummary, widenWidths, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { followUntilParentGone, type FollowSeams } from "../cli/cli-log-commands.js";
+import { followView, type FollowViewSeams } from "../cli/follow-view.js";
 import { hasFollowFlag } from "../cli/cli-flag-specs.js";
 import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -110,10 +111,12 @@ function parseHistoryQuery(root: string, args: string[]): HistoryQuery {
   // against.
   const follow = hasFollowFlag(rest);
   if (follow) {
+    // `--since` stays a rival to every follow form: it names a bounded past window, a follow
+    // means from now on. `--summary` is no longer a rival — `-f --summary` repaints the
+    // bounded tally (followHistorySummary) — but a `--summary` follow still takes this seed
+    // read, so the tail buffer is read for either follow shape.
     if (rest.includes("--since"))
       failFollowSinceRival("history");
-    if (rest.includes("--summary"))
-      failRivalShapes("history --summary", "-f/--follow", "a summary tallies a bounded set; -f follows from now on");
   }
   const followTail = follow ? readEventsTailWithEnd(root, HISTORY_FOLLOW_BUFFER_EVENTS) : null;
   const sinceMs = parseSinceFlag(rest, "history --since", LOGS_SINCE_MAX_MS);
@@ -125,7 +128,9 @@ function parseHistoryQuery(root: string, args: string[]): HistoryQuery {
 /** Collect the row set the query names: the `-f` seed, the `--since` window, or the plain `-n`
  * scan. The `-n` and `--since` rival checks live here so a bad count still fails after the
  * `--since` check and before `--result` filtering. Returns the rows plus whether the scan
- * covered the whole log (false when a bounded window hit the retained buffer's edge). */
+ * covered the whole log (false when a bounded window hit the retained buffer's edge). The
+ * post-collection filters run collectFilteredHistoryRows, so the one-shot and the `--summary -f`
+ * repaint paths share the same collection and the same filter order. */
 function collectHistoryRows(root: string, q: HistoryQuery): { rows: RunRow[]; covered: boolean } {
   let rows: RunRow[];
   let covered = true;
@@ -150,6 +155,34 @@ function collectHistoryRows(root: string, q: HistoryQuery): { rows: RunRow[]; co
     rows = readRunRows(root, limit, role);
   }
   return { rows, covered };
+}
+
+/** The one-shot path's collect-and-filter body, and the `--summary -f` repaint frame's read:
+ * the row set the query names (the `-f` seed, the `--since` window, or the plain `-n` scan,
+ * through collectHistoryRows), then `--grep`, `--result` and `--model` in the one-shot order.
+ * Each follow frame re-reads the last `-n` rows through readRunRows, so a run that ends
+ * between frames joins the next tally and a row pushed past the count rolls off — exactly what
+ * a rerun would show. Returns the filtered rows, whether the scan covered the whole log, and
+ * the filter state the empty-state wording blames. */
+function collectFilteredHistoryRows(root: string, q: HistoryQuery): { rows: RunRow[]; covered: boolean; filtering: HistoryFiltering } {
+  let { rows, covered } = collectHistoryRows(root, q);
+  // The filter runs on the collected rows, before rendering and before --json serialization:
+  // the same rows the table prints, filtered the same way in both forms (the logs --grep
+  // rule: -n bounds the scanned window, not the printed rows).
+  if (q.grepPattern !== null) rows = runRowsMatchingGrep(rows, q.grepPattern);
+  // The set --grep admitted, saved so the empty-state wording blames the filter that actually
+  // emptied it: if the result filter below removes rows grep matched, naming the pattern would
+  // be false (`no runs matching "widget"` when feature #7 does match). The GUI draws the same
+  // line between a search and its outcome filter.
+  const afterGrep = rows.length;
+  // --result and --model each narrow the set further, and the counts saved here let the
+  // empty-state wording blame whichever filter actually emptied it.
+  const result = applyHistoryResultFilter(rows, q.rest);
+  rows = result.rows;
+  const afterResult = rows.length;
+  const model = applyHistoryModelFilter(rows, q.rest);
+  rows = model.rows;
+  return { rows, covered, filtering: { afterGrep, afterResult, classes: result.classes, models: model.models } };
 }
 
 /** `--result <class>[,<class>...]` narrows the rows to the listed outcome buckets, reading the
@@ -187,7 +220,7 @@ function applyHistoryModelFilter(rows: RunRow[], rest: string[]): { rows: RunRow
 
 /** The post-collection filter state a narrowed row set carries into rendering: how many rows a
  * `--grep` and a `--result` pass admitted (0 when the flag is absent), plus the filter values
- * themselves when present. Shared by `sayHistory` and `sayHistoryEmpty` so the empty-state
+ * themselves when present. Shared by `sayHistory` and `historyEmptyText` so the empty-state
  * wording can blame whichever filter emptied the set. */
 interface HistoryFiltering {
   afterGrep: number;
@@ -219,8 +252,10 @@ function historySummaryGroup(q: HistoryQuery): boolean {
 
 /** The empty-set prose: blame the filter that emptied the set (model, then result, then grep),
  * else the log or window. Never the `no runs yet`/`no runs in <window>` prose when rows were
- * scanned and filtered out — the runs are there, none match. */
-function sayHistoryEmpty(q: HistoryQuery, filtered: HistoryFiltering): void {
+ * scanned and filtered out — the runs are there, none match. Pure — it returns the text instead
+ * of calling `say` — so the one-shot path and each `--summary -f` repaint frame build the
+ * identical first frame from the same state. */
+function historyEmptyText(q: HistoryQuery, filtered: HistoryFiltering): string {
   // A grep that matched nothing must not borrow the empty-log prose: `no runs yet` and
   // `no runs in 2h` are statements about the LOG and the WINDOW, and both are false when
   // rows were scanned and filtered out — the operator would read a quiet team where the
@@ -232,7 +267,7 @@ function sayHistoryEmpty(q: HistoryQuery, filtered: HistoryFiltering): void {
   // empty log or window scanned no rows, so the result filter removed nothing and the
   // empty-log/window prose is the true one — the dashboard's History view draws the same
   // line. A grep that admitted nothing keeps its own wording regardless of --result.
-  say(
+  return (
     filtered.models !== null && filtered.afterResult > 0
       ? `no runs on model "${filtered.models.join(",")}"`
       : filtered.classes !== null && filtered.afterGrep > 0
@@ -243,19 +278,22 @@ function sayHistoryEmpty(q: HistoryQuery, filtered: HistoryFiltering): void {
           ? "no runs yet"
           : q.untilMs === null
             ? `no runs in ${durationLabel(q.sinceMs)}`
-            : `no runs ${betweenWindow(q.sinceMs, q.untilMs)}`,
+            : `no runs ${betweenWindow(q.sinceMs, q.untilMs)}`
   );
 }
 
-/** Render the non-empty rows: the summary (model or role) when `--summary`, else the aligned
- * table. Called only with `rows.length > 0`.
- */
-function sayHistoryRows(rows: RunRow[], summary: boolean, byModel: boolean): void {
-  if (summary) say(byModel ? renderModelSummary(summarizeRunRowsByModel(rows)) : renderSummary(summarizeRunRows(rows)));
-  else {
-    const widths = widestWidths(rows);
-    say(rows.map((r) => renderRow(r, widths)).join("\n"));
-  }
+/** The aligned table text for the row view: the same rows, columns, and padding the one-shot
+ * table prints, returned as text instead of said so the one-shot and the `--summary -f`
+ * repaint paths share one home. Called only with `rows.length > 0`. */
+function rowsToText(rows: RunRow[]): string {
+  const widths = widestWidths(rows);
+  return rows.map((r) => renderRow(r, widths)).join("\n");
+}
+
+/** The summary text for the `--summary` view, returned as text instead of said. Called only
+ * with `rows.length > 0`. */
+function summaryRowsText(rows: RunRow[], byModel: boolean): string {
+  return byModel ? renderModelSummary(summarizeRunRowsByModel(rows)) : renderSummary(summarizeRunRows(rows));
 }
 
 /** Render the collected-and-filtered rows: the `--by`/`--summary` summary grouping, the `--json`
@@ -273,16 +311,25 @@ function sayHistory(rows: RunRow[], q: HistoryQuery, covered: boolean, filtered:
     sayJson(summary ? (byModel ? summarizeRunRowsByModel(rows) : summarizeRunRows(rows)) : { rows });
     return;
   }
-  if (rows.length === 0) {
-    sayHistoryEmpty(q, filtered);
-    return;
-  }
-  sayHistoryRows(rows, summary, byModel);
+  say(historyText(rows, q, covered, filtered));
+}
+
+/** The one-shot non-JSON text the collected-and-filtered rows render to: the empty-state
+ * wording (blaming the filter that emptied the set, else the log or window), the summary or
+ * aligned table, and the sparse-window note. Pure — it returns the text instead of calling
+ * `say` — so the one-shot path and each `--summary -f` repaint frame build the identical table
+ * from the same rows. A bad `--by` value fails here, after row collection and filtering. */
+function historyText(rows: RunRow[], q: HistoryQuery, covered: boolean, filtered: HistoryFiltering): string {
+  const byModel = historySummaryGroup(q);
+  const summary = q.rest.includes("--summary") && rows.length > 0;
+  const body = rows.length === 0 ? historyEmptyText(q, filtered) : summary ? summaryRowsText(rows, byModel) : rowsToText(rows);
   // A sparse window is never mistaken for a quiet team — but the note only ever rides rows
-  // (an empty window returned above), it never touches --json output, and it is the shared
-  // SPARSE_WINDOW_NOTE wording: the oldest retained event being inside the window is exactly
-  // the unproven case, whether the cause is rotation or idleness.
-  if (!covered) say(SPARSE_WINDOW_NOTE);
+  // (an empty set returns its prose alone, as sayHistory did), it never touches --json
+  // output, and it is the shared SPARSE_WINDOW_NOTE wording: the oldest retained event being
+  // inside the window is exactly the unproven case, whether the cause is rotation or
+  // idleness.
+  if (!covered && rows.length > 0) return body + "\n" + SPARSE_WINDOW_NOTE;
+  return body;
 }
 
 /** `tumwater history [--role <id>[,<id>...]] [-n N] [-f] [--since <duration>]
@@ -294,30 +341,24 @@ function sayHistory(rows: RunRow[], q: HistoryQuery, covered: boolean, filtered:
  * filter's buckets) and `--model` keeps runs that started on the listed models; all compose
  * with --role, -n, and --since. Read-only: stdout only, no state file created — a missing or empty
  * event log prints `no runs yet` and exits 0. */
-export async function cmdHistory(root: string, args: string[], seams: FollowSeams = {}): Promise<void> {
+export async function cmdHistory(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   const q = parseHistoryQuery(root, args);
-  let { rows, covered } = collectHistoryRows(root, q);
-  // The filter runs on the collected rows, before rendering and before --json serialization:
-  // the same rows the table would print, filtered the same way in both forms (the logs --grep
-  // rule: -n bounds the scanned window, not the printed rows).
-  if (q.grepPattern !== null) rows = runRowsMatchingGrep(rows, q.grepPattern);
-  // The set --grep admitted, saved so the empty-state wording blames the filter that actually
-  // emptied it: if the result filter below removes rows grep matched, naming the pattern would
-  // be false (`no runs matching "widget"` when feature #7 does match). The GUI draws the same
-  // line between a search and its outcome filter.
-  const afterGrep = rows.length;
-  // --result and --model each narrow the set further, and the counts saved here let the
-  // empty-state wording blame whichever filter actually emptied it.
-  const result = applyHistoryResultFilter(rows, q.rest);
-  rows = result.rows;
-  const afterResult = rows.length;
-  const model = applyHistoryModelFilter(rows, q.rest);
-  rows = model.rows;
-  if (q.followTail !== null) {
-    await followHistory(root, q.rest, rows, q.followTail, (r) => rowKept(r, q.grepPattern, result.classes, model.models), seams, q.rest.includes("--json"));
+  if (q.followTail !== null && q.rest.includes("--summary")) {
+    // The live summary: the bounded tally repainted until the parent exits. It re-runs the
+    // one-shot view's whole read — the same -n bound, --role scope, and --grep/--result/
+    // --model filters — each frame through collectFilteredHistoryRows, so the repaint is a
+    // rerun of the one-shot view, not a different one. `--json` and `--since` are refused
+    // before any frame, and the seams ride the shared FollowViewSeams shape so a test can
+    // drive the TTY and piped frame shapes.
+    await followHistorySummary(root, q, seams);
     return;
   }
-  sayHistory(rows, q, covered, { afterGrep, afterResult, classes: result.classes, models: model.models });
+  const { rows, covered, filtering } = collectFilteredHistoryRows(root, q);
+  if (q.followTail !== null) {
+    await followHistory(root, q.rest, rows, q.followTail, (r) => rowKept(r, q.grepPattern, filtering.classes, filtering.models), seams, q.rest.includes("--json"));
+    return;
+  }
+  sayHistory(rows, q, covered, filtering);
 }
 
 /** The row filters `--grep`, `--result` and `--model` apply, as one predicate for followed rows. */
@@ -325,6 +366,27 @@ function rowKept(row: RunRow, grep: string | null, classes: HistoryResultClass[]
   if (grep !== null && runRowsMatchingGrep([row], grep).length === 0) return false;
   if (classes !== null && !classes.includes(historyClass(row.result))) return false;
   return models === null || runRowsOnModels([row], models).length > 0;
+}
+
+/** `history --summary -f`: the bounded tally repainted until the parent exits. The rivals are
+ * checked before entering the loop so they fail with the one-shot wording instead of being
+ * swallowed by the follow's per-frame catch: `--json` (a repainting document has no parseable
+ * stream) and a bad `--by` value (historySummaryGroup's one-shot sentence). `--since` is
+ * refused in parseHistoryQuery, before this point. Each frame re-reads the last `-n` rows
+ * through readRunRows, so a run that ends between frames appears in the next tally and a row
+ * pushed past the count rolls off — the same rows a fresh `history --summary -n <n>` would
+ * print at that moment. A frame that fails (a transiently unreadable log) is skipped and
+ * retried on the next tick, the followView policy, so one bad tick does not kill the follow. */
+async function followHistorySummary(root: string, q: HistoryQuery, seams: FollowViewSeams): Promise<void> {
+  if (q.rest.includes("--json")) failFollowJsonRival("history --summary --json");
+  historySummaryGroup(q);
+  await followView(
+    () => {
+      const { rows, covered, filtering } = collectFilteredHistoryRows(root, q);
+      return historyText(rows, q, covered, filtering);
+    },
+    seams,
+  );
 }
 
 /** `history -f`: print the seed rows oldest first, then one row per `run_end` as it lands. A run

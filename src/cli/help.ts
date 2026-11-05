@@ -169,7 +169,7 @@ Usage:
                                    case-insensitively (like logs --grep);
                                    -f prints the last N rows oldest first, then one row
                                    per run as it ends, until Ctrl+C or its parent exits (not
-                                   with --since or --summary); with --json, one compact
+                                   with --since); with --json, one compact
                                    JSON row per line (the --json row shape), like logs -f --json;
                                    --role takes a comma list, keeping the rows of any listed role;
                                    --result <class>[,<class>...] narrows to the listed outcome classes — merged
@@ -181,7 +181,10 @@ Usage:
                                    machine-readable history data — ts, tokens, and costUsd
                                    kept raw, the GUI's /api/history payload; --summary prints one line per role
                                    counting its runs by outcome class and its run time, with the time of its newest change (and a total line)
-                                   instead of the rows; with --json, ${SUMMARY_JSON_KEYS}
+                                   instead of the rows; with -f/--follow it repaints the tally
+                                   every couple of seconds until Ctrl+C or its parent exits (it
+                                   refuses --json — the live form is read-only — and --since);
+                                   with --json, ${SUMMARY_JSON_KEYS}
                                    --by model groups the summary by the model each run started on instead
                                    of by role; with --json, { models, total }
   tumwater history <role> [<n>] [--last [--result <class>[,...]] [--model <selector>[,...]]] [--stat] [--patch] [--transcript [--prompt] [--grep <text>]] [--json]
