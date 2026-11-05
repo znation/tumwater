@@ -20,7 +20,7 @@ import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { mergeRefName, rejectedRefName } from "../src/paths.js";
-import { headSha, initializedRepo, mainSha, pinOffMain, sh, tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
+import { commitIn, headSha, initializedRepo, mainSha, pinOffMain, sh, tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { queueDepth } from "../src/merge/merge-queue.js";
 import { salvageDir, salvagePendingDir, withdrawnRefName } from "../src/paths.js";
@@ -63,6 +63,7 @@ function fakeRunner(role: string, config: TumwaterConfig): RoleRunner {
 function schedulingCtx(root: string, runners: readonly RoleRunner[], roleProviders: Map<string, string | undefined>) {
   return {
     root,
+    mainBranch: "main",
     runners,
     once: new OnceRound([], false),
     now: T0 + 10_000,
@@ -175,6 +176,39 @@ test("a director holding a kept merge pin with an empty inbox is due as leftover
     (await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).get(runners[0]!),
     "leftover",
     "a queued pin is still owed the authoring run",
+  );
+});
+
+test("a director whose queued change is still in the queue and a second commit waits on its branch is not offered leftover", async () => {
+  const repo = await initializedRepo();
+  const runners = [fakeRunner("director", defaultConfig())];
+  const roleProviders = new Map<string, string | undefined>();
+  // The director's FIRST change is pinned and on the merge queue; its SECOND commit (the
+  // interlock-relief hold, run-stage's `heldOnBranch`) still sits on the role's branch ahead
+  // of main. While the queue drains, the director owes no leftover run: each such run would
+  // only hit leftover recovery's `relief_wait` arm and end `skipped` (runner-recovery.ts),
+  // re-queueing nothing, so the poll spinning it gains nothing. The held commit stays on the
+  // branch; once the drain deletes the pin, the director's next run (any reason, e.g. a new
+  // inbox prompt) takes leftover recovery's no-pin branch and re-queues it. (BUGS.md
+  // 2026-11-04, "The director re-runs every poll while a second commit of its waits on the
+  // branch".)
+  const first = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "one.txt"), "one\n"), "one");
+  sh(repo, "git", "checkout", "-b", "tumwater/director", "main");
+  fs.writeFileSync(path.join(repo, "two.txt"), "two\n");
+  commitIn(repo, "two");
+  sh(repo, "git", "checkout", "main");
+  await setRef(repo, mergeRefName("director"), first);
+  enqueueMerge(repo, { role: "director", sha: first, run: 1, summary: "one", enqueuedAt: Date.now() });
+  const due = await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders));
+  assert.equal(due.has(runners[0]!), false, "queued pin + held second commit: not owed a leftover run");
+
+  // The same pin with NO second commit on the branch (the branch at main) IS still owed the
+  // leftover run: there is no held wait for the queue to settle.
+  sh(repo, "git", "checkout", "-B", "tumwater/director", "main");
+  assert.equal(
+    (await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).get(runners[0]!),
+    "leftover",
+    "a queued pin whose branch holds nothing extra still owes the authoring run",
   );
 });
 

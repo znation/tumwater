@@ -408,6 +408,7 @@ export async function pollSchedule(
   const inputs = pollDeferralInputs(root, runners, liveConfig, gateStates, gates, ctx.breakerNow());
   const reasons = await pollRunnerReasons({
     root,
+    mainBranch,
     runners,
     once: ctx.once,
     now,

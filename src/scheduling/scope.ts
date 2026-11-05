@@ -16,6 +16,9 @@ import { hasOutstandingWork, saveRunnerStateBestEffort, type SkipReason } from "
 import { hasUnmergedPin } from "../runner/runner-leftover.js";
 import { queuedMerges } from "../merge/merge-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
+import { aheadOfMainBranch } from "../git/git.js";
+import { queuedMergeRoles } from "../merge/merge-queue.js";
+import { branchName } from "../paths.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
 import {
   CLAIM_IDLE_MAX_MS,
@@ -33,6 +36,9 @@ import { rejectedRefName } from "../paths.js";
  * the scheduling pass runs (TeamGatePoll's fields beside the pass's own inputs). */
 export interface SchedulingPassCtx {
   root: string;
+  /** The branch the team merges into ("main") — the pass's leftover-pin and branch-ahead
+   * checks read the director's branch against it. */
+  mainBranch: string;
   runners: readonly RoleRunner[];
   once: OnceRound;
   now: number;
@@ -364,13 +370,47 @@ function orderForAdmission(
   ];
 }
 
+/** Whether the director is owed a leftover run over its kept merge pin.
+ *
+ * The pin alone (hasUnmergedPin) used to be the whole answer, and that was the bug: when the
+ * pinned change is already on the merge queue, the queue drain is the thing that will settle
+ * it, so the director owes no authoring run until that entry drains. But the old read set
+ * `pinnedDirector` for the queued pin too, and the pass's `leftover` reason then admitted a
+ * run on every poll; each run's leftover recovery found the queued entry AND the second
+ * commit still held on the branch, and ended `skipped` (runner-recovery.ts `relief_wait`).
+ * The queue waited on a run the queue itself would have answered — hundreds of wasted runs on
+ * a 1–2 h queue wait (BUGS.md 2026-11-04, "The director re-runs every poll while a second
+ * commit of its waits on the branch").
+ *
+ * The held second commit is the tell that the director is mid-wait: a queued change plus a
+ * branch ahead of main is exactly the `heldOnBranch` / `relief_wait` shape. While that holds
+ * the director is not due, and suppressing it loses nothing — every one of those spin runs was
+ * already `relief_wait` and ended `skipped` (runner-recovery.ts), re-queueing nothing; the
+ * held commit is re-queued by leftover recovery (runner-leftover.ts's no-pin branch) on the
+ * director's next real run. A KEPT pin (a non-terminal merge failure that left no queued entry)
+ * still owes the leftover run: the entry is absent, so the queued-branch check never fires and
+ * this reads true. An unreadable branch read reads as not ahead (a git failure is not evidence
+ * the branch holds work), which is the fail-safe direction — the pin is re-offered on the next
+ * poll. */
+async function directorPinOwedRun(root: string, mainBranch: string): Promise<boolean> {
+  if (!(await hasUnmergedPin(root, DIRECTOR_ROLE))) return false;
+  if (!queuedMergeRoles(root).has(DIRECTOR_ROLE)) return true;
+  const ahead = await aheadOfMainBranch(
+    root,
+    branchName(DIRECTOR_ROLE),
+    mainBranch,
+  ).catch(() => 0);
+  return ahead <= 0;
+}
+
 /** Compute the once-per-poll precompute the scheduling pass's per-runner loop reads. Has the
  * same side effects the poll body's own precompute had: the merge-queue snapshot, the
- * hasUnmergedPin director pin, the per-base claim-group build (with its claim-release loop,
+ * director-pin check, the per-base claim-group build (with its claim-release loop,
  * which mutates runner state, persists and logs), and the writing count. */
 export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<SchedulingScope> {
   const {
     root,
+    mainBranch,
     runners,
     once,
     now,
@@ -395,10 +435,11 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     deferredDue,
     workMergedSince,
   } = ctx;
-  // The director's kept merge pin (a non-terminal merge failure kept it): due on its own min-run
-  // clock, since its only other run is an operator prompt. The queue is not a scheduling gate,
-  // so a queued pin is offered the leftover reason like any other unmerged pin.
-  const pinnedDirector = (await hasUnmergedPin(root, DIRECTOR_ROLE));
+  // The director's kept merge pin: owed a leftover run unless its queued entry is still
+  // draining AND its branch holds a second commit (the interlock-relief hold) the queue will
+  // settle on its own — see directorPinOwedRun. A queued pin whose branch holds nothing extra
+  // still owes the run (the queue is not a scheduling gate in that case).
+  const pinnedDirector = await directorPinOwedRun(root, mainBranch);
   const queuedMergeClaims = queuedMergeClaimKeys(root, runners);
   const claimGroups = await collectClaimGroups(root, runners, pausedRoles, now, queuedMergeClaims);
   // The team gates' block predicate (the director exempt — an explicit human prompt

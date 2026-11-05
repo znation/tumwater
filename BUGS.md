@@ -6,13 +6,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-### The director re-runs every poll while a second commit of its waits on the branch, each run ending `skipped` (found by operator session 2026-11-04 from the team's event log)
-
-- **Symptom:** director run 192 ended `queued` with `heldOnBranch: true` at 2026-11-03 02:08:40, while its first change `1e2c6ab39` was still in the merge queue. From 02:09:02 to 02:12:22 the director woke with reason `leftover` every 20 s and ran runs 193–203, each a `run_start` then `run_end skipped` about 10 ms later, until `56480e895` merged at 02:12:23. That is 11 runs and 33 events, and the director's run counter rose by 11. This wait was 3.5 min, but queue waits of 1–2 h happen (queuedMs 7,082,838 for `31ddc7a0a` on 2026-11-04), which would mean hundreds of skipped runs.
-- **Reproduce:** let a director run commit while its previous change is still queued (the run ends `queued` with `heldOnBranch: true`). Every later poll admits it with reason `leftover`, and leftover recovery's `relief_wait` arm ends the run `skipped`.
-- **Cause:** `leftoverPending` is `pinnedDirector` (src/scheduling/skip.ts). `directorGate` (src/scheduling/scheduling.ts) runs whenever `leftoverPending` is set and `now >= nextRunAt`. The `relief_wait` arm of leftover recovery (src/runner/runner-recovery.ts) returns `{ result: "skipped" }`, and run-apply.ts schedules a skipped outcome with `scheduleAtMinInterval`, the 20 s default `minRunIntervalSeconds`, so the next poll admits it again. `directorGate`'s option comment says the leftover run "is due on `nextRunAt` … never earlier, so a persistently blocked fast-forward cannot spin the merge queue", but a relief wait is a wait on the queue, not a failed merge.
-- **Expected / fix sketch:** while the held commit waits on a queued change, the director is not due. Leave `leftoverPending` false for the relief-wait case, or wake the director when that queue entry settles, so a waiting second commit costs no runs.
-
 ### `a timed-out check whose tree dies on SIGTERM settles right after the deadline, not after the grace` failed, then passed on the same tree (quarantined by tumwater 2026-11-04)
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
