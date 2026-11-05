@@ -10,7 +10,7 @@
  * dependencies: node built-ins and the app's own modules only. */
 import { sameStatIdentity, statIdentityOrZero, statOrNull } from "../files/files.js";
 import { readWindowEvents } from "../events/event-window.js";
-import { eventDayKey, parseEventLine } from "../events/event-read.js";
+import { eventDayKey, parseEventLine, runStartKey } from "../events/event-read.js";
 import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -80,6 +80,9 @@ interface DayFold {
   notionalByProvider: Record<string, number>;
   notionalByBackend: Record<string, number>;
   runsByModel: Record<string, number>;
+  /** run_end output tokens per model selector (the window's runModels pairing) — the token
+   * twin of runsByModel, team-only. */
+  tokensByModel: Record<string, number>;
   deferredByReason: Record<string, number>;
 }
 
@@ -106,6 +109,11 @@ interface ReportFoldEntry {
   hadEvents: boolean;
   firstEventTs?: number;
   days: Map<string, DayFold>;
+  /** The run_start pairing (runStartKey keys → the start's model) for this window, grown as
+   * run_start lines fold in, so a run_end appended after its start still attributes its
+   * output tokens to a model across the memo's append path — the foldUsageEvent third
+   * argument both the append and the full re-read path hand it. */
+  runModels: Map<string, string>;
   /** The main is-red / passing-check / culprit events folded so far, in fold order — the
    * retained input the report's per-day main-red walk (src/report/report-main-red.ts)
    * reads. Only the three shapes it needs are kept, so the list stays tiny across the
@@ -220,7 +228,13 @@ function foldEventInto(entry: ReportFoldEntry, ev: HarnessEvent): void {
     entry.firstEventTs = typeof ev.ts === "number" ? ev.ts : undefined;
   }
   if (isRedMain(ev) || isPassingMainCheck(ev) || ev.type === "main_culprit") entry.redEvents.push(ev);
-  foldUsageEvent(dayFoldFor(entry, dayKey), ev);
+  // Grow the start→model pairing before folding the event, so a run_end folded here can
+  // already see a run_start that preceded it in the same stream. The entry's guard is
+  // runStartEvents' own: a finite `ts` (eventDayKey is non-null) and a non-empty string
+  // model — the same rules runStartModelMap applies, spelled against one event.
+  if (ev.type === "run_start" && typeof ev.model === "string" && ev.model !== "")
+    entry.runModels.set(runStartKey(ev), ev.model);
+  foldUsageEvent(dayFoldFor(entry, dayKey), ev, entry.runModels);
 }
 
 /** Parse one appended log line and fold it; a torn or non-event line folds nothing. */
@@ -281,6 +295,7 @@ export function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry
     hadEvents: false,
     days: new Map(),
     redEvents: [],
+    runModels: new Map(),
   };
   for (const ev of raw.events) foldEventInto(entry, ev);
   memoSetLru(reportFoldCache, key, entry, REPORT_FOLD_CACHE_MAX);

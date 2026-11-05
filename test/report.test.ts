@@ -587,6 +587,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
+    tokensByModel: {},
     coversFullWindow: true,
   });
   assert.match(zero, /^# tumwater usage report/);
@@ -622,6 +623,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
+    tokensByModel: {},
     coversFullWindow: true,
   });
   assert.match(data, /window: last 90m \(since /);
@@ -659,6 +661,7 @@ test("renderSinceReportMarkdown prints the Prompt tokens by role line with the c
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
+    tokensByModel: {},
     coversFullWindow: true,
   });
   const lines = since.split("\n");
@@ -691,6 +694,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
+    tokensByModel: {},
     coversFullWindow: true,
   });
   assert.ok(!zero.includes("merge runs"), "zero merge runs omit the line entirely");
@@ -716,6 +720,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
+    tokensByModel: {},
     coversFullWindow: true,
   });
   assert.match(data, /of which merge runs: 1 runs · 900 tokens · \$0\.40 \(reviewer \+ conflict resolution\)/);
@@ -743,6 +748,7 @@ test("renderSinceReportMarkdown shows (N failed) on the merge line when a merge 
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
+    tokensByModel: {},
     coversFullWindow: true,
   });
   assert.match(data, /of which merge runs: 2 runs \(1 failed\) · 1200 tokens · \$0\.50 \(reviewer \+ conflict resolution\)/);
@@ -773,6 +779,7 @@ test("renderSinceReportMarkdown prints Commits by role and Estimated by role mat
     notionalByProvider: {},
     notionalByRole: { feature: 0.4, plan: 0.5 },
     runsByModel: {},
+    tokensByModel: {},
     coversFullWindow: true,
   });
   assert.match(data, /\*\*Commits by role:\*\* feature — 3 · clean — 1/);
@@ -803,6 +810,7 @@ test("renderSinceReportMarkdown prints Cost per commit and Estimated per commit 
     notionalByProvider: {},
     notionalByRole: { feature: 0.4, plan: 0.5 },
     runsByModel: {},
+    tokensByModel: {},
     coversFullWindow: true,
   });
   // The day render's exact wording and ranking: merged roles by cost per commit desc then name
@@ -836,6 +844,7 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
+    tokensByModel: {},
     coversFullWindow: true,
   });
   // The now-required commitsByRole renders "-" when empty; a window with no notional spend
@@ -867,6 +876,7 @@ test("renderSinceReportMarkdown prints Main red wall-clock for a positive window
     costByProvider: {},
     notionalByProvider: {},
     runsByModel: {},
+    tokensByModel: {},
     coversFullWindow: true,
     mainRedMs: 0,
   };

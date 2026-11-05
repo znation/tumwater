@@ -88,9 +88,16 @@ function runStartEvents(events: HarnessEvent[]): Map<string, HarnessEvent> {
   const starts = new Map<string, HarnessEvent>();
   for (const e of events) {
     const ts = finiteNumber(e.ts, null);
-    if (e.type === "run_start" && ts !== null) starts.set(`${e.source}#${e.run}`, e);
+    if (e.type === "run_start" && ts !== null) starts.set(runStartKey(e), e);
   }
   return starts;
+}
+
+/** The run_start pairing's key, `${role}#${run}` — the one home of that format: runStartEvents
+ * writes it and runStartModel reads it, so the writer and the lookup cannot drift into two
+ * notions of which end belongs to which start. */
+export function runStartKey(ev: HarnessEvent): string {
+  return `${ev.source}#${ev.run}`;
 }
 
 /** The run_start pairing's start epoch ms: `${role}#${run}` → start epoch ms, the projection
@@ -128,7 +135,7 @@ export function runStartModelMap(events: HarnessEvent[]): Map<string, string> {
  * start is missing (rotation cut it) or carried no model; callers decide what an empty model
  * costs — history renders it as an empty cell. */
 export function runStartModel(ev: HarnessEvent, models: Map<string, string>): string | null {
-  return models.get(`${ev.source}#${ev.run}`) ?? null;
+  return models.get(runStartKey(ev)) ?? null;
 }
 
 /** The start→end span of the `run_end` event `ev` against `starts` (runStartMap's pairing):

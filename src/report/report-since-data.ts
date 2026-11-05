@@ -10,6 +10,7 @@
  * Markdown rendering in src/report/report-since-render.ts (which imports the shared formatting
  * voice from src/report/report-render.ts). */
 import { assertReportSinceMs, eventWindowCovers, readWindowEvents, sinceWindowTiming } from "../events/event-window.js";
+import { runStartKey } from "../events/event-read.js";
 import { dayKey } from "../text/datetime.js";
 import { addTo } from "../collections.js";
 import {
@@ -88,9 +89,15 @@ function foldSinceWindow(
   // runs: 0 — the window counts its total runs, so the target opts into the fold's
   // optional run total (zeroUsageFold leaves it out for targets that keep none).
   const acc: UsageFold = { ...zeroUsageFold(), runs: 0 };
+  // The run_start→model pairing for this window, grown as the fold walks the stream (the
+  // same single-pass rule the day fold's foldEventInto applies), so a run_end appended
+  // after its start attributes its output tokens to the model that start named.
+  const runModels = new Map<string, string>();
   for (const ev of raw.events) {
     if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now || (untilMs !== undefined && ev.ts >= end)) continue;
-    foldUsageEvent(acc, ev);
+    if (ev.type === "run_start" && typeof ev.model === "string" && ev.model !== "")
+      runModels.set(runStartKey(ev), ev.model);
+    foldUsageEvent(acc, ev, runModels);
   }
   return { raw, acc };
 }
@@ -195,6 +202,7 @@ function sinceRoleMaps(
   | "costByProvider"
   | "notionalByProvider"
   | "runsByModel"
+  | "tokensByModel"
 > &
   Partial<
     Pick<
@@ -246,6 +254,9 @@ function sinceRoleMaps(
     // scoped role), the same full-map-for-team / empty-for-scoped rule costByProvider
     // follows. Always present so the render can gate on the window's own events.
     runsByModel: scopedByRole(acc.runsByModel, bases),
+    // Output tokens attributed to the model each run started on — the token twin of the
+    // runsByModel line above, the same team-only / always-present rule.
+    tokensByModel: scopedByRole(acc.tokensByModel, bases),
     ...nonemptyObj("deferredByReason", deferred),
   };
 }

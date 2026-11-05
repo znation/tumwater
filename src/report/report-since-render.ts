@@ -106,6 +106,12 @@ function pushSinceProviderModelLines(lines: string[], data: SinceReport): void {
     // start prints no line (keeping a model-less day's output unchanged), exactly as the
     // provider lines stay absent when no provider spent.
     pushPresentRankedLine(lines, "Runs by model", rankedRoleMap(data.runsByModel));
+    // The token twin of the line above: each model's share of the window's output tokens
+    // (each run's tokens attributed to the model its run_start named), beside the runs line
+    // so a mixed team sees which exact selector burned the window's tokens. Gated to the
+    // team report like the runs line; a window whose modelled runs reported no tokens
+    // prints no line (zero means absent), and compactTokens formats it like Tokens by role.
+    pushPresentRankedLine(lines, "Tokens by model", rankedRoleMap(data.tokensByModel), compactTokens);
   }
 }
 

@@ -117,6 +117,10 @@ export interface ReportDay {
    * model is not a role, so only the team series carries it (absent when the day had no
    * modelled start, zero means absent). */
   runsByModel?: Record<string, number>;
+  /** run_end output tokens per model selector — each run's tokens attributed to the model
+   * its run_start named; team-only like runsByModel (a model is not a role). Absent when
+   * the day's modelled runs reported no tokens (zero means absent). */
+  tokensByModel?: Record<string, number>;
   /** run_deferred events per reason code (a maintenance run that stood down, bucketed by
    * why — "backlog", "no-work" or "plans-full"); team-only like runsByModel, because a
    * reason is not a role. Absent when the day had no deferral (zero means absent). */
@@ -278,6 +282,11 @@ export interface SinceReport {
    * costByProvider), so the --since render can gate its `Runs by model` line on the
    * window's own events. A model is not a role, so a scoped report carries an empty map. */
   runsByModel: Record<string, number>;
+  /** run_end output tokens per model selector (each run's tokens attributed to the model
+   * its run_start named); always present (empty map when none, like runsByModel) so the
+   * --since render can gate its `Tokens by model` line on the window's own events. A model
+   * is not a role, so a scoped report carries an empty map. */
+  tokensByModel: Record<string, number>;
   /** run_deferred events per reason code (a maintenance run that stood down, bucketed by
    * why — "backlog", "no-work" or "plans-full"); absent when the window has none — the
    * same conditional the day collector applies to ReportDay.deferredByReason, so a --since

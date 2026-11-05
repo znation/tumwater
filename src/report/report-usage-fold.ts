@@ -8,7 +8,7 @@
  * only. */
 import { addTo } from "../collections.js";
 import { isPassingFullCheck, isRedFullCheck } from "../build/build-check-events.js";
-import { eventRole, eventUsage } from "../events/event-read.js";
+import { eventRole, eventUsage, runStartModel } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { finiteNumber, nonNegativeNumber } from "../files/json-object.js";
 import { OUTCOME_CLASS } from "../failure/failure-time-spend.js";
@@ -141,6 +141,14 @@ export interface UsageFold {
    * role. A run_start whose `model` is absent or empty contributes no key. Team-only: a
    * model is not a role, so a role-scoped report carries an empty map. */
   runsByModel: Record<string, number>;
+  /** run_end output tokens per model selector — each run's `tokens` attributed to the model
+   * its `run_start` named (the fold's runModels pairing), a parallel attribution to
+   * tokensByRole keyed by model instead of role. A run whose start is absent or named no
+   * model contributes no entry, and a run that reported zero tokens leaves none (a model
+   * whose runs all reported zero stays absent). Team-only: a model is not a role, so a
+   * role-scoped report carries an empty map. Never subtracted from tokensOut or
+   * tokensByRole — the model is an attribution, not a partition. */
+  tokensByModel: Record<string, number>;
   /** run_deferred events per reason code (a maintenance run that stood down — `DeferReason`
    * in src/scheduling/scheduling.ts: "backlog", "no-work" or "plans-full"), so a day's
    * deferred maintenance runs are tallied by why they stood down instead of reading as
@@ -223,6 +231,7 @@ export function zeroUsageFold(): Omit<
     notionalByProvider: {},
     notionalByBackend: {},
     runsByModel: {},
+    tokensByModel: {},
     deferredByReason: {},
   };
 }
@@ -254,7 +263,7 @@ function pushPositiveMs(list: number[], ms: number): void {
 
 /** Fold a run_end into the accumulator: a run (per role and, when the target counts runs, in
  * total), its output/prompt/cache tokens, its cost, and its notional backend share. */
-function foldRunEnd(target: UsageFold, ev: HarnessEvent): void {
+function foldRunEnd(target: UsageFold, ev: HarnessEvent, runModels?: Map<string, string>): void {
   const role = eventRole(ev);
   addTo(target.runsByRole, role, 1);
   // Error-class runs get their own parallel tally — the day report's ``Failed runs by role``
@@ -285,6 +294,16 @@ function foldRunEnd(target: UsageFold, ev: HarnessEvent): void {
   target.notionalCostUsd += notionalCostUsd;
   if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
   if (notionalCostUsd !== 0) addTo(target.notionalByRole, role, notionalCostUsd);
+  // The model side of the same bill: attribute the run's output tokens to the model its
+  // run_start named (runStartModel's pairing, the map the window collector builds beside
+  // this target). Parallel to tokensByRole — never subtracted from it or from tokensOut —
+  // so a run whose start is absent or named no model still counts in both, with no model
+  // entry. Zero-means-absent like tokensByRole: a model whose runs all reported zero
+  // tokens leaves no entry.
+  if (runModels !== undefined) {
+    const model = runStartModel(ev, runModels);
+    if (model !== null && tokens > 0) addTo(target.tokensByModel, model, tokens);
+  }
   // The notional spend's backend (plans/codex-backend.md part 3d/9): the subscription seam
   // whose runs made the run's API-equivalent cost, from the run_end's `agent` (run-finalize
   // carries it when the run reported billing/rate windows) — falling back to "claude" when
@@ -468,8 +487,13 @@ function foldMergeOutcome(target: UsageFold, ev: HarnessEvent): void {
  * accumulate their tokens/cost into the merge fields only — costByRole stays a runs-only
  * breakdown, and the merge line is how the reviewer's share is named. Both collectors fold
  * through this one place, so the two windows' aggregation rules cannot drift apart. */
-export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
-  if (ev.type === "run_end") foldRunEnd(target, ev);
+/** When given, `runModels` pairs each run_end to the model its run_start named (the
+ * `${source}#${run}` keys runStartKey writes) so foldRunEnd can attribute the run's output
+ * tokens to a model selector; the fold keeps no pairing of its own — the map is built by
+ * the window collector from the same event stream, which is why a run_start appended
+ * between reads still pairs with a later run_end. */
+export function foldUsageEvent(target: UsageFold, ev: HarnessEvent, runModels?: Map<string, string>): void {
+  if (ev.type === "run_end") foldRunEnd(target, ev, runModels);
   else if (ev.type === "review_rejected") foldReviewRejected(target, ev);
   else if (ev.type === "review_verdict") foldReviewVerdict(target, ev);
   else if (ev.type === "revision") foldRevision(target, ev);

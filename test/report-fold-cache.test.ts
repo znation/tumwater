@@ -44,6 +44,26 @@ test("warm collectReport equals the cold read before and after appends", () => {
   assert.equal(fresh.totals.mergeTokens, 42);
 });
 
+test("a run_start appended between reads still pairs its later run_end's tokens with its model", () => {
+  const root = tmpdir();
+  writeEvents(root, [{ ts: at(1), loop: "feature", type: "run_end", run: 1, tokens: 9 }]); // retired-name-ok: legacy event field in a fixture
+  warmed(root, 3);
+  // The start lands first (its model enters the window's pairing on the append pass), then
+  // the end: the warm fold must attribute the end's tokens to the model the start named.
+  fs.appendFileSync(
+    eventsLogPath(root),
+    [
+      JSON.stringify({ ts: at(0), loop: "feature", type: "run_start", run: 2, model: "acme/m1" }), // retired-name-ok: legacy event field in a fixture
+      JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 2, tokens: 12 }), // retired-name-ok: legacy event field in a fixture
+    ].join("\n") + "\n",
+  );
+  const fresh = collectReport(root, 3);
+  assert.deepEqual(fresh.series[2]!.tokensByModel, { "acme/m1": 12 }, "the appended start pairs with the appended end");
+  assert.equal(fresh.series[2]!.tokensByRole?.feature, 12, "today's end counts by role");
+  assert.equal(fresh.series[1]!.tokensByRole?.feature, 9, "the model-less end still counts by role");
+  assert.deepEqual(warmed(root, 3), fresh, "the warm fold matches a fresh full read");
+});
+
 test("a legacy `merged` line appended after a warm fold folds as merge_done", () => {
   const root = tmpdir();
   writeEvents(root, [{ ts: at(1), loop: "feature", type: "run_end", tokens: 1 }]); // retired-name-ok: legacy event field in a fixture
