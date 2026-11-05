@@ -370,10 +370,10 @@ export function createMainWatch(
     // next head moves. The full check no longer runs here — its own pass (fullPass) owns it in
     // `_main-full` — so a slow full run never holds this mirror behind the gate's main-tip
     // verdicts (Hourly full check, part 2c/4).
-    let judgedTip: string | undefined;
+    let judgedThrough: string | undefined;
     await withMainTipWorktree(root, mainBranch, async (wt) => {
       const tip = await headOf(wt);
-      judgedTip = tip;
+      judgedThrough = tip;
       // Judge each first-parent commit in the range by its own diff and its own merged-event role,
       // not the tip's: a multi-commit range's union diff attributed to whichever role merged the
       // tip would report a legitimate director/steward PRINCIPLES.md edit in an intermediate commit
@@ -404,6 +404,7 @@ export function createMainWatch(
           isExemptDiff(files, config.review.exemptPaths),
           "watch",
         );
+        judgedThrough = commit;
         if (ruleReason !== undefined) {
           logEventBestEffort(root, {
             source: TUMWATER_SOURCE,
@@ -418,12 +419,13 @@ export function createMainWatch(
       }
     });
     // The mirror can be re-pointed at a newer tip while this pass waited for the shared gate
-    // mirror: mark the tip actually judged, or the next poll re-judges the commits this pass
-    // already covered (the poll's optimistic lastRulesWatched was only the head it saw). A failed
-    // pass leaves the optimistic head, so a newer head it never finished is still retried.
-    if (judgedTip !== undefined) {
-      lastRulesWatched = judgedTip;
-      if (!hasBuildCheck) lastWatched = judgedTip;
+    // mirror: mark the newest commit actually judged, or the next poll re-judges the commits this
+    // pass already covered (the poll's optimistic lastRulesWatched was only the head it saw). A
+    // finding stops the walk before later commits, so it marks the finding's own commit and a
+    // newer head it never finished is still retried from the next commit.
+    if (judgedThrough !== undefined) {
+      lastRulesWatched = judgedThrough;
+      if (!hasBuildCheck) lastWatched = judgedThrough;
     }
   }
 
