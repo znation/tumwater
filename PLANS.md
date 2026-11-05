@@ -74,7 +74,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/main-red-heal.test.ts: the heal prompt names the bisected opener.
 - Run those files and the gate.
 
-### Hourly full check, part 3b/4: While a red is open, each new head re-runs only its open failures; when none fail the red clears and one full run starts at once to confirm it (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md "Decision" 4; splitting the 2026-11-01 part 3/4 after feature held it too large for one run; requires Hourly full check part 3a/4 landed; touches src/baseline/main-watch.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts)
+### Hourly full check, part 3b/4: While a red is open, each new head re-runs only its open failures; when none fail the red clears and one full run starts at once to confirm it (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md "Decision" 4; splitting the 2026-11-01 part 3/4 after feature held it too large for one run; requires "Hourly full check, part 3a/4 landed"; touches src/baseline/main-watch.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts)
 
 **Goal.** While main is red, a new head must not cost another full check. Each new head re-runs only the spell's open failing tests; a test that passes leaves the set, and when the set is empty the red closes as cleared, with one full run started at once so a healed main becomes deployable without waiting out the hour (user, 2026-11-01: "when fixing failures, re-run only the failed tests").
 
@@ -102,7 +102,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/main-watch.test.ts: the cleared head is not deployable before the confirming run.
 - Run those files and the gate.
 
-### Hourly full check, part 4/4: Status, doctor and the dashboard say how old main's full verdict is and when the next is due (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 3b/4 landed; touches src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/status-render.test.ts test/gui-client.test.ts)
+### Hourly full check, part 4/4: Status, doctor and the dashboard say how old main's full verdict is and when the next is due (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires "Hourly full check, part 3b/4 landed"; touches src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/status-render.test.ts test/gui-client.test.ts)
 
 **Goal.** Main's badge stops implying the newest commit was fully checked. With the full check hourly, `mainCheckForPoll`'s status reads up to an hour behind main. Every surface that shows it says which SHA it covers, how long ago it ran, and when the next run is due (or "due now" after a cleared red).
 

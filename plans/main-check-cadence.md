@@ -103,7 +103,7 @@ gate's build check, they answered: "No, keep the gate." A separate session is lo
 | 2b/4 | The full check runs at most once per `fullIntervalMinutes` on the latest tip, with the clock seam and config key; diff rules still run on every head | part 2a/4 |
 | 2c/4 | The full check moves to its own `_main-full` mirror and in-flight pass, so it never holds `_gate-main` | part 2b/4 |
 | 3a/4 | Bisect a red's opener by re-running only the failing tests | part 2c/4 |
-| 3b/4 | While red, re-run only the open failures on each new head, and start one confirming full run when they clear | part 3a/4 |
+| 3b/4 | While red, re-run only the open failures on each new head, and when they clear, confirm the cleared red with one full run | part 3a/4 |
 | 4/4 | Status, doctor and the dashboard say how old main's full verdict is and when the next is due | part 3b/4 |
 
 ## How we will know it worked
