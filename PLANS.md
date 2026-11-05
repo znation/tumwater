@@ -6,43 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Remote CI, part 2/3: A hosted-CI failure pages the operator once per commit, and `tumwater doctor` gains a `remote CI` row (planned 2026-11-04 by the operator at the user's direction; design in plans/remote-ci.md "Shape"; requires Remote CI part 1/3 landed; the event-notify.ts edit is one list entry beside the ones Every commit is verified on main part 4k/3 and Subtract part 3f/7 remove, so whichever merges second rebases; touches src/observer/remote-ci.ts src/run/run-dismiss.ts src/events/events.ts src/events/event-notify.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/doctor/doctor-project-checks.ts src/doctor/doctor.ts docs/config.md docs/how-it-works.md docs/invariants.md test/remote-ci.test.ts test/run-dismiss.test.ts test/event-format.test.ts test/event-labels.test.ts test/event-notify.test.ts test/doctor-checks.test.ts)
-
-**Goal.** Part 1/3 records GitHub's verdict, but only the next ci prompt reads it. An operator should hear when a pushed main goes red on GitHub, and `tumwater doctor` should answer "is GitHub CI green on what I pushed?" next to the `ci parity` row.
-
-**Approach.**
-- New event type `remote_ci_failed`, carrying `sha` and `repo`. Register it everywhere `issue_filed` is registered: the event-type union in src/events/events.ts, src/events/event-labels.ts (label `remote CI failed`), src/events/event-format.ts and src/failure/failure-state-change.ts. Also add it to `NOTIFY_EVENT_TYPES` in src/events/event-notify.ts, with a one-line comment, so it pages.
-- `recordDismissedRemote` (src/run/run-dismiss.ts) logs the event with `logEventBestEffort` when the new result is `failed` and the previous record, as `recordRemoteCi` returns it, is not `failed` at the same sha. The message reads `GitHub CI failed at <sha7> on <repo>; the ci role reproduces it and fixes or files it — https://github.com/<repo>/commit/<sha>`, with the repo from the recorded result. Re-recording the same failed sha logs nothing. A failed ledger write still logs the event, the way `recordDismissedFiling` logs `issue_filed` before its write.
-- src/observer/remote-ci.ts: `remoteCiStalled(entry, now)` is true when `now - entry.checkedAt > CI_PARITY_STALE_MS` (imported from ci-parity.ts). It is the one stall predicate, the same shape as `ciParityStalled`.
-- src/doctor/doctor-project-checks.ts: `checkRemoteCi(root, config, now)` returns null when the ci role is disabled or `remoteCiTarget` is null, so the row is omitted the way `checkFeedbackFiling` omits its row. Otherwise:
-  - no record: ok, `no remote CI result recorded yet — the ci role reads GitHub Actions on <repo> on its next run`;
-  - stalled (checked before `failed`, so it applies to every result): warn, `no remote CI check recorded in over 3 days — the ci role is disabled, paused, or not reporting its REMOTE line`;
-  - `failed`: warn, `GitHub CI failed at <sha7> on <repo> (checked <age> ago) — the ci role fixes or files it; it stays failed until a newer push passes`;
-  - `pending`: ok, `GitHub CI was still running on <sha7> (checked <age> ago)`;
-  - `passed`: ok, `GitHub CI passed at <sha7> on <repo> (checked <age> ago)`;
-  - `unavailable`: ok (decision 3: the operator never opted in, so a missing `gh` is information), `the ci role could not read GitHub Actions: <reason> — run gh auth login, or set roles.ci.remote to false`.
-- Register the row as `remote CI` right after `ci parity` in src/doctor/doctor.ts.
-- Docs:
-  - docs/config.md "Notify events" gains a `remote_ci_failed` row.
-  - docs/how-it-works.md names the doctor row next to the `ci parity` row.
-  - docs/invariants.md adds INV-BW5, "remoteCiStalled is the one home of the remote CI stall decision", binding src/observer/remote-ci.ts and `checkRemoteCi`.
-
-**Files touched.** src/observer/remote-ci.ts src/run/run-dismiss.ts src/events/events.ts src/events/event-notify.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/doctor/doctor-project-checks.ts src/doctor/doctor.ts docs/config.md docs/how-it-works.md docs/invariants.md test/remote-ci.test.ts test/run-dismiss.test.ts test/event-format.test.ts test/event-labels.test.ts test/event-notify.test.ts test/doctor-checks.test.ts
-
-**Acceptance criteria.**
-- Recording `failed` at sha A after `passed` at A logs one `remote_ci_failed` event naming A and the repo. Recording `failed` at A again logs none. Recording `failed` at a newer sha B logs one more.
-- `NOTIFY_EVENT_TYPES` contains `remote_ci_failed`, and `formatEvent` renders its message with the commit URL.
-- `checkRemoteCi` returns null in a repo without a GitHub remote. In a GitHub-remote fixture it returns each row above for each ledger state, and a `failed` record checked 4 days ago reads as stalled.
-- `tumwater doctor` lists `remote CI` right after `ci parity` in a GitHub-remote fixture, and leaves it out otherwise.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/run-dismiss.test.ts: the event-once cases.
-- test/remote-ci.test.ts: `remoteCiStalled` at the boundary, one past it, and on a fresh record.
-- test/event-format.test.ts, test/event-labels.test.ts and test/event-notify.test.ts: the new type.
-- test/doctor-checks.test.ts: `checkRemoteCi` for every state, plus the omitted case.
-- Run those files and the gate.
-
 ### Remote CI, part 3/3: The status line, TUI header and dashboard show GitHub's verdict on the pushed main beside the ci parity badge (planned 2026-11-04 by the operator at the user's direction; design in plans/remote-ci.md "Shape"; requires Remote CI part 1/3 landed; independent of part 2/3; the badges.ts, status-payload.ts, status-render.ts and gui-client-team.ts edits sit beside the ci parity badge and Hourly full check part 4/4's main-check age edits, and the status-polls.ts and status-data.ts edits are one field beside Subtract part 3f/7's removals, so whichever merges second rebases; touches src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/badges.test.ts test/status-payload.test.ts test/status-render.test.ts test/gui-client-team.test.ts)
 
 **Goal.** The ci parity badge says whether the local full suite covered main's tip. Nothing at a glance says whether GitHub CI is green on what was pushed. Add a second badge from part 1/3's ledger, so a red push shows on `tumwater status`, the TUI header and the dashboard team panel without opening doctor.

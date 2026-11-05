@@ -452,6 +452,15 @@ function inboxEventMessage(e: HarnessEvent): string {
       // result — routine operation like question_posted, not a warning. The number is the
       // issue the operator can open; a torn event without it reads "?" never "undefined".
       return `filed issue #${typeof e.issue === "number" ? e.issue : "?"} ${textOr(e.title)} on znation/tumwater`;
+    case "remote_ci_failed": {
+      // The hosted runner went red on a pushed main (plans/remote-ci.md "Surfaces"): the
+      // commit URL is the operator's pointer to the failure, and the ci role's charter says
+      // it reproduces and fixes or files it. The display sha is shortSha like every other
+      // feed line; the URL carries the full sha GitHub resolves.
+      const sha = typeof e.sha === "string" && e.sha ? e.sha : "";
+      const repo = typeof e.repo === "string" && e.repo ? e.repo : "";
+      return `GitHub CI failed at ${sha ? shortSha(sha) : "?"} on ${repo || "?"}; the ci role reproduces it and fixes or files it${sha && repo ? ` — https://github.com/${repo}/commit/${sha}` : ""}`;
+    }
     default: return textOr(e.type);
   }
 }
@@ -795,7 +804,7 @@ const EVENT_MESSAGE_FAMILY: Record<HarnessEvent["type"], EventMessageFamily> = {
   // review family (reviewEventMessage)
   review_start: reviewEventMessage, review_verdict: reviewEventMessage, review_rejected: reviewEventMessage, review_failed: reviewEventMessage, revision: reviewEventMessage,
   // inbox family (inboxEventMessage)
-  prompt_enqueued: inboxEventMessage, prompt_cancelled: inboxEventMessage, prompt_edited: inboxEventMessage, prompt_topped: inboxEventMessage, prompt_taken: inboxEventMessage, question_posted: inboxEventMessage, entry_refused: inboxEventMessage, issue_filed: inboxEventMessage,
+  prompt_enqueued: inboxEventMessage, prompt_cancelled: inboxEventMessage, prompt_edited: inboxEventMessage, prompt_topped: inboxEventMessage, prompt_taken: inboxEventMessage, question_posted: inboxEventMessage, entry_refused: inboxEventMessage, issue_filed: inboxEventMessage, remote_ci_failed: inboxEventMessage,
   // budget family (budgetEventMessage)
   budget_warning: budgetEventMessage, budget_paused: budgetEventMessage, budget_fallback: budgetEventMessage, budget_resumed: budgetEventMessage, budget_handback: budgetEventMessage, fallback_switched: budgetEventMessage, opencode_free_model_billed: budgetEventMessage,
   // hold family (holdEventMessage)

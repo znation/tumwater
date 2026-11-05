@@ -5,6 +5,43 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Remote CI, part 2/3: A hosted-CI failure pages the operator once per commit, and `tumwater doctor` gains a `remote CI` row (planned 2026-11-04 by the operator at the user's direction; design in plans/remote-ci.md "Shape"; requires Remote CI part 1/3 landed; the event-notify.ts edit is one list entry beside the ones Every commit is verified on main part 4k/3 and Subtract part 3f/7 remove, so whichever merges second rebases; touches src/observer/remote-ci.ts src/run/run-dismiss.ts src/events/events.ts src/events/event-notify.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/doctor/doctor-project-checks.ts src/doctor/doctor.ts docs/config.md docs/how-it-works.md docs/invariants.md test/remote-ci.test.ts test/run-dismiss.test.ts test/event-format.test.ts test/event-labels.test.ts test/event-notify.test.ts test/doctor-checks.test.ts) — done 2026-11-04 by the feature role
+
+**Goal.** Part 1/3 records GitHub's verdict, but only the next ci prompt reads it. An operator should hear when a pushed main goes red on GitHub, and `tumwater doctor` should answer "is GitHub CI green on what I pushed?" next to the `ci parity` row.
+
+**Approach.**
+- New event type `remote_ci_failed`, carrying `sha` and `repo`. Register it everywhere `issue_filed` is registered: the event-type union in src/events/events.ts, src/events/event-labels.ts (label `remote CI failed`), src/events/event-format.ts and src/failure/failure-state-change.ts. Also add it to `NOTIFY_EVENT_TYPES` in src/events/event-notify.ts, with a one-line comment, so it pages.
+- `recordDismissedRemote` (src/run/run-dismiss.ts) logs the event with `logEventBestEffort` when the new result is `failed` and the previous record, as `recordRemoteCi` returns it, is not `failed` at the same sha. The message reads `GitHub CI failed at <sha> on <repo>; the ci role reproduces it and fixes or files it — https://github.com/<repo>/commit/<sha>`, with the repo from the recorded result. Re-recording the same failed sha logs nothing. A failed ledger write still logs the event, the way `recordDismissedFiling` logs `issue_filed` before its write.
+- src/observer/remote-ci.ts: `remoteCiStalled(entry, now)` is true when `entry` is null or `now - entry.checkedAt > CI_PARITY_STALE_MS` (imported from ci-parity.ts). It is the one stall predicate, the same shape as `ciParityStalled`.
+- src/doctor/doctor-project-checks.ts: `checkRemoteCi(root, config, now)` returns null when the ci role is disabled or `remoteCiTarget` is null, so the row is omitted the way `checkFeedbackFiling` omits its row. Otherwise:
+  - no record: ok, `no remote CI result recorded yet — the ci role reads GitHub Actions on <repo> on its next run`;
+  - stalled (checked before `failed`, so it applies to every result): warn, `no remote CI check recorded in over 3 days — the ci role is disabled, paused, or not reporting its REMOTE line`;
+  - `failed`: warn, `GitHub CI failed at <sha> on <repo> (checked <age> ago) — the ci role fixes or files it; it stays failed until a newer push passes`;
+  - `pending`: ok, `GitHub CI was still running on <sha> (checked <age> ago)`;
+  - `passed`: ok, `GitHub CI passed at <sha> on <repo> (checked <age> ago)`;
+  - `unavailable`: ok (decision 3: the operator never opted in, so a missing `gh` is information), `the ci role could not read GitHub Actions: <reason> — run gh auth login, or set roles.ci.remote to false`.
+- Register the row as `remote CI` right after `ci parity` in src/doctor/doctor.ts.
+- Docs:
+  - docs/config.md "Notify events" gains a `remote_ci_failed` row.
+  - docs/how-it-works.md names the doctor row next to the `ci parity` row.
+  - docs/invariants.md adds INV-BW5, "remoteCiStalled is the one home of the remote CI stall decision", binding src/observer/remote-ci.ts and `checkRemoteCi`.
+
+**Files touched.** src/observer/remote-ci.ts src/run/run-dismiss.ts src/events/events.ts src/events/event-notify.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/doctor/doctor-project-checks.ts src/doctor/doctor.ts docs/config.md docs/how-it-works.md docs/invariants.md test/remote-ci.test.ts test/run-dismiss.test.ts test/event-format.test.ts test/event-labels.test.ts test/event-notify.test.ts test/doctor-checks.test.ts
+
+**Acceptance criteria.**
+- Recording `failed` at sha A after `passed` at A logs one `remote_ci_failed` event naming A and the repo. Recording `failed` at A again logs none. Recording `failed` at a newer sha B logs one more.
+- `NOTIFY_EVENT_TYPES` contains `remote_ci_failed`, and `formatEvent` renders its message with the commit URL.
+- `checkRemoteCi` returns null in a repo without a GitHub remote. In a GitHub-remote fixture it returns each row above for each ledger state, and a `failed` record checked 4 days ago reads as stalled.
+- `tumwater doctor` lists `remote CI` right after `ci parity` in a GitHub-remote fixture, and leaves it out otherwise.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/run-dismiss.test.ts: the event-once cases.
+- test/remote-ci.test.ts: `remoteCiStalled` at the boundary, one past it, and on a fresh record.
+- test/event-format.test.ts, test/event-labels.test.ts and test/event-notify.test.ts: the new type.
+- test/doctor-checks.test.ts: `checkRemoteCi` for every state, plus the omitted case.
+- Run those files and the gate.
+
 ### No duplicate plans, part 3/6: The plan role's prompt lists what unmerged changes add to and remove from `## Planned`, and its charter treats them as already planned (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 1; requires No duplicate plans part 2/6 landed; touches src/backlog/backlog-pending.ts src/run/run-prompt.ts src/roles/role-catalog.ts test/backlog-pending.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts) — done 2026-11-04 by the feature role
 
 **Goal.** Part 2/6 stops the scheduler from admitting a plan run that has nothing to plan. This part makes an admitted run see the unmerged plans, so its dedupe step (the plan charter's step 3: "confirm with grep … that no Planned entry … already covers it") also checks them. It also keeps the run from splitting or replanning an entry that an unmerged change already splits or removes. The `<backlog-index>` block is rendered from main, and every role's prompt shares it with line ranges into main's PLANS.md, so this is a separate block, not a change to the index.

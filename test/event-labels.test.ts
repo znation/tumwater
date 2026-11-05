@@ -29,3 +29,8 @@ test("issue_filed labels as a lowercase phrase", () => {
   assert.equal(EVENT_TYPE_LABELS.issue_filed, "issue filed");
   assert.equal(eventTypeLabel("issue_filed"), "issue filed");
 });
+
+test("remote_ci_failed labels as a lowercase phrase", () => {
+  assert.equal(EVENT_TYPE_LABELS.remote_ci_failed, "remote CI failed");
+  assert.equal(eventTypeLabel("remote_ci_failed"), "remote CI failed");
+});

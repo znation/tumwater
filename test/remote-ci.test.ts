@@ -13,9 +13,11 @@ import {
   readRemoteCi,
   recordRemoteCi,
   remoteCiTarget,
+  remoteCiStalled,
   renderRemoteCiBlock,
   type RemoteCiEntry,
 } from "../src/observer/remote-ci.js";
+import { CI_PARITY_STALE_MS } from "../src/observer/ci-parity.js";
 import { remoteCiPath } from "../src/paths.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
@@ -197,4 +199,24 @@ test("renderRemoteCiBlock renders an unavailable record with its reason", () => 
   };
   const block = renderRemoteCiBlock(target, entry, NOW);
   assert.match(block, /  last checked — unavailable 5m ago: gh is not logged in$/m);
+});
+
+// --- remoteCiStalled: the one stall predicate the doctor's `remote CI` row applies (INV-BW5).
+
+test("remoteCiStalled is true with no record, at the boundary false, one past it true", () => {
+  const now = 1_000_000_000_000;
+  assert.equal(remoteCiStalled(null, now), true, "no record at all is a stall — nothing has checked");
+  const entry: RemoteCiEntry = {
+    repo: "znation/tumwater",
+    sha: "3e450b0c4",
+    result: "passed",
+    checkedAt: now - CI_PARITY_STALE_MS,
+  };
+  assert.equal(remoteCiStalled(entry, now), false, "exactly at the window is not yet stalled");
+  const past: RemoteCiEntry = { ...entry, checkedAt: now - CI_PARITY_STALE_MS - 1 };
+  assert.equal(remoteCiStalled(past, now), true, "one past the window is stalled");
+  const fresh: RemoteCiEntry = { ...entry, checkedAt: now - 60_000 };
+  assert.equal(remoteCiStalled(fresh, now), false, "a fresh record is not stalled");
+  // The window is the shared three-day parity window, not its own constant.
+  assert.equal(CI_PARITY_STALE_MS, 3 * 86_400_000);
 });

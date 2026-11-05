@@ -16,6 +16,7 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { gitTry } from "../git/git-run.js";
 import { currentBranchFromHeadFile, targetBranch } from "../git/git.js";
+import { CI_PARITY_STALE_MS } from "./ci-parity.js";
 import { remoteCiPath } from "../paths.js";
 import { humanAgo } from "../text/datetime.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
@@ -143,6 +144,15 @@ export async function remoteCiTarget(
   if (!url) return null;
   const repo = githubRepoOf(url);
   return repo ? { repo, branch } : null;
+}
+
+/** True when no remote-CI check has been recorded within the stall window — the ledger is
+ * empty of recent data for any reason the ci role might be off (disabled, paused, or not
+ * reporting its REMOTE line), the same shape as ciParityStalled and reading the same shared
+ * window. This is the one stall predicate the doctor's `remote CI` row applies, so the row
+ * and the ledger cannot disagree on when no recent check is a problem. */
+export function remoteCiStalled(entry: RemoteCiEntry | null, now: number): boolean {
+  return entry === null || now - entry.checkedAt > CI_PARITY_STALE_MS;
 }
 
 /** Render the Remote CI block the ci prompt ends with (plans/remote-ci.md "Shape"). It holds

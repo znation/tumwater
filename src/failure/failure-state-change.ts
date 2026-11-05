@@ -120,6 +120,7 @@ export const STATE_CHANGE_EXCLUDED_TYPES = new Set<string>([
   // Inbox and backlog.
   "question_posted",
   "issue_filed",
+  "remote_ci_failed",
   "entry_refused",
   "prompt_enqueued",
   "prompt_cancelled",

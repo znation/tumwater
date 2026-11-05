@@ -56,6 +56,7 @@ export const DOCTOR_CHECK_NAMES = [
   "disk space",
   "check",
   "ci parity",
+  "remote CI",
   "qa coverage",
   "role notes",
   "root install",

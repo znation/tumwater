@@ -436,6 +436,25 @@ test("formatEvent renders entry_refused with the reason and files and no warning
   assert.ok(!line.includes("warning"), line);
 });
 
+test("formatEvent renders remote_ci_failed with the commit URL and the ci role's promise", () => {
+  const line = formatEvent({
+    ts: 0,
+    source: "ci",
+    type: "remote_ci_failed",
+    sha: "3e450b0c4d99",
+    repo: "znation/tumwater",
+  } as never);
+  assert.equal(
+    eventMessage({ ts: 0, source: "ci", type: "remote_ci_failed", sha: "3e450b0c4d99", repo: "znation/tumwater" } as never),
+    "GitHub CI failed at 3e450b0c on znation/tumwater; the ci role reproduces it and fixes or files it — https://github.com/znation/tumwater/commit/3e450b0c4d99",
+  );
+  assert.match(line, /https:\/\/github\.com\/znation\/tumwater\/commit\/3e450b0c4d99/);
+  // A torn event without the fields reads "?", never "undefined".
+  const torn = formatEvent({ ts: 0, source: "ci", type: "remote_ci_failed" } as never);
+  assert.match(torn, /GitHub CI failed at \? on \?/);
+  assert.doesNotMatch(torn, /undefined/);
+});
+
 test("formatEvent renders issue_filed with the issue number, title and target repo", () => {
   const line = formatEvent({ ts: 0, source: "feedback", type: "issue_filed", issue: 12, title: "a bug" } as never);
   assert.match(line, /filed issue #12 a bug on znation\/tumwater/);

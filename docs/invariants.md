@@ -4428,6 +4428,24 @@ warns and the no_change run stands"; `test/run-stage.test.ts` — "a changed-bra
 records its remote-CI verdict" and "a failed remote-CI ledger write warns and the run still ends
 queued".
 
+### INV-BW5: remoteCiStalled is the one home of the remote CI stall decision
+
+**Guarantee.** `remoteCiStalled` (src/observer/remote-ci.ts) is the one predicate that decides
+when the remote-CI ledger is stale — no record, or a record older than `CI_PARITY_STALE_MS`
+(imported from src/observer/ci-parity.ts, the same three-day window the ci parity stall reads).
+The doctor's `remote CI` row (checkRemoteCi in src/doctor/doctor-project-checks.ts) is the only
+consumer of that decision, and it applies the stall before the result — a stale `failed` record
+reads as stalled, so the row and the ledger cannot disagree on when no recent check is a
+problem (the same one-predicate shape as `ciParityStalled`, the ci parity row's stall
+half).
+
+**Binds.** `src/observer/remote-ci.ts` (`remoteCiStalled`), `src/doctor/doctor-project-checks.ts`
+(`checkRemoteCi`).
+
+**Pinned by.** `test/remote-ci.test.ts` — the `remoteCiStalled` boundary cases; `test/doctor-checks.test.ts` —
+"checkRemoteCi omits the row without a hosted-CI target" and "checkRemoteCi reads every remote-CI ledger
+state and warns stalled over the window".
+
 ## OpenCode catalog cache: a foreign entry reads as an unknown model
 
 ### INV-BV1: readOpencodeCache returns only well-formed catalog entries

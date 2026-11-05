@@ -52,6 +52,7 @@ test("NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowl
       "role_cap_paused",
       "disk_low",
       "main_red_hold",
+      "remote_ci_failed",
       "merge_failed",
       "restart_blocked",
       "question_posted",

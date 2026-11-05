@@ -31,6 +31,7 @@ import {
   checkMainDiffRules,
   checkPostMergeChurn,
   checkQaCoverage,
+  checkRemoteCi,
   checkStateDir,
 } from "../src/doctor/doctor-project-checks.js";
 import {
@@ -61,6 +62,7 @@ import {
 } from "../src/doctor/doctor-codex-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
 import { CI_PARITY_STALE_MS, recordParity } from "../src/observer/ci-parity.js";
+import { recordRemoteCi } from "../src/observer/remote-ci.js";
 import { QA_COVERAGE_STALE_MS, recordFlow } from "../src/observer/qa-coverage.js";
 import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
 import { checkRoleNotes } from "../src/doctor/doctor-role-notes.js";
@@ -1691,6 +1693,95 @@ test("checkQaCoverage reads ok for a missing or fresh ledger and warns once stal
   assert.equal(warn.level, "warn");
   assert.match(warn.detail, /status/);
   assert.match(warn.detail, /disabled, paused, or unable to record/);
+});
+
+/** A readyRepo fixture with a hosted-CI target: a workflow file and a GitHub origin, so
+ * remoteCiTarget resolves (the same shape remote-ci.test.ts's fixture builds). */
+function githubRepoFixture(): string {
+  const repo = readyRepo();
+  const workflows = path.join(repo, ".github", "workflows");
+  fs.mkdirSync(workflows, { recursive: true });
+  fs.writeFileSync(path.join(workflows, "ci.yml"), "name: ci\n");
+  sh(repo, "git", "remote", "add", "origin", "https://github.com/znation/tumwater.git");
+  return repo;
+}
+
+test("checkRemoteCi omits the row without a hosted-CI target", async () => {
+  // No workflow file, no GitHub remote, or an opted-out config: the row is omitted (null),
+  // the way checkFeedbackFiling omits its row.
+  const now = Date.now();
+  assert.equal(await checkRemoteCi(readyRepo(), loadConfig(readyRepo()), now), null);
+  // A workflow file but no remote at all: detection still reads no GitHub target.
+  const noRemote = makeRepo();
+  const workflows = path.join(noRemote, ".github", "workflows");
+  fs.mkdirSync(workflows, { recursive: true });
+  fs.writeFileSync(path.join(workflows, "ci.yml"), "name: ci\n");
+  assert.equal(await checkRemoteCi(noRemote, loadConfig(noRemote), now), null, "a workflow file but no GitHub remote omits the row");
+  const repo = githubRepoFixture();
+  const config = loadConfig(repo);
+  config.roles = { ...(config.roles ?? {}), ci: { enabled: true, remote: false } };
+  assert.equal(await checkRemoteCi(repo, config, now), null, "roles.ci.remote false omits the row");
+  assert.equal(await checkRemoteCi(repo, undefined, now), null, "an unreadable config omits the row");
+});
+
+test("checkRemoteCi reads every remote-CI ledger state and warns stalled over the window", async () => {
+  const now = Date.now();
+  const repo = githubRepoFixture();
+  const config = loadConfig(repo);
+  // The fixture resolves a target, so every record state below renders a row: this asserts
+  // the row is present and returns the outcome, so the verdict assertions read off it.
+  const row = async () => {
+    const outcome = await checkRemoteCi(repo, config, now);
+    assert.ok(outcome !== null, "a GitHub-remote fixture always renders a row");
+    return outcome;
+  };
+  // No record yet: the friendly ok row naming the repo.
+  assert.deepEqual(await checkRemoteCi(repo, config, now), {
+    level: "ok",
+    detail: "no remote CI result recorded yet — the ci role reads GitHub Actions on znation/tumwater on its next run",
+  });
+  // A fresh record reads its verdict: passed and pending are ok, failed is a warn.
+  recordRemoteCi(repo, "znation/tumwater", "passed", now - 3_600_000, "3e450b0c4d");
+  const passed = await row();
+  assert.equal(passed.level, "ok");
+  assert.equal(
+    passed.detail,
+    "GitHub CI passed at 3e450b0c on znation/tumwater (checked 1h ago)",
+  );
+  recordRemoteCi(repo, "znation/tumwater", "pending", now - 3_600_000, "3e450b0c4d");
+  const pending = await row();
+  assert.equal(pending.level, "ok");
+  assert.equal(pending.detail, "GitHub CI was still running on 3e450b0c (checked 1h ago)");
+  recordRemoteCi(repo, "znation/tumwater", "failed", now - 3_600_000, "3e450b0c4d");
+  const failed = await row();
+  assert.equal(failed.level, "warn");
+  assert.equal(
+    failed.detail,
+    "GitHub CI failed at 3e450b0c on znation/tumwater (checked 1h ago) — the ci role fixes or files it; it stays failed until a newer push passes",
+  );
+  // An unavailable record is ok information: the operator never opted in, so a missing gh is
+  // not a fault (plans/remote-ci.md decision 3).
+  recordRemoteCi(repo, "znation/tumwater", "unavailable", now - 3_600_000, undefined, "gh is not logged in");
+  const unavailable = await row();
+  assert.equal(unavailable.level, "ok");
+  assert.equal(
+    unavailable.detail,
+    "the ci role could not read GitHub Actions: gh is not logged in — run gh auth login, or set roles.ci.remote to false",
+  );
+  // A record checked over the window is a stall for EVERY result: checked before the failed
+  // branch, so a stale failed record reads as stalled, not as a failure.
+  recordRemoteCi(repo, "znation/tumwater", "failed", now - CI_PARITY_STALE_MS - 4 * 3_600_000, "3e450b0c4d");
+  const stalled = await row();
+  assert.equal(stalled.level, "warn");
+  assert.equal(
+    stalled.detail,
+    "no remote CI check recorded in over 3 days — the ci role is disabled, paused, or not reporting its REMOTE line",
+  );
+  // Exactly at the window the record is not yet stalled: the verdict wording stands.
+  recordRemoteCi(repo, "znation/tumwater", "failed", now - CI_PARITY_STALE_MS, "3e450b0c4d");
+  const boundary = await row();
+  assert.equal(boundary.level, "warn");
+  assert.match(boundary.detail, /^GitHub CI failed at 3e450b0c/);
 });
 
 test("checkLeftoverRoleBranches names disabled roles' branches and unknown ones, skipping enabled roles and the director", async () => {

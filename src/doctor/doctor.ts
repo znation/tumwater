@@ -41,6 +41,7 @@ import {
   checkMainDiffRules,
   checkPostMergeChurn,
   checkQaCoverage,
+  checkRemoteCi,
   checkStateDir,
 } from "./doctor-project-checks.js";
 import { sampleFreeBytes } from "../gates/disk-gates.js";
@@ -199,6 +200,9 @@ export async function runDoctor(
     { name: "disk space", run: () => checkDiskSpace(root, config?.diskHoldGB ?? 10, config?.diskReclaimGB ?? 40, diskSample) },
     { name: "check", run: () => checkBuildCheck(root, config) },
     { name: "ci parity", run: () => checkCiParity(root, config, Date.now()) },
+    // The hosted-CI row beside ci parity: null omits the row (no GitHub remote, no workflow
+    // file, or roles.ci.remote false), the way checkFeedbackFiling omits its row.
+    { name: "remote CI", run: () => checkRemoteCi(root, config) },
     { name: "qa coverage", run: () => checkQaCoverage(root, Date.now()) },
     // The role-notes read gap (plans/role-notes): every operator surface reads a role's notes
     // file whole while the run prompt truncates it at ROLE_NOTES_MAX_BYTES; this row surfaces the

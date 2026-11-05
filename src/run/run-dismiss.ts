@@ -16,7 +16,7 @@
 import { logEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { recordFiled } from "../observer/feedback-filings.js";
-import { recordRemoteCi } from "../observer/remote-ci.js";
+import { readRemoteCi, recordRemoteCi } from "../observer/remote-ci.js";
 import { recordFlow } from "../observer/qa-coverage.js";
 
 /** The dismissal path as a recorder reads it: the role to attribute the issue_filed event and
@@ -45,8 +45,10 @@ export function recordDismissedFlow(
   }
 }
 
-/** Record a dismissed run's remote-CI verdict (remote-ci.ts's recordRemoteCi) — a failed
- * ledger write warns with the same wording on both dismissal paths. Unlike the ci-parity
+/** Record a dismissed run's remote-CI verdict (remote-ci.ts's recordRemoteCi) and page the
+ * operator with a remote_ci_failed event when a sha turns failed — one page per sha, read from
+ * the record before the write, so a failed ledger write still pages. A failed ledger write
+ * warns with the same wording on both dismissal paths. Unlike the ci-parity
  * recorder (deliberately no-change-only), this one is shared by both paths: the record is what
  * GitHub reported on a pushed sha, which a run's own diff cannot make false, so a changed run
  * still writes it — recording it when a run commits a fix stops the next run from fixing the
@@ -60,6 +62,19 @@ export function recordDismissedRemote(
   // a record without it cannot be attributed to a repo, so it records nothing (the runner
   // never produces one without a target, so this is type honesty, not a live branch).
   if (remote.repo === undefined) return;
+  const prev = readRemoteCi(root);
+  // One page per sha turning failed (plans/remote-ci.md "Surfaces"): the record that was not
+  // already failed at this sha is the flip, and a re-recorded failed sha logs nothing. The
+  // event rides the previous record (read before the write) the way recordDismissedFiling logs
+  // issue_filed before its write, so a failed ledger write still pages the operator.
+  if (remote.result === "failed" && remote.sha !== undefined && (prev === null || !(prev.sha === remote.sha && prev.result === "failed"))) {
+    logEventBestEffort(root, {
+      source: ctx.role,
+      type: "remote_ci_failed",
+      sha: remote.sha,
+      repo: remote.repo,
+    });
+  }
   try {
     recordRemoteCi(root, remote.repo, remote.result, Date.now(), remote.sha, remote.reason);
   } catch (err) {

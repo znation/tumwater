@@ -50,6 +50,7 @@ export interface HarnessEvent {
     | "merged" // merged; carries commit and summary
     | "question_posted" // a merged diff added an entry to QUESTIONS.md's ## Open
     | "issue_filed" // a feedback run filed one GitHub issue on znation/tumwater (plans/feedback-role.md 2/2); carries issue (the number) and title
+    | "remote_ci_failed" // the remote-CI ledger turned failed at a sha not already recorded failed (plans/remote-ci.md "Surfaces"); carries sha (the pushed commit) and repo (owner/name) — one page per sha
     | "entry_refused" // a refusal run's objection note merged on main (src/verdict/refusal.ts handleRefusal); carries reason, files and entries (the stamp-free titles of the plans and bugs whose Refused note is new) — the entry stays held until a human or the director lifts it
     | "wake"
     | "run_deferred" // need-based prioritization: a due maintenance run was deferred; carries reason "backlog" (PLANS.md `## Planned` or BUGS.md `## Open` non-empty) "no-work" (no feature/bugfix/director/operator/human commit since its last no_change run), or "plans-full" (the plan role's PLANS.md already holds its eligible-plan target); one per deferral episode

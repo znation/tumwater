@@ -11,7 +11,7 @@
  * the composition layer that calls each check in fixed order. */
 import fs from "node:fs";
 import path from "node:path";
-import type { CheckConfigSlice } from "../config/config-schema.js";
+import type { CheckConfigSlice, TumwaterConfig } from "../config/config-schema.js";
 import { detectBuildCheck, mergeCommandOf } from "../build/build-check-detect.js";
 import { isPassingFullCheck } from "../build/build-check-events.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
@@ -19,7 +19,7 @@ import { dirEntryNames, statOrNull } from "../files/files.js";
 import { refSha } from "../git/git.js";
 import { STATE_DIR, eventsArchivePath, eventsLogPath } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gates.js";
-import { DAY_MS, dayKey, humanSince } from "../text/datetime.js";
+import { DAY_MS, dayKey, humanAgo, humanSince } from "../text/datetime.js";
 import { errorMessage } from "../text/text.js";
 import { medianAndMax } from "../collections.js";
 import { formatGB, shortSha } from "../text/format.js";
@@ -33,6 +33,7 @@ import { POST_MERGE_REJECT_WINDOW_MS, postMergeChurn } from "../review/post-merg
 import { roleLabel } from "../roles/role-labels.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { readCiParity, currentCiParityState, parityIsCurrent, ciParityStalled, CI_PARITY_STALE_MS } from "../observer/ci-parity.js";
+import { readRemoteCi, remoteCiStalled, remoteCiTarget } from "../observer/remote-ci.js";
 import { readQaCoverage, qaCoverageStalled, QA_COVERAGE_STALE_MS } from "../observer/qa-coverage.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
@@ -404,6 +405,54 @@ export function checkCiParity(
   return okOutcome(
     `stale — the last run covered ${tipLockPhrase(entry.tip, entry.lockHash)} (${entry.result}, ${age} ago); main is now ${tipLockPhrase(tip, lockHash)}, so the ci role has not yet covered this tip`,
   );
+}
+
+/** The doctor's `remote CI` row: is GitHub Actions green on what the operator pushed? Reads
+ * the remote-CI ledger (src/observer/remote-ci.ts) — the operator surface beside `ci parity`
+ * answering "is GitHub CI green on what I pushed?". Omitted (null) when the ci role is
+ * disabled or `remoteCiTarget` is null (no GitHub remote, no workflow file, or opted out with
+ * `roles.ci.remote: false`), the way checkFeedbackFiling omits its row. No record reads ok;
+ * a record older than the stall window (remoteCiStalled — checked before the result, so it
+ * applies to every record) is a warn; `failed` is a warn naming the commit; `pending` and
+ * `passed` are ok; `unavailable` is ok — decision 3 in plans/remote-ci.md: the operator never
+ * opted in, so a missing `gh` is information, not a fault. Read-only against .tumwater/ and
+ * the git config. */
+export async function checkRemoteCi(
+  root: string,
+  config: TumwaterConfig | undefined,
+  now: number = Date.now(),
+): Promise<CheckOutcome | null> {
+  if (!config) return null;
+  const target = await remoteCiTarget(root, config);
+  if (target === null) return null;
+  const entry = readRemoteCi(root);
+  if (entry === null)
+    return okOutcome(
+      `no remote CI result recorded yet — the ci role reads GitHub Actions on ${target.repo} on its next run`,
+    );
+  if (remoteCiStalled(entry, now))
+    return warnOutcome(
+      `no remote CI check recorded in over ${CI_PARITY_STALE_MS / DAY_MS} days — the ci role is disabled, paused, or not reporting its REMOTE line`,
+    );
+  const age = humanAgo(entry.checkedAt, now);
+  switch (entry.result) {
+    case "failed":
+      return warnOutcome(
+        `GitHub CI failed at ${entry.sha ? shortSha(entry.sha) : "?"} on ${entry.repo} (checked ${age}) — the ci role fixes or files it; it stays failed until a newer push passes`,
+      );
+    case "pending":
+      return okOutcome(
+        `GitHub CI was still running on ${entry.sha ? shortSha(entry.sha) : "?"} (checked ${age})`,
+      );
+    case "unavailable":
+      return okOutcome(
+        `the ci role could not read GitHub Actions: ${entry.reason ?? "no reason recorded"} — run gh auth login, or set roles.ci.remote to false`,
+      );
+    default:
+      return okOutcome(
+        `GitHub CI passed at ${entry.sha ? shortSha(entry.sha) : "?"} on ${entry.repo} (checked ${age})`,
+      );
+  }
 }
 
 /** The doctor's `qa coverage` row: has the `qa` observer — the team's only flow-level

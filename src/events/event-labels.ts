@@ -19,6 +19,7 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   merged: "merged",
   question_posted: "question posted",
   issue_filed: "issue filed",
+  remote_ci_failed: "remote CI failed",
   entry_refused: "plan refused",
   wake: "woke up",
   run_deferred: "run deferred",
