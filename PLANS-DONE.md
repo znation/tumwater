@@ -113,7 +113,7 @@ only grows: search it with grep, or read one entry by its line range. Never read
 - test/doctor-checks.test.ts: `checkRemoteCi` for every state, plus the omitted case.
 - Run those files and the gate.
 
-### No duplicate plans, part 3/6: The plan role's prompt lists what unmerged changes add to and remove from `## Planned`, and its charter treats them as already planned (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 1; requires No duplicate plans part 2/6 landed; touches src/backlog/backlog-pending.ts src/run/run-prompt.ts src/roles/role-catalog.ts test/backlog-pending.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts) — done 2026-11-04 by the feature role
+### No duplicate plans, part 3/6: The plan role's prompt lists what unmerged changes add to and remove from `## Planned`, and its charter treats them as already planned (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 1; requires No duplicate plans part 2/6 landed; touches src/backlog/backlog-pending.ts src/run/run-prompt.ts src/roles/role-catalog.ts src/prompt/prompt.ts test/backlog-pending.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts) — done 2026-11-04 by the feature role
 
 **Goal.** Part 2/6 stops the scheduler from admitting a plan run that has nothing to plan. This part makes an admitted run see the unmerged plans, so its dedupe step (the plan charter's step 3: "confirm with grep … that no Planned entry … already covers it") also checks them. It also keeps the run from splitting or replanning an entry that an unmerged change already splits or removes. The `<backlog-index>` block is rendered from main, and every role's prompt shares it with line ranges into main's PLANS.md, so this is a separate block, not a change to the index.
 
@@ -125,7 +125,7 @@ only grows: search it with grep, or read one entry by its line range. Never read
 - The plan charter in src/roles/role-catalog.ts gets one bullet at the top of step 1. Entries a `<pending-plans>` block adds are already planned: count them toward the eligible-plan stop, include them in step 3's dedupe, and never plan the same change again. An entry it removes or edits is being handled by that change: never split, replan, retire or refuse it.
 - No other role's prompt changes.
 
-**Files touched.** src/backlog/backlog-pending.ts src/run/run-prompt.ts src/roles/role-catalog.ts test/backlog-pending.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts
+**Files touched.** src/backlog/backlog-pending.ts src/run/run-prompt.ts src/roles/role-catalog.ts src/prompt/prompt.ts test/backlog-pending.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts
 
 **Acceptance criteria.**
 - With the plan role pinned to a commit that adds `### A` and removes `### B`, the plan role's assembled prompt holds a `<pending-plans>` block naming the role, the short SHA, `adds "A"` and `removes "B"`. The feature and clean prompts do not have it.

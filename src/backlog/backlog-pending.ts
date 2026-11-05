@@ -17,8 +17,8 @@ import { stripEntryStamp } from "./backlog-structure.js";
 import { plannedPlanEntries } from "./backlog.js";
 
 /** One unmerged change's effect on `## Planned`, judged against the merge-base of `sha` with
- * main: the entries the change adds, the keys of entries it removes, and the entries it
- * rewrites (a lifted `Needs review` note, a done stamp). */
+ * main: the entries the change adds, the entries it removes, and the entries it rewrites (a
+ * lifted `Needs review` note, a done stamp). */
 export interface PendingPlanChange {
   /** The ref naming the change — a merge pin or a role branch. */
   ref: string;
@@ -67,7 +67,7 @@ const diffMemo = new Map<string, PendingPlanDiffResult>();
 
 /** renderPendingPlansBlock lists at most this many of its lines (change headers and effect
  * lines alike); the rest is counted, not named. 40 keeps the block inside the prompt's
- * standing evidence size while one long-running series of splits still shows its latest parts. */
+ * standing evidence size while still naming the first changes in ref order and their effects. */
 const PENDING_PLANS_LINE_CAP = 40;
 
 /** The role a pending ref belongs to: the refname's suffix after the pin or branch prefix. */
