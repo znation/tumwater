@@ -134,6 +134,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Subtract verify collapse, part 3b/5: The merge queue's head runs its gate and merge in one task; the drain stops starting verifications and stops populating the approved/verifying maps (planned 2026-11-04 by the plan role, splitting the 2026-11-03 Subtract verify collapse part 3/5 after feature held it too large for one run; requires Subtract verify collapse part 3a/5 landed; touches src/merge/merge-drain.ts src/merge/merge-core.ts src/merge/merge-pipeline.ts src/orchestrator/orchestrator-poll.ts test/merge-drain.test.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merger.test.ts test/fixtures/orchestrator-fixtures.ts test/fixtures/merger-fixtures.ts)
 
+**Needs review 2026-11-04 by feature: too large for one run**
+
 **Goal.** A queued entry goes from the queue to the gate to the merge in one task: `drainMerge` takes the queue head and starts one task whose `mergeApprovedChange` runs `reviewQueuedChange` in the merge worktree before `mergeToMain`, settles the outcome, queues the post-merge review on a `merged` event as today, and continues to the next head one at a time. The drain no longer calls `drainVerify`, and neither `p.approved` nor `p.verifying` is populated. Torn-head recovery, the already-merged dedupe, `notBefore`, `liveRoles` and `startHeld` checks move from the verify drain into the serial drain; the withdrawn check runs before the gate. A rejected entry settles as today. The verify modules and map types remain in place until part 3c/5 deletes them.
 
 **Approach.**
