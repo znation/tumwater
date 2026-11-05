@@ -11,6 +11,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { ensureParentDir, rotateIfLarge } from "../files/files.js";
 import type { ResolvedBackendBin } from "../pi/pi-bin.js";
@@ -38,12 +39,30 @@ export interface AppendLog {
   broken: boolean;
 }
 
+/** The append logs this process still has open, keyed by resolved path, with their count. The
+ * orchestrator runs a role's agent and post-merge reviews in the same process, and they share a
+ * role's pi log path; rotateIfLarge's rename would move the file out from under a live run's
+ * open descriptor (its later output lands in the .1 archive and the dashboard reads the fresh
+ * file), so the count tells openAppendLog when a path is still held. */
+const openAppendLogs = new Map<string, number>();
+
 export function openAppendLog(file: string, maxBytes: number): AppendLog {
   ensureParentDir(file);
-  rotateIfLarge(file, maxBytes);
+  // Skip the rename while another run in this process still writes the file (its descriptor
+  // keeps writing the .1 the rename leaves behind); the first open after the last writer's
+  // stream closes rotates it. Held counts also keep a later rotation from deleting the .1 a
+  // live run writes to.
+  const key = path.resolve(file);
+  if ((openAppendLogs.get(key) ?? 0) === 0) rotateIfLarge(file, maxBytes);
   const log: AppendLog = { stream: fs.createWriteStream(file, { flags: "a" }), broken: false };
+  openAppendLogs.set(key, (openAppendLogs.get(key) ?? 0) + 1);
   log.stream.on("error", () => {
     log.broken = true;
+  });
+  log.stream.on("close", () => {
+    const left = (openAppendLogs.get(key) ?? 1) - 1;
+    if (left <= 0) openAppendLogs.delete(key);
+    else openAppendLogs.set(key, left);
   });
   return log;
 }

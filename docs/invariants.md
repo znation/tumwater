@@ -275,6 +275,29 @@ surrogate-cut/throw paths and the delete-on-every-path guarantee), `test/prompt-
 (the bugfix find text names the body's ~3659-char bound), `test/run-verdict.test.ts` (a bugfix
 run consumes the file before a dirty/staging outcome and a feature run leaves it).
 
+### INV-B9: an append log is never rotated while a live run in the process still writes it
+
+**Guarantee.** `openAppendLog` rotates an oversized log (rename to `<file>.1` via `rotateIfLarge`)
+only when no run in this process still holds the path open, and skips the rename otherwise. The
+orchestrator runs a role's agent and its post-merge reviews in one process, and they share a
+role's pi log path (`piLogPath(root, role)`); an unconditional rotate on open would rename the
+file out from under a live run's open descriptor, so the run's later output lands in the `.1`
+archive and the progress reader, which tails the live path, reports the review instead of the run
+(its row shows one turn and no output, so the stall alert fires). A held count also keeps a later
+rotation from deleting the `.1` a live run writes to. The first open after the last writer's
+stream closes rotates the grown log, so rotation is deferred, never lost.
+
+**Binds.** `src/agent/agent-spawn.ts` (`openAppendLog`, the per-path `openAppendLogs` count),
+`src/files/files.ts` (`rotateIfLarge`), `src/agent/agent-run.ts` (`openRunFiles`, the raw and
+native logs it opens).
+
+**Pinned by.** `test/agent-append-log.test.ts` — "openAppendLog does not rotate a log another
+live run in the process still writes" (a held second open leaves the live file and makes no second
+generation, and the first open after both streams close rotates it), "openAppendLog rotates
+again once the only holder of a just-rotated file has closed" (a held open does not shift the
+first generation), and "openAppendLog still rotates an oversized file nobody else in the process
+holds" (an unheld oversized file rotates as before).
+
 ## Sibling result shapes a classifier treats alike
 
 When a classifier groups outcomes into classes, every result shape that belongs to a class must
