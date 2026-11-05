@@ -177,6 +177,13 @@ test("an approved change waits to merge while a later queue entry is still verif
     assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "the later entry is still verifying");
 
     pipeline.merge = null; // free the slot: alpha merges while beta's verification runs on
+    await waitFor(
+      () => readEvents(root).some((e) => e.type === "merged" && e.source === "alpha"),
+      "alpha to merge while beta is still verifying",
+      30_000,
+    );
+    assert.ok(!fs.existsSync(path.join(flags, "beta-release")), "beta's verification is still blocked");
+    assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "beta is still verifying when alpha merges");
     fs.writeFileSync(path.join(flags, "beta-release"), "");
     await waitFor(drained(root, pipeline), "the queue to drain", 30_000);
     // Each change merges as its own commit (rebased onto main's tip), so the original pinned
@@ -327,7 +334,7 @@ for (const headVerdict of ["reject", "approve"] as const) {
       await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to drain");
 
       const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
-      // The head's own verification: its pre-check, with beta parked and showing nothing. Then
+      // The head's own verification: its pre-check, with beta still queued and showing nothing. Then
       // beta's verify runs with the head's record already off the gate's stages (approved, or
       // gone with its rejection) — beta's transitions advance only beta's own record.
       const alphaAfter = headVerdict === "reject" ? "" : "alpha=approved/merging,";
