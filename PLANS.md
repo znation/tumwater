@@ -396,4 +396,29 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Extend test/failure-render.test.ts: seed two modelled starts and error run_ends on each model, then assert the `Failed runs by model` line's order and counts beneath `## Outcome by role`; add a role-scoped omission case and a start-with-no-model omission case. Run that file and the gate.
 
+### `buildReviewPrompt`'s ~160-line single-body prompt assembly in src/prompt/gate-prompts.ts is split into named module-private builders — the author-claims preamble, the gate's evidence blocks, the diff block with its base wording, and the run rules and verdict — so "which optional block lands where, and in what order?" reads from named steps (planned 2026-11-04 by the plan role; continues the landed split-large-function family — the 2026-10-27 `buildRunPrompt` split in src/prompt/prompt.ts did the same for the sibling prompt builder, and the family's recent `runAgent`, `gateBuildPrecheck` and `createRunTrail` entries each extract one named helper per concern; independent in file of every `## Planned` entry — before this entry `grep -nE 'buildReviewPrompt|gate-prompts' PLANS.md` prints 0, so no waiting heading or touches list names the function or the file (the in-flight history/report/failure plans take src/history, src/report and src/failure, and the blocked `Hourly full check`, `Subtract` and duplicate-plan parts take src/merge, src/runner, src/status, src/doctor, src/config, src/baseline, src/review, src/run, src/ui and src/stage); PLANS-DONE.md holds no split of this function (`grep -cE '^### .*buildReviewPrompt' PLANS-DONE.md` prints 0, and its six `buildReviewPrompt` mentions are behavior entries that added or reworded a clause, never a body split); docs/invariants.md's INV-A6 binds src/prompt/gate-prompts.ts only for its use of `numberedList`, which a behavior-preserving move keeps, so no invariant edit is needed; touches src/prompt/gate-prompts.ts)
+
+**Goal.** `buildReviewPrompt` (src/prompt/gate-prompts.ts) is one ~160-line body that assembles the reviewer's whole prompt from ten optional inputs: the identity and date, the high-friction warning, the author's summary and commit body, the prior-review block, the no-suite note, main's known failures, the project's principles, the post-merge repair instruction, the diff with its base wording, and the run rules and verdict ending. A reader asking "which optional block precedes the diff?" or "where does the post-merge verdict form come from?" has to scan the whole body and the order-sensitive `parts.push` calls. Split it into named builders that preserve the exact order and text: one for the author-claims preamble, one for the gate's evidence blocks, one for the diff and its base clause, and one for the run rules and verdict. No behavior change: every caller and every existing prompt test sees the same bytes.
+
+**Approach.**
+- Add four module-private functions in src/prompt/gate-prompts.ts, each taking only the values it needs:
+  - `reviewPreambleParts(...)`: the identity block, `dateLine(today)`, the high-friction warning, and the optional summary, commit body and prior-review block (with its `numberedList`/`NO_REASONS` text). Returns the ordered preamble array.
+  - `reviewEvidenceParts(...)`: the no-suite note, main's known failures, the principles block and the post-merge repair instruction. Returns the ordered evidence array.
+  - `reviewDiffBlock(diff, baseRev)`: computes `diffBase`, `baseClause` and `truncationBase` exactly as today and returns `{ block, baseClause, truncationBase }`, where `block` is the full `The full diff this merge will land … </diff>` text.
+  - `reviewRunInstructions(...)`: the worktree rule, the no-re-run rule, the final review order and checks, `TEST_RUNNER_RULE`, `KILL_BY_PID_RULE`, the verdict ending and the post-merge `FIX:` line, taking `baseClause`, `truncationBase` and `postMerge`. Returns one string.
+- `buildReviewPrompt` keeps its export, signature and doc comment. Its body becomes: build the preamble, evidence and diff parts, push the diff block, push the run instructions, and return `parts.join("\n\n")`. Move each string literal verbatim; do not retype or reflow any prompt text.
+- No other file changes; do not add exports, options or tests.
+
+**Files touched.** src/prompt/gate-prompts.ts
+
+**Acceptance criteria.**
+- For every combination of arguments the existing tests and callers use — including `highFriction`, `summary`, `commitBody`, `priorReview`, `knownMainFailures`, `principles`, `baseRev` and `postMerge` — `buildReviewPrompt` returns exactly the string it returns today, with the same block order and the same `\n\n` joins.
+- The post-merge prompt still ends with the repair rule and the `FIX:` line; the pre-merge prompt still forbids worktree edits; a prompt with no `baseRev` still says "everything the branch is ahead of main" and "main".
+- `buildReviewPrompt` remains the only exported symbol among these functions; the four new builders are module-private and declared in src/prompt/gate-prompts.ts.
+- `grep -cE '^export function buildReviewPrompt' src/prompt/gate-prompts.ts` prints 1, and `grep -cE '^function review(PreambleParts|EvidenceParts|DiffBlock|RunInstructions)' src/prompt/gate-prompts.ts` prints 4.
+- test/gate-prompts.test.ts passes unchanged (no test file is edited).
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving private move guarded by test/gate-prompts.test.ts's existing cases (the pre-merge prompt, the prior-review block, main's known-failures note, the principles block, the post-merge repair prompt and the verdict forms). Run that file and the gate, and confirm green.
+
 ## Done
