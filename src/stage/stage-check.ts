@@ -124,15 +124,17 @@ async function plansFindings(wt: string, mainBranch: string, pending: readonly P
   // naming a merged part resolves there, on both sides of the comparison alike.
   const archived = parseEntryDetails(readTextOrNull(path.join(wt, PLANS_ARCHIVE)) ?? "", "Done").map((e) => e.title);
   if (base === undefined) return [];
-  // The duplicate finding judges against main's tip at staging, not the merge-base: a plan a
+  // The duplicate finding's known set is main's tip at staging, not the merge-base: a plan a
   // sibling merged while this run worked is on main but not in the run's base, and is exactly
-  // the 11-03 incident this check exists to catch. The other findings stay merge-base-relative
-  // so they report only what this change adds. A failed read falls back to the merge-base.
+  // the 11-03 incident this check exists to catch. What the change itself adds is still judged
+  // against the merge-base, so an entry main gained with the same key is a duplicate, not a
+  // pre-existing one. The other findings stay merge-base-relative. A failed read falls back to
+  // the merge-base.
   const mainPlans = (await fileContentAt(wt, mainBranch, "PLANS.md")) || base;
   const findings = [
     planDependencyFinding(head, base, archived),
     ungroundedRefusalFinding("PLANS.md", head, base),
-    duplicatePlanFinding(head, mainPlans, pending),
+    duplicatePlanFinding(head, base, pending, mainPlans),
     await retireEvidenceFinding(wt, mainBranch, head, base).catch(() => undefined),
   ];
   return findings.filter((f): f is string => f !== undefined);

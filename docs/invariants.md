@@ -898,9 +898,10 @@ strike against its author".
 ### INV-N6: a change that adds a duplicate `## Planned` entry, or retires a plan on evidence that does not check out, gets its fix-up turn at staging
 
 **Guarantee.** `stageCheckFindings` (given the pending snapshot) reports (a) a `## Planned`
-entry the change adds over main's tip at staging whose entry key or series part label a planned
-entry on main or in an unmerged change already carries — the latter named with its role and short
-SHA (`duplicatePlanFinding`) — and (b) a plan entry it newly retires over the change's merge-base
+entry the change adds over its merge-base with main whose entry key or series part label a planned
+entry on main's tip at staging or in an unmerged change already carries — the latter named with
+its role and short SHA (`duplicatePlanFinding`) — and (b) a plan entry it newly retires over the
+change's merge-base
 whose Retired note cites a short SHA main's tip does not contain, or a double-quoted surviving
 title no `## Planned` or done (not retired) `## Done` heading carries by `finishedKey`
 (`retireEvidenceFinding`). Only newly added and newly retired entries count; evidence with

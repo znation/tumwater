@@ -1311,8 +1311,9 @@ test("stageCheckFindings names a duplicate of a plan main gained while the chang
   fs.writeFileSync(path.join(dir, "PLANS.md"), PLANS5("### S, part 2/3: x (planned 2026-11-05)", "_None yet._"));
   sh(dir, "git", "add", "PLANS.md");
   sh(dir, "git", "commit", "-m", "sibling plan");
-  // The run, still based on the old main, adds its own copy of the same part.
-  fs.writeFileSync(path.join(wt, "PLANS.md"), PLANS5("### S, part 2/3: y (planned 2026-11-04)", "_None yet._"));
+  // The run, still based on the old main, adds its own copy of the same title under a different
+  // stamp: the entry key matches main's new entry, so this is a duplicate, not pre-existing.
+  fs.writeFileSync(path.join(wt, "PLANS.md"), PLANS5("### S, part 2/3: x (planned 2026-11-04)", "_None yet._"));
   const findings = await stageCheckFindings(wt, "main", "plan");
   assert.ok(
     findings.some((f) => f.includes("drop the copy, or fold what it adds") && f.includes("S, part 2/3: x")),

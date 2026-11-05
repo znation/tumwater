@@ -68,21 +68,22 @@ export function finishedKey(title: string, dateRe: RegExp): string {
 }
 
 /** The staging finding for a `## Planned` entry the head (the edited PLANS.md) adds over the
- * base (main's PLANS.md at staging, so a plan a sibling merged during the run counts) that
- * duplicates one already planned — a base `## Planned`
- * entry sharing its entry key or series part label (the identities part 4/6 groups by), or an
- * entry an unmerged change adds (the pending snapshot, part 2/6). The 11-03 incident's clearest
- * pair — one run's sibling plan merging while it was still running — gets its fix-up turn here
- * (plans/duplicate-plans.md "Decision" 3): a duplicate is repairable by a later edit, so this is
- * a staging finding, never a merge-gate refusal. Only new entries count: a duplicate already on
- * main stays the plan role's to retire through its `<duplicate-plans>` block. Names the existing
- * entry, and the unmerged change's role and SHA when the existing one comes from a pending
- * change, and says to drop the copy or fold what it adds into the existing entry. At most one
- * finding: the first new duplicate in file order. */
+ * base (its text at the change's merge-base) that duplicates one already planned — a `##
+ * Planned` entry on `current` (main's PLANS.md at staging, so a plan a sibling merged during the
+ * run counts; defaults to the base) sharing its entry key or series part label (the identities
+ * part 4/6 groups by), or an entry an unmerged change adds (the pending snapshot, part 2/6). The
+ * 11-03 incident's clearest pair — one run's sibling plan merging while it was still running —
+ * gets its fix-up turn here (plans/duplicate-plans.md "Decision" 3): a duplicate is repairable
+ * by a later edit, so this is a staging finding, never a merge-gate refusal. Only entries new
+ * over the merge-base count: a duplicate already on main stays the plan role's to retire through
+ * its `<duplicate-plans>` block. Names the existing entry, and the unmerged change's role and SHA
+ * when the existing one comes from a pending change, and says to drop the copy or fold what it
+ * adds into the existing entry. At most one finding: the first new duplicate in file order. */
 export function duplicatePlanFinding(
   head: string,
   base: string,
   pending: readonly PendingPlanChange[],
+  current: string = base,
 ): string | undefined {
   interface Identity {
     key: string;
@@ -99,10 +100,9 @@ export function duplicatePlanFinding(
     const p = seriesPart(title);
     known.push({ key, part: p === null ? null : partKey(p.series, p.part), title, change });
   };
-  const baseEntries = parseEntryDetails(base, "Planned");
-  for (const e of baseEntries) consider(e.title);
+  for (const e of parseEntryDetails(current, "Planned")) consider(e.title);
   for (const change of pending) for (const e of change.added) consider(e.title, change);
-  const baseKeys = new Set(baseEntries.map((e) => entryKey(e.title)));
+  const baseKeys = new Set(parseEntryDetails(base, "Planned").map((e) => entryKey(e.title)));
   for (const e of parseEntryDetails(head, "Planned")) {
     if (baseKeys.has(entryKey(e.title))) continue; // Only new entries count.
     const p = seriesPart(e.title);
