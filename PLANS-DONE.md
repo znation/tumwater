@@ -168,7 +168,7 @@ only grows: search it with grep, or read one entry by its line range. Never read
 - test/config-validation.test.ts: the `remote` key cases.
 - Run those files and the gate.
 
-### No duplicate plans, part 4/6: Duplicate `## Planned` entries are found by reading the markdown alone, and the plan role retires the extra copy before planning anything new (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 3; requires No duplicate plans part 1/6 landed; touches src/backlog/backlog-structure.ts src/run/run-prompt.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts) — done 2026-11-04 by the feature role
+### No duplicate plans, part 4/6: Duplicate `## Planned` entries are found by reading the markdown alone, and the plan role retires the extra copy before planning anything new (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 3; requires No duplicate plans part 1/6 landed; touches src/backlog/backlog-structure.ts src/run/run-prompt.ts src/prompt/prompt.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts) — done 2026-11-04 by the feature role
 
 **Goal.** Duplicates that already reached main get cleaned up by the plan role, not left for the user to cancel or for feature to build twice. On 11-04, main's `## Planned` holds two copies each of "Every commit is verified on main" parts 4k/3, 4m/3 and 4n/3 and of "Subtract verify collapse" parts 2/5–5/5. feature-2 and feature-6 each claimed a different 4m/3. In the 11-03 incident, 2 of the 12 refused plans were exact copies of a still-planned entry.
 
@@ -186,7 +186,7 @@ only grows: search it with grep, or read one entry by its line range. Never read
 - docs/how-it-works.md: one sentence in "The backlog files".
 - The doctor's existing `duplicateHeadings` check covers `## ` sections only and stays as it is. A doctor row is not needed, because the plan role acts on this block every run.
 
-**Files touched.** src/backlog/backlog-structure.ts src/run/run-prompt.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts
+**Files touched.** src/backlog/backlog-structure.ts src/run/run-prompt.ts src/prompt/prompt.ts src/roles/role-catalog.ts docs/how-it-works.md test/backlog-structure.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts
 
 **Acceptance criteria.**
 - `duplicatePlannedEntries` groups:
