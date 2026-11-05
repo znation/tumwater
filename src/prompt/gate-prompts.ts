@@ -187,18 +187,16 @@ interface PriorReviewPrompt {
  * it makes the minimal fix in the worktree, leaves the edit, and ends with the verdict line plus a
  * `FIX:` line — so the instruction and the repair rule render only for that caller, and every other
  * (pre-merge) caller's prompt is byte-identical. */
-export function buildReviewPrompt(
-  diff: string,
-  summary?: string,
-  commitBody?: string,
-  principles?: string,
-  highFriction?: boolean,
-  baseRev?: string,
-  today?: string,
-  priorReview?: PriorReviewPrompt,
-  knownMainFailures?: string[],
-  postMerge?: boolean,
-): string {
+/** The review prompt's ordered opening: the identity line and date, the high-friction warning,
+ * and the author's summary, commit body and prior-review block when present. One array so the
+ * preamble's block order is read from one place, not scattered `parts.push` calls. */
+function reviewPreambleParts(
+  highFriction: boolean | undefined,
+  summary: string | undefined,
+  commitBody: string | undefined,
+  priorReview: PriorReviewPrompt | undefined,
+  today: string | undefined,
+): string[] {
   const parts = [
     `You are an adversarial code reviewer for tumwater, which runs a team of AI roles on this project. ${OLDER_NAMES_SENTENCE} A
 role's change is about to be merged to main; you decide whether it may merge. You have no context
@@ -233,11 +231,22 @@ between the rejected version and this revision (what the revision changed, main'
 excluded):\n<interdiff>\n${priorReview.interdiff}\n</interdiff>`,
     );
   }
-  parts.push(
+  return parts;
+}
+
+/** The review prompt's ordered evidence between the claims and the diff: the always-present
+ * no-suite note, main's known failures, the project's principles and the post-merge repair
+ * instruction. One array so "which evidence block lands where" reads from one place. */
+function reviewEvidenceParts(
+  knownMainFailures: string[] | undefined,
+  principles: string | undefined,
+  postMerge: boolean | undefined,
+): string[] {
+  const parts = [
     `Tumwater is running the project's own check on this tree; do not run the suite. Spend your run
 on what a green check cannot show: wrong behavior the tests never exercise, claims the diff does
 not back, work left half-done.`,
-  );
+  ];
   if (knownMainFailures && knownMainFailures.length > 0)
     parts.push(
       `Tumwater ran the project's own check on this tree and it failed, but only on tests main already
@@ -258,6 +267,16 @@ Fix only what the diff shows is wrong, nothing more. A finding you cannot repair
 recorded as numbered reasons, exactly as a pre-merge rejection is.`,
     );
   }
+  return parts;
+}
+
+/** The diff block and the base wording it needs: computes `diffBase`, `baseClause` and
+ * `truncationBase` exactly as before, and returns the full `<diff>` block alongside them so the
+ * run instructions can name the same base without recomputing it. */
+function reviewDiffBlock(
+  diff: string,
+  baseRev: string | undefined,
+): { block: string; baseClause: string; truncationBase: string } {
   // The base the diff is measured from, named in the prompt: main moves while a merge is approved,
   // and a reviewer that double-checks scope with `git diff main` reads a newer merge, reversed, as
   // part of the change (BUGS.md 2026-10-06). Sentence only when a base is given; the callers that
@@ -267,7 +286,18 @@ recorded as numbered reasons, exactly as a pre-merge rejection is.`,
     ? ` It is measured against ${shortSha(baseRev)}; other roles merge on main while you review, so compare against ${shortSha(baseRev)}, never against \`main\`, and treat the provided diff as authoritative for which files this change touches.`
     : "";
   const truncationBase = baseRev ? shortSha(baseRev) : "main";
-  parts.push(`The full diff this merge will land (${diffBase}):\n<diff>\n${diff}\n</diff>`);
+  const block = `The full diff this merge will land (${diffBase}):\n<diff>\n${diff}\n</diff>`;
+  return { block, baseClause, truncationBase };
+}
+
+/** The review prompt's closing: the worktree and no-re-run rules, the reading order and checks,
+ * the test-runner and kill-by-pid rules, and the verdict ending plus the post-merge `FIX:` line.
+ * Takes the base wording from reviewDiffBlock and the mode from the caller. */
+function reviewRunInstructions(
+  baseClause: string,
+  truncationBase: string,
+  postMerge: boolean | undefined,
+): string {
   // Right after the scratch-copy allowance it qualifies: a scratch copy stays fine for measuring
   // something, but a copy made to run the suite is the re-run this line forbids.
   const noRerunRule = `
@@ -289,8 +319,7 @@ recorded as numbered reasons, exactly as a pre-merge rejection is.`,
   add/commit/merge/rebase/reset, no writes in the worktree) — your only output channel is the
   verdict below. Reading files and git history is fine; a scratch copy under the system temp
   directory is fine when you need to run something.`;
-  parts.push(
-    `Review adversarially: hunt for correctness bugs, violations of the project's principles,
+  return `Review adversarially: hunt for correctness bugs, violations of the project's principles,
 unjustified complexity growth, and incomplete or half-done work. Work in this order:
    1. The diff above is current — read it there; do not fetch it again with \`git diff\`,
       \`git show\`, or \`git log -p\`.${baseClause} Only when it opens with a "[diff truncated: …]" note, fetch
@@ -340,8 +369,28 @@ ${TEST_RUNNER_RULE}
 - End your reply with exactly one line in this form:
   ${VERDICT_ENDING.replace(/\n/g, "\n  ")}${postMerge ? `
   plus, when you repaired a finding, one \`FIX:\` line naming the comma-separated files you edited:
-  FIX: <files you changed>` : ""}`,
-  );
+  FIX: <files you changed>` : ""}`;
+}
+
+export function buildReviewPrompt(
+  diff: string,
+  summary?: string,
+  commitBody?: string,
+  principles?: string,
+  highFriction?: boolean,
+  baseRev?: string,
+  today?: string,
+  priorReview?: PriorReviewPrompt,
+  knownMainFailures?: string[],
+  postMerge?: boolean,
+): string {
+  const parts = [
+    ...reviewPreambleParts(highFriction, summary, commitBody, priorReview, today),
+    ...reviewEvidenceParts(knownMainFailures, principles, postMerge),
+  ];
+  const diffBlock = reviewDiffBlock(diff, baseRev);
+  parts.push(diffBlock.block);
+  parts.push(reviewRunInstructions(diffBlock.baseClause, diffBlock.truncationBase, postMerge));
   return parts.join("\n\n");
 }
 
