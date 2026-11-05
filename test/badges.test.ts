@@ -5,7 +5,7 @@
  * travels with the per-role display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, chainBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, pauseBadge, pauseCountdown, permitsBadge, checksBadge, runWindowBadge, workspacesBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
+import { budgetBadge, chainBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, pauseBadge, pauseCountdown, permitsBadge, checksBadge, runWindowBadge, workspacesBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
 import type { SubscriptionWindowBlock } from "../src/agent/subscription-account.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
@@ -204,6 +204,36 @@ test("ciParityTone is the one state-to-tone map", () => {
   assert.equal(ciParityTone({ state: "failed", covered: sha, lastRunAt: 0 }), "red");
   assert.equal(ciParityTone({ state: "stale", covered: sha, lastRunAt: 0 }), "blue");
   assert.equal(ciParityTone(undefined), undefined);
+});
+
+test("remoteCiBadge phrases each state and omits none", () => {
+  const sha = "3e450b0c4d9e8f7a6b"; // the badge names the first seven chars
+  // A same-instant age renders `0s ago`; fixed pairs keep the phrase stable across clocks.
+  assert.equal(remoteCiBadge(undefined, 0), "", "no record: no badge");
+  assert.equal(
+    remoteCiBadge({ result: "passed", sha, checkedAt: 0 }, 0),
+    " · github: passed at 3e450b0 0s ago",
+  );
+  assert.equal(
+    remoteCiBadge({ result: "failed", sha, checkedAt: 0 }, 0),
+    " · github: failed at 3e450b0 0s ago",
+  );
+  assert.equal(
+    remoteCiBadge({ result: "pending", sha, checkedAt: 0 }, 0),
+    " · github: running at 3e450b0 0s ago",
+  );
+  assert.equal(
+    remoteCiBadge({ result: "unavailable", checkedAt: 0 }, 0),
+    "", "an unavailable record: no badge",
+  );
+});
+
+test("remoteCiTone is the one result-to-tone map", () => {
+  assert.equal(remoteCiTone({ result: "passed", sha: "a", checkedAt: 0 }), "green");
+  assert.equal(remoteCiTone({ result: "failed", sha: "a", checkedAt: 0 }), "red");
+  assert.equal(remoteCiTone({ result: "pending", sha: "a", checkedAt: 0 }), "blue");
+  assert.equal(remoteCiTone({ result: "unavailable", checkedAt: 0 }), undefined, "unavailable: no tone, like no record");
+  assert.equal(remoteCiTone(undefined), undefined);
 });
 
 test("permitsBadge shows the team line slots and stays byte-identical without a pool", () => {

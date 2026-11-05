@@ -312,6 +312,35 @@ export function ciParityTone(parity: StatusSnapshot["ciParity"]): "green" | "red
   return "blue";
 }
 
+/** The remote-CI badge — the status header's glance surface for the hosted CI's verdict on
+ * what was pushed (plans/remote-ci.md "Surfaces"), riding right beside the ci parity badge:
+ * the answer to "is GitHub's CI green on the pushed main?" without opening doctor. `passed`,
+ * `failed` and `pending` name the pushed sha (seven chars, the block's own convention) and the
+ * record's age; `pending` is the in-flight state, not a failure. Empty without a record (a
+ * repo whose ci role has never recorded one) or for an `unavailable` record (no GitHub
+ * remote, `gh` missing — the doctor `remote CI` row is that state's surface), so a header
+ * without a remote verdict stays byte-identical. humanAgo gives the shared past-direction
+ * phrase the parity badge uses. */
+export function remoteCiBadge(remote: StatusSnapshot["remoteCi"], now: number): string {
+  if (!remote || remote.result === "unavailable") return "";
+  const sha = (remote.sha ?? "").slice(0, 7);
+  const age = humanAgo(remote.checkedAt, now);
+  if (remote.result === "passed") return ` · github: passed at ${sha} ${age}`;
+  if (remote.result === "failed") return ` · github: failed at ${sha} ${age}`;
+  return ` · github: running at ${sha} ${age}`;
+}
+
+/** The one result→tone map for the remote-CI badge, shared by the CLI/TUI header and the
+ * browser sidebar row so a `passed` badge is green, `failed` red, `pending` (in flight)
+ * blue, and an absent or `unavailable` one renders with no tone (and, per the badge, no
+ * text at all — the row simply does not render). */
+export function remoteCiTone(remote: StatusSnapshot["remoteCi"]): "green" | "red" | "blue" | undefined {
+  if (!remote || remote.result === "unavailable") return undefined;
+  if (remote.result === "passed") return "green";
+  if (remote.result === "failed") return "red";
+  return "blue";
+}
+
 /** The header's `run --for` window fragment: ` · stops in <duration>` while the deadline is
  * ahead, ` · stopping` once it has passed (the drain), empty for an unwindowed team. */
 export function runWindowBadge(stopsAt: number | undefined, now: number): string {

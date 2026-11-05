@@ -1329,3 +1329,53 @@ test("the doctor-band control disappears when the feed empties", () => {
   assert.equal(box.querySelector("[data-key='doctor-band']"), null, "the control leaves an empty feed");
   assert.equal(box.children.length, 0);
 });
+
+// The remote-CI row (plans/remote-ci.md "Surfaces"): the dashboard's team panel carries the
+// hosted CI's verdict on the pushed main beside the ci parity row — the payload's
+// preformatted remoteCiBadge/remoteCiTone, upcased for the row's label style, toned by the
+// shared remoteCiTone map — so the panel cannot drift from the TUI/status header. Without a
+// record or for an `unavailable` one the badge is empty and the panel stays byte-identical.
+test("the team panel carries the remote-CI row after the ci parity row, absent without a record", () => {
+  const panels: Record<string, string> = {};
+  const { renderSidebar } = clientScope<{ renderSidebar: (d: unknown) => void }>(
+    ["restart-button", "sidebar"],
+    ["renderSidebar"],
+    {
+      offline: false,
+      $: () => ({ textContent: "" }),
+      plural: (n: number, word: string) => `${n} ${n === 1 ? word : word + "s"}`,
+      capitalize: (s: string) => s.charAt(0).toUpperCase() + s.slice(1),
+      icon: iconStub,
+      shortSha: (s: string) => String(s).slice(0, 8),
+      localizeInstants: (s: string) => s,
+      fmtAgo: () => "1m ago",
+      mergeTitle: () => "",
+      paintPanel: (id: string, html: string) => { panels[id] = html; },
+      renderBudgetBadge: () => {},
+      renderPauseBadge: () => {},
+      renderStopControl: () => {},
+    },
+  );
+  const d = {
+    running: true,
+    pid: 1,
+    ciParityBadge: " · ci: covered abcdef0 1m ago",
+    ciParityTone: "blue",
+    remoteCiBadge: " · github: failed at 3e450b0 1m ago",
+    remoteCiTone: "red",
+  };
+  renderSidebar(d);
+  const html = panels.statuschips!;
+  // badgeLabel upcases only the first char: "Ci: …" and "Github: …" — not "CI:"/"GitHub:".
+  assert.match(html, /Github: failed at 3e450b0 1m ago/, "the row carries the badge's wording, upcased");
+  assert.match(html, /t-red/, "the row is toned by the shared result-to-tone map");
+  assert.ok(html.indexOf("Github: failed at 3e450b0") > html.indexOf("Ci: covered abcdef0"), "the row rides after the ci parity row");
+
+  // No record: no remote-CI row — the panel is byte-identical to before the badge existed.
+  const bare: Record<string, unknown> = { ...d };
+  delete bare.remoteCiBadge;
+  delete bare.remoteCiTone;
+  renderSidebar(bare);
+  assert.doesNotMatch(panels.statuschips!, /Github:/, "no record: no remote-CI row");
+  assert.match(panels.statuschips!, /Ci: covered abcdef0 1m ago/, "the ci parity row is untouched");
+});

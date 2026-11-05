@@ -7,7 +7,7 @@ import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, contextShareLabel, usd } from "../text/format.js";
 import { DAY_MS, formatTime, humanAgo, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
-import { bootstrapBadge, buildBadge, budgetBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, ciParityBadge, ciParityTone, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, roleRowCells, onErrorStreak, sortRolesByState } from "./status-model.js";
 import { runProgress } from "./run-progress-model.js";
 import { eventTypeLabel } from "../events/event-labels.js";
@@ -310,6 +310,13 @@ function statusHeaderLine(root: string, snap: StatusSnapshot, now: number): Stat
     // this tip with this lock, `stale`/`failed` otherwise. Empty without a parity record,
     // so a quiet team's header stays byte-identical. ciParityTone is the one state→tone map.
     ...badgeSpans(ciParityBadge(snap.ciParity, now), ciParityTone(snap.ciParity)),
+    // The remote-CI badge (the hosted CI's verdict on what was pushed, plans/remote-ci.md
+    // "Surfaces") rides immediately after the ci parity badge: `· github: passed|failed|
+    // running at <sha7> <age> ago` from the remote-CI ledger the ci role records on its
+    // `REMOTE:` line. Empty without a record or for an `unavailable` one, so a header
+    // without a remote verdict stays byte-identical. remoteCiTone is the one
+    // result→tone map.
+    ...badgeSpans(remoteCiBadge(snap.remoteCi, now), remoteCiTone(snap.remoteCi)),
     ...badgeSpans(pauseBadge(snap.pausedUntil, now, snap.pauseReason), "yellow"),
     ...badgeSpans(wakeBadge(snap.scheduledWake, now), "blue"),
     // Quiet hours 2/2 rides the header last: the window as standing information whenever it

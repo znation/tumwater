@@ -283,16 +283,20 @@ never has to wait a parked check out.
   only when the base branch's remote is on GitHub and the repo has a `.github/workflows` file, and
   `roles.ci.remote` is not false): its prompt ends with a Remote CI block naming the repo, the
   branch and the `gh run list` command, its reply carries a `REMOTE:` line just before the `CI:`
-  line, and the harness records the verdict in the remote-CI ledger (`.tumwater/state/remote-ci.json`).
-  When a recorded verdict turns `failed` for a commit not already recorded failed, the harness
-  logs a `remote_ci_failed` event that pages the operator (one page per commit), and
-  `tumwater doctor`'s `remote CI` row — beside the `ci parity` row in the Health card and TUI
-  Health tab — answers "is GitHub CI green on what I pushed?" from the same ledger: ok while the
-  record is fresh and green or still running, a warn on a `failed` record and when no check has
-  been recorded for over three days (the one `remoteCiStalled` predicate), and ok information
-  when the ci role could not read GitHub Actions at all (`unavailable`). The row is omitted
-  where there is no hosted-CI target (no GitHub remote, no workflow file, or
-  `roles.ci.remote: false`).
+  line, and the harness records the verdict in the remote-CI ledger (`.tumwater/state/remote-ci.json`):
+  the main-check line on `tumwater status`, the TUI header and the dashboard's team panel carry a
+  `github: passed|failed|running at <sha7> <age> ago` badge beside the ci parity badge (its tone
+  follows the verdict) so a red push shows at a glance without opening doctor — the badge is empty
+  without a record and for an `unavailable` one (no GitHub remote or `gh`), where the doctor
+  `remote CI` row is the surface that names the state. When a recorded verdict turns `failed` for
+  a commit not already recorded failed, the harness logs a `remote_ci_failed` event that pages the
+  operator (one page per commit), and `tumwater doctor`'s `remote CI` row — beside the `ci parity`
+  row in the Health card and TUI Health tab — answers "is GitHub CI green on what I pushed?" from
+  the same ledger: ok while the record is fresh and green or still running, a warn on a `failed`
+  record and when no check has been recorded for over three days (the one `remoteCiStalled`
+  predicate), and ok information when the ci role could not read GitHub Actions at all
+  (`unavailable`). The row is omitted where there is no hosted-CI target (no GitHub remote, no
+  workflow file, or `roles.ci.remote: false`).
   The `qa` observer keeps its own flow-coverage
   ledger the same way, and a coverage ledger whose newest exercise is over three days old raises the
   doctor `qa coverage` warn through the one `qaCoverageStalled`

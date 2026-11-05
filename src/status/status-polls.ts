@@ -12,7 +12,7 @@ import { readSlotsState } from "../git/slots-state.js";
 import { detectBuildCheck, type BuildCheck } from "../build/build-check-detect.js";
 import { freshRunnerState, type RunnerState } from "../runner/runner-state.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
-import { eventsLogPath, slotsStatePath, statePath } from "../paths.js";
+import { eventsLogPath, remoteCiPath, slotsStatePath, statePath } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import {
   countMaintenanceWindow,
@@ -21,6 +21,7 @@ import {
 } from "../gates/maintenance-quota-gates.js";
 import { commitTier } from "../roles/roles.js";
 import { currentCiParityState, parityIsCurrent, readCiParity } from "../observer/ci-parity.js";
+import { readRemoteCi, type RemoteCiEntry } from "../observer/remote-ci.js";
 
 /** The per-poll cached readers behind status/status-data.ts's snapshot(): one poll's view of the
  * three inputs that cost real reads — main's newest merge-scope build check (a stat-cached
@@ -326,6 +327,49 @@ export function ciParityForPoll(root: string, cfg: TumwaterConfig): CiParityStat
   const { tip, lockHash } = currentCiParityState(root, cfg);
   const state = entry.result === "failed" ? "failed" : parityIsCurrent(entry, tip, lockHash) ? "current" : "stale";
   return { state, covered: entry.tip, lastRunAt: entry.lastRunAt };
+}
+
+/** The remoteCi field's shape (StatusSnapshot's contract): the remote-CI ledger's glance
+ * verdict beside the ci parity badge — the answer to "is GitHub's CI green on what was
+ * pushed?" without opening doctor. `result` is what the ci role last reported on its `REMOTE:`
+ * line, `sha` the pushed commit the verdict names (absent for `unavailable`), `checkedAt`
+ * when the record was written. Absent — the field is optional — when no record exists (a repo
+ * whose ci role has never recorded a remote verdict), so the surfaces render exactly as before
+ * the badge existed. */
+export interface RemoteCiStatus {
+  result: RemoteCiEntry["result"];
+  sha?: string;
+  checkedAt: number;
+}
+
+// Stat-keyed cache (stat-cache.cachedByStat) for the remote-CI ledger, keyed by the ledger
+// path: the status snapshot's remoteCiForPoll polls it every second while the ledger changes
+// only when a ci run records a remote verdict, so an unchanged file costs one stat per poll
+// instead of a re-read plus JSON.parse — the same stat-keyed contract the parity ledger's
+// reader in observer/ci-parity.ts uses. recordRemoteCi's write is atomic (tmp + rename), so
+// any write invalidates via dev/ino/mtime/size. Bounded inside cachedByStat so many
+// short-lived roots in tests cannot grow it unbounded; a null (no data) result is not cached,
+// so a torn ledger is re-parsed next poll but a valid record (the steady state) costs one
+// stat per poll. readRemoteCi itself stays uncached — it also serves the ci prompt's block
+// and the run-dismiss recording paths, which must see the pre-write record in the same
+// process.
+const remoteCiLedgerCache = new Map<string, StatKeyedValue<RemoteCiEntry | null>>();
+
+/** The remote-CI ledger's glance verdict for one status poll, or undefined when there is no
+ * record yet. A pure read — no git, no `gh`, no write: the ledger only (readRemoteCi through
+ * the stat-keyed cache above), so a per-second poll costs one stat while the ledger is
+ * unchanged and re-reads it once after a write. A missing or malformed ledger reads as
+ * undefined — no badge, never a throw — the same omission policy as ciParityForPoll. */
+export function remoteCiForPoll(root: string): RemoteCiStatus | undefined {
+  const file = remoteCiPath(root);
+  const entry = cachedByStat(
+    remoteCiLedgerCache,
+    file,
+    file,
+    () => readRemoteCi(root),
+    (e) => (e === null ? null : { ...e }), // A copy: callers may treat the result as their own.
+  );
+  return entry ? { result: entry.result, ...(entry.sha ? { sha: entry.sha } : {}), checkedAt: entry.checkedAt } : undefined;
 }
 
 /** The 4/5 cross-check against the queue: the marker as observers may display it, or

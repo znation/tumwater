@@ -5,6 +5,33 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Remote CI, part 3/3: The status line, TUI header and dashboard show GitHub's verdict on the pushed main beside the ci parity badge (planned 2026-11-04 by the operator at the user's direction; design in plans/remote-ci.md "Shape"; requires Remote CI part 1/3 landed; independent of part 2/3; the badges.ts, status-payload.ts, status-render.ts and gui-client-team.ts edits sit beside the ci parity badge and Hourly full check part 4/4's main-check age edits, and the status-polls.ts and status-data.ts edits are one field beside Subtract part 3f/7's removals, so whichever merges second rebases; touches src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/badges.test.ts test/status-payload.test.ts test/status-render.test.ts test/gui-client-team.test.ts) — done 2026-11-04 by the feature role
+
+**Goal.** The ci parity badge says whether the local full suite covered main's tip. Nothing at a glance says whether GitHub CI is green on what was pushed. Add a second badge from part 1/3's ledger, so a red push shows on `tumwater status`, the TUI header and the dashboard team panel without opening doctor.
+
+**Approach.**
+- src/status/status-polls.ts: `remoteCiForPoll(root)` returns `{ result, sha?, checkedAt }` from `readRemoteCi`, or undefined when there is no record. It reads only the ledger (no git, no `gh`) and uses the stat-keyed cache the parity reader uses (`cachedByStat`), so a per-second poll costs one stat.
+- src/status/status-data.ts: the snapshot gains `remoteCi?` beside `ciParity`, filled by `remoteCiForPoll`.
+- src/ui/badges.ts:
+  - `remoteCiBadge(remote, now)` returns ` · github: passed at <sha7> <age>`, ` · github: failed at <sha7> <age>` or ` · github: running at <sha7> <age>`. It returns `""` for an `unavailable` record or no record, so a header without a GitHub remote stays byte-identical.
+  - `remoteCiTone(remote)` maps passed to green, failed to red and pending to blue.
+- src/ui/status-payload.ts carries `remoteCiBadge` and `remoteCiTone` preformatted, the way `ciParityBadge` and `ciParityTone` are carried. src/ui/status-render.ts renders the badge right after the ci parity badge. src/ui/gui/gui-client-team.ts adds a row after the ci parity row, the same way.
+- docs/how-it-works.md names the badge in the ci paragraph.
+
+**Files touched.** src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/badges.test.ts test/status-payload.test.ts test/status-render.test.ts test/gui-client-team.test.ts
+
+**Acceptance criteria.**
+- With a `failed` record at sha A, `tumwater status` shows ` · github: failed at <A7> <age>` in red right after the ci parity badge. The TUI header and the dashboard team panel show the same text and tone.
+- With no record or an `unavailable` record, the status header, the payload's badge field and the dashboard panel are byte-identical to today's.
+- `remoteCiForPoll` reads the ledger once while it is unchanged (one stat per poll) and re-reads it after a write.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/badges.test.ts: each state, plus the empty cases.
+- test/status-polls.test.ts: the cache.
+- test/status-payload.test.ts, test/status-render.test.ts and test/gui-client-team.test.ts: the badge rides after the ci parity badge with its tone, and is absent without a record.
+- Run those files and the gate.
+
 ### Remote CI, part 2/3: A hosted-CI failure pages the operator once per commit, and `tumwater doctor` gains a `remote CI` row (planned 2026-11-04 by the operator at the user's direction; design in plans/remote-ci.md "Shape"; requires Remote CI part 1/3 landed; the event-notify.ts edit is one list entry beside the ones Every commit is verified on main part 4k/3 and Subtract part 3f/7 remove, so whichever merges second rebases; touches src/observer/remote-ci.ts src/run/run-dismiss.ts src/events/events.ts src/events/event-notify.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/doctor/doctor-project-checks.ts src/doctor/doctor.ts docs/config.md docs/how-it-works.md docs/invariants.md test/remote-ci.test.ts test/run-dismiss.test.ts test/event-format.test.ts test/event-labels.test.ts test/event-notify.test.ts test/doctor-checks.test.ts) — done 2026-11-04 by the feature role
 
 **Goal.** Part 1/3 records GitHub's verdict, but only the next ci prompt reads it. An operator should hear when a pushed main goes red on GitHub, and `tumwater doctor` should answer "is GitHub CI green on what I pushed?" next to the `ci parity` row.

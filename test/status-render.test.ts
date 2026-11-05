@@ -63,6 +63,29 @@ test("totals row shows zeros without breaking alignment", () => {
 // name plus one footnote line under the table — and a team without any of them renders the
 // exact same table as before the marker existed.
 
+// The remote-CI badge (plans/remote-ci.md "Surfaces") rides the header immediately after the
+// ci parity badge — the hosted CI's verdict on the pushed main beside the full-suite verdict —
+// and is absent without a record or for an `unavailable` one, keeping the header
+// byte-identical.
+test("the status header carries the remote-CI badge right after the ci parity badge", () => {
+  const none = headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
+  assert.doesNotMatch(none, /· github /, "no remote-CI record: no badge");
+
+  const snap = snapshotWith([{ role: "clean" }]);
+  snap.ciParity = { state: "stale", covered: "abcdef0", lastRunAt: Date.now() };
+  snap.remoteCi = { result: "failed", sha: "3e450b0c4d9e8f7a6b", checkedAt: Date.now() };
+  const failed = headerOf(renderStatus(tmpdir(), snap));
+  assert.match(failed, /· ci: stale — covered abcdef0 .*· github: failed at 3e450b0 /, "the github badge rides right after the ci badge");
+
+  const running = snapshotWith([{ role: "clean" }]);
+  running.remoteCi = { result: "pending", sha: "3e450b0c4d9e8f7a6b", checkedAt: Date.now() };
+  assert.match(headerOf(renderStatus(tmpdir(), running)), /· github: running at 3e450b0 /);
+
+  const unavailable = snapshotWith([{ role: "clean" }]);
+  unavailable.remoteCi = { result: "unavailable", checkedAt: Date.now() };
+  assert.doesNotMatch(headerOf(renderStatus(tmpdir(), unavailable)), /· github /, "an unavailable record: no badge");
+});
+
 test("status table marks custom roles with an asterisk and a footnote", () => {
   const snap = snapshotWith([{ role: "clean" }, { role: "nightly", custom: true }]);
   const text = renderStatus(tmpdir(), snap);

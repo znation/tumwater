@@ -5,8 +5,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { ciParityForPoll, configForStatus, liveMergeMarker, mainCheckForPoll } from "../src/status/status-polls.js";
+import { ciParityForPoll, configForStatus, liveMergeMarker, mainCheckForPoll, remoteCiForPoll } from "../src/status/status-polls.js";
 import { recordParity } from "../src/observer/ci-parity.js";
+import { recordRemoteCi } from "../src/observer/remote-ci.js";
 import { commitIn, makeRepo, mainSha } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import type { MergeChange, MergeInFlight } from "../src/merge/merge-slot.js";
@@ -70,6 +71,36 @@ test("ciParityForPoll reads current, stale, failed and none", () => {
   // A failed last run is failed regardless of the tip.
   recordParity(root, mainSha(root), "failed", 2_000);
   assert.deepEqual(ciParityForPoll(root, cfg), { state: "failed", covered: mainSha(root), lastRunAt: 2_000 });
+});
+
+test("remoteCiForPoll reads each result, reads none without a record, and serves an unchanged ledger from the stat cache", () => {
+  const root = makeRepo();
+  assert.equal(remoteCiForPoll(root), undefined, "no record: no badge data");
+
+  // Each result shape reads through, sha riding only the results that name one.
+  recordRemoteCi(root, "znation/tumwater", "passed", 1_000, "3e450b0c4d9e8f7a6b");
+  assert.deepEqual(remoteCiForPoll(root), { result: "passed", sha: "3e450b0c4d9e8f7a6b", checkedAt: 1_000 });
+  recordRemoteCi(root, "znation/tumwater", "failed", 2_000, "3e450b0c4d9e8f7a6b");
+  assert.deepEqual(remoteCiForPoll(root), { result: "failed", sha: "3e450b0c4d9e8f7a6b", checkedAt: 2_000 });
+  recordRemoteCi(root, "znation/tumwater", "pending", 3_000, "3e450b0c4d9e8f7a6b");
+  assert.deepEqual(remoteCiForPoll(root), { result: "pending", sha: "3e450b0c4d9e8f7a6b", checkedAt: 3_000 });
+  recordRemoteCi(root, "znation/tumwater", "unavailable", 4_000, undefined, "gh: logged out");
+  assert.deepEqual(remoteCiForPoll(root), { result: "unavailable", checkedAt: 4_000 }, "unavailable carries no sha");
+
+  // The stat-keyed cache (the acceptance criterion: one stat per poll while unchanged, a
+  // re-read after a write). Observable two halves: while the ledger's file is untouched the
+  // poll keeps serving the same record, and a write invalidates the identity so the next poll
+  // re-reads the new record.
+  recordRemoteCi(root, "znation/tumwater", "passed", 5_000, "aabbccddeeff00112233");
+  const first = remoteCiForPoll(root);
+  const again = remoteCiForPoll(root);
+  assert.deepEqual(again, first, "an unchanged ledger serves the cached record");
+  // The write changes the file's size (a longer checkedAt), so the invalidation is
+  // deterministic regardless of the filesystem's mtime granularity.
+  recordRemoteCi(root, "znation/tumwater", "failed", 6_000_000, "aabbccddeeff00112233");
+  const afterWrite = remoteCiForPoll(root);
+  assert.notDeepEqual(afterWrite, first, "a write invalidates the cache and the next poll re-reads");
+  assert.equal(afterWrite?.result, "failed");
 });
 
 test("mainCheckForPoll carries red detail from the main_culprit verdict matching the checked tip", () => {

@@ -20,7 +20,7 @@ import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { requestWake } from "../src/operator/operator-intent.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
-import { orchestratorStatePath, pausedPath, piLogPath, postReviewPath, roleNotesPath } from "../src/paths.js";
+import { orchestratorStatePath, pausedPath, piLogPath, postReviewPath, remoteCiPath, roleNotesPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
@@ -642,6 +642,32 @@ test("status payload ships the disk block and its preformatted badge", async () 
     lastReclaim: { at, mode: "pressure", freedGB: 3.24 },
   });
   assert.equal(payload.diskBadge, " · disk 8.2 GB free — holding new work");
+});
+
+// The remote-CI ledger's glance surface (plans/remote-ci.md "Surfaces"): the payload ships
+// the raw record for `status --json` and the preformatted badge/tone the dashboard and the
+// TUI/status header render — the same string the header builds — so both surfaces say the
+// same thing. Without a record, or for an `unavailable` one, the badge field is empty and the
+// panel renders exactly as before.
+test("status payload ships the remote-CI badge beside the ci parity badge, absent without a record", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "remote ci payload test");
+  const now = Date.now();
+  let payload = statusPayload(repo, now) as { remoteCiBadge: string; remoteCiTone?: string };
+  assert.equal(payload.remoteCiBadge, "", "no record: empty badge");
+  assert.equal(payload.remoteCiTone, undefined, "no record: no tone");
+
+  const sha = "3e450b0c4d9e8f7a6b";
+  writeJsonFile(remoteCiPath(repo), { record: { repo: "znation/tumwater", sha, result: "failed", checkedAt: now - 60_000 } });
+  payload = statusPayload(repo, now) as typeof payload;
+  assert.equal(payload.remoteCiBadge, " · github: failed at 3e450b0 1m ago");
+  assert.equal(payload.remoteCiTone, "red");
+
+  // An unavailable record renders no badge — the panel stays byte-identical.
+  writeJsonFile(remoteCiPath(repo), { record: { repo: "znation/tumwater", result: "unavailable", reason: "gh: logged out", checkedAt: now - 60_000 } });
+  payload = statusPayload(repo, now) as typeof payload;
+  assert.equal(payload.remoteCiBadge, "", "unavailable: empty badge");
+  assert.equal(payload.remoteCiTone, undefined, "unavailable: no tone, like no record");
 });
 
 // The pinned clock reaches the alerts too: teamAlerts' pause countdown must read the

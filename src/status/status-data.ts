@@ -12,9 +12,11 @@ import {
   mainCheckForPoll,
   maintenanceQuotaForPoll,
   ciParityForPoll,
+  remoteCiForPoll,
   buildCheckForPoll,
   slotsForPoll,
   type CiParityStatus,
+  type RemoteCiStatus,
   type MainCheckStatus,
 } from "./status-polls.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
@@ -364,6 +366,15 @@ export interface StatusSnapshot {
    * repo the ci role has never run), so the surfaces render exactly as before the badge
    * existed. */
   ciParity?: CiParityStatus;
+  /** The ci observer's remote-CI ledger's glance verdict (src/observer/remote-ci.ts, read
+   * through status-polls.ts's remoteCiForPoll): the verdict GitHub's CI last reported on the
+   * newest pushed commit of the base branch, recorded by the ci role on its `REMOTE:` line —
+   * the badge's answer to "is hosted CI green on what was pushed?". Absent when no remote-CI
+   * record exists (a repo whose ci role has never recorded one). An `unavailable` record is
+   * carried but renders no badge (badges.ts's remoteCiBadge returns "" for it) — the
+   * surfaces stay byte-identical and the doctor `remote CI` row is the exact surface for
+   * that state. */
+  remoteCi?: RemoteCiStatus;
   /** True when no deterministic build check is declared — `detectBuildCheck(root, config)`
    * returned null (no `check.command` and no qualifying npm `package.json` on the walked-up
    * root) — the doctor `check` row's warning state (src/doctor/doctor-project-checks.ts's
@@ -563,6 +574,7 @@ function snapshotHealthFields(
     mergeQueue,
     mainCheck: mainCheckForPoll(root, cfg),
     ciParity: ciParityForPoll(root, cfg),
+    remoteCi: remoteCiForPoll(root),
     noDeclaredCheck: buildCheckForPoll(root, cfg) === null ? true : undefined,
     noBrief: brief.missing ? true : undefined,
     briefTruncated: brief.overCap ? true : undefined,

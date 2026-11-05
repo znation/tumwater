@@ -6,33 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Remote CI, part 3/3: The status line, TUI header and dashboard show GitHub's verdict on the pushed main beside the ci parity badge (planned 2026-11-04 by the operator at the user's direction; design in plans/remote-ci.md "Shape"; requires Remote CI part 1/3 landed; independent of part 2/3; the badges.ts, status-payload.ts, status-render.ts and gui-client-team.ts edits sit beside the ci parity badge and Hourly full check part 4/4's main-check age edits, and the status-polls.ts and status-data.ts edits are one field beside Subtract part 3f/7's removals, so whichever merges second rebases; touches src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/badges.test.ts test/status-payload.test.ts test/status-render.test.ts test/gui-client-team.test.ts)
-
-**Goal.** The ci parity badge says whether the local full suite covered main's tip. Nothing at a glance says whether GitHub CI is green on what was pushed. Add a second badge from part 1/3's ledger, so a red push shows on `tumwater status`, the TUI header and the dashboard team panel without opening doctor.
-
-**Approach.**
-- src/status/status-polls.ts: `remoteCiForPoll(root)` returns `{ result, sha?, checkedAt }` from `readRemoteCi`, or undefined when there is no record. It reads only the ledger (no git, no `gh`) and uses the stat-keyed cache the parity reader uses (`cachedByStat`), so a per-second poll costs one stat.
-- src/status/status-data.ts: the snapshot gains `remoteCi?` beside `ciParity`, filled by `remoteCiForPoll`.
-- src/ui/badges.ts:
-  - `remoteCiBadge(remote, now)` returns ` · github: passed at <sha7> <age>`, ` · github: failed at <sha7> <age>` or ` · github: running at <sha7> <age>`. It returns `""` for an `unavailable` record or no record, so a header without a GitHub remote stays byte-identical.
-  - `remoteCiTone(remote)` maps passed to green, failed to red and pending to blue.
-- src/ui/status-payload.ts carries `remoteCiBadge` and `remoteCiTone` preformatted, the way `ciParityBadge` and `ciParityTone` are carried. src/ui/status-render.ts renders the badge right after the ci parity badge. src/ui/gui/gui-client-team.ts adds a row after the ci parity row, the same way.
-- docs/how-it-works.md names the badge in the ci paragraph.
-
-**Files touched.** src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/badges.test.ts test/status-payload.test.ts test/status-render.test.ts test/gui-client-team.test.ts
-
-**Acceptance criteria.**
-- With a `failed` record at sha A, `tumwater status` shows ` · github: failed at <A7> <age>` in red right after the ci parity badge. The TUI header and the dashboard team panel show the same text and tone.
-- With no record or an `unavailable` record, the status header, the payload's badge field and the dashboard panel are byte-identical to today's.
-- `remoteCiForPoll` reads the ledger once while it is unchanged (one stat per poll) and re-reads it after a write.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/badges.test.ts: each state, plus the empty cases.
-- test/status-polls.test.ts: the cache.
-- test/status-payload.test.ts, test/status-render.test.ts and test/gui-client-team.test.ts: the badge rides after the ci parity badge with its tone, and is absent without a record.
-- Run those files and the gate.
-
 ### No duplicate plans, part 5/6: Staging gives the author one fix-up turn when its change adds a duplicate `## Planned` entry or retires a plan on evidence that does not check out (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 3 and 4; requires No duplicate plans part 2/6 and No duplicate plans part 4/6 landed; touches src/stage/stage-backlog-checks.ts src/stage/stage-check.ts src/runner/runner-outcome.ts test/stage-check.test.ts)
 
 **Goal.** Catch a duplicate before it commits, not after it merges. In the 11-03 incident's clearest pair, run 700's sibling plan merged while run 700 was still running. A staging check reading main at staging time, together with part 2/6's snapshot, would have named it. Also check the evidence a retire cites, so a retire that rests on a SHA main lacks, or on a "survivor" that does not exist, never lands.

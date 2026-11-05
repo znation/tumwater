@@ -11,7 +11,7 @@ import { contextShareLabel } from "../text/format.js";
 import { queueEntryMergeLabel } from "../merge/merge-queue-render.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
-import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, permitsBadge, checksBadge, quietBadge, restartHoldText, runWindowBadge, workspacesBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, permitsBadge, checksBadge, quietBadge, restartHoldText, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { teamAlerts } from "./team-alerts.js";
@@ -210,7 +210,8 @@ function headerFields(root: string, snap: ReturnType<typeof snapshot>, now: numb
 
 /** Merge-queue and main-check state (status-payload.ts's field-group split): the merge queue
  * and its labels, the post-merge review queue, main's newest merge-scope check and its badge,
- * the ci-parity badge/tone, and the raw twins of the no-check/no-brief/brief-truncated/
+ * the ci-parity badge/tone, the remote-CI badge/tone, and the raw twins of the
+ * no-check/no-brief/brief-truncated/
  * role-notes/principles alerts for `status --json` scripts. */
 function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, now: number) {
   return {
@@ -242,6 +243,12 @@ function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, no
     // re-derive (or drift from) it. Empty string/no tone without a parity record, so the
     // panel renders exactly as before.
     ciParityBadge: ciParityBadge(snap.ciParity, now),
+    // The remote-CI badge and its tone, preformatted through badges.ts's remoteCiBadge/
+    // remoteCiTone — the same string and result→tone the TUI/status header renders — so the
+    // page's sidebar row carries the hosted CI's glance verdict verbatim and cannot
+    // re-derive (or drift from) it. Empty string/no tone without a record or for an
+    // `unavailable` one, so the panel renders exactly as before.
+    remoteCiBadge: remoteCiBadge(snap.remoteCi, now),
     // The raw machine-readable twin of the amber `no-check` alert (present only when no
     // deterministic check is declared, so `tumwater status --json` scripts can read the same
     // state before the dashboard/TUI render it as an alert). Omitted (absent) when a check is
@@ -269,6 +276,7 @@ function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, no
     // or missing, the same omit-undefined idiom as noDeclaredCheck.
     ...(snap.principlesTruncated ? { principlesTruncated: true } : {}),
     ciParityTone: ciParityTone(snap.ciParity),
+    remoteCiTone: remoteCiTone(snap.remoteCi),
     // The check's counts fragment, preformatted through badges.ts's mainCountsFragment so
     // the page renders the pass/skip/fail breakdown verbatim and cannot re-derive (and
     // drift from) it — the sidebar's "Main green · …" row reads this field, not the raw

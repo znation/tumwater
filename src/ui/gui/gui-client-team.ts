@@ -92,6 +92,19 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
           "current when that tip with this lock still is main's head, stale when main or the lock " +
           "has moved since, failed when the suite failed on it.");
       }
+      // The remote-CI row (the hosted CI's verdict on what was pushed, plans/remote-ci.md
+      // "Surfaces"): the payload's preformatted remoteCiBadge/remoteCiTone, upcased for the
+      // row's label style — the same answer the TUI/status header carries, so the two
+      // surfaces cannot drift — toned by the shared remoteCiTone map (passed→green,
+      // failed→red, running→blue). Absent without a remote-CI record or for an
+      // unavailable one (the badge is empty), so the panel stays byte-identical.
+      if (d.remoteCiBadge) {
+        rows += row(d.remoteCiTone, icon("refresh"),
+          esc(badgeLabel(d.remoteCiBadge)),
+          "GitHub Actions' verdict on the newest pushed commit of the base branch, as the " +
+          "ci role recorded it with gh: passed when the push's runs are green, failed when one " +
+          "concluded failure, running while any of them is still in flight.");
+      }
       // The disk floor (plans/disk-floor.md, part 4/4): the sidebar row renders the payload's
       // preformatted diskBadge (upcased for the row's label style) — the same facts the
       // TUI/status header carries, so the two surfaces cannot drift — and names the free space,
