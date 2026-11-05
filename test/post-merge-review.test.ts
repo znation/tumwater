@@ -721,6 +721,33 @@ test("an approving review that repaired a finding still lands its repair as one 
   assert.ok(settled.some((e) => e.commit === tip && e.fixed === undefined), "the landed fix is queued for its own review");
 });
 
+test("a reviewer's fix that fails its pre-check is withheld from main (BUGS.md 2026-11-04)", async () => {
+  // Since part 4l/3 mergeToMain is a bare rebase-and-fast-forward with no check of its own, a
+  // reviewer's fix — reviewer-authored bytes main has never checked — landed unchecked. The
+  // fix tree now runs the same deterministic gate check a queued change gets before the write
+  // path touches main: a reproduced failure that is the fix's (a green main here) withholds it
+  // instead of landing it, so a broken repair never turns main red.
+  const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+  // A declared check that fails exactly when the reviewer's repair is present: the reviewed
+  // tree (x.txt = "x") passes, the fix tree (x.txt = "fixed") fails. main is green, so the
+  // failure reproduces on its flake re-run and is attributed to the fix, not to main.
+  const config = (ctx as { liveConfig: unknown }).liveConfig as Record<string, unknown>;
+  config.check = { command: "[ \"$(cat x.txt 2>/dev/null)\" != \"fixed\" ]" };
+  (ctx as { runners: RoleRunner[] }).runners = [fixingRunner("improve")];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  // main never moved past the reviewed commit: the broken repair did not land.
+  assert.equal(headSha(root), commit, "the withheld fix never fast-forwards main");
+  assert.equal(fs.readFileSync(path.join(root, "x.txt"), "utf8"), "x", "main keeps the reviewed tree, not the broken fix");
+  // The fix ref survives (leftover recovery can still reach the commit) and the reviewed commit
+  // is settled fixed naming itself — the shape a rejection answered by its own fix takes.
+  assert.ok(sh(root, "git", "for-each-ref", reviewFixRef(commit)).trim(), "the withheld fix ref survives");
+  const settled = readPostReviews(root);
+  const reviewed = settled.find((e) => e.commit === commit)!;
+  assert.equal(reviewed.fixed, commit, "the reviewed entry settles fixed naming itself");
+});
+
 test("a fix commit's subject and recorded reasons name the finding, never the FIX line", async () => {
   // The live 38887ca4 reply's shape (7375d2cc4, 2026-11-02): the finding sits above the verdict
   // and only the FIX line follows it, which once made the subject "— FIX: x.txt".

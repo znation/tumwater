@@ -1,9 +1,9 @@
 import { withRunPermit } from "../concurrency/run-permit.js";
-import { subscribeEvents, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
+import { subscribeEvents, warnEventBestEffort, TUMWATER_SOURCE, logEventBestEffort } from "../events/events.js";
 import { deleteRef, headOf, subjectOfCommit } from "../git/git.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
-import { postReviewWorktreePath, reviewFixRef } from "../paths.js";
+import { postReviewWorktreePath, reviewFixRef, reviewRunSessionDir } from "../paths.js";
 import {
   POST_REVIEW_FAILURE_LIMIT,
   addPostReview,
@@ -20,6 +20,11 @@ import { abortOnShutdown, acquireUnlessAborted, guardMergeTask, type InFlightMer
 import { resolveWaitStage } from "./merge-slot.js";
 import { mergeToMain } from "./merge-to-main.js";
 import { MERGE_TIER, resolveAuthor, VERIFY_TIER } from "./merge-author.js";
+import { gateBuildPrecheck } from "../review/review-precheck.js";
+import { setupFailureResult } from "../agent/agent-settle.js";
+import { recordReview } from "../run/run-apply.js";
+import { firstReason } from "../text/phrases.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import type { RunResult } from "../run/run-outcome.js";
 
 /** One poll of the post-merge reviews: a rejected-and-not-fixed commit is
@@ -75,7 +80,7 @@ function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: Pos
       if (task.controller.signal.aborted) return; // a shutdown: the entry stays for the next generation
       if (outcome.kind === "approve") settlePostReview(root, entry.commit, null);
       else if (outcome.kind === "reject") settlePostReview(root, entry.commit, { ...entry, rejected: outcome.reasons });
-      else if (outcome.kind === "fixed") await mergeReviewerFix(ctx, entry, outcome.fix);
+      else if (outcome.kind === "fixed") await mergeReviewerFix(ctx, entry, outcome.fix, author.state);
       else if (outcome.kind === "exhausted") {
         // A self-fix chain at the backstop: reviewMergedCommit has already recorded the surviving
         // findings; the entry is cleared so nothing re-reviews it (Forward never back 2/6).
@@ -138,18 +143,67 @@ async function fileDroppedReview(ctx: MergePipelineContext, entry: PostReview, f
   }
 }
 
-/** Land a reviewer's fix commit on main through the ordinary change path — mergeToMain, whose
- * gate runs over the fix tree and whose mergeLockDir lock serializes it with every other write
- * to main — then settle the entry `fixed` naming both shas. A landing that fails (a conflict, a
- * red gate, a refused fast-forward) leaves main at the reviewed commit and keeps the entry with
- * its failure recorded for the next poll's retry, exactly as a failed run is kept today — up to
- * the same POST_REVIEW_FAILURE_LIMIT the verdict-less-review path obeys, so the at-risk doctor
- * row/alert's "one more failed run drops it" stays true and the reviewer is not re-run forever;
- * the review-fix ref survives so leftover recovery can still reach the commit.
+/** Land a reviewer's fix commit on main: first through the deterministic gate check (the same
+ * scoped build pre-check a queued change's review gate runs), then through the ordinary write
+ * path — mergeToMain, whose mergeLockDir lock serializes it with every other write to main — and
+ * settle the entry `fixed` naming the landed fix. Since part 4l/3 mergeToMain is a bare rebase
+ * and fast-forward with no check of its own, the pre-check is what verifies the fix tree (BUGS.md
+ * 2026-11-04). A check that rejects the fix, or cannot be run, withholds it before main moves and
+ * records the finding on the reviewed commit. A landing that fails (a conflict, a refused
+ * fast-forward) leaves main at the reviewed commit and keeps the entry with its failure recorded
+ * for the next poll's retry, exactly as a failed run is kept today — up to the same
+ * POST_REVIEW_FAILURE_LIMIT the verdict-less-review path obeys, so the at-risk doctor row/alert's
+ * "one more failed run drops it" stays true and the reviewer is not re-run forever; the review-fix
+ * ref survives so leftover recovery can still reach the commit.
  * Throws when git could not start; a failed merge itself returns a non-terminal RunResult and
  * is never a throw. */
-async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fix: string): Promise<void> {
+async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fix: string, state: RunnerState): Promise<void> {
   const author = resolveAuthor(ctx, entry.role);
+  // A reviewer's fix is reviewer-authored bytes main has never checked: since part 4l/3
+  // mergeToMain is a bare rebase and fast-forward with no check of its own, the fix tree runs
+  // through the same deterministic gate check a queued change gets (review-precheck.ts) BEFORE
+  // the write path touches main (BUGS.md 2026-11-04: a broken repair landed unchecked and main
+  // sat red ~20 h). It runs OUTSIDE the merge lock, over the fix tree as pinned: a passing
+  // check or a failure main already carries lands as before (a conflict still hands the tree to
+  // the resolver path below), while a reproduced failure that is the fix's — or a check that
+  // could not be run at all — is withheld without touching main. It is deterministic: no model
+  // run, so no reviewer budget is consumed. A withholding never throws.
+  const wt = postReviewWorktreePath(ctx.root);
+  const pre = await gateBuildPrecheck(
+    {
+      root: ctx.root,
+      role: entry.role,
+      wt,
+      mainBranch: ctx.mainBranch,
+      config: ctx.liveConfig,
+      runNumber: state.runs,
+      sessionDir: reviewRunSessionDir(ctx.root, entry.role, `post-${shortSha(fix)}`),
+      signal: ctx.signal,
+      // The fix's pre-check is deterministic and never runs a model; this stub exists only to
+      // satisfy the ReviewContext the pre-check takes and is never invoked.
+      runGatePi: async () => setupFailureResult("precheck", "the fix pre-check is deterministic; no reviewer run"),
+    },
+    state,
+    fix,
+    async (reasons) => {
+      // The gate's shared reject path (review.ts's reject), shaped to the fix's bookkeeping:
+      // record the rejection for the role's next runs, name the fix commit in a
+      // review_rejected event, and settle the reviewed commit `fixed` naming ITSELF — the same
+      // shape a rejection answered by its own fix takes (Forward never back 1a/6). The broken
+      // fix commit stays pinned at the review-fix ref where leftover recovery can reach it.
+      recordReview(state, "reject", reasons, fix);
+      logEventBestEffort(ctx.root, { source: entry.role, type: "review_rejected", head: fix, reasons, afterMerge: true });
+      warnEventBestEffort(ctx.root, entry.role, `the post-merge fix of ${shortSha(entry.commit)} failed its pre-check and was withheld: ${firstReason(reasons)}`);
+      settlePostReview(ctx.root, entry.commit, { ...entry, fixed: entry.commit });
+      return { decision: "rejected" as const, detail: firstReason(reasons) };
+    },
+  );
+  if (pre.resolved && (pre.resolved.decision === "rejected" || pre.resolved.decision === "failed")) return;
+  // `verifiedHead` (a passing check) and `knownMainFailures` (main's own failures, not the
+  // fix's) both land: the known-failure excuse is the gate's own and the main watch re-checks
+  // the tip after it lands. An unverified (host-sleep) tree is also a `failed` the pre-check
+  // attributes to nothing — it stays out of main for the next poll's retry, as the line above
+  // already withholds it.
   // The fix merge's conflict resolver rides the same team permit the merge slot's resolver
   // does (merge-drain.ts startMerge): the MERGE_TIER lease is acquired on the one team total
   // and rides in the run-permit store, so a conflict resolution counts against maxConcurrent
@@ -200,11 +254,10 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
           runNumber: author.state.runs,
           runPi,
           // A conflict resolution of the reviewer's fix is resolver-authored bytes the reviewer
-          // never judged; unlike the merge slot's mergeApprovedChangeIn there is no review gate
-          // here to re-run, so a diverging resolution must not merge on the in-lock build check
-          // alone (BUGS.md 2026-10-01). Withhold it: the landing reports the conflict, the fix
-          // ref and the entry stay for the next poll's retry, and main never carries resolver
-          // bytes it was never judged against.
+          // never judged: the pre-check above verified the fix as the reviewer wrote it, not a
+          // diverging resolution, so the resolution has left its verified scope (BUGS.md 2026-10-01).
+          // Withhold it: the landing reports the conflict, the fix ref and the entry stay for the
+          // next poll's retry, and main never carries resolver bytes it was never judged against.
           recheckResolved: async () => ({ verdict: "retry" }),
         },
         wt,
