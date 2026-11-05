@@ -70,12 +70,15 @@ import {
   parseEntryDetails,
 } from "../backlog/backlog-md.js";
 import { FINISHED_PLAN_RE, isRetiredTitle } from "../backlog/backlog.js";
+import type { PendingPlanChange } from "../backlog/backlog-pending.js";
 import { acceptanceGrepFindings } from "./acceptance-greps.js";
 import {
   PLACEHOLDER_FILES,
+  duplicatePlanFinding,
   finishedDuplicateFindings,
   finishedKey,
   planDependencyFinding,
+  retireEvidenceFinding,
   strayPlaceholderFinding,
   ungroundedRefusalFinding,
 } from "./stage-backlog-checks.js";
@@ -111,16 +114,23 @@ const pushReason = async (findings: string[], check: Promise<string | undefined>
   if (reason) findings.push(reason);
 };
 
-/** The PLANS.md record findings: a requires clause naming a part the archive lacks, and an
- * ungrounded refusal that cites another part. */
-async function plansFindings(wt: string, mainBranch: string): Promise<string[]> {
+/** The PLANS.md record findings: a requires clause naming a part the archive lacks, an
+ * ungrounded refusal that cites another part, a duplicate `## Planned` entry the change adds
+ * against main's planned set plus every unmerged change (part 5/6), and a newly retired plan
+ * whose Retired note's evidence does not check out. */
+async function plansFindings(wt: string, mainBranch: string, pending: readonly PendingPlanChange[]): Promise<string[]> {
   const { head, base } = await headAndBase(wt, mainBranch, "PLANS.md");
   // Finished plans are archived in PLANS-DONE.md (plans/backlog-archive.md): a requires clause
   // naming a merged part resolves there, on both sides of the comparison alike.
   const archived = parseEntryDetails(readTextOrNull(path.join(wt, PLANS_ARCHIVE)) ?? "", "Done").map((e) => e.title);
-  const dependency = base === undefined ? undefined : planDependencyFinding(head, base, archived);
-  const refusal = base === undefined ? undefined : ungroundedRefusalFinding("PLANS.md", head, base);
-  return [dependency, refusal].filter((f): f is string => f !== undefined);
+  if (base === undefined) return [];
+  const findings = [
+    planDependencyFinding(head, base, archived),
+    ungroundedRefusalFinding("PLANS.md", head, base),
+    duplicatePlanFinding(head, base, pending),
+    await retireEvidenceFinding(wt, mainBranch, head, base).catch(() => undefined),
+  ];
+  return findings.filter((f): f is string => f !== undefined);
 }
 
 /** The finished-archive findings: duplicates of entries the archive already holds, plus the
@@ -189,16 +199,23 @@ async function placeholderFindings(wt: string, mainBranch: string, files: string
  * `mainBranch`'s merge-base.
  *
  * Never throws: a check that fails yields no finding, so a git hiccup at staging time defers to
- * the gate instead of failing the run. */
+ * the gate instead of failing the run.
+ *
+ * `pending` is the unmerged changes the change's PLANS.md diff is judged against
+ * (duplicatePlanFinding, plans/duplicate-plans.md "Decision" 3): the caller passes the pending
+ * snapshot with every change whose tip the worktree's HEAD already contains dropped (that
+ * change's entries already appear in the head-over-base diff), the plan role's own earlier
+ * unmerged plan kept — re-planning it is the case this check exists for. */
 export async function stageCheckFindings(
   wt: string,
   mainBranch: string,
   role: string,
+  pending: readonly PendingPlanChange[] = [],
 ): Promise<string[]> {
   const files = await changedFiles(wt).catch(() => null);
   if (files === null || files.length === 0) return [];
   const findings: string[] = [];
-  if (files.includes("PLANS.md")) findings.push(...(await plansFindings(wt, mainBranch)));
+  if (files.includes("PLANS.md")) findings.push(...(await plansFindings(wt, mainBranch, pending)));
   findings.push(...(await archiveFindings(wt, mainBranch, files)));
   if (files.includes("BUGS.md")) findings.push(...(await bugsFindings(wt, mainBranch)));
   findings.push(...(await placeholderFindings(wt, mainBranch, files)));

@@ -6,42 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### No duplicate plans, part 5/6: Staging gives the author one fix-up turn when its change adds a duplicate `## Planned` entry or retires a plan on evidence that does not check out (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 3 and 4; requires No duplicate plans part 2/6 and No duplicate plans part 4/6 landed; touches src/stage/stage-backlog-checks.ts src/stage/stage-check.ts src/runner/runner-outcome.ts test/stage-check.test.ts)
-
-**Goal.** Catch a duplicate before it commits, not after it merges. In the 11-03 incident's clearest pair, run 700's sibling plan merged while run 700 was still running. A staging check reading main at staging time, together with part 2/6's snapshot, would have named it. Also check the evidence a retire cites, so a retire that rests on a SHA main lacks, or on a "survivor" that does not exist, never lands.
-
-**Approach.**
-- Add `duplicatePlanFinding(head, base, pending): string | undefined` to src/stage/stage-backlog-checks.ts, beside `planDependencyFinding`.
-  - `head` is the run's PLANS.md, `base` is main's at staging, and `pending` is the unmerged changes the caller passes (below).
-  - For each `## Planned` entry the head adds, by `entryKey` over the base, it reports when the entry's key or part label is already in base's `## Planned` or added by a pending change.
-  - The finding names the existing entry, and the unmerged change's role and SHA when there is one. It says to drop the copy, or fold what it adds into the existing entry.
-  - Only new entries count: a duplicate already on main stays part 4/6's to retire.
-- Add `retireEvidenceFinding(wt, head, base)`. For each entry the head newly retires, it reads the first `**Retired …: <evidence>**` line and runs two checks.
-  - Every short SHA in the evidence must resolve to a commit that main's tip contains (`git merge-base --is-ancestor` in `wt`).
-  - Every double-quoted title must match a `## Planned` heading in head, or a done (not retired) heading in PLANS-DONE.md, by `finishedKey`.
-  - Evidence with neither a SHA nor a quoted title passes. The post-merge review judges prose.
-- `stageCheckFindings` (src/stage/stage-check.ts) gains an optional `pending: readonly PendingPlanChange[]` argument and hands it to `plansFindings`, which appends both findings. Like every staging check, a git error yields no finding.
-- src/runner/runner-outcome.ts's `stageCheck` passes `pendingPlanChanges(ctx.root)`. It drops any change whose SHA the run's worktree HEAD already contains (`git merge-base --is-ancestor`), such as a held commit the run builds on, because those entries already appear in the head-over-base diff. The plan role's own earlier unmerged plan stays in the list: re-planning it is the case this part exists for.
-- This is not a merge-gate rule: since part 3m/3 the gate refuses only what a later commit cannot repair.
-
-**Files touched.** src/stage/stage-backlog-checks.ts src/stage/stage-check.ts src/runner/runner-outcome.ts test/stage-check.test.ts
-
-**Acceptance criteria.**
-- A head adding `### S, part 2/3: …` while base's `## Planned` already holds `### S, part 2/3: …` gets a finding naming the base entry.
-- A head adding `### T (planned …)` while a pending feature-2 change adds `### T (planned …)` gets a finding naming feature-2 and the SHA.
-- A head that only edits an existing entry gets no finding.
-- A head retiring `### X` with `**Retired 2026-11-05 by the plan role: duplicate of abc1234**`:
-  - gets a finding when `abc1234` is not on main;
-  - gets none when it is.
-- Evidence `duplicate of "No such entry"` gets a finding. Evidence quoting a planned heading gets none.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/stage-check.test.ts:
-  - each case above, against a temp repo for the SHA checks;
-  - `stageCheckFindings` returning both findings.
-- Run the file and the gate.
-
 ### Hourly full check, part 3a/4: A red's opener is the first commit at which its confirmed failing tests fail, found by bisecting the first-parent code commits since the last green and re-running only those tests (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md "Decision" 4; splitting the 2026-11-01 part 3/4 after feature held it too large for one run; requires Hourly full check part 2c/4 landed; sibling to Hourly full check part 3b/4, which requires this part landed; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-spells.test.ts test/main-red-heal.test.ts)
 
 **Goal.** With the full check hourly, one red verdict covers up to an hour of commits. A confirmed red at tip T must name the single commit that opened it, not T (user, 2026-11-01: "when fixing failures, re-run only the failed tests"). This part changes only which commit is named; the per-head re-check cadence is part 3b/4.

@@ -19,6 +19,26 @@ import { modelTrailerLine } from "../git/commit-message.js";
 import { seamAgent } from "../config/config-model-selector.js";
 import { stageRunMerge } from "../run/run-stage.js";
 import { stageCheckFindings } from "../stage/stage-check.js";
+import { pendingPlanChanges, type PendingPlanChange } from "../backlog/backlog-pending.js";
+import { isMergedInto } from "../git/git.js";
+
+/** The pending-plan changes this run's staging check judges its PLANS.md diff against
+ * (plans/duplicate-plans.md "Decision" 3): the pending snapshot with every change whose tip
+ * the run's worktree HEAD already contains dropped — a held commit the run builds on, whose
+ * entries already appear in the head-over-base diff the duplicate finding reads. The plan
+ * role's own earlier unmerged plan stays in the list: re-planning it while it waits is the
+ * case this check exists for (isMergedInto counts equality as contained, so the run's own
+ * held tip is dropped while a sibling's pin is kept). A git hiccup keeps the whole list:
+ * staging never fails on a best-effort read. */
+async function pendingForStageCheck(ctx: RunnerRunContext, wt: string): Promise<readonly PendingPlanChange[]> {
+  const all = pendingPlanChanges(ctx.root);
+  try {
+    const kept = await Promise.all(all.map(async (c) => ((await isMergedInto(wt, c.sha, "HEAD")) ? null : c)));
+    return kept.filter((c): c is PendingPlanChange => c !== null);
+  } catch {
+    return all;
+  }
+}
 
 /** Merge the worktree branch on main (see src/merge/merge-to-main.ts for the
  * rebase → verify → ff-merge → conflict-retry flow): delegates with the runner identity, run
@@ -128,7 +148,7 @@ export async function handlePiResultPhase(
     piStartedAt,
     warn: (message) => ctx.warn(message),
     requestSummary: (w, n) => ctx.pi.requestSummary(w, cfg, n),
-    stageCheck: (w) => stageCheckFindings(w, ctx.mainBranch, ctx.role),
+    stageCheck: (w) => pendingForStageCheck(ctx, w).then((pending) => stageCheckFindings(w, ctx.mainBranch, ctx.role, pending)),
     requestStageFix: (w, findings, change) => ctx.pi.requestStageFix(w, findings, change, cfg),
     pinAndReset: (w, sha) => ctx.pinAndReset(w, sha),
     finishAbortedRun: () => ctx.finishAbortedRun(userPrompt, wt),

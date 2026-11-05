@@ -5,6 +5,42 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### No duplicate plans, part 5/6: Staging gives the author one fix-up turn when its change adds a duplicate `## Planned` entry or retires a plan on evidence that does not check out (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 3 and 4; requires No duplicate plans part 2/6 and No duplicate plans part 4/6 landed; touches src/stage/stage-backlog-checks.ts src/stage/stage-check.ts src/runner/runner-outcome.ts test/stage-check.test.ts) — done 2026-11-04 by the feature role
+
+**Goal.** Catch a duplicate before it commits, not after it merges. In the 11-03 incident's clearest pair, run 700's sibling plan merged while run 700 was still running. A staging check reading main at staging time, together with part 2/6's snapshot, would have named it. Also check the evidence a retire cites, so a retire that rests on a SHA main lacks, or on a "survivor" that does not exist, never lands.
+
+**Approach.**
+- Add `duplicatePlanFinding(head, base, pending): string | undefined` to src/stage/stage-backlog-checks.ts, beside `planDependencyFinding`.
+  - `head` is the run's PLANS.md, `base` is main's at staging, and `pending` is the unmerged changes the caller passes (below).
+  - For each `## Planned` entry the head adds, by `entryKey` over the base, it reports when the entry's key or part label is already in base's `## Planned` or added by a pending change.
+  - The finding names the existing entry, and the unmerged change's role and SHA when there is one. It says to drop the copy, or fold what it adds into the existing entry.
+  - Only new entries count: a duplicate already on main stays part 4/6's to retire.
+- Add `retireEvidenceFinding(wt, mainBranch, head, base)` (the `mainBranch` the plan's `wt, head, base` shape omits is the branch whose tip the SHA checks test against, and it is not derivable from the arguments). For each entry the head newly retires (a `## Done` heading carrying a retired stamp that the base did not), it reads the first `**Retired …**` line and runs two checks.
+  - Every short SHA in the evidence must resolve to a commit that main's tip contains (`git merge-base --is-ancestor` in `wt`).
+  - Every double-quoted title must match a `## Planned` heading in head, or a done (not retired) heading in PLANS-DONE.md, by `finishedKey`.
+  - Evidence with neither a SHA nor a quoted title passes. The post-merge review judges prose.
+- `stageCheckFindings` (src/stage/stage-check.ts) gains an optional `pending: readonly PendingPlanChange[]` argument and hands it to `plansFindings`, which appends both findings. Like every staging check, a git error yields no finding.
+- src/runner/runner-outcome.ts's `stageCheck` passes `pendingPlanChanges(ctx.root)`. It drops any change whose SHA the run's worktree HEAD already contains (`git merge-base --is-ancestor`), such as a held commit the run builds on, because those entries already appear in the head-over-base diff. The plan role's own earlier unmerged plan stays in the list: re-planning it is the case this part exists for.
+- This is not a merge-gate rule: since part 3m/3 the gate refuses only what a later commit cannot repair.
+
+**Files touched.** src/stage/stage-backlog-checks.ts src/stage/stage-check.ts src/runner/runner-outcome.ts test/stage-check.test.ts
+
+**Acceptance criteria.**
+- A head adding `### S, part 2/3: …` while base's `## Planned` already holds `### S, part 2/3: …` gets a finding naming the base entry.
+- A head adding `### T (planned …)` while a pending feature-2 change adds `### T (planned …)` gets a finding naming feature-2 and the SHA.
+- A head that only edits an existing entry gets no finding.
+- A head retiring `### X` with `**Retired 2026-11-05 by the plan role: duplicate of abc1234**`:
+  - gets a finding when `abc1234` is not on main;
+  - gets none when it is.
+- Evidence `duplicate of "No such entry"` gets a finding. Evidence quoting a planned heading gets none.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/stage-check.test.ts:
+  - each case above, against a temp repo for the SHA checks;
+  - `stageCheckFindings` returning both findings.
+- Run the file and the gate.
+
 ### `tumwater role <id>` gains `-f/--follow`, repainting one role's inspection view until Ctrl+C or its parent exits, so an operator watching a role sees its last run, spend and next-run schedule move without rerunning the command (planned 2026-11-03 by the plan role; continues the landed follow-view family — `status`, `report`, `logs`, `history`, `queue`, `reviews`, `quarantine`, `backlog`, `diff`, `prompt --list` and `questions` all follow through `followView` in src/cli/follow-view.ts, and `role <id>` is the remaining per-entity inspection view with no live form; independent in file of every `## Planned` entry — before this entry `awk '/^## Planned/,/^## Done/' PLANS.md | grep -c 'cli-role-command\|cmdRole'` prints 0, and no waiting heading or touches list names src/cli/cli-role-command.ts or test/cli-role-follow.test.ts (the in-flight plan/bug `--list` follow takes src/cli/backlog-cli-view.ts, and the in-flight doctor follow takes src/cli/cli-doctor-command.ts; all three touch src/cli/help.ts and docs/cli.md in different stanzas and rows, so whichever lands second rebases there); PLANS-DONE.md holds no `tumwater role` follow plan — `grep -cE '^### .*tumwater role.*follow|^### .*role <id>.*follow' PLANS-DONE.md` prints 2, but both are unrelated (`diff --role <id>` and shell completion's `role <id>`); docs/invariants.md names neither `cmdRole` nor src/cli/cli-role-command.ts (`grep -c 'cmdRole\|cli-role-command' docs/invariants.md` prints 0), so its bindings stay unchanged; touches src/cli/cli-role-command.ts src/cli/help.ts docs/cli.md test/cli-role-follow.test.ts, done 2026-11-04 by the feature role)
 
 **Goal.** `tumwater role <id>` prints one role's standing and next-run prompts, resolved settings, notes, recent runs, spend and schedule, then exits. An operator watching a live team has no live form: a role moving from sleeping to working, a run landing, or its spend and next-run time changing stays invisible until the command is rerun, even though every sibling inspection and list view has a follow view. Add `-f/--follow` so the same document repaints every couple of seconds until Ctrl+C or the parent process exits. The live form is read-only: `--json` and every write flag keep their one-shot forms and are refused with a follow.

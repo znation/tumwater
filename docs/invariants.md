@@ -895,6 +895,29 @@ records the claim its run worked, so the merge can drop it once main deletes the
 and the revision, and marks the entry"; `test/run-apply.test.ts` — "a withdrawn merge ends the change's life without a
 strike against its author".
 
+### INV-N6: a change that adds a duplicate `## Planned` entry, or retires a plan on evidence that does not check out, gets its fix-up turn at staging
+
+**Guarantee.** `stageCheckFindings` (given the pending snapshot) reports, over the change's
+PLANS.md head-over-merge-base diff, (a) a `## Planned` entry it adds whose entry key or series
+part label a base planned entry already carries — or one an unmerged change adds, named with its
+role and short SHA (`duplicatePlanFinding`), and (b) a plan entry it newly retires whose Retired
+note cites a short SHA main's tip does not contain, or a double-quoted surviving title no `##
+Planned` or done (not retired) `## Done` heading carries by `finishedKey`
+(`retireEvidenceFinding`). Only newly added and newly retired entries count; evidence with
+neither a SHA nor a quoted title passes, for the post-merge review to judge. This is a staging
+finding only — a duplicate is repairable by a later edit, so it is never a merge-gate refusal.
+A git hiccup yields no finding.
+
+**Binds.** `src/stage/stage-backlog-checks.ts` (`duplicatePlanFinding`,
+`retireEvidenceFinding`), `src/stage/stage-check.ts` (`plansFindings`, `stageCheckFindings`),
+`src/runner/runner-outcome.ts` (`pendingForStageCheck`).
+
+**Pinned by.** `test/stage-check.test.ts` — "duplicatePlanFinding names a base entry and a
+pending change, and stays quiet for edits and pre-existing duplicates", "retireEvidenceFinding
+checks a cited SHA against main's tip", "retireEvidenceFinding quotes a survivor a planned or
+done heading carries, and flags one that does not" and "stageCheckFindings carries both the
+duplicate and the retire-evidence findings".
+
 ## The backlog archive: finished entries move once, and only the ones a change added
 
 The archive moves finished entries out of PLANS.md / BUGS.md into PLANS-DONE.md / BUGS-FIXED.md: at

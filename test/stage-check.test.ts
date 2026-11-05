@@ -6,14 +6,16 @@ import { FINISHED_ARCHIVES } from "../src/backlog/backlog-md.js";
 import { stageCheckFindings } from "../src/stage/stage-check.js";
 import { declaredNames } from "../src/stage/stage-name-checks.js";
 import {
+  duplicatePlanFinding,
   finishedDuplicateFindings,
   heldMovedFinding,
   planDependencyFinding,
+  retireEvidenceFinding,
   strayPlaceholderFinding,
   ungroundedRefusalFinding,
 } from "../src/stage/stage-backlog-checks.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { commitIn, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Unit coverage for src/stage/stage-check.ts (PLANS.md "Pre-queue self-check, part 1/2"):
@@ -1129,4 +1131,174 @@ test("planDependencyFinding reports a requires clause naming a part the archive 
     "## Planned\n\n### S, part 2/2: b (requires part 1/2 landed)\n\nbody",
   );
   assert.equal(planDependencyFinding(headDone, baseDone), undefined);
+});
+
+// --- "No duplicate plans" part 5/6: the staging duplicate and retire-evidence findings ---
+
+const PLANS5 = (planned: string, done: string): string => `# Plans\n\n## Planned\n\n${planned}\n## Done\n\n${done}\n`;
+
+test("duplicatePlanFinding names a base entry and a pending change, and stays quiet for edits and pre-existing duplicates", async () => {
+  const base = PLANS5("### S, part 2/3: x (planned 2026-11-01)", "_None yet._");
+  const head = PLANS5(
+    "### S, part 2/3: x (planned 2026-11-01)\n\n### S, part 2/3: y (planned 2026-11-04)",
+    "_None yet._",
+  );
+  const f = duplicatePlanFinding(head, base, [])!;
+  assert.match(f, /S, part 2\/3: x \(planned 2026-11-01\)/);
+  assert.match(f, /drop the copy, or fold what it adds/);
+
+  // The same key a pending change adds: the finding names that change's role and short SHA.
+  const pending = [
+    {
+      ref: "refs/tumwater/merge/feature-2",
+      role: "feature-2",
+      sha: "abc1234def56789012345678901234567890abcd",
+      subject: "T",
+      added: [{ title: "T (planned 2026-11-01)", body: "Body." }],
+      removed: [],
+      changed: [],
+    },
+  ];
+  const headT = PLANS5("### T (planned 2026-11-04)", "_None yet._");
+  const f2 = duplicatePlanFinding(headT, base, pending)!;
+  assert.match(f2, /feature-2/);
+  assert.match(f2, /abc1234/);
+
+  // A head that only edits an existing entry gets no finding.
+  const edited = PLANS5("### S, part 2/3: x (planned 2026-11-01)\n\nedited body", "_None yet._");
+  assert.equal(duplicatePlanFinding(edited, base, pending), undefined);
+
+  // A duplicate already on main (both copies in the base) stays the plan role's to retire.
+  const both = PLANS5("### S, part 2/3: a (planned 2026-11-01)\n\n### S, part 2/3: b (planned 2026-11-02)", "_None yet._");
+  const editedBoth = both.replace("### S, part 2/3: b (planned 2026-11-02)", "### S, part 2/3: b (planned 2026-11-02)\n\nedited");
+  assert.equal(duplicatePlanFinding(editedBoth, both, pending), undefined);
+});
+
+/** A temp repo whose main carries committed `PLANS.md`/`PLANS-DONE.md` (either may be "");
+ * returns the repo, main's tip SHA, and a writer that rewrites and commits PLANS.md on main. */
+function plansRepo5(
+  plans: string,
+  archive = "",
+): { dir: string; mainSha: string; write: (next: string) => void } {
+  const dir = makeRepo();
+  fs.writeFileSync(path.join(dir, "PLANS.md"), plans);
+  if (archive !== "") fs.writeFileSync(path.join(dir, "PLANS-DONE.md"), archive);
+  commitIn(dir, "plans");
+  const sha = sh(dir, "git", "rev-parse", "main");
+  return {
+    dir,
+    mainSha: sha,
+    write: (next) => {
+      fs.writeFileSync(path.join(dir, "PLANS.md"), next);
+      commitIn(dir, "plans");
+    },
+  };
+}
+
+test("retireEvidenceFinding checks a cited SHA against main's tip", async () => {
+  const base = PLANS5("### X: x (planned 2026-11-01)", "_None yet._");
+
+  // A SHA the repository does not hold.
+  const { dir: d1 } = plansRepo5(base);
+  const head1 = PLANS5(
+    "_None yet._",
+    "### X: x (planned 2026-11-01) — retired 2026-11-05 by the plan role\n\n**Retired 2026-11-05 by the plan role: duplicate of abc1234.**",
+  );
+  const bad = await retireEvidenceFinding(d1, "main", head1, base);
+  assert.match(bad!, /abc1234/);
+  assert.match(bad!, /does not hold/);
+
+  // A real SHA main's tip contains: no finding.
+  const { dir: d2, mainSha } = plansRepo5(base);
+  const head2 = PLANS5(
+    "_None yet._",
+    `### X: x (planned 2026-11-01) — retired 2026-11-05 by the plan role\n\n**Retired 2026-11-05 by the plan role: duplicate of ${mainSha.slice(0, 7)}.**`,
+  );
+  assert.equal(await retireEvidenceFinding(d2, "main", head2, base), undefined);
+
+  // A real SHA on a side branch main does not contain: the unmerged-work finding.
+  const { dir: d3 } = plansRepo5(base);
+  sh(d3, "git", "checkout", "-b", "side");
+  fs.writeFileSync(path.join(d3, "side.txt"), "side\n");
+  commitIn(d3, "side");
+  const sideSha = sh(d3, "git", "rev-parse", "HEAD");
+  sh(d3, "git", "checkout", "main");
+  const head3 = PLANS5(
+    "_None yet._",
+    `### X: x (planned 2026-11-01) — retired 2026-11-05 by the plan role\n\n**Retired 2026-11-05 by the plan role: duplicate of ${sideSha.slice(0, 7)}.**`,
+  );
+  const unmerged = await retireEvidenceFinding(d3, "main", head3, base);
+  assert.match(unmerged!, /does not contain/);
+
+  // A retire already on main is not this change's to judge; a SHA-less note passes.
+  const base4 = PLANS5(
+    "_None yet._",
+    `### X: x (planned 2026-11-01) — retired 2026-11-05 by the plan role\n\n**Retired 2026-11-05 by the plan role: duplicate of abc1234.**`,
+  );
+  const { dir: d4 } = plansRepo5(base4);
+  const head4 = PLANS5(
+    "### Y: y (planned 2026-11-01)",
+    `### X: x (planned 2026-11-01) — retired 2026-11-05 by the plan role\n\n**Retired 2026-11-05 by the plan role: duplicate of abc1234.**\n\n### Y: y (planned 2026-11-01) — retired 2026-11-06 by the plan role\n\n**Retired 2026-11-06 by the plan role: nothing to build.**`,
+  );
+  assert.equal(await retireEvidenceFinding(d4, "main", head4, base4), undefined);
+});
+
+test("retireEvidenceFinding quotes a survivor a planned or done heading carries, and flags one that does not", async () => {
+  const base = PLANS5("### X: x (planned 2026-11-01)", "_None yet._");
+  const archive = `# Done\n\n## Done\n\n### R, part 1/3: r (planned 2026-10-01, done 2026-10-20)\n\nBody.\n`;
+
+  // A quoted title no heading carries.
+  const { dir: d1 } = plansRepo5(base, archive);
+  const head1 = PLANS5(
+    "_None yet._",
+    "### X: x (planned 2026-11-01) — retired 2026-11-05 by the plan role\n\n**Retired 2026-11-05 by the plan role: duplicate of \"No such entry\".**",
+  );
+  const bad = await retireEvidenceFinding(d1, "main", head1, base);
+  assert.match(bad!, /No such entry/);
+  assert.match(bad!, /does not exist/);
+
+  // A quoted planned heading in the head: no finding.
+  const head2 = PLANS5(
+    "### Q: q (planned 2026-11-02)",
+    "### X: x (planned 2026-11-01) — retired 2026-11-05 by the plan role\n\n**Retired 2026-11-05 by the plan role: duplicate of \"Q: q\".**",
+  );
+  assert.equal(await retireEvidenceFinding(d1, "main", head2, base), undefined);
+
+  // A quoted done (not retired) heading in the archive: no finding. A retired archive
+  // heading is not a survivor, so quoting it still gets a finding.
+  const head3 = PLANS5(
+    "_None yet._",
+    "### X: x (planned 2026-11-01) — retired 2026-11-05 by the plan role\n\n**Retired 2026-11-05 by the plan role: duplicate of \"R, part 1/3: r\".**",
+  );
+  assert.equal(await retireEvidenceFinding(d1, "main", head3, base), undefined);
+  const retiredOnly = `# Done\n\n## Done\n\n### R, part 1/3: r (planned 2026-10-01, retired 2026-10-20)\n\nBody.\n`;
+  const { dir: d2 } = plansRepo5(base, retiredOnly);
+  assert.match((await retireEvidenceFinding(d2, "main", head3, base))!, /does not exist/);
+});
+
+test("stageCheckFindings carries both the duplicate and the retire-evidence findings", async () => {
+  const base = PLANS5("### S, part 2/3: x (planned 2026-11-01)", "_None yet._");
+  const { dir } = plansRepo5(base);
+  const wt = await ensureWorktree(dir, "improve", "main");
+  fs.writeFileSync(
+    path.join(wt, "PLANS.md"),
+    PLANS5(
+      "### S, part 2/3: x (planned 2026-11-01)\n\n### S, part 2/3: y (planned 2026-11-04)",
+      "### X: x (planned 2026-11-02) — retired 2026-11-05 by the plan role\n\n**Retired 2026-11-05 by the plan role: built in abc1234.**",
+    ),
+  );
+  const pending = [
+    {
+      ref: "refs/tumwater/merge/feature-2",
+      role: "feature-2",
+      sha: "abc1234def56789012345678901234567890abcd",
+      subject: "T",
+      added: [{ title: "T (planned 2026-11-01)", body: "Body." }],
+      removed: [],
+      changed: [],
+    },
+  ];
+  const findings = await stageCheckFindings(wt, "main", "plan", pending);
+  assert.ok(findings.some((f) => f.includes("drop the copy, or fold what it adds")), "the duplicate finding is present");
+  assert.ok(findings.some((f) => f.includes("Retired note") && f.includes("abc1234")), "the retire-evidence finding is present");
 });

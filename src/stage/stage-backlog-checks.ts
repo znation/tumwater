@@ -4,6 +4,7 @@
  * problem this change adds is reported. All are staging-only: the review gate does not run
  * them (see stage-check.ts for why each is left out of the gate). */
 
+import path from "node:path";
 import { finishedTitle, readdedHeadings } from "../backlog/backlog-structure.js";
 import {
   fenceAwareHeadingLines,
@@ -12,7 +13,10 @@ import {
   sectionBodyLines,
   type FinishedArchive,
 } from "../backlog/backlog-md.js";
-import { FINISHED_PLAN_RE, FIXED_DATE_RE } from "../backlog/backlog.js";
+import { FINISHED_PLAN_RE, FIXED_DATE_RE, isRetiredTitle } from "../backlog/backlog.js";
+import { readTextOrNull } from "../files/files.js";
+import { commitExists, isMergedInto } from "../git/git.js";
+import type { PendingPlanChange } from "../backlog/backlog-pending.js";
 import { refusalNote } from "../backlog/backlog-eligibility.js";
 import { entryKey, partKey, planDependencyProblems, seriesPart, type PartRef } from "../backlog/backlog-parts.js";
 import { moreSuffix, plural } from "../text/phrases.js";
@@ -61,6 +65,59 @@ export function planDependencyFinding(head: string, base: string, archivedTitles
  * its `(planned …)`/`(found …)` parenthetical, whitespace-collapsed. */
 export function finishedKey(title: string, dateRe: RegExp): string {
   return collapseWhitespace(finishedTitle(title, dateRe));
+}
+
+/** The staging finding for a `## Planned` entry the head (the edited PLANS.md) adds over the
+ * base (its text at the merge-base) that duplicates one already planned — a base `## Planned`
+ * entry sharing its entry key or series part label (the identities part 4/6 groups by), or an
+ * entry an unmerged change adds (the pending snapshot, part 2/6). The 11-03 incident's clearest
+ * pair — one run's sibling plan merging while it was still running — gets its fix-up turn here
+ * (plans/duplicate-plans.md "Decision" 3): a duplicate is repairable by a later edit, so this is
+ * a staging finding, never a merge-gate refusal. Only new entries count: a duplicate already on
+ * main stays the plan role's to retire through its `<duplicate-plans>` block. Names the existing
+ * entry, and the unmerged change's role and SHA when the existing one comes from a pending
+ * change, and says to drop the copy or fold what it adds into the existing entry. At most one
+ * finding: the first new duplicate in file order. */
+export function duplicatePlanFinding(
+  head: string,
+  base: string,
+  pending: readonly PendingPlanChange[],
+): string | undefined {
+  interface Identity {
+    key: string;
+    part: string | null;
+    title: string;
+    change?: PendingPlanChange;
+  }
+  const known: Identity[] = [];
+  const seen = new Set<string>();
+  const consider = (title: string, change?: PendingPlanChange): void => {
+    const key = entryKey(title);
+    if (seen.has(key)) return;
+    seen.add(key);
+    const p = seriesPart(title);
+    known.push({ key, part: p === null ? null : partKey(p.series, p.part), title, change });
+  };
+  const baseEntries = parseEntryDetails(base, "Planned");
+  for (const e of baseEntries) consider(e.title);
+  for (const change of pending) for (const e of change.added) consider(e.title, change);
+  const baseKeys = new Set(baseEntries.map((e) => entryKey(e.title)));
+  for (const e of parseEntryDetails(head, "Planned")) {
+    if (baseKeys.has(entryKey(e.title))) continue; // Only new entries count.
+    const p = seriesPart(e.title);
+    const part = p === null ? null : partKey(p.series, p.part);
+    const hit = known.find((k) => k.key === entryKey(e.title) || (part !== null && k.part === part));
+    if (hit === undefined) continue;
+    const named =
+      hit.change === undefined
+        ? `the planned entry "${hit.title}"`
+        : `the unmerged change of ${hit.change.role} (${hit.change.sha.slice(0, 7)}) adding "${hit.title}"`;
+    return (
+      `this change adds a duplicate of ${named} — drop the copy, or fold what it adds into the ` +
+      "existing entry before this change commits; a duplicate is repairable, so this is a staging finding, not a merge-gate refusal"
+    );
+  }
+  return undefined;
 }
 
 /** The findings for a finished entry that the change leaves in the archive too: a live
@@ -253,4 +310,78 @@ export function ungroundedRefusalFinding(
     `instead of an objection to this entry; implement this entry or pick another, but do not refuse it` +
     moreSuffix(newlyAdded.length - 1)
   );
+}
+
+/** The first `**Retired …**` body line of `body`, or null when the body carries none. */
+function retiredNoteLine(body: string): string | null {
+  for (const line of body.split("\n")) {
+    const t = line.trim();
+    if (t.startsWith("**Retired ")) return t;
+  }
+  return null;
+}
+
+/** The staging finding for a plan entry the head (the edited PLANS.md) newly retires whose
+ * Retired note's evidence does not check out (plans/duplicate-plans.md "Decision" 4): a short
+ * SHA the evidence cites that main's tip does not contain, or a double-quoted surviving title
+ * no heading carries — a `## Planned` heading in the head or a done (not retired) heading in
+ * PLANS-DONE.md, matched by finishedKey. A retire is closed without being built, so evidence
+ * that names work main does not hold, or a survivor that does not exist, hides real work; the
+ * finding gives the author one fix-up turn. Evidence with neither a SHA nor a quoted title
+ * passes: the post-merge review judges prose. `wt` is the worktree (the git checks run in it,
+ * against `mainBranch`'s tip); `base` is PLANS.md's text at the merge-base, so a retire already
+ * on main is not this change's to judge. At most one finding: the first bad retire in file
+ * order. A git hiccup yields no finding, like every other staging check. */
+export async function retireEvidenceFinding(
+  wt: string,
+  mainBranch: string,
+  head: string,
+  base: string,
+): Promise<string | undefined> {
+  const finishedKeyOf = (title: string): string => finishedKey(title, FINISHED_PLAN_RE);
+  const survivors: string[] = [
+    ...parseEntryDetails(head, "Planned").map((e) => finishedKeyOf(e.title)),
+    ...parseEntryDetails(readTextOrNull(path.join(wt, "PLANS-DONE.md")) ?? "", "Done")
+      .filter((e) => !isRetiredTitle(e.title))
+      .map((e) => finishedKeyOf(e.title)),
+  ];
+  const retired = (md: string): string[] =>
+    parseEntryDetails(md, "Done")
+      .filter((e) => isRetiredTitle(e.title))
+      .map((e) => finishedKeyOf(e.title));
+  const wasRetired = new Set(retired(base));
+  for (const e of parseEntryDetails(head, "Done")) {
+    if (!isRetiredTitle(e.title)) continue;
+    if (wasRetired.has(finishedKeyOf(e.title))) continue; // Only newly retired entries count.
+    const note = retiredNoteLine(e.body);
+    if (note === null) continue; // No evidence line: the post-merge review judges prose.
+    const shas = note.match(/\b[0-9a-f]{7,40}\b/g) ?? [];
+    for (const sha of shas) {
+      if (!(await commitExists(wt, sha))) {
+        return (
+          `the Retired note of "${truncate(e.title, 160)}" cites commit ${sha.slice(0, 7)}, which this repository ` +
+          "does not hold — the retire rests on evidence that does not check out; name a real commit, the surviving " +
+          "entry, or say plainly why nothing is buildable"
+        );
+      }
+      if (!(await isMergedInto(wt, sha, mainBranch))) {
+        return (
+          `the Retired note of "${truncate(e.title, 160)}" cites commit ${sha.slice(0, 7)}, which main does not contain ` +
+          "— the retire rests on unmerged work; wait for it to merge, or cite evidence main already holds"
+        );
+      }
+    }
+    const quoted = note.match(/"([^"]*)"/g) ?? [];
+    for (const q of quoted) {
+      const title = q.slice(1, -1);
+      if (title === "") continue;
+      if (survivors.includes(finishedKeyOf(title))) continue;
+      return (
+        `the Retired note of "${truncate(e.title, 160)}" quotes a surviving entry, "${truncate(title, 160)}", that no ` +
+        "`## Planned` or done `## Done` heading carries — the survivor it claims does not exist; point the evidence at a " +
+        "real heading"
+      );
+    }
+  }
+  return undefined;
 }
