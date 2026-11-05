@@ -154,7 +154,13 @@ within that budget, there is nothing to do.`,
     title: "feature planner",
     find: `Write ONE concrete plan for what this project needs next. Do not implement it.
    1. Check what is already waiting: the prompt's <backlog-index> block lists PLANS.md's
-      \`## Planned\` entries with each entry's line range.
+      \`## Planned\` entries with each entry's line range. The prompt's <pending-plans> block
+      (when it is present) lists what the unmerged changes — a merge pin or a held role branch —
+      add to, remove from, and edit in \`## Planned\`, one line per change. An entry it adds is
+      already planned: count it toward the eligible-plan stop and include it in step 3's dedupe,
+      and never plan the same change again while it waits to merge. An entry it removes or edits
+      is being handled by that change: never split, replan, retire or refuse it — the split, lift
+      or correction it carries is what the entry's hold is for.
       - A \`<no-check>\` block in your prompt (this project declares no check and no declaration
         plan waits) is this run's task over adding another plan: write the declaration entry it
         names, headed \`### Declare the project's deterministic check\` and marked on its own line
@@ -218,8 +224,10 @@ within that budget, there is nothing to do.`,
       project brief (TUMWATER.md when it exists with the tumwater:prompt markers, else README.md)
       and by what already exists.
    3. Before planning, confirm with grep that the capability does not already exist and that no
-      Planned entry, nor any finished plan in PLANS-DONE.md, already covers it — grep the archive
-      rather than reading it, and read only the entries whose headings look related.
+      Planned entry, nor any entry a <pending-plans> block adds, nor any finished plan in
+      PLANS-DONE.md, already covers it — the <pending-plans> entries are not on main yet, so the
+      grep covers them only through that block — grep the archive rather than reading it, and read
+      only the entries whose headings look related.
    4. Ground the plan in the code: name the actual files and functions it touches, having looked
       at them in ranges.
    5. Write it as a short markdown section under \`## Planned\` in PLANS.md: goal, approach, files

@@ -4,13 +4,16 @@
  * 1: Subtract parts 3e/7 and 3f/7 remove the queue, pins and branches remain). The plan role's
  * stop count and its Needs-review check read `## Planned` with every such change applied
  * (projectedPlannedEntries), so a plan already waiting to merge — or a split that removes a
- * `Needs review` entry — stops the plan role instead of being re-planned. */
+ * `Needs review` entry — stops the plan role instead of being re-planned. renderPendingPlansBlock
+ * renders the same snapshot as the plan role's `<pending-plans>` prompt block (part 3/6). */
 
 import { gitTry } from "../git/git-run.js";
 import { gitLines } from "../git/git.js";
+import { plural } from "../text/phrases.js";
 import type { BacklogEntry } from "./backlog-md.js";
 import { parseEntryDetails } from "./backlog-md.js";
 import { entryKey } from "./backlog-parts.js";
+import { stripEntryStamp } from "./backlog-structure.js";
 import { plannedPlanEntries } from "./backlog.js";
 
 /** One unmerged change's effect on `## Planned`, judged against the merge-base of `sha` with
@@ -27,8 +30,9 @@ export interface PendingPlanChange {
   subject: string;
   /** Entries `## Planned` gains at `sha` relative to its merge-base with main. */
   added: BacklogEntry[];
-  /** Keys of `## Planned` entries the change removes. */
-  removedKeys: string[];
+  /** `## Planned` entries the change removes, kept whole so a surface can name the removed
+   * titles, not just their keys. */
+  removed: BacklogEntry[];
   /** Entries the change rewrites (title or body differs from the merge-base's). */
   changed: BacklogEntry[];
 }
@@ -48,7 +52,7 @@ const snapshots = new Map<string, PendingPlanChange[]>();
 interface PendingPlanDiff {
   subject: string;
   added: BacklogEntry[];
-  removedKeys: string[];
+  removed: BacklogEntry[];
   changed: BacklogEntry[];
 }
 
@@ -60,6 +64,11 @@ type PendingPlanDiffResult = PendingPlanDiff | "unchanged" | null;
 
 const DIFF_MEMO_MAX = 512;
 const diffMemo = new Map<string, PendingPlanDiffResult>();
+
+/** renderPendingPlansBlock lists at most this many of its lines (change headers and effect
+ * lines alike); the rest is counted, not named. 40 keeps the block inside the prompt's
+ * standing evidence size while one long-running series of splits still shows its latest parts. */
+const PENDING_PLANS_LINE_CAP = 40;
 
 /** The role a pending ref belongs to: the refname's suffix after the pin or branch prefix. */
 function roleOfRef(ref: string): string {
@@ -88,7 +97,7 @@ async function diffAt(
   const baseByKey = new Map(baseEntries.map((e) => [entryKey(e.title), e] as const));
   const headKeys = new Set(headEntries.map((e) => entryKey(e.title)));
   const added = headEntries.filter((e) => !baseByKey.has(entryKey(e.title))).map((e) => ({ ...e }));
-  const removedKeys = [...baseByKey.keys()].filter((k) => !headKeys.has(k));
+  const removed = [...baseByKey.values()].filter((e) => !headKeys.has(entryKey(e.title))).map((e) => ({ ...e }));
   const changed = headEntries
     .filter((e) => {
       const b = baseByKey.get(entryKey(e.title));
@@ -96,13 +105,13 @@ async function diffAt(
     })
     .map((e) => ({ ...e }));
   const subject = (await run(root, "log", "-1", "--format=%s", sha))?.trim() ?? "";
-  return { subject, added, removedKeys, changed };
+  return { subject, added, removed, changed };
 }
 
 /** True when a diff payload contributes nothing to the projection: no additions, removals or
  * rewrites. */
 function diffIsEmpty(diff: PendingPlanDiff): boolean {
-  return diff.added.length === 0 && diff.removedKeys.length === 0 && diff.changed.length === 0;
+  return diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0;
 }
 
 /** Rebuild `root`'s snapshot from the refs that outlive the merge queue: one for-each-ref
@@ -165,7 +174,7 @@ export async function refreshPendingPlans(
       sha,
       subject: diff.subject,
       added: diff.added,
-      removedKeys: diff.removedKeys,
+      removed: diff.removed,
       changed: diff.changed,
     });
   }
@@ -178,8 +187,35 @@ export function pendingPlanChanges(root: string): PendingPlanChange[] {
   return snapshots.get(root) ?? [];
 }
 
+/** The plan role's `<pending-plans>` prompt block: what each unmerged change does to
+ * `## Planned`, one line per change naming its role, short SHA and subject, then the entries it
+ * adds, removes and edits by stamp-free title — so the plan role's dedupe step (charter step 3)
+ * checks entries main does not hold yet, and the charter's pending-plans rule (part 3/6) has a
+ * block to point at. `undefined` when the snapshot is empty, so a plan prompt with nothing
+ * unmerged is byte-identical to the pre-block prompt. The listed lines are capped at
+ * PENDING_PLANS_LINE_CAP; anything past the cap is counted, not named. */
+export function renderPendingPlansBlock(root: string): string | undefined {
+  const changes = pendingPlanChanges(root);
+  if (changes.length === 0) return undefined;
+  const all: string[] = [];
+  for (const change of changes) {
+    all.push(`${change.role} ${change.sha.slice(0, 7)}: ${change.subject}`);
+    for (const entry of change.added) all.push(`  adds "${stripEntryStamp(entry.title)}"`);
+    for (const entry of change.removed) all.push(`  removes "${stripEntryStamp(entry.title)}"`);
+    for (const entry of change.changed) all.push(`  edits "${stripEntryStamp(entry.title)}"`);
+  }
+  const listed = all.slice(0, PENDING_PLANS_LINE_CAP);
+  const omitted = all.length - listed.length;
+  if (omitted > 0) listed.push(`and ${plural(omitted, "line")} omitted`);
+  return (
+    "What the unmerged changes (a merge pin or a role branch) do to PLANS.md `## Planned`, one\n" +
+    "line per change with the entries it adds, removes and edits by stamp-free title.\n" +
+    `<pending-plans>\n${listed.join("\n")}\n</pending-plans>`
+  );
+}
+
 /** PLANS.md's `## Planned` as it will be once every unmerged change merges: main's entries
- * with each pending change applied in ref order — `removedKeys` dropped, `changed` bodies
+ * with each pending change applied in ref order — its removed entries dropped, `changed` bodies
  * replaced, `added` entries appended unless already present by key. A key several changes
  * touch resolves to the last change's version, the order a sequential merge would apply
  * them. Returns copies: callers may treat the result as their own. */
@@ -187,9 +223,10 @@ export function projectedPlannedEntries(root: string): BacklogEntry[] {
   const entries = plannedPlanEntries(root).map((e) => ({ ...e }));
   const byKey = new Map(entries.map((e) => [entryKey(e.title), e] as const));
   for (const change of pendingPlanChanges(root)) {
+    const removedKeys = new Set(change.removed.map((e) => entryKey(e.title)));
     for (let i = entries.length - 1; i >= 0; i--) {
       const entry = entries[i]!;
-      if (change.removedKeys.includes(entryKey(entry.title))) {
+      if (removedKeys.has(entryKey(entry.title))) {
         byKey.delete(entryKey(entry.title));
         entries.splice(i, 1);
       }

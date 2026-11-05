@@ -5,6 +5,32 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### No duplicate plans, part 3/6: The plan role's prompt lists what unmerged changes add to and remove from `## Planned`, and its charter treats them as already planned (planned 2026-11-04 by the operator at the user's direction; design in plans/duplicate-plans.md "Decision" 1; requires No duplicate plans part 2/6 landed; touches src/backlog/backlog-pending.ts src/run/run-prompt.ts src/roles/role-catalog.ts test/backlog-pending.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts) — done 2026-11-04 by the feature role
+
+**Goal.** Part 2/6 stops the scheduler from admitting a plan run that has nothing to plan. This part makes an admitted run see the unmerged plans, so its dedupe step (the plan charter's step 3: "confirm with grep … that no Planned entry … already covers it") also checks them. It also keeps the run from splitting or replanning an entry that an unmerged change already splits or removes. The `<backlog-index>` block is rendered from main, and every role's prompt shares it with line ranges into main's PLANS.md, so this is a separate block, not a change to the index.
+
+**Approach.**
+- Add `renderPendingPlansBlock(root): string | undefined` to src/backlog/backlog-pending.ts. It returns undefined when `pendingPlanChanges(root)` is empty.
+- Otherwise it lists one line per unmerged change: `<role> <short sha>: <subject>`. Under each line it lists that change's effects on `## Planned`: `adds "<title>"`, `removes "<title>"` and `edits "<title>"`.
+- Titles go through `stripEntryStamp`, like the index block's rows. Cap the block at 40 lines and end with a count of anything omitted.
+- `collectRoleDirectives` (or a sibling collector, like `collectBacklogStructureBlock`) in src/run/run-prompt.ts adds the block for base role `plan` only.
+- The plan charter in src/roles/role-catalog.ts gets one bullet at the top of step 1. Entries a `<pending-plans>` block adds are already planned: count them toward the eligible-plan stop, include them in step 3's dedupe, and never plan the same change again. An entry it removes or edits is being handled by that change: never split, replan, retire or refuse it.
+- No other role's prompt changes.
+
+**Files touched.** src/backlog/backlog-pending.ts src/run/run-prompt.ts src/roles/role-catalog.ts test/backlog-pending.test.ts test/run-prompt.test.ts test/prompt-roles.test.ts
+
+**Acceptance criteria.**
+- With the plan role pinned to a commit that adds `### A` and removes `### B`, the plan role's assembled prompt holds a `<pending-plans>` block naming the role, the short SHA, `adds "A"` and `removes "B"`. The feature and clean prompts do not have it.
+- With no unmerged change touching PLANS.md, the plan prompt is byte-identical to the prompt before this part.
+- The plan charter text names `<pending-plans>` in step 1, and the dedupe step names it too.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/backlog-pending.test.ts: the block's rendering, including the cap and the empty case.
+- test/run-prompt.test.ts: the block appears in the plan prompt only.
+- test/prompt-roles.test.ts: the charter bullet.
+- Run those files and the gate.
+
 ### Hourly full check, part 2c/4: The full check runs in its own `_main-full` mirror with its own in-flight pass, so a suite run never holds `_gate-main` (planned 2026-11-03 by the plan role, splitting the 2026-11-01 part 2/4 after feature held it too large for one run; requires Hourly full check part 2b/4 landed, so the full check is due-gated before it moves mirrors; touches src/paths.ts src/baseline/main-red.ts src/baseline/main-watch.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-rules.test.ts test/main-watch-mirror.test.ts) — done 2026-11-04 by the feature role
 
 **Goal.** A full suite run, which can take 3–20 minutes, no longer holds the `_gate-main` mirror the per-head diff rules and the gate's main-tip attribution use. The full check runs in a detached mirror of its own, `_main-full`, with its own in-flight promise; `poll` starts each pass independently and `idle()` waits for both.

@@ -526,6 +526,14 @@ test("the plan charter names the <duplicate-plans> block and the retire rule, ra
   assert.ok(!roleById("feature")!.find.includes("<duplicate-plans>"));
   assert.ok(!roleById("clean")!.find.includes("<duplicate-plans>"));
 });
+test("the plan charter treats <pending-plans> entries as already planned and their removals as handled", () => {
+  const find = oneLine(roleById("plan")!.find);
+  assert.match(find, /The prompt's <pending-plans> block \(when it is present\) lists what the unmerged changes/);
+  assert.match(find, /count it toward the eligible-plan stop and include it in step 3's dedupe/);
+  assert.match(find, /never plan the same change again while it waits to merge/);
+  assert.match(find, /never split, replan, retire or refuse it/);
+  assert.match(find, /no Planned entry, nor any entry a <pending-plans> block adds, nor any finished plan/);
+});
 test("the plan role states acceptance criteria as observable outcomes", () => {
   // A criterion naming the helper to reuse ("folding those exact rows (`summarizeTickRows`)")
   // became a test that deep-equals that helper's output (2026-11-02 test-oracle audit).

@@ -878,6 +878,32 @@ test("the plan stop-target note counts the projection, naming unmerged entries",
   assert.match(atPin.prompt, /counting 1 planned entry still unmerged/);
 });
 
+test("the <pending-plans> block rides in the plan prompt only, and names the unmerged change", async () => {
+  const dir = makeRepo();
+  sh(dir, "git", "config", "core.logAllRefUpdates", "true");
+  const entry = (title: string) => `### ${title} (planned 2026-01-01 by plan)\nBody.\n`;
+  const write = (entries: string[]): void => {
+    fs.writeFileSync(path.join(dir, "PLANS.md"), `# Plans\n\n## Planned\n\n${entries.join("\n")}\n## Done\n\n_None yet._\n`);
+    commitIn(dir, "plans");
+  };
+  write([entry("A")]);
+  // A pin adds one entry and removes another: the plan prompt's block must name the role, the
+  // short sha, and both effects. The feature and clean prompts carry no such block.
+  sh(dir, "git", "checkout", "--detach");
+  write([entry("B"), entry("C")]);
+  sh(dir, "git", "update-ref", "refs/tumwater/merge/plan", headSha(dir));
+  sh(dir, "git", "checkout", "main");
+  await refreshPendingPlans(dir, "main");
+  const planPrompt = promptFor(dir, "plan");
+  assert.ok(planPrompt);
+  assert.match(planPrompt.prompt, /^<pending-plans>$/m);
+  assert.match(planPrompt.prompt, /^plan [0-9a-f]{7}: plans$/m);
+  assert.match(planPrompt.prompt, /adds "B"/);
+  assert.match(planPrompt.prompt, /removes "A"/);
+  assert.doesNotMatch(promptFor(dir, "feature")!.prompt, /<pending-plans>/);
+  assert.doesNotMatch(promptFor(dir, "clean")!.prompt, /<pending-plans>/);
+});
+
 test("a director preview peeks its inbox and an empty inbox still assembles to null", () => {
   const dir = root();
   enqueuePrompt(dir, "add a changelog");

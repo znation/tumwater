@@ -10,6 +10,7 @@ import {
   pendingPlanChanges,
   projectedPlannedEntries,
   refreshPendingPlans,
+  renderPendingPlansBlock,
   type PendingGitRunner,
 } from "../src/backlog/backlog-pending.js";
 import { planBacklogFull, projectedPlanEligibleCount } from "../src/scheduling/claims.js";
@@ -65,7 +66,7 @@ test("a pinned addition: planBacklogFull sees the pin's entry, and without it do
   assert.equal(change.ref, "refs/tumwater/merge/feature");
   assert.equal(change.role, "feature");
   assert.deepEqual(change.added.map((e) => e.title), ["B (planned 2026-01-01 by plan)"]);
-  assert.deepEqual(change.removedKeys, []);
+  assert.deepEqual(change.removed, []);
   assert.deepEqual(change.changed, []);
   // Main's reader is untouched: it still sees one entry, still eligible.
   assert.equal(eligibleEntries(dir, "feature").length, 1);
@@ -89,9 +90,9 @@ test("a held branch that splits a Needs-review entry: the projection lists the p
   const change = pendingPlanChanges(dir)[0]!;
   assert.equal(change.ref, "refs/heads/tumwater/plan");
   assert.deepEqual(change.added.map((e) => e.title), ["Big, part 1/2: x (planned 2026-01-01 by plan)", "Big, part 2/2: x (planned 2026-01-01 by plan)"]);
-  // The removed key is the Needs-review entry's stamp-free identity.
-  assert.equal(change.removedKeys.length, 1);
-  assert.match(change.removedKeys[0]!, /big, part 1\/1: x/);
+  // The removed entry is the Needs-review entry itself, title and stamp intact.
+  assert.equal(change.removed.length, 1);
+  assert.match(change.removed[0]!.title, /Big, part 1\/1: x \(planned 2026-01-01 by plan\)/);
   const projected = projectedPlannedEntries(dir);
   assert.equal(projected.length, 2, "the projection lists the two parts");
   // The needs-review hold is gone from the projection, and both parts are eligible, so the
@@ -147,4 +148,42 @@ test("a second refresh with unchanged refs re-reads no commit: only the one for-
   const second = calls.slice(afterFirst);
   assert.equal(second.length, 1, "the repeat refresh runs only the for-each-ref");
   assert.match(second[0]![0]!, /for-each-ref/);
+});
+
+test("the block lists each unmerged change's role, short sha, subject and stamp-free effects", async () => {
+  const { dir } = plansRepo(PLANS([entry("B"), entry("C", "First body.")]), "marker-block");
+  const sha = pinAt(dir, "plan", (d) =>
+    fs.writeFileSync(path.join(d, "PLANS.md"), PLANS([entry("A"), entry("C", "Changed body.")])),
+  );
+  await refreshPendingPlans(dir, "main");
+  const block = renderPendingPlansBlock(dir);
+  assert.ok(block !== undefined);
+  assert.match(block, new RegExp(`^plan ${sha.slice(0, 7)}: pin$`, "m"));
+  assert.match(block, /adds "A"/);
+  assert.match(block, /removes "B"/);
+  assert.match(block, /edits "C"/);
+  // The titles are stamp-free, and the block is fenced.
+  assert.doesNotMatch(block, /\(planned 2026-01-01 by plan\)/);
+  assert.match(block, /^<pending-plans>$/m);
+  assert.match(block, /<\/pending-plans>$/);
+});
+
+test("the block is absent when nothing is unmerged", async () => {
+  const { dir } = plansRepo(PLANS([entry("A")]), "marker-block-empty");
+  await refreshPendingPlans(dir, "main");
+  assert.equal(renderPendingPlansBlock(dir), undefined);
+});
+
+test("the block caps its listed lines and counts the rest, never naming them", async () => {
+  const { dir } = plansRepo(PLANS([entry("B")]), "marker-block-cap");
+  // One change adds 41 entries and removes one: 43 lines in all. The cap lists the change line
+  // and 39 of the 41 additions; the two remaining additions and the removal are counted, not
+  // named.
+  const many = [entry("A0"), ...Array.from({ length: 40 }, (_, i) => entry(`E${i}`))];
+  pinAt(dir, "plan", (d) => fs.writeFileSync(path.join(d, "PLANS.md"), PLANS(many)));
+  await refreshPendingPlans(dir, "main");
+  const block = renderPendingPlansBlock(dir)!;
+  assert.equal(block.match(/adds "/g)?.length, 39, "the cap lists 39 of the 41 additions after the change line");
+  assert.doesNotMatch(block, /removes "B"/, "the past-cap removal is counted, not named");
+  assert.match(block, /^and 3 lines omitted$/m);
 });

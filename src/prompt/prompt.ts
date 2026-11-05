@@ -359,6 +359,10 @@ interface RunPromptInput {
    * plan only, omitted when PLANS.md `## Planned` holds no duplicate groups — the common case,
    * where the prompt is byte-identical. */
   duplicatePlans?: string;
+  /** Rendered pending-plans block (see backlog-pending.ts renderPendingPlansBlock); plan base
+   * only, omitted when no unmerged change touches PLANS.md's `## Planned` — the prompt is then
+   * byte-identical to the pre-block prompt. */
+  pendingPlans?: string;
   /** Rendered actionable backlog index (see backlog-index.ts); every run carries it. */
   backlogIndex?: string;
   /** The role's notes (roleNotesPath, read by run-prompt.ts): the note its own earlier
@@ -496,6 +500,7 @@ function runEvidenceBlocks(input: RunPromptInput): string[] {
   if (input.backlogStructure) parts.push(input.backlogStructure);
   if (input.duplicatePlans) parts.push(input.duplicatePlans);
   if (input.backlogIndex) parts.push(input.backlogIndex);
+  if (input.pendingPlans) parts.push(input.pendingPlans);
   return parts;
 }
 

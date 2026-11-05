@@ -3,7 +3,7 @@ import type { RunnerState } from "../runner/runner-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage, type Role } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { planBacklogTarget, projectedPlanEligibleCount } from "../scheduling/claims.js";
-import { projectedPlannedEntries } from "../backlog/backlog-pending.js";
+import { projectedPlannedEntries, renderPendingPlansBlock } from "../backlog/backlog-pending.js";
 import { configForRole } from "../config/config-views.js";
 import { NOTHING_TO_DO } from "../verdict/reply-contract.js";
 import { dequeuePromptEntry, dequeueRolePromptEntry, peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
@@ -164,6 +164,7 @@ function buildRoleRunPrompt(
   const duplicatePlans = collectDuplicatePlansBlock(root, base);
   const { notes, notesSavedDay, notesBacklog } = readPromptNotes(root, role);
   const { planTargetNote, flakyChecks, noCheck } = collectRoleDirectives(root, config, base, check);
+  const pendingPlans = collectPendingPlansBlock(root, base);
   // A run holding a claim with no queued request is assigned its one entry (the assignment
   // note below). Such a run reads that entry first, so the backlog index — what an unassigned
   // run chooses its task from — stays out.
@@ -186,6 +187,7 @@ function buildRoleRunPrompt(
     planTargetNote,
     flakyChecks,
     noCheck,
+    pendingPlans,
     extraInstructions: config.roles[base]?.instructions,
     check,
     gateCommand: gateCommandOf(config),
@@ -305,6 +307,18 @@ function collectDuplicatePlansBlock(root: string, base: string): string | undefi
   return base === "plan" ? renderDuplicatePlansBlock(root) : undefined;
 }
 
+/** The plan role's `<pending-plans>` block (plans/duplicate-plans.md "Decision" 1, part 3/6):
+ * what the unmerged changes do to `## Planned`, so the plan role's dedupe step also checks the
+ * entries a pin or a held branch already carries. Plan base only — the `<backlog-index>` block
+ * is rendered from main and shared by every role, so this is a separate block, not an index
+ * change. The snapshot is refreshed before every admitted run (runner-run.ts) and per poll
+ * (orchestrator-poll.ts); a role that starts before any refresh holds the snapshot of its last
+ * poll, and an empty one gives no block — the prompt is then byte-identical to the pre-block
+ * prompt. The render cannot throw (it reads only the in-memory snapshot), so no guard is
+ * needed, and every other role is untouched. */
+function collectPendingPlansBlock(root: string, base: string): string | undefined {
+  return base === "plan" ? renderPendingPlansBlock(root) : undefined;
+}
 /** Read the role's own notes plus their saved day and live backlog state (notes-backlog.ts),
  * returning all three in one place. */
 function readPromptNotes(root: string, role: string): { notes: string | undefined; notesSavedDay: string | undefined; notesBacklog: string | undefined } {
