@@ -812,11 +812,12 @@ async function authorRun(
   const ci = ctx.baseRole === "ci" ? extractCiResult(pi.finalText) : null;
   // The `ci` observer's reply also ends with a result-carrying `REMOTE:` line (plans/remote-
   // ci.md "The line"). It records only when the run's own prompt carried the Remote CI block:
-  // re-resolve the target, and record the extracted result only when it is non-null and the
-  // reply actually carries a REMOTE line — a stray REMOTE line in a block-less reply records
-  // nothing. The harness records it, never pi.
+  // if re-resolving the target below merely became non-null during the run (a workflow file or
+  // remote landing on main), a stray REMOTE line in a block-less reply still records nothing.
+  // The harness records it, never pi.
+  const promptCarriedRemoteBlock = prompt.includes("Remote CI (GitHub Actions on ");
   let remote: RemoteResult | null = null;
-  if (ctx.baseRole === "ci") {
+  if (ctx.baseRole === "ci" && promptCarriedRemoteBlock) {
     const line = extractRemoteResult(pi.finalText);
     if (line) {
       let target: { repo: string; branch: string } | null = null;
