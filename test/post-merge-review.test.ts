@@ -740,12 +740,14 @@ test("a reviewer's fix that fails its pre-check is withheld from main (BUGS.md 2
   // main never moved past the reviewed commit: the broken repair did not land.
   assert.equal(headSha(root), commit, "the withheld fix never fast-forwards main");
   assert.equal(fs.readFileSync(path.join(root, "x.txt"), "utf8"), "x", "main keeps the reviewed tree, not the broken fix");
-  // The fix ref survives (leftover recovery can still reach the commit) and the reviewed commit
-  // is settled fixed naming itself — the shape a rejection answered by its own fix takes.
+  // The fix ref survives so the withheld commit remains reachable, and the reviewed commit is
+  // settled rejected with the pre-check's reasons. `fixed` stays unset: no repair landed on main,
+  // so it must not read as the landed-fix record PostReview.fixed names.
   assert.ok(sh(root, "git", "for-each-ref", reviewFixRef(commit)).trim(), "the withheld fix ref survives");
   const settled = readPostReviews(root);
   const reviewed = settled.find((e) => e.commit === commit)!;
-  assert.equal(reviewed.fixed, commit, "the reviewed entry settles fixed naming itself");
+  assert.equal(reviewed.fixed, undefined, "no fix is recorded as landed on main");
+  assert.ok(reviewed.rejected !== undefined && reviewed.rejected.length > 0, "the reviewed entry records the pre-check's rejection reasons");
 });
 
 test("a fix commit's subject and recorded reasons name the finding, never the FIX line", async () => {

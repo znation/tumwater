@@ -24,7 +24,7 @@ import { gateBuildPrecheck } from "../review/review-precheck.js";
 import { setupFailureResult } from "../agent/agent-settle.js";
 import { recordReview } from "../run/run-apply.js";
 import { firstReason } from "../text/phrases.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import type { RunResult } from "../run/run-outcome.js";
 
 /** One poll of the post-merge reviews: a rejected-and-not-fixed commit is
@@ -148,13 +148,14 @@ async function fileDroppedReview(ctx: MergePipelineContext, entry: PostReview, f
  * path — mergeToMain, whose mergeLockDir lock serializes it with every other write to main — and
  * settle the entry `fixed` naming the landed fix. Since part 4l/3 mergeToMain is a bare rebase
  * and fast-forward with no check of its own, the pre-check is what verifies the fix tree (BUGS.md
- * 2026-11-04). A check that rejects the fix, or cannot be run, withholds it before main moves and
- * records the finding on the reviewed commit. A landing that fails (a conflict, a refused
- * fast-forward) leaves main at the reviewed commit and keeps the entry with its failure recorded
- * for the next poll's retry, exactly as a failed run is kept today — up to the same
- * POST_REVIEW_FAILURE_LIMIT the verdict-less-review path obeys, so the at-risk doctor row/alert's
- * "one more failed run drops it" stays true and the reviewer is not re-run forever; the review-fix
- * ref survives so leftover recovery can still reach the commit.
+ * 2026-11-04). A check that rejects the fix withholds it before main moves and records the finding
+ * as the reviewed entry's rejection; an unverified (host-sleep) tree is also withheld, but that
+ * entry stays queued for another review. A landing that fails (a conflict, a refused fast-forward)
+ * leaves main at the reviewed commit and keeps the entry with its failure recorded for the next
+ * poll's retry, exactly as a failed run is kept today — up to the same POST_REVIEW_FAILURE_LIMIT the
+ * verdict-less-review path obeys, so the at-risk doctor row/alert's "one more failed run drops it"
+ * stays true and the reviewer is not re-run forever; the review-fix ref survives so the withheld
+ * commit remains reachable.
  * Throws when git could not start; a failed merge itself returns a non-terminal RunResult and
  * is never a throw. */
 async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fix: string, state: RunnerState): Promise<void> {
@@ -188,13 +189,15 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
     async (reasons) => {
       // The gate's shared reject path (review.ts's reject), shaped to the fix's bookkeeping:
       // record the rejection for the role's next runs, name the fix commit in a
-      // review_rejected event, and settle the reviewed commit `fixed` naming ITSELF — the same
-      // shape a rejection answered by its own fix takes (Forward never back 1a/6). The broken
-      // fix commit stays pinned at the review-fix ref where leftover recovery can reach it.
+      // review_rejected event, and settle the reviewed commit rejected with those reasons. Its
+      // `fixed` stays unset — no repair landed on main — so the entry reads as rejected, not as
+      // a landed fix (PostReview.fixed names the fix commit that merged). The broken fix commit
+      // stays pinned at the review-fix ref so the withheld commit remains reachable.
       recordReview(state, "reject", reasons, fix);
+      saveRunnerStateBestEffort(ctx.root, state);
       logEventBestEffort(ctx.root, { source: entry.role, type: "review_rejected", head: fix, reasons, afterMerge: true });
       warnEventBestEffort(ctx.root, entry.role, `the post-merge fix of ${shortSha(entry.commit)} failed its pre-check and was withheld: ${firstReason(reasons)}`);
-      settlePostReview(ctx.root, entry.commit, { ...entry, fixed: entry.commit });
+      settlePostReview(ctx.root, entry.commit, { ...entry, rejected: reasons });
       return { decision: "rejected" as const, detail: firstReason(reasons) };
     },
   );
