@@ -10,10 +10,10 @@
  */
 import type { RunResult } from "../run/run-outcome.js";
 import { assertReportSinceMs, eventWindowCovers, readWindowEvents, sinceWindowTiming, type EventLogState } from "../events/event-window.js";
-import { eventDayKey, eventRole } from "../events/event-read.js";
+import { eventDayKey, eventRole, runStartModel, runStartModelMap } from "../events/event-read.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { scopeBases } from "../report/report-fold.js";
-import { timeAndSpend, type LossCause, type TimeSpendRow } from "./failure-time-spend.js";
+import { OUTCOME_CLASS, timeAndSpend, type LossCause, type TimeSpendRow } from "./failure-time-spend.js";
 import type { HarnessEvent } from "../events/events.js";
 import { dayAt, dayKey, dayWindow, DAY_MS, formatDate } from "../text/datetime.js";
 import { sortByRoleAscending } from "../collections.js";
@@ -130,6 +130,7 @@ export interface FailureReportData {
   partial: boolean; // the read window (both halves) starts before the retained log does
   oldestEventDate: string | null; // when partial/empty: the oldest retained event's local date
   outcomes: OutcomeRow[];
+  failedRunsByModel?: Record<string, number>; // the current window's error-class runs per start model; team digest only, absent when empty
   deltas: DeltaRow[];
   timeSpend: TimeSpendRow[]; // per role × outcome class: runs, summed wall-clock ms, cost
   lossCauses: LossCause[]; // top LOSS_TOP causes by time: error clusters, no_change, context cut-off, review-rejected and merge-conflict/merge-blocked authoring
@@ -399,6 +400,10 @@ function assembleFailureReport(
   const runEvents = current.filter((ev) => ev.type === "run_end");
 
   const outcomes = outcomeRows(runEvents);
+  // The parallel model attribution: the Outcome table above says WHOSE runs ended how; this
+  // says which model selector's runs failed. Team digest only — a model is not a role, so a
+  // role-scoped digest leaves the field absent.
+  const failedRunsByModel = bases === undefined ? failedRunsByModelCounts(runEvents, allEvents) : undefined;
 
   // Time and spend: the same runs priced by wall-clock span and cost, per role × outcome
   // class, plus the loss ranking that weighs causes by agent-hours rather than run counts.
@@ -449,6 +454,9 @@ function assembleFailureReport(
     partial: hasEvents && !windowComplete,
     oldestEventDate,
     outcomes,
+    ...(failedRunsByModel !== undefined && Object.keys(failedRunsByModel).length > 0
+      ? { failedRunsByModel }
+      : {}),
     deltas,
     timeSpend,
     lossCauses,
@@ -485,6 +493,22 @@ function outcomeRows(runEvents: HarnessEvent[]): OutcomeRow[] {
     (row) => total(row.counts),
     (row) => row.role,
   );
+}
+
+/** The current window's error-class run_end events counted per their start model — the
+ * failure digest's `Failed runs by model` line, the model twin of the day report's
+ * `Failed runs by role`. The class is OUTCOME_CLASS's "error", so a run whose start sits
+ * outside the read window (rotated out) still counts in the Outcome table but in no model's
+ * count, and a start that named no model counts in the Outcome table and nowhere here. */
+function failedRunsByModelCounts(runEvents: HarnessEvent[], allEvents: HarnessEvent[]): Record<string, number> {
+  const models = runStartModelMap(allEvents);
+  const counts: Record<string, number> = {};
+  for (const ev of runEvents) {
+    if (OUTCOME_CLASS[ev.result as RunResult] !== "error") continue;
+    const model = runStartModel(ev, models);
+    if (model !== null && model !== "") addTo(counts, model, 1);
+  }
+  return counts;
 }
 
 /** Deltas: current vs preceding window, per role, ordered by runs descending. */

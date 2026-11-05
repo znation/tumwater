@@ -1178,3 +1178,65 @@ test("a disk hold reaches the digest's state changes", () => {
   const section = md.slice(md.indexOf("## Team state changes"), md.indexOf("## Outcome by role"));
   assert.match(section, /waiting: low disk — 3\.2 GB free \(floor 2\.0 GB\)/);
 });
+
+test("the digest ranks each model selector's error-class runs beneath the outcome table", () => {
+  // Mixed-provider team: acme/beta's runs fail twice, acme/alpha and zed/gamma once each
+  // (the tie ranks model ascending), acme/gamma's run merged (no entry), and bugfix's run 2
+  // errored with no start in the log (counts in the Outcome table, in no model's count).
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0, 1), loop: "feature", type: "run_start", run: 1, model: "acme/beta" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 1), loop: "feature", type: "run_start", run: 2, model: "acme/beta" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 1), loop: "feature", type: "run_start", run: 3, model: "acme/alpha" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 1), loop: "clean", type: "run_start", run: 1, model: "zed/gamma" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 1), loop: "bugfix", type: "run_start", run: 1, model: "acme/gamma" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 2), loop: "feature", type: "run_end", run: 1, result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 2), loop: "feature", type: "run_end", run: 2, result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 2), loop: "feature", type: "run_end", run: 3, result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 2), loop: "clean", type: "run_end", run: 1, result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 2), loop: "bugfix", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 2), loop: "bugfix", type: "run_end", run: 2, result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const data = collectFailureReport(root, 1);
+  assert.equal(data.runs, 6);
+  assert.deepEqual(data.failedRunsByModel, { "acme/beta": 2, "acme/alpha": 1, "zed/gamma": 1 });
+  const line = "**Failed runs by model:** acme/beta — 2 · acme/alpha — 1 · zed/gamma — 1";
+  const md = renderFailureMarkdown(data);
+  assert.ok(md.includes(line), "the ranked line, count descending and model ascending");
+  // The line sits beneath the Outcome table and before the time-and-spend section.
+  assert.ok(md.indexOf("## Outcome by role") < md.indexOf(line));
+  assert.ok(md.indexOf(line) < md.indexOf("## Time and spend by outcome"));
+  // The unpaired error still counts in the Outcome table — the attribution is parallel.
+  const bugfix = data.outcomes.find((o) => o.role === "bugfix");
+  assert.deepEqual(bugfix?.counts, { changed: 1, error: 1 });
+});
+
+test("a role-scoped digest omits the failed-runs-by-model line and key", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0, 1), loop: "feature", type: "run_start", run: 1, model: "acme/beta" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 2), loop: "feature", type: "run_end", run: 1, result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 2), loop: "bugfix", type: "run_end", result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const scoped = collectFailureReport(root, 1, "feature");
+  assert.equal(scoped.role, "feature");
+  assert.ok(!("failedRunsByModel" in scoped), "a model is not a role: the key stays absent");
+  assert.doesNotMatch(renderFailureMarkdown(scoped), /Failed runs by model/);
+  // The team digest of the same log carries the map (bugfix's unpaired error names no model).
+  const team = collectFailureReport(root, 1);
+  assert.deepEqual(team.failedRunsByModel, { "acme/beta": 1 });
+  assert.match(renderFailureMarkdown(team), /\*\*Failed runs by model:\*\* acme\/beta — 1/);
+});
+
+test("a digest whose starts name no model prints no failed-runs-by-model line", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0, 1), loop: "feature", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 2), loop: "feature", type: "run_end", run: 1, result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 2), loop: "feature", type: "run_end", result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const data = collectFailureReport(root, 1);
+  assert.equal(data.runs, 2);
+  assert.ok(!("failedRunsByModel" in data), "no known start model leaves the field absent");
+  assert.doesNotMatch(renderFailureMarkdown(data), /Failed runs by model/);
+});

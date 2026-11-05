@@ -13,6 +13,7 @@ import { durationLabel } from "../cli/cli-args.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { markdownTable, type ColumnAlign } from "../text/markdown.js";
+import { rankCountEntries } from "../collections.js";
 
 /** A cluster's role list shows at most this many names before a "+N more" remainder. */
 const ROLES_SHOWN = 4;
@@ -140,6 +141,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   pushDigestHeader(lines, data);
   pushStateChanges(lines, data);
   pushOutcomeTable(lines, data);
+  pushFailedRunsByModel(lines, data);
   pushTimeAndSpend(lines, data);
   pushPromptStats(lines, data);
   pushDeltas(lines, data);
@@ -219,6 +221,19 @@ function pushOutcomeTable(lines: string[], data: FailureReportData): void {
       ),
     );
   }
+}
+
+/** The model attribution beside the Outcome table: each model selector's error-class runs,
+ * ranked by count descending and model ascending. Team digest only — a model is not a role,
+ * so a role-scoped digest never carries the field and prints no line. The line lists every
+ * model with a failing run, so it needs no remainder line; a digest whose error runs carry
+ * no known start model leaves the field absent and prints nothing. */
+function pushFailedRunsByModel(lines: string[], data: FailureReportData): void {
+  if (data.failedRunsByModel === undefined) return;
+  const ranked = rankCountEntries(Object.entries(data.failedRunsByModel)).filter(([, n]) => n > 0);
+  if (ranked.length === 0) return;
+  lines.push("");
+  lines.push(`**Failed runs by model:** ${ranked.map(([m, n]) => `${m} — ${n}`).join(" · ")}`);
 }
 
 /** The same runs priced by what they cost, so a 30-minute timeout outranks ten 200-ms
