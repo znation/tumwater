@@ -17,14 +17,6 @@ export const VERIFY_TIER = -1;
  * drift. */
 export const MERGE_TIER = VERIFY_TIER - 1;
 
-/** How many verifications may be in flight (parked or running) at once: every `maxConcurrent`
- * permit but one, so a deep merge queue never takes the last slot from the roles that could
- * author — at least one, so `maxConcurrent` 1 still merges. The merge's short conflict-resolution
- * run is not counted: it is the one serial step every queued change waits on. */
-export function verifyLimit(maxConcurrent: number): number {
-  return Math.max(1, maxConcurrent - 1);
-}
-
 /** Resolve a merge entry's authoring runner: the live runner when the role is enabled
  * (runners are never removed from the array on disable — only a warning event fires); a role
  * disabled before this process started has no runner, so a throwaway one supplies the same

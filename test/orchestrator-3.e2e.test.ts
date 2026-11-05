@@ -642,16 +642,15 @@ test("a role rejected in its verify runs again while another queued change is st
   }
 });
 
-test("maxConcurrent 4 verifies three queued changes at once on the live orchestrator, then merges them all", async () => {
+test("maxConcurrent 4 verifies three queued changes one at a time on the live orchestrator, then merges them all", async () => {
   // Merge-queue speed 2c through the scheduler's own wiring: every verify takes one of the shared
-  // maxConcurrent permits (no role run holds one: each is seeded below as just ran), verifyLimit
-  // keeps the fourth for authoring, all three gate checks run together (each records how many
-  // were in flight as it started), and the merge slot merges every change. Sampling now lives
-  // in the declared check, not the reviewer run: each gate check parks ~3 s and counts its
-  // fellow gate checks in samples.log on exactly the change's own tree. A per-change once
-  // marker (one sample each) keeps the main watch from skewing the count when it checks main's
-  // tip after a merge (that tip holds the change file too), and main's baseline before the
-  // merges sees no change file and passes at once.
+  // maxConcurrent permits (no role run holds one: each is seeded below as just ran), the drain
+  // starts one verification at a time, the merge slot merges every change, and a fourth permit
+  // stays free for authoring. Sampling now lives in the declared check, not the reviewer run:
+  // each gate check parks ~3 s and counts its fellow gate checks in samples.log on exactly the
+  // change's own tree. A per-change once marker (one sample each) keeps the main watch from
+  // skewing the count when it checks main's tip after a merge (that tip holds the change file
+  // too), and main's baseline before the merges sees no change file and passes at once.
   const repo = makeRepo();
   await initProject(repo, "verification stage e2e test");
   const roles = ["feature", "bugfix", "clean"];
@@ -692,7 +691,10 @@ test("maxConcurrent 4 verifies three queued changes at once on the live orchestr
     );
     const samples = fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
     assert.equal(samples.length, 3, "one sample per change");
-    assert.equal(Math.max(...samples), 3, `the three gate checks overlapped (in flight at each start: ${samples})`);
+    assert.ok(
+      samples.every((n) => n === 1),
+      `each gate check ran alone, the drain serialized the verifications (in flight at each start: ${samples})`,
+    );
     assert.equal(eventsOfType(repo, "merged").length, 3, "every change merged");
   } finally {
     await stopOrchestrator(orch, restore);

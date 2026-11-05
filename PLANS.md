@@ -153,26 +153,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Run test/doctor-checks.test.ts, test/doctor.test.ts, test/event-format.test.ts, test/retention.test.ts, test/config.test.ts and test/config-aliases.test.ts, then the project's gate. If a surviving row or key loses its case, restore it; do not weaken an assertion to make the gate pass.
 
-### Subtract verify collapse, part 3a/5: The verify stage runs one verification at a time; `verifyLimit` and its multi-verification cap are removed (planned 2026-11-04 by the plan role, splitting the 2026-11-03 Subtract verify collapse part 3/5 after feature held it too large for one run; requires Subtract verify collapse part 2/5 landed; touches src/merge/merge-author.ts src/merge/merge-verify.ts src/merge/merge-pipeline.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts)
-
-**Goal.** The separate verify stage starts at most one verification at a time. `verifyLimit` and its maxConcurrent-derived cap are gone; `drainVerify` starts a verification only when `p.verifying` is empty. A verification may still park on the shared semaphore for its permit. Approved changes still merge one at a time while that verification runs. This removes the parallel-verification behavior the later collapse would otherwise have to preserve or rewrite, and leaves the queue → verify → merge staging in place.
-
-**Approach.**
-- merge-author.ts: delete `verifyLimit` and its limit/tier comment; keep `VERIFY_TIER` and `resolveAuthor`. Update the module comment to say the drain serializes verifications instead of capping them.
-- merge-verify.ts: remove the `verifyLimit` import and the `p.verifying.size >= verifyLimit(...)` return; after `dropTornHead`, return when `p.verifying.size > 0` so only one verification starts. Keep the parked-task path: the one verification can still wait for a permit and re-check `startHeld` when granted. Update the "up to verifyLimit" comments.
-- merge-pipeline.ts: update comments that say verifications run "up to verifyLimit" or "how many run at once"; keep `parked` and the per-verification task record.
-- test/merge-pipeline.test.ts: rewrite the cap-3 "verifications leave one permit for authoring: at cap 3 two review, the third waits unstarted" case to the serial rule — at cap 3 one verification runs and the next queued entry waits unstarted until the first verification task settles; rewrite "a verification rejection drops its entry at once … while the other verify runs on" to the serial order (the rejection drops its entry, its role may run next poll, and the next queued entry starts on the next drain). Remove the `verifyLimit` import.
-- test/merge-pipeline-2.test.ts: correct the stage-loop comment that says the second verify parks until the first frees its permit: with one verification at a time the second does not start until the first verification's task ends. Keep the event/record assertions where they still hold; rewrite only a timeline that depended on two verifications overlapping.
-
-**Acceptance criteria.**
-- `grep -rn 'verifyLimit' src/ test/merge-pipeline.test.ts` prints nothing.
-- With two queued changes and a cap of 3, one drain starts one verification; the second entry stays queued until the first verification's task settles. A test asserts exactly one entry in `pipeline.verifying` and the second still queued.
-- A verification may still park on a permit, and the merge's conflict resolver still takes a shared permit ahead of it (the existing parked case).
-- Approved changes still merge while a verification runs (the existing approved-ahead case).
-- `npm run test:gate` passes.
-
-**Tests.** Run test/merge-pipeline.test.ts, test/merge-pipeline-2.test.ts and test/merge-requeue.test.ts, then the gate.
-
 ### Subtract verify collapse, part 3b/5: The merge queue's head runs its gate and merge in one task; the drain stops starting verifications and stops populating the approved/verifying maps (planned 2026-11-04 by the plan role, splitting the 2026-11-03 Subtract verify collapse part 3/5 after feature held it too large for one run; requires Subtract verify collapse part 3a/5 landed; touches src/merge/merge-drain.ts src/merge/merge-core.ts src/merge/merge-pipeline.ts src/orchestrator/orchestrator-poll.ts test/merge-drain.test.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merger.test.ts test/fixtures/orchestrator-fixtures.ts test/fixtures/merger-fixtures.ts)
 
 **Goal.** A queued entry goes from the queue to the gate to the merge in one task: `drainMerge` takes the queue head and starts one task whose `mergeApprovedChange` runs `reviewQueuedChange` in the merge worktree before `mergeToMain`, settles the outcome, queues the post-merge review on a `merged` event as today, and continues to the next head one at a time. The drain no longer calls `drainVerify`, and neither `p.approved` nor `p.verifying` is populated. Torn-head recovery, the already-merged dedupe, `notBefore`, `liveRoles` and `startHeld` checks move from the verify drain into the serial drain; the withdrawn check runs before the gate. A rejected entry settles as today. The verify modules and map types remain in place until part 3c/5 deletes them.

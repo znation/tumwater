@@ -8,7 +8,7 @@ import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { verifyRequest, type VerifyVerdict } from "./merge-batch.js";
 import { dropTornHead, mergedIntoMain } from "./merge-head.js";
-import { VERIFY_TIER, resolveAuthor, verifyLimit } from "./merge-author.js";
+import { VERIFY_TIER, resolveAuthor } from "./merge-author.js";
 import {
   abortOnShutdown,
   acquireUnlessAborted,
@@ -21,8 +21,9 @@ import {
   type MergePipelineContext,
 } from "./merge-pipeline.js";
 
-/** Start a verification, in queue order, for every queued entry whose role the pipeline does not
- * already hold, up to verifyLimit — the shared semaphore bounds how many of them run. The torn-head
+/** Start a verification, in queue order, for the first queued entry whose role the pipeline does
+ * not already hold — one verification at a time (drainVerify serializes them; the shared
+ * semaphore still bounds its permit). The torn-head
  * drop comes first, and each entry is deduped against main before its verification starts: an entry
  * whose sha main already holds (a crash between the fast-forward and the drop) is dropped without a
  * run, with its marker record; a crash mid-verification leaves both entry and ref, so the entry is
@@ -34,7 +35,7 @@ export async function drainVerify(ctx: MergePipelineContext, p: MergePipeline): 
   // spawn), serving every entry's cached dedupe verdict below.
   const mainHead = queue.length === 0 ? "" : ((await branchHead(ctx.root, ctx.mainBranch)) ?? "");
   for (const { entry, file } of queue) {
-    if (p.verifying.size >= verifyLimit(ctx.semaphore.limit)) return;
+    if (p.verifying.size > 0) return; // one verification at a time: the rest wait in the queue
     if (liveRoles(p).has(entry.role)) continue;
     // A re-queued review_error waits out its delay; the entry stays queued and holds its author.
     if (entry.notBefore !== undefined && Date.now() < entry.notBefore) continue;
@@ -73,7 +74,7 @@ export async function drainVerify(ctx: MergePipelineContext, p: MergePipeline): 
  * a lost pin's "error", aborted — is final for this queue entry, so its
  * outcome is
  * written at once and its entry dropped, which frees its author on the next poll while the
- * other verifications run on (BUGS.md 2026-09-23's early-rejection rule). A user-aborted
+ * next queued entry waits for the drain (BUGS.md 2026-09-23's early-rejection rule). A user-aborted
  * verification discards its pin; a shutdown keeps it. Never rejects for a failed merge: an
  * unexpected throw becomes an "error" outcome. Exported for
  * test/fixtures/orchestrator-fixtures.ts's mergeHead, which merges one queue entry through the

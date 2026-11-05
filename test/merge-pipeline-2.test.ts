@@ -11,7 +11,7 @@ import { mergeStartHeld } from "../src/orchestrator/orchestrator-poll.js";
 import { consumeAbortRequests } from "../src/operator/operator-requests.js";
 import { queueDepth, queuedMergeFiles } from "../src/merge/merge-queue.js";
 import { abortRequestPath, mergeQueueDir, mergeRefName, mergeStatePath, statePath } from "../src/paths.js";
-import { deleteRef, isMergedInto, refSha } from "../src/git/git.js";
+import { deleteRef, refSha } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readMergeMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -27,7 +27,6 @@ import {
   pump,
   pumpUntil,
   queueChanges,
-  rowReader,
   runnersFor,
 } from "./fixtures/merge-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -36,9 +35,9 @@ import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { waitFor, waitForFile } from "./helpers/wait.js";
 
 /** Third slice of the merge-drain suite (see merge-pipeline.test.ts for the split): an abort
- * whose pin is already gone, a merge while an earlier entry still verifies, the reviewer hold,
- * the merge cell's stage, and the plumbing-throw recoveries. The review gate's pi runs are real
- * subprocesses behind the fake shim. */
+ * whose pin is already gone, an approved change waiting while a later entry still verifies, the
+ * reviewer hold, the merge cell's stage, and the plumbing-throw recoveries. The review gate's
+ * pi runs are real subprocesses behind the fake shim. */
 
 // These tests pin the sequential merge stages (the check, then the review).
 process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
@@ -148,46 +147,49 @@ test("an aborted approved change settles despite an unwritable state file: no th
   }
 });
 
-test("an approved change merges while an earlier queue entry is still verifying", async () => {
+test("an approved change waits to merge while a later queue entry is still verifying", async () => {
   const root = makeRepo();
   const roles = ["alpha", "beta"];
-  const shas = await queueChanges(root, roles);
-  const rowOf = rowReader(root, roles);
+  await queueChanges(root, roles);
   const flags = tmpdir("vet-ahead-");
-  // Part 3s/3: hold the head in flight through the deterministic gate, not the reviewer: the
-  // check blocks alpha on its release file while beta's passes, so beta merges ahead of the held
-  // queue head. The block keys off alpha.txt (present only in alpha's verification worktree), so
-  // the gate's attribution re-check on main's tip — which holds it — neither blocks nor matches.
+  // Serial order: alpha verifies first (its check passes) and settles approved, but the merge
+  // slot is held busy, so it waits to merge; the drain then starts beta's verification, which
+  // blocks on its release file — so an approved change (alpha) sits waiting to merge while a
+  // later queue entry (beta) is still verifying. Freeing the slot lets alpha merge while beta's
+  // verification runs on. The block keys off beta.txt (present only in beta's verification
+  // worktree), so the gate's attribution re-check on main's tip — which holds it — neither blocks
+  // nor matches.
   const config = {
     ...defaultConfig(),
     check: {
       command:
-        `if [ -f alpha.txt ]; then touch '${path.join(flags, "alpha-blocking")}'; ` +
-        `i=0; while [ ! -f '${path.join(flags, "alpha-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi`,
+        `if [ -f beta.txt ]; then touch '${path.join(flags, "beta-blocking")}'; ` +
+        `i=0; while [ ! -f '${path.join(flags, "beta-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi`,
     },
   };
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { cap: 3, config });
   const bg = pump(ctx, pipeline);
   try {
-    await waitForFile(path.join(flags, "alpha-blocking"));
-    await waitFor(() => readEvents(root).some((e) => e.type === "merge_done" && e.source === "beta"), "beta to merge", 30_000);
+    pipeline.merge = busySlot(); // hold the slot: alpha approves but waits to merge
+    await waitForFile(path.join(flags, "beta-blocking")); // alpha settled approved; beta now verifying
+    assert.deepEqual([...pipeline.approved.keys()], ["alpha"], "alpha is approved, waiting for the slot");
+    assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "the later entry is still verifying");
 
-    assert.ok(await isMergedInto(root, shas.beta!, "main"), "beta merged ahead of the queue head");
-    assert.equal(await isMergedInto(root, shas.alpha!, "main"), false);
-    assert.deepEqual([...pipeline.verifying.keys()], ["alpha"], "the head is still in review");
-    assert.match(rowOf("alpha"), /^merging \d+s · checking \d+s$/, "the head's row shows its own verification");
-    assert.equal(rowOf("beta"), "due", "beta's row is back to its own state");
-
-    fs.writeFileSync(path.join(flags, "alpha-release"), "");
-    await waitFor(drained(root, pipeline), "alpha to merge", 30_000);
+    pipeline.merge = null; // free the slot: alpha merges while beta's verification runs on
+    fs.writeFileSync(path.join(flags, "beta-release"), "");
+    await waitFor(drained(root, pipeline), "the queue to drain", 30_000);
+    // Each change merges as its own commit (rebased onto main's tip), so the original pinned
+    // shas are rewritten and are not main ancestors — assert main holds each change's content.
+    assert.equal(sh(root, "git", "show", "main:alpha.txt").trim(), "work by alpha", "alpha's work is on main");
+    assert.equal(sh(root, "git", "show", "main:beta.txt").trim(), "work by beta", "beta's work is on main");
     assert.deepEqual(
       eventsOfType(root, "merged").map((e) => e.source),
-      ["beta", "alpha"],
-      "each merged as soon as it was approved",
+      ["alpha", "beta"],
+      "each merged in queue order as it was approved",
     );
   } finally {
-    fs.writeFileSync(path.join(flags, "alpha-release"), "");
+    fs.writeFileSync(path.join(flags, "beta-release"), "");
     await bg.stop();
     await Promise.allSettled(allTasks(pipeline));
     restore();

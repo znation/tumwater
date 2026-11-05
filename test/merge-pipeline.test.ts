@@ -7,7 +7,6 @@ import { drainMergeQueue } from "../src/merge/merge-drain.js";
 import {
   mergeTasks,
 } from "../src/merge/merge-pipeline.js";
-import { verifyLimit } from "../src/merge/merge-author.js";
 import { enqueueMerge, queuedMergeFiles } from "../src/merge/merge-queue.js";
 import { mergeQueueDir, mergeRefName } from "../src/paths.js";
 import { isMergedInto, refSha, setRef } from "../src/git/git.js";
@@ -28,14 +27,13 @@ import {
   pump,
   pumpUntil,
   queueChanges,
-  rowReader,
   runnersFor,
 } from "./fixtures/merge-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { declareCheck, checkRunNumber } from "./fixtures/merger-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
-import { sleep, waitFor, waitForFile, within } from "./helpers/wait.js";
+import { waitFor, waitForFile, within } from "./helpers/wait.js";
 import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
 
 // These tests pin the sequential merge stages (the check, then the review).
@@ -390,64 +388,70 @@ test("approved changes merge one at a time: the shared stack check and bisect ar
   }
 });
 
-test("verifications leave one permit for authoring: at cap 3 two review, the third waits unstarted, and a role run gets the last permit", async () => {
-  assert.deepEqual([1, 2, 3, 6].map(verifyLimit), [1, 1, 2, 5], "maxConcurrent − 1, never below one");
+test("one verification runs at a time: with three queued at cap 3 the second waits unstarted until the first settles, and a role run takes the free permit", async () => {
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];
   await queueChanges(root, roles);
-  const rowOf = rowReader(root, roles);
-  const flags = tmpdir("vet-reserve-");
-  // Part 3s/3: hold the two in-flight verifications through the deterministic gate, not the
-  // reviewer (part 3h/3 stops it): the check blocks alpha and beta on their release files while
-  // gamma — held back by verifyLimit(3)=2, the very limit under test — never starts. The block
-  // keys off each role's own change file, so the gate's attribution re-check on main's tip (which
-  // holds none of them) neither blocks nor touches the pipeline.
+  const flags = tmpdir("vet-serial-");
+  // Part 3s/3: hold the head's verification through the deterministic gate, not the reviewer
+  // (part 3h/3 stops it): the check blocks alpha on its release file. beta and gamma stay queued
+  // — the drain starts one verification at a time — so the cap's second permit sits free for a
+  // role run. The block keys off alpha's own change file, so the gate's attribution re-check on
+  // main's tip (which holds none of them) neither blocks nor touches the pipeline. The merge
+  // slot is held so an approved change waits, keeping it visible for the assertion.
   const config = {
     ...defaultConfig(),
     check: {
       command:
         `if [ -f alpha.txt ]; then touch '${path.join(flags, "alpha-blocking")}'; ` +
-        `i=0; while [ ! -f '${path.join(flags, "alpha-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi; ` +
-        `if [ -f beta.txt ]; then touch '${path.join(flags, "beta-blocking")}'; ` +
-        `i=0; while [ ! -f '${path.join(flags, "beta-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi`,
+        `i=0; while [ ! -f '${path.join(flags, "alpha-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi`,
     },
   };
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { cap: 3, config });
+  pipeline.merge = busySlot();
   const bg = pump(ctx, pipeline);
   let ran = false;
   try {
     await waitForFile(path.join(flags, "alpha-blocking"));
-    await waitForFile(path.join(flags, "beta-blocking"));
-    await sleep(500); // a few more polls: nothing more may start
-    assert.deepEqual([...pipeline.verifying.keys()], ["alpha", "beta"], "only verifyLimit(3) verifications exist");
-    assert.equal(rowOf("gamma"), "due", "the third change waits in the queue, not parked on a permit");
-    assert.ok(await within(ctx.semaphore.acquire(0), 5_000), "a role run takes the permit the verifications left free");
+    // alpha's check is in flight, so alpha is verifying; the serial rule means the rest have not
+    // started, regardless of how many polls have run.
+    assert.deepEqual([...pipeline.verifying.keys()], ["alpha"], "exactly one verification exists");
+    assert.equal(pipeline.verifying.has("beta"), false, "the second change has not started");
+    assert.equal(pipeline.verifying.has("gamma"), false, "the third change has not started");
+    assert.equal(queuedMergeFiles(root).length, 3, "all three are still queued");
+    assert.ok(await within(ctx.semaphore.acquire(0), 5_000), "a role run takes the permit the serialization left free");
     ran = true;
 
     ctx.semaphore.release();
     ran = false;
-    for (const role of roles) fs.writeFileSync(path.join(flags, `${role}-release`), "");
+    fs.writeFileSync(path.join(flags, "alpha-release"), "");
+    // alpha settles to approved (held on the merge slot); the next drain starts beta.
+    await waitFor(() => pipeline.approved.has("alpha"), "alpha to settle to approved", 30_000);
+    await waitFor(() => pipeline.verifying.has("beta"), "beta to start once the first settles", 30_000);
+    assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "the next queued entry starts once the first settles");
+
+    pipeline.merge = null; // free the merge slot
     await waitFor(drained(root, pipeline), "all three to merge", 60_000);
+    assert.equal(queuedMergeFiles(root).length, 0, "the queue is empty");
   } finally {
     if (ran) ctx.semaphore.release();
-    for (const role of roles) fs.writeFileSync(path.join(flags, `${role}-release`), "");
+    fs.writeFileSync(path.join(flags, "alpha-release"), "");
     await bg.stop();
     await Promise.allSettled(allTasks(pipeline));
     restore();
   }
 });
 
-test("a verification rejection drops its entry at once — its role may run next poll — while the other verify runs on", async () => {
+test("a verification rejection drops its entry at once — its role may run next poll — and the next queued entry starts on the next drain", async () => {
   const root = makeRepo();
   const roles = ["alpha", "beta"];
   const shas = await queueChanges(root, roles);
   const flags = tmpdir("vet-reject-");
-  // Part 3s/3: the rejection and the in-flight hold both come from the deterministic gate, not
-  // the reviewer (part 3h/3 stops it): alpha's declared check fails on its own tree and drops its
-  // entry, while beta's declared check passes and blocks on `beta-release` — so beta stays in
-  // `build-check` while alpha's drop happens, showing the scheduler's interlock freeing alpha
-  // while the other verify is still in flight. The block keys off `beta.txt` (present only in
+  // Part 3s/3: the rejection comes from the deterministic gate, not the reviewer (part 3h/3
+  // stops it): alpha's declared check fails on its own tree and drops its entry, freeing alpha
+  // for the next poll while beta — still queued behind the rejected head — starts on the next
+  // drain and blocks its check on `beta-release`. The block keys off `beta.txt` (present only in
   // beta's verification worktree), so the gate's attribution re-check on main's tip — which holds
   // neither change's file — neither blocks nor touches `beta-checking`.
   const config = {
@@ -463,7 +467,6 @@ test("a verification rejection drops its entry at once — its role may run next
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { cap: 2, config });
   const bg = pump(ctx, pipeline);
   try {
-    await waitForFile(path.join(flags, "beta-checking"));
     await waitFor(() => queuedMergeFiles(root).length === 1, "alpha's entry to drop at its verdict", 30_000);
 
     assert.deepEqual(
@@ -474,14 +477,18 @@ test("a verification rejection drops its entry at once — its role may run next
     assert.equal(loadRunnerState(root, "alpha").lastResult, "rejected", "the outcome is saved before the drop");
     assert.equal(readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha").length, 1);
     assert.equal(await refSha(root, mergeRefName("alpha")), null, "a rejection deletes the pin");
-    assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "beta's verify is still running");
+    assert.equal(pipeline.verifying.has("alpha"), false, "no verification remains for the rejected entry");
+
+    // The next queued entry starts on the next drain: one verification at a time.
+    await waitForFile(path.join(flags, "beta-checking"));
+    assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "beta's verify started after alpha's drop");
     const marker = readMergeMarker(root);
     assert.deepEqual(
       marker?.changes?.map((c) => [c.role, c.status, c.stage]),
       [["beta", "merging", "build-check"]],
-      "the marker holds only the change still in flight, at its own stage",
+      "the marker holds only the change in flight, at its own stage",
     );
-    assert.equal(marker?.role, "beta", "the top level follows the change still in flight, for older observers");
+    assert.equal(marker?.role, "beta", "the top level follows the change in flight, for older observers");
     assert.equal(marker?.stage, "build-check", "at its own stage");
 
     fs.writeFileSync(path.join(flags, "beta-release"), "");

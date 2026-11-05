@@ -72,8 +72,8 @@ export interface MergePipelineContext {
    * permit for its whole length, and the merge's conflict resolver takes one for its run
    * (BUGS.md 2026-09-18 — exempting the merge let total load float to maxConcurrent +
    * merge + director on a single-GPU backend, where the extra stream is what starves
-   * sessions into the quiet watchdog's kills). The permits are all that bounds how many
-   * verifications run at once. Both merge tiers sit ahead of every role run's, and a verification
+   * sessions into the quiet watchdog's kills). One verification runs at a time, so the permits
+   * bound its parking as much as its running. Both merge tiers sit ahead of every role run's, and a verification
    * takes the slot its author would have used: the interlock keeps that author from running until
    * its change merges. */
   semaphore: Semaphore;
@@ -98,10 +98,11 @@ export interface MergePipelineContext {
 }
 
 /** The scheduler's merge state across polls (land-queue speed 2c), in three parts:
- * - `verifying`: one task per queued change, in queue order, each in a leased pooled slot —
- *   checkout, rebase onto main, gate check and review (verifyRequest) — on a shared
- *   permit (a verification still waiting for its permit is `parked`). Any verdict but an approval
- *   writes its outcome at once and frees its author.
+ * - `verifying`: at most one task at a time — the first queued change the pipeline does not
+ *   already hold, in queue order, in a leased pooled slot — checkout, rebase onto main, gate
+ *   check and review (verifyRequest) — on a shared permit (a verification still waiting for its
+ *   permit is `parked`). Any verdict but an approval writes its outcome at once and frees its
+ *   author; the next queued entry starts on the next drain.
  * - `approved`: the approved changes waiting to merge, still queued.
  * - `merge`: the one task that writes main — every approved change, in queue
  *   order, one at a time through mergeApprovedChange (a rebase and a fast-forward, no shared
