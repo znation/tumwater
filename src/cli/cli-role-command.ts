@@ -9,8 +9,9 @@
  * positional/flag vocabulary and its write branches are its own, not the query commands'. */
 
 import { fail, say, sayJsonOrRender } from "./cli-output.js";
-import { flagValue } from "./cli-args.js";
-import { JSON_FLAG, ROLE_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
+import { failFollowJsonRival, flagValue } from "./cli-args.js";
+import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
+import { followView, type FollowViewSeams } from "./follow-view.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
 import { defaultConfig, knownRoleIds, loadConfigSafe } from "../config/config.js";
 import { rolePayload } from "../roles/role-view.js";
@@ -507,8 +508,11 @@ function writeEnableDisable(root: string, id: string, rest: string[], enable: bo
   say(`${base}: ${state}`);
 }
 
-/** `tumwater role <id>`: one role's standing prompt and next run's assembled prompt. */
-export async function cmdRole(root: string, args: string[]): Promise<void> {
+/** `tumwater role <id>`: one role's standing prompt and next run's assembled prompt, with
+ * `-f/--follow` repainting it until Ctrl+C or the parent process exits. The follow is the
+ * read-only form: `--json` and every write flag keep their one-shot forms and are refused
+ * with it, so no repaint can write config repeatedly. */
+export async function cmdRole(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   // No requireReadyRepo gate, like backlog: role-view degrades (missing state files →
   // fresh defaults, a missing queue directory an empty inbox), so the command inspects
   // a repo the team never started in — and a torn one — instead of refusing (a team
@@ -529,7 +533,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     if (next?.startsWith("--"))
       fail(`${flag} needs a value (the next token ${JSON.stringify(next)} is a flag, not a value)`);
   }
-  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC, CLEAR_INSTANCES_SPEC, INSTANCES_SPEC, CLEAR_PROVIDER_SPEC, PROVIDER_SPEC, CLEAR_MODEL_SPEC, MODEL_SPEC, CLEAR_THINKING_SPEC, THINKING_SPEC, CLEAR_BACKEND_SPEC, BACKEND_SPEC]);
+  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, FOLLOW_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC, CLEAR_INSTANCES_SPEC, INSTANCES_SPEC, CLEAR_PROVIDER_SPEC, PROVIDER_SPEC, CLEAR_MODEL_SPEC, MODEL_SPEC, CLEAR_THINKING_SPEC, THINKING_SPEC, CLEAR_BACKEND_SPEC, BACKEND_SPEC]);
   refuseTeamWorkspace(root);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
   // spelling every other role-targeting command shares). Both at once is a mistake, not
@@ -539,7 +543,25 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   const f = parseWriteFlags(rest);
   if (f.writes.length > 1)
     fail(`${f.writes.join(" and ")} writes cannot share one invocation`);
+  const follow = hasFollowFlag(rest);
+  // The live form is read-only: a JSON document is one snapshot, not a repaint, and a write
+  // flag would repeat its write every couple of seconds — refuse each before any output, the
+  // shared wording the sibling follow views use for the same conflicts.
+  if (follow) {
+    if (rest.includes("--json")) failFollowJsonRival("role --json");
+    if (f.writes.length > 0) fail(`-f/--follow repaints the role read-only; ${f.writes[0]} writes — drop one of them`);
+  }
   if (f.writes.length === 0) {
+    if (follow) {
+      // Outside the loop, so an unknown id throws the one-shot form's unknownRoleMessage
+      // once instead of being swallowed frame by frame by followView's per-frame catch. Each
+      // frame re-reads config, runner state, events and notes, so the role's last run, spend
+      // and next-run schedule are current; followView ends on Ctrl+C or the parent's death
+      // returning normally, leaving process.exitCode untouched.
+      rolePayload(root, id);
+      await followView(() => renderRoleMarkdown(rolePayload(root, id)), seams);
+      return;
+    }
     // The unknown-role answer (exit 1, unknownRoleMessage's wording) lives in the
     // collector; here the id just has to be non-null for the thunk's types.
     sayJsonOrRender(rest, () => rolePayload(root, id), renderRoleMarkdown);

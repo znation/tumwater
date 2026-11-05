@@ -491,14 +491,17 @@ Usage:
                                    file on main; no wake
   tumwater brief --edit [--json]   Open the brief in $VISUAL/$EDITOR and save it as
                                    --file would; an unchanged buffer writes nothing
-  tumwater role <id> [--json]      Show one role's instructions and resolved
+  tumwater role <id> [-f/--follow] [--json]
+                                   Show one role's instructions and resolved
                                    settings — its built-in instructions, the roles.<id>.instructions override, the resolved
                                    provider/model (naming the budget fallback pair when one is
                                    configured), that model's declared context window, the
                                    min-run interval, enabled/paused state, and
                                    the next run's assembled prompt (the oldest inbox message appears in it
                                    and is NOT consumed — one is dequeued per run); --json prints the collector's payload
-                                   as machine-readable data
+                                   as machine-readable data; -f/--follow repaints the same view every couple of
+                                   seconds until Ctrl+C or the parent exits, and refuses --json and every write
+                                   flag because the live form is read-only
   tumwater role <id> --clear-notes Clear that role's notes
   tumwater role <id> --notes-file <path>
                                    Replace that role's notes from a file ("-" reads stdin;
