@@ -644,11 +644,10 @@ test("status payload ships the disk block and its preformatted badge", async () 
   assert.equal(payload.diskBadge, " · disk 8.2 GB free — holding new work");
 });
 
-// The remote-CI ledger's glance surface (plans/remote-ci.md "Surfaces"): the payload ships
-// the raw record for `status --json` and the preformatted badge/tone the dashboard and the
-// TUI/status header render — the same string the header builds — so both surfaces say the
-// same thing. Without a record, or for an `unavailable` one, the badge field is empty and the
-// panel renders exactly as before.
+// The remote-CI ledger's glance surface (plans/remote-ci.md "Surfaces"): the payload carries
+// the preformatted badge/tone the dashboard row and the TUI/status header share, the same
+// string the header renders, so both say the same thing. Without a record, or for an
+// `unavailable` one, the badge is empty and the row renders exactly as before.
 test("status payload ships the remote-CI badge beside the ci parity badge, absent without a record", async () => {
   const repo = makeRepo();
   await initProject(repo, "remote ci payload test");

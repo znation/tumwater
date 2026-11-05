@@ -3,11 +3,12 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import fs from "node:fs";
+import path from "node:path";
 import { ciParityForPoll, configForStatus, liveMergeMarker, mainCheckForPoll, remoteCiForPoll } from "../src/status/status-polls.js";
 import { recordParity } from "../src/observer/ci-parity.js";
 import { recordRemoteCi } from "../src/observer/remote-ci.js";
+import { remoteCiPath } from "../src/paths.js";
 import { commitIn, makeRepo, mainSha } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import type { MergeChange, MergeInFlight } from "../src/merge/merge-slot.js";
@@ -73,7 +74,7 @@ test("ciParityForPoll reads current, stale, failed and none", () => {
   assert.deepEqual(ciParityForPoll(root, cfg), { state: "failed", covered: mainSha(root), lastRunAt: 2_000 });
 });
 
-test("remoteCiForPoll reads each result, reads none without a record, and serves an unchanged ledger from the stat cache", () => {
+test("remoteCiForPoll reads each result, reads none without a record, and serves an unchanged ledger from the stat cache", (t) => {
   const root = makeRepo();
   assert.equal(remoteCiForPoll(root), undefined, "no record: no badge data");
 
@@ -93,8 +94,23 @@ test("remoteCiForPoll reads each result, reads none without a record, and serves
   // re-reads the new record.
   recordRemoteCi(root, "znation/tumwater", "passed", 5_000, "aabbccddeeff00112233");
   const first = remoteCiForPoll(root);
-  const again = remoteCiForPoll(root);
-  assert.deepEqual(again, first, "an unchanged ledger serves the cached record");
+  // A cache hit must not re-read the ledger at all. Counting the file's reads (not just
+  // comparing values) is what pins the cache: a poll that bypassed it would still return the
+  // same record and pass a bare equality assertion.
+  const ledger = remoteCiPath(root);
+  const originalReadFileSync = fs.readFileSync.bind(fs);
+  let reads = 0;
+  t.mock.method(fs, "readFileSync", ((...args: unknown[]) => {
+    if (args[0] === ledger) reads++;
+    return originalReadFileSync(...(args as [string | URL, "utf8"]));
+  }) as typeof fs.readFileSync);
+  try {
+    const again = remoteCiForPoll(root);
+    assert.deepEqual(again, first, "an unchanged ledger serves the cached record");
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.equal(reads, 0, "an unchanged ledger must not be re-read on the next poll");
   // The write changes the file's size (a longer checkedAt), so the invalidation is
   // deterministic regardless of the filesystem's mtime granularity.
   recordRemoteCi(root, "znation/tumwater", "failed", 6_000_000, "aabbccddeeff00112233");
