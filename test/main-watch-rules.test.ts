@@ -218,3 +218,32 @@ test("an intermediate commit's own conflict marker is reported even when a later
     warnings.join("|"),
   );
 });
+
+// A finding stops the walk at its own commit, so the commits after it in the same range are still
+// owed a judgment. The pass must mark the finding's commit, not the tip: marking the tip makes the
+// next poll of that same head a no-op and silently drops the later commits' rule failures.
+test("a rule finding leaves the commits after it to be judged by the next poll", async () => {
+  const { root } = baselineFixture("improve", "echo ok");
+  const watch = createMainWatch(root, "main");
+  await watchAt(watch, root);
+  change(root, "first-bad.txt", "line one\n<<<<<<< HEAD\n"); // the first finding stops the walk here
+  const tip = change(root, "second-bad.txt", "line one\n<<<<<<< HEAD\n"); // never reached by that walk
+  await watchAt(watch, root); // one poll covers both commits and stops at the first
+  const first = warningMessages(root);
+  assert.ok(
+    first.some((m) => m.includes("conflict markers remain in: first-bad.txt")),
+    first.join("|"),
+  );
+  assert.ok(
+    !first.some((m) => m.includes("conflict markers remain in: second-bad.txt")),
+    first.join("|"),
+  );
+  await watchAt(watch, root); // same tip: the second commit is still owed a judgment
+  const later = warningMessages(root);
+  assert.ok(
+    later.some(
+      (m) => m.includes(shortSha(tip)) && m.includes("conflict markers remain in: second-bad.txt"),
+    ),
+    later.join("|"),
+  );
+});
