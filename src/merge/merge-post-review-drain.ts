@@ -27,10 +27,10 @@ import { firstReason } from "../text/phrases.js";
 import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import type { RunResult } from "../run/run-outcome.js";
 
-/** One poll of the post-merge reviews: a rejected-and-not-fixed commit is
- * answered by the reviewer's own landed fix (Forward, never back 1/6) — never by a revert — and
- * the next unreviewed commit starts its review task. One review at a time, parked or running;
- * starts a task and returns. */
+/** One poll of the post-merge reviews: a rejected commit is answered by the reviewer's own fix
+ * (Forward, never back 1/6) — never by a revert — and a fix its pre-check withholds leaves that
+ * entry rejected with no landed fix; either way the next unreviewed commit starts its review
+ * task. One review at a time, parked or running; starts a task and returns. */
 export function drainPostReviews(ctx: MergePipelineContext, p: MergePipeline): void {
   const pending = readPostReviews(ctx.root);
   if (pending.length === 0) return;
@@ -40,8 +40,8 @@ export function drainPostReviews(ctx: MergePipelineContext, p: MergePipeline): v
 }
 
 /** Whether an entry still awaits its review. A `fixed` entry is a settled record naming both shas
- * (the reviewed commit and its landed fix) and a rejected one is answered by its fix, so neither
- * is ever re-reviewed (Forward never back 1a/6). */
+ * (the reviewed commit and its landed fix) and a rejected one is terminal whether its repair
+ * landed or its pre-check withheld it, so neither is ever re-reviewed (Forward never back 1a/6). */
 function unreviewed(e: PostReview): boolean {
   return e.rejected === undefined && e.fixed === undefined;
 }
