@@ -22,6 +22,14 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Cause:** `leftoverPending` is `pinnedDirector` (src/scheduling/skip.ts). `directorGate` (src/scheduling/scheduling.ts) runs whenever `leftoverPending` is set and `now >= nextRunAt`. The `relief_wait` arm of leftover recovery (src/runner/runner-recovery.ts) returns `{ result: "skipped" }`, and run-apply.ts schedules a skipped outcome with `scheduleAtMinInterval`, the 20 s default `minRunIntervalSeconds`, so the next poll admits it again. `directorGate`'s option comment says the leftover run "is due on `nextRunAt` … never earlier, so a persistently blocked fast-forward cannot spin the merge queue", but a relief wait is a wait on the queue, not a failed merge.
 - **Expected / fix sketch:** while the held commit waits on a queued change, the director is not due. Leave `leftoverPending` false for the relief-wait case, or wake the director when that queue entry settles, so a waiting second commit costs no runs.
 
+### `a timed-out check whose tree dies on SIGTERM settles right after the deadline, not after the grace` failed, then passed on the same tree (quarantined by tumwater 2026-11-04)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+a timed-out check whose tree dies on SIGTERM settles right after the deadline, not after the grace
+~~~~
+
 ## Fixed
 
 ## Verified
