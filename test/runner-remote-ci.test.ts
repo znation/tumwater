@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
+import { readRemoteCi } from "../src/observer/remote-ci.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logPromptsTo, withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
@@ -72,4 +73,23 @@ test("a ci prompt without a GitHub remote carries no Remote CI block", async () 
       assert.ok(!run.includes("Remote CI (GitHub Actions"), "no remote, no block");
     },
   );
+});
+
+test("a block-less ci reply's REMOTE line records nothing even if a target appears mid-run", async () => {
+  const repo = await initializedRepo();
+  // No remote or workflow when the prompt is built, so the prompt carries no Remote CI block.
+  // The shim creates both while pi runs: a re-resolution after the run would now find a target,
+  // but the reply's REMOTE line still belongs to a run the harness never asked to check CI.
+  const workflow = path.join(repo, ".github", "workflows");
+  const script = [
+    `printf '%s\\n' '${assistantLine("done\\nREMOTE: 3e450b0c4 — passed\\nTUMWATER_NOTHING_TO_DO")}'`,
+    `mkdir -p '${workflow}'`,
+    `printf 'name: ci\\n' > '${path.join(workflow, "ci.yml")}'`,
+    `git -C '${repo}' remote add origin https://github.com/znation/tumwater.git`,
+  ].join("\n");
+  await withPi(script, async () => {
+    const outcome = await makeRoleRunner(repo, "ci").run();
+    assert.equal(outcome.result, "no_change");
+    assert.equal(readRemoteCi(repo), null, "a block-less reply records no remote verdict");
+  });
 });
