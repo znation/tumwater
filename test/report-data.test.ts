@@ -1493,7 +1493,7 @@ test("a model whose runs all reported zero tokens leaves no entry and no Tokens 
 test("a run whose start names no model still counts in Tokens by role and window totals, with no model entry", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_start", run: 1 }), // no model
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_start", run: 1 }), // retired-name-ok: legacy event field in a fixture (no model)
     JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 55 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectReport(root, 2);
@@ -1512,7 +1512,7 @@ test("a later model-less start for a reused run number does not inherit the earl
     JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100 }), // retired-name-ok: legacy event field in a fixture
     // reset-counters reuses run 1; this start names no model, so its run contributes no
     // model entry even though the earlier run 1 was on acme/m1.
-    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_start", run: 1 }), // no model
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_start", run: 1 }), // retired-name-ok: legacy event field in a fixture (no model)
     JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 40 }), // retired-name-ok: legacy event field in a fixture
   ]);
   const day = collectReport(root, 2).series[1]!;

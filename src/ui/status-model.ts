@@ -39,7 +39,7 @@ type MergeCell = Pick<MergeChange, "status" | "startedAt" | "stage" | "stageSinc
  * "is this role merge" filter — every phase call site derives its `merge` argument through
  * this so the filtering cannot
  * drift between them. */
-export function mergeForRole(mergeQueue: StatusSnapshot["mergeQueue"], role: string): MergeCell | null {
+function mergeForRole(mergeQueue: StatusSnapshot["mergeQueue"], role: string): MergeCell | null {
   if (!mergeQueue.inFlight) return null;
   const change = mergeChanges(mergeQueue.inFlight).find((c) => c.role === role);
   return change && change.status !== "done"

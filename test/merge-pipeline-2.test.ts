@@ -334,8 +334,8 @@ for (const headVerdict of ["reject", "approve"] as const) {
       await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to drain");
 
       const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
-      // The head's own verification: its pre-check, with beta still queued and showing nothing. Then
-      // beta's verify runs with the head's record already off the gate's stages (approved, or
+      // The head's own verification: its pre-check, with beta still queued and showing nothing.
+      // Then beta's verify runs with the head's record already off the gate's stages (approved, or
       // gone with its rejection) — beta's transitions advance only beta's own record.
       const alphaAfter = headVerdict === "reject" ? "" : "alpha=approved/merging,";
       // The reject case's failing check runs three times before its deterministic rejection: the

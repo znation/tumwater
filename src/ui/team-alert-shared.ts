@@ -63,13 +63,6 @@ export function openRoleActions(roles: ReadonlyArray<{ role: string }>): Array<{
   return roles.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "role", arg: l.role }));
 }
 
-/** The dashboard's "See failures" button: opens the failures view. Shared by every alert
- * whose remedy is inspecting the failing runs/checks (main-red, regressed fixes), so the
- * button's label and action cannot drift between them. */
-export function seeFailures(): Array<{ label: string; act: string; arg: string }> {
-  return [{ label: "See failures", act: "view", arg: "failures" }];
-}
-
 /** The dashboard's "Open backlog" button for an alert naming one backlog entry: opens the
  * entry's backlog-card tab and that row (the dashboard's backlog arm reads `file:index`).
  * Used by the refused alert,

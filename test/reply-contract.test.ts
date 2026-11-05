@@ -361,7 +361,8 @@ test("extractRemoteResult reads a result-carrying REMOTE line", () => {
 
 test("extractRemoteResult is fail-closed on a bare or truncated line", () => {
   // A bare sha — or a reply truncated mid-verdict — is not a result: returning null leaves the
-  // ledger unadvanced rather than latching a verdict the run never declared (extractCiResult's rule).
+  // ledger unadvanced rather than latching a verdict the run never declared (extractCiResult's
+  // rule).
   assert.equal(extractRemoteResult("REMOTE: 3e450b0c4"), null, "bare sha records nothing");
   assert.equal(extractRemoteResult("REMOTE: 3e450b0c4 — pa"), null, "truncated mid-verdict");
   assert.equal(extractRemoteResult("REMOTE: unavailable —"), null, "an empty reason is not a result");

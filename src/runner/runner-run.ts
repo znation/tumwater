@@ -37,6 +37,7 @@ import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { foldAgentCommitsSince } from "../run/run-stage.js";
 import { planBacklogFull } from "../scheduling/claims.js";
 import { refreshPendingPlans } from "../backlog/backlog-pending.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { finalizeRun } from "../run/run-finalize.js";
 import { errorMessage } from "../text/text.js";
 import { appendPromptNote, prependPromptNote } from "../text/format.js";
@@ -167,9 +168,12 @@ export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
   // verdict below is the same one the gate and isEligible read, and scheduleConfigForRole is
   // the one home of the rule, so the scheduler that admits plan and the nextRunAt this run
   // writes cannot disagree. The projection refresh precedes the count so a run admitted
-  // right after a pin is written sees that pin (plans/duplicate-plans.md "Decision" 1).
-  await refreshPendingPlans(ctx.root, ctx.mainBranch);
-  const planBacklogOpen = !planBacklogFull(ctx.root, ctx.config);
+  // right after a pin is written sees that pin (plans/duplicate-plans.md "Decision" 1). Only
+  // plan reads the verdict, so only plan pays the refresh: any other role leases its slot
+  // without waiting on git reads first (each orchestrator poll refreshes it for other readers).
+  const isPlan = baseRoleOf(ctx.role) === "plan";
+  if (isPlan) await refreshPendingPlans(ctx.root, ctx.mainBranch);
+  const planBacklogOpen = isPlan && !planBacklogFull(ctx.root, ctx.config);
   // This run's effective config: the role's own resolved config (a run always resolves its
   // role's own config — the model-fallback episode is gone, Subtract part 5o/6) unless an image
   // reroute below moves it. The budget gate's fallback pair, when a cap episode is active, is

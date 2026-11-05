@@ -398,13 +398,17 @@ test("one verification runs at a time: with three queued at cap 3 the second wai
   // — the drain starts one verification at a time — so the cap's second permit sits free for a
   // role run. The block keys off alpha's own change file, so the gate's attribution re-check on
   // main's tip (which holds none of them) neither blocks nor touches the pipeline. The merge
-  // slot is held so an approved change waits, keeping it visible for the assertion.
+  // slot is held so an approved change waits, keeping it visible for the assertion. beta's
+  // check blocks on its own release file too: an unblocked check settles in well under
+  // waitFor's 100 ms poll, so beta could start and leave `verifying` between two polls.
   const config = {
     ...defaultConfig(),
     check: {
       command:
         `if [ -f alpha.txt ]; then touch '${path.join(flags, "alpha-blocking")}'; ` +
-        `i=0; while [ ! -f '${path.join(flags, "alpha-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi`,
+        `i=0; while [ ! -f '${path.join(flags, "alpha-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi; ` +
+        `if [ -f beta.txt ]; then ` +
+        `i=0; while [ ! -f '${path.join(flags, "beta-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi`,
     },
   };
   const restore = fakePi(APPROVE());
@@ -431,12 +435,14 @@ test("one verification runs at a time: with three queued at cap 3 the second wai
     await waitFor(() => pipeline.verifying.has("beta"), "beta to start once the first settles", 30_000);
     assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "the next queued entry starts once the first settles");
 
+    fs.writeFileSync(path.join(flags, "beta-release"), "");
     pipeline.merge = null; // free the merge slot
     await waitFor(drained(root, pipeline), "all three to merge", 60_000);
     assert.equal(queuedMergeFiles(root).length, 0, "the queue is empty");
   } finally {
     if (ran) ctx.semaphore.release();
     fs.writeFileSync(path.join(flags, "alpha-release"), "");
+    fs.writeFileSync(path.join(flags, "beta-release"), "");
     await bg.stop();
     await Promise.allSettled(allTasks(pipeline));
     restore();

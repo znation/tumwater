@@ -325,10 +325,10 @@ test("an unranked result's outcome column sorts after every ranked result", () =
   // alphabetical tie-break would put before `retired_code`) fails here too.
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "retired_code" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "error" },
-    { ts: at(0), loop: "feature", type: "run_end", result: "withdrawn" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "retired_code" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "error" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "feature", type: "run_end", result: "withdrawn" }, // retired-name-ok: legacy event field in a fixture
   ]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
   assert.deepEqual(markdownTables(md)[0]!.header, ["role", "merged", "error", "entry withdrawn, dropped", "retired code"]);

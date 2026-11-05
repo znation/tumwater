@@ -153,10 +153,10 @@ async function fileDroppedReview(ctx: MergePipelineContext, entry: PostReview, f
  * as the reviewed entry's rejection; an unverified (host-sleep) tree is also withheld, but that
  * entry stays queued for another review. A landing that fails (a conflict, a refused fast-forward)
  * leaves main at the reviewed commit and keeps the entry with its failure recorded for the next
- * poll's retry, exactly as a failed run is kept today — up to the same POST_REVIEW_FAILURE_LIMIT the
- * verdict-less-review path obeys, so the at-risk doctor row/alert's "one more failed run drops it"
- * stays true and the reviewer is not re-run forever; the review-fix ref survives so the withheld
- * commit remains reachable.
+ * poll's retry, exactly as a failed run is kept today — up to the same POST_REVIEW_FAILURE_LIMIT
+ * the verdict-less-review path obeys, so the at-risk doctor row/alert's "one more failed run drops
+ * it" stays true and the reviewer is not re-run forever; the review-fix ref survives so the
+ * withheld commit remains reachable.
  * Throws when git could not start; a failed merge itself returns a non-terminal RunResult and
  * is never a throw. */
 async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fix: string, state: RunnerState): Promise<void> {
@@ -259,9 +259,10 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
           runPi,
           // A conflict resolution of the reviewer's fix is resolver-authored bytes the reviewer
           // never judged: the pre-check above verified the fix as the reviewer wrote it, not a
-          // diverging resolution, so the resolution has left its verified scope (BUGS.md 2026-10-01).
-          // Withhold it: the landing reports the conflict, the fix ref and the entry stay for the
-          // next poll's retry, and main never carries resolver bytes it was never judged against.
+          // diverging resolution, so the resolution has left its verified scope (BUGS.md
+          // 2026-10-01). Withhold it: the landing reports the conflict, the fix ref and the entry
+          // stay for the next poll's retry, and main never carries resolver bytes it was never
+          // judged against.
           recheckResolved: async () => ({ verdict: "retry" }),
         },
         wt,

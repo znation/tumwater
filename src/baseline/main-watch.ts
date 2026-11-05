@@ -85,14 +85,14 @@ function mainCheckEvent(
 }
 
 /** The main watch: after main's head moves, run the full check on the new tip in its own
- * `_main-full` mirror and record the verdict — a `main_check` event, and the failing tests on the red baseline
- * (which persists beside the greens). The watch checks every new red tip, but the CULPRIT for an
- * ongoing red is the commit that opened it — the first red tip since the last green: a doc-exempt
- * tip that lands after the red opened cannot have changed the suite, so re-naming it would blame
- * a merge that did not break the check in the G1 phrase and ci's heal prompt. On a red tip it
- * logs a `main_culprit` event naming the opener (with its merging runner when a recent merged
- * event names one), and a green closes the spell, so the next red names its own opener. No run,
- * gate or merge waits on it; the culprit goes to the optional `onCulprit` callback, which the
+ * `_main-full` mirror and record the verdict — a `main_check` event, and the failing tests on the
+ * red baseline (which persists beside the greens). The watch checks every new red tip, but the
+ * CULPRIT for an ongoing red is the commit that opened it — the first red tip since the last green:
+ * a doc-exempt tip that lands after the red opened cannot have changed the suite, so re-naming it
+ * would blame a merge that did not break the check in the G1 phrase and ci's heal prompt. On a red
+ * tip it logs a `main_culprit` event naming the opener (with its merging runner when a recent
+ * merged event names one), and a green closes the spell, so the next red names its own opener. No
+ * run, gate or merge waits on it; the culprit goes to the optional `onCulprit` callback, which the
  * orchestrator wires to ci's heal prompt (Forward, never back, part 4/6): a red main is healed
  * forward, never reverted.
  *

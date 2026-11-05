@@ -72,8 +72,8 @@ test("an unmarked request runs the gate before it merges, and a marked one skips
   // Part 3b/6: mergeApprovedChange owns the queued change's one gate. An unmarked request (no
   // `alreadyGated`) checks for withdrawal and runs reviewQueuedChange in the merge worktree before
   // anything touches main — a passing gate merges and deletes the pin. A marked request (the verify
-  // stage's path) carries `alreadyGated` and fast-forwards with no second gate: no second check run,
-  // so the declared check's log sees exactly one entry.
+  // stage's path) carries `alreadyGated` and fast-forwards with no second gate: no second check
+  // run, so the declared check's log sees exactly one entry.
   const rec = path.join(tmpdir("merger-gate-"), "seen");
   await withPi(
     reviewerPi("VERDICT: approve"),

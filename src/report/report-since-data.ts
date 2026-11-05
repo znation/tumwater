@@ -170,8 +170,8 @@ function sinceMainRedByTest(
 }
 
 /** Main's red culprits over the window, flattened across the per-day records of the same red
- * `main_culprit` events into one map. Main's own blame, not any role's, so a role-scoped window carries none (see
- * flattenMainRedByDay). */
+ * `main_culprit` events into one map. Main's own blame, not any role's, so a role-scoped window
+ * carries none (see flattenMainRedByDay). */
 function sinceMainRedByCulprit(
   raw: ReturnType<typeof readWindowEvents>,
   cutoff: number,

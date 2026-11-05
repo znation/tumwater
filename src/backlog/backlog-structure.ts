@@ -472,7 +472,7 @@ export async function backlogStructureReason(
  * the markdown alone (no pi, no git): exact keys and part labels only, so a drifted wording that
  * shares neither is not grouped (the design's "Not in this plan" — that one reaches the plan
  * role through feature's hand-back, part 6/6). */
-export interface DuplicateGroup {
+interface DuplicateGroup {
   /** What unites the copies: the shared entry key or series part label. */
   key: string;
   /** The group's heading texts, in file order (first = the file-order survivor). */
@@ -525,7 +525,7 @@ const duplicatePlannedCache = new Map<string, StatKeyedValue<DuplicateGroup[]>>(
  * strandedPlanEntriesFor: the plan role asks for it every run and the file is otherwise
  * unchanged between plan runs. A missing or unreadable file reads as no groups. The result is
  * copied out, so each caller owns its data. */
-export function duplicatePlannedEntriesFor(root: string): DuplicateGroup[] {
+function duplicatePlannedEntriesFor(root: string): DuplicateGroup[] {
   const full = path.join(root, "PLANS.md");
   return (
     cachedTextByStat(

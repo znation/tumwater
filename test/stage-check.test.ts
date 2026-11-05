@@ -1097,7 +1097,8 @@ test("a plan moved to ## Done with a retired stamp skips its acceptance greps; a
 **Acceptance.** \`grep -rn oldName src\` ${"finds" + " nothing"}.
 `;
 
-  // Retired move: the plan was never built, so its acceptance grep is expected to fail and is skipped.
+  // Retired move: the plan was never built, so its acceptance grep is expected to fail and is
+  // skipped.
   const { wt } = await repoWith({ "PLANS.md": baseDoc, "src/a.ts": "oldName\n" });
   fs.writeFileSync(path.join(wt, "PLANS.md"), doc("_None yet._", retired));
   const findings = await stageCheckFindings(wt, "main", "plan");

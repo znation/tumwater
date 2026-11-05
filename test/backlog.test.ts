@@ -574,7 +574,8 @@ test("the retired stamp: RETIRED_DATE_RE / FINISHED_PLAN_RE keying, and DONE_DAT
   assert.equal(completionDate("Duplicate copy (planned 2026-10-01; retired 2026-10-05)", RETIRED_DATE_RE), "2026-10-05");
   assert.equal(completionDate("Built (planned 2026-10-01; done 2026-10-04)", FINISHED_PLAN_RE), "2026-10-04");
   assert.equal(completionDate("Duplicate copy (planned 2026-10-01; retired 2026-10-05)", FINISHED_PLAN_RE), "2026-10-05");
-  // isRetiredTitle is delimiter-introduced: prose that merely mentions a retired entry does not match.
+  // isRetiredTitle is delimiter-introduced: prose that merely mentions a retired entry does not
+  // match.
   assert.equal(isRetiredTitle("Re-read the retired 2026-10-05 entry (planned 2026-10-01)"), false);
   assert.equal(isRetiredTitle("Duplicate copy (planned 2026-10-01; retired 2026-10-05)"), true);
 });

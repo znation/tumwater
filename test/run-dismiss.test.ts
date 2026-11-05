@@ -170,7 +170,8 @@ test("recordDismissedRemote rides an unavailable reason and no repo records noth
   const root = tmpdir();
   const sink = warnSink();
   recordDismissedRemote(sink.ctx, root, { result: "unavailable", reason: "gh is not logged in" });
-  // No repo: the record cannot be attributed, so nothing is written (type honesty, not a live branch).
+  // No repo: the record cannot be attributed, so nothing is written (type honesty, not a live
+  // branch).
   assert.equal(readRemoteCi(root), null, "a block-less record writes nothing");
   recordDismissedRemote(sink.ctx, root, {
     repo: "znation/tumwater",

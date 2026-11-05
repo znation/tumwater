@@ -73,9 +73,9 @@ export interface MergePipelineContext {
    * (BUGS.md 2026-09-18 — exempting the merge let total load float to maxConcurrent +
    * merge + director on a single-GPU backend, where the extra stream is what starves
    * sessions into the quiet watchdog's kills). One verification runs at a time, so the permits
-   * bound its parking as much as its running. Both merge tiers sit ahead of every role run's, and a verification
-   * takes the slot its author would have used: the interlock keeps that author from running until
-   * its change merges. */
+   * bound its parking as much as its running. Both merge tiers sit ahead of every role run's, and a
+   * verification takes the slot its author would have used: the interlock keeps that author from
+   * running until its change merges. */
   semaphore: Semaphore;
   /** Live runners, searched first when resolving a merge's author. */
   runners: RoleRunner[];

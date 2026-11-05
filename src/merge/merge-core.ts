@@ -388,8 +388,8 @@ export async function recordRejectedChange(
  * batch/stack path is gone, part 4m/3). The request either already passed its own gate in its
  * verify and carries `alreadyGated`, so it merges without a second gate, or it has not passed a
  * gate yet and this call owns the queued change's one gate: it checks for withdrawal (and drops
- * the pin) then runs reviewQueuedChange before it touches main. When `alreadyGated` is set, re-gating
- * would rebase first, and by then main has usually moved (a
+ * the pin) then runs reviewQueuedChange before it touches main. When `alreadyGated` is set,
+ * re-gating would rebase first, and by then main has usually moved (a
  * fallback's earlier entries just merged): the rebase rewrites the approved sha, the gate's
  * exact-sha `lastApprovedHead` short-circuit misses, and every such merge paid a second build
  * check and model review of a change it had already approved (BUGS.md 2026-09-23). Here a clean

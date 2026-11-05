@@ -15,14 +15,10 @@ import { mergeRefName } from "../../src/paths.js";
 import { setRef } from "../../src/git/git.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
 import { defaultConfig } from "../../src/config/config.js";
-import { freshRunnerState } from "../../src/runner/runner-state.js";
-import { snapshot } from "../../src/status/status-data.js";
-import { mergeForRole, rolePhase } from "../../src/ui/status-model.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import type { MergeEntry } from "../../src/merge/merge-queue.js";
-import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeRoleRunner } from "./runner-fixtures.js";
-import { mainSha, makeRepo, pinOffMain, tmpdir } from "./repo-fixtures.js";
+import { mainSha, makeRepo, pinOffMain } from "./repo-fixtures.js";
 import { fakePi } from "../fakes/fake-pi.js";
 import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
 
@@ -190,14 +186,3 @@ export async function busyMergePipeline() {
   return { root, mainBefore, restore, ctx, pipeline };
 }
 
-/** A role's row as the observers render it (snapshot → mergeForRole → rolePhase). The
- * observers show a merge only for a live orchestrator, so this stands the test process in
- * for one. */
-export function rowReader(root: string, roles: string[]): (role: string) => string {
-  writeOrchestratorMarker(root, roles);
-  const noModels = path.join(tmpdir(), "no-models.json");
-  return (role) => {
-    const snap = snapshot(root, noModels);
-    return rolePhase(freshRunnerState(role), snap.running, undefined, false, undefined, false, mergeForRole(snap.mergeQueue, role));
-  };
-}

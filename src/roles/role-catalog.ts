@@ -497,7 +497,7 @@ lines in this form:
    ${NOTHING_TO_DO}
 
 The Remote CI check — only when your prompt carries the Remote CI block: it names the GitHub repo
-and branch the operator pushed, what this team's own record last said about it, and the read-only
+and branch the user pushed, what this team's own record last said about it, and the read-only
 \`gh run list\` command to re-check it.
    1. Judge the newest pushed sha on the branch only. It is \`pending\` while any of its runs is
       queued or in progress. It is \`failed\` when any completed run concluded \`failure\`,
