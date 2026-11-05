@@ -11,9 +11,10 @@ import type { WorkMergedCache } from "./work-merged-cache.js";
 import { DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import { HOUR_MS } from "../text/datetime.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota-gates.js";
-import { baseRoleOf, runnerEnabled, runnerPaused } from "../roles/runner-ids.js";
+import { INSTANCE_ROLES, baseRoleOf, runnerEnabled, runnerPaused } from "../roles/runner-ids.js";
 import { hasOutstandingWork, saveRunnerStateBestEffort, type SkipReason } from "../runner/runner-state.js";
 import { hasUnmergedPin } from "../runner/runner-leftover.js";
+import { queuedMerges } from "../merge/merge-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
 import {
@@ -131,6 +132,11 @@ export interface SchedulingScope {
   /** The director holds a kept merge pin: owed an authoring run to re-queue it. */
   pinnedDirector: boolean;
   claimGroups: Map<string, ClaimGroup>;
+  /** Each claim-taking base's entries its OWN queued merges already claim (keyed by base):
+   * the keys the poll must not hand back to the authoring runner, and that stay held for the
+   * group even after the authoring runner's claim is released (the merge-queue claim record
+   * is what the merge's withdrawn check reads). */
+  queuedMergeClaims: Map<string, Set<string>>;
   /** Runs writing code per multi-runner base role, advanced in place by the loop. */
   writing: Map<string, number>;
   ownsOutstanding: (r: RoleRunner) => boolean;
@@ -154,16 +160,41 @@ export function noteSkip(root: string, runner: RoleRunner, reason: SkipReason | 
   saveRunnerStateBestEffort(root, runner.state);
 }
 
+/** The merge queue's claim records, keyed by the authoring runner's base role: every entry a
+ * queued or pinned change of that base already claims. The queue record, not the runner's
+ * live claim, is what the merge's withdrawn check reads, so this set is what keeps a released
+ * claim's entry held for the group while the change waits. A missing queue dir reads as
+ * nothing queued, like every reader in merge-queue.ts. */
+function queuedMergeClaimKeys(root: string, runners: readonly RoleRunner[]): Map<string, Set<string>> {
+  const byBase = new Map<string, Set<string>>();
+  const roleBases = new Map<string, string>();
+  for (const r of runners) roleBases.set(r.role, baseRoleOf(r.role));
+  for (const e of queuedMerges(root)) {
+    if (e.claim === undefined) continue;
+    const base = roleBases.get(e.role) ?? baseRoleOf(e.role);
+    if (!INSTANCE_ROLES.has(base)) continue;
+    let set = byBase.get(base);
+    if (set === undefined) {
+      set = new Set<string>();
+      byBase.set(base, set);
+    }
+    set.add(e.claim.key);
+  }
+  return byBase;
+}
+
 /** Parallel work instances (plans/parallel-work-instances.md "Claims", part 4/7): a base role
  * with more than one runner assigns each due instance a distinct eligible entry, and releases
- * the claims whose entry left, turned ineligible, was disabled or went stale. Computed once
- * per poll and only for a multi-runner base, so a single-runner team is unchanged. The
- * release runs before the pass's per-runner assignment, so a freed key counts as free. */
+ * the claims whose entry left, turned ineligible, was disabled or went stale — or that the
+ * runner's own queued merge already recorded (`queued`). Computed once per poll and only for a
+ * multi-runner base, so a single-runner team is unchanged. The release runs before the pass's
+ * per-runner assignment, so a freed key counts as free. */
 async function collectClaimGroups(
   root: string,
   runners: readonly RoleRunner[],
   pausedRoles: ReadonlySet<string>,
   now: number,
+  queuedMergeClaims: Map<string, Set<string>>,
 ): Promise<Map<string, ClaimGroup>> {
   const claimGroups = new Map<string, ClaimGroup>();
   const baseCounts = new Map<string, number>();
@@ -183,11 +214,25 @@ async function collectClaimGroups(
     // work: hold the whole group's assignment until that runner settles (merges, drops or goes
     // idle), at which point its own staging may have recorded a claim. A busy runner that DOES
     // hold a claim is fine — `held` excludes its key and siblings take other entries.
-    const hold = await releaseClaims(root, groupRunners, listed, eligibleKeys, pausedRoles, base, now);
+    const hold = await releaseClaims(
+      root,
+      groupRunners,
+      listed,
+      eligibleKeys,
+      pausedRoles,
+      base,
+      now,
+      queuedMergeClaims.get(base) ?? new Set<string>(),
+    );
+    // A released `queued` claim keeps its entry held for the group: the queued merge still
+    // claims it, so a sibling must not take it while the change waits (and the merge's
+    // withdrawn check reads the queue's own claim record, not the runner's released one).
+    const held = heldKeys(groupRunners, eligibleKeys, listed);
+    for (const k of queuedMergeClaims.get(base) ?? []) held.add(k);
     claimGroups.set(base, {
       eligible,
       eligibleKeys,
-      held: heldKeys(groupRunners, eligibleKeys, listed),
+      held,
       hold,
     });
   }
@@ -197,7 +242,10 @@ async function collectClaimGroups(
 /** One claim group's release pass (the poll's "which claims does this poll release?"): for each
  * of the group's runners, record the group hold (a mid-entry runner with no claim), test its
  * claim for a release, and on release persist the runner state, log the release, warn on a
- * stale release, and drop withdrawn work. Returns whether the group holds. */
+ * stale release, and drop withdrawn work. A claim whose entry the runner's own queued merge
+ * already recorded is released as `queued` while it is still listed (the entry leaves the
+ * section only when the change merges or is withdrawn, and until then the queue's claim record
+ * holds it for the group). Returns whether the group holds. */
 async function releaseClaims(
   root: string,
   groupRunners: readonly RoleRunner[],
@@ -206,11 +254,29 @@ async function releaseClaims(
   pausedRoles: ReadonlySet<string>,
   base: string,
   now: number,
+  queuedClaims: Set<string>,
 ): Promise<boolean> {
   let hold = false;
   for (const r of groupRunners) {
     const busy = r.state.running || hasOutstandingWork(r.state);
     if (r.state.claim === undefined && busy) hold = true;
+    const claim = r.state.claim;
+    // The run's work is already in the merge queue, the entry is still listed, and the runner
+    // owes the entry nothing else (no revision or resume): the queued change IS the entry's
+    // work, so the claim is released and the runner may take a different free entry. A running
+    // runner or one that still owes a revision/resume keeps its claim: the same-entry run it
+    // is about to start IS the owed work.
+    if (
+      claim !== undefined &&
+      !r.state.running &&
+      !hasOutstandingWork(r.state) &&
+      listed.has(claim.key) &&
+      eligibleKeys.has(claim.key) &&
+      queuedClaims.has(claim.key)
+    ) {
+      await applyClaimRelease(root, r, "queued");
+      continue;
+    }
     const released = claimReleaseReason(r, {
       listedKeys: listed,
       eligibleKeys,
@@ -333,7 +399,8 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
   // clock, since its only other run is an operator prompt. The queue is not a scheduling gate,
   // so a queued pin is offered the leftover reason like any other unmerged pin.
   const pinnedDirector = (await hasUnmergedPin(root, DIRECTOR_ROLE));
-  const claimGroups = await collectClaimGroups(root, runners, pausedRoles, now);
+  const queuedMergeClaims = queuedMergeClaimKeys(root, runners);
+  const claimGroups = await collectClaimGroups(root, runners, pausedRoles, now, queuedMergeClaims);
   // The team gates' block predicate (the director exempt — an explicit human prompt
   // outranks any autonomous gate, quiet hours included): the once-mode settle below and
   // the start gate must agree on exactly when a team gate holds, so the compound lives
@@ -401,6 +468,7 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     modelCheckHeld: ctx.modelCheckHeld ?? new Set<string>(),
     pinnedDirector,
     claimGroups,
+    queuedMergeClaims,
     writing,
     ownsOutstanding,
     ordered,

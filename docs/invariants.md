@@ -780,9 +780,15 @@ used to return `left` here too), `withdrawn` while the runner owes the entry a r
 revision (INV-N5), and `left` otherwise. It returns `disabled`, `paused` (own instance id paused
 while the base role is not) or `stale` (idle past `CLAIM_IDLE_MAX_MS`) only for an idle runner: one
 that is not running and has no outstanding work. Pausing the whole base role keeps every claim. A
-released claim is saved before the runner runs again.
+released claim is saved before the runner runs again. A still-listed claim whose entry the runner's
+own queued merge already records is released as `queued` by the scope's release pass (scope.ts,
+not claimReleaseReason) while the runner is idle and owes the entry nothing else; the queue's claim
+record keeps the entry held for the group until the change merges or is withdrawn, so the entry is
+never re-assigned to the same runner (amended 2026-11-04). A runner that is running or owes a
+revision or resume keeps its claim, since the owed run IS the same entry's work.
 
-**Binds.** `src/scheduling/claims.ts` (`claimReleaseReason`, `CLAIM_IDLE_MAX_MS`),
+**Binds.** `src/scheduling/claims.ts` (`claimReleaseReason`, `CLAIM_IDLE_MAX_MS`, the `queued`
+reason), `src/scheduling/scope.ts` (the release pass's queued-claim arm, `queuedMergeClaimKeys`),
 `src/runner/runner-state.ts` (`hasOutstandingWork`).
 
 **Pinned by.** `test/claims.test.ts` — "claimReleaseReason releases left, ineligible,
@@ -791,7 +797,9 @@ run in progress keeps its claim" and "a claim whose entry left is withdrawn whil
 revision is owed, kept while its run runs, else left"; `test/orchestrator-scheduling.test.ts` — "a
 claimed entry that merges releases the claim on the next poll", "pausing one instance releases its
 claim so a sibling can take the entry", "pausing the whole feature role keeps every instance's
-claim" and "a released claim is saved to disk before the runner runs again".
+claim", "a released claim is saved to disk before the runner runs again", "a primary whose queued
+change already claims its entry is not handed the entry again" and "a primary owed a revision
+keeps its claim while its earlier change is queued".
 
 ### INV-N4: a newly added Refused note must ground the refusal in its own entry, not in another entry's hold or a different series part
 

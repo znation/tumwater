@@ -113,8 +113,11 @@ interface ClaimReleaseCtx {
   paused: boolean;
 }
 
-/** Why a runner drops its queued-merge claim; claimReleaseReason below decides each arm. */
-export type ClaimReleaseReason = "left" | "withdrawn" | "ineligible" | "disabled" | "paused" | "stale";
+/** Why a runner drops its queued-merge claim; claimReleaseReason below decides each arm.
+ * `queued` (scope.ts, not claimReleaseReason) releases a claim the runner's own queued merge
+ * already recorded, while main still lists the entry: the run is done and the poll must not
+ * hand the entry back to the same runner, but the entry stays held by the queue's claim. */
+export type ClaimReleaseReason = "left" | "withdrawn" | "ineligible" | "disabled" | "paused" | "stale" | "queued";
 
 /** Whether a runner that is not running still owes work to its claimed entry: a revision of
  * its rejected change, or the resume of an interrupted run that worked the claim. A resume that

@@ -200,6 +200,27 @@ function twoFeatureInstances(): TumwaterConfig {
 
 const TWO_PLANS = twoPlansDoc();
 
+const THREE_PLANS = [
+  "# Plans",
+  "",
+  "## Planned",
+  "",
+  "### Alpha (planned 2026-01-01 by operator)",
+  "",
+  "Body.",
+  "",
+  "### Beta (planned 2026-01-01 by operator)",
+  "",
+  "Body.",
+  "",
+  "### Gamma (planned 2026-01-01 by operator)",
+  "",
+  "Body.",
+  "",
+  "## Done",
+  "",
+].join("\n");
+
 const ONE_BLOCKED_PLAN = [
   "# Plans",
   "",
@@ -277,6 +298,70 @@ test("a claimed entry that merges releases the claim on the next poll", async ()
     schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
   );
   assert.equal(feature.state.claim, undefined);
+});
+
+test("a primary whose queued change already claims its entry is not handed the entry again", async () => {
+  const root = tmpdir("tumwater-scheduling-queued-claim-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), THREE_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  // Poll 1 assigns: feature takes alpha, feature-2 takes beta; gamma stays free.
+  await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(feature.state.claim?.key, "alpha");
+  // Feature's run finished and queued its change, which records the alpha claim; main still
+  // lists alpha (the change waits in the queue). The next poll must not hand alpha back to
+  // feature: its claim is released and the entry stays held for the group by the queue record,
+  // so the primary takes the free gamma instead.
+  enqueueMerge(root, {
+    role: "feature",
+    sha: "a".repeat(40),
+    run: 1,
+    summary: "work alpha",
+    enqueuedAt: T0 + 20_000,
+    claim: { file: "PLANS.md", key: "alpha", title: "Alpha (planned 2026-01-01 by operator)" },
+  });
+  // Poll 2: the queue's alpha claim holds alpha for the group, feature's claim is released, so
+  // the primary takes the free gamma; feature-2 keeps its own beta claim.
+  const second = await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(second.has(feature), true, "the primary is admitted on a different entry");
+  assert.equal(
+    feature.state.claim?.key,
+    "gamma",
+    "the released claim is reassigned to a free entry, never its own",
+  );
+  assert.equal(feature2.state.claim?.key, "beta", "the sibling's own entry is untouched");
+});
+
+test("a primary owed a revision keeps its claim while its earlier change is queued", async () => {
+  const root = tmpdir("tumwater-scheduling-queued-claim-revision-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  // A rejected change's revision is still owed to alpha, and the original change is queued:
+  // the revision IS the owed work, so the claim is kept and the same entry re-assigned.
+  feature.state.revision = { sha: "b".repeat(40), round: 1, at: T0 + 20_000 };
+  enqueueMerge(root, {
+    role: "feature",
+    sha: "a".repeat(40),
+    run: 1,
+    summary: "work alpha",
+    enqueuedAt: T0 + 20_000,
+    claim: { file: "PLANS.md", key: "alpha", title: "Alpha (planned 2026-01-01 by operator)" },
+  });
+  const second = await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(second.has(feature), true);
+  assert.equal(feature.state.claim?.key, "alpha", "the owed revision keeps the entry");
 });
 
 test("a released claim is saved to disk before the runner runs again", async () => {
