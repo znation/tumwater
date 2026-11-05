@@ -231,9 +231,15 @@ function foldEventInto(entry: ReportFoldEntry, ev: HarnessEvent): void {
   // Grow the start→model pairing before folding the event, so a run_end folded here can
   // already see a run_start that preceded it in the same stream. The entry's guard is
   // runStartEvents' own: a finite `ts` (eventDayKey is non-null) and a non-empty string
-  // model — the same rules runStartModelMap applies, spelled against one event.
-  if (ev.type === "run_start" && typeof ev.model === "string" && ev.model !== "")
-    entry.runModels.set(runStartKey(ev), ev.model);
+  // model — the same rules runStartModelMap applies, spelled against one event. A later
+  // start for the same key replaces the earlier one even when it names no model (the
+  // pairing keeps the last start, so a model-less rerun after `reset-counters` reuses a
+  // run number and must not inherit the previous run's model).
+  if (ev.type === "run_start") {
+    const key = runStartKey(ev);
+    if (typeof ev.model === "string" && ev.model !== "") entry.runModels.set(key, ev.model);
+    else entry.runModels.delete(key);
+  }
   foldUsageEvent(dayFoldFor(entry, dayKey), ev, entry.runModels);
 }
 
