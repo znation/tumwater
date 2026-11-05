@@ -187,12 +187,18 @@ Usage:
                                    with --json, ${SUMMARY_JSON_KEYS}
                                    --by model groups the summary by the model each run started on instead
                                    of by role; with --json, { models, total }
-  tumwater history <role> [<n>] [--last [--result <class>[,...]] [--model <selector>[,...]]] [--stat] [--patch] [--transcript [--prompt] [--grep <text>]] [--json]
+  tumwater history <role> [<n>] [--last [--result <class>[,...]] [--model <selector>[,...]]] [-f/--follow] [--stat] [--patch] [--transcript [--prompt] [--grep <text>]] [--json]
                                    One run's full event trail — a summary header (result, or
                                    in flight, with duration, tokens and cost, and the commit)
                                    then every event of that run in time order; a run still in
                                    flight shows its events so far; a run waiting to merge
-                                   shows its merge verdict once the merge finishes; --last
+                                   shows its merge verdict once the merge finishes; -f/--follow
+                                   repaints the same trail every couple of seconds until Ctrl+C
+                                   or the process that started it exits, so a backgrounded follow
+                                   does not outlive its parent, and refuses --json because the
+                                   live form is read-only (it pins the run it resolved on its
+                                   first frame — with --last, a newer completed run does not take
+                                   over the view); --last
                                    shows the role's newest finished run instead of numbering
                                    one (with no <role>, the newest finished run of any
                                    role); --result <class>[,...] (with --last) picks the newest

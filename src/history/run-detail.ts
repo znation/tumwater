@@ -3,9 +3,11 @@
  * it, and prints the rendered trail (or the not-found line). The payload is collected by
  * run-detail-data.ts (runCommitSha / runMergedSha beside it) and rendered by
  * run-detail-render.ts, so the CLI, the TUI's History drill-down, and the GUI's /api/run serve
- * the same text. Read-only over the event log, stdout only. */
+ * the same text. Read-only over the event log, stdout only. The -f/--follow form repaints the
+ * same trail through followView's shared loop instead of exiting after one render. */
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { parseCountFlag } from "../cli/cli-args.js";
+import { followView, type FollowViewSeams } from "../cli/follow-view.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, historyClass, readRunRows, runRowsOnModels, type HistoryResultClass, type RunRow } from "./history-data.js";
 import { parseHistoryModelList, parseHistoryResultList } from "./history.js";
@@ -17,7 +19,7 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 /** The run command's synopsis, word for word what cli.ts's dispatcher gate and cmdRunDetail's own
  * arity and unknown-role guards fail with — one string so the three sites cannot drift apart
  * when the command's shape changes. */
-export const RUN_DETAIL_USAGE = "tumwater history <role> [<n>] [--last [--result <class>[,...]] [--model <selector>[,...]]] [--stat] [--patch] [--transcript [--prompt] [--grep <text>]] [--json]";
+export const RUN_DETAIL_USAGE = "tumwater history <role> [<n>] [--last [--result <class>[,...]] [--model <selector>[,...]]] [-f/--follow] [--stat] [--patch] [--transcript [--prompt] [--grep <text>]] [--json]";
 
 /** The shared not-found frame both wordings complete — what the scan looked for, the role,
  * and that the scanned window (not the world) is what came up empty. Exactly two consumers,
@@ -188,6 +190,58 @@ function runDetailNumberMiss(role: string, runNumber: number, json: boolean): vo
   else say(runNotFoundMessage(role, runNumber));
 }
 
+/** One follow frame's text: the human trail with the same --stat/--patch footer and
+ * --transcript text the one-shot form prints (follow refuses --json, so the JSON payload never
+ * reaches a frame). Re-reads the log on every call, so a run still in flight gains new events
+ * between frames and a run whose merge finishes shows its verdict in the next frame. A run that
+ * disappears from the scanned window mid-follow (rotation) paints the one-shot not-found line
+ * for that frame instead of throwing. The read is synchronous unless --stat or --patch is set
+ * (those run git plumbing): the sync path is the shape follow-view documents for each tick to
+ * paint exactly one frame, the deterministic shape the mock-clock follow tests rely on. */
+function runDetailFrame(
+  root: string,
+  role: string,
+  runNumber: number,
+  opts: { stat: boolean; patch: boolean; transcript: boolean; prompt: boolean; grep: string | null },
+): string | Promise<string> {
+  const detail = readRunDetail(root, role, runNumber);
+  if (detail === null) return runNotFoundMessage(role, runNumber);
+  const transcriptLines = opts.transcript
+    ? runTranscriptLines(root, role, runNumber, detail, { includePrompts: opts.prompt, grep: opts.grep ?? undefined })
+    : null;
+  const transcriptText =
+    transcriptLines === null
+      ? []
+      : [transcriptLines.found.length > 0 ? transcriptLines.found.join("\n") : transcriptLines.note];
+  // Same section order as the one-shot form's emitRunDetail: header, footer, transcript.
+  if (!opts.stat && !opts.patch) {
+    // No git read: render synchronously so the frame paints on the tick that read it.
+    return [renderRunDetail(detail), ...transcriptText].join("\n\n");
+  }
+  // --stat/--patch run git plumbing: an async frame, guarded against stacking by followView.
+  return (async () => {
+    const footer: { stat?: string; patch?: string } = {};
+    if (opts.stat) footer.stat = await runDetailStat(root, detail);
+    if (opts.patch) footer.patch = await runDetailPatch(root, detail);
+    return [renderRunDetail(detail), ...Object.values(footer), ...transcriptText].join("\n\n");
+  })();
+}
+
+/** The live half of cmdRunDetail: repaint the pinned run's trail through the shared follow loop
+ * until Ctrl+C or the process that started the command exits. The run was already resolved (and
+ * its detail read once) before the loop, so a not-found run never follows — the one-shot
+ * not-found line stands. Each frame re-reads the log; followView ends on Ctrl+C or the parent's
+ * death returning normally, leaving process.exitCode untouched. */
+async function followRunDetail(
+  root: string,
+  role: string,
+  runNumber: number,
+  opts: { stat: boolean; patch: boolean; transcript: boolean; prompt: boolean; grep: string | null },
+  seams: FollowViewSeams,
+): Promise<void> {
+  await followView(() => runDetailFrame(root, role, runNumber, opts), seams);
+}
+
 /** The render half of cmdRunDetail: build the --stat/--patch footer and the --transcript lines,
  * then emit the --json payload or the human-rendered trail (renderRunDetail plus the footer and
  * transcript text). */
@@ -264,12 +318,16 @@ function resolveRunDetailTarget(
  * <selector>[,...]` with --last keeps only runs that started on a listed model (the listing's
  * exact match) and composes with --result; it needs --last too. With --last and no role, the
  * newest run of any role is opened (newestRunRow with a null role) and renders as its
- * role's form. */
+ * role's form. -f/--follow repaints the resolved run's trail every couple of seconds until
+ * Ctrl+C or the process that started the command exits — read-only (--json is refused with it
+ * by the dispatcher, and the not-found answers keep their one-shot forms), and it pins the run
+ * resolved on the first frame: with --last, a newer completed run does not take over the view.
+ */
 export async function cmdRunDetail(
   root: string,
   positionals: string[],
   json: boolean,
-  { last = false, stat = false, patch = false, transcript = false, prompt = false, grep = null, result = null, model = null }: {
+  { last = false, stat = false, patch = false, transcript = false, prompt = false, grep = null, result = null, model = null, follow = false }: {
     last?: boolean;
     stat?: boolean;
     patch?: boolean;
@@ -278,7 +336,9 @@ export async function cmdRunDetail(
     grep?: string | null;
     result?: string | null;
     model?: string | null;
+    follow?: boolean;
   } = {},
+  seams: FollowViewSeams = {},
 ): Promise<void> {
   const parsed = parseRunDetailInvocation(root, positionals, { last, transcript, prompt, grep, result, model });
   const { role, runNumber, detail } = resolveRunDetailTarget(root, parsed, positionals, last);
@@ -288,6 +348,10 @@ export async function cmdRunDetail(
   }
   if (detail === null) {
     runDetailNumberMiss(role, runNumber, json);
+    return;
+  }
+  if (follow) {
+    await followRunDetail(root, role, runNumber, { stat, patch, transcript, prompt, grep }, seams);
     return;
   }
   await emitRunDetail(root, role, runNumber, detail, json, { stat, patch, transcript, prompt, grep });

@@ -344,7 +344,7 @@ test("cmdRunDetail fails with the usage on a missing, unknown, or extra position
   await initProject(repo, "run arg errors");
   // Missing role / missing n / stray extra: arity is exactly <role> <n>.
   for (const argv of [[], ["bugfix", "3", "extra"]]) {
-    assert.match(await expectFailAsync(() => cmdRunDetail(repo, argv, false)), /usage: tumwater history <role> \[<n>\] \[--last \[--result <class>\[,\.\.\.\]\] \[--model <selector>\[,\.\.\.\]\]\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/);
+    assert.match(await expectFailAsync(() => cmdRunDetail(repo, argv, false)), /usage: tumwater history <role> \[<n>\] \[--last \[--result <class>\[,\.\.\.\]\] \[--model <selector>\[,\.\.\.\]\]\] \[-f\/--follow\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/);
   }
   // Unknown role: the shared unknown-role wording plus the usage.
   const role = await expectFailAsync(() => cmdRunDetail(repo, ["nosuch", "3"], false));
@@ -424,7 +424,7 @@ test("tick's dispatcher fails a wrong positional count with its usage, before th
   for (const args of [["tick"], ["tick", "bugfix", "3", "extra"]]) {
     const r = await cli(empty, ...args);
     assert.equal(r.code, 1, `tumwater ${args.join(" ")}`);
-    assert.match(r.stderr, /usage: tumwater history <role> \[<n>\] \[--last \[--result <class>\[,\.\.\.\]\] \[--model <selector>\[,\.\.\.\]\]\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/, `tumwater ${args.join(" ")}`);
+    assert.match(r.stderr, /usage: tumwater history <role> \[<n>\] \[--last \[--result <class>\[,\.\.\.\]\] \[--model <selector>\[,\.\.\.\]\]\] \[-f\/--follow\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/, `tumwater ${args.join(" ")}`);
     assert.doesNotMatch(r.stderr, /not a git repository/, `tumwater ${args.join(" ")}`);
   }
 });
