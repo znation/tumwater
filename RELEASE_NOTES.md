@@ -1,50 +1,63 @@
-# tumwater 0.4.7
+# tumwater 0.5.0
 
 ## Highlights
 
-- **A twice-failed gate check is decided at main's tip right away.** The named failing tests re-run
-  alone there, and a failure that names no test (compile, lint, crash) runs the gate command
-  there. A green tip rejects the change and a red tip sends it on to review. Nothing waits on the
-  main watch any more, and no pin is kept until the watch gets there.
-- **Bugfix waits end on their own.** A bug that bugfix could not reproduce is now marked
-  `[blocked: waiting for a recurrence]` instead of `needs review`. When the quarantine sees its
-  test flake, the occurrence and its output go into the entry and bugfix takes the bug again.
-  Seven quiet days close it to BUGS-FIXED.md. The five bugs that had sat 8–18 days behind such
-  notes are closed.
-- **The claude backend's default tier is now Haiku 5.5.** Strong stays Opus 5.5, and explicit
-  `model` settings are unaffected.
-- **More live views.** `reviews`, both `questions` list forms and `prompt --list` gain
-  `-f/--follow`.
+- **Remote CI: the team now sees GitHub Actions' verdict on what you pushed.** The ci role reads
+  the hosted CI result on main's newest pushed commit with your own `gh` (read-only), so a failure
+  that only happens on the hosted runner no longer goes unseen. A newly failed push pages you once
+  per commit. `tumwater doctor` gains a `remote CI` row, and the status line, TUI header and
+  dashboard show a `github: passed|failed|running` badge beside the ci parity badge. It runs only
+  when main's remote is on GitHub and the repo has a workflow; `roles.ci.remote: false` turns it off.
+- **No more duplicate plans.** The plan role's prompt now shows the plans that unmerged changes
+  already carry, and its stop count reads `## Planned` with those changes applied, so it stops
+  planning work that is waiting to merge. A new `retired` stamp closes a plan that is never built,
+  and the plan role retires extra copies of the same work. When feature finds nothing to build in
+  a plan, it hands the plan back to the plan role to fix instead of refusing it.
+- **Main's full check runs at most once per `check.fullIntervalMinutes`** (default 60), and only
+  while a code commit is newer than the last full verdict. It runs in its own `_main-full` mirror,
+  so a long suite no longer blocks the gate's main-tip verdicts. Set 0 to check every head again.
+- **Per-model reports.** Day and `--since` reports gain `Tokens by model`, `Cost by model` and
+  `Estimated by model` lines, ranked by spend. The failure digest adds a ranked
+  `Failed runs by model` line, so a team that mixes providers can see which model is failing or
+  costing the most.
+- **More live views.** `doctor`, `role <id>`, `plan --list`, `bug --list` (and `--done`),
+  `history --summary` and `history <role> <n>` gain `-f/--follow`.
 
 ## Fixes
 
-- A merge-queue entry whose file cannot be removed no longer throws out of the poll and ends the
-  team's run. drainVerify's dedupe drop is now guarded like its sibling settle paths.
-- `init --adopt` in an empty directory no longer claims to adopt a README.md that doesn't exist.
-- pi's fallback-clone warning names the unresolved model id, so it says which id needs a
-  models.json entry.
-- A Needs-review or Refused note wrapped across lines now lifts whole. `bug --release` used to
-  leave its continuation lines behind.
-- Doctor's `held bugs` counts waits separately and says how they clear. `stale bugs` and
-  `stalled entries` no longer say no bug is held while every bug is.
-- A GitHub release attaches only its own tarball. 0.4.6 also carried a stray 0.4.5 tarball, and
-  `*.tgz` is now ignored.
+- Post-merge reviews no longer stall until a restart. They now wait for a run permit instead of
+  checking once for a free one. On a busy team that check failed and left the review slot stuck,
+  so on 2026-11-03 only 2 of 81 merges were reviewed.
+- A reviewer's post-merge fix goes through the gate's build check before it lands. On 2026-11-04 a
+  broken repair landed unchecked and kept main red for about 20 hours.
+- A role whose change is waiting in the merge queue is no longer given the same backlog entry
+  again. Before this fix, it built the same work twice.
+- A post-merge review no longer rotates a role log that a running run is still writing, which made
+  a healthy run look stuck on the dashboard.
+- The director no longer starts a run every poll (each one skipped) while a second commit waits
+  behind its queued change.
+- Merge verification runs one change at a time. The removed `main_red` run result no longer
+  appears in status, doctor or the dashboard.
+- Main is green again. It had been red since 2026-11-04 on four repo-wide lint scans and 11
+  runner tests. The runner tests broke because every role waited on a plan-only git refresh
+  before it leased its slot.
 
 ## CLI
 
-- `reviews -f`, `questions -f` and `prompt --list -f` repaint until Ctrl+C or their parent exits.
-- `init --template` refuses a flag-looking value and names the slip.
-- An out-of-range `prompt --cancel/--edit/--top <n>` names the role whose inbox it addressed.
+- `-f/--follow` on `doctor`, `role <id>`, `plan|bug --list`, `history --summary` and
+  `history <role> <n>` refreshes the view until Ctrl+C or until its parent process exits.
+- `doctor` gains a `remote CI` row. The `check.fullIntervalMinutes` setting is new.
 
 ## Build and tests
 
-- Full-run baseline verdicts record `checkedAt`, persisted across restarts (groundwork for the
-  hourly full check).
-- "About now" test assertions use an injected clock instead of fixed tolerances.
-- PRINCIPLES.md gains a Budgets section.
-- Internals: about 20 long functions split into named helpers (runAgent, prepareOrchestratorRun,
-  launchDueRuns, pollBudgetGate, gateBuildPrecheck, buildSchedulingScope and more). Repeated code
-  is folded into shared helpers, merge-verify helpers and the bug/plan CLI shells have their own
-  modules, and dead exports are removed.
+- Each release now chooses major, minor or patch when it is cut: `scripts/release.mjs <level>`,
+  `bump <level>`, and `--status` prints the level (DEVELOPMENT.md "Choosing the version").
+- A flaky merge-pipeline test now holds its second change's check, so the check can't finish
+  between polls.
+- New end-to-end tests cover the gate's re-run attribution when main is red and the failure
+  names no test.
+- Internals: `buildReviewPrompt` is split into four builders, duplicate merge-queue modules are
+  removed, eleven copies of the `--json`/`--follow` refusal now share one helper, dead exports
+  are deleted, and the PRINCIPLES.md budgets are refreshed.
 
-147 files changed, +5,978 / −3,148 over 89 commits since v0.4.6.
+210 files changed, +9,743 / −2,324 over 133 commits since v0.4.7.
