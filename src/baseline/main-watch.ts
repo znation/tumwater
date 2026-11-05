@@ -176,6 +176,9 @@ export function createMainWatch(
   let housekeeping: Promise<void> | null = null;
   let lastFilingWarning = "";
   let lastCloseWarning = "";
+  /** The head a "main watch could not check main" warning was last logged for: the rules pass
+   * and the full pass fail independently, and a broken main must not warn twice for one head. */
+  let lastFailedWatchHead: string | undefined;
 
   /** Release quarantined tests whose bug left `## Open`, file the bugs of newly quarantined
    * ones on main — recording a filed test's new flake under its bug when that bug waits for one —
@@ -265,7 +268,7 @@ export function createMainWatch(
       ran = true;
       onRun(run);
     };
-    let check = await checkMainBaseline(wt, config, hook, false, false, undefined, false, CHECK_TIER.merge);
+    let check = await checkMainBaseline(wt, config, hook, false, false, undefined, false, CHECK_TIER.merge, true);
     if (check.baseline?.status !== "red") return { check, ran };
     const first = check.baseline;
     const named = first.failingTests ?? [];
@@ -280,7 +283,7 @@ export function createMainWatch(
       }
       return { check, ran };
     }
-    check = await checkMainBaseline(wt, config, hook, true, false, undefined, false, CHECK_TIER.merge);
+    check = await checkMainBaseline(wt, config, hook, true, false, undefined, false, CHECK_TIER.merge, true);
     // A red the same tree's confirming re-run turns green is a flake: quarantine its tests.
     if (check.baseline?.status === "green") quarantineTests(root, named, named.join("\n"));
     return { check, ran };
@@ -315,7 +318,7 @@ export function createMainWatch(
     const covered = await countCovered(wt, previous, baseline.sha);
     logEventBestEffort(
       root,
-      mainCheckEvent(baseline, red, quarantined, covered, ran ? Date.now() - started : 0, openerSha),
+      mainCheckEvent(baseline, red, quarantined, covered, ran ? Date.now() - started : 0, red ? openerSha : undefined),
     );
     return red;
   }
@@ -347,7 +350,8 @@ export function createMainWatch(
    * is the newest head the rules pass has already been started for (lastRulesWatched), so a head
    * whose pass was busy when it arrived is still judged once rather than dropped. */
   async function rulesPass(mainHead: string, previous: string | undefined, config: TumwaterConfig): Promise<void> {
-    if (!detectBuildCheck(root, config)) {
+    const hasBuildCheck = detectBuildCheck(root, config);
+    if (!hasBuildCheck) {
       // No declared build check: nothing to watch for a build red, but the diff rules still run on
       // the tip, and the head counts as watched (the full-check pass never runs here, so it owns
       // no lastWatched either). No suspended full check can be due without a build check.
@@ -366,8 +370,10 @@ export function createMainWatch(
     // next head moves. The full check no longer runs here — its own pass (fullPass) owns it in
     // `_main-full` — so a slow full run never holds this mirror behind the gate's main-tip
     // verdicts (Hourly full check, part 2c/4).
+    let judgedTip: string | undefined;
     await withMainTipWorktree(root, mainBranch, async (wt) => {
       const tip = await headOf(wt);
+      judgedTip = tip;
       // Judge each first-parent commit in the range by its own diff and its own merged-event role,
       // not the tip's: a multi-commit range's union diff attributed to whichever role merged the
       // tip would report a legitimate director/steward PRINCIPLES.md edit in an intermediate commit
@@ -411,6 +417,14 @@ export function createMainWatch(
         }
       }
     });
+    // The mirror can be re-pointed at a newer tip while this pass waited for the shared gate
+    // mirror: mark the tip actually judged, or the next poll re-judges the commits this pass
+    // already covered (the poll's optimistic lastRulesWatched was only the head it saw). A failed
+    // pass leaves the optimistic head, so a newer head it never finished is still retried.
+    if (judgedTip !== undefined) {
+      lastRulesWatched = judgedTip;
+      if (!hasBuildCheck) lastWatched = judgedTip;
+    }
   }
 
   /** Name a settled red tip's spell as the culprit: the merging runner, the main_culprit
@@ -446,6 +460,18 @@ export function createMainWatch(
       failingTests: baseline.failingTests ?? [],
       ...(baseline.failingTestFiles ? { failingTestFiles: baseline.failingTestFiles } : {}),
       tip: baseline.sha,
+    });
+  }
+
+  /** Warn that a watch pass could not check `mainHead`, once per head: both passes share this
+   * so an unreadable main (both throw) produces one warning, not two. */
+  function warnCouldNotCheck(mainHead: string, err: unknown): void {
+    if (lastFailedWatchHead === mainHead) return;
+    lastFailedWatchHead = mainHead;
+    logEventBestEffort(root, {
+      source: TUMWATER_SOURCE,
+      type: "warning",
+      message: `main watch could not check main: ${errorMessage(err)}`,
     });
   }
 
@@ -551,11 +577,7 @@ export function createMainWatch(
           .catch((err: unknown) => {
             // A failed rules pass (main unreadable, checkout refused) is not retried until main
             // moves, so a persistent failure warns once per head.
-            logEventBestEffort(root, {
-              source: TUMWATER_SOURCE,
-              type: "warning",
-              message: `main watch could not check main: ${errorMessage(err)}`,
-            });
+            warnCouldNotCheck(mainHead, err);
           })
           .finally(() => {
             rulesInFlight = null;
@@ -570,11 +592,7 @@ export function createMainWatch(
             lastWatched = mainHead;
             fullCheckDueAt = undefined;
             fullCheckBase = undefined;
-            logEventBestEffort(root, {
-              source: TUMWATER_SOURCE,
-              type: "warning",
-              message: `main watch could not check main: ${errorMessage(err)}`,
-            });
+            warnCouldNotCheck(mainHead, err);
           })
           .finally(() => {
             fullInFlight = null;

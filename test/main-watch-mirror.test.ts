@@ -40,12 +40,14 @@ test("the full check runs in _main-full, a mirror the gate's main-tip verdict do
 
 test("the full check's run happens in _main-full, and the gate's main-tip verdict is served from _gate-main", async () => {
   // The check fails (red) while `bad.txt` is tracked. Only the `_main-full` mirror's run writes
-  // the `full-start`/`full-done` markers (around a short sleep that makes it a slow full check),
-  // so the markers prove which mirror the full check ran in: the gate's `_gate-main` never does.
+  // the `started`/`done` markers (and it waits for the release file between them, so the full
+  // check stays in flight), so the markers prove which mirror the full check ran in: the gate's
+  // `_gate-main` never does.
   const fullStart = path.join(tmpdir(), "full-start");
+  const release = path.join(tmpdir(), "full-release");
   const script =
     `if [ -f bad.txt ]; then if [ "$(basename "$PWD")" = "_main-full" ]; then ` +
-    `echo started >> ${fullStart}; sleep 1; echo done >> ${fullStart}; fi; ` +
+    `echo started >> ${fullStart}; while [ ! -f ${release} ]; do sleep 1; done; echo done >> ${fullStart}; fi; ` +
     `${FAILING_OUTPUT}; exit 1; fi; echo ok`;
   const { root } = baselineFixture("improve", script);
   const clock = clockAt();
@@ -55,14 +57,27 @@ test("the full check's run happens in _main-full, and the gate's main-tip verdic
   clock.advance(HOUR); // past the interval
   watch.poll(headSha(root), false, defaultConfig()); // the rules pass and the full pass start independently
   await until(
-    () => fs.existsSync(fullStart) && fs.readFileSync(fullStart, "utf8").includes("done"),
-    "the full pass to settle its run in _main-full",
+    () => fs.existsSync(fullStart) && fs.readFileSync(fullStart, "utf8").includes("started"),
+    "the full run to start in _main-full",
   );
-  // The full check's run happened in the `_main-full` mirror (`started`/`done` are written only by
-  // that worktree's run), not the gate's. The gate's main-tip verdict is served from the shared
-  // `_gate-main` mirror: it answers red at the tip, independent of the full pass's worktree.
-  const verdict = await mainTipVerdict(root, "improve", "main", defaultConfig());
-  assert.equal(verdict.status, "red", "the gate's main-tip verdict answers red at the tip");
-  await watch.idle();
+  // The full check's run is parked in the `_main-full` mirror (`started`/`done` are written only
+  // by that worktree's run). The gate's main-tip verdict is served from the shared `_gate-main`
+  // mirror and must answer while the full run is still in flight: a separate mirror is not enough
+  // if the full pass's in-flight run swallows the gate's check for the same SHA.
+  let verdict: Awaited<ReturnType<typeof mainTipVerdict>> | undefined;
+  try {
+    void mainTipVerdict(root, "improve", "main", defaultConfig()).then((v) => {
+      verdict = v;
+    });
+    await until(() => verdict !== undefined, "the gate's main-tip verdict");
+    assert.equal(verdict?.status, "red", "the gate's main-tip verdict answers red at the tip");
+    assert.ok(
+      !fs.readFileSync(fullStart, "utf8").includes("done"),
+      "the gate's verdict arrived before the slow full run finished",
+    );
+  } finally {
+    fs.writeFileSync(release, "");
+    await watch.idle();
+  }
   assert.ok(fs.readFileSync(fullStart, "utf8").includes("done"), "the full run settled in the _main-full mirror");
 });

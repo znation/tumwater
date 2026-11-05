@@ -436,6 +436,11 @@ export async function checkMainBaseline(
   observedOnly = false,
   /** The check permit tier the run queues at; the main watch asks for the merge tier. */
   tier: number = CHECK_TIER.other,
+  /** Scope the in-flight dedup key to this worktree. The main watch's full-check pass runs in
+   * its own `_main-full` mirror and must not join (or be joined by) a gate's main-tip verdict
+   * for the same SHA in `_gate-main`: the pass exists so those can run independently
+   * (docs/invariants.md INV-CZ3). The verdict cache and the inherited-green walk are unchanged. */
+  dedupByWorktree = false,
 ): Promise<MainBaselineCheck> {
   const sha = await refSha(wt, "HEAD");
   if (!sha) return { baseline: null }; // No HEAD (unborn branch) — nothing to key on.
@@ -450,15 +455,18 @@ export async function checkMainBaseline(
     const inherited = await inheritedBaselineFor(wt, sha, config);
     if (inherited) return { baseline: inherited };
   }
-  let pending = baselineInFlight.get(key);
+  // The ordinary key is the SHA (one run per SHA team-wide); a worktree-scoped caller asks for
+  // its own run in its own mirror instead, so two mirrors can check the same SHA concurrently.
+  const dedupKey = dedupByWorktree ? `${sha}\u0000${wt}` : key;
+  let pending = baselineInFlight.get(dedupKey);
   if (!pending) {
     pending = runBaselineOnce(sha, wt, config, onRun, sampleSleep, tier);
-    baselineInFlight.set(key, pending);
+    baselineInFlight.set(dedupKey, pending);
   }
   try {
     return await pending;
   } finally {
-    if (baselineInFlight.get(key) === pending) baselineInFlight.delete(key);
+    if (baselineInFlight.get(dedupKey) === pending) baselineInFlight.delete(dedupKey);
   }
 }
 

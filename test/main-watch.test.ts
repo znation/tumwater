@@ -105,6 +105,11 @@ test("a main whose branch is unreadable warns once through the poll catch and is
     warnings.some((m) => m.includes("main watch could not check main") && m.includes("main is unreadable")),
     warnings.join("|"),
   );
+  assert.equal(
+    warnings.filter((m) => m.includes("main watch could not check main")).length,
+    1,
+    "the rules pass and the full pass warn once for the same head",
+  );
   assert.equal(eventsOfType(root, "main_check").length, 0, "an unreadable main records no verdict");
 });
 
