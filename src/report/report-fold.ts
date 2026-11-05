@@ -83,6 +83,12 @@ interface DayFold {
   /** run_end output tokens per model selector (the window's runModels pairing) — the token
    * twin of runsByModel, team-only. */
   tokensByModel: Record<string, number>;
+  /** run_end real cost per model selector (the same runModels pairing) — the spend twin of
+   * tokensByModel, team-only. */
+  costByModel: Record<string, number>;
+  /** run_end notional cost per model selector (the same runModels pairing), team-only like
+   * costByModel. */
+  notionalByModel: Record<string, number>;
   deferredByReason: Record<string, number>;
 }
 

@@ -1390,16 +1390,17 @@ test("collectReport gives each day the lower median of its reviewer-run duration
 test("collectReport and collectReportSince tally run_start per model, zero meaning absent, team scope only", () => {
   const start = (ts: number, run: number, model?: string) =>
     JSON.stringify({ ts, loop: "feature", type: "run_start", run, ...(model === undefined ? {} : { model }) }); // retired-name-ok: legacy event field in a fixture
-  const end = (ts: number, run: number, tokens: number) =>
-    JSON.stringify({ ts, loop: "feature", type: "run_end", run, result: "changed", tokens }); // retired-name-ok: legacy event field in a fixture
+  const end = (ts: number, run: number, tokens: number, costUsd = 0, notionalCostUsd = 0) =>
+    JSON.stringify({ ts, loop: "feature", type: "run_end", run, result: "changed", tokens, costUsd, notionalCostUsd }); // retired-name-ok: legacy event field in a fixture
   const root = tmpdir();
   writeEvents(root, [
     start(todayTs(), 1, "acme/m1"),
     start(todayTs(), 2, "acme/m2"),
     start(todayTs(), 3, "acme/m1"),
     start(todayTs(), 4), // no configured model: contributes no key
-    end(todayTs(), 1, 100),
-    end(todayTs(), 2, 40),
+    end(todayTs(), 1, 100, 0.75),
+    end(todayTs(), 2, 40, 0.5, 2),
+    end(todayTs(), 4, 0), // model-less start: its spend counts in the role and totals, in no model map
   ]);
   const data = collectReport(root, 3);
   assert.deepEqual(data.series[2]?.runsByModel, { "acme/m1": 2, "acme/m2": 1 }, "counts modelled starts, skips the model-less one");
@@ -1408,40 +1409,70 @@ test("collectReport and collectReportSince tally run_start per model, zero meani
   assert.deepEqual(data.series[2]?.tokensByModel, { "acme/m1": 100, "acme/m2": 40 }, "each run's tokens pair with its own start's model");
   assert.ok(!("tokensByModel" in (data.series[0] ?? {})), "a day with no model tokens omits the field");
   assert.deepEqual(data.series[2]?.tokensByRole, { feature: 140 }, "both runs still count in Tokens by role");
+  // The spend twins: each run_end's real and notional spend pairs with its own start's model.
+  assert.deepEqual(data.series[2]?.costByModel, { "acme/m1": 0.75, "acme/m2": 0.5 }, "each run's cost pairs with its own start's model");
+  assert.deepEqual(data.series[2]?.notionalByModel, { "acme/m2": 2 }, "the notional spend pairs with its own start's model");
+  assert.ok(!("costByModel" in (data.series[0] ?? {})), "a day with no modelled spend omits the field");
+  assert.deepEqual(data.series[2]?.costByRole, { feature: 1.25 }, "the spend still counts in Cost by role");
 
   const since = collectReportSince(root, 3 * 24 * HOUR);
   assert.deepEqual(since.runsByModel, { "acme/m1": 2, "acme/m2": 1 }, "--since carries the same runs map");
   assert.deepEqual(since.tokensByModel, { "acme/m1": 100, "acme/m2": 40 }, "--since carries the token map");
+  assert.deepEqual(since.costByModel, { "acme/m1": 0.75, "acme/m2": 0.5 }, "--since carries the cost map");
+  assert.deepEqual(since.notionalByModel, { "acme/m2": 2 }, "--since carries the notional map");
   assert.equal(since.totals.tokensOut, 140, "totals unchanged");
+  assert.equal(since.totals.costUsd, 1.25, "the window's totals still sum all the spend");
   // Renders name the tallies, count desc then name asc, team report only.
   assert.match(renderReportMarkdown(data), /\*\*Runs by model:\*\* acme\/m1 — 2 · acme\/m2 — 1/);
   assert.match(renderReportMarkdown(data), /\*\*Tokens by model:\*\* acme\/m1 — 100 · acme\/m2 — 40/);
+  assert.match(renderReportMarkdown(data), /\*\*Cost by model:\*\* acme\/m1 — \$0\.75 · acme\/m2 — \$0\.50/);
+  assert.match(renderReportMarkdown(data), /\*\*Estimated by model:\*\* acme\/m2 — \$2\.00/);
   assert.match(renderSinceReportMarkdown(since), /\*\*Runs by model:\*\* acme\/m1 — 2 · acme\/m2 — 1/);
   assert.match(renderSinceReportMarkdown(since), /\*\*Tokens by model:\*\* acme\/m1 — 100 · acme\/m2 — 40/);
+  assert.match(renderSinceReportMarkdown(since), /\*\*Cost by model:\*\* acme\/m1 — \$0\.75 · acme\/m2 — \$0\.50/);
+  assert.match(renderSinceReportMarkdown(since), /\*\*Estimated by model:\*\* acme\/m2 — \$2\.00/);
   assert.doesNotMatch(renderReportMarkdown(collectReport(root, 3, "feature")), /\*\*Runs by model:/, "a scoped day report omits Runs by model");
   assert.doesNotMatch(renderReportMarkdown(collectReport(root, 3, "feature")), /\*\*Tokens by model:/, "a scoped day report omits Tokens by model");
+  assert.doesNotMatch(renderReportMarkdown(collectReport(root, 3, "feature")), /\*\*Cost by model:/, "a scoped day report omits Cost by model");
+  assert.doesNotMatch(renderReportMarkdown(collectReport(root, 3, "feature")), /\*\*Estimated by model:/, "a scoped day report omits Estimated by model");
   assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(root, 3 * 24 * HOUR, "feature")), /\*\*Runs by model:/, "a scoped --since report omits Runs by model");
   assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(root, 3 * 24 * HOUR, "feature")), /\*\*Tokens by model:/, "scoped --since omits it");
+  assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(root, 3 * 24 * HOUR, "feature")), /\*\*Cost by model:/, "scoped --since omits Cost by model");
+  assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(root, 3 * 24 * HOUR, "feature")), /\*\*Estimated by model:/, "scoped --since omits Estimated by model");
 
-  // Team-only: a model is not a role, so a role-scoped report carries neither model map.
+  // Team-only: a model is not a role, so a role-scoped report carries none of the model maps.
   assert.deepEqual(collectReportSince(root, 3 * 24 * HOUR, "feature").runsByModel, {}, "scoped window carries an empty runs map");
   assert.deepEqual(collectReportSince(root, 3 * 24 * HOUR, "feature").tokensByModel, {}, "scoped window carries an empty tokens map");
+  assert.deepEqual(collectReportSince(root, 3 * 24 * HOUR, "feature").costByModel, {}, "scoped window carries an empty cost map");
+  assert.deepEqual(collectReportSince(root, 3 * 24 * HOUR, "feature").notionalByModel, {}, "scoped window carries an empty notional map");
   const scoped = collectReport(root, 3, "feature");
   assert.ok(!("runsByModel" in (scoped.series[2] ?? {})), "scoped day omits the runs field");
   assert.ok(!("tokensByModel" in (scoped.series[2] ?? {})), "scoped day omits the tokens field");
+  assert.ok(!("costByModel" in (scoped.series[2] ?? {})), "scoped day omits the cost field");
+  assert.ok(!("notionalByModel" in (scoped.series[2] ?? {})), "scoped day omits the notional field");
 
-  // A log with no modelled start: the team day omits the field and --since returns empty maps.
+  // A log with no modelled start: the team day omits the fields and --since returns empty maps.
   const plain = tmpdir();
-  writeEvents(plain, [start(todayTs(), 1), end(todayTs(), 1, 7)]);
+  writeEvents(plain, [start(todayTs(), 1), end(todayTs(), 1, 7, 3, 1)]);
   assert.ok(!("runsByModel" in collectReport(plain, 2).series[0]!), "a model-less team day omits the runs field");
   assert.ok(!("tokensByModel" in collectReport(plain, 2).series[0]!), "a model-less team day omits the tokens field");
+  assert.ok(!("costByModel" in collectReport(plain, 2).series[0]!), "a model-less team day omits the cost field");
+  assert.ok(!("notionalByModel" in collectReport(plain, 2).series[0]!), "a model-less team day omits the notional field");
+  assert.deepEqual(collectReport(plain, 2).series[1]?.costByRole, { feature: 3 }, "the spend still counts in Cost by role");
   assert.deepEqual(collectReportSince(plain, 2 * 24 * HOUR).runsByModel, {});
   assert.deepEqual(collectReportSince(plain, 2 * 24 * HOUR).tokensByModel, {});
-  // Zero-means-absent at the render: no modelled start prints neither line.
+  assert.deepEqual(collectReportSince(plain, 2 * 24 * HOUR).costByModel, {});
+  assert.deepEqual(collectReportSince(plain, 2 * 24 * HOUR).notionalByModel, {});
+  assert.equal(collectReportSince(plain, 2 * 24 * HOUR).totals.costUsd, 3, "the spend still counts in the totals");
+  // Zero-means-absent at the render: no modelled start prints none of the model lines.
   assert.doesNotMatch(renderReportMarkdown(collectReport(plain, 2)), /\*\*Runs by model:/);
   assert.doesNotMatch(renderReportMarkdown(collectReport(plain, 2)), /\*\*Tokens by model:/);
+  assert.doesNotMatch(renderReportMarkdown(collectReport(plain, 2)), /\*\*Cost by model:/);
+  assert.doesNotMatch(renderReportMarkdown(collectReport(plain, 2)), /\*\*Estimated by model:/);
   assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(plain, 2 * 24 * HOUR)), /\*\*Runs by model:/);
   assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(plain, 2 * 24 * HOUR)), /\*\*Tokens by model:/);
+  assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(plain, 2 * 24 * HOUR)), /\*\*Cost by model:/);
+  assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(plain, 2 * 24 * HOUR)), /\*\*Estimated by model:/);
 });
 
 test("a model whose runs all reported zero tokens leaves no entry and no Tokens by model line", () => {

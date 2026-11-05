@@ -208,6 +208,8 @@ function sinceRoleMaps(
   | "notionalByProvider"
   | "runsByModel"
   | "tokensByModel"
+  | "costByModel"
+  | "notionalByModel"
 > &
   Partial<
     Pick<
@@ -262,6 +264,10 @@ function sinceRoleMaps(
     // Output tokens attributed to the model each run started on — the token twin of the
     // runsByModel line above, the same team-only / always-present rule.
     tokensByModel: scopedByRole(acc.tokensByModel, bases),
+    // The spend twins of the model lines above: each run's real and notional spend
+    // attributed to the model it started on, the same team-only / always-present rule.
+    costByModel: scopedByRole(acc.costByModel, bases),
+    notionalByModel: scopedByRole(acc.notionalByModel, bases),
     ...nonemptyObj("deferredByReason", deferred),
   };
 }

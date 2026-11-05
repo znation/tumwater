@@ -20,7 +20,7 @@ import {
   promptTokensLine,
   pushRankedRoleLine,
   pushPresentRankedLine,
-  pushProviderCostLines,
+  pushCostAndNotionalLines,
   pushReportSummary,
   costPerCommitPairsFrom,
   costPerCommitLine,
@@ -98,7 +98,7 @@ function pushSinceProviderModelLines(lines: string[], data: SinceReport): void {
   // like its day sibling. SinceReport.costByProvider is always present (empty when none), so
   // the zero-means-absent gate prints no line for a window with no provider spend.
   if (data.role === undefined) {
-    pushProviderCostLines(lines, () => rankedRoleMap(data.costByProvider), () => rankedRoleMap(data.notionalByProvider));
+    pushCostAndNotionalLines(lines, () => rankedRoleMap(data.costByProvider), () => rankedRoleMap(data.notionalByProvider));
     // The same breakdown per MODEL (each run_start's agent-qualified selector — the model a
     // team mixing providers, per-role overrides and fallbacks actually ran on), gated to the
     // team report like the provider lines: a model is not a role, so a role-scoped window
@@ -112,6 +112,17 @@ function pushSinceProviderModelLines(lines: string[], data: SinceReport): void {
     // team report like the runs line; a window whose modelled runs reported no tokens
     // prints no line (zero means absent), and compactTokens formats it like Tokens by role.
     pushPresentRankedLine(lines, "Tokens by model", rankedRoleMap(data.tokensByModel), compactTokens);
+    // The spend twins of the model lines above: each run's real and notional spend attributed
+    // to the model it started on, beside the runs/tokens lines so a mixed team sees which
+    // exact selector cost the window, not just its tokens. Gated to the team report like the
+    // lines above; a window whose modelled runs spent nothing prints no line (zero means
+    // absent), and usd formats it like Cost by role.
+    pushCostAndNotionalLines(
+      lines,
+      () => rankedRoleMap(data.costByModel),
+      () => rankedRoleMap(data.notionalByModel),
+      { cost: "Cost by model", notional: "Estimated by model" },
+    );
   }
 }
 

@@ -86,7 +86,7 @@ export function pushRankedRoleLine(
 /** Push a "**Label:** …" ranked-role line only when some role carries a positive value — the
  * zero-means-absent idiom: a window or day with no evidence prints no line at all, unlike
  * pushRankedRoleLine's always-printed "-", because "no model ran" is an absence, not a zero
- * (the same reason pushProviderCostLines and pushDayCameoLine stay silent when empty). fmt
+ * (the same reason pushCostAndNotionalLines and pushDayCameoLine stay silent when empty). fmt
  * formats each role's number (default String for count lines). Shared by the since and day
  * renders so the filter-and-if-present guard cannot drift between them — a field that flipped
  * one render to always-print would show an absent "-" line in one report but not the other. */
@@ -135,21 +135,25 @@ function pushDayCameoLine(
   if (line !== undefined) lines.push(line);
 }
 
-/** Push the `Cost by provider` and `Estimated by provider` lines of the per-provider spend
- * breakdown (plans: per-provider spend), from the caller's already-ranked real- and notional-
- * spend pairs. Role scoping is the caller's `role === undefined` gate — this helper only
- * renders. Zero-means-absent: a provider with no spend prints no line, and both lanes format
- * with usd so the day and --since windows cannot drift (the --since path ranks via rankedRoleMap,
- * the day path via rankedRoleTotals). */
-export function pushProviderCostLines(
+/** Push a `Cost by …` / `Estimated by …` ranked-spend pair of lines from the caller's
+ * already-ranked real- and notional-spend pairs, under the caller's labels (defaulting to
+ * the provider lines of the per-provider spend breakdown, plans: per-provider spend — the
+ * same helper renders the per-model spend lines with its own labels, so the zero-means-absent
+ * gate and the usd formatting cannot drift between the provider and model lines). Role
+ * scoping is the caller's `role === undefined` gate — this helper only renders.
+ * Zero-means-absent: a key with no spend prints no line, and both lanes format with usd so
+ * the day and --since windows cannot drift (the --since path ranks via rankedRoleMap, the
+ * day path via rankedRoleTotals). */
+export function pushCostAndNotionalLines(
   lines: string[],
   rankCost: () => [string, number][],
   rankNotional: () => [string, number][],
+  labels: { cost: string; notional: string } = { cost: "Cost by provider", notional: "Estimated by provider" },
 ): void {
-  const providers = rankCost().filter(([, c]) => c > 0);
-  if (providers.length > 0) lines.push(rankedRoleLine("Cost by provider", providers, usd));
-  const notionalProviders = rankNotional().filter(([, c]) => c > 0);
-  if (notionalProviders.length > 0) lines.push(rankedRoleLine("Estimated by provider", notionalProviders, usd));
+  const cost = rankCost().filter(([, c]) => c > 0);
+  if (cost.length > 0) lines.push(rankedRoleLine(labels.cost, cost, usd));
+  const notional = rankNotional().filter(([, c]) => c > 0);
+  if (notional.length > 0) lines.push(rankedRoleLine(labels.notional, notional, usd));
 }
 
 /** The "**Totals:** …" line both renders print — one home so field order, units, and the ·
@@ -351,7 +355,7 @@ function pushReportProviderLines(lines: string[], data: ReportData): void {
   // window with no provider spend prints no line. Ranked and formatted exactly like Cost by
   // role.
   if (data.role === undefined) {
-    pushProviderCostLines(
+    pushCostAndNotionalLines(
       lines,
       () => rankedRoleTotals(data.series, (d) => d.costByProvider ?? {}),
       () => rankedRoleTotals(data.series, (d) => d.notionalByProvider ?? {}),
@@ -373,6 +377,17 @@ function pushReportProviderLines(lines: string[], data: ReportData): void {
       "Tokens by model",
       rankedRoleTotals(data.series, (d) => d.tokensByModel ?? {}),
       compactTokens,
+    );
+    // The spend twins of the model lines above: each run's real and notional spend attributed
+    // to the model it started on, beside the runs/tokens lines so a mixed team sees which
+    // exact selector cost the window, not just its tokens. Gated to the team report like the
+    // lines above; a window whose modelled runs spent nothing prints no line (zero means
+    // absent), and usd formats it like Cost by role.
+    pushCostAndNotionalLines(
+      lines,
+      () => rankedRoleTotals(data.series, (d) => d.costByModel ?? {}),
+      () => rankedRoleTotals(data.series, (d) => d.notionalByModel ?? {}),
+      { cost: "Cost by model", notional: "Estimated by model" },
     );
   }
 }

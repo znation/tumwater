@@ -149,6 +149,19 @@ export interface UsageFold {
    * role-scoped report carries an empty map. Never subtracted from tokensOut or
    * tokensByRole — the model is an attribution, not a partition. */
   tokensByModel: Record<string, number>;
+  /** run_end real cost per model selector (the `costUsd` each run_end carried) — each run's
+   * spend attributed to the model its `run_start` named (the fold's runModels pairing), a
+   * parallel attribution to costByRole keyed by model instead of role. A run whose start is
+   * absent or named no model contributes no entry, and a run that reported zero cost leaves
+   * none (a model whose runs all cost zero stays absent). Team-only: a model is not a role,
+   * so a role-scoped report carries an empty map. Never subtracted from costUsd or
+   * costByRole — the model is an attribution, not a partition. */
+  costByModel: Record<string, number>;
+  /** run_end notional (subscription, API-equivalent) cost per model selector — the same
+   * `run_start` attribution as costByModel on the notional line: a run whose start named no
+   * model contributes no entry, and a run that reported no notional spend leaves none.
+   * Team-only and never subtracted from notionalCostUsd or notionalByRole, like costByModel. */
+  notionalByModel: Record<string, number>;
   /** run_deferred events per reason code (a maintenance run that stood down — `DeferReason`
    * in src/scheduling/scheduling.ts: "backlog", "no-work" or "plans-full"), so a day's
    * deferred maintenance runs are tallied by why they stood down instead of reading as
@@ -232,6 +245,8 @@ export function zeroUsageFold(): Omit<
     notionalByBackend: {},
     runsByModel: {},
     tokensByModel: {},
+    costByModel: {},
+    notionalByModel: {},
     deferredByReason: {},
   };
 }
@@ -294,15 +309,20 @@ function foldRunEnd(target: UsageFold, ev: HarnessEvent, runModels?: Map<string,
   target.notionalCostUsd += notionalCostUsd;
   if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
   if (notionalCostUsd !== 0) addTo(target.notionalByRole, role, notionalCostUsd);
-  // The model side of the same bill: attribute the run's output tokens to the model its
-  // run_start named (runStartModel's pairing, the map the window collector builds beside
-  // this target). Parallel to tokensByRole — never subtracted from it or from tokensOut —
-  // so a run whose start is absent or named no model still counts in both, with no model
-  // entry. Zero-means-absent like tokensByRole: a model whose runs all reported zero
-  // tokens leaves no entry.
+  // The model side of the same bill: attribute the run's output tokens and its real and
+  // notional spend to the model its run_start named (runStartModel's pairing, the map the
+  // window collector builds beside this target). Parallel to tokensByRole and costByRole —
+  // never subtracted from the totals — so a run whose start is absent or named no model
+  // still counts in the role and total lines, with no model entry. Zero-means-absent like
+  // its role siblings: a model whose runs all reported zero tokens or zero cost leaves no
+  // entry.
   if (runModels !== undefined) {
     const model = runStartModel(ev, runModels);
-    if (model !== null && tokens > 0) addTo(target.tokensByModel, model, tokens);
+    if (model !== null) {
+      if (tokens > 0) addTo(target.tokensByModel, model, tokens);
+      if (costUsd !== 0) addTo(target.costByModel, model, costUsd);
+      if (notionalCostUsd !== 0) addTo(target.notionalByModel, model, notionalCostUsd);
+    }
   }
   // The notional spend's backend (plans/codex-backend.md part 3d/9): the subscription seam
   // whose runs made the run's API-equivalent cost, from the run_end's `agent` (run-finalize

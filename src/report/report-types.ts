@@ -121,6 +121,14 @@ export interface ReportDay {
    * its run_start named; team-only like runsByModel (a model is not a role). Absent when
    * the day's modelled runs reported no tokens (zero means absent). */
   tokensByModel?: Record<string, number>;
+  /** run_end real cost per model selector (each run's `costUsd` attributed to the model
+   * its `run_start` named); team-only like tokensByModel (a model is not a role). Absent
+   * when the day's modelled runs reported no cost (zero means absent). */
+  costByModel?: Record<string, number>;
+  /** run_end notional cost per model selector (the same `run_start` attribution on the
+   * notional line); team-only like costByModel. Absent when the day's modelled runs
+   * reported no notional spend (zero means absent). */
+  notionalByModel?: Record<string, number>;
   /** run_deferred events per reason code (a maintenance run that stood down, bucketed by
    * why — "backlog", "no-work" or "plans-full"); team-only like runsByModel, because a
    * reason is not a role. Absent when the day had no deferral (zero means absent). */
@@ -287,6 +295,14 @@ export interface SinceReport {
    * --since render can gate its `Tokens by model` line on the window's own events. A model
    * is not a role, so a scoped report carries an empty map. */
   tokensByModel: Record<string, number>;
+  /** run_end real cost per model selector (each run's `costUsd` attributed to the model
+   * its `run_start` named); always present (empty map when none, like tokensByModel) so
+   * the --since render can gate its `Cost by model` line on the window's own events. A
+   * model is not a role, so a scoped report carries an empty map. */
+  costByModel: Record<string, number>;
+  /** run_end notional cost per model selector (the same `run_start` attribution on the
+   * notional line); always present (empty map when none), team-only like costByModel. */
+  notionalByModel: Record<string, number>;
   /** run_deferred events per reason code (a maintenance run that stood down, bucketed by
    * why — "backlog", "no-work" or "plans-full"); absent when the window has none — the
    * same conditional the day collector applies to ReportDay.deferredByReason, so a --since

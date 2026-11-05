@@ -150,6 +150,11 @@ function applyTeamDay(day: ReportDay, fold: DayFold): void {
   // started on; only set when a model actually burned tokens (zero means absent), so a
   // model-free or zero-token day keeps its exact pre-feature shape.
   setMapIfNonempty(day, "tokensByModel", fold.tokensByModel);
+  // The spend twins of the model lines above: each run's real and notional spend attributed
+  // to the model it started on; only set when a modelled run actually spent (zero means
+  // absent), so a spend-free day keeps its exact pre-feature shape.
+  setMapIfNonempty(day, "costByModel", fold.costByModel);
+  setMapIfNonempty(day, "notionalByModel", fold.notionalByModel);
   // Deferred runs are a team attribution (a reason is not a role), so only the team
   // series carries the map; only set when a day actually deferred (zero means absent),
   // so a deferral-free day keeps its exact pre-feature shape.

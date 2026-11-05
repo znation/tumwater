@@ -460,6 +460,33 @@ test("renderReportMarkdown folds providerCost into Cost by provider and Estimate
   assert.ok(!scoped.includes("Cost by provider"), "a role-scoped report omits the provider line");
 });
 
+test("renderReportMarkdown splits model spend beside a shared provider, team-only", () => {
+  const root = makeRepo();
+  // Two selectors on ONE provider: the model lines split what the provider line sums, and
+  // the totals do not move (the model maps are a parallel attribution, not a partition).
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_start", run: 1, model: "acme/m1" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 1.5, providerCost: { acme: { costUsd: 1.5, notionalCostUsd: 0 } } }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "clean", type: "run_start", run: 2, model: "acme/m2" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", run: 2, result: "changed", tokens: 20, costUsd: 0.5, notionalCostUsd: 2, providerCost: { acme: { costUsd: 0.5, notionalCostUsd: 2 } } }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  const md = renderReportMarkdown(collectReport(root, 2));
+  // The provider line sums both selectors' spend; the model lines split it per selector,
+  // ranked by amount descending then selector ascending.
+  assert.match(md, /\*\*Cost by provider:\*\* acme — \$2\.00/);
+  assert.match(md, /\*\*Estimated by provider:\*\* acme — \$2\.00/);
+  assert.match(md, /\*\*Cost by model:\*\* acme\/m1 — \$1\.50 · acme\/m2 — \$0\.50/);
+  assert.match(md, /\*\*Estimated by model:\*\* acme\/m2 — \$2\.00/);
+  // The parallel attribution never subtracts: the role lines and the totals keep their
+  // exact values.
+  assert.match(md, /\*\*Cost by role:\*\* feature — \$1\.50 · clean — \$0\.50/);
+  assert.match(md, /\*\*Totals:\*\* 30 output tokens · 2 runs · 0 commits · \$2\.00/);
+  // A role-scoped report prints neither model spend line — a model is not a role.
+  const scoped = renderReportMarkdown(collectReport(root, 2, "feature"));
+  assert.ok(!scoped.includes("Cost by model"), "a role-scoped report omits Cost by model");
+  assert.ok(!scoped.includes("Estimated by model"), "a role-scoped report omits Estimated by model");
+});
+
 test("report omits Cost by provider and the provider JSON maps when no event carries providerCost", async () => {
   const root = makeRepo();
   writeEvents(root, [
@@ -588,6 +615,8 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     notionalByProvider: {},
     runsByModel: {},
     tokensByModel: {},
+    costByModel: {},
+    notionalByModel: {},
     coversFullWindow: true,
   });
   assert.match(zero, /^# tumwater usage report/);
@@ -624,6 +653,8 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     notionalByProvider: {},
     runsByModel: {},
     tokensByModel: {},
+    costByModel: {},
+    notionalByModel: {},
     coversFullWindow: true,
   });
   assert.match(data, /window: last 90m \(since /);
@@ -662,6 +693,8 @@ test("renderSinceReportMarkdown prints the Prompt tokens by role line with the c
     notionalByProvider: {},
     runsByModel: {},
     tokensByModel: {},
+    costByModel: {},
+    notionalByModel: {},
     coversFullWindow: true,
   });
   const lines = since.split("\n");
@@ -695,6 +728,8 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     notionalByProvider: {},
     runsByModel: {},
     tokensByModel: {},
+    costByModel: {},
+    notionalByModel: {},
     coversFullWindow: true,
   });
   assert.ok(!zero.includes("merge runs"), "zero merge runs omit the line entirely");
@@ -721,6 +756,8 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     notionalByProvider: {},
     runsByModel: {},
     tokensByModel: {},
+    costByModel: {},
+    notionalByModel: {},
     coversFullWindow: true,
   });
   assert.match(data, /of which merge runs: 1 runs · 900 tokens · \$0\.40 \(reviewer \+ conflict resolution\)/);
@@ -749,6 +786,8 @@ test("renderSinceReportMarkdown shows (N failed) on the merge line when a merge 
     notionalByProvider: {},
     runsByModel: {},
     tokensByModel: {},
+    costByModel: {},
+    notionalByModel: {},
     coversFullWindow: true,
   });
   assert.match(data, /of which merge runs: 2 runs \(1 failed\) · 1200 tokens · \$0\.50 \(reviewer \+ conflict resolution\)/);
@@ -780,6 +819,8 @@ test("renderSinceReportMarkdown prints Commits by role and Estimated by role mat
     notionalByRole: { feature: 0.4, plan: 0.5 },
     runsByModel: {},
     tokensByModel: {},
+    costByModel: {},
+    notionalByModel: {},
     coversFullWindow: true,
   });
   assert.match(data, /\*\*Commits by role:\*\* feature — 3 · clean — 1/);
@@ -811,6 +852,8 @@ test("renderSinceReportMarkdown prints Cost per commit and Estimated per commit 
     notionalByRole: { feature: 0.4, plan: 0.5 },
     runsByModel: {},
     tokensByModel: {},
+    costByModel: {},
+    notionalByModel: {},
     coversFullWindow: true,
   });
   // The day render's exact wording and ranking: merged roles by cost per commit desc then name
@@ -845,6 +888,8 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     notionalByProvider: {},
     runsByModel: {},
     tokensByModel: {},
+    costByModel: {},
+    notionalByModel: {},
     coversFullWindow: true,
   });
   // The now-required commitsByRole renders "-" when empty; a window with no notional spend
@@ -877,6 +922,8 @@ test("renderSinceReportMarkdown prints Main red wall-clock for a positive window
     notionalByProvider: {},
     runsByModel: {},
     tokensByModel: {},
+    costByModel: {},
+    notionalByModel: {},
     coversFullWindow: true,
     mainRedMs: 0,
   };
