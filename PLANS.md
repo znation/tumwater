@@ -42,57 +42,72 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
   - `stageCheckFindings` returning both findings.
 - Run the file and the gate.
 
-### Hourly full check, part 3/4: Main's failures are narrowed and cleared by re-running only the failing tests — the watch bisects a red's opener, re-runs only the open failures on each new head, and confirms a cleared red with one full run at once (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 2c/4 landed; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts test/main-red-heal.test.ts)
+### Hourly full check, part 3a/4: A red's opener is the first commit at which its confirmed failing tests fail, found by bisecting the first-parent code commits since the last green and re-running only those tests (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md "Decision" 4; splitting the 2026-11-01 part 3/4 after feature held it too large for one run; requires Hourly full check part 2c/4 landed; sibling to Hourly full check part 3b/4, which requires this part landed; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-spells.test.ts test/main-red-heal.test.ts)
 
-**Needs review 2026-11-04 by feature: too large for one run**
-
-**Goal.** With the full check hourly, one red verdict covers up to an hour of commits. Narrowing it and closing it must not cost more full runs (user, 2026-11-01: "when fixing failures, re-run only the failed tests"):
-- A confirmed red's opener is found by bisection that re-runs only the failing tests, so `main_culprit` and ci's heal prompt name one commit.
-- While the red is open, each new head re-runs only the open failures.
-- When none fail any more, the red closes as cleared, and one full run starts on that head at once to confirm it, so a healed main becomes deployable without waiting out the hour.
+**Goal.** With the full check hourly, one red verdict covers up to an hour of commits. A confirmed red at tip T must name the single commit that opened it, not T (user, 2026-11-01: "when fixing failures, re-run only the failed tests"). This part changes only which commit is named; the per-head re-check cadence is part 3b/4.
 
 **Approach.**
-- After a red is confirmed at tip T, bisect in `_gate-main` with `rerunTests`. The code lives in main-watch.ts, beside `reportCulprit`.
-  - The range is the first-parent code commits above the newest observed full green G, found by walking down from T.
-  - The opener C is the first commit at which any of the confirmed failing tests fails. Before naming C, confirm once that they fail at C and pass at C's parent.
-  - A failing test not accounted for at C (it passes there) gets its own bisect over C..T, up to `FAILING_TESTS_MAX` tests.
-  - With no G on the walk, a one-commit range, or a confirmation that does not reproduce, name T as today.
-- `reportCulprit` names C everywhere: `main_culprit.commit`, its merging runner, `redSpellOpeners` and the `onCulprit` hand-off (`commit` C, `tip` T).
-- While a red spell is open, the per-head pass also re-runs the spell's open failing tests on each new head (one `rerun`-scope check). Tests that pass leave the open set. An empty set:
-  - logs `main_check` `{ status: "passed", cleared: true }`, which writes no full green;
-  - calls `clearHealKeyOnGreen` and closes the spell;
-  - starts a full run on that head at once, once per cleared red.
-- `knownMainFailures` and the `<main-known-red>` note read the open set, so a role's prompt stops naming a test ci already fixed.
-- docs/how-it-works.md describes bisection and clearing. docs/invariants.md gains:
-  - INV-DA3: a red's culprit is the first commit at which its failing tests fail, found by re-running only them.
-  - INV-DA4: an open red is narrowed and cleared by re-running only its failing tests, and a clearing starts one confirming full run.
+- Add a module-private bisection in src/baseline/main-watch.ts beside `reportCulprit`, and the walk it needs in src/baseline/main-baseline.ts beside `firstParentWalk`.
+  - After a fresh red is confirmed at T, walk T's first-parent commits down to the newest cached full verdict that is green and carries `checkedAt` (the anchor rule `fullCheckPlan` already uses). No such green, a one-commit range, or an unreadable walk leaves the culprit T, as today.
+  - The opener C is the first commit in that range at which any of the confirmed failing tests fails. Confirm once that they fail at C and once that they pass at C's parent, re-running only those tests with `rerunTests` (src/build/build-check-rerun.ts) on a checkout of each candidate; the `_gate-main` mirror is re-pointed at the candidate in its own queue (through `withMainTipWorktree` in src/baseline/main-red.ts) and left at main's tip afterwards.
+  - A failing test that passes at C gets its own bisect over C..T, bounded by `FAILING_TESTS_MAX` tests.
+  - A confirmation that does not reproduce names T.
+- `reportCulprit` and the first-red `main_check` name C: `main_culprit.commit`, its merging runner, `redSpellOpeners` and the `onCulprit` hand-off (`commit` C, `tip` T). The `MainCulprit` doc comment in main-watch.ts and the `main_culprit` comment in src/events/events.ts say the culprit is bisected, not merely the first red tip.
+- docs/how-it-works.md describes the bisection. docs/invariants.md's INV-AZ4 is reworded so the opener is found by re-running only the failing tests, and its **Binds** names the bisection helper; a new INV-DA3 follows it: a red's culprit is the first commit at which its failing tests fail, found by re-running only them, and its **Pinned by** names the new tests below.
 
-**Files touched.** src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts test/main-red-heal.test.ts
+**Files touched.** src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-spells.test.ts test/main-red-heal.test.ts
 
-**Acceptance criteria.**
-- An hourly red at T covering eight code commits, whose failing test breaks at the third, logs one `main_culprit` naming the third. That takes at most five `rerun`-scope checks and no second `baseline`-scope run.
-- A red whose bisect confirmation does not reproduce names T, as today.
-- While red, a new head runs one `rerun` of the open failures and no full run. When they all pass, `main_check` is `cleared` and a full run starts though the hour has not passed. `redeployTarget` does not target the cleared head until that full run is green.
-- The heal prompt and the `<main-red>` note name C and the re-run command for its failing tests.
+**Acceptance criteria:**
+- A red whose history has a code commit that breaks the failing tests and later commits on top names the breaking commit, not the newest tip; the `main_culprit` event, its runner and the first-red `main_check` sha all name it.
+- A red whose candidate confirmation does not reproduce names T, as today.
+- A red with no green full verdict below T, or a one-commit range, names T, as today.
+- The heal prompt names C rather than T and still carries the failing tests' re-run command.
 - `npm run test:gate` passes.
 
 **Tests.**
 - test/main-watch.test.ts:
-  - the eight-commit bisect against a fake check whose failure starts at one commit;
-  - the non-reproducing bisect;
+  - the bisection against a fake check whose failure starts at one commit;
+  - the non-reproducing bisection;
   - "a red whose breaking commit is intermediate" now names that commit, not the tip;
-  - a cleared head that is not deployable.
-- test/main-watch-failures.test.ts: per-head narrowing — a new head re-runs only the open failures, and `knownMainFailures` drops a test that passes there.
-- test/main-watch-spells.test.ts: the bisected opener is the spell's culprit; clearing closes the spell with `cleared: true` and starts the confirming full run though the hour has not passed.
+  - a range with no full green still names the tip.
+- test/main-watch-spells.test.ts: the bisected opener is the spell's culprit.
 - test/main-red-heal.test.ts: the heal prompt names the bisected opener.
 - Run those files and the gate.
 
-### Hourly full check, part 4/4: Status, doctor and the dashboard say how old main's full verdict is and when the next is due (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 3/4 landed; touches src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/status-render.test.ts test/gui-client.test.ts)
+### Hourly full check, part 3b/4: While a red is open, each new head re-runs only its open failures; when none fail the red clears and one full run starts at once to confirm it (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md "Decision" 4; splitting the 2026-11-01 part 3/4 after feature held it too large for one run; requires Hourly full check part 3a/4 landed; touches src/baseline/main-watch.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts)
+
+**Goal.** While main is red, a new head must not cost another full check. Each new head re-runs only the spell's open failing tests; a test that passes leaves the set, and when the set is empty the red closes as cleared, with one full run started at once so a healed main becomes deployable without waiting out the hour (user, 2026-11-01: "when fixing failures, re-run only the failed tests").
+
+**Approach.**
+- Carry the open failing set with the spell: extend `redSpellOpeners`'s value (or add a sibling map in src/baseline/main-watch.ts) from the opener SHA to the opener plus its remaining failing tests. The set starts from the confirmed red's tests and is keyed by root like the opener.
+- In `fullPass`, while a spell is open and a new head arrives, run one `rerun`-scope check of the open set with `rerunTests` on the `_main-full` mirror's new tip instead of `runBaselineCheck`. Tests that pass drop out; the rest settle a failed `main_check` at the spell's opener (no re-attribution). The run uses `CHECK_TIER.merge` like the confirmation rerun.
+- An empty set: log `main_check` `{ status: "passed", cleared: true }` through `mainCheckEvent`, which must write no full verdict to the baseline cache (so `redeployTarget`'s watched branch does not target the cleared head, and the hour's anchor stays the last real full verdict); clear the heal-dedup key with `clearHealKeyOnGreen`; delete the spell; then run the full check on that head immediately in the same pass (once per cleared red, bypassing the interval), so a green confirmation records the full verdict and a red one opens a new spell.
+- `knownMainFailures` and `onlyKnownMainFailures` read the open set while a spell is open, so a role's `<main-known-red>` note stops naming a test a later head showed passing.
+- Extend the `main_check` event's comment and payload in src/events/events.ts with `cleared: true`.
+- docs/how-it-works.md describes per-head narrowing and clearing. docs/invariants.md gains INV-DA4 directly after INV-DA3: an open red is narrowed and cleared by re-running only its failing tests, and a clearing starts one confirming full run; its **Binds** names the spell map and its **Pinned by** names the new tests.
+
+**Files touched.** src/baseline/main-watch.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts
+
+**Acceptance criteria:**
+- While red, a new head runs one `rerun` of the open failures and no full run.
+- A test that passes on the new head leaves `knownMainFailures` (and the `<main-known-red>` note) on that head.
+- When every open test passes, `main_check` is `{ status: "passed", cleared: true }`, no full green is written, and a full run starts though the hour has not passed.
+- `redeployTarget` does not target the cleared head until that confirming full run is green.
+- A confirming full run that turns red opens a red spell on that head rather than leaving the cleared one open.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/main-watch-failures.test.ts: a new head re-runs only the open failures, and `knownMainFailures` drops a test that passes there; an empty set logs `cleared: true`.
+- test/main-watch-spells.test.ts: clearing closes the spell and starts the confirming full run though the hour has not passed; the confirming run's green makes the head deployable and its red opens a new spell.
+- test/main-watch.test.ts: the cleared head is not deployable before the confirming run.
+- Run those files and the gate.
+
+### Hourly full check, part 4/4: Status, doctor and the dashboard say how old main's full verdict is and when the next is due (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 3b/4 landed; touches src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/status-render.test.ts test/gui-client.test.ts)
 
 **Goal.** Main's badge stops implying the newest commit was fully checked. With the full check hourly, `mainCheckForPoll`'s status reads up to an hour behind main. Every surface that shows it says which SHA it covers, how long ago it ran, and when the next run is due (or "due now" after a cleared red).
 
 **Approach.**
-- `MainCheckStatus` (src/status/status-polls.ts) gains the full verdict's `checkedAt` and `nextDueAt`. `nextDueAt` comes from part 2/4's interval and part 3/4's cleared-red start.
+- `MainCheckStatus` (src/status/status-polls.ts) gains the full verdict's `checkedAt` and `nextDueAt`. `nextDueAt` comes from part 2/4's interval and part 3b/4's cleared-red start.
 - `mainCheckBadge` (src/ui/badges.ts) renders "full check green at abc1234, 23 min ago · next in 37 min". A cleared red reads "cleared at def5678 · full check running".
 - The TUI line (status-render.ts) and the dashboard card (gui-client-team.ts) use the same payload fields (status-payload.ts). No new alert or doctor row: the existing main-check row carries the text.
 - docs/how-it-works.md names what the badge shows.
@@ -323,7 +338,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Run test/invariants-doc.test.ts and test/merge-backlog-conflicts.test.ts whole, then the project's gate, and confirm green.
 
-### `tumwater history <role> <n>` gains `-f/--follow`, repainting one run's event trail until Ctrl+C or its parent exits, so an operator watching a run sees its events arrive and its merge verdict land without rerunning the command (planned 2026-11-04 by the plan role; continues the landed follow-view family — `status`, `report`, `logs`, `history` (the listing), `queue`, `reviews`, `quarantine`, `backlog`, `diff`, `prompt --list` and `questions` all follow through `followView` in src/cli/follow-view.ts, and the in-flight `role <id>` follow takes the remaining per-entity view; `history <role> <n>` is the remaining per-run inspection view with no live form; independent in file of every `## Planned` entry — the in-flight `role <id>` follow takes src/cli/cli-role-command.ts, the blocked `Subtract` parts take src/merge, src/runner, src/status, src/doctor, src/config, src/baseline, src/review, src/run and src/ui, and the in-flight `Hourly full check` part 3/4 takes src/baseline, src/merge and src/status; none takes src/cli.ts's `runTrailCommand` or src/history/run-detail.ts; the in-flight `role <id>` follow and this plan both touch src/cli/help.ts and docs/cli.md in different stanzas and rows, so whichever lands second rebases there; PLANS-DONE.md holds no `history <role> <n>` follow plan (`grep -cE '^### .*history <role> <n>.*follow|^### .*follow.*history <role> <n>' PLANS-DONE.md` prints 0) and its `run-detail` headings are behavior additions or splits, never a follow; docs/invariants.md names neither `cmdRunDetail` nor src/history/run-detail.ts (`grep -c 'cmdRunDetail\|run-detail.ts' docs/invariants.md` prints 0), so its bindings stay unchanged; touches src/cli.ts src/history/run-detail.ts src/cli/help.ts docs/cli.md test/run-detail-follow.test.ts)
+### `tumwater history <role> <n>` gains `-f/--follow`, repainting one run's event trail until Ctrl+C or its parent exits, so an operator watching a run sees its events arrive and its merge verdict land without rerunning the command (planned 2026-11-04 by the plan role; continues the landed follow-view family — `status`, `report`, `logs`, `history` (the listing), `queue`, `reviews`, `quarantine`, `backlog`, `diff`, `prompt --list` and `questions` all follow through `followView` in src/cli/follow-view.ts, and the in-flight `role <id>` follow takes the remaining per-entity view; `history <role> <n>` is the remaining per-run inspection view with no live form; independent in file of every `## Planned` entry — the in-flight `role <id>` follow takes src/cli/cli-role-command.ts, the blocked `Subtract` parts take src/merge, src/runner, src/status, src/doctor, src/config, src/baseline, src/review, src/run and src/ui, and the in-flight `Hourly full check` parts 3a/4 and 3b/4 take src/baseline, src/merge and src/status; none takes src/cli.ts's `runTrailCommand` or src/history/run-detail.ts; the in-flight `role <id>` follow and this plan both touch src/cli/help.ts and docs/cli.md in different stanzas and rows, so whichever lands second rebases there; PLANS-DONE.md holds no `history <role> <n>` follow plan (`grep -cE '^### .*history <role> <n>.*follow|^### .*follow.*history <role> <n>' PLANS-DONE.md` prints 0) and its `run-detail` headings are behavior additions or splits, never a follow; docs/invariants.md names neither `cmdRunDetail` nor src/history/run-detail.ts (`grep -c 'cmdRunDetail\|run-detail.ts' docs/invariants.md` prints 0), so its bindings stay unchanged; touches src/cli.ts src/history/run-detail.ts src/cli/help.ts docs/cli.md test/run-detail-follow.test.ts)
 
 **Goal.** `tumwater history <role> <n>` prints one run's full event trail and exits. An operator watching a live team has no live form: a run's events arriving as it works, a run's merge verdict changing from `queued` to `merged`, or its landed sha appearing stays invisible until the command is rerun. Add `-f/--follow` so the same document repaints every couple of seconds until Ctrl+C or the parent process exits. The live form is read-only: `--json` keeps its one-shot form and is refused with a follow. A follow pins the run it resolves on its first frame (including `--last`'s newest completed run); later runs are not followed.
 

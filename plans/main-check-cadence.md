@@ -80,10 +80,10 @@ gate's build check, they answered: "No, keep the gate." A separate session is lo
 
 - **A failure only the full suite sees surfaces up to an hour later.** That covers a test outside
   the gate's selection, or two changes that each passed the gate but break together after the
-  rebase. The hourly run covers more commits per verdict, so the bisection in part 3/4 is what
+  rebase. The hourly run covers more commits per verdict, so the bisection in part 3a/4 is what
   keeps the culprit precise. It costs about log2(commits) runs of a few seconds each. A smaller gate (the 10 s target) leaves more to this path.
 - **Roles' `<main-known-red>` note and the alerts lag.** They read the newest verdict, which can
-  be an hour old. Part 3/4 narrows the open set on every head, and part 4/4 makes the surfaces say
+  be an hour old. Part 3b/4 narrows the open set on every head, and part 4/4 makes the surfaces say
   how old the verdict is.
 - **Main's tip is judged by a test re-run, not a full check, when a gate fails twice.** A test
   that is flaky on main can be blamed on main once, letting a change through; the hourly run and
@@ -102,8 +102,9 @@ gate's build check, they answered: "No, keep the gate." A separate session is lo
 | 2a/4 | A full verdict records its `checkedAt` time and persists it across a restart; no run-count change | part 1b/4 |
 | 2b/4 | The full check runs at most once per `fullIntervalMinutes` on the latest tip, with the clock seam and config key; diff rules still run on every head | part 2a/4 |
 | 2c/4 | The full check moves to its own `_main-full` mirror and in-flight pass, so it never holds `_gate-main` | part 2b/4 |
-| 3/4 | Bisect a red's opener, re-run only the open failures on each new head, and confirm a cleared red with one full run | part 2c/4 |
-| 4/4 | Status, doctor and the dashboard say how old main's full verdict is and when the next is due | part 3/4 |
+| 3a/4 | Bisect a red's opener by re-running only the failing tests | part 2c/4 |
+| 3b/4 | While red, re-run only the open failures on each new head, and start one confirming full run when they clear | part 3a/4 |
+| 4/4 | Status, doctor and the dashboard say how old main's full verdict is and when the next is due | part 3b/4 |
 
 ## How we will know it worked
 
