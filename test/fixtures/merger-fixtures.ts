@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { MergeRequest, MergerContext } from "../../src/merge/merge-core.js";
 import { mergeApprovedChange } from "../../src/merge/merge-core.js";
-import { verifyRequest, type BatchRoleWiring } from "../../src/merge/merge-batch.js";
+import type { BatchRoleWiring } from "../../src/merge/merge-batch.js";
 import { setRef } from "../../src/git/git.js";
 import { ensureWorktree } from "../../src/git/worktree.js";
 import { mergeRefName } from "../../src/paths.js";
@@ -92,7 +92,8 @@ export function request(sha: string, overrides: Partial<MergeRequest> = {}): Mer
 }
 
 /** The BatchRoleWiring a test context implies: its own state and pi/fold halves, so the
- * hand-assembled literal cannot drift from the context it stubs. */
+ * hand-assembled literal cannot drift from the context it stubs. Still used by the verify-stage
+ * tests (runner-revision, merge-withdrawn) that drive verifyRequest directly. */
 export function batchWiring(ctx: MergerContext): BatchRoleWiring {
   return {
     state: ctx.state,
@@ -102,14 +103,11 @@ export function batchWiring(ctx: MergerContext): BatchRoleWiring {
   };
 }
 
-/** Merge one pinned change the way the pipeline does — its verify, then (approved) a one-change
- * merge through mergeApprovedChange — over one MergerContext's wiring, returning the outcome the
- * pipeline writes back. */
+/** Merge one pinned change the way the pipeline does — the gate and the (approved) one-change
+ * merge through a single mergeApprovedChange call, which now owns the queued change's one gate —
+ * returning the outcome the pipeline writes back. */
 export async function verifyAndMerge(ctx: MergerContext, req: MergeRequest): Promise<RunResult> {
-  const w = batchWiring(ctx);
-  const v = await verifyRequest(ctx, req, w);
-  if (v.kind === "result") return v.result;
-  return mergeApprovedChange(ctx, { ...req, sha: v.sha, ...(v.verifiedHead ? { verifiedHead: v.verifiedHead } : {}) });
+  return mergeApprovedChange(ctx, req);
 }
 
 /** Shell that numbers this check run into `$n`, atomically: `mkdir` either creates

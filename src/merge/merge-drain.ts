@@ -205,6 +205,9 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
             sha: v.sha,
             runNumber: v.entry.run,
             summary: v.entry.summary,
+            // The approved change already passed its own gate in its verify: it merges without a
+            // second gate (part 3b/6 owns the one gate for requests that arrive unmarked).
+            alreadyGated: true,
             ...(v.entry.claim !== undefined ? { claim: v.entry.claim } : {}),
             body: v.entry.body,
             highFriction: v.entry.highFriction,

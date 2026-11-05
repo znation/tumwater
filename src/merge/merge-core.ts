@@ -64,6 +64,11 @@ export interface MergeRequest {
   /** The backlog entry the authoring run was assigned (MergeEntry.claim): the verify and the
    * in-lock merge drop the change as `withdrawn` once main no longer lists it. */
   claim?: MergeClaim;
+  /** Set only by the verify stage's merge path (merge-drain.ts's startMerge): the change already
+   * passed its own gate in its verify, so `mergeApprovedChange` fast-forwards it without a second
+   * gate. Absent means this call owns the queued change's one gate — it checks for withdrawal and
+   * runs reviewQueuedChange before it merges. */
+  alreadyGated?: boolean;
 }
 
 /** The repo scope every merge step reads from its caller: the worktree root, the branch
@@ -379,9 +384,12 @@ export async function recordRejectedChange(
   state.revision = { sha: rejectedHead, round: nextRound, at: Date.now(), reasonCounts: counts };
 }
 
-/** Merge a head that already passed its OWN gate in its verify — the merge slot's one-change merge,
- * the one way an approved change merges now (the batch/stack path is gone, part 4m/3) — without a
- * second gate. Re-gating would rebase first, and by then main has usually moved (a
+/** Merge a head through the merge slot — the one way an approved change merges now (the
+ * batch/stack path is gone, part 4m/3). The request either already passed its own gate in its
+ * verify and carries `alreadyGated`, so it merges without a second gate, or it has not passed a
+ * gate yet and this call owns the queued change's one gate: it checks for withdrawal (and drops
+ * the pin) then runs reviewQueuedChange before it touches main. When `alreadyGated` is set, re-gating
+ * would rebase first, and by then main has usually moved (a
  * fallback's earlier entries just merged): the rebase rewrites the approved sha, the gate's
  * exact-sha `lastApprovedHead` short-circuit misses, and every such merge paid a second build
  * check and model review of a change it had already approved (BUGS.md 2026-09-23). Here a clean
@@ -404,6 +412,26 @@ export async function mergeApprovedChange(ctx: MergerContext, req: MergeRequest)
 
 async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Promise<RunResult> {
   const wt = await ensureDetachedWorktree(ctx.root, mergeWorktreePath(ctx.root), req.sha);
+  // A request without `alreadyGated` has not passed its own gate yet: run the queued change's one
+  // gate in the merge worktree before anything touches main. The verify stage's path still gates
+  // each queued change once and hands the approved change down marked, so no change is gated twice.
+  if (!req.alreadyGated) {
+    // A change main no longer lists is dropped before its rebase moves the change's base past the
+    // removal (merge-withdrawn.ts), exactly as the verify stage asks it before its own rebase.
+    const withdrawn = await withdrawnPinReason(wt, ctx.mainBranch, req, "HEAD");
+    if (withdrawn !== null) {
+      await dropWithdrawnPin(ctx.root, req.role, ctx.state, withdrawn);
+      return "withdrawn";
+    }
+    const outcome = await reviewQueuedChange(ctx, req, wt, ctx.state, ctx.foldUsage);
+    if (outcome.kind === "result") return outcome.result;
+    // Merge the gate-cleared head (the synced pin the gate judged), carrying verifiedHead only
+    // when the pre-check ran green on exactly that head — the same rule the verify verdict used.
+    req =
+      outcome.gate.verifiedHead === outcome.sha
+        ? { ...req, sha: outcome.sha, verifiedHead: outcome.gate.verifiedHead }
+        : { ...req, sha: outcome.sha };
+  }
   const result = await mergeToMain(
     {
       root: ctx.root,

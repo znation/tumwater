@@ -6,10 +6,11 @@ import path from "node:path";
 import { MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { mergeApprovedChange } from "../src/merge/merge-core.js";
 import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
-import { mergeWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
+import { mergeRefName, mergeWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
+import { withdrawnPinReason } from "../src/merge/merge-withdrawn.js";
 import { assertClean, mainSha, pinOffMain, sh, tmpdir, makeRepo } from "./fixtures/repo-fixtures.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
@@ -31,12 +32,12 @@ import {
 // These tests pin the sequential merge stages (the check, then the review).
 process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
 
-// Unit coverage for the two halves of a merge — merge-batch.ts's verifyRequest (checkout in
-// _land-<role>, rebase onto main, merge-core.ts's review gate) and the one-change merge through
-// mergeApprovedChange (a rebase and a fast-forward) — driven here in queue order exactly as the
-// merge pipeline runs them (merge-drain.ts). The reviewer run is a real pi subprocess behind
-// the fake shim; merge-to-main.ts's conflict resolver goes through the wiring's runPi, which is
-// stubbed.
+// Unit coverage for a queued change's gate and its merge — both now owned by one
+// mergeApprovedChange call (the withdrawal check, the review gate, and the rebase-and-fast-forward
+// merge; part 3b/6), driven here in queue order exactly as the merge pipeline runs it
+// (merge-drain.ts, with the verify stage's path handing approved changes down marked alreadyGated).
+// The gate's check and, when it runs, its reviewer, go through the wiring; merge-to-main.ts's
+// conflict resolver goes through the wiring's runPi, which is stubbed.
 //
 // Split so node --test runs the slices in parallel processes and each fits the gate's 30 s
 // budget: this file holds the verify and single-change merges (approval, rejection, abort,
@@ -63,6 +64,89 @@ test("an approved merge merges on main and deletes the ref", async () => {
       assert.equal(warningMessages(root).filter((m) => m.startsWith(MERGE_FLAKY_WARNING_PREFIX)).length, 0, "never red, no flake");
       assert.equal(await refSha(root, REF), null, "the pin was deleted on merge");
       assert.equal(await aheadOfMain(wt, "main"), 0, "the role worktree stayed clean at main");
+    },
+  );
+});
+
+test("an unmarked request runs the gate before it merges, and a marked one skips it", async () => {
+  // Part 3b/6: mergeApprovedChange owns the queued change's one gate. An unmarked request (no
+  // `alreadyGated`) checks for withdrawal and runs reviewQueuedChange in the merge worktree before
+  // anything touches main — a passing gate merges and deletes the pin. A marked request (the verify
+  // stage's path) carries `alreadyGated` and fast-forwards with no second gate: no second check run,
+  // so the declared check's log sees exactly one entry.
+  const rec = path.join(tmpdir("merger-gate-"), "seen");
+  await withPi(
+    reviewerPi("VERDICT: approve"),
+    async () => {
+      const { root, sha } = await pinnedFixture();
+      declareCheck(root, `#!/bin/sh\ngit rev-parse HEAD >> ${rec}\necho ok\n`);
+      const state = freshRunnerState(ROLE);
+      const { ctx } = makeCtx(root, state);
+
+      assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed", "the unmarked request merges");
+      assert.equal(await refSha(root, REF), null, "the gate cleared it: the pin is gone");
+      const afterFirst = fs.readFileSync(rec, "utf8").trim();
+      assert.notEqual(afterFirst, "", "the gate's pre-check ran");
+
+      // A second, unmarked change merges the same way — but a marked one (the verify stage's path)
+      // fast-forwards with no second check run, so the log grows by no line.
+      const sha2 = pinOffMain(
+        root,
+        (d) => fs.appendFileSync(path.join(d, "seed.txt"), "more work\n"),
+        "more work",
+      );
+      await setRef(root, REF, sha2);
+      assert.equal(await mergeApprovedChange(ctx, request(sha2, { alreadyGated: true })), "changed", "the marked request merges");
+      assert.equal(fs.readFileSync(rec, "utf8").trim(), afterFirst, "no second gate: the marked request ran no check");
+      assert.equal(await refSha(root, REF), null, "the second pin is gone too");
+    },
+  );
+});
+
+test("an unmarked request main has withdrawn returns withdrawn without a gate run", async () => {
+  // Part 3b/6: the withdrawal check precedes the gate, so a change main no longer lists is dropped
+  // unmerged (its pin deleted, the reason recorded) and its gate never starts. Withdrawal is judged
+  // only for the work roles (feature, bugfix — merge-withdrawn.ts), so this case runs as a feature
+  // role with a claim for an entry main does not list. A passing check is declared; its log would
+  // gain a line only if the gate ran, so its emptiness is the proof of "no gate run".
+  const rec = path.join(tmpdir("merger-withdrawn-"), "seen");
+  const WROLE = "feature";
+  await withPi(
+    reviewerPi("VERDICT: approve"),
+    async () => {
+      // Main lists only "Alpha"; the pin's claim names "Gone", which main does not list. The pin's
+      // tree inherits main's PLANS.md, so both the base and the head read it.
+      const root = makeRepo();
+      fs.writeFileSync(
+        path.join(root, "PLANS.md"),
+        "# Plans\n\n## Planned\n\n### Alpha (planned 2026-01-01 by operator)\n\nBody Alpha.\n\n## Done\n",
+      );
+      sh(root, "git", "add", "PLANS.md");
+      sh(root, "git", "commit", "-q", "-m", "plans");
+      const mainBefore = mainSha(root);
+      const sha = pinOffMain(
+        root,
+        (d) => fs.writeFileSync(path.join(d, "seed.txt"), "the work\n"),
+        "the work",
+      );
+      await setRef(root, mergeRefName(WROLE), sha); // the pinned change, under the feature role's ref
+      await ensureWorktree(root, WROLE, "main");
+      declareCheck(root, `#!/bin/sh\ngit rev-parse HEAD >> ${rec}\necho ok\n`);
+      const state = freshRunnerState(WROLE);
+      const { ctx } = makeCtx(root, state);
+      const req = request(sha, {
+        role: WROLE,
+        claim: { file: "PLANS.md", key: "gone", title: "Gone (planned 2026-01-01 by operator)" },
+      });
+      // The same check the new path runs, asked here, confirms the fixture reads withdrawn before
+      // the merge starts — so a "changed" below would mean the gate ran on an unwithdrawn pin.
+      assert.ok(await withdrawnPinReason(root, "main", req, sha), "the fixture reads withdrawn");
+
+      assert.equal(await mergeApprovedChange(ctx, req), "withdrawn");
+
+      assert.equal(mainSha(root), mainBefore, "main did not move");
+      assert.equal(await refSha(root, mergeRefName(WROLE)), null, "the withdrawn pin is gone");
+      assert.ok(!fs.existsSync(rec), "no gate run: the check never logged a head");
     },
   );
 });
