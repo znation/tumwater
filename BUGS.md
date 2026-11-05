@@ -46,6 +46,10 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 a timed-out check whose tree dies on SIGTERM settles right after the deadline, not after the grace
 ~~~~
 
+### post-merge review of 28f1e703 never reached a verdict (found by the review role 2026-11-05)
+
+The post-merge review of commit `28f1e703a89b7da901ed79d1317c89331d35874a` (Remote CI part 2/3: page the operator on a failed push; add doctor's remote CI row) never reached a verdict: fix did not merge: merge_conflict. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
+
 ## Fixed
 
 ## Verified
