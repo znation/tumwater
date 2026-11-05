@@ -40,8 +40,9 @@ export function drainPostReviews(ctx: MergePipelineContext, p: MergePipeline): v
 }
 
 /** Whether an entry still awaits its review. A `fixed` entry is a settled record naming both shas
- * (the reviewed commit and its landed fix) and a rejected one is terminal whether its repair
- * landed or its pre-check withheld it, so neither is ever re-reviewed (Forward never back 1a/6). */
+ * (the reviewed commit and its landed fix); a rejected one is terminal too — the reviewer proposed
+ * no fix, or its pre-check withheld the one it proposed — so neither is ever re-reviewed (Forward
+ * never back 1a/6). */
 function unreviewed(e: PostReview): boolean {
   return e.rejected === undefined && e.fixed === undefined;
 }
