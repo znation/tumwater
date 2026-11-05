@@ -158,8 +158,12 @@ test("plan/bug --list --json carries positions, verbatim bodies, and holds", asy
 test("plan --list --json keeps DEL/C1 bytes that the prose list strips", async () => {
   const repo = makeRepo();
   // DEL and a C1 control are legal JSON string bytes but terminal controls: the prose list
-  // sanitizes them at say(), while --json is a data surface that must stay byte-exact.
-  const controls = "\u007f\u0085";
+  // sanitizes them at say(), while --json is a data surface that must stay byte-exact. The
+  // prose lists print titles only, so the controls must sit in each title for the prose
+  // assertions to exercise say() at all; the bodies carry them too, for the JSON body check.
+  const del = "\u007f";
+  const c1 = "\u0085";
+  const controls = `${del}${c1}`;
   fs.writeFileSync(
     path.join(repo, "PLANS.md"),
     [
@@ -167,13 +171,13 @@ test("plan --list --json keeps DEL/C1 bytes that the prose list strips", async (
       "",
       "## Planned",
       "",
-      "### Active plan (planned 2026-10-01)",
+      `### Active plan (planned 2026-10-01) ${controls}`,
       "",
       `active body ${controls} tail`,
       "",
       "## Done",
       "",
-      "### Done plan (done 2026-10-02)",
+      `### Done plan (done 2026-10-02) ${controls}`,
       "",
       `done body ${controls} tail`,
       "",
@@ -181,14 +185,18 @@ test("plan --list --json keeps DEL/C1 bytes that the prose list strips", async (
   );
   const activeProse = await cli(repo, "plan", "--list");
   assert.equal(activeProse.code, 0);
-  assert.ok(!activeProse.stdout.includes(controls), "prose strips the control characters");
+  assert.match(activeProse.stdout, /Active plan \(planned 2026-10-01\)/, "the prose list renders the entry");
+  assert.ok(!activeProse.stdout.includes(del), "prose strips DEL");
+  assert.ok(!activeProse.stdout.includes(c1), "prose strips C1");
   const activeJson = await cli(repo, "plan", "--list", "--json");
   assert.equal(activeJson.code, 0);
   assert.ok(activeJson.stdout.includes(controls), "the JSON document keeps the raw bytes");
   assert.equal((JSON.parse(activeJson.stdout) as { entries: { body: string }[] }).entries[0]!.body, `active body ${controls} tail`);
   const doneProse = await cli(repo, "plan", "--list", "--done");
   assert.equal(doneProse.code, 0);
-  assert.ok(!doneProse.stdout.includes(controls), "the done prose strips the control characters");
+  assert.match(doneProse.stdout, /Done plan \(done 2026-10-02\)/, "the done prose list renders the entry");
+  assert.ok(!doneProse.stdout.includes(del), "the done prose strips DEL");
+  assert.ok(!doneProse.stdout.includes(c1), "the done prose strips C1");
   const doneJson = await cli(repo, "plan", "--list", "--done", "--json");
   assert.equal(doneJson.code, 0);
   assert.ok(doneJson.stdout.includes(controls), "the done JSON document keeps the raw bytes");
