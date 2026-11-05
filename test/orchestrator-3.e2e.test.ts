@@ -487,11 +487,11 @@ async function seedMergeQueue(repo: string, ...roles: string[]): Promise<void> {
   }
 }
 
-test("an abort for one queued role stops only that role's verify and discards its pin; the other verify runs on", async () => {
-  // The merge-queue speed 2c rule through the live scheduler: every queued change is its own
-  // verify, so `tumwater abort --role dedupe` reaches dedupe's verify alone — its reviewer killed,
-  // its outcome `aborted`, its pin discarded — while clean's verify, reviewing beside it, runs on
-  // and merges.
+test("an abort for the verifying role discards its pin and the next queued change starts and merges", async () => {
+  // The merge-queue speed 2c rule through the live scheduler, serialized (Subtract verify
+  // collapse part 3a): the drain starts one verification at a time, so `tumwater abort --role
+  // clean` reaches clean's verify at the queue head — its check killed, its outcome `aborted`,
+  // its pin discarded — and dedupe, still queued behind it, starts on the next drain and merges.
   const repo = makeRepo();
   await initProject(repo, "verify abort e2e test");
   // A long minimum interval: nothing re-runs while the test asserts the aftermath.
@@ -500,10 +500,8 @@ test("an abort for one queued role stops only that role's verify and discards it
   const dir = tmpdir("verify-abort-");
   const release = path.join(dir, "release");
   // Each change's gate check parks in its verify's check slot until released (bounded ~60 s, so
-  // a failed assert can never leave one spinning); the abort kills dedupe's. main's baseline
-  // sees neither change file and passes at once. maxConcurrentChecks 2 lets both parked checks
-  // run at once, so neither holds the other's check permit.
-  cfg.maxConcurrentChecks = 2;
+  // a failed assert can never leave one spinning); the abort kills clean's. main's baseline
+  // sees neither change file and passes at once.
   cfg.check = {
     command:
       `if [ -e dedupe.txt ]; then touch '${dir}/dedupe-reviewing'; i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done; exit 0; fi; ` +
@@ -528,40 +526,39 @@ test("an abort for one queued role stops only that role's verify and discards it
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await waitFor(
-      () => fs.existsSync(path.join(dir, "clean-reviewing")) && fs.existsSync(path.join(dir, "dedupe-reviewing")),
-      "both verifies' gate checks to be in flight",
-      60_000,
-    );
-    // What `tumwater abort --role dedupe` does from the CLI side.
-    const markerFile = abortRequestPath(repo, "dedupe");
+    await waitFor(() => fs.existsSync(path.join(dir, "clean-reviewing")), "clean's gate check to be in flight", 60_000);
+    // What `tumwater abort --role clean` does from the CLI side.
+    const markerFile = abortRequestPath(repo, "clean");
     writeMarker(markerFile, { at: Date.now() });
 
     await waitFor(
-      () => loadRunnerState(repo, "dedupe").lastResult === "aborted" && !mergeRefExists(repo, "dedupe"),
-      "dedupe's aborted verify to settle and discard its pin",
+      () => loadRunnerState(repo, "clean").lastResult === "aborted" && !mergeRefExists(repo, "clean"),
+      "clean's aborted verify to settle and discard its pin",
       60_000,
     );
     assert.ok(!fs.existsSync(markerFile), "the abort marker was consumed");
-    assert.ok(mergeRefExists(repo, "clean"), "clean's pin is untouched");
-    assert.equal(queueDepth(repo), 1, "only dedupe's entry was dropped");
+    assert.ok(mergeRefExists(repo, "dedupe"), "dedupe's pin is untouched");
+    assert.equal(queueDepth(repo), 1, "only clean's entry was dropped");
     assert.deepEqual(
       readEvents(repo)
         .filter((e) => e.type === "merge_failed")
         .map((e) => [e.source, e.result]),
-      [["dedupe", "aborted"]],
+      [["clean", "aborted"]],
     );
 
+    // The next queued entry starts on the next drain, now that the aborted verification settled.
+    await waitFor(() => fs.existsSync(path.join(dir, "dedupe-reviewing")), "dedupe's gate check to start", 60_000);
+
     fs.writeFileSync(release, "");
-    await waitFor(() => loadRunnerState(repo, "clean").lastResult === "changed", "clean's verify to merge", 60_000);
-    assert.ok(fs.existsSync(path.join(repo, "clean.txt")), "clean merged on main");
-    assert.ok(!fs.existsSync(path.join(repo, "dedupe.txt")), "the aborted change never did");
+    await waitFor(() => loadRunnerState(repo, "dedupe").lastResult === "changed", "dedupe's verify to merge", 60_000);
+    assert.ok(fs.existsSync(path.join(repo, "dedupe.txt")), "dedupe merged on main");
+    assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "the aborted change never did");
     assert.equal(eventsOfType(repo, "run_aborted").length, 0, "no run was in flight");
     assert.equal(loadRunnerState(repo, "clean").runs, 0, "the seeded 300 s gap held: no run ever started");
     assert.equal(loadRunnerState(repo, "dedupe").runs, 0);
   } finally {
-    // Never leave a check parked, and keep the release file: once clean merges, main's tip holds
-    // clean.txt, so the main watch's baseline (no abort signal; it outlives stopOrchestrator)
+    // Never leave a check parked, and keep the release file: once dedupe merges, main's tip holds
+    // dedupe.txt, so the main watch's baseline (no abort signal; it outlives stopOrchestrator)
     // can reach the park loop after this test ends. Deleting `dir` here left it spinning to the
     // 60 s bound on a process-wide check permit, starving the next tests' checks. The test run's
     // scratch root is removed at exit.
@@ -574,8 +571,8 @@ test("a role rejected in its verify runs again while another queued change is st
   // BUGS.md 2026-09-23: a final verdict once kept its entry queued until a whole batch wrote
   // back, so the (since retired, Subtract part 3a/7) interlock skipped the rejected author's due
   // run every poll through every later review, the stack check, and the ff. clean's gate check
-  // fails on its tree and rejects; dedupe's gate check parks until released, keeping a merge in
-  // flight while the test watches clean.
+  // (the queue head) fails on its tree and rejects; dedupe then starts and its gate check parks
+  // until released, so the test watches the rejected role's fix run while that verify is in flight.
   const repo = await makeFastRepo("verify early drop e2e test", ["clean", "dedupe"]); // minRunInterval 0: due on every poll
   await seedMergeQueue(repo, "clean", "dedupe");
   const dir = tmpdir("early-drop-");
@@ -603,9 +600,9 @@ test("a role rejected in its verify runs again while another queued change is st
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(() => fs.existsSync(held), "dedupe's gate check to be in flight", 60_000);
-    // clean's verdict lands while dedupe's gate check is still parked: its outcome is written and
-    // its entry dropped then, not when dedupe's merge settles. Its queue entry no longer holds
-    // its runs, so clean may already have run; the fix run after the verdict is the one asserted.
+    // clean's verdict landed at the head and its entry was dropped before dedupe started; its
+    // queue entry no longer holds its runs, so clean may already have run; the fix run after the
+    // verdict is the one asserted.
     await waitFor(
       () => readEvents(repo).some((e) => e.type === "merge_failed" && e.source === "clean") && queueDepth(repo) === 1,
       "clean's verdict to drop its entry while dedupe's stays queued",
@@ -701,16 +698,17 @@ test("maxConcurrent 4 verifies three queued changes one at a time on the live or
   }
 });
 
-test("a restart's hand-off aborts the merges that outlive its deadline instead of waiting them out", async () => {
-  // BUGS.md 2026-09-23, the 97-minute hand-off: a self-redeploy swaps while queued changes are
+test("a restart's hand-off aborts the verification that outlives its deadline instead of waiting it out", async () => {
+  // BUGS.md 2026-09-23, the 97-minute hand-off: a self-redeploy swaps while a queued change is
   // mid-review and no role run is in flight, so poll returns `restart` at once with the
-  // merges still running. Their reviewers each take a minute; the unbounded shutdown await sat
-  // through every one of them in silence. Bounded, the hand-off announces the wait, aborts
-  // every verify when the window lapses, and exits — the pins surviving for the new build.
+  // verification still running. Its reviewer takes a minute; the unbounded shutdown await sat
+  // through it in silence. Bounded, the hand-off announces the wait, aborts the verify when the
+  // window lapses, and exits — the pins surviving for the new build.
   const repo = await makeFastRepo("restart hand-off test", ["clean", "dedupe"]);
   // Both roles are seeded as just ran under a 300 s gap (their queued entries no longer hold
   // them, Subtract part 3a/7), so no role run ever starts: the drain has nothing to wait for and
-  // the restart takes effect mid-build-check — the incident's shape.
+  // the restart takes effect mid-build-check — the incident's shape. The drain serializes
+  // verifications, so only clean (the queue head) is in flight; dedupe stays queued behind it.
   await seedMergeQueue(repo, "clean", "dedupe");
   for (const role of ["clean", "dedupe"]) {
     const s = loadRunnerState(repo, role);
@@ -718,9 +716,9 @@ test("a restart's hand-off aborts the merges that outlive its deadline instead o
     saveRunnerState(repo, s);
   }
   const reviewing = path.join(tmpdir(), "handoff-reviewing");
-  // Each change's gate check parks in its verify's build pre-check (one of them touches the
-  // marker and sleeps 60 s), holding both merges in flight until the hand-off's lapse aborts
-  // them; main's baseline sees neither change file and passes at once.
+  // The head's gate check parks in its verify's build pre-check (touches the marker and sleeps
+  // 60 s), holding the one verification in flight until the hand-off's lapse aborts it; main's
+  // baseline sees no change file and passes at once.
   const cfg = fastConfig(["clean", "dedupe"]);
   cfg.minRunIntervalSeconds = 300;
   cfg.check = { command: `if [ -e clean.txt ] || [ -e dedupe.txt ]; then touch '${reviewing}'; exec sleep 60; fi; exit 0` };
@@ -737,7 +735,7 @@ test("a restart's hand-off aborts the merges that outlive its deadline instead o
   });
   try {
     await waitFor(() => fs.existsSync(reviewing), "the first verify's gate check to be in flight");
-    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the verifies");
+    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the verify");
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
     assert.equal(swaps.length, 1, "the new build was swapped in");
@@ -747,19 +745,20 @@ test("a restart's hand-off aborts the merges that outlive its deadline instead o
     const index = (pattern: RegExp) =>
       events.findIndex((e) => e.type === "warning" && pattern.test(String(e.message)));
     const restartAt = events.findIndex((e) => e.type === "restart");
-    const waitAt = index(/^restart waiting on the merge in progress for clean, dedupe/);
-    const lapseAt = index(/the merge for clean, dedupe outlived its 0\.5s deadline — aborted/);
+    const waitAt = index(/^restart waiting on the merge in progress for clean \(deadline /);
+    const lapseAt = index(/the merge for clean outlived its 0\.5s deadline — aborted/);
     const stopAt = events.findIndex((e) => e.type === "orchestrator_stop");
     assert.ok(restartAt >= 0 && waitAt > restartAt, "the wait is announced once the swap is done");
     assert.ok(lapseAt > waitAt && stopAt > lapseAt, "the lapse names what was awaited, before the stop");
     const handoffMs = events[stopAt]!.ts - events[restartAt]!.ts;
     assert.ok(handoffMs < 20_000, `the hand-off did not wait out the minute-long reviewers (${handoffMs}ms)`);
 
-    // The aborted verifies are recorded like any shutdown abort: both changes `aborted`, their pins
-    // kept for the new build's recovery, nothing merged, and no in-flight marker left behind.
+    // The aborted verify is recorded like any shutdown abort: clean `aborted` with its pin kept
+    // for the new build's recovery; dedupe, never started, stays queued with its own pin.
     const failed = events.filter((e) => e.type === "merge_failed").map((e) => `${e.source}:${String(e.result)}`);
-    assert.deepEqual(failed.sort(), ["clean:aborted", "dedupe:aborted"]);
+    assert.deepEqual(failed, ["clean:aborted"]);
     assert.ok(mergeRefExists(repo, "clean") && mergeRefExists(repo, "dedupe"), "both pins survive for the next generation");
+    assert.equal(queueDepth(repo), 1, "the queued change behind the verify stays queued for the next generation");
     assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "nothing merged");
     assert.equal(readMergeMarker(repo), null, "no stale in-flight marker is left for the next generation");
   } finally {

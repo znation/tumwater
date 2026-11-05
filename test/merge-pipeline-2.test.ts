@@ -204,8 +204,8 @@ test("an approved change waits to merge while a later queue entry is still verif
 // gate-hold can suspend a verification across an abort and settle it "aborted". Those abort and
 // shutdown-of-a-verification subjects live on in the end-to-end twin (part 3v/3's
 // test/orchestrator-3.e2e.test.ts) and the leftover-recovery twin (part 3u/3); the gate check's
-// own mid-flight hold is covered above by "an approved change merges while an earlier queue entry
-// is still verifying".
+// own mid-flight hold is covered above by "an approved change waits to merge while a later queue
+// entry is still verifying".
 
 // The reviewer-hold (part 3i/3): a hold on the reviewer's provider parks only the post-merge
 // review drain — its no-role verdict — never a role start, verify or landing. The production
@@ -284,9 +284,9 @@ test("a fresh entry verifies and merges while the reviewer's provider is held �
 // advance only its own record. Part 3s/3 re-points the observation to the deterministic gate (the
 // pre-check): a change leaves `build-check` the moment its gate returns — a failed pre-check drops
 // its record outright, a passed one advances it to approved/merging — and the model reviewer no
-// longer records any stage here. The stage sequence below is a single timeline: one permit, so the
-// second verify parks (no record) until the first frees it, and a busy merge slot until both are
-// done verifying.
+// longer records any stage here. The stage sequence below is a single timeline: the drain
+// serializes verifications, so the second does not start (no record) until the first verification
+// task ends, and a busy merge slot until both are done verifying.
 for (const headVerdict of ["reject", "approve"] as const) {
   test(`a head ${headVerdict === "reject" ? "rejected" : "approved"} in its verification leaves build-check when its gate returns; the stack check names itself`, async () => {
     const root = makeRepo();
