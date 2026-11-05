@@ -68,7 +68,8 @@ export function finishedKey(title: string, dateRe: RegExp): string {
 }
 
 /** The staging finding for a `## Planned` entry the head (the edited PLANS.md) adds over the
- * base (its text at the merge-base) that duplicates one already planned — a base `## Planned`
+ * base (main's PLANS.md at staging, so a plan a sibling merged during the run counts) that
+ * duplicates one already planned — a base `## Planned`
  * entry sharing its entry key or series part label (the identities part 4/6 groups by), or an
  * entry an unmerged change adds (the pending snapshot, part 2/6). The 11-03 incident's clearest
  * pair — one run's sibling plan merging while it was still running — gets its fix-up turn here

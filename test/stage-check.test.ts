@@ -1302,3 +1302,20 @@ test("stageCheckFindings carries both the duplicate and the retire-evidence find
   assert.ok(findings.some((f) => f.includes("drop the copy, or fold what it adds")), "the duplicate finding is present");
   assert.ok(findings.some((f) => f.includes("Retired note") && f.includes("abc1234")), "the retire-evidence finding is present");
 });
+
+test("stageCheckFindings names a duplicate of a plan main gained while the change ran", async () => {
+  const { dir } = plansRepo5(PLANS5("_None yet._", "_None yet._"));
+  const wt = await ensureWorktree(dir, "improve", "main");
+  // A sibling plan merges to main after the run's worktree branched. Commit only PLANS.md: a
+  // plain add -A in the main checkout would also stage the linked worktree directory.
+  fs.writeFileSync(path.join(dir, "PLANS.md"), PLANS5("### S, part 2/3: x (planned 2026-11-05)", "_None yet._"));
+  sh(dir, "git", "add", "PLANS.md");
+  sh(dir, "git", "commit", "-m", "sibling plan");
+  // The run, still based on the old main, adds its own copy of the same part.
+  fs.writeFileSync(path.join(wt, "PLANS.md"), PLANS5("### S, part 2/3: y (planned 2026-11-04)", "_None yet._"));
+  const findings = await stageCheckFindings(wt, "main", "plan");
+  assert.ok(
+    findings.some((f) => f.includes("drop the copy, or fold what it adds") && f.includes("S, part 2/3: x")),
+    "the finding names the plan main gained during the run",
+  );
+});

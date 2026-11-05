@@ -897,12 +897,12 @@ strike against its author".
 
 ### INV-N6: a change that adds a duplicate `## Planned` entry, or retires a plan on evidence that does not check out, gets its fix-up turn at staging
 
-**Guarantee.** `stageCheckFindings` (given the pending snapshot) reports, over the change's
-PLANS.md head-over-merge-base diff, (a) a `## Planned` entry it adds whose entry key or series
-part label a base planned entry already carries — or one an unmerged change adds, named with its
-role and short SHA (`duplicatePlanFinding`), and (b) a plan entry it newly retires whose Retired
-note cites a short SHA main's tip does not contain, or a double-quoted surviving title no `##
-Planned` or done (not retired) `## Done` heading carries by `finishedKey`
+**Guarantee.** `stageCheckFindings` (given the pending snapshot) reports (a) a `## Planned`
+entry the change adds over main's tip at staging whose entry key or series part label a planned
+entry on main or in an unmerged change already carries — the latter named with its role and short
+SHA (`duplicatePlanFinding`) — and (b) a plan entry it newly retires over the change's merge-base
+whose Retired note cites a short SHA main's tip does not contain, or a double-quoted surviving
+title no `## Planned` or done (not retired) `## Done` heading carries by `finishedKey`
 (`retireEvidenceFinding`). Only newly added and newly retired entries count; evidence with
 neither a SHA nor a quoted title passes, for the post-merge review to judge. This is a staging
 finding only — a duplicate is repairable by a later edit, so it is never a merge-gate refusal.
@@ -915,8 +915,9 @@ A git hiccup yields no finding.
 **Pinned by.** `test/stage-check.test.ts` — "duplicatePlanFinding names a base entry and a
 pending change, and stays quiet for edits and pre-existing duplicates", "retireEvidenceFinding
 checks a cited SHA against main's tip", "retireEvidenceFinding quotes a survivor a planned or
-done heading carries, and flags one that does not" and "stageCheckFindings carries both the
-duplicate and the retire-evidence findings".
+done heading carries, and flags one that does not", "stageCheckFindings carries both the
+duplicate and the retire-evidence findings" and "stageCheckFindings names a duplicate of a plan
+main gained while the change ran".
 
 ## The backlog archive: finished entries move once, and only the ones a change added
 
