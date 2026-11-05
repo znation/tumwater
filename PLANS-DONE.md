@@ -61,6 +61,8 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 **Files touched.** src/cli.ts src/history/run-detail.ts src/cli/help.ts docs/cli.md test/run-detail-follow.test.ts
 
+**Files touched (landed).** The listed files, plus test/run-detail.test.ts: its two usage-regex assertions match `RUN_DETAIL_USAGE`'s new `[-f/--follow]` spelling (a text ripple, no behavior change).
+
 **Acceptance criteria.**
 - `tumwater history bugfix 3 -f` and `tumwater history bugfix 3 --follow` print the run's trail once, then repaint it every couple of seconds until Ctrl+C or the process that started them exits; a run still in flight gains new events between frames, and a run whose merge finishes shows its merge verdict and outcome line in the next frame. On a TTY each frame clears the screen; a piped follow separates frames with a blank line.
 - `tumwater history bugfix 3 -f --json` exits 1 with the shared follow-vs-JSON refusal wording and prints no frame or JSON document.
