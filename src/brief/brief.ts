@@ -177,8 +177,10 @@ const briefStatusCache = new Map<string, { missing: boolean; overCap: boolean }>
 
 export function briefStatus(root: string): { missing: boolean; overCap: boolean } {
   const candidates = briefCandidates(root);
-  const statKey = (file: string): string => {
-    const st = statOrNull(file);
+  // Stat each candidate once: these same stats serve both the all-missing check and the key,
+  // so a steady-state poll costs exactly one stat per candidate.
+  const stats = candidates.map((candidate) => statOrNull(candidate));
+  const statKey = (st: ReturnType<typeof statOrNull>): string => {
     // A missing candidate participates in the key as the literal missing marker: one of the
     // pair appearing or vanishing is an observable change the key must re-derive.
     return st === null ? "-" : `${st.dev}:${st.ino}:${st.mtimeMs}:${st.size}:${st.ctimeMs}`;
@@ -186,10 +188,10 @@ export function briefStatus(root: string): { missing: boolean; overCap: boolean 
   // Every candidate missing: the one verdict no cache can serve, because there is no file to
   // stat — return it fresh (the pre-init state is neither degraded flag), exactly as the
   // uncached path did.
-  if (candidates.every((candidate) => statOrNull(candidate) === null)) {
+  if (stats.every((st) => st === null)) {
     return { missing: false, overCap: false };
   }
-  const key = candidates.map(statKey).join("\u0000");
+  const key = stats.map(statKey).join("\u0000");
   const hit = briefStatusCache.get(key);
   if (hit !== undefined) return { ...hit }; // A copy: callers may treat the result as their own.
   let prompt = "";

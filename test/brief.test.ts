@@ -221,6 +221,32 @@ test("briefBlockMissing is true only when a candidate exists without a resolvabl
   }
 });
 
+test("briefStatus serves an unchanged brief from the stat cache without re-reading it, and a write invalidates", (t) => {
+  const root = tmpdir();
+  const brief = path.join(root, "README.md");
+  writeReadme(root, `# p\n\n${PROMPT_START}\nFrom README.\n${PROMPT_END}\n`);
+  assert.equal(briefBlockMissing(root), false);
+  // A cache hit must not re-read the brief file at all. Counting the file's reads (not just
+  // comparing values) is what pins the cache: a poll that bypassed it would return the same
+  // verdict and pass a bare equality assertion.
+  const originalReadFileSync = fs.readFileSync.bind(fs);
+  let reads = 0;
+  t.mock.method(fs, "readFileSync", ((...args: unknown[]) => {
+    if (args[0] === brief) reads++;
+    return originalReadFileSync(...(args as [string | URL, "utf8"]));
+  }) as typeof fs.readFileSync);
+  try {
+    assert.equal(briefBlockMissing(root), false, "an unchanged brief serves the cached verdict");
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.equal(reads, 0, "an unchanged brief must not be re-read on the next poll");
+  // The write changes the file's size, so invalidation is deterministic regardless of the
+  // filesystem's mtime granularity.
+  writeReadme(root, `# p\n\n${PROMPT_START}\n${"x".repeat(BRIEF_TEXT_MAX_CHARS + 1)}\n${PROMPT_END}\n`);
+  assert.equal(briefBlockOverCap(root), true, "a write invalidates the cache and the next poll re-reads");
+});
+
 test("briefBlockOverCap is true only for a block past the read cap", () => {
   const root = tmpdir();
   assert.equal(briefBlockOverCap(root), false, "no candidates at all");
