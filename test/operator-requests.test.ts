@@ -28,6 +28,7 @@ import { saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { readJsonFile } from "../src/files/json-files.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
+import { errnoError, withThrowingFs } from "./helpers/fs-faults.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** A recording stand-in for RoleRunner covering exactly the surface operator/operator-requests.ts
@@ -570,4 +571,22 @@ test("cancelScheduledWakes with a role list drops each listed role", () => {
 
 test("cancelScheduledWakes tolerates a missing directory", () => {
   assert.equal(cancelScheduledWakes(tmpdir()), 0);
+});
+
+test("a failed scheduled-wake listing is retried, not cached as no wakes", () => {
+  const root = tmpdir();
+  scheduledWake(root, "1-1-aa.json", ["feature"], Date.now() + 60_000);
+  const now = Date.now();
+  // A transient readdir failure reads as an empty listing for that poll, but the directory
+  // stat is unchanged, so a cached failure would keep hiding the wake after the repair.
+  assert.deepEqual(
+    withThrowingFs("readdirSync", errnoError("EACCES"), () => pendingScheduledWakes(root, now)),
+    [],
+    "an unreadable listing reads empty",
+  );
+  assert.deepEqual(
+    pendingScheduledWakes(root, now).map((w) => w.roles),
+    [["feature"]],
+    "the next poll retries and sees the wake",
+  );
 });

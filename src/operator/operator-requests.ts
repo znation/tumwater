@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { RoleRunner } from "../runner/runner.js";
 import { logEvent, warnEvent, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { dirEntryNames, removeQuiet } from "../files/files.js";
+import { dirEntryNames, removeQuiet, tryReadDirEntries } from "../files/files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { errorMessage } from "../text/text.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
@@ -213,11 +213,18 @@ function scheduledWakeFiles(root: string): string[] {
       wakeListingCache,
       dir,
       dir,
-      () =>
-        dirEntryNames(dir)
+      () => {
+        // A failed listing is null, not an empty list: cachedByStat would otherwise cache the
+        // failure under the unchanged directory stat and keep serving "no wakes" after the
+        // directory becomes readable again (a transient EACCES/EMFILE/EIO).
+        const entries = tryReadDirEntries(dir);
+        if (!entries) return null;
+        return entries
+          .map((entry) => entry.name)
           .filter((n) => n.endsWith(".json"))
           .sort()
-          .map((n) => path.join(dir, n)),
+          .map((n) => path.join(dir, n));
+      },
       (files) => [...files], // A copy: callers may treat the result as their own.
     ) ?? []
   );
