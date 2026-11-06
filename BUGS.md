@@ -14,10 +14,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Cause:** `mergeReviewerFix` passes `recheckResolved: async () => ({ verdict: "retry" })` (src/merge/merge-post-review-drain.ts:264). In `mergeToMain` (src/merge/merge-to-main.ts:106–109), a resolution whose diff leaves the fix's own lines (`resolvedDiffDiverges`, src/merge/merge-diff.ts) goes to `recheckResolved`, and `retry` returns `merge_conflict`. A resolution of lines both sides edited always leaves them: it replaces main's new wording, which the fix's own diff never deleted. The failed landing leaves the entry with neither `fixed` nor `rejected`, so `unreviewed` is true and the next drain starts a fresh review of C. That review authors its fix on C again, so it conflicts again.
 - **Expected / fix sketch:** never run a resolver whose result is always discarded. Either judge the resolved tree, as `mergeApprovedChange`'s `recheckResolved` re-reviews a resolved conflict (src/merge/merge-core.ts:423), or, on a conflict, retry by rebasing the stored fix ref onto main's tip, or have the retry's review author its fix on main's tip rather than on C.
 
-### post-merge review of 28f1e703 never reached a verdict (found by the review role 2026-11-05)
-
-The post-merge review of commit `28f1e703a89b7da901ed79d1317c89331d35874a` (Remote CI part 2/3: page the operator on a failed push; add doctor's remote CI row) never reached a verdict: fix did not merge: merge_conflict. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
-
 ### `this repo's docs/invariants.md is honest` failed, then passed on the same tree (quarantined by tumwater 2026-11-05)
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

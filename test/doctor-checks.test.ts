@@ -1721,6 +1721,8 @@ test("checkRemoteCi omits the row without a hosted-CI target", async () => {
   const config = loadConfig(repo);
   config.roles = { ...(config.roles ?? {}), ci: { enabled: true, remote: false } };
   assert.equal(await checkRemoteCi(repo, config, now), null, "roles.ci.remote false omits the row");
+  config.roles = { ...(config.roles ?? {}), ci: { enabled: false, remote: true } };
+  assert.equal(await checkRemoteCi(repo, config, now), null, "a disabled ci role omits the row");
   assert.equal(await checkRemoteCi(repo, undefined, now), null, "an unreadable config omits the row");
 });
 

@@ -423,6 +423,7 @@ export async function checkRemoteCi(
   now: number = Date.now(),
 ): Promise<CheckOutcome | null> {
   if (!config) return null;
+  if (!config.roles?.ci?.enabled) return null;
   const target = await remoteCiTarget(root, config);
   if (target === null) return null;
   const entry = readRemoteCi(root);
