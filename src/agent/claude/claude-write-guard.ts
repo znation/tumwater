@@ -10,7 +10,7 @@
  * claude-write-guard-hook.ts beside this file. */
 
 import { fileURLToPath } from "node:url";
-import { shellQuote, strayWriteRefusal } from "../write-guard.js";
+import { nodeFallbackExec, strayWriteRefusal } from "../write-guard.js";
 
 /** claude's file-writing tools a team run has: claude-args.ts's `--tools` allows only these two,
  * and `--tools` is a reserved flag, so no passthrough can add another. */
@@ -27,7 +27,7 @@ const HOOK_TIMEOUT_SECONDS = 30;
  * copy. */
 export function writeGuardSettings(cwd: string, nodeBin: string = process.execPath): string {
   const hook = fileURLToPath(new URL("./claude-write-guard-hook.js", import.meta.url));
-  const command = `n=${shellQuote(nodeBin)}; [ -x "$n" ] || n=node; exec "$n" ${shellQuote(hook)} ${shellQuote(cwd)}`;
+  const command = nodeFallbackExec(nodeBin, hook, cwd);
   return JSON.stringify({
     hooks: {
       PreToolUse: [

@@ -16,6 +16,7 @@ import path from "node:path";
 import { distDir } from "../build/build-info.js";
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { notesShimDir } from "../paths.js";
+import { nodeFallbackExec } from "./write-guard.js";
 
 /** The shim's file name — the command name every run sees on its PATH. */
 export const NOTES_SHIM_NAME = "tumwater-notes";
@@ -33,7 +34,7 @@ export function ensureNotesShim(root: string, execPath: string = process.execPat
   // 2026-10-21). The `[ -x "$n" ]` check answers at run time, so a shim written long ago
   // still survives an upgrade, and the running orchestrator's repeated rewrites stop
   // restoring the broken path.
-  const content = `#!/bin/sh\nn="${execPath}"; [ -x "$n" ] || n=node; exec "$n" "${path.join(distDir(), "src", "notes-cli.js")}" "$@"\n`;
+  const content = `#!/bin/sh\n${nodeFallbackExec(execPath, path.join(distDir(), "src", "notes-cli.js"))} "$@"\n`;
   const needsWrite = readTextOrNull(target) !== content; // absent or unreadable — write it
   if (needsWrite) {
     writeTextAtomic(target, content);

@@ -10,7 +10,7 @@
  * the patch run. */
 
 import { fileURLToPath } from "node:url";
-import { shellQuote, strayWriteRefusal } from "../write-guard.js";
+import { nodeFallbackExec, strayWriteRefusal } from "../write-guard.js";
 import { patchWritePaths } from "./codex-patch-paths.js";
 
 /** The tool a codex PreToolUse hook sees for file edits; anything else is not this hook's
@@ -69,7 +69,7 @@ export function codexWriteGuardDefinition(nodeBin: string = process.execPath): {
   timeout: number;
 } {
   const hook = fileURLToPath(new URL("./codex-write-guard-hook.js", import.meta.url));
-  const command = `n=${shellQuote(nodeBin)}; [ -x "$n" ] || n=node; exec "$n" ${shellQuote(hook)}`;
+  const command = nodeFallbackExec(nodeBin, hook);
   return { matcher: HOOK_MATCHER, command, timeout: HOOK_TIMEOUT_SECONDS };
 }
 

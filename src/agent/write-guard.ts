@@ -124,6 +124,17 @@ export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
+/** The shell command that runs `nodeBin`, falling back to PATH's `node` when the recorded binary
+ * has moved (a node upgrade under the running team — BUGS.md 2026-10-21), then execs each
+ * `command` arg in turn. The one home of the recorded-node-then-PATH fallback the claude and codex
+ * write-guard hook commands (claude-write-guard.ts, codex-write-guard.ts) and the notes shim
+ * (notes-shim.ts) each re-spelled, so the fallback and its quoting cannot drift between them. The
+ * `[ -x "$n" ]` check answers at run time, so a shim or hook command written before an upgrade
+ * still survives it. */
+export function nodeFallbackExec(nodeBin: string, ...command: string[]): string {
+  return `n=${shellQuote(nodeBin)}; [ -x "$n" ] || n=node; exec "$n" ${command.map(shellQuote).join(" ")}`;
+}
+
 /** The refusal text for a write to `target` from a run whose checkout holds `runDir`, or null when
  * the write may go ahead. A relative `target` resolves from `resolveFrom` (default `runDir`): pi
  * resolves from the run's directory, while claude resolves from its shell's current directory,
