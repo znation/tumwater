@@ -349,7 +349,7 @@ export function createMainWatch(
     const raw = since
       ? await gitTry(wt, "rev-list", "--first-parent", `${since}..${tip}`)
       : await gitTry(wt, "rev-list", "--first-parent", `--max-count=${INHERIT_WALK_MAX}`, tip);
-    const commits = (raw ?? "").trim().split(/\s+/).filter(Boolean);
+    const commits = walkShas(raw);
     if (commits.length === 0) return tip;
     let lastRed: string | undefined;
     try {
@@ -485,10 +485,7 @@ export function createMainWatch(
       const commits =
         previous === undefined
           ? [tip]
-          : ((await gitTry(wt, "rev-list", "--first-parent", "--reverse", `${previous}..${tip}`)) ?? "")
-              .trim()
-              .split(/\s+/)
-              .filter(Boolean);
+          : walkShas(await gitTry(wt, "rev-list", "--first-parent", "--reverse", `${previous}..${tip}`));
       for (const commit of commits) {
         await git(wt, "checkout", "-q", "--detach", "--force", commit);
         const parent = `${commit}^`;
@@ -712,6 +709,15 @@ export function createMainWatch(
       }
     },
   };
+}
+
+/** The whitespace-separated commit shas of a `git rev-list --first-parent` read's stdout, in
+ * the order git emitted them (a `--reverse` flag makes it oldest-first). Null output (a failed
+ * run) yields no shas. The one home of the tokenize-a-commit-walk idiom, so the red-opener walk
+ * (newest-first) and the rules pass's diff walk (oldest-first) read identically instead of each
+ * re-spelling `?? "").trim().split(/\s+/).filter(Boolean)`. */
+function walkShas(out: string | null): string[] {
+  return (out ?? "").trim().split(/\s+/).filter(Boolean);
 }
 
 /** The interval in milliseconds the full check's due decision measures against: the config's
