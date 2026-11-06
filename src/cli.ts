@@ -249,6 +249,8 @@ interface BacklogCommandSpec {
   edit: (n: number, positionals: string[]) => { file: string; title: string; unchanged?: true };
   editText: (n: number, text: string) => { file: string; title: string; unchanged?: true };
   cancel: (n: number) => { file: string; title: string };
+  /** The `plan --retire` sink; absent for `bug` (only plans are retired). */
+  retire?: (n: number, reason?: string | null) => { file: string; title: string; retiredOn: string };
   top: (n: number) => { file: string; title: string };
   release: (n: number) => { file: string; title: string; lifted: LiftableHold };
   releaseRole: string;
@@ -262,7 +264,7 @@ interface BacklogCommandSpec {
  * leading flag token and hand off to the matching shared AndAnnounce shell, or file a text
  * entry by default. */
 async function runBacklogCommand(root: string, args: string[], s: BacklogCommandSpec): Promise<void> {
-  const { cancelAndAnnounce, editAndAnnounce, fileAndAnnounce, releaseAndAnnounce, topAndAnnounce } =
+  const { cancelAndAnnounce, editAndAnnounce, fileAndAnnounce, releaseAndAnnounce, retireAndAnnounce, topAndAnnounce } =
     await import("./cli/backlog-cli.js");
   const { listAndAnnounce, showAndAnnounce } = await import("./cli/backlog-cli-view.js");
   if (args.includes("--show")) {
@@ -279,6 +281,10 @@ async function runBacklogCommand(root: string, args: string[], s: BacklogCommand
   }
   if (args.includes("--cancel")) {
     await cancelAndAnnounce(root, args, s.command, s.cancel);
+    return;
+  }
+  if (s.command === "plan" && args.includes("--retire")) {
+    await retireAndAnnounce(root, args, "plan", s.retire!);
     return;
   }
   if (args.includes("--top")) {
@@ -317,7 +323,7 @@ async function cmdBugCase(root: string, args: string[]): Promise<void> {
 }
 
 async function cmdPlanCase(root: string, args: string[]): Promise<void> {
-  const { OPERATOR_FILE_KINDS, cancelPlan, editPlan, editPlanFromText, filePlan, filePlanFromText, planWakeText } =
+  const { OPERATOR_FILE_KINDS, cancelPlan, editPlan, editPlanFromText, filePlan, filePlanFromText, planWakeText, retirePlan } =
     await import("./backlog/backlog-write.js");
   const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
   const { planTitleOf } = await import("./cli/backlog-cli.js");
@@ -330,6 +336,7 @@ async function cmdPlanCase(root: string, args: string[]): Promise<void> {
     edit: (n, positionals) => editPlan(root, n, positionals[0] ?? "", positionals.slice(1).join(" "), usage),
     editText: (n, text) => editPlanFromText(root, n, text, usage),
     cancel: (n) => cancelPlan(root, n),
+    retire: (n, reason) => retirePlan(root, n, reason),
     top: (n) => moveEntryToTop(root, "plan", n),
     release: (n) => releaseEntry(root, "plan", n),
     releaseRole: OPERATOR_FILE_KINDS.plan.role,

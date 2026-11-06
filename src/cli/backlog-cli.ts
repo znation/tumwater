@@ -196,6 +196,59 @@ export async function cancelAndAnnounce(
   }
 }
 
+/** Peel an optional `--reason <text>` valued flag out of `args`, returning its value (null when
+ * absent) and the remaining tokens. A repeat of `--reason` is refused (rejectRepeatFlag, the
+ * "each flag at most once" rule every flag fold applies) and a valueless `--reason` fails with
+ * the command-specific missing-value wording, so a malformed reason is refused before any write
+ * or ready-repo gate can mask it. The value slot is consumed along with the flag so the rest
+ * carries only tokens scanPositionArgs/rejectUnknownArgs should see. */
+function peelReasonFlag(args: string[]): { reason: string | null; rest: string[] } {
+  let reason: string | null = null;
+  let seen = false;
+  const rest: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] ?? "";
+    if (arg === "--reason") {
+      rejectRepeatFlag(seen, "--reason");
+      seen = true;
+      const val = args[i + 1];
+      if (val === undefined) fail("plan --retire --reason needs a reason");
+      i++; // the value peels along with the flag
+      reason = val;
+      continue;
+    }
+    rest.push(arg);
+  }
+  return { reason, rest };
+}
+
+/** The shell of the `tumwater plan --retire <n>` CLI case, parsed like cancelAndAnnounce parses
+ * `--cancel`: `--retire <n>` is the one valued position flag, `--reason <text>` one optional
+ * valued flag, `--json` the one boolean; any positional or other flag is refused. After
+ * requireReadyRepo it moves the entry to `## Done` as retired (never built), commits the file on
+ * main, and prints `retired plan in PLANS.md: <title>` or the `--json` payload {file, title,
+ * retiredOn, reason?}. No wake: retiring closes an entry without building it, so no role is
+ * asked to pick it up. */
+export async function retireAndAnnounce(
+  root: string,
+  args: string[],
+  command: "plan",
+  retire: (n: number, reason?: string | null) => { file: string; title: string; retiredOn: string },
+): Promise<void> {
+  const { reason, rest: withoutReason } = peelReasonFlag(args);
+  const { json, position, rest } = scanPositionArgs(withoutReason, "--retire", "--retire 2");
+  // rejectUnknownArgs names both a stray positional and an unknown flag; any token that is not
+  // --retire/--json/--reason (all consumed above) is refused here.
+  rejectUnknownArgs(command, rest, []);
+  if (position === null) fail(`--retire needs a position (usage: tumwater ${command} --retire <n>)`);
+  await requireReadyRepo(root);
+  const retired = retire(position, reason ?? undefined);
+  warnIfUncommitted(await commitOperatorBacklogEdit(root, retired.file, stampedSubject("operator", `Retire plan: ${retired.title}`)), retired.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
+  if (json)
+    sayJson({ file: retired.file, title: retired.title, retiredOn: retired.retiredOn, ...(reason === null ? {} : { reason }) });
+  else say(`retired plan in ${retired.file}: ${retired.title}`);
+}
+
 /** The shell of the `bug --release` and `plan --release` CLI cases, parsed as cancelAndAnnounce
  * parses `--cancel`: `--release <n>`, an optional `--json`, anything else refused. After
  * requireReadyRepo it releases the entry, commits the file on main, and wakes `role` (the

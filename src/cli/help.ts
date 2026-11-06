@@ -408,6 +408,13 @@ Usage:
   tumwater plan --cancel <n> [--json]
                                    Remove the Nth entry in PLANS.md ## Planned (as \`tumwater
                                    plan --list\` lists it); no wake; --json prints {file, title}
+  tumwater plan --retire <n> [--reason <text>] [--json]
+                                   Move the Nth entry in PLANS.md ## Planned (as \`tumwater
+                                   plan --list\` lists it) to ## Done as retired — closed
+                                   without being built — keeping its body and adding a
+                                   retired-YYYY-MM-DD-by-the-user stamp and a **Retired YYYY-MM-DD
+                                   by the user[: <reason>]** first body line; no wake; --json
+                                   prints {file, title, retiredOn, reason?}
   tumwater plan --edit <n> "<title>" [body...] [--json]
                                    Replace the Nth entry's heading and body in PLANS.md ##
                                    Planned in place, keeping its position and original stamp;
@@ -742,7 +749,7 @@ const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
   prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach", "--top", "--grep"],
   init: ["--branch", "--template", "--file"],
   bug: ["--cancel", "--edit", "--file", "--release", "--top"],
-  plan: ["--cancel", "--edit", "--file", "--release", "--top"],
+  plan: ["--cancel", "--retire", "--reason", "--edit", "--file", "--release", "--top"],
 };
 
 /** The `--help`/`-h` request cli.ts answers before dispatch: the topic text for `command`

@@ -565,6 +565,80 @@ export function cancelPlan(root: string, n: number): { file: string; title: stri
   return removeEntry(root, "PLANS.md", "Planned", n);
 }
 
+/** `tumwater plan --retire <n> [--reason <text>]`: move the nth `## Planned` entry to
+ * `## Done` as a retired record — closed without being built — keeping its body and adding a
+ * `— retired YYYY-MM-DD by the user` heading stamp plus a first `**Retired YYYY-MM-DD by the
+ * user**` (with `: <reason>` when one is given) body line, so a duplicate or obsolete plan
+ * leaves an audit trail instead of vanishing. The returned `title` is the stamp-stripped
+ * heading and `retiredOn` today's date. An out-of-range position fails with locateEntry's
+ * existing wording and writes nothing. */
+export function retirePlan(root: string, n: number, reason?: string | null): { file: string; title: string; retiredOn: string } {
+  return withPrimaryWorktreeLock(root, () => retirePlanLocked(root, n, reason));
+}
+
+/** The locked retire move: remove the `n`th `## Planned` entry whole (removeEntry's splice
+ * shape, same range), then splice a retired copy under `## Done` — fence-aware so a `## Done`
+ * quoted inside an entry's code fence is body text, never the boundary — in one read and one
+ * atomic write, so the removal and the append cannot leave a half-moved entry. The Done
+ * section's `_None yet._` placeholder is dropped (a placeholder means "no entries", so leaving
+ * it above the moved copy would claim the section is empty) and the retired copy becomes the
+ * section's first entry. The retired heading keeps the entry's title and its `(planned …)`
+ * stamp, appending `, retired YYYY-MM-DD by the user` inside that parenthetical (or a fresh
+ * `(retired YYYY-MM-DD by the user)` parenthetical when the heading carries no planned stamp),
+ * matching the plan role's own retired shape so a reader counts it finished-but-not-built. */
+function retirePlanLocked(root: string, n: number, reason?: string | null): { file: string; title: string; retiredOn: string } {
+  const { file, lines, entry } = readEntryLines(root, "PLANS.md", "Planned", n);
+  const title = stripEntryStamp(entry.title);
+  const today = formatDate(new Date());
+  const reasonText = reason === null || reason === undefined ? "" : reason.trim();
+  const note = reasonText === "" ? `**Retired ${today} by the user**` : `**Retired ${today} by the user: ${reasonText}**`;
+  // Append the retirement stamp inside the heading's trailing `(planned …)` parenthetical when
+  // one exists (the canonical `(…, retired …)` shape the plan role writes), else add a fresh
+  // parenthetical — so every retired heading carries a parseable retired date.
+  const existingStamp = entry.title.slice(stripEntryStamp(entry.title).length);
+  const retiredHeading =
+    existingStamp.length > 0 && existingStamp.endsWith(")")
+      ? `### ${title}${existingStamp.slice(0, -1)}, retired ${today} by the user)`
+      : `### ${title} (retired ${today} by the user)`;
+  // The entry's body lines between its heading and the next boundary, trimmed of edge blanks.
+  const bodyLines = lines.slice(entry.start, entry.end);
+  trimLeadingBlankLines(bodyLines);
+  trimTrailingBlankLines(bodyLines);
+  // Remove the entry from ## Planned in place (the same range spliceOutEntry removes).
+  lines.splice(entry.start - 1, entry.end - entry.start + 1);
+  // Locate ## Done fence-aware and drop its placeholder, then prepend the retired copy.
+  const fenced = fenceTracker();
+  let doneIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (fencedHeadingTitle(lines[i] ?? "", fenced, "## ") === "Done") {
+      doneIdx = i;
+      break;
+    }
+  }
+  if (doneIdx === -1) fail(`no ## Done section in PLANS.md`);
+  const doneEnd = nextSectionHeading(lines, doneIdx + 1, fenceTracker());
+  const fencedContent = fenceTracker();
+  const content = lines
+    .slice(doneIdx + 1, doneEnd)
+    .filter((line) => fencedContent.inside(line) || line.trim() !== "_None yet._");
+  trimLeadingBlankLines(content);
+  trimTrailingBlankLines(content);
+  const rest = lines.slice(doneEnd);
+  const out = [
+    ...lines.slice(0, doneIdx + 1),
+    "",
+    retiredHeading,
+    "",
+    note,
+    ...(bodyLines.length > 0 ? ["", ...bodyLines] : []),
+    ...(content.length > 0 ? ["", ...content] : []),
+    ...(rest.length > 0 ? ["", ...rest] : []),
+  ];
+  // Normalize to one trailing newline (the file always ends at a section boundary here).
+  writeTextAtomic(file, out.join("\n").replace(/\n+$/, "") + "\n");
+  return { file: "PLANS.md", title, retiredOn: today };
+}
+
 /** The `--edit <n> --file` form shared by plan and bug: split the file, strip a pasted-back
  * heading's own stamp, and require a title and structurally-sound body before splicing into the
  * kind's section (editEntry). editPlanFromText and editBugFromText are the public plan/bug twins
