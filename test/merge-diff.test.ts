@@ -46,3 +46,24 @@ test("a resolution whose diff git cannot produce throws instead of skipping its 
   dropLooseObject(wt, "HEAD:sub"); // the resolved tree only: the approved diff still reads
   await assert.rejects(resolvedDiffDiverges({ mainBranch: "main" }, wt, preMergeHead), /git diff main\.\.\.HEAD failed/);
 });
+
+test("a resolution that stays inside the approved diff does not diverge", async () => {
+  // A sound resolution reintroduces exactly the reviewed lines after main moved them aside: the
+  // resolved diff's added lines are a multiset subset of the approved diff's, so the merge lands
+  // the fix once without a re-review (BUGS-FIXED.md 2026-11-05).
+  const { root, wt } = await initializedWorktree();
+  fs.mkdirSync(path.join(wt, "sub"));
+  fs.writeFileSync(path.join(wt, "sub", "x.ts"), "export const approved = 1;\n");
+  commitIn(wt, "the approved change");
+  const preMergeHead = headSha(wt);
+  // The worktree's fix is reverted while it waits, then main moves the same file aside.
+  fs.rmSync(path.join(wt, "sub", "x.ts"));
+  commitIn(wt, "revert before resolution");
+  fs.mkdirSync(path.join(root, "sub"));
+  fs.writeFileSync(path.join(root, "sub", "x.ts"), "export const mainAside = 9;\n");
+  commitIn(root, "main moves the file aside");
+  // The resolution re-adds the reviewed line, whose content the approved diff already carried.
+  fs.writeFileSync(path.join(wt, "sub", "x.ts"), "export const approved = 1;\n");
+  commitIn(wt, "the sound resolution");
+  assert.equal(await resolvedDiffDiverges({ mainBranch: "main" }, wt, preMergeHead), false);
+});
