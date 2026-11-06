@@ -29,7 +29,8 @@ import {
 import { movePromptToTop, type TopOutcome } from "./inbox-top.js";
 import { editInEditor } from "../cli/cli-editor.js";
 import { listWideScope, queuedFileAtPosition, promptPreview, queuedListRows, queuedRowsMatching, renderQueuedList } from "./inbox.js";
-import { durationLabel, failFollowJsonRival, parseRoleListFlag } from "../cli/cli-args.js";
+import { durationLabel } from "../text/duration.js";
+import { failFollowJsonRival, parseRoleListFlag } from "../cli/cli-args.js";
 import { followView, type FollowViewSeams } from "../cli/follow-view.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { errorMessage } from "../text/text.js";

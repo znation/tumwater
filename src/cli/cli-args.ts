@@ -3,8 +3,8 @@ import { BRANCH_VALUE_ERROR, ROLE_VALUE_ERROR, TOKEN_VALUE_ERROR } from "./cli-f
 import { knownRoleIdsCached } from "../config/config.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
 import { gotSuffix, parsePositiveInt, splitCommaList } from "../text/text.js";
+import { durationLabel, parseDurationMs } from "../text/duration.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
-import { HOUR_MS, DAY_MS } from "../text/datetime.js";
 
 /** CLI argument parsing and validation, shared by every command in cli.ts. The execution
  * layer calls these before running a command, so a bad flag fails fast with an actionable
@@ -301,51 +301,14 @@ export function parsePortFlag(raw: string | undefined): number {
   return n;
 }
 
-/** Milliseconds per unit, the multiplier parseDurationFlag's regex group is applied to.
- * The hour and day multipliers are HOUR_MS / DAY_MS (text/datetime.ts's shared units, the
- * convention that records why no two sites may spell them differently); second and minute
- * keep their own literals as there is no shared MINUTE_MS/SECOND_MS constant to fold onto. */
-const UNIT_MS = { s: 1_000, m: 60_000, h: HOUR_MS, d: DAY_MS } as const;
-
-/** The position of each unit in the descending order a composite duration must follow
- * (d → h → m → s), so `30m1h` and `1h30m1h` fail instead of parsing to a surprising total. */
-const UNIT_ORDER: Record<keyof typeof UNIT_MS, number> = { d: 0, h: 1, m: 2, s: 3 };
-
-/** Parse a composite duration spelling: one or more `<n><unit>` components in strictly
- * descending unit order (e.g. `45s`, `90m`, `1h30m`, `1h30m15s`), each a plain-decimal
- * count — no leading zero (`007s` fails, as parsePositiveInt's documented rule reads) and
- * none zero (`0h30m` fails; write `30m`). A gap between components (whitespace, junk) and
- * an out-of-order or repeated unit return null. Returns the total in milliseconds, or
- * null. The one home for the duration grammar so parseDurationFlag's acceptance and
- * durationLabel's echo cannot drift. Exported so a server surface can validate a duration
- * without ending the process through parseDurationFlag's fail() wrapper. */
-export function parseDurationMs(raw: string): number | null {
-  const re = /([1-9]\d*)([smhd])/g;
-  let ms = 0;
-  let consumed = 0;
-  let prevOrder = -1;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(raw)) !== null) {
-    if (m.index !== consumed) return null; // a gap: whitespace or junk between components
-    const order = UNIT_ORDER[m[2] as keyof typeof UNIT_MS];
-    if (order <= prevOrder) return null; // repeated or out-of-order unit
-    prevOrder = order;
-    ms += Number(m[1]) * UNIT_MS[m[2] as keyof typeof UNIT_MS];
-    // A digit run past Number's range overflows the sum to Infinity; returning it would let
-    // parseDurationFlag report a total no operator wrote and the cap check render the
-    // nonsense "got Infinityms". No honest duration to return here either, so fail the shape.
-    if (!Number.isFinite(ms)) return null;
-    consumed = re.lastIndex;
-  }
-  return consumed === raw.length && consumed > 0 ? ms : null;
-}
-
 /** Parse a `--for <duration>` flag value: one or more `<n><unit>` components in strictly
  * descending unit order (e.g. `45s`, `90m`, `1h30m`, `1d`), or fail with a clear message;
  * returns the duration in milliseconds. Zero and negative durations would write a pause
  * marker that reads as already expired — a pause that pauses nothing — so they fail like
  * any other malformed value. No absolute `--at` form: one way of saying "pause for a while".
- * Exported for tests and for the pause confirmations' duration phrasing (durationLabel). */
+ * The `<n><unit>` grammar is text/duration.ts's parseDurationMs, whose echo (durationLabel)
+ * this wrapper's failure messages reuse; exported for tests and for the pause confirmations'
+ * duration phrasing. */
 export function parseDurationFlag(flag: string, raw: string | undefined): number {
   if (raw === undefined) fail(`${flag} needs a value`);
   // A `--`-token in the value slot is the operator's slipped value (`start --for --json`),
@@ -360,48 +323,15 @@ export function parseDurationFlag(flag: string, raw: string | undefined): number
   return ms;
 }
 
-/** The human phrase for a parseDurationFlag duration (`45000` → `45s`, `5400000` → `90m`,
- * `3600000` → `1h`): the same `<n><unit>` vocabulary the parser accepts, so a pause
- * confirmation echoes back a form the operator could re-type. A duration that divides evenly
- * into a day, hour, or minute reads that single unit (a whole hour reads `1h`, not `60m`, so
- * ninety minutes reads `90m`); anything else decomposes greedily, largest unit first
- * (`5403s` → `1h30m3s`, `90s` → `1m30s`, `45s` unchanged); a sub-second remainder
- * (impossible from parseDurationFlag, but possible from computed deltas) keeps the
- * raw-millisecond form. Lives beside parseDurationFlag so phrase and parser cannot drift. */
-export function durationLabel(ms: number): string {
-  const units = Object.entries(UNIT_MS).reverse() as [keyof typeof UNIT_MS, number][];
-  if (ms === 0) return "0s";
-  for (const [unit, size] of units) {
-    if (size >= UNIT_MS.m && ms % size === 0) return `${ms / size}${unit}`;
-  }
-  let rest = ms;
-  const parts: string[] = [];
-  for (const [unit, size] of units) {
-    if (rest >= size) {
-      parts.push(`${Math.floor(rest / size)}${unit}`);
-      rest %= size;
-    }
-  }
-  return rest === 0 ? parts.join("") : `${ms}ms`;
-}
-
-/** The human phrase for a two-ended time window — `between 2h and 1h ago` — the shape
- * `--since/--until` windows share with the history TUI and `history`'s bounded empties.
- * Unbounded windows keep their own "last …"/"in …" phrasing; only the two-ended form is
- * folded here so the three sites cannot drift. The two bounds are labeled in caller order
- * (older before newer at every current site), and each is run through durationLabel, so a
- * phrase always echoes a form the parser accepts. Lives beside durationLabel for that reason. */
-export function betweenWindow(older: number, newer: number): string {
-  return `between ${durationLabel(older)} and ${durationLabel(newer)} ago`;
-}
-
 /** The shared over-cap check for duration-valued flags: fail with the one message shape —
  * `<flag> is capped at <max label> (got <value label>)` — so every capped duration names
  * both bounds in the same phrasing and the sites cannot drift apart (the same idiom the
  * --since windows and pause --for share). Callers parse the flag themselves and pass only
  * the parsed value and its cap; a value at or under the cap returns silently. An optional
  * hint appends command-specific guidance after the got-label, as pause --for points at the
- * standing-pause alternative. */
+ * standing-pause alternative. The `got cap` labels come from text/duration.ts's
+ * durationLabel, so the bound an operator retypes echoes the same vocabulary the parser
+ * accepts. */
 export function failOverDurationCap(flag: string, ms: number, maxMs: number, hint?: string): void {
   if (ms <= maxMs) return;
   fail(`${flag} is capped at ${durationLabel(maxMs)} (got ${durationLabel(ms)})${hint ? ` — ${hint}` : ""}`);

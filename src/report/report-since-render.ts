@@ -10,7 +10,7 @@
  * printed window matches the aggregated one). */
 import type { SinceReport } from "./report-types.js";
 import { compactTokens, usd } from "../text/format.js";
-import { durationLabel } from "../cli/cli-args.js";
+import { durationLabel } from "../text/duration.js";
 import { boundedWindowLine, sinceWindowLine } from "../text/datetime.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { foldBaseRoles } from "./report-fold.js";

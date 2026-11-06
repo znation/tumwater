@@ -1,16 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  durationLabel,
-  flagValue,
-  parseBranchFlag,
-  parseCountFlag,
-  parseDurationFlag,
-  parsePortFlag,
-  parsePositionFlag,
-  parseRoleFlag,
-  parseRoleListFlag,
-} from "../src/cli/cli-args.js";
+import { flagValue, parseBranchFlag, parseCountFlag, parseDurationFlag, parsePortFlag, parsePositionFlag, parseRoleFlag, parseRoleListFlag } from "../src/cli/cli-args.js";
+import { durationLabel } from "../src/text/duration.js";
 import {
   rejectUnknownArgs,
   durationFlagSpec,

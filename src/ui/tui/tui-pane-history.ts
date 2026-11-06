@@ -1,5 +1,5 @@
 import { SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
-import { betweenWindow } from "../../cli/cli-args.js";
+import { betweenWindow } from "../../text/duration.js";
 import {
   HISTORY_DEFAULT_RUNS,
   historyClass,

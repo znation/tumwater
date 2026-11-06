@@ -13,7 +13,7 @@ import type { ReportData, ReportDay, ReportTotals } from "./report-types.js";
 import { addTo, rankCountEntries, sortByValueDesc } from "../collections.js";
 import { foldBaseRoles } from "./report-fold.js";
 import { compactTokens, usd, wholePercent } from "../text/format.js";
-import { durationLabel } from "../cli/cli-args.js";
+import { durationLabel } from "../text/duration.js";
 import { monthDay, reportWindow } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";

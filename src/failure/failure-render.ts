@@ -9,7 +9,7 @@ import type { LossCause, SpendCell } from "./failure-time-spend.js";
 import { agree, plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
 import { HOUR_MS, boundedWindowLine, clockHm, dayKey, dayLabel, monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
-import { durationLabel } from "../cli/cli-args.js";
+import { durationLabel } from "../text/duration.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { markdownTable, type ColumnAlign } from "../text/markdown.js";

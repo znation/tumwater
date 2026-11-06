@@ -284,8 +284,10 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/git/worktree.ts`: the persistent worktree lifecycle.
 - `src/text/`: the shared human-facing text-shaping family — `text.ts` (whitespace,
   truncation, integer parsing) beside the single-format homes split from it: `format.ts`
-  (number, money, and hash formats), `datetime.ts` (local date/time and day math), and
-  `text-width.ts` (terminal-column geometry). Presentation only; imported by every layer.
+  (number, money, and hash formats), `datetime.ts` (local date/time and day math),
+  `duration.ts` (the `<n><unit>` duration grammar, its echo `durationLabel`, and the
+  two-ended `betweenWindow` window phrase), and `text-width.ts` (terminal-column geometry).
+  Presentation only; imported by every layer.
 - `src/merge/merge-to-main.ts`: the rebase, fast-forward, and conflict-resolution merge flow,
   on top of the git plumbing in `src/merge/merge-git.ts` (rebase, conflict inspection,
   fast-forward).

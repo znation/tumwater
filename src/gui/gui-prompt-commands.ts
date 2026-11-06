@@ -13,7 +13,7 @@ import { promptPreview } from "../inbox/inbox.js";
 import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { editQueuedFile, type EditOutcome } from "../inbox/inbox-edit.js";
 import { topQueuedFile, type FileTopOutcome } from "../inbox/inbox-top.js";
-import { durationLabel, parseDurationMs } from "../cli/cli-args.js";
+import { durationLabel, parseDurationMs } from "../text/duration.js";
 import { PAUSE_FOR_MAX_MS, submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadQueueFileName, rejectBadRole, requirePromptText } from "./gui-args.js";
@@ -59,7 +59,7 @@ function checkedPromptImages(res: http.ServerResponse, body: Record<string, unkn
  * field, a prompt that runs as soon as its turn comes; a number — the epoch ms the prompt is
  * deliverable from (`Date.now() + ms`); `null` — the field was present but not a duration
  * this grammar accepts, or its duration is over the 90d cap, and the 400 naming the rule is
- * already sent, so stop. The grammar is cli-args.ts's parseDurationMs — the same one
+ * already sent, so stop. The grammar is text/duration.ts's parseDurationMs — the same one
  * `tumwater prompt --at` and `pause --for` accept — so a deferral spelled here computes the
  * same `tumwater:not-before` marker the CLI writes. */
 function checkedPromptDefer(res: http.ServerResponse, body: Record<string, unknown>): number | undefined | null {

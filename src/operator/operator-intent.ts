@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { cancelScheduledStop, isTeamPaused, scheduleStop } from "../team/team-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../team/team-orchestrator-info.js";
-import { durationLabel } from "../cli/cli-args.js";
+import { durationLabel } from "../text/duration.js";
 import { formatDate, formatTime, humanUntil, DAY_MS } from "../text/datetime.js";
 import { submitRolePrompt } from "../inbox/inbox-submit.js";
 import type { PromptImageInput } from "../inbox/inbox-attachments.js";

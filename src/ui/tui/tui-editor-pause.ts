@@ -18,7 +18,7 @@ import {
   resumeRole,
   scheduledStopAt,
 } from "../../team/team-state.js";
-import { durationLabel } from "../../cli/cli-args.js";
+import { durationLabel } from "../../text/duration.js";
 import { teamPausePhrase, teamResumePhrase } from "../../text/phrases.js";
 import {
   parsePauseInput,

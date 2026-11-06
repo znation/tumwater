@@ -1,4 +1,4 @@
-import { durationLabel, parseDurationMs } from "../../cli/cli-args.js";
+import { durationLabel, parseDurationMs } from "../../text/duration.js";
 import { PAUSE_FOR_MAX_MS } from "../../operator/operator-intent.js";
 import { cutSplitsSurrogatePair, gotSuffix, isPlainDecimal } from "../../text/text.js";
 import { displayWidth } from "../../text/text-width.js";

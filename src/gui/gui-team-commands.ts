@@ -11,7 +11,7 @@ import { cancelWakes, PAUSE_FOR_MAX_MS, requestWake } from "../operator/operator
 import { requirePausedFlag, validRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
 import { gotSuffix } from "../text/text.js";
-import { durationLabel } from "../cli/cli-args.js";
+import { durationLabel } from "../text/duration.js";
 import { readPostBody, readRoleBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
 

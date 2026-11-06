@@ -8,8 +8,8 @@ import { baseRoleOf, runnerIds } from "../roles/runner-ids.js";
 import { knownRoleIds } from "../config/config.js";
 import { unknownRoleMessage } from "../roles/roles.js";
 import { fail, say, sayJson } from "./cli-output.js";
+import { durationLabel } from "../text/duration.js";
 import {
-  durationLabel,
   failRivalShapes,
   parseBranchFlag,
   parseRoleListFlag,
