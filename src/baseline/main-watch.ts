@@ -1,5 +1,5 @@
 import { distinctOrdered } from "../collections.js";
-import { baselineCache, checkMainBaseline, firstParentWalk, INHERIT_WALK_MAX, settleRedByRerun } from "./main-baseline.js";
+import { baselineCache, checkMainBaseline, commitsAboveFullGreen, firstParentWalk, INHERIT_WALK_MAX, settleRedByRerun } from "./main-baseline.js";
 import { canRerun, rerunTests } from "../build/build-check-rerun.js";
 import { baselineCheckLogger, clearHealKeyOnGreen, dropHealPromptsCoveredBy, withFullMainTipWorktree, withMainTipWorktree } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
@@ -29,9 +29,10 @@ import { diffRuleReasons } from "../review/diff-rules.js";
 /** What the main watch hands to `onCulprit` for a red tip: the red head it was found at (`tip`)
  * and the failing tests that made it red — exactly the fields ci's red-main heal prompt needs
  * (src/baseline/main-red.ts mainRedHealPrompt). `commit` is the culprit itself — the commit that
- * OPENED the red (the first red tip since the last green), not the newest red tip: a doc-exempt
- * tip that lands after the red opened cannot have changed the suite, so re-naming it as culprit
- * would blame it in the G1 phrase and the heal prompt. Forward, never back, part 4/6: a red main
+ * OPENED the red (by bisecting the first-parent commits since the last full green and re-running
+ * only those tests, part 3a/4; never a doc-exempt tip, which cannot have changed the suite) —
+ * not the newest red tip, so re-naming the tip as culprit would blame a merge that did not break
+ * the check in the G1 phrase and the heal prompt. Forward, never back, part 4/6: a red main
  * heals forward and is never reverted, so this holds nothing a revert would need. */
 interface MainCulprit {
   commit: string;
@@ -94,7 +95,9 @@ function mainCheckEvent(
  * merged event names one), and a green closes the spell, so the next red names its own opener. No
  * run, gate or merge waits on it; the culprit goes to the optional `onCulprit` callback, which the
  * orchestrator wires to ci's heal prompt (Forward, never back, part 4/6): a red main is healed
- * forward, never reverted.
+ * forward, never reverted. The opener a fresh red names is bisected (part 3a/4): the oldest
+ * first-parent commit above the newest full green at which re-running only the failing tests
+ * still fails.
  *
  * One watch run is in flight at a time, and it covers every commit since the last watched head;
  * a head that moves during a run is watched next. The full check runs at most once per
@@ -360,6 +363,67 @@ export function createMainWatch(
     return lastRed ?? tip;
   }
 
+  /** Settle a freshly-set red's opener (Hourly full check, part 3a/4): bisect the first-parent
+   * commits above the newest full green, re-running only the confirmed failing tests at each
+   * candidate in the shared `_gate-main` mirror (withMainTipWorktree), and name the oldest at
+   * which they fail. An indecisive bisection — no full green below, a one-commit range, no
+   * re-run command, or a candidate whose re-run reaches no verdict — falls back to `redOpener`,
+   * which walks the merged batch from `since` (the previous watched head) to the tip and names
+   * its oldest red commit, still skipping a doc-exempt tip; a fallback that returns the tip names
+   * the checked tip as today. Never throws. */
+  async function settleOpener(
+    wt: string,
+    tip: string,
+    since: string | undefined,
+    config: TumwaterConfig,
+    failingTests: readonly string[],
+    files: Readonly<Record<string, string>> | undefined,
+  ): Promise<string | undefined> {
+    if (!canRerun(wt, config, failingTests)) return redOpener(wt, tip, since, config);
+    const candidates = await commitsAboveFullGreen(wt, tip);
+    if (candidates.length === 0) return redOpener(wt, tip, since, config);
+    const bisected = await withMainTipWorktree(root, mainBranch, async (mirror) =>
+      bisectAt(mirror, tip, candidates, config, failingTests, files),
+    ).catch(() => undefined);
+    return bisected ?? redOpener(wt, tip, since, config);
+  }
+
+  /** The bisection body over `candidates` (oldest-first) in `mirror`, which withMainTipWorktree
+   * holds at main's tip: binary-search the oldest candidate at which `failingTests` still fail
+   * when re-run alone, checking each candidate out in turn and leaving the mirror at main's tip.
+   * Undefined when a candidate's re-run reaches no verdict (nothing the bisection can conclude
+   * from). Never throws. */
+  async function bisectAt(
+    mirror: string,
+    mainTip: string,
+    candidates: readonly string[],
+    config: TumwaterConfig,
+    failingTests: readonly string[],
+    files: Readonly<Record<string, string>> | undefined,
+  ): Promise<string | undefined> {
+    let lo = 0;
+    let hi = candidates.length;
+    let found: string | undefined;
+    try {
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        const commit = candidates[mid]!;
+        await git(mirror, "checkout", "-q", "--detach", "--force", commit);
+        const rerun = await rerunTests(root, TUMWATER_SOURCE, mirror, config, failingTests, files, CHECK_TIER.merge);
+        if (rerun === null) return undefined;
+        if (rerun.failing.length > 0) {
+          found = commit;
+          hi = mid;
+        } else {
+          lo = mid + 1;
+        }
+      }
+    } finally {
+      await git(mirror, "checkout", "-q", "--detach", "--force", mainTip);
+    }
+    return found;
+  }
+
   /** The per-head pass (Hourly full check, part 2c/4): the deterministic diff rules run in the
    * shared `_gate-main` mirror on every new head, covering every commit since the last watched
    * head. The full check no longer runs here — its own pass (fullPass) owns it in `_main-full` —
@@ -448,12 +512,13 @@ export function createMainWatch(
 
   /** Name a settled red tip's spell as the culprit: the merging runner, the main_culprit
    * event, and the onCulprit callback with the tip and its failing tests. The commit named is
-   * the one that OPENED the red (redOpener) — the first red tip since the last green, or, when
-   * that tip is review-exempt (a doc-only diff that cannot have changed the suite), the nearest
-   * first-parent commit before it whose own diff is not exempt — never a doc-only tip: blaming
-   * one would name a merge in the G1 phrase (src/baseline/main-guardrails.ts) and the ci heal
-   * prompt (src/baseline/main-red.ts) that did not break anything. `culprit` is that opener
-   * (already computed by redOpener in the red branch and shared with the first-red
+   * the one that OPENED the red (settleOpener) — by bisecting the first-parent commits above
+   * the newest full green at which re-running only the failing tests fails (part 3a/4), or the
+   * nearest non-exempt first-parent value when the bisection cannot run or a doc-exempt tip
+   * cannot have changed the suite — never a doc-only tip: blaming one would name a merge in
+   * the G1 phrase (src/baseline/main-guardrails.ts) and the ci heal prompt
+   * (src/baseline/main-red.ts) that did not break anything. `culprit` is that opener
+   * (already computed by settleOpener in the red branch and shared with the first-red
    * main_check's sha), so the blame and the re-attributed red event name the same commit.
    * The opener is named once per spell with the tip's failing tests and, when the newest
    * merged event names the opener, its runner; while the spell is open a later tip
@@ -543,15 +608,17 @@ export function createMainWatch(
       const coveredFrom = fullCheckBase ?? previous;
       fullCheckBase = undefined;
       // A freshly-settled red (no spell open yet) is the spell's opener: its main_check is
-      // recorded at the commit that OPENED the red (redOpener) so G1's "red since <sha>" names
-      // the breaker, not a doc tip that only happened to be current. The walk is bounded by
-      // `coveredFrom`, the previous green head, so a multi-commit batch's breaker — the oldest
-      // red first-parent commit above it — is named even when it is not the checked tip. A
-      // re-check of an already-open spell keeps the tip's sha (INV-AZ4: the re-check re-checks
-      // without re-attributing).
+      // recorded at the commit that OPENED the red (settleOpener, by bisecting the commits since
+      // the last full green where the failing tests fail; failing that, redOpener walks the
+      // merged batch from `coveredFrom`) so G1's "red since <sha>" names the breaker, not a doc
+      // tip that only happened to be current. The fallback walk is bounded by `coveredFrom`, the
+      // previous watched head, so a multi-commit batch's breaker — the oldest red first-parent
+      // commit above it — is named even when it is not the checked tip. A re-check of an
+      // already-open spell keeps the tip's sha (INV-AZ4: the re-check re-checks without
+      // re-attributing).
       const opener = redSpellOpeners.has(root)
         ? undefined
-        : await redOpener(wt, baseline.sha, coveredFrom, config);
+        : await settleOpener(wt, baseline.sha, coveredFrom, config, baseline.failingTests ?? [], baseline.failingTestFiles);
       const red = await recordMainCheck(wt, baseline, coveredFrom, ran, started, opener);
       // A settled non-red verdict (a green, or a red naming only quarantined tests) clears the
       // heal-dedup key, so a failing set that returns after a green main is healed again, and

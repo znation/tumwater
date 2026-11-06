@@ -5,6 +5,38 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Hourly full check, part 3a/4: A red's opener is the first commit at which its confirmed failing tests fail, found by bisecting the first-parent code commits since the last green and re-running only those tests (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md "Decision" 4; splitting the 2026-11-01 part 3/4 after feature held it too large for one run; requires Hourly full check part 2c/4 landed; sibling to Hourly full check part 3b/4, which requires this part landed; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-spells.test.ts test/main-red-heal.test.ts) — done 2026-11-05 by the feature role
+
+**Goal.** With the full check hourly, one red verdict covers up to an hour of commits. A confirmed red at tip T must name the single commit that opened it, not T (user, 2026-11-01: "when fixing failures, re-run only the failed tests"). This part changes only which commit is named; the per-head re-check cadence is part 3b/4.
+
+**Approach.**
+- Add a module-private bisection in src/baseline/main-watch.ts beside `reportCulprit`, and the walk it needs in src/baseline/main-baseline.ts beside `firstParentWalk`.
+  - After a fresh red is confirmed at T, walk T's first-parent commits down to the newest cached full verdict that is green and carries `checkedAt` (the anchor rule `fullCheckPlan` already uses). No such green, a one-commit range, or an unreadable walk leaves the culprit T, as today.
+  - The opener C is the first commit in that range at which any of the confirmed failing tests fails. Confirm once that they fail at C and once that they pass at C's parent, re-running only those tests with `rerunTests` (src/build/build-check-rerun.ts) on a checkout of each candidate; the `_gate-main` mirror is re-pointed at the candidate in its own queue (through `withMainTipWorktree` in src/baseline/main-red.ts) and left at main's tip afterwards.
+  - A failing test that passes at C gets its own bisect over C..T, bounded by `FAILING_TESTS_MAX` tests.
+  - A confirmation that does not reproduce names T.
+- `reportCulprit` and the first-red `main_check` name C: `main_culprit.commit`, its merging runner, `redSpellOpeners` and the `onCulprit` hand-off (`commit` C, `tip` T). The `MainCulprit` doc comment in main-watch.ts and the `main_culprit` comment in src/events/events.ts say the culprit is bisected, not merely the first red tip.
+- docs/how-it-works.md describes the bisection. docs/invariants.md's INV-AZ4 is reworded so the opener is found by re-running only the failing tests, and its **Binds** names the bisection helper; a new INV-DA3 follows it: a red's culprit is the first commit at which its failing tests fail, found by re-running only them, and its **Pinned by** names the new tests below.
+
+**Files touched.** src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-spells.test.ts test/main-red-heal.test.ts
+
+**Acceptance criteria:**
+- A red whose history has a code commit that breaks the failing tests and later commits on top names the breaking commit, not the newest tip; the `main_culprit` event, its runner and the first-red `main_check` sha all name it.
+- A red whose candidate confirmation does not reproduce names T, as today.
+- A red with no green full verdict below T, or a one-commit range, names T, as today.
+- The heal prompt names C rather than T and still carries the failing tests' re-run command.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/main-watch.test.ts:
+  - the bisection against a fake check whose failure starts at one commit;
+  - the non-reproducing bisection;
+  - "a red whose breaking commit is intermediate" now names that commit, not the tip;
+  - a range with no full green still names the tip.
+- test/main-watch-spells.test.ts: the bisected opener is the spell's culprit.
+- test/main-red-heal.test.ts: the heal prompt names the bisected opener.
+- Run those files and the gate.
+
 ### `applyRunOutcome`'s ~200-line outcome-application body in src/run/run-apply.ts is split into named module-private stages — the streak counters, the completed-result record, the next-run scheduling and the spent hand-back — so "which outcomes grow which streak?", "what does a completed run record beside its summary?", "which outcomes resume and which back off?" and "when is a conflict hand-back spent?" are each read from a name instead of one long branch chain (planned 2026-11-05 by the plan role; continues the landed split-large-function family — the 2026-11-02 `finalizeRun` split in src/run/run-finalize.ts left this callee whole and extracted one named helper per job the same way, and the family's recent `runAgent`, `gateBuildPrecheck` and `createRunTrail` entries each extract one named helper per concern; independent in file of every `## Planned` entry — before this entry `grep -nE 'applyRunOutcome|run-apply\.ts' PLANS.md BUGS.md` printed nothing, so no waiting heading or touches list names the function or the file (the blocked `Hourly full check`, `Subtract`, duplicate-plan and verify-collapse parts take src/baseline, src/merge, src/runner, src/status, src/doctor, src/config, src/review, src/run/run-stage.ts, src/ui and src/stage, never src/run/run-apply.ts; the in-flight plans take src/report, src/prompt/gate-prompts and src/baseline); PLANS-DONE.md holds no split of this function (`grep -cE '^### .*applyRunOutcome' PLANS-DONE.md` prints 0; its `applyRunOutcome` mentions are behavior entries and the 2026-11-02 `finalizeRun` split that calls it, never a split of its body); docs/invariants.md binds this file only through `applyMergeOutcome` (the withdrawn-merge lifetime), which this move leaves untouched, so no invariant edit is needed; touches src/run/run-apply.ts); — done 2026-11-05 by the feature role
 
 **Goal.** `applyRunOutcome` is the one place a finished run is folded onto `RunnerState`: it resets the running flags, bumps or resets four streaks, records the completed result and its summary (or stashes a queued change's summary), schedules the next run from the outcome, and clears a spent conflict hand-back. Its ~200 lines interleave those jobs, and the scheduling chain alone holds ten arms, so a reader asking "which outcomes resume?", "which back off?" or "when does a cut-off stop resuming?" scans the whole body. Extract one named module-private helper per job; `applyRunOutcome` keeps its export, signature and doc comment and reads as the reset, then the four named stages in today's order.

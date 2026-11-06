@@ -6,38 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Hourly full check, part 3a/4: A red's opener is the first commit at which its confirmed failing tests fail, found by bisecting the first-parent code commits since the last green and re-running only those tests (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md "Decision" 4; splitting the 2026-11-01 part 3/4 after feature held it too large for one run; requires Hourly full check part 2c/4 landed; sibling to Hourly full check part 3b/4, which requires this part landed; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-spells.test.ts test/main-red-heal.test.ts)
-
-**Goal.** With the full check hourly, one red verdict covers up to an hour of commits. A confirmed red at tip T must name the single commit that opened it, not T (user, 2026-11-01: "when fixing failures, re-run only the failed tests"). This part changes only which commit is named; the per-head re-check cadence is part 3b/4.
-
-**Approach.**
-- Add a module-private bisection in src/baseline/main-watch.ts beside `reportCulprit`, and the walk it needs in src/baseline/main-baseline.ts beside `firstParentWalk`.
-  - After a fresh red is confirmed at T, walk T's first-parent commits down to the newest cached full verdict that is green and carries `checkedAt` (the anchor rule `fullCheckPlan` already uses). No such green, a one-commit range, or an unreadable walk leaves the culprit T, as today.
-  - The opener C is the first commit in that range at which any of the confirmed failing tests fails. Confirm once that they fail at C and once that they pass at C's parent, re-running only those tests with `rerunTests` (src/build/build-check-rerun.ts) on a checkout of each candidate; the `_gate-main` mirror is re-pointed at the candidate in its own queue (through `withMainTipWorktree` in src/baseline/main-red.ts) and left at main's tip afterwards.
-  - A failing test that passes at C gets its own bisect over C..T, bounded by `FAILING_TESTS_MAX` tests.
-  - A confirmation that does not reproduce names T.
-- `reportCulprit` and the first-red `main_check` name C: `main_culprit.commit`, its merging runner, `redSpellOpeners` and the `onCulprit` hand-off (`commit` C, `tip` T). The `MainCulprit` doc comment in main-watch.ts and the `main_culprit` comment in src/events/events.ts say the culprit is bisected, not merely the first red tip.
-- docs/how-it-works.md describes the bisection. docs/invariants.md's INV-AZ4 is reworded so the opener is found by re-running only the failing tests, and its **Binds** names the bisection helper; a new INV-DA3 follows it: a red's culprit is the first commit at which its failing tests fail, found by re-running only them, and its **Pinned by** names the new tests below.
-
-**Files touched.** src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-spells.test.ts test/main-red-heal.test.ts
-
-**Acceptance criteria:**
-- A red whose history has a code commit that breaks the failing tests and later commits on top names the breaking commit, not the newest tip; the `main_culprit` event, its runner and the first-red `main_check` sha all name it.
-- A red whose candidate confirmation does not reproduce names T, as today.
-- A red with no green full verdict below T, or a one-commit range, names T, as today.
-- The heal prompt names C rather than T and still carries the failing tests' re-run command.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/main-watch.test.ts:
-  - the bisection against a fake check whose failure starts at one commit;
-  - the non-reproducing bisection;
-  - "a red whose breaking commit is intermediate" now names that commit, not the tip;
-  - a range with no full green still names the tip.
-- test/main-watch-spells.test.ts: the bisected opener is the spell's culprit.
-- test/main-red-heal.test.ts: the heal prompt names the bisected opener.
-- Run those files and the gate.
-
 ### Hourly full check, part 3b/4: While a red is open, each new head re-runs only its open failures; when none fail the red clears and one full run starts at once to confirm it (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md "Decision" 4; splitting the 2026-11-01 part 3/4 after feature held it too large for one run; requires "Hourly full check, part 3a/4 landed"; touches src/baseline/main-watch.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts)
 
 **Goal.** While main is red, a new head must not cost another full check. Each new head re-runs only the spell's open failing tests; a test that passes leaves the set, and when the set is empty the red closes as cleared, with one full run started at once so a healed main becomes deployable without waiting out the hour (user, 2026-11-01: "when fixing failures, re-run only the failed tests").

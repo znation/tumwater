@@ -16,7 +16,7 @@ import type { CheckConfig } from "../src/config/config-schema.js";
 import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
 import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
-import { change, clockAt, culpritFixture, watchAt, watchAtWith } from "./fixtures/main-watch-fixtures.js";
+import { change, clockAt, culpritFixture, FAILING_OUTPUT, watchAt, watchAtWith } from "./fixtures/main-watch-fixtures.js";
 
 // The hourly cadence (part 2b/4): every watch here carries an injected clock, and a test
 // advances it past the interval (an hour) before each head that must run the full check — the
@@ -209,6 +209,94 @@ test("a multi-commit batch whose breaker is intermediate names the breaking comm
   assert.deepEqual(culprits[0]?.failingTests, ["first", "second", "third"]);
   await watchAt(watch, root);
   assert.equal(eventsOfType(root, "main_culprit").length, 1, "a repeat poll does not attribute again");
+});
+
+// Hourly full check, part 3a/4: a fresh red's opener is bisected by re-running only its failing
+// tests across the first-parent commits above the newest full green. The bisection needs a re-run
+// command (canRerun); without one, or with a one-commit range or no full green, the tip (or a
+// doc-exempt opener) is named as today.
+
+function rerunConfigOf(script: string): ReturnType<typeof defaultConfig> {
+  const file = path.join(tmpdir(), "rerun.sh");
+  fs.writeFileSync(file, script);
+  return { ...defaultConfig(), check: { command: "", rerunCommand: `sh ${file}` } };
+}
+
+// A re-run that fails with the fixture's failing output while `marker` is committed (checked out
+// in the mirror) and passes once it is gone: the faulty check starts when the commit adding the
+// marker is checked out. `pinned` is ignored — each re-run re-verifies the checked-out tree.
+function rerunOnMarkerConfig(marker: string): ReturnType<typeof defaultConfig> {
+  return rerunConfigOf(`[ -f ${marker} ] && { ${FAILING_OUTPUT}; exit 1; }; exit 0`);
+}
+
+test("a red whose breaking commit is intermediate is bisected: the opener is named, not the tip", async () => {
+  const { root } = culpritFixture();
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
+  await watchAt(watch, root); // the seed commit G: green, cached
+  const broken = change(root, "bad.txt", "b"); // the commit that opens the red
+  logEvent(root, { source: "improve", type: "merged", commit: broken, summary: "breaks a test" });
+  change(root, "good.txt", "g"); // a later commit on top; its tree is still red
+  clock.advance(HOUR);
+  const config = rerunOnMarkerConfig("bad.txt");
+  watch.poll(headSha(root), false, config);
+  await watch.idle();
+  const culprits = eventsOfType(root, "main_culprit");
+  assert.equal(culprits.length, 1);
+  assert.equal(culprits[0]?.commit, broken, "the bisected opener is named, not the newest tip");
+  assert.equal(culprits[0]?.runner, "improve");
+  assert.deepEqual(culprits[0]?.failingTests, ["first", "second", "third"]);
+  const checks = eventsOfType(root, "main_check");
+  assert.equal(checks[0]?.status, "passed", "seed green");
+  assert.equal(checks[1]?.status, "failed");
+  assert.equal(checks[1]?.sha, broken, "the first-red main_check is stamped with the bisected opener");
+});
+
+test("the bisection finds the middle commit where a three-commit range's failure starts", async () => {
+  const root = baselineFixture("improve", `[ -f red.flag ] && { ${FAILING_OUTPUT}; exit 1; }; echo ok`).root;
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
+  await watchAt(watch, root); // seed: green, cached
+  change(root, "a.txt", "a"); // first commit above the green: still green
+  fs.writeFileSync(path.join(root, "red.flag"), "red\n");
+  sh(root, "git", "add", "--", "red.flag");
+  const broken = change(root, "red.flag", "red\n"); // second commit: breaks
+  change(root, "b.txt", "b"); // third commit: still red
+  logEvent(root, { source: "improve", type: "merged", commit: broken, summary: "breaks a test" });
+  clock.advance(HOUR);
+  const config = rerunOnMarkerConfig("red.flag");
+  watch.poll(headSha(root), false, config);
+  await watch.idle();
+  const culprits = eventsOfType(root, "main_culprit");
+  assert.equal(culprits.length, 1);
+  assert.equal(culprits[0]?.commit, broken, "the middle breaking commit is the bisected opener");
+});
+
+test("a red whose bisection re-runs reach no verdict still names the tip", async () => {
+  const { root } = culpritFixture();
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
+  await watchAt(watch, root); // seed: green, cached
+  change(root, "bad.txt", "b");
+  clock.advance(HOUR);
+  // A re-run whose output names no tested test reaches no verdict: the bisection cannot run and
+  // the tip is named, as before the bisection.
+  const config = rerunConfigOf("echo 'error TS2345: boom' >&2\nexit 1\n");
+  watch.poll(headSha(root), false, config);
+  await watch.idle();
+  const culprit = eventsOfType(root, "main_culprit")[0];
+  assert.equal(culprit?.commit, headSha(root), "the tip is named when the bisection re-runs reach no verdict");
+});
+
+test("a red with no full green below it still names the tip", async () => {
+  // The seed itself is red, so no first-parent commit carries a full green: the bisection has no
+  // range and the tip is named as today.
+  const root = baselineFixture("improve", `${FAILING_OUTPUT}; exit 1`).root;
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
+  await watchAt(watch, root); // the seed is red: no green anchor
+  const culprit = eventsOfType(root, "main_culprit")[0];
+  assert.equal(culprit?.commit, headSha(root), "no full green below makes the tip its own culprit");
 });
 
 // The hourly full-check cadence (Hourly full check, part 2b/4): the full check runs at most once

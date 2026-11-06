@@ -324,6 +324,28 @@ export async function firstParentWalk(wt: string, ref: string, max: number): Pro
   return gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${max}`, ref));
 }
 
+/** The first-parent commits strictly above the newest cached FULL-green verdict at or below
+ * `tip`, oldest-first — the range a fresh red's opener is bisected across (main-watch.ts, Hourly
+ * full check part 3a/4). The newest full green is the newest cached verdict that carries
+ * `checkedAt` (part 2a/4) and is green; only a full check stamps `checkedAt`, so inherited and
+ * merge-seeded verdicts are skipped, as in fullCheckPlan's anchor rule. Commits above the anchor
+ * (its child up through `tip`) are the candidates a red first seen at `tip` could have opened
+ * at. Empty when no such anchor exists, the range is a single commit, or the walk fails — the
+ * caller then names the tip as today. Never throws. */
+export async function commitsAboveFullGreen(wt: string, tip: string): Promise<string[]> {
+  const walk = await firstParentWalk(wt, tip, INHERIT_WALK_MAX); // newest-first, tip first
+  let anchor = -1;
+  for (let i = 0; i < walk.length; i++) {
+    const v = baselineCache.get(walk[i]!);
+    if (v?.checkedAt !== undefined && v.status === "green") {
+      anchor = i;
+      break;
+    }
+  }
+  if (anchor <= 0) return []; // no full green, or the tip itself is the anchor (one-commit range)
+  return walk.slice(0, anchor).reverse(); // the anchor's child (oldest) … tip (newest)
+}
+
 /** A green for `sha` carried over from its nearest verdict-bearing first-parent ancestor, or null
  * when there is none to carry. The nearest ancestor with a cached verdict must be GREEN, and the
  * tree diff from it to `sha` must touch only `exemptPaths` (config.review.exemptPaths, the same

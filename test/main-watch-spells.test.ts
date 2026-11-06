@@ -106,6 +106,37 @@ test("a doc-exempt tip re-checking an open red does not re-name the culprit: the
   assert.equal(eventsOfType(root, "main_culprit").length, 1, "a repeat poll does not attribute again");
 });
 
+test("a bisected opener stays the spell's culprit across a doc re-check", async () => {
+  // Hourly full check part 3a/4 plus INV-AZ4: a fresh red's opener is bisected to the commit at
+  // which its failing tests first fail (an intermediate commit, not the newest tip), and a
+  // later doc-exempt tip re-checking the open red keeps that bisected opener blamed.
+  const root = baselineFixture("improve", `[ -f bad.txt ] && { ${FAILING_OUTPUT}; exit 1; }; echo ok`).root;
+  const file = path.join(tmpdir(), "rerun.sh");
+  fs.writeFileSync(file, `[ -f bad.txt ] && { ${FAILING_OUTPUT}; exit 1; }; exit 0`);
+  const config = { ...defaultConfig(), check: { command: "", rerunCommand: `sh ${file}` } };
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
+  const poll = async (): Promise<void> => {
+    watch.poll(headSha(root), false, config);
+    await watch.idle();
+  };
+  await poll(); // seed: green, cached
+  const broken = change(root, "bad.txt", "b"); // opens the red
+  change(root, "notes.md", "doc"); // a doc-exempt tip on top, same interval
+  logEvent(root, { source: "improve", type: "merged", commit: broken, summary: "breaks a test" });
+  clock.advance(HOUR);
+  await poll(); // the watch checks the doc tip; the bisection names the code commit
+  let culprits = eventsOfType(root, "main_culprit");
+  assert.equal(culprits.length, 1);
+  assert.equal(culprits[0]?.commit, broken, "the bisected code commit is the culprit");
+  const doc2 = change(root, "README.md", "docs more"); // another doc-exempt tip, re-checking the open red
+  await poll();
+  culprits = eventsOfType(root, "main_culprit");
+  assert.equal(culprits.length, 1, "the doc re-check does not re-name");
+  assert.equal(culprits[0]?.commit, broken, "the bisected opener stays blamed");
+  assert.equal(headSha(root), doc2);
+});
+
 test("a doc-exempt tip on top of a code commit that broke main names the code commit as the opener", async () => {
   // The 2026-11-02 guardrail mis-attribution: the code commit that broke main and a doc-exempt
   // commit land in one poll interval, so the watch checks the DOC tip (the tree is still red) and

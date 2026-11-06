@@ -11,7 +11,13 @@ import { eventsOfType, mainRedHolds, warningMessages } from "./fixtures/log-fixt
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { baselineFixture, fakeNpm } from "./fixtures/runner-fixtures.js";
 import { headSha, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { change, clockAt, culpritFixture, FAILING_OUTPUT } from "./fixtures/main-watch-fixtures.js";
 import { defaultConfig } from "../src/config/config.js";
+
+// The hourly cadence (part 2b/4): a test that must make a fresh head's full check actually run
+// advances the injected clock past the seed run's checkedAt stamp (real Date.now, set after the
+// clock started). 2h clears it comfortably.
+const HOUR = 7_200_000;
 
 // The red-main healer's dedup state (src/baseline/main-red.ts) is module-level, so this file runs
 // in its own process: lastHealKey and lastMainRedSha start fresh here.
@@ -250,6 +256,32 @@ test("mainRedHealPrompt with a culprit names it and adds the failing and tail cl
   const noTail = mainRedHealPrompt(sha, { culprit, failingTests: ["t1"], outputTail: [] });
   assert.ok(!noTail.includes("Output tail"), noTail);
   assert.ok(noTail.endsWith("Failing: t1."), noTail);
+});
+
+test("a bisected red opener is the culprit the heal prompt names", async () => {
+  // Hourly full check part 3a/4: the watch bisects the opener by re-running only the failing
+  // tests, and the onCulprit hand-off (queueCulpritHeal via the same culprit) queues the heal
+  // prompt naming that bisected commit, not the newest tip.
+  const { root } = culpritFixture();
+  const file = path.join(tmpdir(), "rerun.sh");
+  fs.writeFileSync(file, `[ -f bad.txt ] && { ${FAILING_OUTPUT}; exit 1; }; exit 0`);
+  const config = { ...defaultConfig(), check: { command: "", rerunCommand: `sh ${file}` } };
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", (culprit) => {
+    queueCulpritHeal(root, culprit.tip, { culprit: culprit.commit, failingTests: culprit.failingTests });
+  }, clock.now);
+  const watchAt = async (): Promise<void> => {
+    watch.poll(headSha(root), false, config);
+    await watch.idle();
+  };
+  await watchAt(); // seed: green, cached
+  const broken = change(root, "bad.txt", "b"); // the commit that opens the red
+  change(root, "extra.txt", "x"); // a later commit on top, its tree still red
+  clock.advance(HOUR);
+  await watchAt();
+  const prompt = queuedRolePrompts(root, "ci")[0] ?? "";
+  assert.ok(prompt.includes(shortSha(broken)), prompt);
+  assert.ok(prompt.includes("Failing: first"), prompt);
 });
 
 test("mainRedHealPrompt hands the healer the command that re-runs only the failing tests", () => {

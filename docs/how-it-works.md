@@ -317,15 +317,16 @@ never has to wait a parked check out.
   check; a doc-only tip inherits its green). The heal prompt and ci's `<main-red>` note name that
   re-run command, so the healer reproduces and verifies only the failing tests. It logs a `main_check` event with the failing test titles and
   saves reds beside the greens in `.tumwater/state/baseline-verdicts.json`. On a red tip it also
-  names that head as its own culprit — the watch checks every new tip, so the newest head carries
-  whatever it found — logging a `main_culprit` event with the head, its merging runner and the
-  failing tests. The watch
+  names the commit that opened the red as the culprit — bisecting the first-parent commits since
+  the newest full green and re-running only the failing tests at each candidate (Hourly full check
+  part 3a/4), so an hour's worth of commits names its breaker instead of the newest head — logging
+  a `main_culprit` event with the culprit, its merging runner and the failing tests. The watch
   also runs the deterministic diff rules' full set — conflict markers, protected edits,
   secret leaks, a false-fix claim on a doc-only tip, and backlog structure — against each first-parent
   commit's own diff in the watched range, attributed to that commit's own merging role; a violation is
   logged as a warning naming the rule and the head (the same reason text the
   gate would reject with), deterministically within one poll, with no confirming re-run. That warning in the trailing day raises `tumwater doctor`'s `main diff rules` row naming the tip and the rule, so a diff the gate let through cannot sit on main unremarked. No run or
-  merge waits for the watch. On a red tip it names that head as the culprit and queues ci's
+  merge waits for the watch. On a red tip it names the opener as the culprit and queues ci's
   heal prompt (Forward, never back, part 4/6): the same `mainRedHealPrompt` wording a red-main
   hold uses — `Main was reported red at commit <sha>; verify main is green now; if it is still
   red, reproduce the failure and land the fix` — naming the commit and the failing tests. A new
