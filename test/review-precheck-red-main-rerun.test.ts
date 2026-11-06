@@ -52,9 +52,11 @@ async function fixture(rerunBody: string): Promise<{ root: string; wt: string }>
   );
   commitIn(root, "declare the check and the re-run");
   const wt = await ensureWorktree(root, ROLE, "main");
-  // The walk-up stops at the worktree's own install signature, so the worktree's manifest must
-  // declare the re-run script too (canRerun reads it there); its body is never run — the
-  // re-run executes in the `_gate-main` mirror, where main's committed manifest is in effect.
+  // The walk-up stops only at a directory holding both package.json and node_modules/, so the
+  // worktree needs its own install marker for its manifest (and its build script) to be the one
+  // read; its re-run body is never run — the re-run executes in the `_gate-main` mirror, where
+  // main's committed manifest is in effect.
+  fs.mkdirSync(path.join(wt, "node_modules"), { recursive: true });
   fs.writeFileSync(
     path.join(wt, "package.json"),
     projManifest({ build: "buildcheck-tool", "test:rerun": "true" }),
