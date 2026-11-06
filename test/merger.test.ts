@@ -247,26 +247,28 @@ test("a gating call holds one gate permit through its gate and holds none while 
     reviewerPi("VERDICT: approve"),
     async () => {
       const { root, sha } = await pinnedFixture();
-      declareCheck(root, "#!/bin/sh\necho ok\n");
+      const trace = path.join(tmpdir("merger-gate-permit-"), "order");
+      declareCheck(root, `#!/bin/sh\necho gate-start >> '${trace}'\necho ok\necho gate-end >> '${trace}'\n`);
       advanceMain(root, "seed.txt", "main\n"); // force a conflict so the resolver's runPi fires
       const state = freshRunnerState(ROLE);
-      const order: string[] = [];
       const { ctx } = makeCtx(root, state, (wt) => {
-        order.push("merge");
+        fs.appendFileSync(trace, "merge\n");
         fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n"); // resolve the markers
       });
       ctx.gatePermit = async () => {
-        order.push("acquire");
+        fs.appendFileSync(trace, "acquire\n");
         return () => {
-          order.push("release");
+          fs.appendFileSync(trace, "release\n");
         };
       };
 
       assert.equal(await verifyAndMerge(ctx, request(sha)), "changed");
 
+      // The merge's own post-merge check runs after this prefix; the permit must span the
+      // gate's check and be gone before the resolver's run.
       assert.deepEqual(
-        order,
-        ["acquire", "release", "merge"],
+        fs.readFileSync(trace, "utf8").trim().split("\n").slice(0, 5),
+        ["acquire", "gate-start", "gate-end", "release", "merge"],
         "the permit is held through the gate and released before the merge's resolver runs",
       );
     },
