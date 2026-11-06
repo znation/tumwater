@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { briefCandidates } from "../paths.js";
+import { statOrNull } from "../files/files.js";
 import { errorMessage, truncateWithNote } from "../text/text.js";
 
 /** The managed sections of the project brief (TUMWATER.md, with README.md as the
@@ -150,18 +151,58 @@ export function briefBlockOverCap(root: string): boolean {
  * readBriefText derive from one scan): the two flags share one read, and each flag applies the
  * value's own predicate. `missing` is true when a candidate exists but none resolves a
  * non-empty block (or the resolving read threw); `overCap` true when the resolved block
- * exceeds the cap. A repo with no candidate at all is neither (both false). */
+ * exceeds the cap. A repo with no candidate at all is neither (both false).
+ *
+ * The verdict is stat-cached per root (never per call), like principlesBlockOverCap's twin
+ * in src/prompt/principles.ts: both dashboards poll snapshot() every second, but the brief
+ * file changes only when a role edits it — an unchanged pair costs two stats per poll instead
+ * of re-listing both candidates, re-reading the whole file, and re-parsing its markers. A
+ * write to either candidate invalidates through the identity fields below (dev/ino/mtime/size
+ * as stat-cache.ts compares, plus ctime: a chmod/ownership change alters readability without
+ * touching any of those four, and the missing flag reports an unreadable candidate as
+ * no-brief).
+ *
+ * An unreadable candidate — the directory-in-place or permission-lost state the missing flag
+ * reports as no-brief — is returned fresh, never cached: a chmod back to readable changes
+ * ctime (see the key below), and an unreadable state could otherwise serve a stale
+ * no-brief (or hide one) until some other write bumped the identity. A repo with no
+ * candidate at all stays a fresh verdict every poll: no file exists to stat, so no cache
+ * key can be built. */
+// Per-root verdict cache, keyed by the identity of BOTH candidates (backlogHolds' joined-key
+// shape in src/backlog/backlog-eligibility.ts): the verdict depends on their resolution order
+// and their combined readability, so one key must span the pair. Bounded like the other
+// keyed caches so a long-lived process cannot grow it.
+const BRIEF_STATUS_CACHE_MAX = 8;
+const briefStatusCache = new Map<string, { missing: boolean; overCap: boolean }>();
+
 export function briefStatus(root: string): { missing: boolean; overCap: boolean } {
-  if (briefCandidates(root).every((candidate) => !fs.existsSync(candidate))) {
+  const candidates = briefCandidates(root);
+  const statKey = (file: string): string => {
+    const st = statOrNull(file);
+    // A missing candidate participates in the key as the literal missing marker: one of the
+    // pair appearing or vanishing is an observable change the key must re-derive.
+    return st === null ? "-" : `${st.dev}:${st.ino}:${st.mtimeMs}:${st.size}:${st.ctimeMs}`;
+  };
+  // Every candidate missing: the one verdict no cache can serve, because there is no file to
+  // stat — return it fresh (the pre-init state is neither degraded flag), exactly as the
+  // uncached path did.
+  if (candidates.every((candidate) => statOrNull(candidate) === null)) {
     return { missing: false, overCap: false };
   }
+  const key = candidates.map(statKey).join("\u0000");
+  const hit = briefStatusCache.get(key);
+  if (hit !== undefined) return { ...hit }; // A copy: callers may treat the result as their own.
   let prompt = "";
   try {
     prompt = readBrief(root)?.prompt ?? "";
   } catch {
-    return { missing: true, overCap: false }; // Unreadable — the briefBlockMissing subset.
+    // Unreadable — the briefBlockMissing subset, folded through readBrief's throw.
+    return { missing: true, overCap: false };
   }
-  return { missing: prompt === "", overCap: prompt.length > BRIEF_TEXT_MAX_CHARS };
+  const verdict = { missing: prompt === "", overCap: prompt.length > BRIEF_TEXT_MAX_CHARS };
+  if (briefStatusCache.size >= BRIEF_STATUS_CACHE_MAX) briefStatusCache.clear();
+  briefStatusCache.set(key, verdict);
+  return { ...verdict }; // A copy: callers may treat the result as their own.
 }
 
 /** The project's brief text, extracted from the resolved brief file's managed section —
