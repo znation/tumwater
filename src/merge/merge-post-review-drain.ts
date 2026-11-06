@@ -28,8 +28,9 @@ import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-st
 import type { RunResult } from "../run/run-outcome.js";
 
 /** One poll of the post-merge reviews: a rejected commit is answered by the reviewer's own fix
- * (Forward, never back 1/6) — never by a revert — and a fix its pre-check withholds leaves that
- * entry rejected with no landed fix; either way the next unreviewed commit starts its review
+ * (Forward, never back 1/6) — never by a revert — and a fix its pre-check rejects leaves that
+ * entry rejected with no landed fix; an unverified (host-sleep) tree is also withheld, but that
+ * entry stays queued for another review. Either way the next unreviewed commit starts its review
  * task. One review at a time, parked or running; starts a task and returns. */
 export function drainPostReviews(ctx: MergePipelineContext, p: MergePipeline): void {
   const pending = readPostReviews(ctx.root);
