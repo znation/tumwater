@@ -323,24 +323,41 @@ export function createMainWatch(
     return red;
   }
 
-  /** The commit that OPENED a settled red: the checked tip when its own diff could have
-   * changed the suite, else — for a review-exempt (doc-only) tip that cannot have — the
-   * nearest first-parent ancestor (the tip itself first) whose own diff is not exempt, i.e. the
-   * most recent commit whose change the suite could react to. The watch checks the tip,
-   * not each merged commit, so when a code commit and a doc commit land in one poll interval
-   * the red is first seen at the doc tip (BUGS.md 2026-11-02: the guardrail named the doc
-   * merge as the red's opener), and the code commit that broke it is a first-parent ancestor
-   * of the tip. A non-exempt tip is returned at once (no walk); only a doc-exempt tip walks
-   * its ancestors, bounded at INHERIT_WALK_MAX like the inheritance walks, and a git failure
-   * or an all-exempt walk reads as "the tip itself". Never throws. */
-  async function redOpener(wt: string, tip: string, config: TumwaterConfig): Promise<string> {
-    const tipFiles = (await treeDiffFiles(wt, `${tip}^`, tip)) ?? [];
-    if (!isExemptDiff(tipFiles, [...config.review.exemptPaths])) return tip;
-    for (const ancestor of await firstParentWalk(wt, tip, INHERIT_WALK_MAX)) {
-      const files = (await treeDiffFiles(wt, `${ancestor}^`, ancestor)) ?? [];
-      if (!isExemptDiff(files, [...config.review.exemptPaths])) return ancestor;
+  /** The commit that OPENED a settled red: the newest first-parent commit since the previous
+   * settled green whose tree is red — the first commit to turn the suite red above that green.
+   * The watch checks only the newest tip per poll, so when several commits land in one poll
+   * batch and an earlier one broke the suite, the first red is first SEEN at the non-breaker
+   * tip (BUGS.md 2026-11-04: the guardrail named the newest red tip instead of the breaker two
+   * first-parent commits behind it). To name the actual breaker, walk first-parent commits from
+   * the tip back toward the previous green head (`since`), running the declared check on each
+   * tree, and return the oldest commit whose tree reads red. A red-only range with no green in
+   * the walk — or a missing `since` (no previous head) — returns the oldest red found within
+   * the walk's bound (INHERIT_WALK_MAX); a git failure or a skipped (no-verdict) run reads
+   * conservative and stops the walk at the newest red it already holds. Never throws. */
+  async function redOpener(
+    wt: string,
+    tip: string,
+    since: string | undefined,
+    config: TumwaterConfig,
+  ): Promise<string> {
+    // Newest-first first-parent commits: from `since` (exclusive, the previous green head) to the
+    // tip, or the whole walk (newest-first) when there is no previous head to bound it by.
+    const raw = since
+      ? await gitTry(wt, "rev-list", "--first-parent", `${since}..${tip}`)
+      : await gitTry(wt, "rev-list", "--first-parent", `--max-count=${INHERIT_WALK_MAX}`, tip);
+    const commits = (raw ?? "").trim().split(/\s+/).filter(Boolean);
+    if (commits.length === 0) return tip;
+    let lastRed: string | undefined;
+    for (const commit of commits) {
+      await git(wt, "checkout", "-q", "--detach", "--force", commit);
+      const { baseline } = await checkMainBaseline(wt, config, undefined, false, false, undefined, false, CHECK_TIER.merge, true);
+      if (baseline?.status === "green") break; // the last green: the breaker is the red just above it
+      if (baseline?.status === "red") lastRed = commit;
+      else break; // no verdict (a skipped red-required run): stop, conservative
     }
-    return tip;
+    // The mirror is shared; put it back on the tip the way the rules pass does.
+    await git(wt, "checkout", "-q", "--detach", "--force", tip);
+    return lastRed ?? tip;
   }
 
   /** The per-head pass (Hourly full check, part 2c/4): the deterministic diff rules run in the
@@ -527,9 +544,14 @@ export function createMainWatch(
       fullCheckBase = undefined;
       // A freshly-settled red (no spell open yet) is the spell's opener: its main_check is
       // recorded at the commit that OPENED the red (redOpener) so G1's "red since <sha>" names
-      // the breaker, not a doc tip that only happened to be current. A re-check of an already-open
-      // spell keeps the tip's sha (INV-AZ4: the re-check re-checks without re-attributing).
-      const opener = redSpellOpeners.has(root) ? undefined : await redOpener(wt, baseline.sha, config);
+      // the breaker, not a doc tip that only happened to be current. The walk is bounded by
+      // `coveredFrom`, the previous green head, so a multi-commit batch's breaker — the oldest
+      // red first-parent commit above it — is named even when it is not the checked tip. A
+      // re-check of an already-open spell keeps the tip's sha (INV-AZ4: the re-check re-checks
+      // without re-attributing).
+      const opener = redSpellOpeners.has(root)
+        ? undefined
+        : await redOpener(wt, baseline.sha, coveredFrom, config);
       const red = await recordMainCheck(wt, baseline, coveredFrom, ran, started, opener);
       // A settled non-red verdict (a green, or a red naming only quarantined tests) clears the
       // heal-dedup key, so a failing set that returns after a green main is healed again, and

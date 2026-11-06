@@ -3448,17 +3448,22 @@ culprit names it and adds the failing and tail clauses only when it has them".
 ### INV-AZ4: an ongoing red keeps the commit that opened it as its named culprit
 
 **Guarantee.** The main watch names the commit that OPENED the red as its culprit — never a
-doc-exempt (review-exempt) tip, whose diff cannot change the suite. The opener is the checked tip
-when its own diff is non-exempt; when the tip is doc-exempt (a code commit and a doc commit landed
-in one poll interval, so the red was first seen at the doc tip) it is the nearest first-parent
-ancestor of the tip whose own diff is not exempt — the commit whose change the suite could react
-to. That same opener is named in the `main_culprit` event AND stamped as the sha of the
-spell's first-red `main_check`, so G1's "red since <sha>", the dashboard red detail and ci's heal
-prompt all name the breaker. While a red spell is open, a tip that re-settles red re-checks the
-suite without re-naming the culprit and its `main_check` keeps its own tip sha (no re-attribution);
-a green closes the spell, so the next red names its own opener. The G1 clause and the dashboard
-red detail publish a blame whose commit is the spell's opener or its newest red tip, so a red
-re-checked on a later tip keeps naming the opener instead of dropping or moving its blame.
+broken batch's newest red tip, whose own diff may not be the first to turn the suite red. The
+opener is the oldest first-parent commit since the previous settled green head whose tree the
+declared check reads red — the first commit to turn the suite red — found by walking each
+first-parent commit from the previous green to the newly-checked red tip and running the
+declared check on each tree (BUGS.md 2026-11-04: a multi-commit batch whose breaker was not the
+tip named the newest red tip instead). The leftmost red found, not the tip, is the breaker,
+covering both a non-exempt code tip and the earlier doc-exempt walk: a doc-exempt tip whose tree
+is still red yields the code commit below it, and a code tip above an intermediate breaker yields
+that intermediate breaker. That same opener is named in the `main_culprit` event AND stamped as
+the sha of the spell's first-red `main_check`, so G1's "red since <sha>", the dashboard red
+detail and ci's heal prompt all name the breaker. While a red spell is open, a tip that
+re-settles red re-checks the suite without re-naming the culprit and its `main_check` keeps its
+own tip sha (no re-attribution); a green closes the spell, so the next red names its own opener.
+The G1 clause and the dashboard red detail publish a blame whose commit is the spell's opener or
+its newest red tip, so a red re-checked on a later tip keeps naming the opener instead of
+dropping or moving its blame.
 
 **Binds.** `src/baseline/main-watch.ts` (`redOpener`, `reportCulprit`, the `redSpellOpeners` map),
 `src/baseline/main-guardrails.ts` (`redBlameClause`), `src/status/status-polls.ts`
@@ -3467,8 +3472,8 @@ re-checked on a later tip keeps naming the opener instead of dropping or moving 
 **Pinned by.** `test/main-watch-spells.test.ts` — "a doc-exempt tip that lands after a red
 keeps the opener as the named culprit", "a settled green closes the red spell, so the next red
 names its own opener" and "a doc-exempt tip on top of a code commit that broke main names the
-code commit as the opener"; `test/main-watch.test.ts` — "a red whose breaking commit is
-intermediate still names the newest tip as the culprit"; `test/main-guardrails.test.ts` —
+code commit as the opener"; `test/main-watch.test.ts` — "a multi-commit batch whose breaker is
+intermediate names the breaking commit, not the newest tip"; `test/main-guardrails.test.ts` —
 "redMainWarning: a culprit that names the spell's opener blames the opener, not the newest tip"; `test/status-polls.test.ts` — "a main_culprit
 naming the open spell's opener carries red detail even when it is not the newest tip" and "a
 main_culprit whose spell a later passing check closed carries no red detail".

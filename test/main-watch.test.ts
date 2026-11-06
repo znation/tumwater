@@ -190,19 +190,21 @@ test("a red tip with no merged event is named without a runner", async () => {
   assert.deepEqual(culprit?.failingTests, ["first", "second", "third"]);
 });
 
-test("a red whose breaking commit is intermediate still names the newest tip as the culprit", async () => {
+test("a multi-commit batch whose breaker is intermediate names the breaking commit, not the newest tip", async () => {
   const { root } = culpritFixture();
   const clock = clockAt();
   const watch = createMainWatch(root, "main", undefined, clock.now);
   await watchAt(watch, root); // the seed commit G: green, cached
-  change(root, "bad.txt", "b"); // the intermediate commit that actually breaks the build
-  const tip = change(root, "good.txt", "g"); // a later commit on top; its tree is still red
-  logEvent(root, { source: "improve", type: "merged", commit: tip, summary: "breaks a test" });
+  const breaker = change(root, "bad.txt", "b"); // the intermediate commit that actually breaks the build
+  logEvent(root, { source: "improve", type: "merged", commit: breaker, summary: "breaks a test" });
+  change(root, "good.txt", "g"); // a later commit on top, same poll batch; its tree is still red
   clock.advance(HOUR);
   await watchAt(watch, root);
   const culprits = eventsOfType(root, "main_culprit");
   assert.equal(culprits.length, 1);
-  assert.equal(culprits[0]?.commit, tip, "the newest head is named, not the intermediate breaking commit");
+  // BUGS.md 2026-11-04: the watch checks only the newest tip per poll, so the breaker that is
+  // two first-parent commits behind the tip must be attributed by walking each merged tree.
+  assert.equal(culprits[0]?.commit, breaker, "the breaking commit is named, not the newest red tip");
   assert.equal(culprits[0]?.runner, "improve");
   assert.deepEqual(culprits[0]?.failingTests, ["first", "second", "third"]);
   await watchAt(watch, root);
