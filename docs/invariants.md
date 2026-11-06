@@ -4958,3 +4958,13 @@ instead of skipping its re-review".
 **Binds.** `src/scheduling/scope.ts` (`directorPinOwedRun`), `src/orchestrator/orchestrator-poll.ts` (the scheduling pass's `mainBranch`), `src/scheduling/skip.ts` (`leftoverPending`), `src/runner/runner-leftover.ts` (`relief_wait`, the no-pin `aheadOfMain` re-queue).
 
 **Pinned by.** `test/orchestrator-scheduling.test.ts` — "a director whose queued change is still in the queue and a second commit waits on its branch is not offered leftover" (the held-commit case, the bug) and "a director holding a kept merge pin with an empty inbox is due as leftover, queued pin or not" (the branch-at-main case, the adjacent guarantee the first test had to not break).
+
+## The gate's policy scans: a budgeted gate always runs the repo-wide scans, so a new offender fails its own merge
+
+### INV-DB1: a budgeted gate always selects the repo-wide policy scans for any code change, even when the time budget would crowd them out
+
+**Guarantee.** The gate's affected-test selection (`test/affected-tests.ts`) ranks the repo-wide policy scans — the tests that read every file and fail on any offender anywhere (comment width, unused exports, retired names, plain-terms vocabulary) — at distance 0 for any change to `src/` or `test/` code, ahead of a test that imports the changed module. The budget (`fitBudget`) keeps them in the run even when the time budget would otherwise leave them out: a scan with a distance that reaches it is force-run, its cost paid first, and only what is left of the budget is spent on the rest. A scan with no distance (the change mapped to no code, so no new offender is possible) is ranked like every other test and not force-kept. The scans are the only tests that catch a new policy offender, so leaving them out of a budgeted gate is what let new offenders merge and leave main red (BUGS.md 2026-11-05): a change that adds one must fail the gate that merges it. A new repo-wide policy scan joins `POLICY_SCANS` in `test/affected-tests.ts` to inherit this guarantee.
+
+**Binds.** `test/affected-tests.ts` (`POLICY_SCANS`, `isPolicyScan`, `selectAffected`, `fitBudget`), `test/test-runner.ts` (`affectedTestFiles`, the `--budget` path that calls `fitBudget`).
+
+**Pinned by.** `test/affected-tests.test.ts` — "a repo-wide policy scan ranks at distance 0 for a code change, ahead of a direct importer" (the ranking, including that a doc change reaches no scan) and "a policy scan is in the gate's run even when the budget would crowd it out" (the force-keep).

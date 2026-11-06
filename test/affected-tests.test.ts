@@ -97,6 +97,33 @@ test("fitBudget keeps the nearest tests that fit, passing over a slow one for th
   assert.deepEqual(fit(0).run, [], "a test that costs anything does not fit an empty budget");
 });
 
+test("a repo-wide policy scan ranks at distance 0 for a code change, ahead of a direct importer", () => {
+  const root = checkout({
+    "dist/src/a.js": "export const a = 1;\n",
+    "dist/test/a.test.js": 'import { a } from "../src/a.js";\n',
+    "dist/test/comment-width.test.js": 'import fs from "node:fs";\nfs.readdirSync(ROOT);\n',
+  });
+  const pick = select(root, ["src/a.ts"]);
+  assert.equal(pick.distance.get("test/comment-width.test.ts"), 0, "the policy scan runs before a direct importer");
+  assert.equal(pick.distance.get("test/a.test.ts"), 1);
+  assert.deepEqual(select(root, ["NOTES.md"]).distance.get("test/comment-width.test.ts"), undefined, "a doc change reaches no scan");
+});
+
+test("a policy scan is in the gate's run even when the budget would crowd it out", () => {
+  const scan = "test/comment-width.test.ts";
+  const cost = (t: string) => (t === scan ? 700 : 1000);
+  const others = Array.from({ length: 20 }, (_, i) => `test/other-${i}.test.ts`);
+  const pick = {
+    tests: [...others, scan],
+    distance: new Map<string, number>([...others.map((t) => [t, 1] as const), [scan, 2]]),
+  };
+  // A 20 s budget fits all twenty distance-1 tests (20 x 1000 ms) and would leave the scan out,
+  // but a change that adds a policy offender must fail its own gate, so the scan still runs.
+  const fit = fitBudget(pick, cost, 20_000);
+  assert.ok(fit.run.includes(scan), "the policy scan is force-kept, not crowded out");
+  assert.equal(fit.left.includes(scan), false);
+});
+
 test("gateLintTargets lints the changed source files, or the whole tree when the lint's own inputs change", () => {
   const exists = (f: string) => !f.includes("gone");
   assert.deepEqual(

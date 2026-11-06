@@ -424,6 +424,24 @@ export function buildDepGraph(distRoot: string, repoRoot: string): DepGraph {
  * module's own merger.test.ts out of the budget. */
 const SCANNER_DISTANCE = 2;
 
+/** The repo-wide policy scans: each reads every file in the tree and fails on any offender
+ * anywhere, so a change that adds one must fail the gate that merges it. At SCANNER_DISTANCE they
+ * ranked behind the dozens of direct importers of a change and the 20 s budget left them all out,
+ * so new offenders merged and main stayed red (BUGS.md 2026-11-05). They are cheap (0.1–5 s,
+ * measured) and are the only tests that catch a new policy offender, so a change that adds one
+ * must fail the gate that merges it. A new policy scan joins the set here. */
+const POLICY_SCANS = new Set([
+  "test/comment-width.test.ts",
+  "test/exports.test.ts",
+  "test/retired-names.test.ts",
+  "test/vocabulary.test.ts",
+]);
+
+/** Whether a gating test is one of the repo-wide policy scans a budgeted gate must always run. */
+function isPolicyScan(test: string): boolean {
+  return POLICY_SCANS.has(test);
+}
+
 /** A `cli:<command>` node: it stands for the call site naming that command, so it adds no hop. A
  * test running `cli(dir, "role")` is as near to the role command's module as a test importing
  * it; through two hops it ranked behind dozens of cheap files and the budget left every
@@ -436,7 +454,8 @@ function isCommandNode(id: string): boolean {
 /** What a change selects: the gating test files to run (source ids, sorted) and how far each is
  * from the change — 0 for a changed test file, 1 for a test that imports a changed file, names
  * its directory or runs the command that loads it, one more per import hop beyond, and
- * SCANNER_DISTANCE at most for a tree scanner.
+ * SCANNER_DISTANCE at most for a tree scanner (0 for the repo-wide policy scans, which a budgeted
+ * gate must always run).
  * When the change cannot be mapped, `reason` names the first change that forced it and `tests`
  * is the full suite; the tests the mapped part reached keep their distance, the rest have none. */
 interface AffectedSelection {
@@ -504,7 +523,8 @@ export function selectAffected(graph: DepGraph, changed: readonly string[]): Aff
     }
   }
   if (codeChanged) {
-    for (const scanner of graph.scanners) if (!distance.has(scanner)) distance.set(scanner, SCANNER_DISTANCE);
+    for (const scanner of graph.scanners)
+      if (!distance.has(scanner)) distance.set(scanner, isPolicyScan(scanner) ? 0 : SCANNER_DISTANCE);
   }
 
   const reached = graph.tests.filter((t) => distance.has(t));
@@ -518,7 +538,9 @@ export function selectAffected(graph: DepGraph, changed: readonly string[]): Aff
 /** The gate's time budget over a selection: rank the tests nearest first (by distance, then
  * cheapest, then name; a test with no distance after every one that has one) and take each that
  * still fits in `budgetMs` of `costMs`, passing over one that does not, so one slow file near the
- * change does not crowd out the cheaper ones behind it. `run` is what fits, in rank order;
+ * change does not crowd out the cheaper ones behind it. The repo-wide policy scans are never
+ * passed over: a change that adds a policy offender must fail its own gate, so a scan the budget
+ * would leave out is kept anyway, ranked where it belongs. `run` is what fits, in rank order;
  * `left` is the rest, also in rank order, for main's full check. */
 export function fitBudget(
   selection: Pick<AffectedSelection, "tests" | "distance">,
@@ -529,10 +551,19 @@ export function fitBudget(
     .map((test) => ({ test, d: selection.distance.get(test) ?? Infinity, ms: costMs(test) }))
     // Two tests with no distance subtract to NaN, which reads as a tie.
     .sort((a, b) => a.d - b.d || a.ms - b.ms || (a.test < b.test ? -1 : a.test > b.test ? 1 : 0));
+  // The policy scans rank first and are kept even when they no longer fit, so the budget spent
+  // on the tests behind them is what is left once they are paid for. A scan with no distance
+  // (no code changed) cannot catch a new offender and is ranked like every other test.
+  const scans = ranked.filter((r) => isPolicyScan(r.test) && Number.isFinite(r.d));
+  const rest = ranked.filter((r) => !isPolicyScan(r.test));
   const run: string[] = [];
   const left: string[] = [];
   let spent = 0;
-  for (const r of ranked) {
+  for (const r of scans) {
+    run.push(r.test);
+    spent += r.ms;
+  }
+  for (const r of rest) {
     if (spent + r.ms <= budgetMs) {
       spent += r.ms;
       run.push(r.test);
