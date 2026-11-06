@@ -107,11 +107,11 @@ test("cancelPrompt removes the Nth queued prompt and reports its text", () => {
 
 test("cancelRolePrompt removes by per-role position under the named role", () => {
   const root = tmpdir();
-  enqueueRolePrompt(root, "feature-1", "f1");
+  const first = enqueueRolePrompt(root, "feature-1", "f1");
   enqueueRolePrompt(root, "feature-1", "f2");
 
   assert.deepEqual(cancelRolePrompt(root, "feature-1", 2), { status: "cancelled", text: "f2" });
-  assert.deepEqual(queueNames(root, "feature-1"), [basenameOf(queuedFiles(root, "feature-1")[0] as string)]);
+  assert.deepEqual(queueNames(root, "feature-1"), [basenameOf(first)]);
   assert.throws(() => cancelRolePrompt(root, "feature-1", 5), /no prompt at position/);
 });
 
@@ -144,6 +144,17 @@ test("cancelListedPrompt resolves list-wide and cancels in the one role that hol
   assert.deepEqual(cancelListedPrompt(root, scope, 3), { status: "missing", queued: 2 });
   assert.equal(queuedFiles(root, "director").length + queuedFiles(root, "feature-1").length, 4);
   // Both queues still hold their two entries each.
+  assert.equal(queuedFiles(root, "director").length, 2);
+  assert.equal(queuedFiles(root, "feature-1").length, 2);
+
+  // Position 3 is now held only by the director's queue -> found and cancelled in that
+  // role alone, leaving the sibling queue untouched.
+  enqueueRolePrompt(root, "director", "dir3");
+  assert.deepEqual(cancelListedPrompt(root, scope, 3), {
+    status: "cancelled",
+    role: "director",
+    outcome: { status: "cancelled", text: "dir3" },
+  });
   assert.equal(queuedFiles(root, "director").length, 2);
   assert.equal(queuedFiles(root, "feature-1").length, 2);
 });
