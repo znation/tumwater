@@ -107,6 +107,17 @@ export function applyRunOutcome(
 ): void {
   s.running = false;
   s.parkedSince = undefined;
+  applyRunStreaks(s, outcome);
+  recordCompletedOutcome(s, outcome);
+  scheduleRunAfterOutcome(s, cfg, role, outcome);
+  clearSpentConflictHandback(s, outcome);
+}
+
+/** Fold the finished run's outcome onto the role's streak counters and yield ring — the
+ * cut-off, error, quiet-kill and no-change streaks, plus the yield ring's record of the
+ * result. One helper per streak so "which outcomes grow which streak?" is answered by the
+ * arm's condition alone (split out of applyRunOutcome's body). */
+function applyRunStreaks(s: RunnerState, outcome: RunOutcome): void {
   // The cut-off streak counts EVERY consecutive run truncated at the context ceiling, past the
   // resume limit too: the next fresh run's prompt names how many attempts the window has eaten
   // (buildCutOffNote), so the count must not freeze at the limit. Any other outcome resets it.
@@ -146,6 +157,13 @@ export function applyRunOutcome(
   // stretches the role's min-run gap (yieldMultiplier, read by isEligible), an error-class
   // result is skipped entirely — no evidence either way (yield-scaled clocks, PLANS.md).
   pushYieldOutcome(s, outcome.result);
+}
+
+/** Record the completed result beside its summary (or stash a queued change's summary for
+ * applyMergeOutcome to pair with the merge's result), and clear the review phase — the
+ * "what does a completed run record beside its summary?" half of applyRunOutcome (split out
+ * of its body; the phase-clear and the summary-pair rules are the two jobs this stage does). */
+function recordCompletedOutcome(s: RunnerState, outcome: RunOutcome): void {
   // The review gate persists phase="review" around its run so a dashboard mid-review shows
   // "reviewing". A completed run clears it so the label never lingers — except an aborted
   // one: there the interruption hit mid-review, and the next launch must recover (and
@@ -173,6 +191,14 @@ export function applyRunOutcome(
     s.lastResult = outcome.result;
     s.lastSummary = outcome.summary; // a summary-less outcome wipes the prior run's text
   }
+}
+
+/** Schedule the role's next run from the finished run's outcome — which outcomes resume and
+ * which back off: the changed/queued minimum-interval arm, the rejected and skipped prompt
+ * retries, the aborted and quiet-killed resumes (and their bounds), the rate-limit and error
+ * backoffs, the cut-off resume ladder, and the observer and idle ladders (split out of
+ * applyRunOutcome's body; its ten-armed chain is the stage this helper holds whole). */
+function scheduleRunAfterOutcome(s: RunnerState, cfg: TumwaterConfig, role: string, outcome: RunOutcome): void {
   if (outcome.result === "changed" || outcome.result === "queued") {
     // "queued" schedules exactly like "changed" — the run committed and enqueued — but the
     // commit count waits for the merge: `commits` keeps meaning "merged to main", and
@@ -213,7 +239,7 @@ export function applyRunOutcome(
     // abandoned — the backend has refused to schedule it every attempt, so re-sending it only
     // starves the slot again — and the role takes a fresh run on the idle ladder instead
     // (BUGS.md 2026-09-18).
-    if (role !== DIRECTOR_ROLE && s.quietKillStreak <= QUIET_KILL_RESUME_LIMIT) {
+    if (role !== DIRECTOR_ROLE && (s.quietKillStreak ?? 0) <= QUIET_KILL_RESUME_LIMIT) {
       s.resumePending = true;
       s.resumeCause = outcome.resumeCause ?? "hung-tool";
       s.nextRunAt = Date.now();
@@ -246,7 +272,7 @@ export function applyRunOutcome(
       s.resumeCause = "rate-limit";
     }
     scheduleBackoff(s, ERROR_BACKOFF);
-  } else if (outcome.cutOff && role !== DIRECTOR_ROLE && s.cutOffStreak <= CUT_OFF_RESUME_LIMIT) {
+  } else if (outcome.cutOff && role !== DIRECTOR_ROLE && (s.cutOffStreak ?? 0) <= CUT_OFF_RESUME_LIMIT) {
     // Truncated at the context ceiling, not idle: the hour(s) of work survive in the
     // session pi just compacted, so resume it promptly instead of idle-backing-off.
     // Each resume restarts from the compacted (small) context, so repeated cut-offs on
@@ -266,6 +292,12 @@ export function applyRunOutcome(
   } else {
     scheduleBackoff(s, cfg.idleBackoff);
   }
+}
+
+/** Clear the conflict hand-back's record once it is spent — the "when is a conflict
+ * hand-back spent?" rule of applyRunOutcome (split out of its body; it runs after the
+ * resume branches have set `resumePending`, so it stays the last stage). */
+function clearSpentConflictHandback(s: RunnerState, outcome: RunOutcome): void {
   // A hand-back's marker-bearing edits ARE the resolution its author owes, so the record lives
   // only while that resolution is still in play: a `queued` run committed it, a pending
   // `revision` still owes it, and a resumable session still holds the edits. Every other
