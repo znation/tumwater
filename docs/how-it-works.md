@@ -210,7 +210,9 @@ never has to wait a parked check out.
   it; delete those refs once you no longer need the work. A run in flight keeps its claim until it settles. A change for the entry that is queued,
   or that reaches the queue later, is dropped unmerged (`withdrawn`) by its verify, or inside the
   merge lock if the entry goes after the verify.
-- `maxConcurrent` caps parallel runs and approvals together. Merges go first, then
+- `maxConcurrent` caps parallel runs and approvals together. Merges go first, then a red-main
+  heal run (a `ci` run whose inbox holds a heal prompt — healing main is work, so it is admitted
+  ahead of every queued role run even though `ci` otherwise schedules as maintenance), then
   work roles (feature, bugfix, plan), then maintenance roles.
 - **No merge interlock.** A role with a queued or in-flight change still authors on the next
   poll: the merge queue is not a scheduling gate, so landing never holds authoring. A fresh run

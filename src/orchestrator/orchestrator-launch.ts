@@ -19,6 +19,8 @@ import {
   type FallbackBreakerPolicy,
 } from "../budget/fallback-breaker.js";
 import { seamHoldKey, seamPairName } from "../config/config-views.js"
+import { runCarriesHealPrompt } from "../baseline/main-red.js"
+import { VERIFY_TIER } from "../merge/merge-author.js"
 import type { TeamGateStates } from "../gates/gate-polls.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
@@ -28,6 +30,7 @@ import { modelPairName } from "../budget/budget.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import { withRunPermit } from "../concurrency/run-permit.js";
 import { DIRECTOR_ROLE, roleTier } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { runTimedRoleRun } from "../run/run-timing.js";
 import type { RunOutcome } from "../run/run-outcome.js";
 
@@ -87,6 +90,13 @@ interface LaunchContext {
   /** The run semaphore's admission wait threshold (default PROVIDER_WAIT_EVENT_MS): a test
    * seam mirroring breakerNow — providerWaitMs: 0 forces every admission's wait to be logged. */
   providerWaitMs?: number;
+  /** The admission tier of a due run, by runner: the role's own scheduling tier, raised to
+   * VERIFY_TIER for a role whose inbox holds a red-main heal prompt — healing main is work, so
+   * the healer is admitted ahead of every parked role waiter even though its role otherwise
+   * schedules at tier 1 (BUGS.md 2026-11-05), the way a post-merge verification already is.
+   * Defaults to roleTier alone: the test seams and every pre-heal call site keep the
+   * historical behavior. */
+  runTier?: (runner: RoleRunner) => number;
   /** The start gate a waiter meets at permit time: the restart hold plus the failure hold
    * for role runs (the director is exempt, as at scheduling). */
   startHeld: (role: string) => boolean;
@@ -198,6 +208,7 @@ export function launchDueRuns(ctx: LaunchContext): void {
     directorInFlight,
     roleRunDurationsMs,
     startHeld,
+    runTier = (runner) => (baseRoleOf(runner.role) === "ci" && runCarriesHealPrompt(root, runner.role) ? VERIFY_TIER : roleTier(runner.role)),
   } = ctx;
   let admittedProbe = false;
   for (const runner of fairOrder([...reasons.keys()])) {
@@ -248,7 +259,7 @@ export function launchDueRuns(ctx: LaunchContext): void {
               // per-provider key or cap any more. Which cap holds the run is always the team
               // total.
               const admittedAt = Date.now();
-              lease = await semaphore.acquireLease(roleTier(runner.role));
+              lease = await semaphore.acquireLease(runTier(runner));
               // A wait of PROVIDER_WAIT_EVENT_MS or more for the team slot is
               // contention worth surfacing: name it so `tumwater doctor`'s provider
               // contention row can sum it and the operator can size maxConcurrent from real

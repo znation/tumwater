@@ -3491,6 +3491,21 @@ waiting, so a long red leaves ci one prompt", "a green main drops the waiting he
 reds it contains and keeps the rest", and "a failing set queues one heal prompt in any order,
 and queues another after main turns green".
 
+### INV-AZ6: a red-main heal run is admitted ahead of every parked role waiter
+
+**Guarantee.** A due role run whose inbox holds a red-main heal prompt waits at VERIFY_TIER in
+the team semaphore, ahead of every parked role waiter, even though its role (ci) otherwise
+schedules at tier 1 — so a red main is never left unhealed behind a full bench of long work runs
+(BUGS.md 2026-11-05), the way a post-merge verification already is. A due run whose inbox holds
+no heal prompt keeps its role's own tier and parks FIFO, so the heal run alone is the one
+admitted ahead of the parked waiters.
+
+**Binds.** `src/orchestrator/orchestrator-launch.ts` (`launchDueRuns`'s `runTier`); `src/baseline/main-red.ts`
+(`runCarriesHealPrompt`); `src/merge/merge-author.ts` (`VERIFY_TIER`).
+
+**Pinned by.** `test/orchestrator-launch.test.ts` — "a ci run that carries a heal prompt is admitted
+ahead of a parked tier-1 waiter; one that does not is not".
+
 ## Maintenance allowance: maintenance merges stop at the rolling-day allowance, counted from the event log
 
 `src/gates/maintenance-quota-gates.ts` caps code-maintenance merges in a rolling 24 h window:

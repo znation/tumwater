@@ -1,6 +1,6 @@
 import path from "node:path";
 import { baseRoleOf } from "../roles/runner-ids.js";
-import { enqueueRolePrompt, queuedRolePromptRecords } from "../inbox/inbox.js";
+import { enqueueRolePrompt, queuedRolePromptRecords, queuedRolePrompts } from "../inbox/inbox.js";
 import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { liveConfig } from "../config/config.js";
 import { mergeCommandOf, rerunCommandOf } from "../build/build-check-detect.js";
@@ -148,6 +148,24 @@ function rerunAdvice(command: string): string {
 /** How every heal prompt opens: mainRedHealPrompt writes it, and queuedHealPrompts recognizes a
  * waiting heal prompt in ci's inbox by it and reads back the SHA that follows. */
 const HEAL_PROMPT_OPENING = "Main was reported red at commit ";
+
+/** Whether a role run the orchestrator is about to admit carries a heal prompt — one queued
+ * by the red-main hand-off (mainRedHealPrompt, the watch's queueCulpritHeal, or a red
+ * discovered by any other path) is waiting in that role's inbox. Healing
+ * a red main is work: such a run must be admitted ahead of new work runs even though its role
+ * (ci) otherwise schedules at tier 1, so a red main is never left unhealed behind a full bench
+ * of long work runs (BUGS.md 2026-11-05). The launch pass reads this through the seam the
+ * semaphore's admission tier comes from (orchestrator-launch.ts's runTier), so the one that
+ * writes the heal prompt and the one that prioritizes it cannot drift. Only a role whose inbox
+ * holds a queued prompt can answer true; an empty inbox reads as holding none, like peek.
+ * Never throws: an inbox that cannot be listed reads as holding no heal prompt. */
+export function runCarriesHealPrompt(root: string, role: string): boolean {
+  try {
+    return queuedRolePrompts(root, role).some((text) => text.startsWith(HEAL_PROMPT_OPENING));
+  } catch {
+    return false;
+  }
+}
 
 /** The heal prompts waiting in ci's inbox, oldest first: each queue file's basename and the
  * short SHA it was reported red at. Every other prompt in the inbox (an operator's, a resume's
