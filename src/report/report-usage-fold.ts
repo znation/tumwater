@@ -373,14 +373,14 @@ function foldRunBackendShare(target: UsageFold, ev: HarnessEvent): void {
 /** Fold a run_end into the accumulator: a run (per role and, when the target counts runs, in
  * total), its output/prompt/cache tokens, its cost, and its notional backend share. */
 function foldRunEnd(target: UsageFold, ev: HarnessEvent, runModels?: Map<string, string>): void {
-  // The agent runs' per-provider spend (run-finalize.ts emits providerCost on run_end)
-  // — folded per provider beside the per-role maps, so a mixed team's `Cost by provider`
-  // line names the expensive seam.
   foldRunOutcomes(target, ev);
   foldRunUsage(target, ev);
   foldRunCosts(target, ev);
   foldRunModelAttribution(target, ev, runModels);
   foldRunBackendShare(target, ev);
+  // The agent runs' per-provider spend (run-finalize.ts emits providerCost on run_end)
+  // — folded per provider beside the per-role maps, so a mixed team's `Cost by provider`
+  // line names the expensive seam.
   foldProviderCost(target, ev.providerCost);
 }
 
