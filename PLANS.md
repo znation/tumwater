@@ -6,34 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Hourly full check, part 3b/4: While a red is open, each new head re-runs only its open failures; when none fail the red clears and one full run starts at once to confirm it (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md "Decision" 4; splitting the 2026-11-01 part 3/4 after feature held it too large for one run; requires "Hourly full check, part 3a/4 landed"; touches src/baseline/main-watch.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts)
-
-**Goal.** While main is red, a new head must not cost another full check. Each new head re-runs only the spell's open failing tests; a test that passes leaves the set, and when the set is empty the red closes as cleared, with one full run started at once so a healed main becomes deployable without waiting out the hour (user, 2026-11-01: "when fixing failures, re-run only the failed tests").
-
-**Approach.**
-- Carry the open failing set with the spell: extend `redSpellOpeners`'s value (or add a sibling map in src/baseline/main-watch.ts) from the opener SHA to the opener plus its remaining failing tests. The set starts from the confirmed red's tests and is keyed by root like the opener.
-- In `fullPass`, while a spell is open and a new head arrives, run one `rerun`-scope check of the open set with `rerunTests` on the `_main-full` mirror's new tip instead of `runBaselineCheck`. Tests that pass drop out; the rest settle a failed `main_check` at the spell's opener (no re-attribution). The run uses `CHECK_TIER.merge` like the confirmation rerun.
-- An empty set: log `main_check` `{ status: "passed", cleared: true }` through `mainCheckEvent`, which must write no full verdict to the baseline cache (so `redeployTarget`'s watched branch does not target the cleared head, and the hour's anchor stays the last real full verdict); clear the heal-dedup key with `clearHealKeyOnGreen`; delete the spell; then run the full check on that head immediately in the same pass (once per cleared red, bypassing the interval), so a green confirmation records the full verdict and a red one opens a new spell.
-- `knownMainFailures` and `onlyKnownMainFailures` read the open set while a spell is open, so a role's `<main-known-red>` note stops naming a test a later head showed passing.
-- Extend the `main_check` event's comment and payload in src/events/events.ts with `cleared: true`.
-- docs/how-it-works.md describes per-head narrowing and clearing. docs/invariants.md gains INV-DA4 directly after INV-DA3: an open red is narrowed and cleared by re-running only its failing tests, and a clearing starts one confirming full run; its **Binds** names the spell map and its **Pinned by** names the new tests.
-
-**Files touched.** src/baseline/main-watch.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-failures.test.ts test/main-watch-spells.test.ts
-
-**Acceptance criteria:**
-- While red, a new head runs one `rerun` of the open failures and no full run.
-- A test that passes on the new head leaves `knownMainFailures` (and the `<main-known-red>` note) on that head.
-- When every open test passes, `main_check` is `{ status: "passed", cleared: true }`, no full green is written, and a full run starts though the hour has not passed.
-- `redeployTarget` does not target the cleared head until that confirming full run is green.
-- A confirming full run that turns red opens a red spell on that head rather than leaving the cleared one open.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/main-watch-failures.test.ts: a new head re-runs only the open failures, and `knownMainFailures` drops a test that passes there; an empty set logs `cleared: true`.
-- test/main-watch-spells.test.ts: clearing closes the spell and starts the confirming full run though the hour has not passed; the confirming run's green makes the head deployable and its red opens a new spell.
-- test/main-watch.test.ts: the cleared head is not deployable before the confirming run.
-- Run those files and the gate.
-
 ### Hourly full check, part 4/4: Status, doctor and the dashboard say how old main's full verdict is and when the next is due (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires "Hourly full check, part 3b/4 landed"; touches src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/status-render.test.ts test/gui-client.test.ts)
 
 **Goal.** Main's badge stops implying the newest commit was fully checked. With the full check hourly, `mainCheckForPoll`'s status reads up to an hour behind main. Every surface that shows it says which SHA it covers, how long ago it ran, and when the next run is due (or "due now" after a cleared red).

@@ -84,6 +84,76 @@ test("a red tip is confirmed by re-running only its failing tests: the full chec
   );
 });
 
+test("a new head while red is open re-runs only the open failures and drops a passed test from knownMainFailures", async () => {
+  // Hourly full check, part 3b/4: a red spell is open and a new head arrives. The watch re-runs
+  // only the spell's open failures on the new tip — no full run — and a test that passes leaves
+  // the open set (and main's known failures) while the spell stays open.
+  const flag = path.join(tmpdir(), "red");
+  fs.writeFileSync(flag, "");
+  const counter = path.join(tmpdir(), "runs");
+  const log = path.join(tmpdir(), "rerun-args");
+  const { root } = baselineFixture(
+    "improve",
+    `echo run >> ${counter}; if [ -f ${flag} ]; then ${FAILING_OUTPUT}; exit 1; fi; echo ok`,
+  );
+  const rerunAt = (failing: readonly string[]): ReturnType<typeof defaultConfig> => {
+    const file = path.join(tmpdir(), `rerun-${failing.length}-${Math.random().toString(36).slice(2)}.sh`);
+    fs.writeFileSync(file, rerunScript(log, failing));
+    return { ...defaultConfig(), check: { command: "", rerunCommand: `sh ${file}` } };
+  };
+  const watch = createMainWatch(root, "main");
+  // 1. Open the red: the full check fails (flag set) and the confirming re-run fails all three.
+  watch.poll(headSha(root), false, rerunAt(["first", "second", "third"]));
+  await watch.idle();
+  assert.deepEqual(knownMainFailures(root), ["first", "second", "third"]);
+  const firstRuns = runsOf(counter);
+  assert.equal(firstRuns, 1, "one full run opened the red");
+  // 2. A new head (still red, the flag stays): re-runs only the open failures; first passes.
+  change(root, "a.txt", "a");
+  watch.poll(headSha(root), false, rerunAt(["second", "third"]));
+  await watch.idle();
+  assert.equal(runsOf(counter), firstRuns, "no full run on the narrowing head");
+  assert.deepEqual(knownMainFailures(root), ["second", "third"], "first, which passed, left the open set");
+  const narrowed = eventsOfType(root, "main_check").at(-1);
+  assert.equal(narrowed?.status, "failed");
+  assert.equal(narrowed?.cleared, undefined, "the re-check is a narrowing red, not a clear");
+  assert.deepEqual(narrowed?.failingTests, ["second", "third"]);
+  // 3. One more new head: only second and third re-run, no full run, both still fail.
+  change(root, "b.txt", "b");
+  watch.poll(headSha(root), false, rerunAt(["second", "third"]));
+  await watch.idle();
+  assert.equal(runsOf(counter), firstRuns, "still no full run: narrowing is per-head");
+  assert.deepEqual(knownMainFailures(root), ["second", "third"]);
+});
+
+test("a new head while red is open falls back to a full check when the open failures cannot be re-run alone", async () => {
+  // Hourly full check, part 3b/4: the open set cannot be narrowed (no re-run command on this
+  // config), so the head re-checks in full — pre-3b/4 behavior preserved for such projects.
+  const flag = path.join(tmpdir(), "red");
+  fs.writeFileSync(flag, "");
+  const counter = path.join(tmpdir(), "runs");
+  const log = path.join(tmpdir(), "rerun-args");
+  const { root } = baselineFixture(
+    "improve",
+    `echo run >> ${counter}; if [ -f ${flag} ]; then ${FAILING_OUTPUT}; exit 1; fi; echo ok`,
+  );
+  const watch = createMainWatch(root, "main");
+  // 1. Open the red with a re-run command so the confirming re-run is real.
+  watch.poll(headSha(root), false, rerunConfig(rerunScript(log, ["first", "second", "third"])));
+  await watch.idle();
+  assert.deepEqual(knownMainFailures(root), ["first", "second", "third"]);
+  const firstRuns = runsOf(counter);
+  assert.equal(firstRuns, 1);
+  // 2. A new head with NO re-run command: the open spell cannot narrow, so a full check runs.
+  change(root, "a.txt", "a");
+  watch.poll(headSha(root), false, defaultConfig());
+  await watch.idle();
+  // The fallback full check turns red, then — with no re-run command — is confirmed by a second
+  // full run (pre-3b/4 behavior), never a narrowing rerun.
+  assert.equal(runsOf(counter), firstRuns + 2, "the fallback is the full check plus its in-full confirmation");
+  assert.deepEqual(knownMainFailures(root), ["first", "second", "third"], "still failing in full, the open set stands");
+});
+
 test("a red whose failing tests all pass when re-run alone is recorded passed and quarantined", async () => {
   const counter = path.join(tmpdir(), "runs");
   const log = path.join(tmpdir(), "rerun-args");

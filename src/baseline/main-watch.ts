@@ -62,6 +62,11 @@ function mainCheckEvent(
    * which differs from the checked tip only when the tip is doc-exempt; undefined otherwise.
    * A green or a re-check of an open spell keeps the tip (baseline.sha). */
   sha?: string,
+  /** True when this pass cleared an open red by re-running only its failing tests (part 3b/4):
+   * a `{ status: "passed", cleared: true }` main_check with ran=false — no full verdict is
+   * written, so the hour's anchor stays the last real full verdict and redeployTarget does not
+   * target the cleared head until the confirming full run lands. */
+  cleared = false,
 ): {
   source: typeof TUMWATER_SOURCE;
   type: "main_check";
@@ -71,6 +76,7 @@ function mainCheckEvent(
   covered: number;
   failingTests?: string[];
   quarantined?: readonly string[];
+  cleared?: boolean;
   inherited?: boolean;
 } {
   return {
@@ -82,6 +88,7 @@ function mainCheckEvent(
     covered,
     ...(red ? { failingTests: baseline.failingTests ?? [] } : {}),
     ...(quarantined ? { quarantined } : {}),
+    ...(cleared ? { cleared: true } : {}),
     ...(baseline.inheritedFrom !== undefined ? { inherited: true } : {}),
   };
 }
@@ -127,21 +134,43 @@ interface MainWatch {
 /** The failing tests of each root's newest watch verdict, keyed by root. */
 const knownFailures = new Map<string, string[]>();
 
-/** The commit each root's red spell was opened at, keyed by root — the tip of the first red
- * verdict since the last green. It stays the named culprit while the spell is open: a later tip
- * re-checks red (the red never inherits across a doc commit) but did not open it, so it is not
- * re-attributed. A green verdict clears it, so a red that opens after a green names its own
- * opener. In-memory only: a restart mid-red loses the spell's opener, and the next settled red
- * tip then names itself as culprit — the pre-fix behaviour, and a bounded one (one tip per
- * restart, since a spell's later tips inherit the red and settle without a re-run). */
-const redSpellOpeners = new Map<string, string>();
+/** Each root's open red spell (Hourly full check, part 3b/4): the commit that OPENED the red —
+ * the tip of the first red verdict since the last green — and the failing tests STILL open on
+ * the newest red tip. The open set starts from the confirmed red's tests and narrows as a later
+ * head's re-run shows tests passing, so a healed test leaves the set (and `knownMainFailures`)
+ * before the whole set clears. The opener stays the named culprit while the spell is open: a
+ * later tip re-checks only the open set and never re-attributes. A green verdict clears the
+ * whole entry, so a red that opens after a green names its own opener. In-memory only: a
+ * restart mid-red loses the spell's opener, and the next settled red tip then names itself as
+ * culprit — the pre-fix behaviour, and a bounded one (one tip per restart, since a spell's
+ * later tips inherit the red and settle without a re-run). */
+interface OpenRedSpell {
+  opener: string;
+  tests: string[];
+  /** The file each open test lives in, from the latest red baseline that named it — what a
+   * re-run of only those tests selects files by (build-check-rerun.ts). Red only; absent when
+   * the output named no file or a previous re-run dropped it. */
+  files?: Readonly<Record<string, string>>;
+}
+const redSpellOpeners = new Map<string, OpenRedSpell>();
 
-/** Main's known failures: the failing tests of the watch's newest verdict — main's tip, or the
- * nearest tip it checked while the newest head waits — and every quarantined flaky test
- * (review/known-flakes.ts). Empty when the verdict is green, red with no parsed test, or none has
- * been recorded yet in this process, and nothing is quarantined. */
+/** The open failing tests of `root`'s red spell: empty when no spell is open (a green, or none
+ * ever opened). A red's <main-known-red> note reads this so a test a later head showed passing
+ * leaves the set while the spell is still open. */
+function openRedTests(root: string): string[] {
+  return redSpellOpeners.get(root)?.tests ?? [];
+}
+
+/** Main's known failures: while a red spell is open, the spell's remaining open failing tests —
+ * narrowed on every new head by re-running only them, so a test a later head showed passing
+ * stops being named before the whole red clears (part 3b/4). With no spell open, the failing
+ * tests of the watch's newest verdict (the knownFailures map). Either way plus every quarantined
+ * flaky test (review/known-flakes.ts). Empty when the verdict is green, red with no parsed test,
+ * or none has been recorded yet in this process, and nothing is quarantined. */
 export function knownMainFailures(root: string): string[] {
-  return distinctOrdered([...(knownFailures.get(root) ?? []), ...quarantinedTests(root)]);
+  const open = openRedTests(root);
+  const base = open.length > 0 ? open : (knownFailures.get(root) ?? []);
+  return distinctOrdered([...base, ...quarantinedTests(root)]);
 }
 
 /** The failing tests of a failed check when every one of them is a known main failure; null when
@@ -544,7 +573,11 @@ export function createMainWatch(
     // first) is not re-attributed — no new event, no new heal prompt (the heal dedup already
     // re-queues when the failing set returns after a green).
     if (redSpellOpeners.has(root)) return;
-    redSpellOpeners.set(root, culprit);
+    redSpellOpeners.set(root, {
+      opener: culprit,
+      tests: baseline.failingTests ?? [],
+      ...(baseline.failingTestFiles ? { files: baseline.failingTestFiles } : {}),
+    });
     const runner = mergingRoleOf(root, culprit);
     logEventBestEffort(root, {
       source: TUMWATER_SOURCE,
@@ -603,6 +636,18 @@ export function createMainWatch(
         fullCheckBase = plan.anchorSha;
         return;
       }
+      // A spell already open (part 3b/4): a new head re-runs only the open failures on the
+      // `_main-full` mirror's new tip instead of the full check. A test that passes leaves the
+      // open set; when none fail the red clears as `{ status: "passed", cleared: true }` with
+      // no full verdict written, and one full run starts at once on this head to confirm it.
+      // When the open failures cannot be re-run alone (no re-run command, a cut-off list, or a
+      // re-run that reaches no verdict), `narrowOpenRed` returns false and the head falls through
+      // to the normal full-check path below — the pre-part-3b/4 behaviour, so a project without
+      // a re-run command still re-checks every red head in full.
+      const spell = redSpellOpeners.get(root);
+      if (spell !== undefined && (await narrowOpenRed(wt, tip, spell, config))) {
+        return;
+      }
       const started = Date.now();
       const { check, ran } = await runBaselineCheck(wt, config);
       const baseline = check.baseline;
@@ -630,6 +675,10 @@ export function createMainWatch(
       // commit above it — is named even when it is not the checked tip. A re-check of an
       // already-open spell keeps the tip's sha (INV-AZ4: the re-check re-checks without
       // re-attributing).
+      // A spell still open (the narrowing fell back to a full check) re-settles red without
+      // re-attributing: the opener guard below keeps the spell's own opener (INV-AZ4). A fresh
+      // red (no spell open) names the breaker; the confirming run inside narrowOpenRed runs with
+      // the spell already deleted, so it too names its own opener.
       const opener = redSpellOpeners.has(root)
         ? undefined
         : await settleOpener(wt, baseline.sha, coveredFrom, config, baseline.failingTests ?? [], baseline.failingTestFiles);
@@ -650,9 +699,92 @@ export function createMainWatch(
       // re-naming the culprit (BUGS.md 2026-10-30 mis-attribution). The map holds the open
       // spell's opener, so a second red while the spell is still open re-checks without
       // re-naming; a green clears the entry (above) so a later red names its own opener.
-      if (redSpellOpeners.has(root)) return;
       reportCulprit(baseline, opener ?? baseline.sha);
     });
+  }
+
+  /** While `root`'s red spell is open (part 3b/4): re-run only the spell's remaining open
+   * failing tests on the new head `tip` — no full run. A test that passes on this head leaves
+   * the open set (and `knownMainFailures`); when none fail, the red clears: a
+   * `{ status: "passed", cleared: true }` main_check with no full verdict written, the spell
+   * deleted, and one full run started at once on this head to confirm it. When the re-run
+   * reaches no verdict (no re-run command, a cut-off list, or a skipped run), the head counts
+   * as watched with no change to the spell. Never throws. */
+  async function narrowOpenRed(
+    wt: string,
+    tip: string,
+    spell: OpenRedSpell,
+    config: TumwaterConfig,
+  ): Promise<boolean> {
+    const before = lastWatched;
+    lastWatched = tip;
+    fullCheckDueAt = undefined;
+    fullCheckBase = undefined;
+    const rerun = await rerunTests(root, TUMWATER_SOURCE, wt, config, spell.tests, spell.files, CHECK_TIER.merge);
+    if (rerun === null) return false; // cannot narrow: the caller re-checks in full
+    const stillFailing = spell.tests.filter((t) => rerun.failing.includes(t));
+    if (stillFailing.length > 0) {
+      // The spell stays open, narrowed: a passing test leaves the open set and the read of main's
+      // known failures. The failing tests obey the spell's own opener attribution — no
+      // re-attribution, no new culprit — and `redSpellOpeners` keeps the opener.
+      redSpellOpeners.set(root, { ...spell, tests: stillFailing });
+      knownFailures.set(root, stillFailing);
+      logEventBestEffort(root, mainCheckEvent(
+        { status: "red", sha: tip, failingTests: stillFailing },
+        true, // red
+        null, // quarantined
+        1,
+        0, // a re-run, not a full run: no durationMs to print
+        spell.opener,
+      ));
+      return true;
+    }
+    // Every open test passed on this head: the red clears. Record a passed main_check with
+    // `cleared: true` that writes no full verdict (so redeployTarget does not target this head
+    // and the hour's anchor stays the last real full verdict), clear the heal-dedup key, drop
+    // the heal prompts still waiting for this red, delete the spell, and start one confirming
+    // full run at once on this head.
+    const covered = await countCovered(wt, before, tip);
+    knownFailures.set(root, []);
+    redSpellOpeners.delete(root);
+    logEventBestEffort(root, mainCheckEvent({ status: "green", sha: tip }, false, null, covered, 0, undefined, true));
+    clearHealKeyOnGreen();
+    await dropHealPromptsCoveredBy(root, wt, tip);
+    // One confirming full run, once per cleared red, bypassing the interval: the `_main-full`
+    // mirror (`wt`) already holds this head, so run the declared check on it directly — no nested
+    // withFullMainTipWorktree (which would queue behind this very pass).
+    if (detectBuildCheck(root, config)) {
+      const { check: confirmCheck } = await runBaselineCheck(wt, config);
+      const confirmBaseline = confirmCheck.baseline;
+      if (!confirmBaseline) return true; // no verdict: leave the cleared red standing, watched
+      lastWatched = confirmBaseline.sha;
+      fullCheckDueAt = undefined;
+      fullCheckBase = undefined;
+      const confirmedOpener = await settleOpener(
+        wt,
+        confirmBaseline.sha,
+        tip,
+        config,
+        confirmBaseline.failingTests ?? [],
+        confirmBaseline.failingTestFiles,
+      );
+      const confirmRed = await recordMainCheck(
+        wt,
+        confirmBaseline,
+        tip,
+        true,
+        Date.now(),
+        confirmedOpener,
+      );
+      if (!confirmRed) {
+        clearHealKeyOnGreen();
+        await dropHealPromptsCoveredBy(root, wt, confirmBaseline.sha);
+        redSpellOpeners.delete(root);
+        return true;
+      }
+      reportCulprit(confirmBaseline, confirmedOpener ?? confirmBaseline.sha);
+    }
+    return true; // the open red was narrowed or cleared on this head
   }
 
   return {

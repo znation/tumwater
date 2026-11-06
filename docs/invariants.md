@@ -3464,9 +3464,17 @@ intermediate breaker. That same opener is named in the `main_culprit` event AND 
 of the spell's first-red `main_check`, so G1's "red since <sha>", the dashboard red detail and
 ci's heal prompt all name the breaker. While a red spell is open, a tip that re-settles red
 re-checks the suite without re-naming the culprit and its `main_check` keeps its own tip sha (no
-re-attribution); a green closes the spell, so the next red names its own opener. The G1 clause and
-the dashboard red detail publish a blame whose commit is the spell's opener or its newest red tip,
-so a red re-checked on a later tip keeps naming the opener instead of dropping or moving its blame.
+re-attribution); a green closes the spell, so the next red names its own opener. While a red
+spell is open, a new head re-runs ONLY the spell's still-open failing tests — never the full
+check — and a test that passes leaves the open set (and main's known failures), narrowing the
+spell to the tests that failed again. When none of the open tests fail, the red clears: the
+watch logs one `main_check` with `status: "passed"` and `cleared: true` (no full verdict written,
+`durationMs` 0, so the cleared head is not yet deployable) and starts one confirming full run at
+once on that head; its verdict decides the head. If the open tests cannot be re-run alone (no
+re-run command, a cut-off failing list, or a re-run that reaches no verdict), the head falls back
+to a full check instead, preserving the pre-narrowing behavior. The G1 clause and the dashboard
+red detail publish a blame whose commit is the spell's opener or its newest red tip, so a red
+re-checked on a later tip keeps naming the opener instead of dropping or moving its blame.
 
 **Binds.** `src/baseline/main-watch.ts` (`settleOpener`, `redOpener`, `reportCulprit`, the `redSpellOpeners` map),
 `src/baseline/main-guardrails.ts` (`redBlameClause`), `src/status/status-polls.ts`
@@ -3474,8 +3482,11 @@ so a red re-checked on a later tip keeps naming the opener instead of dropping o
 
 **Pinned by.** `test/main-watch-spells.test.ts` — "a doc-exempt tip that lands after a red
 keeps the opener as the named culprit", "a settled green closes the red spell, so the next red
-names its own opener" and "a doc-exempt tip on top of a code commit that broke main names the
-code commit as the opener"; `test/main-watch.test.ts` — "a multi-commit batch whose breaker is
+names its own opener", "an open red is cleared with a cleared main_check and confirmed by one full run starting at
+once" and "a doc-exempt tip on top of a code commit that broke main names the
+code commit as the opener"; `test/main-watch-failures.test.ts` — "a new head while red is open re-runs only the open
+failures and drops a passed test from knownMainFailures" and "a new head while red is open falls
+back to a full check when the open failures cannot be re-run alone"; `test/main-watch.test.ts` — "a multi-commit batch whose breaker is
 intermediate names the breaking commit, not the newest tip", "a quarantined-only red in a batch is
 a green boundary, so the later real breaker is named" and "a checkout that fails mid-walk stops
 with the newest red already held"; `test/main-guardrails.test.ts` —

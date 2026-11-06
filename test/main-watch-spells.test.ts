@@ -207,3 +207,61 @@ test("a green that closes the open red lets a later red name its own opener agai
   assert.equal(culprits[1]?.commit, red2);
   assert.notEqual(red2, green1);
 });
+
+/** A rerun config that fails the named tests (fixture titles) and logs its arguments. The watch's
+ * rule (part 3b/4) is that the built check itself is the source of truth on the confirming head;
+ * the rerun here only ever names the open tests. */
+function rerunScriptOf(failing: readonly string[]): string {
+  const cases = failing.map((t) => `*#${t}) echo '✖ ${t} (1ms)'; fail=1;;`).join(" ");
+  return `for a in "$@"; do case "$a" in ${cases} *) ;; esac; done; exit \${fail:-0}\n`;
+}
+
+function rerunConfig(script: string): ReturnType<typeof defaultConfig> {
+  const file = path.join(tmpdir(), `rerun-${Math.random().toString(36).slice(2)}.sh`);
+  fs.writeFileSync(file, script);
+  return { ...defaultConfig(), check: { command: "", rerunCommand: `sh ${file}` } };
+}
+
+/** A project whose check and rerun both read a committed flag: the check fakes the full suite
+ * failing while the flag is tracked, and passes on the confirming head once the flag is gone.
+ * The rerun fails whatever `failing` names on a head that still has the flag. */
+test("an open red is cleared with a cleared main_check and confirmed by one full run starting at once", async () => {
+  // Hourly full check, part 3b/4: the spell's open failures all pass on a new head (the fix
+  // lands), the red clears as `{ status: "passed", cleared: true }` — no full verdict written,
+  // so the head is not yet deployable — and one confirming full run starts at once on that head
+  // to confirm it. That confirming run's green makes the head deployable.
+  const flag = path.join(tmpdir(), "spell-flag");
+  fs.writeFileSync(flag, "");
+  const counter = path.join(tmpdir(), "spell-runs");
+  const { root } = baselineFixture(
+    "improve",
+    `echo run >> ${counter}; if [ -f ${flag} ]; then ${FAILING_OUTPUT}; exit 1; fi; echo ok`,
+  );
+  const watch = createMainWatch(root, "main");
+  // 1. Open the red: the full check fails (flag set) and its confirming re-run fails all three.
+  watch.poll(headSha(root), false, rerunConfig(rerunScriptOf(["first", "second", "third"])));
+  await watch.idle();
+  assert.deepEqual(eventsOfType(root, "main_culprit")[0]?.failingTests, ["first", "second", "third"]);
+  assert.equal(runsOf(counter), 1);
+  // 2. The fix lands (flag removed): a new head re-runs only the open failures. With the flag
+  // gone the rerun finds none failing, so the red clears and one confirming full run starts.
+  fs.rmSync(flag);
+  change(root, "fix.txt", "fix");
+  watch.poll(headSha(root), false, rerunConfig(rerunScriptOf([])));
+  await watch.idle();
+  const checks = eventsOfType(root, "main_check");
+  assert.equal(checks.filter((c) => c.cleared === true).length, 1, "exactly one cleared main_check");
+  const cleared = checks.find((c) => c.cleared === true);
+  assert.equal(cleared?.status, "passed");
+  assert.equal(cleared?.cleared, true);
+  assert.equal(cleared?.durationMs, 0, "a clear is a re-run, not a full verdict: no duration to print");
+  // The confirming full run ran at once (one more full run) and recorded a real green.
+  assert.equal(runsOf(counter), 2, "the confirming full run started at once");
+  const confirm = checks.at(-1);
+  assert.notEqual(confirm?.cleared, true, "the confirming green is a real full verdict");
+  assert.equal(confirm?.status, "passed");
+});
+
+function runsOf(file: string): number {
+  return Number((fs.readFileSync(file, "utf8").match(/run/g) ?? []).length);
+}

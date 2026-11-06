@@ -315,7 +315,12 @@ never has to wait a parked check out.
   red is confirmed once before it counts — by re-running only its failing tests when the project
   declares a re-run command (`check.rerunCommand`, or an npm `test:rerun` script), else the whole
   check; a doc-only tip inherits its green). The heal prompt and ci's `<main-red>` note name that
-  re-run command, so the healer reproduces and verifies only the failing tests. It logs a `main_check` event with the failing test titles and
+  re-run command, so the healer reproduces and verifies only the failing tests. While a red is
+  open, a new head re-runs only the spell's still-failing tests — never the full check — so an
+  hour of red repairs narrows the spell as each failing test passes; when none of the open tests
+  fail the red clears as a `main_check` with `cleared: true` and `durationMs` 0 (no full verdict
+  written, so the head is not yet deployable) and one confirming full run starts at once on that
+  head (Hourly full check part 3b/4). It logs a `main_check` event with the failing test titles and
   saves reds beside the greens in `.tumwater/state/baseline-verdicts.json`. On a red tip it also
   names the commit that opened the red as the culprit — bisecting the first-parent commits since
   the newest full green and re-running only the failing tests at each candidate (Hourly full check
