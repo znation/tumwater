@@ -14,7 +14,7 @@ import { refSha, setRef } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
-import { mainSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
+import { mainSha, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, batchWiring, declareCheck, makeCtx, request } from "./fixtures/merger-fixtures.js";
 
@@ -130,8 +130,13 @@ test("the merge lock drops a change whose plan main deleted after its verify app
 });
 
 test("an ungated merge drops a withdrawn change before its gate runs: no gate, nothing merges", async () => {
+  const rec = path.join(tmpdir("merge-withdrawn-gate-"), "seen");
   await withPi(APPROVE_PI, async () => {
     const { root, sha } = await pinnedPlanChange();
+    // The declared check logs every run: a line would prove the gate started on the withdrawn
+    // change, so the log's absence is the proof this path drops it before the gate (the in-lock
+    // withdrawn check would otherwise reach the same outcome after a gate ran and hid the order).
+    declareCheck(root, `#!/bin/sh\ngit rev-parse HEAD >> ${rec}\necho ok\n`);
     const withdrawnMain = withdrawBeta(root);
     const state = freshRunnerState(ROLE);
     const { ctx } = makeCtx(root, state);
@@ -142,6 +147,7 @@ test("an ungated merge drops a withdrawn change before its gate runs: no gate, n
     assert.equal(result, "withdrawn");
     assert.equal(mainSha(root), withdrawnMain, "main did not move");
     assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the pin is gone");
+    assert.ok(!fs.existsSync(rec), "no gate run: the check never logged a head");
     assert.equal(state.lastError, `withdrawn — ${WITHDRAWN_WARNING}`);
     assert.deepEqual(warningMessages(root), [WITHDRAWN_WARNING]);
   });
