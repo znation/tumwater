@@ -211,99 +211,154 @@ function canResumeCutOff(s: RunnerState, role: string, outcome: RunOutcome): boo
  * backoffs, the cut-off resume ladder, and the observer and idle ladders (split out of
  * applyRunOutcome's body; its ten-armed chain is the stage this helper holds whole). */
 function scheduleRunAfterOutcome(s: RunnerState, cfg: TumwaterConfig, role: string, outcome: RunOutcome): void {
-  if (outcome.result === "changed" || outcome.result === "queued") {
-    // "queued" schedules exactly like "changed" — the run committed and enqueued — but the
-    // commit count waits for the merge: `commits` keeps meaning "merged to main", and
-    // applyMergeOutcome increments it when the change actually merges. The phase-clear above
-    // (`result !== "aborted"`) covers both.
-    if (outcome.result === "changed") s.commits += 1;
-    // The role committed new work, so the note about its discarded change has been delivered.
-    s.conflictDiscard = undefined;
-    s.backoffSeconds = 0;
-    scheduleAtMinInterval(s, cfg);
-  } else if (outcome.result === "rejected") {
-    // The reviewer objected and the gate already reset the branch: the author should address
-    // the recorded reasons on its next eligible run, not sleep through them — schedule like
-    // a change without counting a commit (nothing merged).
-    s.backoffSeconds = 0;
-    scheduleAtMinInterval(s, cfg);
-  } else if (outcome.result === "skipped") {
-    // Director idles until the inbox has work; no backoff bookkeeping.
-    scheduleAtMinInterval(s, cfg);
-  } else if (outcome.result === "aborted") {
-    // Shutdown, not a verdict about the project: resume promptly on restart. The pi
-    // session and the worktree's uncommitted edits were left in place, so the next run
-    // picks up exactly where this one was interrupted (director runs instead re-queue
-    // their user prompt, which runs fresh).
-    if (role !== DIRECTOR_ROLE) {
-      s.resumePending = true;
-      // A budget handback names its own cause (the bridge prompt must say the model moved,
-      // not that the harness restarted); a plain shutdown's stays derived.
-      if (outcome.resumeCause) s.resumeCause = outcome.resumeCause;
-    }
-    s.nextRunAt = Date.now();
-  } else if (outcome.result === "quiet_killed") {
-    // A hung tool call, not an idle verdict or a shutdown: the kill left the pi session and
-    // the worktree's uncommitted edits intact, so resume them promptly like an interruption.
-    // The cause is named in state so the bridge prompt tells the resumed session its run died
-    // on a stalled tool call (director runs never resume — their prompt was re-queued fresh).
-    // Bounded like a cut-off streak: past QUIET_KILL_RESUME_LIMIT the session is
-    // abandoned — the backend has refused to schedule it every attempt, so re-sending it only
-    // starves the slot again — and the role takes a fresh run on the idle ladder instead
-    // (BUGS.md 2026-09-18).
-    if (canResumeQuietKill(s, role)) {
-      s.resumePending = true;
-      s.resumeCause = outcome.resumeCause ?? "hung-tool";
-      s.nextRunAt = Date.now();
-    } else if (role !== DIRECTOR_ROLE) {
-      s.resumePending = false;
-      s.resumeCause = undefined;
-      scheduleBackoff(s, cfg.idleBackoff);
-    } else {
-      s.nextRunAt = Date.now();
-    }
-  } else if (outcome.result === "user_aborted") {
-    // A deliberate stop, not an interruption: the worktree was already reset to main and a
-    // director prompt deliberately dropped, so there is nothing to resume — schedule like an
-    // unproductive run (idle backoff) instead of resuming promptly. phase is cleared by the
-    // `result !== "aborted"` check above.
-    scheduleBackoff(s, cfg.idleBackoff);
-  } else if (outcome.result === "error") {
-    // A failed run, not an idle verdict: it often never reached the model, so it retries on
-    // the short error ladder (capped in minutes) instead of the idle ladder, whose cap prices
-    // hour-long model runs. backoffSeconds is shared: each ladder advances from the current
-    // value, so an error streak capped at the error ceiling never sleeps LESS than the role
-    // already was sleeping, and the idle ladder picks up from there if the failures stop.
-    // A subscription claude usage-window rejection is a transient hold, not a failure of the
-    // session: the team hold keeps runs from starting until `resetsAt` (plans/agent-backends.md
-    // §8, part 6c), and the kept session and worktree edits resume when it lifts (part 6e).
-    // The named cause is what the bridge prompt reads, so it does not tell the session the
-    // harness merely restarted.
-    if (outcome.resumeCause === "rate-limit" && role !== DIRECTOR_ROLE) {
-      s.resumePending = true;
-      s.resumeCause = "rate-limit";
-    }
-    scheduleBackoff(s, ERROR_BACKOFF);
-  } else if (canResumeCutOff(s, role, outcome)) {
-    // Truncated at the context ceiling, not idle: the hour(s) of work survive in the
-    // session pi just compacted, so resume it promptly instead of idle-backing-off.
-    // Each resume restarts from the compacted (small) context, so repeated cut-offs on
-    // one task still converge — but a task that outruns the ceiling every single time
-    // would cycle forever, so after CUT_OFF_RESUME_LIMIT resumes the role gives up on it
-    // and falls back to a fresh run with normal backoff (its prompt carrying the streak).
+  if (outcome.result === "changed" || outcome.result === "queued") scheduleCompletedOutcome(s, cfg, outcome);
+  else if (outcome.result === "rejected") scheduleRejectedOutcome(s, cfg);
+  else if (outcome.result === "skipped") scheduleSkippedOutcome(s, cfg);
+  else if (outcome.result === "aborted") scheduleAbortedOutcome(s, role, outcome);
+  else if (outcome.result === "quiet_killed") scheduleQuietKilledOutcome(s, cfg, role, outcome);
+  else if (outcome.result === "user_aborted") scheduleUserAbortedOutcome(s, cfg);
+  else if (outcome.result === "error") scheduleErrorOutcome(s, role, outcome);
+  else if (canResumeCutOff(s, role, outcome)) scheduleCutOffOutcome(s, cfg);
+  else if (OBSERVER_ROLES.has(baseRoleOf(role))) scheduleObserverOutcome(s, cfg);
+  else scheduleIdleOutcome(s, cfg);
+}
+
+/** Schedule a role that just committed or enqueued new work — the "changed"/"queued" arm:
+ * a change is the least idle outcome, so the role runs again at the minimum interval with its
+ * backoff ladder reset (the commit count itself waits for the merge; see applyMergeOutcome). */
+function scheduleCompletedOutcome(s: RunnerState, cfg: TumwaterConfig, outcome: RunOutcome): void {
+  // "queued" schedules exactly like "changed" — the run committed and enqueued — but the
+  // commit count waits for the merge: `commits` keeps meaning "merged to main", and
+  // applyMergeOutcome increments it when the change actually merges. The phase-clear above
+  // (`result !== "aborted"`) covers both.
+  if (outcome.result === "changed") s.commits += 1;
+  // The role committed new work, so the note about its discarded change has been delivered.
+  s.conflictDiscard = undefined;
+  s.backoffSeconds = 0;
+  scheduleAtMinInterval(s, cfg);
+}
+
+/** Schedule a role whose change the review gate rejected — the "rejected" arm: address the
+ * recorded reasons on the next eligible run, promptly, without counting a commit. */
+function scheduleRejectedOutcome(s: RunnerState, cfg: TumwaterConfig): void {
+  // The reviewer objected and the gate already reset the branch: the author should address
+  // the recorded reasons on its next eligible run, not sleep through them — schedule like
+  // a change without counting a commit (nothing merged).
+  s.backoffSeconds = 0;
+  scheduleAtMinInterval(s, cfg);
+}
+
+/** Schedule a role whose run was skipped — the "skipped" arm: the director idles at the
+ * minimum interval until the inbox has work; no backoff bookkeeping. */
+function scheduleSkippedOutcome(s: RunnerState, cfg: TumwaterConfig): void {
+  // Director idles until the inbox has work; no backoff bookkeeping.
+  scheduleAtMinInterval(s, cfg);
+}
+
+/** Schedule a role whose run was aborted mid-flight — the "aborted" arm: a shutdown is not a
+ * verdict about the project, so non-director roles resume their session promptly (a director
+ * re-queues its user prompt, which runs fresh). */
+function scheduleAbortedOutcome(s: RunnerState, role: string, outcome: RunOutcome): void {
+  // Shutdown, not a verdict about the project: resume promptly on restart. The pi
+  // session and the worktree's uncommitted edits were left in place, so the next run
+  // picks up exactly where this one was interrupted (director runs instead re-queue
+  // their user prompt, which runs fresh).
+  if (role !== DIRECTOR_ROLE) {
     s.resumePending = true;
-    scheduleAtMinInterval(s, cfg);
-  } else if (OBSERVER_ROLES.has(baseRoleOf(role))) {
-    // An observer's no_change is a success ("checked, all well"), not an idle verdict: it must
-    // not climb the idle ladder, which would punish the role monotonically for the product
-    // being healthy. With no ladder, minRunIntervalSeconds is the sole, honest cadence
-    // (plans/observer-roles.md). The error/user_aborted arms above are untouched — a broken
-    // toolchain and a deliberate operator stop still back off like any other role.
-    s.backoffSeconds = 0;
-    scheduleAtMinInterval(s, cfg);
-  } else {
-    scheduleBackoff(s, cfg.idleBackoff);
+    // A budget handback names its own cause (the bridge prompt must say the model moved,
+    // not that the harness restarted); a plain shutdown's stays derived.
+    if (outcome.resumeCause) s.resumeCause = outcome.resumeCause;
   }
+  s.nextRunAt = Date.now();
+}
+
+/** Schedule a role the quiet watchdog killed — the "quiet_killed" arm: resume the intact
+ * session within QUIET_KILL_RESUME_LIMIT, abandon it past the limit (fresh run on the idle
+ * ladder), and never resume a director. */
+function scheduleQuietKilledOutcome(s: RunnerState, cfg: TumwaterConfig, role: string, outcome: RunOutcome): void {
+  // A hung tool call, not an idle verdict or a shutdown: the kill left the pi session and
+  // the worktree's uncommitted edits intact, so resume them promptly like an interruption.
+  // The cause is named in state so the bridge prompt tells the resumed session its run died
+  // on a stalled tool call (director runs never resume — their prompt was re-queued fresh).
+  // Bounded like a cut-off streak: past QUIET_KILL_RESUME_LIMIT the session is
+  // abandoned — the backend has refused to schedule it every attempt, so re-sending it only
+  // starves the slot again — and the role takes a fresh run on the idle ladder instead
+  // (BUGS.md 2026-09-18).
+  if (canResumeQuietKill(s, role)) {
+    s.resumePending = true;
+    s.resumeCause = outcome.resumeCause ?? "hung-tool";
+    s.nextRunAt = Date.now();
+  } else if (role !== DIRECTOR_ROLE) {
+    s.resumePending = false;
+    s.resumeCause = undefined;
+    scheduleBackoff(s, cfg.idleBackoff);
+  } else {
+    s.nextRunAt = Date.now();
+  }
+}
+
+/** Schedule a role the operator deliberately stopped — the "user_aborted" arm: the worktree
+ * was already reset and the director prompt dropped, so back off like an unproductive run. */
+function scheduleUserAbortedOutcome(s: RunnerState, cfg: TumwaterConfig): void {
+  // A deliberate stop, not an interruption: the worktree was already reset to main and a
+  // director prompt deliberately dropped, so there is nothing to resume — schedule like an
+  // unproductive run (idle backoff) instead of resuming promptly. phase is cleared by the
+  // `result !== "aborted"` check above.
+  scheduleBackoff(s, cfg.idleBackoff);
+}
+
+/** Schedule a role whose run failed — the "error" arm: retry on the short error ladder, and
+ * hold the run on the team's subscription hold when the failure was a usage-window rate limit
+ * (the kept session resumes when the hold lifts, instead of retrying in-place). */
+function scheduleErrorOutcome(s: RunnerState, role: string, outcome: RunOutcome): void {
+  // A failed run, not an idle verdict: it often never reached the model, so it retries on
+  // the short error ladder (capped in minutes) instead of the idle ladder, whose cap prices
+  // hour-long model runs. backoffSeconds is shared: each ladder advances from the current
+  // value, so an error streak capped at the error ceiling never sleeps LESS than the role
+  // already was sleeping, and the idle ladder picks up from there if the failures stop.
+  // A subscription claude usage-window rejection is a transient hold, not a failure of the
+  // session: the team hold keeps runs from starting until `resetsAt` (plans/agent-backends.md
+  // §8, part 6c), and the kept session and worktree edits resume when it lifts (part 6e).
+  // The named cause is what the bridge prompt reads, so it does not tell the session the
+  // harness merely restarted.
+  if (outcome.resumeCause === "rate-limit" && role !== DIRECTOR_ROLE) {
+    s.resumePending = true;
+    s.resumeCause = "rate-limit";
+  }
+  scheduleBackoff(s, ERROR_BACKOFF);
+}
+
+/** Schedule a run truncated at the context ceiling — the "cut_off" arm: resume the compacted
+ * session promptly within CUT_OFF_RESUME_LIMIT; past it the role gives up on the task and the
+ * next fresh run carries the streak. */
+function scheduleCutOffOutcome(s: RunnerState, cfg: TumwaterConfig): void {
+  // Truncated at the context ceiling, not idle: the hour(s) of work survive in the
+  // session pi just compacted, so resume it promptly instead of idle-backing-off.
+  // Each resume restarts from the compacted (small) context, so repeated cut-offs on
+  // one task still converge — but a task that outruns the ceiling every single time
+  // would cycle forever, so after CUT_OFF_RESUME_LIMIT resumes the role gives up on it
+  // and falls back to a fresh run with normal backoff (its prompt carrying the streak).
+  s.resumePending = true;
+  scheduleAtMinInterval(s, cfg);
+}
+
+/** Schedule an observer whose run ended no_change — the observer arm: a no_change verdict for
+ * an observer is a success, so it runs at the minimum interval instead of climbing the idle
+ * ladder, which would punish the role for the product being healthy. */
+function scheduleObserverOutcome(s: RunnerState, cfg: TumwaterConfig): void {
+  // An observer's no_change is a success ("checked, all well"), not an idle verdict: it must
+  // not climb the idle ladder, which would punish the role monotonically for the product
+  // being healthy. With no ladder, minRunIntervalSeconds is the sole, honest cadence
+  // (plans/observer-roles.md). The error/user_aborted arms above are untouched — a broken
+  // toolchain and a deliberate operator stop still back off like any other role.
+  s.backoffSeconds = 0;
+  scheduleAtMinInterval(s, cfg);
+}
+
+/** Schedule a role whose completed run found nothing to do — the idle arm: back off on the
+ * idle ladder, which prices unproductive runs and caps at the hour-long-model-run ceiling. */
+function scheduleIdleOutcome(s: RunnerState, cfg: TumwaterConfig): void {
+  scheduleBackoff(s, cfg.idleBackoff);
 }
 
 /** Clear the conflict hand-back's record once it is spent — the "when is a conflict
