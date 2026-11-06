@@ -260,9 +260,10 @@ export function reportWindow(from: string, to: string, days: number, rotation: s
 /** The trailing-window sibling of reportWindow above: the `window: last <duration>` header the
  * two `--since` reports print (renderSinceReportMarkdown and the failure digest's since shape),
  * with the window's start instant in local time. `duration` is the window length already phrased
- * by cli-args.ts's durationLabel (this helper supplies the leading `last `) — taken as a
- * string so this presentation-only module avoids importing the CLI layer; the failure digest
- * appends its own run count. One home so the two reports' window wording cannot drift. */
+ * by text/duration.ts's durationLabel (this helper supplies the leading `last `) — taken as a
+ * string because duration.ts builds on this module's units, so importing it back would be a
+ * cycle; the failure digest appends its own run count. One home so the two reports' window
+ * wording cannot drift. */
 export function sinceWindowLine(duration: string, fromIso: string): string {
   return `window: last ${duration} (since ${formatTimestamp(new Date(fromIso).getTime())})`;
 }

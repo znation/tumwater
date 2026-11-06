@@ -1808,9 +1808,10 @@ follows the bounded result".
 
 ## Local time: a day is the local calendar day, and an age or countdown never reads negative
 
-`src/text/datetime.ts` is the one home of the local calendar-day rule and of the s/m/h/d phrasing
-behind every relative time. The GUI's browser script keeps its own twins of a few of these, which
-this section does not bind.
+`src/text/datetime.ts` is the one home of the local calendar-day rule and of `humanSeconds`'s
+s/m/h/d phrasing behind every relative time; the `<n><unit>` duration grammar and its
+`durationLabel`/`betweenWindow` echoes live in `src/text/duration.ts`. The GUI's browser script
+keeps its own twins of a few of these, which this section does not bind.
 
 ### INV-Z1: a day key is the local calendar day, never the UTC date
 
