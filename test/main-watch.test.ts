@@ -11,6 +11,7 @@ import path from "node:path";
 import { createMainWatch } from "../src/baseline/main-watch.js";
 import { mainTipVerdict, queueCulpritHeal } from "../src/baseline/main-red.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
+import { quarantineTests } from "../src/review/known-flakes.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { CheckConfig } from "../src/config/config-schema.js";
 import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
@@ -209,6 +210,56 @@ test("a multi-commit batch whose breaker is intermediate names the breaking comm
   assert.deepEqual(culprits[0]?.failingTests, ["first", "second", "third"]);
   await watchAt(watch, root);
   assert.equal(eventsOfType(root, "main_culprit").length, 1, "a repeat poll does not attribute again");
+});
+
+test("a quarantined-only red in a batch is a green boundary, so the later real breaker is named", async () => {
+  const script = `if [ -f real.txt ]; then printf '✖ real (1ms)\\n'; exit 1; fi; if [ -f quarantined.txt ]; then printf '✖ quarantined (1ms)\\n'; exit 1; fi; echo ok`;
+  const { root } = baselineFixture("improve", script);
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
+  await watchAt(watch, root); // the seed commit: green
+  quarantineTests(root, ["quarantined"], "");
+  const boundary = change(root, "quarantined.txt", "q"); // red only because of a quarantined test
+  logEvent(root, { source: "improve", type: "merged", commit: boundary, summary: "quarantined only" });
+  const breaker = change(root, "real.txt", "r"); // the commit that adds the real failure
+  logEvent(root, { source: "improve", type: "merged", commit: breaker, summary: "adds the real failure" });
+  clock.advance(HOUR);
+  await watchAt(watch, root);
+  const culprits = eventsOfType(root, "main_culprit");
+  assert.equal(culprits.length, 1);
+  assert.equal(
+    culprits[0]?.commit,
+    breaker,
+    "the quarantined-only red is a green boundary, not the breaker",
+  );
+});
+
+test("a checkout that fails mid-walk stops with the newest red already held", async () => {
+  const { root } = baselineFixture("improve", `[ -f bad.txt ] && { ${FAILING_OUTPUT}; exit 1; }; echo ok`);
+  const clock = clockAt();
+  const watch = createMainWatch(root, "main", undefined, clock.now);
+  await watchAt(watch, root); // the seed commit: green
+  // The opener adds the failure and a file that the next commit removes, so that file's blob is
+  // reachable only from the opener's tree; deleting that loose object makes its checkout fail.
+  fs.writeFileSync(path.join(root, "bad.txt"), "b");
+  fs.writeFileSync(path.join(root, "gone.txt"), "only in the opener\n");
+  sh(root, "git", "add", "--", "bad.txt", "gone.txt");
+  sh(root, "git", "commit", "-m", "break and add gone");
+  const opener = headSha(root);
+  logEvent(root, { source: "improve", type: "merged", commit: opener, summary: "breaks a test" });
+  fs.rmSync(path.join(root, "gone.txt"));
+  sh(root, "git", "add", "--", "gone.txt");
+  const tip = change(root, "good.txt", "g"); // a later commit on top, same poll batch; still red
+  logEvent(root, { source: "improve", type: "merged", commit: tip, summary: "still red" });
+  const blob = sh(root, "git", "rev-parse", `${opener}:gone.txt`);
+  fs.rmSync(path.join(root, ".git", "objects", blob.slice(0, 2), blob.slice(2)));
+  clock.advance(HOUR);
+  await watchAt(watch, root);
+  const checks = eventsOfType(root, "main_check");
+  assert.equal(checks[1]?.status, "failed", "the red verdict is still recorded");
+  const culprits = eventsOfType(root, "main_culprit");
+  assert.equal(culprits.length, 1, "a failed checkout does not throw the verdict away");
+  assert.equal(culprits[0]?.commit, tip, "the walk stops at the newest red it already holds");
 });
 
 // Hourly full check, part 3a/4: a fresh red's opener is bisected by re-running only its failing

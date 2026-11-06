@@ -3455,9 +3455,11 @@ fails. Otherwise it is the oldest first-parent commit since the previous settled
 tree the declared check reads red — the first commit to turn the suite red — found by walking each
 first-parent commit from the previous green to the newly-checked red tip and running the declared
 check on each tree (BUGS.md 2026-11-04: a multi-commit batch whose breaker was not the tip named
-the newest red tip instead). The leftmost red found, not the tip, is the breaker, covering both a
-non-exempt code tip and the earlier doc-exempt walk: a doc-exempt tip whose tree is still red
-yields the code commit below it, and a code tip above an intermediate breaker yields that
+the newest red tip instead). A red naming only quarantined tests settles as non-red (INV-BI1), so
+the walk treats it as a green boundary rather than a breaker; a checkout that fails mid-walk stops
+conservatively at the newest red already held. The leftmost red found, not the tip, is the breaker,
+covering both a non-exempt code tip and the earlier doc-exempt walk: a doc-exempt tip whose tree is
+still red yields the code commit below it, and a code tip above an intermediate breaker yields that
 intermediate breaker. That same opener is named in the `main_culprit` event AND stamped as the sha
 of the spell's first-red `main_check`, so G1's "red since <sha>", the dashboard red detail and
 ci's heal prompt all name the breaker. While a red spell is open, a tip that re-settles red
@@ -3474,7 +3476,9 @@ so a red re-checked on a later tip keeps naming the opener instead of dropping o
 keeps the opener as the named culprit", "a settled green closes the red spell, so the next red
 names its own opener" and "a doc-exempt tip on top of a code commit that broke main names the
 code commit as the opener"; `test/main-watch.test.ts` — "a multi-commit batch whose breaker is
-intermediate names the breaking commit, not the newest tip"; `test/main-guardrails.test.ts` —
+intermediate names the breaking commit, not the newest tip", "a quarantined-only red in a batch is
+a green boundary, so the later real breaker is named" and "a checkout that fails mid-walk stops
+with the newest red already held"; `test/main-guardrails.test.ts` —
 "redMainWarning: a culprit that names the spell's opener blames the opener, not the newest tip"; `test/status-polls.test.ts` — "a main_culprit
 naming the open spell's opener carries red detail even when it is not the newest tip" and "a
 main_culprit whose spell a later passing check closed carries no red detail".
