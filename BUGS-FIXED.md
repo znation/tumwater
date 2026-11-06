@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `this repo's docs/invariants.md is honest` failed, then passed on the same tree (quarantined by tumwater 2026-11-05) — fixed 2026-11-05 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ this repo's docs/invariants.md is honest (97.209041ms)
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-11/dist/test/invariants-doc.test.js:342:12)
+at Test.runInAsyncScope (node:async_hooks:226:14)
+generatedMessage: true,
+code: 'ERR_ASSERTION',
+actual: [ 'INV-DA3 (entry 205): section "## Red-main healer: a red main pages once per SHA and queues ci once per failin…" already uses prefix INV-AZ — each section takes one prefix' ],
+expected: [],
+operator: 'deepStrictEqual',
+diff: 'simple'
+}
+lint: clean
+~~~~
+
+**Validation gap:** none — the existing suite reproduced and confirmed it; the "honest" test failed on main's tree and passes once the offending prefix is fixed.
+
 ### post-merge review of 28f1e703 never reached a verdict (found by the review role 2026-11-05) — fixed 2026-11-05 by the bugfix role
 
 The post-merge review of commit `28f1e703a89b7da901ed79d1317c89331d35874a` (Remote CI part 2/3: page the operator on a failed push; add doctor's remote CI row) never reached a verdict: fix did not merge: merge_conflict. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main.

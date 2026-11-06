@@ -14,25 +14,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Cause:** `mergeReviewerFix` passes `recheckResolved: async () => ({ verdict: "retry" })` (src/merge/merge-post-review-drain.ts:264). In `mergeToMain` (src/merge/merge-to-main.ts:106–109), a resolution whose diff leaves the fix's own lines (`resolvedDiffDiverges`, src/merge/merge-diff.ts) goes to `recheckResolved`, and `retry` returns `merge_conflict`. A resolution of lines both sides edited always leaves them: it replaces main's new wording, which the fix's own diff never deleted. The failed landing leaves the entry with neither `fixed` nor `rejected`, so `unreviewed` is true and the next drain starts a fresh review of C. That review authors its fix on C again, so it conflicts again.
 - **Expected / fix sketch:** never run a resolver whose result is always discarded. Either judge the resolved tree, as `mergeApprovedChange`'s `recheckResolved` re-reviews a resolved conflict (src/merge/merge-core.ts:423), or, on a conflict, retry by rebasing the stored fix ref onto main's tip, or have the retry's review author its fix on main's tip rather than on C.
 
-### `this repo's docs/invariants.md is honest` failed, then passed on the same tree (quarantined by tumwater 2026-11-05)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-✖ this repo's docs/invariants.md is honest (97.209041ms)
-AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
-at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-11/dist/test/invariants-doc.test.js:342:12)
-at Test.runInAsyncScope (node:async_hooks:226:14)
-generatedMessage: true,
-code: 'ERR_ASSERTION',
-actual: [ 'INV-DA3 (entry 205): section "## Red-main healer: a red main pages once per SHA and queues ci once per failin…" already uses prefix INV-AZ — each section takes one prefix' ],
-expected: [],
-operator: 'deepStrictEqual',
-diff: 'simple'
-}
-lint: clean
-~~~~
-
 ## Fixed
 
 ## Verified

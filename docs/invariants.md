@@ -3450,7 +3450,7 @@ culprit names it and adds the failing and tail clauses only when it has them".
 **Guarantee.** The main watch names the commit that OPENED the red as its culprit — never a
 broken batch's newest red tip, whose own diff may not be the first to turn the suite red. When the
 failing tests can be re-run alone, the opener is found by bisecting the first-parent commits above
-the newest full green (INV-DA3): the oldest commit at which re-running only those tests still
+the newest full green (INV-AZ7): the oldest commit at which re-running only those tests still
 fails. Otherwise it is the oldest first-parent commit since the previous settled green head whose
 tree the declared check reads red — the first commit to turn the suite red — found by walking each
 first-parent commit from the previous green to the newly-checked red tip and running the declared
@@ -3479,7 +3479,7 @@ intermediate names the breaking commit, not the newest tip"; `test/main-guardrai
 naming the open spell's opener carries red detail even when it is not the newest tip" and "a
 main_culprit whose spell a later passing check closed carries no red detail".
 
-### INV-DA3: a red's opener is found by bisecting the first-parent commits since the last full green, re-running only the failing tests
+### INV-AZ7: a red's opener is found by bisecting the first-parent commits since the last full green, re-running only the failing tests
 
 **Guarantee.** When the failing tests of a freshly-confirmed red can be re-run alone (INV-CZ2),
 the watch bisects the first-parent commits strictly above the newest full green — the newest cached
