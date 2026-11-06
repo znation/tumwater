@@ -33,7 +33,7 @@ import { POST_MERGE_REJECT_WINDOW_MS, postMergeChurn } from "../review/post-merg
 import { roleLabel } from "../roles/role-labels.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { readCiParity, currentCiParityState, parityIsCurrent, ciParityStalled, CI_PARITY_STALE_MS } from "../observer/ci-parity.js";
-import { readRemoteCi, remoteCiStalled, remoteCiTarget } from "../observer/remote-ci.js";
+import { readRemoteCi, type RemoteCiEntry, remoteCiStalled, remoteCiTarget } from "../observer/remote-ci.js";
 import { readQaCoverage, qaCoverageStalled, QA_COVERAGE_STALE_MS } from "../observer/qa-coverage.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
@@ -407,6 +407,43 @@ export function checkCiParity(
   );
 }
 
+/** The commit a remote-CI record names — `entry.sha` shortened when present, `"?"` when
+ * absent (only an `unavailable` record omits it, where `reason` explains why GitHub could
+ * not be read). The one place the label ternary lives, so every verdict wording that names
+ * the commit reads it from the name. */
+function remoteCiCommitLabel(entry: RemoteCiEntry): string {
+  return entry.sha ? shortSha(entry.sha) : "?";
+}
+
+/** What a recorded remote-CI verdict reports, resolved after `remoteCiStalled` has already
+ * had its say in `checkRemoteCi`: `failed` is a warn naming the commit (via
+ * remoteCiCommitLabel), the repo and the age; `pending` and the default (`passed`) are the
+ * ok lines naming the commit and repo; `unavailable` is the ok line naming `entry.reason`
+ * — decision 3 in plans/remote-ci.md: the operator never opted in, so a missing `gh` is
+ * information, not a fault. Level and wording are lifted verbatim from the four-arm switch
+ * this replaces. */
+function remoteCiResultOutcome(entry: RemoteCiEntry, now: number): CheckOutcome {
+  const age = humanAgo(entry.checkedAt, now);
+  switch (entry.result) {
+    case "failed":
+      return warnOutcome(
+        `GitHub CI failed at ${remoteCiCommitLabel(entry)} on ${entry.repo} (checked ${age}) — the ci role fixes or files it; it stays failed until a newer push passes`,
+      );
+    case "pending":
+      return okOutcome(
+        `GitHub CI was still running on ${remoteCiCommitLabel(entry)} (checked ${age})`,
+      );
+    case "unavailable":
+      return okOutcome(
+        `the ci role could not read GitHub Actions: ${entry.reason ?? "no reason recorded"} — run gh auth login, or set roles.ci.remote to false`,
+      );
+    default:
+      return okOutcome(
+        `GitHub CI passed at ${remoteCiCommitLabel(entry)} on ${entry.repo} (checked ${age})`,
+      );
+  }
+}
+
 /** The doctor's `remote CI` row: is GitHub Actions green on what the operator pushed? Reads
  * the remote-CI ledger (src/observer/remote-ci.ts) — the operator surface beside `ci parity`
  * answering "is GitHub CI green on what I pushed?". Omitted (null) when the ci role is
@@ -435,25 +472,7 @@ export async function checkRemoteCi(
     return warnOutcome(
       `no remote CI check recorded in over ${CI_PARITY_STALE_MS / DAY_MS} days — the ci role is disabled, paused, or not reporting its REMOTE line`,
     );
-  const age = humanAgo(entry.checkedAt, now);
-  switch (entry.result) {
-    case "failed":
-      return warnOutcome(
-        `GitHub CI failed at ${entry.sha ? shortSha(entry.sha) : "?"} on ${entry.repo} (checked ${age}) — the ci role fixes or files it; it stays failed until a newer push passes`,
-      );
-    case "pending":
-      return okOutcome(
-        `GitHub CI was still running on ${entry.sha ? shortSha(entry.sha) : "?"} (checked ${age})`,
-      );
-    case "unavailable":
-      return okOutcome(
-        `the ci role could not read GitHub Actions: ${entry.reason ?? "no reason recorded"} — run gh auth login, or set roles.ci.remote to false`,
-      );
-    default:
-      return okOutcome(
-        `GitHub CI passed at ${entry.sha ? shortSha(entry.sha) : "?"} on ${entry.repo} (checked ${age})`,
-      );
-  }
+  return remoteCiResultOutcome(entry, now);
 }
 
 /** The doctor's `qa coverage` row: has the `qa` observer — the team's only flow-level
