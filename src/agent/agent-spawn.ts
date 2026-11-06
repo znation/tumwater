@@ -25,6 +25,7 @@ import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { seamImageInput } from "./image-input.js";
 import { ensureNotesShim } from "./notes-shim.js";
+import { runGitConfigEnv } from "./run-git-config.js";
 import { nearestTumwaterRoot } from "../paths.js";
 import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import type { PiRunOptions } from "./agent-run.js";
@@ -135,8 +136,9 @@ function buildAndSpawn(backend: AgentBackend, opts: PiRunOptions, pre: SpawnInpu
     // spawns each command detached in its OWN group, so the group sweep below cannot reach what
     // a tool call backgrounds (BUGS.md 2026-09-30) — the mark is the only attribution that
     // follows a reparented orphan. Appended to any inherited mark so a nested harness under test
-    // keeps the outer run's.
-    env: { ...invocation.env, TMPDIR: runTmp },
+    // keeps the outer run's. GIT_CONFIG_GLOBAL points at the run's own global git config
+    // (run-git-config.ts), so a tool call's `git config --global` cannot rewrite the user's.
+    env: { ...invocation.env, TMPDIR: runTmp, ...runGitConfigEnv(runTmp, invocation.env) },
   });
   if (invocation.stdin !== undefined) {
     // A backend that dies before draining its stdin — an immediately-failing startup such as an

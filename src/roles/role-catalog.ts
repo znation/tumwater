@@ -464,9 +464,11 @@ Steps:
    1. Read .github/workflows/ci.yml fresh each run and execute its jobs' own run: steps verbatim
       against main's tip in this worktree, in order — for an npm project like this repo, that is
       \`npm ci\`, then \`npm test\`, then \`npm run test:e2e\`; when the tip is a push-to-main tip,
-      also \`npm pack\` (the workflow's package job). The actions/checkout, setup-node and git
-      identity are this worktree's own. Reading the workflow means a step added to it is picked
-      up without a code change.
+      also \`npm pack\` (the workflow's package job). Skip the steps that set up the CI machine:
+      actions/checkout, setup-node, and any step that sets a git identity or other global
+      config (\`git config --global …\`). This worktree already has all three, and this is the
+      user's machine, not a throwaway runner: a global write changes every repository on
+      it. Reading the workflow means a step added to it is picked up without a code change.
    2. A failing step is the work: reproduce it, fix the source/tests/docs it names, re-run that
       step until green, and commit the fix as the run's one change. A step that fails once and
       passes on the re-run is a flake — file ONE BUGS.md entry naming the test and the flake and
