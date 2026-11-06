@@ -46,4 +46,4 @@ refresh the numbers with `wc -l` and `find` when this section is touched, and no
   a name; a complexity-N number alone is not the reason. This keeps the family finite instead of a
   bottomless re-split of already-named helpers.
 
-_Last measured 2026-11-04 by the steward role._
+_Last measured 2026-11-06 by the steward role._
