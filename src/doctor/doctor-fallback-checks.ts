@@ -52,30 +52,60 @@ export function checkFallbackModel(
   if ("level" in config) return config;
   const declared = fallbackPair(config);
   if (!declared) return okOutcome("none configured — roles pause at the cap");
-  // A pair missing either half would fall through to pi's own (unverified) default, so it can
-  // never be free; naming that case beats rendering a bare "?/model". The free branch names
-  // the price-resolved pair (a map with no `default` entry borrows another tier's), while the
-  // refusal names the pair the operator declared.
-  const nameOf = (pair: FallbackModelConfig) =>
-    pair.provider && pair.model ? `${pair.provider}/${pair.model}` : "a half-resolved pair";
   // The claude account answer (6a/7); the fallback price lookup reads it only for "claude"
   // (part 2a/9).
   const account = readClaudeAccount(root);
   const accounts = (b: string) => (b === "claude" ? account : null);
   const free = fallbackModelPair(config, modelsPath, accounts);
-  if (free) {
-    const name = nameOf(free);
-    if (demoted)
-      return warnOutcome(`${name} is priced at zero but not serving — the running team demoted it after ${demoted.failures} consecutive failed runs, so roles pause at the cap; one probe run retries it from ${formatClock(demoted.probeAt)}`);
-    const check = checks?.find((c) => c.pair === modelPairName(free));
-    if (check?.status === "failed")
-      return warnOutcome(`${name} is priced at zero but failed the running team's model check — it ${modelCheckFault(check)}; at the cap roles skip it until it answers${check.probeAt !== undefined ? ` (next check ${formatClock(check.probeAt)})` : ""}`);
-    if (check?.status === "verified")
-      return okOutcome(`${name} — priced at zero (cost n/a), answered the running team's model check`);
-    if (check?.status === "checking") return okOutcome(`${name} — priced at zero (cost n/a), model check running`);
-    return okOutcome(`${name} — priced at zero (cost n/a), serving not verified`);
-  }
-  return warnOutcome(`${nameOf(declared)} is not priced at zero in ${modelsPath} — at the cap roles pause instead of switching`);
+  if (free) return freeFallbackOutcome(fallbackPairName(free), demoted, checks?.find((c) => c.pair === modelPairName(free)));
+  return warnOutcome(`${fallbackPairName(declared)} is not priced at zero in ${modelsPath} — at the cap roles pause instead of switching`);
+}
+
+/** What the operator calls this pair: `provider/model` when both halves are set, else the
+ * half-resolved case — a pair missing either half would fall through to pi's own (unverified)
+ * default, so it can never be free; naming that case beats rendering a bare "?/model". The
+ * free branch names the price-resolved pair (a map with no `default` entry borrows another
+ * tier's), while the refusal names the pair the operator declared. */
+function fallbackPairName(pair: FallbackModelConfig): string {
+  return pair.provider && pair.model ? `${pair.provider}/${pair.model}` : "a half-resolved pair";
+}
+
+/** A free pair the running team's breaker demoted: warn with the failure count and the next
+ * probe time — price is not serving, and the demotion is the evidence. */
+function demotedFallbackOutcome(name: string, demoted: FallbackDemotion): CheckOutcome {
+  return warnOutcome(`${name} is priced at zero but not serving — the running team demoted it after ${demoted.failures} consecutive failed runs, so roles pause at the cap; one probe run retries it from ${formatClock(demoted.probeAt)}`);
+}
+
+/** A failed model check on a free pair: warn quoting the fault, with the next probe time when
+ * the check scheduled one — at the cap the roles skip the pair until it answers. */
+function failedModelCheckOutcome(name: string, check: ModelCheckInfo): CheckOutcome {
+  return warnOutcome(`${name} is priced at zero but failed the running team's model check — it ${modelCheckFault(check)}; at the cap roles skip it until it answers${check.probeAt !== undefined ? ` (next check ${formatClock(check.probeAt)})` : ""}`);
+}
+
+/** The running team's model check's verdict on the free pair, when it has published one: the
+ * failed warning, and the verified/checking ok lines. Any other status returns null so the
+ * caller keeps the unproven line. */
+function modelCheckFallbackOutcome(name: string, check: ModelCheckInfo | undefined): CheckOutcome | null {
+  const status = check?.status;
+  if (status === "failed") return failedModelCheckOutcome(name, check!);
+  if (status === "verified")
+    return okOutcome(`${name} — priced at zero (cost n/a), answered the running team's model check`);
+  if (status === "checking") return okOutcome(`${name} — priced at zero (cost n/a), model check running`);
+  return null;
+}
+
+/** A declared pair's readiness outcome: demoted first, then the running team's model check's
+ * verdict, else the unproven line — a price is not readiness (the backend can still reject
+ * every prompt), so the line must not claim more than it checked. */
+function freeFallbackOutcome(
+  name: string,
+  demoted: FallbackDemotion | null,
+  check: ModelCheckInfo | undefined,
+): CheckOutcome {
+  if (demoted) return demotedFallbackOutcome(name, demoted);
+  const verdict = modelCheckFallbackOutcome(name, check);
+  if (verdict) return verdict;
+  return okOutcome(`${name} — priced at zero (cost n/a), serving not verified`);
 }
 
 /** Whether a local server answers `GET <url>`: node's built-in fetch with a short timeout, false
