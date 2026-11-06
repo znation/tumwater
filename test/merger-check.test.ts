@@ -70,7 +70,9 @@ test("a single merge with a red declared check still fast-forwards — no in-loc
   // The declared check is red: if any in-lock check ran it would block. None does.
   ctx.config = { ...ctx.config, check: { command: "echo 'error: planted failure'; exit 1" } };
 
-  assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed", "no in-lock check: the change merges");
+  // alreadyGated: this case tests the merge phase — the gate's pre-check (red here) is the
+  // verify stage's job and must not run inside the merge.
+  assert.equal(await mergeApprovedChange(ctx, request(sha, { alreadyGated: true })), "changed", "no in-lock check: the change merges");
   assert.equal(await refSha(root, REF), null, "the pin is gone — the change merged");
   assert.equal(calls.length, 0, "no model run");
   assert.notEqual(mainSha(root), tip, "the change reached main for the main watch");
@@ -116,7 +118,9 @@ test("a repairable false-fix md-only change merges through the real merge flow",
   const { ctx, calls } = makeCtx(root, state);
   const mainBefore = mainSha(root);
 
-  assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed", "the false-fix md-only change merges");
+  // alreadyGated: the case tests the merge phase (no in-lock check, no resolver run), not the
+  // gate an ungated caller would get in the same worktree first.
+  assert.equal(await mergeApprovedChange(ctx, request(sha, { alreadyGated: true })), "changed", "the false-fix md-only change merges");
   assert.notEqual(mainSha(root), mainBefore, "the change reached main for the main watch");
   assert.equal(await refSha(root, REF), null, "the pin is gone — the change merged");
   assert.equal(calls.length, 0, "no model run — no resolver, no reviewer");

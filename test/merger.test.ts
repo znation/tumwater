@@ -150,7 +150,6 @@ test("an unmarked request main has withdrawn returns withdrawn without a gate ru
     },
   );
 });
-
 test("the gate's verdict is durable on disk before the run's end save", async () => {
   // Regression (2026-09-14): state was written to disk only at run boundaries, so a
   // sudden death after the gate's verdict (power loss, kill -9) left the last
@@ -395,7 +394,7 @@ test("a merge pinned behind main's advance is rebased onto main BEFORE the gate 
   // cascade through every queued merge.
   const rec = path.join(tmpdir("merger-rec-"), "seen");
   await withPi(
-    reviewerPi("VERDICT: approve"), // the verify's approve; the passing declared check is the deterministic gate
+    reviewerPi("VERDICT: approve"), // the verify's approve; the passing declared check is the gate
     async () => {
       const { root, sha } = await pinnedFixture();
       // A passing declared check is the deterministic gate that survives part 3h/3's removal of
@@ -478,7 +477,8 @@ test("the merge checkout is shared, kept detached, and persists at a terminal ou
 
       // Terminal: a single merge (no in-lock check) fast-forwards and deletes the pin; the
       // shared checkout persists for the next merge.
-      assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed", "a single merge fast-forwards with no in-lock check");
+      // alreadyGated: the case tests the merge's checkout — the gate is the verify stage's job.
+      assert.equal(await mergeApprovedChange(ctx, request(sha, { alreadyGated: true })), "changed", "a single merge fast-forwards with no in-lock check");
       assert.equal(await refSha(root, REF), null, "the pin is gone after merging");
       assert.ok(fs.existsSync(mergeWt), "_merge persists at the terminal outcome");
       assert.equal(

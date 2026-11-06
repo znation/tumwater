@@ -99,7 +99,8 @@ test("a plan still listed on main merges: the guard leaves a change that finishe
 
     const verdict = await verifyRequest(ctx, req, batchWiring(ctx));
     assert.equal(verdict.kind, "approved");
-    assert.equal(await mergeApprovedChange(ctx, { ...req, sha: verdict.kind === "approved" ? verdict.sha : sha }), "changed");
+    // alreadyGated: the verify just ran the gate — the merge must not run it again.
+    assert.equal(await mergeApprovedChange(ctx, { ...req, sha: verdict.kind === "approved" ? verdict.sha : sha, alreadyGated: true }), "changed");
 
     const merged = sh(root, "git", "show", "main:PLANS.md");
     assert.doesNotMatch(merged.split("## Done")[0]!, /### Beta/, "Beta left Planned with the merge");
@@ -118,11 +119,29 @@ test("the merge lock drops a change whose plan main deleted after its verify app
 
     // The operator withdraws Beta while the approved change waits for the merge slot.
     const withdrawnMain = withdrawBeta(root);
-    const result = await mergeApprovedChange(ctx, { ...req, sha: verdict.kind === "approved" ? verdict.sha : sha });
+    const result = await mergeApprovedChange(ctx, { ...req, sha: verdict.kind === "approved" ? verdict.sha : sha, alreadyGated: true });
 
     assert.equal(result, "withdrawn");
     assert.equal(mainSha(root), withdrawnMain, "main did not move");
     assert.equal(await refSha(root, mergeRefName(ROLE)), null);
+    assert.equal(state.lastError, `withdrawn — ${WITHDRAWN_WARNING}`);
+    assert.deepEqual(warningMessages(root), [WITHDRAWN_WARNING]);
+  });
+});
+
+test("an ungated merge drops a withdrawn change before its gate runs: no gate, nothing merges", async () => {
+  await withPi(APPROVE_PI, async () => {
+    const { root, sha } = await pinnedPlanChange();
+    const withdrawnMain = withdrawBeta(root);
+    const state = freshRunnerState(ROLE);
+    const { ctx } = makeCtx(root, state);
+    const req = request(sha, { role: ROLE, claim: BETA });
+
+    const result = await mergeApprovedChange(ctx, req);
+
+    assert.equal(result, "withdrawn");
+    assert.equal(mainSha(root), withdrawnMain, "main did not move");
+    assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the pin is gone");
     assert.equal(state.lastError, `withdrawn — ${WITHDRAWN_WARNING}`);
     assert.deepEqual(warningMessages(root), [WITHDRAWN_WARNING]);
   });
