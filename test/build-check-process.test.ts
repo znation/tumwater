@@ -251,8 +251,7 @@ test("cleanup of a stale process-group id swallows the EPERM from a reused pid",
 test("a timed-out check whose tree dies on SIGTERM settles right after the deadline, not after the grace", async (t) => {
   const wt = tmpdir();
   // On logical time (checkClock): the wall clock moves only the tree's real death, never the
-  // check's timers, so a loaded host cannot push the settle toward the grace. Pre-fix-shaped
-  // behavior (settling only at the SIGKILL) never settles on the clock budget below.
+  // check's timers, so a loaded host cannot push the settle toward the grace.
   const advance = checkClock(t);
   let settled = false;
   const check = runBuildCheck(
