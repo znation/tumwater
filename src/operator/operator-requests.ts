@@ -3,6 +3,7 @@ import path from "node:path";
 import type { RoleRunner } from "../runner/runner.js";
 import { logEvent, warnEvent, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { dirEntryNames, removeQuiet } from "../files/files.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { errorMessage } from "../text/text.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
@@ -190,13 +191,36 @@ function wakeNotDue(markerFile: string): boolean {
 }
 
 /** The scheduled-wake files in `scheduledWakeDir`, sorted; `.tmp-<pid>` leftovers of an atomic
- * write are skipped. A missing directory is an empty list. */
+ * write are skipped. A missing directory is an empty list. A scheduled wake exists from an
+ * operator command to its deadline, so the directory changes only when `tumwater wake
+ * --in`/`wake --cancel` or a due wake's own apply writes there — a stat-keyed listing (one
+ * syscall per poll instead of a fresh readdir + sort + per-file content read) keeps the
+ * per-second status snapshot's pending-wake badge and the orchestrator's per-poll due-wake
+ * check off that reseed while no wake is pending, and the same freshness rule as every
+ * stat-cached observer covers the writes. Bounded inside cachedByStat. */
+const wakeListingCache = new Map<string, StatKeyedValue<string[]>>();
+
+/** The scheduled-wake files in `scheduledWakeDir`, sorted; `.tmp-<pid>` leftovers of an atomic
+ * write are skipped. Missing and unreadable directories read as empty, like dirEntryNames.
+ * Stat-cached (wakeListingCache): a `tumwater wake --in` (writeJsonAtomic's same-dir
+ * tmp+rename) or a cancel/apply's remove bumps the directory's own stat, so the next read
+ * re-lists; a due wake crossing the deadline without a directory change is filtered by the
+ * reader's own `now` comparison, which re-runs per call. */
 function scheduledWakeFiles(root: string): string[] {
   const dir = scheduledWakeDir(root);
-  return dirEntryNames(dir)
-    .filter((n) => n.endsWith(".json"))
-    .sort()
-    .map((n) => path.join(dir, n));
+  return (
+    cachedByStat(
+      wakeListingCache,
+      dir,
+      dir,
+      () =>
+        dirEntryNames(dir)
+          .filter((n) => n.endsWith(".json"))
+          .sort()
+          .map((n) => path.join(dir, n)),
+      (files) => [...files], // A copy: callers may treat the result as their own.
+    ) ?? []
+  );
 }
 
 /** The well-formed pending scheduled wakes (`tumwater wake --in`), earliest deadline first: a
