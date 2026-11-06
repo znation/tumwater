@@ -572,7 +572,18 @@ export function createMainWatch(
     // change the suite, and a code tip does not open a SECOND spell until a green closed the
     // first) is not re-attributed — no new event, no new heal prompt (the heal dedup already
     // re-queues when the failing set returns after a green).
-    if (redSpellOpeners.has(root)) return;
+    const open = redSpellOpeners.get(root);
+    if (open !== undefined) {
+      // A full-check fallback on a later head re-settles the spell's open set from that check:
+      // the head may have healed one failure and introduced another, and `knownMainFailures`
+      // reads the open set while the spell is open. Keep the opener (no re-attribution).
+      redSpellOpeners.set(root, {
+        opener: open.opener,
+        tests: baseline.failingTests ?? [],
+        ...(baseline.failingTestFiles ? { files: baseline.failingTestFiles } : {}),
+      });
+      return;
+    }
     redSpellOpeners.set(root, {
       opener: culprit,
       tests: baseline.failingTests ?? [],
@@ -708,8 +719,9 @@ export function createMainWatch(
    * the open set (and `knownMainFailures`); when none fail, the red clears: a
    * `{ status: "passed", cleared: true }` main_check with no full verdict written, the spell
    * deleted, and one full run started at once on this head to confirm it. When the re-run
-   * reaches no verdict (no re-run command, a cut-off list, or a skipped run), the head counts
-   * as watched with no change to the spell. Never throws. */
+   * reaches no verdict (no re-run command, a cut-off list, or a skipped run), it returns false
+   * and the caller re-checks the head in full, leaving the spell for that verdict to settle.
+   * Never throws. */
   async function narrowOpenRed(
     wt: string,
     tip: string,
@@ -754,9 +766,10 @@ export function createMainWatch(
     // mirror (`wt`) already holds this head, so run the declared check on it directly — no nested
     // withFullMainTipWorktree (which would queue behind this very pass).
     if (detectBuildCheck(root, config)) {
+      const confirmStarted = Date.now();
       const { check: confirmCheck } = await runBaselineCheck(wt, config);
       const confirmBaseline = confirmCheck.baseline;
-      if (!confirmBaseline) return true; // no verdict: leave the cleared red standing, watched
+      if (!confirmBaseline) return true; // no verdict: the cleared head stays watched, with no full verdict
       lastWatched = confirmBaseline.sha;
       fullCheckDueAt = undefined;
       fullCheckBase = undefined;
@@ -773,7 +786,7 @@ export function createMainWatch(
         confirmBaseline,
         tip,
         true,
-        Date.now(),
+        confirmStarted,
         confirmedOpener,
       );
       if (!confirmRed) {

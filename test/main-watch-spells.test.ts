@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { createMainWatch } from "../src/baseline/main-watch.js";
+import { createMainWatch, knownMainFailures } from "../src/baseline/main-watch.js";
 import { defaultConfig } from "../src/config/config.js";
 import { baselineFixture } from "./fixtures/runner-fixtures.js";
 import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -260,6 +260,39 @@ test("an open red is cleared with a cleared main_check and confirmed by one full
   const confirm = checks.at(-1);
   assert.notEqual(confirm?.cleared, true, "the confirming green is a real full verdict");
   assert.equal(confirm?.status, "passed");
+});
+
+test("a confirming full run that turns red opens a new spell on its own failure", async () => {
+  // Hourly full check, part 3b/4: the open failures pass on a new head (the spell clears and a
+  // full run confirms), but the full suite names a NEW failure on that same head. The cleared
+  // spell must not swallow it: the confirming red opens a fresh spell naming that failure.
+  const threeFlag = path.join(tmpdir(), "spell-three");
+  fs.writeFileSync(threeFlag, "");
+  const counter = path.join(tmpdir(), "spell-red-runs");
+  const fourth = "printf '✖ fourth (1ms)\\n✖ failing tests:\\n✖ fourth (1ms)\\n'";
+  const { root } = baselineFixture(
+    "improve",
+    `echo run >> ${counter}; if [ -f ${threeFlag} ]; then ${FAILING_OUTPUT}; exit 1; fi; ` +
+      `if [ -f four.flag ]; then ${fourth}; exit 1; fi; echo ok`,
+  );
+  const watch = createMainWatch(root, "main");
+  // 1. Open the red on first/second/third; its confirming re-run fails all three.
+  watch.poll(headSha(root), false, rerunConfig(rerunScriptOf(["first", "second", "third"])));
+  await watch.idle();
+  assert.deepEqual(knownMainFailures(root), ["first", "second", "third"]);
+  // 2. The head heals those three and adds a fourth failure. The narrowing re-run passes the
+  // open set, so the spell clears; the confirming full run is red on fourth.
+  fs.rmSync(threeFlag);
+  change(root, "four.flag", "4");
+  const rerunFile = path.join(tmpdir(), `rerun-four-${Math.random().toString(36).slice(2)}.sh`);
+  fs.writeFileSync(rerunFile, `[ -f four.flag ] || exit 0\n${rerunScriptOf(["fourth"])}`);
+  watch.poll(headSha(root), false, { ...defaultConfig(), check: { command: "", rerunCommand: `sh ${rerunFile}` } });
+  await watch.idle();
+  assert.equal(eventsOfType(root, "main_check").filter((c) => c.cleared === true).length, 1, "the old red cleared");
+  assert.deepEqual(knownMainFailures(root), ["fourth"], "the confirming red's own failure is the new open set");
+  const culprits = eventsOfType(root, "main_culprit");
+  assert.equal(culprits.length, 2, "the confirming red names a new spell rather than reusing the cleared one");
+  assert.deepEqual(culprits[1]?.failingTests, ["fourth"]);
 });
 
 function runsOf(file: string): number {

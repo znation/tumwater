@@ -154,6 +154,36 @@ test("a new head while red is open falls back to a full check when the open fail
   assert.deepEqual(knownMainFailures(root), ["first", "second", "third"], "still failing in full, the open set stands");
 });
 
+test("a fallback full check while red is open re-settles the open failures from that check", async () => {
+  // Hourly full check, part 3b/4: the head cannot be narrowed (no re-run command), so the full
+  // check decides its failing set. A failure the head healed drops out and a new one is added;
+  // the opener stays blamed, and knownMainFailures reads the full check's set, not the stale
+  // open set from the spell's opener.
+  const allFlag = path.join(tmpdir(), "red-all");
+  const secondFlag = path.join(tmpdir(), "red-second");
+  fs.writeFileSync(allFlag, "");
+  const counter = path.join(tmpdir(), "runs");
+  const log = path.join(tmpdir(), "rerun-args");
+  const { root } = baselineFixture(
+    "improve",
+    `echo run >> ${counter}; if [ -f ${allFlag} ]; then ${FAILING_OUTPUT}; exit 1; fi; ` +
+      `if [ -f ${secondFlag} ]; then printf '✖ second (1ms)\\n✖ failing tests:\\n✖ second (1ms)\\n'; exit 1; fi; echo ok`,
+  );
+  const watch = createMainWatch(root, "main");
+  watch.poll(headSha(root), false, rerunConfig(rerunScript(log, ["first", "second", "third"])));
+  await watch.idle();
+  assert.deepEqual(knownMainFailures(root), ["first", "second", "third"]);
+  // The next head heals first and third, but second still fails; no re-run command, so the full
+  // check settles the set.
+  fs.rmSync(allFlag);
+  fs.writeFileSync(secondFlag, "");
+  change(root, "a.txt", "a");
+  watch.poll(headSha(root), false, defaultConfig());
+  await watch.idle();
+  assert.deepEqual(knownMainFailures(root), ["second"], "the full check's set replaces the stale open set");
+  assert.equal(eventsOfType(root, "main_culprit").length, 1, "the fallback does not re-attribute the spell");
+});
+
 test("a red whose failing tests all pass when re-run alone is recorded passed and quarantined", async () => {
   const counter = path.join(tmpdir(), "runs");
   const log = path.join(tmpdir(), "rerun-args");
