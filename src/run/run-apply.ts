@@ -382,26 +382,6 @@ function clearSpentConflictHandback(s: RunnerState, outcome: RunOutcome): void {
   }
 }
 
-/** Record a completed MERGE on the authoring role's state (plans/merge-queue.md 3/5):
- * the orchestrator calls this on the state object the merge ran against — the runner's live
- * copy when one exists, a disk load otherwise — then saves it, the same in-place discipline
- * applyRunOutcome has (the caller's state object is authoritative; a role with a queued or
- * in-flight merge never runs, so no other writer holds it meanwhile). Sets `lastResult`
- * to the merger's outcome, increments `commits` only on a success (the "merged to main"
- * counter applyRunOutcome's "queued" branch left to the merge), and clears `phase` — the
- * gate persisted `phase = "review"` on this same state object during the run, exactly as it
- * did inside a run, so the label must not linger past the merge (mirroring
- * applyRunOutcome's rule: every outcome except "aborted" clears it — an aborted merge
- * keeps it, because the interruption hit mid-review and the next launch must recover and
- * re-review the pinned work). `lastSummary` becomes the summary of the change this merge
- * resolved — `change` is its merge-queue entry — so the merge's result, success or failure,
- * reads beside the work it names (BUGS.md 2026-09-23: the queued run held its summary back
- * rather than pair it with the prior result). The run's stashed `queuedSummary` wins when it
- * names this sha: it is the text the run reported, high-friction annotation included. The
- * entry's own summary (the commit subject) covers a stash that is missing or names another
- * change — a crash between enqueue and the run's state save, or a merge that finished before
- * its run's outcome was applied. Either way the stash is consumed. The failure detail rides
- * in `lastReview` and the merge_done/merge_failed events. */
 /** Fold a merge's outcome into the two records the state reads: the raw result and the
  * summary of the change it resolved — the "what does a merge record beside its result?"
  * rule of applyMergeOutcome (the stashed queuedSummary wins when it names this sha; the
