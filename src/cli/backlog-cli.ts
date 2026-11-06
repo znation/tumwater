@@ -7,7 +7,7 @@
  * should act stays in cli.ts beside the other command bodies. */
 
 import { fail, say, sayJson, warnIfUncommitted } from "./cli-output.js";
-import { parsePositionFlag, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
+import { parsePositionFlag, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
 import { plannedPlanEntries } from "../backlog/backlog.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
@@ -198,10 +198,11 @@ export async function cancelAndAnnounce(
 
 /** Peel an optional `--reason <text>` valued flag out of `args`, returning its value (null when
  * absent) and the remaining tokens. A repeat of `--reason` is refused (rejectRepeatFlag, the
- * "each flag at most once" rule every flag fold applies) and a valueless `--reason` fails with
- * the command-specific missing-value wording, so a malformed reason is refused before any write
- * or ready-repo gate can mask it. The value slot is consumed along with the flag so the rest
- * carries only tokens scanPositionArgs/rejectUnknownArgs should see. */
+ * "each flag at most once" rule every flag fold applies) and a valueless, empty, or
+ * flag-looking `--reason` fails with the command-specific missing-value wording, so a
+ * malformed reason is refused before any write or ready-repo gate can mask it. The value slot
+ * is consumed along with the flag so the rest carries only tokens
+ * scanPositionArgs/rejectUnknownArgs should see. */
 function peelReasonFlag(args: string[]): { reason: string | null; rest: string[] } {
   let reason: string | null = null;
   let seen = false;
@@ -212,7 +213,10 @@ function peelReasonFlag(args: string[]): { reason: string | null; rest: string[]
       rejectRepeatFlag(seen, "--reason");
       seen = true;
       const val = args[i + 1];
-      if (val === undefined) fail("plan --retire --reason needs a reason");
+      if (val === undefined || val.trim() === "") fail("plan --retire --reason needs a reason");
+      // A flag-shaped token in the reason slot is a rival flag, not a reason — refuse it with
+      // the shared wording, as pause --reason does, instead of writing the literal text.
+      rejectFlagLookingValue("plan --retire --reason", val);
       i++; // the value peels along with the flag
       reason = val;
       continue;

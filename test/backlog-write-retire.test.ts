@@ -134,6 +134,14 @@ test("a malformed or repeated --retire/--reason flag is refused before any write
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--reason needs a reason/);
   assert.equal(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8"), before);
+  r = await cli(repo, "plan", "--retire", "1", "--reason", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /plan --retire --reason needs a value \(the next token "--json" is a flag, not a value\)/);
+  assert.equal(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8"), before);
+  r = await cli(repo, "plan", "--retire", "1", "--reason", "   ");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--reason needs a reason/);
+  assert.equal(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8"), before);
   r = await cli(repo, "plan", "--retire", "1", "--reason", "a", "--reason", "b");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--reason may only be given once/);
