@@ -529,7 +529,6 @@ async function recoverLeftoversForRun(
   wt: string,
 ): Promise<{ action: "end"; outcome: RunOutcome } | { action: "continue"; prompt: string } | null> {
   const s = ctx.state;
-  let prompt = plan.prompt ?? "";
   // A withdrawn claim's interrupted run may have committed or pinned work that carries no claim
   // for the merge to check: set it aside first, so the recovery below has nothing of it to queue.
   await setAsideWithdrawnWork({ root: ctx.root, role: ctx.role, mainBranch: ctx.mainBranch, wt }, s);
@@ -542,6 +541,32 @@ async function recoverLeftoversForRun(
     mergeConflicts: s.mergeConflicts,
     conflictHandback: s.conflictHandback,
   });
+  const settled = await handleRecoveredLeftover(ctx, plan, wt, s, recovered);
+  if (settled === null) return null;
+  if (settled.action === "end") return settled;
+  await resetWorktreeToMain(wt, ctx.mainBranch);
+  // A promptless recovery run found nothing to salvage (or deleted a stale pin): it authors
+  // nothing, so it ends here rather than reach the authoring run with a null prompt.
+  if (plan.prompt === null) return null;
+  return { action: "continue", prompt: await recoveryNotesForRun(ctx, wt, settled.prompt) };
+}
+
+/** How does a run settle the leftover it recovered? A promptless hand-back has no authoring run
+ * to hand the pin back to, so it leaves the pin and the conflict state exactly as they are (the
+ * one hand-back the lineage is owed happens on the director's next prompt-driven run) and returns
+ * `null` for the skipped end. A conflict hand-back keeps the pin, records the hand-back in state
+ * and logs the `conflict_handback` `queued` event, then falls through to author the resolution on
+ * current main. A discarded pin clears both conflict fields, records `s.conflictDiscard` and
+ * appends the discard note. Every other recovery except `already_queued` ends the run through
+ * `ctx.finishRecoveryRun`; `already_queued` and an absent recovery fall through as `continue`
+ * with the prompt unchanged, so the reset and red-main notes happen back in the caller. */
+async function handleRecoveredLeftover(
+  ctx: RunnerRunContext,
+  plan: RunStartPlan,
+  wt: string,
+  s: RunnerState,
+  recovered: Awaited<ReturnType<typeof recoverLeftover>>,
+): Promise<{ action: "end"; outcome: RunOutcome } | { action: "continue"; prompt: string } | null> {
   if (recovered?.kind === "handback" && plan.prompt === null) {
     // A promptless recovery run has no authoring run to hand the pin back to: leave the pin and
     // the conflict state exactly as they are, so the one hand-back the lineage is owed happens on
@@ -549,6 +574,7 @@ async function recoverLeftoversForRun(
     await resetWorktreeToMain(wt, ctx.mainBranch);
     return null;
   }
+  let prompt = plan.prompt ?? "";
   if (recovered?.kind === "handback") {
     // The pin hit the conflict cap and its lineage has not been handed back yet: keep the
     // pin, record the hand-back, and fall through to author the resolution on current main.
@@ -579,10 +605,17 @@ async function recoverLeftoversForRun(
       outcome: await ctx.finishRecoveryRun(recovered, plan.userPrompt, wt, plan.priorMergeFailure),
     };
   }
-  await resetWorktreeToMain(wt, ctx.mainBranch);
-  // A promptless recovery run found nothing to salvage (or deleted a stale pin): it authors
-  // nothing, so it ends here rather than reach the authoring run with a null prompt.
-  if (plan.prompt === null) return null;
+  return { action: "continue", prompt };
+}
+
+/** What red-main note does a run's prompt carry? `ci` owns the repair: a red main appends a
+ * `<main-red>` heal note (the worktree is pristine main right now, so the healer reproduces and
+ * fixes that failure rather than hunting blind) and the Remote CI block rides this same ci-only
+ * async hook (detection spawns git and the prompt builder is synchronous). Every other role
+ * authors on the red main unblocked, told which tests already fail through the `<main-known-red>`
+ * note — a pure read of the main watch's persisted verdict (watchedBaseline runs no check), so
+ * the block appears only when a verdict names failures and a role's start pays nothing for it. */
+async function recoveryNotesForRun(ctx: RunnerRunContext, wt: string, prompt: string): Promise<string> {
   // The `ci` healer's red-main hand-off (src/baseline/main-red.ts): the worktree is pristine
   // main right now, so a red main appends a <main-red> note to this run's prompt and the
   // healer reproduces and fixes that failure rather than hunting blind. Every other role
@@ -611,7 +644,7 @@ async function recoverLeftoversForRun(
     const tests = baseline?.status === "red" ? namedFailures(baseline) : [];
     if (tests.length > 0) prompt = appendPromptNote(prompt, buildMainKnownRedNote(tests));
   }
-  return { action: "continue", prompt };
+  return prompt;
 }
 
 /** How does a conflict hand-back get re-applied? A change handed back after its merges kept
