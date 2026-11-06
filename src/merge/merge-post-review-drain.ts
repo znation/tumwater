@@ -21,6 +21,7 @@ import { resolveWaitStage } from "./merge-slot.js";
 import { mergeToMain } from "./merge-to-main.js";
 import { MERGE_TIER, resolveAuthor, VERIFY_TIER } from "./merge-author.js";
 import { gateBuildPrecheck } from "../review/review-precheck.js";
+import { reviewAheadOfMain } from "../review/review.js";
 import { setupFailureResult } from "../agent/agent-settle.js";
 import { recordReview } from "../run/run-apply.js";
 import { firstReason } from "../text/phrases.js";
@@ -259,12 +260,46 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
           runNumber: author.state.runs,
           runPi,
           // A conflict resolution of the reviewer's fix is resolver-authored bytes the reviewer
-          // never judged: the pre-check above verified the fix as the reviewer wrote it, not a
-          // diverging resolution, so the resolution has left its verified scope (BUGS.md
-          // 2026-10-01). Withhold it: the landing reports the conflict, the fix ref and the entry
-          // stay for the next poll's retry, and main never carries resolver bytes it was never
-          // judged against.
-          recheckResolved: async () => ({ verdict: "retry" }),
+          // never judged, so a resolved tree must not land silently on the fix's pre-check alone
+          // (BUGS.md 2026-10-01: a resolver had restored code main deliberately reverted). But a
+          // fix that CONFLICTS with main is also routine, and a sound resolution — one that
+          // integrates main's concurrent edit and delivers the fix's intent — inherently diverges
+          // from the fix-only diff (main's new wording is a line the fix, authored on the older
+          // base, never carried). Discarding every such resolution by always retrying never lands
+          // a conflicting fix and re-runs the whole review each retry (BUGS.md 2026-11-05). The
+          // resolved tree is therefore re-reviewed by the same deterministic gate
+          // mergeApprovedChange re-runs (review.ts's reviewAheadOfMain — no model reviewer since
+          // part 3h/3): a resolution that passes — a green build with no brief/protected/secret
+          // finding — merges as the fix landed against main; one the gate rejects is withheld and
+          // the entry stays queued for the next poll's retry, the fix ref kept.
+          recheckResolved: async (resolvedWt) => {
+            const gate = await reviewAheadOfMain(
+              {
+                root: ctx.root,
+                role: entry.role,
+                wt: resolvedWt,
+                mainBranch: ctx.mainBranch,
+                config: ctx.liveConfig,
+                runNumber: author.state.runs,
+                sessionDir: reviewRunSessionDir(ctx.root, entry.role, `post-${shortSha(fix)}-resolved`),
+                signal: ctx.signal,
+                // The gate is deterministic (part 3h/3, no model reviewer); this stub exists only
+                // to satisfy the ReviewContext the gate takes and is never invoked.
+                runGatePi: async () => setupFailureResult("precheck", "the fix-resolution recheck is deterministic; no reviewer run"),
+              },
+              author.state,
+            );
+            // A rejected resolution is a verdict on the tree (a brief/protected/secret finding
+            // or a reproduced build failure the resolution's own): the gate already reset the
+            // worktree to main and recorded the review, so mergeToMain settles `rejected` and
+            // the entry stays queued for the next poll's retry. A `failed` gate (dead check,
+            // abort) is no verdict about the tree: retry like any non-verdict, keeping the fix
+            // ref for the next poll.
+            if (ctx.signal.aborted) return { verdict: "retry" };
+            if (gate.decision === "rejected") return { verdict: "rejected" };
+            if (gate.decision === "failed" || gate.aborted) return { verdict: "retry" };
+            return { verdict: "approved" };
+          },
         },
         wt,
         (await subjectOfCommit(wt, fix)) ?? `Fix ${shortSha(entry.commit)}`,

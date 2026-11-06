@@ -909,14 +909,22 @@ test("a self-fix chain stops at the backstop and clears the entry", async () => 
   assert.ok(!fs.readFileSync(path.join(root, "PLANS.md"), "utf8").includes("**Needs review"), "no hold note is fabricated: a landed-and-archived plan has nothing to hold");
 });
 
-test("a fix whose conflict resolution diverges outside the fix is withheld (recheckResolved retry)", async () => {
+test("a fix whose conflict resolution leaves the reviewer's scope is withheld by the recheck gate", async () => {
   const { root, ctx } = setup("VERDICT: reject\n1. breaks the contract");
-  // The fix edits x.txt, and a concurrent main commit also rewrites x.txt during the review, so
-  // landing the fix rebases onto a conflicting main. The merge conflict resolver then resolves
-  // it with bytes outside the reviewed fix's scope ("sneaky extra" is a line the fix never
-  // added), so mergeReviewerFix's recheckResolved ({"verdict":"retry"}) withholds the landing
-  // and main stays unmoved: a resolution the reviewer never judged must not merge on the
-  // in-lock build check alone (BUGS.md 2026-10-01).
+  // Seed a brief block in README.md so the deterministic recheck gate has a brief to protect; the
+  // fix itself only edits x.txt and leaves the brief untouched, so the fix's own verification is
+  // clean. A concurrent main commit rewrites x.txt during the review, so landing the fix rebases
+  // onto a conflicting main. The resolver integrates the x.txt conflict but ALSO rewrites the
+  // brief block — bytes outside the reviewed fix's scope that a resolution that just merges
+  // main's edit and the fix would not carry. mergeReviewerFix's recheckResolved re-runs the
+  // deterministic gate over the resolved tree (review.ts's reviewAheadOfMain), which rejects the
+  // resolution on the non-repairable brief finding before any build run, so the landing is
+  // withheld and main unmoved: a resolution the reviewer never judged must not merge (BUGS.md
+  // 2026-10-01).
+  const prompt = (body: string) => `# T\n\n<!-- tumwater:prompt:start -->\n${body}\n<!-- tumwater:prompt:end -->\n`;
+  fs.writeFileSync(path.join(root, "README.md"), prompt("the project brief"));
+  sh(root, "git", "add", "--", "README.md");
+  sh(root, "git", "commit", "-m", "seed the brief");
   let concurrent: string | undefined;
   let resolverRuns = 0;
   (ctx as { runners: RoleRunner[] }).runners = [
@@ -934,7 +942,9 @@ test("a fix whose conflict resolution diverges outside the fix is withheld (rech
       },
       runMergePi: async (wt: string) => {
         resolverRuns++;
-        fs.writeFileSync(path.join(wt, "x.txt"), "fixed\nsneaky extra\n");
+        fs.writeFileSync(path.join(wt, "x.txt"), "fixed\n");
+        // The resolver over-steps: it rewrites the brief, a non-repairable gate finding.
+        fs.writeFileSync(path.join(wt, "README.md"), prompt("rewritten by the resolver"));
         return piRunResult({ finalText: "resolved" });
       },
     } as unknown as RoleRunner,
@@ -942,13 +952,66 @@ test("a fix whose conflict resolution diverges outside the fix is withheld (rech
   const p = newMergePipeline();
   drainPostReviews(ctx, p);
   await p.postReview!.promise;
-  assert.equal(headSha(root), concurrent, "main stays at the concurrent commit — the fix never lands");
+  assert.equal(headSha(root), concurrent, "main stays at the concurrent commit — the diverging resolution never lands");
   assert.equal(resolverRuns, 1, "the conflict path ran the resolver exactly once");
   assert.equal(fs.readFileSync(path.join(root, "x.txt"), "utf8"), "main\n", "the diverging resolution never reaches main");
   const kept = readPostReviews(root);
-  assert.equal(kept.length, 1);
+  assert.equal(kept.length, 1, "one entry stays queued");
   assert.equal(kept[0]!.fixed, undefined, "no fix is recorded on a withheld landing");
-  assert.match(kept[0]!.lastFailure ?? "", /fix did not merge: merge_conflict/);
+  assert.equal(kept[0]!.rejected, undefined, "the gate's rejection is not the fix's own: the entry stays queued for another review");
+  assert.match(kept[0]!.lastFailure ?? "", /fix did not merge/);
+});
+
+test("a conflicting fix whose resolver soundly merges main's edit now lands (recheck gate approves)", async () => {
+  // Regression for BUGS.md 2026-11-05: a post-merge reviewer's fix that conflicts with main
+  // could never merge — mergeReviewerFix's recheckResolved always returned retry, so every
+  // sound resolution of a fix on a file main also touched was discarded. The resolved tree is
+  // now re-reviewed by the deterministic gate; here the resolver integrates main's edit and the
+  // fix by reworking the line (which genuinely diverges from the fix-only diff), the gate approves
+  // (no declared check, so a clean pass), and the fix lands once instead of being retried and
+  // dropped.
+  const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+  let concurrent: string | undefined;
+  let resolverRuns = 0;
+  (ctx as { runners: RoleRunner[] }).runners = [
+    {
+      role: "improve",
+      baseRole: "improve",
+      state: freshRunnerState("improve"),
+      runGatePi: async (opts: { cwd: string }) => {
+        fs.writeFileSync(path.join(root, "x.txt"), "main\n");
+        sh(root, "git", "add", "--", "x.txt");
+        sh(root, "git", "commit", "-m", "main lands a conflicting edit");
+        concurrent = headSha(root);
+        fs.writeFileSync(path.join(opts.cwd, "x.txt"), "fixed\n");
+        return { ok: true, verdictText: "VERDICT: reject\n1. breaks the contract\nFIX: x.txt" };
+      },
+      runMergePi: async (wt: string) => {
+        resolverRuns++;
+        // A sound but genuinely divergent resolution: both main's new wording and the fix's edit
+        // are integrated by REWORDING the line neither side carried verbatim, so the resolved
+        // tree's diff leaves the fix-only diff the reviewer judged (BUGS.md 2026-11-05 describes
+        // exactly this — "a resolution of lines both sides edited always leaves them"). Under the
+        // old code this was discarded by always-retry and the fix could never land; the recheck
+        // gate now approves the sound resolution once.
+        fs.writeFileSync(path.join(wt, "x.txt"), "main and fixed\n");
+        return piRunResult({ finalText: "resolved" });
+      },
+    } as unknown as RoleRunner,
+  ];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(resolverRuns, 1, "the conflict path ran the resolver exactly once — the resolution is not retried");
+  // The fix landed on top of main's moved tip (the resolution rebased the fix onto the concurrent
+  // commit), fast-forwarding main past it.
+  const tip = headSha(root);
+  assert.equal(sh(root, "git", "rev-parse", `${tip}^`).trim(), concurrent, "the fix landed directly on main's moved tip");
+  assert.equal(await isMergedInto(root, commit, "main"), true, "the originally reviewed commit stays an ancestor of main");
+  assert.equal(fs.readFileSync(path.join(root, "x.txt"), "utf8"), "main and fixed\n", "the sound resolution is on main");
+  const settled = readPostReviews(root);
+  assert.equal(settled.find((e) => e.commit === commit)?.fixed, tip, "the reviewed entry settles fixed naming the landed fix");
+  assert.ok(settled.some((e) => e.commit === tip), "the landed fix is re-queued for its own review");
 });
 
 test("a fix whose landing keeps failing is dropped at POST_REVIEW_FAILURE_LIMIT", async () => {
