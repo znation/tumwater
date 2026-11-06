@@ -297,8 +297,8 @@ never has to wait a parked check out.
   the same ledger: ok while the record is fresh and green or still running, a warn on a `failed`
   record and when no check has been recorded for over three days (the one `remoteCiStalled`
   predicate), and ok information when the ci role could not read GitHub Actions at all
-  (`unavailable`). The row is omitted where there is no hosted-CI target (no GitHub remote, no
-  workflow file, or `roles.ci.remote: false`).
+  (`unavailable`). The row is omitted when the ci role is disabled, or where there is no
+  hosted-CI target (no GitHub remote, no workflow file, or `roles.ci.remote: false`).
   The `qa` observer keeps its own flow-coverage
   ledger the same way, and a coverage ledger whose newest exercise is over three days old raises the
   doctor `qa coverage` warn through the one `qaCoverageStalled`
