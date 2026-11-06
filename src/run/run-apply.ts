@@ -402,7 +402,11 @@ function clearSpentConflictHandback(s: RunnerState, outcome: RunOutcome): void {
  * change — a crash between enqueue and the run's state save, or a merge that finished before
  * its run's outcome was applied. Either way the stash is consumed. The failure detail rides
  * in `lastReview` and the merge_done/merge_failed events. */
-export function applyMergeOutcome(
+/** Fold a merge's outcome into the two records the state reads: the raw result and the
+ * summary of the change it resolved — the "what does a merge record beside its result?"
+ * rule of applyMergeOutcome (the stashed queuedSummary wins when it names this sha; the
+ * entry's own summary covers a missing or other-named stash). */
+function recordMergeResult(
   s: RunnerState,
   result: RunResult,
   change: Pick<MergeEntry, "sha" | "summary">,
@@ -410,62 +414,83 @@ export function applyMergeOutcome(
   s.lastResult = result;
   s.lastSummary = s.queuedSummary?.sha === change.sha ? s.queuedSummary.summary : change.summary;
   s.queuedSummary = undefined;
-  if (result === "changed") {
-    s.commits += 1;
-    // The last-merged timestamp: set only on a successful merge, so the rendered age means
-    // "time since the role last actually merged to main" — a rejected/merge_conflict/aborted
-    // merge, like a no_change run, leaves the prior value standing (PLANS.md "Each loop's
-    // last-landed age").
-    s.lastMergedAt = Date.now();
-    // A merge supersedes a stale rejection: a model-reviewed merge has already overwritten
-    // lastReview with its approve, but a review-exempt (or review-disabled) merge records no
-    // verdict, so a stale reject would otherwise ride every later run prompt (BUGS.md
-    // 2026-10-07). Cleared only with no revision pending — see clearSupersededRejection.
-    clearSupersededRejection(s);
-    // A merged change resets the error streak exactly as an error-free run does (BUGS.md
-    // 2026-09-30): the queued run that authored it preserved the streak — a rejection counts
-    // into it below — so the merge, the episode's only clean verdict, ends it.
-    s.consecutiveErrors = 0;
-  }
-  if (result === "rejected") {
-    // A review rejection is a failure the streak must count ONLY when it is final (BUGS.md
-    // 2026-10-14): recordRejectedChange (src/merge/merge-core.ts) already decided finality
-    // by the time this runs — it sets `state.revision` when the change goes back for another
-    // round and clears it when the chain is exhausted (or never sets it for a role that cannot
-    // revise, the director). A rejection that leaves a revision to work on is not a verdict
-    // about the author yet: counting every round of ONE change made an exhausted chain's third
-    // round cross the warn bar and flash a red "failing run after run" alert that needed
-    // nothing from the operator and was gone before it could be read (0–30 s). Counting only
-    // final rejections makes a streak of 3 mean three changes ended rejected (or errored) —
-    // the non-converging author the 2026-09-30 fix meant to catch — while a chain's rounds
-    // leave the streak unchanged and keep the fast minimum-interval retry the queued run
-    // scheduled. This merge outcome is the accumulation point (the authoring run ends
-    // `queued`, which no longer resets the streak, see applyRunOutcome) — the same field the
-    // warn, the breaker (src/gates/streak-gates.ts), and the error-storm observation
-    // (src/team/team-polls.ts) already read. No new machinery, no new constants: the warn
-    // bar and the breaker bar are ERROR_STREAK_WARN and ERROR_STREAK_BREAKER themselves.
-    if (s.revision === undefined) {
-      s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
-      const lastReasons = s.lastReview?.verdict === "reject" || s.lastReview?.verdict === "reverted" ? s.lastReview.reasons : undefined;
-      s.lastError = `review rejected: ${firstReason(lastReasons).slice(0, 200)}`;
-      // Past the warn bar the re-author backs off on the error ladder instead of the minimum
-      // interval the queued run scheduled: the fast first retries stay — the rejected branch's
-      // design intent, letting the author address the recorded reasons at once — but a
-      // non-converging author slows down instead of re-authoring at full price all day. The
-      // rung derives from the streak (not from backoffSeconds, which every queued run zeroes
-      // on its way out, pinning a state-derived ladder at its first rung), and never pulls
-      // nextRunAt earlier than the already-scheduled minimum interval.
-      const streak = s.consecutiveErrors;
-      if (streak >= ERROR_STREAK_WARN) {
-        const rung = Math.min(
-          ERROR_BACKOFF.initialSeconds * 2 ** (streak - ERROR_STREAK_WARN),
-          ERROR_BACKOFF.maxSeconds,
-        );
-        s.backoffSeconds = rung;
-        s.nextRunAt = Math.max(s.nextRunAt ?? 0, Date.now() + rung * 1000);
-      }
+}
+
+/** Apply what a successful merge resets on the authoring state — the "what does a merged
+ * change reset?" rule of applyMergeOutcome: the commit count, the last-merged timestamp,
+ * a stale rejection's cleared verdict and the error streak. Called only on "changed". */
+function applyMergedChange(s: RunnerState): void {
+  s.commits += 1;
+  // The last-merged timestamp: set only on a successful merge, so the rendered age means
+  // "time since the role last actually merged to main" — a rejected/merge_conflict/aborted
+  // merge, like a no_change run, leaves the prior value standing (PLANS.md "Each loop's
+  // last-landed age").
+  s.lastMergedAt = Date.now();
+  // A merge supersedes a stale rejection: a model-reviewed merge has already overwritten
+  // lastReview with its approve, but a review-exempt (or review-disabled) merge records no
+  // verdict, so a stale reject would otherwise ride every later run prompt (BUGS.md
+  // 2026-10-07). Cleared only with no revision pending — see clearSupersededRejection.
+  clearSupersededRejection(s);
+  // A merged change resets the error streak exactly as an error-free run does (BUGS.md
+  // 2026-09-30): the queued run that authored it preserved the streak — a rejection counts
+  // into it below — so the merge, the episode's only clean verdict, ends it.
+  s.consecutiveErrors = 0;
+}
+
+/** Apply a final rejection verdict on the authoring state — the "when does a rejection count
+ * into the error streak and back off?" rule of applyMergeOutcome: only a final rejection
+ * (no revision still owed) increments the streak, records the reason text and climbs the
+ * error-ladder rung at the warn bar. Called only on "rejected". */
+function applyRejectedChange(s: RunnerState): void {
+  // A review rejection is a failure the streak must count ONLY when it is final (BUGS.md
+  // 2026-10-14): recordRejectedChange (src/merge/merge-core.ts) already decided finality
+  // by the time this runs — it sets `state.revision` when the change goes back for another
+  // round and clears it when the chain is exhausted (or never sets it for a role that cannot
+  // revise, the director). A rejection that leaves a revision to work on is not a verdict
+  // about the author yet: counting every round of ONE change made an exhausted chain's third
+  // round cross the warn bar and flash a red "failing run after run" alert that needed
+  // nothing from the operator and was gone before it could be read (0–30 s). Counting only
+  // final rejections makes a streak of 3 mean three changes ended rejected (or errored) —
+  // the non-converging author the 2026-09-30 fix meant to catch — while a chain's rounds
+  // leave the streak unchanged and keep the fast minimum-interval retry the queued run
+  // scheduled. This merge outcome is the accumulation point (the authoring run ends
+  // `queued`, which no longer resets the streak, see applyRunOutcome) — the same field the
+  // warn, the breaker (src/gates/streak-gates.ts), and the error-storm observation
+  // (src/team/team-polls.ts) already read. No new machinery, no new constants: the warn
+  // bar and the breaker bar are ERROR_STREAK_WARN and ERROR_STREAK_BREAKER themselves.
+  if (s.revision === undefined) {
+    s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
+    const lastReasons = s.lastReview?.verdict === "reject" || s.lastReview?.verdict === "reverted" ? s.lastReview.reasons : undefined;
+    s.lastError = `review rejected: ${firstReason(lastReasons).slice(0, 200)}`;
+    // Past the warn bar the re-author backs off on the error ladder instead of the minimum
+    // interval the queued run scheduled: the fast first retries stay — the rejected branch's
+    // design intent, letting the author address the recorded reasons at once — but a
+    // non-converging author slows down instead of re-authoring at full price all day. The
+    // rung derives from the streak (not from backoffSeconds, which every queued run zeroes
+    // on its way out, pinning a state-derived ladder at its first rung), and never pulls
+    // nextRunAt earlier than the already-scheduled minimum interval.
+    const streak = s.consecutiveErrors;
+    if (streak >= ERROR_STREAK_WARN) {
+      const rung = Math.min(
+        ERROR_BACKOFF.initialSeconds * 2 ** (streak - ERROR_STREAK_WARN),
+        ERROR_BACKOFF.maxSeconds,
+      );
+      s.backoffSeconds = rung;
+      s.nextRunAt = Math.max(s.nextRunAt ?? 0, Date.now() + rung * 1000);
     }
   }
+}
+
+/** Settle the resolved change's lifetime on a merge outcome — the "how do the conflict count,
+ * hand-back and phase end with the change?" rule of applyMergeOutcome: a changed/rejected/
+ * withdrawn merge drops the per-sha conflict pin and the hand-back budget with the change's
+ * life, a merge_conflict grows the pin's count, and every outcome but aborted clears the
+ * review phase. Runs last, after the result and branch resets above. */
+function applyChangeLifetime(
+  s: RunnerState,
+  result: RunResult,
+  change: Pick<MergeEntry, "sha" | "summary">,
+): void {
   // A merge, a rejection or a withdrawn drop is the end of the change's life; a merge_conflict
   // keeps its pin. A withdrawn change is no verdict about its author: no streak, no backoff.
   const changeGone = result === "changed" || result === "rejected" || result === "withdrawn";
@@ -482,5 +507,36 @@ export function applyMergeOutcome(
   // 2/2"). A merge_conflict keeps it, so the resolved change's own cap discard fires.
   if (changeGone) s.conflictHandback = undefined;
   if (result !== "aborted") s.phase = undefined;
+}
+
+/** Record a completed MERGE on the authoring role's state (plans/merge-queue.md 3/5):
+ * the orchestrator calls this on the state object the merge ran against — the runner's live
+ * copy when one exists, a disk load otherwise — then saves it, the same in-place discipline
+ * applyRunOutcome has (the caller's state object is authoritative; a role with a queued or
+ * in-flight merge never runs, so no other writer holds it meanwhile). Sets `lastResult`
+ * to the merger's outcome, increments `commits` only on a success (the "merged to main"
+ * counter applyRunOutcome's "queued" branch left to the merge), and clears `phase` — the
+ * gate persisted `phase = "review"` on this same state object during the run, exactly as it
+ * did inside a run, so the label must not linger past the merge (mirroring
+ * applyRunOutcome's rule: every outcome except "aborted" clears it — an aborted merge
+ * keeps it, because the interruption hit mid-review and the next launch must recover and
+ * re-review the pinned work). `lastSummary` becomes the summary of the change this merge
+ * resolved — `change` is its merge-queue entry — so the merge's result, success or failure,
+ * reads beside the work it names (BUGS.md 2026-09-23: the queued run held its summary back
+ * rather than pair it with the prior result). The run's stashed `queuedSummary` wins when it
+ * names this sha: it is the text the run reported, high-friction annotation included. The
+ * entry's own summary (the commit subject) covers a stash that is missing or names another
+ * change — a crash between enqueue and the run's state save, or a merge that finished before
+ * its run's outcome was applied. Either way the stash is consumed. The failure detail rides
+ * in `lastReview` and the merge_done/merge_failed events. */
+export function applyMergeOutcome(
+  s: RunnerState,
+  result: RunResult,
+  change: Pick<MergeEntry, "sha" | "summary">,
+): void {
+  recordMergeResult(s, result, change);
+  if (result === "changed") applyMergedChange(s);
+  if (result === "rejected") applyRejectedChange(s);
+  applyChangeLifetime(s, result, change);
 }
 
