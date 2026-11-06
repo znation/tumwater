@@ -333,10 +333,11 @@ export function createMainWatch(
    * tip (BUGS.md 2026-11-04: the guardrail named the newest red tip instead of the breaker two
    * first-parent commits behind it). To name the actual breaker, walk first-parent commits from
    * the tip back toward the previous green head (`since`), running the declared check on each
-   * tree, and return the oldest commit whose tree reads red. A red-only range with no green in
-   * the walk — or a missing `since` (no previous head) — returns the oldest red found within
-   * the walk's bound (INHERIT_WALK_MAX); a git failure or a skipped (no-verdict) run reads
-   * conservative and stops the walk at the newest red it already holds. Never throws. */
+   * tree, and return the oldest commit whose tree reads red (a red naming only quarantined
+   * tests settles as non-red, so it is a green boundary, not a breaker). A red-only range with
+   * no green in the walk — or a missing `since` (no previous head) — returns the oldest red
+   * found within the walk's bound (INHERIT_WALK_MAX); a git failure or a skipped (no-verdict)
+   * run reads conservative and stops the walk at the newest red it already holds. Never throws. */
   async function redOpener(
     wt: string,
     tip: string,
@@ -351,15 +352,30 @@ export function createMainWatch(
     const commits = (raw ?? "").trim().split(/\s+/).filter(Boolean);
     if (commits.length === 0) return tip;
     let lastRed: string | undefined;
-    for (const commit of commits) {
-      await git(wt, "checkout", "-q", "--detach", "--force", commit);
-      const { baseline } = await checkMainBaseline(wt, config, undefined, false, false, undefined, false, CHECK_TIER.merge, true);
-      if (baseline?.status === "green") break; // the last green: the breaker is the red just above it
-      if (baseline?.status === "red") lastRed = commit;
-      else break; // no verdict (a skipped red-required run): stop, conservative
+    try {
+      for (const commit of commits) {
+        // A checkout that fails reads as no further evidence (never throws, like the walks):
+        // stop with the newest red already held rather than check the wrong tree.
+        if ((await gitTry(wt, "checkout", "-q", "--detach", "--force", commit)) === null) break;
+        const { baseline } = await checkMainBaseline(wt, config, undefined, false, false, undefined, false, CHECK_TIER.merge, true);
+        // A red that names only quarantined tests settles as non-red (recordMainCheck), so it is a
+        // green boundary here too; counting it as a breaker would name the quarantined commit
+        // instead of the later commit that added the real failure.
+        const quarantinedOnly =
+          baseline?.status === "red" && onlyQuarantined(root, baseline.failingTests) !== null;
+        if (baseline?.status === "red" && !quarantinedOnly) {
+          lastRed = commit;
+          continue;
+        }
+        // A green, a quarantined-only red, or no verdict (a skipped red-required run): the breaker
+        // is the red just above this boundary.
+        break;
+      }
+    } finally {
+      // The mirror is shared; put it back on the tip the way the rules pass does. Best effort so
+      // a failed restore cannot lose the verdict this walk was only decorating.
+      await gitTry(wt, "checkout", "-q", "--detach", "--force", tip);
     }
-    // The mirror is shared; put it back on the tip the way the rules pass does.
-    await git(wt, "checkout", "-q", "--detach", "--force", tip);
     return lastRed ?? tip;
   }
 
