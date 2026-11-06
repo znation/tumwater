@@ -122,6 +122,14 @@ test("a policy scan is in the gate's run even when the budget would crowd it out
   const fit = fitBudget(pick, cost, 20_000);
   assert.ok(fit.run.includes(scan), "the policy scan is force-kept, not crowded out");
   assert.equal(fit.left.includes(scan), false);
+  // With no distance (an undecidable change prices every test the same way) the scan is not
+  // force-kept, but it still ranks with the rest: it must be left out, never silently dropped.
+  const noDistance = fitBudget(
+    { tests: [scan, "test/other-0.test.ts"], distance: new Map([["test/other-0.test.ts", 1]]) },
+    cost,
+    1000,
+  );
+  assert.deepEqual(noDistance, { run: ["test/other-0.test.ts"], left: [scan] });
 });
 
 test("gateLintTargets lints the changed source files, or the whole tree when the lint's own inputs change", () => {

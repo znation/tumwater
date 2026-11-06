@@ -555,7 +555,7 @@ export function fitBudget(
   // on the tests behind them is what is left once they are paid for. A scan with no distance
   // (no code changed) cannot catch a new offender and is ranked like every other test.
   const scans = ranked.filter((r) => isPolicyScan(r.test) && Number.isFinite(r.d));
-  const rest = ranked.filter((r) => !isPolicyScan(r.test));
+  const rest = ranked.filter((r) => !scans.includes(r));
   const run: string[] = [];
   const left: string[] = [];
   let spent = 0;
