@@ -361,15 +361,17 @@ test("a wake event that cannot be logged still starts the due run", async () => 
   assert.equal(c.roleInFlight.size, 0, "the run finished");
 });
 
-test("a ci run that carries a heal prompt is admitted ahead of a parked tier-1 waiter; one that does not is not", async () => {
+test("a ci run that carries a heal prompt is admitted ahead of every parked role waiter; one that does not is not", async () => {
   // Healing a red main is work: a ci run whose inbox holds a red-main heal prompt must be
   // admitted ahead of every parked role waiter even though ci otherwise schedules at tier 1
   // (BUGS.md 2026-11-05), the way a post-merge verification already is at VERIFY_TIER. A ci
-  // run with no heal prompt keeps its own tier and waits behind a parked tier-1 waiter.
+  // run with no heal prompt keeps its own tier and waits behind the parked waiters.
   //
   // capacity 1, held by another lease, so every due run parks. Poll 1 parks a tier-1
-  // maintenance waiter (clean); poll 2 parks ci. The order of run() invocations below is the
-  // order the permits are granted, because run() runs only after its own lease is acquired.
+  // maintenance waiter (clean); poll 2 parks a tier-0 work waiter (feature); poll 3 parks ci.
+  // The order of run() invocations below is the order the permits are granted, because run()
+  // runs only after its own lease is acquired. A heal run that only matched tier 0 would
+  // still start after feature, and one that stayed at ci's tier 1 would start last.
   const root = tmpdir("launch-heal-");
   // ci's inbox holds the heal prompt mainRedHealPrompt writes (the one the red-main hand-off
   // queues); it is recognized by its opening, not its SHA.
@@ -383,6 +385,10 @@ test("a ci run that carries a heal prompt is admitted ahead of a parked tier-1 w
     started.push("clean");
     return { result: "changed" };
   });
+  const feature = fakeRunner("feature", async () => {
+    started.push("feature");
+    return { result: "changed" };
+  });
   const ciHeal = fakeRunner("ci", async () => {
     started.push("ci");
     return { result: "changed" };
@@ -392,12 +398,14 @@ test("a ci run that carries a heal prompt is admitted ahead of a parked tier-1 w
   const c = ctx({ root, semaphore });
   // Poll 1: only the maintenance waiter is due; it parks behind the held permit.
   launchDueRuns({ ...c, reasons: new Map([[clean, "scheduled"]]) });
-  // Poll 2: ci with the heal prompt is due; it parks ahead of clean (VERIFY_TIER < 1).
+  // Poll 2: a work waiter parks ahead of clean at its own tier 0.
+  launchDueRuns({ ...c, reasons: new Map([[feature, "scheduled"]]) });
+  // Poll 3: ci with the heal prompt is due; it parks ahead of both (VERIFY_TIER < 0).
   launchDueRuns({ ...c, reasons: new Map([[ciHeal, "scheduled"]]) });
   held.release(); // free the one permit: it goes to the lowest-tier waiter first
 
   await settle(c);
-  assert.deepEqual(started, ["ci", "clean"], "the heal run is admitted ahead of the parked tier-1 waiter");
+  assert.deepEqual(started, ["ci", "feature", "clean"], "the heal run is admitted ahead of the parked work and maintenance waiters");
 
   // A ci run with an empty inbox (no heal prompt) keeps its own tier-1 slot: it parks behind
   // the parked tier-1 waiter and is admitted FIFO, not ahead of it.

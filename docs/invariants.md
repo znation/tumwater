@@ -3533,7 +3533,7 @@ admitted ahead of the parked waiters.
 (`runCarriesHealPrompt`); `src/merge/merge-author.ts` (`VERIFY_TIER`).
 
 **Pinned by.** `test/orchestrator-launch.test.ts` — "a ci run that carries a heal prompt is admitted
-ahead of a parked tier-1 waiter; one that does not is not".
+ahead of every parked role waiter; one that does not is not".
 
 ## Maintenance allowance: maintenance merges stop at the rolling-day allowance, counted from the event log
 
