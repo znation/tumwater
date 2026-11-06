@@ -115,8 +115,8 @@ export function applyRunOutcome(
 
 /** Fold the finished run's outcome onto the role's streak counters and yield ring — the
  * cut-off, error, quiet-kill and no-change streaks, plus the yield ring's record of the
- * result. One helper per streak so "which outcomes grow which streak?" is answered by the
- * arm's condition alone (split out of applyRunOutcome's body). */
+ * result. Each streak's arm answers "which outcomes grow which streak?" by its condition
+ * alone (split out of applyRunOutcome's body). */
 function applyRunStreaks(s: RunnerState, outcome: RunOutcome): void {
   // The cut-off streak counts EVERY consecutive run truncated at the context ceiling, past the
   // resume limit too: the next fresh run's prompt names how many attempts the window has eaten
@@ -193,6 +193,18 @@ function recordCompletedOutcome(s: RunnerState, outcome: RunOutcome): void {
   }
 }
 
+/** True when a quiet-killed role still has resume attempts left: the streak bounds how many times
+ * a starved session is resumed, and director runs never resume. */
+function canResumeQuietKill(s: RunnerState, role: string): boolean {
+  return role !== DIRECTOR_ROLE && (s.quietKillStreak ?? 0) <= QUIET_KILL_RESUME_LIMIT;
+}
+
+/** True when a cut-off run should resume its compacted session: not a director, and the cut-off
+ * streak is still within CUT_OFF_RESUME_LIMIT. */
+function canResumeCutOff(s: RunnerState, role: string, outcome: RunOutcome): boolean {
+  return Boolean(outcome.cutOff) && role !== DIRECTOR_ROLE && (s.cutOffStreak ?? 0) <= CUT_OFF_RESUME_LIMIT;
+}
+
 /** Schedule the role's next run from the finished run's outcome — which outcomes resume and
  * which back off: the changed/queued minimum-interval arm, the rejected and skipped prompt
  * retries, the aborted and quiet-killed resumes (and their bounds), the rate-limit and error
@@ -239,7 +251,7 @@ function scheduleRunAfterOutcome(s: RunnerState, cfg: TumwaterConfig, role: stri
     // abandoned — the backend has refused to schedule it every attempt, so re-sending it only
     // starves the slot again — and the role takes a fresh run on the idle ladder instead
     // (BUGS.md 2026-09-18).
-    if (role !== DIRECTOR_ROLE && (s.quietKillStreak ?? 0) <= QUIET_KILL_RESUME_LIMIT) {
+    if (canResumeQuietKill(s, role)) {
       s.resumePending = true;
       s.resumeCause = outcome.resumeCause ?? "hung-tool";
       s.nextRunAt = Date.now();
@@ -272,7 +284,7 @@ function scheduleRunAfterOutcome(s: RunnerState, cfg: TumwaterConfig, role: stri
       s.resumeCause = "rate-limit";
     }
     scheduleBackoff(s, ERROR_BACKOFF);
-  } else if (outcome.cutOff && role !== DIRECTOR_ROLE && (s.cutOffStreak ?? 0) <= CUT_OFF_RESUME_LIMIT) {
+  } else if (canResumeCutOff(s, role, outcome)) {
     // Truncated at the context ceiling, not idle: the hour(s) of work survive in the
     // session pi just compacted, so resume it promptly instead of idle-backing-off.
     // Each resume restarts from the compacted (small) context, so repeated cut-offs on
