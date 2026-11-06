@@ -265,13 +265,21 @@ test("a timed-out check whose tree dies on SIGTERM settles right after the deadl
   const pgid = readPid(path.join(wt, "pgid"));
   advance(1_000); // the deadline's SIGTERM
   // The group's death is real time; wait it out with the check's clock frozen, then step the
-  // clock (the group poll) until the run settles — well inside the 5 s grace.
+  // clock (the group poll) until the check settles — well inside the 5 s grace.
   await waitFor(() => !groupAlive(pgid), "the SIGTERMed group to die", 30_000);
-  for (let stepped = 0; !settled && stepped < 2_500; stepped += 50) {
+  // Step the clock (the group poll) until the check settles, bounded at the grace: a pre-fix run
+  // settles only at the SIGKILL, so it reaches the grace and settles there; a correct run settles
+  // when a poll observes the group gone, earlier. The `settled` flag is only an early exit — the
+  // settle itself is read from the run record's own (logical) timestamps, never from when the
+  // promise resolved: runBuildCheck's post-settle sampleSleep is real time (two sysctl spawns on
+  // macOS), so a loaded host can resolve the promise late even though the run settled on time,
+  // and asserting on the promise's flag turned a correct settle into a flake (the 2026-11-04
+  // quarantine). Bounding the loop at the grace, not 2.5 s, keeps a pre-fix settle reachable so
+  // it fails the ran bound below instead of hanging the file.
+  for (let stepped = 0; !settled && stepped < 5_000; stepped += 50) {
     advance(50);
     await sleep(20);
   }
-  assert.ok(settled, "the check settled within 2.5 s of logical time after the deadline, not at the 5 s grace");
   const outcome = await check;
   assert.equal(outcome.skipReason, "timeout");
   const ran = outcome.run!.settledAt - outcome.run!.spawnedAt;

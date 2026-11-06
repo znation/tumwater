@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `a timed-out check whose tree dies on SIGTERM settles right after the deadline, not after the grace` failed, then passed on the same tree (quarantined by tumwater 2026-11-04) — fixed 2026-11-04 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+a timed-out check whose tree dies on SIGTERM settles right after the deadline, not after the grace
+~~~~
+
+**Cause.** The test's settle loop stepped the check's clock a fixed 2.5 s of logical time and then asserted the whole `runBuildCheck` promise had resolved (`assert.ok(settled, …)`). The run settles on a group poll ~50 ms after the deadline, but the promise only resolves after `runDeclaredCheck`'s post-settle `sampleSleep()` — two `sysctl` spawns in REAL time (src/build/build-check.ts → src/process/host-sleep.ts). On a loaded host that real-time step outruns the loop's ~1 s real budget, so the flag stayed false and the assertion failed a correct settle; a quiet re-run finished it in budget and passed. A deterministic injected slow-`sampleSleep` repro confirmed it: settled 1 050 ms after spawn (on time), the pre-fix assertion failed, a ready-run settled-at-timestamp check held.
+
+**Fix.** Read the settle from the run record's own logical timestamps instead of when the promise resolved, and bound the loop at the 5 s grace so a pre-fix settle-at-grace is reachable and fails the `ran <= 1 000 + 2 500` bound with its real message instead of hanging. The regression still catches the pre-fix behavior (verified by disabling the group poll: the test failed with `settled 6000ms after the spawn`).
+
+**Validation gap:** no-repro — the flake could not be forced (the file ran green 40× and in full-file runs), but its mechanism (a real-time post-settle `sampleSleep` racing the old assertion) was confirmed deterministically by an injected slow-sampler repro that failed the old tail and held the new one.
+
 ### Eleven runner tests fail since 7a1dfb05f: the run now awaits before it leases its slot, and the tests read the worktree path too early (found by operator session 2026-11-05 from the main watch) — fixed 2026-11-05 by an operator session
 
 - **Symptom:** since the 10:30 check on `7a1dfb05f` (feature-6, "Plan role stop count and Needs-review check read the projected ## Planned"), every full check on main fails 11 more tests than the check on its parent `52dcb061f` (10:19). 7 are in test/runner-interrupted.test.ts, 2 in test/runner-5.test.ts, 1 in test/runner-2.test.ts and 1 in test/runner-quiet-watchdog.test.ts: `a shutdown resume is bridged as a restart with no cut-off note`, `a user-aborted run discards work, backs off, and does not resume`, `a budget handback ends the run resumably…`, `a resumed run continues the interrupted session and keeps the worktree edits`, the five `a cross-agent handoff …` tests, `a quiet-killed run keeps its edits and resumes promptly instead of discarding`, and `a pi run that goes silent is killed as hung and never commits partial work`. Each fails with `timed out waiting for …/.tumwater/worktrees/<role>/partial.txt` after 30 s, which raised main's full check from ~135 s to ~520 s.
