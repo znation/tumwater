@@ -276,9 +276,10 @@ function pushPositiveMs(list: number[], ms: number): void {
   if (ms > 0) list.push(ms);
 }
 
-/** Fold a run_end into the accumulator: a run (per role and, when the target counts runs, in
- * total), its output/prompt/cache tokens, its cost, and its notional backend share. */
-function foldRunEnd(target: UsageFold, ev: HarnessEvent, runModels?: Map<string, string>): void {
+/** Fold a run_end's per-role outcome tallies: one run for the role, the parallel error-class
+ * failed-run tally, the deliberate-refusal tally, and the window's total run count when the
+ * target counts runs. */
+function foldRunOutcomes(target: UsageFold, ev: HarnessEvent): void {
   const role = eventRole(ev);
   addTo(target.runsByRole, role, 1);
   // Error-class runs get their own parallel tally — the day report's ``Failed runs by role``
@@ -291,7 +292,13 @@ function foldRunEnd(target: UsageFold, ev: HarnessEvent, runModels?: Map<string,
   // runsByRole; a refused run still counts as a run.
   if (ev.result === "refused") addTo(target.refusalsByRole, role, 1);
   if (target.runs !== undefined) target.runs++;
-  const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
+}
+
+/** Fold a run_end's duration and token bill: the run-duration median sample, the role's
+ * output-token total, the prompt/cache split, and the output total. */
+function foldRunUsage(target: UsageFold, ev: HarnessEvent): void {
+  const role = eventRole(ev);
+  const { tokens } = eventUsage(ev);
   pushPositiveMs(target.runDurationsMs, finiteNumber(ev.durationMs, 0));
   addTo(target.tokensByRole, role, tokens);
   // The prompt side of the same run's bill: how many prompt tokens each role sent and how
@@ -305,10 +312,26 @@ function foldRunEnd(target: UsageFold, ev: HarnessEvent, runModels?: Map<string,
   if (prompt > 0) addTo(target.promptTokensByRole, role, prompt);
   if (cacheRead > 0) addTo(target.cacheReadTokensByRole, role, cacheRead);
   target.tokensOut += tokens;
+}
+
+/** Fold a run_end's cost bill: the real and notional totals, and the role's share of each. */
+function foldRunCosts(target: UsageFold, ev: HarnessEvent): void {
+  const role = eventRole(ev);
+  const { costUsd, notionalCostUsd } = eventUsage(ev);
   target.costUsd += costUsd;
   target.notionalCostUsd += notionalCostUsd;
   if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
   if (notionalCostUsd !== 0) addTo(target.notionalByRole, role, notionalCostUsd);
+}
+
+/** Fold a run_end's model attribution, when the window carries a runModels map: the run's
+ * output tokens and its real and notional spend go under the model its run_start named. */
+function foldRunModelAttribution(
+  target: UsageFold,
+  ev: HarnessEvent,
+  runModels: Map<string, string> | undefined,
+): void {
+  const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
   // The model side of the same bill: attribute the run's output tokens and its real and
   // notional spend to the model its run_start named (runStartModel's pairing, the map the
   // window collector builds beside this target). Parallel to tokensByRole and costByRole —
@@ -324,6 +347,13 @@ function foldRunEnd(target: UsageFold, ev: HarnessEvent, runModels?: Map<string,
       if (notionalCostUsd !== 0) addTo(target.notionalByModel, model, notionalCostUsd);
     }
   }
+}
+
+/** Fold a run_end's notional backend share: name the subscription seam whose runs made the
+ * run's API-equivalent cost — the `agent` the run_end carried, or "claude" for a legacy
+ * subscription window without one. */
+function foldRunBackendShare(target: UsageFold, ev: HarnessEvent): void {
+  const { notionalCostUsd } = eventUsage(ev);
   // The notional spend's backend (plans/codex-backend.md part 3d/9): the subscription seam
   // whose runs made the run's API-equivalent cost, from the run_end's `agent` (run-finalize
   // carries it when the run reported billing/rate windows) — falling back to "claude" when
@@ -338,9 +368,19 @@ function foldRunEnd(target: UsageFold, ev: HarnessEvent, runModels?: Map<string,
         : undefined;
   if (notionalBackend !== undefined && notionalCostUsd !== 0)
     addTo(target.notionalByBackend, notionalBackend, notionalCostUsd);
+}
+
+/** Fold a run_end into the accumulator: a run (per role and, when the target counts runs, in
+ * total), its output/prompt/cache tokens, its cost, and its notional backend share. */
+function foldRunEnd(target: UsageFold, ev: HarnessEvent, runModels?: Map<string, string>): void {
   // The agent runs' per-provider spend (run-finalize.ts emits providerCost on run_end)
   // — folded per provider beside the per-role maps, so a mixed team's `Cost by provider`
   // line names the expensive seam.
+  foldRunOutcomes(target, ev);
+  foldRunUsage(target, ev);
+  foldRunCosts(target, ev);
+  foldRunModelAttribution(target, ev, runModels);
+  foldRunBackendShare(target, ev);
   foldProviderCost(target, ev.providerCost);
 }
 
