@@ -101,6 +101,11 @@ export interface MergeScopeContext {
  * places would count the reviewer twice). */
 export interface MergerContext extends PiRunWiring, MergeScopeContext {
   state: RunnerState;
+  /** Acquire the team lease a gating call holds while it runs reviewQueuedChange (part 3b/6):
+   * takes the same VERIFY_TIER tier the verify stage holds around its gate and returns the
+   * release. Absent on the live merge path — that path always passes `alreadyGated` and never
+   * gates here — and in the fixtures, whose contexts have no semaphore. */
+  gatePermit?: () => Promise<() => void>;
 }
 
 /** A gate invocation's outcome: `gate` when the change is approved/exempt and may be merged
@@ -423,14 +428,22 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
       await dropWithdrawnPin(ctx.root, req.role, ctx.state, withdrawn);
       return "withdrawn";
     }
-    const outcome = await reviewQueuedChange(ctx, req, wt, ctx.state, ctx.foldUsage);
-    if (outcome.kind === "result") return outcome.result;
-    // Merge the gate-cleared head (the synced pin the gate judged), carrying verifiedHead only
-    // when the pre-check ran green on exactly that head — the same rule the verify verdict used.
-    req =
-      outcome.gate.verifiedHead === outcome.sha
-        ? { ...req, sha: outcome.sha, verifiedHead: outcome.gate.verifiedHead }
-        : { ...req, sha: outcome.sha };
+    // A gating call holds the verify stage's team lease for the gate's length, so a concurrent
+    // verification or pre-merge check waits while this change is judged, and holds none while the
+    // merge runs below (the merge's conflict resolver takes MERGE_TIER itself).
+    const release = ctx.gatePermit ? await ctx.gatePermit() : undefined;
+    try {
+      const outcome = await reviewQueuedChange(ctx, req, wt, ctx.state, ctx.foldUsage);
+      if (outcome.kind === "result") return outcome.result;
+      // Merge the gate-cleared head (the synced pin the gate judged), carrying verifiedHead only
+      // when the pre-check ran green on exactly that head — the same rule the verify verdict used.
+      req =
+        outcome.gate.verifiedHead === outcome.sha
+          ? { ...req, sha: outcome.sha, verifiedHead: outcome.gate.verifiedHead }
+          : { ...req, sha: outcome.sha };
+    } finally {
+      release?.();
+    }
   }
   const result = await mergeToMain(
     {

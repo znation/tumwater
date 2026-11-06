@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract verify collapse, part 3b/6: The merge's gate moves behind `mergeApprovedChange`: a caller that has not gated gets the withdrawn check and review in the merge worktree under the verify stage's team permit, while the live verify path marks its request already gated so the pipeline still gates once (planned 2026-11-04 by the plan role, splitting the 2026-11-04 too-large part 3b/5 after feature held it too large for one run; requires Subtract verify collapse part 3a/5 landed; sibling to part 3c/6 (later in this series); touches src/merge/merge-core.ts src/merge/merge-drain.ts test/fixtures/merger-fixtures.ts test/merge-withdrawn.test.ts test/merger.test.ts test/merger-check.test.ts test/fakes/fake-pi.ts) — done 2026-11-05 by the feature role
+
+**Goal.** `mergeApprovedChange` becomes the gate-then-merge entry point for callers that have not already gated: given a queued pin, it runs the withdrawn check and `reviewQueuedChange` in the merge worktree before `mergeToMain`, routing the gate's non-approval outcomes exactly as the verify stage does; given `alreadyGated: true`, it merges as today without a second review. The live verify path's `startMerge` passes the flag, so the running pipeline's behavior and spend do not change. Permit ownership is decided here: a gating call acquires the same `VERIFY_TIER` team lease the verify stage holds around its gate and releases it before `mergeToMain`, whose conflict resolver keeps taking `MERGE_TIER`.
+
+**Approach.**
+- merge-core.ts: add optional `alreadyGated?: boolean` to `MergeRequest` and optional `gatePermit?: () => Promise<() => void>` to `MergerContext` (acquire the gate's team lease, returning its release). In `mergeApprovedChangeIn`, when `!req.alreadyGated`, ensure the detached merge worktree, acquire `ctx.gatePermit?.()`, run `reviewQueuedChange(ctx, req, wt, ctx.state, ctx.foldUsage)` there, release the lease in a `finally`, and return its result for a non-approval outcome; on approval carry its `sha` and `verifiedHead` into the merge. The existing `withdrawn` closure on `mergeToMain` stays, so the in-lock withdrawn re-check is unchanged. When `req.alreadyGated` is true, keep today's direct merge. Update the function's doc comment to say it gates unless the caller already did.
+- merge-drain.ts: `startMerge` builds its request with `alreadyGated: true`, so the merge slot does not re-gate an approved change.
+- test/fixtures/merger-fixtures.ts: `verifyAndMerge` becomes one `mergeApprovedChange(ctx, req)` call (the gate runs inside); drop the `verifyRequest` and `BatchRoleWiring` imports and the `batchWiring` helper if no caller remains.
+- test/merge-withdrawn.test.ts: the cases that verify and then merge pass `alreadyGated: true` on the merge call, so they still drive exactly one gate.
+- test/merger.test.ts and test/merger-check.test.ts keep their assertions; only their comments naming `verifyRequest` change to the one-call fixture. The `test/fakes/fake-pi.ts` comment naming the `verifyAndMerge` site follows the fixture's new call.
+
+**Files touched.** src/merge/merge-core.ts src/merge/merge-drain.ts test/fixtures/merger-fixtures.ts test/merge-withdrawn.test.ts test/merger.test.ts test/merger-check.test.ts test/fakes/fake-pi.ts
+
+**Acceptance criteria.**
+- Calling `mergeApprovedChange` without `alreadyGated` on a pin whose diff edits the brief block or PRINCIPLES.md returns `rejected` without moving main; on a clean pin it returns `changed` after one gate.
+- `startMerge` passes `alreadyGated: true`: an approved change merges without a second reviewer run, and no live pipeline path changes its spend or result.
+- A gating call holds one `VERIFY_TIER` team permit until `reviewQueuedChange` returns and holds none while `mergeToMain` runs; a merge's conflict resolver still acquires `MERGE_TIER`.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/merger.test.ts, test/merger-check.test.ts, test/merge-withdrawn.test.ts and test/merge-pipeline.test.ts, then the gate.
+
 ### Hourly full check, part 3a/4: A red's opener is the first commit at which its confirmed failing tests fail, found by bisecting the first-parent code commits since the last green and re-running only those tests (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md "Decision" 4; splitting the 2026-11-01 part 3/4 after feature held it too large for one run; requires Hourly full check part 2c/4 landed; sibling to Hourly full check part 3b/4, which requires this part landed; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts src/events/events.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-watch-spells.test.ts test/main-red-heal.test.ts) — done 2026-11-05 by the feature role
 
 **Goal.** With the full check hourly, one red verdict covers up to an hour of commits. A confirmed red at tip T must name the single commit that opened it, not T (user, 2026-11-01: "when fixing failures, re-run only the failed tests"). This part changes only which commit is named; the per-head re-check cadence is part 3b/4.

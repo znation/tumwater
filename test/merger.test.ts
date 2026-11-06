@@ -238,6 +238,41 @@ test("an abort before the gate returns aborted and keeps the ref", async () => {
   assert.equal(await refSha(root, REF), sha, "an aborted merge keeps its pin for recovery");
 });
 
+test("a gating call holds one gate permit through its gate and holds none while the merge runs", async () => {
+  // Part 3b/6: a gating call acquires ctx.gatePermit (the verify stage's team lease) around
+  // reviewQueuedChange and releases it in a finally before mergeToMain — whose conflict resolver
+  // keeps taking MERGE_TIER itself. The permit is released before the resolver's runPi fires, so
+  // it is not held while the merge runs.
+  await withPi(
+    reviewerPi("VERDICT: approve"),
+    async () => {
+      const { root, sha } = await pinnedFixture();
+      declareCheck(root, "#!/bin/sh\necho ok\n");
+      advanceMain(root, "seed.txt", "main\n"); // force a conflict so the resolver's runPi fires
+      const state = freshRunnerState(ROLE);
+      const order: string[] = [];
+      const { ctx } = makeCtx(root, state, (wt) => {
+        order.push("merge");
+        fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n"); // resolve the markers
+      });
+      ctx.gatePermit = async () => {
+        order.push("acquire");
+        return () => {
+          order.push("release");
+        };
+      };
+
+      assert.equal(await verifyAndMerge(ctx, request(sha)), "changed");
+
+      assert.deepEqual(
+        order,
+        ["acquire", "release", "merge"],
+        "the permit is held through the gate and released before the merge's resolver runs",
+      );
+    },
+  );
+});
+
 test("a conflicting merge gets one resolution run and then merges", async () => {
   await withPi(
     reviewerPi("VERDICT: approve"),
