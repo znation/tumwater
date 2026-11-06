@@ -165,28 +165,6 @@ interface PriorReviewPrompt {
   interdiff: string;
 }
 
-/** The prompt for the adversarial pre-merge review gate: a fresh-session pi run that sees only the
- * diff and project context — never the author's session — and replies with exactly one VERDICT
- * line plus numbered reasons (see parseVerdict in src/review/review-verdict.ts).
- * The prompt always says tumwater is running the project's own check on this tree (alongside
- * the review, or already done), so the reviewer spends its run on what a green suite cannot show
- * instead of running it. The no-re-run instruction is its own line in the rules list, not a clause
- * in the context paragraph: stated there, reviewers read past it and re-ran the suite in scratch
- * copies under /tmp while holding the merge slot (BUGS.md 2026-09-23). `baseRev` is the frozen
- * revision the diff is measured against (changeBaseRev's
- * merge-base, resolved when the gate builds the diff): the prompt names it and tells the reviewer
- * to compare against it, never `main`, because other roles merge to main while the review runs
- * (BUGS.md 2026-10-06). Omitted, the prompt keeps the generic "ahead of main" wording. `today` pins
- * the date line (prompt.ts's dateLine) for tests; omitted, it is the local day. The text must
- * contain the literal "VERDICT:" exactly twice — the two advertised forms — because a prompt
- * test derives the accepted forms from it. `priorReview` is present only when this merge is a
- * revision of a previously rejected change (plans/revise-rejected.md part 2/2): it names the round
- * and shows the prior objections plus the interdiff so the re-review checks each one first.
- * Omitted, the prompt is unchanged from a fresh change's. `postMerge` marks the post-merge review
- * of a commit already on main: a finding the reviewer can repair is the work —
- * it makes the minimal fix in the worktree, leaves the edit, and ends with the verdict line plus a
- * `FIX:` line — so the instruction and the repair rule render only for that caller, and every other
- * (pre-merge) caller's prompt is byte-identical. */
 /** The review prompt's ordered opening: the identity line and date, the high-friction warning,
  * and the author's summary, commit body and prior-review block when present. One array so the
  * preamble's block order is read from one place, not scattered `parts.push` calls. */
@@ -372,6 +350,28 @@ ${TEST_RUNNER_RULE}
   FIX: <files you changed>` : ""}`;
 }
 
+/** The prompt for the adversarial pre-merge review gate: a fresh-session pi run that sees only the
+ * diff and project context — never the author's session — and replies with exactly one VERDICT
+ * line plus numbered reasons (see parseVerdict in src/review/review-verdict.ts).
+ * The prompt always says tumwater is running the project's own check on this tree (alongside
+ * the review, or already done), so the reviewer spends its run on what a green suite cannot show
+ * instead of running it. The no-re-run instruction is its own line in the rules list, not a clause
+ * in the context paragraph: stated there, reviewers read past it and re-ran the suite in scratch
+ * copies under /tmp while holding the merge slot (BUGS.md 2026-09-23). `baseRev` is the frozen
+ * revision the diff is measured against (changeBaseRev's
+ * merge-base, resolved when the gate builds the diff): the prompt names it and tells the reviewer
+ * to compare against it, never `main`, because other roles merge to main while the review runs
+ * (BUGS.md 2026-10-06). Omitted, the prompt keeps the generic "ahead of main" wording. `today` pins
+ * the date line (prompt.ts's dateLine) for tests; omitted, it is the local day. The text must
+ * contain the literal "VERDICT:" exactly twice — the two advertised forms — because a prompt
+ * test derives the accepted forms from it. `priorReview` is present only when this merge is a
+ * revision of a previously rejected change (plans/revise-rejected.md part 2/2): it names the round
+ * and shows the prior objections plus the interdiff so the re-review checks each one first.
+ * Omitted, the prompt is unchanged from a fresh change's. `postMerge` marks the post-merge review
+ * of a commit already on main: a finding the reviewer can repair is the work —
+ * it makes the minimal fix in the worktree, leaves the edit, and ends with the verdict line plus a
+ * `FIX:` line — so the instruction and the repair rule render only for that caller, and every other
+ * (pre-merge) caller's prompt is byte-identical. */
 export function buildReviewPrompt(
   diff: string,
   summary?: string,
