@@ -19,6 +19,10 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Cause:** `roleTier` (src/roles/roles.ts) puts feature, bugfix and plan at tier 0 and every other role at tier 1, and the semaphore admits strictly by tier (`enqueue`, src/concurrency/semaphore.ts) with the work reserve also withholding permits from tier 1. With more busy work runners than permits, one work waiter is always parked, so a tier-1 waiter can be passed over indefinitely. The ci-heal fix narrows this for one prompt kind; it does not bound any other tier-1 wait and does not surface a wait in progress.
 - **Expected / fix sketch:** bound how long any tier-1 waiter can be passed over (for example, promote a waiter parked longer than two hours ahead of new tier-0 arrivals), and show a wait in progress on the role row and in doctor (for example "waiting for a run slot 14h"), so starvation is visible before it costs a day.
 
+### post-merge review of 88686680 never reached a verdict (found by the review role 2026-11-06)
+
+The post-merge review of commit `88686680182c22815fffa8ad53ceb107402d1c3c` (mergeApprovedChange runs a queued change's gate when its request is unmarked) never reached a verdict: fix did not merge: merge_conflict. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
+
 ## Fixed
 
 ## Verified
