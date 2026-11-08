@@ -205,5 +205,9 @@ test("a base verdict saved before offender names keeps the name-only stale-base 
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
     assert.ok(warningMessages(root).some((m) => m.includes("already failed")));
+    assert.ok(
+      !warningMessages(root).some((m) => m.includes("violation src/a.ts:10")),
+      "the old verdict's names, not the change's unlisted offender subtest, are the stale-base failures",
+    );
   });
 });

@@ -70,7 +70,7 @@ async function staleBaseFailures(
       ? [...failingTests]
       : failingTests.filter((t) => !t.startsWith(POLICY_OFFENDER_TEST_PREFIX));
     if (comparable.length === 0 || !comparable.every((t) => baseFailed.includes(t))) return null;
-    return { base, tests: [...failingTests] };
+    return { base, tests: comparable };
   } catch {
     return null;
   }
