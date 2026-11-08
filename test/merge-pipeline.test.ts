@@ -68,10 +68,19 @@ test("a torn head is dropped with a warning and the healthy entry behind it merg
   fs.mkdirSync(mergeQueueDir(root), { recursive: true });
   fs.writeFileSync(path.join(mergeQueueDir(root), "1-000000-0.json"), '{"role":"improve"');
   enqueueMerge(root, entry("improve", sha));
+  // The deterministic gate's check is the only observer of a verification start that survives
+  // the map-free pipeline (part 3e/6): improve's check touches its flag only on the change's
+  // own tree (improve.txt present), never on main's tip, so the flag proves the healthy entry
+  // behind the torn head is being verified.
+  const flags = tmpdir("torn-warn-");
+  const config = {
+    ...defaultConfig(),
+    check: { command: `if [ -f improve.txt ]; then touch '${path.join(flags, "improve-checking")}'; fi` },
+  };
   await withPi(APPROVE(), async () => {
-    const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
+    const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"], undefined, config), { config });
     await drainMergeQueue(ctx, pipeline);
-    assert.deepEqual([...pipeline.verifying.keys()], ["improve"], "the healthy entry behind the torn head is being verified");
+    await waitForFile(path.join(flags, "improve-checking"));
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the healthy entry to merge");
 
     const torn = path.join(mergeQueueDir(root), "1-000000-0.json");
@@ -403,11 +412,10 @@ test("a verification rejection drops its entry at once — its role may run next
     assert.equal(loadRunnerState(root, "alpha").lastResult, "rejected", "the outcome is saved before the drop");
     assert.equal(readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha").length, 1);
     assert.equal(await refSha(root, mergeRefName("alpha")), null, "a rejection deletes the pin");
-    assert.equal(pipeline.verifying.has("alpha"), false, "no verification remains for the rejected entry");
 
-    // The next queued entry starts on the next drain: one verification at a time.
+    // The next queued entry starts on the next drain: one verification at a time, seen through
+    // beta's own check flag (the durable check-start signal, part 3e/6).
     await waitForFile(path.join(flags, "beta-checking"));
-    assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "beta's verify started after alpha's drop");
     const marker = readMergeMarker(root);
     assert.deepEqual(
       marker?.changes?.map((c) => [c.role, c.status, c.stage]),
