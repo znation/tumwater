@@ -146,7 +146,7 @@ async function cmdReviewsAccept(root: string, args: string[]): Promise<void> {
   // The vocabulary an accept invocation accepts is exactly --accept and --json, both consumed
   // above; --role is refused by name (as cmdQueueCancel refuses it): accept addresses a
   // whole-queue position `tumwater reviews` printed, and a scoped read must never renumber it.
-  if (rest.includes("--role") || rest.includes("--status")) fail("reviews --accept accepts by whole-queue position from `tumwater reviews`; --role and --status scope a read only — drop them");
+  if (rest.includes("--role") || rest.includes("--status") || rest.includes("--grep")) fail("reviews --accept accepts by whole-queue position from `tumwater reviews`; --role, --status and --grep scope a read only — drop them");
   // Everything else is refused with the generic wording, so `--bogus` is named.
   rejectUnknownArgs("reviews", rest, []);
   if (position === null) fail("--accept needs a position (usage: tumwater reviews --accept <n>)");
