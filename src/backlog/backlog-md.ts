@@ -167,8 +167,9 @@ export function sectionLines(md: string, sectionTitle: string): string[] {
  * caller's `fenced` tracker — or `lines.length` when none follows. The section-end boundary
  * rule as an index, for readers that must cut or splice at the boundary rather than collect
  * its content (backlog-question-answer.ts cuts the Open section at its end and inserts a moved
- * block before Answered's next `## `; backlog-write.ts cuts the section a filed entry is
- * appended to). Shares fencedHeadingTitle's guard with sectionLines, so
+ * block before Answered's next `## `; sectionSpan below locates a named section's heading and
+ * then cuts at this boundary, which is how backlog-write.ts and backlog-archive.ts find a
+ * section's end). Shares fencedHeadingTitle's guard with sectionLines, so
  * a boundary found here is the same boundary sectionLines would stop at. */
 export function nextSectionHeading(
   lines: readonly string[],
@@ -184,22 +185,23 @@ export function nextSectionHeading(
 /** The 0-based span of the first `## <title>` section in `lines`: its heading line, and the
  * index of the next `## ` heading (or `lines.length`). Fence-aware through the shared
  * fencedHeadingTitle guard, so a quoted `## ` line is body text. null when the section is
- * absent. The single home of the section-boundary walk the writers share: backlog-write.ts
- * cuts the section a filed entry is appended to and the `## Done` section a retired plan moves
- * into, and backlog-archive.ts cuts the live and archive sections it moves entries between. */
+ * absent. The single home of the section boundary the writers share: backlog-write.ts cuts the
+ * section a filed entry is appended to and the `## Done` section a retired plan moves into,
+ * and backlog-archive.ts cuts the live and archive sections it moves entries between. The
+ * heading is found with the same guard sectionLines uses, then the end is nextSectionHeading's
+ * one boundary walk — so the rule lives in one place rather than being restated here. */
 export function sectionSpan(
   lines: readonly string[],
   title: string,
 ): { heading: number; end: number } | null {
   const fenced = fenceTracker();
-  let heading = -1;
   for (let i = 0; i < lines.length; i++) {
-    const found = fencedHeadingTitle(lines[i] ?? "", fenced, "## ");
-    if (found === null) continue;
-    if (heading >= 0) return { heading, end: i };
-    if (found === title) heading = i;
+    if (fencedHeadingTitle(lines[i] ?? "", fenced, "## ") !== title) continue;
+    // The heading line is outside every fence by construction, so the tracker is closed here
+    // and the boundary walk can continue from it exactly where it stopped.
+    return { heading: i, end: nextSectionHeading(lines, i + 1, fenced) };
   }
-  return heading >= 0 ? { heading, end: lines.length } : null;
+  return null;
 }
 
 /** The body lines of one `## <sectionTitle>` section with fenced content stripped: the
