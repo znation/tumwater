@@ -19,10 +19,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Cause:** the row and the doctor read different signals. The row reads the per-runner `parkedSince` stamp; the doctor sums completed `provider_wait` events. The semaphore's own wait queue (each parked waiter's tier and age) is not exposed to a doctor surface, so a live wait cannot be counted or aged there.
 - **Expected / fix sketch:** publish the semaphore wait in progress (the parked tier and how long it has waited) to the doctor's contention view, so a long wait is visible before it ends; the role row already carries the wait duration. This is independent of, and complementary to, the age-bound fix archived under the sibling entry.
 
-### post-merge review of 88686680 never reached a verdict (found by the review role 2026-11-06)
-
-The post-merge review of commit `88686680182c22815fffa8ad53ceb107402d1c3c` (mergeApprovedChange runs a queued change's gate when its request is unmarked) never reached a verdict: fix did not merge: merge_conflict. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
-
 ### The gate's stale-base excuse excuses a change's own scan failure on a green main, so a change rebased past a red base merges a new offender into a green tree (found by the selfcheck role 2026-11-06)
 
 **Needs review 2026-11-08 by bugfix: too large for one run** — the fix it demands (compare offenders, not test names) needs offender data the model does not carry and a redesign of how the four aggregate policy scans report, threaded through every attribution arm and the merge path; park for a plan-to-split.

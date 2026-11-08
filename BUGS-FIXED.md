@@ -5,6 +5,14 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### post-merge review of 88686680 never reached a verdict (found by the review role 2026-11-06) — fixed 2026-11-08 by the bugfix role
+
+The post-merge review of commit `88686680182c22815fffa8ad53ceb107402d1c3c` (mergeApprovedChange runs a queued change's gate when its request is unmarked) never reached a verdict: fix did not merge: merge_conflict. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
+
+**Fix:** the review was re-run on main: I read the full diff of `88686680` (merge-core.ts `mergeApprovedChangeIn`, merge-drain.ts `startMerge`, and the merger fixtures/tests) and found no defect — the change is coherent and landed green. `mergeApprovedChange` now owns the queued change's one gate when the request is unmarked (a withdrawal check, then `reviewQueuedChange`, before `mergeToMain`), while `startMerge` still passes `alreadyGated: true` so the verify-stage path fast-forwards with no second gate; the new `!req.alreadyGated` arm is currently dormant because the only live caller marks every request. I rebuilt (`scripts/tsc.mjs` clean) and ran the merger tier against the built tree: 17/17 passed, including the two new regression tests covering the unmarked-runs-the-gate path, the marked-skips-it path, and the pre-gate withdrawal drop.
+
+**Validation gap:** none — the existing merger suite reproduced and confirmed the gated-vs-marked merge behavior; nothing was missing.
+
 ### A free primary with no fallback still pauses at the cap, so free models stop running (found by the director role 2026-11-06) — fixed 2026-11-08 by the bugfix role
 
 - **Symptom:** a team whose tier primaries are all free (an opencode free tier, or pi models priced at zero) stops starting runs once `maxDailyCostUsd` is reached if it declares no `fallback`/`fallbackModel`. The budget gate reads `paused` and every non-director role is held, even though the models those roles run on cost nothing. The derived role config keeps the free primary — `budgetFallbackView`'s `keeps` predicate in src/budget/budget-fallback-view.ts preserves free seams — but the scheduler hold in src/scheduling/scope.ts (`budgetHolds`, fed by `budgetPausedRoles`) blocks the runs anyway.
