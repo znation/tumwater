@@ -18,7 +18,7 @@ import { refSha, setRef } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { APPROVE, allTasks, drained, entry, makePipeline, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
-import { mainSha, makeRepo, pinOffMain } from "./fixtures/repo-fixtures.js";
+import { mainSha, makeRepo, pinOffMain, sh, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 
 test("a pin with no queue file is gated and merged on a poll", async () => {
   const root = makeRepo();
@@ -97,6 +97,47 @@ test("a withdrawn claim's pin is left for its role's next run to set aside", asy
 
   assert.equal(mergeTasks(pipeline).length, 0, "no gate-then-merge task started");
   assert.equal(await refSha(root, mergeRefName("improve")).catch(() => null), sha, "the pin waits for setAsideWithdrawnWork");
+  assert.equal(queueDepth(root), 0, "no queue file was written");
+});
+
+test("a pin whose still-owed claim main no longer lists waits for its role's next run", async () => {
+  // The scheduling pass that turns a deleted claim into RunnerState.withdrawn runs after the
+  // drain, so the first poll after a withdrawal has no marker yet. The drain must read the
+  // live claim itself: a pin-only commit carries no claim for the merge's own check.
+  const root = makeRepo();
+  writeBacklogFile(root, "PLANS.md", [
+    { heading: "## Planned", body: "### Beta (planned 2026-01-01 by operator)\n\nBody." },
+    { heading: "## Done" },
+  ]);
+  sh(root, "git", "add", "PLANS.md");
+  sh(root, "git", "commit", "-m", "plans");
+  const sha = pinOffMain(
+    root,
+    (d) => fs.writeFileSync(path.join(d, "beta.ts"), "beta work\n"),
+    "beta work\n\nRun: feature #7 · turns 1 · ctx 1k",
+    { reset: true },
+  );
+  await setRef(root, mergeRefName("feature"), sha);
+  writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned" }, { heading: "## Done" }]);
+  sh(root, "git", "add", "PLANS.md");
+  sh(root, "git", "commit", "-m", "withdraw beta");
+  const [runner] = runnersFor(root, ["feature"]);
+  assert.ok(runner);
+  runner.state.runs = 7;
+  runner.state.claim = {
+    file: "PLANS.md",
+    key: "Beta",
+    title: "Beta (planned 2026-01-01 by operator)",
+    at: Date.now(),
+    source: "assigned",
+  };
+  runner.state.resumePending = true;
+  const { ctx, pipeline } = makePipeline(root, [runner]);
+
+  await drainMergeQueue(ctx, pipeline);
+
+  assert.equal(mergeTasks(pipeline).length, 0, "no gate-then-merge task started before the marker exists");
+  assert.equal(await refSha(root, mergeRefName("feature")).catch(() => null), sha, "the pin waits for setAsideWithdrawnWork");
   assert.equal(queueDepth(root), 0, "no queue file was written");
 });
 

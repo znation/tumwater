@@ -27,6 +27,7 @@ import {
   type MergePipelineContext,
 } from "./merge-pipeline.js";
 import { dropTornHead, mergedIntoMain } from "./merge-head.js";
+import { withdrawnEntries } from "./merge-withdrawn.js";
 import { pinnedMergeEntry, pinnedRetrySha } from "../runner/runner-leftover.js";
 import { MERGE_TIER, VERIFY_TIER, resolveAuthor } from "./merge-author.js";
 import type { RoleRunner } from "../runner/runner.js";
@@ -125,7 +126,9 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
     if (queuedRoles.has(runner.role)) continue;
     // A withdrawn claim's pin is not merged here: its role's next run sets the work aside
     // before leftover recovery (runner-leftover.ts setAsideWithdrawnWork), because such a pin
-    // carries no claim the merge's own withdrawn check can read.
+    // carries no claim the merge's own withdrawn check can read. The scheduling pass that
+    // leaves this marker runs after the drain, so the pin check below also reads the runner's
+    // live claim on the first poll after a withdrawal.
     if (runner.state.withdrawn !== undefined) continue;
     // Skip a runner the ref files settle as having no pin, without yielding: an empty-queue
     // poll must not add an async hop just to confirm, on most polls, that nothing is pinned
@@ -134,10 +137,31 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
     if (refAbsentFromFiles(ctx.root, mergeRefName(runner.role))) continue;
     const sha = await pinnedRetrySha(ctx.root, runner.role, ctx.mainBranch, runner.state);
     if (sha === null) continue;
+    const entry = await pinnedMergeEntry(ctx.root, runner.role, sha);
+    if (await pinClaimWithdrawn(ctx, runner, entry.run)) continue;
     if (ctx.startHeld(runner.role)) continue;
-    p.merge = startMerge(ctx, p, await pinnedMergeEntry(ctx.root, runner.role, sha), null);
+    p.merge = startMerge(ctx, p, entry, null);
     return;
   }
+}
+
+/** Whether the pin's own run still owes its live claim and main no longer lists that entry.
+ * The scheduling poll that turns such a claim into RunnerState.withdrawn runs after the drain,
+ * so without this read the drain would merge the pin on the first poll after a withdrawal,
+ * before the marker exists. Only the pin's authoring run may lend its claim: a role can hold
+ * an older pin while a later run's claim names another entry. */
+async function pinClaimWithdrawn(
+  ctx: MergePipelineContext,
+  runner: RoleRunner,
+  pinRun: number,
+): Promise<boolean> {
+  const { claim, revision, resumePending, resumePromptFile, runs } = runner.state;
+  const owesClaim = revision !== undefined || (resumePending === true && resumePromptFile === undefined);
+  if (!owesClaim || claim === undefined || pinRun !== runs) return false;
+  // Read the claim against main itself, not the pin: this asks only whether the claim's
+  // entry is still listed, while the pin's own moved-out entries stay the merge's check.
+  const withdrawn = await withdrawnEntries(ctx.root, ctx.mainBranch, runner.role, ctx.mainBranch, claim);
+  return withdrawn.length > 0;
 }
 
 /** Signals that a restart or disk hold closed the start gate while the task waited for its
