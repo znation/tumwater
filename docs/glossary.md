@@ -33,7 +33,7 @@ current one, so history, old logs and old scripts stay readable.
 | due | A role is ready and the next poll starts it — a role the poll declined but will decline again shows an `idle: …` or `waiting: …` reason instead. |
 | idle: every role instance is busy | The role's concurrent-instances cap is full (another of its instances is writing). |
 | idle: waiting out its yield gap ×N | A scalable role is held back by its yield-stretched minimum gap. |
-| waiting to merge | A run's commit is in the merge queue; it holds the role's next run only while the change is pre-approval or in a conflict or main-red hold — once the change merges the role is admitted again. |
+| waiting to merge | A run's commit is in the merge queue; it holds the role's next run until the change merges or leaves the queue. |
 | waiting: <reason> | A role is held by a condition, such as "waiting: low disk" or "waiting: maintenance allowance used". |
 | blocked | A backlog entry that cannot be picked: `[blocked: refused]`, `[blocked: needs review]`, `[blocked: waiting for a recurrence]` (a bug bugfix could not reproduce, waiting for its failure to come back), `[blocked: requires …]`. |
 | sleeping | A role is between runs ("sleeping — next check in 12m"). "Wake sleeping roles" ends the sleep. |
