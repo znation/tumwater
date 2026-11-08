@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract verify collapse split, part 2/4: test/merge-pipeline-2.test.ts observes queue, check-flag and event signals, and its abort cases drive one in-flight change (planned 2026-11-08 by the plan role, splitting the 2026-11-06 part 3c/6 after feature held it too large for one run; requires part 1/4 landed; sibling to parts 3/4–4/4, which collapse the drain and remove `alreadyGated`; touches test/merge-pipeline-2.test.ts) — done 2026-11-08 by the feature role
+
+**Goal.** The second pipeline slice passes under today's flow and will keep passing when the drain becomes one gate-then-merge task per head. Its abort cases no longer require a multi-role task that merges beta then stops short of alpha; they abort the one change in flight.
+
+**Approach.**
+- Replace `approvedChanges(root)` waits with queue depth, check-start flags (each declared check touches its own flag file) and `merged`/`merge_done` events.
+- Rewrite the pin-already-gone and unwritable-state abort cases to wait for both changes' check-start flags under a busy merge slot, free the slot into one merge task holding both changes, and abort the change the task had not merged — asserting its `aborted` outcome, dropped entry and discarded pin. No abort-case wait reads an approved status before freeing the slot.
+- Rewrite the reviewer-hold case to wait for both entries queued, then both `merged` events, not both approved.
+- Rewrite the head-verdict case to wait for beta's check-start flag instead of `approvedChanges(root).includes("beta")`.
+- Rewrite the plumbing-throw case to assert the head's entry stays queued and no approved marker remains, not that both entries are unapproved; its wait, the failing-state-write wait and the abortableMerges (throw-settling) wait use the same both-checks flag signal.
+
+**Acceptance criteria.**
+- `grep -n 'approvedChanges' test/merge-pipeline-2.test.ts` prints nothing.
+- No abort case waits for two approved changes before freeing the merge slot; each abort case aborts the one change the task is merging and asserts its `aborted` outcome, dropped entry and discarded pin.
+- The file passes under the current verify-then-merge flow, and its waits are on queue depth, check flags, marker `merging`, or `merged`/`merge_done` events.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/merge-pipeline-2.test.ts, then the gate.
+
 ### `tumwater quarantine --grep <text>` keeps only the quarantined tests whose path or filed bug contains the text, so an operator can find the flake they mean without opening `quarantine.json` or running `--show` down the list (planned 2026-11-08 by the plan role; the missing filter beside `quarantine --show`'s detail view and the `--grep` every other positioned list already has — `plan`/`bug --list`, `backlog`, `questions`, `prompt --list`, `history`, `logs` and the pending `reviews --grep`; the list squashes the test path and filed-bug heading to 80 characters, and in a long quarantine the one matching entry is otherwise found by reading each `--show`; independent in file of every `## Planned` entry — `grep -c 'quarantine --grep\|grepQuarantine' PLANS.md PLANS-DONE.md BUGS.md BUGS-FIXED.md` prints 0 for all four, the pending `reviews --grep` plan adds its matcher to src/review/post-merge-review-render.ts and its filter to src/cli/cli-review-commands.ts, never src/review/quarantine-render.ts or `cmdQuarantine`, and the blocked Subtract part 3d/7 lists src/cli/cli-query-commands.ts and docs/cli.md but deletes `cmdQueue`, `merge-queue-render.ts` and the queue row, never `cmdQuarantine` or the quarantine row, so whichever lands second rebases there; `src/review/quarantine-render.ts` names no `--grep` and no `grepQuarantine` today; docs/invariants.md's flake-quarantine section binds `quarantineTests`, `onlyQuarantined`, `loadQuarantine` and `releaseQuarantine`, whose behavior this read-only filter leaves unchanged, so no invariant edit is needed; touches src/cli/cli-query-commands.ts src/review/quarantine-render.ts src/cli/help.ts docs/cli.md test/cli-quarantine.test.ts test/cli-quarantine-follow.test.ts test/quarantine-render.test.ts) — done 2026-11-08 by the feature role
 
 **Goal.** `tumwater quarantine` can be narrowed to the entries an operator is looking for: `--grep <text>` keeps only the entries whose test path or filed-bug heading contains the text (case-insensitively), under their unfiltered positions, and composes with the list, `--json` and `-f/--follow`. `--show <n>` and `--release <n>` keep addressing the whole list, so a filter never shifts the position they act on.

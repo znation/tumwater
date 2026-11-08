@@ -52,26 +52,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Run test/doctor-checks.test.ts, test/doctor.test.ts, test/event-format.test.ts, test/retention.test.ts, test/config.test.ts and test/config-aliases.test.ts, then the project's gate. If a surviving row or key loses its case, restore it; do not weaken an assertion to make the gate pass.
 
-### Subtract verify collapse split, part 2/4: test/merge-pipeline-2.test.ts observes queue, check-flag and event signals, and its abort cases drive one in-flight change (planned 2026-11-08 by the plan role, splitting the 2026-11-06 part 3c/6 after feature held it too large for one run; requires part 1/4 landed; sibling to parts 3/4–4/4, which collapse the drain and remove `alreadyGated`; touches test/merge-pipeline-2.test.ts)
-
-**Goal.** The second pipeline slice passes under today's flow and will keep passing when the drain becomes one gate-then-merge task per head. Its abort cases no longer require a multi-role task that merges beta then stops short of alpha; they abort the one change in flight.
-
-**Approach.**
-- Replace `approvedChanges(root)` waits with queue depth, check-start flags, marker `merging`, and `merged`/`merge_done` events.
-- Rewrite the two abort cases to queue one change (or wait for beta's `merged` event before aborting alpha), then abort the in-flight change and assert its `aborted` outcome, dropped entry and discarded pin. Do not wait for two approved changes while the merge slot is busy.
-- Rewrite the reviewer-hold case to wait for both entries queued, then both `merged` events, not both approved.
-- Rewrite the head-verdict case to wait for beta's check flag or `merged` event instead of `approvedChanges(root).includes("beta")`.
-- Rewrite the plumbing-throw case to assert the head's entry stays queued and no `approved` marker remains, not that both entries are unapproved.
-- Keep the pin-already-gone, unwritable-state, and abortableMerges cases; only change their waits and the number of changes in flight.
-
-**Acceptance criteria.**
-- `grep -n 'approvedChanges' test/merge-pipeline-2.test.ts` prints nothing.
-- No abort case waits for two approved changes before freeing the merge slot; each abort case aborts the one change the task is merging and asserts its `aborted` outcome, dropped entry and discarded pin.
-- The file passes under the current verify-then-merge flow, and its waits are on queue depth, check flags, marker `merging`, or `merged`/`merge_done` events.
-- `npm run test:gate` passes.
-
-**Tests.** Run test/merge-pipeline-2.test.ts, then the gate.
-
 ### Subtract verify collapse split, part 3/4: the drain starts one gate-then-merge task per queue head and stops starting verifications (planned 2026-11-08 by the plan role, splitting the 2026-11-06 part 3c/6 after feature held it too large for one run; requires part 2/4 landed; sibling to part 4/4, which removes `alreadyGated`; touches src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/orchestrator/orchestrator-poll.ts test/merge-drain.test.ts test/merge-drain-verify.test.ts test/fixtures/orchestrator-fixtures.ts test/fixtures/merge-fixtures.ts)
 
 **Goal.** A queued entry goes from the queue to the gate to the merge in one task. `drainMergeQueue` no longer calls `drainVerify`; `drainMerge` takes the first eligible queue head and starts one task whose `mergeApprovedChange` runs `reviewQueuedChange` in its merge worktree before `mergeToMain`, settles the outcome, queues the post-merge review on a `merged` event, and clears the merge slot so the next poll starts the next head. The approved/verifying maps are no longer populated; they stay in the type, empty, until part 3d/6 deletes them. `alreadyGated` stays in `MergeRequest` for direct callers until part 4/4.
