@@ -361,6 +361,12 @@ export async function gateBuildPrecheck(
   // gate attributes nothing and keeps the commit for a re-merge.
   const sleep = unverifiedSleepResult(root, role, settled);
   if (sleep) return sleep;
+  // An abort that fired while the check was starting or running and did not stop it (a check
+  // granted a free permit under an already-firing signal runs to its own verdict, and the kill
+  // can race the spawn) must still fail closed before a passed verdict can merge a change the
+  // operator stopped: the attribution-path `aborted` guards below only run when the check fails,
+  // so a passing check under an aborted signal would otherwise sail through and merge.
+  if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
   if (settled.status === "passed") {
     // An abort that fired while the check ran is authoritative over a green verdict (BUGS.md
     // 2026-11-08): a user abort or shutdown kills a check still running (skipReason "aborted",

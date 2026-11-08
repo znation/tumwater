@@ -78,6 +78,30 @@ test("a shutdown during a failing pre-check fails closed before main is consulte
   });
 });
 
+// BUGS.md 2026-11-08 (quarantined flake): the mirror of the mid-check stop above. An abort that
+// fires while a check is starting or running does not always stop it — a check granted a free
+// check permit under an already-firing signal runs to its own verdict (runScriptGroup
+// deliberately acts only on a signal that fires mid-run), and the process-group kill can race
+// the spawn. The check then PASSES, and without a fail-closed guard on the fired signal before
+// a passed verdict the gate would approve and merge a change the operator stopped — the flake
+// "an aborted merge settles despite an unwritable state file" recorded, where the aborted
+// change merged as `changed` instead of settling `aborted`.
+test("a passing pre-check under a fired abort fails closed as aborted and approves nothing", async () => {
+  const { root, wt } = await gateBuildFixture("true");
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const controller = new AbortController();
+    controller.abort(); // the stop fires before the check is granted, but does not stop the check
+    const { state, result } = await reviewGate(root, wt, { signal: controller.signal });
+    assert.equal(result.decision, "failed");
+    assert.ok(result.aborted, "a passing check under a fired abort fails closed as aborted");
+    assert.deepEqual(buildCheckEvents(root), ["gate:passed"], "the check genuinely ran and passed despite the abort");
+    assert.ok(!fs.existsSync(marker), "no pi run under a fired abort");
+    assert.equal(state.lastApprovedHead, undefined, "no approval recorded under a fired abort");
+    assert.equal(await aheadOfMain(wt, "main"), 1, "the commit is kept for another attempt");
+  });
+});
+
 // BUGS.md 2026-09-30: a pre-check whose every attempt spanned a host sleep made no verdict
 // about the tree. The gate attributes nothing — no main consultation, no strike, no
 // rejection — the commit stays for a re-merge, and the warning names the sleep.

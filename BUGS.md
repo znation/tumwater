@@ -6,15 +6,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-### `an aborted merge settles despite an unwritable state file: no throw, entry dropped, pin discarded` failed, then passed on the same tree (quarantined by tumwater 2026-11-08)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-abort --role settles an in-flight gate-then-merge task whose pinned ref is already gone without throwing
-an aborted merge settles despite an unwritable state file: no throw, entry dropped, pin discarded
-~~~~
-
 ## Fixed
 
 ## Verified
