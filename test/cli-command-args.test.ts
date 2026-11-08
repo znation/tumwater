@@ -216,7 +216,7 @@ test("parsePromptArgs rejects unknown double-dash flags instead of baking them i
   const r = expectFail(() => parsePromptArgs(["--foo", "text"]));
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --foo/);
-  assert.match(r.stderr, /valid flags for tumwater prompt: --role <id>, --list, --json, -f\/--follow, --cancel <n>, --edit <n>, --top <n>, --file <path>/);
+  assert.match(r.stderr, /valid flags for tumwater prompt: --role <id>, --list, --json, -f\/--follow, --cancel <n>, --edit <n>, --top <n>, --show <n>, --file <path>/);
 });
 
 test("parsePromptArgs --list: exact mode, no text allowed", () => {

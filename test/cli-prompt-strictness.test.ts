@@ -93,3 +93,56 @@ test("prompt --top refuses the other modes, the queue-only flags, and stray text
 
   assert.equal(inboxSize(repo), 0, "nothing enqueued on failure");
 });
+
+// --show's strictness surface, mirroring --cancel's: it is a read-only position mode, so it
+// refuses the other queue modes as mutually exclusive, the queue-only flags and list-only
+// filters as meaningless, and any stray positional as prompt text it has no use for.
+test("prompt --show refuses the sibling modes, the queue-only and list-only flags, and stray text", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt show strictness");
+
+  // --show is mutually exclusive with the list/cancel/edit/top modes (the check runs before
+  // any of those branches reads its own value, so `--show 2 --edit` needs no edit text).
+  for (const other of ["--list", "--cancel", "--edit", "--top"] as const) {
+    const args = other === "--list" ? ["--show", "2", other] : ["--show", "2", other, "1"];
+    const r = await cli(repo, "prompt", ...args);
+    assert.equal(r.code, 1, `--show with ${other} should fail`);
+    assert.match(r.stderr, new RegExp(`${other} and --show are mutually exclusive`));
+  }
+
+  // The queue-only flags and the list-only filters have nothing to mean to a read-only show,
+  // and are refused by name.
+  for (const [flag, value] of [["--file", "x.txt"], ["--at", "1h"], ["--attach", "p.png"]] as const) {
+    const r = await cli(repo, "prompt", "--show", "1", flag, value);
+    assert.equal(r.code, 1, `--show with ${flag} should fail`);
+    assert.match(r.stderr, new RegExp(`${flag} only queues a prompt`));
+  }
+  for (const [flag, value] of [["--grep", "x"], ["--follow", null]] as const) {
+    const r = await cli(repo, "prompt", "--show", "1", flag, ...(value === null ? [] : [value]));
+    assert.equal(r.code, 1, `--show with ${flag} should fail`);
+    assert.match(r.stderr, new RegExp(`${flag} only applies to --list`));
+  }
+
+  // The -f spelling is a stray token in a text-less mode.
+  const f = await cli(repo, "prompt", "--show", "1", "-f");
+  assert.equal(f.code, 1);
+  assert.match(f.stderr, /with --show there is no prompt text/);
+
+  // A position needs the shared `--show 2` usage wording: a missing value names it, and a
+  // non-integer or non-positive value is refused as not a positive integer.
+  const missing = await cli(repo, "prompt", "--show");
+  assert.equal(missing.code, 1);
+  assert.match(missing.stderr, /--show needs a position number \(e\.g\. `--show 2`\)/);
+  for (const bad of ["1.5", "0", "-2"]) {
+    const r = await cli(repo, "prompt", "--show", bad);
+    assert.equal(r.code, 1, `--show ${bad} should fail`);
+    assert.match(r.stderr, /--show needs a positive integer/);
+  }
+
+  // A stray positional is prompt text this mode has none of.
+  const r = await cli(repo, "prompt", "--show", "1", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /with --show there is no prompt text/);
+
+  assert.equal(inboxSize(repo), 0, "nothing enqueued on failure");
+});

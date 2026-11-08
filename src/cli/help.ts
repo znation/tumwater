@@ -621,6 +621,12 @@ Usage:
                                    --role and --grep; it refuses --json);
                                    (--json prints the {prompts} array as
                                    machine-readable data)
+  tumwater prompt --show <n>       Print the Nth inbox message in full, as --list numbers
+                                   them — read-only, so a long steering message needs no
+                                   editor; --role <id> disambiguates like --cancel;
+                                   --json prints the message as data, with its role,
+                                   position, queue file, queued time and not-before
+                                   deferral
   tumwater prompt --cancel <n>     Remove the Nth inbox message as --list shows them; when
                                    several roles show that N, name one with --role <id>
   tumwater prompt --top <n>        Move the Nth inbox message as --list shows them to the
@@ -766,7 +772,7 @@ export function helpTopic(command: string, help: string = HELP): string | null {
  * --cancel 2 --help`), never prose. bug/plan's valued flags are `--cancel`, `--edit`,
  * `--file`, `--release` and `--top`. */
 const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
-  prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach", "--top", "--grep"],
+  prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach", "--top", "--show", "--grep"],
   init: ["--branch", "--template", "--file"],
   bug: ["--cancel", "--edit", "--file", "--release", "--top"],
   plan: ["--cancel", "--retire", "--reason", "--edit", "--file", "--release", "--top"],

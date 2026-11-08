@@ -28,7 +28,7 @@ import {
 } from "./inbox-edit.js";
 import { movePromptToTop, type TopOutcome } from "./inbox-top.js";
 import { editInEditor } from "../cli/cli-editor.js";
-import { listWideScope, queuedFileAtPosition, promptPreview, queuedListRows, queuedRowsMatching, renderQueuedList } from "./inbox.js";
+import { listWideScope, queuedAgeSuffix, queuedFileAtPosition, promptPreview, queuedListRows, queuedRowsMatching, renderQueuedList } from "./inbox.js";
 import { durationLabel } from "../text/duration.js";
 import { failFollowJsonRival, parseRoleListFlag } from "../cli/cli-args.js";
 import { followView, type FollowViewSeams } from "../cli/follow-view.js";
@@ -311,6 +311,32 @@ function runPromptEdit(root: string, position: number, text: string | null, atta
   editTypedQueuedPrompt(root, position, text, role, images);
 }
 
+/** `--show <n>` mode — print the Nth queued prompt in full, read-only, list-wide or
+ * `--role`-scoped. One helper so `--show`'s rules are found by name. */
+function runPromptShow(root: string, position: number, role: string | null, json: boolean): void {
+  // The same list-wide position resolution --cancel makes (ambiguity/miss wordings included),
+  // then one pass of the same queuedListRows --list renders, so --show can never disagree
+  // with the list's numbering, the role a position addresses, or the age/countdown wording.
+  // A --role-scoped show reads that role's queue directly, like the cancel branch's role
+  // path; a row read as empty here — a position past the queue, or a file that vanished
+  // between resolution and read — is the same concurrent-dequeue race the other verbs report
+  // as gone.
+  const targetRole = role ?? resolveListedRole(root, position);
+  const rows = queuedListRows(root, targetRole, listWideScope(root));
+  const row = rows[position - 1];
+  if (row === undefined) {
+    sayPromptGone(position, targetRole);
+    return;
+  }
+  if (json) {
+    // The QueuedListRow itself — the same shape --list --json's {prompts} array carries.
+    sayJson(row);
+    return;
+  }
+  say(`${row.role} #${row.position}${queuedAgeSuffix(row.queuedAtMs, row.notBeforeMs, Date.now())}`);
+  say(row.text);
+}
+
 /** `--top <n>` mode — move a queued prompt to the head of its queue by position, list-wide or
  * `--role`-scoped. One helper so `--top`'s rules are found by name. */
 function runPromptTop(root: string, position: number, role: string | null): void {
@@ -368,13 +394,13 @@ function runPromptSubmit(root: string, text: string, atDelayMs: number | null, a
   say(wake);
 }
 
-/** `tumwater prompt [--role <id>] <text|list|cancel <n>|top <n>>`: submit a steering prompt to the
- * director (default) or one role's queue (`--list` takes `--role <id>[,<id>...]`), list what
- * is queued with per-role position numbering, cancel a queued prompt by position, or move
- * one to the head of its queue. The dispatcher in cli.ts gates on a ready repo and
- * delegates here; list output is grouped by role — the director first (its queue is
- * the shared one every pre-1/2 prompt landed in), then each role with queued prompts — so a
- * per-role queue's position numbering stays unambiguous. */
+/** `tumwater prompt [--role <id>] <text|list|cancel <n>|top <n>|show <n>>`: submit a steering
+ * prompt to the director (default) or one role's queue (`--list` takes `--role <id>[,<id>...]`),
+ * list what is queued with per-role position numbering, cancel a queued prompt by position,
+ * move one to the head of its queue, or show one in full read-only. The dispatcher in cli.ts
+ * gates on a ready repo and delegates here; list output is grouped by role — the director
+ * first (its queue is the shared one every pre-1/2 prompt landed in), then each role with
+ * queued prompts — so a per-role queue's position numbering stays unambiguous. */
 /** Optional follow-view test seams (the `cmdBacklog`/`cmdStatus` shape): the repaint
  * interval and parent-death watch a test drives without real seconds or a real TTY. The
  * two-argument call in cli.ts is unchanged. */
@@ -386,18 +412,18 @@ export async function cmdPrompt(root: string, args: string[], seams: FollowViewS
   // the same message every other --role consumer uses. The director is always valid: its
   // queue is the historical inbox (inbox.ts).
   //
-  // Where the id set comes from differs by mode, following parseRoleScope's split: --list is
-  // a read-only view, so a transiently broken tumwater.json must not take it down — it falls
-  // back to the built-in catalog (knownRoleIdsCached), exactly like cmdLogs/cmdHistory's
-  // --role scope, at the cost of a broken config hiding a custom role's queued section. The
-  // state-changing modes (enqueue, cancel) instead read through loadConfig and fail loudly
-  // when an id was given: before writing to a named role's queue the operator is owed the
-  // config error, not a built-ins-only guess about whether the role exists. With no --role,
-  // enqueue touches only the director queue (inbox.ts) and never reads the config — a broken
-  // tumwater.json must not block steering the director — while cancel resolves its position
-  // across the per-role sections --list prints, through the same cached, never-throwing id set
-  // --list uses, so it cancels exactly what the list showed even under a broken config.
-  const validIds = parsed.mode === "list"
+  // Where the id set comes from differs by mode, following parseRoleScope's split: --list and
+  // --show are read-only views, so a transiently broken tumwater.json must not take them down —
+  // they fall back to the built-in catalog (knownRoleIdsCached), exactly like
+  // cmdLogs/cmdHistory's --role scope, at the cost of a broken config hiding a custom role's
+  // queued section. The state-changing modes (enqueue, cancel) instead read through loadConfig
+  // and fail loudly when an id was given: before writing to a named role's queue the operator is
+  // owed the config error, not a built-ins-only guess about whether the role exists. With no
+  // --role, enqueue touches only the director queue (inbox.ts) and never reads the config — a
+  // broken tumwater.json must not block steering the director — while cancel resolves its
+  // position across the per-role sections --list prints, through the same cached, never-throwing
+  // id set --list uses, so it cancels exactly what the list showed even under a broken config.
+  const validIds = parsed.mode === "list" || parsed.mode === "show"
     ? knownRoleIdsCached(root)
     : parsed.role !== null
       ? knownRoleIds(loadConfig(root))
@@ -420,6 +446,10 @@ export async function cmdPrompt(root: string, args: string[], seams: FollowViewS
   }
   if (parsed.mode === "top") {
     runPromptTop(root, parsed.position, role);
+    return;
+  }
+  if (parsed.mode === "show") {
+    runPromptShow(root, parsed.position, role, parsed.json);
     return;
   }
   runPromptSubmit(root, parsed.text, parsed.atDelayMs, parsed.attachPaths, role);

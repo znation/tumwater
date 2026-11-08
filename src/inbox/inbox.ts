@@ -275,8 +275,10 @@ export function queuedListRows(root: string, role: string | null, validIds: stri
  * same phrasing every other relative time in the harness prints.
  * A deferred prompt (the not-before marker still in the future) shows its countdown instead
  * — ` (delivers in <duration>)` from the same humanSeconds — since the age of a prompt that
- * has not been delivered yet is not the fact an operator scanning the list needs. */
-function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number | null, now: number): string {
+ * has not been delivered yet is not the fact an operator scanning the list needs. Exported
+ * so `prompt --show`'s header (`<role> #<n>` + suffix) reuses the exact wording the list
+ * prints — the two views cannot drift on the age or the countdown. */
+export function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number | null, now: number): string {
   if (notBeforeMs !== null && notBeforeMs > now) {
     const seconds = secondsUntil(notBeforeMs, now);
     return ` (delivers in ${humanSeconds(seconds)})`;
