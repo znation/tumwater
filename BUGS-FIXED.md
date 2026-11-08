@@ -5,6 +5,11 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Tier-1 role waiters have no age bound and no visible wait, so maintenance roles starve behind work runs for half a day (the unlanded remainder of the 2026-11-05 ci-heal entry, found by operator session 2026-11-05 from the team's event log) — fixed 2026-11-08 by the bugfix role
+
+- **Fix:** the team semaphore (src/concurrency/semaphore.ts) now stamps each admission waiter with its park time (`since`) and, via `effectiveTier`, treats a tier ≥ 1 waiter that has been passed over past a two-hour starve bound as tier 0 — so `enqueue` places it ahead of new tier-0 arrivals that would otherwise keep jumping it, and `drive` lets it bypass the work reserve (a fresh work run must no longer always win). The bound and clock are injectable (`now`/`starveMs` constructor options), so the behavior is testable without a real two-hour wait. The independent visible-wait half of this entry moved to a sibling Open entry.
+- **Validation gap:** none — the existing test/semaphore.test.ts suite, extended with the age-bound tests, reproduced and confirmed the starvation fix deterministically.
+
 ### A revision run kept a stale held-entries list naming its own bug, so the pre-queue self-check reverted every revision and bugfix looped for 19 runs (found by operator session 2026-11-08 from the team's event log) — fixed 2026-11-08 by the operator
 
 - **Symptom:** bugfix's "Tier-1 role waiters …" change was rejected at the gate on 2026-11-05 23:42 for one unused export. Every later bugfix run (1847–1865, through 2026-11-08 under DeepSeek and then Qwen) re-applied the revision, made the one-word fix, and then got the stage finding "this run moved a backlog entry another instance of this role is working on". It reverted all five files and ended `TUMWATER_NOTHING_TO_DO`. That made 19 straight `no_change` runs, and the role then sat in the 36000 s idle backoff. No sibling held the entry: `bugfix-2`…`bugfix-6` had no claims.

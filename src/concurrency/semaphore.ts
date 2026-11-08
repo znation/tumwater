@@ -21,10 +21,35 @@ export interface SemaphoreLease {
   resume(): Promise<void>;
 }
 
+/** A parked WAITING (admission) waiter: its scheduling tier, the clock tick it parked at
+ * (`since`, recorded the moment it enqueues), and the resolver that hands it the permit.
+ * `since` feeds the age bound that promotes a tier ≥ 1 waiter once it has been passed over
+ * past a clock deadline (see Semaphore.effectiveTier) — the fix for BUGS.md 2026-11-08's
+ * tier-1 role starvation, so a maintenance role cannot be passed over by work runs for a
+ * day. */
+interface Waiter {
+  tier: number;
+  /** Clock tick when the waiter parked; stamped by enqueue at the moment it inserts. Optional
+   * in the type so an acquirer's `{ tier, resolve }` literal is assignable; effectiveTier reads
+   * it as "never aged" when absent. */
+  since?: number;
+  resolve: () => void;
+}
+
+/** How long the age bound lets a tier ≥ 1 waiter be passed over before a fresh tier-0
+ * (work) arrival stops jumping ahead of it (BUGS.md 2026-11-05/08: tier-1 starvation). */
+const DEFAULT_STARVE_MS = 2 * 60 * 60 * 1000; // two hours
+
 export class Semaphore {
-  /** A parked WAITING (admission) waiter: its scheduling tier and the resolver that hands
-   * it the permit. */
-  private readonly waiters: Array<{ tier: number; resolve: () => void }> = [];
+  /** A parked WAITING (admission) waiter: its scheduling tier, the clock tick at which it
+   * parked, and the resolver that hands it the permit. */
+  private readonly waiters: Array<Waiter> = [];
+  /** The clock for the age bound — injectable so a test can age a waiter without a two-hour
+   * real wait. Defaults to Date.now. */
+  private readonly now: () => number;
+  /** The age bound: a tier ≥ 1 waiter parked this long is promoted to tier 0 (effectiveTier)
+   * so new tier-0 arrivals stop passing it over and it bypasses the work reserve. */
+  private readonly starveMs: number;
   /** Permits currently held, tracked separately from capacity (rather than as an "available"
    * count): setCapacity can shrink below the current in-use, and a free-permit count cannot
    * represent that state — it would over-admit new work after a shrink. */
@@ -34,7 +59,13 @@ export class Semaphore {
    * "Priority headroom", part 7/7). Tiers ≤ 0 (work, VERIFY_TIER, MERGE_TIER) ignore it. */
   private reserve = 0;
 
-  constructor(private capacity: number) {}
+  constructor(
+    private capacity: number,
+    options: { now?: () => number; starveMs?: number } = {},
+  ) {
+    this.now = options.now ?? Date.now;
+    this.starveMs = options.starveMs ?? DEFAULT_STARVE_MS;
+  }
 
   /** The current cap — the live `maxConcurrent`, for callers that size work against it. */
   get limit(): number {
@@ -57,8 +88,10 @@ export class Semaphore {
   /** Acquire a permit, parking in the wait queue when none is free. `tier` orders WAITING
    * requests only: on arrival a waiter inserts ahead of every parked waiter with a strictly
    * greater tier (the orchestrator passes roleTier so work roles beat maintenance across
-   * polls), keeping stable FIFO within a tier. In-flight holders are never preempted — they
-   * run to completion and their release is what hands out the permit. */
+   * polls), keeping stable FIFO within a tier. A tier ≥ 1 waiter that has been passed over
+   * past the starve bound counts as tier 0 (effectiveTier), so it is promoted ahead of new
+   * tier-0 arrivals instead of starving behind them. In-flight holders are never preempted —
+   * they run to completion and their release is what hands out the permit. */
   async acquire(tier: number): Promise<void> {
     if (this.inUse < this.capacity - this.reserveFor(tier)) {
       this.inUse += 1;
@@ -137,14 +170,30 @@ export class Semaphore {
     return lease;
   }
 
-  /** Queue an admission waiter behind every waiter of its tier or a lower one, so it inserts
-   * before strictly-greater tiers only (tier order, FIFO within a tier) — the one home of the
-   * queue's ordering, shared by acquire, acquireLease and a paused lease's resume. */
-  private enqueue(waiter: { tier: number; resolve: () => void }): void {
+  /** The scheduling tier a parked waiter actually waits at once its age is considered: a
+   * tier ≥ 1 waiter that has been passed over past the starve bound is treated as tier 0, so
+   * it is promoted ahead of new tier-0 (work) arrivals and bypasses the work reserve — the
+   * age bound that keeps a maintenance role from starving behind a stream of work runs. A
+   * waiter younger than the bound (or below tier 1) keeps its own tier, so the tier ordering
+   * is unchanged for everyone but the aged. Re-evaluated on every enqueue and reserve/drive
+   * decision, which is exactly when a fresh low-tier arrival would otherwise jump it. */
+  private effectiveTier(waiter: Waiter): number {
+    const age = this.now() - (waiter.since ?? this.now());
+    if (waiter.tier >= 1 && age >= this.starveMs) return 0;
+    return waiter.tier;
+  }
+
+  /** Queue an admission waiter behind every waiter whose effective (age-aware) tier is not
+   * strictly greater, so it inserts before strictly-greater effective tiers only (tier order,
+   * FIFO within an effective tier) — the one home of the queue's ordering, shared by acquire,
+   * acquireLease and a paused lease's resume. `since` is stamped here, at the moment the
+   * waiter parks. */
+  private enqueue(waiter: Waiter): void {
+    waiter.since = this.now(); // stamp the park time before any effectiveTier reads it
     let i = this.waiters.length;
     while (i > 0) {
       const prev = this.waiters[i - 1];
-      if (!prev || prev.tier <= waiter.tier) break;
+      if (!prev || this.effectiveTier(prev) <= this.effectiveTier(waiter)) break;
       i -= 1;
     }
     this.waiters.splice(i, 0, waiter);
@@ -162,15 +211,16 @@ export class Semaphore {
   /** Hand every parked waiter a permit it can take in one pass. The one home of the permit
    * hand-off: release, setCapacity, setReserve and a pause/resume all drive it, and growth
    * loops it to fill new headroom. It never admits past the team cap. Admission waiters are
-   * scanned in queue (tier, then FIFO) order; the reserve stops the scan at the first tier ≥ 1
-   * waiter it withholds from, since the tier-ascending queue means everything behind is
-   * withheld too. */
+   * scanned in queue (effective tier, then FIFO) order; the reserve stops the scan at the
+   * first waiter it withholds from, since the tier-ascending queue means everything behind is
+   * withheld too. An aged tier ≥ 1 waiter counts as tier 0 (effectiveTier), so it bypasses
+   * the reserve and is granted like a work waiter. */
   private drive(): void {
     for (;;) {
       let granted = false;
       for (let i = 0; i < this.waiters.length; i++) {
         const w = this.waiters[i]!;
-        if (this.inUse >= this.capacity - this.reserveFor(w.tier)) break; // reserve/full stops the scan
+        if (this.inUse >= this.capacity - this.reserveFor(this.effectiveTier(w))) break; // reserve/full stops the scan
         this.waiters.splice(i, 1);
         this.inUse += 1;
         w.resolve();
@@ -182,7 +232,8 @@ export class Semaphore {
   }
 
   /** The permits withheld from `tier`: `reserve` for tier ≥ 1 (maintenance), 0 for every tier
-   * that ships work or merges a change (work, VERIFY_TIER, MERGE_TIER). */
+   * that ships work or merges a change (work, VERIFY_TIER, MERGE_TIER) — and 0 for an aged
+   * tier ≥ 1 waiter whose effective tier is 0, so the age bound also lifts the reserve. */
   private reserveFor(tier: number): number {
     return tier >= 1 ? this.reserve : 0;
   }

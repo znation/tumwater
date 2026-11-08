@@ -319,6 +319,80 @@ test("the verify and merge tiers ignore the reserve", async () => {
   assert.equal(verifyGranted, true, "a negative-tier (verify/merge) acquirer is never held by the reserve");
 });
 
+// --- Age bound (BUGS.md 2026-11-08: tier-1 role waiters have no age bound and no visible
+// wait, so maintenance roles starve behind work runs for half a day) ---
+
+test("an aged tier-1 waiter is promoted ahead of a new tier-0 arrival, ending its starvation", async () => {
+  // A tier-1 (maintenance) waiter must not be passed over forever: once it has waited past
+  // the starve bound, a fresh tier-0 (work) arrival must stop jumping ahead of it.
+  let clock = 0;
+  const sem = new Semaphore(1, { now: () => clock, starveMs: 10_000 });
+  const order: string[] = [];
+  const snap = () => [...order]; // see the sibling test for why not a bare `order`
+  await sem.acquire(0); // holder: this test owns the only slot
+
+  // Park a maintenance waiter; it is young right now.
+  void sem.acquire(1).then(() => order.push("maint"));
+  await flushImmediate();
+
+  // Age it past the starve bound, then a work role becomes due and parks fresh.
+  clock = 20_000; // beyond the 10s bound
+  void sem.acquire(0).then(() => order.push("work"));
+  await flushImmediate();
+  assert.deepEqual(snap(), [], "nothing runs while the holder keeps the slot");
+
+  sem.release(); // the holder frees the slot: its head is the aged maint, not the fresh work
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint"], "the aged tier-1 waiter is granted before the fresh tier-0 arrival");
+
+  sem.release(); // maint's own permit, once it is done
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint", "work"], "the work arrival takes the slot that maint freed");
+});
+
+test("a young tier-1 waiter is still passed over by a fresh tier-0 arrival (tier order intact)", async () => {
+  // Without the age bound, the existing tier order must be unchanged: a tier-0 arrival still
+  // jumps ahead of a tier-1 waiter that has not yet starved.
+  let clock = 0;
+  const sem = new Semaphore(1, { now: () => clock, starveMs: 10_000 });
+  const order: string[] = [];
+  const snap = () => [...order];
+  await sem.acquire(0); // holder
+  void sem.acquire(1).then(() => order.push("maint"));
+  await flushImmediate();
+  clock = 1_000; // well under the 10s bound
+  void sem.acquire(0).then(() => order.push("work"));
+  await flushImmediate();
+
+  sem.release();
+  await flushImmediate();
+  assert.deepEqual(snap(), ["work"], "a fresh tier-0 arrival jumps ahead of the young tier-1 waiter");
+  sem.release();
+  await flushImmediate();
+  assert.deepEqual(snap(), ["work", "maint"], "the young tier-1 waiter takes the next freed slot");
+});
+
+test("an aged tier-1 waiter bypasses the reserve so the work headroom cannot starve it", async () => {
+  // Two work holders sit at capacity (2 of 2). A reserve of 1 would withhold the next freed
+  // permit from a tier-1 waiter; the age bound promotes the aged maintenance waiter to tier 0,
+  // so it can take that reserved permit — a work run arriving fresh must otherwise always win.
+  let clock = 0;
+  const sem = new Semaphore(2, { now: () => clock, starveMs: 10_000 });
+  await sem.acquire(0); // work holder A
+  await sem.acquire(0); // work holder B — at capacity
+  sem.setReserve(1); // withhold the one free permit from tier >= 1 once a holder releases
+  let granted = false;
+  void sem.acquire(1).then(() => (granted = true));
+  await flushImmediate();
+  assert.equal(granted, false, "nothing runs while the two holders sit at capacity");
+
+  clock = 20_000; // age the maintenance waiter past the bound
+  sem.release(); // holder A frees one permit: in-use is now exactly capacity - reserve, so the
+  // reserved permit is the only headroom and only the age-promoted waiter can take it
+  await flushImmediate();
+  assert.equal(granted, true, "the aged tier-1 waiter bypasses the reserve for a reserved permit");
+});
+
 
 // --- Pause/resume (part 5i/6): a lease hands its team permit back for an idle wait ---
 
