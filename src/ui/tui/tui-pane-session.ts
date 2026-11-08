@@ -25,8 +25,9 @@ interface CancelTarget {
 }
 
 /** The seams `createTuiPanes` cannot own itself: the shell's flash pair and backlog commit, the
- * flat backlog list, the clock, and the five async collectors, each already resolved to its
- * default by createTuiKeys. */
+ * flat backlog list, the clock, and the async collectors (the Promise-returning Pending,
+ * Health, History/transcript and Change-view seams), each already resolved to its default by
+ * createTuiKeys. */
 export interface TuiPanesDeps {
   root: string;
   now(): number;
