@@ -4,7 +4,7 @@ import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { VALIDATION_GAP_TAGS } from "../roles/role-guidance.js";
 import path from "node:path";
 import { truncate } from "../text/text.js";
-import { donePlans, fixedBugEntries, openBugEntries, plannedPlanEntries, type BacklogEntry } from "../backlog/backlog.js";
+import { donePlans, fixedBugEntries, isRetiredTitle, openBugEntries, plannedPlanEntries, type BacklogEntry } from "../backlog/backlog.js";
 import { entryHold, entryKindLabel, isPlanStalled } from "../backlog/backlog-eligibility.js";
 import { planDependencyProblems } from "../backlog/backlog-parts.js";
 import { BACKLOG_FILES, validationGapTag } from "../backlog/backlog-md.js";
@@ -83,9 +83,10 @@ function classifyFixClaims(records: readonly BacklogEntry[], root: string): FixC
 /** The ONE shared fix-claim scan: the newest Fixed records (bounded to FIX_CLAIMS_CHECKED so
  * pre-convention history never warns forever) as fixedBugEntries reads them — the stat-cached
  * section reader BUGS.md + BUGS-FIXED.md, bodies kept whole — classified through
- * classifyFixClaims. */
+ * classifyFixClaims. A retired bug sits under `## Fixed` but was closed without being fixed, so
+ * it carries no fix paragraph to verify and is skipped before the newest-ten bound. */
 function fixClaimRecords(root: string): BacklogEntry[] {
-  return fixedBugEntries(root).slice(0, FIX_CLAIMS_CHECKED);
+  return fixedBugEntries(root).filter((e) => !isRetiredTitle(e.title)).slice(0, FIX_CLAIMS_CHECKED);
 }
 
 /** The problems the ONE fix-claim scan found among the newest Fixed records at `root`
@@ -127,9 +128,10 @@ function classifyValidationGaps(records: readonly BacklogEntry[]): ValidationGap
 /** The ONE scan the doctor's `validation gaps` check hands its rows from: the newest Fixed
  * records (bounded to FIX_CLAIMS_CHECKED so pre-convention history never warns forever) as
  * fixedBugEntries reads them — the stat-cached section reader BUGS.md + BUGS-FIXED.md, bodies
- * kept whole — classified through classifyValidationGaps. */
+ * kept whole — classified through classifyValidationGaps. A retired bug was closed without
+ * being fixed, so it owes no `**Validation gap:**` trace and is skipped before the bound. */
 function validationGapRecords(root: string): BacklogEntry[] {
-  return fixedBugEntries(root).slice(0, FIX_CLAIMS_CHECKED);
+  return fixedBugEntries(root).filter((e) => !isRetiredTitle(e.title)).slice(0, FIX_CLAIMS_CHECKED);
 }
 
 /** The fixed-record validation-gap twin of checkFixClaims, standing in for plans/repair-traces.md's

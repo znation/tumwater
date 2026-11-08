@@ -134,8 +134,9 @@ export function finishedDuplicateFindings(
 ): string[] {
   // FINISHED_PLAN_RE (done or retired with its date) for PLANS.md: a retired copy and a done
   // copy of one heading share a finishedKey, so a change that retires a plan whose done copy is
-  // already on the other side is not read as a second copy. BUGS.md keeps FIXED_DATE_RE — there
-  // is no retired bug state ("No duplicate plans" part 1/6 leaves BUGS.md out).
+  // already on the other side is not read as a second copy. BUGS.md keeps FIXED_DATE_RE: a
+  // retired bug's stamp sits in its trailing parenthetical, which finishedTitle strips through
+  // stripEntryStamp, so a retired copy keys like its fixed sibling without counting as a fix.
   const dateRe = spec.file === "PLANS.md" ? FINISHED_PLAN_RE : FIXED_DATE_RE;
   const keyed = (md: string) =>
     parseEntryDetails(md, spec.section).map((e) => ({ ...e, key: finishedKey(e.title, dateRe) }));

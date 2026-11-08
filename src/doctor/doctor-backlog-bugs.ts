@@ -1,7 +1,7 @@
 import { andMore, quoteHeading, readBacklogChecked, FIX_CLAIMS_CHECKED, REFUSAL_NOTE_MAX, STALE_QUESTION_DAYS, STALE_BUG_DAYS } from "./doctor-backlog.js";
 import { truncate } from "../text/text.js";
 import { plural, agree } from "../text/phrases.js";
-import { ageInDays, filingDate, fixedBugEntries, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
+import { ageInDays, filingDate, fixedBugEntries, isRetiredTitle, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { questionFilingDate } from "../backlog/backlog-question-answer.js";
 import { entryHoldAgainst, needsReviewNote, refusalNote } from "../backlog/backlog-eligibility.js";
 import { plannedPartKeys, plansWaitingOn, prerequisitesMerged } from "../backlog/backlog-parts.js";
@@ -184,13 +184,18 @@ function sinceWindowMs(sinces: readonly number[]): number {
  * boundary (the heading carries only a date, so a same-day failure cannot be told from the one
  * the fix answered). Returns `[]` when no candidate has both a quoted test and a date. */
 function regressedFixCandidates(root: string): RegressedFixCandidate[] {
-  const candidates = fixedBugEntries(root).slice(0, FIX_CLAIMS_CHECKED).flatMap((entry) => {
-    const name = quotedTestName(entry.title);
-    const date = lastDate(entry.title, /(\d{4}-\d{2}-\d{2})/);
-    if (name === null || date === null) return [];
-    const since = dayAfterMs(date);
-    return Number.isNaN(since) ? [] : [{ title: entry.title, name, date, since }];
-  });
+  // A retired bug sits under `## Fixed` but was closed without being fixed; its heading's last
+  // date is the retirement date, not a fix date, so it is not a regression candidate.
+  const candidates = fixedBugEntries(root)
+    .filter((e) => !isRetiredTitle(e.title))
+    .slice(0, FIX_CLAIMS_CHECKED)
+    .flatMap((entry) => {
+      const name = quotedTestName(entry.title);
+      const date = lastDate(entry.title, /(\d{4}-\d{2}-\d{2})/);
+      if (name === null || date === null) return [];
+      const since = dayAfterMs(date);
+      return Number.isNaN(since) ? [] : [{ title: entry.title, name, date, since }];
+    });
   const open = candidates.length > 0 ? openBugEntries(root).map((e) => quotedTestName(e.title)) : [];
   return candidates.filter((c) => !open.includes(c.name));
 }

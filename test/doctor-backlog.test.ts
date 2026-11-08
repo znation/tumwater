@@ -107,6 +107,22 @@ test("checkFixClaims reads ok with no BUGS.md and for a record naming no symbols
   assert.equal(r.level, "ok", r.detail);
 });
 
+test("checkFixClaims skips a retired bug that was closed without being fixed", () => {
+  // A retired entry sits under `## Fixed` but has no fix to verify: its body's symbols are the
+  // bug's symptom, not a claim that code exists, so it must not warn (or consume the newest-ten
+  // window) like a real Fixed record.
+  const root = tmpdir("doctor-fix-claims-retired-");
+  fs.mkdirSync(path.join(root, "src"));
+  fs.writeFileSync(path.join(root, "src", "real.ts"), "export function liveSymbol() {}\n");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n## Fixed\n\n### Duplicate (found by qa 2026-11-01, retired 2026-11-08 by the user)\n\n**Retired 2026-11-08 by the user: duplicate**\n\nNames \`phantomSymbol\`.\n\n### Real fix (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Fix:** \`liveSymbol\` does it.\n`,
+  );
+  const r = checkFixClaims(root);
+  assert.equal(r.level, "ok", r.detail);
+  assert.match(r.detail, /newest 1 Fixed record/);
+});
+
 test("checkFixClaims warns instead of throwing when BUGS.md vanishes between the stat and the read", () => {
   // existsSync passes, then the file is gone when readFileSync throws — the rotation/race tail the
   // catch exists for (fs-faults.ts's vanishOnReadFile is that race, made deterministic). Without
@@ -205,6 +221,19 @@ test("checkValidationGaps warns naming a newest record with no Validation gap li
   assert.equal(r.level, "warn");
   assert.match(r.detail, /"Entry 0: details/);
   assert.match(r.detail, /has no \*\*Validation gap:\*\* line/);
+});
+
+test("checkValidationGaps skips a retired bug that was closed without being fixed", () => {
+  // A retired bug owes no Validation gap trace: it is not a fix. Skip it before the newest-ten
+  // bound so it neither warns itself nor pushes a real Fixed record out of the window.
+  const root = tmpdir("doctor-validation-gaps-retired-");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n## Fixed\n\n### Duplicate (found by qa 2026-11-01, retired 2026-11-08 by the user)\n\n**Retired 2026-11-08 by the user: duplicate**\n\n### Real fix (found by qa 2026-09-20, fixed 2026-09-21)\n\n- **Validation gap:** none — the suite covered it.\n`,
+  );
+  const r = checkValidationGaps(root);
+  assert.equal(r.level, "ok", r.detail);
+  assert.match(r.detail, /newest 1 Fixed record/);
 });
 
 test("checkValidationGaps treats a tag inside a fenced block as missing", () => {
@@ -1018,6 +1047,13 @@ test("checkRegressedFixes stays ok for same-day, unrelated, filed, unquoted and 
   ok(fixedRoot([`no quote here — fixed ${daysAgoStamp(2)}`, '"short" — fixed ' + daysAgoStamp(2)], [`✖ ${FLAKY_TEST}`, "✖ short"]));
   ok(fixedRoot([`"${FLAKY_TEST}" flaked, date unknown`], [`✖ ${FLAKY_TEST}`]));
   assert.deepEqual(checkRegressedFixes(tmpdir("doctor-regressed-none-")), { level: "ok", detail: "no BUGS.md — nothing to verify" });
+});
+
+test("checkRegressedFixes skips a retired bug's heading", () => {
+  // The heading's last date is the retirement date, not a fix date; a retired bug is not a fix
+  // whose quoted test can regress.
+  const retired = `\`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(5)}, retired ${daysAgoStamp(2)})`;
+  assert.equal(checkRegressedFixes(fixedRoot([retired], [`✖ ${FLAKY_TEST}`])).level, "ok");
 });
 
 test("checkRegressedFixes names the first of several regressed records and counts the rest", () => {
