@@ -180,6 +180,29 @@ test("a green pre-check approves with no reviewer run", async () => {
   });
 });
 
+test("a consumed abort overrides a green pre-check: the gate fails closed, not approved", async () => {
+  // BUGS.md 2026-11-08 — the abort-then-merge tests flaked under load: a blocked check's wait
+  // cap could expire green before the harness's abort kill landed, and the passing pre-check
+  // approved the stopped change into the merge. A fired abort is authoritative: the gate must
+  // fail closed even when the check's own subprocess finished green. An already-aborted signal
+  // is deliberately NOT acted on at spawn (runScriptGroup), so a check granted a free permit
+  // under it still runs and passes — exercising exactly the green-verdict-under-fired-signal
+  // seam, not the killed-check `aborted` skip the gate already handled.
+  const { root, wt } = await gateBuildFixture("buildcheck-tool", "#!/bin/sh\necho ok\nexit 0\n");
+  const head = await headOf(wt, "HEAD");
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const state = freshRunnerState(ROLE);
+    const controller = new AbortController();
+    controller.abort();
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), signal: controller.signal }, state);
+    assert.equal(result.decision, "failed", "a fired abort fails the merge closed, not approved");
+    assert.equal(result.aborted, true, "the gate names the abort");
+    assert.ok(!fs.existsSync(marker), "no reviewer run");
+    assert.notEqual(state.lastApprovedHead, head, "the green head is not recorded as approved");
+  });
+});
+
 test("diffRuleReasons returns the gate's rules in order", async () => {
   const changedFiles = async (wt: string, base: string): Promise<string[]> =>
     (await treeDiffFiles(wt, base, await headOf(wt, "HEAD"))) ?? [];

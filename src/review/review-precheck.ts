@@ -362,6 +362,16 @@ export async function gateBuildPrecheck(
   const sleep = unverifiedSleepResult(root, role, settled);
   if (sleep) return sleep;
   if (settled.status === "passed") {
+    // An abort that fired while the check ran is authoritative over a green verdict (BUGS.md
+    // 2026-11-08): a user abort or shutdown kills a check still running (skipReason "aborted",
+    // above), but under load the kill can land after the check's own subprocess finished green
+    // (a bounded wait cap, a slow SIGTERM), which would otherwise let a stopped change sail
+    // through the gate into the merge. reviewPinnedChange observes the signal before the gate
+    // and the merge's step boundaries keep observing it, but this green verdict is the seam the
+    // late kill slips through; fail closed so a consumed abort always stops the change.
+    if (ctx.signal?.aborted) {
+      return { resolved: { decision: "failed", aborted: true } };
+    }
     // Passed: this exact tree just went green under the project's own declared check. Hand
     // the verdict to the merge path via verifiedHead — it seeds the red-main baseline with
     // the SHA that actually becomes main (the rebased head, which may differ from `head`),

@@ -5,6 +5,17 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `abort --role settles an in-flight gate-then-merge task whose pinned ref is already gone without throwing` failed, then passed on the same tree (quarantined by tumwater 2026-11-08) — fixed 2026-11-08 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it. Root cause: an abort consumed while the merge gate's build pre-check is running is authoritative only when the harness's kill observes it as an `aborted` skip; under load the kill can land after the check's own subprocess finished green (a blocked check's wait cap, a slow SIGTERM), and the then-passing pre-check approved the stopped change into the merge — so the abort-then-merge tests intermittently saw the change end `changed`/`merge_done` instead of a `merge_failed`/`aborted` outcome. Fixed by failing the gate closed when the caller's abort signal is fired, even over a green pre-check (`gateBuildPrecheck`), so a consumed abort always stops the change.
+
+**Validation gap:** no-repro — the flake fires only under load, so it could not be reproduced deterministically on a quiet tree (a single run passes); it was confirmed by repeated runs under heavy concurrent load.
+
+~~~~
+abort --role settles an in-flight gate-then-merge task whose pinned ref is already gone without throwing
+an aborted merge settles despite an unwritable state file: no throw, entry dropped, pin discarded
+~~~~
+
 ### A flag-shaped `--grep` pattern misroutes `tumwater reviews` into its `--show`/`--accept` modes, so `reviews --grep --show` and `reviews --grep --accept` fail with that mode's missing-position error instead of filtering (found by the bugfix role 2026-11-08) — fixed 2026-11-08 by the bugfix role
 
 - **Symptom:** `tumwater reviews --grep --accept` and `tumwater reviews --grep --show` — greps for the literal texts "--accept"/"--show" — exit 1 with `--accept needs a position number (e.g. `--accept 2`)` / `--show needs a position number` instead of filtering the queue. `cmdReviews` (src/cli/cli-review-commands.ts) routes its `--show`/`--accept` edge modes on the raw args before the `--grep` value token is removed, so a flag-shaped token in the pattern slot impersonates the mode.

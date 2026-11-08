@@ -575,6 +575,19 @@ there.
 read, and skips a missing one", "secretLeakReason passes a value already at the merge-base, a
 directory, and no secrets", "secretLeakReason does not follow a symlink out of the worktree".
 
+### INV-G5: a consumed abort fails the merge gate closed even when its pre-check finished green
+
+**Guarantee.** When a user abort or shutdown fires while the gate's build pre-check is running,
+the gate fails the change closed (`aborted`) — even if the check's own subprocess finished green
+before the harness's abort kill landed. `reviewPinnedChange` observes the signal before the gate
+and the merge's step boundaries keep observing it, but a green pre-check approving is the seam
+the late kill slips through; this closes it, so a stopped change never sails into the merge.
+
+**Binds.** `src/review/review-precheck.ts` (`gateBuildPrecheck`).
+
+**Pinned by.** `test/review-precheck-verdict.test.ts` — "a consumed abort overrides a green
+pre-check: the gate fails closed, not approved".
+
 ## Tumwater owns every commit
 
 ### INV-H1: a run's authoring, SUMMARY follow-up, and stage-fix runs cannot add a commit of their own to the merged history
