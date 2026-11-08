@@ -223,11 +223,10 @@ export async function awaitMergeForHandoff(
  * — a merge's check follows the verifications' — so the wait is a bounded hand-off that
  * announces itself (awaitMergeForHandoff; BUGS.md 2026-09-23). The announcements are best-effort:
  * an events feed that cannot be written does not shorten the wait. "The merge" is every merge task
- * at once — each verification holding a permit, and the merge — waited on (and, past the
- * hand-off's window, aborted) together under the roles of them all. The approved changes waiting
- * for the merge have no task, and a verification still parked for its permit has started nothing (a
- * shutdown settles it at once; a restart's closed start gate at its grant): all of them keep their
- * entries and pins for the next start.
+ * at once — each gate-then-merge task holding a permit — waited on (and, past the
+ * hand-off's window, aborted) together under the roles of them all. A queued change still parked
+ * for its gate permit has started nothing (a shutdown settles it at once; a restart's closed start
+ * gate at its grant): all of them keep their entries and pins for the next start.
  */
 export async function drainInFlightWork(
   root: string,
