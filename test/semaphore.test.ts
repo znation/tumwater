@@ -419,6 +419,70 @@ test("an aged tier-1 waiter takes the reserved headroom before a fresh tier-0 ar
   sem.release();
 });
 
+test("an aged tier-1 lease waiter takes the reserved headroom before a fresh tier-0 lease", async () => {
+  // The orchestrator admits role runs through acquireLease, not acquire: the role-starvation
+  // path needs the same grant-ahead, not only the check-permit path.
+  let clock = 0;
+  const sem = new Semaphore(2, { now: () => clock, starveMs: 10_000 });
+  const order: string[] = [];
+  const snap = () => [...order];
+  const holder = await sem.acquireLease(0); // work holder: in-use 1, leaving one permit
+  sem.setReserve(1); // that permit is reserved for work, so the tier-1 lease waiter parks
+  const maint = sem.acquireLease(1).then((lease) => {
+    order.push("maint");
+    return lease;
+  });
+  await flushImmediate();
+  assert.deepEqual(snap(), [], "the reserve withholds the free permit from the young maintenance lease waiter");
+
+  clock = 20_000; // age it past the bound; no release or resize drives the queue
+  const work = sem.acquireLease(0).then((lease) => {
+    order.push("work");
+    return lease;
+  });
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint"], "the aged lease waiter takes the reserved permit before the fresh work lease");
+
+  holder.release(); // the holder frees its permit: the parked work lease takes it
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint", "work"], "the work lease takes the next freed permit");
+  (await maint).release();
+  (await work).release();
+  assert.equal(sem.snapshot().inUse, 0, "every lease gave its permit back");
+});
+
+test("an aged tier-1 lease waiter takes the reserved headroom before a paused lease resumes", async () => {
+  // A resume is an admission too: it must grant the aged waiter ahead of it before retaking the
+  // free permit, or a failed review's in-place retry can barge a starved maintenance run.
+  let clock = 0;
+  const sem = new Semaphore(2, { now: () => clock, starveMs: 10_000 });
+  const order: string[] = [];
+  const snap = () => [...order];
+  const holder = await sem.acquireLease(0);
+  const pausedLease = await sem.acquireLease(0);
+  pausedLease.pause(); // hands one permit back, leaving the other held by holder
+  sem.setReserve(1); // the free permit is reserved, so the tier-1 lease waiter parks
+  const maint = sem.acquireLease(1).then((lease) => {
+    order.push("maint");
+    return lease;
+  });
+  await flushImmediate();
+  assert.deepEqual(snap(), [], "the reserve withholds the free permit from the young maintenance lease waiter");
+
+  clock = 20_000; // age it past the bound; resume is the arrival that could barge it
+  const resume = pausedLease.resume().then(() => order.push("resume"));
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint"], "the aged lease waiter takes the reserved permit before the resume");
+
+  holder.release(); // the resume takes the next freed permit behind the aged waiter
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint", "resume"], "the resume takes the next freed permit");
+  await resume;
+  (await maint).release();
+  pausedLease.release();
+  assert.equal(sem.snapshot().inUse, 0, "every lease gave its permit back");
+});
+
 
 // --- Pause/resume (part 5i/6): a lease hands its team permit back for an idle wait ---
 
