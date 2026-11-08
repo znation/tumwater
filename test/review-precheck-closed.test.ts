@@ -19,9 +19,10 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { piRanMarker, withPi } from "./fakes/fake-pi.js";
 import { gateCtx, reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
 import { buildCheckEvents, gateBuildFixture, uniqueMain } from "./fixtures/precheck-fixtures.js";
+import { knownFailureFixture } from "./fixtures/precheck-attr-fixtures.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 import { waitForFile } from "./helpers/wait.js";
-import { quarantinedTests } from "../src/review/known-flakes.js";
+import { quarantinedTests, quarantineTests } from "../src/review/known-flakes.js";
 
 test("an abort mid-check stops the gate's build pre-check and fails closed as aborted", async () => {
   // A declared check that parks on its own tree (main's baseline passes at once — the fixture's
@@ -82,20 +83,24 @@ test("a shutdown during a failing pre-check fails closed before main is consulte
 // fires while a check is starting or running does not always stop it — a check granted a free
 // check permit under an already-firing signal runs to its own verdict (runScriptGroup
 // deliberately acts only on a signal that fires mid-run), and the process-group kill can race
-// the spawn. The check then PASSES, and without a fail-closed guard on the fired signal before
-// a passed verdict the gate would approve and merge a change the operator stopped — the flake
-// "an aborted merge settles despite an unwritable state file" recorded, where the aborted
-// change merged as `changed` instead of settling `aborted`.
-test("a passing pre-check under a fired abort fails closed as aborted and approves nothing", async () => {
-  const { root, wt } = await gateBuildFixture("true");
+// the spawn. A passing verdict under a fired abort was already closed by the earlier green-
+// verdict guard; the remaining hole was a failed check the gate excuses as a known main failure
+// (or a recorded flake), which went on to review and recorded approval instead of settling
+// aborted — the flake "an aborted merge settles despite an unwritable state file" recorded,
+// where the aborted change merged as `changed`.
+test("a known-failure pre-check under a fired abort fails closed as aborted and approves nothing", async () => {
+  const { root, wt } = await knownFailureFixture();
+  // Seed X as main's known failure: the failed check names only X, so the gate would short-
+  // circuit to review/approval under the fired signal without the fail-closed guard.
+  quarantineTests(root, ["X"], "gate check: ✖ X");
   const marker = piRanMarker();
   await withPi(`touch '${marker}'`, async () => {
     const controller = new AbortController();
     controller.abort(); // the stop fires before the check is granted, but does not stop the check
     const { state, result } = await reviewGate(root, wt, { signal: controller.signal });
     assert.equal(result.decision, "failed");
-    assert.ok(result.aborted, "a passing check under a fired abort fails closed as aborted");
-    assert.deepEqual(buildCheckEvents(root), ["gate:passed"], "the check genuinely ran and passed despite the abort");
+    assert.ok(result.aborted, "a known-failure check under a fired abort fails closed as aborted");
+    assert.deepEqual(buildCheckEvents(root), ["gate:failed"], "the check ran and failed once despite the abort");
     assert.ok(!fs.existsSync(marker), "no pi run under a fired abort");
     assert.equal(state.lastApprovedHead, undefined, "no approval recorded under a fired abort");
     assert.equal(await aheadOfMain(wt, "main"), 1, "the commit is kept for another attempt");
