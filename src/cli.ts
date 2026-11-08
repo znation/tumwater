@@ -414,7 +414,9 @@ async function cmdHelpCase(args: string[]): Promise<void> {
     // the --grep flag token itself, so a leftover is any other token still in `rest`.
     const { rest, pattern } = parseGrepFlag(args, HELP_GREP_VALUE_ERROR);
     if (pattern === null) fail(HELP_GREP_VALUE_ERROR); // unreachable: parseGrepFlag fails valueless
-    const leftover = rest.filter((token) => token !== "--grep");
+    const leftover = [...rest];
+    const flagIndex = leftover.indexOf("--grep");
+    if (flagIndex >= 0) leftover.splice(flagIndex, 1); // Drop the parsed flag, not a repeated one.
     if (leftover.length > 0) fail(`help --grep takes only its search text (usage: tumwater help --grep <text>)`);
     const matches = searchHelp(pattern);
     if (matches.length === 0) {

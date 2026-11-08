@@ -96,6 +96,10 @@ test("help --grep takes only its search text", async () => {
   const r = await cli(tmpdir(), "help", "--grep", "x", "extra");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /help --grep takes only its search text \(usage: tumwater help --grep <text>\)/);
+  // A repeated --grep is a leftover token too, not a second flag to ignore.
+  const repeated = await cli(tmpdir(), "help", "--grep", "x", "--grep");
+  assert.equal(repeated.code, 1);
+  assert.match(repeated.stderr, /help --grep takes only its search text/);
 });
 
 test("bare help and the topic form are unchanged by the search", async () => {
