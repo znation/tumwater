@@ -411,6 +411,34 @@ export async function primaryOffBaseBranchReason(root: string): Promise<string |
   return null;
 }
 
+/** The reason a bulk archive must skip before planning — the primary checkout off the base
+ * branch, the finished files' git status unreadable, or any of them dirty — else null.
+ * archiveFinishedOnMain and its read-only twin previewArchiveOnMain both guard on this, so a dry
+ * run refuses exactly what the committed archive would. */
+async function finishedArchivePreconditions(root: string): Promise<string | null> {
+  const offBase = await primaryOffBaseBranchReason(root);
+  if (offBase !== null) return offBase;
+  const files = FINISHED_ARCHIVES.flatMap((a) => [a.file, a.archive]);
+  const status = await gitTry(root, "status", "--porcelain", "--", ...files);
+  if (status === null) return "could not read git status";
+  const dirty = status.split("\n").filter((l) => l.length > 3).map((l) => l.slice(3));
+  if (dirty.length > 0) {
+    return `${dirty.join(", ")} ${dirty.length > 1 ? "have" : "has"} uncommitted changes`;
+  }
+  return null;
+}
+
+/** The file-level summary of a planned bulk move: each live file, its archive, and the headings
+ * it moves or drops. */
+function movedFiles(plan: ReturnType<typeof planArchiveAll>): ArchivedFile[] {
+  return plan.map(({ spec, move }) => ({
+    file: spec.file,
+    archive: spec.archive,
+    titles: move.titles,
+    dropped: move.dropped,
+  }));
+}
+
 /** The bulk archive, committed: move every live finished section of the primary checkout at
  * `root` (past its newest `keep` entries) to its archive file and commit the touched files on the
  * base branch as one `tumwater(operator):` commit. Holds the team's merge lock, so a merge
@@ -431,15 +459,8 @@ export async function archiveFinishedOnMain(
     mergeLockDir(root),
     () =>
       withPrimaryWorktreeLockAsync(root, async (): Promise<ArchiveOnMainOutcome> => {
-        const offBase = await primaryOffBaseBranchReason(root);
-        if (offBase !== null) return { status: "skipped", reason: offBase };
-        const files = FINISHED_ARCHIVES.flatMap((a) => [a.file, a.archive]);
-        const status = await gitTry(root, "status", "--porcelain", "--", ...files);
-        if (status === null) return { status: "skipped", reason: "could not read git status" };
-        const dirty = status.split("\n").filter((l) => l.length > 3).map((l) => l.slice(3));
-        if (dirty.length > 0) {
-          return { status: "skipped", reason: `${dirty.join(", ")} ${dirty.length > 1 ? "have" : "has"} uncommitted changes` };
-        }
+        const skip = await finishedArchivePreconditions(root);
+        if (skip !== null) return { status: "skipped", reason: skip };
         // Re-planned under the locks: a merge may have moved main since the pre-check.
         const plan = planOrSkip(root, keep);
         if ("status" in plan) return plan;
@@ -464,7 +485,7 @@ export async function archiveFinishedOnMain(
         return {
           status: "archived",
           commit: await headOf(root, "HEAD"),
-          moved: plan.map(({ spec, move }) => ({ file: spec.file, archive: spec.archive, titles: move.titles, dropped: move.dropped })),
+          moved: movedFiles(plan),
         };
       }),
     opts.lockTimeoutMs,
@@ -487,18 +508,11 @@ export async function previewArchiveOnMain(root: string): Promise<ArchivePreview
   const pre = planOrSkip(root, 0);
   if ("status" in pre) return pre;
   if (pre.length === 0) return { status: "nothing" };
-  const offBase = await primaryOffBaseBranchReason(root);
-  if (offBase !== null) return { status: "skipped", reason: offBase };
-  const files = FINISHED_ARCHIVES.flatMap((a) => [a.file, a.archive]);
-  const status = await gitTry(root, "status", "--porcelain", "--", ...files);
-  if (status === null) return { status: "skipped", reason: "could not read git status" };
-  const dirty = status.split("\n").filter((l) => l.length > 3).map((l) => l.slice(3));
-  if (dirty.length > 0) {
-    return { status: "skipped", reason: `${dirty.join(", ")} ${dirty.length > 1 ? "have" : "has"} uncommitted changes` };
-  }
+  const skip = await finishedArchivePreconditions(root);
+  if (skip !== null) return { status: "skipped", reason: skip };
   return {
     status: "would-archive",
-    moved: pre.map(({ spec, move }) => ({ file: spec.file, archive: spec.archive, titles: move.titles, dropped: move.dropped })),
+    moved: movedFiles(pre),
   };
 }
 
