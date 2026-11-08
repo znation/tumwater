@@ -129,6 +129,18 @@ test("backlog -f --ready keeps only ready entries and names the hidden count", a
   assert.match(out, /_\((\d+) held entries hidden; run `tumwater backlog` to see them\)_/);
 });
 
+test("backlog -f --held keeps only held entries and names the unheld count", async (t) => {
+  const repo = await seedBacklogRepo(
+    "### Ready plan (planned 2026-01-01 by operator)\n\nBody.\n\n### Refused plan (planned 2026-01-02 by operator)\n\n**Refused 2026-10-07 by feature: no**",
+    "backlog follow held",
+  );
+  const parent = { value: 4242 };
+  const out = await runFollow(t, repo, ["--held", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, (o) => (o.match(/### Refused plan/g) ?? []).length, () => (parent.value = 1));
+  assert.match(out, /### Refused plan/);
+  assert.doesNotMatch(out, /### Ready plan/, "a --held follow never shows unheld entries");
+  assert.match(out, /\(2 unheld entries hidden; run `tumwater backlog` to see them\)/);
+});
+
 test("backlog -f --grep keeps only matching entries", async (t) => {
   const repo = await seedBacklogRepo(
     "### Zebra plan (planned 2026-01-01 by operator)\n\n**Goal.** Feed the zebra.\n\n### Other plan (planned 2026-01-02 by operator)\n\nOther body.",

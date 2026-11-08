@@ -313,7 +313,7 @@ Usage:
                                    post-review.json; read-only and needing no ready repo, like
                                    the list; --json prints the entry object unsquashed for
                                    scripts (no header text)
-  tumwater backlog [--ready] [--grep <text>] [-f/--follow] [--json]
+  tumwater backlog [--ready] [--held] [--grep <text>] [-f/--follow] [--json]
                                    Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable
                                    backlog data — the three entry arrays as {title, body}, the
@@ -323,7 +323,9 @@ Usage:
                                    working on carries \`[working on it: feature #2]\` (--json:
                                    an \`inProgress\` key parallel to the arrays); --ready keeps only the
                                    planned plans and open bugs no hold keeps from being
-                                   picked (entries a role is working on stay); --grep keeps the
+                                   picked (entries a role is working on stay), and --held its
+                                   inverse, only the ones a hold keeps from being picked, each
+                                   under its unfiltered numbers (mutually exclusive); --grep keeps the
                                    entries whose heading or body contains the text, case-insensitively;
                                    -f/--follow repaints the backlog every couple of seconds until
                                    Ctrl+C or the process that started it exits, so a backgrounded
@@ -427,18 +429,20 @@ Usage:
                                    With neither text nor --file, open the Nth entry as --show
                                    prints it in $VISUAL or $EDITOR and write it back on save;
                                    an unchanged buffer writes nothing
-  tumwater bug --list [-f/--follow] [--ready] [--grep <text>] [--json]
+  tumwater bug --list [-f/--follow] [--ready] [--held] [--grep <text>] [--json]
                                    List the entries in BUGS.md ## Open, numbered (the read
                                    half of --edit/--cancel), each with its eligibility mark;
                                    --json prints the {entries} array — position, title, body,
                                    hold, inProgress — as data; \`[working on it: …]\` marks an
                                    entry a role is working on; --ready keeps only the entries
                                    no hold keeps from being picked (entries a role is working
-                                   on stay), under their unfiltered numbers; --grep keeps the
+                                   on stay), and --held its inverse, only the ones a hold
+                                   keeps from being picked, each under their unfiltered
+                                   numbers (mutually exclusive); --grep keeps the
                                    entries whose heading or body contains the text,
                                    case-insensitively; -f/--follow repaints the list every
                                    couple of seconds until Ctrl+C or the process that started
-                                   it exits, composing with --ready and --grep and refusing
+                                   it exits, composing with --ready/--held and --grep and refusing
                                    --json
   tumwater bug --list --done [-f/--follow] [-n <count>] [--grep <text>] [--json]
                                    List the newest entries, numbered, in BUGS.md ## Fixed, newest first
@@ -495,7 +499,7 @@ Usage:
                                    With neither text nor --file, open the Nth entry as --show
                                    prints it in $VISUAL or $EDITOR and write it back on save;
                                    an unchanged buffer writes nothing
-  tumwater plan --list [-f/--follow] [--ready] [--grep <text>] [--json]
+  tumwater plan --list [-f/--follow] [--ready] [--held] [--grep <text>] [--json]
                                    List the entries in PLANS.md ## Planned, numbered (the
                                    read half of --edit/--cancel), each with its eligibility
                                    mark; --json prints the {entries} array — position, title,
@@ -503,11 +507,13 @@ Usage:
                                    marks an entry a role is working on; a series' blocked
                                    parts show as one line naming their positions; --ready keeps
                                    only the entries no hold keeps from being picked (entries a
-                                   role is working on stay), under their unfiltered numbers;
-                                   --grep keeps the entries whose heading or body contains the
-                                   text, case-insensitively; -f/--follow repaints the list
+                                   role is working on stay), and --held its inverse, only the
+                                   ones a hold keeps from being picked, each under their
+                                   unfiltered numbers (mutually exclusive); --grep keeps the
+                                   entries whose heading or body contains the text,
+                                   case-insensitively; -f/--follow repaints the list
                                    every couple of seconds until Ctrl+C or the process that
-                                   started it exits, composing with --ready and --grep and
+                                   started it exits, composing with --ready/--held and --grep and
                                    refusing --json
   tumwater plan --list --done [-f/--follow] [-n <count>] [--grep <text>] [--json]
                                    List the newest entries, numbered, in PLANS.md ## Done, newest first

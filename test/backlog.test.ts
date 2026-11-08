@@ -33,8 +33,9 @@ import {
   parseEntryDetails,
 } from "../src/backlog/backlog-md.js";
 import { backdate } from "./helpers/backdate.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { withCountedReads } from "./helpers/fs-faults.js";
+import { runCli } from "./helpers/cli-harness.js";
 
 const PLANS_MD = `# Plans
 
@@ -74,6 +75,68 @@ Known bugs, recorded by any loop and fixed by the bugfix loop.
 
 _None else yet._
 `;
+
+test("tumwater backlog --held keeps only the entries a hold keeps from being picked", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), [
+    "# Plans", "## Planned",
+    "### Refused plan (planned 2026-10-03)", "**Refused 2026-10-07 by feature: no**",
+    "### Ready plan (planned 2026-10-04)", "body",
+    "## Done", "_None._",
+  ].join("\n"));
+  fs.writeFileSync(path.join(root, "BUGS.md"), [
+    "# Bugs", "## Open",
+    "### Real bug (reported 2026-10-02)", "repro",
+    "### Held bug (reported 2026-10-03)", "**Needs review 2026-10-08 by feature: too large for one run**",
+    "## Fixed", "_None._",
+  ].join("\n"));
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), [
+    "# Questions", "## Open",
+    "### Open question (planned 2026-10-05)", "q",
+    "## Answered", "_None._",
+  ].join("\n"));
+  const out = await runCli(root, "backlog", "--held");
+  assert.equal(out.code, 0);
+  // Held entries print with their eligibility marks; the ready plan and plain bug are hidden.
+  assert.match(out.out, /### Refused plan \(planned 2026-10-03\) \[blocked: refused\]/);
+  assert.match(out.out, /### Held bug \(reported 2026-10-03\) \[blocked: needs review\]/);
+  // Questions carry no holds, so they pass through unchanged, and the hidden count names the
+  // unheld entries the filter dropped.
+  assert.match(out.out, /### Open question/);
+  assert.doesNotMatch(out.out, /### Ready plan/);
+  assert.doesNotMatch(out.out, /### Real bug/);
+  assert.ok(out.out.trimEnd().endsWith("_(2 unheld entries hidden; run `tumwater backlog` to see them)_"));
+  // --json carries only the held plans and bugs (questions pass through under no holds).
+  const doc = JSON.parse((await runCli(root, "backlog", "--held", "--json")).out) as {
+    plans: { title: string }[]; bugs: { title: string }[]; questions: { title: string }[];
+    holds: { plans: unknown[]; bugs: unknown[] };
+  };
+  assert.equal(doc.plans.length, 1);
+  assert.deepEqual(doc.holds.plans, ["refused"]);
+  assert.equal(doc.bugs.length, 1);
+  assert.deepEqual(doc.holds.bugs, ["needs-review"]);
+  assert.deepEqual(doc.questions.map((q) => q.title), ["Open question (planned 2026-10-05)"]);
+  // --held composes with --grep (grep first: only held matches stay) and refuses --ready.
+  const grepped = await runCli(root, "backlog", "--held", "--grep", "bug");
+  assert.equal(grepped.code, 0);
+  assert.match(grepped.out, /### Held bug/);
+  assert.doesNotMatch(grepped.out, /### Refused plan/);
+  const refused = await runCli(root, "backlog", "--held", "--ready");
+  assert.equal(refused.code, 1);
+  assert.match(refused.out, /--ready and --held are mutually exclusive/);
+  // With nothing held (empty sections) there is no hidden-count line, and the plain listing
+  // is unchanged.
+  fs.writeFileSync(path.join(root, "PLANS.md"), "# Plans\n## Planned\n\n_None._\n## Done\n\n_None._\n");
+  fs.writeFileSync(path.join(root, "BUGS.md"), "# Bugs\n## Open\n\n_None._\n## Fixed\n\n_None._\n");
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), "# Questions\n## Open\n\n_None._\n## Answered\n\n_None._\n");
+  const none = await runCli(root, "backlog", "--held");
+  assert.equal(none.code, 0);
+  assert.doesNotMatch(none.out, /hidden/);
+  const plain = await runCli(root, "backlog");
+  assert.equal(plain.code, 0);
+  assert.match(plain.out, /## Planned features/);
+  assert.match(plain.out, /\(none\)/);
+});
 
 test("plannedPlans reads PLANS.md fresh; missing file yields []", () => {
   const root = tmpdir();

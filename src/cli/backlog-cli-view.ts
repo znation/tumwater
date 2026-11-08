@@ -46,9 +46,10 @@ function positionRuns(positions: readonly number[]): string {
   return runs.join(", ");
 }
 
-/** Scans the `--list` flag vocabulary (`--list`, `--json`, `--done`, `--ready`, `-n`,
- * `--grep`, `-f/--follow`, each once, plus tolerated `--help`/`-h`) into the parsed locals and
- * returns them with `rest`, the leftover args rejectUnknownArgs will refuse. The follow flag
+/** Scans the `--list` flag vocabulary (`--list`, `--json`, `--done`, `--ready`, `--held`,
+ * `-n`, `--grep`, `-f/--follow`, each once, plus tolerated `--help`/`-h`) into the parsed
+ * locals and returns them with `rest`, the leftover args rejectUnknownArgs will
+ * refuse. The follow flag
  * is recognized only as an unconsumed token — a `--grep` that consumed the next token as its
  * pattern never sees `-f` (so `--list --grep -f` greps the literal "-f"), exactly as the
  * `backlog` and `questions` follows do. Reads no entry, filters nothing, prints nothing; the
@@ -58,6 +59,7 @@ function parseListArgs(args: string[], command: string): {
   json: boolean;
   done: boolean;
   ready: boolean;
+  held: boolean;
   count: number | null;
   grep: string | null;
   follow: boolean;
@@ -67,6 +69,7 @@ function parseListArgs(args: string[], command: string): {
   let list = false;
   let done = false;
   let ready = false;
+  let held = false;
   let count: number | null = null;
   let grep: string | null = null;
   let follow = false;
@@ -92,6 +95,11 @@ function parseListArgs(args: string[], command: string): {
       ready = true;
       continue;
     }
+    if (arg === "--held") {
+      rejectRepeatFlag(held, "--held");
+      held = true;
+      continue;
+    }
     if (arg === "-n") {
       rejectRepeatFlag(count !== null, "-n");
       count = parseCountFlag("-n", args[++i], BACKLOG_MAX_LISTED);
@@ -115,7 +123,7 @@ function parseListArgs(args: string[], command: string): {
     if (arg === "--help" || arg === "-h") continue;
     rest.push(arg);
   }
-  return { json, done, ready, count, grep, follow, rest };
+  return { json, done, ready, held, count, grep, follow, rest };
 }
 
 /** The `--done` half of the list shell's frame builder: the newest finished entries (BUGS.md
@@ -161,16 +169,17 @@ function renderFinishedList(
 }
 
 /** One numbered entry as the active list prints it: `position` is the unfiltered 1-based
- * position `--edit`/`--cancel`/`--show <n>` address, carried through `--grep` and `--ready`. */
+ * position `--edit`/`--cancel`/`--show <n>` address, carried through `--grep`, `--ready`
+ * and `--held`. */
 interface NumberedEntry {
   entry: BacklogEntry;
   position: number;
 }
 
 /** The active list's read-and-filter phase: the section's entries, each position's hold and
- * live claimer, the `--grep` matches under their unfiltered positions, the `--ready`
- * survivors, `hidden` (how many matches `--ready` dropped), the section's noun, and the
- * `--grep`/`--ready` flags the later phases re-check. */
+ * live claimer, the `--grep` matches under their unfiltered positions, the `--ready`/`--held`
+ * survivors, `hidden` (how many matches the filter dropped), the section's noun, and the
+ * `--grep`/`--ready`/`--held` flags the later phases re-check. */
 interface ActiveListView {
   entries: BacklogEntry[];
   entryHolds: EntryHold[];
@@ -181,17 +190,20 @@ interface ActiveListView {
   noun: string;
   grep: string | null;
   ready: boolean;
+  held: boolean;
 }
 
 /** The active list's read-and-filter phase: reads the section's entries and each position's
  * hold and live claimer, numbers them unfiltered, keeps the `--grep` matches under those
- * positions, drops to the `--ready` survivors, counts what `--ready` hid, and names the noun. */
+ * positions, drops to the `--ready` or `--held` survivors, counts what the filter hid, and
+ * names the noun. */
 function activeListView(
   root: string,
   bugSection: boolean,
   sectionTitle: string,
   grep: string | null,
   ready: boolean,
+  held: boolean,
 ): ActiveListView {
   const entries = bugSection ? openBugEntries(root) : plannedPlanEntries(root);
   const holds = backlogHolds(root);
@@ -202,7 +214,9 @@ function activeListView(
   // `--grep` keeps each match's original position so a printed number still reaches them.
   const numbered = entries.map((entry, i) => ({ entry, position: i + 1 }));
   const matches = grep === null ? numbered : numbered.filter((m) => entryMatches(m.entry, grep));
-  const kept = ready ? matches.filter((m) => (entryHolds[m.position - 1] ?? null) === null) : matches;
+  let kept = matches;
+  if (ready) kept = matches.filter((m) => (entryHolds[m.position - 1] ?? null) === null);
+  else if (held) kept = matches.filter((m) => (entryHolds[m.position - 1] ?? null) !== null);
   return {
     entries,
     entryHolds,
@@ -213,6 +227,7 @@ function activeListView(
     noun: sectionNoun(sectionTitle),
     grep,
     ready,
+    held,
   };
 }
 
@@ -238,21 +253,22 @@ function activeListJson(view: ActiveListView): { entries: Record<string, unknown
   };
 }
 
-/** The prose `no …` line for an empty list, a `--grep` with no match, or a `--ready` list
- * whose every match is held; null when `view.kept` has rows to print. */
+/** The prose `no …` line for an empty list, a `--grep` with no match, or a `--ready`/`--held`
+ * list whose every match the filter drops; null when `view.kept` has rows to print. */
 function activeListEmptyLine(view: ActiveListView, command: string): string | null {
-  const { entries, matches, kept, hidden, noun, grep, ready } = view;
+  const { entries, matches, kept, hidden, noun, grep, ready, held } = view;
   if (grep === null && entries.length === 0) return `no ${noun}s`;
   if (matches.length === 0) return `no ${noun}s match "${grep}"`;
   if (ready && kept.length === 0) return `no ${noun}s ready (${hidden} held; run \`tumwater ${command} --list\` to see them)`;
+  if (held && kept.length === 0) return grep === null ? `no ${noun}s held` : `no ${noun}s held matching "${grep}"`;
   return null;
 }
 
 /** The prose body of a non-empty active list: the bug list's numbered `line` rows, or the
- * plan list's `groupBlockedSeries` rows, each with the hidden-held notice when `hidden > 0`. */
+ * plan list's `groupBlockedSeries` rows, each with the hidden-filter notice when `hidden > 0`. */
 function activeListProse(view: ActiveListView, fileName: string, command: string, bugSection: boolean): string {
-  const { kept, entryHolds, entryRunners, hidden, noun } = view;
-  const hiddenNote = `(${hidden} held entries hidden; run \`tumwater ${command} --list\` to see them)`;
+  const { kept, entryHolds, entryRunners, hidden, noun, held } = view;
+  const hiddenNote = `(${hidden} ${held ? "unheld" : "held"} entries hidden; run \`tumwater ${command} --list\` to see them)`;
   const line = (entry: { title: string }, i: number): string =>
     `${entry.title}${holdMark(entryHolds[i] ?? null)}${inProgressMark(entryRunners[i] ?? null)}${entryAgeSuffix(entry.title)}`;
   if (bugSection) {
@@ -280,12 +296,12 @@ function activeListProse(view: ActiveListView, fileName: string, command: string
 }
 
 /** The active half of the list shell's frame builder: the open entries with their holds,
- * in-progress claim marks and age suffixes, optionally reduced to the ready ones, as the exact
- * `--json` payload or prose text, grouping a plan's blocked parts into one line
- * (groupBlockedSeries) — re-read per call so a follow frame renumbers as a fresh list would.
- * Orchestrates the four named phases below — the read-and-filter view (activeListView), the
- * `--json` body (activeListJson), the empty-list prose line (activeListEmptyLine) and the
- * bug/plan prose body (activeListProse). */
+ * in-progress claim marks and age suffixes, optionally reduced to the ready or the held
+ * ones, as the exact `--json` payload or prose text, grouping a plan's blocked parts into
+ * one line (groupBlockedSeries) — re-read per call so a follow frame renumbers as a fresh
+ * list would. Orchestrates the four named phases below — the read-and-filter view
+ * (activeListView), the `--json` body (activeListJson), the empty-list prose line
+ * (activeListEmptyLine) and the bug/plan prose body (activeListProse). */
 function renderActiveList(
   root: string,
   fileName: string,
@@ -294,9 +310,10 @@ function renderActiveList(
   sectionTitle: string,
   grep: string | null,
   ready: boolean,
+  held: boolean,
   json: boolean,
 ): string | object {
-  const view = activeListView(root, bugSection, sectionTitle, grep, ready);
+  const view = activeListView(root, bugSection, sectionTitle, grep, ready, held);
   if (json) return activeListJson(view);
   const empty = activeListEmptyLine(view, command);
   if (empty !== null) return empty;
@@ -317,8 +334,10 @@ function renderActiveList(
  * position still reaches `--show`/`--edit`/`--cancel` — the active twin of the finished
  * entries' `--done --grep`.
  *
- * `--ready` keeps the entries with no hold under their unfiltered numbers (composes with
- * `--grep` and `--json`; refused with `--done`, whose entries carry no holds).
+ * `--ready` keeps the entries with no hold under their unfiltered numbers and `--held` its
+ * inverse, the entries a hold keeps from being picked under theirs (each composes with
+ * `--grep` and `--json`; each refused with `--done`, whose entries carry no holds, and each
+ * refused beside the other).
  *
  * `--done [-n <count>] [--grep <text>]` (each once; `-n` and `--grep` need `--done`) lists the
  * newest finished entries instead (BUGS.md ## Fixed or PLANS.md ## Done, numbered, default 10)
@@ -331,8 +350,8 @@ function renderActiveList(
  * `-f/--follow` (the shared FOLLOW_FLAG, recognized only from an unconsumed token) repaints
  * the active or `--done` list every couple of seconds until Ctrl+C or the process that started
  * it exits — each frame re-reads the entries, the holds and the claims and renumbers as a
- * fresh list would. It composes with `--ready`, `--grep` and `-n`, and refuses `--json`
- * (a live view is one repainted document, not one snapshot). The one-shot branch prints
+ * fresh list would. It composes with `--ready`/`--held`, `--grep` and `-n`, and refuses
+ * `--json` (a live view is one repainted document, not one snapshot). The one-shot branch prints
  * exactly the frame text through `say`. */
 export async function listAndAnnounce(
   root: string,
@@ -342,7 +361,7 @@ export async function listAndAnnounce(
   sectionTitle: string,
   seams: FollowViewSeams = {},
 ): Promise<void> {
-  const { json, done, ready, count, grep, follow, rest } = parseListArgs(args, command);
+  const { json, done, ready, held, count, grep, follow, rest } = parseListArgs(args, command);
   // rejectUnknownArgs names a stray positional and an unknown flag with this command's (empty)
   // valid-flag list: every flag a list invocation accepts is consumed above, so anything left
   // is outside the vocabulary.
@@ -351,12 +370,14 @@ export async function listAndAnnounce(
   if (count !== null && !done) fail("-n needs --done (it limits the finished entries listed)");
   // BUGS.md's `## Open` is the one section whose noun is "bug"; every other caller is a plan.
   if (ready && done) fail("--ready needs the active list (finished entries carry no holds)");
+  if (held && done) fail("--held needs the active list (finished entries carry no holds)");
+  if (ready && held) fail("--ready and --held are mutually exclusive: each keeps the entries the other hides");
   if (follow && json) failFollowJsonRival(`${command} --list --json`);
   const bugSection = sectionTitle === "Open";
   const build = (): string | object =>
     done
       ? renderFinishedList(root, fileName, bugSection, grep, count, json)
-      : renderActiveList(root, fileName, command, bugSection, sectionTitle, grep, ready, json);
+      : renderActiveList(root, fileName, command, bugSection, sectionTitle, grep, ready, held, json);
   if (follow) {
     // follow refuses --json above, so every frame is prose here; stringify defensively for the
     // union the one-shot branch shares with it.

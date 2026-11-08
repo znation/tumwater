@@ -87,6 +87,94 @@ test("plan|bug --list --ready keeps the claimable entries under their unfiltered
   assert.equal(r.stdout, "no planned features ready (1 held; run `tumwater plan --list` to see them)\n");
 });
 
+test("plan|bug --list --held keeps the held entries under their unfiltered numbers", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "PLANS.md"), seededPlansForList());
+  fs.writeFileSync(path.join(repo, "BUGS.md"), seededBugsForList());
+  const p2 = "Export series, part 2/2: add import (planned 2026-10-02) (requires Export series 1/2 landed)";
+  const b1 = "held bug (reported by the operator 2026-10-01)";
+  let r = await cli(repo, "plan", "--list", "--held");
+  assert.equal(r.code, 0);
+  assert.equal(
+    r.stdout,
+    `planned features in PLANS.md:\n2. ${p2} [blocked: requires Export series 1/2]${entryAgeSuffix(p2)}\n(1 unheld entries hidden; run \`tumwater plan --list\` to see them)\n`,
+  );
+  r = await cli(repo, "bug", "--list", "--held");
+  assert.equal(r.code, 0);
+  assert.equal(
+    r.stdout,
+    `open bugs in BUGS.md:\n1. ${b1} [blocked: refused]${entryAgeSuffix(b1)}\n(1 unheld entries hidden; run \`tumwater bug --list\` to see them)\n`,
+  );
+  // --held --json lists only the held entries with their holds and original positions.
+  r = await cli(repo, "bug", "--list", "--held", "--json");
+  let parsed = JSON.parse(r.stdout) as { entries: { position: number; hold: unknown }[] };
+  assert.equal(parsed.entries.length, 1);
+  assert.equal(parsed.entries[0]!.position, 1);
+  assert.equal(parsed.entries[0]!.hold, "refused");
+  r = await cli(repo, "plan", "--list", "--held", "--json");
+  parsed = JSON.parse(r.stdout) as { entries: { position: number; hold: unknown }[] };
+  assert.equal(parsed.entries.length, 1);
+  assert.equal(parsed.entries[0]!.position, 2);
+  assert.deepEqual(parsed.entries[0]!.hold, { blockedBy: ["Export series 1/2"] });
+});
+
+test("plan|bug --list --held composes with --grep, prints the empty-held line, and refuses --done and --ready", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "BUGS.md"), [
+    "# Bugs", "", "## Open", "",
+    "### held bug (reported by the operator 2026-10-01)", "",
+    "**Refused 2026-10-01 by bugfix: not reproducible.**", "",
+    "### waiting bug (reported by the operator 2026-10-02)", "",
+    "**Needs review 2026-11-01 by bugfix: waiting for the next failure**", "",
+    "### open bug (reported by the operator 2026-10-03)", "",
+    "body three", "",
+    "## Fixed", "", "_None yet._", "",
+  ].join("\n"));
+  // A refused bug and a bugfix awaiting-recurrence bug are both kept; the plain bug is hidden.
+  let r = await cli(repo, "bug", "--list", "--held");
+  assert.equal(r.code, 0);
+  const b1 = "held bug (reported by the operator 2026-10-01)";
+  const b2 = "waiting bug (reported by the operator 2026-10-02)";
+  assert.equal(
+    r.stdout,
+    [
+      "open bugs in BUGS.md:",
+      `1. ${b1} [blocked: refused]${entryAgeSuffix(b1)}`,
+      `2. ${b2} [blocked: waiting for a recurrence]${entryAgeSuffix(b2)}`,
+      "(1 unheld entries hidden; run `tumwater bug --list` to see them)",
+      "",
+    ].join("\n"),
+  );
+  // --held --grep keeps only held entries whose heading or body matches.
+  r = await cli(repo, "bug", "--list", "--held", "--grep", "waiting");
+  assert.match(r.stdout, /^open bugs in BUGS\.md:\n2\. waiting bug/);
+  assert.doesNotMatch(r.stdout, /held bug/);
+  r = await cli(repo, "bug", "--list", "--held", "--grep", "open bug");
+  assert.equal(r.stdout, 'no open bugs held matching "open bug"\n');
+  // No held bug at all prints the plain empty-held line and no hidden count.
+  fs.writeFileSync(path.join(repo, "BUGS.md"), [
+    "# Bugs", "", "## Open", "", "### open bug (reported by the operator 2026-10-03)", "", "body", "", "## Fixed", "", "_None yet._", "",
+  ].join("\n"));
+  r = await cli(repo, "bug", "--list", "--held");
+  assert.equal(r.stdout, "no open bugs held\n");
+  // Both commands refuse --held --done and --held --ready, and --held appears once.
+  r = await cli(repo, "plan", "--list", "--held", "--done");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--held needs the active list/);
+  r = await cli(repo, "bug", "--list", "--held", "--done");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--held needs the active list/);
+  r = await cli(repo, "plan", "--list", "--held", "--ready");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--ready and --held are mutually exclusive/);
+  r = await cli(repo, "bug", "--list", "--held", "--ready");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--ready and --held are mutually exclusive/);
+  r = await cli(repo, "bug", "--list", "--held", "--held");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--held may only be given once/);
+});
+
 test("--ready appears once and does not combine with --done", async () => {
   const repo = makeRepo();
   let r = await cli(repo, "plan", "--list", "--ready", "--ready");
@@ -272,10 +360,10 @@ test("help topics name the --list forms", async () => {
   const repo = makeRepo();
   let r = await cli(repo, "help", "bug");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /tumwater bug --list \[-f\/--follow\] \[--ready\] \[--grep <text>\] \[--json\]/);
+  assert.match(r.stdout, /tumwater bug --list \[-f\/--follow\] \[--ready\] \[--held\] \[--grep <text>\] \[--json\]/);
   r = await cli(repo, "help", "plan");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /tumwater plan --list \[-f\/--follow\] \[--ready\] \[--grep <text>\] \[--json\]/);
+  assert.match(r.stdout, /tumwater plan --list \[-f\/--follow\] \[--ready\] \[--held\] \[--grep <text>\] \[--json\]/);
   assert.match(r.stdout, /tumwater plan --list --done \[-f\/--follow\]/);
   r = await cli(repo, "help", "bug");
   assert.match(r.stdout, /tumwater bug --list --done \[-f\/--follow\]/);

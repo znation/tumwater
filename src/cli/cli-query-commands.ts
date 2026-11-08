@@ -9,7 +9,7 @@ import { cancelQueuedMerge, type CancelQueuedOutcome } from "../merge/merge-canc
 import { moveQueuedMergeToTop, type TopQueuedOutcome } from "../merge/merge-top.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
 import { failFollowJsonRival, flagValue, parseGrepFlag, parseRoleListScope, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
-import { DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
+import { DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, HELD_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
@@ -17,7 +17,7 @@ import { renderStatus } from "../ui/status-render.js";
 import { gotSuffix } from "../text/text.js";
 import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
-import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
+import { readyBacklog, heldBacklog, grepBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
 import { loadQuarantine, releaseQuarantinedTest } from "../review/known-flakes.js";
 import { grepQuarantineRows, quarantineEntryAt, quarantineRows, renderQuarantine, renderQuarantineDetail, type QuarantineRow } from "../review/quarantine-render.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, collectRoleChanges, normalizeDiffPath } from "../change/change-data.js";
@@ -289,17 +289,19 @@ export async function cmdBacklog(root: string, args: string[], seams: FollowView
   // command prints three empty sections in any directory (report's rationale, not config's);
   // the team-workspace refusal still applies.
   // --grep filters the three entry arrays to the matches, the finished-entry lists' one
-  // matcher (entryMatches) on the active backlog; it composes with --ready (grep first, so
-  // the hidden count and the kept entries count only the matches) and with --json. The
-  // missing-value wording lives in BACKLOG_GREP_VALUE_ERROR, the flag gate's and this
-  // parser's shared string. -f/--follow repaints the same view every couple of seconds
-  // until Ctrl+C or the parent process exits, composing with --ready and --grep; it refuses
-  // --json (a live view is one repainted document, not one snapshot).
+  // matcher (entryMatches) on the active backlog; it composes with --ready or --held (grep
+  // first, so the hidden count and the kept entries count only the matches) and with
+  // --json. The missing-value wording lives in BACKLOG_GREP_VALUE_ERROR, the flag gate's
+  // and this parser's shared string. -f/--follow repaints the same view every couple of
+  // seconds until Ctrl+C or the parent process exits, composing with --ready/--held and
+  // --grep; it refuses --json (a live view is one repainted document, not one snapshot).
   const BACKLOG_GREP_VALUE_ERROR = "backlog --grep needs text (usage: tumwater backlog --grep <text>)";
-  rejectUnknownArgs("backlog", args, [JSON_FLAG, READY_FLAG, grepFlagSpec(BACKLOG_GREP_VALUE_ERROR), FOLLOW_FLAG]);
+  rejectUnknownArgs("backlog", args, [JSON_FLAG, READY_FLAG, HELD_FLAG, grepFlagSpec(BACKLOG_GREP_VALUE_ERROR), FOLLOW_FLAG]);
   refuseTeamWorkspace(root);
   const { rest, pattern } = parseGrepFlag(args, BACKLOG_GREP_VALUE_ERROR);
   const ready = rest.includes("--ready");
+  const held = rest.includes("--held");
+  if (ready && held) fail("--ready and --held are mutually exclusive: each keeps the entries the other hides");
   const follow = hasFollowFlag(rest);
   if (follow && rest.includes("--json")) failFollowJsonRival("backlog --json");
   // Machine-readable backlog — the three entry arrays the Markdown view renders and the
@@ -308,20 +310,21 @@ export async function cmdBacklog(root: string, args: string[], seams: FollowView
   // reason is data, not inference: a pretty-printed JSON document in every exit-0 case,
   // never prose. The payload is read once per branch (snapshot or frame) so the Markdown
   // renderer and the JSON document consume the same arrays.
-  // --ready filters both branches through readyBacklog; the Markdown branch adds a count of
-  // the held entries it hid. The --json/--ready reads go over `rest` (the --grep value token
-  // removed), so a flag-shaped pattern like `--grep --json` greps for "--json" rather than
-  // flipping this branch into JSON mode.
+  // --ready filters both branches through readyBacklog, --held through heldBacklog (its
+  // inverse); the Markdown branch adds a count of the entries the filter hid (held for
+  // --ready, unheld for --held). The --json/--ready/--held reads go over `rest` (the --grep
+  // value token removed), so a flag-shaped pattern like `--grep --json` greps for "--json"
+  // rather than flipping this branch into JSON mode.
   const readBacklog = (): { view: ReturnType<typeof backlogPayload>; hidden: number } => {
     const view = { ...backlogPayload(root), holds: backlogHolds(root), inProgress: backlogInProgress(root) };
     const filtered = pattern === null ? view : grepBacklog(view, pattern);
-    if (!ready) return { view: filtered, hidden: 0 };
-    const kept = readyBacklog(filtered);
+    if (!ready && !held) return { view: filtered, hidden: 0 };
+    const kept = ready ? readyBacklog(filtered) : heldBacklog(filtered);
     return { view: kept, hidden: filtered.plans.length + filtered.bugs.length - kept.plans.length - kept.bugs.length };
   };
   const renderBacklogText = (r: { view: ReturnType<typeof backlogPayload>; hidden: number }): string =>
     renderBacklogMarkdown(r.view) + (r.hidden > 0
-      ? `\n\n_(${r.hidden} held entries hidden; run \`tumwater backlog\` to see them)_` : "");
+      ? `\n\n_(${r.hidden} ${held ? "unheld" : "held"} entries hidden; run \`tumwater backlog\` to see them)_` : "");
   if (follow) {
     await followView(() => renderBacklogText(readBacklog()), seams);
     return;

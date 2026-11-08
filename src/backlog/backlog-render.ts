@@ -151,6 +151,25 @@ export function readyBacklog(view: BacklogView): BacklogView {
   };
 }
 
+/** The view with only the plans and bugs a hold keeps from being picked — the inverse of
+ * readyBacklog: entry `i` stays when `holds.plans[i]` / `holds.bugs[i]` is non-null, and
+ * `holds` and `inProgress` are filtered by the same indexes so the arrays stay parallel. An
+ * entry a role is working on has no hold, so it drops with the rest of the unheld. Questions
+ * carry no holds and pass through; a view without `holds` is returned unchanged. */
+export function heldBacklog(view: BacklogView): BacklogView {
+  const holds = view.holds;
+  if (!holds) return view;
+  const plan = keptIndexes(view.plans.length, (i) => (holds.plans[i] ?? null) !== null);
+  const bug = keptIndexes(view.bugs.length, (i) => (holds.bugs[i] ?? null) !== null);
+  return {
+    ...view,
+    plans: pickByIndex(view.plans, plan),
+    bugs: pickByIndex(view.bugs, bug),
+    ...filterHolds(holds, plan, bug),
+    ...filterInProgress(view.inProgress, plan, bug),
+  };
+}
+
 /** The view with only the entries whose heading or body contains `pattern` (case-insensitively) —
  * the active-entry twin of the finished-entry `--grep`, through the same one matcher
  * (entryMatches, backlog.ts) the finished-entry lists use: keep plan `i`, bug `i` and question

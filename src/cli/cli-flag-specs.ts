@@ -334,6 +334,10 @@ export function hasFollowFlag(args: readonly string[]): boolean {
  * being picked. Value-less, like STAT_FLAG. */
 export const READY_FLAG: FlagSpec = { names: ["--ready"] };
 
+/** The `--held` flag spec, accepted by `backlog`: keep only the entries a hold keeps from
+ * being picked — READY_FLAG's inverse. Value-less, like READY_FLAG. */
+export const HELD_FLAG: FlagSpec = { names: ["--held"] };
+
 /** The `--list-checks` flag spec, accepted by `doctor`: print every check name in report order
  * without running any check, so an operator can pick a name for `tumwater doctor <check>...`.
  * Value-less, like JSON_FLAG; the doctor mode that owns the listing accepts only `--json` beside
