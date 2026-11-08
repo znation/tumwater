@@ -19,7 +19,7 @@ import { reclaimPass } from "../team/team-reclaim.js";
 import { formatGB } from "../text/format.js";
 import { plural } from "../text/phrases.js";
 import { numberedList } from "../text/markdown.js";
-import { cancelScheduledWakes, pendingScheduledWakes } from "./operator-requests.js";
+import { cancelScheduledWakeAt, cancelScheduledWakes, pendingScheduledWakes } from "./operator-requests.js";
 import {
   abortRequestPath,
   reclaimRequestPath,
@@ -106,6 +106,18 @@ export function cancelWakes(root: string, roles?: string[]): string {
   const n = cancelScheduledWakes(root, roles);
   const forRole = roles ? ` for ${roles.join(", ")}` : "";
   return n > 0 ? `cancelled ${plural(n, "scheduled wake")}${forRole}` : noWakePending(roles);
+}
+
+/** Drop ONE pending scheduled wake by its 1-based position in the pending list (`wake --cancel
+ * 2`), or with `roles` the position in the list restricted to wakes naming any of them. The
+ * success wording is the list row's own under the position — `cancelWakeAt` prints the same
+ * `in <duration> — <roles>` fragment `renderWakeList` lines show, so the number always means
+ * what `wake --list` shows. Returns the confirmation the CLI prints verbatim. */
+export function cancelWakeAt(root: string, position: number, roles?: string[], now = Date.now()): string {
+  const { wake, pending } = cancelScheduledWakeAt(root, position, now, roles);
+  if (!wake)
+    return `no scheduled wake at position ${position}${roles ? ` for ${roles.join(", ")}` : ""} (${plural(pending, "scheduled wake")} pending)`;
+  return `cancelled scheduled wake ${position} (in ${humanUntil(wake.atMs, now)} — ${wake.roles.join(", ")})`;
 }
 
 /** The pending scheduled wakes (`tumwater wake --list`), earliest first; with `roles`, only the

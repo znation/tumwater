@@ -1,6 +1,6 @@
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
-import { failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleFlag, rejectFlagLookingValue } from "../cli/cli-args.js";
+import { failOverDurationCap, flagValue, optionalFlagValue, parseCountFlag, parseDurationFlag, parsePositionFlag, parseRoleFlag, rejectFlagLookingValue } from "../cli/cli-args.js";
 import { errorMessage, splitCommaList } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./operator-retire.js";
@@ -30,6 +30,7 @@ import {
   NO_HARNESS_ERROR,
   PAUSE_FOR_MAX_MS,
   cancelScheduledStopMessage,
+  cancelWakeAt,
   cancelWakes,
   listWakes,
   renderWakeList,
@@ -160,6 +161,15 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
   if (args.includes("--json")) fail("wake --json requires --list");
   if (args.includes("--cancel")) {
     if (inRaw !== null) fail("wake --cancel and --in cannot be combined");
+    // `wake --cancel <n>` drops ONE pending wake by the number `wake --list` prints under the
+    // same --role scope; a bare `wake --cancel` keeps dropping every pending wake (or the
+    // named roles' share) as today. optionalFlagValue is the gate's own read (cli-flag-specs')
+    // so the two cannot disagree about whether a value token was claimed.
+    const positionRaw = optionalFlagValue(args, "--cancel");
+    if (positionRaw !== null) {
+      say(cancelWakeAt(root, parsePositionFlag("--cancel", positionRaw, "wake --cancel 2"), namedRoleList(root, args) ?? undefined));
+      return;
+    }
     say(cancelWakes(root, namedRoleList(root, args) ?? undefined));
     return;
   }

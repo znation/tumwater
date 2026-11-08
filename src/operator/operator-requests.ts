@@ -230,17 +230,45 @@ function scheduledWakeFiles(root: string): string[] {
   );
 }
 
-/** The well-formed pending scheduled wakes (`tumwater wake --in`), earliest deadline first: a
- * pure reader that skips past-deadline and corrupt files and deletes nothing, so display
- * surfaces share one reader of the format. */
-export function pendingScheduledWakes(root: string, now: number): { roles: string[]; atMs: number }[] {
-  const out: { roles: string[]; atMs: number }[] = [];
+/** The well-formed pending scheduled-wake marker files (`tumwater wake --in`), earliest
+ * deadline first: the one pending-file walk both the display reader (pendingScheduledWakes)
+ * and the positional cancel (cancelScheduledWakeAt) use, so their order and skip rules cannot
+ * drift. Skips past-deadline, corrupt, and malformed-role files and deletes nothing. */
+function pendingWakeMarkers(root: string, now: number): { file: string; roles: string[]; atMs: number }[] {
+  const out: { file: string; roles: string[]; atMs: number }[] = [];
   for (const file of scheduledWakeFiles(root)) {
     const roles = requestedRoles(file);
     const atMs = wakeDeadlineMs(file);
-    if (roles && roles.length > 0 && atMs !== undefined && atMs > now) out.push({ roles, atMs });
+    if (roles && roles.length > 0 && atMs !== undefined && atMs > now) out.push({ file, roles, atMs });
   }
   return out.sort((x, y) => x.atMs - y.atMs);
+}
+
+/** The well-formed pending scheduled wakes, earliest deadline first: the readable shape of
+ * pendingWakeMarkers (without the file paths), so display surfaces share one reader of the
+ * format. Pure: skips past-deadline and corrupt files and deletes nothing. */
+export function pendingScheduledWakes(root: string, now: number): { roles: string[]; atMs: number }[] {
+  return pendingWakeMarkers(root, now).map(({ roles, atMs }) => ({ roles, atMs }));
+}
+
+/** Remove ONE pending scheduled wake by its 1-based position in the pending list (the number
+ * `wake --list` prints — `wake --cancel 2` drops the second), or with `roles` the position in
+ * the list restricted to wakes naming any of them. The marker file is removed WHOLE even when
+ * the wake names several roles; a position past the (filtered) list removes nothing. Returns
+ * the removed wake's roles and deadline plus `pending`, the filtered pendings left after the
+ * call — the miss wording the intent layer prints is built from `pending`. */
+export function cancelScheduledWakeAt(
+  root: string,
+  position: number,
+  now: number,
+  roles?: string[],
+): { wake?: { roles: string[]; atMs: number }; pending: number } {
+  const markers = pendingWakeMarkers(root, now);
+  const scoped = roles !== undefined ? markers.filter((m) => m.roles.some((r) => roles.includes(r))) : markers;
+  const target = scoped[position - 1];
+  if (!target) return { wake: undefined, pending: scoped.length };
+  removeQuiet(target.file);
+  return { wake: { roles: target.roles, atMs: target.atMs }, pending: scoped.length - 1 };
 }
 
 /** Drop the pending scheduled wakes (`tumwater wake --cancel`), returning how many files it

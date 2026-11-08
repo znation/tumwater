@@ -676,12 +676,13 @@ Usage:
                                    Zero lifetime runs/commits/tokens/cost (fresh
                                    observation window; today's budget spend is kept — the
                                    daily cap cannot be reset past)
-  tumwater wake [--role <id>[,<id>...]] [--in <dur> | --cancel | --list [--json]]
+  tumwater wake [--role <id>[,<id>...]] [--in <dur> | --cancel [<n>] | --list [--json]]
                                    Wake sleeping roles — the named roles (or all) run
                                    within one poll; --in schedules the wake for later;
-                                   --cancel drops pending scheduled wakes (the named roles' share);
-                                   --list shows every pending scheduled wake, earliest first
-                                   (--json for scripts)
+                                   --cancel drops pending scheduled wakes (the named roles' share),
+                                   or --cancel <n> drops just the NTH whole wake as wake --list
+                                   numbers it under that --role scope; --list shows every pending
+                                   scheduled wake, earliest first (--json for scripts)
   tumwater reclaim [--dry-run [--json]]
                                    Reclaim gitignored build outputs from every
                                    workspace; --dry-run lists each candidate with its idle age

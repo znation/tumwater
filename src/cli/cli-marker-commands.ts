@@ -42,8 +42,9 @@ const markerCommandCores: Record<MarkerCommand, (root: string, args: string[]) =
 export async function runMarkerCommand(root: string, command: MarkerCommand, args: string[]): Promise<void> {
   // `pause` alone accepts `--for <duration>` (the timed pause) and `--reason <text>` (the
   // operator pause's why); `wake` alone accepts `--in <duration>` (the scheduled wake) and
-  // `--cancel` (drop the pending scheduled wakes), `--list` (show them), and `--json`
-  // (with --list); `reclaim` alone accepts `--dry-run` (and `--json` with it); the other
+  // `--cancel [<n>]` (drop the pending scheduled wakes, or just the Nth as `--list` numbers
+  // it), `--list` (show them), and `--json` (with --list); `reclaim` alone accepts
+  // `--dry-run` (and `--json` with it); the other
   // marker commands keep the plain --role vocabulary, so a stray --for, --reason, --in,
   // --cancel, or --dry-run fails fast instead of being silently ignored.
   const perCommandFlags: Record<MarkerCommand, FlagSpec[]> = {

@@ -9,7 +9,7 @@
  * duplicated, missing or malformed value, equals-form spelling) fails fast with an
  * actionable message instead of the command silently running with default behavior. */
 import { fail } from "./cli-output.js";
-import { failOverDurationCap, parseCountFlag, parseDurationFlag, parsePortFlag, rejectRepeatFlag } from "./cli-args.js";
+import { failOverDurationCap, parseCountFlag, parseDurationFlag, parsePositionFlag, parsePortFlag, rejectRepeatFlag } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { allRoleIds } from "../roles/roles.js";
 import { didYouMean, suggestClosest, typoSuffix } from "../text/suggest.js";
@@ -19,6 +19,12 @@ export interface FlagSpec {
   names: string[];
   /** True when the flag consumes one following token as its value. */
   value?: boolean;
+  /** True when the flag MAY consume one following token as its value — a valued flag whose
+   * value token may be omitted (`wake --cancel [<n>]`), so the same spelling serves both the
+   * bare and the valued form. The gate claims the next token only when it is present and does
+   * not start with `-` (a bare `--cancel --role qa` must not swallow `--role` as the value),
+   * validates it through `validate` when claimed, and otherwise claims the flag alone. */
+  optionalValue?: boolean;
   /** How the value is named in error messages (e.g. "<id>"); defaults to "<value>". */
   valueName?: string;
   /** The error when the flag appears as the last argument with no value. Defaults to
@@ -42,7 +48,11 @@ export interface FlagSpec {
  * print cannot drift from the vocabulary they name. */
 function validFlagsList(specs: readonly FlagSpec[]): string {
   return specs
-    .map((s) => s.names.join("/") + (s.value ? ` ${s.valueName ?? "<value>"}` : ""))
+    .map(
+      (s) =>
+        s.names.join("/") +
+        (s.value ? ` ${s.valueName ?? "<value>"}` : s.optionalValue ? ` [${s.valueName ?? "<value>"}]` : ""),
+    )
     .join(", ");
 }
 
@@ -103,14 +113,14 @@ function equalsFormFlag(arg: string): string | null {
  * misreports the form. */
 export function rejectEqualsForm(
   arg: string,
-  specs: readonly { names: readonly string[]; value?: boolean; valueName?: string }[],
+  specs: readonly { names: readonly string[]; value?: boolean; optionalValue?: boolean; valueName?: string }[],
 ): void {
   const name = equalsFormFlag(arg);
   if (name === null) return;
   const spec = specs.find((s) => s.names.includes(name));
   if (!spec) return;
   fail(
-    spec.value
+    spec.value || spec.optionalValue
       ? `${arg} is not accepted — give the value as a separate token: \`${spec.names[0]} ${spec.valueName ?? "<value>"}\``
       : `${arg} is not accepted — ${spec.names[0]} takes no value (give it on its own)`,
   );
@@ -213,8 +223,16 @@ export const STOP_IN_FLAG: FlagSpec = inFlagSpec("stop");
 /** `tumwater stop --cancel`: drop the scheduled stop. */
 export const STOP_CANCEL_FLAG: FlagSpec = { names: ["--cancel"] };
 
-/** The `--cancel` flag spec for `tumwater wake --cancel`: drop pending scheduled wakes. */
-export const WAKE_CANCEL_FLAG: FlagSpec = { names: ["--cancel"] };
+/** The `--cancel` flag spec for `tumwater wake --cancel [<n>]`: drop pending scheduled
+ * wakes — bare, every pending wake (or the named roles' share); with an `--cancel <n>`, just
+ * the Nth as `wake --list` numbers it. The optional value's shape is the shared position
+ * parser's, so the gate and cmdWake's re-parse agree on positive-integer wording. */
+export const WAKE_CANCEL_FLAG: FlagSpec = {
+  names: ["--cancel"],
+  optionalValue: true,
+  valueName: "<n>",
+  validate: (v) => parsePositionFlag("--cancel", v, "wake --cancel 2"),
+};
 
 /** `wake --list`: print the pending scheduled wakes instead of writing one. Takes no value. */
 export const WAKE_LIST_FLAG: FlagSpec = { names: ["--list"] };
@@ -600,6 +618,11 @@ function consumeFlagOccurrence(spec: FlagSpec, args: string[], i: number, consum
   // The value exists (the trailing-no-value case failed above): name a malformed one now,
   // before the ready-repo gate or any environment check can mask it.
   if (spec.value) spec.validate?.(args[i + 1] ?? "");
-  const n = spec.value ? 2 : 1;
+  // An optional-value flag claims the following token only when it is present and does not
+  // start with `-`: a bare `--cancel --role qa` must keep `--role` free for its own claim, so
+  // the flag alone is consumed and the token is validated only once it is genuinely the value.
+  const hasOptionalValue = !!spec.optionalValue && i + 1 < args.length && !(args[i + 1] ?? "").startsWith("-");
+  if (spec.optionalValue && hasOptionalValue) spec.validate?.(args[i + 1] ?? "");
+  const n = spec.value || hasOptionalValue ? 2 : 1;
   for (let j = 0; j < n && i + j < args.length; j++) consumed[i + j] = true;
 }

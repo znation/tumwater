@@ -553,6 +553,40 @@ test("wake --cancel and --list take a comma list of roles", async () => {
   assert.deepEqual(readScheduledWakes(root).map((w) => w.roles), [["coverage"]]);
 });
 
+test("cmdWake --cancel <n> drops one scheduled wake by the number wake --list prints", async () => {
+  const root = tmpdir();
+  requestWake(root, ["qa"], 45 * 60_000);
+  requestWake(root, ["feature", "qa"], 2 * 3_600_000);
+  requestWake(root, ["clean"], 3 * 3_600_000);
+  const { stdout } = await expectOk(() => cmdWake(root, ["--cancel", "2"]));
+  assert.match(stdout, /^cancelled scheduled wake 2 \(in 2h — feature, qa\)$/m);
+  assert.deepEqual(readScheduledWakes(root).map((w) => w.roles), [["qa"], ["clean"]]);
+  assert.ok(!fs.existsSync(wakeRequestPath(root)), "a positional cancel writes no immediate wake");
+});
+
+test("cmdWake --cancel <n> takes the position under the --role scope", async () => {
+  const root = tmpdir();
+  requestWake(root, ["clean"], 45 * 60_000);
+  requestWake(root, ["feature", "qa"], 3_600_000);
+  requestWake(root, ["qa"], 2 * 3_600_000);
+  const { stdout } = await expectOk(() => cmdWake(root, ["--cancel", "2", "--role", "qa"]));
+  assert.match(stdout, /^cancelled scheduled wake 2 \(in 2h — qa\)$/m);
+  assert.deepEqual(readScheduledWakes(root).map((w) => w.roles), [["clean"], ["feature", "qa"]]);
+});
+
+test("cmdWake --cancel refuses a malformed position and words an out-of-range one", async () => {
+  const root = tmpdir();
+  requestWake(root, ["qa"], 60_000);
+  assert.match(await expectFailAsync(() => cmdWake(root, ["--cancel", "0"])), /--cancel needs a positive integer/);
+  assert.match(await expectFailAsync(() => cmdWake(root, ["--cancel", "x"])), /--cancel needs a positive integer/);
+  const miss = await expectOk(() => cmdWake(root, ["--cancel", "2"]));
+  assert.match(miss.stdout, /^no scheduled wake at position 2 \(1 scheduled wake pending\)$/m);
+  const scoped = await expectOk(() => cmdWake(root, ["--cancel", "3", "--role", "qa"]));
+  assert.match(scoped.stdout, /no scheduled wake at position 3 for qa \(1 scheduled wake pending\)\s*$/);
+  assert.equal(readScheduledWakes(root).length, 1, "refusals and misses remove nothing");
+  assert.ok(!fs.existsSync(wakeRequestPath(root)));
+});
+
 // --- the operator pause's reason (`pause --reason <text>`) ---
 
 // The reason rides the fresh pause write (or a --for overwrite) as last-write-wins: the

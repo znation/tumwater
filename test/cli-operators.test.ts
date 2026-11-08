@@ -465,6 +465,48 @@ test("wake --cancel drops scheduled wakes without writing a marker", async () =>
   assert.match(r.stderr, /unknown argument: --cancel/);
 });
 
+test("wake --cancel <n> drops one scheduled wake by the wake --list number", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli wake cancel position");
+  await cli(repo, "wake", "--role", "qa", "--in", "45m");
+  await cli(repo, "wake", "--role", "feature,qa", "--in", "2h");
+  await cli(repo, "wake", "--role", "clean", "--in", "3h");
+  let r = await cli(repo, "wake", "--cancel", "2");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^cancelled scheduled wake 2 \(in 2h — feature, qa\)$/m);
+  assert.deepEqual(readScheduledWakes(repo).map((w) => w.roles), [["qa"], ["clean"]]);
+  assert.ok(!fs.existsSync(wakeRequestPath(repo)), "a positional cancel is not a wake");
+
+  // The role-scoped position is the one wake --list --role qa would number, and a wake naming
+  // qa plus another role is still removed whole.
+  r = await cli(repo, "wake", "--cancel", "1", "--role", "qa");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^cancelled scheduled wake 1 \(in 4[45]m — qa\)$/m);
+  assert.deepEqual(readScheduledWakes(repo).map((w) => w.roles), [["clean"]]);
+
+  // A position past the pending list prints the miss and removes nothing; malformed positions
+  // and --json fail before any marker work.
+  r = await cli(repo, "wake", "--cancel", "5");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^no scheduled wake at position 5 \(1 scheduled wake pending\)$/m);
+  for (const bad of ["0", "x"]) {
+    r = await cli(repo, "wake", "--cancel", bad);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--cancel needs a positive integer/);
+  }
+  r = await cli(repo, "wake", "--cancel", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /wake --json requires --list/);
+  assert.deepEqual(readScheduledWakes(repo).map((w) => w.roles), [["clean"]], "the refusals remove nothing");
+
+  // Bare --cancel keeps today's wording (with the --role scope too).
+  r = await cli(repo, "wake", "--cancel");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^cancelled 1 scheduled wake$/m);
+  assert.deepEqual(readScheduledWakes(repo), []);
+  assert.ok(!fs.existsSync(wakeRequestPath(repo)), "cancel never writes a wake marker");
+});
+
 test("wake --list shows pending scheduled wakes read-only", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli wake list");

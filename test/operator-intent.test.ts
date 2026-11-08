@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   NO_HARNESS_ERROR,
   PAUSE_FOR_MAX_MS,
+  cancelWakeAt,
   cancelWakes,
   listWakes,
   renderWakeList,
@@ -349,6 +350,36 @@ test("submitRolePromptAndWake leaves a pending scheduled wake standing", () => {
   requestWake(root, ["clean"], 3_600_000);
   submitRolePromptAndWake(root, "fix", "add a test");
   assert.deepEqual(readScheduledWakes(root).map((m) => m.roles), [["clean"]]);
+});
+
+test("cancelWakeAt drops one wake by position with the list row's own wording", () => {
+  const root = tmpdir();
+  requestWake(root, ["qa"], 45 * 60_000);
+  requestWake(root, ["feature", "qa"], 2 * 3_600_000);
+  requestWake(root, ["clean"], 3 * 3_600_000);
+  const msg = cancelWakeAt(root, 2);
+  assert.match(msg, /^cancelled scheduled wake 2 \(in 2h — feature, qa\)$/);
+  assert.deepEqual(readScheduledWakes(root).map((w) => w.roles), [["qa"], ["clean"]]);
+});
+
+test("cancelWakeAt takes the position under a role scope and removes the wake whole", () => {
+  const root = tmpdir();
+  requestWake(root, ["clean"], 45 * 60_000);
+  requestWake(root, ["feature", "qa"], 3_600_000);
+  requestWake(root, ["qa"], 2 * 3_600_000);
+  // Scoped to qa the pending list is [feature,qa (in 1h), qa (in 2h)]: position 1 is the
+  // shared wake, removed whole rather than stripped of qa.
+  const msg = cancelWakeAt(root, 1, ["qa"]);
+  assert.match(msg, /^cancelled scheduled wake 1 \(in 1h — feature, qa\)$/);
+  assert.deepEqual(readScheduledWakes(root).map((w) => w.roles), [["clean"], ["qa"]]);
+});
+
+test("cancelWakeAt words the team-wide and role-scoped misses with the pending count", () => {
+  const root = tmpdir();
+  requestWake(root, ["qa"], 60_000);
+  assert.equal(cancelWakeAt(root, 3), "no scheduled wake at position 3 (1 scheduled wake pending)");
+  assert.equal(cancelWakeAt(root, 2, ["clean"]), "no scheduled wake at position 2 for clean (0 scheduled wakes pending)");
+  assert.deepEqual(readScheduledWakes(root).map((w) => w.roles), [["qa"]], "misses remove nothing");
 });
 
 test("cancelWakes reports what it dropped, team-wide or for one role", () => {

@@ -33,6 +33,17 @@ export function flagValue(args: string[], flag: string): string | null | undefin
   return i < 0 ? null : args[i + 1];
 }
 
+/** The optional value token of an optional-value flag (`wake --cancel [<n>]`): null when the
+ * flag is absent, when it is the final argument, or when the following token starts with `-`
+ * (a bare `--cancel --role qa` reads `--role` as the next flag, not as the value) — otherwise
+ * the following token. This is the read the command body uses, the exact complement of
+ * consumeFlagOccurrence's claim rule in cli-flag-specs.ts (a value the gate did NOT claim is
+ * null here too), so the gate and the body cannot disagree about whether a token was taken. */
+export function optionalFlagValue(args: string[], flag: string): string | null {
+  const raw = flagValue(args, flag);
+  return raw !== null && raw !== undefined && !raw.startsWith("-") ? raw : null;
+}
+
 /** The one validation of a `--token <secret>` value, shared by `tumwater gui` (cmdGui) and
  * `tumwater start --gui` (cmdStart) so the value checks and their wording cannot drift
  * between the two callers. Returns null when the token is fine (or absent), the error text

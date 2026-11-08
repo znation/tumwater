@@ -6,6 +6,7 @@ import {
   consumeAbortRequests,
   consumeReclaimRequest,
   consumeResetRequest,
+  cancelScheduledWakeAt,
   cancelScheduledWakes,
   consumeWakeRequest,
   pendingScheduledWakes,
@@ -526,6 +527,66 @@ test("pendingScheduledWakes lists future entries by deadline and deletes nothing
     { roles: ["b"], atMs: now + 20_000 },
   ]);
   assert.ok(fs.existsSync(past) && fs.existsSync(corrupt));
+});
+
+test("cancelScheduledWakeAt removes the wake at the position pendingScheduledWakes reports", () => {
+  const root = tmpdir();
+  const now = Date.now();
+  const first = scheduledWake(root, "1-1-aa.json", ["qa"], now + 10_000);
+  const second = scheduledWake(root, "2-1-bb.json", ["feature", "qa"], now + 20_000);
+  const third = scheduledWake(root, "3-1-cc.json", ["clean"], now + 30_000);
+  // Position 2 is the middle wake in pendingScheduledWakes' earliest-first order.
+  assert.deepEqual(cancelScheduledWakeAt(root, 2, now), {
+    wake: { roles: ["feature", "qa"], atMs: now + 20_000 },
+    pending: 2,
+  });
+  assert.equal(fs.existsSync(second), false, "the wake's whole marker file is removed");
+  assert.equal(fs.existsSync(first), true);
+  assert.equal(fs.existsSync(third), true);
+  assert.deepEqual(pendingScheduledWakes(root, now).map((w) => w.roles), [["qa"], ["clean"]]);
+});
+
+test("cancelScheduledWakeAt honours a role scope and removes the wake whole", () => {
+  const root = tmpdir();
+  const now = Date.now();
+  const qa = scheduledWake(root, "1-1-aa.json", ["qa"], now + 10_000);
+  const shared = scheduledWake(root, "2-1-bb.json", ["feature", "qa"], now + 20_000);
+  const clean = scheduledWake(root, "3-1-cc.json", ["clean"], now + 30_000);
+  // Position 1 of qa's scoped list is the qa-only wake; the shared wake stays whole.
+  assert.deepEqual(cancelScheduledWakeAt(root, 1, now, ["qa"]), {
+    wake: { roles: ["qa"], atMs: now + 10_000 },
+    pending: 1,
+  });
+  assert.equal(fs.existsSync(qa), false);
+  assert.equal(fs.existsSync(shared), true);
+  assert.equal(fs.existsSync(clean), true);
+  // Position 1 of the remaining qa-scoped list is the shared wake, removed whole.
+  assert.deepEqual(cancelScheduledWakeAt(root, 1, now, ["qa"]), {
+    wake: { roles: ["feature", "qa"], atMs: now + 20_000 },
+    pending: 0,
+  });
+  assert.equal(fs.existsSync(shared), false);
+  assert.equal(fs.existsSync(clean), true);
+  assert.deepEqual(pendingScheduledWakes(root, now).map((w) => w.roles), [["clean"]]);
+});
+
+test("cancelScheduledWakeAt leaves due and corrupt files untouched", () => {
+  const root = tmpdir();
+  const now = Date.now();
+  const due = scheduledWake(root, "3-1-cc.json", ["clean"], now - 1);
+  const corrupt = path.join(scheduledWakeDir(root), "4.json");
+  fs.writeFileSync(corrupt, "{nope");
+  assert.deepEqual(cancelScheduledWakeAt(root, 1, now), { wake: undefined, pending: 0 });
+  assert.ok(fs.existsSync(due) && fs.existsSync(corrupt), "only pending, well-formed wakes are removable");
+});
+
+test("cancelScheduledWakeAt reports the remaining filtered count on a miss", () => {
+  const root = tmpdir();
+  const now = Date.now();
+  const wake = scheduledWake(root, "1-1-aa.json", ["qa"], now + 10_000);
+  assert.deepEqual(cancelScheduledWakeAt(root, 3, now), { wake: undefined, pending: 1 });
+  assert.deepEqual(cancelScheduledWakeAt(root, 2, now, ["clean"]), { wake: undefined, pending: 0 });
+  assert.equal(fs.existsSync(wake), true, "a miss removes nothing");
 });
 
 test("cancelScheduledWakes removes pending files and leaves a due one", () => {

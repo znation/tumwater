@@ -7,6 +7,7 @@ import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { seedCounters } from "./fixtures/runner-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
+import { readScheduledWakes } from "./helpers/json-read.js";
 
 // Parser-wide unknown-argument tests: every command must reject a flag or stray positional it
 // does not know instead of silently ignoring it. These walk several commands because the
@@ -80,6 +81,36 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   // Valid combinations still work.
   r = await cli(repo, "logs", "-n", "3", "--transcript", "clean");
   assert.equal(r.code, 0);
+});
+
+test("wake --cancel keeps its optional position across the argument gate", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli wake cancel optional value");
+  await cli(repo, "wake", "--role", "qa", "--in", "45m");
+
+  // `--cancel <n>` claims the following token as the position: a one-wake queue has no
+  // position 2, so the miss wording proves the "2" was read (not treated as a stray arg).
+  let r = await cli(repo, "wake", "--cancel", "2");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /no scheduled wake at position 2 \(1 scheduled wake pending\)/);
+
+  // Bare `--cancel` stays the role-wide cancel.
+  r = await cli(repo, "wake", "--cancel");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^cancelled 1 scheduled wake$/m);
+
+  // `--cancel --role qa` must NOT swallow --role as the cancel's value: it cancels qa's share.
+  await cli(repo, "wake", "--role", "qa", "--in", "45m");
+  r = await cli(repo, "wake", "--cancel", "--role", "qa");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^cancelled 1 scheduled wake for qa$/m);
+
+  // `--cancel=2` is refused with the separate-token wording, writing nothing.
+  await cli(repo, "wake", "--role", "qa", "--in", "45m");
+  r = await cli(repo, "wake", "--cancel=2");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--cancel=2 is not accepted — give the value as a separate token: `--cancel <n>`/);
+  assert.equal(readScheduledWakes(repo).length, 1, "the equals-form refusal removes nothing");
 });
 
 test("tick's dispatcher admits --last for tick alone, and still rejects it elsewhere", async () => {
