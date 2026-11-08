@@ -6,11 +6,12 @@ import path from "node:path";
 import type { HarnessEventInput } from "../src/events/events.js";
 import { readBuildInfo } from "../src/build/build-info.js";
 import { createRedeployer, redeployDeps } from "../src/redeploy/redeploy.js";
-import { noteGreenBaseline, watchVerifiesMain } from "../src/baseline/main-baseline.js";
+import { checkMainBaseline, noteGreenBaseline, watchVerifiesMain } from "../src/baseline/main-baseline.js";
 import { redeployTarget } from "../src/redeploy/redeploy-target.js";
 import { Redeployer } from "../src/redeploy/redeployer.js";
 import { IDLE } from "./fixtures/redeploy-fixtures.js";
 import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "../src/paths.js";
+import { defaultConfig } from "../src/config/config.js";
 import { headSha, makeRepo, pinnedCommit, sh } from "./fixtures/repo-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
 
@@ -353,6 +354,48 @@ test("redeployTarget keeps the tip when the build is not a first-parent ancestor
   const deps = redeployDeps(root, { sha: a, builtAt: 1, root }, () => {}, async () => null);
   assert.equal(await deps.mainGreen(c), false);
   assert.equal(await redeployTarget(root, c, "f".repeat(40)), c, "an unknown build is no bound for a fallback");
+});
+
+test("redeployTarget un-watched re-verifies a red another worktree observed instead of falling back on it", async () => {
+  // The un-watched red fallback is pinned above only for a red the redeployer's OWN mirror
+  // observed (red.redFrom contains mirrorWorktreePath). The sibling case — a red the gate or the
+  // main watch observed in its own worktree, so red.redFrom names that OTHER path, not the mirror
+  // — was never exercised: this is the one redeployTarget branch all existing tests miss. The
+  // doc contract says such a red "may be another worktree's environmental one", so the un-watched
+  // branch keeps the tip as the target and the redeployer re-verifies it in its own mirror, never
+  // falling back to an older green on the strength of a foreign worktree's red.
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(0)'" }));
+  fs.mkdirSync(path.join(root, "node_modules"));
+  pinnedCommit(root, "re-verify build, no verdict");
+  const a = headSha(root);
+
+  // A sibling directory (outside `root`) so root's own `git add -A` never treats the nested
+  // worktree as an embedded repo; and never the mirror's `_main`. Both matter: the foreign
+  // redFrom must be a path mirrorWorktreePath(root) does not equal.
+  const other = path.join(path.dirname(root), "other-rv");
+  sh(root, "git", "worktree", "add", "-q", "-b", "tumwater/reverify-other", other, "main");
+  fs.mkdirSync(path.join(other, "node_modules"));
+  fs.writeFileSync(path.join(root, "b.txt"), "b");
+  pinnedCommit(root, "re-verify green above the build");
+  const b = headSha(root);
+  noteGreenBaseline(b);
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(1)'" }));
+  pinnedCommit(root, "re-verify red tip");
+  const c = headSha(root);
+  sh(other, "git", "reset", "--hard", "main"); // the other worktree now sees the red tip
+
+  // Observe (not author) the red from `other`: the cached verdict's redFrom names `other`, never
+  // the redeployer's `_main` mirror.
+  const result = await checkMainBaseline(other, defaultConfig());
+  assert.equal(result.baseline?.status, "red", "the check in the other worktree records a red");
+
+  // Running build A on main A -> B (green) -> C (red from another worktree): a fallback on the
+  // strength of that foreign red would return B (newest green above the build). The non-mirror
+  // branch instead re-verifies the tip in its own mirror, so the correct target is C itself —
+  // this assertion is what fails if the branch ever starts trusting another worktree's red.
+  assert.notEqual(b, c);
+  assert.equal(await redeployTarget(root, c, a), c, "another worktree's red is re-verified, never a fallback anchor");
 });
 
 test("redeployTarget in watch mode targets the newest cached green and never an unchecked tip", async () => {
