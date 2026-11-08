@@ -1,4 +1,4 @@
-import { loadConfigSafe, knownRoleIds } from "../config/config.js";
+import { loadConfigSafe, knownRoleIds, nonDefaultConfigEntries } from "../config/config.js";
 import { fail, say, sayJson, sayJsonLine } from "./cli-output.js";
 import {
   setConfigKey,
@@ -14,7 +14,11 @@ import { unknownRoleMessage } from "../roles/roles.js";
  * keeps the other operator-command bodies): with no arguments, print the effective merged
  * config — exactly what `loadConfig(root)` returns — as pretty JSON, so an operator
  * debugging scheduling or custom-role wiring sees what the team would actually load instead
- * of overlaying defaults onto tumwater.json by hand. A query, not a writer: no redaction (the
+ * of overlaying defaults onto tumwater.json by hand. `--diff` prints only the resolved
+ * settings that differ from the built-in defaults — every changed top-level setting and
+ * each changed role as `roles.<id>` — so an operator sees what this repo changed without
+ * diffing the whole dump by hand; a pure read of the same resolved config.
+ * A query, not a writer: no redaction (the
  * config holds no secrets — provider keys belong to pi's own env) and no transformation,
  * including the per-role entries custom roles merge into. `get <key>` prints that one key's
  * resolved value (defaults merged in, exactly what the no-arg dump prints) as JSON, failing
@@ -35,7 +39,7 @@ import { unknownRoleMessage } from "../roles/roles.js";
  * argument the gate somehow missed. One constant so the synopsis cannot drift between the two
  * sites (mirrors run-detail.ts's RUN_DETAIL_USAGE). */
 export const CONFIG_USAGE =
-  "usage: tumwater config [get <key> | set <key> <value> | unset <key>] (bare config prints the whole resolved config)";
+  "usage: tumwater config [get <key> | set <key> <value> | unset <key> | --diff] (bare config prints the whole resolved config; --diff prints only the non-default settings)";
 
 /** The key screens `config get` and `config unset` run before resolving or removing a value:
  * the shape parser's own error; the shared unknown-top-level-key message; then, for a dotted
@@ -131,6 +135,19 @@ async function configUnset(root: string, key: string | undefined): Promise<void>
   }
 }
 
+/** The `config --diff` verb: print only the resolved settings that differ from the built-in
+ * defaults — every changed top-level setting and each changed role as `roles.<id>` — as
+ * pretty JSON, so an operator sees what this repo changed without diffing the whole dump by
+ * hand. Read-only, like the dump: a malformed tumwater.json fails with validateConfig's
+ * message and no JSON. A surplus argument after `--diff` fails CONFIG_USAGE — the defensive
+ * tail behind cli.ts's sole-argument gate, for a direct caller. */
+async function configDiff(root: string, extra: string | undefined): Promise<void> {
+  if (extra !== undefined) fail(CONFIG_USAGE);
+  const { config, error } = loadConfigSafe(root);
+  if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
+  sayJson(Object.fromEntries(nonDefaultConfigEntries(config)));
+}
+
 /** The `config set` verb: write one value through setConfigKey (refusing a flag-looking
  * value first) and confirm the write or that it was already that value. */
 async function configSet(root: string, key: string | undefined, rest: string[]): Promise<void> {
@@ -175,12 +192,14 @@ async function configDump(root: string, sub: string | undefined): Promise<void> 
   sayJson(config);
 }
 
-/** The `tumwater config` command body: bare prints the resolved config; `get` and `unset`
- * screen their key through screenOperableKey, while `set` writes through setConfigKey. Each
- * verb's guards and confirmation wording live in one named helper — configGet, configUnset,
- * configSet, configDump — that this dispatcher delegates to. */
+/** The `tumwater config` command body: bare prints the resolved config; `--diff` prints only
+ * the non-default subset; `get` and `unset` screen their key through screenOperableKey, while
+ * `set` writes through setConfigKey. Each verb's guards and confirmation wording live in one
+ * named helper — configGet, configUnset, configSet, configDump, configDiff — that this
+ * dispatcher delegates to. */
 export async function cmdConfig(root: string, args: string[] = []): Promise<void> {
   const [sub, key, ...rest] = args;
+  if (sub === "--diff") return configDiff(root, key);
   if (sub === "get") return configGet(root, key);
   if (sub === "unset") return configUnset(root, key);
   if (sub === "set") return configSet(root, key, rest);

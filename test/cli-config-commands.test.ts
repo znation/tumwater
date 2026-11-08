@@ -228,6 +228,75 @@ test("a malformed tumwater.json fails the dump with no JSON printed", async () =
   assert.equal(out.stdout, "");
 });
 
+// --- config --diff: the non-default subset ---
+
+test("config --diff with a default-valued config prints the empty object", async () => {
+  const root = makeRepo();
+  writeConfig(root, {});
+  const out = await attemptAsync(() => cmdConfig(root, ["--diff"]));
+  assert.ok(!out.exited, "a valid config never fails the diff");
+  assert.equal(out.stdout, "{}\n", "no default-valued key is named");
+});
+
+test("config --diff names the changed settings and each changed role as roles.<id>", async () => {
+  const root = makeRepo();
+  writeConfig(root, {
+    maxConcurrent: 3,
+    sessionRetentionDays: 4,
+    roles: { feature: { enabled: false } },
+  });
+  const out = await attemptAsync(() => cmdConfig(root, ["--diff"]));
+  assert.ok(!out.exited);
+  assert.deepEqual(
+    JSON.parse(out.stdout),
+    { maxConcurrent: 3, sessionRetentionDays: 4, "roles.feature": { enabled: false } },
+    "the changed top-level keys and the changed role entry are the whole output",
+  );
+  // The skip-set keys show even though the live-reload event skips them, and the per-role
+  // entry is spelled roles.<id> with its whole effective value, not nested under roles.
+  assert.match(out.stdout, /"maxConcurrent": 3/);
+  assert.match(out.stdout, /"sessionRetentionDays": 4/);
+  assert.match(out.stdout, /"roles\.feature"/);
+});
+
+test("config --diff names a custom role as customRoles and roles.<id>", async () => {
+  const root = makeRepo();
+  writeConfig(root, { customRoles: [{ name: "docs", task: "keep the docs current" }] });
+  const out = await attemptAsync(() => cmdConfig(root, ["--diff"]));
+  assert.ok(!out.exited);
+  assert.deepEqual(JSON.parse(out.stdout), {
+    customRoles: [{ name: "docs", task: "keep the docs current" }],
+    "roles.docs": { enabled: true },
+  });
+});
+
+test("config --diff ignores a roles entry the file keeps at its default value", async () => {
+  const root = makeRepo();
+  // A roles section naming only default values is kept by the overlay, but nothing differs
+  // from the defaults, so the diff names nothing — the same rule as the empty config.
+  writeConfig(root, { roles: { feature: { enabled: true } } });
+  const out = await attemptAsync(() => cmdConfig(root, ["--diff"]));
+  assert.ok(!out.exited);
+  assert.equal(out.stdout, "{}\n");
+});
+
+test("config --diff fails a malformed tumwater.json with no JSON", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "tumwater.json"), "{not json");
+  const out = await attemptAsync(() => cmdConfig(root, ["--diff"]));
+  assert.ok(out.exited && out.code === 1);
+  assert.ok(out.stderr.length > 0, "the load error surfaces as a fail() message");
+  assert.equal(out.stdout, "");
+});
+
+test("config --diff with an extra argument fails with CONFIG_USAGE", async () => {
+  const root = makeRepo();
+  const out = await attemptAsync(() => cmdConfig(root, ["--diff", "extra"]));
+  assert.ok(out.exited && out.code === 1);
+  assert.match(out.stderr, new RegExp(CONFIG_USAGE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.equal(out.stdout, "");
+});
+
 test("a malformed tumwater.json fails get the same way, with no JSON printed", async () => {
   const root = makeRepo();
   fs.writeFileSync(path.join(root, "tumwater.json"), "{not json");

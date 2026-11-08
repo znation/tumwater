@@ -382,10 +382,10 @@ test("config get/set arg shapes, repo gating, and the help table", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli config args");
 
-  // Anything that is not get/set/unset fails with the usage, whatever the arity.
+  // Anything that is not get/set/unset/--diff fails with the usage, whatever the arity.
   let r = await cli(repo, "config", "--anything");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /usage: tumwater config \[get <key> \| set <key> <value> \| unset <key>\]/);
+  assert.match(r.stderr, /usage: tumwater config \[get <key> \| set <key> <value> \| unset <key> \| --diff\]/);
   r = await cli(repo, "config", "show");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /usage: tumwater config/);
@@ -420,11 +420,33 @@ test("config get/set arg shapes, repo gating, and the help table", async () => {
 
   const help = await cli(repo, "help");
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /tumwater config \[get <key> \| set <key> <value> \| unset <key>\]\s+Show the effective config/);
+  assert.match(help.stdout, /tumwater config \[get <key> \| set <key> <value> \| unset <key> \| --diff\]\s+Show the effective config/);
 
   // Outside an initialized repo the ready-repo gate fires before any config is read.
   const bare = makeRepo();
   const b = await cli(bare, "config");
+  assert.equal(b.code, 1);
+  assert.match(b.stderr, /not initialized/);
+});
+
+test("config --diff prints only the non-default settings and refuses an extra token", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "config diff e2e");
+  writeConfig(repo, { maxConcurrent: 3, sessionRetentionDays: 4 });
+  const r = await cli(repo, "config", "--diff");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout, '{\n  "maxConcurrent": 3,\n  "sessionRetentionDays": 4\n}\n');
+  assert.equal(r.stderr, "");
+
+  // An extra token after --diff is refused with CONFIG_USAGE and writes no JSON.
+  const extra = await cli(repo, "config", "--diff", "extra");
+  assert.equal(extra.code, 1);
+  assert.match(extra.stderr, /usage: tumwater config \[get <key> \| set <key> <value> \| unset <key> \| --diff\]/);
+  assert.equal(extra.stdout, "", "a refused invocation writes no JSON");
+
+  // Outside an initialized repo the ready-repo gate fires, exactly as for bare config.
+  const bare = makeRepo();
+  const b = await cli(bare, "config", "--diff");
   assert.equal(b.code, 1);
   assert.match(b.stderr, /not initialized/);
 });

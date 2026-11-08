@@ -385,6 +385,29 @@ export function changedConfigKeys(prev: TumwaterConfig, next: TumwaterConfig): s
   return keys.sort();
 }
 
+/** The resolved settings that differ from the built-in defaults, as sorted `[key, value]`
+ * pairs for `tumwater config --diff`: every top-level key except `roles` whose stable JSON
+ * differs, then each changed role named `roles.<id>` with its whole effective entry as the
+ * value. A pure read of the resolved config — it does not borrow `changedConfigKeys`'s
+ * live-reload skip set, so `maxConcurrent` and `sessionRetentionDays` show here, and it
+ * returns values, not the names-only the event emits. */
+export function nonDefaultConfigEntries(config: TumwaterConfig): Array<[string, unknown]> {
+  const defaults = defaultConfig();
+  const entries: Array<[string, unknown]> = [];
+  const configRecord = config as unknown as Record<string, unknown>;
+  const defaultRecord = defaults as unknown as Record<string, unknown>;
+  for (const key of [...new Set([...Object.keys(defaultRecord), ...Object.keys(configRecord)])].sort()) {
+    if (key === "roles") continue;
+    if (stableJson(configRecord[key]) !== stableJson(defaultRecord[key]))
+      entries.push([key, configRecord[key]]);
+  }
+  for (const id of [...new Set([...Object.keys(defaults.roles), ...Object.keys(config.roles)])].sort()) {
+    if (stableJson(config.roles[id]) !== stableJson(defaults.roles[id]))
+      entries.push([`roles.${id}`, config.roles[id]]);
+  }
+  return entries;
+}
+
 /** The names of the user-defined roles, in array order (plans/user-defined-loops.md).
  * One source of truth for "which ids are user-defined" so consumers cannot drift. */
 export function customRoleNames(config: TumwaterConfig): string[] {

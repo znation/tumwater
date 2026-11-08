@@ -118,7 +118,7 @@ Usage:
                                    --list-checks prints every check name in report order without running a check,
                                    for choosing a \`tumwater doctor <check>...\` target (with --json, the names as
                                    a \`checks\` array)
-  tumwater config [get <key> | set <key> <value> | unset <key>]
+  tumwater config [get <key> | set <key> <value> | unset <key> | --diff]
                                    Show the effective config (defaults + tumwater.json) as
                                    JSON; get one key's resolved value as JSON; set one
                                    top-level key — quietHours ("23:00-07:00" or ""),
@@ -127,7 +127,10 @@ Usage:
                                    (JSON-parsed when parseable, else a literal string) —
                                    and confirm it; unset one key, removing its value so it
                                    reverts to its default or disappears from its map or
-                                   section. Dotted keys (maxDailyCostUsdPerRole.feature
+                                   section; --diff prints only the resolved settings that
+                                   differ from the built-in defaults, naming a changed
+                                   role as roles.<id>. Dotted keys
+                                   (maxDailyCostUsdPerRole.feature
                                    1.5, roles.qa.model x) merge one entry into the existing
                                    map or role entry; bare keys replace the whole value.
                                    roles still merges the built-in catalog per entry, so
