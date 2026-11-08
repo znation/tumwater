@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { collectSalvagePatches } from "../src/status/status-salvage.js";
+import { collectSalvagePatches, readSalvagePatch } from "../src/status/status-salvage.js";
 import { salvageDir, salvagePendingDir } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
@@ -38,6 +38,15 @@ test("collectSalvagePatches returns two direct patches oldest first with their s
   assert.equal(patches[0]!.bytes, 3);
   assert.equal(patches[1]!.savedAt, now);
   assert.equal(patches[1]!.bytes, 5);
+});
+
+test("readSalvagePatch returns a direct patch's exact text and null for a missing file", () => {
+  const root = makeRepo();
+  fs.mkdirSync(salvageDir(root), { recursive: true });
+  const patch = path.join(salvageDir(root), "a.patch");
+  fs.writeFileSync(patch, "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n");
+  assert.equal(readSalvagePatch(root, "a.patch"), "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n");
+  assert.equal(readSalvagePatch(root, "missing.patch"), null);
 });
 
 test("collectSalvagePatches skips non-regular children and never throws", () => {

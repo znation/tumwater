@@ -46,3 +46,18 @@ export function collectSalvagePatches(root: string): SalvagePatch[] {
   patches.sort((a, b) => a.savedAt - b.savedAt);
   return patches;
 }
+
+/** Read one kept patch's text verbatim, or null when it cannot be read — the reader half of
+ * `tumwater salvage --show <n>` (src/cli/cli-salvage-command.ts). Reads only a file name
+ * `collectSalvagePatches` already returned, so the name always lands directly under the
+ * salvage dir and this never reaches `pending/<role>/` (whose patches wait for a role's next
+ * run and are deliberately out of the operator's read scope). A missing file, or an unreadable
+ * one, yields null rather than throwing — the same best-effort rule collectSalvagePatches
+ * uses. Never throws. */
+export function readSalvagePatch(root: string, file: string): string | null {
+  try {
+    return fs.readFileSync(path.join(salvageDir(root), file), "utf8");
+  } catch {
+    return null;
+  }
+}

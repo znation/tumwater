@@ -481,6 +481,9 @@ const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
   quarantine: async (root, _command, args) => {
     await (await import("./cli/cli-query-commands.js")).cmdQuarantine(root, args);
   },
+  salvage: async (root, _command, args) => {
+    await (await import("./cli/cli-salvage-command.js")).cmdSalvage(root, args);
+  },
   archive: (root, _command, args) => cmdArchiveCase(root, args),
   bug: (root, _command, args) => cmdBugCase(root, args),
   plan: (root, _command, args) => cmdPlanCase(root, args),

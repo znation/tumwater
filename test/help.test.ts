@@ -20,6 +20,7 @@ const ALL_COMMANDS = [
   "reviews",
   "backlog",
   "quarantine",
+  "salvage",
   "archive",
   "bug",
   "plan",
