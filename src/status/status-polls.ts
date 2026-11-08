@@ -282,7 +282,15 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
   const check = scan.check;
   if (!check || typeof check.ts !== "number" || !isMainCheckStatus(check.status)) return undefined;
   const branch = targetBranch(cfg.baseBranch, currentBranchFromHeadFile(root));
-  const sha = scan.mergeDoneAfterCommit ?? readBranchHead(root, branch) ?? scan.mergeDoneBeforeCommit;
+  // A baseline check runs ON main's tip, after the merge that put it there (the watch's
+  // hourly pass, a redeploy green, a gate's main-tip verdict), so the head it covers is the
+  // newest merge at or before it — never a merge that landed afterwards. The after-first
+  // pairing still serves a pre-merge merge/batch check, whose verified head is the merge it
+  // precedes. Without the baseline branch an hour-old green is shown "at" the newest head the
+  // interval has not covered yet, which is the implication part 4/4 exists to remove.
+  const sha = check.scope === "baseline"
+    ? scan.mergeDoneBeforeCommit ?? readBranchHead(root, branch) ?? scan.mergeDoneAfterCommit
+    : scan.mergeDoneAfterCommit ?? readBranchHead(root, branch) ?? scan.mergeDoneBeforeCommit;
   const counts = asTestCounts(check.counts);
   // The red evidence names the failing test and the merge the main watch blamed — and that
   // data lives only on the main_culprit event (the main watch's verdict on the red; the
@@ -318,18 +326,21 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
   // event carries the same settle time) falling back to the event's log time (test fixtures
   // and older events). The next due rides the cadence part 2b/4 measures from — the newest
   // full verdict's checkedAt + check.fullIntervalMinutes (default 60). A skipped check
-  // produced no verdict, so it carries neither; interval 0 (one full run per new head) has
-  // nothing due.
+  // produced no verdict, so it carries neither. A red is rechecked on every new head rather
+  // than on the interval (main-watch's fullCheckPlan), so only a green carries a clock due;
+  // quoting "next in …" for a red would promise a run the cadence never starts. Interval 0
+  // (one full run per new head) has nothing due either.
   const checkedAt = typeof check.settledAt === "number" ? check.settledAt : check.ts;
   const interval = cfg.check?.fullIntervalMinutes ?? 60;
   const hasVerdict = check.status !== "skipped";
+  const nextDueAt = check.status === "passed" && interval > 0 ? checkedAt + interval * 60_000 : undefined;
   return {
     ...(sha ? { sha } : {}),
     status: check.status,
     ...(counts ? { counts } : {}),
     at: check.ts,
     ...(hasVerdict ? { checkedAt } : {}),
-    ...(hasVerdict && interval > 0 ? { nextDueAt: checkedAt + interval * 60_000 } : {}),
+    ...(nextDueAt !== undefined ? { nextDueAt } : {}),
     ...(red ? { red } : {}),
   };
 }

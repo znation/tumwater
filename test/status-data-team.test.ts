@@ -126,16 +126,19 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   // the GUI must not re-derive pass/tests from the raw counts and drift (BUGS.md 2026-09-30).
   assert.equal(payload.mainCounts, "9/10 (1 skipped)");
 
-  // A newer baseline check with no merged event after it: the check ran ON main's tip, so the
-  // sha is main's current head. A gate-scope check never displaces a merge-scope one.
+  // A baseline check runs ON main's tip after the merge that put it there: the sha it covers is
+  // that merge's head, even after a later merge lands before the next full check. A gate-scope
+  // check never displaces a merge-scope one.
+  const coveredHead = mainSha(repo);
   writeEvents(repo, [
     { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "passed" }, // retired-name-ok: legacy event field in a fixture
-    { ts: base + 2000, loop: "lander", type: "merge_done", commit: "a".repeat(40) }, // retired-name-ok: legacy event field in a fixture
+    { ts: base + 2000, loop: "lander", type: "merge_done", commit: coveredHead }, // retired-name-ok: legacy event field in a fixture
     { ts: base + 5000, loop: "bugfix", type: "build_check", scope: "baseline", status: "failed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: base + 6000, loop: "lander", type: "merge_done", commit: "d".repeat(40) }, // retired-name-ok: legacy event field in a fixture
   ]);
   const baseline = snapshot(repo).mainCheck;
   assert.ok(baseline, "mainCheck present after a baseline check");
-  assert.equal(baseline!.sha, mainSha(repo));
+  assert.equal(baseline!.sha, coveredHead, "the older full verdict still names the head it ran on, not the later merge");
   assert.equal(baseline!.status, "failed");
   assert.equal(baseline!.counts, undefined);
 

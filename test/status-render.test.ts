@@ -789,12 +789,14 @@ test("the status header's main check badge names the verdict, its age and the ne
     mainCheck: { sha: "a".repeat(40), status: "passed", at: now - 23 * 60_000, checkedAt: now - 23 * 60_000, nextDueAt: now + 37 * 60_000 },
   }));
   assert.match(green, /· full check green at a{8}, 23m ago · next in 37m/);
-  // Red carries the same shape.
+  // A red carries its age but no interval due: the watch rechecks it on the next head, so the
+  // badge promises no scheduled run.
   const red = headerOf(renderStatus(tmpdir(), {
     ...base,
-    mainCheck: { sha: "b".repeat(40), status: "failed", at: now - 5 * 60_000, checkedAt: now - 5 * 60_000, nextDueAt: now + 55 * 60_000 },
+    mainCheck: { sha: "b".repeat(40), status: "failed", at: now - 5 * 60_000, checkedAt: now - 5 * 60_000 },
   }));
-  assert.match(red, /· full check red at b{8}, 5m ago · next in 55m/);
+  assert.match(red, /· full check red at b{8}, 5m ago$/);
+  assert.doesNotMatch(red, /next in|due now/);
   // A cleared red while its confirming full run is still settling: no verdict, just the
   // clearing head and "full check running".
   const cleared = headerOf(renderStatus(tmpdir(), {

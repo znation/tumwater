@@ -209,6 +209,37 @@ test("mainCheckForPoll derives nextDueAt from the verdict's checked time and the
   assert.equal(result?.nextDueAt, checkedAt + 60 * 60_000, "next due is the verdict's checked time plus the default 60-minute interval");
 });
 
+test("a red verdict carries checkedAt but no interval nextDueAt (a red is rechecked on each new head)", () => {
+  const root = makeRepo();
+  const tip = mainSha(root);
+  const ts = Date.now() - 5 * 60_000;
+  writeEvents(root, [
+    { source: "merge", type: "build_check", scope: "merge", status: "failed", script: "npm test", ts },
+    { source: "lander", type: "merge_done", commit: tip, ts: ts + 1 },
+  ]);
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.status, "failed");
+  assert.equal(result?.checkedAt, ts, "the red's age still reads from its run");
+  assert.equal(result?.nextDueAt, undefined, "a red has no interval due: the watch rechecks it on the next head");
+});
+
+test("a baseline check names the head it covered, not a merge that landed after it (part 4/4)", () => {
+  const root = makeRepo();
+  const checkedHead = "a".repeat(40);
+  const laterHead = "b".repeat(40);
+  const ts = Date.now() - 30 * 60_000;
+  writeEvents(root, [
+    { source: "lander", type: "merge_done", commit: checkedHead, ts: ts - 1_000 },
+    { source: "tumwater", type: "build_check", scope: "baseline", status: "passed", script: "npm test", settledAt: ts, ts },
+    // Main moved on before the next hourly run: the verdict still covers the older head.
+    { source: "lander", type: "merge_done", commit: laterHead, ts: ts + 60_000 },
+  ]);
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.sha, checkedHead, "the hour-old full verdict stays attributed to the head it ran on");
+  assert.equal(result?.checkedAt, ts);
+  assert.equal(result?.nextDueAt, ts + 60 * 60_000, "the due clock still runs from that covered verdict");
+});
+
 test("mainCheckForPoll prefers the run's settle time as checkedAt when the event carries it", () => {
   const root = makeRepo();
   const tip = mainSha(root);

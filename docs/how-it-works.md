@@ -329,8 +329,9 @@ never has to wait a parked check out.
   surface that shows main's verdict — the `tumwater status`/TUI header badge, the dashboard's
   `Main` row and `status --json` — says which SHA the full verdict covers, how long ago it ran,
   and when the next full run is due: ` · full check green at abc1234, 23m ago · next in 37m`,
-  read from the newest merge-scope check's checked time (its settle stamp) and
-  `check.fullIntervalMinutes` (Hourly full check part 4/4). A cleared red whose confirming full
+  read from the newest full check's checked time (its settle stamp) and
+  `check.fullIntervalMinutes` (Hourly full check part 4/4); a red is rechecked on the next head,
+  so it carries its age but no interval due. A cleared red whose confirming full
   run is still settling reads ` · cleared at def5678 · full check running` instead of quoting a
   verdict, so the badge never implies the newest commit was fully checked while the hour's full
   verdict is older than main. The watch

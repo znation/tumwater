@@ -189,6 +189,11 @@ test("mainCheckBadge shows the covered sha, the verdict age and the next due", (
     "a skipped check produced no verdict: no age, no next due",
   );
   assert.equal(
+    mainCheckBadge({ sha: "e".repeat(40), status: "failed", at: now - 5 * 60_000, checkedAt: now - 5 * 60_000 }, now),
+    " · full check red at eeeeeeee, 5m ago",
+    "a red is rechecked on the next head: no interval due to quote",
+  );
+  assert.equal(
     mainCheckBadge({ sha: "d".repeat(40), status: "passed", at: now, cleared: true }),
     " · cleared at dddddddd · full check running",
     "a cleared red whose confirming run is still settling reads 'cleared … full check running'",

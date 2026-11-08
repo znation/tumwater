@@ -1320,14 +1320,18 @@ reader must therefore tolerate a torn, foreign or stale file, and show only what
 ### INV-T1: main's badge is the newest merge-scope check, and an unproven check shows nothing
 
 **Guarantee.** `mainCheckForPoll` reports the newest build_check whose scope `isFullCheckScope`
-accepts: `merge`, `batch` or `baseline`, and never a `gate` check or one with `full: false`. The
-sha comes from the merge_done event that follows the check, otherwise main's branch head, otherwise
-the merge_done before it. The event tail grows up to `MAIN_CHECK_SCAN_MAX_EVENTS`, past which the
-badge drops. A check whose status is not one of the three (`isMainCheckStatus`) or which has no
-numeric ts reads as no check. A verdict that ran carries `checkedAt` (the event's settle stamp,
-else its log time) and `nextDueAt` (`checkedAt` + `check.fullIntervalMinutes`, absent when the
-interval is 0 or the check was skipped), so the surfaces say how old main's full verdict is and
-when the next is due (Hourly full check part 4/4). A red that cleared when its one confirming
+accepts: `merge`, `batch` or `baseline`, and never a `gate` check or one with `full: false`. A
+pre-merge merge/batch check takes its sha from the merge_done event that follows it; a `baseline`
+check runs on main's tip after the merge that put it there, so its sha is the newest merge_done at
+or before it (main's branch head when no merge precedes it), never a merge that landed after it.
+Each falls back to main's branch head, then to the other merge. The event tail grows up to
+`MAIN_CHECK_SCAN_MAX_EVENTS`, past which the badge drops. A check whose status is not one of the
+three (`isMainCheckStatus`) or which has no numeric ts reads as no check. A verdict that ran
+carries `checkedAt` (the event's settle stamp, else its log time) and, when it passed,
+`nextDueAt` (`checkedAt` + `check.fullIntervalMinutes`, absent when the interval is 0 or the
+check was skipped); a red carries no clock due because the watch rechecks the next head rather
+than waiting for the interval. So the surfaces say how old main's full verdict is and when the
+next is due (Hourly full check part 4/4). A red that cleared when its one confirming
 full run has not settled — the newest `main_check` carrying `cleared: true`, newer than the
 newest full build_check and followed by no settled `main_check` — reads as `cleared` (the
 clearing head at its clearing time), never as the older red verdict.
@@ -1341,7 +1345,9 @@ merge-scope build_check event" and "a merge-scope check with a foreign status re
 mainCheck"; `test/status-header.test.ts` — "the status header carries a mainCheck badge only after
 a merge-scope check"; `test/status-polls.test.ts` — "mainCheckForPoll derives nextDueAt from the
 verdict's checked time and the interval (part 4/4)", "mainCheckForPoll prefers the run's settle
-time as checkedAt when the event carries it", "an interval of 0 (one full run per new head)
+time as checkedAt when the event carries it", "a red verdict carries checkedAt but no interval
+nextDueAt (a red is rechecked on each new head)", "a baseline check names the head it covered,
+not a merge that landed after it (part 4/4)", "an interval of 0 (one full run per new head)
 leaves nextDueAt absent", "a cleared red whose confirming full run has not settled reads cleared
 (part 4/4)" and "a cleared red ends when its confirming full run settles".
 
