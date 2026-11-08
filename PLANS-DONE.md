@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract verify collapse split, part 1/4: test/merge-pipeline.test.ts observes queue, check-flag and event signals instead of the approved/verifying maps and a multi-role merge task (planned 2026-11-08 by the plan role, splitting the 2026-11-06 part 3c/6 after feature held it too large for one run; requires Subtract verify collapse part 3e/6 landed; sibling to parts 2/4–4/4, which adapt the other pipeline slice, collapse the drain, and remove `alreadyGated`; touches test/merge-pipeline.test.ts) — done 2026-11-08 by the feature role
+
+**Goal.** The first pipeline slice passes under today's verify-then-merge flow and will keep passing when the drain becomes one gate-then-merge task per queue head. It stops waiting on the marker's `approved` status and stops asserting a multi-role merge task; it observes queue depth, check-start flags, `merged`/`merge_done` events, and the marker's `merging` stage.
+
+**Approach.**
+- Replace `approvedChanges(root)` waits with signals that hold in both flows: queue depth, the check's own start flag, and `merged`/`merge_done` events. For the "merge slot busy" case, wait for both entries queued, free the slot, then wait for both `merged` events; do not require both approved before the slot frees.
+- Rewrite the resolver case to wait for alpha's `merge_done` event before asserting beta's resolver is running, rather than waiting for both approved.
+- Rewrite the serial-gating case to let the head's task start and block in its check (no `busySlot`), assert `mergeTasks` names only the head, then release the check and wait for the next head's check flag.
+- Rewrite the "settled early in a batch" case to assert alpha's `merge_done` is written before beta's merge starts, or delete it if its batch subject is gone.
+- Keep the dedupe, torn-head, post-review, shutdown-listener and rejection cases; only replace their approved-map waits.
+
+**Acceptance criteria.**
+- `grep -n 'approvedChanges' test/merge-pipeline.test.ts` prints nothing.
+- No assertion in the file reads `pipeline.approved` or `pipeline.verifying`; `mergeTasks` assertions name only the one head the drain is working.
+- The file passes under the current verify-then-merge flow, and its waits are on queue depth, check flags, marker `merging`, or `merged`/`merge_done` events.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/merge-pipeline.test.ts, then the gate.
+
 ### `tumwater reviews --show <n>` prints the Nth post-merge review entry in full — its commit body, every rejection reason and the last failure text that the list squashes to 60/80 characters — so an operator can read why a landed commit was turned back without opening `post-review.json` (planned 2026-11-08 by the plan role; the read-only detail view beside `reviews --accept`'s position addressing and the `prompt --show` / `plan --show` / `bug --show` family; independent in file of every `## Planned` entry — `grep -n 'reviews --show|post-merge-review-render|cli-review-commands' PLANS.md BUGS.md` prints nothing, the pending `prompt --show` plan touches src/cli/cli-command-args.ts, src/inbox/prompt-commands.ts, src/cli/help.ts and docs/cli.md but never src/cli/cli-review-commands.ts or src/review/post-merge-review-render.ts (this plan adds a different stanza/row to help and docs, so whichever lands second rebases there), the salvage and config-problem plans touch src/status, src/doctor and src/ui, and every Subtract part touches src/merge, src/runner, src/status, src/doctor, src/gui, src/ui, src/stage, src/events or docs, never src/review/post-merge-review-render.ts or src/cli/cli-review-commands.ts; `grep -c 'reviews --show' PLANS-DONE.md BUGS-FIXED.md` prints 0 for both, and PLANS-DONE.md's `reviews --role` and `reviews -f` entries add the listing and live forms, never a one-entry detail view; touches src/cli/cli-review-commands.ts src/review/post-merge-review-render.ts src/cli/help.ts docs/cli.md test/cli-reviews.test.ts test/post-merge-review-render.test.ts) — done 2026-11-08 by the feature role
 
 **Goal.** `tumwater reviews` prints one line per pending post-merge review, squashing the summary to 80 characters and each recorded rejection reason to 60 (`postReviewStatusLabel`), and it never prints the entry's `body` at all; `--json` is the only way to read those fields in full. Add a read-only `tumwater reviews --show <n>` that prints the Nth entry as `tumwater reviews` numbers it — full summary, full commit body, every full rejection reason, the failure count with the full last-failure text, and the repair sha when one merged — plus `--json` for scripts. It is the detail twin of `--accept`'s position addressing and needs no ready repo, like the list read.

@@ -52,25 +52,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Run test/doctor-checks.test.ts, test/doctor.test.ts, test/event-format.test.ts, test/retention.test.ts, test/config.test.ts and test/config-aliases.test.ts, then the project's gate. If a surviving row or key loses its case, restore it; do not weaken an assertion to make the gate pass.
 
-### Subtract verify collapse split, part 1/4: test/merge-pipeline.test.ts observes queue, check-flag and event signals instead of the approved/verifying maps and a multi-role merge task (planned 2026-11-08 by the plan role, splitting the 2026-11-06 part 3c/6 after feature held it too large for one run; requires Subtract verify collapse part 3e/6 landed; sibling to parts 2/4–4/4, which adapt the other pipeline slice, collapse the drain, and remove `alreadyGated`; touches test/merge-pipeline.test.ts)
-
-**Goal.** The first pipeline slice passes under today's verify-then-merge flow and will keep passing when the drain becomes one gate-then-merge task per queue head. It stops waiting on the marker's `approved` status and stops asserting a multi-role merge task; it observes queue depth, check-start flags, `merged`/`merge_done` events, and the marker's `merging` stage.
-
-**Approach.**
-- Replace `approvedChanges(root)` waits with signals that hold in both flows: queue depth, the check's own start flag, and `merged`/`merge_done` events. For the "merge slot busy" case, wait for both entries queued, free the slot, then wait for both `merged` events; do not require both approved before the slot frees.
-- Rewrite the resolver case to wait for alpha's `merge_done` event before asserting beta's resolver is running, rather than waiting for both approved.
-- Rewrite the serial-gating case to let the head's task start and block in its check (no `busySlot`), assert `mergeTasks` names only the head, then release the check and wait for the next head's check flag.
-- Rewrite the "settled early in a batch" case to assert alpha's `merge_done` is written before beta's merge starts, or delete it if its batch subject is gone.
-- Keep the dedupe, torn-head, post-review, shutdown-listener and rejection cases; only replace their approved-map waits.
-
-**Acceptance criteria.**
-- `grep -n 'approvedChanges' test/merge-pipeline.test.ts` prints nothing.
-- No assertion in the file reads `pipeline.approved` or `pipeline.verifying`; `mergeTasks` assertions name only the one head the drain is working.
-- The file passes under the current verify-then-merge flow, and its waits are on queue depth, check flags, marker `merging`, or `merged`/`merge_done` events.
-- `npm run test:gate` passes.
-
-**Tests.** Run test/merge-pipeline.test.ts, then the gate.
-
 ### Subtract verify collapse split, part 2/4: test/merge-pipeline-2.test.ts observes queue, check-flag and event signals, and its abort cases drive one in-flight change (planned 2026-11-08 by the plan role, splitting the 2026-11-06 part 3c/6 after feature held it too large for one run; requires part 1/4 landed; sibling to parts 3/4–4/4, which collapse the drain and remove `alreadyGated`; touches test/merge-pipeline-2.test.ts)
 
 **Goal.** The second pipeline slice passes under today's flow and will keep passing when the drain becomes one gate-then-merge task per head. Its abort cases no longer require a multi-role task that merges beta then stops short of alpha; they abort the one change in flight.

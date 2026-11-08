@@ -38,13 +38,6 @@ import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
 // These tests pin the sequential merge stages (the check, then the review).
 process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
 
-/** Roles whose merge-marker record is `approved` — the durable signal a test waits on instead
- * of the in-memory map (part 3e/6: tests observe queue outcomes). */
-function approvedChanges(root: string): string[] {
-  const marker = readMergeMarker(root);
-  if (!marker) return [];
-  return mergeChanges(marker).filter((c) => c.status === "approved").map((c) => c.role);
-}
 
 /** Second slice of the merge-drain suite (merge-drain.test.ts carries the first) — split so
  * node --test runs the slices in parallel processes: top-level tests within one file run
@@ -146,20 +139,18 @@ test("a settled merge detaches its shutdown listener: the long-lived stop signal
 test("changes approved while the merge slot is busy merge one at a time: no shared check, one fast-forward each", async () => {
   const { root, mainBefore, restore, ctx, pipeline } = await busyMergePipeline();
   try {
+    // Wait on the queue, not the approved map: both entries queued means the slot can free
+    // (part 1/4 split), and the merged events — one per change, in queue order — are the
+    // signal that both landed once the slot freed, under the current two-stage drain and the
+    // future one gate-then-merge task per head alike.
+    await pumpUntil(ctx, pipeline, () => queueDepth(root) === 2, "both changes to be queued");
+    pipeline.merge = null; // the busy slot frees
     await pumpUntil(
       ctx,
       pipeline,
-      () => approvedChanges(root).length === 2 && queueDepth(root) === 2,
-      "both changes to be approved",
+      () => eventsOfType(root, "merged").length === 2 && drained(root, pipeline)(),
+      "both changes to merge",
     );
-    pipeline.merge = null; // the busy slot frees
-    await drainMergeQueue(ctx, pipeline);
-    assert.deepEqual(
-      mergeTasks(pipeline).flatMap((t) => t.roles),
-      ["alpha", "beta"],
-      "one merge, whose record names every approved role, in queue order",
-    );
-    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the changes to merge");
 
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "both changes merged on main");
     for (const role of ["alpha", "beta"]) {
@@ -219,9 +210,17 @@ test("a change settled early in a batch writes back before a slower batch-mate's
   pipeline.merge = busySlot();
   const bg = pump(ctx, pipeline);
   try {
-    await waitFor(() => approvedChanges(root).length === 2, "both changes to be approved", 60_000);
-    pipeline.merge = null;
-    await waitForFile(started, 60_000);
+    await waitFor(() => queueDepth(root) === 2, "both changes to be queued", 60_000);
+    pipeline.merge = null; // the busy slot frees
+    // alpha's clean merge settles while beta's resolver waits on `release`: the resolver
+    // started and alpha's merge_done together are the signals (rather than an approved-map
+    // wait) that alpha's write-back landed before the resolver got going.
+    await waitFor(
+      () =>
+        fs.existsSync(started) && eventsOfType(root, "merge_done").some((e) => e.source === "alpha"),
+      "alpha to merge before beta's resolver runs",
+      60_000,
+    );
     // The running resolver names itself in beta's merge cell: its minutes are the resolver's,
     // not the merge's git steps (2026-10-12).
     assert.equal(
@@ -254,68 +253,16 @@ test("a change settled early in a batch writes back before a slower batch-mate's
   }
 });
 
-test("approved changes merge one at a time: the shared stack check and bisect are gone, every change lands", async () => {
-  // PLANS.md 4m/3 through the pipeline: with the batch path deleted a merge is a rebase and a
-  // fast-forward, one change at a time through mergeApprovedChange — no shared scope-`batch`
-  // check and no largest-passing-prefix bisect. Even a change that breaks the suite only on top
-  // of an earlier change's merge is no longer held back by a merge-time check (the watch owns
-  // main's health); the interaction a stack check once caught simply lands.
-  const root = makeRepo();
-  const roles = ["alpha", "beta", "gamma"];
-  await queueChanges(root, roles);
-  const mainBefore = mainSha(root);
-  const config = {
-    ...defaultConfig(),
-    check: { command: `if [ -f alpha.txt ] && [ -f beta.txt ]; then echo "planted failure: beta breaks the suite"; exit 1; fi` },
-  };
-  const restore = fakePi(APPROVE());
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { config });
-  pipeline.merge = busySlot();
-  try {
-    await pumpUntil(
-      ctx,
-      pipeline,
-      () => approvedChanges(root).length === 3 && queueDepth(root) === 3,
-      "all three to be approved",
-    );
-    pipeline.merge = null;
-    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to drain");
-
-    assert.deepEqual(
-      sh(root, "git", "log", "--reverse", "--format=%s", `${mainBefore}..main`).split("\n"),
-      ["work by alpha", "work by beta", "work by gamma"],
-      "every approved change lands, in queue order",
-    );
-    // No merge-time scope-`batch` or `merge` check runs: each change's own verification's gate
-    // pre-check was the only build check it saw.
-    assert.equal(
-      readEvents(root).filter((e) => e.type === "build_check" && e.scope !== "gate").length,
-      0,
-      "no shared batch check and no in-lock merge check ran at merge time",
-    );
-    for (const role of roles) assert.equal(await refSha(root, mergeRefName(role)), null, `${role}'s ref was deleted`);
-    assert.deepEqual(
-      readEvents(root).filter((e) => e.type === "merge_done" || e.type === "merge_failed").map((e) => `${e.source}:${String(e.result)}`),
-      ["alpha:changed", "beta:changed", "gamma:changed"],
-      "each change landed",
-    );
-    assert.equal(readMergeMarker(root), null);
-  } finally {
-    await Promise.allSettled(allTasks(pipeline));
-    restore();
-  }
-});
-
 test("one head is gated at a time: with three queued at cap 3 the second waits unstarted until the first settles, and a role run takes the free permit", async () => {
   // Part 3s/3 holds the head's verification through the deterministic gate (part 3h/3 stops
   // the reviewer): the check blocks alpha on its release file, seen through its own flag
   // rather than a map. beta and gamma stay queued — the drain starts one task at a time — so
   // the cap's second permit sits free for a role run. The block keys off alpha's own change
   // file, so the gate's attribution re-check on main's tip (which holds none of them) neither
-  // blocks nor touches the pipeline. The merge slot is held so the approved change waits,
-  // keeping the queue order intact for the drain. beta's check blocks on its own release file
-  // too: an unblocked check settles in well under waitFor's 100 ms poll, so beta could start
-  // between two polls.
+  // blocks nor touches the pipeline. No merge slot is held (part 1/4: no approved map wait):
+  // alpha's change merges as soon as its gate settles, and beta's check blocks on its own
+  // release file too — an unblocked check settles in well under waitFor's 100 ms poll, so beta
+  // could start between two polls.
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];
   await queueChanges(root, roles);
@@ -332,7 +279,6 @@ test("one head is gated at a time: with three queued at cap 3 the second waits u
   };
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { cap: 3, config });
-  pipeline.merge = busySlot();
   const bg = pump(ctx, pipeline);
   let ran = false;
   try {
@@ -351,13 +297,16 @@ test("one head is gated at a time: with three queued at cap 3 the second waits u
     ctx.semaphore.release();
     ran = false;
     fs.writeFileSync(path.join(flags, "alpha-release"), "");
-    // alpha settles to approved (held on the merge slot); the next drain starts beta's gate.
+    // alpha's gate settles and its change merges (no busy merge slot now); the next drain
+    // starts beta's gate only once alpha's task is done, seen through beta's own check flag
+    // and alpha's merge_done, not the approved map.
     await waitFor(
-      () => approvedChanges(root).includes("alpha"),
-      "alpha to settle to approved",
+      () =>
+        fs.existsSync(path.join(flags, "beta-blocking")) &&
+        eventsOfType(root, "merge_done").some((e) => e.source === "alpha"),
+      "beta's gate to start once alpha's merge settles",
       30_000,
     );
-    await waitForFile(path.join(flags, "beta-blocking"));
     assert.deepEqual(
       mergeTasks(pipeline).flatMap((t) => t.roles),
       ["beta"],
@@ -365,7 +314,6 @@ test("one head is gated at a time: with three queued at cap 3 the second waits u
     );
 
     fs.writeFileSync(path.join(flags, "beta-release"), "");
-    pipeline.merge = null; // free the merge slot
     await waitFor(drained(root, pipeline), "all three to merge", 60_000);
     assert.equal(queuedMergeFiles(root).length, 0, "the queue is empty");
   } finally {
