@@ -81,8 +81,9 @@ and `plan|bug --release` cover that set.
 
 ## The merge pipeline
 
-A run ends as soon as its commit is in the merge queue. Queued changes are approved in parallel
-and one serial merge step merges them, so other roles keep running while a change is under review.
+A run ends as soon as its commit is in the merge queue. Each queued change is gated in the
+merge worktree and then merged under the merge lock — one queue head at a time — so other roles
+keep running while a change is in the pipeline.
 
 - **Rebase.** The change is rebased onto current main first, so the pipeline checks what will
   actually merge.
@@ -107,14 +108,14 @@ and one serial merge step merges them, so other roles keep running while a chang
   itself runs no in-lock build re-check (a merge is a rebase and a fast-forward — see below).
   The main watch runs the full check on main's tip after a merge: a break it finds queues the
   red-main heal prompt for the `ci` healer.
-- **Review.** The pre-merge gate is deterministic — the diff rules, the exempt fast path and
+- **Gate.** The pre-merge gate is deterministic — the diff rules, the exempt fast path and
   the build pre-check: it rejects, md-only diffs included, an edit to the brief's prompt block
   or to PRINCIPLES.md from any role but the director and steward, and a change that newly writes
   a secret environment variable's value, or a credential pi stores in `auth.json`/`models.json`,
   into a file (INV-G2) — the three findings a later commit cannot repair. A conflict marker, a
   false fix claim on an exempt diff and a broken backlog structure can all be repaired by a
   later commit, so the gate lets them land and the main watch reports each on main's tip after
-  it lands; a markdown-only diff is exempt; and a healthy change approves with no
+  it lands; a markdown-only diff is exempt; and a healthy change passes with no
   model reviewer. Every merged change is judged once, after it lands, by the post-landing review.
   Each reviewer run is capped at `review.timeoutSeconds` (default 900, never above
   `runTimeoutSeconds`; at least 3600 while the over-cap model carries the team, since a slower
@@ -123,26 +124,25 @@ and one serial merge step merges them, so other roles keep running while a chang
   a loaded box is not killed at the wall by load it does not control. A reviewer still making
   progress at that deadline gets one extension of the same length before it is killed. One that
   runs over fails without a strike.
-  An already-approved change is not judged again; its check still runs.
-- **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear. A
+  The gate also drops a change whose entry was withdrawn from the backlog (`withdrawn`), before
+  its rebase and again inside the merge lock.
+- **Merge.** Gated work fast-forwards main under a merge lock, so history stays linear. A
   merge is a rebase and a fast-forward: no in-lock build re-check runs, because the pre-merge
-  verify gate judged the tree before it reached the merge slot and the main watch verifies every
+  gate judged the tree before it reached the merge slot and the main watch verifies every
   new tip after it lands (a broken commit sits on main between its landing and the watch's fix,
-  which is the `ci` healer's job). Every approved change merges one at a time, in queue order,
+  which is the `ci` healer's job). Every queued change merges one at a time, in queue order,
   through `mergeApprovedChange` — a rebase onto main's tip then the fast-forward, with no shared
   batch check and no per-change in-lock check. The conflict resolver and the re-review of a resolution that
   left the reviewed change's lines still run. The merge-side steps (the one-change merges, the
   conflict resolver, the post-resolve
-  re-review) run in one dedicated `_merge` workspace, reserved outside the pool so an approval
+  re-review) run in one dedicated `_merge` workspace, reserved outside the pool so a gate
   waiting for a workspace can never deadlock behind the merge lock.
-- **Parallel approval.** Each queued change is rebased, checked and reviewed in a workspace
-  leased from the shared pool (`.tumwater/worktrees/_slot-<n>`; the pool holds `worktreeSlots`
-  checkouts, default `maxConcurrent` + 1), several at once. An approval counts as active work: it
-  holds one of the `maxConcurrent` permits role runs use, ahead of any waiting run, so
-  merges never add streams to the provider beyond `maxConcurrent` plus the director. Approvals
-  take at most `maxConcurrent` − 1 of those permits (at least one), so a deep queue always leaves
-  one for authoring. A change that fails approval frees its author at once, and the merge step
-  merges approved changes in queue order, without waiting on a slower review ahead of them.
+- **Gate then merge.** The drain runs one gate-then-merge task at a time — the first eligible
+  queue head in queue order — so nothing parks a queued change between its gate and its merge.
+  The task's gate counts as active work: it holds one of the `maxConcurrent` permits role runs
+  use (`VERIFY_TIER`, ahead of any waiting run) for the gate's whole length, and the conflict
+  resolver holds another (`MERGE_TIER`) for its run, so merges never add streams to the
+  provider beyond `maxConcurrent` plus the director.
 
 Errors keep the commit for re-review, up to three strikes. `tumwater abort --role <id>`
 discards a role's in-flight merge and stops the change's gate build check mid-run — an abort
@@ -150,7 +150,7 @@ never has to wait a parked check out.
 
 ## Scheduling
 
-- **Workspace pool.** Runs and approvals share `worktreeSlots` pooled workspaces
+- **Workspace pool.** Runs and the gate's build checks share `worktreeSlots` pooled workspaces
   (`.tumwater/worktrees/_slot-<n>`, default `maxConcurrent` + 1): each is leased for one run,
   reset to that run's commit, and released back. A role whose run is resumable keeps its workspace
   pinned so the resumed session runs in the same directory; a lease that waits 30 s or more
@@ -208,9 +208,9 @@ never has to wait a parked check out.
   poll. Its next run first sets aside what the interrupted run left unmerged (branch commits, an
   unqueued pin) under `refs/tumwater/withdrawn/<role>/<sha>`, so leftover recovery cannot merge
   it; delete those refs once you no longer need the work. A run in flight keeps its claim until it settles. A change for the entry that is queued,
-  or that reaches the queue later, is dropped unmerged (`withdrawn`) by its verify, or inside the
-  merge lock if the entry goes after the verify.
-- `maxConcurrent` caps parallel runs and approvals together. Merges go first, then a red-main
+  or that reaches the queue later, is dropped unmerged (`withdrawn`) by its gate, or inside the
+  merge lock if the entry goes after the gate.
+- `maxConcurrent` caps parallel runs and merges together. Merges go first, then a red-main
   heal run (a `ci` run whose inbox holds a heal prompt — healing main is work, so it is admitted
   ahead of every queued role run even though `ci` otherwise schedules as maintenance), then
   work roles (feature, bugfix, plan), then maintenance roles.
@@ -367,7 +367,7 @@ never has to wait a parked check out.
   naming each role — the reviewer-fix signal to raise the authoring bar.
   While the reviewer's provider stands under a failure hold, or its strong tier is unresolvable
   under the review gate, the hold parks only the post-merge review queue: no role start, verify
-  or landing waits on the reviewer. Every role keeps authoring and its approved/queued changes
+  or landing waits on the reviewer. Every role keeps authoring and its queued changes
   keep draining. The post-merge review queue holds only where that gate's no-role form holds — a
   restart or disk hold, or a hold on the reviewer's provider — and never on the unresolvable
   strong tier, which never reaches the post-merge review queue.
@@ -455,7 +455,7 @@ the watch's confirming re-run each add the failing tests that passed on the re-r
   out of the window logs one `quiet_hours_started` / `quiet_hours_ended` event in the feed.
 - `diskHoldGB` (default 10; 0 disables) is the free-space floor, in GB (10^9 bytes), for the
   volume holding `.tumwater/worktrees`. When free space drops below it, no new work starts —
-  role runs, the director, approvals and merges — until free space climbs 5 GB back above
+  role runs, the director and the merge drain — until free space climbs 5 GB back above
   the floor (the hysteresis that keeps a team at the line from flapping). In-flight work runs
   on. A live edit applies on the next poll (including editing to 0, which lifts an active
   hold), each crossing logs one `disk_low` / `disk_ok` event (and `disk_low` pages a configured

@@ -240,7 +240,7 @@ For readers of old commits. None of the older identifiers is kept.
 | `runTick`, `runTimedRoleTick` (on collision) | `runOnce`, `runTimedRoleRun` | no |
 | `cmdRun`, `cli-run.ts` | `cmdStart`, `cli-start.ts` | no |
 | `src/landing/`, `landing-*.ts` | `src/merge/`, `merge-*.ts` | no |
-| `landing-merge.ts`, `landing-vetting.ts` | `merge-to-main.ts`, `merge-verify.ts` | no |
+| `landing-merge.ts`, `landing-vetting.ts` | `merge-to-main.ts`, `merge-core.ts` | no |
 | `lander`, `landQueue`, `landed` | `merger`, `mergeQueue`, `mergeDone` | no |
 | `vet`/`vetting`, `vetted` | `verify`, `approved` | no |
 | notebook | notes | no |
