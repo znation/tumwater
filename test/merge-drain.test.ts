@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { drainMergeQueue } from "../src/merge/merge-drain.js";
-import { mergeTasks } from "../src/merge/merge-pipeline.js";
-import { enqueueMerge, queueDepth, staleHeadFile } from "../src/merge/merge-queue.js";
+import { mergeTasks, settleMergeOutcome } from "../src/merge/merge-pipeline.js";
+import { enqueueMerge, queueDepth, staleHeadFile, type MergeEntry } from "../src/merge/merge-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readMergeMarker, writeMergeMarker } from "../src/merge/merge-slot.js";
 import { mergeQueueDir, mergeRefName } from "../src/paths.js";
 import { readPostReviews } from "../src/review/post-merge-review.js";
-import { setRef } from "../src/git/git.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
+import { refSha, setRef } from "../src/git/git.js";
 import { APPROVE, drained, entry, makePipeline, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
@@ -165,4 +166,26 @@ test("every merged role queues a post-landing review, whatever its role", async 
     await pumpUntil(ctx, pipeline, drained(exempt, pipeline), "the exempt merge");
   });
   assert.equal(readPostReviews(exempt).length, 0, "an exempt-only diff queues no post-merge review");
+});
+
+test("a null-file settle writes the outcome, drops no file and queues no retry entry", async () => {
+  // A pin-only merge (part 3h/7) settles with file null: the outcome must still be written
+  // (merge_failed + the role's state), nothing is dropped (there is no queue file), and the
+  // retriable result must NOT re-queue — the pin is the waiting state and the next poll
+  // retries it under MERGE_CONFLICT_LIMIT.
+  const root = makeRepo();
+  const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, "no-file.txt"), "no-file work\n"), "no-file work", { reset: true });
+  await setRef(root, mergeRefName("improve"), sha);
+  const state = freshRunnerState("improve");
+  const noFile: MergeEntry = { role: "improve", sha, run: 7, summary: "the work", enqueuedAt: Date.now() };
+
+  await settleMergeOutcome(root, noFile, state, "merge_blocked", 5, { tokens: 0, cost: 0, providerCost: {} }, null, "main");
+
+  assert.equal(state.lastResult, "merge_blocked", "the outcome was written to the role's state");
+  assert.ok(
+    readEvents(root).some((e) => e.type === "merge_failed" && e.result === "merge_blocked"),
+    "merge_failed fired with the result",
+  );
+  assert.equal(await refSha(root, mergeRefName("improve")).catch(() => null), sha, "the pin survives — nothing dropped it");
+  assert.equal(queueDepth(root), 0, "no retry entry was queued");
 });

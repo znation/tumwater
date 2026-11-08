@@ -169,7 +169,10 @@ export async function discardPinnedRefs(root: string, roles: string[]): Promise<
  * record is dropped (removeMergeChange — merge-slot leaves the marker to the caller). Shared by
  * every outcome the merge task settles, so no settled entry can keep a stale marker or lose its
  * outcome write. The pinned-ref discard stays with the callers: only a user abort throws work
- * away, and a user abort of the merge discards the pins of every change it had not merged. */
+ * away, and a user abort of the merge discards the pins of every change it had not merged. A
+ * null `file` (a pin-only merge with no queue entry) writes no queue file and skips the retry
+ * re-queue: the pin itself is the waiting state, and the next poll merges it again under
+ * MERGE_CONFLICT_LIMIT. */
 export async function settleMergeOutcome(
   root: string,
   entry: MergeEntry,
@@ -177,7 +180,7 @@ export async function settleMergeOutcome(
   result: RunResult,
   durationMs: number,
   usage: MergeUsage,
-  file: string,
+  file: string | null,
   mainBranch?: string,
 ): Promise<void> {
   writeMergeOutcome(root, entry, state, result, durationMs, usage, file);
@@ -192,9 +195,10 @@ export async function settleMergeOutcome(
   }
   removeMergeChange(root, entry.role);
   // A kept change goes straight back on the queue (the callers pass the main branch; a
-  // direct caller without one leaves the retry to the author's leftover recovery). The write-back
-  // above already happened, so a failure here must not lose the settled outcome.
-  if (mainBranch !== undefined) {
+  // direct caller without one leaves the retry to the author's leftover recovery). A pin-only
+  // merge (file null) skips it too — the pin is the waiting state. The write-back above
+  // already happened, so a failure here must not lose the settled outcome.
+  if (file !== null && mainBranch !== undefined) {
     try {
       await requeueKeptChange(root, mainBranch, entry, state, result);
     } catch (err) {

@@ -1,7 +1,6 @@
 import path from "node:path";
-import { commitMessage, isMergedInto, refSha } from "../git/git.js";
-import { commitRunOf } from "../git/commit-message.js";
-import { recoveredMergeEntry, recoveredMetadata } from "../runner/runner-leftover.js";
+import { isMergedInto, refSha } from "../git/git.js";
+import { pinnedMergeEntry } from "../runner/runner-leftover.js";
 import { dropMerge, enqueueMerge, staleHeadFile, tornHeadRole } from "./merge-queue.js";
 import { mergeRefName } from "../paths.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -36,13 +35,9 @@ export async function dropTornHead(root: string): Promise<void> {
     const sha = await refSha(root, mergeRefName(role)).catch(() => null);
     if (sha) {
       try {
-        // The shape leftover recovery builds. `run` is recovered from the commit's Run trailer
-        // (the drain has no run number of its own) so session naming keeps the authoring run;
-        // a hand-made commit with no trailer falls back to the zero slot.
-        const meta = await recoveredMetadata(root, sha);
-        const message = await commitMessage(root, sha);
-        const run = message === null ? 0 : (commitRunOf(message) ?? 0);
-        enqueueMerge(root, recoveredMergeEntry(role, sha, meta, run));
+        // The one pin-to-entry builder (runner-leftover.ts): the recovered commit metadata
+        // plus the run from its Run trailer, the same shape leftover recovery builds.
+        enqueueMerge(root, await pinnedMergeEntry(root, role, sha));
         requeued = true;
       } catch {
         // A re-queue that cannot be built or written (ENOSPC/EMFILE on the queue write, an

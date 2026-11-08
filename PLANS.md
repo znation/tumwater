@@ -119,28 +119,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Run test/invariants-doc.test.ts and test/merge-backlog-conflicts.test.ts whole, then the project's gate, and confirm green.
 
-### Subtract, part 3h/7: The merge drain merges a pinned change that has no queue file (planned 2026-11-08 by the plan role, splitting the 2026-11-08 too-large Subtract part 3e/7 after feature held it; sibling to Subtract parts 3e/7 and 3i/7, both of which require it; requires Subtract part 3d/7 landed; touches src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/merge/merge-slot.ts src/runner/runner-leftover.ts src/merge/merge-head.ts docs/how-it-works.md test/orchestrator-merge-pin.test.ts test/merge-drain.test.ts)
-
-**Goal.** A role's kept merge pin with no queue entry is gated and merged by the serial drain on a poll, instead of waiting for the role's next run's leftover recovery. A pin left by a crash between the commit and the queue write, or by the pin-only writers of parts 3e/7 and 3i/7, therefore lands. Legacy queue files still drain first, exactly as today.
-
-**Approach.**
-- In src/runner/runner-leftover.ts, factor the pin-to-entry block `dropTornHead` (src/merge/merge-head.ts) already builds into `pinnedMergeEntry(root, role, sha)`: `recoveredMetadata` plus the run from the commit's `Run:` trailer (`commitRunOf`, 0 when absent) into `recoveredMergeEntry`. `dropTornHead` calls the same helper, so the two paths cannot drift.
-- In `drainMerge` (src/merge/merge-drain.ts), after the queue-file loop starts nothing, scan `ctx.runners`: skip a role with a queued entry (`queuedMergeRoles`), then take `pinnedRetrySha(root, role, mainBranch, runner.state)` — which deletes a dangling or stale pin and refuses a pin at `MERGE_CONFLICT_LIMIT` — build its entry with `pinnedMergeEntry`, and, when `ctx.startHeld(role)` is false, `startMerge(ctx, p, entry, null)`. Start one task per poll, as the queue path does.
-- Make the task's queue file optional: `startMerge`, `settleMergeOutcome` and `writeMergeOutcome` take `file: string | null`; a null file skips `dropMerge` and skips `requeueKeptChange`, so a retriable pin-only merge keeps its pin with no retry queue entry and the next poll retries it under `MERGE_CONFLICT_LIMIT`. The `merge_done`/`merge_failed` events still fire with the same fields.
-- docs/how-it-works.md's Merge section: a pin with no queue entry is merged on the next poll; queue files remain legacy input.
-
-**Files touched.** src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/merge/merge-slot.ts src/runner/runner-leftover.ts src/merge/merge-head.ts docs/how-it-works.md test/orchestrator-merge-pin.test.ts test/merge-drain.test.ts
-
-**Acceptance criteria.**
-- Given a pin and no `.tumwater/merge-queue/` file, one drain poll starts its gate-then-merge task; after it settles main contains the pin's sha, the pin ref is gone, `merge_done` fired, and no queue file exists.
-- A pin whose commit main already contains is deleted with no gate and no `merge_done` event.
-- A pin at `MERGE_CONFLICT_LIMIT` is neither merged nor deleted by the drain; it stays for its author's hand-back.
-- When a legacy queue entry and a pin are both waiting, the queue entry is merged first, and a role with a queue entry is not also merged from its pin.
-- A retriable pin-only outcome (`review_error`, `merge_blocked`, `merge_conflict`) keeps the pin, writes no queue entry, and is retried by a later poll.
-- `npm run test:gate` passes.
-
-**Tests.** New test/orchestrator-merge-pin.test.ts, built like `mergeHead`: a pin with no entry merges on a poll; a stale pin is deleted without a gate; a cap pin is left untouched; a queued entry and a pin waiting together merge the entry first. Extend test/merge-drain.test.ts with the null-file settle case (outcome written, no file dropped, no retry entry). Run those files, test/merge-slot.test.ts, then the project's gate.
-
 ### Subtract, part 3i/7: Leftover recovery pins a recovered commit and writes no queue entry (planned 2026-11-08 by the plan role, splitting the 2026-11-08 too-large Subtract part 3e/7 after feature held it; sibling to Subtract part 3e/7, which it requires; requires Subtract part 3e/7 landed; touches src/runner/runner-leftover.ts src/runner/runner-recovery.ts src/runner/runner-run.ts docs/how-it-works.md docs/invariants.md test/runner-leftover.test.ts test/runner-leftover-recovery.test.ts)
 
 **Goal.** A role's next run that finds unmerged leftover work adopts it into the pin (as today) and ends `queued` with no queue file: the pin is the waiting state and the drain of part 3h/7 merges it. Stale/dangling cleanup, the conflict hand-back and `MERGE_CONFLICT_LIMIT` keep their behavior; a legacy queue entry an older build left still takes the `already_queued`/`relief_wait` arms.

@@ -240,7 +240,7 @@ export function hasWorktreeRegistrations(root: string): boolean | undefined {
  * a plain shared `refs/…` name with neither a loose file nor a packed-refs line. In a
  * files-backend repository (repoFiles excludes reftable and redirected environments) that is
  * where git itself looks, so the answer is git's. False means "ask git", not "present". */
-function refAbsentFromFiles(dir: string, ref: string): boolean {
+export function refAbsentFromFiles(dir: string, ref: string): boolean {
   if (!isPlainRefName(ref) || PER_WORKTREE_REF.test(ref)) return false;
   const repo = repoFiles(dir);
   return repo !== undefined && storedRef(repo.commondir, ref) === null;

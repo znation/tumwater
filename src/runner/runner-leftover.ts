@@ -1,5 +1,5 @@
 import { aheadOfMain, commitExists, commitMessage, deleteRef, deleteRefIfAt, headOf, isMergedInto, refSha, setRef } from "../git/git.js";
-import { parseCommitMetadata, type CommitMetadata } from "../git/commit-message.js";
+import { commitRunOf, parseCommitMetadata, type CommitMetadata } from "../git/commit-message.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { enqueueMerge, queuedMerges, type MergeEntry } from "../merge/merge-queue.js";
 import { mergeRefName, withdrawnRefName } from "../paths.js";
@@ -308,4 +308,17 @@ export function recoveredMergeEntry(role: string, sha: string, meta: CommitMetad
     ...(meta.revisionRound !== undefined ? { revisionRound: meta.revisionRound } : {}),
     enqueuedAt: Date.now(),
   };
+}
+
+/** The queue entry the merge drain builds for a kept pin with no queue file (merge-drain.ts's
+ * pin scan, and dropTornHead's re-queue in merge-head.ts): the pin's sha plus the summary,
+ * body, and high-friction flag read back from its commit message (recoveredMetadata) and the
+ * authoring run from its `Run:` trailer — the drain has no run number of its own, so session
+ * naming keeps the authoring run; a hand-made commit with no trailer falls back to the zero
+ * slot. The one pin-to-entry builder, so the drain and the torn-head re-queue cannot drift. */
+export async function pinnedMergeEntry(root: string, role: string, sha: string): Promise<MergeEntry> {
+  const meta = await recoveredMetadata(root, sha);
+  const message = await commitMessage(root, sha);
+  const run = message === null ? 0 : (commitRunOf(message) ?? 0);
+  return recoveredMergeEntry(role, sha, meta, run);
 }

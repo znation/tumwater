@@ -139,6 +139,10 @@ keep running while a change is in the pipeline.
   waiting for a workspace can never deadlock behind the merge lock.
 - **Gate then merge.** The drain runs one gate-then-merge task at a time — the first eligible
   queue head in queue order — so nothing parks a queued change between its gate and its merge.
+  When no queue entry is eligible, a kept merge pin that has no queue file — a crash between a
+  run's commit and its queue write, or a pin-only writer — is gated and merged by the same one
+  task on the next poll, with no queue file written and the pin kept on a retriable outcome
+  for the next poll; queue files remain the legacy input.
   The task's gate counts as active work: it holds one of the `maxConcurrent` permits role runs
   use (`VERIFY_TIER`, ahead of any waiting run) for the gate's whole length, and the conflict
   resolver holds another (`MERGE_TIER`) for its run, so merges never add streams to the

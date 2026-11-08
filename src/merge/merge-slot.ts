@@ -397,7 +397,9 @@ export function mergeFailureReason(state: RunnerState, result: RunResult, starte
  * merge_done/merge_failed (the failed event carries the reason mergeFailureReason derives)
  * with the merge's own duration (from its task's start) and usage (omitted when zero — the
  * 4/5 idiom, so review-exempt merges render bare), and drop the entry: EVERY defined result
- * drops. Both event writes are best-effort: an unwritable feed (ENOSPC, EACCES) must not
+ * drops. `file` is the queue file to drop; a null file (a pin-only merge that had no queue
+ * entry) drops nothing, so a retriable outcome keeps its pin for the next poll. Both event
+ * writes are best-effort: an unwritable feed (ENOSPC, EACCES) must not
  * skip the drop, or the settled entry would stay queued and be re-verified and re-merged on
  * the next drain — the queue's "drop after EVERY outcome" contract (merge-queue.ts). A failed
  * state save warns and does not skip the drop either: the in-memory state already holds the
@@ -410,7 +412,7 @@ export function writeMergeOutcome(
   result: RunResult,
   durationMs: number,
   usage: MergeUsage,
-  file: string,
+  file: string | null,
 ): void {
   applyMergeOutcome(state, result, entry);
   saveRunnerStateBestEffort(root, state);
@@ -457,7 +459,7 @@ export function writeMergeOutcome(
       ? { notionalByBackend: usage.notionalByBackend }
       : {}),
   });
-  dropMerge(file);
+  if (file !== null) dropMerge(file);
 }
 
 /** One merge's own spend (reviewer + conflict resolution), accumulated across its pi runs.

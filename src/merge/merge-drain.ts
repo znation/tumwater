@@ -3,8 +3,9 @@ import path from "node:path";
 import { mergeApprovedChange, RETRIABLE_MERGE_RESULTS, type MergerContext } from "./merge-core.js";
 import { addMergeChange, mergeUsage, removeMergeChange, resolveWaitStage, setMergeChangeStatus } from "./merge-slot.js";
 import { withRunPermit } from "../concurrency/run-permit.js";
-import { dropMerge, entryRevisionFields, queuedMergeFiles, type MergeEntry } from "./merge-queue.js";
-import { branchHead } from "../git/git.js";
+import { dropMerge, entryRevisionFields, queuedMergeFiles, queuedMergeRoles, type MergeEntry } from "./merge-queue.js";
+import { branchHead, refAbsentFromFiles } from "../git/git.js";
+import { mergeRefName } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { saveRunnerState } from "../runner/runner-state.js";
@@ -26,6 +27,7 @@ import {
   type MergePipelineContext,
 } from "./merge-pipeline.js";
 import { dropTornHead, mergedIntoMain } from "./merge-head.js";
+import { pinnedMergeEntry, pinnedRetrySha } from "../runner/runner-leftover.js";
 import { MERGE_TIER, VERIFY_TIER, resolveAuthor } from "./merge-author.js";
 import type { RoleRunner } from "../runner/runner.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
@@ -68,7 +70,9 @@ export async function drainMergeQueue(ctx: MergePipelineContext, p: MergePipelin
 
 /** The merge drain — the queue's one whole stage: drop the torn head, dedupe every
  * already-merged entry against main, then start ONE gate-then-merge task for the first eligible
- * queue head in queue order. The checks the verify stage used to own — torn-head recovery, the
+ * queue head in queue order — or, when no queue entry is eligible, for a kept pin that has no
+ * queue file (a crash between a run's commit and its queue write, or a pin-only writer). The
+ * checks the verify stage used to own — torn-head recovery, the
  * already-merged dedupe, `notBefore` and `startHeld` — run here in the serial drain, so a
  * queued change is gated and merged by the one task (startMerge) and no verification starts at
  * all. An entry whose gate/merge the pipeline does not reach stays queued for the next poll;
@@ -108,6 +112,28 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
     p.merge = startMerge(ctx, p, entry, file);
     return;
   }
+  // A kept pin with no queue file — a crash between the run's commit and its queue write, or
+  // the pin-only writers of parts 3e/7 and 3i/7 — merges through the same serial task: after
+  // the queue path starts nothing, scan the live runners and start the one task for the first
+  // role whose pin pinnedRetrySha allows. A role with a queued entry is skipped (the queue
+  // path owns it and drains it first); pinnedRetrySha deletes a dangling or stale pin and
+  // refuses a pin at MERGE_CONFLICT_LIMIT, which the drain leaves untouched for its author's
+  // hand-back, exactly as recovery does. One task per poll, as the queue path does.
+  const queuedRoles = queuedMergeRoles(ctx.root);
+  for (const runner of ctx.runners) {
+    if (p.merge !== null) return; // one task at a time: the next pin waits in its ref
+    if (queuedRoles.has(runner.role)) continue;
+    // Skip a runner the ref files settle as having no pin, without yielding: an empty-queue
+    // poll must not add an async hop just to confirm, on most polls, that nothing is pinned
+    // (a concurrent parked task's permit window). A present or unsettled ref falls through to
+    // pinnedRetrySha, which resolves it through git.
+    if (refAbsentFromFiles(ctx.root, mergeRefName(runner.role))) continue;
+    const sha = await pinnedRetrySha(ctx.root, runner.role, ctx.mainBranch, runner.state);
+    if (sha === null) continue;
+    if (ctx.startHeld(runner.role)) continue;
+    p.merge = startMerge(ctx, p, await pinnedMergeEntry(ctx.root, runner.role, sha), null);
+    return;
+  }
 }
 
 /** Signals that a restart or disk hold closed the start gate while the task waited for its
@@ -130,7 +156,7 @@ class GateDeferredByHold extends Error {}
  * gatePermit VERIFY_TIER lease the gate's call holds, and merge-to-main.ts's conflict
  * resolver, which takes a shared permit at MERGE_TIER for the run's length, outside the merge
  * lock. */
-function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEntry, file: string): InFlightMerge {
+function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEntry, file: string | null): InFlightMerge {
   const { root, mainBranch, signal, roleConfig, semaphore } = ctx;
   const author = resolveAuthor(ctx, entry.role);
   const { usage, foldUsage } = mergeUsage(author, root);
@@ -142,7 +168,9 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
   };
   const detachShutdown = abortOnShutdown(signal, merge.controller);
   // The one change the task holds. `file` is the entry's queue file (dropped once the outcome
-  // is written), `usage` the task's own spend — both ride the closures below.
+  // is written) or null for a pin-only merge with no queue entry — a null file writes no
+  // queue file and keeps the pin on a retriable outcome; `usage` is the task's own spend —
+  // both ride the closures below.
   const v: MergeTaskRecord = {
     entry,
     startedAt: Date.now(),
