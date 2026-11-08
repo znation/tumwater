@@ -24,7 +24,7 @@ import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { type FiledEntry, showEntry, splitEntryFile } from "../backlog/backlog-write.js";
 import { renderShownEntry } from "./backlog-cli-view.js";
-import { archiveFinishedOnMain, describeArchivedFile } from "../backlog/backlog-archive.js";
+import { archiveFinishedOnMain, describeArchivedFile, previewArchiveOnMain } from "../backlog/backlog-archive.js";
 import { MERGE_LOCK_WAIT_MS } from "../paths.js";
 import { shortSha } from "../text/format.js";
 
@@ -444,9 +444,32 @@ function sayFiled(command: string, filed: FiledEntry, json: boolean): void {
  * (plans/backlog-archive.md) — the hand-run twin of the archive a starting team makes. Prints
  * what moved and the commit, or why nothing was written (a refusal fails the command). `--json`
  * prints `{ archived, commit, moved }` instead: `commit` is the full sha (`null` when nothing was
- * archived) and `moved` the files' `{ file, archive, titles, dropped }`; a refusal still fails. */
+ * archived) and `moved` the files' `{ file, archive, titles, dropped }`; a refusal still fails.
+ * `--dry-run` previews the same `would move …` lines the real command prints, then
+ * `dry run — nothing archived`, and writes no file and makes no commit; `--json` with it prints
+ * `{ dryRun: true, archived: false, commit: null, moved }`. */
 export async function cmdArchive(root: string, args: string[] = []): Promise<void> {
   const json = args.includes("--json");
+  const dryRun = args.includes("--dry-run");
+  if (dryRun) {
+    const preview = await previewArchiveOnMain(root);
+    if (preview.status === "nothing") {
+      if (json) {
+        sayJson({ dryRun: true, archived: false, commit: null, moved: [] });
+        return;
+      }
+      say("nothing to archive: PLANS.md ## Done and BUGS.md ## Fixed hold no finished entries");
+      return;
+    }
+    if (preview.status === "skipped") fail(`nothing would be archived: ${preview.reason}`);
+    if (json) {
+      sayJson({ dryRun: true, archived: false, commit: null, moved: preview.moved });
+      return;
+    }
+    for (const f of preview.moved) say(`would move ${describeArchivedFile(f)}`);
+    say("dry run — nothing archived");
+    return;
+  }
   const outcome = await archiveFinishedOnMain(root, { lockTimeoutMs: MERGE_LOCK_WAIT_MS });
   if (outcome.status === "nothing") {
     if (json) {

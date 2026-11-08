@@ -229,7 +229,7 @@ async function cmdHistoryCase(root: string, args: string[]): Promise<void> {
 }
 
 async function cmdArchiveCase(root: string, args: string[]): Promise<void> {
-  rejectUnknownArgs("archive", args, [JSON_FLAG]);
+  rejectUnknownArgs("archive", args, [JSON_FLAG, DRY_RUN_FLAG]);
   await requireReadyRepo(root);
   await (await import("./cli/backlog-cli.js")).cmdArchive(root, args);
 }

@@ -337,11 +337,15 @@ Usage:
                                    stored, the kept failing output verbatim — read-only, needing
                                    no ready repo, like the list; --show <n> --json prints that
                                    entry's object
-  tumwater archive [--json]        Move the finished entries still under PLANS.md ## Done and
+  tumwater archive [--dry-run] [--json]
+                                   Move the finished entries still under PLANS.md ## Done and
                                    BUGS.md ## Fixed to the top of PLANS-DONE.md and BUGS-FIXED.md
                                    and commit them on the base branch, waiting for a merge in
                                    progress; a starting team does the same, and a role's own
                                    finished entry moves when its change commits;
+                                   --dry-run lists the entries it would move and drop, writing
+                                   nothing and making no commit (--json with it prints the same
+                                   moved rows with dryRun: true and commit: null);
                                    --json prints what moved and the commit as data
   tumwater bug "<symptom>" [--json]
                                    File a bug into BUGS.md ## Open as you (stamped

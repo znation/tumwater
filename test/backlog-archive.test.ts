@@ -9,6 +9,7 @@ import {
   archiveNewFinishedEntries,
   archiveTemplate,
   liveFinishedHistory,
+  previewArchiveOnMain,
 } from "../src/backlog/backlog-archive.js";
 import { fileBugsOnMain, fileQuarantineBugsOnMain } from "../src/backlog/backlog-file-bugs.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -317,6 +318,143 @@ test("tumwater archive --json prints what moved and the full commit sha, then ar
   const again = await cli(root, "archive", "--json");
   assert.equal(again.code, 0, again.stderr);
   assert.deepEqual(JSON.parse(again.stdout), { archived: false, commit: null, moved: [] });
+});
+
+test("previewArchiveOnMain names the moves without writing, and reports nothing or skipped as the real command would", async () => {
+  const root = await initializedRepo();
+  ignoreInRepo(root, ".tumwater/");
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans("### D1 (planned 2026-10-02, done 2026-10-03)\n\nOne.\n"));
+  fs.writeFileSync(path.join(root, "BUGS.md"), "# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n\n### B1 (found 2026-10-01; fixed 2026-10-02)\n\nFix.\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed finished entries");
+  const headBefore = sh(root, "git", "rev-parse", "HEAD").trim();
+  const plansBefore = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
+
+  const preview = await previewArchiveOnMain(root);
+  assert.equal(preview.status, "would-archive");
+  if (preview.status === "would-archive") {
+    assert.deepEqual(preview.moved.map((f) => [f.file, f.archive, f.titles.length, f.dropped.length]), [
+      ["PLANS.md", "PLANS-DONE.md", 1, 0],
+      ["BUGS.md", "BUGS-FIXED.md", 1, 0],
+    ]);
+    assert.equal(preview.moved[0]!.titles[0], "D1 (planned 2026-10-02, done 2026-10-03)");
+    assert.equal(preview.moved[1]!.titles[0], "B1 (found 2026-10-01; fixed 2026-10-02)");
+  }
+  assert.equal(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), plansBefore, "the preview leaves the live files alone");
+  assert.equal(fs.existsSync(path.join(root, "PLANS-DONE.md")), false, "the preview creates no archive file");
+  assert.equal(fs.existsSync(path.join(root, "BUGS-FIXED.md")), false);
+  assert.equal(sh(root, "git", "rev-parse", "HEAD").trim(), headBefore, "the preview makes no commit");
+  assert.equal(sh(root, "git", "status", "--porcelain"), "");
+
+  // An empty finished section is "nothing".
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans(""));
+  fs.writeFileSync(path.join(root, "BUGS.md"), "# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n\n_None yet._\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed empty finished sections");
+  assert.deepEqual(await previewArchiveOnMain(root), { status: "nothing" });
+
+  // Off the base branch: skipped with the real command's reason, nothing written.
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans("### D1 (planned 2026-10-02, done 2026-10-03)\n\nOne.\n"));
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed finished entry again");
+  sh(root, "git", "checkout", "--detach");
+  const offBase = await previewArchiveOnMain(root);
+  assert.equal(offBase.status, "skipped");
+  assert.match(offBase.status === "skipped" ? offBase.reason : "", /your checkout is on a detached HEAD, not main/);
+  assert.equal(fs.existsSync(path.join(root, "PLANS-DONE.md")), false);
+
+  // A dirty finished file: skipped with the real command's reason, nothing written.
+  sh(root, "git", "checkout", "main");
+  const headAtDirty = sh(root, "git", "rev-parse", "HEAD").trim();
+  fs.appendFileSync(path.join(root, "PLANS.md"), "\nstray edit\n");
+  const dirty = await previewArchiveOnMain(root);
+  assert.equal(dirty.status, "skipped");
+  assert.match(dirty.status === "skipped" ? dirty.reason : "", /PLANS\.md has uncommitted changes/);
+  assert.equal(sh(root, "git", "status", "--porcelain", "--", "PLANS.md"), " M PLANS.md", "the skip restores nothing: the edit stays");
+  assert.equal(fs.existsSync(path.join(root, "PLANS-DONE.md")), false);
+  assert.equal(sh(root, "git", "rev-parse", "HEAD").trim(), headAtDirty, "the preview makes no commit");
+});
+
+test("tumwater archive --dry-run previews the would-be moves and writes nothing; --json carries the real move rows", async () => {
+  const root = await initializedRepo();
+  ignoreInRepo(root, ".tumwater/");
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans("### D1 (planned 2026-10-02, done 2026-10-03)\n\nOne.\n"));
+  fs.writeFileSync(path.join(root, "BUGS.md"), "# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n\n### B1 (found 2026-10-01; fixed 2026-10-02)\n\nFix.\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed finished entries");
+  const headBefore = sh(root, "git", "rev-parse", "HEAD").trim();
+  const plansBefore = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
+  const bugsBefore = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
+
+  // --stat and other unknown flags are still refused.
+  const stat = await cli(root, "archive", "--stat");
+  assert.equal(stat.code, 1);
+  assert.match(stat.stderr, /unknown/i);
+
+  const preview = await cli(root, "archive", "--dry-run");
+  assert.equal(preview.code, 0, preview.stderr);
+  assert.match(preview.stdout, /would move PLANS\.md → PLANS-DONE\.md: 1 entry/);
+  assert.match(preview.stdout, /would move BUGS\.md → BUGS-FIXED\.md: 1 entry/);
+  assert.match(preview.stdout, /dry run — nothing archived/);
+  assert.equal(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), plansBefore, "the preview leaves the live files alone");
+  assert.equal(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), bugsBefore);
+  assert.equal(fs.existsSync(path.join(root, "PLANS-DONE.md")), false, "the preview creates no archive file");
+  assert.equal(fs.existsSync(path.join(root, "BUGS-FIXED.md")), false);
+  assert.equal(sh(root, "git", "rev-parse", "HEAD").trim(), headBefore, "the preview makes no commit");
+  assert.equal(sh(root, "git", "status", "--porcelain"), "", "the preview leaves the tree clean");
+
+  const js = await cli(root, "archive", "--dry-run", "--json");
+  assert.equal(js.code, 0, js.stderr);
+  const previewData = JSON.parse(js.stdout);
+  assert.equal(previewData.dryRun, true);
+  assert.equal(previewData.archived, false);
+  assert.equal(previewData.commit, null);
+  assert.equal(sh(root, "git", "rev-parse", "HEAD").trim(), headBefore, "--json preview writes nothing");
+  assert.equal(sh(root, "git", "status", "--porcelain"), "");
+
+  // The preview's moved rows are exactly the real archive's.
+  const moved = await cli(root, "archive", "--json");
+  assert.equal(moved.code, 0, moved.stderr);
+  const real = JSON.parse(moved.stdout);
+  assert.equal(real.archived, true);
+  assert.deepEqual(previewData.moved, real.moved);
+});
+
+test("tumwater archive --dry-run on an empty backlog prints nothing to archive, both text and --json", async () => {
+  const root = await initializedRepo();
+  ignoreInRepo(root, ".tumwater/");
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans(""));
+  fs.writeFileSync(path.join(root, "BUGS.md"), "# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n\n_None yet._\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed empty finished sections");
+  const headBefore = sh(root, "git", "rev-parse", "HEAD").trim();
+
+  const preview = await cli(root, "archive", "--dry-run");
+  assert.equal(preview.code, 0, preview.stderr);
+  assert.match(preview.stdout, /nothing to archive/);
+  const js = await cli(root, "archive", "--dry-run", "--json");
+  assert.equal(js.code, 0, js.stderr);
+  assert.deepEqual(JSON.parse(js.stdout), { dryRun: true, archived: false, commit: null, moved: [] });
+  assert.equal(sh(root, "git", "rev-parse", "HEAD").trim(), headBefore);
+  assert.equal(sh(root, "git", "status", "--porcelain"), "");
+});
+
+test("tumwater archive --dry-run on a dirty finished file fails with nothing would be archived and writes nothing", async () => {
+  const root = await initializedRepo();
+  ignoreInRepo(root, ".tumwater/");
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans("### D1 (planned 2026-10-02, done 2026-10-03)\n\nOne.\n"));
+  fs.writeFileSync(path.join(root, "BUGS.md"), "# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n\n_None yet._\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed finished entries");
+  const headBefore = sh(root, "git", "rev-parse", "HEAD").trim();
+  fs.appendFileSync(path.join(root, "PLANS.md"), "\nstray edit\n");
+
+  const preview = await cli(root, "archive", "--dry-run");
+  assert.equal(preview.code, 1);
+  assert.match(preview.stderr, /nothing would be archived: PLANS\.md has uncommitted changes/);
+  assert.equal(fs.existsSync(path.join(root, "PLANS-DONE.md")), false, "a skipped preview writes nothing");
+  assert.equal(fs.existsSync(path.join(root, "BUGS-FIXED.md")), false);
+  assert.equal(sh(root, "git", "rev-parse", "HEAD").trim(), headBefore);
 });
 
 test("a change committed before the archive rebases onto it: its new entry stays, the history it sat above does not return", async () => {

@@ -471,6 +471,37 @@ export async function archiveFinishedOnMain(
   );
 }
 
+/** What previewArchiveOnMain would do. `would-archive` names the moves; `nothing` that no
+ * finished entry would move; `skipped` why nothing could be previewed. */
+type ArchivePreviewOutcome =
+  | { status: "would-archive"; moved: ArchivedFile[] }
+  | { status: "nothing" }
+  | { status: "skipped"; reason: string };
+
+/** The bulk archive's moves without writing: what archiveFinishedOnMain would move and drop for
+ * the checkout at `root`, computed under the same read-only preconditions the real command checks
+ * before writing — the primary on the base branch and the finished files clean. Takes no lock and
+ * calls no writer, so it cannot move an entry or create an archive file. `tumwater archive
+ * --dry-run` calls it. */
+export async function previewArchiveOnMain(root: string): Promise<ArchivePreviewOutcome> {
+  const pre = planOrSkip(root, 0);
+  if ("status" in pre) return pre;
+  if (pre.length === 0) return { status: "nothing" };
+  const offBase = await primaryOffBaseBranchReason(root);
+  if (offBase !== null) return { status: "skipped", reason: offBase };
+  const files = FINISHED_ARCHIVES.flatMap((a) => [a.file, a.archive]);
+  const status = await gitTry(root, "status", "--porcelain", "--", ...files);
+  if (status === null) return { status: "skipped", reason: "could not read git status" };
+  const dirty = status.split("\n").filter((l) => l.length > 3).map((l) => l.slice(3));
+  if (dirty.length > 0) {
+    return { status: "skipped", reason: `${dirty.join(", ")} ${dirty.length > 1 ? "have" : "has"} uncommitted changes` };
+  }
+  return {
+    status: "would-archive",
+    moved: pre.map(({ spec, move }) => ({ file: spec.file, archive: spec.archive, titles: move.titles, dropped: move.dropped })),
+  };
+}
+
 /** The team-start archive: before any run starts — no merge is in progress and no run is in
  * flight — move whatever finished history the live files still carry into the archives, in one
  * commit on main. That migrates a repository on its first start with this build and sweeps
