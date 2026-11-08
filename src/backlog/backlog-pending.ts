@@ -7,8 +7,10 @@
  * `Needs review` entry — stops the plan role instead of being re-planned. renderPendingPlansBlock
  * renders the same snapshot as the plan role's `<pending-plans>` prompt block (part 3/6). */
 
+import path from "node:path";
 import { gitTry } from "../git/git-run.js";
-import { gitLines } from "../git/git.js";
+import { commonGitDir, gitLines, refShaFromFiles } from "../git/git.js";
+import { statOrNull } from "../files/files.js";
 import { plural } from "../text/phrases.js";
 import type { BacklogEntry } from "./backlog-md.js";
 import { parseEntryDetails } from "./backlog-md.js";
@@ -38,13 +40,49 @@ export interface PendingPlanChange {
 }
 
 /** The git runner refreshPendingPlans calls through — injectable so a test can count calls:
- * the memo's observable win is that a repeat refresh with unchanged refs runs only the one
- * for-each-ref. */
+ * the memo's observable win is that a repeat refresh with unchanged refs runs no git at all
+ * (the ref fingerprint below skips the for-each-ref spawn). */
 export type PendingGitRunner = (cwd: string, ...args: string[]) => Promise<string | null>;
 
 /** Per-root snapshot: what the last refreshPendingPlans found, in ref order. Empty until the
  * first refresh, so a surface that reads before any poll projects main alone. */
 const snapshots = new Map<string, PendingPlanChange[]>();
+
+/** The identity fields `statOrNull` reports for one loose-ref dir or packed-refs, "-" when the
+ * path is missing. Git updates a loose ref by rename or unlink (both bump the parent dir's
+ * stat — the same freshness rule every stat-cached observer here relies on) and rewrites
+ * packed-refs atomically, so a changed fingerprint means a ref moved and a missing change
+ * means none of these stores was rewritten since the recorded fingerprint. */
+function refStatIdentity(fileOrDir: string): string {
+  const st = statOrNull(fileOrDir);
+  if (st === null) return "-";
+  return `${st.dev}:${st.ino}:${st.size}:${st.mtimeMs}`;
+}
+
+/** The fingerprint of everything refreshPendingPlans' git spawn reads, read from files: the
+ * merge-pin and role-branch dirs' stats in the common git dir, packed-refs's stat, and main's
+ * head (the `--no-merged` filter's other input in for-each-ref, and each diff's merge-base
+ * side). Equal fingerprints mean the for-each-ref output — the ref set and its unmerged
+ * filter — cannot have changed, so a refresh can skip the spawn and keep its snapshot.
+ * `undefined` when the files cannot settle the fingerprint (a GIT_DIR/GIT_COMMON_DIR redirect,
+ * a reftable store, a missing main), in which case the caller refreshes as before. */
+function pendingRefsFingerprint(root: string, mainBranch: string): string | undefined {
+  const commondir = commonGitDir(root);
+  if (commondir === undefined) return undefined;
+  const mainHead = refShaFromFiles(root, mainBranch);
+  if (mainHead === undefined) return undefined;
+  return [
+    mainHead,
+    refStatIdentity(path.join(commondir, "refs", "tumwater", "merge")),
+    refStatIdentity(path.join(commondir, "refs", "heads", "tumwater")),
+    refStatIdentity(path.join(commondir, "packed-refs")),
+  ].join("\u0000");
+}
+
+/** The pending-ref fingerprint the current snapshot was refreshed against, per root. Recorded
+ * only after a successful refresh, so a failed one never caches a "nothing to check" state and
+ * the next poll retries. */
+const lastRefsFingerprint = new Map<string, string>();
 
 /** The diff payload one sha computes, or the sentinels below. Memoized by sha alone: commits
  * never change, so a repeat refresh with an unchanged ref re-reads no commit. Bounded like the
@@ -119,12 +157,22 @@ function diffIsEmpty(diff: PendingPlanDiff): boolean {
  * sha the memo already knows re-reads no commit; a pin and a branch of one role on one sha
  * count once (for-each-ref's refname order lists the branch first, so the pin's ref name
  * wins the record). A failed for-each-ref leaves the previous snapshot in place and never
- * throws into the poll. */
+ * throws into the poll. When the ref fingerprint — the two ref stores' stats and main's head
+ * — is unchanged since the last successful refresh, the whole refresh returns without the
+ * git spawn (an idle poll costs no for-each-ref). */
 export async function refreshPendingPlans(
   root: string,
   mainBranch: string,
   run: PendingGitRunner = gitTry,
 ): Promise<void> {
+  // The per-poll ref fingerprint says whether anything the refresh reads moved since the last
+  // successful refresh; an unchanged fingerprint skips the git spawn (the snapshot still
+  // reflects those refs). Only main's head and the loose/packed ref stores decide the
+  // for-each-ref output, so an unchanged fingerprint proves the output is unchanged too.
+  const fingerprint = pendingRefsFingerprint(root, mainBranch);
+  if (fingerprint !== undefined && lastRefsFingerprint.get(root) === fingerprint) {
+    return;
+  }
   let refs: { ref: string; sha: string }[];
   try {
     refs = gitLines(
@@ -179,6 +227,7 @@ export async function refreshPendingPlans(
     });
   }
   snapshots.set(root, changes);
+  if (fingerprint !== undefined) lastRefsFingerprint.set(root, fingerprint);
 }
 
 /** `root`'s current snapshot: what the last refreshPendingPlans found, in ref order. Empty

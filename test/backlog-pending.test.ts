@@ -133,9 +133,11 @@ test("an unreadable PLANS.md contributes nothing and leaves the earlier snapshot
   assert.equal(changes[0]!.sha, goodSha, "the plan pin's earlier entry stays in place");
 });
 
-test("a second refresh with unchanged refs re-reads no commit: only the one for-each-ref runs", async () => {
+test("a second refresh with unchanged refs spawns no git; a moved main invalidates the fingerprint", async () => {
   const { dir } = plansRepo(PLANS([entry("A")]), "marker-five");
-  pinAt(dir, "plan", (d) => fs.writeFileSync(path.join(d, "PLANS.md"), PLANS([entry("A"), entry("B")])));
+  const pinSha = pinAt(dir, "plan", (d) =>
+    fs.writeFileSync(path.join(d, "PLANS.md"), PLANS([entry("A"), entry("B")])),
+  );
   const calls: string[][] = [];
   const counting: PendingGitRunner = async (cwd, ...args) => {
     calls.push(args);
@@ -144,10 +146,16 @@ test("a second refresh with unchanged refs re-reads no commit: only the one for-
   await refreshPendingPlans(dir, "main", counting);
   const afterFirst = calls.length;
   assert.ok(afterFirst > 1, "the first refresh reads the pin's commit");
+  // Nothing changed since the first refresh: the fingerprint skips the for-each-ref spawn.
   await refreshPendingPlans(dir, "main", counting);
-  const second = calls.slice(afterFirst);
-  assert.equal(second.length, 1, "the repeat refresh runs only the for-each-ref");
-  assert.match(second[0]![0]!, /for-each-ref/);
+  assert.equal(calls.length, afterFirst, "a repeat refresh with unchanged refs spawns no git");
+  assert.equal(pendingPlanChanges(dir).length, 1, "the saved snapshot still names the pin");
+  // Moving main invalidates the fingerprint even though no pin or branch dir changed: the pin
+  // is now contained in main, so the next refresh re-runs and the pin drops out.
+  sh(dir, "git", "update-ref", "refs/heads/main", pinSha);
+  await refreshPendingPlans(dir, "main", counting);
+  assert.ok(calls.length > afterFirst, "a moved main re-runs the refresh");
+  assert.equal(pendingPlanChanges(dir).length, 0, "the merged pin contributes nothing");
 });
 
 test("the block lists each unmerged change's role, short sha, subject and stamp-free effects", async () => {
