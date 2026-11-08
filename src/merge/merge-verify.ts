@@ -150,8 +150,16 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
         setMergeChangeStatus(root, role, "approved");
       } else {
         const result = verdict.kind === "approved" ? "aborted" : verdict.result;
-        await settleMergeOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file, mainBranch);
-        if (verify.userAborted) await discardPinnedRefs(root, [role]);
+        try {
+          await settleMergeOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file, mainBranch);
+        } finally {
+          // A user-aborted verification discards its pin even when the settle's bookkeeping
+          // throws (an unwritable state file or queue entry): the discard must not be skipped
+          // by the throw, or the stopped change's pin survives to be re-verified and merged
+          // next poll, against the operator's abort. The merge task's finally and
+          // settleAbortedApproved discard outside the throwing settle for the same reason.
+          if (verify.userAborted) await discardPinnedRefs(root, [role]);
+        }
       }
     } finally {
       detachShutdown();

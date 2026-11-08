@@ -5,6 +5,7 @@ import path from "node:path";
 import { drainMergeQueue } from "../src/merge/merge-drain.js";
 import {
   abortableMerges,
+  mergeTasks,
   type InFlightMerge,
 } from "../src/merge/merge-pipeline.js";
 import { mergeStartHeld } from "../src/orchestrator/orchestrator-poll.js";
@@ -132,16 +133,19 @@ test("an aborted merge settles despite an unwritable state file: no throw, entry
   pipeline.merge = busySlot(); // both changes verify and then wait for the merge slot
   const bg = pump(ctx, pipeline);
   try {
-    // Both changes' checks done — the durable check-start signal (part 2/4): the slot frees
-    // into one merge task holding both changes, and the abort lands while beta is mid-merge,
-    // so alpha is the one change settled aborted.
+    // Both changes approved and waiting for the merge slot — not merely checked: the slot
+    // must free into ONE merge task holding both changes, so the abort lands on the merge
+    // (while beta is mid-merge), alpha settles aborted through the merge task's settle, and
+    // the merge task's finally discards its pin. Waiting on the check's flag files instead
+    // was racy: the verifications finish their deterministic gate after the flag lands, so an
+    // abort consumed in that window stopped alpha's own verification — whose settle threw on
+    // the broken queue entry and (before the fix) skipped the pin discard, failing this very
+    // assertion on the re-verified pin.
     await pumpUntil(
       ctx,
       pipeline,
-      () =>
-        fs.existsSync(path.join(flags, "beta-checked")) &&
-        fs.existsSync(path.join(flags, "alpha-checked")),
-      "both changes to be verified",
+      () => pipeline.approved.has("beta") && pipeline.approved.has("alpha"),
+      "both changes to be approved and waiting for the merge slot",
       30_000,
     );
 
@@ -195,6 +199,72 @@ test("an aborted merge settles despite an unwritable state file: no throw, entry
   } finally {
     // The planted directory queue file would break the settled tasks' cleanup; restore a
     // usable queue directory before they run it.
+    const dir = mergeQueueDir(root);
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+    await bg.stop();
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+});
+
+test("a user-aborted verification discards its pin even when its settle's queue drop fails", async () => {
+  const root = makeRepo();
+  await queueChanges(root, ["alpha"]);
+  const flags = tmpdir("abort-verify-unwritable-");
+  // The check starts by signaling its marker and then holding the verification in flight, so
+  // the abort lands on the verification (never reaching the merge): its settle then hits the
+  // planted directory queue file and throws. A user abort mid-check settles the verification
+  // "aborted" (review-precheck's aborted skip), and the settle must still discard the pin — or
+  // the stopped change's pin survives to be re-verified and merged next poll, against the
+  // operator's abort. The merge task's finally and settleAbortedApproved discard outside the
+  // throwing settle; this test pins the verification path to the same rule.
+  const config = {
+    ...defaultConfig(),
+    check: { command: `touch '${path.join(flags, "alpha-checking")}'; sleep 1` },
+  };
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"], undefined, config), { config });
+  const bg = pump(ctx, pipeline);
+  try {
+    await pumpUntil(
+      ctx,
+      pipeline,
+      () => fs.existsSync(path.join(flags, "alpha-checking")),
+      "the verification's check to start",
+      30_000,
+    );
+    // The settle's drop fails: the queue file becomes a non-empty directory, so dropMerge's
+    // fs.rmSync (not recursive) throws EISDIR — the shape an ENOSPC or immutable queue file
+    // takes on disk.
+    const queueFile = queuedMergeFiles(root).find((q) => q.entry.role === "alpha")!.file;
+    fs.rmSync(queueFile);
+    fs.mkdirSync(queueFile);
+    // Flag the user abort while the verification is mid-check.
+    writeJsonFile(abortRequestPath(root, "alpha"), { at: Date.now() });
+    consumeAbortRequests(root, [], abortableMerges(pipeline));
+
+    await pumpUntil(
+      ctx,
+      pipeline,
+      () => mergeTasks(pipeline).length === 0,
+      "the aborted verification to settle",
+      30_000,
+    );
+    assert.equal(
+      await refSha(root, mergeRefName("alpha")),
+      null,
+      "the aborted verification's pin was discarded despite the failed settle drop",
+    );
+    assert.ok(
+      readEvents(root).some(
+        (e) => e.type === "warning" && String(e.message).includes("merge task for alpha"),
+      ),
+      "the settle-path failure is warned about through the task's guard, not thrown",
+    );
+  } finally {
+    // The planted directory queue file would break the settled task's cleanup; restore a
+    // usable queue directory before it runs.
     const dir = mergeQueueDir(root);
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });

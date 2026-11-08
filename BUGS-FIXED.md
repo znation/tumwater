@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `an aborted merge settles despite an unwritable state file: no throw, entry dropped, pin discarded` failed, then passed on the same tree (quarantined by tumwater 2026-11-08) — fixed 2026-11-08 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it; the instability was traced and fixed as follows.
+
+Why it was unstable: the test freed the merge slot on the check's flag files, but a verification finishes its deterministic gate after the flag lands — so under load the abort could land on alpha's still-running verification instead of on the merge. That verification settled "aborted" and its settle's dropMerge threw on the planted directory queue entry; the pin discard sat AFTER the throwing settle, so it was skipped and alpha's pin survived to be re-verified and merged next poll — the very failure the assertion reports. Fixed by discarding a user-aborted verification's pin in a `finally` around the settle (matching the merge task's finally and `settleAbortedApproved`, which already discard outside the throwing settle), and by the test waiting for both changes to be approved before freeing the slot, so the abort always lands on the merge task that discards deterministically. A regression test ("a user-aborted verification discards its pin even when its settle's queue drop fails") pins the verification path and fails without the fix.
+
+~~~~
+✖ an aborted merge settles despite an unwritable state file: no throw, entry dropped, pin discarded (596.146041ms)
+AssertionError [ERR_ASSERTION]: the aborted change's pin was discarded
+- null
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-9/dist/test/merge-pipeline-2.test.js:134:16)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: '0a1bbbc0ddf0bea4ef295505580d730eaeac2a71',
+expected: null,
+operator: 'strictEqual',
+diff: 'simple'
+}
+lint: clean
+~~~~
+
+**Validation gap:** no-repro — the flake needs the abort to land mid-verification, which the test's flag-based sync only hit under load and could not be reproduced deterministically; the mechanism was confirmed from the code (the pin discard sat after the throwing settle) and pinned by a deterministic regression test that fails without the fix.
+
 ### A self-check fix-up that reverts the whole change leaves its finding only in the run's warning event, so an unfixable finding never escalates to BUGS.md as work for the bugfix role (found by the selfcheck role 2026-11-08; split 2026-11-08 by the reviewer role from the self-check-revert entry, whose loss-pricing half is fixed) — fixed 2026-11-08 by the bugfix role
 
 - **Symptom:** when `applyStageFixUp`'s follow-up turn reverts the whole change, the run ends `no_change` flagged `selfCheckReverted` and the digest prices the discard as its own loss cause, but the finding text still lives only in the warning event's `findings`/`open` fields (`logSelfCheckOutcome`, src/run/run-stage.ts). The failure digest clusters warnings by message and shows none of the findings, and nothing files them to BUGS.md, so a finding the one-turn fix-up could not close (one of the four repo-wide policy scans, say) re-burns the same authoring next run.
