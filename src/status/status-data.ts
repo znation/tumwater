@@ -619,6 +619,11 @@ function snapshotResourceFields(
   info: ReturnType<typeof readOrchestratorInfo>,
   rootDrift: ReturnType<typeof collectRootInstallDrift>,
 ): Partial<StatusSnapshot> {
+  // One read of the scheduled-stop marker per poll serves both the runStopsAt deadline and
+  // the raw scheduledStopAt field — the two fields each used to re-read the same stat-cached
+  // marker file (a second stat per poll), like the paused markers above. Only while running:
+  // a stopped team's marker must not speak for it (each field was already `running`-gated).
+  const stopAt = running ? scheduledStopAt(root) : undefined;
   return {
     // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
     // orchestrator runs — the exit removes the info file, so a stale file beside a dead pid
@@ -633,8 +638,8 @@ function snapshotResourceFields(
     // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
     checkPermits: running && info?.checkPermits ? info.checkPermits : undefined,
     // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
-    runStopsAt: running ? earliestStop(info?.stopsAt, scheduledStopAt(root)) : undefined,
-    scheduledStopAt: running ? scheduledStopAt(root) : undefined,
+    runStopsAt: running ? earliestStop(info?.stopsAt, stopAt) : undefined,
+    scheduledStopAt: running ? stopAt : undefined,
   };
 }
 
