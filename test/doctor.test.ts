@@ -428,6 +428,48 @@ test("doctor rejects unknown arguments", async () => {
   assert.match(r.stderr, /unknown argument: --verbose/);
 });
 
+test("doctor --list-checks prints every check name in report order without running a check", async () => {
+  // A fresh empty directory — no git repo, no tumwater.json. The names-only listing runs no
+  // check, so the no-ready-repo stance never comes up: exit 0, exactly the names once each,
+  // in DOCTOR_CHECK_NAMES order, one per line, with no header, no verdict and no blank line.
+  const dir = tmpdir();
+  const text = await cli(dir, "doctor", "--list-checks");
+  assert.equal(text.code, 0, `${text.stdout}\n${text.stderr}`);
+  assert.equal(text.stderr, "");
+  assert.equal(text.stdout, DOCTOR_CHECK_NAMES.map((n) => `${n}\n`).join(""));
+  assert.match(text.stdout, /^node\n/);
+  assert.match(text.stdout, /macOS port leak\n$/);
+
+  // --json renders the same names in the same order as one parseable document.
+  const json = await cli(dir, "doctor", "--list-checks", "--json");
+  assert.equal(json.code, 0, `${json.stdout}\n${json.stderr}`);
+  assert.equal(json.stderr, "");
+  assert.deepEqual(JSON.parse(json.stdout), { checks: [...DOCTOR_CHECK_NAMES] });
+});
+
+test("doctor --list-checks refuses check names, rival flags, and its own repeat", async () => {
+  const dir = tmpdir();
+  const cases: Array<[string[], RegExp]> = [
+    [["--list-checks", "orphans"], /tumwater doctor --list-checks takes no check names/],
+    [["--list-checks", "--problems"], /tumwater doctor --list-checks takes no --problems/],
+    [["--list-checks", "-f"], /tumwater doctor --list-checks takes no -f/],
+    [["--list-checks", "--follow"], /tumwater doctor --list-checks takes no --follow/],
+    [["--list-checks", "--kill-orphans"], /tumwater doctor --list-checks takes no --kill-orphans/],
+    [["--list-checks", "--commit-backlog"], /tumwater doctor --list-checks takes no --commit-backlog/],
+    [["--list-checks", "--resync-install"], /tumwater doctor --list-checks takes no --resync-install/],
+    [["--list-checks", "--drop-broken-pins"], /tumwater doctor --list-checks takes no --drop-broken-pins/],
+    [["--list-checks", "--retire-leftovers"], /tumwater doctor --list-checks takes no --retire-leftovers/],
+    [["--list-checks", "--list-checks"], /--list-checks may only be given once/],
+  ];
+  for (const [args, expected] of cases) {
+    const r = await cli(dir, "doctor", ...args);
+    assert.equal(r.code, 1, `${args.join(" ")}: expected nonzero exit:\n${r.stdout}\n${r.stderr}`);
+    assert.equal(r.stdout, "", `${args.join(" ")}: no check-name line may print`);
+    assert.match(r.stderr, expected);
+    assert.match(r.stderr, /--list-checks/);
+  }
+});
+
 const problemsReport = (checks: Array<{ name: string; level: "ok" | "warn" | "fail"; detail: string }>) => ({
   header: "tumwater doctor — not running",
   checks,

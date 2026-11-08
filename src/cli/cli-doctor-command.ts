@@ -5,6 +5,7 @@ import type { BrokenPinDrop, LeftoverRetireReport } from "../doctor/doctor-conte
 import {
   rejectUnknownArgs,
   JSON_FLAG,
+  LIST_CHECKS_FLAG,
   PROBLEMS_FLAG,
   KILL_ORPHANS_FLAG,
   COMMIT_BACKLOG_FLAG,
@@ -14,7 +15,8 @@ import {
   FOLLOW_FLAG,
   hasFollowFlag,
 } from "./cli-flag-specs.js";
-import { fail, say, sayJsonOrRender } from "./cli-output.js";
+import { DOCTOR_CHECK_NAMES } from "../doctor/doctor-check-names.js";
+import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
 import { parseDoctorChecks, peelPositionals } from "./cli-command-args.js";
 import { loadConfigSafe } from "../config/config.js";
@@ -103,17 +105,35 @@ function doctorPayload<T extends object>(payload: T, parts: DoctorOptionalParts)
   return out as T;
 }
 
+/** The doctor flags whose strict rivals `--list-checks` refuses by name — `--problems`, the
+ * follow spellings, and the five repair flags — because the listing is read-only and runnable
+ * only with `--json` beside it. */
+const LIST_CHECKS_RIVALS = ["--problems", "-f", "--follow", "--kill-orphans", "--commit-backlog", "--resync-install", "--drop-broken-pins", "--retire-leftovers"] as const;
+
 /** `tumwater doctor`: report what in the environment is keeping the team from running, and
  * run the optional repair side-effects. No ready-repo gate: doctor's job is to report WHY the
  * environment isn't ready, so it must run outside a git repo and print fail lines rather than
- * throwing. `-f/--follow` reruns the checks every couple of seconds and repaints the report
- * until Ctrl+C or the process that started it exits — the live form is read-only, so `--json`
- * and every repair flag are refused with it (the repaint can never repair anything).
- * `seams` is the follow view's test seam (interval and parent-death watch), unused by the
- * one-shot forms. */
+ * throwing. `--list-checks` is its own mode — print every check name in report order without
+ * running any check (or touching the repo), so an operator can pick a name for
+ * `tumwater doctor <check>...` without a slow, side-probing full audit. `-f/--follow` reruns
+ * the checks every couple of seconds and repaints the report until Ctrl+C or the process that
+ * started it exits — the live form is read-only, so `--json` and every repair flag are refused
+ * with it (the repaint can never repair anything). `seams` is the follow view's test seam
+ * (interval and parent-death watch), unused by the one-shot forms. */
 export async function cmdDoctor(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   const { positionals: checkNames, rest: doctorFlags } = peelPositionals(args);
-  rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG, DROP_BROKEN_PINS_FLAG, RETIRE_LEFTOVERS_FLAG, FOLLOW_FLAG]);
+  rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, LIST_CHECKS_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG, DROP_BROKEN_PINS_FLAG, RETIRE_LEFTOVERS_FLAG, FOLLOW_FLAG]);
+  // The names-only listing mode, before parseDoctorChecks so it never imports the check
+  // modules or touches the repo: text prints each name on its own line in array order with
+  // no header, verdict or blank line; --json prints the same names as one `checks` array.
+  if (args.includes("--list-checks")) {
+    if (checkNames.length > 0) fail("tumwater doctor --list-checks takes no check names");
+    const rival = LIST_CHECKS_RIVALS.find((f) => args.includes(f));
+    if (rival !== undefined) fail(`tumwater doctor --list-checks takes no ${rival}`);
+    if (args.includes("--json")) sayJson({ checks: [...DOCTOR_CHECK_NAMES] });
+    else for (const name of DOCTOR_CHECK_NAMES) say(name);
+    return;
+  }
   const follow = hasFollowFlag(args);
   const only = parseDoctorChecks(checkNames);
   const { runDoctor } = await import("../doctor/doctor.js");

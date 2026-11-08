@@ -320,7 +320,7 @@ test("doctor one-shot is unchanged: exit 0 on the hermetic tree, and the help ro
   }
   const help = await cli(repo, "doctor", "--help");
   assert.equal(help.code, 0, help.stderr);
-  assert.match(help.stdout, /tumwater doctor \[<check>\.\.\.\] \[-f\/--follow\]/);
+  assert.match(help.stdout, /tumwater doctor \[<check>\.\.\.\] \[--list-checks \[--json\]\] \[-f\/--follow\]/);
 });
 
 test("doctor -f as a CLI child repaints at the real cadence and ends with its parent", async () => {

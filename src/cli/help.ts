@@ -89,7 +89,7 @@ Usage:
                                    (merge runs and backlog tallies omitted); --until <duration>
                                    ends that window the given duration ago (requires --since);
                                    not combinable with --days
-  tumwater doctor [<check>...] [-f/--follow] [--json] [--problems] [--kill-orphans] [--commit-backlog] [--resync-install] [--drop-broken-pins] [--retire-leftovers]
+  tumwater doctor [<check>...] [--list-checks [--json]] [-f/--follow] [--json] [--problems] [--kill-orphans] [--commit-backlog] [--resync-install] [--drop-broken-pins] [--retire-leftovers]
                                    Pre-flight check: node, git, repo, config, fallback
                                    model, pi, locks, update, orphans, macOS port leak
                                    (-f/--follow reruns the named checks (or all) and repaints the report
@@ -114,7 +114,10 @@ Usage:
                                    and fail rows (and how many ok rows it hid), the same
                                    verdict and exit code; with --json the checks array holds
                                    only those rows; naming checks (as the report prints them, any case; quote names
-                                   with spaces) runs only those, and the verdict and exit code cover only them)
+                                   with spaces) runs only those, and the verdict and exit code cover only them;
+                                   --list-checks prints every check name in report order without running a check,
+                                   for choosing a \`tumwater doctor <check>...\` target (with --json, the names as
+                                   a \`checks\` array)
   tumwater config [get <key> | set <key> <value> | unset <key>]
                                    Show the effective config (defaults + tumwater.json) as
                                    JSON; get one key's resolved value as JSON; set one
