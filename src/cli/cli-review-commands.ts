@@ -64,12 +64,19 @@ export async function cmdReviews(root: string, args: string[], seams: FollowView
   // `tumwater reviews --show <n>` and `--accept <n>` are the read-only command's edge modes:
   // route them to their own branches before the read gate, so neither leaks into the view
   // parsing. --show is checked first so an invocation that names both refuses --accept by
-  // name (its unconsumed token) rather than letting the destructive branch run.
-  if (args.includes("--show")) {
+  // name (its unconsumed token) rather than letting the destructive branch run. A
+  // `--show`/`--accept` token in --grep's value slot is the pattern, not the mode: routing
+  // on it would make `reviews --grep --show` or `reviews --grep --accept` fail with that
+  // mode's missing-position error instead of filtering (the same guard cmdQuarantine uses).
+  const grepAt = args.indexOf("--grep");
+  const grepValueIndex = grepAt >= 0 ? grepAt + 1 : -1;
+  const modeNamed = (flag: string): boolean =>
+    args.some((arg, i) => arg === flag && i !== grepValueIndex);
+  if (modeNamed("--show")) {
     await cmdReviewsShow(root, args);
     return;
   }
-  if (args.includes("--accept")) {
+  if (modeNamed("--accept")) {
     await cmdReviewsAccept(root, args);
     return;
   }

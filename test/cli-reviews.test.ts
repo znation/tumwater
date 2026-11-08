@@ -220,6 +220,22 @@ test("reviews --grep with no match names the depth and is read-only", async () =
   assert.deepEqual(readPostReviews(repo), before, "a no-match grep changes nothing");
 });
 
+test("a --show or --accept token in --grep's value slot is the pattern, not the mode", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews grep flag-shaped mode test");
+  seedGrep(repo);
+  const before = fs.readFileSync(postReviewPath(repo), "utf8");
+  const show = await cli(repo, "reviews", "--grep", "--show");
+  assert.equal(show.code, 0);
+  assert.match(show.stdout, /no post-merge reviews matching --grep --show \(post-merge review queue holds 2\)/, "the pattern is text, not the detail mode");
+  const accept = await cli(repo, "reviews", "--grep", "--accept");
+  assert.equal(accept.code, 0);
+  assert.match(accept.stdout, /no post-merge reviews matching --grep --accept \(post-merge review queue holds 2\)/, "the pattern is text, not the accept mode");
+  const destructive = await cli(repo, "reviews", "--grep", "--accept", "1");
+  assert.equal(destructive.code, 1, "a trailing position is still an unknown argument");
+  assert.equal(fs.readFileSync(postReviewPath(repo), "utf8"), before, "the flag-shaped pattern never accepts an entry");
+});
+
 test("reviews --grep with no value or an empty value fails with the missing-text wording", async () => {
   const repo = makeRepo();
   await initProject(repo, "reviews grep value test");
