@@ -201,8 +201,9 @@ function budgetBlock(
  * published figure while running — BUGS.md 2026-09-30 — the persisted states' sum otherwise)
  * that the budget object, the burn-rate projection and `free`/`fallback`/`tiers` all read;
  * the per-tier pause set (part 5c/8) and the per-role daily-cap set, each the gate's own
- * verdict over the same last-known-good config and one `now`. Owns the price-aware pair logic
- * (piPairFree, fallbackModelFree, teamModelsFree, resolveTierFallbacks) so it has one home:
+ * verdict over the same last-known-good config and one `now`. Keeps the price-aware pair logic
+ * (piPairFree, fallbackModelFree, teamModelsFree, resolveTierFallbacks) in this module, so it
+ * has one home:
  * models.json is read once (readPiProviders) and each subscription backend's account once
  * (readAccount, on the snapshot's own pinned `now`, via the per-poll memo), and every free-ness
  * verdict and the window blocks judge those same readings. The director is exempt from both
