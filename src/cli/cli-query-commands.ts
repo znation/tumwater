@@ -344,8 +344,9 @@ export async function cmdQuarantine(root: string, args: string[], seams: FollowV
   // read-only detail view: route each to its own branch before the read gate, exactly as
   // cmdReviews routes `--accept`. `--show` is checked first so its own flag gate owns a
   // `--release` it finds beside it, refusing it by name. A `--show`/`--release` token in
-  // --grep's value slot is the pattern, not the mode: routing on it would let
-  // `--grep --release 1` release an entry or `--grep --show` open the detail view.
+  // --grep's value slot is the pattern, not the mode: routing on it would make
+  // `--grep --release` or `--grep --show` fail with that mode's missing-position error
+  // instead of filtering.
   const grepAt = args.indexOf("--grep");
   const grepValueIndex = grepAt >= 0 ? grepAt + 1 : -1;
   const modeNamed = (flag: string): boolean =>
