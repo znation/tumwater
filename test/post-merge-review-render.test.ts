@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderPostReviews, scopePostReviews, postReviewStatusLabel, postReviewState } from "../src/review/post-merge-review-render.js";
+import { renderPostReviewDetail, renderPostReviews, scopePostReviews, postReviewStatusLabel, postReviewState } from "../src/review/post-merge-review-render.js";
 import type { PostReview } from "../src/review/post-merge-review.js";
 
 // The renderer behind `tumwater reviews`: pure text for the post-merge review queue, pinned
@@ -176,4 +176,68 @@ test("a postReviewStatusLabel names the rejection or the failed-run count", () =
   assert.equal(postReviewStatusLabel(e({ failures: 2 })), "[2 failed review runs]");
   assert.equal(postReviewStatusLabel(e({ rejected: ["a", "b"] })), "[rejected — a; b]");
   assert.equal(postReviewStatusLabel(e({ rejected: [] })), "[rejected]");
+});
+
+// The `tumwater reviews --show <n>` detail view: one entry, whole, with the fields the list
+// squashes or never prints.
+
+test("renderPostReviewDetail prints only the header for a bare entry", () => {
+  assert.equal(renderPostReviewDetail(e({}), 1, 0), "post-merge review 1: feature cccccccc — seed");
+});
+
+test("renderPostReviewDetail adds the queued age line only when the entry carries enqueuedAt", () => {
+  assert.equal(
+    renderPostReviewDetail(e({ enqueuedAt: 3_601_000 }), 3, 3_601_000),
+    "post-merge review 3: feature cccccccc — seed\n · queued 0s ago",
+  );
+  // Without enqueuedAt (an older file's entry) the header is the whole view.
+  assert.equal(renderPostReviewDetail(e({}), 3, 0), "post-merge review 3: feature cccccccc — seed");
+});
+
+test("renderPostReviewDetail adds each optional block only when its field is present", () => {
+  // Body only when the entry carries one, verbatim.
+  assert.equal(
+    renderPostReviewDetail(e({ body: "flat body" }), 1, 0),
+    "post-merge review 1: feature cccccccc — seed\nBody:\nflat body",
+  );
+  // Rejection reasons only for a non-empty recorded list, one line per reason.
+  assert.equal(
+    renderPostReviewDetail(e({ rejected: ["no tests", "missing docs"] }), 1, 0),
+    "post-merge review 1: feature cccccccc — seed\nRejection reasons:\n- no tests\n- missing docs",
+  );
+  assert.equal(renderPostReviewDetail(e({ rejected: [] }), 1, 0), "post-merge review 1: feature cccccccc — seed");
+  // Failed runs without lastFailure name only the count.
+  assert.equal(
+    renderPostReviewDetail(e({ failures: 2 }), 1, 0),
+    "post-merge review 1: feature cccccccc — seed\nFailed review runs: 2",
+  );
+  // A repair names the fix sha.
+  assert.equal(
+    renderPostReviewDetail(e({ fixed: "f".repeat(40) }), 1, 0),
+    "post-merge review 1: feature cccccccc — seed\nFixed in: ffffffff",
+  );
+});
+
+test("renderPostReviewDetail keeps summary, reasons and last failure longer than the list's squash whole", () => {
+  const long = "x".repeat(200);
+  const out = renderPostReviewDetail(
+    e({
+      commit: "a".repeat(40),
+      role: "clean",
+      summary: long,
+      body: "first line\nsecond line",
+      rejected: ["broad ".concat("y".repeat(70))],
+      failures: 2,
+      lastFailure: long,
+      fixed: "f".repeat(40),
+      enqueuedAt: 3_601_000,
+    }),
+    2,
+    3_601_000,
+  );
+  assert.ok(out.startsWith(`post-merge review 2: clean ${'a'.repeat(40).slice(0, 8)} — ${long}`), out);
+  assert.equal(out.split("\n")[1], " · queued 0s ago");
+  assert.ok(out.includes(`- broad ${'y'.repeat(70)}`), out);
+  assert.ok(out.includes(`Last failure: ${long}`), out);
+  assert.ok(out.includes(`Fixed in: ${'f'.repeat(40).slice(0, 8)}`), out);
 });

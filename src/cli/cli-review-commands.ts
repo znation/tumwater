@@ -19,6 +19,7 @@ import { acceptPostReview, type AcceptPostReviewOutcome } from "../review/post-m
 import {
   POST_REVIEW_STATES,
   postReviewState,
+  renderPostReviewDetail,
   renderPostReviews,
   scopePostReviews,
   type PostReviewState,
@@ -55,8 +56,14 @@ function parseReviewStatusList(raw: string): PostReviewState[] {
  * started it exits, so a backgrounded follow does not outlive its parent (the same rule
  * `queue -f` uses). */
 export async function cmdReviews(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
-  // `tumwater reviews --accept <n>` is the read-only command's one destructive mode: route it
-  // to its own branch before the read gate, so --accept never leaks into the view parsing.
+  // `tumwater reviews --show <n>` and `--accept <n>` are the read-only command's edge modes:
+  // route them to their own branches before the read gate, so neither leaks into the view
+  // parsing. --show is checked first so an invocation that names both refuses --accept by
+  // name (its unconsumed token) rather than letting the destructive branch run.
+  if (args.includes("--show")) {
+    await cmdReviewsShow(root, args);
+    return;
+  }
   if (args.includes("--accept")) {
     await cmdReviewsAccept(root, args);
     return;
@@ -140,5 +147,37 @@ async function cmdReviewsAccept(root: string, args: string[]): Promise<void> {
     sayJson({ accepted: { role: outcome.role, commit: outcome.commit, summary: outcome.summary } });
   } else {
     say(`accepted post-merge review entry ${position} unreviewed: ${roleLabel(outcome.role)} ${shortSha(outcome.commit)} — ${outcome.summary}`);
+  }
+}
+
+/** The `tumwater reviews --show <n>` branch (PLANS.md): print the Nth pending post-merge
+ * review `tumwater reviews` lists, in full — the summary the list squashes to 80 characters
+ * and the rejection reasons it squashes to 60, the commit body the list never prints, and the
+ * failed-run count with the last failure's whole text — so an operator can read why a landed
+ * commit was turned back without opening `post-review.json`. Read-only and needing no ready
+ * repo (the list's rationale): `readPostReviews` reads a missing, torn or hand-edited file as
+ * the well-formed subset. Parsed the way `cmdReviewsAccept` parses `--accept`: `--show <n>`
+ * the one valued flag, `--json` the one boolean (at most once), `--help`/`-h` tolerated,
+ * anything else refused through `rejectUnknownArgs` so `--accept`, `-f/--follow`, `--role`
+ * and `--status` are named by the refusal. An out-of-range position fails naming the current
+ * depth; the entry object `--json` prints is the same normalized shape `reviews --json`
+ * carries, so no field is squashed. */
+async function cmdReviewsShow(root: string, args: string[]): Promise<void> {
+  const { json, position, rest } = scanPositionArgs(args, "--show", "--show 2");
+  if (position === null) fail("--show needs a position (usage: tumwater reviews --show <n>)");
+  // The vocabulary a show invocation accepts is exactly --show and --json, both consumed
+  // above; every other token (--accept, -f/--follow, --role, --status, an unknown flag) is
+  // refused by name, the same way cmdReviewsAccept's rejectUnknownArgs refuses its rest.
+  rejectUnknownArgs("reviews", rest, []);
+  refuseTeamWorkspace(root);
+  const entries = readPostReviews(root);
+  if (position > entries.length) {
+    fail(`no post-merge review at position ${position} (post-merge review queue holds ${entries.length})`);
+  }
+  const entry = entries[position - 1]!;
+  if (json) {
+    sayJson(entry);
+  } else {
+    say(renderPostReviewDetail(entry, position, Date.now()));
   }
 }

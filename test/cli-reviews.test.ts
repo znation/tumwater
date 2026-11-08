@@ -296,3 +296,146 @@ test("reviews --accept retires a rejected entry like any pending one", async () 
     "the rejected entry is retired like any pending one",
   );
 });
+
+// `tumwater reviews --show <n>`: the read-only one-entry detail view — the Nth entry as the
+// list numbers it, with the fields the list squashes to 60/80 characters or never prints.
+function seedShow(repo: string): void {
+  writeFileDeep(
+    postReviewPath(repo),
+    JSON.stringify({
+      pending: [
+        {
+          commit: "a".repeat(40),
+          role: "improve",
+          summary: "tidy the parser",
+          body: "first line\nsecond line",
+          rejected: ["no tests", "missing docs"],
+        },
+        {
+          commit: "b".repeat(40),
+          role: "clean",
+          summary: "rework the whole module boundary ".concat("y".repeat(80)),
+          rejected: ["a very long rejection reason ".concat("x".repeat(70))],
+        },
+        {
+          commit: "c".repeat(40),
+          role: "coverage",
+          summary: "flaky review runs",
+          failures: 2,
+          lastFailure: "the review runner timed out before a verdict ".concat("z".repeat(90)),
+          fixed: "f".repeat(40),
+        },
+      ],
+    }),
+  );
+}
+
+test("reviews --show <n> prints the Nth entry in full and the list still squashes", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews show test");
+  seedShow(repo);
+
+  const shown = await cli(repo, "reviews", "--show", "2");
+  assert.equal(shown.code, 0);
+  // Header names position 2, the role, the short commit and the whole summary.
+  assert.ok(shown.stdout.startsWith(`post-merge review 2: clean ${'b'.repeat(8)} — rework the whole module boundary `), shown.stdout);
+  // The over-60-character rejection reason prints whole under its block.
+  assert.ok(shown.stdout.includes(`- a very long rejection reason ${'x'.repeat(70)}`), shown.stdout);
+  // The body entry prints its whole multi-line body.
+  const bodyView = await cli(repo, "reviews", "--show", "1");
+  assert.ok(bodyView.stdout.includes("Body:\nfirst line\nsecond line"), bodyView.stdout);
+  // The failing entry prints the count and the over-80-character last failure whole, and its
+  // repair sha.
+  const failingView = await cli(repo, "reviews", "--show", "3");
+  assert.ok(failingView.stdout.includes(`Failed review runs: 2\nLast failure: the review runner timed out before a verdict `), failingView.stdout);
+  assert.ok(failingView.stdout.includes(`Fixed in: ${'f'.repeat(8)}`), failingView.stdout);
+
+  // The same entries' one-line list still squashes the summary and the reason.
+  const list = await cli(repo, "reviews");
+  assert.equal(list.code, 0);
+  assert.match(list.stdout, new RegExp(`2\. clean ${'b'.repeat(8)} · rework the whole module`));
+  assert.ok(!list.stdout.includes("x".repeat(70)), "the list keeps the 60-char reason squash");
+  assert.ok(!list.stdout.includes("z".repeat(90)), "the list keeps the 80-char last-failure squash");
+});
+
+test("reviews --show <n> --json prints the same normalized entry the list's pending array carries", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews show json test");
+  seedShow(repo);
+  const show = await cli(repo, "reviews", "--show", "2", "--json");
+  assert.equal(show.code, 0);
+  const list = await cli(repo, "reviews", "--json");
+  assert.equal(list.code, 0);
+  const doc = JSON.parse(list.stdout) as { pending: unknown[] };
+  assert.deepEqual(JSON.parse(show.stdout), doc.pending[1]);
+  // The full reason and summary are present unsquashed, and there is no header text.
+  const parsed = JSON.parse(show.stdout) as { summary: string; rejected: string[] };
+  assert.ok(parsed.summary.startsWith("rework the whole module boundary "), show.stdout);
+  assert.ok(parsed.rejected[0]!.startsWith("a very long rejection reason "), show.stdout);
+  assert.ok(!show.stdout.includes("post-merge review 2"), "--json prints no header text");
+});
+
+test("reviews --show failures leave the queue file's bytes unchanged", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews show fail test");
+  seedShow(repo);
+  const file = postReviewPath(repo);
+  const before = fs.readFileSync(file);
+
+  // Shown entries, an out-of-range position and a refused flag all leave the file untouched.
+  const shown = await cli(repo, "reviews", "--show", "1");
+  assert.equal(shown.code, 0);
+  assert.deepEqual(fs.readFileSync(file), before, "a shown entry changes no bytes");
+
+  const outOfRange = await cli(repo, "reviews", "--show", "9");
+  assert.notEqual(outOfRange.code, 0);
+  assert.match(outOfRange.stderr, /no post-merge review at position 9 \(post-merge review queue holds 3\)/);
+  assert.deepEqual(fs.readFileSync(file), before, "an out-of-range position changes no bytes");
+
+  const bogus = await cli(repo, "reviews", "--show", "1", "--bogus");
+  assert.notEqual(bogus.code, 0);
+  assert.match(bogus.stderr, /--bogus/);
+  assert.deepEqual(fs.readFileSync(file), before, "a refused flag changes no bytes");
+});
+
+test("reviews --show refuses --accept, -f, --role and --status by name", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews show refusal test");
+  seedShow(repo);
+  const before = fs.readFileSync(postReviewPath(repo));
+
+  for (const extra of [["--accept", "1"], ["-f"], ["--role", "clean"], ["--status", "rejected"]]) {
+    const r = await cli(repo, "reviews", "--show", "2", ...extra);
+    assert.equal(r.code, 1, `${extra.join(" ")} beside --show is refused`);
+    assert.ok(r.stderr.includes(extra[0]!), `the refusal names ${extra[0]}`);
+  }
+  assert.deepEqual(fs.readFileSync(postReviewPath(repo)), before, "a refused --show invocation changes no bytes");
+});
+
+test("reviews --show fails on a missing, zero or non-integer position", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews show position test");
+  seedShow(repo);
+  const before = fs.readFileSync(postReviewPath(repo));
+
+  const missing = await cli(repo, "reviews", "--show");
+  assert.notEqual(missing.code, 0);
+  assert.match(missing.stderr, /--show needs a position number \(e\.g\. `--show 2`\)/);
+  assert.deepEqual(fs.readFileSync(postReviewPath(repo)), before, "a missing position changes no bytes");
+
+  const zero = await cli(repo, "reviews", "--show", "0");
+  assert.notEqual(zero.code, 0);
+  assert.match(zero.stderr, /--show needs a positive integer/);
+
+  const nonInt = await cli(repo, "reviews", "--show", "abc");
+  assert.notEqual(nonInt.code, 0);
+  assert.match(nonInt.stderr, /--show needs a positive integer/);
+});
+
+test("reviews --show on an empty queue reports position 1 with a depth of 0", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews show empty test");
+  const r = await cli(repo, "reviews", "--show", "1");
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /no post-merge review at position 1 \(post-merge review queue holds 0\)/);
+});

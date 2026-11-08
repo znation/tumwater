@@ -291,6 +291,16 @@ Usage:
                                    it refuses an entry whose repair already merged (\`fixed\`);
                                    no ready-repo gate for the read, a missing or torn file degrades
                                    to the empty or well-formed list
+  tumwater reviews --show <n> [--json]
+                                   Print the Nth entry as \`tumwater reviews\` numbers it, in
+                                   full — the whole summary, the whole commit body, every
+                                   rejection reason, and the failed-run count with the last
+                                   failure's whole text (the fields the list squashes to
+                                   80/60 characters or never prints) — so you can read
+                                   why a merged commit was turned back without opening
+                                   post-review.json; read-only and needing no ready repo, like
+                                   the list; --json prints the entry object unsquashed for
+                                   scripts (no header text)
   tumwater backlog [--ready] [--grep <text>] [-f/--follow] [--json]
                                    Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable

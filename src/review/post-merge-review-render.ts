@@ -130,3 +130,32 @@ export function renderPostReviews(
   });
   return lines.join("\n");
 }
+
+/** The one-entry detail twin of the list, behind `tumwater reviews --show <n>`: the Nth
+ * post-merge review as `tumwater reviews` numbers it, printed in full — the summary the list
+ * squashes to 80 and the rejection reasons it squashes to 60, the commit body the list never
+ * prints, and the failed-run count with the last failure's whole text — so an operator can
+ * read why a landed commit was turned back without opening post-review.json. Pure function of
+ * the entry (the optional `now` the only clock input): the header names the position, the
+ * role, the short commit and the summary whole, prefixed ` · queued <age>` on its own line
+ * when the entry carries `enqueuedAt` (the list's age wording, `humanAgo`'s `<n> ago`);
+ * then, in a fixed order
+ * and only when the field is present, a `Body:` block with the body verbatim, a
+ * `Rejection reasons:` block with one `- <reason>` line per recorded reason (each whole), a
+ * `Failed review runs: <n>` line whose `Last failure:` follow-up carries the full text when
+ * it is a non-empty string, and `Fixed in: <short sha>` when the repair merged. It never
+ * calls `postReviewStatusLabel`, whose 60/80 truncation is the reason this view exists. */
+export function renderPostReviewDetail(entry: PostReview, position: number, now: number): string {
+  const lines: string[] = [`post-merge review ${position}: ${roleLabel(entry.role)} ${shortSha(entry.commit)} — ${entry.summary}`];
+  if (typeof entry.enqueuedAt === "number") lines.push(` · queued ${humanAgo(entry.enqueuedAt, now)}`);
+  if (entry.body !== undefined) lines.push("Body:", entry.body);
+  if (entry.rejected !== undefined && entry.rejected.length > 0) {
+    lines.push("Rejection reasons:", ...entry.rejected.map((reason) => `- ${reason}`));
+  }
+  if (typeof entry.failures === "number" && entry.failures > 0) {
+    lines.push(`Failed review runs: ${entry.failures}`);
+    if (typeof entry.lastFailure === "string" && entry.lastFailure.length > 0) lines.push(`Last failure: ${entry.lastFailure}`);
+  }
+  if (entry.fixed !== undefined) lines.push(`Fixed in: ${shortSha(entry.fixed)}`);
+  return lines.join("\n");
+}
