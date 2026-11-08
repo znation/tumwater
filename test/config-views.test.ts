@@ -503,6 +503,13 @@ test("resolveTierFallbacks honors usable() and explicit pause", () => {
   paused.fallback = { default: "pause", small: "omlx/m", strong: "omlx/s" };
   const rp = resolveTierFallbacks(paused, () => true);
   assert.deepEqual(rp.default, { pair: { provider: "omlx", model: "s" }, from: "strong" });
+  // An explicit pause also opts out of the primary last resort (BUGS.md 2026-11-06): a free
+  // primary with no usable fallback still stops.
+  const pausedFree: TumwaterConfig = defaultConfig();
+  pausedFree.provider = "free";
+  pausedFree.model = "qwen-free";
+  pausedFree.fallback = { default: "pause" };
+  assert.deepEqual(resolveTierFallbacks(pausedFree, () => true).default, { pair: null, from: null });
   // Nothing usable anywhere: every tier pauses.
   const dead = resolveTierFallbacks(config, () => false);
   for (const tier of ["small", "default", "strong"] as const)

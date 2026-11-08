@@ -167,6 +167,20 @@ test("a free primary with no fallback still serves the tier at the cap: gate not
   assert.notEqual(p.servingResolved.strong.pair, null, "the strong tier is served by its free primary");
 });
 
+test("a free primary does not override an explicit fallback pause at the cap (BUGS.md 2026-11-06)", () => {
+  const root = tmpdir("budget-gates-free-primary-pause-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const cfg = defaultConfig();
+  cfg.provider = "free";
+  cfg.model = "qwen-free";
+  cfg.maxDailyCostUsd = 10;
+  cfg.fallback = { default: "pause", small: "pause", strong: "pause" };
+  const state = newBudgetGateState(cfg);
+  const p = poll(root, state, cfg, models, [spentRunnerState("feature", 10)]);
+  assert.equal(p.gate, "paused", "the operator's explicit pause still stops the team");
+  assert.equal(p.servingResolved.default.pair, null, "the free primary is not a last-resort fallback");
+});
+
 test("raising the cap resumes the gate: one budget_resumed event and the live config again", () => {
   const root = tmpdir("budget-gates-");
   const models = writeModelsFile(root, MODELS_JSON);

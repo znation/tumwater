@@ -196,6 +196,13 @@ export function tierChainSteps(
 
 const stepField = (step: number): { step?: number } => (step > 0 ? { step } : {});
 
+/** Whether a tier explicitly declares `fallback: "pause"`: an intentional stop at the cap
+ * (plans/model-tiers.md step 3), so the primary last resort below must not override it. */
+function tierDeclaresPause(config: TumwaterConfig, tier: ModelTier): boolean {
+  const fb = config.fallback;
+  return fb !== undefined && typeof fb === "object" && !Array.isArray(fb) && fb[tier] === "pause";
+}
+
 /** A tier's own PRIMARY as a fallback-shaped pair — the free seam the tier runs on every day,
  * so it counts as served at the cap when the tier declares no fallback (BUGS.md 2026-11-06).
  * Built from withModelOverrides so the pair's name (`provider`/`model`) matches the seam name
@@ -248,8 +255,10 @@ export function resolveTierFallbacks(
     // Only reached when nothing else resolves, so a declared/borrowed fallback still wins. The
     // same `usable` judges the primary that judges a chain step — at the cap a priced primary
     // is not usable — so `paused` now means no free seam exists for the tier, not merely that
-    // no fallback was declared. A tier with no configured model has nothing to serve.
-    const primary = tierOwnPrimary(config, tier);
+    // no fallback was declared. An explicit `fallback: "pause"` is the operator asking to
+    // stop at the cap, not an absent fallback, so it keeps pausing. A tier with no configured
+    // model has nothing to serve.
+    const primary = tierDeclaresPause(config, tier) ? null : tierOwnPrimary(config, tier);
     if (primary !== null && usable(primary)) return { pair: primary, from: null };
     return { pair: null, from: null };
   };

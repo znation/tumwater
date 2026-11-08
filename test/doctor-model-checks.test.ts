@@ -60,6 +60,24 @@ test("checkFallbackModel reports the cap behavior and verifies a free fallback p
     detail: "none configured — roles pause at the cap",
   });
 
+  // A configured model with no fallback is still "none configured": fallbackPair now resolves
+  // the tier's own primary (BUGS.md 2026-11-06), but that is not a fallback, and a priced
+  // primary still pauses at the cap instead of switching.
+  const pricedPrimary = readyRepo();
+  writeConfig(pricedPrimary, { model: "paid/gpt-x" });
+  assert.deepEqual(checkFallbackModel(pricedPrimary, models), {
+    level: "ok",
+    detail: "none configured — roles pause at the cap",
+  });
+
+  // A free primary with no fallback is served at the cap by its own seam, so it reads as the
+  // free pair rather than a mispriced fallback warning.
+  const freePrimary = readyRepo();
+  writeConfig(freePrimary, { model: "local/free-model" });
+  const freePrimaryOutcome = checkFallbackModel(freePrimary, models);
+  assert.equal(freePrimaryOutcome.level, "ok");
+  assert.match(freePrimaryOutcome.detail, /^local\/free-model — priced at zero/);
+
   // A free local pair is the case the fallback exists for — but a price is not readiness: a
   // backend that rejects every prompt is priced at zero too (BUGS.md 2026-09-20), so the line
   // must not claim more than it checked.

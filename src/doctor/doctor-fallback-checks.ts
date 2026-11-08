@@ -50,6 +50,11 @@ export function checkFallbackModel(
 ): CheckOutcome {
   const config = loadConfigForCheck(root);
   if ("level" in config) return config;
+  // fallbackPair now falls back to the tier's own primary when nothing is declared (BUGS.md
+  // 2026-11-06), so a configured model always yields a pair. Only a real declared chain makes
+  // this the fallback check; with none, a free primary is the seam the gate keeps serving and
+  // a priced one still pauses as before — not a mispriced fallback to warn about.
+  const hasDeclaredFallback = tierChainSteps(config).length > 0;
   const declared = fallbackPair(config);
   if (!declared) return okOutcome("none configured — roles pause at the cap");
   // The claude account answer (6a/7); the fallback price lookup reads it only for "claude"
@@ -57,6 +62,7 @@ export function checkFallbackModel(
   const account = readClaudeAccount(root);
   const accounts = (b: string) => (b === "claude" ? account : null);
   const free = fallbackModelPair(config, modelsPath, accounts);
+  if (!hasDeclaredFallback && !free) return okOutcome("none configured — roles pause at the cap");
   if (free) return freeFallbackOutcome(fallbackPairName(free), demoted, checks?.find((c) => c.pair === modelPairName(free)));
   return warnOutcome(`${fallbackPairName(declared)} is not priced at zero in ${modelsPath} — at the cap roles pause instead of switching`);
 }
