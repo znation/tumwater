@@ -168,7 +168,7 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
       (l.modelFromPi ? " <span class='tag' title='pi&#39;s own default model, from its settings.json: tumwater.json names no model'>(pi default)</span>" : "") + "</div>";
     const status = pill(info) + (detail ? "<div class='sub" + (stalled ? " t-red" : "") + "' title='" + esc(l.phase) + "'>" + esc(detail) + "</div>" : "");
     let activity;
-    if (info.live || info.key === "vetted") { // vocabulary-ok: internal phase key
+    if (info.live) {
       // Parallel work instances, part 6/7: while idle or merge, show the entry the instance
       // claimed before the merge summary placeholder.
       const text = l.currentWork || l.claim || mergeSummary(d, l.role);

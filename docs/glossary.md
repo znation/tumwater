@@ -15,7 +15,7 @@ current one, so history, old logs and old scripts stay readable.
 | merge | The pipeline that takes a run's commit onto main: rebase, check, review, fast-forward. | landing, land |
 | merge queue | Commits waiting to merge, in order (`tumwater queue`). | land queue |
 | merged | On main. | landed, changed, "Changes" |
-| approved | Passed the check and review, waiting for its turn to merge. | vetted |
+| approved | Passed the check and review; the merge then rebases it onto main and fast-forwards it. | vetted |
 | director | The role that runs your messages first and keeps working through a team pause. | (unchanged) |
 | you | The person running tumwater. Prose only; the commit prefix stays `tumwater(operator):`. | operator |
 | custom role | A role you define in `customRoles`. | user-defined loop, custom loop |
@@ -222,7 +222,7 @@ None of these keep the older name, except the dashboard hashes.
 | `state/<id>.json` fields `ticks`, `lastTickStartedAt`, `lastTickEndedAt`, `landingReviewError`, `lastLandedAt` | `runs`, `lastRunStartedAt`, `lastRunEndedAt`, — , `lastMergedAt` | yes, read and migrated |
 | `state/<id>.json` fields `landingCheckFailures`, `mergeCheckFailures`, `mergeFlakeExcused` | — (the red-merge-check bookkeeping is gone) | no, dropped on load (parts 4l/3 and 4m/3) |
 | `.tumwater/land-queue/` and its entries' `tick` | `.tumwater/merge-queue/` and `run` | yes, read and migrated |
-| `state/landing.json`, status `"landing"` / `"vetted"` / `"done"` | `state/merging.json`, status `"merging"` / `"approved"` / `"done"` | no, a leftover file is deleted at startup (display-only) |
+| `state/landing.json`, status `"landing"` / `"vetted"` / `"done"` | `state/merging.json`, status `"merging"` / `"done"` | no, a leftover file is deleted at startup (display-only) |
 | `slots.json` `purpose: "tick"` / `"vet"` | `"run"` / `"verify"` | yes, read and migrated |
 | refs `refs/tumwater/landing/<id>` | `refs/tumwater/merge/<id>` | yes, read and migrated |
 | commit trailer `Tick: <id> #N · turns … · ctx …` | `Run: <id> #N · turns … · ctx …` | yes, parsers accept both |

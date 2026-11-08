@@ -156,7 +156,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     // Enable re-enables). The director cannot be disabled, so it shows no Disable button.
     if (l.role !== "director") actions += disableConfirming(l.role) ? btn("disable", "x", "Click again to disable", "btn-danger confirming") : btn("disable", "x", "Disable", "btn-danger");
 
-    const working = info.live || info.key === "vetted"; // vocabulary-ok: the persisted phase key
+    const working = info.live;
     const now = working
       ? "<section><div class='sec-head'><h3>" + (info.key === "working" ? "Working on" : info.key === "reviewing" ? "Under review" : "Merging") +
         "</h3></div><div class='note'>" + esc(l.currentWork || mergeSummary(d, l.role) || (info.key === "working" ? "Starting up…" : "Waiting for its first words…")) + "</div></section>"
