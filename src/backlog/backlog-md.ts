@@ -181,6 +181,27 @@ export function nextSectionHeading(
   return lines.length;
 }
 
+/** The 0-based span of the first `## <title>` section in `lines`: its heading line, and the
+ * index of the next `## ` heading (or `lines.length`). Fence-aware through the shared
+ * fencedHeadingTitle guard, so a quoted `## ` line is body text. null when the section is
+ * absent. The single home of the section-boundary walk the writers share: backlog-write.ts
+ * cuts the section a filed entry is appended to and the `## Done` section a retired plan moves
+ * into, and backlog-archive.ts cuts the live and archive sections it moves entries between. */
+export function sectionSpan(
+  lines: readonly string[],
+  title: string,
+): { heading: number; end: number } | null {
+  const fenced = fenceTracker();
+  let heading = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const found = fencedHeadingTitle(lines[i] ?? "", fenced, "## ");
+    if (found === null) continue;
+    if (heading >= 0) return { heading, end: i };
+    if (found === title) heading = i;
+  }
+  return heading >= 0 ? { heading, end: lines.length } : null;
+}
+
 /** The body lines of one `## <sectionTitle>` section with fenced content stripped: the
  * sectionLines walk, then a fresh fenceTracker's filter — the shape every reader that
  * classifies a section's lines as markdown structure (entry headings, bullets, dates) walks.

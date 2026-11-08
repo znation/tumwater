@@ -10,7 +10,7 @@
  * printed confirmations live in the CLI's bug/plan shells (src/cli/backlog-cli.ts); the wake of
  * the role that should act stays in cli.ts beside the other command bodies. */
 import path from "node:path";
-import { fencedHeadingTitle, fenceTracker, headingMetadata, nextSectionHeading } from "./backlog-md.js";
+import { fenceTracker, headingMetadata, sectionSpan } from "./backlog-md.js";
 import { actionableEntryRanges, type ActionableEntryRange } from "./backlog-index-data.js";
 import { stripEntryStamp } from "./backlog-structure.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
@@ -76,24 +76,18 @@ function appendEntryLocked(
   const lines = md.split("\n");
   // Find the section's heading line (fence-aware; a `## <sectionTitle>` quoted in a fence
   // is never it), then the section's end at the next real `## ` line.
-  const fenced = fenceTracker();
-  let sectionIdx = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (fencedHeadingTitle(lines[i] ?? "", fenced, "## ") === sectionTitle) {
-      sectionIdx = i;
-      break;
-    }
-  }
-  if (sectionIdx === -1) {
+  const span = sectionSpan(lines, sectionTitle);
+  if (span === null) {
     // The file exists but lacks the section: grow it at the end with the section plus the
     // entry, so the write never silently drops the entry.
     const grown = `${md.replace(/\n+$/, "")}\n\n## ${sectionTitle}\n\n${heading}${body === "" ? "" : `\n\n${body}`}\n`;
     writeTextAtomic(file, grown.endsWith("\n") ? grown : `${grown}\n`);
     return;
   }
+  const sectionIdx = span.heading;
   // The section's end is the next real `## ` boundary after its heading — the same
-  // fence-aware boundary walk the readers use, through backlog-md.ts's nextSectionHeading.
-  const sectionEnd = nextSectionHeading(lines, sectionIdx + 1, fenceTracker());
+  // fence-aware boundary walk the readers use, through backlog-md.ts's sectionSpan.
+  const sectionEnd = span.end;
   // The section's content between its heading and its end: real entries, with any
   // `_None yet._` skeleton placeholder dropped (fence-aware — a quoted placeholder line is
   // quoted content, not the marker) and the edge blanks trimmed.
@@ -607,16 +601,10 @@ function retirePlanLocked(root: string, n: number, reason?: string | null): { fi
   // Remove the entry from ## Planned in place (the same range spliceOutEntry removes).
   lines.splice(entry.start - 1, entry.end - entry.start + 1);
   // Locate ## Done fence-aware and drop its placeholder, then prepend the retired copy.
-  const fenced = fenceTracker();
-  let doneIdx = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (fencedHeadingTitle(lines[i] ?? "", fenced, "## ") === "Done") {
-      doneIdx = i;
-      break;
-    }
-  }
-  if (doneIdx === -1) fail(`no ## Done section in PLANS.md`);
-  const doneEnd = nextSectionHeading(lines, doneIdx + 1, fenceTracker());
+  const doneSpan = sectionSpan(lines, "Done");
+  if (doneSpan === null) fail(`no ## Done section in PLANS.md`);
+  const doneIdx = doneSpan.heading;
+  const doneEnd = doneSpan.end;
   const fencedContent = fenceTracker();
   const content = lines
     .slice(doneIdx + 1, doneEnd)

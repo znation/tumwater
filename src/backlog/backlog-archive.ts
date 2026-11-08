@@ -31,7 +31,7 @@ import { commitAuthorArgs, committerIdentArgs, git, gitTry } from "../git/git-ru
 import { mergeLockDir } from "../paths.js";
 import { plural } from "../text/phrases.js";
 import { collapseWhitespace, errorFirstLine, errorMessage } from "../text/text.js";
-import { FINISHED_ARCHIVES, fenceTracker, fencedHeadingTitle, type FinishedArchive } from "./backlog-md.js";
+import { FINISHED_ARCHIVES, sectionSpan, type FinishedArchive } from "./backlog-md.js";
 import { actionableEntryRanges, type ActionableEntryRange } from "./backlog-index-data.js";
 import { strandedPlanEntries } from "./backlog-structure.js";
 
@@ -56,21 +56,6 @@ export function archiveTemplate(spec: FinishedArchive): string {
 /** An entry's identity across the change's base and head: its heading, whitespace-collapsed. */
 function archiveKey(title: string): string {
   return collapseWhitespace(title);
-}
-
-/** The 0-based span of the first `## <title>` section in `lines`: its heading line, and the
- * index of the next `## ` heading (or `lines.length`). Fence-aware through backlog-md.ts's
- * shared guard, so a quoted `## ` line is body text. null when the section is absent. */
-function sectionSpan(lines: readonly string[], title: string): { heading: number; end: number } | null {
-  const fenced = fenceTracker();
-  let heading = -1;
-  for (let i = 0; i < lines.length; i++) {
-    const found = fencedHeadingTitle(lines[i] ?? "", fenced, "## ");
-    if (found === null) continue;
-    if (heading >= 0) return { heading, end: i };
-    if (found === title) heading = i;
-  }
-  return heading >= 0 ? { heading, end: lines.length } : null;
 }
 
 /** `lines` without its leading and trailing blank lines. */
