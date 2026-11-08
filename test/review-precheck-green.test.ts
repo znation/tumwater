@@ -130,3 +130,42 @@ test("a gate failure beyond the base's red failures is still rejected on a green
     assert.ok(!warningMessages(root).some((m) => m.includes("already failed")));
   });
 });
+
+// BUGS.md part 2/2: a policy scan's offender is now its own failing test name (the parent ▸
+// `violation <offender>` subtest de1abd5b7 named), so a change's new offender surfaces as a
+// failing test the base's red verdict never lists. `staleBaseFailures` excuses only tests the
+// base already failed; the change's own offender (src/b.ts:20) is not among them, so the change
+// is rejected for it instead of slipping past on the aggregate comment-width name.
+const POLICY_BASE_FIXED_TOOL =
+  "#!/bin/sh\nout=0\n[ -f a-break.txt ] && { echo '✖ every comment line in src/ and test/ fits in 100 columns ▸ violation src/a.ts:10 (cols) (1ms)'; out=1; }\n[ -f b-break.txt ] && { echo '✖ every comment line in src/ and test/ fits in 100 columns ▸ violation src/b.ts:20 (cols) (1ms)'; out=1; }\nexit $out\n";
+
+test("a change's own policy offender beyond its red base's is rejected on a green main", async () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "node_modules", ".bin"), { recursive: true });
+  writeScript(path.join(root, "node_modules", ".bin", "buildcheck-tool"), POLICY_BASE_FIXED_TOOL);
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ build: "buildcheck-tool" }));
+  fs.writeFileSync(path.join(root, "a-break.txt"), "wide\n");
+  sh(root, "git", "add", "a-break.txt", "package.json");
+  sh(root, "git", "commit", "-m", "main carries one over-wide comment");
+  uniqueMain(root);
+  const watch = createMainWatch(root, "main");
+  watch.poll(mainSha(root), false, defaultConfig());
+  await watch.idle();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.writeFileSync(path.join(wt, "package.json"), projManifest({ build: "buildcheck-tool" }));
+  fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
+  fs.writeFileSync(path.join(wt, "b-break.txt"), "wide\n"); // the change's OWN new offender
+  commitIn(wt, "wip change");
+  sh(root, "git", "rm", "a-break.txt");
+  sh(root, "git", "commit", "-m", "main fixes its wide comment");
+  watch.poll(mainSha(root), false, defaultConfig());
+  await watch.idle();
+  assert.deepEqual(knownMainFailures(root), [], "the newest verdict is green");
+  await withPi('true', async () => {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "rejected");
+    const reasons = String(eventsOfType(root, "review_rejected")[0]?.reasons);
+    assert.match(reasons, /src\/b\.ts:20 \(cols\)/);
+    assert.ok(!warningMessages(root).some((m) => m.includes("already failed")), "the stale-base excuse must not fire");
+  });
+});
