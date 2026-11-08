@@ -2,7 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { collectSalvagePatches, grepSalvagePatches, readSalvagePatch } from "../src/status/status-salvage.js";
+import {
+  collectSalvagePatches,
+  dropSalvagePatch,
+  grepSalvagePatches,
+  readSalvagePatch,
+} from "../src/status/status-salvage.js";
 import { salvageDir, salvagePendingDir } from "../src/paths.js";
 import { makeRepo, runningAsRoot } from "./fixtures/repo-fixtures.js";
 
@@ -103,4 +108,19 @@ test("grepSalvagePatches lets an unreadable patch match by name only", { skip: r
   assert.deepEqual(grepSalvagePatches(root, patches, "keep-me").map((r) => r.position), [1]);
   assert.deepEqual(grepSalvagePatches(root, patches, "secret"), [], "its unreadable text cannot match");
   assert.deepEqual(grepSalvagePatches(root, patches, "second").map((r) => r.position), [2]);
+});
+
+test("dropSalvagePatch removes a direct patch, returns false for a missing file and leaves a pending patch", () => {
+  const root = makeRepo();
+  fs.mkdirSync(salvageDir(root), { recursive: true });
+  fs.mkdirSync(salvagePendingDir(root, "feature"), { recursive: true });
+  const direct = path.join(salvageDir(root), "a.patch");
+  const pending = path.join(salvagePendingDir(root, "feature"), "a.patch");
+  fs.writeFileSync(direct, "body");
+  fs.writeFileSync(pending, "pending work");
+  assert.equal(dropSalvagePatch(root, "a.patch"), true, "the direct patch reports dropped");
+  assert.equal(fs.existsSync(direct), false, "the direct patch is removed");
+  assert.equal(fs.existsSync(pending), true, "the pending patch is untouched");
+  assert.equal(dropSalvagePatch(root, "missing.patch"), false, "a missing file returns false");
+  assert.equal(fs.existsSync(path.join(salvageDir(root), "a.patch")), false, "a second drop of a gone file stays false");
 });

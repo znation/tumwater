@@ -211,3 +211,94 @@ test("salvage --grep with no value fails with the shared missing-value wording",
     "a valueless --grep fails with the shared missing-value wording",
   );
 });
+
+test("salvage --drop <n> deletes the Nth patch and leaves the rest and pending alone", async () => {
+  const repo = makeRepo();
+  const { older, newer } = seedSalvage(repo);
+  const before = bytesOf(older);
+  const r = await cli(repo, "salvage", "--drop", "2");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trimEnd(), "dropped salvaged workspace patch 2: b.patch");
+  assert.equal(fs.existsSync(newer), false, "b.patch is deleted");
+  assert.deepEqual(bytesOf(older), before, "a.patch is untouched");
+  assert.equal(fs.existsSync(salvagePendingDir(repo, "feature")), true, "pending/<role>/ survives");
+  assert.equal(fs.existsSync(path.join(salvageDir(repo), "notes.txt")), true, "a non-patch file survives");
+  const list = await cli(repo, "salvage");
+  assert.equal(list.code, 0);
+  assert.equal(list.stdout.trimEnd(), "salvaged workspace patches: 1\n1. a.patch — saved 3h ago, 38 B");
+});
+
+test("salvage --drop <n> --json deletes the same patch and prints one object", async () => {
+  const repo = makeRepo();
+  const { newer } = seedSalvage(repo);
+  const r = await cli(repo, "salvage", "--drop", "2", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { dropped: { position: 2, file: "b.patch" } });
+  assert.equal(fs.existsSync(newer), false, "b.patch is deleted");
+  assert.equal(fs.existsSync(path.join(salvageDir(repo), "a.patch")), true, "a.patch survives");
+});
+
+test("salvage --drop past the list fails naming the position and depth and deletes nothing", async () => {
+  const repo = makeRepo();
+  const { older, newer } = seedSalvage(repo);
+  const before = bytesOf(older, newer);
+  const r = await cli(repo, "salvage", "--drop", "3");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("no salvaged workspace patch at position 3 (salvage holds 2 patches)"));
+  assert.deepEqual(bytesOf(older, newer), before, "an out-of-range drop deletes nothing");
+});
+
+test("salvage --drop with a missing, zero or non-integer position fails and deletes nothing", async () => {
+  const repo = makeRepo();
+  const { older, newer } = seedSalvage(repo);
+  const before = bytesOf(older, newer);
+  let r = await cli(repo, "salvage", "--drop");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("--drop needs a position"), "a missing position fails with the --drop 2 usage wording");
+  r = await cli(repo, "salvage", "--drop", "0");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("positive integer"));
+  r = await cli(repo, "salvage", "--drop", "abc");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("positive integer"));
+  assert.deepEqual(bytesOf(older, newer), before, "a refused drop deletes nothing");
+});
+
+test("salvage --drop with no salvage dir fails with 0 patches and creates nothing", async () => {
+  const repo = makeRepo();
+  const r = await cli(repo, "salvage", "--drop", "1");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("salvage holds 0 patches"));
+  assert.equal(fs.existsSync(salvageDir(repo)), false, "no salvage dir is created");
+  assert.equal(fs.existsSync(path.join(repo, ".tumwater")), false, "no .tumwater is created");
+});
+
+test("salvage --drop refuses --grep, --show, -f and an unknown flag, leaving the patches", async () => {
+  const repo = makeRepo();
+  const { older, newer } = seedSalvage(repo);
+  const before = bytesOf(older, newer);
+  const cases: { args: string[]; named: string }[] = [
+    { args: ["--drop", "1", "--grep", "x"], named: "--grep" },
+    // `--show`'s guard runs first, so a command carrying both routes to `--show` and
+    // refuses `--drop` through its rejectUnknownArgs.
+    { args: ["--drop", "1", "--show", "2"], named: "--drop" },
+    { args: ["--drop", "1", "-f"], named: "-f" },
+    { args: ["--drop", "1", "--bogus"], named: "--bogus" },
+  ];
+  for (const { args, named } of cases) {
+    const r = await cli(repo, "salvage", ...args);
+    assert.equal(r.code, 1, named);
+    assert.ok(r.stderr.includes(named), `the refusal names ${named}`);
+  }
+  assert.deepEqual(bytesOf(older, newer), before, "a refused drop leaves both patches");
+});
+
+test("salvage --grep --drop treats --drop as the pattern text, not the drop mode", async () => {
+  const repo = makeRepo();
+  const { older, newer } = seedSalvage(repo);
+  const before = bytesOf(older, newer);
+  const r = await cli(repo, "salvage", "--grep", "--drop");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), `no salvaged workspace patches match "--drop"`);
+  assert.deepEqual(bytesOf(older, newer), before, "the filter mode deletes nothing");
+});

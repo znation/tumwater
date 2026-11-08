@@ -1,17 +1,23 @@
-/** The `tumwater salvage` command: the read-only view of the workspace patches kept for the
- * operator under `.tumwater/salvage/` — the readable half of the doctor `salvage patches` row
- * and the standing `salvage-patches` alert, which name only each patch's file, age and size.
- * Split out of cli.ts's dispatcher like cli-query-commands.ts's read-only command bodies:
- * main() routes to cmdSalvage here exactly as it routes to cmdQuarantine, and cli.ts keeps
- * only routing. The command owns its argument gate, its no-ready-repo stance (refuseTeamWorkspace,
- * like `quarantine` and `reviews`: a missing or unreadable salvage dir degrades to the empty
- * list, so it reads in any directory and never writes), and its output shape. */
+/** The `tumwater salvage` command: the view of the workspace patches kept for the operator
+ * under `.tumwater/salvage/` — the readable half of the doctor `salvage patches` row and the
+ * standing `salvage-patches` alert, which name only each patch's file, age and size, plus the
+ * `--drop` twin that deletes one at the operator's request. Split out of cli.ts's dispatcher
+ * like cli-query-commands.ts's command bodies: main() routes to cmdSalvage here exactly as it
+ * routes to cmdQuarantine, and cli.ts keeps only routing. The command owns its argument gate,
+ * its no-ready-repo stance (refuseTeamWorkspace, like `quarantine` and `reviews`: a missing or
+ * unreadable salvage dir degrades to the empty list, so the list reads in any directory and
+ * never writes), and its output shape. */
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { parseGrepFlag, scanPositionArgs } from "./cli-args.js";
 import { JSON_FLAG, grepFlagSpec, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
-import { collectSalvagePatches, grepSalvagePatches, readSalvagePatch } from "../status/status-salvage.js";
+import {
+  collectSalvagePatches,
+  dropSalvagePatch,
+  grepSalvagePatches,
+  readSalvagePatch,
+} from "../status/status-salvage.js";
 import { formatAge } from "../text/datetime.js";
 import { formatBytes } from "../text/format.js";
 
@@ -22,9 +28,11 @@ import { formatBytes } from "../text/format.js";
  * the patches whose file name or patch text contains the text (case-insensitively), each
  * under its whole-list number. `--show <n>` prints the Nth patch as the list numbers it, in
  * full (the exact patch text), the read-only detail twin of `quarantine --show` and
- * `reviews --show`. Read-only and needing no ready repo: refuseTeamWorkspace is the whole
- * gate, so the list degrades to the empty line in a plain directory and no run ever writes a
- * patch. */
+ * `reviews --show`; `--drop <n>` deletes the Nth patch the list numbers, the destructive
+ * twin whose text and `--json` say what it removed. Read-only in every branch but `--drop`
+ * and needing no ready repo: refuseTeamWorkspace is the whole gate, so the list degrades
+ * to the empty line in a plain directory and no run ever writes a patch except, at the
+ * operator's request, the unlink a `--drop` makes. */
 export async function cmdSalvage(root: string, args: string[]): Promise<void> {
   // `--show <n>` is the command's read-only detail branch: route it before the list gate,
   // exactly as cmdQuarantine routes its `--show` first, so its own flag gate owns a token
@@ -36,6 +44,10 @@ export async function cmdSalvage(root: string, args: string[]): Promise<void> {
   const modeNamed = (flag: string): boolean => args.some((arg, i) => arg === flag && i !== grepValueIndex);
   if (modeNamed("--show")) {
     await cmdSalvageShow(root, args);
+    return;
+  }
+  if (modeNamed("--drop")) {
+    await cmdSalvageDrop(root, args);
     return;
   }
   // --grep filters the positioned patches to the ones whose file name or patch text contains
@@ -94,5 +106,29 @@ async function cmdSalvageShow(root: string, args: string[]): Promise<void> {
     say(`salvaged workspace patch ${position}: ${patch.file}`);
     say(`saved ${formatAge(now - patch.savedAt)} ago, ${formatBytes(patch.bytes)}`);
     say(text);
+  }
+}
+
+/** The `tumwater salvage --drop <n>` branch: delete the Nth patch `tumwater salvage` lists —
+ * the destructive twin of `--show`, so an operator can clear a reviewed or unwanted patch
+ * without `rm` under `.tumwater/salvage/`. Parsed the way cmdSalvageShow parses `--show`,
+ * sharing its scanPositionArgs and out-of-range wording, and staying on its
+ * refuseTeamWorkspace (no requireReadyRepo) so it never needs a ready tree. `--json`
+ * serves the dropped position and file. */
+async function cmdSalvageDrop(root: string, args: string[]): Promise<void> {
+  const { json, position, rest } = scanPositionArgs(args, "--drop", "--drop 2");
+  rejectUnknownArgs("salvage", rest, []);
+  if (position === null) fail("--drop needs a position (usage: tumwater salvage --drop <n>)");
+  refuseTeamWorkspace(root);
+  const patches = collectSalvagePatches(root);
+  if (position < 1 || position > patches.length) {
+    fail(`no salvaged workspace patch at position ${position} (salvage holds ${patches.length} patches)`);
+  }
+  const patch = patches[position - 1]!;
+  if (!dropSalvagePatch(root, patch.file)) fail(`could not drop salvaged patch ${patch.file}`);
+  if (json) {
+    sayJson({ dropped: { position, file: patch.file } });
+  } else {
+    say(`dropped salvaged workspace patch ${position}: ${patch.file}`);
   }
 }

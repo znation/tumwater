@@ -62,6 +62,23 @@ export function readSalvagePatch(root: string, file: string): string | null {
   }
 }
 
+/** Delete one kept patch, returning whether it was removed — the destructive twin of
+ * readSalvagePatch, backing `tumwater salvage --drop <n>` (src/cli/cli-salvage-command.ts)
+ * so an operator can clear a reviewed or unwanted patch without `rm` under the salvage dir.
+ * Reads only a file name `collectSalvagePatches` already returned, so the name always lands
+ * directly under the salvage dir and this never reaches `pending/<role>/` (whose patches
+ * wait for a role's next run and are deliberately out of the operator's delete scope). A
+ * missing file, or one that cannot be removed, yields false rather than throwing — the same
+ * best-effort rule collectSalvagePatches and readSalvagePatch use. Never throws. */
+export function dropSalvagePatch(root: string, file: string): boolean {
+  try {
+    fs.unlinkSync(path.join(salvageDir(root), file));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** One filtered salvage row: a kept patch carrying the position the unfiltered list gives it —
  * the shape `tumwater salvage --grep` keeps, each row's `position` still the whole-list one
  * so `--show <n>` keeps addressing the same patch the unfiltered list numbers. */
