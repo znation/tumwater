@@ -77,11 +77,11 @@ export const MERGE_STAGE_LABELS: Record<MergeStage, string> = {
  * reads plainly queued. */
 type MergeChangeStatus = "merging" | "approved" | "done";
 
-/** One change's record in the in-flight marker. `startedAt` is stamped when its verification starts
- * and kept through its merge, so its `merging <elapsed>` measures this change's own merge. `stage`
- * is this change's own MergeStage (setMergeStage): `rebasing` when its verification starts, reset
- * to `merging` when the merge slot works on it. Keyed by role — invariant 3 caps a role at one
- * in-flight change. */
+/** One change's record in the in-flight marker. `startedAt` is stamped when its gate-then-merge
+ * task starts and kept through its merge, so its `merging <elapsed>` measures this change's own
+ * merge. `stage` is this change's own MergeStage (setMergeStage): `rebasing` when the task starts,
+ * reset to `merging` when the merge slot works on it. Keyed by role — invariant 3 caps a role at
+ * one in-flight change. */
 export interface MergeChange {
   role: string;
   sha: string;
@@ -226,11 +226,11 @@ export function setMergeChangeStatus(root: string, role: string, status: MergeCh
   });
 }
 
-/** Add one change's record as its verification starts: each change is its own task, so records come
- * and go one at a time. The new record starts `merging` at `rebasing` with its own `startedAt` (a
- * verification opens with its checkout and rebase onto main). Every other record is kept only while
- * its role is in `live` — the roles the pipeline holds right now — so a record a crashed generation
- * left behind never rides along. Never throws (rewriteMarker). */
+/** Add one change's record as its gate-then-merge task starts: each change is its own task, so
+ * records come and go one at a time. The new record starts `merging` at `rebasing` with its own
+ * `startedAt` (the task opens with its checkout and rebase onto main). Every other record is kept
+ * only while its role is in `live` — the roles the pipeline holds right now — so a record a
+ * crashed generation left behind never rides along. Never throws (rewriteMarker). */
 export function addMergeChange(root: string, entry: MergeEntry, live: ReadonlySet<string>): void {
   const marker = readMergeMarker(root);
   const kept = marker ? mergeChanges(marker).filter((c) => c.role !== entry.role && live.has(c.role)) : [];
@@ -386,11 +386,11 @@ export function mergeFailureReason(state: RunnerState, result: RunResult, starte
 }
 
 /** Fold one merge's outcome into its role's state and drop its queue entry — the 3/5
- * write-back every pipeline outcome goes through (a verification's final verdict, a merged change,
- * an aborted approved change): apply the result to the live state object (paired with the entry's
- * change for the last-result cell — applyMergeOutcome), persist it, log merge_done/merge_failed
- * (the failed event carries the reason mergeFailureReason derives)
- * with the merge's own duration (from its verification's start) and usage (omitted when zero — the
+ * write-back every pipeline outcome goes through (a merged change, a rejected change, an aborted
+ * change or a retryable failure): apply the result to the live state object (paired with the
+ * entry's change for the last-result cell — applyMergeOutcome), persist it, log
+ * merge_done/merge_failed (the failed event carries the reason mergeFailureReason derives)
+ * with the merge's own duration (from its task's start) and usage (omitted when zero — the
  * 4/5 idiom, so review-exempt merges render bare), and drop the entry: EVERY defined result
  * drops. Both event writes are best-effort: an unwritable feed (ENOSPC, EACCES) must not
  * skip the drop, or the settled entry would stay queued and be re-verified and re-merged on

@@ -44,9 +44,10 @@ export interface PriorReview {
  * retry bookkeeping is the persisted `RunnerState.unreviewFailures`, which governs the strike cap.
  */
 export interface MergeEntry {
-  /** The owning runner — events, session naming, and the verify's leased slot all key off it. */
+  /** The owning runner — events, session naming and the authoring state its merge runs with
+   * all key off it. */
   role: string;
-  /** The pinned commit to merge — checked out detached in the verify's leased pool slot. */
+  /** The pinned commit to merge — checked out detached in the shared `_merge` worktree. */
   sha: string;
   /** The authoring run number, for the unique per-run session names (review + conflict
    * resolution). */
@@ -68,9 +69,9 @@ export interface MergeEntry {
    * (plans/revise-rejected.md part 2/2). Filled by run-stage.ts from RunnerState.lastReview only
    * on a run that held the rejected diff; a recovery merge never carries one. */
   priorReview?: PriorReview;
-  /** Earliest time (epoch ms) the verification may start, absent for an entry that is ready at
-   * once. Set on the pipeline's own re-queue of a `review_error` change, so a flaky reviewer is
-   * not hit again within 60 s; the serial drain skips the entry until then. */
+  /** Earliest time (epoch ms) the gate-then-merge task may start, absent for an entry that is
+   * ready at once. Set on the pipeline's own re-queue of a `review_error` change, so a flaky
+   * reviewer is not hit again within 60 s; the serial drain skips the entry until then. */
   notBefore?: number;
   /** The retriable result (`merge_blocked`, `review_error`, `merge_conflict`) whose
    * attempt this entry re-queues, absent for an author's or a recovery's entry. Logged on the
@@ -104,7 +105,7 @@ export function enqueueMerge(root: string, entry: MergeEntry): void {
 }
 
 /** The revision fields of a queue entry, serialized only when present — the shape merge
- * surfaces (drain, verify) and the run-stage enqueue re-emit when they build their own
+ * surfaces (drain, merge) and the run-stage enqueue re-emit when they build their own
  * entry/request objects, so the `revisionRound`/`priorReview` names live in one place and
  * cannot drift. */
 export function entryRevisionFields(e: { revisionRound?: number; priorReview?: PriorReview }): { revisionRound?: number; priorReview?: PriorReview } {

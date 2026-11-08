@@ -182,8 +182,8 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
     signal: () => merge.controller.signal,
     reviewHeld: () => ctx.startHeld(),
     gatePermit: async () => {
-      // A gating call holds the verify stage's team lease around its gate — the same VERIFY_TIER
-      // a verification used to hold — and merge-core's mergeApprovedChange releases it before
+      // A gating call holds a VERIFY_TIER team lease around its gate — the tier a verification
+      // used to hold — and merge-core's mergeApprovedChange releases it before
       // `mergeToMain`, whose conflict resolver takes MERGE_TIER itself. So one merge never holds
       // both tiers at once, and the gate's lease waits for the same team total as a
       // verification's did. A shutdown hands back any late grant and defers the gate: the entry

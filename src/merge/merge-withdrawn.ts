@@ -6,8 +6,8 @@
  *
  * The scheduling poll drops a withdrawn claim's resume or revision (claims.ts's `withdrawn`
  * release). This module is the backstop at the merge, where every path to main passes: the
- * verify asks it before it rebases a pin onto main, and the merge asks it again inside the merge
- * lock before its own rebase. An entry is withdrawn from a change when the change works on it —
+ * one-step merge asks it before its gate's rebase, and again inside the merge lock before its own
+ * rebase. An entry is withdrawn from a change when the change works on it —
  * its run's recorded claim, or an entry its diff moved out of the role's actionable section
  * since its merge-base with main — and main's tip no longer lists it in that section. Each check
  * runs before the rebase that would move the change's base past the removal, so the base still

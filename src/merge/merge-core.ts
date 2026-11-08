@@ -59,8 +59,9 @@ export interface MergeRequest {
    * `sha` (GateResult.verifiedHead) — so a merge whose in-lock rebase is a no-op seeds the
    * red-main baseline with the SHA that becomes main. */
   verifiedHead?: string;
-  /** The backlog entry the authoring run was assigned (MergeEntry.claim): the verify and the
-   * in-lock merge drop the change as `withdrawn` once main no longer lists it. */
+  /** The backlog entry the authoring run was assigned (MergeEntry.claim): the one-step merge's
+   * pre-gate check and its in-lock check drop the change as `withdrawn` once main no longer
+   * lists it. */
   claim?: MergeClaim;
 }
 
@@ -94,9 +95,9 @@ interface MergeScopeContext {
 export interface MergerContext extends PiRunWiring, MergeScopeContext {
   state: RunnerState;
   /** Acquire the team lease a gating call holds while it runs reviewQueuedChange (part 3b/6):
-   * takes the same VERIFY_TIER tier the verify stage holds around its gate and returns the
-   * release. The merge drain supplies it for every task; the fixtures leave it unset, so a
-   * fixture merge never contends for a team permit. */
+   * takes a VERIFY_TIER lease for the gate's length and returns the release. The merge drain
+   * supplies it for every task; the fixtures leave it unset, so a fixture merge never contends
+   * for a team permit. */
   gatePermit?: () => Promise<() => void>;
 }
 
@@ -162,8 +163,8 @@ function reviewContextFor(
     mainBranch: ctx.mainBranch,
     config: ctx.config,
     runNumber: req.runNumber,
-    // One directory per review of one change: run plus the pinned sha, so a re-verify of the
-    // same sha reuses it and the verify and the conflict-resolved re-review agree.
+    // One directory per review of one change: run plus the pinned sha, so a re-gate of the
+    // same sha reuses it and the gate and the conflict-resolved re-review agree.
     sessionDir: reviewRunSessionDir(ctx.root, req.role, `${req.runNumber}-${shortSha(req.sha)}`),
     signal: ctx.signal(),
     runGatePi: ctx.runGatePi,
@@ -224,10 +225,9 @@ export async function reviewPinnedChange(
     req.highFriction,
   );
   // The gate is over, whatever it decided: move the merge cell off the gate's stages (a no-op
-  // outside a queued merge). What follows is the wait for the merge — the verify marks the change
-  // `approved` next, and the merge slot re-stages it `merging` when it takes it — and a finished
-  // reviewer's last turns left in the cell would accrue a false `no pi output` flag for as long
-  // as the change waits.
+  // outside a queued merge). What follows is the merge lock's rebase and fast-forward — the same
+  // task re-stages the change `merging` as it continues — and a finished reviewer's last turns
+  // left in the cell would accrue a false `no pi output` flag for the rest of the merge.
   setMergeStage(root, role, "merging");
   // A rejection keeps the rejected commit alive while a revision is due (plans/revise-rejected.md):
   // point the rejected ref at the head the gate judged and record the round, so the author's next
@@ -408,15 +408,15 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
   // touches main. Every merge goes through here, so a queued diff never merges unreviewed and
   // never pays a second gate.
   // A change main no longer lists is dropped before its rebase moves the change's base past the
-  // removal (merge-withdrawn.ts), exactly as the verify stage asks it before its own rebase.
+  // removal (merge-withdrawn.ts), before the gate's own rebase moves the change's base.
   const withdrawn = await withdrawnPinReason(wt, ctx.mainBranch, req, "HEAD");
   if (withdrawn !== null) {
     await dropWithdrawnPin(ctx.root, req.role, ctx.state, withdrawn);
     return "withdrawn";
   }
-  // A gating call holds the verify stage's team lease for the gate's length, so a concurrent
-  // verification or pre-merge check waits while this change is judged, and holds none while the
-  // merge runs below (the merge's conflict resolver takes MERGE_TIER itself).
+  // A gating call holds a VERIFY_TIER team lease for the gate's length, so a concurrent gate or
+  // pre-merge check waits while this change is judged, and holds none while the merge runs below
+  // (the merge's conflict resolver takes MERGE_TIER itself).
   const release = ctx.gatePermit ? await ctx.gatePermit() : undefined;
   try {
     const outcome = await reviewQueuedChange(ctx, req, wt, ctx.state, ctx.foldUsage);

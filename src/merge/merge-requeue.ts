@@ -10,7 +10,7 @@ import type { RunnerState } from "../runner/runner-state.js";
 import type { RunResult } from "../run/run-outcome.js";
 import { logEventBestEffort } from "../events/events.js";
 
-/** How long a re-queued `review_error` change waits before its verification may start. */
+/** How long a re-queued `review_error` change waits before its gate-then-merge task may start. */
 const REVIEW_ERROR_RETRY_MS = 60_000;
 
 /** The queue entry that re-queues a settled one: its run, summary, body, friction flag and
