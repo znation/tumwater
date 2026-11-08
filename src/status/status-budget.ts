@@ -77,6 +77,126 @@ function windowBlocks(
   return { blocks, only: !seams.some((s) => !seamFree(providers, s, accounts, catalog)) };
 }
 
+/** The one materialized `spentUsd`: the scheduler's own published figure while running, the
+ * persisted states' sum otherwise. */
+function materializedSpend(
+  rows: StatusRoleRow[],
+  running: boolean,
+  info: OrchestratorInfo | null,
+  now: number,
+): number {
+  // The running orchestrator's published gate figures (read once above, with the pid and the
+  // demotion): the scheduler's own sum over its live runner states. Only while running — the
+  // exit removes the info file, so a stale file beside a dead pid must not speak for a team
+  // whose persisted files are final.
+  const publishedSpend = running && info?.budget ? info.budget.spentUsd : null;
+  // The one materialized spend the budget block renders and the burn-rate projection both
+  // read — the scheduler's published figure while running, the persisted states' sum otherwise.
+  return publishedSpend ?? teamDailyCost(rows, now);
+}
+
+/** The per-backend subscription accounts (part 3a/9), read lazily into a per-poll memo so a
+ * backend in use is read once no matter how many free-ness verdicts and window blocks judge
+ * it: today's one claude read for a claude-only team, plus one read per other backend in use. */
+function subscriptionAccountReader(
+  root: string,
+  now: number,
+): (backend: string) => SubscriptionAccount | null {
+  const accountReads = new Map<string, SubscriptionAccount | null>();
+  return (backend: string): SubscriptionAccount | null => {
+    let account = accountReads.get(backend);
+    if (account === undefined) {
+      account = readAccount(root, backend, now);
+      accountReads.set(backend, account);
+    }
+    return account;
+  };
+}
+
+/** The per-tier serving pairs, resolved over the same `usable` predicate an observer can
+ * re-derive: the price check, and the pair not among the running orchestrator's published
+ * per-pair demotions. */
+function servingTierPairs(
+  cfg: TumwaterConfig,
+  providers: PiProviders,
+  accounts: (backend: string) => SubscriptionAccount | null,
+  catalog: OpencodeCatalogCache | null,
+  publishedDemotions: NonNullable<OrchestratorInfo["fallbackDemotions"]>,
+): ReturnType<typeof resolveTierFallbacks> {
+  const usable = (p: { provider?: string; model?: string }) =>
+    piPairFree(providers, p, accounts, catalog) && !(modelPairName(p) in publishedDemotions);
+  return resolveTierFallbacks(cfg, usable);
+}
+
+/** The per-tier budget pause set (part 5c/8): the director-exempt roles whose seam tier
+ * resolved `pair === null` — the same resolution the scheduler's gate folds, computed only
+ * while the cap is reached (the hold never stands under an open gate). */
+function budgetPausedRoleIds(
+  cfg: TumwaterConfig,
+  roles: string[],
+  servingResolved: ReturnType<typeof resolveTierFallbacks>,
+  budgetReachedNow: boolean,
+): string[] {
+  return budgetReachedNow
+    ? roles.filter(
+        (r) => r !== DIRECTOR_ROLE && servingResolved[roleSeamTier(cfg, r)].pair === null,
+      )
+    : [];
+}
+
+/** The per-role daily-cap pause set (part 5c/8): the over-cap role ids in their current order,
+ * the director exempt exactly as the gates exempt it. */
+function capPausedRoleIds(rows: StatusRoleRow[], cfg: TumwaterConfig, now: number): string[] {
+  return [
+    ...roleCapVerdicts(
+      rows.map((l) => ({ role: l.role, state: l })),
+      cfg.maxDailyCostUsdPerRole,
+      now,
+    ).values(),
+  ]
+    .filter((v) => v.over)
+    .flatMap((v) => v.roleIds);
+}
+
+/** The budget object of a poll's spend/billing block: the one materialized `spentUsd`, the cap,
+ * the cap-hit projection, and the `free`/`fallback`/`tiers` verdicts over the standing config
+ * and this poll's pinned reads. */
+function budgetBlock(
+  cfg: TumwaterConfig,
+  modelsPath: string,
+  accounts: (backend: string) => SubscriptionAccount | null,
+  catalog: OpencodeCatalogCache | null,
+  servingResolved: ReturnType<typeof resolveTierFallbacks>,
+  running: boolean,
+  info: OrchestratorInfo | null,
+  spentUsd: number,
+  budgetReachedNow: boolean,
+  now: number,
+): BudgetSlice["budget"] {
+  return {
+    spentUsd,
+    capUsd: cfg.maxDailyCostUsd,
+    // One projection per poll, from the same spend the field above renders: null exactly
+    // when no forecast may be stated (no cap, no spend, cap reached, burn misses midnight).
+    capHitAt: projectCapHit({ spentUsd, capUsd: cfg.maxDailyCostUsd }, now),
+    free: teamModelsFree(cfg, modelsPath, accounts, catalog),
+    // Null unless the gate could actually engage it (configured AND priced at zero AND not
+    // demoted by the running orchestrator's breaker): a fallback the scheduler would refuse
+    // must not be advertised as one that will save the team — and a demoted one is refused
+    // until its probe serves, so the dashboards read `budget paused` exactly while the
+    // scheduler is (BUGS.md 2026-09-20). The pair is the price-aware default tier's
+    // resolution, so a map with no `default` entry names the pair the gate actually runs.
+    fallback:
+      fallbackModelFree(cfg, modelsPath, accounts, catalog) && !(running && info?.fallbackDemoted)
+        ? (servingResolved.default.pair ?? null)
+        : null,
+    tiers:
+      budgetReachedNow && tiersResolveDistinctPairs(servingResolved)
+        ? tierFallbackLabels(servingResolved)
+        : null,
+  };
+}
+
 /** The spend/billing block for a poll: the one materialized `spentUsd` (the scheduler's own
  * published figure while running — BUGS.md 2026-09-30 — the persisted states' sum otherwise)
  * that the budget object, the burn-rate projection and `free`/`fallback`/`tiers` all read;
@@ -97,78 +217,42 @@ export function collectBudget(
   modelsPath: string,
   now: number,
 ): BudgetSlice {
-  // The running orchestrator's published gate figures (read once above, with the pid and the
-  // demotion): the scheduler's own sum over its live runner states. Only while running — the
-  // exit removes the info file, so a stale file beside a dead pid must not speak for a team
-  // whose persisted files are final.
-  const publishedSpend = running && info?.budget ? info.budget.spentUsd : null;
-  // The one materialized spend the budget block renders and the burn-rate projection both
-  // read — the scheduler's published figure while running, the persisted states' sum otherwise.
-  const spentUsd = publishedSpend ?? teamDailyCost(rows, now);
-  // The per-backend subscription accounts (part 3a/9), read lazily into a per-poll memo so a
-  // backend in use is read once no matter how many free-ness verdicts and window blocks judge
-  // it: today's one claude read for a claude-only team, plus one read per other backend in use.
-  const accountReads = new Map<string, SubscriptionAccount | null>();
-  const accounts = (backend: string): SubscriptionAccount | null => {
-    let account = accountReads.get(backend);
-    if (account === undefined) {
-      account = readAccount(root, backend, now);
-      accountReads.set(backend, account);
-    }
-    return account;
-  };
+  const spentUsd = materializedSpend(rows, running, info, now);
+  const accounts = subscriptionAccountReader(root, now);
   const budgetReachedNow = budgetReached({ spentUsd, capUsd: cfg.maxDailyCostUsd });
   const providers = readPiProviders(modelsPath);
   // The cached opencode models catalog (part 6b/7), seeded at the startup gate and read once per
   // poll so every free-ness verdict below prices opencode seams against the same snapshot.
   const catalog = readOpencodeCache(root);
-  const publishedDemotions = info?.fallbackDemotions ?? {};
-  const usable = (p: { provider?: string; model?: string }) =>
-    piPairFree(providers, p, accounts, catalog) && !(modelPairName(p) in publishedDemotions);
-  const servingResolved = resolveTierFallbacks(cfg, usable);
+  const servingResolved = servingTierPairs(
+    cfg,
+    providers,
+    accounts,
+    catalog,
+    info?.fallbackDemotions ?? {},
+  );
   // The subscription usage windows (part 3a/9): one block per subscription backend in use.
-  const { blocks: subscriptionWindows, only: subscriptionOnly } = windowBlocks(cfg, providers, accounts, catalog);
-  // The per-tier budget pause set (part 5c/8): the same resolution the scheduler's gate folds,
-  // over the SAME usable predicate an observer can re-derive — the price check, and the pair
-  // not among the running orchestrator's published per-pair demotions. Computed only while the
-  // cap is reached — the hold never stands under an open gate — and the director exempt.
-  const budgetPausedRoles = budgetReachedNow
-    ? roles.filter(
-        (r) => r !== DIRECTOR_ROLE && servingResolved[roleSeamTier(cfg, r)].pair === null,
-      )
-    : [];
-  const capPaused = [
-    ...roleCapVerdicts(
-      rows.map((l) => ({ role: l.role, state: l })),
-      cfg.maxDailyCostUsdPerRole,
-      now,
-    ).values(),
-  ]
-    .filter((v) => v.over)
-    .flatMap((v) => v.roleIds);
+  const { blocks: subscriptionWindows, only: subscriptionOnly } = windowBlocks(
+    cfg,
+    providers,
+    accounts,
+    catalog,
+  );
+  const budgetPausedRoles = budgetPausedRoleIds(cfg, roles, servingResolved, budgetReachedNow);
+  const capPaused = capPausedRoleIds(rows, cfg, now);
   return {
-    budget: {
+    budget: budgetBlock(
+      cfg,
+      modelsPath,
+      accounts,
+      catalog,
+      servingResolved,
+      running,
+      info,
       spentUsd,
-      capUsd: cfg.maxDailyCostUsd,
-      // One projection per poll, from the same spend the field above renders: null exactly
-      // when no forecast may be stated (no cap, no spend, cap reached, burn misses midnight).
-      capHitAt: projectCapHit({ spentUsd, capUsd: cfg.maxDailyCostUsd }, now),
-      free: teamModelsFree(cfg, modelsPath, accounts, catalog),
-      // Null unless the gate could actually engage it (configured AND priced at zero AND not
-      // demoted by the running orchestrator's breaker): a fallback the scheduler would refuse
-      // must not be advertised as one that will save the team — and a demoted one is refused
-      // until its probe serves, so the dashboards read `budget paused` exactly while the
-      // scheduler is (BUGS.md 2026-09-20). The pair is the price-aware default tier's
-      // resolution, so a map with no `default` entry names the pair the gate actually runs.
-      fallback:
-        fallbackModelFree(cfg, modelsPath, accounts, catalog) && !(running && info?.fallbackDemoted)
-          ? (servingResolved.default.pair ?? null)
-          : null,
-      tiers:
-        budgetReachedNow && tiersResolveDistinctPairs(servingResolved)
-          ? tierFallbackLabels(servingResolved)
-          : null,
-    },
+      budgetReachedNow,
+      now,
+    ),
     subscriptionWindows,
     subscriptionOnly,
     budgetPausedRoles,
