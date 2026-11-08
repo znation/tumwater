@@ -119,26 +119,50 @@ export async function runDoctor(
   // Loaded once for the checks that read config (repo's baseBranch); a broken file stays
   // undefined — checkInit reports it verbatim — so doctor still runs every other check.
   const { config } = loadConfigSafe(root);
-  // The routing table: every seam the config can spawn, with the selector each one runs on and
-  // the backend it routes to — read from the same one list the checks sweep, so an operator
-  // sees (and the checks cover) a claude fallback exactly like a primary seam. A broken config
-  // keeps it empty (the init check reports that separately).
-  const routing: DoctorReport["routing"] = config
+  const info = readOrchestratorInfo(root);
+  const header = doctorHeader(root, info);
+  const routing = doctorRouting(config);
+  const steps = doctorSteps(root, pathEnv, config, info, probe, diskSample);
+  const checks = await doctorChecks(steps, only);
+  return { header, checks, routing, verdict: doctorVerdict(checks) };
+}
+
+/** The doctor header line: a running orchestrator names its pid and version (flagging an
+ * available update or a blocked restart); with none it reads "not running". */
+function doctorHeader(root: string, info: ReturnType<typeof readOrchestratorInfo>): string {
+  return (
+    orchestratorAlive(root, info) && info
+      ? `tumwater doctor — running (pid ${info.pid}${info.build ? `, version ${shortSha(info.build.sha)}${info.build.stale ? " — update available" : ""}${info.build.restartBlocked ? " (restart blocked)" : ""}` : ""})`
+      : "tumwater doctor — not running"
+  );
+}
+
+/** The routing table: every seam the config can spawn, with the selector each one runs on and
+ * the backend it routes to — read from the same one list the checks sweep, so an operator
+ * sees (and the checks cover) a claude fallback exactly like a primary seam. A broken config
+ * keeps it empty (the init check reports that separately). */
+function doctorRouting(config: ReturnType<typeof loadConfigSafe>["config"]): DoctorReport["routing"] {
+  return config
     ? seamsInUse(config).map((s) => ({
         label: s.label,
         selector: s.model !== undefined ? backendQualifiedSelector({ ...s, model: s.model }) : "no model declared",
         backend: s.agent ?? "pi",
       }))
     : [];
-  const info = readOrchestratorInfo(root);
-  const header =
-    orchestratorAlive(root, info) && info
-      ? `tumwater doctor — running (pid ${info.pid}${info.build ? `, version ${shortSha(info.build.sha)}${info.build.stale ? " — update available" : ""}${info.build.restartBlocked ? " (restart blocked)" : ""}` : ""})`
-      : "tumwater doctor — not running";
-  const steps: Array<{
-    name: DoctorCheckName;
-    run: () => CheckOutcome | null | Promise<CheckOutcome | null>;
-  }> = [
+}
+
+/** The ordered check table, in report order: each row names a check and runs it with the
+ * arguments that row needs. The `--only` filter and the throwing-check handling live in
+ * doctorChecks, not here, so the table reads as the order alone. */
+function doctorSteps(
+  root: string,
+  pathEnv: string,
+  config: ReturnType<typeof loadConfigSafe>["config"],
+  info: ReturnType<typeof readOrchestratorInfo>,
+  probe: ProcessProbe,
+  diskSample: (root: string) => number | null,
+): Array<{ name: DoctorCheckName; run: () => CheckOutcome | null | Promise<CheckOutcome | null> }> {
+  return [
     { name: "node", run: () => checkNodeVersion() },
     { name: "node binary", run: () => checkExecPath() },
     { name: "git binary", run: () => checkGitBinary(pathEnv) },
@@ -239,12 +263,28 @@ export async function runDoctor(
     { name: "orphans", run: () => checkOrphans(root, probe) },
     { name: "macOS port leak", run: () => checkLaunchServicesPorts(probe) },
   ];
+}
+
+/** Runs each step in report order, skipping any the `--only` filter drops (a skipped check is
+ * never evaluated); a throwing or rejecting check becomes its own fail row via runDoctorCheck
+ * while every other check still runs (INV-CE1). A row the check omits (returns null) leaves
+ * no row of its own. */
+async function doctorChecks(
+  steps: Array<{ name: DoctorCheckName; run: () => CheckOutcome | null | Promise<CheckOutcome | null> }>,
+  only?: readonly DoctorCheckName[],
+): Promise<DoctorReport["checks"]> {
   const checks: DoctorReport["checks"] = [];
   for (const step of steps) {
     if (only && !only.includes(step.name)) continue;
     const outcome = await runDoctorCheck(step.run);
     if (outcome !== null) checks.push({ name: step.name, ...outcome });
   }
+  return checks;
+}
+
+/** The verdict the report carries: "ready to run" when no check failed, otherwise the failing
+ * count. */
+function doctorVerdict(checks: DoctorReport["checks"]): string {
   const problems = checks.filter((c) => c.level === "fail").length;
-  return { header, checks, routing, verdict: problems === 0 ? "ready to run" : plural(problems, "problem") };
+  return problems === 0 ? "ready to run" : plural(problems, "problem");
 }
