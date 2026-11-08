@@ -1061,6 +1061,11 @@ test("a fix-up that reverts the whole change ends no_change with nothing queued"
   const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "no_change");
+  assert.equal(
+    outcome.selfCheckReverted,
+    true,
+    "the reverted authoring is flagged so the digest prices the discard, not an idle run",
+  );
   assert.equal(calls.stageFixRequests.length, 1);
   assert.equal(calls.pins.length, 0, "a clean worktree is never pinned");
   assert.equal(queueDepth(root), 0, "nothing is queued");

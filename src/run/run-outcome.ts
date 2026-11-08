@@ -66,6 +66,12 @@ export interface RunOutcome {
    * survives in the pi session, which pi compacted at end of run — so the role resumes
    * it promptly instead of backing off as if the role were idle. */
   cutOff?: boolean;
+  /** The pre-queue self-check's one-turn fix-up resolved its findings by reverting the whole
+   * change, so the run ended `no_change` with nothing to commit even though the role authored
+   * (run-stage.ts's applyStageFixUp). The outcome table still folds the run under no_change,
+   * but the failure digest prices the discarded authoring as its own loss cause instead of a
+   * quiet idle (BUGS.md 2026-11-08). */
+  selfCheckReverted?: boolean;
   /** The run's leftover recovery re-queued a pin whose last merge failed and kept it for
    * another attempt (review_error, merge_conflict, merge_blocked): the run itself ends
    * `queued`, but the persistent merge failure must still feed the error streak so a dead

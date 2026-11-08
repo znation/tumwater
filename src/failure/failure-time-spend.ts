@@ -54,14 +54,16 @@ export interface TimeSpendRow {
 
 /** One ranked loss cause: an error cluster — the digest's
  * own clustering, applied to the runs that burned time — a role's total "no_change" spend,
- * the quiet loss no cluster names, or a role's total authoring spend on changes the merge
- * gate rejected (BUGS.md 2026-09-30), or a merge that failed (BUGS.md 2026-10-10).
+ * the quiet loss no cluster names, a role's total authoring spend on changes the merge
+ * gate rejected (BUGS.md 2026-09-30), a merge that failed (BUGS.md 2026-10-10), or authoring
+ * the pre-queue self-check's fix-up reverted whole (BUGS.md 2026-11-08).
  * `example` is the newest verbatim occurrence for a cluster (the one at lastSeen, BUGS.md
  * 2026-09-30), a review-rejected cause's newest rejection reason, a refused cause's newest
  * refusal summary (the deliberate objection that blocks the entry), the shared no-text
- * placeholder for a merge failure, or "" for a no_change or context cut-off cause. */
+ * placeholder for a merge failure, or "" for a no_change, context cut-off, or self-check-reverted
+ * cause. */
 export interface LossCause {
-  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused" | "cutoff";
+  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused" | "cutoff" | "self-check-reverted";
   roles: string[]; // unique, sorted
   example: string;
   runs: number;
@@ -89,7 +91,7 @@ const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "qui
 
 /** A loss cause while collecting; `roles` is a set until the final sort. */
 interface LossDraft {
-  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused" | "cutoff";
+  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused" | "cutoff" | "self-check-reverted";
   roles: Set<string>;
   lastSeen: number;
   example: string;
@@ -196,6 +198,7 @@ function lossCauseFor(
   return (
     refusedLoss(ev) ??
     cutoffLoss(ev, cls) ??
+    selfCheckRevertedLoss(ev, cls) ??
     noChangeLoss(ev, cls) ??
     clusteredLoss(ev) ??
     reviewRejectedLoss(ev, resolvedOutcome, indexes) ??
@@ -236,6 +239,19 @@ function cutoffLoss(ev: HarnessEvent, cls: "merged" | "no_change" | "error"): Cl
 function noChangeLoss(ev: HarnessEvent, cls: "merged" | "no_change" | "error"): ClassifiedLoss | null {
   if (cls !== "no_change") return null;
   return { key: `no_change\u0000${eventRole(ev)}`, kind: "no_change", example: "" };
+}
+
+/** The self-check-reverted rule: a run whose pre-queue self-check fix-up reverted the whole
+ * change prices its own per-role cause, not no_change. */
+function selfCheckRevertedLoss(ev: HarnessEvent, cls: "merged" | "no_change" | "error"): ClassifiedLoss | null {
+  if (cls !== "no_change" || ev.selfCheckReverted !== true) return null;
+  // The author's change tripped a pre-queue self-check finding whose one-turn fix-up resolved
+  // it by reverting everything, so the run ends no_change with the authoring discarded
+  // (applyStageFixUp in src/run/run-stage.ts). Ranking it as its own per-role cause prices the
+  // discarded authoring instead of folding it into the role's quiet idle (BUGS.md 2026-11-08);
+  // the branch sits BEFORE the no_change one because a reverted run is also no_change-class in
+  // the outcome table. No example, like the no_change cause.
+  return { key: `self-check-reverted\u0000${eventRole(ev)}`, kind: "self-check-reverted", example: "" };
 }
 
 /** The clustered rule: a clustered result with no error text prices under the pooled cluster. */
@@ -412,6 +428,8 @@ export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[
     // a merge-gate rejection prices its authoring span under a per-role cause of its own —
     // unrepresentable as an error cluster, since the merge_failed event carries no message;
     // the example is the matching review_rejected's first reason, matched by merge attempt.
+    // A self-check fix-up that reverted the whole change prices that discarded authoring the
+    // same way (selfCheckReverted on the run_end).
     const cause = lossCauseFor(ev, cls, resolvedOutcome, indexes);
     if (cause === null) continue;
     let draft = losses.get(cause.key);

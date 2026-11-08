@@ -77,6 +77,16 @@ test("finalizeRun folds the outcome onto the state, persists it, and logs run_en
   assert.equal(end.costUsd, undefined);
   // A non-cut-off finish logs no cutOff key.
   assert.equal(end.cutOff, undefined);
+  // A finish without a self-check revert logs no selfCheckReverted key.
+  assert.equal(end.selfCheckReverted, undefined);
+});
+
+test("finalizeRun rides a self-check revert on run_end", async () => {
+  const root = await initializedRepo();
+  const s = freshRunnerState("organize");
+  await run(root, "organize", s, { result: "no_change", selfCheckReverted: true });
+  const end = eventsOfType(root, "run_end")[0]!;
+  assert.equal(end.selfCheckReverted, true);
 });
 
 test("finalizeRun rides a context cut-off on run_end", async () => {

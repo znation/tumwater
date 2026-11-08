@@ -678,3 +678,41 @@ test("a context cut-off run prices its own loss cause, not no_change", () => {
   assert.match(md, /no change on feature/);
   assert.equal(data.lossCauses.reduce((n, c) => n + c.runs, 0), 2, "both runs are owned by a loss cause");
 });
+
+test("a self-check-reverted run prices its own loss cause, not no_change", () => {
+  // BUGS.md 2026-11-08: the pre-queue self-check's one-turn fix-up can resolve a finding by
+  // reverting the whole change, ending the run no_change with the authoring discarded — yet
+  // the loss fold bucketed every no_change-class run under `no_change\u0000<role>`, so the
+  // discarded authoring priced into the digest exactly like a quietly idle run. A reverted
+  // run still counts under no_change in the outcome table (that three-class table is its
+  // stated class contract), but the loss ranking names the discard as its own cause.
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "run_end", run: 1, result: "no_change", selfCheckReverted: true, // retired-name-ok: legacy event field in a fixture
+      durationMs: 3_600_000, costUsd: 0.5 },
+    // The same role idles in a sibling run: its quiet no_change must stay its own cause.
+    { ts: at(0, 1), loop: "feature", type: "run_end", run: 2, result: "no_change", // retired-name-ok: legacy event field in a fixture
+      durationMs: 1_800_000, costUsd: 0.3 },
+  ]);
+  const data = collectFailureReport(root, 1);
+  const reverted = data.lossCauses.find((c) => c.kind === "self-check-reverted");
+  assert.ok(reverted, `a self-check revert names its own loss cause: ${JSON.stringify(data.lossCauses)}`);
+  assert.deepEqual(reverted?.roles, ["feature"]);
+  assert.equal(reverted?.example, "", "a self-check-reverted cause keeps an empty example, like no_change");
+  assert.equal(reverted?.runs, 1);
+  assert.equal(reverted?.ms, 3_600_000);
+  assert.ok(Math.abs((reverted?.costUsd ?? 0) - 0.5) < 1e-9, `the reverted authoring's cost is priced: ${reverted?.costUsd}`);
+  const idle = data.lossCauses.find((c) => c.kind === "no_change");
+  assert.ok(idle, `the idling run stays its own no_change cause: ${JSON.stringify(data.lossCauses)}`);
+  assert.equal(idle?.runs, 1, "the idle and reverted runs are not merged");
+  assert.equal(idle?.ms, 1_800_000);
+  // The outcome table still folds the self-check-reverted run under no_change, its
+  // class contract unchanged.
+  const feature = data.timeSpend.find((r) => r.role === "feature");
+  assert.deepEqual(feature?.classes.no_change, { runs: 2, ms: 5_400_000, costUsd: 0.8 });
+  assert.deepEqual(feature?.classes.merged, { runs: 0, ms: 0, costUsd: 0 });
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /self-check-reverted authoring on feature/);
+  assert.match(md, /no change on feature/);
+  assert.equal(data.lossCauses.reduce((n, c) => n + c.runs, 0), 2, "both runs are owned by a loss cause");
+});

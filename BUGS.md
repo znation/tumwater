@@ -6,12 +6,7 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-### A self-check that reverts a run's change is tallied as idle `no_change`, so the digest prices discarded authoring as "no change" and an unfixable finding never escalates to the backlog (found by the selfcheck role 2026-11-08)
-
-- **Symptom:** on 9 runs today (warning cluster `stage self-check: the follow-up turn left no change; nothing to land`, roles bugfix, bugfix-2, bugfix-3, feature-3, +2 more), the pre-queue self-check's one-turn fix-up left the worktree clean, so `applyStageFixUp` ended the run `no_change` (src/run/run-stage.ts:323). The digest's top loss causes for the same window are those same roles' `no change on bugfix` (5) and `no change on feature-3` (6): an authored change the self-check then reverted is priced like an idle run that found nothing, while a gate-rejected change earns its own `review-rejected authoring` bucket.
-- **Reproduce:** author a change that trips a pre-queue self-check finding the fix-up resolves by reverting the whole change (clean tree). The run ends `no_change` with only the self-check warning; the finding is logged in the run's event feed but never filed to BUGS.md or priced as its own loss cause.
-- **Cause:** `applyStageFixUp` (src/run/run-stage.ts:314-325) treats a fix-up that reverts everything as a plain `no_change`, so the discarded authoring hours vanish from the digest's loss ranking and the finding never becomes work for the bugfix role. A finding that recurs (for example one of the four repo-wide policy scans) re-burns the same authoring next run.
-- **Fix sketch:** give the self-check-revert path a distinct outcome and loss cause, mirroring `review-rejected authoring`, and surface a finding the one-turn fix-up cannot close to the backlog, so the digest prices discarded authoring for what it is.
+_None yet._
 
 ## Fixed
 

@@ -210,9 +210,10 @@ async function resolveCommitDescription(ctx: RunStageContext): Promise<StagedCom
 }
 
 /** Run the gate's remaining checks before the commit, giving the author's session
- * one bounded fix-up turn, and end the run `no_change` when the fix-up reverts the whole change
- * (leaving nothing to commit). Returns an outcome only when the run must end early; otherwise
- * mutates `desc.summary`/`desc.body` with any fix-up recovery, exactly as the inline block did. */
+ * one bounded fix-up turn, and end the run `no_change` (flagged `selfCheckReverted`) when the
+ * fix-up reverts the whole change (leaving nothing to commit). Returns an outcome only when the
+ * run must end early; otherwise mutates `desc.summary`/`desc.body` with any fix-up recovery,
+ * exactly as the inline block did. */
 async function runStageSelfCheck(
   ctx: RunStageContext,
   desc: StagedCommitDescription,
@@ -287,9 +288,9 @@ function recordStagedClaims(
 }
 
 /** Run the author's one bounded fix-up turn over the stage findings, fold its commits, recover
- * `desc.summary`/`desc.body` from the reply, and end the run `no_change` when the follow-up left
- * the worktree clean; otherwise stage-check again and log the outcome warning. Returns an outcome
- * only when it ends the run early, else `undefined`. */
+ * `desc.summary`/`desc.body` from the reply, and end the run `no_change` flagged
+ * `selfCheckReverted` when the follow-up left the worktree clean; otherwise stage-check again and
+ * log the outcome warning. Returns an outcome only when it ends the run early, else `undefined`. */
 async function applyStageFixUp(
   ctx: RunStageContext,
   desc: StagedCommitDescription,
@@ -313,7 +314,9 @@ async function applyStageFixUp(
   }
   // A fix-up turn may resolve its findings by reverting the whole change. With nothing left
   // in the worktree there is nothing to commit or queue: end the run no_change here instead
-  // of handing a clean tree to commitAll. The worktree is left clean and no pin is taken.
+  // of handing a clean tree to commitAll. The worktree is left clean and no pin is taken, and
+  // the outcome is flagged selfCheckReverted so the digest prices the discarded authoring
+  // as its own loss cause rather than a quiet idle (BUGS.md 2026-11-08).
   // isDirty, not changedFiles: a `git status` that fails must throw, not read as clean — on
   // 2026-10-21 a spawn failure here ended bugfix-2's 17-minute run no_change and released
   // its edits unpinned; thrown, the run ends unsettled and its next run gets them back.
@@ -323,7 +326,7 @@ async function applyStageFixUp(
       "stage self-check: the follow-up turn left no change; nothing to land",
       findings,
     );
-    return { result: "no_change" };
+    return { result: "no_change", selfCheckReverted: true };
   }
   const remaining = await ctx.stageCheck(ctx.wt);
   logSelfCheckOutcome(

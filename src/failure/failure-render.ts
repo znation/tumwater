@@ -240,8 +240,9 @@ function pushFailedRunsByModel(lines: string[], data: FailureReportData): void {
  * errors that the Outcome table above weighs equally. Two parts: the role × class table of
  * hours and dollars, then the top loss causes by time (an error cluster, a role's
  * no_change total — the quiet loss no cluster names, a review-rejected authoring span, a
- * merge-conflict/merge-blocked authoring span, or a context cut-off (a run truncated at
- * its model's ceiling, a cost of length the harness resumes rather than quiet idleness).
+ * merge-conflict/merge-blocked authoring span, a context cut-off (a run truncated at
+ * its model's ceiling, a cost of length the harness resumes rather than quiet idleness),
+ * or discarded authoring the pre-queue self-check's fix-up reverted whole.
  * Grows only with the role catalog (fixed by config) and the LOSS_TOP cut, so the byte
  * bound argued above holds. */
 function pushTimeAndSpend(lines: string[], data: FailureReportData): void {
@@ -302,7 +303,9 @@ function lossCauseText(c: LossCause): string {
           ? `${c.kind} authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
           : c.kind === "cutoff"
             ? `context cut-off on ${roleCell(c.roles[0] ?? "?")}`
-            : `${c.example} (${roleList(c.roles)})`;
+            : c.kind === "self-check-reverted"
+              ? `self-check-reverted authoring on ${roleCell(c.roles[0] ?? "?")}`
+              : `${c.example} (${roleList(c.roles)})`;
 }
 
 /** Prompt-token telemetry: the per-role median prompt

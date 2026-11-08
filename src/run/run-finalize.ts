@@ -213,6 +213,11 @@ function logRunEnd(
     // the harness resumes its pinned session (slotPinnedForResume). Omitted when false, so
     // a normal run — and every run_end written by an older build — renders byte-identically.
     ...(outcome.cutOff === true ? { cutOff: true } : {}),
+    // The self-check-revert flag: the pre-queue self-check's fix-up turn left the worktree
+    // clean, so the run's authoring was discarded (applyStageFixUp, src/run/run-stage.ts) and
+    // the digest prices it as its own loss cause. Omitted when false, so a normal run — and
+    // every run_end written by an older build — renders byte-identically.
+    ...(outcome.selfCheckReverted === true ? { selfCheckReverted: true } : {}),
     ...usageFragment(state.generatedTokens, usage.costUsd, usage.notionalCostUsd),
     ...(Object.keys(providerCost).length > 0 ? { providerCost } : {}),
     // The billing answer the run's runs reported, so the report can tell notional spend from
