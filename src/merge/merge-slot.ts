@@ -18,10 +18,10 @@ import { truncate } from "../text/text.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** The merge pipeline's bookkeeping (merge queue 3/5 and 4/5), split out of the drain
- * (merge-drain.ts, which schedules the verifications and the merge) so it lives separate from the
- * merge mechanics themselves (merge-core.ts and merge-batch.ts: review gate, rebase, verify).
- * This module owns the 4/5 in-flight marker — one record per change being verified,
- * approved, or merged — the per-merge usage accounting, and the write-back that folds every
+ * (merge-drain.ts, which schedules the one gate-then-merge task per head) so it lives separate
+ * from the merge mechanics themselves (merge-core.ts: review gate, rebase, merge).
+ * This module owns the 4/5 in-flight marker — one record per change being merged — the
+ * per-merge usage accounting, and the write-back that folds every
  * outcome into the authoring role's state and drops its queue entry. A merge's pi runs charge
  * to the authoring runner (foldMergeUsage). */
 
@@ -75,7 +75,7 @@ export const MERGE_STAGE_LABELS: Record<MergeStage, string> = {
  *   and the marker shows nothing for it: its row reads its own state until the record goes.
  * A queued change whose verification is still waiting for a permit has no record at all: its row
  * reads plainly queued. */
-export type MergeChangeStatus = "merging" | "approved" | "done";
+type MergeChangeStatus = "merging" | "approved" | "done";
 
 /** One change's record in the in-flight marker. `startedAt` is stamped when its verification starts
  * and kept through its merge, so its `merging <elapsed>` measures this change's own merge. `stage`
@@ -210,12 +210,11 @@ function updateMergeChange(
   rewriteMarker(root, { ...marker, changes: marker.changes });
 }
 
-/** Advance one change's record in the live marker — the verification's move to `approved` and the
- * merge's per-change status hook (BatchContext.onChangeStatus). A read-modify-write of the file,
- * not a rewrite from memory, so the stage a gate last set (setMergeStage, the same process)
- * survives. Each move to `merging` resets the change's stage to `merging` and stamps its
- * `startedAt` if it has none. A no-op when there is no marker or it has no record for `role`.
- * Never throws (rewriteMarker). */
+/** Advance one change's record in the live marker — the merge task's re-stage as it moves
+ * through the gate and merge. A read-modify-write of the file, not a rewrite from memory, so the
+ * stage a gate last set (setMergeStage, the same process) survives. Each move to `merging`
+ * resets the change's stage to `merging` and stamps its `startedAt` if it has none. A no-op when
+ * there is no marker or it has no record for `role`. Never throws (rewriteMarker). */
 export function setMergeChangeStatus(root: string, role: string, status: MergeChangeStatus): void {
   updateMergeChange(root, role, (change) => {
     change.status = status;
@@ -460,8 +459,8 @@ export function writeMergeOutcome(
  * `cost` is the real money (API-billed runs and subscription overage); `notionalCost` is a
  * subscription merge's API-equivalent spend, which never charges the cap and rides the
  * merge_done event's own notional field (plans/agent-backends.md part 6a). The single home of the
- * shape: writeMergeOutcome and mergeUsage build it here, and merge-pipeline.ts's
- * ApprovedMerge and settleMergeOutcome carry the same object. */
+ * shape: writeMergeOutcome and mergeUsage build it here, and merge-drain.ts's task record and
+ * settleMergeOutcome carry the same object. */
 export interface MergeUsage {
   tokens: number;
   cost: number;

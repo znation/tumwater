@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { newMergePipeline, settleMergeOutcome } from "../src/merge/merge-pipeline.js";
-import { drainVerify } from "../src/merge/merge-verify.js";
+import { drainMergeQueue } from "../src/merge/merge-drain.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { defaultConfig } from "../src/config/config.js";
 import { enqueueMerge, headMerge, queuedMerges, type MergeEntry } from "../src/merge/merge-queue.js";
@@ -106,13 +106,13 @@ test("a change at MERGE_CONFLICT_LIMIT is not re-queued; a gone pin is not eithe
   assert.equal(await refSha(gone.root, mergeRefName("improve")).catch(() => null), null);
 });
 
-test("drainVerify leaves an entry queued until its notBefore passes", async () => {
+test("drainMergeQueue leaves an entry queued until its notBefore passes", async () => {
   const { root, entry, file } = await pinnedEntry();
   fs.rmSync(file);
   enqueueMerge(root, { ...entry, notBefore: Date.now() + 60_000 });
   const pipeline = newMergePipeline();
   const config = defaultConfig();
-  await drainVerify(
+  await drainMergeQueue(
     {
       root,
       mainBranch: "main",
@@ -126,17 +126,17 @@ test("drainVerify leaves an entry queued until its notBefore passes", async () =
     },
     pipeline,
   );
-  assert.equal(pipeline.verifying.size, 0, "no verification started");
+  assert.equal(pipeline.merge, null, "no gate-then-merge task started");
   assert.equal(queuedMerges(root).length, 1, "the entry is still queued");
 });
 
-test("drainVerify reports, not throws, when a deduped entry's file cannot be dropped", async () => {
-  // drainVerify's dedupe branch drops an entry whose sha main already holds (a crash between the
-  // fast-forward and the drop). That drop is the same fs.rmSync dropMerge whose failure the two
-  // sibling settle paths (dropTornHead, settleAbortedApproved) already guard: it runs in the poll
-  // body with nothing to catch it, so a queue file that is locked or on a read-only filesystem
-  // (the shape an ENOSPC or immutable queue file takes) throwing out of drainVerify would end the
-  // whole team's run. The drop must be reported and the entry left for the next poll, not thrown.
+test("drainMergeQueue reports, not throws, when a deduped entry's file cannot be dropped", async () => {
+  // drainMergeQueue's dedupe branch drops an entry whose sha main already holds (a crash between
+  // the fast-forward and the drop). That drop is the same fs.rmSync dropMerge whose failure
+  // dropTornHead already guards: it runs in the poll body with nothing to catch it, so a queue
+  // file that is locked or on a read-only filesystem (the shape an ENOSPC or immutable queue file
+  // takes) throwing out of drainMergeQueue would end the whole team's run. The drop must be
+  // reported and the entry left for the next poll, not thrown.
   const root = makeRepo();
   const sha = mainSha(root);
   const entry: MergeEntry = { role: "improve", sha, run: 1, summary: "on main", enqueuedAt: Date.now() };
@@ -150,7 +150,7 @@ test("drainVerify reports, not throws, when a deduped entry's file cannot be dro
     return orig(...args);
   });
   try {
-    await drainVerify(
+    await drainMergeQueue(
       {
         root,
         mainBranch: "main",

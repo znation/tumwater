@@ -12,7 +12,6 @@ import { mergeRefName, rejectedRefName } from "../paths.js";
 import type { AbortableMerge } from "../operator/operator-requests.js";
 import type { MergeEntry } from "./merge-queue.js";
 import type { RunResult } from "../run/run-outcome.js";
-import type { FoldsUsage } from "../runner/runner-pi.js";
 import type { RunnerState } from "../runner/runner-state.js";
 
 /** One merge task the pipeline owns (merge queue 3/5, land-queue speed 2c) — the merge slot's
@@ -29,30 +28,6 @@ export interface InFlightMerge {
    * nothing, so it is not in flight (mergeTasks) and not abortable, and no marker record is
    * open for it. */
   parked?: boolean;
-}
-
-/** The change-shaped record the drain task holds while it gates and merges one queue head (and
- * the shape the verify stage's approved map was typed to — that map stays here, empty, until
- * part 3d/6 deletes it): the queue entry, the head its gate judges from its merge ref (`sha`),
- * the author's wiring and the merge's own usage fold. Built in memory by startMerge for its one
- * task; the `controller`/`userAborted` fields ride the AbortableMerge footing and are not used
- * separately — the task's own InFlightMerge controller is what an abort fires. */
-export interface ApprovedMerge extends AbortableMerge, FoldsUsage {
-  entry: MergeEntry;
-  /** The queue file to drop once its outcome is written. */
-  file: string;
-  /** The head its gate approved — the synced pin its merge ref names. */
-  sha: string;
-  /** `sha` again when the gate's pre-check ran green on exactly it (VerifyVerdict). */
-  verifiedHead?: string;
-  /** When its gate-then-merge task started: its merge_done/merge_failed event's durationMs runs
-   * from here. */
-  startedAt: number;
-  /** The authoring runner the change's merge runs with — its gate and merge fold into one
-   * state. */
-  author: RoleRunner;
-  /** The merge's own spend so far (its reviewer). */
-  usage: MergeUsage;
 }
 
 /** The per-poll state the pipeline reads from the scheduler, resolved once by the poll loop.
@@ -96,20 +71,14 @@ export interface MergePipelineContext {
 }
 
 /** The scheduler's merge state across polls (land-queue speed 2c):
- * - `verifying` and `approved`: the verify stage's maps — unpopulated since the drain collapse
- *   (part 3/4 of the split): a queued change is gated and merged by the one `merge` task. They
- *   stay in the type, empty, until part 3d/6 deletes them, so `mergeTasks`, `abortableMerges`
- *   and `liveRoles` keep compiling over them.
- * - `merge`: the one task that writes main — the first eligible queue head, in queue
- *   order, gated and merged one at a time through mergeApprovedChange (a rebase and a
- *   fast-forward, no shared check).
+ * - `merge`: the one task that writes main — the first eligible queue head, in queue order,
+ *   gated and merged one at a time through mergeApprovedChange (a rebase and a fast-forward,
+ *   no shared check).
  * - `postReview`: the one post-merge review in flight (src/merge/merge-post-review-drain.ts). It
  *   holds a permit but no role, queue entry or the merge slot.
  * A role is in at most one of them: its one queued change is held by the one merge task until
  * it settles, so no two tasks ever touch the same worktree or ref. */
 export interface MergePipeline {
-  verifying: Map<string, InFlightMerge>;
-  approved: Map<string, ApprovedMerge>;
   merge: InFlightMerge | null;
   /** The one post-merge review in flight (src/merge/merge-post-review-drain.ts). It holds a
    * permit but no role, queue entry or the merge slot. */
@@ -119,7 +88,7 @@ export interface MergePipeline {
 /** A fresh pipeline: nothing in flight anywhere — no merge holding main, no post-merge review
  * running. The orchestrator builds one per team start (orchestrator.ts). */
 export function newMergePipeline(): MergePipeline {
-  return { verifying: new Map(), approved: new Map(), merge: null, postReview: null };
+  return { merge: null, postReview: null };
 }
 
 /** Every merge task in flight — the merge slot's gate-then-merge task and each post-merge
@@ -127,15 +96,14 @@ export function newMergePipeline(): MergePipeline {
  * it has started nothing, and a shutdown (its controller) or a closed start gate (at its grant)
  * settles it without a run. */
 export function mergeTasks(p: MergePipeline): InFlightMerge[] {
-  return [...[...p.verifying.values()].filter((v) => !v.parked), ...(p.merge ? [p.merge] : []), ...(p.postReview && !p.postReview.parked ? [p.postReview] : [])];
+  return [...(p.merge ? [p.merge] : []), ...(p.postReview && !p.postReview.parked ? [p.postReview] : [])];
 }
 
 /** Everything `tumwater abort --role` can reach: every task in flight (the one merge slot's
- * task and each post-merge review), plus the verify stage's approved-map values — a map the
- * drain no longer populates, kept for part 3d/6. A parked post-merge review is out of reach, as
- * a plainly queued entry always was: its change has not started merging. */
+ * task and each post-merge review). A parked post-merge review is out of reach, as a plainly
+ * queued entry always was: its change has not started merging. */
 export function abortableMerges(p: MergePipeline): AbortableMerge[] {
-  return [...mergeTasks(p), ...p.approved.values()];
+  return mergeTasks(p);
 }
 
 /** Wire harness shutdown to one task's own controller — through the shared register/abort
@@ -180,12 +148,6 @@ export async function acquireUnlessAborted(
   return null;
 }
 
-/** The roles the pipeline holds right now — the merge task's roles (the approved/verifying maps
- * stay in the type, empty, until part 3d/6). */
-export function liveRoles(p: MergePipeline): Set<string> {
-  return new Set([...p.verifying.keys(), ...p.approved.keys(), ...(p.merge?.roles ?? [])]);
-}
-
 /** Discard the pinned merge refs of every role in a deliberately-aborted merge.
  * `tumwater abort --role` throws the committed work away, and the pin is what would otherwise
  * recover it, so the ref must go; a shutdown abort leaves `userAborted` unset and every ref
@@ -205,10 +167,9 @@ export async function discardPinnedRefs(root: string, roles: string[]): Promise<
  * write-plus-drop pairing every settled merge goes through: the result lands in the role's
  * state and the merge_done/merge_failed event (writeMergeOutcome), then the change's marker
  * record is dropped (removeMergeChange — merge-slot leaves the marker to the caller). Shared by
- * settleAbortedApproved, the verify stage's final-verdict branch, and the merge's per-change
- * write-back, so no settled entry can keep a stale marker or lose its outcome write. The pinned-ref
- * discard stays with the callers: only a user abort throws work away, and a user abort of the
- * merge discards the pins of every change it had not merged. */
+ * every outcome the merge task settles, so no settled entry can keep a stale marker or lose its
+ * outcome write. The pinned-ref discard stays with the callers: only a user abort throws work
+ * away, and a user abort of the merge discards the pins of every change it had not merged. */
 export async function settleMergeOutcome(
   root: string,
   entry: MergeEntry,

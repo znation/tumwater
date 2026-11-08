@@ -23,9 +23,8 @@ import {
 } from "../paths.js";
 
 /** The in-flight merge fields `consumeAbortRequests` needs to cancel one. The orchestrator's
- * `InFlightMerge` carries exactly these plus its `promise`, and the verifying stage's waiting
- * `ApprovedMerge` extends it, so both are assignable here without this module knowing about the
- * drain. */
+ * `InFlightMerge` carries exactly these plus its `promise`, so it is assignable here without
+ * this module knowing about the drain. */
 export interface AbortableMerge {
   roles: string[];
   userAborted: boolean;

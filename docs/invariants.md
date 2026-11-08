@@ -860,9 +860,10 @@ The pin is deleted and the branch is reset to main, one warning names the refs, 
 cleared. Recovery then has nothing of the withdrawn work to queue. If a backup ref cannot be
 written, the run fails and keeps both the work and the marker. A queued change records the claim
 its run worked
-(`MergeEntry.claim`; not for a user request). The verify, before its rebase, and the merge, inside
-the merge lock before its rebase, drop a feature or bugfix change whose recorded claim, or any
-entry its diff moved out of the role's section since its merge-base with main, main's tip no
+(`MergeEntry.claim`; not for a user request). The one-step merge checks withdrawal before its
+gate's rebase (mergeApprovedChangeIn) and again inside the merge lock before its rebase
+(mergeToMain's tryMerge): either check drops a feature or bugfix change whose recorded claim, or
+any entry its diff moved out of the role's section since its merge-base with main, main's tip no
 longer lists there: the pin is deleted, main does not move, the role's `lastError` and a warning
 carry the reason, and the merge settles `withdrawn` with no error streak and no revision. A change
 whose entry is still listed is untouched, and an unreadable `PLANS.md`/`BUGS.md` on either side
@@ -872,8 +873,8 @@ never drops one.
 `src/scheduling/scope.ts` (the poll's release loop), `src/runner/runner-leftover.ts`
 (`setAsideWithdrawnWork`), `src/runner/runner-run.ts` (`recoverLeftoversForRun`,
 `restoreSalvagedPhase`), `src/merge/merge-withdrawn.ts`
-(`withdrawnEntries`, `dropWithdrawnPin`), `src/merge/merge-batch.ts` (`verifyRequest`),
-`src/merge/merge-to-main.ts` (`tryMerge`), `src/merge/merge-core.ts` (`mergeApprovedChangeIn`),
+(`withdrawnEntries`, `dropWithdrawnPin`), `src/merge/merge-to-main.ts` (`tryMerge`),
+`src/merge/merge-core.ts` (`mergeApprovedChangeIn`),
 `src/run/run-stage.ts` (the enqueue), `src/run/run-apply.ts` (`applyMergeOutcome`).
 
 **Pinned by.** `test/orchestrator-scheduling.test.ts` — "a claimed entry the operator deletes
@@ -884,10 +885,11 @@ it", "a deleted claimed entry leaves an interrupted user request's resume alone"
 run's own commit on the role branch is set aside, not recovered into the merge queue", "a
 withdrawn run's merge pin that no queue entry holds is set aside, not re-queued" and "a withdrawn
 run's salvaged edits are kept for the operator, not restored into the next run";
-`test/merge-withdrawn.test.ts` — "the verify drops a change for a plan the operator deleted from
-main: nothing merges and the pin is gone", "the verify drops a change whose recorded claim main
-deleted, though its diff never touched PLANS.md", "the merge lock drops a change whose plan main
-deleted after its verify approved it", "a plan still listed on main merges: the guard leaves a
+`test/merge-withdrawn.test.ts` — "the one-step merge drops a change for a plan the operator
+deleted from main: nothing merges and the pin is gone", "the one-step merge drops a change whose
+recorded claim main deleted, though its diff never touched PLANS.md", "the one-step merge's in-lock
+check drops a change whose plan main withdraws mid-gate", "a plan still listed on main merges: the
+guard leaves a
 change that finishes its own entry alone" and "withdrawnEntries reads only the work roles' own
 sections, and an unreadable side never drops work"; `test/run-stage.test.ts` — "a queued merge
 records the claim its run worked, so the merge can drop it once main deletes the entry";

@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import type { MergeRequest, MergerContext } from "../../src/merge/merge-core.js";
 import { mergeApprovedChange } from "../../src/merge/merge-core.js";
-import type { BatchRoleWiring } from "../../src/merge/merge-batch.js";
 import { setRef } from "../../src/git/git.js";
 import { ensureWorktree } from "../../src/git/worktree.js";
 import { mergeRefName } from "../../src/paths.js";
@@ -37,9 +36,9 @@ export interface PiCall {
   session: string;
 }
 
-/** A MergerContext wired like merge-batch.ts does: real config/state, a recording runPi stub
- * for the conflict resolver (which may also mutate the worktree via `resolve`), and an abortable
- * signal. */
+/** A MergerContext wired the way the one-step merge drives it (merge-core.ts's
+ * mergeApprovedChange): real config/state, a recording runPi stub for the conflict resolver
+ * (which may also mutate the worktree via `resolve`), and an abortable signal. */
 export function makeCtx(
   root: string,
   state: RunnerState,
@@ -89,18 +88,6 @@ export { reviewerPi, APPROVE_PI } from "./pi-events.js";
 
 export function request(sha: string, overrides: Partial<MergeRequest> = {}): MergeRequest {
   return { role: ROLE, sha, runNumber: 7, summary: "the work", ...overrides };
-}
-
-/** The BatchRoleWiring a test context implies: its own state and pi/fold halves, so the
- * hand-assembled literal cannot drift from the context it stubs. Still used by the verify-stage
- * tests (runner-revision, merge-withdrawn) that drive verifyRequest directly. */
-export function batchWiring(ctx: MergerContext): BatchRoleWiring {
-  return {
-    state: ctx.state,
-    foldUsage: ctx.foldUsage,
-    runPi: ctx.runPi,
-    runGatePi: (opts) => ctx.runGatePi(opts),
-  };
 }
 
 /** Merge one pinned change the way the pipeline does — the gate and the merge through a single

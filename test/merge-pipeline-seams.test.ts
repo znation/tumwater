@@ -7,9 +7,9 @@ import { Semaphore } from "../src/concurrency/semaphore.js";
 
 // Unit-tier coverage for the merge pipeline's two shutdown seams
 // (src/merge/merge-pipeline.ts): the wiring that turns the harness stop into a merge task's
-// own abort, and the permit-taking race that lets a parked verification lose its grant to a
-// shutdown without leaking the permit. Both run in every shutdown of every team (merge-drain.ts and
-// merge-verify.ts call them for every task), and both carry a documented edge a naive version
+// own abort, and the permit-taking race that lets a parked task lose its grant to a
+// shutdown without leaking the permit. Both run in every shutdown of every team (merge-drain.ts
+// calls them for every task), and both carry a documented edge a naive version
 // gets wrong — an already-aborted signal that addEventListener alone would never fire; a grant
 // that arrives after the abort and must be handed straight back ("a hop, never a leak") or
 // maxConcurrent starves by one permit per aborted verify. Until now both ran only under the e2e

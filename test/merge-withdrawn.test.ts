@@ -1,14 +1,14 @@
 /** Tests for src/merge/merge-withdrawn.ts and its two merge checks: a queued change whose backlog
- * entry main no longer lists is dropped unmerged, in the verify and again in the merge lock. The
- * repos are real git, the changes pinned the way a run's staging pins them. The 2026-11-02
- * incident: feature-2's change for a plan the operator had deleted from PLANS.md the day before
- * merged as 8ed0d3eec. */
+ * entry main no longer lists is dropped unmerged by the one-step merge, once before its gate and
+ * again inside the merge lock (mergeApprovedChange owns the change's one gate). The repos are
+ * real git, the changes pinned the way a run's staging pins them. The 2026-11-02 incident:
+ * feature-2's change for a plan the operator had deleted from PLANS.md the day before merged as
+ * 8ed0d3eec. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { mergeApprovedChange } from "../src/merge/merge-core.js";
-import { verifyRequest } from "../src/merge/merge-batch.js";
 import { withdrawnEntries } from "../src/merge/merge-withdrawn.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
@@ -16,7 +16,7 @@ import { freshRunnerState } from "../src/runner/runner-state.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { mainSha, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
-import { APPROVE_PI, batchWiring, declareCheck, makeCtx, request } from "./fixtures/merger-fixtures.js";
+import { APPROVE_PI, declareCheck, makeCtx, request } from "./fixtures/merger-fixtures.js";
 
 const ROLE = "feature-2";
 
@@ -61,16 +61,16 @@ function withdrawBeta(root: string): string {
 
 const WITHDRAWN_WARNING = 'dropped the change for "Beta" unmerged: PLANS.md on main no longer lists it under ## Planned';
 
-test("the verify drops a change for a plan the operator deleted from main: nothing merges and the pin is gone", async () => {
+test("the one-step merge drops a change for a plan the operator deleted from main: nothing merges and the pin is gone", async () => {
   await withPi(APPROVE_PI, async () => {
     const { root, sha } = await pinnedPlanChange();
     const withdrawnMain = withdrawBeta(root);
     const state = freshRunnerState(ROLE);
     const { ctx } = makeCtx(root, state);
 
-    const verdict = await verifyRequest(ctx, request(sha, { role: ROLE }), batchWiring(ctx));
+    const result = await mergeApprovedChange(ctx, request(sha, { role: ROLE }));
 
-    assert.deepEqual(verdict, { kind: "result", result: "withdrawn" });
+    assert.equal(result, "withdrawn");
     assert.equal(mainSha(root), withdrawnMain, "main did not move");
     assert.equal(await refSha(root, mergeRefName(ROLE)), null, "no recovery can bring the change back");
     assert.equal(state.lastError, `withdrawn — ${WITHDRAWN_WARNING}`);
@@ -78,13 +78,13 @@ test("the verify drops a change for a plan the operator deleted from main: nothi
   });
 });
 
-test("the verify drops a change whose recorded claim main deleted, though its diff never touched PLANS.md", async () => {
+test("the one-step merge drops a change whose recorded claim main deleted, though its diff never touched PLANS.md", async () => {
   await withPi(APPROVE_PI, async () => {
     const { root, sha } = await pinnedPlanChange(false);
     withdrawBeta(root);
     const { ctx } = makeCtx(root, freshRunnerState(ROLE));
-    const verdict = await verifyRequest(ctx, request(sha, { role: ROLE, claim: BETA }), batchWiring(ctx));
-    assert.deepEqual(verdict, { kind: "result", result: "withdrawn" });
+    const result = await mergeApprovedChange(ctx, request(sha, { role: ROLE, claim: BETA }));
+    assert.equal(result, "withdrawn");
   });
 });
 
@@ -107,23 +107,34 @@ test("a plan still listed on main merges: the guard leaves a change that finishe
   });
 });
 
-test("the merge lock drops a change whose plan main deleted after its verify approved it", async () => {
+test("the one-step merge's in-lock check drops a change whose plan main withdraws mid-gate", async () => {
   await withPi(APPROVE_PI, async () => {
     const { root, sha } = await pinnedPlanChange();
     const state = freshRunnerState(ROLE);
     const { ctx } = makeCtx(root, state);
     const req = request(sha, { role: ROLE, claim: BETA });
-    const verdict = await verifyRequest(ctx, req, batchWiring(ctx));
-    assert.equal(verdict.kind, "approved", "Beta is still listed when the verify runs");
 
-    // The operator withdraws Beta while the approved change waits for the merge slot.
-    const withdrawnMain = withdrawBeta(root);
-    // Part 4/4: the merge call still drops the withdrawn change before its gate — the
-    // withdrawal check precedes reviewQueuedChange inside mergeApprovedChange.
-    const result = await mergeApprovedChange(ctx, { ...req, sha: verdict.kind === "approved" ? verdict.sha : sha });
+    // The gate's build pre-check is everything between mergeApprovedChange's pre-gate withdrawal
+    // check and the merge lock's. Script it to withdraw Beta on main and pass: the entry is still
+    // listed when the call starts, gone by the time the lock re-checks, so the in-lock check is
+    // what drops the change (the pre-gate one saw it listed).
+    const withdrawnPlans = path.join(tmpdir("merge-withdrawn-inlock-"), "withdrawn-plans.md");
+    fs.writeFileSync(withdrawnPlans, plans("Alpha"));
+    declareCheck(
+      root,
+      `#!/bin/sh\nset -e\ncd '${root}'\ncp '${withdrawnPlans}' PLANS.md\n` +
+        `if ! git diff --quiet PLANS.md; then git add PLANS.md; git commit -q -m 'withdraw beta'; fi\n` +
+        `echo ok\n`,
+    );
+
+    const result = await mergeApprovedChange(ctx, req);
 
     assert.equal(result, "withdrawn");
-    assert.equal(mainSha(root), withdrawnMain, "main did not move");
+    assert.equal(
+      sh(root, "git", "show", "main:PLANS.md"),
+      plans("Alpha").trimEnd(),
+      "main holds only the mid-gate withdrawal, never the change's finish",
+    );
     assert.equal(await refSha(root, mergeRefName(ROLE)), null);
     assert.equal(state.lastError, `withdrawn — ${WITHDRAWN_WARNING}`);
     assert.deepEqual(warningMessages(root), [WITHDRAWN_WARNING]);

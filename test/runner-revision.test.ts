@@ -10,8 +10,7 @@ import {
 } from "../src/runner/runner-revision.js";
 import { CONVERGENCE_HOLD_MARKER } from "../src/roles/role-guidance.js";
 import { buildRevisionNote, buildRejectedReviewNote } from "../src/prompt/gate-notes.js";
-import { verifyRequest } from "../src/merge/merge-batch.js";
-import { recordRejectedChange } from "../src/merge/merge-core.js";
+import { mergeApprovedChange, recordRejectedChange } from "../src/merge/merge-core.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
 import { rejectedRefName, mergeRefName } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
@@ -32,7 +31,7 @@ import { eventsOfType, unwritableEvents } from "./fixtures/log-fixtures.js";
 import { readEvents } from "../src/events/event-read.js";
 import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { commitIn, headSha, initializedWorktree, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { batchWiring, makeCtx, request, ROLE } from "./fixtures/merger-fixtures.js";
+import { makeCtx, request, ROLE } from "./fixtures/merger-fixtures.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -287,14 +286,15 @@ test("applyWithConflicts settles the archive and hands back markers only in the 
   assert.equal(sequencerLeft(root), false, "a later cherry-pick in this worktree is not refused as in progress");
 });
 
-/** A pinned commit off main whose diff leaks a credential, so verifyRequest rejects it without
- * ever running the pre-merge reviewer — the deterministic twin of the reviewer-verdict rejections
- * the revision cases used to drive. Part 3r/3 re-points those cases to a leaked credential rather
- * than the conflict-marker diff the first revision used, because part 3m/3 narrows the pre-merge
- * gate to the three findings a later commit cannot repair and drops `conflictMarkerReason` from
- * it, whereas a leaked credential stays a gate rejection. It sets TUMWATER_TEST_FAKE_TOKEN (a
- * name the gate's SECRET_NAME matches, with a value past MIN_SECRET_LENGTH) and commits that value
- * so secretLeakReason sees it; afterEach clears the variable once the test is done. */
+/** A pinned commit off main whose diff leaks a credential, so the one-step merge's gate
+ * (mergeApprovedChange, which owns the change's one gate) rejects it without ever running a
+ * model — the deterministic twin of the reviewer-verdict rejections the revision cases used to
+ * drive. Part 3r/3 re-points those cases to a leaked credential rather than the conflict-marker
+ * diff the first revision used, because part 3m/3 narrows the pre-merge gate to the three
+ * findings a later commit cannot repair and drops `conflictMarkerReason` from it, whereas a
+ * leaked credential stays a gate rejection. It sets TUMWATER_TEST_FAKE_TOKEN (a name the gate's
+ * SECRET_NAME matches, with a value past MIN_SECRET_LENGTH) and commits that value so
+ * secretLeakReason sees it; afterEach clears the variable once the test is done. */
 const leakedToken = "tw-secret-value-0123456789";
 async function leakedFixture(role = ROLE): Promise<{ root: string; sha: string }> {
   process.env.TUMWATER_TEST_FAKE_TOKEN = leakedToken;
@@ -311,9 +311,8 @@ test("a gate rejection points the rejected ref at the judged head and records ro
   const { root, sha } = await leakedFixture();
   const state = freshRunnerState(ROLE);
   const { ctx } = makeCtx(root, state);
-  const w = batchWiring(ctx);
-  const verdict = await verifyRequest(ctx, request(sha), w);
-  assert.equal(verdict.kind, "result");
+  const result = await mergeApprovedChange(ctx, request(sha));
+  assert.equal(result, "rejected");
   assert.equal(state.revision?.round, 1, "a fresh rejection owes one revision");
   assert.equal(await refSha(root, rejectedRefName(ROLE)), state.revision?.sha, "the rejected head stays reachable");
   assert.equal(await refSha(root, rejectedRefName(ROLE)), state.lastReview?.head);
@@ -322,8 +321,8 @@ test("a gate rejection points the rejected ref at the judged head and records ro
 // The tagged-repeat finality and its counting are reviewer vocabulary: only the pre-merge
 // reviewer puts a `(prior N)` tag in a reason, and a deterministic gate rejection never does.
 // Part 3r/3 re-points the revision cases to deterministic rejections, so the tag path can no
-// longer be reached through verifyRequest — these drive recordRejectedChange directly with a
-// tagged reason, pinning INV-BH4's counting and REVISION_FINAL_ON_REPEAT without any reviewer.
+// longer be reached through the gate — these drive recordRejectedChange directly with a tagged
+// reason, pinning INV-BH4's counting and REVISION_FINAL_ON_REPEAT without any reviewer.
 
 test("a repeat (prior N) objection that has survived two revisions is final and deletes the rejected ref", async () => {
   const { root, sha } = await leakedFixture();
@@ -375,14 +374,13 @@ test("an exhausted chain holds the entry with the surviving objections, not a fr
     source: "assigned",
   };
   const { ctx } = makeCtx(root, state);
-  const w = batchWiring(ctx);
   await setRef(root, rejectedRefName(ROLE), sha);
   // A deterministic rejection carries no `(prior N)` repeat tag (only the reviewer could make
   // one), so the only route to finality is the backstop: REVISION_BACKSTOP - 1 revisions have
   // been granted and this is the cap rejection, which ends the chain as a rejection judged
   // final and holds the entry.
-  const verdict = await verifyRequest(ctx, request(sha, { revisionRound: REVISION_BACKSTOP - 1 }), w);
-  assert.equal(verdict.kind, "result");
+  const result = await mergeApprovedChange(ctx, request(sha, { revisionRound: REVISION_BACKSTOP - 1 }));
+  assert.equal(result, "rejected");
   assert.equal(state.lastReview?.exhausted, true, "the rejection is final");
   // The surviving objection is now a needs-review hold under the entry's heading, so no role
   // re-picks it "fresh"; the note text carries the objection verbatim for the operator/plan role.
@@ -443,13 +441,12 @@ test("a converging chain whose revisions raise only new objections keeps revisin
   const { root, sha } = await leakedFixture();
   const state = freshRunnerState(ROLE);
   const { ctx } = makeCtx(root, state);
-  const w = batchWiring(ctx);
   // This is the chain's third rejection (revisionRound 2 → round 3), where the old
   // REVISION_LIMIT of 2 used to abandon even a converging change. The deterministic rejection
   // carries no repeat tag, so no count reaches the finality threshold and the chain keeps
   // revising instead.
-  const verdict = await verifyRequest(ctx, request(sha, { revisionRound: 2 }), w);
-  assert.equal(verdict.kind, "result");
+  const result = await mergeApprovedChange(ctx, request(sha, { revisionRound: 2 }));
+  assert.equal(result, "rejected");
   assert.equal(state.revision?.round, 3, "a converging chain is not abandoned");
   assert.equal(state.lastReview?.exhausted, undefined, "not final — the change still revises");
   assert.equal(await refSha(root, rejectedRefName(ROLE)), state.revision?.sha, "the rejected head stays reachable");
@@ -459,12 +456,11 @@ test("a chain whose objections never repeat ends at the backstop", async () => {
   const { root, sha } = await leakedFixture();
   const state = freshRunnerState(ROLE);
   const { ctx } = makeCtx(root, state);
-  const w = batchWiring(ctx);
   await setRef(root, rejectedRefName(ROLE), sha);
   // REVISION_BACKSTOP - 1 revisions have been granted; this is the 6th (cap) rejection, and the
   // deterministic rejection carries no repeat tag, so the chain ends at the cap.
-  const verdict = await verifyRequest(ctx, request(sha, { revisionRound: REVISION_BACKSTOP - 1 }), w);
-  assert.equal(verdict.kind, "result");
+  const result = await mergeApprovedChange(ctx, request(sha, { revisionRound: REVISION_BACKSTOP - 1 }));
+  assert.equal(result, "rejected");
   assert.equal(state.revision, undefined, "no more rounds are recorded");
   assert.equal(state.lastReview?.exhausted, true, "the next rejected note says it was final");
   assert.equal(await refSha(root, rejectedRefName(ROLE)), null, "the rejected ref is deleted");
@@ -477,11 +473,10 @@ test("exhausting a revision still records the outcome when the events feed is un
   const { root, sha } = await leakedFixture();
   const state = freshRunnerState(ROLE);
   const { ctx } = makeCtx(root, state);
-  const w = batchWiring(ctx);
   await setRef(root, rejectedRefName(ROLE), sha);
   unwritableEvents(root);
-  const verdict = await verifyRequest(ctx, request(sha, { revisionRound: REVISION_BACKSTOP - 1 }), w);
-  assert.equal(verdict.kind, "result");
+  const result = await mergeApprovedChange(ctx, request(sha, { revisionRound: REVISION_BACKSTOP - 1 }));
+  assert.equal(result, "rejected");
   assert.equal(state.revision, undefined, "the round is still cleared");
   assert.equal(state.lastReview?.exhausted, true, "the final rejection is still marked");
   assert.equal(await refSha(root, rejectedRefName(ROLE)), null, "the rejected ref is deleted");
@@ -656,9 +651,8 @@ test("the director never gets a revision: a rejection leaves no revision state",
   const { root, sha } = await leakedFixture(DIRECTOR_ROLE);
   const state = freshRunnerState(DIRECTOR_ROLE);
   const { ctx } = makeCtx(root, state);
-  const w = batchWiring(ctx);
-  const verdict = await verifyRequest(ctx, request(sha, { role: DIRECTOR_ROLE }), w);
-  assert.equal(verdict.kind, "result");
+  const result = await mergeApprovedChange(ctx, request(sha, { role: DIRECTOR_ROLE }));
+  assert.equal(result, "rejected");
   assert.equal(state.revision, undefined, "the director never revises");
   assert.equal(await refSha(root, rejectedRefName(DIRECTOR_ROLE)), null);
 });

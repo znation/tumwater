@@ -28,8 +28,7 @@ import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
  * driven through, queue-shaped pinned commits, the per-role reviewer shim, a pipeline whose
  * merge slot is held busy, and the row the status observers render: until now the slices
  * carried byte-identical copies of all of it — they build on this module instead. The
- * merger*.test.ts family shares merger-fixtures.ts (BatchContext wiring, a different shape),
- * not this. */
+ * merger*.test.ts family shares merger-fixtures.ts (a different wiring shape), not this. */
 
 export const APPROVE = (reply = "the work looks right") => reviewerPi(`VERDICT: approve\n${reply}`);
 
@@ -117,7 +116,7 @@ export function pump(ctx: MergePipelineContext, p: MergePipeline): { stop: () =>
 /** The queue is empty and no verification or merge is running. */
 export const drained = (root: string, p: MergePipeline) => () => queueDepth(root) === 0 && mergeTasks(p).length === 0;
 
-/** Every task still settling — parked verifications and the post-merge review included — for a
+/** Every task still settling — the merge slot's task and the post-merge review included — for a
  * test's cleanup. A busySlot stand-in never settles, so it is skipped: a test that fails before
  * freeing its slot then reports the failure instead of hanging in its finally. The post-merge
  * review starts its pi after the merge that queued it, so a cleanup that restored the fake pi
@@ -125,7 +124,6 @@ export const drained = (root: string, p: MergePipeline) => () => queueDepth(root
  * open for minutes. */
 export const allTasks = (p: MergePipeline) =>
   [
-    ...p.verifying.values(),
     ...(p.merge && !standIns.has(p.merge) ? [p.merge] : []),
     ...(p.postReview ? [p.postReview] : []),
   ].map((t) => t.promise);

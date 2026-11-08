@@ -603,9 +603,10 @@ export class RunnerPi {
  * (role config, session dir, raw log, transient-failure retry — src/runner/runner-pi.ts);
  * `FoldsUsage` adds one agent run's spend to the owning runner's counters exactly once (the
  * reviewer and conflict-resolution runs charge to the authoring role). Declared once here so the
- * contract — and its wording — cannot drift apart across the four contexts that restate it:
- * MergerContext and BatchRoleWiring carry all three halves (PiRunWiring), MergeContext only
- * the resolver's runner (its runPi folds usage internally), and ApprovedMerge only the fold.
+ * contract — and its wording — cannot drift apart across the contexts that restate it:
+ * MergerContext carries all three halves (PiRunWiring) and MergeContext only the resolver's
+ * runner (its runPi folds usage internally); the merge drain's task holds its wiring and fold
+ * directly.
  *
  * `runPi`'s optional fourth argument is the config that ONE agent run executes on (plans/
  * model-tiers.md part 4/8): the conflict resolver passes the strong tier's config there while
@@ -626,11 +627,11 @@ export interface GateRunsPi {
  * reviewer's and conflict-resolution's runs charge to the authoring role, so the folding
  * belongs to the runner, not to the agent run itself (the runner's runPi wiring,
  * src/runner/runner-run.ts). */
-export interface FoldsUsage {
+interface FoldsUsage {
   foldUsage(run: PiRunResult): void;
 }
 
 /** A merge context that runs pi through the runner's shared wiring and folds each agent run's
- * usage: both halves (RunsPi + FoldsUsage). MergerContext and BatchRoleWiring extend this;
- * contexts needing only one half extend that half instead (MergeContext, ApprovedMerge). */
+ * usage: both halves (RunsPi + FoldsUsage). MergerContext extends this; contexts needing only
+ * one half extend that half instead (MergeContext). */
 export interface PiRunWiring extends RunsPi, GateRunsPi, FoldsUsage {}

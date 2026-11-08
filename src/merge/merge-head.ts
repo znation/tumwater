@@ -24,7 +24,7 @@ import { errorMessage } from "../text/text.js";
  * next-run leftover recovery. The drop itself can throw (a queue file that is a directory fails
  * fs.rmSync's non-recursive delete — the shape an ENOSPC or immutable queue file takes), and this
  * runs in the poll body with nothing to guard it: report it and leave the head in place rather
- * than end the team, exactly as settleAbortedApproved guards its own drop. Exported for
+ * than end the team, exactly as the drain's dedupe drop guards its own. Exported for
  * test/merge-queue.test.ts's torn-head step. */
 export async function dropTornHead(root: string): Promise<void> {
   const stale = staleHeadFile(root);
@@ -77,9 +77,10 @@ export async function dropTornHead(root: string): Promise<void> {
 }
 
 /** Already-merged verdicts cached per (root, sha) against the main head they were computed
- * against. drainVerify re-runs its dedupe against main every poll, but a queued entry's sha is
- * fixed and merge-base --is-ancestor against the same head always returns the same answer — the
- * verdict can only change when main itself moves (a merge's fast-forward). Serving the verdict
+ * against. drainMerge (the serial drain) re-runs its dedupe against main every poll, but a
+ * queued entry's sha is fixed and merge-base --is-ancestor against the same head always returns
+ * the same answer — the verdict can only change when main itself moves (a merge's fast-forward).
+ * Serving the verdict
  * from this cache makes a poll whose queue is waiting on busy authors or the merge slot cost one
  * branchHead ref-file read instead of one git spawn per entry, and a moved main recomputes each
  * entry's verdict once (the new head misses the cache). Bounded: verdicts computed against an

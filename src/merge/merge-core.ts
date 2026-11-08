@@ -25,17 +25,15 @@ import { dropWithdrawnPin, withdrawnPinReason, type MergeClaim } from "./merge-w
 /** Reviewing and merging a pinned commit outside the author's worktree (plans/merge-queue.md,
  * entry 2/5). A run commits in its role worktree, pins the sha by `refs/tumwater/landing/<role>`,
  * resets that worktree to main, and queues the sha for the ORCHESTRATOR's merge pipeline
- * (merge-verify.ts, merge queue 3/5 and land-queue speed 2c), which checks it out detached —
- * a pooled `_slot-<n>` for the verify and the shared `_merge` checkout for the merge
- * (plans/worktree-pool.md) — and runs it through the review gate here
- * (reviewPinnedChange, from merge-batch.ts's verifyRequest) and then the merge
- * (mergeApprovedChange, from its merge) — so no diff reaches main unreviewed (invariant 1) and
- * nothing is rebased inside a role worktree any more. Leftover recovery re-queues its pin onto
- * that same pipeline. This is harness code, never a role: the only model runs it starts are the
- * reviewer and merge-to-main.ts's conflict resolver. */
+ * (merge-drain.ts, merge queue 3/5 and land-queue speed 2c), which checks it out detached in the
+ * shared `_merge` checkout (plans/worktree-pool.md) and runs it through the review gate here
+ * (reviewPinnedChange) and the merge (mergeApprovedChange) — so no diff reaches main unreviewed
+ * (invariant 1) and nothing is rebased inside a role worktree any more. Leftover recovery
+ * re-queues its pin onto that same pipeline. This is harness code, never a role: the only
+ * model runs it starts are the reviewer and merge-to-main.ts's conflict resolver. */
 
 /** One merge request: a pinned commit plus everything its gate and events need. `role` names
- * the owning runner (events, session naming, the verify's pooled slot) — the merger itself is not a
+ * the owning runner (events, session naming, the merge worktree) — the merger itself is not a
  * role. */
 export interface MergeRequest {
   role: string;
@@ -57,9 +55,9 @@ export interface MergeRequest {
    * (plans/revise-rejected.md part 2/2): carried from the MergeEntry so the re-review sees the
    * prior objections and the interdiff. Absent on a recovery merge. */
   priorReview?: PriorReview;
-  /** The head its verify's gate pre-check ran green on, when it ran one on exactly `sha`
-   * (GateResult.verifiedHead, carried by merge-batch.ts's VerifyVerdict) — so a merge whose
-   * in-lock rebase is a no-op seeds the red-main baseline with the SHA that becomes main. */
+  /** The head the one-step merge's gate pre-check ran green on, when it ran one on exactly
+   * `sha` (GateResult.verifiedHead) — so a merge whose in-lock rebase is a no-op seeds the
+   * red-main baseline with the SHA that becomes main. */
   verifiedHead?: string;
   /** The backlog entry the authoring run was assigned (MergeEntry.claim): the verify and the
    * in-lock merge drop the change as `withdrawn` once main no longer lists it. */
@@ -68,10 +66,9 @@ export interface MergeRequest {
 
 /** The repo scope every merge step reads from its caller: the worktree root, the branch
  * merges fast-forward, the live config, and the task's abort signal (harness shutdown or a
- * deliberate `abort --role` for any of the task's roles), fresh per call. MergerContext,
- * ReviewGateContext, and merge-batch.ts's BatchContext extend it, so the scope's shape has
- * one home. */
-export interface MergeScopeContext {
+ * deliberate `abort --role` for any of the task's roles), fresh per call. MergerContext and
+ * ReviewGateContext extend it, so the scope's shape has one home. */
+interface MergeScopeContext {
   root: string;
   mainBranch: string;
   config: TumwaterConfig;
@@ -86,7 +83,7 @@ export interface MergeScopeContext {
   reviewRetryDelayMs?: number;
 }
 
-/** MergerContext: what the merger (merge-batch.ts and merge-core.ts) needs from its owning
+/** MergerContext: what the merger (merge-core.ts) needs from its owning
  * runner — not merge-to-main.ts's MergeContext, which is the conflict-resolving merge's own. It
  * carries the repo scope (MergeScopeContext), the live
  * state object (the gate updates it in place exactly as when it ran inside runOnce), the runner's
@@ -112,9 +109,8 @@ export type GateOutcome =
   | { kind: "gate"; gate: GateResult; sha: string }
   | { kind: "result"; result: RunResult; discarded?: true };
 
-/** The identity every gate invocation needs from its caller — merge-batch.ts's BatchContext
- * (and MergerContext) satisfies it, so the gate never hand-assembles its ReviewContext
- * argument object. */
+/** The identity every gate invocation needs from its caller — MergerContext satisfies it, so
+ * the gate never hand-assembles its ReviewContext argument object. */
 interface ReviewGateContext extends GateRunsPi, MergeScopeContext {}
 
 /** Rebase a pinned change in its leased pool slot `wt` (checked out detached at `req.sha`) onto
@@ -128,9 +124,9 @@ interface ReviewGateContext extends GateRunsPi, MergeScopeContext {}
  * the request track the synced head so the strike-cap tell and the merge ref name the tree
  * that can actually merge. On a conflict rebaseOntoMain has already aborted and restored the
  * detached pin — the gate reviews the pinned tree and mergeToMain's resolver merges it. Every
- * verify runs it before its gate (merge-batch.ts's verifyRequest), so a gate never judges a stale
+ * gate runs it before the review (reviewQueuedChange, below), so a gate never judges a stale
  * pin; each call rebases only its own worktree, onto main itself — never onto another queued
- * change — so concurrent verifies in distinct pool slots cannot interfere. */
+ * change — so concurrent gates in distinct checkouts cannot interfere. */
 export async function syncPinToMain(
   ctx: Pick<ReviewGateContext, "root" | "mainBranch">,
   wt: string,
@@ -187,8 +183,8 @@ function reviewContextFor(
   };
 }
 
-/** Run one pinned change through the review gate in its leased pool slot `wt` and handle the
- * immediate bookkeeping — the heart of every verify (merge-batch.ts's verifyRequest). Persists the
+/** Run one pinned change through the review gate in checkout `wt` and handle the
+ * immediate bookkeeping — the heart of the one-step merge's gate (reviewQueuedChange). Persists the
  * verdict at once, folds the reviewer's usage, and routes
  * the three terminal outcomes: aborted (ref kept — fail closed, the next run re-merges it),
  * rejected (ref deleted — final for this sha), and failed (a strike-cap discard — the gate
@@ -211,8 +207,8 @@ export async function reviewPinnedChange(
   const { role } = req;
   const ref = mergeRefName(role);
   // Both uses below — a rejection and a strike-cap discard — end a pinned change without
-  // keeping it: drop the pin ref. The verify's checkout is a pooled slot (plans/worktree-pool.md,
-  // "Vets and merges"): verifyRequest releases the lease in its finally, and a slot is reused, so
+  // keeping it: drop the pin ref. Both callers run the gate in a shared, reused checkout — the
+  // pipelined `_merge` worktree or a pooled slot (plans/worktree-pool.md, "Vets and merges") — so
   // this path must not remove the worktree it ran in.
   const discardPin = async () => {
     await deleteRef(root, ref);
@@ -300,10 +296,10 @@ export async function reviewPinnedChange(
 }
 
 /** The gate a queued change runs before it may merge: rebase its pinned tree onto main's
- * current head (syncPinToMain) and run the review gate (reviewPinnedChange) in its leased
- * pool slot, returning the gate's outcome. One named home for the sync-then-review sequence,
- * so the verify stage (merge-batch.ts's verifyRequestIn) and the later one-step drain run the
- * same code. */
+ * current head (syncPinToMain) and run the review gate (reviewPinnedChange) in the caller's
+ * checkout, returning the gate's outcome. One named home for the sync-then-review sequence,
+ * so the one-step merge (mergeApprovedChange) and its in-lock conflict re-review run the same
+ * gate code. */
 export async function reviewQueuedChange(
   ctx: ReviewGateContext,
   req: MergeRequest,

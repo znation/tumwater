@@ -372,7 +372,7 @@ export async function mergeHead(
   if (fs.existsSync(head.file)) throw new Error(`the merge of ${role} ended without an outcome`);
   // The pipeline re-queues a kept change itself (requeueKeptChange). This driver models the
   // author-side backstop — leftover recovery at the next run — so it drops that re-queue;
-  // a test of the re-queue itself drives startVerify directly.
+  // a test of the re-queue itself drives the serial drain directly.
   for (const { entry, file } of queuedMergeFiles(repo)) {
     if (entry.role === role && entry.retry !== undefined) dropMerge(file);
   }

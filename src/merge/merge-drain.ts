@@ -20,16 +20,27 @@ import {
   acquireUnlessAborted,
   discardPinnedRefs,
   guardMergeTask,
-  liveRoles,
   settleMergeOutcome,
-  type ApprovedMerge,
   type InFlightMerge,
   type MergePipeline,
   type MergePipelineContext,
 } from "./merge-pipeline.js";
 import { dropTornHead, mergedIntoMain } from "./merge-head.js";
 import { MERGE_TIER, VERIFY_TIER, resolveAuthor } from "./merge-author.js";
+import type { RoleRunner } from "../runner/runner.js";
+import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RunResult } from "../run/run-outcome.js";
+
+/** The one change a gate-then-merge task holds, built in memory by startMerge: the queue
+ * entry, when the task started (the outcome event's durationMs runs from here), and the
+ * authoring runner's wiring — the gate and merge run with its state, usage fold and pi. The
+ * task's own InFlightMerge carries the controller and the abort flags. */
+interface MergeTaskRecord {
+  entry: MergeEntry;
+  startedAt: number;
+  author: RoleRunner;
+  foldUsage: (run: PiRunResult) => void;
+}
 
 /** Whether a merged change still needs a post-merge review: the pre-merge gate skips review when
  * it is disabled or the diff is exempt, so those changes queue none either. A diff that cannot be
@@ -44,55 +55,24 @@ async function postReviewDue(config: TumwaterConfig, root: string, commit: strin
  * or a disk hold is pending — a reviewer-provider hold does not stop the whole drain: it parks
  * only the post-merge review drain, whose no-role startHeld reads it, never a merge entry, so
  * no verify or landing waits on the reviewer): the no-role post-merge review drain, then the
- * merge drain's one serial gate-then-merge task per queue head. The verify stage no longer
- * runs at all: a queued change is gated and merged by the one task (drainMerge, below), and the
- * approved/verifying maps stay in the pipeline type, empty, until part 3d/6 deletes them. A
- * queued merge is COMMITTED work awaiting completion, not a new run, so the budget and user-pause
- * gates deliberately do not hold it (pausing it would leave main behind while the interlock
- * blocks that role's next run forever). Starts tasks and returns; never awaits them — authors
- * keep running behind them, which is the entire point. */
+ * merge drain's one serial gate-then-merge task per queue head — a queued change is gated and
+ * merged by the one task (drainMerge, below), and the verify stage no longer runs at all. A
+ * queued merge is COMMITTED work awaiting completion, not a new run, so the budget and
+ * user-pause gates deliberately do not hold it (pausing it would leave main behind while the
+ * interlock blocks that role's next run forever). Starts tasks and returns; never awaits them
+ * — authors keep running behind them, which is the entire point. */
 export async function drainMergeQueue(ctx: MergePipelineContext, p: MergePipeline): Promise<void> {
   drainPostReviews(ctx, p);
   await drainMerge(ctx, p);
 }
 
-/** Settle every approved change `tumwater abort --role` flagged (consumeAbortRequests over
- * abortableMerges): a no-op now — the approved map is never populated, because the drain's one
- * gate-then-merge task runs a queued change's gate and merge together and an abort settles it in
- * the task itself. The function stays for the orchestrator's per-poll call and the emptied
- * `approved` type until part 3d/6 deletes both. */
-export async function settleAbortedApproved(root: string, p: MergePipeline): Promise<void> {
-  for (const [role, v] of [...p.approved]) {
-    if (!v.userAborted) continue;
-    p.approved.delete(role);
-    try {
-      await settleMergeOutcome(root, v.entry, v.author.state, "aborted", Date.now() - v.startedAt, v.usage, v.file);
-    } catch (err) {
-      warnEventBestEffort(root, TUMWATER_SOURCE, `the stopped merge for ${role} could not be settled: ${errorMessage(err)}`);
-      // The abort is honored by hand — drop the queue file and marker. That cleanup can itself
-      // throw (a queue file that is a directory fails fs.rmSync's non-recursive delete, the
-      // shape an ENOSPC or immutable queue file takes): report it and still discard the pin,
-      // so this settle never throws out of the poll body and the next poll does not re-verify
-      // and merge the change the operator stopped.
-      try {
-        dropMerge(v.file);
-        removeMergeChange(root, role);
-      } catch (cleanupErr) {
-        warnEventBestEffort(root, TUMWATER_SOURCE, `the stopped merge for ${role} could not be dropped: ${errorMessage(cleanupErr)}`);
-      }
-    }
-    await discardPinnedRefs(root, [role]);
-  }
-}
-
 /** The merge drain — the queue's one whole stage: drop the torn head, dedupe every
  * already-merged entry against main, then start ONE gate-then-merge task for the first eligible
- * queue head in queue order. The checks `drainVerify` used to own — torn-head recovery, the
- * already-merged dedupe, `notBefore`, `liveRoles` and `startHeld` — run here in the serial
- * drain, so a queued change is gated and merged by the one task (startMerge) and no
- * verification starts at all. An entry whose gate/merge the pipeline does not reach stays
- * queued for the next poll; the merge slot frees when its task settles, so the next poll starts
- * the next head. */
+ * queue head in queue order. The checks the verify stage used to own — torn-head recovery, the
+ * already-merged dedupe, `notBefore` and `startHeld` — run here in the serial drain, so a
+ * queued change is gated and merged by the one task (startMerge) and no verification starts at
+ * all. An entry whose gate/merge the pipeline does not reach stays queued for the next poll;
+ * the merge slot frees when its task settles, so the next poll starts the next head. */
 export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): Promise<void> {
   if (p.merge !== null) return;
   await dropTornHead(ctx.root);
@@ -102,7 +82,6 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
   const mainHead = queued.length === 0 ? "" : ((await branchHead(ctx.root, ctx.mainBranch)) ?? "");
   for (const { entry, file } of queued) {
     if (p.merge !== null) return; // one task at a time: the rest wait in the queue
-    if (liveRoles(p).has(entry.role)) continue; // the pipeline already holds this change
     // A re-queued review_error waits out its delay; the entry stays queued and holds its author.
     if (entry.notBefore !== undefined && Date.now() < entry.notBefore) continue;
     if (await mergedIntoMain(ctx.root, entry.sha, ctx.mainBranch, mainHead)) {
@@ -110,8 +89,7 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
       // entry drop) is dropped without a run, with its marker record. The drop can throw (a
       // queue file that is a directory or locked fails fs.rmSync, the shape an ENOSPC or
       // immutable queue file takes); this runs in the poll body with nothing to guard it —
-      // report it and leave the entry for the next poll, as dropTornHead and
-      // settleAbortedApproved guard their own drops.
+      // report it and leave the entry for the next poll, as dropTornHead guards its own drop.
       try {
         dropMerge(file);
       } catch (err) {
@@ -121,8 +99,8 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
       continue;
     }
     // The dedupe awaited git: a task that settled meanwhile may have dropped this very entry
-    // (its role was busy when the queue was listed) or claimed its role. Start nothing for it.
-    if (!fs.existsSync(file) || liveRoles(p).has(entry.role)) continue;
+    // while the dedupe was in flight. Start nothing for it.
+    if (!fs.existsSync(file)) continue;
     // A reviewer hold parks no named entry — every entry keeps draining (no verify, start or
     // landing waits on the reviewer); only a restart or disk hold (the start gate's other legs)
     // parks it here. The start gate decides.
@@ -163,27 +141,18 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
     userAborted: false,
   };
   const detachShutdown = abortOnShutdown(signal, merge.controller);
-  // The one change the task holds, shaped like the verify stage's approved record so the task
-  // loop and settle can read the same fields — the approved/verifying maps stay in the pipeline
-  // type, empty, until part 3d/6 deletes them. `sha` is the queue entry's pin: the gate's
-  // syncPinToMain rebases it onto main's tip before the review, and mergeToMain merges the head
-  // the gate judged.
-  const v: ApprovedMerge = {
+  // The one change the task holds. `file` is the entry's queue file (dropped once the outcome
+  // is written), `usage` the task's own spend — both ride the closures below.
+  const v: MergeTaskRecord = {
     entry,
-    file,
-    sha: entry.sha,
     startedAt: Date.now(),
     author,
-    usage,
     foldUsage,
-    roles: [entry.role],
-    controller: new AbortController(),
-    userAborted: false,
   };
   // Each change's MergerContext, resolved from its authoring runner: the live state, the role's
   // usage fold and shared pi wiring (the resolver's permit rides in the run-permit store for its
   // run, so an idle pause inside it re-takes the same team permit).
-  const mergerCtxOf = (v: ApprovedMerge): MergerContext => ({
+  const mergerCtxOf = (v: MergeTaskRecord): MergerContext => ({
     root,
     mainBranch,
     config: roleConfig,
@@ -235,7 +204,8 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
   const task = (async () => {
     const { role } = entry;
     // Open the change's marker record — the observers read it from the moment the task starts.
-    addMergeChange(root, entry, liveRoles(p));
+    // The serial drain holds exactly this role's one task, so the marker keeps only its record.
+    addMergeChange(root, entry, new Set([entry.role]));
     // The change's terminal outcome: `undefined` means the merge did not reach it (a plumbing
     // throw, or a user abort that stopped the run) and it keeps its entry.
     let result: RunResult | undefined;

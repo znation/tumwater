@@ -15,7 +15,7 @@ import { launchDueRuns } from "./orchestrator-launch.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { branchHead, currentBranch } from "../git/git.js";
 import { queuedMergeFiles } from "../merge/merge-queue.js";
-import { drainMergeQueue, settleAbortedApproved } from "../merge/merge-drain.js";
+import { drainMergeQueue } from "../merge/merge-drain.js";
 import { abortableMerges, mergeTasks, type MergePipeline } from "../merge/merge-pipeline.js";
 import { TUMWATER_SOURCE, type HarnessEventInput } from "../events/events.js";
 import type { OnceRound } from "../scheduling/once-round.js";
@@ -192,7 +192,6 @@ export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): 
   consumeRestartRequest(root, ctx.redeploy);
   consumeReclaimRequest(root, ctx.reclaim);
   consumeAbortRequests(root, runners, abortableMerges(ctx.merges));
-  await settleAbortedApproved(root, ctx.merges);
 
   // branchHead reads the ref files first (microsecond-scale; this runs every poll) and
   // spawns `git rev-parse` only when they cannot resolve it. "" means main does not exist

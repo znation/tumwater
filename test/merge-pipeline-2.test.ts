@@ -207,9 +207,9 @@ test("a user-aborted verification discards its pin even when its settle's queue 
   // the abort lands on the verification (never reaching the merge): its settle then hits the
   // planted directory queue file and throws. A user abort mid-check settles the verification
   // "aborted" (review-precheck's aborted skip), and the settle must still discard the pin — or
-  // the stopped change's pin survives to be re-verified and merged next poll, against the
-  // operator's abort. The merge task's finally and settleAbortedApproved discard outside the
-  // throwing settle; this test pins the verification path to the same rule.
+  // the stopped change's pin survives to be re-gated and merged next poll, against the
+  // operator's abort. The merge task's finally discards outside the throwing settle, so this
+  // test pins that path to the same rule.
   const config = {
     ...defaultConfig(),
     check: { command: `touch '${path.join(flags, "alpha-checking")}'; sleep 1` },

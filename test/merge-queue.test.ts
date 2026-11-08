@@ -418,8 +418,8 @@ test("a torn queue head is dropped and its change re-queued from the recovered p
 test("a torn queue head that cannot be dropped is reported, not thrown out of the poll", async () => {
   // dropTornHead runs in the drain's poll body with nothing to guard it. A queue head that is a
   // directory (the shape an ENOSPC or immutable queue file takes) fails dropMerge's non-recursive
-  // rmSync with EISDIR, exactly as it does in settleAbortedApproved's fallback cleanup: the throw
-  // must be reported and the poll must keep going, never end the team. The head stays in place.
+  // rmSync with EISDIR, exactly as it does in the drain's dedupe drop: the throw must be reported
+  // and the poll must keep going, never end the team. The head stays in place.
   const repo = makeRepo();
   const dir = mergeQueueDir(repo);
   fs.mkdirSync(dir, { recursive: true });

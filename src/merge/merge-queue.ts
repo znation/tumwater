@@ -70,7 +70,7 @@ export interface MergeEntry {
   priorReview?: PriorReview;
   /** Earliest time (epoch ms) the verification may start, absent for an entry that is ready at
    * once. Set on the pipeline's own re-queue of a `review_error` change, so a flaky reviewer is
-   * not hit again within 60 s; drainVerify skips the entry until then. */
+   * not hit again within 60 s; the serial drain skips the entry until then. */
   notBefore?: number;
   /** The retriable result (`merge_blocked`, `review_error`, `merge_conflict`) whose
    * attempt this entry re-queues, absent for an author's or a recovery's entry. Logged on the

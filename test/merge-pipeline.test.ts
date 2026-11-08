@@ -48,10 +48,10 @@ process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
  * recoveries. The dedupe basics live in merge-drain.test.ts. */
 // Unit coverage for src/merge/merge-drain.ts — the scheduler seam between the durable merge
 // queue and the merge pipeline (land-queue speed 2c): the dedupe against main and torn-head
-// recovery, the verify stage (one verification per queued change, each on a shared maxConcurrent
-// permit), and the merge slot (every approved change, one at a time), with the abort and shutdown
-// rules and the marker records the observers read. The review gate's pi runs are real subprocesses
-// behind the fake shim, exactly as merger.test.ts drives verifyRequest and mergeApprovedChange.
+// recovery, and the serial drain (one gate-then-merge task per queued head, on a shared
+// maxConcurrent permit), with the abort and shutdown rules and the marker records the observers
+// read. The review gate's pi runs are real subprocesses behind the fake shim, exactly as
+// merger.test.ts drives mergeApprovedChange.
 
 test("a torn head is dropped with a warning and the healthy entry behind it merges", async () => {
   const root = makeRepo();
