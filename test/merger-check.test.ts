@@ -23,8 +23,8 @@ import {
 // The merge-check slice of the merge tests (see merger.test.ts for the split and what each file
 // holds). Since part 4l/3 there is no in-lock merge check — a merge is a rebase and a fast-forward
 // (the main watch verifies every new tip after it lands) — so what remains here is the pre-merge
-// verify gate's deterministic attribution on a green or red main, and the single-change merge
-// running no in-lock check. The gate's reviewer run is a real pi subprocess behind the fake shim.
+// verify gate's deterministic attribution on a green or red main. The gate's reviewer run is a
+// real pi subprocess behind the fake shim.
 
 // These tests pin the sequential merge stages (the check, then the review).
 process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";

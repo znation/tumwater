@@ -396,8 +396,8 @@ export async function recordRejectedChange(
  * the merge ref's lifecycle from here: deleted on merge, KEPT on every non-terminal outcome
  * (aborted, merge_conflict, merge_blocked) for the next run's leftover recovery. An abort that has
  * already fired returns "aborted" before anything starts, ref kept — the merge's step-boundary
- * stop (BUGS.md 2026-09-23): with no gate here, nothing else on this path would notice it
- * before the merge. Never throws for a failed merge: git-level failures
+ * stop (BUGS.md 2026-09-23): this call observes it before the gate starts, so a stopping merge
+ * cannot sail through its gate into the check. Never throws for a failed merge: git-level failures
  * propagate like any other failure. */
 export async function mergeApprovedChange(ctx: MergerContext, req: MergeRequest): Promise<RunResult> {
   if (ctx.signal().aborted) return "aborted";
