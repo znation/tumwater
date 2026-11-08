@@ -197,6 +197,139 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       checkRetiredSelector(`${atBase}.model`, o.model, typeof o.backend === "string" ? o.backend : topBackend, problems);
     checkLegacyProvider(o.provider ?? r.provider, at, typeof o.backend === "string" ? o.backend : topBackend);
   };
+  // The top-level scalar limits, the disk reclaim/hold relationship, and autoRestart.
+  const checkScalarLimits = (): void => {
+    checkNumber(r, "", "maxConcurrent", POSITIVE_INTEGER);
+    checkNumber(r, "", "mergeBatchMax", POSITIVE_INTEGER);
+    checkNumber(r, "", "maxConcurrentChecks", POSITIVE_INTEGER);
+    checkNumber(r, "", "worktreeSlots", POSITIVE_INTEGER);
+    checkNumber(r, "", "minRunIntervalSeconds", DURATION_NON_NEGATIVE);
+    checkNumber(r, "", "runTimeoutSeconds", DURATION_POSITIVE);
+    checkNumber(r, "", "quietTimeoutSeconds", DURATION_OR_DISABLED);
+    checkNumber(r, "", "toolCallStallSeconds", DURATION_OR_DISABLED);
+    checkNumber(r, "", "logMaxBytes", POSITIVE);
+    checkNumber(r, "", "sessionRetentionDays", NON_NEGATIVE_OR_DISABLED);
+    checkNumber(r, "", "maxDailyCostUsd", DOLLAR_CAP);
+    // Work ratio 1a/4: the maintenance allowance ratio is a number of 0 or more (a larger value
+    // effectively disables the cap, so there is no separate off switch).
+    checkNumber(r, "", "maintenancePerWorkMerge", NON_NEGATIVE);
+    // Disk floor (plans/disk-floor.md, part 1/4): 0 disables the hold, so only a negative
+    // value or a non-number is a problem.
+    checkNumber(r, "", "diskHoldGB", NON_NEGATIVE);
+    // Pressure reclaim (plans/disk-floor.md, part 2/4): 0 disables it; a nonzero threshold must
+    // sit at or above the hold floor, or reclaim would trigger only after the hold already
+    // engaged. Both fields' own type checks report non-numbers above, so this rebukes only a
+    // valid number pair.
+    checkNumber(r, "", "diskReclaimGB", NON_NEGATIVE);
+    // Idle reclaim (plans/disk-floor.md, part 3/4): 0 disables it, so only a negative value or a
+    // non-number is a problem.
+    checkNumber(r, "", "worktreeIdleReclaimHours", NON_NEGATIVE);
+    if (
+      typeof r.diskHoldGB === "number" &&
+      typeof r.diskReclaimGB === "number" &&
+      r.diskReclaimGB !== 0 &&
+      r.diskReclaimGB < r.diskHoldGB
+    ) {
+      problems.push(
+        `diskReclaimGB (${show(r.diskReclaimGB)}) must be at least diskHoldGB (${show(r.diskHoldGB)}) unless it is 0 (disabled)`,
+      );
+    }
+    checkNumber(r, "", "thrashTurns", NON_NEGATIVE);
+    checkNumber(r, "", "thrashMinutes", NON_NEGATIVE);
+
+    checkBoolean(r, "", "autoRestart");
+  };
+  // New-project bootstrap (plans/work-ratio.md, "New-project bootstrap"): an absent section
+  // means no bootstrap. `untilPlansDone` is a count of plans that must reach `## Done`, so it is
+  // an integer of at least 1 — 0 or a fraction can never be reached and would hold the
+  // maintenance roles forever.
+  const checkBootstrap = (): void => {
+    checkObjectSection(r, "bootstrap", problems, (o) => {
+      checkKnownKeys(o, BOOTSTRAP_KEYS, "bootstrap", problems);
+      checkNumber(o, "bootstrap.", "untilPlansDone", POSITIVE_INTEGER);
+    });
+  };
+  // Quiet hours (src/scheduling/quiet-hours.ts): the value is off when empty or absent, and
+  // otherwise must parse as "HH:MM-HH:MM" — parseQuietHours's message is the one actionable
+  // wording, so validateConfig and `config set` cannot drift apart on what a valid window is.
+  const checkQuietAndNotify = (): void => {
+    if ("quietHours" in r) {
+      const parsed = parseQuietHours(r.quietHours);
+      if (!parsed.ok) problems.push(parsed.error);
+    }
+
+    // The operator notify hook (src/events/event-notify.ts): absent or empty string means off,
+    // otherwise the value is the shell command the orchestrator runs on notable events — so it
+    // must be a string when present, and an empty string stays valid (it is how `config set
+    // notify ""` clears the hook).
+    if ("notify" in r && typeof r.notify !== "string") {
+      problems.push(
+        `notify must be a string (the shell command to run on notable events, empty string disables; got ${show(r.notify)})`,
+      );
+    }
+  };
+  // The project's own verification command (plans/portability.md §6/7): a blank command is the
+  // same silent-ignore class as a blank agentBin — the operator named a check, so an empty or
+  // whitespace-only value must fail validation, not silently fall back to npm detection.
+  const checkCheckSection = (): void => {
+    checkObjectSection(r, "check", problems, (o) => {
+      checkKnownKeys(o, CHECK_KEYS, "check", problems);
+      checkString(o, "check.", "command", false);
+      // gateCommand is a string like command, but blank means off: falling back from it runs
+      // the FULL check at the gate — the stronger check, never a silently weaker one.
+      checkString(o, "check.", "gateCommand");
+      // mergeCommand likewise: an absent key falls back to the gate command (Fast merge
+      // "Defaults"), and a blank string means off, which runs the full check in the merge lock.
+      checkString(o, "check.", "mergeCommand");
+      // rerunCommand likewise: blank is off, and its callers fall back to the full check.
+      checkString(o, "check.", "rerunCommand");
+      checkString(o, "check.", "cwd");
+      checkNumber(o, "check.", "timeoutSeconds", DURATION_POSITIVE);
+      // The main watch's full-check cadence (Hourly full check, part 2b/4): a whole number of
+      // minutes; 0 restores one full run per new code head.
+      checkNumber(o, "check.", "fullIntervalMinutes", NON_NEGATIVE_INTEGER);
+    });
+  };
+  // The idleBackoff section block.
+  const checkIdleBackoff = (): void => {
+    checkObjectSection(r, "idleBackoff", problems, (o) => {
+      checkKnownKeys(o, BACKOFF_KEYS, "idleBackoff", problems);
+      checkNumber(o, "idleBackoff.", "initialSeconds", DURATION_NON_NEGATIVE);
+      checkNumber(o, "idleBackoff.", "factor", AT_LEAST_ONE);
+      checkNumber(o, "idleBackoff.", "maxSeconds", DURATION_NON_NEGATIVE);
+    });
+  };
+  // The review section block: known keys, enabled, exemptPaths and their shape, the model
+  // triple entry and timeoutSeconds.
+  const checkReview = (): void => {
+    checkObjectSection(r, "review", problems, (o) => {
+      checkKnownKeys(o, REVIEW_KEYS, "review", problems);
+      checkBoolean(o, "review.", "enabled");
+      checkStringArray(o, "review.", "exemptPaths");
+      // An exemption pattern is matched against a repo-relative path (exemptions.ts), so a
+      // pattern shaped like something git never emits can never match: the diff it was meant
+      // to exempt gets a model review anyway, and the operator never learns the pattern was
+      // inert. Reject the shapes git paths never take — an absolute path, a "./" prefix, a
+      // ".." segment, or a trailing "/" — the blank-entry rule above applied to the pattern's
+      // shape instead of its emptiness. Each message names the position so one edit fixes it.
+      if (Array.isArray(o.exemptPaths)) {
+        (o.exemptPaths as unknown[]).forEach((p, i) => {
+          if (!isNonBlankString(p)) return; // Already reported by checkStringArray.
+          const fix =
+            p.startsWith("/") || p.startsWith("./")
+              ? 'must be repo-relative — drop the leading "/" or "./"'
+              : p.split("/").includes("..")
+                ? 'must not contain a ".." segment — patterns match repo-relative paths'
+                : p.endsWith("/")
+                  ? 'must name files, not a directory — drop the trailing "/" (e.g. "docs/**")'
+                  : null;
+          if (fix) problems.push(`review.exemptPaths[${i}] ${fix} (got ${show(p)})`);
+        });
+      }
+      checkModelTripleEntry(o, "review.", "review");
+      checkNumber(o, "review.", "timeoutSeconds", DURATION_POSITIVE);
+    });
+  };
   validateModelBlock(r, problems, { checkModelTriple, checkString, topBackend, checkLegacyProvider });
   validateAgentsBlock(r, problems, rawFile, {
     checkString,
@@ -205,128 +338,12 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     checkBackendConfig,
     checkCodexConfigKeys,
   });
-  checkNumber(r, "", "maxConcurrent", POSITIVE_INTEGER);
-  checkNumber(r, "", "mergeBatchMax", POSITIVE_INTEGER);
-  checkNumber(r, "", "maxConcurrentChecks", POSITIVE_INTEGER);
-  checkNumber(r, "", "worktreeSlots", POSITIVE_INTEGER);
-  checkNumber(r, "", "minRunIntervalSeconds", DURATION_NON_NEGATIVE);
-  checkNumber(r, "", "runTimeoutSeconds", DURATION_POSITIVE);
-  checkNumber(r, "", "quietTimeoutSeconds", DURATION_OR_DISABLED);
-  checkNumber(r, "", "toolCallStallSeconds", DURATION_OR_DISABLED);
-  checkNumber(r, "", "logMaxBytes", POSITIVE);
-  checkNumber(r, "", "sessionRetentionDays", NON_NEGATIVE_OR_DISABLED);
-  checkNumber(r, "", "maxDailyCostUsd", DOLLAR_CAP);
-  // Work ratio 1a/4: the maintenance allowance ratio is a number of 0 or more (a larger value
-  // effectively disables the cap, so there is no separate off switch).
-  checkNumber(r, "", "maintenancePerWorkMerge", NON_NEGATIVE);
-  // Disk floor (plans/disk-floor.md, part 1/4): 0 disables the hold, so only a negative
-  // value or a non-number is a problem.
-  checkNumber(r, "", "diskHoldGB", NON_NEGATIVE);
-  // Pressure reclaim (plans/disk-floor.md, part 2/4): 0 disables it; a nonzero threshold must
-  // sit at or above the hold floor, or reclaim would trigger only after the hold already
-  // engaged. Both fields' own type checks report non-numbers above, so this rebukes only a
-  // valid number pair.
-  checkNumber(r, "", "diskReclaimGB", NON_NEGATIVE);
-  // Idle reclaim (plans/disk-floor.md, part 3/4): 0 disables it, so only a negative value or a
-  // non-number is a problem.
-  checkNumber(r, "", "worktreeIdleReclaimHours", NON_NEGATIVE);
-  if (
-    typeof r.diskHoldGB === "number" &&
-    typeof r.diskReclaimGB === "number" &&
-    r.diskReclaimGB !== 0 &&
-    r.diskReclaimGB < r.diskHoldGB
-  ) {
-    problems.push(
-      `diskReclaimGB (${show(r.diskReclaimGB)}) must be at least diskHoldGB (${show(r.diskHoldGB)}) unless it is 0 (disabled)`,
-    );
-  }
-  checkNumber(r, "", "thrashTurns", NON_NEGATIVE);
-  checkNumber(r, "", "thrashMinutes", NON_NEGATIVE);
-
-  checkBoolean(r, "", "autoRestart");
-
-  // New-project bootstrap (plans/work-ratio.md, "New-project bootstrap"): an absent section
-  // means no bootstrap. `untilPlansDone` is a count of plans that must reach `## Done`, so it is
-  // an integer of at least 1 — 0 or a fraction can never be reached and would hold the
-  // maintenance roles forever.
-  checkObjectSection(r, "bootstrap", problems, (o) => {
-    checkKnownKeys(o, BOOTSTRAP_KEYS, "bootstrap", problems);
-    checkNumber(o, "bootstrap.", "untilPlansDone", POSITIVE_INTEGER);
-  });
-
-  // Quiet hours (src/scheduling/quiet-hours.ts): the value is off when empty or absent, and
-  // otherwise must parse as "HH:MM-HH:MM" — parseQuietHours's message is the one actionable
-  // wording, so validateConfig and `config set` cannot drift apart on what a valid window is.
-  if ("quietHours" in r) {
-    const parsed = parseQuietHours(r.quietHours);
-    if (!parsed.ok) problems.push(parsed.error);
-  }
-
-  // The operator notify hook (src/events/event-notify.ts): absent or empty string means off,
-  // otherwise the value is the shell command the orchestrator runs on notable events — so it
-  // must be a string when present, and an empty string stays valid (it is how `config set
-  // notify ""` clears the hook).
-  if ("notify" in r && typeof r.notify !== "string") {
-    problems.push(
-      `notify must be a string (the shell command to run on notable events, empty string disables; got ${show(r.notify)})`,
-    );
-  }
-
-  // The project's own verification command (plans/portability.md §6/7): a blank command is the
-  // same silent-ignore class as a blank agentBin — the operator named a check, so an empty or
-  // whitespace-only value must fail validation, not silently fall back to npm detection.
-  checkObjectSection(r, "check", problems, (o) => {
-    checkKnownKeys(o, CHECK_KEYS, "check", problems);
-    checkString(o, "check.", "command", false);
-    // gateCommand is a string like command, but blank means off: falling back from it runs
-    // the FULL check at the gate — the stronger check, never a silently weaker one.
-    checkString(o, "check.", "gateCommand");
-    // mergeCommand likewise: an absent key falls back to the gate command (Fast merge
-    // "Defaults"), and a blank string means off, which runs the full check in the merge lock.
-    checkString(o, "check.", "mergeCommand");
-    // rerunCommand likewise: blank is off, and its callers fall back to the full check.
-    checkString(o, "check.", "rerunCommand");
-    checkString(o, "check.", "cwd");
-    checkNumber(o, "check.", "timeoutSeconds", DURATION_POSITIVE);
-    // The main watch's full-check cadence (Hourly full check, part 2b/4): a whole number of
-    // minutes; 0 restores one full run per new code head.
-    checkNumber(o, "check.", "fullIntervalMinutes", NON_NEGATIVE_INTEGER);
-  });
-
-  checkObjectSection(r, "idleBackoff", problems, (o) => {
-    checkKnownKeys(o, BACKOFF_KEYS, "idleBackoff", problems);
-    checkNumber(o, "idleBackoff.", "initialSeconds", DURATION_NON_NEGATIVE);
-    checkNumber(o, "idleBackoff.", "factor", AT_LEAST_ONE);
-    checkNumber(o, "idleBackoff.", "maxSeconds", DURATION_NON_NEGATIVE);
-  });
-
-  checkObjectSection(r, "review", problems, (o) => {
-    checkKnownKeys(o, REVIEW_KEYS, "review", problems);
-    checkBoolean(o, "review.", "enabled");
-    checkStringArray(o, "review.", "exemptPaths");
-    // An exemption pattern is matched against a repo-relative path (exemptions.ts), so a
-    // pattern shaped like something git never emits can never match: the diff it was meant
-    // to exempt gets a model review anyway, and the operator never learns the pattern was
-    // inert. Reject the shapes git paths never take — an absolute path, a "./" prefix, a
-    // ".." segment, or a trailing "/" — the blank-entry rule above applied to the pattern's
-    // shape instead of its emptiness. Each message names the position so one edit fixes it.
-    if (Array.isArray(o.exemptPaths)) {
-      (o.exemptPaths as unknown[]).forEach((p, i) => {
-        if (!isNonBlankString(p)) return; // Already reported by checkStringArray.
-        const fix =
-          p.startsWith("/") || p.startsWith("./")
-            ? 'must be repo-relative — drop the leading "/" or "./"'
-            : p.split("/").includes("..")
-              ? 'must not contain a ".." segment — patterns match repo-relative paths'
-              : p.endsWith("/")
-                ? 'must name files, not a directory — drop the trailing "/" (e.g. "docs/**")'
-                : null;
-        if (fix) problems.push(`review.exemptPaths[${i}] ${fix} (got ${show(p)})`);
-      });
-    }
-    checkModelTripleEntry(o, "review.", "review");
-    checkNumber(o, "review.", "timeoutSeconds", DURATION_POSITIVE);
-  });
+  checkScalarLimits();
+  checkBootstrap();
+  checkQuietAndNotify();
+  checkCheckSection();
+  checkIdleBackoff();
+  checkReview();
 
   validateFallbackBlock(r, problems, {
     checkModelTriple,
