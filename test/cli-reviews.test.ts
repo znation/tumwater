@@ -233,6 +233,7 @@ test("a --show or --accept token in --grep's value slot is the pattern, not the 
   assert.match(accept.stdout, /no post-merge reviews matching --grep --accept \(post-merge review queue holds 2\)/, "the pattern is text, not the accept mode");
   const destructive = await cli(repo, "reviews", "--grep", "--accept", "1");
   assert.equal(destructive.code, 1, "a trailing position is still an unknown argument");
+  assert.match(destructive.stderr, /unknown argument: 1/, "the trailing position is refused as an unknown argument, not by the accept branch");
   assert.equal(fs.readFileSync(postReviewPath(repo), "utf8"), before, "the flag-shaped pattern never accepts an entry");
 });
 
