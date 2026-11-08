@@ -1,7 +1,5 @@
-import { retirePlan, tryCancelEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
+import { tryCancelEntry, tryRetirePlan, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
 import { tryMoveEntryToTop, tryReleaseEntry, liftedNotePhrase } from "../../backlog/backlog-release.js";
-import { stripEntryStamp } from "../../backlog/backlog-structure.js";
-import { collapseWhitespace } from "../../text/text.js";
 import { backlogHolds, cancelledClaimNote, stillHeldNote } from "../../backlog/backlog-eligibility.js";
 import { entryKey, plansReleasedBy, releasedPartsNote } from "../../backlog/backlog-parts.js";
 import { plannedPlanEntries } from "../../backlog/backlog.js";
@@ -167,34 +165,27 @@ export function createBacklogPane(
     });
   };
   // The second Ctrl+Y arm: retire the armed plan through the locked `tumwater plan --retire`
-  // core once its position still holds the armed title. The plan is re-read (plannedPlanEntries,
-  // the same fresh list the pane's flat browse comes from — showEntry cannot serve the stale
-  // lookups: its CLI lookup exits the process on an out-of-range position, where a list that
-  // moved since the arm must survive) and both sides of the compare are stamp-stripped, like
-  // the dashboard drawer's retire endpoint: an out-of-range position or a different heading
-  // flashes the moved refusal, clears the selection and writes nothing. On a match the entry
-  // leaves `## Planned` for `## Done` as a retired record, committed on main with no wake.
+  // core once its position still holds the armed title. tryRetirePlan is the dashboard's
+  // non-exiting, title-checked retire: its lookup runs inside the same cross-process lock as
+  // the write, so a list that shrank or shifted since the arm answers gone/moved as data
+  // instead of readEntryLines' fail() exiting the pane, and no plan but the armed one is
+  // retired. An out-of-range position or a different heading flashes the moved refusal, clears
+  // the selection and writes nothing. On a match the entry leaves `## Planned` for `## Done` as
+  // a retired record, committed on main with no wake.
   const retirePlanArmed = (
     target: { kind: "plan"; position: number; title: string },
     armedTitle: string,
   ): void => {
     guardError(session, () => {
-      const current = plannedPlanEntries(session.root);
-      const reread = current[target.position - 1];
-      if (
-        reread === undefined ||
-        collapseWhitespace(stripEntryStamp(reread.title)) !== collapseWhitespace(stripEntryStamp(armedTitle))
-      ) {
-        selectedEntry = null;
-        entryScroll = 0;
-        session.flashMessage("that plan was already removed or moved — nothing retired");
-        return;
-      }
-      const outcome = retirePlan(session.root, target.position);
-      session.commitBacklogEdit(outcome.file, `Retire plan: ${outcome.title}`);
+      const outcome = tryRetirePlan(session.root, target.position, armedTitle);
       selectedEntry = null;
       entryScroll = 0;
-      session.flashMessage(`retired plan #${target.position}: ${outcome.title} (not built)`);
+      if (outcome.status === "retired") {
+        session.commitBacklogEdit(outcome.file, `Retire plan: ${outcome.title}`);
+        session.flashMessage(`retired plan #${target.position}: ${outcome.title} (not built)`);
+        return;
+      }
+      session.flashMessage("that plan was already removed or moved — nothing retired");
     });
   };
 
