@@ -7,7 +7,7 @@ import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
 import { defaultConfig } from "../src/config/config.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
-import { roleNotesPath } from "../src/paths.js";
+import { roleNotesPath, salvageDir } from "../src/paths.js";
 import { PRINCIPLES_MAX_CHARS } from "../src/prompt/principles.js";
 import { BRIEF_TEXT_MAX_CHARS, PROMPT_END, PROMPT_START } from "../src/brief/brief.js";
 import { renderStatus } from "../src/ui/status-render.js";
@@ -17,7 +17,8 @@ import type { StatusSnapshot } from "../src/status/status-data.js";
 
 type StandingFlags = Pick<
   StatusSnapshot,
-  "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "principlesTruncated" | "configProblem"
+  "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "salvagePatches" |
+    "principlesTruncated" | "configProblem"
 >;
 
 // team-alerts.ts's teamAlerts: what needs the operator, phrased once for the dashboard's alert
@@ -387,6 +388,17 @@ test("the standing amber alerts raise from the snapshot's raw flags, worded like
   assert.equal(cfgProblem?.title, "tumwater.json cannot be loaded — the team keeps its last good config");
   assert.match(cfgProblem?.detail ?? "", /fix or restore tumwater\.json; the running team keeps its last good config until it loads again/);
   assert.ok(!has({}, "config-problem"), "absent configProblem raises nothing");
+
+  // salvage-patches: an operator-kept patch under .tumwater/salvage/ raises the alert with the
+  // doctor row's detail; none raises nothing.
+  fs.mkdirSync(salvageDir(root), { recursive: true });
+  fs.writeFileSync(path.join(salvageDir(root), "a.patch"), "body");
+  const salvage = has({ salvagePatches: [{ file: "a.patch", savedAt: Date.now(), bytes: 4 }] }, "salvage-patches");
+  assert.ok(salvage, "a salvagePatches snapshot raises the standing salvage-patches alert");
+  assert.equal(salvage?.tone, "amber");
+  assert.equal(salvage?.title, "Salvaged workspace patches kept for you");
+  assert.match(salvage?.detail ?? "", /salvaged workspace patch kept for you/);
+  assert.ok(!has({}, "salvage-patches"), "no kept patch raises nothing");
 });
 
 // The same alerts on the CLI surface: renderStatus composes the banners from the snapshot's

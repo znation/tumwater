@@ -20,7 +20,7 @@ import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { requestWake } from "../src/operator/operator-intent.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
-import { configPath, orchestratorStatePath, pausedPath, piLogPath, postReviewPath, remoteCiPath, roleNotesPath } from "../src/paths.js";
+import { configPath, orchestratorStatePath, pausedPath, piLogPath, postReviewPath, remoteCiPath, roleNotesPath, salvageDir, salvagePendingDir } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
@@ -950,6 +950,50 @@ test("the payload's roleNotesOverCap follows the notes read bound and clears und
   assert.equal(payload().alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no alert once both notes are at the cap");
 });
 
+test("the payload's salvagePatches follows the direct kept patches and clears without them", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  interface Payload { salvagePatches?: Array<{ file: string; savedAt: number; bytes: number }>; alerts: Array<{ key: string; title: string }> };
+  const payload = () => statusPayload(root, now) as Payload;
+  // No salvage dir (nothing kept): no field, no key, no alert.
+  assert.equal(snapshot(root, undefined, now).salvagePatches, undefined, "no salvage dir leaves the field absent");
+  assert.equal(payload().salvagePatches, undefined, "no salvagePatches key with no salvage dir");
+  assert.equal(payload().alerts.find((a) => a.key === "salvage-patches"), undefined, "no alert with no salvage dir");
+
+  // A patch waiting for a role's next run under pending/ is out of scope: still absent.
+  fs.mkdirSync(salvagePendingDir(root, "feature"), { recursive: true });
+  fs.writeFileSync(path.join(salvagePendingDir(root, "feature"), "a.patch"), "pending");
+  assert.equal(snapshot(root, undefined, now).salvagePatches, undefined, "a pending-only patch stays absent");
+  assert.equal(payload().salvagePatches, undefined, "no key for a pending-only patch");
+  assert.equal(payload().alerts.find((a) => a.key === "salvage-patches"), undefined, "no alert for a pending-only patch");
+
+  // Two direct kept patches surface the sorted array, the key, and the alert.
+  fs.mkdirSync(salvageDir(root), { recursive: true });
+  const older = path.join(salvageDir(root), "a.patch");
+  const newer = path.join(salvageDir(root), "b.patch");
+  fs.writeFileSync(older, "xxx");
+  fs.writeFileSync(newer, "newer");
+  fs.utimesSync(older, new Date(now - 60_000), new Date(now - 60_000));
+  fs.utimesSync(newer, new Date(now), new Date(now));
+  const expected = [
+    { file: "a.patch", savedAt: now - 60_000, bytes: 3 },
+    { file: "b.patch", savedAt: now, bytes: 5 },
+  ];
+  assert.deepEqual(snapshot(root, undefined, now).salvagePatches, expected, "two direct patches surface oldest first with sizes");
+  assert.deepEqual(payload().salvagePatches, expected, "the payload carries the same array");
+  assert.ok(payload().alerts.find((a) => a.key === "salvage-patches"), "a kept patch raises the standing alert");
+
+  // A non-.patch file directly under the salvage dir is not a kept patch.
+  fs.writeFileSync(path.join(salvageDir(root), "scratch.txt"), "zzz");
+  assert.deepEqual(snapshot(root, undefined, now).salvagePatches, expected, "a non-.patch file is ignored");
+
+  // Removing the patches clears the array, the key, and the alert.
+  fs.rmSync(path.join(salvageDir(root), "a.patch"));
+  fs.rmSync(path.join(salvageDir(root), "b.patch"));
+  assert.equal(snapshot(root, undefined, now).salvagePatches, undefined, "removing the patches clears the snapshot field");
+  assert.equal(payload().salvagePatches, undefined, "no key once the patches are gone");
+  assert.equal(payload().alerts.find((a) => a.key === "salvage-patches"), undefined, "no alert once the patches are gone");
+});
 
 
 test("the payload's principlesTruncated follows principlesBlockOverCap and clears under the cap", () => {

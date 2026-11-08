@@ -7,6 +7,7 @@ import { checkBudget, checkErrorStreaks, checkMainRed, checkMaintenanceQuota, ch
 import { checkRootInstall } from "./doctor-install.js";
 import { checkNotify } from "./doctor-notify.js";
 import { checkRoleNotes } from "./doctor-role-notes.js";
+import { checkSalvagePatches } from "./doctor-salvage.js";
 import { checkLaunchServicesPorts } from "./doctor-launch-services.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
@@ -217,6 +218,7 @@ function doctorSteps(
     { name: "merge lock", run: () => checkMergeLock(root) },
     { name: "workspaces", run: () => checkWorktreePool(root) },
     { name: "parallel instances", run: () => checkWorkInstances(root, config) },
+    { name: "salvage patches", run: () => checkSalvagePatches(root) },
     { name: "leftover role branches", run: () => checkLeftoverRoleBranches(root, config) },
     { name: "tumwater pins", run: () => checkTumwaterPins(root) },
     // The disk floor (plans/disk-floor.md, part 1/4): a broken config stays undefined (checkInit

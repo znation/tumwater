@@ -66,8 +66,9 @@ import { recordRemoteCi } from "../src/observer/remote-ci.js";
 import { QA_COVERAGE_STALE_MS, recordFlow } from "../src/observer/qa-coverage.js";
 import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
 import { checkRoleNotes } from "../src/doctor/doctor-role-notes.js";
+import { checkSalvagePatches } from "../src/doctor/doctor-salvage.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
-import { roleNotesPath } from "../src/paths.js";
+import { roleNotesPath, salvageDir, salvagePendingDir } from "../src/paths.js";
 import { writeOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { BRIEF_TEXT_MAX_CHARS } from "../src/brief/brief.js";
 import { fakeGh } from "./fakes/fake-gh.js";
@@ -632,6 +633,32 @@ test("checkRoleNotes warns only when the prompt would truncate a role's note", (
   // Non-notes files are ignored rather than counted as roles.
   fs.writeFileSync(path.join(notesDir, "scratch.txt"), "y".repeat(ROLE_NOTES_MAX_BYTES + 1));
   assert.equal(checkRoleNotes(okRoot).level, "warn", "still warns on the oversized role note");
+});
+
+test("checkSalvagePatches ok with no direct patch, warn naming count and age for one, and pending-only ok", () => {
+  const now = Date.now();
+  // Missing salvage dir: ok, naming nothing kept.
+  const absent = makeRepo();
+  assert.deepEqual(checkSalvagePatches(absent), { level: "ok", detail: "no salvaged workspace patches are kept for you" });
+
+  // A patch waiting for a role's next run under pending/ is deliberately out of scope: ok.
+  const pending = makeRepo();
+  fs.mkdirSync(salvagePendingDir(pending, "feature"), { recursive: true });
+  fs.writeFileSync(path.join(salvagePendingDir(pending, "feature"), "a.patch"), "pending");
+  assert.equal(checkSalvagePatches(pending).level, "ok");
+
+  // One direct patch: warn naming the count and the oldest patch's age.
+  const warn = makeRepo();
+  fs.mkdirSync(salvageDir(warn), { recursive: true });
+  const file = path.join(salvageDir(warn), "a.patch");
+  fs.writeFileSync(file, "patch body");
+  fs.utimesSync(file, new Date(now - 3_600_000), new Date(now - 3_600_000));
+  const out = checkSalvagePatches(warn, now);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /1 salvaged workspace patch kept for you/);
+  assert.match(out.detail, /oldest 1h/);
+  assert.match(out.detail, /a\.patch/);
+  assert.match(out.detail, /\.tumwater\/salvage\//);
 });
 
 test("checkEventLog fails an events.jsonl whose permissions deny reading", { skip: runningAsRoot() }, () => {

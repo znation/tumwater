@@ -51,6 +51,7 @@ export const DOCTOR_CHECK_NAMES = [
   "merge lock",
   "workspaces",
   "parallel instances",
+  "salvage patches",
   "leftover role branches",
   "tumwater pins",
   "disk space",

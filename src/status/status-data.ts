@@ -34,6 +34,7 @@ import { readMergeQueue } from "../merge/merge-queue.js";
 import { collectRoleRows } from "./status-roles.js";
 import { collectInboxes } from "./status-inbox.js";
 import { collectRoleNotesOverCap, type RoleNoteOverCap } from "./status-role-notes.js";
+import { collectSalvagePatches, type SalvagePatch } from "./status-salvage.js";
 import { collectBudget } from "./status-budget.js";
 import { collectRootInstallDrift } from "./status-install.js";
 import { briefStatus } from "../brief/brief.js";
@@ -416,6 +417,13 @@ export interface StatusSnapshot {
    * role's id and its note's length in characters, sorted newest-char-count first; present
    * only when non-empty, so the surfaces render exactly as before. */
   roleNotesOverCap?: RoleNoteOverCap[];
+  /** Every operator-kept workspace patch under `.tumwater/salvage/` (src/status/status-salvage.ts's
+   * collectSalvagePatches), the doctor `salvage patches` row's warning state raised as a standing
+   * amber alert on `tumwater status`, the dashboard and the TUI — so a run's kept leftovers are
+   * not silently pruned by session retention. Each entry is the patch's file name, save time and
+   * byte size, oldest first; present only when non-empty, so the surfaces render exactly as
+   * before. */
+  salvagePatches?: SalvagePatch[];
   /** True when PRINCIPLES.md's trimmed text exceeds the prompt cap, so every role's
    * <principles> block carries only its head plus a truncation marker (src/prompt/
    * principles.ts's principlesBlockOverCap) — the doctor `principles` row's over-cap
@@ -584,6 +592,10 @@ function snapshotHealthFields(
   // `no-brief` and `brief-truncated` amber alerts, read once per poll rather than twice
   // re-reading the whole brief file.
   const brief = briefStatus(root);
+  // Every operator-kept workspace patch (status-salvage.ts): the standing twin of the doctor
+  // `salvage patches` row, raised as the amber `salvage-patches` alert. Read here once per poll
+  // so the raw array is the same walk the doctor row runs.
+  const salvagePatches = collectSalvagePatches(root);
   return {
     mergeQueue,
     mainCheck: mainCheckForPoll(root, cfg),
@@ -594,6 +606,7 @@ function snapshotHealthFields(
     noBrief: brief.missing ? true : undefined,
     briefTruncated: brief.overCap ? true : undefined,
     ...(roleNotesOverCap.length > 0 ? { roleNotesOverCap } : {}),
+    ...(salvagePatches.length > 0 ? { salvagePatches } : {}),
     principlesTruncated: principlesBlockOverCap(root) ? true : undefined,
   };
 }
