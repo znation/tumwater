@@ -13,7 +13,7 @@ current one, so history, old logs and old scripts stay readable.
 | instance | One of several parallel workers of the same role (`roles.<id>.instances`). Shown only when a role has more than one, for example `feature #2` (id `feature-2`). | loop id |
 | run | One pass of a role: wake up, find one thing to do, do it, commit. A reviewer run and a conflict-resolver run are runs too. | tick |
 | merge | The pipeline that takes a run's commit onto main: rebase, check, review, fast-forward. | landing, land |
-| merge queue | Commits waiting to merge, in order (`tumwater queue`). | land queue |
+| merge queue | Commits waiting to merge, in order. | land queue |
 | merged | On main. | landed, changed, "Changes" |
 | approved | Passed the check and review; the merge then rebases it onto main and fast-forwards it. | vetted |
 | director | The role that runs your messages first and keeps working through a team pause. | (unchanged) |

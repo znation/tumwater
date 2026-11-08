@@ -655,15 +655,15 @@ stale settings.
   `GET /api/transcript?…&prompt=1` with each agent run's prompt, the text `tumwater logs --transcript <id> --prompt` prints; `&grep=<text>` keeps only the entries containing the text, each under its run's separator, as `tumwater logs --transcript <id> --grep` does. The role drawer's search box sends that `&grep=`. Its History, Usage, Failures, and
   Pending views match `tumwater history`, `tumwater report`, `tumwater report --failures`, and
   `tumwater diff`; the Failures view lists the current flake quarantine below the digest, each
-  entry with a Release button, the browser twin of `tumwater quarantine --release <n>`; the Pending view also paints the merge queue as a card mirroring `tumwater
-  queue`, with a Role picker that keeps only the chosen role's waiting merges, each under its
-  whole-queue position, the `tumwater queue --role` twin, and the files two or more roles' pending changes touch as an Overlapping files card mirroring
+  entry with a Release button, the browser twin of `tumwater quarantine --release <n>`; the Pending view also paints the merge queue as a card
+  with a Role picker that keeps only the chosen role's waiting merges, each under its
+  whole-queue position, and the files two or more roles' pending changes touch as an Overlapping files card mirroring
   `tumwater diff --overlaps` (`GET /api/diff?overlaps=1[&role=<ids>][&path=<path>]`; clicking a listed file shows each role's change to it, `GET /api/diff?role=<id>&path=<path>`, the twin of `diff --role --path`; its Role picker keeps only the files the chosen role holds, each still naming every holder, the `diff --overlaps --role` twin, and its Folder picker keeps only the files at or under the chosen directory, the `diff --overlaps --path` twin), and shows a role's full unmerged patch in its drawer (its Stat only toggle shows the diffstat instead, `GET /api/diff?role=<id>&stat=1`, the twin of `diff --role --stat`), which also lists that role's waiting merges
-  under their whole-queue positions, mirroring `tumwater queue --role <id>`. It also paints the
+  under their whole-queue positions. It also paints the
   post-merge review queue as a Post-merge reviews card mirroring `tumwater reviews` with a Role picker that keeps only the chosen role's entries, the `tumwater reviews --role` twin, and a State picker that keeps only the chosen states — waiting, failing, rejected, each entry counted in the first state it matches — the `tumwater reviews --status` twin — the merged
   commits put aside for post-merge review, each row naming the wait since the
   commit was queued for review (`<age> ago`, omitted for an entry an older file wrote without a
-  timestamp) matching `tumwater queue`'s age, each with its rejected (stays on main with the reviewer's reasons) or failed-review status, and each row a two-click Accept posting
+  timestamp), each with its rejected (stays on main with the reviewer's reasons) or failed-review status, and each row a two-click Accept posting
   `POST /api/post-review-accept`, the browser twin of `tumwater reviews --accept <n>` (which names
   the deliberate accept-unreviewed action). A review one failed run from the
   `POST_REVIEW_FAILURE_LIMIT` drop is surfaced by the `post-merge reviews` doctor row, and a
@@ -790,8 +790,7 @@ stale settings.
   pane live transcript → notes → change and back: the notes step shows the role's notes and next
   run's assembled prompt, and `Ctrl+X` pressed twice there clears the notes (as `tumwater role <id>
   --clear-notes` does) (the same two things the dashboard drawer shows; the tab strip reads
-  Notes and PgUp/PgDn page it), and the change step is headed by the role's waiting merges under their whole-queue positions
-  when it has any (mirroring `tumwater queue --role <id>`), then the role's collected unmerged work —
+  Notes and PgUp/PgDn page it), and the change step shows the role's collected unmerged work —
   branch, commits ahead of main, the ahead-of-main patch, and its dirty files and uncommitted
   patch — the same `collectRoleChange`/`renderRoleChange` view `tumwater diff --role <id>` prints
   and the dashboard drawer's Pending change section shows (the tab strip reads Change, and the

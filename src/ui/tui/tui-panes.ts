@@ -350,7 +350,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
   };
 
   const routeArrow = (key: { ctrl?: boolean; name?: string }, ctx: TuiPaneCtx): boolean => {
-    // Entry-browse arrows: the backlog pane, then the Pending pane (merge-row selection),
+    // Entry-browse arrows: the backlog pane, then the Pending pane (review-row selection),
     // then the queued pane; every other view falls through so the editors' prompt-history
     // recall keeps the arrows.
     if (backlog.handleKey?.(key, ctx)) return true;

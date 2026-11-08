@@ -222,7 +222,7 @@ function historySearchHint(view: Extract<TuiView, { kind: "history" }>): [string
   return ["/", view.trail && view.trailTranscript !== undefined && view.trailTranscript !== "off" ? (view.trailGrep ? `transcript search: ${view.trailGrep}` : "search transcript") : (view.grep ? `search: ${view.grep}` : "search")];
 }
 
-/** The pending-change roster's keys: merge/review selection and the review actions. */
+/** The pending-change roster's keys: review selection and the review actions. */
 function pendingKeyHints(): Array<[string, string]> {
   return [["Enter", "send"], ["↑↓", "select review"], ["PgUp/PgDn", "scroll"], ["Ctrl+R", "refresh"], ["Ctrl+N", "overlaps"], ["Ctrl+G", "overlap role"], ["Ctrl+O", "review state"], ["Ctrl+A", "accept review"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
 }

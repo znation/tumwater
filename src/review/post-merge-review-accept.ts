@@ -56,7 +56,7 @@ export function acceptPostReview(root: string, position: number): AcceptPostRevi
 /** What removing a pending post-merge review by its commit did: `accepted`/`out-of-range`/
  * `settled` as `AcceptPostReviewOutcome` does (the sha variant never returns `out-of-range`);
  * `gone` — a concurrent drain already settled the entry, so the client gets data, not an error,
- * in the `/api/queue-cancel` gone idiom. */
+ * in the dashboard's gone idiom. */
 export type AcceptPostReviewByShaOutcome = AcceptPostReviewOutcome | { status: "gone" };
 
 /** Remove the pending post-merge review whose entry's commit is `sha` (the browser twin of
