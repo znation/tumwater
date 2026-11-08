@@ -5,9 +5,8 @@ import { defaultConfig, loadConfig, saveConfig } from "../../src/config/config.j
 import { initProject } from "../../src/init/init.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { runOrchestrator } from "../../src/orchestrator/orchestrator.js";
-import { drainMerge } from "../../src/merge/merge-drain.js";
+import { drainMergeQueue } from "../../src/merge/merge-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../../src/merge/merge-pipeline.js";
-import { startVerify } from "../../src/merge/merge-verify.js";
 import { dropMerge, headMerge, queuedMergeFiles } from "../../src/merge/merge-queue.js";
 import { mergeRefName } from "../../src/paths.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
@@ -336,9 +335,9 @@ export async function awaitSettledRun(
 
 /** Merge the head of the durable merge queue through the orchestrator's own merge pipeline
  * (merge-drain.ts). Runner-level tests call `runner.run()` directly — no poll loop — so the
- * entry a changed run enqueues needs a driver: this verifies the head alone (startVerify, on a
- * one-permit semaphore) and, once approved, merges it (drainMerge), leaving every other queued
- * entry untouched — a test that runs a second role meanwhile merges that one with its own call.
+ * entry a changed run enqueues needs a driver: this runs the drain's one gate-then-merge task
+ * for the head (drainMergeQueue, on a one-permit semaphore), leaving every other queued entry
+ * untouched — a test that runs a second role meanwhile merges that one with its own call.
  * `signal` stands in for harness shutdown (the orchestrator's stop signal). Returns the
  * merge's outcome as folded into `runner`'s state; the entry is dropped after every outcome,
  * exactly as the pipeline does. */
@@ -366,10 +365,10 @@ export async function mergeHead(
     startHeld: () => false,
   };
   const pipeline = newMergePipeline();
-  startVerify(ctx, pipeline, head.entry, head.file);
-  await Promise.all([...pipeline.verifying.values()].map((v) => v.promise));
-  drainMerge(ctx, pipeline);
-  await pipeline.merge?.promise;
+  // The drain starts the head's one gate-then-merge task; awaiting the slot settles it.
+  await drainMergeQueue(ctx, pipeline);
+  const merge = pipeline.merge;
+  if (merge) await merge.promise;
   if (fs.existsSync(head.file)) throw new Error(`the merge of ${role} ended without an outcome`);
   // The pipeline re-queues a kept change itself (requeueKeptChange). This driver models the
   // author-side backstop — leftover recovery at the next run — so it drops that re-queue;

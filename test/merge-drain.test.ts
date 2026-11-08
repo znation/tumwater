@@ -16,7 +16,7 @@ import { withPi } from "./fakes/fake-pi.js";
 import { mainSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
 
 /** First slice of the merge-drain suite (merge-pipeline.test.ts and merge-pipeline-2.test.ts
- * carry the rest, and merge-drain-verify.test.ts the verification-permit tests) — split so
+ * carry the rest) — split so
  * node --test runs the slices in parallel processes: top-level tests within one file run
  * sequentially, while each test FILE gets its own process. The slices are balanced by measured
  * per-test duration (~10.6s vs ~6.9s at 2026-10-04 — this file holds the one ~10.5s
@@ -24,18 +24,17 @@ import { mainSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
  * roughly equal when moving tests between them. */
 // Unit coverage for src/merge/merge-drain.ts — the scheduler seam between the durable merge
 // queue and the merge pipeline (land-queue speed 2c): the dedupe against main and torn-head
-// recovery, the verify stage (one verification per queued change, each on a shared maxConcurrent
-// permit), and the merge slot (every approved change, one at a time), with the abort and
-// shutdown rules
+// recovery, and the one serial gate-then-merge task per queue head (a change is gated and merged
+// by the one task, so no verify stage starts), with the abort and shutdown rules
 // and the marker records the observers read. The review gate's pi runs are real subprocesses behind
-// the fake shim, exactly as merger.test.ts drives verifyRequest and the one-change merge directly.
+// the fake shim, exactly as merger.test.ts drives mergeApprovedChange directly.
 
 test("an empty queue drains nothing", async () => {
   const root = makeRepo();
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
   await drainMergeQueue(ctx, pipeline);
-  assert.equal(mergeTasks(pipeline).length, 0, "no verification and no merge started");
-  assert.equal(pipeline.verifying.size, 0);
+  assert.equal(mergeTasks(pipeline).length, 0, "no gate-then-merge task started");
+  assert.equal(queueDepth(root), 0, "nothing was queued");
 });
 
 test("a torn merge-queue head is dropped and the drain continues when the events feed is unwritable", async () => {
@@ -67,7 +66,7 @@ test("a queued entry whose sha main already holds is dropped without a verificat
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
 
   await drainMergeQueue(ctx, pipeline);
-  assert.equal(pipeline.verifying.size, 0, "nothing to verify — main already holds the sha");
+  assert.equal(mergeTasks(pipeline).length, 0, "no task started — main already holds the sha");
   assert.equal(queueDepth(root), 0, "the stale entry was dropped");
   assert.equal(readMergeMarker(root), null, "the stale marker was cleared");
   assert.equal(readEvents(root).some((e) => e.type === "merge_done" || e.type === "merge_failed"), false, "no outcome was written");
@@ -101,6 +100,7 @@ test("a full dedupe cache never wedges the drain: every already-merged entry sti
 
   await pumpUntil(ctx, pipeline, drained(root, pipeline), "the first cache-filling queue to drain");
   assert.equal(queueDepth(root), 0, "every already-merged entry was dropped through the eviction churn");
+  assert.equal(mergeTasks(pipeline).length, 0, "no task ever started: everything was already merged");
   assert.equal(readEvents(root).some((e) => e.type === "merge_done" || e.type === "merge_failed"), false, "no outcome was written");
 
   // Second arm: a cache holding phase-one verdicts against the OLD head, then a poll whose
@@ -122,7 +122,7 @@ test("a full dedupe cache never wedges the drain: every already-merged entry sti
 
   await pumpUntil(ctx, pipeline, drained(root, pipeline), "the stale-head queue to drain");
   assert.equal(queueDepth(root), 0, "every entry deduped against the new head");
-  assert.equal(pipeline.verifying.size, 0, "no verification ever started: everything was already merged");
+  assert.equal(mergeTasks(pipeline).length, 0, "no task ever started: everything was already merged");
   assert.equal(readEvents(root).some((e) => e.type === "merge_done" || e.type === "merge_failed"), false, "still no outcome was written");
 });
 

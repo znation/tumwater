@@ -25,10 +25,11 @@ import {
   mergeStatePath,
 } from "../src/paths.js";
 import { enqueueMerge, queueDepth } from "../src/merge/merge-queue.js";
+import { drainMergeQueue } from "../src/merge/merge-drain.js";
 import { setRef } from "../src/git/git.js";
+import { makePipeline } from "./fixtures/merge-fixtures.js";
 import {
   fastConfig,
-  mergeHead,
   mergeRefExists,
   makeFastRepo,
   scriptedRedeployer,
@@ -338,36 +339,33 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
   }
 });
 
-test("a merge whose pinned sha no longer exists degrades to an error outcome, not a throw", async () => {
+test("a merge whose pinned sha no longer exists keeps its entry queued, not a throw", async () => {
   // The queue entry can outlive its commit: the pin ref is dropped or the dangling commit
-  // gc'd while the entry waits (a crash between pin and drop, manual gc). The verify's checkout
-  // throws on the uncheckable sha — verifyRequest must turn that into a normal "error" outcome
-  // with every bookkeeping step a real failure gets, instead of taking the merge pipeline
-  // down with it.
+  // gc'd while the entry waits (a crash between pin and drop, manual gc). The task's checkout
+  // throws on the uncheckable sha. Since the drain collapse (part 3/4) this is the drain's
+  // plumbing-throw path: the entry stays queued, the slot frees, and the next poll re-runs the
+  // change's one gate-then-merge from the missing pin — the verify stage's one-time "error"
+  // outcome this case used to pin is gone with the stage's catch (the gate-then-merge task's
+  // plumbing-throw semantics are pinned in merge-pipeline-2.test.ts and merge-slot.test.ts).
   const repo = makeRepo();
   const sha = "0".repeat(40); // a commit git cannot check out
   enqueueMerge(repo, { role: "clean", sha, run: 1, summary: "lost pin", enqueuedAt: Date.now() });
   const config = fastConfig(["clean"]);
   const author = makeRoleRunner(repo, "clean", config);
 
-  const result = await mergeHead(repo, author, config, "clean");
-
-  assert.equal(result, "error");
+  const { ctx, pipeline } = makePipeline(repo, [author]);
+  await drainMergeQueue(ctx, pipeline);
+  const merge = pipeline.merge;
+  assert.ok(merge, "the gate-then-merge task started");
+  await merge.promise; // resolves, never rejects — the drain caught the throw
+  assert.equal(pipeline.merge, null, "the merge slot freed");
   // The git failure is recorded where the next run's prompt reads it.
   assert.match(author.state.lastError ?? "", /invalid reference/);
-  // The 4/5 in-flight marker is cleared, the entry dropped, and the failure logged —
-  // the same tail a merged or rejected entry goes through.
-  assert.ok(!fs.existsSync(mergeStatePath(repo)), "the merge marker survives the error outcome");
-  assert.equal(queueDepth(repo), 0, "the entry is dropped after the error outcome");
-  const failed = eventsOfType(repo, "merge_failed");
-  assert.equal(failed.length, 1);
-  assert.equal(failed[0]?.source, "clean");
-  assert.equal(failed[0]?.result, "error");
-  assert.equal(failed[0]?.commit, sha);
+  // The 4/5 in-flight marker is cleared and the entry stays queued for the next poll's re-run.
+  assert.ok(!fs.existsSync(mergeStatePath(repo)), "the merge marker is cleared when the task settles");
+  assert.equal(queueDepth(repo), 1, "the entry is not dropped: no verdict was reached");
+  assert.equal(eventsOfType(repo, "merge_failed").length, 0, "a throw is not a verdict: no outcome event");
   assert.equal(eventsOfType(repo, "merge_done").length, 0);
-  // The degraded outcome is persisted on the author's state, like any other run result.
-  assert.equal(loadRunnerState(repo, "clean").lastResult, "error");
-  assert.equal(loadRunnerState(repo, "clean").lastError, author.state.lastError);
 });
 
 // --- abort requests: the marker-file plumbing that reaches RoleRunner's

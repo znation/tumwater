@@ -40,6 +40,8 @@ import type { MergeEntry } from "../src/merge/merge-queue.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
+import { drainMergeQueue } from "../src/merge/merge-drain.js";
+import { makePipeline } from "./fixtures/merge-fixtures.js";
 import { makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
@@ -208,30 +210,32 @@ test("a failed role-state save still logs the outcome and drops the settled entr
   assert.match(warnings[0] ?? "", /could not save the role's state: EACCES fake/);
 });
 
-test("an unexpected throw inside the merge degrades to an error outcome — the queue drains", async () => {
+test("an unexpected throw inside the gate-then-merge task keeps the entry queued and frees the slot", async () => {
   const root = makeRepo();
   queued(root);
   // A poisoned entry: the sha names no commit anywhere in the repo (a lost pin, a corrupt
-  // queue file), so the verification's ensureDetachedWorktree throws before any ref work —
-  // exactly the "unexpected throw" the verification degrades (the pipeline's contract: a merge
-  // never rejects; every outcome drops the entry; the change's marker record always goes).
+  // queue file), so the task's ensureDetachedWorktree throws before any ref work. Since the
+  // drain collapse (part 3/4) this is the drain's plumbing-throw path: the entry stays queued
+  // and the slot frees, and the next poll re-runs the change's one gate-then-merge from the
+  // (missing) pin. The verify stage's one-time "error" outcome this case used to pin is gone
+  // with the stage's catch (test/merge-pipeline-2.test.ts carries the same keep-queued
+  // semantics for a merge that cannot set up its worktree).
   const author = makeRoleRunner(root, "improve");
   const { state } = author;
   state.phase = "review"; // the run lifecycle's in-flight merge marker on the author's state
   assert.ok(await refSha(root, mergeRefName("improve")) === null, "fixture sanity: no pin exists");
 
-  const result = await mergeHead(root, author, defaultConfig(), "improve");
-
-  assert.equal(result, "error", "the throw surfaces as an outcome, never a rejection");
-  assert.equal(state.lastResult, "error");
-  assert.ok(state.lastError && state.lastError.length > 0, "the error's message lands on the author's state");
-  const failed = readEvents(root, 10).find((e) => e.type === "merge_failed");
-  assert.ok(failed, "even a throw logs merge_failed");
-  assert.equal(failed.result, "error");
-  assert.equal(queueDepth(root), 0, "every outcome drops the entry — a poison entry must not wedge the drain");
+  const { ctx, pipeline } = makePipeline(root, [author]);
+  await drainMergeQueue(ctx, pipeline);
+  const merge = pipeline.merge;
+  assert.ok(merge, "the gate-then-merge task started");
+  await merge.promise; // resolves, never rejects — the drain caught the throw
+  assert.equal(pipeline.merge, null, "the merge slot freed");
+  assert.ok(state.lastError && state.lastError.length > 0, "the throw's message lands on the author's state");
+  assert.equal(queueDepth(root), 1, "the poison entry stays queued — the next poll retries it");
+  assert.equal(readEvents(root, 10).some((e) => e.type === "merge_failed"), false, "a throw is not a verdict: no outcome event");
   assert.equal(await refSha(root, mergeRefName("improve")), null, "no pin existed and the error path fabricates none");
-  assert.equal(readMergeMarker(root), null, "the in-flight marker is removed even on the error path");
-  assert.equal(loadRunnerState(root, "improve").lastResult, "error", "the outcome is persisted, not just folded in memory");
+  assert.equal(readMergeMarker(root), null, "the in-flight marker is removed when the task settles");
 });
 
 test("the write-back pairs the merge's result with the queued run's summary, across a reload", () => {
