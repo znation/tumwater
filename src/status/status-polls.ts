@@ -4,6 +4,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { isMergeChange, readMergeMarker, type MergeInFlight } from "../merge/merge-slot.js";
 import type { MergeEntry } from "../merge/merge-queue.js";
 import { defaultConfig, loadConfigCached } from "../config/config.js";
+import { configPath } from "../paths.js";
 import { isPassingMainCheck } from "../baseline/main-guardrails.js";
 import { DEFAULT_EVENT_TAIL, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -492,17 +493,32 @@ export function queueInFlight(root: string, entries: readonly MergeEntry[], runn
 // reload poll and surfaces the error as a warning event visible in `tumwater logs`.
 const lastGoodConfig = new Map<string, TumwaterConfig>();
 
+/** The config to display runner state against plus the reason the fresh file did not
+ * load, for the standing `config-problem` alert: a valid config updates the last
+ * known-good one and carries no problem; an error keeps the last good config (or
+ * defaults if this process never saw a valid file) and carries its text; a missing file
+ * keeps the last good config and names the missing file and the hold. Never throws —
+ * one `loadConfigCached` read (stat-keyed, so an unedited tumwater.json costs one stat
+ * per poll), so `configForStatus`'s INV-T4 contract is the same read. */
+export function configStateForStatus(root: string): { config: TumwaterConfig; problem?: string } {
+  const { config, error, missing } = loadConfigCached(root);
+  if (config) {
+    lastGoodConfig.set(root, config);
+    return { config };
+  }
+  const last = lastGoodConfig.get(root) ?? defaultConfig();
+  const problem = missing
+    ? `tumwater.json is missing — the team is running on its last known-good config (${configPath(root)})`
+    : error;
+  return { config: last, problem };
+}
+
 /** The config to display runner state against: fresh when valid, otherwise the last
  * known-good one (or defaults if this process never saw a valid file). Never throws.
  * Freshness is stat-keyed (config.loadConfigCached): an unedited tumwater.json costs one
  * stat per poll instead of a read + parse + validate. */
 export function configForStatus(root: string): TumwaterConfig {
-  const { config } = loadConfigCached(root);
-  if (config) {
-    lastGoodConfig.set(root, config);
-    return config;
-  }
-  return lastGoodConfig.get(root) ?? defaultConfig();
+  return configStateForStatus(root).config;
 }
 
 // Per-poll runner-state cache (stat-cache.cachedByStat): the TUI and GUI poll snapshot every

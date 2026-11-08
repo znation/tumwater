@@ -20,7 +20,7 @@ import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { requestWake } from "../src/operator/operator-intent.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
-import { orchestratorStatePath, pausedPath, piLogPath, postReviewPath, remoteCiPath, roleNotesPath } from "../src/paths.js";
+import { configPath, orchestratorStatePath, pausedPath, piLogPath, postReviewPath, remoteCiPath, roleNotesPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
@@ -973,6 +973,39 @@ test("the payload's principlesTruncated follows principlesBlockOverCap and clear
   payload = statusPayload(root, now) as { principlesTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.principlesTruncated, undefined, "no principlesTruncated key under the cap");
   assert.equal(payload.alerts.find((a) => a.key === "principles-truncated"), undefined, "no principles-truncated alert under the cap");
+});
+
+test("the payload's configProblem follows the live tumwater.json and clears when it is fixed", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  // A valid config: no configProblem key and no config-problem alert.
+  const cfg = loadConfig(root);
+  cfg.maxConcurrent = 4;
+  saveConfig(root, cfg);
+  let payload = statusPayload(root, now) as { configProblem?: string; alerts: Array<{ key: string; tone: string; title: string; detail: string }> };
+  assert.equal(payload.configProblem, undefined, "no configProblem key with a valid config");
+  assert.equal(payload.alerts.find((a) => a.key === "config-problem"), undefined, "no config-problem alert with a valid config");
+
+  // The file breaks: the payload carries the error and one amber alert naming the error.
+  fs.writeFileSync(configPath(root), "{ not json");
+  payload = statusPayload(root, now) as typeof payload;
+  assert.match(payload.configProblem ?? "", /is not valid JSON/, "the parse error rides the payload");
+  const broken = payload.alerts.filter((a) => a.key === "config-problem");
+  assert.equal(broken.length, 1, "exactly one config-problem alert stands");
+  assert.equal(broken[0]?.tone, "amber");
+  assert.match(broken[0]?.detail ?? "", /is not valid JSON/);
+  assert.match(broken[0]?.detail ?? "", /fix or restore tumwater\.json/);
+
+  // The file is deleted after a valid load: the missing-file sentence stands instead.
+  fs.rmSync(configPath(root));
+  payload = statusPayload(root, now) as typeof payload;
+  assert.match(payload.configProblem ?? "", /tumwater\.json is missing — the team is running on its last known-good config \([^)]+\)/);
+
+  // Restoring a valid file clears the field and the alert.
+  saveConfig(root, cfg);
+  payload = statusPayload(root, now) as typeof payload;
+  assert.equal(payload.configProblem, undefined, "a repaired config drops the payload key");
+  assert.equal(payload.alerts.find((a) => a.key === "config-problem"), undefined, "a repaired config raises no alert");
 });
 
 test("refreshOrphanAlert mirrors the doctor's orphans row on a staged orphan scan", async () => {

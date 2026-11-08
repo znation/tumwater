@@ -7,7 +7,8 @@ import type { ModelTier } from "../config/config-schema.js";
 import type { SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import {
-  configForStatus,
+  type configForStatus,
+  configStateForStatus,
   queueInFlight,
   mainCheckForPoll,
   maintenanceQuotaForPoll,
@@ -388,6 +389,12 @@ export interface StatusSnapshot {
    * surfaces the silent state on `tumwater status`, the dashboard and the TUI; absent
    * otherwise, so the surfaces render exactly as before. */
   noDeclaredCheck?: boolean;
+  /** The reason the live tumwater.json did not load (a validation or parse error's text, or
+   * the missing-file sentence) while the snapshot serves the last-known-good config — the
+   * raw string the always-on amber `config-problem` alert renders, so `tumwater status
+   * --json` scripts read what the surfaces show. Absent when the live config loads, so the
+   * surfaces render exactly as before. */
+  configProblem?: string;
   /** True when a brief candidate file exists but none resolves to a usable prompt block —
    * the marker-less file, the unreadable candidate, or a marked block with no text
    * (src/brief/brief.ts's briefStatus.missing) — the doctor `brief` row's marker-less,
@@ -571,6 +578,7 @@ function snapshotHealthFields(
   cfg: ReturnType<typeof configForStatus>,
   mergeQueue: StatusSnapshot["mergeQueue"],
   roleNotesOverCap: RoleNoteOverCap[],
+  configProblem?: string,
 ): Partial<StatusSnapshot> {
   // The brief's two degraded flags from ONE scan/read (brief.briefStatus): the always-on
   // `no-brief` and `brief-truncated` amber alerts, read once per poll rather than twice
@@ -582,6 +590,7 @@ function snapshotHealthFields(
     ciParity: ciParityForPoll(root, cfg),
     remoteCi: remoteCiForPoll(root),
     noDeclaredCheck: buildCheckForPoll(root, cfg) === null ? true : undefined,
+    ...(configProblem ? { configProblem } : {}),
     noBrief: brief.missing ? true : undefined,
     briefTruncated: brief.overCap ? true : undefined,
     ...(roleNotesOverCap.length > 0 ? { roleNotesOverCap } : {}),
@@ -626,7 +635,9 @@ function snapshotResourceFields(
  * every poll still reads a shared resource exactly once and the one `now` pins the whole
  * snapshot — the consistency property the per-collector comments call out. */
 export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.now()): StatusSnapshot {
-  const cfg = configForStatus(root);
+  // The config and its live-load problem from ONE read, so the role rows and the standing
+  // `config-problem` alert cannot drift on which poll each happened to read.
+  const { config: cfg, problem } = configStateForStatus(root);
   const rootDrift = collectRootInstallDrift(root, now);
   // The gate's read-only bootstrap verdict (plans/work-ratio.md, part 2/2), computed over the
   // same last-known-good config the caps read, so the dashboards show the hold the scheduler
@@ -745,7 +756,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
       wakes,
       quiet,
     ),
-    ...snapshotHealthFields(root, cfg, mergeQueue, roleNotesOverCap),
+    ...snapshotHealthFields(root, cfg, mergeQueue, roleNotesOverCap, problem),
     ...snapshotResourceFields(root, running, info, rootDrift),
   } as StatusSnapshot;
 }

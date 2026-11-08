@@ -17,7 +17,7 @@ import type { StatusSnapshot } from "../src/status/status-data.js";
 
 type StandingFlags = Pick<
   StatusSnapshot,
-  "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "principlesTruncated"
+  "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "principlesTruncated" | "configProblem"
 >;
 
 // team-alerts.ts's teamAlerts: what needs the operator, phrased once for the dashboard's alert
@@ -378,6 +378,15 @@ test("the standing amber alerts raise from the snapshot's raw flags, worded like
   assert.match(prin?.detail ?? "", /over the 4000-character prompt cap/);
   fs.rmSync(path.join(root, "PRINCIPLES.md"));
   assert.ok(!has({ principlesTruncated: false }, "principles-truncated"), "no PRINCIPLES.md raises nothing");
+
+  // config-problem: a non-empty configProblem stands from the snapshot string the `--json`
+  // key carries — the sibling of the doctor `init` row's config-validity failure.
+  const cfgProblem = has({ configProblem: "tumwater.json is missing — the team is running on its last known-good config (/x/tumwater.json)" }, "config-problem");
+  assert.ok(cfgProblem, "a configProblem snapshot raises the standing config-problem alert");
+  assert.equal(cfgProblem?.tone, "amber");
+  assert.equal(cfgProblem?.title, "tumwater.json cannot be loaded — the team keeps its last good config");
+  assert.match(cfgProblem?.detail ?? "", /fix or restore tumwater\.json; the running team keeps its last good config until it loads again/);
+  assert.ok(!has({}, "config-problem"), "absent configProblem raises nothing");
 });
 
 // The same alerts on the CLI surface: renderStatus composes the banners from the snapshot's

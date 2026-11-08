@@ -212,7 +212,7 @@ function headerFields(root: string, snap: ReturnType<typeof snapshot>, now: numb
  * and its labels, the post-merge review queue, main's newest merge-scope check and its badge,
  * the ci-parity badge/tone, the remote-CI badge/tone, and the raw twins of the
  * no-check/no-brief/brief-truncated/
- * role-notes/principles alerts for `status --json` scripts. */
+ * role-notes/principles and config-problem alerts for `status --json` scripts. */
 function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, now: number) {
   return {
     // The merge queue (plans/merge-queue.md 4/5): depth always (machine-readable for
@@ -275,6 +275,12 @@ function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, no
     // the same state the alert renders). Omitted (absent) when the file is at or under the cap
     // or missing, the same omit-undefined idiom as noDeclaredCheck.
     ...(snap.principlesTruncated ? { principlesTruncated: true } : {}),
+    // The raw machine-readable twin of the amber `config-problem` alert (present only when
+    // the live tumwater.json did not load — the error text or the missing-file sentence the
+    // alert renders, so `tumwater status --json` scripts can read the same state the
+    // surfaces show). Omitted (absent) when the live config loads, the same omit-undefined
+    // idiom as noDeclaredCheck.
+    ...(snap.configProblem ? { configProblem: snap.configProblem } : {}),
     ciParityTone: ciParityTone(snap.ciParity),
     remoteCiTone: remoteCiTone(snap.remoteCi),
     // The check's counts fragment, preformatted through badges.ts's mainCountsFragment so

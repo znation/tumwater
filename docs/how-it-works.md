@@ -595,7 +595,12 @@ to share a baseline with collaborators. It sets enabled roles, provider, model, 
 `tumwater config get <key>` reads one resolved value, `tumwater config set <key> <value>`
 writes one, and `tumwater config unset <key>` removes one (the inverse of `set`, so a value
 reverts to its default or disappears from its map or section) — all through the same lock,
-validation, and atomic write, so you never have to hand-edit the file.
+validation, and atomic write, so you never have to hand-edit the file. A broken or missing
+`tumwater.json` while the team runs keeps the last good config, logs the load warning, and
+raises the standing amber `config-problem` alert on `tumwater status`, the dashboard and the
+TUI (with the load error or the missing-file sentence as the status `configProblem` field)
+until a valid file loads again — so a live edit gone bad never silently leaves the team on
+stale settings.
 
 - **Custom roles:** add `customRoles` entries by hand or by prompting the director ("add a role
   named X that does Y"). The TUI marks them with `*`, the web dashboard with a `custom` tag.

@@ -111,12 +111,17 @@ test("snapshot survives a broken tumwater.json and recovers when it is fixed", a
   // The file breaks mid-edit (invalid JSON): observers must not throw.
   fs.writeFileSync(path.join(repo, "tumwater.json"), "{ still editing");
   snap = snapshot(repo);
-  // The last known-good role set is kept: dedupe stays hidden and nothing crashes.
+  // The last known-good role set is kept: dedupe stays hidden and nothing crashes, and the
+  // broken poll carries the parse error as the standing configProblem.
   assert.ok(!snap.roles.some((l) => l.role === "dedupe"));
+  assert.match(snap.configProblem ?? "", /is not valid JSON/);
 
-  // A validation error (valid JSON, invalid value) is equally survivable.
+  // A validation error (valid JSON, invalid value) is equally survivable and surfaces its
+  // own error as configProblem.
   writeConfig(repo, { maxConcurrent: "six" });
-  assert.ok(snapshot(repo).roles.length > 0);
+  snap = snapshot(repo);
+  assert.ok(snap.roles.length > 0);
+  assert.ok(snap.configProblem, "the validation-error poll surfaces configProblem");
 
   // Repair with a different valid config: the fresh load takes effect again.
   cfg.roles.dedupe!.enabled = true;
@@ -125,6 +130,7 @@ test("snapshot survives a broken tumwater.json and recovers when it is fixed", a
   snap = snapshot(repo);
   assert.ok(snap.roles.some((l) => l.role === "dedupe"));
   assert.ok(!snap.roles.some((l) => l.role === "clean"));
+  assert.equal(snap.configProblem, undefined, "a repaired config drops the standing problem");
 });
 
 test("snapshot serves unchanged runner state from the stat-keyed cache without re-reading", async () => {

@@ -1,18 +1,19 @@
 /** The standing doctor-twin team alerts, in emission order: no-check, no-brief,
- * brief-truncated, role-notes-truncated, instance-pool, principles-truncated. One of the
- * per-domain builders split out of src/ui/team-alerts.ts; the shared types and wording
- * helpers live in team-alert-shared.ts.
+ * brief-truncated, role-notes-truncated, instance-pool, principles-truncated, and the
+ * config-problem alert. One of the per-domain builders split out of src/ui/team-alerts.ts;
+ * the shared types and wording helpers live in team-alert-shared.ts.
  *
- * These six are the standing amber alerts docs/cli.md promises on `tumwater status`, the
+ * These seven are the standing amber alerts docs/cli.md promises on `tumwater status`, the
  * dashboard and the TUI — the always-on twins of their doctor rows. The snapshot carries
  * their state as raw fields (noDeclaredCheck, noBrief, briefTruncated, roleNotesOverCap,
- * principlesTruncated) and this module raises each as its alert when its flag stands,
- * phrasing the detail from the same check or selector the doctor row runs (doctor-project-
- * checks.ts checkBuildCheck, doctor-checks.ts checkBrief, doctor-role-notes.ts
- * checkRoleNotes, doctor-contention-checks.ts smallPoolProblems, doctor-principles.ts
- * checkPrinciples), so the alert and the row cannot drift on the trigger, the caps, or the
- * remedy. The raw fields stay the machine-readable `--json` keys; the alert is the rendered
- * half the docs name. */
+ * principlesTruncated, configProblem) and this module raises each as its alert when its
+ * flag stands, phrasing the detail from the same check or selector the doctor row runs
+ * (doctor-project-checks.ts checkBuildCheck, doctor-checks.ts checkBrief,
+ * doctor-role-notes.ts checkRoleNotes, doctor-contention-checks.ts smallPoolProblems,
+ * doctor-principles.ts checkPrinciples, or the doctor `init` row's config-validity check
+ * for config-problem), so the alert and the row cannot drift on the trigger, the caps, or
+ * the remedy. The raw fields stay the machine-readable `--json` keys; the alert is the
+ * rendered half the docs name. */
 
 import type { TeamAlert } from "./team-alert-shared.js";
 import type { StatusSnapshot } from "../status/status-data.js";
@@ -34,7 +35,7 @@ import { ROLE_NOTES_MAX_BYTES } from "../roles/role-notes-write.js";
 interface StandingAlertsInput {
   snap: Pick<
     StatusSnapshot,
-    "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "principlesTruncated"
+    "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "principlesTruncated" | "configProblem"
   >;
   config: TumwaterConfig;
   root: string;
@@ -119,10 +120,23 @@ function pushPrinciplesAlert(out: TeamAlert[], root: string): void {
   );
 }
 
+// The doctor `init` row's config-validity failure is the sibling of configProblem (both
+// read the live tumwater.json), but the standing surface cannot wait on a doctor run, so
+// this arm raises from the snapshot string itself — the same trigger the `--json` key names.
+function pushConfigProblemAlert(out: TeamAlert[], problem: string): void {
+  out.push({
+    key: "config-problem",
+    tone: "amber",
+    title: "tumwater.json cannot be loaded — the team keeps its last good config",
+    detail: `${problem} — fix or restore tumwater.json; the running team keeps its last good config until it loads again`,
+    actions: [],
+  });
+}
+
 /** The standing doctor-twin alerts, in emission order: no-check, no-brief,
- * brief-truncated, role-notes-truncated, instance-pool, principles-truncated. The caller
- * pushes the returned alerts at the position this run used to occupy, so the emitted key
- * order is unchanged. */
+ * brief-truncated, role-notes-truncated, instance-pool, principles-truncated,
+ * config-problem. The caller pushes the returned alerts at the position this run used to
+ * occupy, so the emitted key order is unchanged. */
 export function buildStandingAlerts(input: StandingAlertsInput): TeamAlert[] {
   const { snap, config, root } = input;
   const out: TeamAlert[] = [];
@@ -133,5 +147,6 @@ export function buildStandingAlerts(input: StandingAlertsInput): TeamAlert[] {
     pushRoleNotesAlert(out, snap.roleNotesOverCap, root);
   pushInstancePoolAlert(out, config);
   if (snap.principlesTruncated) pushPrinciplesAlert(out, root);
+  if (snap.configProblem) pushConfigProblemAlert(out, snap.configProblem);
   return out;
 }

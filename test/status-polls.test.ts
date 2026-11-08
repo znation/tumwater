@@ -5,11 +5,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ciParityForPoll, configForStatus, liveMergeMarker, mainCheckForPoll, remoteCiForPoll } from "../src/status/status-polls.js";
+import { ciParityForPoll, configForStatus, configStateForStatus, liveMergeMarker, mainCheckForPoll, remoteCiForPoll } from "../src/status/status-polls.js";
+import { loadConfig, saveConfig } from "../src/config/config.js";
 import { recordParity } from "../src/observer/ci-parity.js";
 import { recordRemoteCi } from "../src/observer/remote-ci.js";
-import { remoteCiPath } from "../src/paths.js";
-import { commitIn, makeRepo, mainSha, writeConfig } from "./fixtures/repo-fixtures.js";
+import { configPath, remoteCiPath } from "../src/paths.js";
+import { commitIn, makeRepo, mainSha, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import type { MergeChange, MergeInFlight } from "../src/merge/merge-slot.js";
 
@@ -328,4 +329,33 @@ test("a cleared red ends when its confirming full run settles", () => {
   assert.equal(result?.status, "passed");
   assert.equal(result?.checkedAt, 4_000);
   assert.equal(result?.at, 4_000);
+});
+
+test("configStateForStatus reports why the live config is not fresh while configForStatus keeps the last known-good one", () => {
+  const root = makeRepo();
+  // A valid config loads with no problem and becomes the last known-good one.
+  const cfg = loadConfig(root);
+  cfg.maxConcurrent = 4;
+  saveConfig(root, cfg);
+  assert.equal(configForStatus(root).maxConcurrent, 4);
+  assert.equal(configStateForStatus(root).problem, undefined);
+
+  // A malformed file keeps the last known-good config and reports the parse error.
+  writeMalformedJson(configPath(root));
+  const broken = configStateForStatus(root);
+  assert.equal(broken.config.maxConcurrent, 4, "last known-good config is kept");
+  assert.match(broken.problem ?? "", /is not valid JSON/);
+
+  // A validation error (valid JSON, invalid value) reports the error and keeps last-good.
+  writeConfig(root, { maxConcurrent: "six" });
+  const invalid = configStateForStatus(root);
+  assert.equal(invalid.config.maxConcurrent, 4, "a validation error also keeps the last good config");
+  assert.ok(invalid.problem, "a validation error is surfaced as the problem");
+
+  // A deleted file keeps the last known-good config and names the missing file.
+  fs.rmSync(path.join(root, "tumwater.json"));
+  const gone = configStateForStatus(root);
+  assert.equal(gone.config.maxConcurrent, 4, "a missing file keeps the last known-good config");
+  assert.match(gone.problem ?? "", /tumwater\.json is missing — the team is running on its last known-good config/);
+  assert.equal(configForStatus(root).maxConcurrent, 4, "configForStatus delegates to the same read");
 });
