@@ -28,7 +28,7 @@ import { hostLoadStarved, sampleHostLoad, type LoadSampler } from "../build/host
 import { INSTANCE_ROLES, runnerEnabled, runnerIds } from "../roles/runner-ids.js";
 import { staleClaimDetail, staleClaimEntries } from "../scheduling/claim-entries.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
-import { readOrchestratorInfo } from "../team/team-orchestrator-info.js";
+import { orchestratorAlive, readOrchestratorInfo } from "../team/team-orchestrator-info.js";
 import { branchName, mergeLockDir, worktreesDir } from "../paths.js";
 import { artifactPhrase, retireRole } from "../operator/operator-retire.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
@@ -284,13 +284,13 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
   return (warn ? warnOutcome : okOutcome)(parts.join(" — "));
 }
 
-/** The shared wrapper of the `checkProviderContention`/`checkCheckContention` twins: read the
- * window's `*_wait` events (a read error leaves the level ok, saying so rather than crying
- * wolf, exactly like the slot-wait branch's own read), sum them, and resolve the row's rule;
- * a window with no waits reads "no <noun>". One home for the try/catch, count-zero and
- * ok-fallback arms the two siblings repeated, so they cannot drift on which inputs read ok;
- * the row-specific rule (`providerWaitContention` / `checkWaitContention`) is `rule`. `noun`
- * names the waits in the ok message. */
+/** The check-contention row's wrapper: read the window's `*_wait` events (a read error leaves
+ * the level ok, saying so rather than crying wolf, exactly like the slot-wait branch's own
+ * read), sum them, and resolve the row's rule; a window with no waits reads "no <noun>". One
+ * home for the try/catch, count-zero and ok-fallback arms, so they cannot drift on which
+ * inputs read ok; the row-specific rule (`checkWaitContention`) is `rule`. `noun` names the
+ * waits in the ok message. (The provider-contention row has its own wrapper because it also
+ * folds the orchestrator's live `permits.waiting` into the same row.) */
 function waitContentionRow(
   root: string,
   windowMs: number,
@@ -332,7 +332,12 @@ interface LiveWait {
  * written when a wait ENDS. Absent when no orchestrator is running, when it predates the
  * published list, or when nothing is parked. */
 function liveProviderWaits(root: string): readonly LiveWait[] {
-  return readOrchestratorInfo(root)?.permits?.waiting ?? [];
+  const info = readOrchestratorInfo(root);
+  // A crashed orchestrator leaves its last info file behind; its waiters are gone, so a stale
+  // `waiting` list must not read as a wait still in progress (the header's liveness gate is the
+  // same rule).
+  if (info === null || !orchestratorAlive(root, info)) return [];
+  return info.permits?.waiting ?? [];
 }
 
 /** The live half of the provider-contention rule: fold the published in-progress waiters into

@@ -1432,7 +1432,7 @@ test("checkProviderContention surfaces a live semaphore wait that has no finishe
   assert.equal(checkProviderContention(root, defaultConfig()).detail, "no provider waits");
 
   writeOrchestratorInfo(root, {
-    pid: 4242,
+    pid: process.pid,
     startedAt: 1,
     roles: ["feature"],
     permits: { inUse: 6, limit: 6, reserve: 0, waiting: [{ tier: 1, waitingMs: 3 * 3_600_000 }] },
@@ -1441,6 +1441,16 @@ test("checkProviderContention surfaces a live semaphore wait that has no finishe
   assert.equal(live.level, "warn"); // a single 3h live wait crosses the ten-minute threshold
   assert.match(live.detail, /1 slot wait in progress now \(tier 1\) — oldest so far 180m/);
   assert.doesNotMatch(live.detail, /no provider waits/);
+
+  // A crashed orchestrator's last file still lists its parked waiters, but no wait is in
+  // progress: the live half must not report one forever.
+  writeOrchestratorInfo(root, {
+    pid: 2 ** 22 + 7,
+    startedAt: 1,
+    roles: ["feature"],
+    permits: { inUse: 6, limit: 6, reserve: 0, waiting: [{ tier: 1, waitingMs: 3 * 3_600_000 }] },
+  });
+  assert.equal(checkProviderContention(root, defaultConfig()).detail, "no provider waits");
 });
 
 test("checkProviderContention ranks keyed providers busiest first", () => {

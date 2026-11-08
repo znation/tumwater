@@ -322,6 +322,25 @@ test("the verify and merge tiers ignore the reserve", async () => {
 // --- Age bound (BUGS.md 2026-11-08: tier-1 role waiters have no age bound and no visible
 // wait, so maintenance roles starve behind work runs for half a day) ---
 
+test("snapshot publishes each live waiter's tier and age, then clears it when admitted", async () => {
+  let clock = 1_000;
+  const sem = new Semaphore(1, { now: () => clock, starveMs: 10_000 });
+  const holder = await sem.acquireLease(0);
+  const waiter = sem.acquireLease(1);
+  await flushImmediate();
+
+  clock = 4_000;
+  assert.deepEqual(sem.snapshot().waiting, [{ tier: 1, waitingMs: 3_000 }], "the parked tier and its age");
+
+  clock = 12_000; // past the starve bound, so the snapshot reports the effective (promoted) tier
+  assert.deepEqual(sem.snapshot().waiting, [{ tier: 0, waitingMs: 11_000 }], "an aged waiter reports its effective tier");
+
+  holder.release();
+  const admitted = await waiter;
+  assert.deepEqual(sem.snapshot().waiting, [], "an admitted waiter leaves the published list");
+  admitted.release();
+});
+
 test("an aged tier-1 waiter is promoted ahead of a new tier-0 arrival, ending its starvation", async () => {
   // A tier-1 (maintenance) waiter must not be passed over forever: once it has waited past
   // the starve bound, a fresh tier-0 (work) arrival must stop jumping ahead of it.
