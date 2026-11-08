@@ -133,7 +133,7 @@ export interface FailureReportData {
   failedRunsByModel?: Record<string, number>; // the current window's error-class runs per start model; team digest only, absent when empty
   deltas: DeltaRow[];
   timeSpend: TimeSpendRow[]; // per role × outcome class: runs, summed wall-clock ms, cost
-  lossCauses: LossCause[]; // top LOSS_TOP causes by time: error clusters, no_change, context cut-off, review-rejected and merge-conflict/merge-blocked authoring
+  lossCauses: LossCause[]; // top LOSS_TOP causes by time: error clusters, no_change, context cut-off, self-check-reverted, review-rejected and merge-conflict/merge-blocked authoring
   lossCausesHidden: number; // distinct causes the LOSS_TOP cut dropped — the render marks the cut
   promptStats: PromptStatRow[]; // per-role prompt-token medians, empty when no run_end carries them
   errors: ClusterSection;

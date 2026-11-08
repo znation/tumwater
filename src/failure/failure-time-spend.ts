@@ -186,8 +186,9 @@ interface ClassifiedLoss {
 
 /** Classify one run's loss cause into the key/kind/example triple the ranking folds, or null
  * when the run prices no loss. The branch order is the contract: refused, then cut-off, then
- * no_change, then clustered, then the three queued outcomes — each rule owned by its own
- * named helper below, so the `??` chain reads left to right in the same order. Reads the
+ * self-check-reverted, then no_change, then clustered, then the three queued outcomes — each
+ * rule owned by its own named helper below, so the `??` chain reads left to right in the same
+ * order. Reads the
  * per-runner join indexes from `indexes` so each helper names a rule by a single lookup. */
 function lossCauseFor(
   ev: HarnessEvent,
