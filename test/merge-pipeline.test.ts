@@ -136,7 +136,7 @@ test("a settled merge detaches its shutdown listener: the long-lived stop signal
   });
 });
 
-test("changes approved while the merge slot is busy merge one at a time: no shared check, one fast-forward each", async () => {
+test("changes queued while the merge slot is busy merge one at a time: no shared check, one fast-forward each", async () => {
   const { root, mainBefore, restore, ctx, pipeline } = await busyMergePipeline();
   try {
     // Wait on the queue, not the approved map: both entries queued means the slot can free
@@ -297,14 +297,15 @@ test("one head is gated at a time: with three queued at cap 3 the second waits u
     ctx.semaphore.release();
     ran = false;
     fs.writeFileSync(path.join(flags, "alpha-release"), "");
-    // alpha's gate settles and its change merges (no busy merge slot now); the next drain
-    // starts beta's gate only once alpha's task is done, seen through beta's own check flag
-    // and alpha's merge_done, not the approved map.
+    // alpha's gate settles and its change merges (no busy merge slot now). The next drain
+    // starts beta's gate once alpha's verification settles; alpha's own merge may still be
+    // finishing, so wait for beta's check flag and alpha's merge_done before asserting the
+    // task list, not the approved map.
     await waitFor(
       () =>
         fs.existsSync(path.join(flags, "beta-blocking")) &&
         eventsOfType(root, "merge_done").some((e) => e.source === "alpha"),
-      "beta's gate to start once alpha's merge settles",
+      "beta's gate to start and alpha's merge to settle",
       30_000,
     );
     assert.deepEqual(
