@@ -136,7 +136,7 @@ export function steppedWindowBounds(
  * two-step Ctrl+X and Ctrl+R targets — plus every seam (`TuiPanesDeps`) and the shared cycle
  * helpers, single-homed here so the panes cannot drift. Per-pane state and arms live in each
  * pane module beside this session. */
-export interface TuiPaneSession {
+export interface TuiPaneSession extends TuiPanesDeps {
   /** The current pane index (the transcript/view window). */
   view: number;
   /** The current roster of role ids. */
@@ -198,26 +198,6 @@ export interface TuiPaneSession {
   armedReview: { position: number; commit: string } | null;
   /** The Pending pane's pending second Ctrl+A; moved to `armedReview` by beginKey. */
   reviewArmed: { position: number; commit: string } | null;
-  root: string;
-  now(): number;
-  requestRender(): void;
-  flat(): ReturnType<typeof labeledBacklogEntries>;
-  flashMessage(message: string): void;
-  flashError(err: unknown): void;
-  commitBacklogEdit(file: string, subject: string): void;
-  collectPending(root: string): Promise<TeamChangeView>;
-  collectOverlaps(root: string): Promise<ChangeOverlapsView>;
-  runDoctor(root: string): Promise<DoctorReport>;
-  killOrphans(root: string): Promise<OrphanKillReport>;
-  dropBrokenPins(root: string): Promise<BrokenPinDrop>;
-  commitBacklog(root: string): Promise<BacklogCommitReport>;
-  previewRevert: typeof previewRevert;
-  revertCommit: typeof revertMergedCommit;
-  collectChange(root: string, role: string, opts?: { path?: string; stat?: boolean }): Promise<RoleChangeView>;
-  runStat(root: string, detail: RunDetail): Promise<string>;
-  retireLeftovers(root: string): Promise<LeftoverRetireReport>;
-  runPatch(root: string, detail: RunDetail): Promise<string>;
-  archiveBacklog(root: string): Promise<ArchiveOnMainOutcome>;
 }
 
 /** Build the shared pane session from the disk-side deps the aggregator received. The pane
