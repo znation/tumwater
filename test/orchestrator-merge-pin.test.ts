@@ -79,6 +79,27 @@ test("a pin at MERGE_CONFLICT_LIMIT is neither merged nor deleted by the drain",
   assert.equal(queueDepth(root), 0, "no queue file was written");
 });
 
+test("a withdrawn claim's pin is left for its role's next run to set aside", async () => {
+  const root = makeRepo();
+  const sha = pinOffMain(
+    root,
+    (d) => fs.writeFileSync(path.join(d, "withdrawn.txt"), "withdrawn work\n"),
+    "withdrawn work",
+    { reset: true },
+  );
+  await setRef(root, mergeRefName("improve"), sha);
+  const [runner] = runnersFor(root, ["improve"]);
+  assert.ok(runner);
+  runner.state.withdrawn = { file: "PLANS.md", key: "withdrawn-key", title: "a withdrawn plan" };
+  const { ctx, pipeline } = makePipeline(root, [runner]);
+
+  await drainMergeQueue(ctx, pipeline);
+
+  assert.equal(mergeTasks(pipeline).length, 0, "no gate-then-merge task started");
+  assert.equal(await refSha(root, mergeRefName("improve")).catch(() => null), sha, "the pin waits for setAsideWithdrawnWork");
+  assert.equal(queueDepth(root), 0, "no queue file was written");
+});
+
 test("a queued entry drains before a pin that has no queue file", async () => {
   const root = makeRepo();
   const queuedSha = pinOffMain(

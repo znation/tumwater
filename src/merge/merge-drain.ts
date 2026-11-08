@@ -123,6 +123,10 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
   for (const runner of ctx.runners) {
     if (p.merge !== null) return; // one task at a time: the next pin waits in its ref
     if (queuedRoles.has(runner.role)) continue;
+    // A withdrawn claim's pin is not merged here: its role's next run sets the work aside
+    // before leftover recovery (runner-leftover.ts setAsideWithdrawnWork), because such a pin
+    // carries no claim the merge's own withdrawn check can read.
+    if (runner.state.withdrawn !== undefined) continue;
     // Skip a runner the ref files settle as having no pin, without yielding: an empty-queue
     // poll must not add an async hop just to confirm, on most polls, that nothing is pinned
     // (a concurrent parked task's permit window). A present or unsettled ref falls through to

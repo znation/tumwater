@@ -142,7 +142,8 @@ keep running while a change is in the pipeline.
   When no queue entry is eligible, a kept merge pin that has no queue file — a crash between a
   run's commit and its queue write, or a pin-only writer — is gated and merged by the same one
   task on the next poll, with no queue file written and the pin kept on a retriable outcome
-  for the next poll; queue files remain the legacy input.
+  for the next poll; queue files remain the legacy input. A pin whose claim is withdrawn is
+  left for its role's next run to set aside, never merged.
   The task's gate counts as active work: it holds one of the `maxConcurrent` permits role runs
   use (`VERIFY_TIER`, ahead of any waiting run) for the gate's whole length, and the conflict
   resolver holds another (`MERGE_TIER`) for its run, so merges never add streams to the
