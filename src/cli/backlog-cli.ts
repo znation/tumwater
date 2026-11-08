@@ -199,11 +199,12 @@ export async function cancelAndAnnounce(
 /** Peel an optional `--reason <text>` valued flag out of `args`, returning its value (null when
  * absent) and the remaining tokens. A repeat of `--reason` is refused (rejectRepeatFlag, the
  * "each flag at most once" rule every flag fold applies) and a valueless, empty, or
- * flag-looking `--reason` fails with the command-specific missing-value wording, so a
- * malformed reason is refused before any write or ready-repo gate can mask it. The value slot
- * is consumed along with the flag so the rest carries only tokens
- * scanPositionArgs/rejectUnknownArgs should see. */
-function peelReasonFlag(args: string[]): { reason: string | null; rest: string[] } {
+ * flag-looking `--reason` fails with the command's own missing-value wording —
+ * `bug --retire --reason needs a reason` or `plan --retire --reason needs a reason` names the
+ * kind in play, so a malformed reason is refused before any write or ready-repo gate can mask
+ * it. The value slot is consumed along
+ * with the flag so the rest carries only tokens scanPositionArgs/rejectUnknownArgs should see. */
+function peelReasonFlag(command: string, args: string[]): { reason: string | null; rest: string[] } {
   let reason: string | null = null;
   let seen = false;
   const rest: string[] = [];
@@ -213,10 +214,10 @@ function peelReasonFlag(args: string[]): { reason: string | null; rest: string[]
       rejectRepeatFlag(seen, "--reason");
       seen = true;
       const val = args[i + 1];
-      if (val === undefined || val.trim() === "") fail("plan --retire --reason needs a reason");
+      if (val === undefined || val.trim() === "") fail(`${command} --retire --reason needs a reason`);
       // A flag-shaped token in the reason slot is a rival flag, not a reason — refuse it with
       // the shared wording, as pause --reason does, instead of writing the literal text.
-      rejectFlagLookingValue("plan --retire --reason", val);
+      rejectFlagLookingValue(`${command} --retire --reason`, val);
       i++; // the value peels along with the flag
       reason = val;
       continue;
@@ -226,20 +227,21 @@ function peelReasonFlag(args: string[]): { reason: string | null; rest: string[]
   return { reason, rest };
 }
 
-/** The shell of the `tumwater plan --retire <n>` CLI case, parsed like cancelAndAnnounce parses
- * `--cancel`: `--retire <n>` is the one valued position flag, `--reason <text>` one optional
- * valued flag, `--json` the one boolean; any positional or other flag is refused. After
- * requireReadyRepo it moves the entry to `## Done` as retired (never built), commits the file on
- * main, and prints `retired plan in PLANS.md: <title>` or the `--json` payload {file, title,
- * retiredOn, reason?}. No wake: retiring closes an entry without building it, so no role is
- * asked to pick it up. */
+/** The shell of the `tumwater bug --retire <n>` and `tumwater plan --retire <n>` CLI cases,
+ * parsed like cancelAndAnnounce parses `--cancel`: `--retire <n>` is the one valued position
+ * flag, `--reason <text>` one optional valued flag, `--json` the one boolean; any positional or
+ * other flag is refused. After requireReadyRepo it moves the entry to the kind's finished
+ * section (`## Fixed` for bug, `## Done` for plan) as retired — closed without being built or
+ * fixed — commits the file on main, and prints `retired <command> in <file>: <title>` or the
+ * `--json` payload {file, title, retiredOn, reason?}. No wake: retiring closes an entry without
+ * fixing or building it, so no role is asked to pick it up. */
 export async function retireAndAnnounce(
   root: string,
   args: string[],
-  command: "plan",
+  command: "bug" | "plan",
   retire: (n: number, reason?: string | null) => { file: string; title: string; retiredOn: string },
 ): Promise<void> {
-  const { reason, rest: withoutReason } = peelReasonFlag(args);
+  const { reason, rest: withoutReason } = peelReasonFlag(command, args);
   const { json, position, rest } = scanPositionArgs(withoutReason, "--retire", "--retire 2");
   // rejectUnknownArgs names both a stray positional and an unknown flag; any token that is not
   // --retire/--json/--reason (all consumed above) is refused here.
@@ -247,10 +249,10 @@ export async function retireAndAnnounce(
   if (position === null) fail(`--retire needs a position (usage: tumwater ${command} --retire <n>)`);
   await requireReadyRepo(root);
   const retired = retire(position, reason ?? undefined);
-  warnIfUncommitted(await commitOperatorBacklogEdit(root, retired.file, stampedSubject("operator", `Retire plan: ${retired.title}`)), retired.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
+  warnIfUncommitted(await commitOperatorBacklogEdit(root, retired.file, stampedSubject("operator", `Retire ${command}: ${retired.title}`)), retired.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
   if (json)
     sayJson({ file: retired.file, title: retired.title, retiredOn: retired.retiredOn, ...(reason === null ? {} : { reason }) });
-  else say(`retired plan in ${retired.file}: ${retired.title}`);
+  else say(`retired ${command} in ${retired.file}: ${retired.title}`);
 }
 
 /** The shell of the `bug --release` and `plan --release` CLI cases, parsed as cancelAndAnnounce

@@ -407,6 +407,13 @@ Usage:
   tumwater bug --cancel <n> [--json]
                                    Remove the Nth entry in BUGS.md ## Open (as \`tumwater
                                    bug --list\` lists it); no wake; --json prints {file, title}
+  tumwater bug --retire <n> [--reason <text>] [--json]
+                                   Move the Nth entry in BUGS.md ## Open (as \`tumwater
+                                   bug --list\` lists it) to ## Fixed as retired — closed
+                                   without being fixed — keeping its body and adding a
+                                   retired-YYYY-MM-DD-by-the-user stamp and a **Retired
+                                   YYYY-MM-DD by the user[: <reason>]** first body line; no
+                                   wake; --json prints {file, title, retiredOn, reason?}
   tumwater bug --edit <n> "<symptom>" [--json]
                                    Replace the Nth entry's text in BUGS.md ## Open in place,
                                    keeping its position and original filing stamp; no wake;
@@ -828,12 +835,12 @@ export function searchHelp(text: string, help: string = HELP): string[] {
 
 /** The free-form text commands and the flags that take a separate value token, for
  * helpTopicForArgs: a valued flag's value is plumbing (`prompt --role qa --help`, `bug
- * --cancel 2 --help`), never prose. bug/plan's valued flags are `--cancel`, `--edit`,
- * `--file`, `--release` and `--top`. */
+ * --cancel 2 --help`, `bug --retire 1 --help`), never prose. bug/plan's valued flags are
+ * `--cancel`, `--retire`, `--reason`, `--edit`, `--file`, `--release` and `--top`. */
 const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
   prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach", "--top", "--show", "--grep"],
   init: ["--branch", "--template", "--file"],
-  bug: ["--cancel", "--edit", "--file", "--release", "--top"],
+  bug: ["--cancel", "--retire", "--reason", "--edit", "--file", "--release", "--top"],
   plan: ["--cancel", "--retire", "--reason", "--edit", "--file", "--release", "--top"],
 };
 

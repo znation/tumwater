@@ -567,27 +567,46 @@ export function cancelPlan(root: string, n: number): { file: string; title: stri
  * heading and `retiredOn` today's date. An out-of-range position fails with locateEntry's
  * existing wording and writes nothing. */
 export function retirePlan(root: string, n: number, reason?: string | null): { file: string; title: string; retiredOn: string } {
-  return withPrimaryWorktreeLock(root, () => retirePlanLocked(root, n, reason));
+  return withPrimaryWorktreeLock(root, () => retireEntryLocked(root, "PLANS.md", "Planned", "Done", n, reason));
 }
 
-/** The locked retire move: remove the `n`th `## Planned` entry whole (removeEntry's splice
- * shape, same range), then splice a retired copy under `## Done` — fence-aware so a `## Done`
- * quoted inside an entry's code fence is body text, never the boundary — in one read and one
- * atomic write, so the removal and the append cannot leave a half-moved entry. The Done
- * section's `_None yet._` placeholder is dropped (a placeholder means "no entries", so leaving
- * it above the moved copy would claim the section is empty) and the retired copy becomes the
- * section's first entry. The retired heading keeps the entry's title and its `(planned …)`
- * stamp, appending `, retired YYYY-MM-DD by the user` inside that parenthetical (or a fresh
- * `(retired YYYY-MM-DD by the user)` parenthetical when the heading carries no planned stamp),
- * matching the plan role's own retired shape so a reader counts it finished-but-not-built. */
-function retirePlanLocked(root: string, n: number, reason?: string | null): { file: string; title: string; retiredOn: string } {
-  const { file, lines, entry } = readEntryLines(root, "PLANS.md", "Planned", n);
+/** `tumwater bug --retire <n> [--reason <text>]`: the bug twin of retirePlan — move the nth
+ * `## Open` entry to BUGS.md's `## Fixed` as a retired record, closed without being fixed,
+ * keeping its body and adding the retired heading stamp and audit body line, so a duplicate or
+ * obsolete bug leaves the same record a finished bug leaves. Same contract and out-of-range
+ * wording as retirePlan ("no open bug at position …"), transposed to BUGS.md's sections. */
+export function retireBug(root: string, n: number, reason?: string | null): { file: string; title: string; retiredOn: string } {
+  return withPrimaryWorktreeLock(root, () => retireEntryLocked(root, "BUGS.md", "Open", "Fixed", n, reason));
+}
+
+/** The locked retire move shared by plan and bug: remove the `n`th `<fromSection>` entry whole
+ * (removeEntry's splice shape, same range), then splice a retired copy under `<toSection>` —
+ * fence-aware so a `## ` heading quoted inside an entry's code fence is body text, never the
+ * boundary — in one read and one atomic write, so the removal and the append cannot leave a
+ * half-moved entry. The destination section's `_None yet._` placeholder is dropped (a
+ * placeholder means "no entries", so leaving it above the moved copy would claim the section is
+ * empty) and the retired copy becomes the section's first entry. The retired heading keeps the
+ * entry's title and its parenthetical stamp, appending `, retired YYYY-MM-DD by the user`
+ * inside that parenthetical (or a fresh `(retired YYYY-MM-DD by the user)` parenthetical when
+ * the heading carries no stamp — a plan heading carries `(planned …)`, a bug `(found …)` or
+ * `(reported …)`, and either shape reads the same), matching the plan role's own retired shape
+ * so a reader counts it finished-but-not-built, and the finished-bug reader counts a retired
+ * bug fixed-but-not-built. */
+function retireEntryLocked(
+  root: string,
+  fileName: string,
+  fromSection: string,
+  toSection: string,
+  n: number,
+  reason?: string | null,
+): { file: string; title: string; retiredOn: string } {
+  const { file, lines, entry } = readEntryLines(root, fileName, fromSection, n);
   const title = stripEntryStamp(entry.title);
   const today = formatDate(new Date());
   const reasonText = reason === null || reason === undefined ? "" : reason.trim();
   const note = reasonText === "" ? `**Retired ${today} by the user**` : `**Retired ${today} by the user: ${reasonText}**`;
-  // Append the retirement stamp inside the heading's trailing `(planned …)` parenthetical when
-  // one exists (the canonical `(…, retired …)` shape the plan role writes), else add a fresh
+  // Append the retirement stamp inside the heading's trailing parenthetical stamp when one
+  // exists (the canonical `(…, retired …)` shape the plan role writes), else add a fresh
   // parenthetical — so every retired heading carries a parseable retired date.
   const existingStamp = entry.title.slice(stripEntryStamp(entry.title).length);
   const retiredHeading =
@@ -598,22 +617,22 @@ function retirePlanLocked(root: string, n: number, reason?: string | null): { fi
   const bodyLines = lines.slice(entry.start, entry.end);
   trimLeadingBlankLines(bodyLines);
   trimTrailingBlankLines(bodyLines);
-  // Remove the entry from ## Planned in place (the same range spliceOutEntry removes).
+  // Remove the entry from ## <fromSection> in place (the same range spliceOutEntry removes).
   lines.splice(entry.start - 1, entry.end - entry.start + 1);
-  // Locate ## Done fence-aware and drop its placeholder, then prepend the retired copy.
-  const doneSpan = sectionSpan(lines, "Done");
-  if (doneSpan === null) fail(`no ## Done section in PLANS.md`);
-  const doneIdx = doneSpan.heading;
-  const doneEnd = doneSpan.end;
+  // Locate ## <toSection> fence-aware and drop its placeholder, then prepend the retired copy.
+  const toSpan = sectionSpan(lines, toSection);
+  if (toSpan === null) fail(`no ## ${toSection} section in ${fileName}`);
+  const toIdx = toSpan.heading;
+  const toEnd = toSpan.end;
   const fencedContent = fenceTracker();
   const content = lines
-    .slice(doneIdx + 1, doneEnd)
+    .slice(toIdx + 1, toEnd)
     .filter((line) => fencedContent.inside(line) || line.trim() !== "_None yet._");
   trimLeadingBlankLines(content);
   trimTrailingBlankLines(content);
-  const rest = lines.slice(doneEnd);
+  const rest = lines.slice(toEnd);
   const out = [
-    ...lines.slice(0, doneIdx + 1),
+    ...lines.slice(0, toIdx + 1),
     "",
     retiredHeading,
     "",
@@ -624,7 +643,7 @@ function retirePlanLocked(root: string, n: number, reason?: string | null): { fi
   ];
   // Normalize to one trailing newline (the file always ends at a section boundary here).
   writeTextAtomic(file, out.join("\n").replace(/\n+$/, "") + "\n");
-  return { file: "PLANS.md", title, retiredOn: today };
+  return { file: fileName, title, retiredOn: today };
 }
 
 /** The `--edit <n> --file` form shared by plan and bug: split the file, strip a pasted-back

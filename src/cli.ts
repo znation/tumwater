@@ -253,8 +253,9 @@ interface BacklogCommandSpec {
   edit: (n: number, positionals: string[]) => { file: string; title: string; unchanged?: true };
   editText: (n: number, text: string) => { file: string; title: string; unchanged?: true };
   cancel: (n: number) => { file: string; title: string };
-  /** The `plan --retire` sink; absent for `bug` (only plans are retired). */
-  retire?: (n: number, reason?: string | null) => { file: string; title: string; retiredOn: string };
+  /** The `--retire` sink both kinds carry: move the Nth entry to the kind's finished section
+   * (bug's `## Fixed`, plan's `## Done`) as a retired record. */
+  retire: (n: number, reason?: string | null) => { file: string; title: string; retiredOn: string };
   top: (n: number) => { file: string; title: string };
   release: (n: number) => { file: string; title: string; lifted: LiftableHold };
   releaseRole: string;
@@ -287,8 +288,8 @@ async function runBacklogCommand(root: string, args: string[], s: BacklogCommand
     await cancelAndAnnounce(root, args, s.command, s.cancel);
     return;
   }
-  if (s.command === "plan" && args.includes("--retire")) {
-    await retireAndAnnounce(root, args, "plan", s.retire!);
+  if (s.retire && args.includes("--retire")) {
+    await retireAndAnnounce(root, args, s.command, s.retire);
     return;
   }
   if (args.includes("--top")) {
@@ -303,7 +304,7 @@ async function runBacklogCommand(root: string, args: string[], s: BacklogCommand
 }
 
 async function cmdBugCase(root: string, args: string[]): Promise<void> {
-  const { OPERATOR_FILE_KINDS, bugWakeText, cancelBug, editBug, editBugFromText, fileBug, fileBugFromText } =
+  const { OPERATOR_FILE_KINDS, bugWakeText, cancelBug, editBug, editBugFromText, fileBug, fileBugFromText, retireBug } =
     await import("./backlog/backlog-write.js");
   const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
   const { bugTitleOf } = await import("./cli/backlog-cli.js");
@@ -316,6 +317,7 @@ async function cmdBugCase(root: string, args: string[]): Promise<void> {
     edit: (n, positionals) => editBug(root, n, positionals.join(" "), usage),
     editText: (n, text) => editBugFromText(root, n, text, usage),
     cancel: (n) => cancelBug(root, n),
+    retire: (n, reason) => retireBug(root, n, reason),
     top: (n) => moveEntryToTop(root, "bug", n),
     release: (n) => releaseEntry(root, "bug", n),
     releaseRole: OPERATOR_FILE_KINDS.bug.role,

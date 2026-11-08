@@ -125,8 +125,10 @@ test("helpTopicForArgs answers a --help flag-only invocation with the command's 
   assert.equal(helpTopicForArgs("status", ["-h"]), helpTopic("status"));
   // A valued flag's value token is plumbing, not prose: this invocation has no text.
   assert.equal(helpTopicForArgs("prompt", ["--role", "qa", "--help"]), helpTopic("prompt"));
-  // bug admits no valued flags, so a flag-only --json rides beside --help.
+  // A flag-only --json rides beside --help, and a valued flag's value token (--retire 1) is
+  // plumbing, not prose — so `tumwater help bug --retire 1 --help` answers the bug topic.
   assert.equal(helpTopicForArgs("bug", ["--json", "--help"]), helpTopic("bug"));
+  assert.equal(helpTopicForArgs("bug", ["--retire", "1", "--help"]), helpTopic("bug"));
   // --file's value is a path, plumbing like --role's.
   assert.equal(helpTopicForArgs("plan", ["--file", "x.md", "--help"]), helpTopic("plan"));
   assert.match(helpTopic("plan") ?? "", /plan --file <path>/);
