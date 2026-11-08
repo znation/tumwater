@@ -173,24 +173,26 @@ export async function refreshPendingPlans(
   if (fingerprint !== undefined && lastRefsFingerprint.get(root) === fingerprint) {
     return;
   }
-  let refs: { ref: string; sha: string }[];
+  let out: string | null = null;
   try {
-    refs = gitLines(
-      await run(
-        root,
-        "for-each-ref",
-        `--no-merged=${mainBranch}`,
-        "--format=%(refname) %(objectname)",
-        "refs/tumwater/merge/",
-        "refs/heads/tumwater/",
-      ),
-    ).map((line) => {
-      const [ref, sha] = line.split(" ") as [string, string];
-      return { ref, sha };
-    });
+    out = await run(
+      root,
+      "for-each-ref",
+      `--no-merged=${mainBranch}`,
+      "--format=%(refname) %(objectname)",
+      "refs/tumwater/merge/",
+      "refs/heads/tumwater/",
+    );
   } catch {
     return;
   }
+  // gitTry answers a failed spawn with null, not a throw: treat it as the failed refresh it is,
+  // so the snapshot survives and the missing fingerprint makes the next poll retry.
+  if (out === null) return;
+  const refs = gitLines(out).map((line) => {
+    const [ref, sha] = line.split(" ") as [string, string];
+    return { ref, sha };
+  });
   const byRoleSha = new Map<string, { ref: string; sha: string }>();
   for (const { ref, sha } of refs) {
     if (sha === undefined) continue;

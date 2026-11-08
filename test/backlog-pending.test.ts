@@ -158,6 +158,29 @@ test("a second refresh with unchanged refs spawns no git; a moved main invalidat
   assert.equal(pendingPlanChanges(dir).length, 0, "the merged pin contributes nothing");
 });
 
+test("a failed for-each-ref keeps the snapshot and the next refresh retries", async () => {
+  const { dir } = plansRepo(PLANS([entry("A")]), "marker-failed-refresh");
+  pinAt(dir, "plan", (d) => fs.writeFileSync(path.join(d, "PLANS.md"), PLANS([entry("A"), entry("B")])));
+  await refreshPendingPlans(dir, "main");
+  assert.equal(pendingPlanChanges(dir).length, 1);
+  // A second pin changes the fingerprint, but this poll's for-each-ref fails: the earlier
+  // snapshot stays, and because the failed poll records no fingerprint the next one retries.
+  pinAt(dir, "feature", (d) => fs.writeFileSync(path.join(d, "PLANS.md"), PLANS([entry("A"), entry("C")])));
+  const failing: PendingGitRunner = async (cwd, ...args) =>
+    args[0] === "for-each-ref" ? null : gitTry(cwd, ...args);
+  await refreshPendingPlans(dir, "main", failing);
+  assert.equal(pendingPlanChanges(dir).length, 1, "a failed for-each-ref leaves the snapshot in place");
+  assert.equal(pendingPlanChanges(dir)[0]!.role, "plan");
+  const calls: string[][] = [];
+  const counting: PendingGitRunner = async (cwd, ...args) => {
+    calls.push(args);
+    return gitTry(cwd, ...args);
+  };
+  await refreshPendingPlans(dir, "main", counting);
+  assert.ok(calls.some((args) => args[0] === "for-each-ref"), "the failed refresh is retried");
+  assert.equal(pendingPlanChanges(dir).length, 2, "the retry sees both pins");
+});
+
 test("the block lists each unmerged change's role, short sha, subject and stamp-free effects", async () => {
   const { dir } = plansRepo(PLANS([entry("B"), entry("C", "First body.")]), "marker-block");
   const sha = pinAt(dir, "plan", (d) =>
