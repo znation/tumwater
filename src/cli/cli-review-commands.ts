@@ -9,15 +9,16 @@
  * the read path and gates the write with `requireReadyRepo`. Unlike `cmdQueue`'s `--cancel`, the
  * read case still writes no file. */
 
-import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, rejectUnknownArgs, statusFlagSpec } from "./cli-flag-specs.js";
+import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, rejectUnknownArgs, grepFlagSpec, statusFlagSpec } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
 import { sayJsonOrRender, say, sayJson, fail } from "./cli-output.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
-import { failFollowJsonRival, parseRoleListScope, parseStatusFlag, scanPositionArgs } from "./cli-args.js";
+import { failFollowJsonRival, parseGrepFlag, parseRoleListScope, parseStatusFlag, scanPositionArgs } from "./cli-args.js";
 import { readPostReviews, type PostReview } from "../review/post-merge-review.js";
 import { acceptPostReview, type AcceptPostReviewOutcome } from "../review/post-merge-review-accept.js";
 import {
   POST_REVIEW_STATES,
+  postReviewMatchesGrep,
   postReviewState,
   renderPostReviewDetail,
   renderPostReviews,
@@ -33,6 +34,10 @@ import { oneOfMessage } from "../text/suggest.js";
 /** The missing-value wording of `reviews --status` (shared by the gate's statusFlagSpec and
  * parseStatusFlag's own fail, so the two cannot drift). */
 const REVIEWS_STATUS_VALUE_ERROR = "reviews --status needs a value";
+
+/** The missing-value wording of `reviews --grep` (shared by the gate's grepFlagSpec and
+ * parseGrepFlag's own fail, so the two cannot drift). */
+const REVIEWS_GREP_VALUE_ERROR = "reviews --grep needs text (usage: tumwater reviews --grep <text>)";
 
 /** Parse a `--status` value: a comma list of post-merge review states, deduplicated in
  * first-seen order, accepting only `POST_REVIEW_STATES` members. The first unknown piece fails
@@ -68,15 +73,20 @@ export async function cmdReviews(root: string, args: string[], seams: FollowView
     await cmdReviewsAccept(root, args);
     return;
   }
-  rejectUnknownArgs("reviews", args, [ROLE_FLAG, statusFlagSpec(REVIEWS_STATUS_VALUE_ERROR), JSON_FLAG, FOLLOW_FLAG]);
+  rejectUnknownArgs("reviews", args, [ROLE_FLAG, statusFlagSpec(REVIEWS_STATUS_VALUE_ERROR), grepFlagSpec(REVIEWS_GREP_VALUE_ERROR), JSON_FLAG, FOLLOW_FLAG]);
   refuseTeamWorkspace(root);
-  const follow = hasFollowFlag(args);
-  if (follow && args.includes("--json")) failFollowJsonRival("reviews --json");
+  // --grep keeps only the entries whose role, role label, commit, summary, body, a rejection
+  // reason or the last failure contains the text, case-insensitively. Every later scan goes
+  // over `rest` — the args with the --grep value token removed — so a pattern spelled like a
+  // flag (`--grep --status`) is searched as text and never read as a flag.
+  const { rest, pattern } = parseGrepFlag(args, REVIEWS_GREP_VALUE_ERROR);
+  const follow = hasFollowFlag(rest);
+  if (follow && rest.includes("--json")) failFollowJsonRival("reviews --json");
   // `--role` keeps only the listed roles' entries (a base id taking its instances too) under
   // their whole-queue positions, so `--accept <n>` still addresses the position the unscoped
   // read prints. Absent a ready config `parseRoleListScope` falls back to the built-in catalog.
-  const roles = parseRoleListScope(root, args);
-  const { raw: statusRaw } = parseStatusFlag(args, REVIEWS_STATUS_VALUE_ERROR);
+  const roles = parseRoleListScope(root, rest);
+  const { raw: statusRaw } = parseStatusFlag(rest, REVIEWS_STATUS_VALUE_ERROR);
   // Validate the state list once, before the follow branch: a bad `--status` value must fail
   // like the one-shot read, not become a follow whose every frame throws and is skipped.
   const states = statusRaw === null ? null : parseReviewStatusList(statusRaw);
@@ -84,25 +94,31 @@ export async function cmdReviews(root: string, args: string[], seams: FollowView
   // the scope text share one clock read and each follow frame re-reads the queue file.
   const readScoped = (): { entries: PostReview[]; scope: { roles: readonly string[]; positions: readonly number[]; total: number; filter?: string } | undefined } => {
     const whole = readPostReviews(root);
-    let entries: PostReview[] = whole;
-    let scope: { roles: readonly string[]; positions: readonly number[]; total: number; filter?: string } | undefined;
-    if (states === null) {
-      const scoped = roles ? scopePostReviews(whole, roles, (e) => roleInScope(e.role, roles)) : undefined;
-      entries = scoped ? scoped.entries : whole;
-      scope = scoped?.scope;
-    } else {
-      // `--status <state>[,...]` keeps only the listed states (the same precedence
-      // postReviewStatusLabel prints: a rejected-and-failing entry is rejected) under their
-      // whole-queue positions, composing with `--role`. roles=[] when unscoped.
-      const keep = (e: PostReview) => (!roles || roleInScope(e.role, roles)) && states.includes(postReviewState(e));
-      const filterText = [roles ? `--role ${roles.join(",")}` : "", `--status ${states.join(",")}`]
-        .filter(Boolean)
-        .join(" ");
-      const scoped = scopePostReviews(whole, roles ?? [], keep, filterText);
-      entries = scoped.entries;
-      scope = scoped.scope;
+    // The active clauses in the fixed order the header prints: --role, --status, --grep.
+    const filterText = [
+      roles ? `--role ${roles.join(",")}` : "",
+      states === null ? "" : `--status ${states.join(",")}`,
+      pattern === null ? "" : `--grep ${pattern}`,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const keep = (e: PostReview) =>
+      (!roles || roleInScope(e.role, roles)) &&
+      (states === null || states.includes(postReviewState(e))) &&
+      (pattern === null || postReviewMatchesGrep(e, pattern));
+    if (states === null && pattern === null) {
+      // No status or grep clause: the pre-grep shape stays byte-identical — --role alone passes
+      // no filter text (the renderer synthesizes `--role <ids>` itself), and an unscoped read
+      // renders whole.
+      if (!roles) return { entries: whole, scope: undefined };
+      const scoped = scopePostReviews(whole, roles, keep);
+      return { entries: scoped.entries, scope: scoped.scope };
     }
-    return { entries, scope };
+    // A status or grep clause is active: scope even a grep-only read (roles=[]) so the kept
+    // entries keep their whole-queue numbers and the renderer's filtered header and no-match
+    // line work unchanged, naming every active clause in the filter text.
+    const scoped = scopePostReviews(whole, roles ?? [], keep, filterText);
+    return { entries: scoped.entries, scope: scoped.scope };
   };
   if (follow) {
     // Each frame re-reads the queue file and reads the clock once, so an entry that appears,
@@ -115,7 +131,7 @@ export async function cmdReviews(root: string, args: string[], seams: FollowView
     return;
   }
   const { entries, scope } = readScoped();
-  sayJsonOrRender(args, { pending: entries }, () => renderPostReviews(entries, scope, Date.now()));
+  sayJsonOrRender(rest, { pending: entries }, () => renderPostReviews(entries, scope, Date.now()));
 }
 
 /** The `tumwater reviews --accept <n>` branch (PLANS.md): remove the Nth pending post-merge

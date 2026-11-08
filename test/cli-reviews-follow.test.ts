@@ -128,6 +128,25 @@ test("reviews -f keeps --role and --status scoping on every frame", async () => 
   });
 });
 
+test("reviews -f --grep keeps only the matching rows on every frame", async () => {
+  const seed = (repo: string) =>
+    writeReviews(repo, [
+      { commit: "a".repeat(40), role: "improve", summary: "tidy the parser" },
+      { commit: "b".repeat(40), role: "clean", summary: "rework the docs", body: "the parser hangs on CRLF" },
+      { commit: "c".repeat(40), role: "feature", summary: "add integration tests" },
+    ]);
+  await withReviewsFollow(seed, ["-f", "--grep", "crlf"], 5, false, async ({ cap, done, stop }) => {
+    await sleep(40);
+    const out = cap.out();
+    assert.match(out, /post-merge review queue \(1 of 3, --grep crlf\):/);
+    assert.match(out, /2\. clean b{8} · rework the docs/, "the matched entry keeps its whole-queue position");
+    assert.doesNotMatch(out, /tidy the parser/, "the non-matching entry never appears");
+    assert.doesNotMatch(out, /integration tests/, "the other non-matching entry never appears");
+    stop();
+    for (let i = 0; i < 500 && !done(); i++) await sleep(10);
+  });
+});
+
 test("reviews -f --json is refused before any frame", async () => {
   const repo = makeRepo();
   await initProject(repo, "reviews follow json");

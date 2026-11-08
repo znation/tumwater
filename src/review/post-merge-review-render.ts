@@ -34,6 +34,26 @@ export function postReviewState(entry: PostReview): PostReviewState {
 export const POST_REVIEW_STATES = ["waiting", "failing", "rejected", "fixed"] as const;
 export type PostReviewState = (typeof POST_REVIEW_STATES)[number];
 
+/** The one matching rule behind `tumwater reviews --grep <text>`: true when the text appears,
+ * case-insensitively, in any searched field — the role id or its label, the commit sha, the
+ * summary, the body, a rejection reason or the last failure. The one-line list never prints the
+ * body and squashes the summary to 80 and each reason to 60, so a match in those fields is
+ * invisible to a reader of the list; this reads every field whole, before any squash. An empty
+ * text never reaches it: the flag parser refuses an empty value. */
+export function postReviewMatchesGrep(entry: PostReview, text: string): boolean {
+  const needle = text.toLowerCase();
+  const fields = [
+    entry.role,
+    roleLabel(entry.role),
+    entry.commit,
+    entry.summary,
+    entry.body ?? "",
+    ...(entry.rejected ?? []),
+    entry.lastFailure ?? "",
+  ];
+  return fields.some((field) => field.toLowerCase().includes(needle));
+}
+
 /** The bracketed status suffix one post-merge review entry carries on every observer surface
  * (`tumwater reviews`, the dashboard's Post-merge reviews card, and the TUI Pending pane's
  * review block): the reviewer's recorded rejected reasons when `rejected` is set — or just

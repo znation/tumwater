@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderPostReviewDetail, renderPostReviews, scopePostReviews, postReviewStatusLabel, postReviewState } from "../src/review/post-merge-review-render.js";
+import { postReviewMatchesGrep, renderPostReviewDetail, renderPostReviews, scopePostReviews, postReviewStatusLabel, postReviewState } from "../src/review/post-merge-review-render.js";
 import type { PostReview } from "../src/review/post-merge-review.js";
 
 // The renderer behind `tumwater reviews`: pure text for the post-merge review queue, pinned
@@ -70,6 +70,27 @@ test("scopePostReviews's status filter keeps whole-queue positions", () => {
       `  2. clean ${'b'.repeat(40).slice(0, 8)} · rejected · [rejected — no tests]`,
     ].join("\n"),
   );
+});
+
+test("postReviewMatchesGrep finds the text in every searched field, case-insensitively", () => {
+  const entry = e({
+    role: "ci",
+    commit: "a".repeat(40),
+    summary: "split the module",
+    body: "the parser hangs on CRLF",
+    rejected: ["no tests", "a very long rejection reason " + "x".repeat(70)],
+    lastFailure: "the runner timed out before a verdict",
+  });
+  // A match in the role id, the role label (ci renders as CI), the commit, the summary, the
+  // body, a rejection reason or the last failure each selects the entry; the case never matters.
+  for (const needle of ["ci", "CI", "aaaa", "SPLIT", "crlf", "no tests", "very long", "x".repeat(70), "timed out"]) {
+    assert.equal(postReviewMatchesGrep(entry, needle), true, `text ${JSON.stringify(needle)} matches`);
+  }
+  // Text in no field matches nothing.
+  assert.equal(postReviewMatchesGrep(entry, "nothing-here"), false);
+  // An entry with no optional fields still matches its role, commit and summary.
+  assert.equal(postReviewMatchesGrep(e({}), "seed"), true);
+  assert.equal(postReviewMatchesGrep(e({}), "zzz"), false);
 });
 
 test("renderPostReviews prints whole-queue positions under a scope", () => {

@@ -268,7 +268,7 @@ Usage:
                                    execution order (so it merges next when ready), preserving any
                                    notBefore deferral, refusing an entry a live merge is merging and
                                    --role/-f, and answering already-first for position 1
-  tumwater reviews [-f/--follow] [--accept <n>] [--role <id>[,<id>...]] [--status <state>[,<state>...]] [--json]
+  tumwater reviews [-f/--follow] [--accept <n>] [--role <id>[,<id>...]] [--status <state>[,<state>...]] [--grep <text>] [--json]
                                    List the post-merge review queue (\.tumwater/state
                                    /post-review.json) in FIFO order: one line per merged commit
                                    waiting for its review — position, role, short sha, summary,
@@ -282,7 +282,13 @@ Usage:
                                    queue; --status keeps only the entries in the listed states
                                    (waiting, failing, rejected; an entry turned back is rejected
                                    first), each under its position in the whole queue, and
-                                   composes with --role; -f/--follow repaints the queue every
+                                   composes with --role; --grep <text> keeps only the
+                                   entries whose role, role label, commit, summary, body,
+                                   a rejection reason or the last failure contains the text,
+                                   case-insensitively, each under its position in the whole
+                                   queue, matching before the list's 80/60-character squashes;
+                                   composes with --role, --status and -f/--follow;
+                                   -f/--follow repaints the queue every
                                    couple of seconds until Ctrl+C or the process that started it
                                    exits, so a backgrounded follow does not outlive its parent;
                                    it refuses --json; --accept <n>

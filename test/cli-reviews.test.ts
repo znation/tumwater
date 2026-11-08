@@ -152,6 +152,181 @@ test("reviews --status keeps only the listed states under their whole-queue posi
   );
 });
 
+// `tumwater reviews --grep <text>`: keep only the entries whose role, role label, commit,
+// summary, body, a rejection reason or the last failure contains the text, case-insensitively,
+// under their whole-queue positions — the text filter beside --role/--status, the missing
+// fields (body) and the squashed fields (summary/reasons) the one-line list hides.
+function seedGrep(repo: string): void {
+  writeFileDeep(
+    postReviewPath(repo),
+    JSON.stringify({
+      pending: [
+        { commit: "a".repeat(40), role: "improve", summary: "tidy the parser" },
+        { commit: "b".repeat(40), role: "clean", summary: "rework the docs", body: "the parser hangs on CRLF" },
+      ],
+    }),
+  );
+}
+
+// A wider queue exercising every searched field and both compositions: entry 2 matches only
+// through its body, entry 3 only through a rejection reason, entry 4 only through role/label,
+// its commit and its last failure.
+function seedGrepFields(repo: string): void {
+  writeFileDeep(
+    postReviewPath(repo),
+    JSON.stringify({
+      pending: [
+        { commit: "a".repeat(40), role: "improve", summary: "tidy the parser" },
+        { commit: "b".repeat(40), role: "clean", summary: "rework the docs", body: "the parser hangs on CRLF" },
+        { commit: "c".repeat(40), role: "feature", summary: "add integration tests", rejected: ["a very long rejection reason ".concat("x".repeat(70))] },
+        { commit: "d".repeat(40), role: "ci", summary: "pin the runner", failures: 2, lastFailure: "the runner timed out before a verdict ".concat("z".repeat(90)) },
+        { commit: "e".repeat(40), role: "coverage", summary: "expand test coverage" },
+      ],
+    }),
+  );
+}
+
+test("reviews --grep keeps an entry matching only its body under its whole-queue number", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews grep test");
+  seedGrep(repo);
+  const before = readPostReviews(repo);
+
+  const r = await cli(repo, "reviews", "--grep", "crlf");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /post-merge review queue \(1 of 2, --grep crlf\):/);
+  assert.ok(r.stdout.includes("\n  2. clean " + "b".repeat(8)), r.stdout);
+  assert.ok(!r.stdout.includes("improve"), "the non-matching entry's line is absent");
+  assert.ok(!r.stdout.includes("tidy the parser"), "the non-matching entry's summary is absent");
+
+  // The same pattern in upper case selects the same entry (case-insensitive match).
+  const upper = await cli(repo, "reviews", "--grep", "CRLF");
+  assert.equal(upper.code, 0);
+  assert.match(upper.stdout, /post-merge review queue \(1 of 2, --grep CRLF\):/);
+  assert.ok(upper.stdout.includes("\n  2. clean " + "b".repeat(8)), upper.stdout);
+  assert.ok(!upper.stdout.includes("improve"), "the same entry is selected case-insensitively");
+
+  assert.deepEqual(readPostReviews(repo), before, "a grep read changes nothing");
+});
+
+test("reviews --grep with no match names the depth and is read-only", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews grep nomatch test");
+  seedGrep(repo);
+  const before = readPostReviews(repo);
+  const r = await cli(repo, "reviews", "--grep", "zzzz");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /no post-merge reviews matching --grep zzzz \(post-merge review queue holds 2\)/);
+  assert.deepEqual(readPostReviews(repo), before, "a no-match grep changes nothing");
+});
+
+test("reviews --grep with no value or an empty value fails with the missing-text wording", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews grep value test");
+  seedGrep(repo);
+  const file = postReviewPath(repo);
+  const before = fs.readFileSync(file);
+
+  const noValue = await cli(repo, "reviews", "--grep");
+  assert.notEqual(noValue.code, 0);
+  assert.match(noValue.stderr, /reviews --grep needs text \(usage: tumwater reviews --grep \<text\>\)/);
+  assert.deepEqual(fs.readFileSync(file), before, "a missing value changes no bytes");
+
+  const empty = await cli(repo, "reviews", "--grep", "");
+  assert.notEqual(empty.code, 0);
+  assert.match(empty.stderr, /reviews --grep needs text \(usage: tumwater reviews --grep \<text\>\)/);
+  assert.deepEqual(fs.readFileSync(file), before, "an empty value changes no bytes");
+});
+
+test("reviews --grep matches rejection reasons, last failures, role ids, labels and shas whole", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews grep fields test");
+  seedGrepFields(repo);
+  const before = readPostReviews(repo);
+
+  // A word past the list's 60-character rejection-reason squash still finds the reason.
+  const reason = await cli(repo, "reviews", "--grep", "x".repeat(70));
+  assert.equal(reason.code, 0);
+  assert.match(reason.stdout, new RegExp(`post-merge review queue \\(1 of 5, --grep ${'x'.repeat(70)}\\):`));
+  assert.ok(reason.stdout.includes("\n  3. feature"), reason.stdout);
+  assert.ok(!reason.stdout.includes("improve"), "only the long-reason entry prints");
+
+  // A word only in lastFailure selects that entry.
+  const last = await cli(repo, "reviews", "--grep", "timed out");
+  assert.equal(last.code, 0);
+  assert.ok(last.stdout.includes("\n  4. CI"), last.stdout);
+  assert.ok(!last.stdout.includes("clean"), "only the last-failure entry prints");
+
+  // The role id and the role label (ci renders as CI) both match.
+  const roleId = await cli(repo, "reviews", "--grep", "feature");
+  assert.equal(roleId.code, 0);
+  assert.ok(roleId.stdout.includes("\n  3. feature"), roleId.stdout);
+  assert.ok(!roleId.stdout.includes("coverage"), "only the feature entry prints");
+  const roleLabelGrep = await cli(repo, "reviews", "--grep", "CI");
+  assert.equal(roleLabelGrep.code, 0);
+  assert.ok(roleLabelGrep.stdout.includes("\n  4. CI"), roleLabelGrep.stdout);
+  assert.ok(!roleLabelGrep.stdout.includes("coverage"), "the label needle selects the ci entry");
+
+  // The full commit sha matches an entry whose list line shows only 8 characters.
+  const sha = await cli(repo, "reviews", "--grep", "d".repeat(40));
+  assert.equal(sha.code, 0);
+  assert.ok(sha.stdout.includes("\n  4. CI"), sha.stdout);
+  assert.ok(!sha.stdout.includes("coverage"), "the whole sha selects only its entry");
+
+  assert.deepEqual(readPostReviews(repo), before, "the grep reads change nothing");
+});
+
+test("reviews --grep composes with --status, --role and --json", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews grep compose test");
+  seedGrepFields(repo);
+  const before = readPostReviews(repo);
+
+  // --grep --status keeps only rejected matches; the header names every clause in order.
+  const status = await cli(repo, "reviews", "--grep", "rejection", "--status", "rejected");
+  assert.equal(status.code, 0);
+  assert.match(status.stdout, /post-merge review queue \(1 of 5, --status rejected --grep rejection\):/);
+  assert.ok(status.stdout.includes("\n  3. feature"), status.stdout);
+  assert.ok(!status.stdout.includes("timed out"), "the failing entry is kept only by grep, not by state");
+
+  // --role <id> --grep keeps only that role's matches under their whole-queue numbers.
+  const role = await cli(repo, "reviews", "--role", "clean", "--grep", "crlf");
+  assert.equal(role.code, 0);
+  assert.match(role.stdout, /post-merge review queue \(1 of 5, --role clean --grep crlf\):/);
+  assert.ok(role.stdout.includes("\n  2. clean"), role.stdout);
+
+  // A no-match with another filter active names every clause.
+  const none = await cli(repo, "reviews", "--grep", "zzz", "--status", "rejected");
+  assert.equal(none.code, 0);
+  assert.match(none.stdout, /no post-merge reviews matching --status rejected --grep zzz \(post-merge review queue holds 5\)/);
+
+  // --json prints only the kept entries in queue order.
+  const json = await cli(repo, "reviews", "--json", "--grep", "crlf");
+  assert.equal(json.code, 0);
+  const doc = JSON.parse(json.stdout) as { pending: { role: string }[] };
+  assert.deepEqual(doc.pending.map((p) => p.role), ["clean"], "the JSON document holds only the kept entry");
+
+  assert.deepEqual(readPostReviews(repo), before, "the composed grep reads change nothing");
+});
+
+test("reviews --show and --accept refuse a --grep beside them by naming the flag", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews grep refusal test");
+  seedGrepFields(repo);
+  const file = postReviewPath(repo);
+  const before = fs.readFileSync(file);
+
+  const show = await cli(repo, "reviews", "--show", "2", "--grep", "crlf");
+  assert.equal(show.code, 1, "--grep beside --show is refused");
+  assert.ok(show.stderr.includes("--grep"), "the show refusal names --grep");
+  assert.deepEqual(fs.readFileSync(file), before, "a refused show changes no bytes");
+
+  const accept = await cli(repo, "reviews", "--accept", "2", "--grep", "crlf");
+  assert.equal(accept.code, 1, "--grep beside --accept is refused");
+  assert.ok(accept.stderr.includes("--grep"), "the accept refusal names --grep");
+  assert.deepEqual(fs.readFileSync(file), before, "a refused accept changes no bytes");
+});
+
 test("reviews --json prints the normalized pending list", async () => {
   const repo = makeRepo();
   await initProject(repo, "reviews json test");
