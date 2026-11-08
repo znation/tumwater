@@ -120,169 +120,189 @@ export function rolePhase(
   restartHold?: string,
 ): string {
   if (!orchestratorRunning) return "stopped";
-  // Merge queue 4/5 — the marker-driven merge label: only a role whose change record was
-  // passed gets it (callers derive it via mergeForRole), and a stopped harness never
-  // shows it — a dead team's marker is stale by definition.
-  if (merge) {
-    if (merge.status === "approved") return "approved, waiting to merge";
-    const head = merge.startedAt === undefined ? "merging" : `merging ${duration(Date.now() - merge.startedAt)}`;
-    if (!merge.stage) return head;
-    const base = `${head} · ${MERGE_STAGE_LABELS[merge.stage]}`;
-    const staged = merge.stageSince === undefined ? base : `${base} ${duration(Date.now() - merge.stageSince)}`;
-    if (merge.stage !== "reviewing" && merge.stage !== "resolving") return staged;
-    // The reviewer writes the role's own log from its leased pooled slot, and the conflict
-    // resolver from the merge worktree, both as gate runs (runner-pi.ts): the GATE accumulator,
-    // read here rather than taken from `live` — the merge role's run has ended, so the
-    // frame's per-running-role tail is not this run's (callers pass null for it). Each run's
-    // `tumwater_run` marker resets that accumulator, so neither shows the other's counts.
-    return inFlightDetail(staged, root ? readLiveProgress(root, s.role, "gate") : null);
-  }
-  if (s.running) {
-    // A parked waiter is reserved against double-scheduling but holds no maxConcurrent permit
-    // and runs no pi yet: render its true state and keep it OUT of the active set (isActivePhase)
-    // so the operator can count active rows against the cap — a merge visibly counts, a
-    // parked waiter visibly does not (BUGS.md 2026-09-24).
-    if (s.parkedSince) {
-      const parkedTime = duration(Date.now() - s.parkedSince);
-      return `waiting to start ${parkedTime}`;
+  // The merge cell: the marker-driven merge label, the in-flight merging/stage/stage-since
+  // column, and — for the reviewing/resolving stages — the reviewer's live GATE progress.
+  function mergePhase(): string | null {
+    // Merge queue 4/5 — the marker-driven merge label: only a role whose change record was
+    // passed gets it (callers derive it via mergeForRole), and a stopped harness never
+    // shows it — a dead team's marker is stale by definition.
+    if (merge) {
+      if (merge.status === "approved") return "approved, waiting to merge";
+      const head = merge.startedAt === undefined ? "merging" : `merging ${duration(Date.now() - merge.startedAt)}`;
+      if (!merge.stage) return head;
+      const base = `${head} · ${MERGE_STAGE_LABELS[merge.stage]}`;
+      const staged = merge.stageSince === undefined ? base : `${base} ${duration(Date.now() - merge.stageSince)}`;
+      if (merge.stage !== "reviewing" && merge.stage !== "resolving") return staged;
+      // The reviewer writes the role's own log from its leased pooled slot, and the conflict
+      // resolver from the merge worktree, both as gate runs (runner-pi.ts): the GATE accumulator,
+      // read here rather than taken from `live` — the merge role's run has ended, so the
+      // frame's per-running-role tail is not this run's (callers pass null for it). Each run's
+      // `tumwater_run` marker resets that accumulator, so neither shows the other's counts.
+      return inFlightDetail(staged, root ? readLiveProgress(root, s.role, "gate") : null);
     }
-    // The director bypasses maxConcurrent (`usesSlot` is false for it), so its in-flight run
-    // is a state of its own: a distinct label that `isActivePhase`'s cap-mirroring set
-    // excludes while still carrying the live detail, so its work stays visible without
-    // counting as a permit holder (BUGS.md 2026-10-06). The bare label matches the working
-    // branch's no-root shape.
-    if (s.role === DIRECTOR_ROLE) {
-      return root ? inFlightDetail(inFlightLabel(s, "director working"), runProgress(root, s, live)) : "director working";
-    }
-    // The run's work is committed and under adversarial review: the raw log tail now
-    // describes the reviewer run — show its live progress with a "reviewing" label. The
-    // reviewer's run writes the same role log as the author's (each `session` event names
-    // its worktree), so read the GATE accumulator here — the author one still holds the
-    // finished authoring run (BUGS.md 2026-09-22).
-    if (s.phase === "review") {
-      const p = root ? runProgress(root, s, live, "gate") : null;
-      return inFlightDetail(inFlightLabel(s, "reviewing"), p);
-    }
-    // In-flight runs finish even while the budget is paused — only NEW runs are blocked,
-    // so a running role keeps its live detail.
-    return root ? workingDetail(root, s, live) : "working";
+    return null;
   }
-  if (s.role === DIRECTOR_ROLE) return "ready for messages"; // exempt from both gates
-  if (userPaused) {
-    // A timed per-role pause (`pause --role <id> --for`): the marker's `until` gives the
-    // operator a countdown, mirroring the team header badge and the GUI role-list's
-    // `· resumes in <s>` — an indefinite per-role pause or a team-wide pause (deadline
-    // absent) keeps today's bare `paused`, so the surfaces cannot drift.
-    if (pausedUntilMs !== undefined && pausedUntilMs > Date.now()) {
-      return `paused · resumes in ${humanUntil(pausedUntilMs, Date.now())}`;
+  // The in-flight run: the parked waiter's countdown, the director's own label, the
+  // reviewing phase's GATE-progress read, and the working fall-through with its live detail.
+  function runningPhase(): string | null {
+    if (s.running) {
+      // A parked waiter is reserved against double-scheduling but holds no maxConcurrent permit
+      // and runs no pi yet: render its true state and keep it OUT of the active set (isActivePhase)
+      // so the operator can count active rows against the cap — a merge visibly counts, a
+      // parked waiter visibly does not (BUGS.md 2026-09-24).
+      if (s.parkedSince) {
+        const parkedTime = duration(Date.now() - s.parkedSince);
+        return `waiting to start ${parkedTime}`;
+      }
+      // The director bypasses maxConcurrent (`usesSlot` is false for it), so its in-flight run
+      // is a state of its own: a distinct label that `isActivePhase`'s cap-mirroring set
+      // excludes while still carrying the live detail, so its work stays visible without
+      // counting as a permit holder (BUGS.md 2026-10-06). The bare label matches the working
+      // branch's no-root shape.
+      if (s.role === DIRECTOR_ROLE) {
+        return root ? inFlightDetail(inFlightLabel(s, "director working"), runProgress(root, s, live)) : "director working";
+      }
+      // The run's work is committed and under adversarial review: the raw log tail now
+      // describes the reviewer run — show its live progress with a "reviewing" label. The
+      // reviewer's run writes the same role log as the author's (each `session` event names
+      // its worktree), so read the GATE accumulator here — the author one still holds the
+      // finished authoring run (BUGS.md 2026-09-22).
+      if (s.phase === "review") {
+        const p = root ? runProgress(root, s, live, "gate") : null;
+        return inFlightDetail(inFlightLabel(s, "reviewing"), p);
+      }
+      // In-flight runs finish even while the budget is paused — only NEW runs are blocked,
+      // so a running role keeps its live detail.
+      return root ? workingDetail(root, s, live) : "working";
     }
-    // An absent deadline (indefinite per-role pause, team-wide pause) or an expired one
-    // (the marker team-state already reads as unpaused) keeps today's bare `paused` — never
-    // a stale `resumes in 0s`.
-    return "paused";
+    return null;
   }
-  // The role's OWN daily cap: the more specific spend
-  // state, so it names itself ahead of the team's budget pause — the ladder's existing
-  // "user intent is more specific than spend state" argument extended one level down.
-  if (capPaused) return "waiting: daily cap spent";
-  // The role's OWN quiet-hours window (PLANS.md, quietHoursPerRole): the team gate's own
-  // wording — `quiet until <end>` — scoped to the one role the operator scheduled. Shown
-  // after the cap and before the team's budget pause: the role's own schedule is more
-  // specific than either.
-  if (quietHold) return `quiet until ${quietWindowEnd(quietHold)}`;
-  if (budgetPaused) return "waiting: budget spent";
-  // The disk floor (plans/disk-floor.md, part 4/4): the team starts no new work below the
-  // floor, so an idle role reads "disk hold" — the team-wide gate's own wording, ranked with
-  // the budget pause (ROLE_RANK_RULES). In-flight runs keep their live detail above, exactly
-  // as under every autonomous gate.
-  if (diskHeld) return "waiting: low disk";
-  // A self-redeploy holding new runs (BuildStatus.restartHold): no role starts until the update
-  // is checked, compiled and swapped in, so an idle role names that wait and its step —
-  // preformatted by badges.ts's restartHoldRolePhase — instead of reading as an ordinary idle
-  // while the whole team stands still (2026-10-30). Ranked after the disk floor: that one
-  // needs the operator, this one ends on its own.
-  if (restartHold) return restartHold;
-  // New-project bootstrap (plans/work-ratio.md, part 2/2): the idle role is held until enough
-  // plans are Done. The literal label names the reason, like the gates above.
-  if (bootstrapHeld) return "waiting: bootstrap";
-  // The maintenance allowance's own hold (plans/work-ratio.md, part 1b/4): the label carries the
-  // figures so the operator sees how far over the window is; the string is preformatted by the
-  // snapshot's holder, like roleQuietPaused's window.
-  if (maintenanceQuotaHold) return maintenanceQuotaHold;
-  // An error streak at or past the warning threshold (run-apply.ts's ERROR_STREAK_WARN): the
-  // role is retrying the same failure on the error ladder, and the operator must see
-  // "failing" — not a sleepy label — while it is stuck (BUGS.md 2026-09-15). The streak
-  // alone is the tell, not `lastResult`: a run whose leftover recovery failed keeps the
-  // pin while its own authoring run may end `no_change`/`queued`, so a dead reviewer
-  // backend must still read "failing" (BUGS.md 2026-09-21). Self-clearing: the first
-  // healthy run resets the streak, and each retry re-arms it while the environment stays
-  // broken.
-  if (onErrorStreak(s)) return "failing";
-  // The resting state cell (sleeping / idle / deferred / queued): it is the only label that
-  // names what a role has been RETURNING, so the consecutive no-change streak rides on it
-  // (run-apply.ts applyRunOutcome's noChangeStreak, persisted in RunnerState). A role that
-  // keeps waking and returning nothing to do reads " · no change ×N" instead of an ordinary
-  // idle — the harness premise's silent no-op failure mode, otherwise indistinguishable from a
-  // healthy idle role. Observational only: a legitimately idle maintenance role with an empty
-  // backlog can hold a long streak and that is expected, so it never warns (unlike
-  // consecutiveErrors/quietKillStreak). N=1 and an absent field read 0 and render the label
-  // byte-identically; the error/quiet-kill/merge/paused cells return earlier and never carry
-  // the suffix. `noChangeStreak` is on the state accumulator, so its type is on the full
-  // RunnerState.
-  let cell: string;
-  if (s.nextRunAt > Date.now()) {
-    // The role is sleeping *now* until nextRunAt: show the remaining sleep duration
-    // ("for 30m"), not a future start ("in 30m"). Floor at 1s so a sub-second remainder
-    // never renders as "sleeping (for now)".
-    const remain = Math.max(1, secondsUntil(s.nextRunAt, Date.now()));
-    cell = `sleeping (for ${humanSeconds(remain)})`;
-  } else {
-    switch (s.skipReason) {
-      case "no-free-entry":
-        cell = `idle: no unclaimed ${baseRoleOf(s.role) === "bugfix" ? "bugs" : "plans"}`;
-        break;
-      case "claim-hold":
-        cell = `idle: another ${baseRoleOf(s.role)} instance is working on it`;
-        break;
-      case "deferred-backlog":
-        cell = "deferred (backlog open)";
-        break;
-      case "deferred-no-work":
-        cell = "deferred (no new work)";
-        break;
-      case "deferred-plans-full":
-        cell = "deferred (plans full)";
-        break;
-      case "instances-full":
-        cell = `idle: every ${baseRoleOf(s.role)} instance is busy`;
-        break;
-      case "maintenance-due-cap":
-        cell = "waiting: maintenance allowance spent this poll";
-        break;
-      case "yield-gap":
-        cell = `idle: waiting out its yield gap ×${yieldMultiplierFor(s)}`;
-        break;
-      case "model-check":
-        cell = "waiting: model check";
-        break;
-      default:
-        cell = "due";
+  // The paused-and-held gates and the failing streak: the director's exemption, the per-role
+  // and team gates in their ranked order, and the error streak's `failing` label.
+  function heldPhase(): string | null {
+    if (s.role === DIRECTOR_ROLE) return "ready for messages"; // exempt from both gates
+    if (userPaused) {
+      // A timed per-role pause (`pause --role <id> --for`): the marker's `until` gives the
+      // operator a countdown, mirroring the team header badge and the GUI role-list's
+      // `· resumes in <s>` — an indefinite per-role pause or a team-wide pause (deadline
+      // absent) keeps today's bare `paused`, so the surfaces cannot drift.
+      if (pausedUntilMs !== undefined && pausedUntilMs > Date.now()) {
+        return `paused · resumes in ${humanUntil(pausedUntilMs, Date.now())}`;
+      }
+      // An absent deadline (indefinite per-role pause, team-wide pause) or an expired one
+      // (the marker team-state already reads as unpaused) keeps today's bare `paused` — never
+      // a stale `resumes in 0s`.
+      return "paused";
     }
+    // The role's OWN daily cap: the more specific spend
+    // state, so it names itself ahead of the team's budget pause — the ladder's existing
+    // "user intent is more specific than spend state" argument extended one level down.
+    if (capPaused) return "waiting: daily cap spent";
+    // The role's OWN quiet-hours window (PLANS.md, quietHoursPerRole): the team gate's own
+    // wording — `quiet until <end>` — scoped to the one role the operator scheduled. Shown
+    // after the cap and before the team's budget pause: the role's own schedule is more
+    // specific than either.
+    if (quietHold) return `quiet until ${quietWindowEnd(quietHold)}`;
+    if (budgetPaused) return "waiting: budget spent";
+    // The disk floor (plans/disk-floor.md, part 4/4): the team starts no new work below the
+    // floor, so an idle role reads "disk hold" — the team-wide gate's own wording, ranked with
+    // the budget pause (ROLE_RANK_RULES). In-flight runs keep their live detail above, exactly
+    // as under every autonomous gate.
+    if (diskHeld) return "waiting: low disk";
+    // A self-redeploy holding new runs (BuildStatus.restartHold): no role starts until the update
+    // is checked, compiled and swapped in, so an idle role names that wait and its step —
+    // preformatted by badges.ts's restartHoldRolePhase — instead of reading as an ordinary idle
+    // while the whole team stands still (2026-10-30). Ranked after the disk floor: that one
+    // needs the operator, this one ends on its own.
+    if (restartHold) return restartHold;
+    // New-project bootstrap (plans/work-ratio.md, part 2/2): the idle role is held until enough
+    // plans are Done. The literal label names the reason, like the gates above.
+    if (bootstrapHeld) return "waiting: bootstrap";
+    // The maintenance allowance's own hold (plans/work-ratio.md, part 1b/4): the label carries the
+    // figures so the operator sees how far over the window is; the string is preformatted by the
+    // snapshot's holder, like roleQuietPaused's window.
+    if (maintenanceQuotaHold) return maintenanceQuotaHold;
+    // An error streak at or past the warning threshold (run-apply.ts's ERROR_STREAK_WARN): the
+    // role is retrying the same failure on the error ladder, and the operator must see
+    // "failing" — not a sleepy label — while it is stuck (BUGS.md 2026-09-15). The streak
+    // alone is the tell, not `lastResult`: a run whose leftover recovery failed keeps the
+    // pin while its own authoring run may end `no_change`/`queued`, so a dead reviewer
+    // backend must still read "failing" (BUGS.md 2026-09-21). Self-clearing: the first
+    // healthy run resets the streak, and each retry re-arms it while the environment stays
+    // broken.
+    if (onErrorStreak(s)) return "failing";
+    return null;
   }
-  // Two or more consecutive runs earn the suffix (N=1 is a single run — ordinary, not yet
-  // a pattern). A cut-off run is itself a `no_change`, so noChangeStreak counts a
-  // context-ceiling episode too — but the plain suffix would mislabel a window-burning
-  // episode as a benign idle one, so when the cut-off streak reads 2+ it wins: it names the
-  // costly cause (operator should split the task or raise the model's context window before
-  // the give-up). Observational only, like the no-change suffix — it never warns from here
-  // (the once-per-episode crossing warning comes from run-finalize.ts).
-  const cutOff = s.cutOffStreak ?? 0;
-  if (cutOff >= 2) cell += ` · cut off ×${cutOff}`;
-  else {
-    const streak = s.noChangeStreak ?? 0;
-    if (streak >= 2) cell += ` · no change ×${streak}`;
+  // The resting cell: the sleeping-vs-skipReason label and the consecutive-run cut-off/
+  // no-change suffix that names what an idle role has been returning.
+  function restingPhase(): string {
+    // The resting state cell (sleeping / idle / deferred / queued): it is the only label that
+    // names what a role has been RETURNING, so the consecutive no-change streak rides on it
+    // (run-apply.ts applyRunOutcome's noChangeStreak, persisted in RunnerState). A role that
+    // keeps waking and returning nothing to do reads " · no change ×N" instead of an ordinary
+    // idle — the harness premise's silent no-op failure mode, otherwise indistinguishable from a
+    // healthy idle role. Observational only: a legitimately idle maintenance role with an empty
+    // backlog can hold a long streak and that is expected, so it never warns (unlike
+    // consecutiveErrors/quietKillStreak). N=1 and an absent field read 0 and render the label
+    // byte-identically; the error/quiet-kill/merge/paused cells return earlier and never carry
+    // the suffix. `noChangeStreak` is on the state accumulator, so its type is on the full
+    // RunnerState.
+    let cell: string;
+    if (s.nextRunAt > Date.now()) {
+      // The role is sleeping *now* until nextRunAt: show the remaining sleep duration
+      // ("for 30m"), not a future start ("in 30m"). Floor at 1s so a sub-second remainder
+      // never renders as "sleeping (for now)".
+      const remain = Math.max(1, secondsUntil(s.nextRunAt, Date.now()));
+      cell = `sleeping (for ${humanSeconds(remain)})`;
+    } else {
+      switch (s.skipReason) {
+        case "no-free-entry":
+          cell = `idle: no unclaimed ${baseRoleOf(s.role) === "bugfix" ? "bugs" : "plans"}`;
+          break;
+        case "claim-hold":
+          cell = `idle: another ${baseRoleOf(s.role)} instance is working on it`;
+          break;
+        case "deferred-backlog":
+          cell = "deferred (backlog open)";
+          break;
+        case "deferred-no-work":
+          cell = "deferred (no new work)";
+          break;
+        case "deferred-plans-full":
+          cell = "deferred (plans full)";
+          break;
+        case "instances-full":
+          cell = `idle: every ${baseRoleOf(s.role)} instance is busy`;
+          break;
+        case "maintenance-due-cap":
+          cell = "waiting: maintenance allowance spent this poll";
+          break;
+        case "yield-gap":
+          cell = `idle: waiting out its yield gap ×${yieldMultiplierFor(s)}`;
+          break;
+        case "model-check":
+          cell = "waiting: model check";
+          break;
+        default:
+          cell = "due";
+      }
+    }
+    // Two or more consecutive runs earn the suffix (N=1 is a single run — ordinary, not yet
+    // a pattern). A cut-off run is itself a `no_change`, so noChangeStreak counts a
+    // context-ceiling episode too — but the plain suffix would mislabel a window-burning
+    // episode as a benign idle one, so when the cut-off streak reads 2+ it wins: it names the
+    // costly cause (operator should split the task or raise the model's context window before
+    // the give-up). Observational only, like the no-change suffix — it never warns from here
+    // (the once-per-episode crossing warning comes from run-finalize.ts).
+    const cutOff = s.cutOffStreak ?? 0;
+    if (cutOff >= 2) cell += ` · cut off ×${cutOff}`;
+    else {
+      const streak = s.noChangeStreak ?? 0;
+      if (streak >= 2) cell += ` · no change ×${streak}`;
+    }
+    return cell;
   }
-  return cell;
+  return mergePhase() ?? runningPhase() ?? heldPhase() ?? restingPhase();
 }
 
 /** One rendered role-table row's sort key: the role name, its rendered phase label
