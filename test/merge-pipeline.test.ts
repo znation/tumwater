@@ -299,13 +299,16 @@ test("one head is gated at a time: with three queued at cap 3 the second waits u
     fs.writeFileSync(path.join(flags, "alpha-release"), "");
     // alpha's gate settles and its change merges (no busy merge slot now). The next drain
     // starts beta's gate once alpha's verification settles; alpha's own merge may still be
-    // finishing, so wait for beta's check flag and alpha's merge_done before asserting the
-    // task list, not the approved map.
+    // finishing. A merge_done event alone does not prove the merge task has left the pipeline
+    // (it is written before the task clears its slot), so wait for beta's check flag, alpha's
+    // merge_done, and alpha's merge task to be gone before asserting the task list, not the
+    // approved map.
     await waitFor(
       () =>
         fs.existsSync(path.join(flags, "beta-blocking")) &&
-        eventsOfType(root, "merge_done").some((e) => e.source === "alpha"),
-      "beta's gate to start and alpha's merge to settle",
+        eventsOfType(root, "merge_done").some((e) => e.source === "alpha") &&
+        !mergeTasks(pipeline).some((t) => t.roles.includes("alpha")),
+      "beta's gate to start and alpha's merge task to settle",
       30_000,
     );
     assert.deepEqual(
