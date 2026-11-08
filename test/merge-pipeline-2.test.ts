@@ -413,6 +413,45 @@ test("a user abort consumed after the fast-forward does not rewrite the landed c
   }
 });
 
+test("a user abort after a retriable merge outcome settles aborted instead of re-queuing the discarded pin", async () => {
+  const root = makeRepo();
+  await queueChanges(root, ["alpha"]);
+  // An untracked file in the primary checkout that alpha's pin adds: the fast-forward refuses
+  // to overwrite it, so the merge ends `merge_blocked` — a retriable outcome that keeps the pin.
+  fs.writeFileSync(path.join(root, "alpha.txt"), "local alpha\n");
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"]));
+  let consumed = false;
+  // The abort lands after the merge decided `merge_blocked` (the blocking warning) but before
+  // the task settles: the operator's stop must win over the retriable outcome, or the re-queue
+  // would point at a pin the finally then discards.
+  const unsubscribe = subscribeEvents((e) => {
+    if (e.type !== "warning" || e.source !== "alpha" || consumed || !String(e.message).startsWith("merge blocked:")) return;
+    writeJsonFile(abortRequestPath(root, "alpha"), { at: Date.now() });
+    consumeAbortRequests(root, [], abortableMerges(pipeline));
+    consumed = true;
+  });
+  try {
+    await drainMergeQueue(ctx, pipeline);
+    const merge = pipeline.merge as InFlightMerge | null;
+    assert.ok(merge, "the gate-then-merge task started");
+    await merge.promise;
+    assert.equal(consumed, true, "the abort was consumed after the retriable outcome but before the settle");
+    assert.equal(loadRunnerState(root, "alpha").lastResult, "aborted", "the operator's stop wins over the retriable outcome");
+    assert.deepEqual(
+      readEvents(root).filter((e) => e.type === "merge_done" || e.type === "merge_failed").map((e) => [e.type, e.result]),
+      [["merge_failed", "aborted"]],
+      "the stopped change is reported aborted, not as its retriable failure",
+    );
+    assert.equal(queueDepth(root), 0, "the aborted change is not re-queued against the pin the abort discards");
+    assert.equal(await refSha(root, mergeRefName("alpha")), null, "the stopped change's pin is gone");
+  } finally {
+    unsubscribe();
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+});
+
 
 // The merge cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23) through the pipeline: each
 // change's own record carries its stage, so a change's stage must leave the gate stage the moment
