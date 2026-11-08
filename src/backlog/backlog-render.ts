@@ -96,6 +96,42 @@ export function renderBacklogMarkdown(payload: BacklogView): string {
   return lines.join("\n").trimEnd();
 }
 
+/** Pick the elements of a parallel array at the kept indexes: `pickByIndex(xs, idx)[k]` is
+ * `xs[idx[k]]`, so the holds and inProgress slices stay parallel to the filtered
+ * plans/bugs/questions. A missing array (a view with no holds) yields no picks. Both
+ * readyBacklog and grepBacklog rebuild their views through it. */
+function pickByIndex<T>(xs: readonly T[] | undefined, idx: readonly number[]): T[] {
+  return idx.map((i) => xs?.[i] as T);
+}
+
+/** The indexes a filter keeps over a 0..n-1 range — the two filters' shared construction, so
+ * each returns one kept-index array and the parallel picks below step in lock with it. */
+function keptIndexes(n: number, isKept: (i: number) => boolean): number[] {
+  return Array.from({ length: n }, (_, i) => i).filter(isKept);
+}
+
+/** The holds half of a filtered view, picked by the same kept indexes; `{}` when the view
+ * carries no holds, so the spreading caller leaves its own field untouched. */
+function filterHolds(
+  holds: BacklogHolds | undefined,
+  plan: readonly number[],
+  bug: readonly number[],
+): { holds: BacklogHolds } | {} {
+  return holds ? { holds: { plans: pickByIndex(holds.plans, plan), bugs: pickByIndex(holds.bugs, bug) } } : {};
+}
+
+/** The in-progress half of a filtered view, picked by the same kept indexes; `{}` when the
+ * view carries no inProgress. */
+function filterInProgress(
+  inProgress: BacklogView["inProgress"],
+  plan: readonly number[],
+  bug: readonly number[],
+): { inProgress: NonNullable<BacklogView["inProgress"]> } | {} {
+  return inProgress
+    ? { inProgress: { plans: pickByIndex(inProgress.plans, plan), bugs: pickByIndex(inProgress.bugs, bug) } }
+    : {};
+}
+
 /** The view with only the plans and bugs no hold keeps from being picked: entry `i` stays when
  * `holds.plans[i]` / `holds.bugs[i]` is null, and `holds` and `inProgress` are filtered by the
  * same indexes so the arrays stay parallel. An entry a role is working on has no hold, so it
@@ -104,19 +140,14 @@ export function renderBacklogMarkdown(payload: BacklogView): string {
 export function readyBacklog(view: BacklogView): BacklogView {
   const holds = view.holds;
   if (!holds) return view;
-  const keep = (hs: readonly EntryHold[], n: number): number[] =>
-    Array.from({ length: n }, (_, i) => i).filter((i) => (hs[i] ?? null) === null);
-  const plan = keep(holds.plans, view.plans.length);
-  const bug = keep(holds.bugs, view.bugs.length);
-  const pick = <T>(xs: readonly T[] | undefined, idx: number[]): T[] => idx.map((i) => xs?.[i] as T);
+  const plan = keptIndexes(view.plans.length, (i) => (holds.plans[i] ?? null) === null);
+  const bug = keptIndexes(view.bugs.length, (i) => (holds.bugs[i] ?? null) === null);
   return {
     ...view,
-    plans: pick(view.plans, plan),
-    bugs: pick(view.bugs, bug),
-    holds: { plans: pick(holds.plans, plan), bugs: pick(holds.bugs, bug) },
-    ...(view.inProgress
-      ? { inProgress: { plans: pick(view.inProgress.plans, plan), bugs: pick(view.inProgress.bugs, bug) } }
-      : {}),
+    plans: pickByIndex(view.plans, plan),
+    bugs: pickByIndex(view.bugs, bug),
+    ...filterHolds(holds, plan, bug),
+    ...filterInProgress(view.inProgress, plan, bug),
   };
 }
 
@@ -125,25 +156,19 @@ export function readyBacklog(view: BacklogView): BacklogView {
  * (entryMatches, backlog.ts) the finished-entry lists use: keep plan `i`, bug `i` and question
  * `i` only when entryMatches(entry, pattern), and filter `holds.plans`/`holds.bugs` and
  * `inProgress.plans`/`inProgress.bugs` by the same kept indexes so the parallel arrays stay
- * aligned (the `pick` shape readyBacklog reuses). Questions carry no holds and filter by
- * entryMatches alone. A view without `holds`/`inProgress` only filters the entry arrays. */
+ * aligned (the same pickByIndex/filterHolds/filterInProgress trio readyBacklog uses). Questions
+ * carry no holds and filter by entryMatches alone. A view without `holds`/`inProgress` only
+ * filters the entry arrays. */
 export function grepBacklog(view: BacklogView, pattern: string): BacklogView {
-  const keep = (xs: readonly BacklogEntry[]): number[] =>
-    Array.from({ length: xs.length }, (_, i) => i).filter((i) => entryMatches(xs[i]!, pattern));
-  const plan = keep(view.plans);
-  const bug = keep(view.bugs);
-  const question = keep(view.questions);
-  const pick = <T>(xs: readonly T[] | undefined, idx: number[]): T[] => idx.map((i) => xs?.[i] as T);
+  const plan = keptIndexes(view.plans.length, (i) => entryMatches(view.plans[i]!, pattern));
+  const bug = keptIndexes(view.bugs.length, (i) => entryMatches(view.bugs[i]!, pattern));
+  const question = keptIndexes(view.questions.length, (i) => entryMatches(view.questions[i]!, pattern));
   return {
     ...view,
-    plans: pick(view.plans, plan),
-    bugs: pick(view.bugs, bug),
-    questions: pick(view.questions, question),
-    ...(view.holds
-      ? { holds: { plans: pick(view.holds.plans, plan), bugs: pick(view.holds.bugs, bug) } }
-      : {}),
-    ...(view.inProgress
-      ? { inProgress: { plans: pick(view.inProgress.plans, plan), bugs: pick(view.inProgress.bugs, bug) } }
-      : {}),
+    plans: pickByIndex(view.plans, plan),
+    bugs: pickByIndex(view.bugs, bug),
+    questions: pickByIndex(view.questions, question),
+    ...filterHolds(view.holds, plan, bug),
+    ...filterInProgress(view.inProgress, plan, bug),
   };
 }
