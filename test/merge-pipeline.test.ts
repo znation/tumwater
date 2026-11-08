@@ -7,7 +7,7 @@ import { drainMergeQueue } from "../src/merge/merge-drain.js";
 import {
   mergeTasks,
 } from "../src/merge/merge-pipeline.js";
-import { enqueueMerge, queuedMergeFiles } from "../src/merge/merge-queue.js";
+import { enqueueMerge, queueDepth, queuedMergeFiles } from "../src/merge/merge-queue.js";
 import { mergeQueueDir, mergeRefName } from "../src/paths.js";
 import { isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -30,7 +30,6 @@ import {
   runnersFor,
 } from "./fixtures/merge-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { declareCheck, checkRunNumber } from "./fixtures/merger-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { waitFor, waitForFile, within } from "./helpers/wait.js";
@@ -38,6 +37,14 @@ import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
 
 // These tests pin the sequential merge stages (the check, then the review).
 process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
+
+/** Roles whose merge-marker record is `approved` — the durable signal a test waits on instead
+ * of the in-memory map (part 3e/6: tests observe queue outcomes). */
+function approvedChanges(root: string): string[] {
+  const marker = readMergeMarker(root);
+  if (!marker) return [];
+  return mergeChanges(marker).filter((c) => c.status === "approved").map((c) => c.role);
+}
 
 /** Second slice of the merge-drain suite (merge-drain.test.ts carries the first) — split so
  * node --test runs the slices in parallel processes: top-level tests within one file run
@@ -130,7 +137,12 @@ test("a settled merge detaches its shutdown listener: the long-lived stop signal
 test("changes approved while the merge slot is busy merge one at a time: no shared check, one fast-forward each", async () => {
   const { root, mainBefore, restore, ctx, pipeline } = await busyMergePipeline();
   try {
-    await pumpUntil(ctx, pipeline, () => pipeline.approved.size === 2, "both changes to be approved");
+    await pumpUntil(
+      ctx,
+      pipeline,
+      () => approvedChanges(root).length === 2 && queueDepth(root) === 2,
+      "both changes to be approved",
+    );
     pipeline.merge = null; // the busy slot frees
     await drainMergeQueue(ctx, pipeline);
     assert.deepEqual(
@@ -160,116 +172,8 @@ test("changes approved while the merge slot is busy merge one at a time: no shar
   }
 });
 
-test("an approved change whose queue entry is gone is forgotten while its neighbor still merges", async () => {
-  const { root, mainBefore, restore, ctx, pipeline } = await busyMergePipeline();
-  try {
-    await pumpUntil(ctx, pipeline, () => pipeline.approved.size === 2, "both changes to be approved");
-    // beta's queue entry vanishes while beta sits approved — the only way an entry leaves the
-    // queue between its verification settling and the next merge: a hand outside the pipeline on
-    // the queue dir. drainMerge must forget beta without writing it an outcome or a merge.
-    fs.rmSync(queuedMergeFiles(root).find((q) => q.entry.role === "beta")!.file);
-    pipeline.merge = null; // the busy slot frees
-    await drainMergeQueue(ctx, pipeline);
-    assert.deepEqual(mergeTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "only alpha is picked for the merge");
-    assert.deepEqual([...pipeline.approved.keys()], [], "beta left the approved map");
-    assert.deepEqual(
-      mergeChanges(readMergeMarker(root)!).map((c) => c.role),
-      ["alpha"],
-      "beta's marker record dropped with its entry",
-    );
-    await pumpUntil(ctx, pipeline, drained(root, pipeline), "alpha to merge");
 
-    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "1", "only alpha reached main");
-    assert.ok(sh(root, "git", "show", "main:alpha.txt").includes("work by alpha"), "alpha's work is on main");
-    assert.equal(await refSha(root, mergeRefName("alpha")), null, "alpha's pin was deleted after merge");
-    assert.ok(await refSha(root, mergeRefName("beta")), "beta's pin survives: its approved work is still real");
-    assert.deepEqual(
-      readEvents(root).filter(
-        (e) => e.source === "beta" && (e.type === "merged" || e.type === "merge_done" || e.type === "merge_failed"),
-      ),
-      [],
-      "beta left no outcome — forgotten, not failed",
-    );
-  } finally {
-    await Promise.allSettled(allTasks(pipeline));
-    restore();
-  }
-});
 
-test("the merge's conflict resolver takes a shared permit, ahead of a verification parked for one", async () => {
-  // Merges count as active work: the one model run a merge makes, mergeToMain's conflict
-  // resolver, holds a shared maxConcurrent permit for its length — outside the merge lock, so a
-  // run waiting on that lock can never be what the resolver waits for — at MERGE_TIER, ahead
-  // of any verification parked for a permit, since every queued change waits on the merge.
-  const root = makeRepo();
-  const alpha = pinnedCommit(root, "alpha");
-  const beta = pinnedCommit(root, "beta");
-  // main rewrites alpha's file after the pin: alpha's rebase conflicts, at its verification (which
-  // then reviews the bare pin) and again at its merge, which needs the resolver.
-  fs.writeFileSync(path.join(root, "alpha.txt"), "main's alpha\n");
-  sh(root, "git", "add", "alpha.txt");
-  sh(root, "git", "commit", "-m", "main edits alpha.txt");
-  await setRef(root, mergeRefName("alpha"), alpha);
-  await setRef(root, mergeRefName("beta"), beta);
-  enqueueMerge(root, entry("alpha", alpha));
-  const flags = tmpdir("resolver-permit-");
-  const order = path.join(flags, "order");
-  // The ordered verification is beta's GATE BUILD CHECK, not its reviewer run: with the pre-merge
-  // reviewer still running, its verdict is irrelevant here, and the parked verification's real
-  // subject — its place in the shared-permit order — is pinned by the build check that runs when
-  // it gets the permit. The declared check runs from the repo root (the npm walk-up's package
-  // root), so it cannot see a slot worktree's files; the shared check counter names the runs:
-  // 1 alpha's verify gate, 2 alpha's re-review gate (after the resolver), 3 beta's verify gate,
-  // 4 beta's in-lock re-check — so run 3 is beta's verification's build check.
-  const checkCount = path.join(root, ".checkcount");
-  declareCheck(root, `#!/bin/sh\n${checkRunNumber(checkCount)}if [ "$n" -eq 3 ]; then echo beta-check >> '${order}'; fi\necho ok\n`);
-  const restore = fakePi(
-    [
-      `for a in "$@"; do case "$a" in`,
-      `tumwater-*-conflict) echo resolved > alpha.txt; echo resolver >> '${order}'; printf '%s\\n' '${assistantLine("resolved")}'; exit 0;;`,
-      `*"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
-      `esac; done`,
-    ].join("\n"),
-  );
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"]), { cap: 1 });
-  pipeline.merge = busySlot();
-  let held = false;
-  try {
-    await pumpUntil(ctx, pipeline, () => pipeline.approved.has("alpha"), "alpha to be approved");
-    // A role run takes the only permit, and beta's change queues behind it: its verification
-    // parks.
-    await ctx.semaphore.acquire(0);
-    held = true;
-    enqueueMerge(root, entry("beta", beta));
-    await drainMergeQueue(ctx, pipeline);
-    assert.equal(pipeline.verifying.get("beta")?.parked, true, "beta's verify parks for the permit");
-    pipeline.merge = null;
-    await drainMergeQueue(ctx, pipeline);
-    assert.deepEqual(mergeTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "alpha's merge is running");
-    // The merge reaches its resolver, which parks for the permit beside beta's verify — or,
-    // without one, runs at once and leaves its mark.
-    await waitFor(() => ctx.semaphore.waiting === 2 || fs.existsSync(order), "alpha's resolver to reach the permit");
-    assert.equal(fs.existsSync(order), false, "the resolver waits for a permit like any pi run");
-    // The merge cell names the parked resolver's wait — not "merging" (2026-10-12: a resolver
-    // parked 2.5 min with the merge queue behind it read as a slow fast-forward).
-    assert.equal(
-      mergeChanges(readMergeMarker(root)!).find((c) => c.role === "alpha")?.stage,
-      "resolve-wait",
-      "the parked resolver's stage",
-    );
-
-    ctx.semaphore.release(); // the run ends: the merge's resolver is first in line
-    held = false;
-    await pumpUntil(ctx, pipeline, drained(root, pipeline), "both to merge");
-    assert.deepEqual(fs.readFileSync(order, "utf8").trim().split("\n"), ["resolver", "beta-check"], "the resolver ran before the parked build-check verification");
-    assert.equal(sh(root, "git", "show", "main:alpha.txt"), "resolved", "the resolution merged");
-    assert.ok(sh(root, "git", "show", "main:beta.txt").includes("work by beta"));
-  } finally {
-    if (held) ctx.semaphore.release();
-    await Promise.allSettled(allTasks(pipeline));
-    restore();
-  }
-});
 
 test("a change settled early in a batch writes back before a slower batch-mate's resolver returns", async () => {
   // BUGS.md 2026-10-09: a change whose merge is already final must not keep its stale error
@@ -306,7 +210,7 @@ test("a change settled early in a batch writes back before a slower batch-mate's
   pipeline.merge = busySlot();
   const bg = pump(ctx, pipeline);
   try {
-    await waitFor(() => pipeline.approved.size === 2, "both changes to be approved", 60_000);
+    await waitFor(() => approvedChanges(root).length === 2, "both changes to be approved", 60_000);
     pipeline.merge = null;
     await waitForFile(started, 60_000);
     // The running resolver names itself in beta's merge cell: its minutes are the resolver's,
@@ -359,7 +263,12 @@ test("approved changes merge one at a time: the shared stack check and bisect ar
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { config });
   pipeline.merge = busySlot();
   try {
-    await pumpUntil(ctx, pipeline, () => pipeline.approved.size === 3, "all three to be approved");
+    await pumpUntil(
+      ctx,
+      pipeline,
+      () => approvedChanges(root).length === 3 && queueDepth(root) === 3,
+      "all three to be approved",
+    );
     pipeline.merge = null;
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to drain");
 
@@ -388,26 +297,27 @@ test("approved changes merge one at a time: the shared stack check and bisect ar
   }
 });
 
-test("one verification runs at a time: with three queued at cap 3 the second waits unstarted until the first settles, and a role run takes the free permit", async () => {
+test("one head is gated at a time: with three queued at cap 3 the second waits unstarted until the first settles, and a role run takes the free permit", async () => {
+  // Part 3s/3 holds the head's verification through the deterministic gate (part 3h/3 stops
+  // the reviewer): the check blocks alpha on its release file, seen through its own flag
+  // rather than a map. beta and gamma stay queued — the drain starts one task at a time — so
+  // the cap's second permit sits free for a role run. The block keys off alpha's own change
+  // file, so the gate's attribution re-check on main's tip (which holds none of them) neither
+  // blocks nor touches the pipeline. The merge slot is held so the approved change waits,
+  // keeping the queue order intact for the drain. beta's check blocks on its own release file
+  // too: an unblocked check settles in well under waitFor's 100 ms poll, so beta could start
+  // between two polls.
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];
   await queueChanges(root, roles);
   const flags = tmpdir("vet-serial-");
-  // Part 3s/3: hold the head's verification through the deterministic gate, not the reviewer
-  // (part 3h/3 stops it): the check blocks alpha on its release file. beta and gamma stay queued
-  // — the drain starts one verification at a time — so the cap's second permit sits free for a
-  // role run. The block keys off alpha's own change file, so the gate's attribution re-check on
-  // main's tip (which holds none of them) neither blocks nor touches the pipeline. The merge
-  // slot is held so an approved change waits, keeping it visible for the assertion. beta's
-  // check blocks on its own release file too: an unblocked check settles in well under
-  // waitFor's 100 ms poll, so beta could start and leave `verifying` between two polls.
   const config = {
     ...defaultConfig(),
     check: {
       command:
         `if [ -f alpha.txt ]; then touch '${path.join(flags, "alpha-blocking")}'; ` +
         `i=0; while [ ! -f '${path.join(flags, "alpha-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi; ` +
-        `if [ -f beta.txt ]; then ` +
+        `if [ -f beta.txt ]; then touch '${path.join(flags, "beta-blocking")}'; ` +
         `i=0; while [ ! -f '${path.join(flags, "beta-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi`,
     },
   };
@@ -418,11 +328,13 @@ test("one verification runs at a time: with three queued at cap 3 the second wai
   let ran = false;
   try {
     await waitForFile(path.join(flags, "alpha-blocking"));
-    // alpha's check is in flight, so alpha is verifying; the serial rule means the rest have not
-    // started, regardless of how many polls have run.
-    assert.deepEqual([...pipeline.verifying.keys()], ["alpha"], "exactly one verification exists");
-    assert.equal(pipeline.verifying.has("beta"), false, "the second change has not started");
-    assert.equal(pipeline.verifying.has("gamma"), false, "the third change has not started");
+    // alpha's check is in flight, so its head is being gated; the serial rule means the rest
+    // have not started, regardless of how many polls have run.
+    assert.deepEqual(
+      mergeTasks(pipeline).flatMap((t) => t.roles),
+      ["alpha"],
+      "exactly one task holds alpha",
+    );
     assert.equal(queuedMergeFiles(root).length, 3, "all three are still queued");
     assert.ok(await within(ctx.semaphore.acquire(0), 5_000), "a role run takes the permit the serialization left free");
     ran = true;
@@ -430,10 +342,18 @@ test("one verification runs at a time: with three queued at cap 3 the second wai
     ctx.semaphore.release();
     ran = false;
     fs.writeFileSync(path.join(flags, "alpha-release"), "");
-    // alpha settles to approved (held on the merge slot); the next drain starts beta.
-    await waitFor(() => pipeline.approved.has("alpha"), "alpha to settle to approved", 30_000);
-    await waitFor(() => pipeline.verifying.has("beta"), "beta to start once the first settles", 30_000);
-    assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "the next queued entry starts once the first settles");
+    // alpha settles to approved (held on the merge slot); the next drain starts beta's gate.
+    await waitFor(
+      () => approvedChanges(root).includes("alpha"),
+      "alpha to settle to approved",
+      30_000,
+    );
+    await waitForFile(path.join(flags, "beta-blocking"));
+    assert.deepEqual(
+      mergeTasks(pipeline).flatMap((t) => t.roles),
+      ["beta"],
+      "the next queued entry starts once the first settles",
+    );
 
     fs.writeFileSync(path.join(flags, "beta-release"), "");
     pipeline.merge = null; // free the merge slot

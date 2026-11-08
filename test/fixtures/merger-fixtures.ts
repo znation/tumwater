@@ -110,13 +110,6 @@ export async function verifyAndMerge(ctx: MergerContext, req: MergeRequest): Pro
   return mergeApprovedChange(ctx, req);
 }
 
-/** Shell that numbers this check run into `$n`, atomically: `mkdir` either creates
- * `<base>.<n>` or fails, so two checks running at once (the pipeline verifies changes
- * concurrently) can never both read the same count the way a read-increment-write counter
- * file does. Runs number 1, 2, … in start order. */
-export const checkRunNumber = (base: string): string =>
-  `n=1\nwhile ! mkdir '${base}'.$n 2>/dev/null; do n=$((n+1)); done\n`;
-
 /** Declare the project's build check the way detectBuildCheck finds it: an install
  * signature (package.json + node_modules) at the root, the tool in node_modules/.bin. The
  * worktree resolves the toolchain from the installed root, as in the dogfood layout. */
