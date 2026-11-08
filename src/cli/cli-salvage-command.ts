@@ -9,8 +9,9 @@
  * never writes), and its output shape. */
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
-import { parseGrepFlag, scanPositionArgs } from "./cli-args.js";
-import { JSON_FLAG, grepFlagSpec, rejectUnknownArgs } from "./cli-flag-specs.js";
+import { failFollowJsonRival, parseGrepFlag, scanPositionArgs } from "./cli-args.js";
+import { FOLLOW_FLAG, JSON_FLAG, grepFlagSpec, hasFollowFlag, rejectUnknownArgs } from "./cli-flag-specs.js";
+import { followView, type FollowViewSeams } from "./follow-view.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
 import {
   collectSalvagePatches,
@@ -21,19 +22,24 @@ import {
 import { formatAge } from "../text/datetime.js";
 import { formatBytes } from "../text/format.js";
 
-/** `tumwater salvage [--grep <text>] [--show <n>] [--json]`: list the kept workspace
+/** `tumwater salvage [-f/--follow] [--grep <text>] [--show <n>] [--drop <n>] [--json]`:
+ * list the kept workspace
  * patches under `.tumwater/salvage/` oldest first, as the doctor's `salvage patches` row
  * counts them, each naming its file, how long ago it was saved and its size — so an operator
  * can see what a run left behind before applying or deleting it. `--grep <text>` keeps only
  * the patches whose file name or patch text contains the text (case-insensitively), each
- * under its whole-list number. `--show <n>` prints the Nth patch as the list numbers it, in
+ * under its whole-list number. `-f/--follow` repaints the list every couple of seconds until
+ * Ctrl+C or the process that started it exits, re-reading `.tumwater/salvage/` each frame so
+ * a patch a run keeps while the operator watches appears without a rerun, composing with
+ * `--grep` and refusing `--json` (a live view repaints one document, not one snapshot).
+ * `--show <n>` prints the Nth patch as the list numbers it, in
  * full (the exact patch text), the read-only detail twin of `quarantine --show` and
  * `reviews --show`; `--drop <n>` deletes the Nth patch the list numbers, the destructive
  * twin whose text and `--json` say what it removed. Read-only in every branch but `--drop`
  * and needing no ready repo: refuseTeamWorkspace is the whole gate, so the list degrades
  * to the empty line in a plain directory and no run ever writes a patch except, at the
  * operator's request, the unlink a `--drop` makes. */
-export async function cmdSalvage(root: string, args: string[]): Promise<void> {
+export async function cmdSalvage(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   // `--show <n>` is the command's read-only detail branch: route it before the list gate,
   // exactly as cmdQuarantine routes its `--show` first, so its own flag gate owns a token
   // the list would otherwise refuse. A `--show` token sitting in `--grep`'s value slot is the
@@ -53,31 +59,54 @@ export async function cmdSalvage(root: string, args: string[]): Promise<void> {
   // --grep filters the positioned patches to the ones whose file name or patch text contains
   // the text (case-insensitively), each kept row's position unchanged so `--show` keeps
   // addressing the whole list. The missing-value wording lives in SALVAGE_GREP_VALUE_ERROR,
-  // the flag gate's and this parser's shared string. The --json scan runs over `rest` (the
-  // pattern token removed), so a flag-shaped pattern like `--grep --json` is the text
-  // "--json", not the flag.
+  // the flag gate's and this parser's shared string. The --json and -f/--follow scans run
+  // over `rest` (the pattern token removed), so a flag-shaped pattern like `--grep --json` is
+  // the text "--json", not the flag (and `--grep --follow` stays a one-shot pattern search
+  // for the text "--follow").
   const SALVAGE_GREP_VALUE_ERROR = "salvage --grep needs text (usage: tumwater salvage --grep <text>)";
-  rejectUnknownArgs("salvage", args, [JSON_FLAG, grepFlagSpec(SALVAGE_GREP_VALUE_ERROR)]);
+  rejectUnknownArgs("salvage", args, [JSON_FLAG, FOLLOW_FLAG, grepFlagSpec(SALVAGE_GREP_VALUE_ERROR)]);
   refuseTeamWorkspace(root);
-  const patches = collectSalvagePatches(root);
   const { rest, pattern } = parseGrepFlag(args, SALVAGE_GREP_VALUE_ERROR);
-  const rows =
-    pattern === null
-      ? patches.map((p, i) => ({ position: i + 1, file: p.file, savedAt: p.savedAt, bytes: p.bytes }))
-      : grepSalvagePatches(root, patches, pattern);
-  const now = Date.now();
-  sayJsonOrRender(
-    rest,
-    { patches: rows },
-    () => {
-      if (patches.length === 0) return "no salvaged workspace patches are kept for you";
-      if (rows.length === 0) return `no salvaged workspace patches match "${pattern}"`;
-      const lines = rows.map(
-        (p) => `${p.position}. ${p.file} — saved ${formatAge(now - p.savedAt)} ago, ${formatBytes(p.bytes)}`,
-      );
-      return [`salvaged workspace patches: ${rows.length}`, ...lines].join("\n");
-    },
-  );
+  const follow = hasFollowFlag(rest);
+  if (follow && rest.includes("--json")) failFollowJsonRival("salvage --json");
+  // Each frame re-reads `.tumwater/salvage/` and reads the clock once, so a patch a run
+  // keeps while the operator watches appears in the next repaint — the same per-frame read
+  // `quarantine -f` uses. The --grep filter applies inside the per-frame read, so a
+  // filtered frame still numbers the kept rows whole-list.
+  const readSalvageRows = (): {
+    full: ReturnType<typeof collectSalvagePatches>;
+    rows: ReturnType<typeof grepSalvagePatches>;
+  } => {
+    const full = collectSalvagePatches(root);
+    return {
+      full,
+      rows:
+        pattern === null
+          ? full.map((p, i) => ({ position: i + 1, file: p.file, savedAt: p.savedAt, bytes: p.bytes }))
+          : grepSalvagePatches(root, full, pattern),
+    };
+  };
+  // The no-match prose is a filter's line (the dir is non-empty but nothing matches); a
+  // genuinely empty dir keeps the empty line, and --json prints the filtered rows in both
+  // cases.
+  const renderSalvageRows = (r: {
+    full: ReturnType<typeof collectSalvagePatches>;
+    rows: ReturnType<typeof grepSalvagePatches>;
+  }): string => {
+    if (r.full.length === 0) return "no salvaged workspace patches are kept for you";
+    if (r.rows.length === 0) return `no salvaged workspace patches match "${pattern}"`;
+    const now = Date.now();
+    const lines = r.rows.map(
+      (p) => `${p.position}. ${p.file} — saved ${formatAge(now - p.savedAt)} ago, ${formatBytes(p.bytes)}`,
+    );
+    return [`salvaged workspace patches: ${r.rows.length}`, ...lines].join("\n");
+  };
+  if (follow) {
+    await followView(() => renderSalvageRows(readSalvageRows()), seams);
+    return;
+  }
+  const result = readSalvageRows();
+  sayJsonOrRender(rest, { patches: result.rows }, () => renderSalvageRows(result));
 }
 
 /** The `tumwater salvage --show <n>` branch: print the Nth patch `tumwater salvage` lists

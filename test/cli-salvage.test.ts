@@ -130,14 +130,14 @@ test("salvage --show with a missing, zero or non-integer position fails with the
   assert.ok(r.stderr.includes("positive integer"));
 });
 
-test("salvage refuses an unknown flag, naming it, including -f/--follow", async () => {
+test("salvage refuses an unknown flag, naming it", async () => {
   const repo = makeRepo();
-  seedSalvage(repo);
-  for (const flag of ["--bogus", "-f", "--follow"]) {
-    const r = await cli(repo, "salvage", flag);
-    assert.equal(r.code, 1, flag);
-    assert.ok(r.stderr.includes(flag), flag);
-  }
+  const { older, newer } = seedSalvage(repo);
+  const before = bytesOf(older, newer);
+  const r = await cli(repo, "salvage", "--bogus");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("--bogus"));
+  assert.deepEqual(bytesOf(older, newer), before, "a refused flag never writes a patch");
 });
 
 test("salvage inside a team workspace fails naming the owning team root", async () => {

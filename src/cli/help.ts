@@ -332,7 +332,7 @@ Usage:
                                    stored, the kept failing output verbatim — read-only, needing
                                    no ready repo, like the list; --show <n> --json prints that
                                    entry's object
-  tumwater salvage [--grep <text>] [--show <n>] [--drop <n>] [--json]
+  tumwater salvage [-f/--follow] [--grep <text>] [--show <n>] [--drop <n>] [--json]
                                    List the workspace patches kept for you under
                                    .tumwater/salvage/ — a settled run's discarded edits or a
                                    verification's scratch output — as the doctor's "salvage
@@ -347,7 +347,13 @@ Usage:
                                    --show <n> still addresses the same patch; a non-empty dir
                                    where nothing matches prints "no salvaged workspace patches
                                    match \"<pattern>\"" while an empty dir keeps "no salvaged
-                                   workspace patches are kept for you"; --show <n> prints the
+                                   workspace patches are kept for you";
+                                   -f/--follow repaints the list every couple of seconds until
+                                   Ctrl+C or the process that started it exits, so a backgrounded
+                                   follow does not outlive its parent, re-reading
+                                   .tumwater/salvage/ each frame so a patch a run keeps appears
+                                   without a rerun; it composes with --grep and refuses
+                                   --json; --show <n> prints the
                                    Nth patch as the list numbers it, in full — a header naming
                                    the position and file, the saved-ago and size line, then the
                                    patch text verbatim; --show <n> --json prints that patch's
