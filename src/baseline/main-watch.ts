@@ -208,6 +208,252 @@ export function onlyKnownMainFailures(root: string, failingTests: readonly strin
   return failingTests.every((t) => known.has(t)) ? [...failingTests] : null;
 }
 
+/** The shared settlement helpers: module-level so the rules pass and the full-check pass
+ * (Hourly full check, part 2c/4) settle a verdict identically. */
+/** Run the declared build check on main's tip, confirming a red once and quarantining a flake
+ * whose confirmation passes. A red whose failing tests can be re-run on their own (canRerun) is
+ * confirmed by re-running just those tests, so the full check runs once per tip: a test that
+ * passes there is quarantined, and the red narrows to the tests that failed again (or turns
+ * green when none did). A re-run that reaches no verdict leaves the first red standing. Without
+ * a re-run command the whole check runs again, as before. Returns the check's result and
+ * whether any full run actually executed (false for a cache hit, a skip, or a sleep-spanned
+ * run). `config` is the live one at the moment of the run. */
+async function runBaselineCheck(root: string, wt: string, config: TumwaterConfig): Promise<{ check: BaselineCheck; ran: boolean }> {
+  let ran = false;
+  const onRun = baselineCheckLogger(root, TUMWATER_SOURCE);
+  const hook: typeof onRun = (run) => {
+    ran = true;
+    onRun(run);
+  };
+  let check = await checkMainBaseline(wt, config, hook, false, false, undefined, false, CHECK_TIER.merge, true);
+  if (check.baseline?.status !== "red") return { check, ran };
+  const first = check.baseline;
+  const named = first.failingTests ?? [];
+  if (canRerun(wt, config, named)) {
+    const rerun = await rerunTests(root, TUMWATER_SOURCE, wt, config, named, first.failingTestFiles, CHECK_TIER.merge);
+    if (rerun) {
+      // Each test that failed and then passed on this same tree is a flake.
+      const passed = named.filter((t) => !rerun.failing.includes(t));
+      if (passed.length > 0) quarantineTests(root, passed, passed.join("\n"));
+      const settled = settleRedByRerun(first.sha, rerun.failing);
+      if (settled) check = { baseline: settled };
+    }
+    return { check, ran };
+  }
+  check = await checkMainBaseline(wt, config, hook, true, false, undefined, false, CHECK_TIER.merge, true);
+  // A red the same tree's confirming re-run turns green is a flake: quarantine its tests.
+  if (check.baseline?.status === "green") quarantineTests(root, named, named.join("\n"));
+  return { check, ran };
+}
+
+/** The covered-commit count for a main_check event: the first-parent commits between the
+ * previous and new watched heads, or 1 when there is no previous head. */
+async function countCovered(wt: string, previous: string | undefined, sha: string): Promise<number> {
+  if (previous === undefined) return 1;
+  const counted = Number(((await gitTry(wt, "rev-list", "--first-parent", "--count", `${previous}..${sha}`)) ?? "").trim());
+  return Number.isFinite(counted) && counted > 0 ? counted : 1;
+}
+
+/** Settle the verdict for a checked baseline: distinguish quarantined-only reds, record
+ * main's known failures, count the covered commits, and log the main_check event. For a
+ * freshly-opened red spell the event's sha is the spell's opener (redOpener), not the tip
+ * checked, so G1's "red since <sha>" names the commit that broke the suite; a green or a
+ * re-check of an already-open spell keeps the tip. Returns whether the tip settled red (a
+ * red naming tests that are not all quarantined). */
+async function recordMainCheck(
+  root: string,
+  wt: string,
+  baseline: MainBaseline,
+  previous: string | undefined,
+  ran: boolean,
+  started: number,
+  openerSha?: string,
+): Promise<boolean> {
+  // A red naming only quarantined tests counts as green: no redeploy hold.
+  const quarantined = baseline.status === "red" ? onlyQuarantined(root, baseline.failingTests) : null;
+  const red = baseline.status === "red" && !quarantined;
+  knownFailures.set(root, red ? (baseline.failingTests ?? []) : []);
+  knownOffenders.set(root, red ? (baseline.failingOffenders ?? {}) : {});
+  const covered = await countCovered(wt, previous, baseline.sha);
+  logEventBestEffort(
+    root,
+    mainCheckEvent(baseline, red, quarantined, covered, ran ? Date.now() - started : 0, red ? openerSha : undefined),
+  );
+  return red;
+}
+
+/** The commit that OPENED a settled red: the newest first-parent commit since the previous
+ * settled green whose tree is red — the first commit to turn the suite red above that green.
+ * The watch checks only the newest tip per poll, so when several commits land in one poll
+ * batch and an earlier one broke the suite, the first red is first SEEN at the non-breaker
+ * tip (BUGS.md 2026-11-04: the guardrail named the newest red tip instead of the breaker two
+ * first-parent commits behind it). To name the actual breaker, walk first-parent commits from
+ * the tip back toward the previous green head (`since`), running the declared check on each
+ * tree, and return the oldest commit whose tree reads red (a red naming only quarantined
+ * tests settles as non-red, so it is a green boundary, not a breaker). A red-only range with
+ * no green in the walk — or a missing `since` (no previous head) — returns the oldest red
+ * found within the walk's bound (INHERIT_WALK_MAX); a git failure or a skipped (no-verdict)
+ * run reads conservative and stops the walk at the newest red it already holds. Never throws. */
+async function redOpener(
+  root: string,
+  wt: string,
+  tip: string,
+  since: string | undefined,
+  config: TumwaterConfig,
+): Promise<string> {
+  // Newest-first first-parent commits: from `since` (exclusive, the previous green head) to the
+  // tip, or the whole walk (newest-first) when there is no previous head to bound it by.
+  const raw = since
+    ? await gitTry(wt, "rev-list", "--first-parent", `${since}..${tip}`)
+    : await gitTry(wt, "rev-list", "--first-parent", `--max-count=${INHERIT_WALK_MAX}`, tip);
+  const commits = gitLines(raw);
+  if (commits.length === 0) return tip;
+  let lastRed: string | undefined;
+  try {
+    for (const commit of commits) {
+      // A checkout that fails reads as no further evidence (never throws, like the walks):
+      // stop with the newest red already held rather than check the wrong tree.
+      if ((await gitTry(wt, "checkout", "-q", "--detach", "--force", commit)) === null) break;
+      const { baseline } = await checkMainBaseline(wt, config, undefined, false, false, undefined, false, CHECK_TIER.merge, true);
+      // A red that names only quarantined tests settles as non-red (recordMainCheck), so it is a
+      // green boundary here too; counting it as a breaker would name the quarantined commit
+      // instead of the later commit that added the real failure.
+      const quarantinedOnly =
+        baseline?.status === "red" && onlyQuarantined(root, baseline.failingTests) !== null;
+      if (baseline?.status === "red" && !quarantinedOnly) {
+        lastRed = commit;
+        continue;
+      }
+      // A green, a quarantined-only red, or no verdict (a skipped red-required run): the breaker
+      // is the red just above this boundary.
+      break;
+    }
+  } finally {
+    // The mirror is shared; put it back on the tip the way the rules pass does. Best effort so
+    // a failed restore cannot lose the verdict this walk was only decorating.
+    await gitTry(wt, "checkout", "-q", "--detach", "--force", tip);
+  }
+  return lastRed ?? tip;
+}
+
+/** Settle a freshly-set red's opener (Hourly full check, part 3a/4): bisect the first-parent
+ * commits above the newest full green, re-running only the confirmed failing tests at each
+ * candidate in the shared `_gate-main` mirror (withMainTipWorktree), and name the oldest at
+ * which they fail. An indecisive bisection — no full green below, a one-commit range, no
+ * re-run command, or a candidate whose re-run reaches no verdict — falls back to `redOpener`,
+ * which walks the merged batch from `since` (the previous watched head) to the tip and names
+ * its oldest red commit, still skipping a doc-exempt tip; a fallback that returns the tip names
+ * the checked tip as today. Never throws. */
+async function settleOpener(
+  root: string,
+  mainBranch: string,
+  wt: string,
+  tip: string,
+  since: string | undefined,
+  config: TumwaterConfig,
+  failingTests: readonly string[],
+  files: Readonly<Record<string, string>> | undefined,
+): Promise<string | undefined> {
+  if (!canRerun(wt, config, failingTests)) return redOpener(root, wt, tip, since, config);
+  const candidates = await commitsAboveFullGreen(wt, tip);
+  if (candidates.length === 0) return redOpener(root, wt, tip, since, config);
+  const bisected = await withMainTipWorktree(root, mainBranch, async (mirror) =>
+    bisectAt(root, mirror, tip, candidates, config, failingTests, files),
+  ).catch(() => undefined);
+  return bisected ?? redOpener(root, wt, tip, since, config);
+}
+
+/** The bisection body over `candidates` (oldest-first) in `mirror`, which withMainTipWorktree
+ * holds at main's tip: binary-search the oldest candidate at which `failingTests` still fail
+ * when re-run alone, checking each candidate out in turn and leaving the mirror at main's tip.
+ * Undefined when a candidate's re-run reaches no verdict (nothing the bisection can conclude
+ * from). Never throws. */
+async function bisectAt(
+  root: string,
+  mirror: string,
+  mainTip: string,
+  candidates: readonly string[],
+  config: TumwaterConfig,
+  failingTests: readonly string[],
+  files: Readonly<Record<string, string>> | undefined,
+): Promise<string | undefined> {
+  let lo = 0;
+  let hi = candidates.length;
+  let found: string | undefined;
+  try {
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      const commit = candidates[mid]!;
+      await git(mirror, "checkout", "-q", "--detach", "--force", commit);
+      const rerun = await rerunTests(root, TUMWATER_SOURCE, mirror, config, failingTests, files, CHECK_TIER.merge);
+      if (rerun === null) return undefined;
+      if (rerun.failing.length > 0) {
+        found = commit;
+        hi = mid;
+      } else {
+        lo = mid + 1;
+      }
+    }
+  } finally {
+    await git(mirror, "checkout", "-q", "--detach", "--force", mainTip);
+  }
+  return found;
+}
+
+/** Name a settled red tip's spell as the culprit: the merging runner, the main_culprit
+ * event, and the onCulprit callback with the tip and its failing tests. The commit named is
+ * the one that OPENED the red (settleOpener) — by bisecting the first-parent commits above
+ * the newest full green at which re-running only the failing tests fails (part 3a/4), or the
+ * nearest non-exempt first-parent value when the bisection cannot run or a doc-exempt tip
+ * cannot have changed the suite — never a doc-only tip: blaming one would name a merge in
+ * the G1 phrase (src/baseline/main-guardrails.ts) and the ci heal prompt
+ * (src/baseline/main-red.ts) that did not break anything. `culprit` is that opener
+ * (already computed by settleOpener in the red branch and shared with the first-red
+ * main_check's sha), so the blame and the re-attributed red event name the same commit.
+ * The opener is named once per spell with the tip's failing tests and, when the newest
+ * merged event names the opener, its runner; while the spell is open a later tip
+ * re-settling red re-attributes nothing. */
+function reportCulprit(root: string, onCulprit: ((culprit: MainCulprit) => void) | undefined, baseline: MainBaseline, culprit: string): void {
+  // A red spell that is already open keeps its opener named: the first red tip since the
+  // last green caused the red, so a later tip re-settling red (a doc-exempt tip cannot
+  // change the suite, and a code tip does not open a SECOND spell until a green closed the
+  // first) is not re-attributed — no new event, no new heal prompt (the heal dedup already
+  // re-queues when the failing set returns after a green).
+  const open = redSpellOpeners.get(root);
+  if (open !== undefined) {
+    // A full-check fallback on a later head re-settles the spell's open set from that check:
+    // the head may have healed one failure and introduced another, and `knownMainFailures`
+    // reads the open set while the spell is open. Keep the opener (no re-attribution).
+    redSpellOpeners.set(root, {
+      opener: open.opener,
+      tests: baseline.failingTests ?? [],
+      ...(baseline.failingTestFiles ? { files: baseline.failingTestFiles } : {}),
+      ...(baseline.failingOffenders ? { offenders: baseline.failingOffenders } : {}),
+    });
+    return;
+  }
+  redSpellOpeners.set(root, {
+    opener: culprit,
+    tests: baseline.failingTests ?? [],
+    ...(baseline.failingTestFiles ? { files: baseline.failingTestFiles } : {}),
+    ...(baseline.failingOffenders ? { offenders: baseline.failingOffenders } : {}),
+  });
+  const runner = mergingRoleOf(root, culprit);
+  logEventBestEffort(root, {
+    source: TUMWATER_SOURCE,
+    type: "main_culprit",
+    commit: culprit,
+    ...(runner !== undefined ? { runner } : {}),
+    failingTests: baseline.failingTests ?? [],
+  });
+  onCulprit?.({
+    commit: culprit,
+    failingTests: baseline.failingTests ?? [],
+    ...(baseline.failingTestFiles ? { failingTestFiles: baseline.failingTestFiles } : {}),
+    tip: baseline.sha,
+  });
+}
+
 export function createMainWatch(
   root: string,
   mainBranch: string,
@@ -310,193 +556,6 @@ export function createMainWatch(
     }
   }
 
-  /** The shared settlement helpers, captured once per watch so the rules pass and the full-check
-   * pass (Hourly full check, part 2c/4) settle a verdict identically. */
-  /** Run the declared build check on main's tip, confirming a red once and quarantining a flake
-   * whose confirmation passes. A red whose failing tests can be re-run on their own (canRerun) is
-   * confirmed by re-running just those tests, so the full check runs once per tip: a test that
-   * passes there is quarantined, and the red narrows to the tests that failed again (or turns
-   * green when none did). A re-run that reaches no verdict leaves the first red standing. Without
-   * a re-run command the whole check runs again, as before. Returns the check's result and
-   * whether any full run actually executed (false for a cache hit, a skip, or a sleep-spanned
-   * run). `config` is the live one at the moment of the run. */
-  async function runBaselineCheck(wt: string, config: TumwaterConfig): Promise<{ check: BaselineCheck; ran: boolean }> {
-    let ran = false;
-    const onRun = baselineCheckLogger(root, TUMWATER_SOURCE);
-    const hook: typeof onRun = (run) => {
-      ran = true;
-      onRun(run);
-    };
-    let check = await checkMainBaseline(wt, config, hook, false, false, undefined, false, CHECK_TIER.merge, true);
-    if (check.baseline?.status !== "red") return { check, ran };
-    const first = check.baseline;
-    const named = first.failingTests ?? [];
-    if (canRerun(wt, config, named)) {
-      const rerun = await rerunTests(root, TUMWATER_SOURCE, wt, config, named, first.failingTestFiles, CHECK_TIER.merge);
-      if (rerun) {
-        // Each test that failed and then passed on this same tree is a flake.
-        const passed = named.filter((t) => !rerun.failing.includes(t));
-        if (passed.length > 0) quarantineTests(root, passed, passed.join("\n"));
-        const settled = settleRedByRerun(first.sha, rerun.failing);
-        if (settled) check = { baseline: settled };
-      }
-      return { check, ran };
-    }
-    check = await checkMainBaseline(wt, config, hook, true, false, undefined, false, CHECK_TIER.merge, true);
-    // A red the same tree's confirming re-run turns green is a flake: quarantine its tests.
-    if (check.baseline?.status === "green") quarantineTests(root, named, named.join("\n"));
-    return { check, ran };
-  }
-
-  /** The covered-commit count for a main_check event: the first-parent commits between the
-   * previous and new watched heads, or 1 when there is no previous head. */
-  async function countCovered(wt: string, previous: string | undefined, sha: string): Promise<number> {
-    if (previous === undefined) return 1;
-    const counted = Number(((await gitTry(wt, "rev-list", "--first-parent", "--count", `${previous}..${sha}`)) ?? "").trim());
-    return Number.isFinite(counted) && counted > 0 ? counted : 1;
-  }
-
-  /** Settle the verdict for a checked baseline: distinguish quarantined-only reds, record
-   * main's known failures, count the covered commits, and log the main_check event. For a
-   * freshly-opened red spell the event's sha is the spell's opener (redOpener), not the tip
-   * checked, so G1's "red since <sha>" names the commit that broke the suite; a green or a
-   * re-check of an already-open spell keeps the tip. Returns whether the tip settled red (a
-   * red naming tests that are not all quarantined). */
-  async function recordMainCheck(
-    wt: string,
-    baseline: MainBaseline,
-    previous: string | undefined,
-    ran: boolean,
-    started: number,
-    openerSha?: string,
-  ): Promise<boolean> {
-    // A red naming only quarantined tests counts as green: no redeploy hold.
-    const quarantined = baseline.status === "red" ? onlyQuarantined(root, baseline.failingTests) : null;
-    const red = baseline.status === "red" && !quarantined;
-    knownFailures.set(root, red ? (baseline.failingTests ?? []) : []);
-    knownOffenders.set(root, red ? (baseline.failingOffenders ?? {}) : {});
-    const covered = await countCovered(wt, previous, baseline.sha);
-    logEventBestEffort(
-      root,
-      mainCheckEvent(baseline, red, quarantined, covered, ran ? Date.now() - started : 0, red ? openerSha : undefined),
-    );
-    return red;
-  }
-
-  /** The commit that OPENED a settled red: the newest first-parent commit since the previous
-   * settled green whose tree is red — the first commit to turn the suite red above that green.
-   * The watch checks only the newest tip per poll, so when several commits land in one poll
-   * batch and an earlier one broke the suite, the first red is first SEEN at the non-breaker
-   * tip (BUGS.md 2026-11-04: the guardrail named the newest red tip instead of the breaker two
-   * first-parent commits behind it). To name the actual breaker, walk first-parent commits from
-   * the tip back toward the previous green head (`since`), running the declared check on each
-   * tree, and return the oldest commit whose tree reads red (a red naming only quarantined
-   * tests settles as non-red, so it is a green boundary, not a breaker). A red-only range with
-   * no green in the walk — or a missing `since` (no previous head) — returns the oldest red
-   * found within the walk's bound (INHERIT_WALK_MAX); a git failure or a skipped (no-verdict)
-   * run reads conservative and stops the walk at the newest red it already holds. Never throws. */
-  async function redOpener(
-    wt: string,
-    tip: string,
-    since: string | undefined,
-    config: TumwaterConfig,
-  ): Promise<string> {
-    // Newest-first first-parent commits: from `since` (exclusive, the previous green head) to the
-    // tip, or the whole walk (newest-first) when there is no previous head to bound it by.
-    const raw = since
-      ? await gitTry(wt, "rev-list", "--first-parent", `${since}..${tip}`)
-      : await gitTry(wt, "rev-list", "--first-parent", `--max-count=${INHERIT_WALK_MAX}`, tip);
-    const commits = gitLines(raw);
-    if (commits.length === 0) return tip;
-    let lastRed: string | undefined;
-    try {
-      for (const commit of commits) {
-        // A checkout that fails reads as no further evidence (never throws, like the walks):
-        // stop with the newest red already held rather than check the wrong tree.
-        if ((await gitTry(wt, "checkout", "-q", "--detach", "--force", commit)) === null) break;
-        const { baseline } = await checkMainBaseline(wt, config, undefined, false, false, undefined, false, CHECK_TIER.merge, true);
-        // A red that names only quarantined tests settles as non-red (recordMainCheck), so it is a
-        // green boundary here too; counting it as a breaker would name the quarantined commit
-        // instead of the later commit that added the real failure.
-        const quarantinedOnly =
-          baseline?.status === "red" && onlyQuarantined(root, baseline.failingTests) !== null;
-        if (baseline?.status === "red" && !quarantinedOnly) {
-          lastRed = commit;
-          continue;
-        }
-        // A green, a quarantined-only red, or no verdict (a skipped red-required run): the breaker
-        // is the red just above this boundary.
-        break;
-      }
-    } finally {
-      // The mirror is shared; put it back on the tip the way the rules pass does. Best effort so
-      // a failed restore cannot lose the verdict this walk was only decorating.
-      await gitTry(wt, "checkout", "-q", "--detach", "--force", tip);
-    }
-    return lastRed ?? tip;
-  }
-
-  /** Settle a freshly-set red's opener (Hourly full check, part 3a/4): bisect the first-parent
-   * commits above the newest full green, re-running only the confirmed failing tests at each
-   * candidate in the shared `_gate-main` mirror (withMainTipWorktree), and name the oldest at
-   * which they fail. An indecisive bisection — no full green below, a one-commit range, no
-   * re-run command, or a candidate whose re-run reaches no verdict — falls back to `redOpener`,
-   * which walks the merged batch from `since` (the previous watched head) to the tip and names
-   * its oldest red commit, still skipping a doc-exempt tip; a fallback that returns the tip names
-   * the checked tip as today. Never throws. */
-  async function settleOpener(
-    wt: string,
-    tip: string,
-    since: string | undefined,
-    config: TumwaterConfig,
-    failingTests: readonly string[],
-    files: Readonly<Record<string, string>> | undefined,
-  ): Promise<string | undefined> {
-    if (!canRerun(wt, config, failingTests)) return redOpener(wt, tip, since, config);
-    const candidates = await commitsAboveFullGreen(wt, tip);
-    if (candidates.length === 0) return redOpener(wt, tip, since, config);
-    const bisected = await withMainTipWorktree(root, mainBranch, async (mirror) =>
-      bisectAt(mirror, tip, candidates, config, failingTests, files),
-    ).catch(() => undefined);
-    return bisected ?? redOpener(wt, tip, since, config);
-  }
-
-  /** The bisection body over `candidates` (oldest-first) in `mirror`, which withMainTipWorktree
-   * holds at main's tip: binary-search the oldest candidate at which `failingTests` still fail
-   * when re-run alone, checking each candidate out in turn and leaving the mirror at main's tip.
-   * Undefined when a candidate's re-run reaches no verdict (nothing the bisection can conclude
-   * from). Never throws. */
-  async function bisectAt(
-    mirror: string,
-    mainTip: string,
-    candidates: readonly string[],
-    config: TumwaterConfig,
-    failingTests: readonly string[],
-    files: Readonly<Record<string, string>> | undefined,
-  ): Promise<string | undefined> {
-    let lo = 0;
-    let hi = candidates.length;
-    let found: string | undefined;
-    try {
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        const commit = candidates[mid]!;
-        await git(mirror, "checkout", "-q", "--detach", "--force", commit);
-        const rerun = await rerunTests(root, TUMWATER_SOURCE, mirror, config, failingTests, files, CHECK_TIER.merge);
-        if (rerun === null) return undefined;
-        if (rerun.failing.length > 0) {
-          found = commit;
-          hi = mid;
-        } else {
-          lo = mid + 1;
-        }
-      }
-    } finally {
-      await git(mirror, "checkout", "-q", "--detach", "--force", mainTip);
-    }
-    return found;
-  }
-
   /** The per-head pass (Hourly full check, part 2c/4): the deterministic diff rules run in the
    * shared `_gate-main` mirror on every new head, covering every commit since the last watched
    * head. The full check no longer runs here — its own pass (fullPass) owns it in `_main-full` —
@@ -580,60 +639,6 @@ export function createMainWatch(
     }
   }
 
-  /** Name a settled red tip's spell as the culprit: the merging runner, the main_culprit
-   * event, and the onCulprit callback with the tip and its failing tests. The commit named is
-   * the one that OPENED the red (settleOpener) — by bisecting the first-parent commits above
-   * the newest full green at which re-running only the failing tests fails (part 3a/4), or the
-   * nearest non-exempt first-parent value when the bisection cannot run or a doc-exempt tip
-   * cannot have changed the suite — never a doc-only tip: blaming one would name a merge in
-   * the G1 phrase (src/baseline/main-guardrails.ts) and the ci heal prompt
-   * (src/baseline/main-red.ts) that did not break anything. `culprit` is that opener
-   * (already computed by settleOpener in the red branch and shared with the first-red
-   * main_check's sha), so the blame and the re-attributed red event name the same commit.
-   * The opener is named once per spell with the tip's failing tests and, when the newest
-   * merged event names the opener, its runner; while the spell is open a later tip
-   * re-settling red re-attributes nothing. */
-  function reportCulprit(baseline: MainBaseline, culprit: string): void {
-    // A red spell that is already open keeps its opener named: the first red tip since the
-    // last green caused the red, so a later tip re-settling red (a doc-exempt tip cannot
-    // change the suite, and a code tip does not open a SECOND spell until a green closed the
-    // first) is not re-attributed — no new event, no new heal prompt (the heal dedup already
-    // re-queues when the failing set returns after a green).
-    const open = redSpellOpeners.get(root);
-    if (open !== undefined) {
-      // A full-check fallback on a later head re-settles the spell's open set from that check:
-      // the head may have healed one failure and introduced another, and `knownMainFailures`
-      // reads the open set while the spell is open. Keep the opener (no re-attribution).
-      redSpellOpeners.set(root, {
-        opener: open.opener,
-        tests: baseline.failingTests ?? [],
-        ...(baseline.failingTestFiles ? { files: baseline.failingTestFiles } : {}),
-        ...(baseline.failingOffenders ? { offenders: baseline.failingOffenders } : {}),
-      });
-      return;
-    }
-    redSpellOpeners.set(root, {
-      opener: culprit,
-      tests: baseline.failingTests ?? [],
-      ...(baseline.failingTestFiles ? { files: baseline.failingTestFiles } : {}),
-      ...(baseline.failingOffenders ? { offenders: baseline.failingOffenders } : {}),
-    });
-    const runner = mergingRoleOf(root, culprit);
-    logEventBestEffort(root, {
-      source: TUMWATER_SOURCE,
-      type: "main_culprit",
-      commit: culprit,
-      ...(runner !== undefined ? { runner } : {}),
-      failingTests: baseline.failingTests ?? [],
-    });
-    onCulprit?.({
-      commit: culprit,
-      failingTests: baseline.failingTests ?? [],
-      ...(baseline.failingTestFiles ? { failingTestFiles: baseline.failingTestFiles } : {}),
-      tip: baseline.sha,
-    });
-  }
-
   /** Warn that a watch pass could not check `mainHead`, once per head: both passes share this
    * so an unreadable main (both throw) produces one warning, not two. */
   function warnCouldNotCheck(mainHead: string, err: unknown): void {
@@ -689,7 +694,7 @@ export function createMainWatch(
         return;
       }
       const started = Date.now();
-      const { check, ran } = await runBaselineCheck(wt, config);
+      const { check, ran } = await runBaselineCheck(root, wt, config);
       const baseline = check.baseline;
       // A skipped or sleep-spanned run made no verdict: the head still counts as watched, so the
       // next poll does not start another run for it. The diff rules still run on this tip, in
@@ -721,8 +726,8 @@ export function createMainWatch(
       // the spell already deleted, so it too names its own opener.
       const opener = redSpellOpeners.has(root)
         ? undefined
-        : await settleOpener(wt, baseline.sha, coveredFrom, config, baseline.failingTests ?? [], baseline.failingTestFiles);
-      const red = await recordMainCheck(wt, baseline, coveredFrom, ran, started, opener);
+        : await settleOpener(root, mainBranch, wt, baseline.sha, coveredFrom, config, baseline.failingTests ?? [], baseline.failingTestFiles);
+      const red = await recordMainCheck(root, wt, baseline, coveredFrom, ran, started, opener);
       // A settled non-red verdict (a green, or a red naming only quarantined tests) clears the
       // heal-dedup key, so a failing set that returns after a green main is healed again, and
       // drops the heal prompts still waiting for a red this tip has passed. A settled red
@@ -739,7 +744,7 @@ export function createMainWatch(
       // re-naming the culprit (BUGS.md 2026-10-30 mis-attribution). The map holds the open
       // spell's opener, so a second red while the spell is still open re-checks without
       // re-naming; a green clears the entry (above) so a later red names its own opener.
-      reportCulprit(baseline, opener ?? baseline.sha);
+      reportCulprit(root, onCulprit, baseline, opener ?? baseline.sha);
     });
   }
 
@@ -804,13 +809,15 @@ export function createMainWatch(
     // withFullMainTipWorktree (which would queue behind this very pass).
     if (detectBuildCheck(root, config)) {
       const confirmStarted = Date.now();
-      const { check: confirmCheck } = await runBaselineCheck(wt, config);
+      const { check: confirmCheck } = await runBaselineCheck(root, wt, config);
       const confirmBaseline = confirmCheck.baseline;
       if (!confirmBaseline) return true; // no verdict: the cleared head stays watched, with no full verdict
       lastWatched = confirmBaseline.sha;
       fullCheckDueAt = undefined;
       fullCheckBase = undefined;
       const confirmedOpener = await settleOpener(
+        root,
+        mainBranch,
         wt,
         confirmBaseline.sha,
         tip,
@@ -819,6 +826,7 @@ export function createMainWatch(
         confirmBaseline.failingTestFiles,
       );
       const confirmRed = await recordMainCheck(
+        root,
         wt,
         confirmBaseline,
         tip,
@@ -832,7 +840,7 @@ export function createMainWatch(
         redSpellOpeners.delete(root);
         return true;
       }
-      reportCulprit(confirmBaseline, confirmedOpener ?? confirmBaseline.sha);
+      reportCulprit(root, onCulprit, confirmBaseline, confirmedOpener ?? confirmBaseline.sha);
     }
     return true; // the open red was narrowed or cleared on this head
   }
