@@ -5,6 +5,24 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract verify collapse split, part 4/4: `alreadyGated` is removed and the direct merge tests drive the gate inside `mergeApprovedChange` (planned 2026-11-08 by the plan role, splitting the 2026-11-06 part 3c/6 after feature held it too large for one run; requires part 3/4 landed; sibling to parts 1/4–3/4, which prepared the pipeline tests and collapsed the drain; touches src/merge/merge-core.ts test/merger.test.ts test/merger-check.test.ts test/merge-withdrawn.test.ts) — done 2026-11-08 by the feature role
+
+**Goal.** `mergeApprovedChange` always owns the queued change's one gate; no caller can skip it. The direct merge tests drive the gate-inside merge and assert the same merge-phase behavior when the gate approves, and the withdrawn cases drive `mergeApprovedChange` directly instead of `verifyRequest` followed by a marked merge.
+
+**Approach.**
+- `src/merge/merge-core.ts`: remove `alreadyGated` from `MergeRequest` and the `if (!req.alreadyGated)` branch, so `mergeApprovedChangeIn` always checks withdrawal and runs `reviewQueuedChange` under `gatePermit` before `mergeToMain`. Update the doc comments that describe the verify-stage marked path.
+- `test/merger.test.ts` and `test/merger-check.test.ts`: remove every `alreadyGated: true`; for cases whose only subject was skipping the gate, retarget them to the one-gate rule (the gate runs once and the merge proceeds when it approves) or delete them if the subject is gone. Keep the merge-phase cases that still hold when the gate approves.
+- `test/merge-withdrawn.test.ts`: keep the verify-only case; rewrite the two merge cases to call `mergeApprovedChange` once without `alreadyGated` and keep the withdrawn-pin assertions.
+- `test/fixtures/merger-fixtures.ts`: `verifyAndMerge` already calls `mergeApprovedChange` without the flag; update its comment to say the call owns the gate.
+
+**Acceptance criteria.**
+- `grep -rn 'alreadyGated' src/ test/` prints nothing.
+- A direct `mergeApprovedChange` call on a queued diff runs the gate once before `mergeToMain`; a diff that edits the brief block, PRINCIPLES.md or a credential, or whose check fails for a test of its own, is rejected and does not merge.
+- The withdrawn cases still assert `withdrawn`, an unmoved main, a deleted pin and the recorded warning, now through one `mergeApprovedChange` call.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/merger.test.ts, test/merger-check.test.ts, test/merge-withdrawn.test.ts, test/runner-revision.test.ts and test/merge-pipeline.test.ts, then the gate.
+
 ### `tumwater salvage --grep <text>` keeps only the kept workspace patches whose file name or patch text contains the text, so an operator can find the patch they mean without reading each one (planned 2026-11-08 by the plan role; the filter twin of `quarantine --grep` and `reviews --grep` in the same read-only list family — `salvage --show <n>` landed but the list still prints every kept patch, and patches are named only by timestamp, slot and role, so the file name alone rarely says what work it holds; independent in code and tests of every `## Planned` entry — `grep -n 'salvage --grep\|grepSalvage\|cli-salvage-command\|status-salvage' PLANS.md BUGS.md` prints nothing before this entry, and no waiting heading or touches list names src/cli/cli-salvage-command.ts, src/status/status-salvage.ts, test/cli-salvage.test.ts or test/status-salvage.test.ts (the Subtract parts that name docs/cli.md edit other command rows, not the salvage row); touches src/cli/cli-salvage-command.ts src/status/status-salvage.ts src/cli/help.ts docs/cli.md test/cli-salvage.test.ts test/status-salvage.test.ts) — done 2026-11-08 by the feature role
 
 **Goal.** `tumwater salvage` lists every patch kept under `.tumwater/salvage/` and `--show <n>` reads one, but an operator who remembers only a file the patch touched (`src/merge/…`), a role, or a phrase must read the patches one by one. Add `tumwater salvage --grep <text>` to keep only the patches whose file name or patch text contains the text (case-insensitively), numbered exactly as the unfiltered list numbers them, so `--show <n>` still addresses the same patch.

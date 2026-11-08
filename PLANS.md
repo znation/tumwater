@@ -52,24 +52,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Run test/doctor-checks.test.ts, test/doctor.test.ts, test/event-format.test.ts, test/retention.test.ts, test/config.test.ts and test/config-aliases.test.ts, then the project's gate. If a surviving row or key loses its case, restore it; do not weaken an assertion to make the gate pass.
 
-### Subtract verify collapse split, part 4/4: `alreadyGated` is removed and the direct merge tests drive the gate inside `mergeApprovedChange` (planned 2026-11-08 by the plan role, splitting the 2026-11-06 part 3c/6 after feature held it too large for one run; requires part 3/4 landed; sibling to parts 1/4–3/4, which prepared the pipeline tests and collapsed the drain; touches src/merge/merge-core.ts test/merger.test.ts test/merger-check.test.ts test/merge-withdrawn.test.ts)
-
-**Goal.** `mergeApprovedChange` always owns the queued change's one gate; no caller can skip it. The direct merge tests drive the gate-inside merge and assert the same merge-phase behavior when the gate approves, and the withdrawn cases drive `mergeApprovedChange` directly instead of `verifyRequest` followed by a marked merge.
-
-**Approach.**
-- `src/merge/merge-core.ts`: remove `alreadyGated` from `MergeRequest` and the `if (!req.alreadyGated)` branch, so `mergeApprovedChangeIn` always checks withdrawal and runs `reviewQueuedChange` under `gatePermit` before `mergeToMain`. Update the doc comments that describe the verify-stage marked path.
-- `test/merger.test.ts` and `test/merger-check.test.ts`: remove every `alreadyGated: true`; for cases whose only subject was skipping the gate, retarget them to the one-gate rule (the gate runs once and the merge proceeds when it approves) or delete them if the subject is gone. Keep the merge-phase cases that still hold when the gate approves.
-- `test/merge-withdrawn.test.ts`: keep the verify-only case; rewrite the two merge cases to call `mergeApprovedChange` once without `alreadyGated` and keep the withdrawn-pin assertions.
-- `test/fixtures/merger-fixtures.ts`: `verifyAndMerge` already calls `mergeApprovedChange` without the flag; update its comment to say the call owns the gate.
-
-**Acceptance criteria.**
-- `grep -rn 'alreadyGated' src/ test/` prints nothing.
-- A direct `mergeApprovedChange` call on a queued diff runs the gate once before `mergeToMain`; a diff that edits the brief block, PRINCIPLES.md or a credential, or whose check fails for a test of its own, is rejected and does not merge.
-- The withdrawn cases still assert `withdrawn`, an unmoved main, a deleted pin and the recorded warning, now through one `mergeApprovedChange` call.
-- `npm run test:gate` passes.
-
-**Tests.** Run test/merger.test.ts, test/merger-check.test.ts, test/merge-withdrawn.test.ts, test/runner-revision.test.ts and test/merge-pipeline.test.ts, then the gate.
-
 ### Subtract verify collapse, part 3d/6: The verify-stage modules and the now-empty approved/verifying maps are deleted; direct callers use the one-step merge (planned 2026-11-04 by the plan role, splitting the 2026-11-04 too-large part 3b/5 after feature held it too large for one run, then renumbering it when parts 3b/6 and 3c/6 split it further; requires Subtract verify collapse split part 4/4 landed; touches src/merge/merge-drain.ts src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-pipeline.ts src/merge/merge-head.ts src/merge/merge-queue.ts src/orchestrator/orchestrator-poll.ts test/merge-requeue.test.ts test/runner-revision.test.ts test/fixtures/merger-fixtures.ts test/fixtures/merge-fixtures.ts)
 
 **Goal.** The verify stage and its maps are gone: `merge-verify.ts` and `merge-batch.ts` are deleted, `MergePipeline` is `{ merge, postReview }`, `settleAbortedApproved`, `liveRoles` and `ApprovedMerge` are deleted, and the orchestrator's per-poll approved-abort settle call is removed. The requeue tests drive `notBefore` and the failed-drop dedupe through `drainMergeQueue`; `runner-revision.test.ts` calls `mergeApprovedChange` (which now runs the gate) and asserts its `RunResult` and state bookkeeping instead of a `VerifyVerdict`; `merge-withdrawn.test.ts` does the same and keeps its withdrawn-pin assertions. No production module imports a verify-stage symbol.

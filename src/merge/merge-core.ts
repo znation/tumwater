@@ -64,11 +64,6 @@ export interface MergeRequest {
   /** The backlog entry the authoring run was assigned (MergeEntry.claim): the verify and the
    * in-lock merge drop the change as `withdrawn` once main no longer lists it. */
   claim?: MergeClaim;
-  /** Set only by the verify stage's merge path (merge-drain.ts's startMerge): the change already
-   * passed its own gate in its verify, so `mergeApprovedChange` fast-forwards it without a second
-   * gate. Absent means this call owns the queued change's one gate — it checks for withdrawal and
-   * runs reviewQueuedChange before it merges. */
-  alreadyGated?: boolean;
 }
 
 /** The repo scope every merge step reads from its caller: the worktree root, the branch
@@ -103,8 +98,8 @@ export interface MergerContext extends PiRunWiring, MergeScopeContext {
   state: RunnerState;
   /** Acquire the team lease a gating call holds while it runs reviewQueuedChange (part 3b/6):
    * takes the same VERIFY_TIER tier the verify stage holds around its gate and returns the
-   * release. Absent on the live merge path — that path always passes `alreadyGated` and never
-   * gates here — and in the fixtures, whose contexts have no semaphore. */
+   * release. The merge drain supplies it for every task; the fixtures leave it unset, so a
+   * fixture merge never contends for a team permit. */
   gatePermit?: () => Promise<() => void>;
 }
 
@@ -389,19 +384,15 @@ export async function recordRejectedChange(
   state.revision = { sha: rejectedHead, round: nextRound, at: Date.now(), reasonCounts: counts };
 }
 
-/** Merge a head through the merge slot — the one way an approved change merges now (the
- * batch/stack path is gone, part 4m/3). The request either already passed its own gate in its
- * verify and carries `alreadyGated`, so it merges without a second gate, or it has not passed a
- * gate yet and this call owns the queued change's one gate: it checks for withdrawal (and drops
- * the pin) then runs reviewQueuedChange before it touches main. When `alreadyGated` is set,
- * re-gating would rebase first, and by then main has usually moved (a
- * fallback's earlier entries just merged): the rebase rewrites the approved sha, the gate's
- * exact-sha `lastApprovedHead` short-circuit misses, and every such merge paid a second build
- * check and model review of a change it had already approved (BUGS.md 2026-09-23). Here a clean
- * rebase of the approved head is accepted as-is: mergeToMain's own in-lock rebase moves it onto
+/** Merge a head through the merge slot — the one way a change merges now (the batch/stack path
+ * is gone, part 4m/3; the verify stage's marked fast-forward is gone, part 4/4). This call owns
+ * the queued change's one gate: it checks for withdrawal (and drops the pin), then runs
+ * reviewQueuedChange under the caller's `gatePermit` before anything touches main, so every diff
+ * is reviewed exactly once before it merges. The gate's own rebase rewrites a pin that fell
+ * behind main; a clean rebase is accepted as-is: mergeToMain's in-lock rebase moves it onto
  * main's tip and fast-forwards. A conflicting rebase gets mergeToMain's resolver — the rule for
  * a pin whose pre-gate rebase conflicted. `lastApprovedHead` is neither read nor widened: the
- * caller vouches for `req.sha` (only changes the gate approved or exempted are merged). Owns
+ * gate vouched for the head it judged. Owns
  * the merge ref's lifecycle from here: deleted on merge, KEPT on every non-terminal outcome
  * (aborted, merge_conflict, merge_blocked) for the next run's leftover recovery. An abort that has
  * already fired returns "aborted" before anything starts, ref kept — the merge's step-boundary
@@ -417,33 +408,31 @@ export async function mergeApprovedChange(ctx: MergerContext, req: MergeRequest)
 
 async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Promise<RunResult> {
   const wt = await ensureDetachedWorktree(ctx.root, mergeWorktreePath(ctx.root), req.sha);
-  // A request without `alreadyGated` has not passed its own gate yet: run the queued change's one
-  // gate in the merge worktree before anything touches main. The verify stage's path still gates
-  // each queued change once and hands the approved change down marked, so no change is gated twice.
-  if (!req.alreadyGated) {
-    // A change main no longer lists is dropped before its rebase moves the change's base past the
-    // removal (merge-withdrawn.ts), exactly as the verify stage asks it before its own rebase.
-    const withdrawn = await withdrawnPinReason(wt, ctx.mainBranch, req, "HEAD");
-    if (withdrawn !== null) {
-      await dropWithdrawnPin(ctx.root, req.role, ctx.state, withdrawn);
-      return "withdrawn";
-    }
-    // A gating call holds the verify stage's team lease for the gate's length, so a concurrent
-    // verification or pre-merge check waits while this change is judged, and holds none while the
-    // merge runs below (the merge's conflict resolver takes MERGE_TIER itself).
-    const release = ctx.gatePermit ? await ctx.gatePermit() : undefined;
-    try {
-      const outcome = await reviewQueuedChange(ctx, req, wt, ctx.state, ctx.foldUsage);
-      if (outcome.kind === "result") return outcome.result;
-      // Merge the gate-cleared head (the synced pin the gate judged), carrying verifiedHead only
-      // when the pre-check ran green on exactly that head — the same rule the verify verdict used.
-      req =
-        outcome.gate.verifiedHead === outcome.sha
-          ? { ...req, sha: outcome.sha, verifiedHead: outcome.gate.verifiedHead }
-          : { ...req, sha: outcome.sha };
-    } finally {
-      release?.();
-    }
+  // This call owns the queued change's one gate: run it in the merge worktree before anything
+  // touches main. Every merge goes through here, so a queued diff never merges unreviewed and
+  // never pays a second gate.
+  // A change main no longer lists is dropped before its rebase moves the change's base past the
+  // removal (merge-withdrawn.ts), exactly as the verify stage asks it before its own rebase.
+  const withdrawn = await withdrawnPinReason(wt, ctx.mainBranch, req, "HEAD");
+  if (withdrawn !== null) {
+    await dropWithdrawnPin(ctx.root, req.role, ctx.state, withdrawn);
+    return "withdrawn";
+  }
+  // A gating call holds the verify stage's team lease for the gate's length, so a concurrent
+  // verification or pre-merge check waits while this change is judged, and holds none while the
+  // merge runs below (the merge's conflict resolver takes MERGE_TIER itself).
+  const release = ctx.gatePermit ? await ctx.gatePermit() : undefined;
+  try {
+    const outcome = await reviewQueuedChange(ctx, req, wt, ctx.state, ctx.foldUsage);
+    if (outcome.kind === "result") return outcome.result;
+    // Merge the gate-cleared head (the synced pin the gate judged), carrying verifiedHead only
+    // when the pre-check ran green on exactly that head — the same rule the verify verdict used.
+    req =
+      outcome.gate.verifiedHead === outcome.sha
+        ? { ...req, sha: outcome.sha, verifiedHead: outcome.gate.verifiedHead }
+        : { ...req, sha: outcome.sha };
+  } finally {
+    release?.();
   }
   const result = await mergeToMain(
     {

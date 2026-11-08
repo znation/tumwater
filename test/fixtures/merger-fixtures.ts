@@ -103,9 +103,10 @@ export function batchWiring(ctx: MergerContext): BatchRoleWiring {
   };
 }
 
-/** Merge one pinned change the way the pipeline does — the gate and the (approved) one-change
- * merge through a single mergeApprovedChange call, which now owns the queued change's one gate —
- * returning the outcome the pipeline writes back. */
+/** Merge one pinned change the way the pipeline does — the gate and the merge through a single
+ * mergeApprovedChange call, which owns the queued change's one gate (checks withdrawal, runs
+ * reviewQueuedChange, then fast-forwards the head the gate cleared) — returning the outcome the
+ * pipeline writes back. */
 export async function verifyAndMerge(ctx: MergerContext, req: MergeRequest): Promise<RunResult> {
   return mergeApprovedChange(ctx, req);
 }

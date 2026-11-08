@@ -97,10 +97,9 @@ test("a plan still listed on main merges: the guard leaves a change that finishe
     const { ctx } = makeCtx(root, state);
     const req = request(sha, { role: ROLE, claim: BETA });
 
-    const verdict = await verifyRequest(ctx, req, batchWiring(ctx));
-    assert.equal(verdict.kind, "approved");
-    // alreadyGated: the verify just ran the gate — the merge must not run it again.
-    assert.equal(await mergeApprovedChange(ctx, { ...req, sha: verdict.kind === "approved" ? verdict.sha : sha, alreadyGated: true }), "changed");
+    // Part 4/4: one mergeApprovedChange call owns the change's one gate — it checks withdrawal
+    // (Beta is still listed, so none), runs the gate (the declared check passes), then merges.
+    assert.equal(await mergeApprovedChange(ctx, req), "changed");
 
     const merged = sh(root, "git", "show", "main:PLANS.md");
     assert.doesNotMatch(merged.split("## Done")[0]!, /### Beta/, "Beta left Planned with the merge");
@@ -119,7 +118,9 @@ test("the merge lock drops a change whose plan main deleted after its verify app
 
     // The operator withdraws Beta while the approved change waits for the merge slot.
     const withdrawnMain = withdrawBeta(root);
-    const result = await mergeApprovedChange(ctx, { ...req, sha: verdict.kind === "approved" ? verdict.sha : sha, alreadyGated: true });
+    // Part 4/4: the merge call still drops the withdrawn change before its gate — the
+    // withdrawal check precedes reviewQueuedChange inside mergeApprovedChange.
+    const result = await mergeApprovedChange(ctx, { ...req, sha: verdict.kind === "approved" ? verdict.sha : sha });
 
     assert.equal(result, "withdrawn");
     assert.equal(mainSha(root), withdrawnMain, "main did not move");

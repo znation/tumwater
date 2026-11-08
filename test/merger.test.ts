@@ -32,10 +32,10 @@ import {
 // These tests pin the sequential merge stages (the check, then the review).
 process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
 
-// Unit coverage for a queued change's gate and its merge — both now owned by one
+// Unit coverage for a queued change's gate and its merge — both owned by one
 // mergeApprovedChange call (the withdrawal check, the review gate, and the rebase-and-fast-forward
-// merge; part 3b/6), driven here in queue order exactly as the merge pipeline runs it
-// (merge-drain.ts, with the verify stage's path handing approved changes down marked alreadyGated).
+// merge), driven here in queue order exactly as the merge pipeline runs it (merge-drain.ts): every
+// call runs the queued change's one gate.
 // The gate's check and, when it runs, its reviewer, go through the wiring; merge-to-main.ts's
 // conflict resolver goes through the wiring's runPi, which is stubbed.
 //
@@ -68,12 +68,13 @@ test("an approved merge merges on main and deletes the ref", async () => {
   );
 });
 
-test("an unmarked request runs the gate before it merges, and a marked one skips it", async () => {
-  // Part 3b/6: mergeApprovedChange owns the queued change's one gate. An unmarked request (no
-  // `alreadyGated`) checks for withdrawal and runs reviewQueuedChange in the merge worktree before
-  // anything touches main — a passing gate merges and deletes the pin. A marked request (the verify
-  // stage's path) carries `alreadyGated` and fast-forwards with no second gate: no second check
-  // run, so the declared check's log sees exactly one entry.
+test("a direct mergeApprovedChange runs the gate once for each change before it merges", async () => {
+  // Part 4/4: every mergeApprovedChange call owns the queued change's one gate — it checks for
+  // withdrawal and runs reviewQueuedChange in the merge worktree before anything touches main, and
+  // a passing gate merges and deletes the pin. Two changes each merge through one call, so the
+  // declared check's log grows by exactly one line per merge. Each change runs in a fresh repo:
+  // a second untracked pin off the same main would sweep the first merge's root .tumwater state
+  // into its tree and the re-gated merge would block (the fixture's pinOffMain takes no slot).
   const rec = path.join(tmpdir("merger-gate-"), "seen");
   await withPi(
     reviewerPi("VERDICT: approve"),
@@ -83,32 +84,34 @@ test("an unmarked request runs the gate before it merges, and a marked one skips
       const state = freshRunnerState(ROLE);
       const { ctx } = makeCtx(root, state);
 
-      assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed", "the unmarked request merges");
+      assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed", "the direct request merges");
       assert.equal(await refSha(root, REF), null, "the gate cleared it: the pin is gone");
       const afterFirst = fs.readFileSync(rec, "utf8").trim();
       assert.notEqual(afterFirst, "", "the gate's pre-check ran");
 
-      // A second, unmarked change merges the same way — but a marked one (the verify stage's path)
-      // fast-forwards with no second check run, so the log grows by no line.
-      const sha2 = pinOffMain(
-        root,
-        (d) => fs.appendFileSync(path.join(d, "seed.txt"), "more work\n"),
-        "more work",
+      // A second, direct change merges the same way — each call gates its own change exactly once.
+      const second = await pinnedFixture();
+      declareCheck(second.root, `#!/bin/sh\ngit rev-parse HEAD >> ${rec}\necho ok\n`);
+      const secondState = freshRunnerState(ROLE);
+      const { ctx: ctx2 } = makeCtx(second.root, secondState);
+      assert.equal(await mergeApprovedChange(ctx2, request(second.sha)), "changed", "a second direct request merges");
+      assert.equal(
+        fs.readFileSync(rec, "utf8").trim().split("\n").length,
+        afterFirst.split("\n").length + 1,
+        "one gate per merge: the second call ran exactly one check",
       );
-      await setRef(root, REF, sha2);
-      assert.equal(await mergeApprovedChange(ctx, request(sha2, { alreadyGated: true })), "changed", "the marked request merges");
-      assert.equal(fs.readFileSync(rec, "utf8").trim(), afterFirst, "no second gate: the marked request ran no check");
-      assert.equal(await refSha(root, REF), null, "the second pin is gone too");
+      assert.equal(await refSha(second.root, REF), null, "the second pin is gone too");
     },
   );
 });
 
-test("an unmarked request main has withdrawn returns withdrawn without a gate run", async () => {
-  // Part 3b/6: the withdrawal check precedes the gate, so a change main no longer lists is dropped
-  // unmerged (its pin deleted, the reason recorded) and its gate never starts. Withdrawal is judged
-  // only for the work roles (feature, bugfix — merge-withdrawn.ts), so this case runs as a feature
-  // role with a claim for an entry main does not list. A passing check is declared; its log would
-  // gain a line only if the gate ran, so its emptiness is the proof of "no gate run".
+test("a direct mergeApprovedChange call on a change main has withdrawn returns withdrawn without a gate run", async () => {
+  // Part 4/4: every call checks withdrawal before its gate, so a change main no longer lists is
+  // dropped unmerged (its pin deleted, the reason recorded) and its gate never starts. Withdrawal
+  // is judged only for the work roles (feature, bugfix — merge-withdrawn.ts), so this case runs
+  // as a feature role with a claim for an entry main does not list. A passing check is declared;
+  // its log would gain a line only if the gate ran, so its emptiness is the proof of "no gate
+  // run".
   const rec = path.join(tmpdir("merger-withdrawn-"), "seen");
   const WROLE = "feature";
   await withPi(
@@ -505,17 +508,18 @@ test("the merge checkout is shared, kept detached, and persists at a terminal ou
     async () => {
       const { root, sha } = await pinnedFixture();
       // Re-pointed (part 4l/3): there is no in-lock merge check — a merge is a rebase and a
-      // fast-forward — so the first call merges outright ("changed", terminal) and the pin
-      // goes; what this case pins is the shared `_merge` checkout: kept detached and persisted
-      // at the terminal outcome for the next merge to reuse.
+      // fast-forward — so the first call gates once (its declared check passes), merges
+      // outright ("changed", terminal) and the pin goes; what this case pins is the shared
+      // `_merge` checkout: kept detached and persisted at the terminal outcome for the next
+      // merge to reuse.
+      declareCheck(root, "#!/bin/sh\necho ok\n"); // the gate's one check approves the change
       const state = freshRunnerState(ROLE);
       const { ctx } = makeCtx(root, state);
       const mergeWt = mergeWorktreePath(root);
 
-      // Terminal: a single merge (no in-lock check) fast-forwards and deletes the pin; the
-      // shared checkout persists for the next merge.
-      // alreadyGated: the case tests the merge's checkout — the gate is the verify stage's job.
-      assert.equal(await mergeApprovedChange(ctx, request(sha, { alreadyGated: true })), "changed", "a single merge fast-forwards with no in-lock check");
+      // Terminal: the gate approves, the merge fast-forwards and deletes the pin; the shared
+      // checkout persists for the next merge.
+      assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed", "a single merge gates once and fast-forwards with no in-lock check");
       assert.equal(await refSha(root, REF), null, "the pin is gone after merging");
       assert.ok(fs.existsSync(mergeWt), "_merge persists at the terminal outcome");
       assert.equal(

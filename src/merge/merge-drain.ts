@@ -139,7 +139,7 @@ class GateDeferredByHold extends Error {}
 
 /** The merge task — main's one writer in the pipeline: the first eligible queue head's gate and
  * merge in one task (a rebase onto main's tip then the fast-forward under the merge lock). The
- * task's `mergeApprovedChange` call owns the change's ONE gate: without `alreadyGated` it runs
+ * task's `mergeApprovedChange` call owns the change's ONE gate: it runs
  * `reviewQueuedChange` in the merge worktree under the gate's VERIFY_TIER team lease
  * (mergerCtxOf's gatePermit, released by merge-core before `mergeToMain`) before the merge, so
  * a queued diff never merges unreviewed and never pays a second gate. Each defined result is
@@ -270,8 +270,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
               runNumber: entry.run,
               summary: entry.summary,
               // The task owns the change's one gate: mergeApprovedChange runs reviewQueuedChange
-              // under gatePermit before mergeToMain (alreadyGated stays for direct callers until
-              // part 4/4 removes it).
+              // under gatePermit before mergeToMain.
               ...(entry.claim !== undefined ? { claim: entry.claim } : {}),
               body: entry.body,
               highFriction: entry.highFriction,
