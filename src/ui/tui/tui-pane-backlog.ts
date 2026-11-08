@@ -297,11 +297,13 @@ export function createBacklogPane(
   // Summary cycle keep the key on their own views).
   const backlogRetire = (ctx: TuiPaneCtx): boolean => {
     if (promptLineFree(ctx.es) && session.view === session.roleIds.length + 1) {
-      // Ctrl+Y twice retires the selected plan or bug through the locked `retirePlan`/
-      // `retireBug` core the CLI and the dashboard drawer use: a plan leaves ## Planned for
-      // ## Done, or a bug ## Open for ## Fixed, as a retired record, with no wake — retiring
-      // is closing work as not built or fixed, which must not prompt a role. A question and
-      // the read-only done/fixed/answered rows are refused by selectedEditableEntry.
+      // Ctrl+Y twice retires the selected plan or bug through the locked, title-checked
+      // `tryRetirePlan`/`tryRetireBug` core the CLI and the dashboard drawer use — the same
+      // move as `plan|bug --retire`: a plan leaves ## Planned for ## Done, or a bug ## Open
+      // for ## Fixed, as a retired record, with no wake — retiring is closing work as not
+      // built or fixed, which must not prompt a role. An entry whose list shrank or shifted
+      // since the arm reports moved and retires nothing; a question and the read-only
+      // done/fixed/answered rows are refused by selectedEditableEntry.
       const selected = selectedEditableEntry(session, selectedEntry, "retired");
       if (selected !== null) {
         const kind = selected.kind;
