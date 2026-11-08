@@ -212,7 +212,7 @@ async function precheckReviewerFix(ctx: MergePipelineContext, entry: PostReview,
   // fix's) both land: the known-failure excuse is the gate's own and the main watch re-checks
   // the tip after it lands. An unverified (host-sleep) tree is also a `failed` the pre-check
   // attributes to nothing — it stays out of main for the next poll's retry, as the `rejected`
-  // withholding above already covers the fix that must not land.
+  // withholding below already covers the fix that must not land.
   if (pre.resolved && (pre.resolved.decision === "rejected" || pre.resolved.decision === "failed")) return false;
   return true;
 }
@@ -233,13 +233,13 @@ async function precheckReviewerFix(ctx: MergePipelineContext, entry: PostReview,
  * reset-and-merge cannot collide with a fresh review.
  * Resolves `merged` to the commit that actually landed — from our own `merged` event (not the
  * pre-rebase `fix`), falling back to main's head — and unsubscribes in `finally`. A failed merge
- * returns a non-terminal RunResult and is never a throw. */
+ * returns a non-terminal RunResult and names no merged commit, so it never reads main's head. */
 async function mergeReviewerFixCommit(
   ctx: MergePipelineContext,
   entry: PostReview,
   fix: string,
   author: ReturnType<typeof resolveAuthor>,
-): Promise<{ result: RunResult; merged: string }> {
+): Promise<{ result: "changed"; merged: string } | { result: Exclude<RunResult, "changed">; merged: null }> {
   const runPi = async (wt: string, prompt: string, sessionName: string, config?: Parameters<typeof author.runMergePi>[3]) => {
     const hooks = resolveWaitStage(ctx.root, entry.role);
     if (!ctx.semaphore.canLeaseAtOnce(MERGE_TIER)) hooks.waiting();
@@ -324,8 +324,11 @@ async function mergeReviewerFixCommit(
   } finally {
     unsubscribe();
   }
-  const merged = mergedMine.get(entry.role) ?? (await headOf(ctx.root, ctx.mainBranch));
-  return { result, merged };
+  if (result === "changed") {
+    const merged = mergedMine.get(entry.role) ?? (await headOf(ctx.root, ctx.mainBranch));
+    return { result, merged };
+  }
+  return { result, merged: null };
 }
 
 /** Settle a fix that landed on main as `fixed`: delete the fix ref, settle the entry naming the
