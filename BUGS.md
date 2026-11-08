@@ -13,6 +13,25 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Cause:** the self-check-revert path only adds the `selfCheckReverted` outcome flag and loss cause; it does not surface the finding itself, so the bugfix role never takes the recurring problem.
 - **Fix sketch:** surface a finding the one-turn fix-up cannot close to the backlog, so a recurring finding becomes work instead of being re-burned each run.
 
+### `an aborted merge settles despite an unwritable state file: no throw, entry dropped, pin discarded` failed, then passed on the same tree (quarantined by tumwater 2026-11-08)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ an aborted merge settles despite an unwritable state file: no throw, entry dropped, pin discarded (596.146041ms)
+AssertionError [ERR_ASSERTION]: the aborted change's pin was discarded
+- null
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-9/dist/test/merge-pipeline-2.test.js:134:16)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: '0a1bbbc0ddf0bea4ef295505580d730eaeac2a71',
+expected: null,
+operator: 'strictEqual',
+diff: 'simple'
+}
+lint: clean
+~~~~
+
 ## Fixed
 
 ## Verified
