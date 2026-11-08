@@ -93,6 +93,7 @@ export class Semaphore {
    * tier-0 arrivals instead of starving behind them. In-flight holders are never preempted —
    * they run to completion and their release is what hands out the permit. */
   async acquire(tier: number): Promise<void> {
+    this.grantAheadOf(tier);
     if (this.inUse < this.capacity - this.reserveFor(tier)) {
       this.inUse += 1;
       return;
@@ -144,7 +145,8 @@ export class Semaphore {
     };
     const resume = async (): Promise<void> => {
       if (closed || !paused || parkedResume !== null) return;
-      if (this.canLeaseAtOnce(tier)) {
+      this.grantAheadOf(tier);
+      if (this.inUse < this.capacity - this.reserveFor(tier)) {
         this.inUse += 1;
         paused = false;
         return;
@@ -160,6 +162,7 @@ export class Semaphore {
     };
     const lease: SemaphoreLease = { release, pause, resume };
 
+    this.grantAheadOf(tier);
     if (this.inUse < this.capacity - this.reserveFor(tier)) {
       this.inUse += 1;
       return lease;
@@ -199,13 +202,22 @@ export class Semaphore {
     this.waiters.splice(i, 0, waiter);
   }
 
-  /** Synchronously report whether acquireLease(tier) would return at once — the team total
-   * has headroom right now and the tier's reserve is satisfied. Mirrors the exact fast-path
-   * condition acquireLease's first branch uses, so a caller can decide whether to show a
-   * "waiting for a slot" state before awaiting a lease that would actually park
-   * (merge-drain.ts's resolver wrapper). */
+  /** Synchronously report whether acquireLease(tier) would return at once — no parked waiter
+   * ahead of it would take the remaining permits first, and the team total still has headroom
+   * for the tier after its reserve. Mirrors acquireLease's grant-ahead and fast-path steps, so
+   * a caller can decide whether to show a "waiting for a slot" state before awaiting a lease
+   * that would actually park (merge-drain.ts's resolver wrapper). */
   canLeaseAtOnce(tier: number): boolean {
-    return this.inUse < this.capacity - this.reserveFor(tier);
+    // A fast-path admission still queues behind every parked waiter whose effective tier is
+    // not greater than its own, so account for the permits those waiters would take first.
+    let inUse = this.inUse;
+    for (const w of this.waiters) {
+      const effective = this.effectiveTier(w);
+      if (effective > tier) break;
+      if (inUse >= this.capacity - this.reserveFor(effective)) return false;
+      inUse += 1;
+    }
+    return inUse < this.capacity - this.reserveFor(tier);
   }
 
   /** Hand every parked waiter a permit it can take in one pass. The one home of the permit
@@ -216,18 +228,23 @@ export class Semaphore {
    * withheld too. An aged tier ≥ 1 waiter counts as tier 0 (effectiveTier), so it bypasses
    * the reserve and is granted like a work waiter. */
   private drive(): void {
+    this.grantAheadOf(Number.POSITIVE_INFINITY);
+  }
+
+  /** Hand permits to the parked waiters a fresh `tier` arrival would queue behind (effective
+   * tier at or below its own), so an immediate admission cannot barge an aged waiter that is
+   * already due a permit. Stops at the first waiter the cap or reserve withholds from: the
+   * arriving tier is withheld there too, because reserveFor is monotone in tier. */
+  private grantAheadOf(tier: number): void {
     for (;;) {
-      let granted = false;
-      for (let i = 0; i < this.waiters.length; i++) {
-        const w = this.waiters[i]!;
-        if (this.inUse >= this.capacity - this.reserveFor(this.effectiveTier(w))) break; // reserve/full stops the scan
-        this.waiters.splice(i, 1);
-        this.inUse += 1;
-        w.resolve();
-        granted = true;
-        break;
-      }
-      if (!granted) break;
+      const waiter = this.waiters[0];
+      if (waiter === undefined) return;
+      const effective = this.effectiveTier(waiter);
+      if (effective > tier) return;
+      if (this.inUse >= this.capacity - this.reserveFor(effective)) return;
+      this.waiters.shift();
+      this.inUse += 1;
+      waiter.resolve();
     }
   }
 

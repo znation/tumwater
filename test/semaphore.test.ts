@@ -393,6 +393,32 @@ test("an aged tier-1 waiter bypasses the reserve so the work headroom cannot sta
   assert.equal(granted, true, "the aged tier-1 waiter bypasses the reserve for a reserved permit");
 });
 
+test("an aged tier-1 waiter takes the reserved headroom before a fresh tier-0 arrival", async () => {
+  // The reserve leaves one permit free while the young maintenance waiter is withheld. Nothing
+  // drives the queue when that waiter ages, so a fresh work arrival must not take the free
+  // permit through the acquire fast path ahead of it.
+  let clock = 0;
+  const sem = new Semaphore(2, { now: () => clock, starveMs: 10_000 });
+  const order: string[] = [];
+  const snap = () => [...order]; // see the sibling age test for why not a bare `order`
+  await sem.acquire(0); // work holder: in-use 1, leaving one permit
+  sem.setReserve(1); // that permit is reserved for work, so the tier-1 waiter parks
+  void sem.acquire(1).then(() => order.push("maint"));
+  await flushImmediate();
+  assert.deepEqual(snap(), [], "the reserve withholds the free permit from the young maintenance waiter");
+
+  clock = 20_000; // age it past the bound; no release or resize drives the queue
+  void sem.acquire(0).then(() => order.push("work"));
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint"], "the aged waiter takes the reserved permit before the fresh work arrival");
+
+  sem.release(); // holder frees its permit: the parked work arrival takes it
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint", "work"], "the work arrival takes the next freed permit");
+  sem.release();
+  sem.release();
+});
+
 
 // --- Pause/resume (part 5i/6): a lease hands its team permit back for an idle wait ---
 
