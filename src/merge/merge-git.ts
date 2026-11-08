@@ -13,11 +13,11 @@ import { topAndHidden } from "../collections.js";
 
 /** Git plumbing for the merge flow: rebasing a worktree branch onto main, inspecting and
  * finishing a conflicted rebase, and fast-forwarding main — the mechanics, with no merge policy
- * of their own. Merge policy (lock → rebase → verify → ff, conflict resolution, batch ff)
- * lives in merge-to-main.ts on top of these. Moved here from merge-to-main.ts: the cluster started
- * as merge-to-main.ts-only helpers (organize run 78, moving them out of git/git.ts), but the
- * merger and the batch merger grew to call them directly, leaving merge-to-main.ts exporting
- * generic rebase/ff plumbing that had nothing to do with merging. */
+ * of their own. Merge policy (lock → rebase → ff-merge → conflict retry) lives in
+ * merge-to-main.ts on top of these. Moved here from merge-to-main.ts: the cluster started as
+ * merge-to-main.ts-only helpers (organize run 78, moving them out of git/git.ts), but the merge
+ * flow's callers grew to use them directly, leaving merge-to-main.ts as the policy and these as
+ * its shared git mechanics. */
 
 /** Paths currently in conflict (unmerged) in the worktree. C-quoted names are decoded to
  * real paths — a non-ASCII conflicted file arrives as `"h\303\251llo.ts"` (core.quotePath is on
