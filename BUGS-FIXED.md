@@ -5,6 +5,14 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A revision run kept a stale held-entries list naming its own bug, so the pre-queue self-check reverted every revision and bugfix looped for 19 runs (found by operator session 2026-11-08 from the team's event log) — fixed 2026-11-08 by the operator
+
+- **Symptom:** bugfix's "Tier-1 role waiters …" change was rejected at the gate on 2026-11-05 23:42 for one unused export. Every later bugfix run (1847–1865, through 2026-11-08 under DeepSeek and then Qwen) re-applied the revision, made the one-word fix, and then got the stage finding "this run moved a backlog entry another instance of this role is working on". It reverted all five files and ended `TUMWATER_NOTHING_TO_DO`. That made 19 straight `no_change` runs, and the role then sat in the 36000 s idle backoff. No sibling held the entry: `bugfix-2`…`bugfix-6` had no claims.
+- **Cause:** `state.heldElsewhere` was refreshed only on the claim-assignment path (`assignClaim` in src/scheduling/admit.ts). A poll while the change waited in the merge queue listed the entry as held, since the queue's claim holds it (`queuedMergeClaims` in scope.ts). After the rejection, the runner was admitted through the `hasOutstandingWork` branch, which left that list as it was. So the revision run staged against a list naming its own bug, and `heldMovedFinding` (src/stage/stage-backlog-checks.ts) told it to revert. The inbox/resume path kept a stale list the same way.
+- **Fix:** every unclaimed admission in a claim group now re-reads `heldElsewhere` from the poll's held set (`heldTitlesOf`), on the revision/resume and inbox paths as well as the assignment path. Covered by three cases in test/orchestrator-scheduling.test.ts (revision, resume, queued prompt), each seeded with a stale list naming the runner's own entry. All three fail on the old admission code.
+
+**Validation gap:** none — the poll-level test reproduced the stale list deterministically and passes with the refresh.
+
 ### The ci role rewrote the user's global git identity to `tumwater ci`, so every repository on the host committed as tumwater (found by operator session 2026-11-06 from commit authorship in other projects) — fixed 2026-11-06 by the operator
 
 - **Symptom:** from 2026-10-24 ~18:33 PDT, `~/.gitconfig` and `~/tumwater/.git/config` both set `user.name = tumwater ci`, `user.email = ci@tumwater.local`. Commits in unrelated repositories (xetcas, infra, moon-landing, qwenrunner) were authored as tumwater ci. GitHub squash-merges then added `Co-authored-by: tumwater ci <ci@tumwater.local>` to 24 commits on those projects' default branches. In tumwater, about 1,859 team merges carry committer `tumwater ci`, because `committerIdent` reads the ambient identity.

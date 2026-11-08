@@ -869,6 +869,44 @@ test("a stale held-entries list is cleared once the role has no claim group", as
   assert.equal(feature.state.heldElsewhere, undefined);
 });
 
+// The held-entries list is the poll's snapshot of what siblings hold, so every unclaimed
+// admission rewrites it. A revision run used to keep the snapshot taken while its own change
+// waited in the merge queue (the queue's claim held the entry), so the list named the
+// revision's own bug and the stage's held-entry finding told each run to revert it: bugfix
+// re-applied and reverted one revision for 19 runs (2026-11-05..08).
+for (const [label, setup] of [
+  ["a revision", (r: RoleRunner) => { r.state.revision = { sha: "abc", round: 1, at: T0 }; }],
+  ["a resume", (r: RoleRunner) => { r.state.resumePending = true; }],
+  ["a queued prompt", (r: RoleRunner, root: string) => { enqueueRolePrompt(root, r.role, "hi"); }],
+] as const) {
+  test(`${label} run re-reads its held-entries list, which never names its own entry`, async () => {
+    const own = "Own bug (found by x 2026-01-01)";
+    const sibling = "Sibling bug (found by x 2026-01-01)";
+    const config = defaultConfig();
+    config.roles.bugfix = { enabled: true, instances: 2 };
+    const roleProviders = new Map([["bugfix", undefined], ["bugfix-2", undefined]]);
+    const admit = async (siblingClaims: boolean) => {
+      const root = tmpdir("tumwater-scheduling-held-refresh-");
+      fs.writeFileSync(path.join(root, "BUGS.md"), bugsFile(`### ${own}\n\nBody.\n`, `### ${sibling}\n\nBody.\n`));
+      const primary = ranFeature(config, "bugfix");
+      const second = fakeRunner("bugfix-2", config);
+      if (siblingClaims) {
+        second.state.claim = { file: "BUGS.md", key: "sibling bug", title: sibling, at: T0, source: "assigned" };
+      }
+      setup(primary, root);
+      primary.state.heldElsewhere = [own]; // stale: written while its own change was queued
+      const ctx = schedulingCtx(root, [primary, second], roleProviders);
+      ctx.openBugsNow = true;
+      const reasons = await pollRunnerReasons(ctx);
+      assert.equal(reasons.has(primary), true, `${label} run is admitted`);
+      assert.equal(primary.state.claim, undefined, "it proceeds unassigned");
+      return primary.state.heldElsewhere;
+    };
+    assert.deepEqual(await admit(true), [sibling], "only the sibling's live claim is listed");
+    assert.equal(await admit(false), undefined, "nothing held: the list is cleared");
+  });
+}
+
 // The feature stand-down: a feature runner with no eligible plan skips its scheduled and
 // main-moved runs, and a `run --once` round settles every skipped feature runner.
 const ONE_REFUSED_PLAN = [

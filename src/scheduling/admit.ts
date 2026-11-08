@@ -91,7 +91,9 @@ function standDownForNoWork(
  * Otherwise, when the run is not an inbox/resume run, it takes the first free entry; an
  * extra instance with none free is skipped without touching its backoff, and the primary
  * stands down too while siblings hold every eligible entry, unless an operator wake is fresh
- * (then it runs unassigned). */
+ * (then it runs unassigned). Every unclaimed path re-reads `heldElsewhere` from this poll's
+ * held set: a list kept from an earlier poll can name the runner's own entry (one its queued
+ * change held), and the stage's held-entry finding then reverts the runner's own work. */
 function claimGroupAdmission(
   scope: SchedulingScope,
   runner: RoleRunner,
@@ -104,6 +106,7 @@ function claimGroupAdmission(
       return "admitted";
     } else if (hasOutstandingWork(runner.state)) {
       // finishes its own unrecorded entry
+      runner.state.heldElsewhere = heldTitlesOf(claimGroup.eligible, claimGroup.held);
       return "admitted";
     } else if (reason !== "inbox" && reason !== "resume") {
       // The group holds an unclaimed mid-entry sibling: assign nothing this poll, or a
@@ -115,10 +118,19 @@ function claimGroupAdmission(
       }
       return assignClaim(scope, runner, claimGroup.eligible, claimGroup.held);
     }
+    runner.state.heldElsewhere = heldTitlesOf(claimGroup.eligible, claimGroup.held);
   } else {
     runner.state.heldElsewhere = undefined; // no claim group (e.g. instances lowered to 1)
   }
   return "admitted";
+}
+
+/** The titles of the eligible entries the group holds this poll, in file order — the
+ * `<held-entries>` list an unassigned runner is shown and staged against — or undefined when
+ * none is held. */
+function heldTitlesOf(eligible: readonly EligibleEntry[], held: ReadonlySet<string>): string[] | undefined {
+  const titles = eligible.filter((e) => held.has(e.key)).map((e) => e.title);
+  return titles.length > 0 ? titles : undefined;
 }
 
 /** Assign the first free eligible entry to an unclaimed admitted runner: record the claim on
@@ -134,15 +146,12 @@ function assignClaim(
   const free = eligible.filter((e) => !held.has(e.key));
   const pick = assignNext(free);
   // An unassigned runner is told which entries its siblings hold (cleared when none).
-  const heldTitles = eligible.filter((e) => held.has(e.key)).map((e) => e.title);
-  runner.state.heldElsewhere = !pick && heldTitles.length > 0 ? heldTitles : undefined;
+  const heldTitles = heldTitlesOf(eligible, held);
+  runner.state.heldElsewhere = pick ? undefined : heldTitles;
   if (pick) {
     recordAssignedClaim(scope, runner, pick, held);
     return "admitted";
-  } else if (
-    instanceIndex(runner.role) >= 2 ||
-    (heldTitles.length > 0 && !freshlyWoken(runner.state))
-  ) {
+  } else if (instanceIndex(runner.role) >= 2 || (heldTitles !== undefined && !freshlyWoken(runner.state))) {
     // An idle extra instance, or a primary whose eligible entries siblings all hold
     // (unless an operator wake is fresh): no run, no backoff climb.
     noteSkip(scope.root, runner, "no-free-entry");
