@@ -135,9 +135,10 @@ interface MainWatch {
 const knownFailures = new Map<string, string[]>();
 
 /** The policy-scan offender lists of each root's newest watch verdict, keyed by root then by
- * failing test title (MainBaseline.failingOffenders, policy-offenders.ts). Part 1/2 of the
- * policy-offender work carries it here (and on the open red spell below) so a restored or
- * inherited red keeps it; nothing outside this plumbing reads it yet. */
+ * failing test title (MainBaseline.failingOffenders, policy-offenders.ts). It keeps a restored
+ * or inherited red intact (and the open red spell below narrows it with the tests); nothing
+ * outside this plumbing reads it — the stale-base series closed through the scans'
+ * offender-named subtests, not this map (BUGS-FIXED.md 2026-11-08). */
 const knownOffenders = new Map<string, Record<string, string[]>>();
 
 /** Each root's open red spell (Hourly full check, part 3b/4): the commit that OPENED the red —
@@ -158,7 +159,8 @@ interface OpenRedSpell {
    * the output named no file or a previous re-run dropped it. */
   files?: Readonly<Record<string, string>>;
   /** The policy-scan offender lists the red carried (MainBaseline.failingOffenders), narrowed as
-   * the spell's tests narrow. Red only; plumbing for part 2/2, no reader yet. */
+   * the spell's tests narrow. Red only; plumbing, no reader — the stale-base excuse closed
+   * via the scans' offender-named subtests (BUGS-FIXED.md 2026-11-08), not this map. */
   offenders?: Readonly<Record<string, string[]>>;
 }
 const redSpellOpeners = new Map<string, OpenRedSpell>();

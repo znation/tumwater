@@ -6,9 +6,10 @@
  * POLICY_OFFENDER_PREFIX line per offender (policyOffenderLine, tab-delimited so a title or
  * offender that contains a tab is still parseable) before its own assertion fails, so the check's
  * complete output carries both the machine list and the assertion diff; runBuildCheck
- * (build-check.ts) folds it into BuildCheckOutcome.failingOffenders. THIS part only captures; no
- * reader outside the plumbing consumes the map yet — part 2/2 (the stale-base excuse in
- * review-precheck.ts) reads it. */
+ * (build-check.ts) folds it into BuildCheckOutcome.failingOffenders. THIS part only captures;
+ * nothing reads the map: the stale-base series closed through the scans' offender-named subtests
+ * (BUGS-FIXED.md 2026-11-08) instead, so the map stays plumbing — carried on the saved verdicts
+ * and the watch spell for a restored or inherited red, with no reader. */
 
 /** The prefix of a machine-readable policy-offender line. */
 export const POLICY_OFFENDER_PREFIX = "tumwater-policy-offender";
