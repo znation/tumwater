@@ -93,8 +93,9 @@ DeepSeek tier needs no login or API key — and `"backend": "codex"` on the Code
 behavior, and how subscription runs are billed (as estimated spend, outside the daily cap) are in
 [docs/backends.md](docs/backends.md).
 
-**Default models by backend:** when a tier or job names no `model`, the backend's own tier
-defaults fill in (an explicit `model` always wins over them):
+**Default models by backend:** when a tier or job resolves no `model`, the backend's own tier
+defaults fill in (an explicit `model` always wins over them; a tier left out of a `model` map
+first inherits `default`):
 
 | backend | small | default | strong |
 | --- | --- | --- | --- |
