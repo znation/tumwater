@@ -8,7 +8,7 @@ import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { newTeamGateStates } from "../src/gates/gate-polls.js";
-import { pollBudgetGate } from "../src/gates/budget-gates.js";
+import { newBudgetGateState, pollBudgetGate } from "../src/gates/budget-gates.js";
 import { applyBudgetGateWiring, budgetPausedSubjects } from "../src/budget/budget-wiring.js";
 import type { TierFallbackMap } from "../src/config/config-fallbacks.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -16,6 +16,8 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { spentRunnerState } from "./fixtures/runner-fixtures.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
+import { defaultConfig } from "../src/config/config.js";
+import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { OrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 
 /** A minimal runner stand-in, as in test/gate-polls.test.ts: applyBudgetGateWiring assigns its
@@ -186,4 +188,46 @@ test("budgetPausedSubjects: a null-pair cap-pause folds the right roles", () => 
     "every role on a null-pair tier is held at the cap",
   );
   assert.ok(!atCap.budgetPausedRoles.has(DIRECTOR_ROLE), "the director is exempt");
+});
+
+test("a mixed free/priced team holds only the priced tier's roles at the cap (BUGS.md 2026-11-06)", () => {
+  // The rich half of the bug (BUGS.md 2026-11-06): free small/default primaries with no
+  // declared fallback resolve to served, so only the priced strong tier's roles are held. The
+  // serving resolution feeds the per-role pause set, so a free primary must not land there.
+  const root = tmpdir("budget-wiring-mixed-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  // A per-tier model map: free small/default primaries beside a priced strong primary. The
+  // cast widens defaultConfig's resolved `string` model view to the config schema's map form.
+  const config = defaultConfig() as TumwaterConfig;
+  config.model = { small: "free/qwen-free", default: "free/qwen-free", strong: "paid/gpt-x" };
+  config.maxDailyCostUsd = 10;
+  // Review off so the gate follows the tiers alone (a paused strong under an enabled review
+  // would also pause the team-wide gate; the per-role hold set is what this test checks).
+  config.review = { ...config.review, enabled: false };
+  // Force role tiers so the hold set is unambiguous: feature rides the priced strong tier,
+  // docs the free small tier.
+  config.roles.feature = { enabled: true, model: "strong" };
+  config.roles.docs = { enabled: true, model: "small" };
+  const runners = [
+    fakeRunner("feature", freshRunnerState("feature"), null, []),
+    fakeRunner("docs", freshRunnerState("docs"), null, []),
+    fakeRunner(DIRECTOR_ROLE, freshRunnerState(DIRECTOR_ROLE), null, []),
+  ];
+  const state = newBudgetGateState(config);
+  const over = [spentRunnerState("feature", 10)]; // spend at the cap
+  const polled = pollBudgetGate(state, { root, states: over, liveConfig: config, modelsPath: models });
+  assert.equal(polled.gate, "fallback", "the free primaries keep the gate serving, not paused");
+  assert.equal(polled.servingResolved.strong.pair, null, "the priced strong tier has no free seam");
+  const res = budgetPausedSubjects({
+    runners,
+    liveConfig: config,
+    budgetActive: polled.budgetActive,
+    servingResolved: polled.servingResolved,
+  });
+  assert.deepEqual(
+    [...res.budgetPausedRoles].sort(),
+    ["feature"],
+    "only the priced strong-tier role is held; free tiers' roles are not",
+  );
+  assert.ok(!res.budgetPausedRoles.has(DIRECTOR_ROLE), "the director is exempt");
 });

@@ -147,6 +147,26 @@ test("at the cap an opencode-free team keeps its primary; a priced pi role moves
   assert.equal(p.roleConfig.roles.feature?.model, undefined);
 });
 
+test("a free primary with no fallback still serves the tier at the cap: gate not paused (BUGS.md 2026-11-06)", () => {
+  // The reproduce from the bug: every tier's primary on a zero-cost pi model, no fallback or
+  // fallbackModel declared, cap reached — the gate must NOT pause, because the tiers' own
+  // primaries are free seams already. Before the fix `resolveTierFallbacks` only looked at the
+  // declared fallback chains, resolved every tier to `pair: null`, and the gate paused.
+  const root = tmpdir("budget-gates-free-primary-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const cfg = defaultConfig();
+  cfg.provider = "free";
+  cfg.model = "qwen-free";
+  cfg.maxDailyCostUsd = 10;
+  // `fallback` and `fallbackModel` stay unset.
+  const state = newBudgetGateState(cfg);
+  const over = [spentRunnerState("feature", 10)]; // spend already at the cap
+  const p = poll(root, state, cfg, models, over);
+  assert.equal(p.gate, "fallback", "a free primary serves its tier: the gate is not paused");
+  assert.notEqual(p.servingResolved.default.pair, null, "the default tier is served by its free primary");
+  assert.notEqual(p.servingResolved.strong.pair, null, "the strong tier is served by its free primary");
+});
+
 test("raising the cap resumes the gate: one budget_resumed event and the live config again", () => {
   const root = tmpdir("budget-gates-");
   const models = writeModelsFile(root, MODELS_JSON);

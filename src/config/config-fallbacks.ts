@@ -196,13 +196,34 @@ export function tierChainSteps(
 
 const stepField = (step: number): { step?: number } => (step > 0 ? { step } : {});
 
+/** A tier's own PRIMARY as a fallback-shaped pair — the free seam the tier runs on every day,
+ * so it counts as served at the cap when the tier declares no fallback (BUGS.md 2026-11-06).
+ * Built from withModelOverrides so the pair's name (`provider`/`model`) matches the seam name
+ * the model check keys the primary by (seamPairName), keeping the breaker and check verdicts
+ * on the primary aligned between the model-check and budget paths. null when the tier has no
+ * configured model — a tier with nothing to serve pauses as before. */
+function tierOwnPrimary(config: TumwaterConfig, tier: ModelTier): FallbackModelConfig | null {
+  const m = withModelOverrides(config, tier, {});
+  if (m.model === undefined) return null;
+  const nonPi = m.agent !== undefined && m.agent !== "pi";
+  return {
+    ...(nonPi ? { provider: m.agent, backend: m.agent } : { provider: m.provider }),
+    model: m.model,
+    ...(m.thinking !== undefined ? { thinking: m.thinking } : {}),
+  };
+}
+
 /** Which free pair each tier runs on at the daily cap (plans/model-tiers.md "Budget fallback
  * by tier", part 5a/8). A tier runs the first `usable(pair)` step of its own declared chain;
  * otherwise it borrows the first usable step of another tier's OWN chain — never one that
- * tier itself borrowed — in BORROW_ORDER's order; otherwise it pauses (`pair: null`). The
+ * tier itself borrowed — in BORROW_ORDER's order; otherwise, as the last resort, a tier whose
+ * own primary seam is usable counts as served (BUGS.md 2026-11-06: a free primary with no
+ * declared fallback must not pause at the cap — `usable` judges the primary like any step, so
+ * a priced primary still pauses); finally it pauses (`pair: null`). The
  * engine is pure: the caller supplies `usable` (part 5b/8 wires it to pair pricing and the
  * fallback breaker), so the same rules are testable with a stub and the gates cannot disagree
- * with each other. A config with no fallback at all resolves every tier to pause, and a single
+ * with each other. A config with no fallback at all resolves each tier to its own primary when
+ * usable, else to pause, and a single
  * `fallback: F` reads as default's own pair, which small and strong then borrow — today's
  * behavior. */
 export function resolveTierFallbacks(
@@ -222,6 +243,14 @@ export function resolveTierFallbacks(
       const theirs = firstUsable(t);
       if (theirs) return { pair: theirs.pair, from: t, ...stepField(theirs.step) };
     }
+    // Last resort: the tier's own primary is a free seam too, so a free primary with no
+    // declared fallback serves the tier at the cap instead of pausing (BUGS.md 2026-11-06).
+    // Only reached when nothing else resolves, so a declared/borrowed fallback still wins. The
+    // same `usable` judges the primary that judges a chain step — at the cap a priced primary
+    // is not usable — so `paused` now means no free seam exists for the tier, not merely that
+    // no fallback was declared. A tier with no configured model has nothing to serve.
+    const primary = tierOwnPrimary(config, tier);
+    if (primary !== null && usable(primary)) return { pair: primary, from: null };
     return { pair: null, from: null };
   };
   return { small: resolve("small"), default: resolve("default"), strong: resolve("strong") };

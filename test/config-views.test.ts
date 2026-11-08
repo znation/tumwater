@@ -173,7 +173,15 @@ test("fallbackPair resolves the fallback over the top-level values", () => {
   config.provider = "hf";
   config.model = "big-paid";
   config.thinking = "high";
-  assert.equal(fallbackPair(config), null, "no fallback configured");
+  // No fallback configured: the tier's own primary is the pair it would serve on (BUGS.md
+  // 2026-11-06 — resolveTierFallbacks falls back to the primary before pausing), so the
+  // config-only view reports it. A price-aware call still refuses a priced primary (see
+  // fallbackModelPair), which is what keeps the gate honest at the cap.
+  assert.deepEqual(fallbackPair(config), {
+    provider: "hf",
+    model: "big-paid",
+    thinking: "high",
+  });
 
   // Each field falls back to the top-level value — the same precedence a role's overrides use.
   assert.deepEqual(fallbackPair({ ...config, fallbackModel: { model: "local-free" } }), {
