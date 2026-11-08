@@ -858,7 +858,7 @@ test("backlog Ctrl+Y refuses a bug, a question, and a done row, and the budget e
   assert.equal(keys.state().selectedEntry, 4);
   ctrlY();
   assert.equal(keys.state().retireArmed, null, "a question arms nothing");
-  assert.match(keys.state().flash ?? "", /only a plan or open bug can be retired here/);
+  assert.match(keys.state().flash ?? "", /only a plan can be retired here/);
   assert.equal(read("PLANS.md"), plans + "\n## Done\n\n_None yet._\n");
   // a done plan row is read-only
   const withDone = plans + "\n## Done\n\n### Shipped (planned 2026-09-01, done 2026-10-06)\n\nbody\n";
@@ -2391,14 +2391,15 @@ test("Ctrl+Y is inert while budget mode holds the prompt line", () => {
   keys.handleKey(undefined, { name: "escape" });
 });
 
-test("Ctrl+Y no longer opens a reserve editor and the History Summary cycle runs everywhere", () => {
+test("Ctrl+Y no longer opens a reserve editor and the History Summary cycle runs on every view but the Backlog", () => {
   const root = makeRoot();
   writeEvents(root, [{ ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }]); // retired-name-ok: legacy event field in a fixture
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, []);
 
   // The claude-reserve editor is gone, so Ctrl+Y no longer holds the Activity line: the
-  // History Summary cycle (History's arm) now consumes it, as on every non-transcript view.
+  // History Summary cycle (History's arm) now consumes it, as on every non-transcript view
+  // but the Backlog, whose own arm retires the selected plan.
   keys.handleKey(undefined, { ctrl: true, name: "y" });
   assert.equal(keys.state().budgetMode, false, "no editor holds the line after Ctrl+Y on Activity");
   assert.equal(keys.state().historySummary, "role", "Ctrl+Y on Activity runs the History Summary cycle");

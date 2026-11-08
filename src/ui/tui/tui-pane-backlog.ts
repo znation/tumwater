@@ -17,10 +17,11 @@ import type { TuiPaneSession } from "./tui-pane-session.js";
  * arms' common prologue (Ctrl+X cancel, Ctrl+V move-to-top, Ctrl+R release, Ctrl+E edit,
  * Ctrl+Y retire): the
  * flat-index clamp and the empty / read-only-done / question guards, whose refusal flash
- * differs only in the action's verb. Returns the actionable `{ kind, position, picked }`, or
+ * names the action's verb (a retire names only a plan, since a bug has no TUI retire).
+ * Returns the actionable `{ kind, position, picked }`, or
  * null — after flashing the guard's message — when the selection is unactionable (an emptied
  * list, a done/fixed/answered entry, or a question). The caller then runs its own arm on the
- * result. All four arms require the same selection, so they cannot drift on how it is resolved.
+ * result. All five arms require the same selection, so they cannot drift on how it is resolved.
  * The session, flat() and flashMessage() are structurally shared by the backlog and entry
  * editors' sessions. */
 export function selectedEditableEntry(
@@ -38,7 +39,7 @@ export function selectedEditableEntry(
     return null;
   }
   if (picked.label === "question") {
-    session.flashMessage(`only a plan or open bug can be ${verb} here`);
+    session.flashMessage(verb === "retired" ? "only a plan can be retired here" : `only a plan or open bug can be ${verb} here`);
     return null;
   }
   const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
