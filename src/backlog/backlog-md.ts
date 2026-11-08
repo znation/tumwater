@@ -186,8 +186,9 @@ export function nextSectionHeading(
  * index of the next `## ` heading (or `lines.length`). Fence-aware through the shared
  * fencedHeadingTitle guard, so a quoted `## ` line is body text. null when the section is
  * absent. The single home of the section boundary the writers share: backlog-write.ts cuts the
- * section a filed entry is appended to and the `## Done` section a retired plan moves into,
- * and backlog-archive.ts cuts the live and archive sections it moves entries between. The
+ * section a filed entry is appended to and the finished section a retired entry moves into
+ * (`## Done` for a plan, `## Fixed` for a bug), and backlog-archive.ts cuts the live and
+ * archive sections it moves entries between. The
  * heading is found with the same guard sectionLines uses, then the end is nextSectionHeading's
  * one boundary walk — so the rule lives in one place rather than being restated here. */
 export function sectionSpan(
