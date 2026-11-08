@@ -350,13 +350,24 @@ export async function gateBuildPrecheck(
   // never has to wait a parked check out — nor a queued one: a check still waiting for a check
   // permit when the signal fires never spawns, and settles `aborted` here too. A check that
   // finds its permit free under an already-aborted signal still runs and reaches its own
-  // verdict, caught by the `aborted` checks in the attribution path below, so the
-  // pre-existing shutdown case keeps its two attempts.
+  // verdict, caught by the abort check after its retry below, so the pre-existing shutdown case
+  // keeps its two attempts.
   if (preCheck.outcome.skipReason === "aborted") {
     return { resolved: { decision: "failed", aborted: true } };
   }
   const { check, outcome } = preCheck;
   const settled = await retriedGateOutcome(root, role, check, outcome, runGateCheck);
+  // An abort that fired while the check ran is authoritative over whatever it decided
+  // (BUGS.md 2026-11-08): a user abort or shutdown kills a check still running (skipReason
+  // "aborted", above), but under load the kill can land after the check's own subprocess
+  // finished (a bounded wait cap, a slow SIGTERM), which would otherwise let a stopped change
+  // sail through the gate into the merge — a green verdict, but equally a skipped check or a
+  // failure the gate would excuse and approve. reviewPinnedChange observes the signal before
+  // the gate, but this verdict is the seam the late kill slips through; fail closed so a
+  // consumed abort always stops the change before any approving path reads the outcome.
+  if (ctx.signal?.aborted) {
+    return { resolved: { decision: "failed", aborted: true } };
+  }
   // A failed run that spanned a host sleep past the tolerance leaves the tree unverified: the
   // gate attributes nothing and keeps the commit for a re-merge.
   const sleep = unverifiedSleepResult(root, role, settled);
@@ -368,16 +379,6 @@ export async function gateBuildPrecheck(
   // so a passing check under an aborted signal would otherwise sail through and merge.
   if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
   if (settled.status === "passed") {
-    // An abort that fired while the check ran is authoritative over a green verdict (BUGS.md
-    // 2026-11-08): a user abort or shutdown kills a check still running (skipReason "aborted",
-    // above), but under load the kill can land after the check's own subprocess finished green
-    // (a bounded wait cap, a slow SIGTERM), which would otherwise let a stopped change sail
-    // through the gate into the merge. reviewPinnedChange observes the signal before the gate
-    // and the merge's step boundaries keep observing it, but this green verdict is the seam the
-    // late kill slips through; fail closed so a consumed abort always stops the change.
-    if (ctx.signal?.aborted) {
-      return { resolved: { decision: "failed", aborted: true } };
-    }
     // Passed: this exact tree just went green under the project's own declared check. Hand
     // the verdict to the merge path via verifiedHead — it seeds the red-main baseline with
     // the SHA that actually becomes main (the rebased head, which may differ from `head`),

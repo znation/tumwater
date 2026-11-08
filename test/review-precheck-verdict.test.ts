@@ -203,6 +203,28 @@ test("a consumed abort overrides a green pre-check: the gate fails closed, not a
   });
 });
 
+test("a consumed abort overrides an excused pre-check too: a skipped check is not approved", async () => {
+  // The same seam as the green case above, on the path that never reaches the passed branch: a
+  // broken toolchain skips the check with no verdict about the tree, which the gate would
+  // otherwise approve. A fired abort must stop the change here too, not only over a green.
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool",
+    "#!/bin/sh\necho 'xcrun: error: unable to find utility' >&2\nexit 1\n",
+  );
+  const head = await headOf(wt, "HEAD");
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const state = freshRunnerState(ROLE);
+    const controller = new AbortController();
+    controller.abort();
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), signal: controller.signal }, state);
+    assert.equal(result.decision, "failed", "a fired abort fails the merge closed, not approved");
+    assert.equal(result.aborted, true, "the gate names the abort");
+    assert.ok(!fs.existsSync(marker), "no reviewer run");
+    assert.notEqual(state.lastApprovedHead, head, "the skipped head is not recorded as approved");
+  });
+});
+
 test("diffRuleReasons returns the gate's rules in order", async () => {
   const changedFiles = async (wt: string, base: string): Promise<string[]> =>
     (await treeDiffFiles(wt, base, await headOf(wt, "HEAD"))) ?? [];
