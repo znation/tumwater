@@ -8,8 +8,8 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
-// The `reviews` command: the post-merge review queue, via the CLI the way cli-queue.test.ts
-// tests `queue` — an initialized repo, child-process runs, output assertions.
+// The `reviews` command: the post-merge review queue, via the CLI — an initialized repo,
+// child-process runs, output assertions.
 
 function seed(repo: string): void {
   writeFileDeep(
@@ -58,8 +58,7 @@ test("reviews prints an entry's waiting age and omits it for an entry without a 
   const r = await cli(repo, "reviews");
   assert.equal(r.code, 0);
   // The enqueued entry prints `1. improve sha · <age> ago · tidy the parser`; the no-timestamp
-  // entry prints no age between its sha and its summary — the same `\d+s ago` regex convention
-  // test/cli-queue.test.ts pins `tumwater queue`'s age with.
+  // entry prints no age between its sha and its summary.
   assert.match(
     r.stdout,
     new RegExp(`1\\. improve ${'a'.repeat(8)} · \\d+[mhd] ago · tidy the parser`),

@@ -1,12 +1,10 @@
-/** The read-only query commands' bodies (status, diff, queue, backlog), split out of
+/** The read-only query commands' bodies (status, diff, backlog, quarantine), split out of
  * cli.ts's dispatcher: main() routes to a cmd* here exactly as it routes to operator-commands's
  * cmdAbort or cli-config-commands's cmdConfig, and cli.ts keeps only routing and the help/version
  * surfaces. Each command owns its argument gate, ready-repo gating decision, and output shape,
  * with the wording and gating order moved verbatim from main()'s cases. */
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
-import { cancelQueuedMerge, type CancelQueuedOutcome } from "../merge/merge-cancel.js";
-import { moveQueuedMergeToTop, type TopQueuedOutcome } from "../merge/merge-top.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
 import { failFollowJsonRival, flagValue, parseGrepFlag, parseRoleListScope, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, HELD_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
@@ -22,14 +20,6 @@ import { loadQuarantine, releaseQuarantinedTest } from "../review/known-flakes.j
 import { grepQuarantineRows, quarantineEntryAt, quarantineRows, renderQuarantine, renderQuarantineDetail, type QuarantineRow } from "../review/quarantine-render.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, collectRoleChanges, normalizeDiffPath } from "../change/change-data.js";
 import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
-import { readMergeQueue, type MergeQueueView } from "../merge/merge-queue.js";
-import { renderMergeQueue, scopeMergeQueue } from "../merge/merge-queue-render.js";
-import { mergeHoldsSha, type MergeInFlight } from "../merge/merge-slot.js";
-import { shortSha } from "../text/format.js";
-import { roleLabel } from "../roles/role-labels.js";
-import { orchestratorAlive } from "../team/team-orchestrator-info.js";
-import { queueInFlight } from "../status/status-polls.js";
-import { roleInScope } from "../roles/runner-ids.js";
 
 /** `tumwater status [-f/--follow]`: the team snapshot as rendered text or as the JSON
  * document GET /api/status serves. `-f/--follow` repaints the table every couple of seconds
@@ -143,144 +133,6 @@ function diffPathArg(args: string[]): string | undefined {
   if (norm === null)
     fail(`diff --path takes a repo-relative path such as src/cli.ts (as diff --overlaps prints it)${gotSuffix(raw)}`);
   return norm;
-}
-
-/** `tumwater queue [-f/--follow]`: the durable merge queue in execution order, as text or as
- * the `{entries, unreadable}` document. `-f/--follow` repaints the queue every couple of
- * seconds until Ctrl+C or the process that started it exits, so a backgrounded follow does
- * not outlive its parent (the same rule `status -f` uses). */
-export async function cmdQueue(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
-  // `tumwater queue --cancel <n>` is the read-only command's one destructive mode: route it
-  // to its own branch before the read gate, so --cancel never leaks into the view parsing.
-  if (args.includes("--cancel")) {
-    await cmdQueueCancel(root, args);
-    return;
-  }
-  if (args.includes("--top")) {
-    await cmdQueueTop(root, args);
-    return;
-  }
-  // The repo half of requireReadyRepo gates: like every repo-bound query, a directory
-  // tumwater cannot read yet has no queue to show. Past the gate an absent queue dir reads
-  // as an empty queue (a `merge queue empty` line, exit 0), so no merge ever queued is
-  // data, not an error.
-  rejectUnknownArgs("queue", args, [ROLE_FLAG, JSON_FLAG, FOLLOW_FLAG]);
-  await requireReadyRepo(root);
-  const roles = parseRoleListScope(root, args);
-  const follow = hasFollowFlag(args);
-  if (follow && args.includes("--json")) failFollowJsonRival("queue --json");
-  // Scoped read shared by the follow and the one-shot branches, so the render's age and the
-  // in-flight marker share one clock read and each frame re-reads the queue. --role keeps
-  // the listed roles' entries (a base id taking its instances too) under their whole-queue
-  // positions; the in-flight marker is judged against the kept entries only, and
-  // `unreadable` stays whole because an unreadable file has no role to attribute it to.
-  const readQueue = (): { view: MergeQueueView; inFlight: MergeInFlight | undefined; scope: ReturnType<typeof scopeMergeQueue>["scope"] | undefined } => {
-    const whole = readMergeQueue(root);
-    const scoped = roles ? scopeMergeQueue(whole, roles, (r) => roleInScope(r, roles)) : undefined;
-    const view = scoped ? scoped.view : whole;
-    return { view, inFlight: queueInFlight(root, view.entries, orchestratorAlive(root)), scope: scoped?.scope };
-  };
-  if (follow) {
-    await followView(() => {
-      const { view, inFlight, scope } = readQueue();
-      return renderMergeQueue(view, Date.now(), inFlight, scope);
-    }, seams);
-    return;
-  }
-  const { view, inFlight, scope } = readQueue();
-  sayJsonOrRender(args, inFlight ? { ...view, inFlight } : view, () => renderMergeQueue(view, Date.now(), inFlight, scope));
-}
-
-/** The `tumwater queue --cancel <n>` branch (PLANS.md): remove the Nth queued merge `tumwater
- * queue` lists and delete its role's merge pin, so next-run leftover recovery cannot silently
- * re-enqueue the change. Parsed as cancelAndAnnounce parses `--cancel` (backlog-cli.ts):
- * `--cancel <n>` the one valued flag, `--json` the one boolean (at most once), `--help`/-h
- * tolerated, anything else refused. --role and -f/--follow are refused by name — a live view
- * repaints a read, and position numbers come from the whole queue, whose numbering is
- * `tumwater queue`'s. An entry a live merge marker names for this sha is refused (wait for it
- * to land, then revert); an out-of-range position fails naming the current depth. */
-async function cmdQueueCancel(root: string, args: string[]): Promise<void> {
-  const { json, position, rest } = scanPositionArgs(args, "--cancel", "--cancel 2");
-  // The vocabulary a cancel invocation accepts is exactly --cancel and --json, both consumed
-  // above; --role and -f/--follow are refused with the queue-specific wording the tests pin.
-  if (rest.includes("--role")) fail("queue --cancel cancels by whole-queue position from `tumwater queue`; --role scopes a read only — drop it");
-  if (rest.includes("--follow") || rest.includes("-f")) fail("queue --cancel removes one entry; -f/--follow repaints a live view — drop it");
-  rejectUnknownArgs("queue", rest, []);
-  if (position === null) fail("--cancel needs a position (usage: tumwater queue --cancel <n>)");
-  await requireReadyRepo(root);
-  // Refuse the entry a live merge marker names before touching it: it is mid-flight (being
-  // reviewed or merged), so cancelling it would race the slot that owns it.
-  const view = readMergeQueue(root);
-  const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
-  const target = view.entries[position - 1];
-  if (inFlight && target && mergeHoldsSha(inFlight, target.sha)) {
-    fail(`queue entry ${position} is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(target.sha)}\``);
-  }
-  const outcome: CancelQueuedOutcome = await cancelQueuedMerge(root, position);
-  if (outcome.status === "out-of-range") {
-    fail(`no queued merge at position ${position} (merge queue holds ${outcome.depth})`);
-  }
-  if (json) {
-    sayJson({ cancelled: { role: outcome.role, commit: outcome.sha, summary: outcome.summary } });
-  } else {
-    say(`cancelled queue entry ${position}: ${roleLabel(outcome.role)} ${shortSha(outcome.sha)} — ${outcome.summary}`);
-  }
-}
-
-/** The `tumwater queue --top <n>` branch (PLANS.md): move the Nth queued merge `tumwater
- * queue` lists to the front of the execution order by renaming its queue file to a stamp
- * below the queue's minimum, so it merges next when ready. `cmdQueueCancel`'s twin: `--top
- * <n>` the one valued flag, `--json` the one boolean (at most once), `--help`/-h tolerated,
- * anything else refused. --role and -f/--follow are refused by name — a live view repaints
- * a read, and position numbers come from the whole queue, whose numbering is
- * `tumwater queue`'s. An entry a live merge marker names for this sha is refused — it is past
- * the queue, so there is nothing to top (unlike `--cancel`, reverting it would undo the change
- * the operator wanted first; the guidance says only that it is already heading in); an
- * out-of-range position fails naming the current depth; position 1 prints the already-first
- * line and exits 0; a concurrently-drained entry prints the gone line and exits 0. */
-async function cmdQueueTop(root: string, args: string[]): Promise<void> {
-  const { json, position, rest } = scanPositionArgs(args, "--top", "--top 2");
-  // The vocabulary a top invocation accepts is exactly --top and --json, both consumed
-  // above; --role and -f/--follow are refused with the queue-specific wording the tests pin.
-  if (rest.includes("--role")) fail("queue --top moves by whole-queue position from `tumwater queue`; --role scopes a read only — drop it");
-  if (rest.includes("--follow") || rest.includes("-f")) fail("queue --top moves one entry; -f/--follow repaints a live view — drop it");
-  rejectUnknownArgs("queue", rest, []);
-  if (position === null) fail("--top needs a position (usage: tumwater queue --top <n>)");
-  await requireReadyRepo(root);
-  // Refuse the entry a live merge marker names before touching it: it is mid-flight (being
-  // reviewed or merged), so topping it would race the slot that owns it.
-  const view = readMergeQueue(root);
-  const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
-  const target = view.entries[position - 1];
-  if (inFlight && target && mergeHoldsSha(inFlight, target.sha)) {
-    fail(`queue entry ${position} is being merged right now — it's already heading into the merge, so there's nothing to top`);
-  }
-  const outcome: TopQueuedOutcome = moveQueuedMergeToTop(root, position);
-  if (outcome.status === "out-of-range") {
-    fail(`no queued merge at position ${position} (merge queue holds ${outcome.depth})`);
-  }
-  if (json) {
-    // Every non-failure outcome, `gone` included, exits 0 with a parseable document; the
-    // drained entry carries no role/sha/summary, so its JSON names only the position, and
-    // an already-first no-op names its own key rather than masquerading as a top.
-    if (outcome.status === "gone") {
-      sayJson({ gone: { position } });
-    } else if (outcome.status === "already-first") {
-      sayJson({ "already-first": { role: outcome.role, commit: outcome.sha, summary: outcome.summary } });
-    } else {
-      sayJson({ topped: { role: outcome.role, commit: outcome.sha, summary: outcome.summary } });
-    }
-    return;
-  }
-  if (outcome.status === "gone") {
-    say(`queue entry ${position} was already taken by the merge before it could be moved to the front`);
-    return;
-  }
-  if (outcome.status === "already-first") {
-    say(`queue entry ${position} is already first: ${roleLabel(outcome.role)} ${shortSha(outcome.sha)} — ${outcome.summary}`);
-  } else {
-    say(`moved queue entry ${position} to the front: ${roleLabel(outcome.role)} ${shortSha(outcome.sha)} — ${outcome.summary}`);
-  }
 }
 
 /** `tumwater backlog`: the planned/open entries as Markdown or as the GUI's JSON payload. */

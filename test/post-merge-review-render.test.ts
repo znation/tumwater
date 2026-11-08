@@ -4,7 +4,7 @@ import { postReviewMatchesGrep, renderPostReviewDetail, renderPostReviews, scope
 import type { PostReview } from "../src/review/post-merge-review.js";
 
 // The renderer behind `tumwater reviews`: pure text for the post-merge review queue, pinned
-// exactly like renderMergeQueue's tests pin `tumwater queue`'s lines.
+// exactly.
 
 function e(overrides: Partial<PostReview>): PostReview {
   return { commit: "c".repeat(40), role: "feature", summary: "seed", ...overrides };

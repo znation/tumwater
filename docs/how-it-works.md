@@ -739,30 +739,19 @@ stale settings.
   `GET /api/history?result=<class>[,...]` keeps only the runs in those outcome classes, after `grep`
   and before `model`, the rows `tumwater history --result` lists.
   A Newest failure button opens the newest failing run of any role through `GET /api/run?last=1&result=problems`, the run `tumwater history --last --result problems` opens, as a card above the table.
-  The Pending pane shows the durable merge queue above the pending-change roster, reading and
-  rendering it through the same `readMergeQueue`/`renderMergeQueue` pair `tumwater queue`
-  prints, so the queue's order, age, skips, and wording match the CLI — including the bracketed
-  label (`[merging 2m · reviewing]`) on an entry a running team
-  is merging, and a `high friction` marker on an entry whose authoring run burned past the
-  friction thresholds (`highFriction`, the flag that makes the reviewer apply extra scrutiny).
-  The post-merge review queue prints between the queue and the roster as a block
-  from the same `readPostReviews`/`renderPostReviews` pair `tumwater reviews` uses, so the two
-  surfaces are the observer twins of the CLI command, and the block follows the pane's Ctrl+G
-  role scope below. Ctrl+O narrows the same block to one state — all, waiting, failing,
-  rejected — the `tumwater reviews --status` / dashboard State-picker twin (composing with the
-  Ctrl+G role scope in the header's `--role <id> --status <state>` filter text), each kept
-  entry staying under its whole-queue position; its arm is routed ahead of History's on the
-  Pending view, so it never moves the History pane's outcome filter.
-  Each Merge queue row carries a two-click Cancel (the first click arms it, a second within 5 s
-  posts) through `POST /api/queue-cancel`, the browser twin of `tumwater queue --cancel <n>` —
-  the same removal, so the browser, the CLI, and the TUI cannot drift on what cancelling means.
-  A row the running team is mid-merge is refused with the wait-then-revert wording (wait for it
-  to land, then `tumwater revert <sha>`), and a sha that raced a drain reports gone rather than an error.
+  The Pending pane shows the post-merge review queue above the pending-change roster, reading
+  and rendering it through the same `readPostReviews`/`renderPostReviews` pair `tumwater
+  reviews` uses, so the queue's order, age, and wording match the CLI. The block follows the
+  pane's Ctrl+G role scope below. Ctrl+O narrows the same block to one state — all, waiting,
+  failing, rejected — the `tumwater reviews --status` / dashboard State-picker twin (composing
+  with the Ctrl+G role scope in the header's `--role <id> --status <state>` filter text), each
+  kept entry staying under its whole-queue position; its arm is routed ahead of History's on
+  the Pending view, so it never moves the History pane's outcome filter.
   Below the roster it lists the files two or more roles' pending changes touch, through the same
   `collectChangeOverlaps`/`renderChangeOverlaps` pair `tumwater diff --overlaps` prints.
   Ctrl+N steps through those files, showing each holding role's change limited to the file (the
   `tumwater diff --role <ids> --path <path>` view); the press after the last one returns to the pane.
-  Ctrl+G cycles the list through each holding role and back to all, keeping only the files that role holds (the `tumwater diff --overlaps --role <id>` view, through the same `scopeChangeOverlaps`); the same scope also narrows the merge queue above to that role's waiting merges, each under its whole-queue position (the `tumwater queue --role <id>` view, through the same `scopeMergeQueue`), and narrows the post-merge review block to that role's entries, each under its whole-queue position (the `tumwater reviews --role <id>` view, through the same `scopePostReviews`), and the cycle leads with the queue's roles, then the review-only roles, before the overlap holders; Ctrl+N then steps through only those files.
+  Ctrl+G cycles the list through each holding role and back to all, keeping only the files that role holds (the `tumwater diff --overlaps --role <id>` view, through the same `scopeChangeOverlaps`); the same scope also narrows the post-merge review block to that role's entries, each under its whole-queue position (the `tumwater reviews --role <id>` view, through the same `scopePostReviews`), and the cycle leads with the review roles before the overlap holders; Ctrl+N then steps through only those files.
   The Inbox pane lists every role's queued prompts, reading through the same queue traversal
   and renderer `tumwater prompt --list` uses, so the two surfaces cannot drift on order,
   per-role numbering, or the queued-age/send-later countdown suffix. Up/Down select a queued

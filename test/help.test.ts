@@ -16,7 +16,6 @@ const ALL_COMMANDS = [
   "notify",
   "history",
   "diff",
-  "queue",
   "reviews",
   "backlog",
   "quarantine",
@@ -156,9 +155,6 @@ test("run is a hidden alias of start: same topic, no listing", () => {
   assert.equal(suggestCommand("run"), null);
 });
 
-test("help text uses plain terms: the merge queue tags and no retired words", () => {
-  const queue = helpTopic("queue")!;
-  assert.match(queue, /\[merging 2m · reviewing\]/);
-  assert.match(queue, /merge queue empty/);
+test("help text uses plain terms and no retired words", () => {
   assert.doesNotMatch(HELP, /\b(fleet|tick|landing|operator|notebook|drain)/i); // retired-name-ok: legacy name
 });

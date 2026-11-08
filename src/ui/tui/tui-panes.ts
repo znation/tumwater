@@ -57,8 +57,6 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     session.archiveBacklogArmed = false;
     session.armedRevert = session.revertArmed;
     session.revertArmed = null;
-    session.armedQueue = session.queueArmed;
-    session.queueArmed = null;
     session.armedReview = session.reviewArmed;
     session.reviewArmed = null;
   };
@@ -315,7 +313,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     ctx: TuiPaneCtx,
   ): boolean => {
     // The armed-clear Ctrl+X arms: the transcript notes first, then the History model filter,
-    // then the queued cancel, then the Pending merge cancel, then the backlog cancel — each
+    // then the queued prompt cancel, then the backlog cancel — each
     // returns false when its view/selection does not apply.
     if (transcript.handleKey?.(key, ctx)) return true;
     if (history.handleKey?.(key, ctx)) return true;
@@ -342,10 +340,9 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     ctx: TuiPaneCtx,
   ): boolean => {
     // The Ctrl+V arms, routed like Ctrl+X's: the History trail's revert, the queued
-    // prompt's move-to-top, then the Pending pane's merge move-to-top, and the backlog
-    // entry's move-to-top last — each returns false when its view/selection does not
-    // apply. The Activity attach editor's own Ctrl+V arm is guarded to view 0, so it
-    // still fires there ahead of this router.
+    // prompt's move-to-top, and the backlog entry's move-to-top last — each returns false
+    // when its view/selection does not apply. The Activity attach editor's own Ctrl+V
+    // arm is guarded to view 0, so it still fires there ahead of this router.
     if (history.handleKey?.(key, ctx)) return true;
     if (queued.handleKey?.(key, ctx)) return true;
     if (pending.handleKey?.(key, ctx)) return true;

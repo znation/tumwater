@@ -219,35 +219,6 @@ test("pendingQueueHtml escapes role and summary markup", () => {
   assert.match(html, /value='r&lt;script&gt;'/, "a role id carrying markup is escaped in the picker option");
 });
 
-test("pendingQueueHtml puts a Move to top button on every non-first row and none on first or one-entry queues", () => {
-  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number): string }>(
-    ["format", "labels", "pending-table"],
-    ["pendingQueueHtml"],
-  );
-  const now = 1_000_000_000_000;
-  const two = { depth: 2, entries: [
-    { role: "feature", sha: "abcdef1234567890", run: 1, summary: "a", enqueuedAt: now },
-    { role: "bugfix", sha: "0123456789abcdef", run: 2, summary: "b", enqueuedAt: now },
-  ] };
-  const html = pendingQueueHtml(two, now);
-  assert.doesNotMatch(html, /data-top='abcdef1234567890'/, "the first row has no Move to top");
-  assert.match(html, /data-top='0123456789abcdef'/, "the second row carries its sha");
-  const first = html.indexOf("data-top=");
-  const second = html.indexOf("01234567");
-  assert.ok(first > -1 && first < second, "the Move to top button precedes its row's line");
-  assert.match(html, /Move to top/);
-  // A one-entry queue has every row in front already: no button anywhere.
-  const one = pendingQueueHtml({ depth: 1, entries: [two.entries[0]!] }, now);
-  assert.doesNotMatch(one, /data-top=/, "a one-entry queue renders no Move to top");
-  // Role and summary markup stays escaped even next to the new button.
-  const evil = pendingQueueHtml({ depth: 2, entries: [
-    { role: "clea<n>", sha: "1111111111111111", run: 1, summary: "ok", enqueuedAt: now },
-    { role: "bugfix", sha: "<b>2222222222222222</b>", run: 2, summary: "<i>z</i>", enqueuedAt: now },
-  ] }, now);
-  assert.doesNotMatch(evil, /<n>|<b>|<i>/, "button, role, and summary markup are escaped");
-  assert.match(evil, /data-top='&lt;b&gt;2222222222222222&lt;\/b&gt;'/);
-});
-
 test("pendingQueueHtml keeps the chosen role's merges under their whole-queue positions", () => {
   const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number, labels?: unknown, role?: string): string }>(
     ["format", "labels", "pending-table"],
@@ -448,41 +419,23 @@ test("pendingOverlapsHtml's Folder picker keeps only the files at or under the c
   }
 });
 
-test("pendingQueueHtml gives each Merge queue row a cancel button, armed only on the matching row", () => {
-  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number, labels?: unknown, role?: string, cancelArmedSha?: string): string }>(
-    ["format", "labels", "pending-table"],
-    ["pendingQueueHtml"],
-  );
+test("neither the Merge queue card nor the drawer carries a cancel or move-top button", () => {
+  const { pendingQueueHtml, drawerQueueHtml } = clientScope<{
+    pendingQueueHtml(mergeQueue: unknown, now: number, labels?: unknown, role?: string): string;
+    drawerQueueHtml(q: unknown, role: string, now: number, labels?: unknown): string;
+  }>(["format", "labels", "pending-table"], ["pendingQueueHtml", "drawerQueueHtml"]);
   const now = 1_000_000_000_000;
   const q = { depth: 2, entries: [
     { role: "feature", sha: "abcdef1234567890", run: 1, summary: "a", enqueuedAt: now },
     { role: "bugfix", sha: "0123456789abcdef", run: 2, summary: "b", enqueuedAt: now },
   ] };
-  // No fifth argument: every row carries a Cancel button, none armed.
-  const plain = pendingQueueHtml(q, now);
-  assert.equal(plain.split("data-cancel='abcdef1234567890'>Cancel</").length - 1, 1);
-  assert.equal(plain.split("data-cancel='0123456789abcdef'>Cancel</").length - 1, 1);
-  assert.doesNotMatch(plain, /Confirm cancel/);
-  // Armed on one sha: exactly that row reads Confirm cancel, the rest stay Cancel.
-  const armed = pendingQueueHtml(q, now, [], "", "0123456789abcdef");
-  assert.equal(armed.split("data-cancel='0123456789abcdef'>Confirm cancel</").length - 1, 1);
-  assert.equal(armed.split("data-cancel='abcdef1234567890'>Cancel</").length - 1, 1);
-  assert.doesNotMatch(armed, /data-cancel='abcdef1234567890'>Confirm cancel/);
-  assert.equal(armed, pendingQueueHtml(q, now, [], "", "0123456789abcdef"), "the armed call is stable");
-});
-
-test("queue buttons carry no data-cancel in the drawer, and a malformed row renders no undefined", () => {
-  const { pendingQueueHtml, drawerQueueHtml } = clientScope<{
-    pendingQueueHtml(mergeQueue: unknown, now: number, labels?: unknown, role?: string, cancelArmedSha?: string): string;
-    drawerQueueHtml(q: unknown, role: string, now: number, labels?: unknown): string;
-  }>(["format", "labels", "pending-table"], ["pendingQueueHtml", "drawerQueueHtml"]);
-  const now = 1_000_000_000_000;
-  const q = { depth: 1, entries: [{ role: "feature", sha: "abcdef12", run: 1, summary: "a", enqueuedAt: now }] };
-  // The drawer's queue section renders no cancel button at all.
-  assert.doesNotMatch(drawerQueueHtml(q, "feature", now), /data-cancel|Cancel/);
+  const card = pendingQueueHtml(q, now);
+  assert.doesNotMatch(card, /data-cancel|data-top|Cancel|Move to top|Confirm/, "the card renders rows with no cancel/top controls");
+  const drawer = drawerQueueHtml(q, "feature", now);
+  assert.doesNotMatch(drawer, /data-cancel|data-top|Cancel|Move to top|Confirm/);
   // A malformed entry (no sha) renders no button and no undefined.
-  const bad = pendingQueueHtml({ depth: 1, entries: [{ role: "qa", run: 1, summary: "s", enqueuedAt: now }] }, now, [], "", "anything");
-  assert.doesNotMatch(bad, /data-cancel|undefined|NaN/);
+  const bad = pendingQueueHtml({ depth: 1, entries: [{ role: "qa", run: 1, summary: "s", enqueuedAt: now }] }, now);
+  assert.doesNotMatch(bad, /data-cancel|data-top|undefined|NaN/);
   assert.match(bad, /qa/);
 });
 

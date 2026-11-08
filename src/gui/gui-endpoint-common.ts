@@ -71,12 +71,12 @@ export async function readRoleFieldBody(
 
 /** The sha-addressed POST handlers' shared prologue: readPostBody (400/413 sent on a null
  * return) plus requireSha's hex-commit-id validation (400 sent on a null return), so the
- * queue-cancel/queue-top/post-review-accept/revert family states the body-discipline-and-sha
+ * post-review-accept/revert family states the body-discipline-and-sha
  * check pair once instead of two guard lines per handler. Its null return means the response
  * is already written and the handler must stop; callers keep their own `if (!read) return`
- * bail. Exactly four call sites — handleRevert, handleQueueCancel, handleQueueTop, and
+ * bail. Exactly two call sites — handleRevert and
  * handlePostReviewAccept — returning the body too so handleRevert can read its optional
- * dryRun; the other three callers use only the sha. A caller that needs neither the body nor
+ * dryRun; the other caller uses only the sha. A caller that needs neither the body nor
  * the example can read just `{ sha }` from the result. */
 export async function readShaBody(
   req: http.IncomingMessage,

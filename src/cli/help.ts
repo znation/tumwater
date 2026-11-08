@@ -251,29 +251,6 @@ Usage:
                                    role holds, each still naming every holder; --path keeps only the files
                                    at or under that repo-relative file or directory;
                                    --json prints {mainBranch, state, overlaps}
-  tumwater queue [--role <id>[,<id>...]] [-f/--follow] [--json] [--cancel <n>] [--top <n>]
-                                   List the durable merge queue in execution order (oldest
-                                   first): one line per waiting merge — position, role, run
-                                   number, short pinned sha, age, and summary — plus a bracketed
-                                   \`[merging 2m · reviewing]\`
-                                   label while a running team works on it; an empty queue
-                                   prints \`merge queue empty\`, and any torn/foreign queue file
-                                   the reader skipped is counted on a trailing line; --json
-                                   prints the collector's own {entries, unreadable} document
-                                   (raw sha and numeric enqueuedAt, not the render's age); --role
-                                   keeps only the listed roles' merges (a base role id taking
-                                   its instances too), each under its position in the whole
-                                   queue; --json then lists only those entries;
-                                   -f/--follow repaints the queue every couple of seconds
-                                   until Ctrl+C or the process that started it exits, so a
-                                   backgrounded follow does not outlive its parent; it refuses --json;
-                                   --cancel <n> removes the Nth queued merge before it lands (and
-                                   its role's merge pin, so next-run recovery cannot re-enqueue it),
-                                   refusing an entry a live merge is merging and --role/-f;
-                                   --top <n> moves the Nth queued merge to the front of the
-                                   execution order (so it merges next when ready), preserving any
-                                   notBefore deferral, refusing an entry a live merge is merging and
-                                   --role/-f, and answering already-first for position 1
   tumwater reviews [-f/--follow] [--accept <n>] [--role <id>[,<id>...]] [--status <state>[,<state>...]] [--grep <text>] [--json]
                                    List the post-merge review queue (\.tumwater/state
                                    /post-review.json) in FIFO order: one line per merged commit

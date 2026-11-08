@@ -2,9 +2,9 @@
  * queue (.tumwater/state/post-review.json): one line per well-formed entry in the given order,
  * plus a `post-merge review queue (N):` header. Pure function of the entry list — the optional
  * `now` is the only clock input, and when it is a number and an entry carries `enqueuedAt` the
- * line names the wait since the entry was first queued, exactly as the merge queue names its
- * age — so a test can pin its output exactly. The `merge queue empty` convention
- * (src/merge/merge-queue-render.ts) is reused for the empty case. */
+ * line names the wait since the entry was first queued, exactly as the (departed) merge queue
+ * named its age — so a test can pin its output exactly. The `post-merge review queue empty`
+ * convention is reused for the empty case. */
 
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
@@ -91,9 +91,8 @@ export function postReviewStatusLabel(entry: PostReview): string {
  * the `scope` renderPostReviews takes: the kept roles, each kept entry's 1-based place in the
  * whole list, and the whole list's entry count — plus, when a status filter is active, the
  * `filter` text the header and no-match line print. The filtering-and-positioning step is the
- * shared `filterKeepPositions` (src/collections.ts) that `scopeMergeQueue` (src/merge/
- * merge-queue-render.ts) also uses, so `tumwater reviews --role` keeps the same whole-queue
- * positions `--accept <n>` still addresses. */
+ * shared `filterKeepPositions` (src/collections.ts), so `tumwater reviews --role` keeps the
+ * same whole-queue positions `--accept <n>` still addresses. */
 export function scopePostReviews(
   entries: readonly PostReview[],
   roles: readonly string[],

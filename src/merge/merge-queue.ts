@@ -268,12 +268,12 @@ export function queuedMergeRoles(root: string): Set<string> {
 
 /** The queue read as one view: every readable entry in execution order (oldest first) plus the
  * number of queue files the reader skipped — torn, foreign, or vanished mid-listing. The one
- * home of "the queue as a view": `tumwater queue` renders it and `status`'s `mergeQueue`
+ * home of "the queue as a view": `status`'s `mergeQueue`
  * projects it, so those callers cannot drift. The queue's depth is
  * `entries.length + unreadable`: every listed file is either a readable entry or skipped, so
  * the caller needs no second directory listing. A missing queue dir reads as
  * `{entries: [], unreadable: 0}`. */
-export interface MergeQueueView {
+interface MergeQueueView {
   entries: MergeEntry[];
   unreadable: number;
 }

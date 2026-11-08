@@ -9,7 +9,7 @@ import { acceptPostReview, acceptPostReviewBySha } from "../src/review/post-merg
 import { shortSha } from "../src/text/format.js";
 
 // acceptPostReview: the operator's deliberate retire of a pending post-merge review — the
-// `tumwater reviews --accept <n>` core, tested directly like cancelQueuedMerge.
+// `tumwater reviews --accept <n>` core, tested directly.
 
 function seedMany(root: string): void {
   writeFileDeep(

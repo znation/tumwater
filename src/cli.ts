@@ -499,9 +499,6 @@ const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
   diff: async (root, _command, args) => {
     await (await import("./cli/cli-query-commands.js")).cmdDiff(root, args);
   },
-  queue: async (root, _command, args) => {
-    await (await import("./cli/cli-query-commands.js")).cmdQueue(root, args);
-  },
   reviews: async (root, _command, args) => {
     await (await import("./cli/cli-review-commands.js")).cmdReviews(root, args);
   },

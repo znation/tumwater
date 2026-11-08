@@ -9,8 +9,8 @@ import { cli } from "./helpers/cli-harness.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 import type { QuarantineRow } from "../src/review/quarantine-render.js";
 
-// The `quarantine` command: the read-only list of the flake quarantine, via the CLI the way
-// the cli-queue tests `queue` — an initialized repo, child-process runs, output assertions.
+// The `quarantine` command: the read-only list of the flake quarantine, via the CLI — an
+// initialized repo, child-process runs, output assertions.
 
 function writeQuarantine(repo: string, tests: unknown[]): void {
   writeFileDeep(quarantinePath(repo), JSON.stringify({ tests }));

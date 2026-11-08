@@ -43,8 +43,8 @@ export interface HarnessEvent {
     | "run_start" // carries run; model when one is configured — the selector string (formatModelSelector) of the config the run starts on (the budget fallback included)
     | "run_end" // carries run, the run's usage, its peakContextTokens (its largest single-request context, when the run reported one), providerCost, billing/agent (when the run reported billing or rate windows), cutOff (when the agent was truncated at the model's context ceiling and the next run resumes its session), selfCheckReverted (when the pre-queue self-check's fix-up reverted the whole change), and its wall-clock span
     | "merge_queued" // a changed run pinned its commit and enqueued it for the orchestrator's merge slot (merge queue 3/5); carries sha + summary
-    | "merge_cancelled" // an operator cancelled a waiting merge with tumwater queue --cancel; carries commit + summary
-    | "merge_topped" // an operator moved a waiting merge to the front (`tumwater queue --top`, the dashboard's per-row Move to top, or the Pending pane's Ctrl+V); carries commit + summary
+    | "merge_cancelled" // an operator cancelled a waiting merge (the departed `tumwater queue --cancel`); carries commit + summary
+    | "merge_topped" // an operator moved a waiting merge to the front (the departed `tumwater queue --top`); carries commit + summary
     | "merge_done" // the merge slot finished with the change on main; carries commit, the merger's outcome, durationMs, queuedMs (enqueue to outcome), and the merge's own usage (incl. notionalByBackend when it spent subscription notional)
     | "merge_failed" // the merge slot finished without merging (review rejection, under-cap review failure, conflict, blocked ff, shutdown abort); carries the same payload (including queuedMs and the entry's summary, and notionalByBackend) — retry rides next-run leftover recovery, never the queue
     | "merged" // merged; carries commit and summary

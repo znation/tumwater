@@ -14,25 +14,22 @@ import type { DoctorReport } from "../src/doctor/doctor-checks.js";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
 import type { previewRevert } from "../src/operator/operator-revert.js";
-import { overlapDrillHeading, overlapHolders, mergeQueueRoles, postReviewRoles } from "../src/ui/tui/tui-pane-pending.js";
+import { overlapDrillHeading, overlapHolders, postReviewRoles } from "../src/ui/tui/tui-pane-pending.js";
 import { historyWindowBounds } from "../src/ui/tui/tui-pane-history.js";
 import { promptLineFree, type TuiPaneEditorState } from "../src/ui/tui/tui-pane-ctx.js";
 import { renderRoleChange, renderRoleChanges } from "../src/change/change-render.js";
-import { enqueueMerge, queuedMergeFiles, queuedMerges, readMergeQueue, type MergeQueueView } from "../src/merge/merge-queue.js";
-import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
 import { readPostReviews, type PostReview } from "../src/review/post-merge-review.js";
 import { renderPostReviews } from "../src/review/post-merge-review-render.js";
 import { shortSha } from "../src/text/format.js";
-import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
-import { abortRequestPath, branchName, mergeRefName, piLogPath, postReviewPath, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
+import { abortRequestPath, branchName, piLogPath, postReviewPath, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
 import { eventsOfType, writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
-import { refSha, setRef } from "../src/git/git.js";
+
 import { readRunDetail } from "../src/history/run-detail-data.js";
 import { renderRunDetail, runTranscriptLines } from "../src/history/run-detail-render.js";
-import { initializedRepo, initializedWorktree, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { initializedRepo, initializedWorktree, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { PROMPT_START, readBrief, renderBrief } from "../src/brief/brief.js";
 import { readJson } from "./helpers/json-read.js";
 import { disableRole } from "./helpers/disable-role.js";
@@ -2547,8 +2544,8 @@ test("the Pending pane caches the rendered team roster when collectPending resol
   assert.equal(keys.state().view, 5);
   assert.equal(
     keys.state().paneCache,
-    "merge queue empty",
-    "the cache holds the queue (empty here) before the collector resolves",
+    "",
+    "the cache holds the post-merge review head (empty here) before the collector resolves",
   );
   const before = renders;
 
@@ -2556,51 +2553,14 @@ test("the Pending pane caches the rendered team roster when collectPending resol
   await new Promise((r) => setImmediate(r));
   assert.equal(
     keys.state().paneCache,
-    "merge queue empty\n\nfeature: 2 commits ahead of main\nclean: 0 commits ahead of main, 1 uncommitted file",
-    "the pane caches the queue above renderTeamChange's roster text",
+    "feature: 2 commits ahead of main\nclean: 0 commits ahead of main, 1 uncommitted file",
+    "the pane caches renderTeamChange's roster text once the collector resolves",
   );
   assert.ok(renders > before, "a resolution repaints the pane");
 });
 
-test("the Pending pane renders the durable merge queue on entry, above the resolved team roster", async () => {
+test("the Pending pane shows the post-merge review queue on entry, ready before the roster resolves", async () => {
   const root = makeRoot();
-  enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: 0 });
-  const team = {
-    mainBranch: "main",
-    roles: [
-      { role: "feature", branch: "tumwater/feature", state: "ready" as const, ahead: 2, behind: 0, commits: [], dirtyFiles: [] },
-      { role: "clean", branch: "tumwater/clean", state: "ready" as const, ahead: 0, behind: 0, commits: [], dirtyFiles: ["a.ts"] },
-    ],
-  };
-  let resolvePending!: (view: typeof team) => void;
-  const pending = new Promise<typeof team>((resolve) => (resolvePending = resolve));
-  const keys = createTuiKeys({
-    root,
-    quit: () => {},
-    requestRender: () => {},
-    now: () => 0,
-    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
-    collectPending: () => pending,
-  });
-  keys.syncSnapshot(0, false, [], false);
-  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
-  assert.equal(keys.state().view, 5);
-  // The queue needs no git read, so it is already rendered when the collector is still in flight.
-  assert.equal(keys.state().paneCache, renderMergeQueue(readMergeQueue(root), 0));
-
-  resolvePending(team);
-  await new Promise((r) => setImmediate(r));
-  assert.equal(
-    keys.state().paneCache,
-    renderMergeQueue(readMergeQueue(root), 0) +
-      "\n\nfeature: 2 commits ahead of main\nclean: 0 commits ahead of main, 1 uncommitted file",
-    "the two-role roster is appended below the same queue text",
-  );
-});
-
-test("the Pending pane shows the post-merge review queue above the roster", async () => {
-  const root = makeRoot();
-  enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: 3_600_000 });
   writeJsonFile(postReviewPath(root), { pending: [{ commit: "b".repeat(40), role: "feature", summary: "review me", failures: 2 }, { commit: "c".repeat(40), role: "clean", summary: "add tests", enqueuedAt: 0 }] });
   const team = { mainBranch: "main", roles: [] };
   const keys = createTuiKeys({
@@ -2613,10 +2573,9 @@ test("the Pending pane shows the post-merge review queue above the roster", asyn
   });
   keys.syncSnapshot(0, false, [], false);
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
-  const queued = renderMergeQueue(readMergeQueue(root), 3_600_000);
   const reviews = renderPostReviews(readPostReviews(root), undefined, 3_600_000);
   const cache = keys.state().paneCache ?? "";
-  assert.equal(cache, queued + "\n\n" + reviews);
+  assert.equal(cache, reviews, "the review block paints on entry, without waiting for the git roster");
   assert.match(cache, /post-merge review queue \(2 entries\):/);
   assert.match(cache, /feature bbbbbbbb · review me · \[2 failed review runs\]/);
   // The enqueuedAt entry prints its age between the short sha and the summary; the no-timestamp
@@ -2665,7 +2624,7 @@ test("a Pending collector resolution after the roster size changed caches onto t
   keys.syncSnapshot(0, false, [], false);
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending (index 5, no roles)
   assert.equal(keys.state().view, 5);
-  const queueText = keys.state().paneCache; // the immediate queue set, before the collector resolves
+  const before = keys.state().paneCache; // the immediate review head, before the collector resolves
   // A role appears while the collector is in flight: the relative panes shift with the
   // roster, so Pending keeps its selection at its new index 6 rather than silently becoming
   // History under the same raw index.
@@ -2675,12 +2634,12 @@ test("a Pending collector resolution after the roster size changed caches onto t
   await new Promise((r) => setImmediate(r));
   assert.equal(
     keys.state().paneCache,
-    queueText + "\n\nno pending changes",
+    before === "" ? "no pending changes" : before + "\n\nno pending changes",
     "the still-selected Pending pane caches the resolved roster",
   );
 });
 
-test("the Pending pane refreshes in place with Ctrl+R: a counting collector re-reads the fresh queue and roster", async () => {
+test("the Pending pane refreshes in place with Ctrl+R: a counting collector re-reads the fresh reviews and roster", async () => {
   const root = makeRoot();
   const teamA = {
     mainBranch: "main",
@@ -2708,7 +2667,7 @@ test("the Pending pane refreshes in place with Ctrl+R: a counting collector re-r
   await new Promise((r) => setImmediate(r));
   assert.equal(
     keys.state().paneCache,
-    "merge queue empty\n\nfeature: 2 commits ahead of main",
+    "feature: 2 commits ahead of main",
     "the first collector resolution paints teamA's roster",
   );
   // One Ctrl+R starts the collector a second time, and its resolution paints teamB's roster.
@@ -2717,7 +2676,7 @@ test("the Pending pane refreshes in place with Ctrl+R: a counting collector re-r
   await new Promise((r) => setImmediate(r));
   assert.equal(
     keys.state().paneCache,
-    "merge queue empty\n\nno pending changes",
+    "no pending changes",
     "the second collector resolution paints the refreshed roster",
   );
   // Ctrl+R on another view never re-reads Pending: this view has no backlog selection, so
@@ -2750,7 +2709,7 @@ test("the Pending pane lists overlapping files below the roster, through the CLI
   await new Promise((r) => setImmediate(r));
   assert.equal(
     keys.state().paneCache,
-    "merge queue empty\n\nfeature: 1 commit ahead of main\n\noverlapping files (1):\nsrc/a.ts: feature, feature-2",
+    "feature: 1 commit ahead of main\n\noverlapping files (1):\nsrc/a.ts: feature, feature-2",
   );
 });
 
@@ -2905,26 +2864,13 @@ test("Ctrl+G on the Pending pane closes an open drill-down and survives Ctrl+R",
   assert.ok(keys.state().paneCache!.endsWith(tail));
 });
 
-test("Ctrl+G on the Pending pane with empty queue and no overlaps flashes", async () => {
+test("Ctrl+G on the Pending pane with no reviews and no overlaps flashes", async () => {
   const keys = drillKeys([]);
   await settle();
   const before = keys.state().paneCache;
   ctrlG(keys);
   assert.equal(keys.state().paneCache, before);
-  assert.equal(keys.state().flash, "no queued merges, post-merge reviews or overlapping files to scope");
-});
-
-test("mergeQueueRoles lists each queued role once in queue order", () => {
-  const view: MergeQueueView = {
-    entries: [
-      { role: "feature", sha: "a".repeat(40), run: 1, summary: "", enqueuedAt: 0 },
-      { role: "clean", sha: "b".repeat(40), run: 1, summary: "", enqueuedAt: 1 },
-      { role: "feature", sha: "c".repeat(40), run: 2, summary: "", enqueuedAt: 2 },
-    ],
-    unreadable: 0,
-  };
-  assert.deepEqual(mergeQueueRoles(view), ["feature", "clean"]);
-  assert.deepEqual(mergeQueueRoles({ entries: [], unreadable: 0 }), []);
+  assert.equal(keys.state().flash, "no post-merge reviews or overlapping files to scope");
 });
 
 test("postReviewRoles lists each review role once in first-seen order", () => {
@@ -2962,15 +2908,12 @@ test("Ctrl+G on the Pending pane scopes the post-merge review block to each revi
   assert.ok(cache().includes(" 1. feature "), "the scoped block keeps the first entry under its whole-queue position");
   assert.ok(cache().includes(" 3. feature "), "and the second feature entry under whole-queue position 3");
   assert.ok(!cache().includes("clean second"), "the other roles' entries are dropped");
-  assert.ok(cache().includes("merge queue empty"), "the scoped empty queue still paints the empty line");
   ctrlG(keys);
   assert.ok(cache().includes("post-merge review queue (1 of 3, --role clean):"), "the second scope is the next review role");
   assert.ok(cache().includes(" 2. clean "), "clean keeps its whole-queue position 2");
-  assert.ok(cache().includes("merge queue empty"), "the review-only role's queue still paints");
   assert.ok(keys.state().flash === null || keys.state().flash === "", "a reachable role never flashes the empty scope");
   ctrlG(keys);
   assert.ok(cache().includes(whole), "the third press returns to the whole review block byte-for-byte");
-  assert.ok(cache().includes("merge queue empty"), "and to the whole merge queue");
 });
 
 const ctrlO = (keys: ReturnType<typeof drillKeys>) => keys.handleKey(undefined, { ctrl: true, name: "o" });
@@ -3066,7 +3009,6 @@ test("Ctrl+O composes with the Ctrl+G role scope on the Pending pane", async () 
 
 test("Ctrl+G role-only scope on the Pending pane keeps the CLI twin's `for <id>` no-match line", async () => {
   const root = makeRoot();
-  enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 1, summary: "feature merge", enqueuedAt: 0 });
   writeJsonFile(postReviewPath(root), { pending: [{ role: "clean", commit: "b".repeat(40), summary: "clean review" }] });
   const keys = createTuiKeys({
     root,
@@ -3074,14 +3016,16 @@ test("Ctrl+G role-only scope on the Pending pane keeps the CLI twin's `for <id>`
     requestRender: () => {},
     now: () => 0,
     collectPending: () => Promise.resolve({ mainBranch: "main", roles: [] }),
-    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "ready" as const, overlaps: [{ path: "src/a.ts", roles: ["feature", "clean"] }] }),
   });
   keys.syncSnapshot(0, false, [], false);
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
   assert.equal(keys.state().view, 5);
   await settle();
   const cache = () => keys.state().paneCache ?? "";
-  ctrlG(keys); // first scope is the queued role feature, which holds no reviews
+  ctrlG(keys); // first scope is the review role clean, which holds one review
+  assert.ok(cache().includes("post-merge review queue (1 of 1, --role clean):"), "the review role scopes first");
+  ctrlG(keys); // second scope is the overlap holder feature, which holds no reviews
   assert.ok(cache().includes("no post-merge reviews for feature (post-merge review queue holds 1)"), "a role-only scope that keeps nothing keeps the CLI twin's `for <id>` no-match line");
   assert.ok(!cache().includes("matching --role feature"), "a role-only scope never names the filter");
 });
@@ -3100,44 +3044,9 @@ test("Ctrl+O on the Pending pane does not advance the History pane's outcome fil
   assert.equal(keys.state().historyResult, "merged", "History's own Ctrl+O still cycles its outcome filter");
 });
 
-test("Ctrl+G on the Pending pane narrows the merge queue to each queued role under its whole-queue position", async () => {
+test("the Pending pane's Ctrl+G scope filters the reviews and the overlapping files from one cycle set", async () => {
   const root = makeRoot();
-  enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 1, summary: "feature first", enqueuedAt: 0 });
-  enqueueMerge(root, { role: "feature-2", sha: "b".repeat(40), run: 2, summary: "feature2 second", enqueuedAt: 1 });
-  enqueueMerge(root, { role: "clean", sha: "c".repeat(40), run: 3, summary: "clean third", enqueuedAt: 2 });
-  const keys = createTuiKeys({
-    root,
-    quit: () => {},
-    requestRender: () => {},
-    now: () => 0,
-    collectPending: () => Promise.resolve({ mainBranch: "main", roles: [] }),
-    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
-  });
-  keys.syncSnapshot(0, false, [], false);
-  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
-  assert.equal(keys.state().view, 5);
-  await settle();
-  const cache = () => keys.state().paneCache ?? "";
-  assert.ok(cache().startsWith("merge queue (3):"), "the unscoped queue lists all three entries");
-  ctrlG(keys);
-  assert.ok(cache().startsWith("merge queue (1 of 3, --role feature):"), "the first scope is the first queued role");
-  assert.ok(cache().includes(" 1. feature run #1 "), "the scoped view keeps the first entry under its whole-queue position");
-  assert.ok(!cache().includes(" 2. "), "the other entries' lines are dropped");
-  assert.ok(!cache().includes(" 3. "));
-  ctrlG(keys);
-  assert.ok(cache().startsWith("merge queue (1 of 3, --role feature-2):"), "the second scope is the second queued role");
-  assert.ok(cache().includes(" 2. feature #2 run #2 "), "feature-2 keeps its position 2");
-  ctrlG(keys);
-  assert.ok(cache().startsWith("merge queue (1 of 3, --role clean):"), "the third scope is the third queued role");
-  assert.ok(cache().includes(" 3. clean run #3 "), "clean keeps its position 3");
-  ctrlG(keys);
-  assert.ok(cache().startsWith("merge queue (3):"), "the fourth press returns to the whole queue");
-  assert.ok(cache().includes(" 1. feature run #1 "));
-});
-
-test("the Pending pane's Ctrl+G scope filters the queue and the overlapping files from one cycle set", async () => {
-  const root = makeRoot();
-  enqueueMerge(root, { role: "clean", sha: "a".repeat(40), run: 1, summary: "clean run", enqueuedAt: 0 });
+  writeJsonFile(postReviewPath(root), { pending: [{ role: "clean", commit: "b".repeat(40), summary: "clean review" }] });
   const keys = createTuiKeys({
     root,
     quit: () => {},
@@ -3152,36 +3061,18 @@ test("the Pending pane's Ctrl+G scope filters the queue and the overlapping file
   await settle();
   const cache = () => keys.state().paneCache ?? "";
   ctrlG(keys);
-  assert.ok(cache().startsWith("merge queue (1 of 1, --role clean):"), "the queue role (clean) scopes the queue first");
+  assert.ok(cache().includes("post-merge review queue (1 of 1, --role clean):"), "the review role (clean) scopes the review block first");
   assert.ok(cache().includes("overlapping files held by clean (1):\nsrc/a.ts: feature, clean"));
   ctrlG(keys);
-  assert.ok(cache().startsWith("no queued merges for feature (merge queue holds 1)"), "a holder with no queued merge keeps its queue block under the whole depth");
+  assert.ok(cache().includes("no post-merge reviews for feature (post-merge review queue holds 1)"), "a holder with no review keeps the review block's no-match line");
   assert.ok(cache().includes("overlapping files held by feature (1):\nsrc/a.ts: feature, clean"));
   ctrlG(keys);
-  assert.ok(cache().startsWith("merge queue (1):"), "the third press returns to the whole queue");
+  assert.ok(cache().includes(renderPostReviews(readPostReviews(root))), "the third press returns to the whole review block");
   assert.ok(cache().includes("overlapping files (1):\nsrc/a.ts: feature, clean"), "and to all overlaps");
 });
 
-// The Pending pane's row cancel (PLANS.md's TUI Pending pane Ctrl+X twice entry)
-// needs a real git repo: cancelQueuedMerge deletes the role's merge pin with `git update-ref`.
-// Seed the same pinned-entry shape merge-cancel.test.ts does — enqueueMerge + setRef off main —
-// so the pane's removal path shares the CLI's core and honors the pin.
-async function pendingCancelRoot(): Promise<{ root: string; featureSha: string; cleanSha: string }> {
-  // Pins first, then enqueues — pinOffMain's `git add -A` would otherwise commit an earlier
-  // enqueued .tumwater queue file into a detached commit and its `git checkout main` delete it
-  // (the same ordering merge-cancel.test.ts's threeQueued pins down).
-  const root = makeRepo();
-  let n = 0;
-  const featureSha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, `f${n++}.txt`), "one\n"), "add one");
-  assert.ok(await setRef(root, mergeRefName("feature"), featureSha));
-  const cleanSha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, `f${n++}.txt`), "two\n"), "add two");
-  assert.ok(await setRef(root, mergeRefName("clean"), cleanSha));
-  enqueueMerge(root, { role: "feature", sha: featureSha, run: 1, summary: "add one", enqueuedAt: Date.now() });
-  enqueueMerge(root, { role: "clean", sha: cleanSha, run: 2, summary: "add two", enqueuedAt: Date.now() + 1 });
-  return { root, featureSha, cleanSha };
-}
 
-/** A Pending-pane handler on a repo whose queue and roster resolve immediately. */
+/** A Pending-pane handler on a repo whose reviews and roster resolve immediately. */
 function openPending(root: string): ReturnType<typeof createTuiKeys> {
   const keys = createTuiKeys({
     root,
@@ -3197,210 +3088,31 @@ function openPending(root: string): ReturnType<typeof createTuiKeys> {
   return keys;
 }
 
-test("the Pending pane selects a queued merge in full and Esc returns to the list", async () => {
-  const { root } = await pendingCancelRoot();
-  const keys = openPending(root);
-  assert.equal(keys.state().selectedQueue, null, "the pane opens in list mode");
-  assert.equal(keys.state().queueDetail, "", "no detail while in list mode");
-
-  keys.handleKey(undefined, { name: "down" });
-  assert.equal(keys.state().selectedQueue, 0, "Down selects the first (oldest) entry");
-  assert.match(keys.state().queueDetail, /^merge #1 \(Ctrl\+X to cancel, Ctrl\+V to top\): feature run #1 · /);
-  assert.ok(keys.state().queueDetail.includes("add one"), "the detail shows the summary");
-
-  keys.handleKey(undefined, { name: "down" });
-  assert.equal(keys.state().selectedQueue, 1, "Down wraps to the second");
-  assert.match(keys.state().queueDetail, /^merge #2 \(Ctrl\+X to cancel, Ctrl\+V to top\): clean run #2 · /);
-  assert.ok(keys.state().queueDetail.includes("add two"), "the detail shows the second summary");
-
-  keys.handleKey(undefined, { name: "up" });
-  assert.equal(keys.state().selectedQueue, 0, "Up returns to the first");
-
-  keys.handleKey(undefined, { name: "escape" });
-  assert.equal(keys.state().selectedQueue, null, "Esc returns to list mode");
-  assert.equal(keys.state().queueDetail, "", "Esc clears the detail");
-});
-
-test("the Pending pane names why a selected re-queued merge is back", async () => {
+test("Ctrl+V on the Activity view opens the attach editor", async () => {
   const root = makeRepo();
-  const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, `fq.txt`), "one\n"), "add one");
-  assert.ok(await setRef(root, mergeRefName("feature"), sha));
-  enqueueMerge(root, { role: "feature", sha, run: 1, summary: "add one", enqueuedAt: Date.now(), retry: "review_error", notBefore: Date.now() + 60_000 });
   const keys = openPending(root);
-  keys.handleKey(undefined, { name: "down" }); // select the single queued merge
-  assert.ok(keys.state().queueDetail.includes("re-queued after review_error"), "the selected-row detail names why it is back");
-});
-
-test("the Pending pane cancels the selected merge with Ctrl+X twice, deleting its pin and logging merge_cancelled", async () => {
-  const { root, featureSha } = await pendingCancelRoot();
-  const keys = openPending(root);
-  // Ctrl+X with no selection just tells the operator how to select; the queue is untouched.
-  keys.handleKey(undefined, { ctrl: true, name: "x" });
-  assert.equal(keys.state().flash, "select a merge with ↑↓ first");
-  assert.equal(queuedMerges(root).length, 2, "no selection leaves the queue");
-
-  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
-  keys.handleKey(undefined, { ctrl: true, name: "x" }); // first press arms
-  assert.match(keys.state().flash!, /press Ctrl\+X again to cancel merge #1/);
-  assert.equal(queuedMerges(root).length, 2, "the first press changes nothing");
-
-  keys.handleKey(undefined, { ctrl: true, name: "x" }); // second press confirms (async)
-  await untilFlash(() => keys.state().flash ?? "", /cancelled queue entry 1: feature /);
-  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["clean"], "only the selected entry is removed");
-  assert.equal(await refSha(root, mergeRefName("feature")), null, "the cancelled role's pin is deleted");
-  assert.ok(await refSha(root, mergeRefName("clean")), "the other entry's pin is intact");
-  assert.equal(keys.state().selectedQueue, null, "a cancel returns to list mode");
-  assert.equal(keys.state().queueDetail, "", "a cancel clears the detail");
-  const cancelled = eventsOfType(root, "merge_cancelled");
-  assert.equal(cancelled.length, 1, "exactly one merge_cancelled event");
-  assert.equal(cancelled[0]!.commit, featureSha);
-  assert.equal(cancelled[0]!.summary, "add one");
-});
-
-test("a key between the two Pending Ctrl+X presses disarms the cancel", async () => {
-  const { root } = await pendingCancelRoot();
-  const keys = openPending(root);
-  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
-  keys.handleKey(undefined, { ctrl: true, name: "x" }); // arm
-  assert.match(keys.state().flash!, /press Ctrl\+X again to cancel merge #1/);
-  keys.handleKey(undefined, { name: "down" }); // an intermediate key moves the arming; also selects clean (#2)
-  keys.handleKey(undefined, { ctrl: true, name: "x" }); // now re-arms on the newly selected row, changing nothing
-  assert.equal(queuedMerges(root).length, 2, "the intermediate key disarmed the second press");
-  assert.match(keys.state().flash!, /press Ctrl\+X again to cancel merge #2/, "the press re-arms the now-selected row");
-});
-
-test("a Pending cancel whose queue shifted between arm and confirm refuses without removing", async () => {
-  const { root } = await pendingCancelRoot();
-  const keys = openPending(root);
-  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
-  keys.handleKey(undefined, { ctrl: true, name: "x" }); // arm #1
-  // Drop feature's queue file externally so the queue shifts: clean is now position 1, so the
-  // armed entry no longer sits at the armed position — the confirm must refuse, not remove.
-  fs.unlinkSync(queuedMergeFiles(root)[0]!.file);
-  keys.handleKey(undefined, { ctrl: true, name: "x" }); // confirm
-  await untilFlash(() => keys.state().flash ?? "", /the merge queue changed — try again/);
-  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["clean"], "the shifted queue cancels nothing");
-  assert.ok(await refSha(root, mergeRefName("clean")), "clean's pin is intact");
-});
-
-test("a Pending cancel of a merge the running team is mid-merging is refused with the wait-then-revert wording", async () => {
-  const { root, featureSha } = await pendingCancelRoot();
-  // A live team (process.pid is alive) whose merge marker names the queued feature entry.
-  writeOrchestratorMarker(root, ["feature"]);
-  writeMergeMarker(root, { role: "feature", sha: featureSha, summary: "add one", startedAt: Date.now() - 120_000, stage: "reviewing" });
-  const keys = openPending(root);
-  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
-  keys.handleKey(undefined, { ctrl: true, name: "x" }); // arm
-  keys.handleKey(undefined, { ctrl: true, name: "x" }); // confirm → in-flight guard
-  await untilFlash(() => keys.state().flash ?? "", /is being merged right now — wait for it to land, then `tumwater revert /);
-  assert.equal(queuedMerges(root).length, 2, "the in-flight entry is not removed");
-  assert.ok(await refSha(root, mergeRefName("feature")), "the pin is intact");
-});
-
-test("a Pending cancel is refused when the queued entry is a merge record name but not the marker's own sha", async () => {
-  const { root, featureSha } = await pendingCancelRoot();
-  // A live team whose marker's own sha differs from the queued feature entry, but whose changes
-  // record names it: only the mergeChanges(...).some branch can refuse, not the inFlight.sha match.
-  writeOrchestratorMarker(root, ["feature"]);
-  writeMergeMarker(root, {
-    role: "feature",
-    sha: "f".repeat(40),
-    summary: "add one",
-    startedAt: Date.now() - 120_000,
-    stage: "reviewing",
-    changes: [{ role: "feature", sha: featureSha, summary: "add one", status: "merging", startedAt: Date.now() - 120_000, stage: "reviewing" }],
-  });
-  const keys = openPending(root);
-  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
-  keys.handleKey(undefined, { ctrl: true, name: "x" }); // arm
-  keys.handleKey(undefined, { ctrl: true, name: "x" }); // confirm → record-name in-flight guard
-  await untilFlash(() => keys.state().flash ?? "", /is being merged right now — wait for it to land, then `tumwater revert /);
-  assert.equal(queuedMerges(root).length, 2, "the recorded in-flight entry is not removed");
-  assert.ok(await refSha(root, mergeRefName("feature")), "the pin is intact");
-});
-
-test("a Pending top of a merge the running team is mid-merging is refused with the wait-then-revert wording", async () => {
-  const { root, cleanSha } = await pendingCancelRoot();
-  // A live team whose merge marker names the queued clean entry (#2), so the top passes the
-  // already-first and shifted-queue checks and reaches the in-flight guard.
-  writeOrchestratorMarker(root, ["clean"]);
-  writeMergeMarker(root, { role: "clean", sha: cleanSha, summary: "add two", startedAt: Date.now() - 120_000, stage: "reviewing" });
-  const keys = openPending(root);
-  keys.handleKey(undefined, { name: "down" }); // feature (#1)
-  keys.handleKey(undefined, { name: "down" }); // clean (#2)
-  keys.handleKey(undefined, { ctrl: true, name: "v" }); // → in-flight guard
-  await untilFlash(() => keys.state().flash ?? "", /is being merged right now — wait for it to land, then `tumwater revert /);
-  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["feature", "clean"], "the in-flight entry is not topped");
-  assert.equal(eventsOfType(root, "merge_topped").length, 0, "no event for a refused top");
-});
-
-test("the Pending pane moves the selected queued merge to the front with Ctrl+V", async () => {
-  const { root, cleanSha } = await pendingCancelRoot();
-  const keys = openPending(root);
-  // Ctrl+V with no selection just tells the operator how to select; the queue is untouched.
-  keys.handleKey(undefined, { ctrl: true, name: "v" });
-  assert.equal(keys.state().flash, "select a merge with ↑↓ first");
-  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["feature", "clean"], "no selection leaves the queue");
-
-  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
-  keys.handleKey(undefined, { name: "down" }); // select clean (#2)
-  keys.handleKey(undefined, { ctrl: true, name: "v" });
-  await untilFlash(() => keys.state().flash ?? "", /moved merge #2 to the front: clean /);
-  const after = queuedMerges(root);
-  assert.deepEqual(
-    after.map((e) => e.role),
-    ["clean", "feature"],
-    "the selected entry is now the head and the rest keep their order",
-  );
-  assert.equal(after[0]!.sha, cleanSha, "every entry field rides the renamed file");
-  assert.equal(after[0]!.run, 2);
-  assert.equal(keys.state().selectedQueue, null, "a top returns to list mode");
-  assert.equal(keys.state().queueDetail, "", "a top clears the detail");
-  const topped = eventsOfType(root, "merge_topped");
-  assert.equal(topped.length, 1, "exactly one merge_topped event is logged");
-  assert.equal(topped[0]!.source, "clean");
-  assert.equal(topped[0]!.commit, cleanSha);
-});
-
-test("the Pending pane's Ctrl+V on position 1 flashes already-first and changes nothing", async () => {
-  const { root } = await pendingCancelRoot();
-  const keys = openPending(root);
-  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
-  keys.handleKey(undefined, { ctrl: true, name: "v" });
-  await untilFlash(() => keys.state().flash ?? "", /merge #1 is already at the front/);
-  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["feature", "clean"], "the queue is untouched");
-  assert.equal(eventsOfType(root, "merge_topped").length, 0, "no event for a no-op");
-});
-
-test("the Pending pane's Ctrl+V still opens the attach editor on the Activity view", async () => {
-  const { root } = await pendingCancelRoot();
-  const keys = openPending(root);
-  // openPending ends on Pending (view 5). Cycle back to Activity (view 0), where Ctrl+V must
-  // still open the attach editor rather than be swallowed by the new Pending arm.
+  // openPending ends on Pending (view 5). Cycle back to Activity (view 0).
   for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
   assert.equal(keys.state().view, 0, "we are back on Activity");
   assert.equal(keys.state().attachMode, false, "sanity: no attach editor open yet");
   keys.handleKey(undefined, { ctrl: true, name: "v" });
   assert.equal(keys.state().attachMode, true, "Ctrl+V on Activity opens the attach editor");
-  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["feature", "clean"], "the queue is untouched");
 });
 
 /** A single non-rejected post-merge review entry on a repo, so the Pending pane has a review
- * row to select below its merge rows. */
+ * row to select. */
 function seedReview(root: string, commit: string, role: string, summary: string, extra: Record<string, unknown> = {}): void {
   writeJsonFile(postReviewPath(root), { pending: [{ commit, role, summary, ...extra }] });
 }
 
-test("the Pending pane selects a post-merge review after the merge rows and Ctrl+A twice accepts it", async () => {
-  const { root } = await pendingCancelRoot();
+test("the Pending pane selects a post-merge review row and Ctrl+A twice accepts it", async () => {
+  const root = makeRepo();
   const commit = "b".repeat(40);
   seedReview(root, commit, "feature", "review me", { failures: 1 });
   const keys = openPending(root);
-  // ↓ over the two merges to the single review row (position 1 in the review list).
+  // The single review row is the pane's first row.
   keys.handleKey(undefined, { name: "down" });
-  keys.handleKey(undefined, { name: "down" });
-  keys.handleKey(undefined, { name: "down" });
-  assert.equal(keys.state().selectedQueue, 2, "the review is the pane's third row");
+  assert.equal(keys.state().selectedQueue, 0, "the review is the pane's first row");
   assert.match(keys.state().queueDetail, /^review #1 \(Ctrl\+A to accept\): feature /);
   assert.ok(keys.state().queueDetail.includes("[1 failed review run]"), "the review detail carries the status suffix");
 
@@ -3418,12 +3130,10 @@ test("the Pending pane selects a post-merge review after the merge rows and Ctrl
 });
 
 test("a rejected Pending review row is accepted with Ctrl+A like any pending one", async () => {
-  const { root } = await pendingCancelRoot();
+  const root = makeRepo();
   const commit = "b".repeat(40);
   seedReview(root, commit, "feature", "bad change", { rejected: ["no tests"] });
   const keys = openPending(root);
-  keys.handleKey(undefined, { name: "down" }); // feature (#1)
-  keys.handleKey(undefined, { name: "down" }); // clean (#2)
   keys.handleKey(undefined, { name: "down" }); // review #1
   assert.ok(!keys.state().queueDetail.includes("stays on main with the reviewer's reasons"), "a rejected row no longer prints the stays-on-main row line");
   keys.handleKey(undefined, { ctrl: true, name: "a" }); // arm
@@ -3434,32 +3144,12 @@ test("a rejected Pending review row is accepted with Ctrl+A like any pending one
   assert.equal(eventsOfType(root, "warning").filter((e) => String(e.message).includes(shortSha(commit))).length, 1, "one accept warning names the accepted sha");
 });
 
-test("Ctrl+A on a Pending merge row and Ctrl+X on a review row name the right action and change nothing", async () => {
-  const { root } = await pendingCancelRoot();
-  const commit = "b".repeat(40);
-  seedReview(root, commit, "feature", "review me");
-  const keys = openPending(root);
-  keys.handleKey(undefined, { name: "down" }); // select merge #1 (feature)
-  keys.handleKey(undefined, { ctrl: true, name: "a" });
-  assert.match(keys.state().flash!, /queued merge — Ctrl\+X/);
-  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["feature", "clean"], "the merge queue is untouched");
-  assert.equal(readPostReviews(root).length, 1, "the review queue is untouched");
-  keys.handleKey(undefined, { name: "down" }); // clean (#2)
-  keys.handleKey(undefined, { name: "down" }); // review #1
-  keys.handleKey(undefined, { ctrl: true, name: "x" });
-  assert.match(keys.state().flash!, /post-merge review — Ctrl\+A/);
-  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["feature", "clean"], "the merge queue is still untouched");
-  assert.equal(readPostReviews(root).length, 1, "the review queue is still untouched");
-});
-
 test("a key between the two Pending Ctrl+A presses disarms the accept", async () => {
-  const { root } = await pendingCancelRoot();
+  const root = makeRepo();
   const first = "b".repeat(40);
   const second = "c".repeat(40);
   writeJsonFile(postReviewPath(root), { pending: [{ commit: first, role: "feature", summary: "one" }, { commit: second, role: "clean", summary: "two" }] });
   const keys = openPending(root);
-  keys.handleKey(undefined, { name: "down" }); // feature (#1)
-  keys.handleKey(undefined, { name: "down" }); // clean (#2)
   keys.handleKey(undefined, { name: "down" }); // review #1
   keys.handleKey(undefined, { ctrl: true, name: "a" }); // arm review #1
   assert.match(keys.state().flash!, /press Ctrl\+A again to accept review #1/);
@@ -3470,12 +3160,10 @@ test("a key between the two Pending Ctrl+A presses disarms the accept", async ()
 });
 
 test("a Pending Ctrl+A confirm re-reads the review queue and refuses when it changed", async () => {
-  const { root } = await pendingCancelRoot();
+  const root = makeRepo();
   const commit = "b".repeat(40);
   seedReview(root, commit, "feature", "review me", { failures: 1 });
   const keys = openPending(root);
-  keys.handleKey(undefined, { name: "down" }); // feature (#1)
-  keys.handleKey(undefined, { name: "down" }); // clean (#2)
   keys.handleKey(undefined, { name: "down" }); // review #1
   keys.handleKey(undefined, { ctrl: true, name: "a" }); // arm
   assert.match(keys.state().flash!, /press Ctrl\+A again to accept review #1/);
@@ -3497,7 +3185,7 @@ test("pendingOverlapsText states an empty overlap list and omits a no-base one",
   assert.equal(pendingOverlapsText({ mainBranch: "trunk", state: "no-base", overlaps: [] }), "");
 });
 
-test("a rejecting overlaps collector keeps the Pending queue and flashes the error", async () => {
+test("a rejecting overlaps collector keeps the Pending reviews and flashes the error", async () => {
   const keys = createTuiKeys({
     root: makeRoot(),
     quit: () => {},
@@ -3509,7 +3197,7 @@ test("a rejecting overlaps collector keeps the Pending queue and flashes the err
   keys.syncSnapshot(0, false, [], false);
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
   await new Promise((r) => setImmediate(r));
-  assert.equal(keys.state().paneCache, "merge queue empty");
+  assert.equal(keys.state().paneCache, "", "an empty review head and a rejected overlaps leave the pane blank, not crashed");
   assert.equal(keys.state().flash, "error: boom");
 });
 
@@ -6264,37 +5952,6 @@ test("the History model summary shows a run with no recorded start as (unknown)"
   keys.handleKey(undefined, { ctrl: true, name: "y" });
   keys.handleKey(undefined, { ctrl: true, name: "y" });
   assert.match(keys.state().paneCache ?? "", /^\(unknown\)/m);
-});
-
-test("Ctrl+N's change step heads the change with the viewed role's queued merges", async () => {
-  const root = makeRoot();
-  const view = {
-    role: "clean",
-    branch: "tumwater/clean",
-    mainBranch: "main",
-    state: "ready" as const,
-    ahead: 2,
-    behind: 0,
-    commits: [{ sha: "abc1234", subject: "add a thing" }],
-    diff: "",
-    dirtyFiles: ["a.ts"],
-    uncommittedDiff: "",
-  };
-  enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 3, summary: "queued feature", enqueuedAt: 0 });
-  enqueueMerge(root, { role: "clean", sha: "b".repeat(40), run: 5, summary: "queued clean", enqueuedAt: 1 });
-  enqueueMerge(root, { role: "clean-2", sha: "c".repeat(40), run: 7, summary: "queued clean two", enqueuedAt: 2 });
-  const pending = Promise.resolve(view);
-  const keys = createTuiKeys({ root, quit: () => {}, requestRender: () => {}, now: () => 0, collectChange: () => pending });
-  keys.syncSnapshot(0, false, ["clean"], false);
-  keys.handleKey(undefined, { ctrl: true, name: "t" });
-  keys.handleKey(undefined, { ctrl: true, name: "n" });
-  keys.handleKey(undefined, { ctrl: true, name: "n" });
-  await pending;
-  const text = keys.state().changeCache ?? "";
-  assert.ok(text.startsWith("merge queue (1 of 3, --role clean):\n  2. clean run #5"), text);
-  assert.ok(text.endsWith(renderRoleChange(view)));
-  assert.doesNotMatch(text, /clean-2 run/);
-  assert.doesNotMatch(text, /feature run #3/);
 });
 
 test("`/` on a History trail whose transcript shows searches the transcript, not the run rows", () => {

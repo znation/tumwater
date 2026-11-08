@@ -18,8 +18,8 @@ export function groupBy<T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T
 }
 
 /** The distinct items of an iterable, in first-seen order — the single home of the
- * `seen.includes -> push` dedupe, shared by the pending pane's three scope lists
- * (mergeQueueRoles, postReviewRoles, overlapHolders in ui/tui/tui-pane-pending.ts), the
+ * `seen.includes -> push` dedupe, shared by the pending pane's scope lists
+ * (postReviewRoles, overlapHolders in ui/tui/tui-pane-pending.ts), the
  * session pane's scope cycle (ui/tui/tui-pane-session.ts's scopeCycle), the report
  * scope fold (report/report-fold.ts's scopeBases), and the rest of the harness's
  * `[...new Set(...)]` dedupes (completion.ts's commands/config keys, operator-commands.ts's
@@ -54,10 +54,9 @@ export function getOrCreate<K, V>(map: Map<K, V>, key: K, make: () => V): V {
 
 /** Filter a list by a keep predicate, returning the kept items and each kept item's 1-based
  * position in the original list — the single home of the "keep some, but number by the whole
- * list" step, shared by the two queue-scope twins `scopeMergeQueue` (src/merge/
- * merge-queue-render.ts) and `scopePostReviews` (src/review/post-merge-review-render.ts), so
- * `tumwater queue --role` and `tumwater reviews --role` keep the same whole-queue positions
- * a later position-addressed verb (`--cancel`, `--accept`) still addresses. The predicate runs
+ * list" step, shared by `scopePostReviews` (src/review/post-merge-review-render.ts), so
+ * `tumwater reviews --role` keeps the same whole-queue positions a later
+ * position-addressed verb (`--accept`) still addresses. The predicate runs
  * once per item, in input order; positions run 1..length, not a kept-only renumbering. */
 export function filterKeepPositions<T>(items: readonly T[], keep: (item: T) => boolean): { kept: T[]; positions: number[] } {
   const positions: number[] = [];

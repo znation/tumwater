@@ -11,6 +11,7 @@ import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
 import { removeQuiet } from "../files/files.js";
 import { mergeStatePath } from "../paths.js";
+import { humanSince } from "../text/datetime.js";
 import type { RoleRunner } from "../runner/runner.js";
 import type { PermitWaitHooks } from "../concurrency/check-permit.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
@@ -337,15 +338,21 @@ export function mergeChanges(marker: MergeInFlight): MergeChange[] {
       ];
 }
 
-/** True when the in-flight marker names `sha` among the changes it holds — either as its
- * top-level `sha` (the first change in `merging`, mirrored for older observers) or in one of
- * its per-change records, via
- * mergeChanges so both marker generations read through the same eye. The one guard behind
- * cancel/top/reorder actions so each caller's "is this merge about to drain" check cannot
- * drift from the others' — identical spellings lived in cli-query-commands.ts (cancel and
- * top) and tui-pane-pending.ts (the pending pane's reorder/cancel guard). */
-export function mergeHoldsSha(marker: MergeInFlight, sha: string): boolean {
-  return marker.sha === sha || mergeChanges(marker).some((c) => c.sha === sha);
+/** The bracketed-label text behind one merge queue entry's live-merge indicator — `merge
+ * <elapsed> · <stage>` while the marker holds a record for `sha`, and "" when the marker is
+ * absent, names no record for `sha`, or the record is `done`. Reads the marker through
+ * mergeChanges, so an older-generation single-change marker counts as one `merge` record. The
+ * label rides the status payload's mergeQueueLabels (status-payload.ts) and, through it, the
+ * dashboard Pending card after the `tumwater queue` command left. */
+export function queueEntryMergeLabel(sha: string, inFlight: MergeInFlight | undefined, now: number): string {
+  if (!inFlight) return "";
+  const change = mergeChanges(inFlight).find((c) => c.sha === sha);
+  if (!change || change.status === "done") return "";
+  let label = "merging";
+  if (change.startedAt) label += ` ${humanSince(change.startedAt, now)}`;
+  if (change.stage) label += ` · ${MERGE_STAGE_LABELS[change.stage]}`;
+  if (change.stageSince !== undefined) label += ` ${humanSince(change.stageSince, now)}`;
+  return label;
 }
 
 /** True when a persisted `changes` entry is a record the pipeline and the observers can act on:

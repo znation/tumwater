@@ -479,7 +479,7 @@ export function liveMergeMarker(marker: MergeInFlight, queued: ReadonlySet<strin
 
 /** The marker observers display for a queue read: undefined unless the orchestrator is running
  * (`running`) and the marker has a live record for a queued entry (liveMergeMarker). The one
- * home of this cross-check for the status snapshot, `tumwater queue`, and the TUI Pending pane. */
+ * home of this cross-check for the status snapshot and the surfaces that paint the merge queue. */
 export function queueInFlight(root: string, entries: readonly MergeEntry[], running: boolean): MergeInFlight | undefined {
   if (!running) return undefined;
   const marker = readMergeMarker(root);

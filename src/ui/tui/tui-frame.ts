@@ -224,7 +224,7 @@ function historySearchHint(view: Extract<TuiView, { kind: "history" }>): [string
 
 /** The pending-change roster's keys: merge/review selection and the review actions. */
 function pendingKeyHints(): Array<[string, string]> {
-  return [["Enter", "send"], ["↑↓", "select merge/review"], ["PgUp/PgDn", "scroll"], ["Ctrl+R", "refresh"], ["Ctrl+N", "overlaps"], ["Ctrl+G", "overlap role"], ["Ctrl+O", "review state"], ["Ctrl+X", "cancel merge"], ["Ctrl+V", "move to top"], ["Ctrl+A", "accept review"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  return [["Enter", "send"], ["↑↓", "select review"], ["PgUp/PgDn", "scroll"], ["Ctrl+R", "refresh"], ["Ctrl+N", "overlaps"], ["Ctrl+G", "overlap role"], ["Ctrl+O", "review state"], ["Ctrl+A", "accept review"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
 }
 
 /** The health pane's keys: the checks, install, and backlog maintenance actions. */

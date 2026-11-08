@@ -1,10 +1,6 @@
 import { saveRoleNote } from "../../roles/role-notes-write.js";
 import { roleNotesPath } from "../../paths.js";
 import { renderRoleChange } from "../../change/change-render.js";
-import { readMergeQueue } from "../../merge/merge-queue.js";
-import { renderMergeQueue, scopeMergeQueue } from "../../merge/merge-queue-render.js";
-import { orchestratorAlive } from "../../team/team-orchestrator-info.js";
-import { queueInFlight } from "../../status/status-polls.js";
 import { roleInspectMarkdown } from "./tui-pane.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
@@ -56,22 +52,13 @@ export function createTranscriptPane(session: TuiPaneSession) {
     changeCache = null;
     const gen = ++changeGen;
     const target = role;
-    // The role's waiting merges head the change, exact-matching this one runner id.
-    let queueText = "";
-    guardError(session, () => {
-      const { view, scope } = scopeMergeQueue(readMergeQueue(session.root), [role], (r) => r === role);
-      if (view.entries.length > 0) {
-        const inFlight = queueInFlight(session.root, view.entries, orchestratorAlive(session.root));
-        queueText = renderMergeQueue(view, session.now(), inFlight, scope) + "\n\n";
-      }
-    });
     void session.collectChange(session.root, target, changeStat ? { stat: true } : undefined).then(
       (change) => {
         // changeGen drops a load superseded by a re-load or a leave; the role match drops one
         // a roster change (syncRoster mutates session.roleIds without resetting this pane)
         // made stale, so an in-flight collection cannot paint the previous role's change.
         if (gen !== changeGen || viewedRole() !== target) return;
-        changeCache = queueText + renderRoleChange(change);
+        changeCache = renderRoleChange(change);
         session.requestRender();
       },
       staleReject(
@@ -88,7 +75,8 @@ export function createTranscriptPane(session: TuiPaneSession) {
     // Ctrl+N cycles the viewed role's pane live transcript → notes → change → transcript.
     // The change step renders the same
     // collectRoleChange/renderRoleChange view the CLI's `tumwater diff --role <id>` and the
-    // dashboard drawer use. Guarded to a transcript view and out of budget-edit and
+    // dashboard drawer use (no queued merges prepended since `tumwater queue` left).
+    // Guarded to a transcript view and out of budget-edit and
     // role-prompt modes, the same way the per-role controls below are; the History view's
     // trail arm is handled by the history module ahead of this one in the routing order.
     // The editor flags below (budget/role/pause/queued/answer/entry/search) are all

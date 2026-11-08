@@ -17,7 +17,7 @@ import {
   readMergeQueue,
   staleHeadFile,
 } from "../src/merge/merge-queue.js";
-import { queueEntryMergeLabel, renderMergeQueue, revisionNote, retryNote } from "../src/merge/merge-queue-render.js";
+import { queueEntryMergeLabel } from "../src/merge/merge-slot.js";
 import { dropTornHead } from "../src/merge/merge-head.js";
 import { mergeQueueDir, mergeRefName } from "../src/paths.js";
 import { setRef } from "../src/git/git.js";
@@ -258,104 +258,6 @@ test("readMergeQueue skips a torn or foreign file and counts it as unreadable", 
   assert.equal(view.unreadable, 2, "both unreadable files are counted");
 });
 
-test("renderMergeQueue prints the unreadable skip count exactly once", () => {
-  const now = 1_000_000;
-  const lines = renderMergeQueue(
-    {
-      entries: [{ role: "improve", sha: "a".repeat(40), run: 3, summary: "tidy", enqueuedAt: now - 5_000 }],
-      unreadable: 2,
-    },
-    now,
-  ).split("\n");
-  assert.deepEqual(lines, [
-    "merge queue (3):",
-    "  1. improve run #3 · aaaaaaaa · 5s ago · tidy",
-    "  (+2 unreadable queue files skipped)",
-  ]);
-  assert.equal(
-    renderMergeQueue({ entries: [], unreadable: 1 }, now),
-    "merge queue (1):\n  (+1 unreadable queue file skipped)",
-    "a depth held only by skipped files states the skip once",
-  );
-});
-
-test("revisionNote names a re-submitted change's revision round and prior objections", () => {
-  assert.equal(revisionNote({}), "");
-  assert.equal(revisionNote({ revisionRound: 1 }), "revision 1");
-  assert.equal(revisionNote({ revisionRound: 2, priorReview: { sha: "a".repeat(40), reasons: ["x", "y"] } }), "revision 2 · 2 prior objections");
-  // A priorReview with an empty reasons appends no objection clause.
-  assert.equal(revisionNote({ revisionRound: 3, priorReview: { sha: "a".repeat(40), reasons: [] } }), "revision 3");
-});
-
-test("retryNote names why a re-queued entry is back and its deferral", () => {
-  const now = 1_000_000;
-  assert.equal(retryNote({}, now), "");
-  assert.equal(retryNote({ retry: "merge_blocked" }, now), "re-queued after merge_blocked");
-  assert.equal(retryNote({ retry: "merge_blocked", retryCount: 1 }, now), "re-queued after merge_blocked");
-  assert.equal(retryNote({ retry: "merge_blocked", retryCount: 3 }, now), "re-queued after merge_blocked · ×3");
-  assert.equal(retryNote({ retry: "review_error", notBefore: now + 42_000 }, now), "re-queued after review_error · eligible in 42s");
-  assert.equal(retryNote({ retry: "review_error", retryCount: 3, notBefore: now + 42_000 }, now), "re-queued after review_error · ×3 · eligible in 42s");
-  // A notBefore in the past appends no eligibility clause.
-  assert.equal(retryNote({ retry: "review_error", notBefore: now - 1 }, now), "re-queued after review_error");
-});
-
-test("renderMergeQueue prints a re-submitted change's revision note before its summary", () => {
-  const now = 1_000_000;
-  const view = {
-    entries: [
-      { role: "improve", sha: "a".repeat(40), run: 3, summary: "tidy", enqueuedAt: now - 5_000 },
-      { role: "feature", sha: "b".repeat(40), run: 7, summary: "revise the thing", enqueuedAt: now - 4_000, revisionRound: 1, priorReview: { sha: "c".repeat(40), reasons: ["x", "y"] } },
-    ],
-    unreadable: 0,
-  };
-  const lines = renderMergeQueue(view, now).split("\n");
-  assert.equal(lines[1], "  1. improve run #3 · aaaaaaaa · 5s ago · tidy", "a fresh entry's line is unchanged");
-  assert.equal(lines[2], "  2. feature run #7 · bbbbbbbb · 4s ago · revision 1 · 2 prior objections · revise the thing");
-});
-
-test("renderMergeQueue names why a re-queued entry is back between its merge tag and its summary", () => {
-  const now = 1_000_000;
-  const view = {
-    entries: [
-      { role: "improve", sha: "a".repeat(40), run: 3, summary: "tidy", enqueuedAt: now - 5_000 },
-      { role: "feature", sha: "b".repeat(40), run: 7, summary: "re-queue the thing", enqueuedAt: now - 4_000, retry: "review_error", notBefore: now + 42_000 },
-      { role: "organize", sha: "c".repeat(40), run: 1, summary: "blocked clean", enqueuedAt: now - 3_000, retry: "merge_blocked" },
-    ],
-    unreadable: 0,
-  };
-  const lines = renderMergeQueue(view, now).split("\n");
-  assert.equal(lines[1], "  1. improve run #3 · aaaaaaaa · 5s ago · tidy", "a fresh entry's line is unchanged");
-  assert.equal(lines[2], "  2. feature run #7 · bbbbbbbb · 4s ago · re-queued after review_error · eligible in 42s · re-queue the thing");
-  assert.equal(lines[3], "  3. organize run #1 · cccccccc · 3s ago · re-queued after merge_blocked · blocked clean");
-});
-
-test("renderMergeQueue carries a re-queued entry's bounce count between its retry and revision notes", () => {
-  const now = 1_000_000;
-  const entries = [
-    { role: "feature", sha: "a".repeat(40), run: 7, summary: "fresh", enqueuedAt: now - 5_000 },
-    { role: "organize", sha: "b".repeat(40), run: 1, summary: "first retry", enqueuedAt: now - 4_000, retry: "merge_blocked" },
-    { role: "improve", sha: "c".repeat(40), run: 2, summary: "stuck retrying", enqueuedAt: now - 3_000, retry: "merge_blocked", retryCount: 3 },
-  ];
-  const view = { entries, unreadable: 0 };
-  const lines = renderMergeQueue(view, now).split("\n");
-  assert.equal(lines[1], "  1. feature run #7 · aaaaaaaa · 5s ago · fresh", "a fresh entry's line is unchanged");
-  assert.equal(lines[2], "  2. organize run #1 · bbbbbbbb · 4s ago · re-queued after merge_blocked · first retry", "a first retry's line is unchanged");
-  assert.equal(lines[3], "  3. improve run #2 · cccccccc · 3s ago · re-queued after merge_blocked · ×3 · stuck retrying");
-});
-
-test("renderMergeQueue marks a high-friction entry and leaves an ordinary one alone", () => {
-  const now = 1_000_000;
-  const plain = { role: "feature", sha: "a".repeat(40), run: 3, summary: "tidy", enqueuedAt: now - 5_000 };
-  const friction = { ...plain, sha: "b".repeat(40), summary: "churn the thing", highFriction: true };
-  const view = { entries: [friction, plain], unreadable: 0 };
-  const lines = renderMergeQueue(view, now).split("\n");
-  assert.match(lines[1]!, / · high friction /, "the high-friction entry carries the marker");
-  assert.ok(!lines[2]!.includes("high friction"), "the ordinary entry carries none");
-  assert.equal(lines[2], renderMergeQueue({ entries: [plain], unreadable: 0 }, now).split("\n")[1]!.replace(/^  \d+\. /, "  2. "), "the ordinary entry's line is byte-identical to its one-entry render apart from its queue position");
-  // A hand-edited non-boolean does not fabricate the marker.
-  const nonBool = { ...plain, sha: "c".repeat(40), highFriction: "yes" } as unknown as MergeEntry;
-  assert.ok(!renderMergeQueue({ entries: [nonBool], unreadable: 0 }, now).includes("high friction"));
-});
 test("a torn queue head is dropped and its change re-queued from the recovered pin in leftover-recovery shape, or dropped with no re-queue", async () => {
   // The drain's torn-head step (dropTornHead). A torn head — a partial write mid-enqueue — keeps
   // `"role":"<id>"` because MergeEntry serializes role first; the drain drops it loudly AND
@@ -473,35 +375,6 @@ test("readMergeQueue reads a missing queue dir as empty with no skips", () => {
   const repo = makeRepo();
   assert.ok(!fs.existsSync(mergeQueueDir(repo)), "no queue dir before the first enqueue");
   assert.deepEqual(readMergeQueue(repo), { entries: [], unreadable: 0 });
-});
-
-test("renderMergeQueue marks entries with a live in-flight record and leaves the rest alone", () => {
-  const now = 1_000_000_000;
-  const mk = (role: string, sha: string): MergeEntry => ({ role, sha, run: 1, summary: `s ${role}`, enqueuedAt: now - 300_000 });
-  const view = { entries: [mk("a", "1".repeat(40)), mk("b", "2".repeat(40)), mk("c", "3".repeat(40))], unreadable: 0 };
-  const base = { role: "a", sha: "1".repeat(40), summary: "s", startedAt: now - 120_000 };
-  const inFlight = {
-    ...base,
-    changes: [
-      { role: "a", sha: "1".repeat(40), summary: "s", status: "merging" as const, startedAt: now - 120_000, stage: "reviewing" as const },
-      { role: "b", sha: "2".repeat(40), summary: "s", status: "merging" as const, startedAt: now - 60_000, stage: "build-check" as const },
-    ],
-  };
-  const lines = renderMergeQueue(view, now, inFlight).split("\n");
-  assert.match(lines[1]!, / · 5m ago · \[merging 2m · reviewing\] · s a$/);
-  assert.match(lines[2]!, / · 5m ago · \[merging 1m · checking\] · s b$/);
-  assert.equal(lines[3], renderMergeQueue(view, now).split("\n")[3]);
-  const plain = renderMergeQueue(view, now);
-  const done = { ...inFlight, changes: [{ ...inFlight.changes[0]!, status: "done" as const }] };
-  assert.equal(renderMergeQueue(view, now, done), plain);
-  assert.equal(renderMergeQueue(view, now, { ...base, sha: "9".repeat(40), changes: undefined }), plain);
-  assert.equal(renderMergeQueue(view, now, undefined), plain);
-  const noStage = { ...inFlight, changes: [{ ...inFlight.changes[0]!, stage: undefined }] };
-  assert.match(renderMergeQueue(view, now, noStage), /\[merging 2m\] · s a/);
-  // A record carrying stageSince appends the per-stage elapsed after the stage (PLANS.md
-  // 2026-10-15): `merging 2m · reviewing 30s`.
-  const withSince = { ...inFlight, changes: [{ ...inFlight.changes[0]!, stageSince: now - 30_000 }] };
-  assert.match(renderMergeQueue(view, now, withSince).split("\n")[1]!, /\[merging 2m · reviewing 30s\] · s a$/);
 });
 
 test("queueEntryMergeLabel reads an older-generation marker with no changes array as one merge record", () => {

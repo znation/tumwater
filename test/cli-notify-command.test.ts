@@ -8,8 +8,8 @@ import { setConfigKey } from "../src/config/config-write.js";
 import { runNotifyHook, testNotifyHook, NOTIFY_TEST_TIMEOUT_MS } from "../src/cli/cli-notify-command.js";
 
 // The `notify --test` command: run the configured notify hook once with a synthetic event, via
-// the CLI the way the cli-queue tests drive `queue` — an initialized repo, child-process runs,
-// output assertions. The real hook is a shell echo appending its env to a temp file.
+// the CLI — an initialized repo, child-process runs, output assertions. The real hook is a shell
+// echo appending its env to a temp file.
 
 /** A command that appends `TYPE|ROLE|MESSAGE` to `out` — the recorder `tumwater notify --test`
  * runs. Double quotes keep a message with spaces whole through the shell. */

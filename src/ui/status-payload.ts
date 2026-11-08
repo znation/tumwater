@@ -8,7 +8,7 @@ import { eventFeedItem, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
 import { contextShareLabel } from "../text/format.js";
-import { queueEntryMergeLabel } from "../merge/merge-queue-render.js";
+import { queueEntryMergeLabel } from "../merge/merge-slot.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, permitsBadge, checksBadge, quietBadge, restartHoldText, runWindowBadge, workspacesBadge } from "./badges.js";

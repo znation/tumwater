@@ -1,4 +1,4 @@
-/** `tumwater reviews` — the operator-facing twin of `tumwater queue` for the post-merge review
+/** `tumwater reviews` — the operator-facing post-merge review
  * queue (.tumwater/state/post-review.json): list every well-formed entry in FIFO order, or the
  * same list as JSON (`--json`). It does not require a ready repo (the `cmdBacklog` rationale):
  * `readPostReviews` reads a missing, torn or hand-edited file as the well-formed subset (or `[]`),
@@ -6,7 +6,7 @@
  * `--accept <n>` mode, which removes the Nth entry the operator deliberately accepts unreviewed
  * (the action the doctor's at-risk post-review row's advice names); that mode adds no new
  * ready-repo requirement to
- * the read path and gates the write with `requireReadyRepo`. Unlike `cmdQueue`'s `--cancel`, the
+ * the read path and gates the write with `requireReadyRepo`; the
  * read case still writes no file. */
 
 import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, rejectUnknownArgs, grepFlagSpec, statusFlagSpec } from "./cli-flag-specs.js";
@@ -143,7 +143,7 @@ export async function cmdReviews(root: string, args: string[], seams: FollowView
 
 /** The `tumwater reviews --accept <n>` branch (PLANS.md): remove the Nth pending post-merge
  * review `tumwater reviews` lists, accepting the commit unreviewed at the operator's request.
- * Parsed the way `cmdQueueCancel` parses `--cancel`: `--accept <n>` the one valued flag,
+ * Parsed the way the departed `queue --cancel` was: `--accept <n>` the one valued flag,
  * `--json` the one boolean (at most once), `--help`/`-h` tolerated, anything else refused. An
  * out-of-range position fails naming the current depth; an entry whose repair already merged
  * (`fixed`) is refused. A rejected entry waits on nothing and is accepted like any pending one. */
@@ -151,7 +151,7 @@ export async function cmdReviews(root: string, args: string[], seams: FollowView
 async function cmdReviewsAccept(root: string, args: string[]): Promise<void> {
   const { json, position, rest } = scanPositionArgs(args, "--accept", "--accept 2");
   // The vocabulary an accept invocation accepts is exactly --accept and --json, both consumed
-  // above; --role is refused by name (as cmdQueueCancel refuses it): accept addresses a
+  // above; --role is refused by name: accept addresses a
   // whole-queue position `tumwater reviews` printed, and a scoped read must never renumber it.
   if (rest.includes("--role") || rest.includes("--status") || rest.includes("--grep")) fail("reviews --accept accepts by whole-queue position from `tumwater reviews`; --role, --status and --grep scope a read only — drop them");
   // Everything else is refused with the generic wording, so `--bogus` is named.

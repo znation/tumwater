@@ -104,9 +104,8 @@ as the header" and "markdownTable defaults every column to left alignment".
 
 **Guarantee.** `numberedList` numbers items from 1 as `N. item`, one per line, and returns its
 `empty` argument verbatim for no items. The review prompt's prior objections and findings, the
-rejected/revision notes, `tumwater questions`' list and `wake --list` all build through it. Two surfaces number their own lines and are not bound:
-the TUI's queued-prompt rows (`src/ui/tui/tui.tsx`) push one styled row per item, and the merge
-queue's rows (`src/merge/merge-queue-render.ts`) are indented and carry per-row columns.
+rejected/revision notes, `tumwater questions`' list and `wake --list` all build through it. One surface numbers its own lines and is not bound:
+the TUI's queued-prompt rows (`src/ui/tui/tui.tsx`) push one styled row per item.
 
 **Binds.** `src/text/markdown.ts` (`numberedList`), `src/prompt/gate-prompts.ts`,
 `src/prompt/gate-notes.ts`, `src/backlog/backlog-question-answer.ts`, `src/operator/operator-intent.ts`
@@ -1366,8 +1365,7 @@ dropped, never read.
 **Binds.** `src/status/status-polls.ts` (`queueInFlight`, `liveMergeMarker`),
 `src/merge/merge-slot.ts` (`isMergeChange`, `readMergeMarker`).
 
-**Pinned by.** `test/cli-queue.test.ts` — "queue prints the in-flight label only while an
-orchestrator is alive"; `test/status-polls.test.ts` — "liveMergeMarker shows a single-change marker
+**Pinned by.** `test/status-polls.test.ts` — "liveMergeMarker shows a single-change marker
 only while its sha is queued", "liveMergeMarker keeps only the queued records and hides a marker
 whose queued records are all done" and "liveMergeMarker drops a null or malformed record instead of
 throwing".
