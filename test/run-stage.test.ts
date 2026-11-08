@@ -1079,6 +1079,66 @@ test("a fix-up that reverts the whole change ends no_change with nothing queued"
   assert.deepEqual(outcomes[0]!.findings, ["a finding"]);
 });
 
+test("a fix-up that reverts the whole change files the finding in BUGS.md as open work", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "SUMMARY: add the feature\n",
+    stageChecks: [["src/feature.ts:3 (trailing whitespace)"]],
+    stageFix: okPi({ finalText: "RISK: the change should not exist; reverted\n" }),
+    stageFixDrops: true,
+  });
+
+  const outcome = await stageRunMerge(ctx);
+
+  assert.equal(outcome.result, "no_change");
+  assert.equal(outcome.selfCheckReverted, true);
+  assert.equal(calls.pins.length, 0);
+  assert.equal(queueDepth(root), 0);
+  // The finding the fix-up could not close is filed under BUGS.md ## Open, so the bugfix role
+  // can take it next run instead of re-burning the same authoring.
+  const bugs = sh(root, "git", "show", "HEAD:BUGS.md");
+  assert.match(bugs, /^## Open$/m);
+  assert.match(
+    bugs,
+    /^### the stage self-check finding "src\/feature.ts:3 \(trailing whitespace\)" was not closed by the fix-up turn/m,
+  );
+  assert.equal(
+    sh(root, "git", "log", "-1", "--format=%s"),
+    "tumwater(operator): File 1 stage self-check finding in BUGS.md",
+  );
+  assert.deepEqual(calls.warnings, [], "the filing never warns on success");
+});
+
+test("a recurring reverted finding reuses its filed heading instead of appending a duplicate", async () => {
+  const { root, wt } = await setup();
+  const finding = "src/feature.ts:3 (trailing whitespace)";
+  const options = {
+    finalText: "SUMMARY: add the feature\n",
+    stageChecks: [[finding]],
+    stageFix: okPi({ finalText: "RISK: the change should not exist; reverted\n" }),
+    stageFixDrops: true,
+  };
+
+  await stageRunMerge(makeCtx(root, wt, freshRunnerState("improve"), options).ctx);
+  // The same finding recurs next run: re-create the change and stage it again.
+  fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
+  await stageRunMerge(makeCtx(root, wt, freshRunnerState("improve"), options).ctx);
+
+  const bugs = sh(root, "git", "show", "HEAD:BUGS.md");
+  assert.equal(
+    bugs.split("### the stage self-check finding").length - 1,
+    1,
+    "the recurring finding reuses its one entry instead of piling up duplicates",
+  );
+  // The second filing matched the open heading and committed nothing, so the last commit is
+  // still the first filing's.
+  assert.equal(
+    sh(root, "git", "log", "-1", "--format=%s"),
+    "tumwater(operator): File 1 stage self-check finding in BUGS.md",
+  );
+});
+
 test("a git failure after the fix-up throws instead of reading as a reverted change", async () => {
   // 2026-10-21: in the spawn wedge this check's `git status` failed, read as "nothing left",
   // and ended a 17-minute run no_change with its edits released in an unpinned slot. Thrown,

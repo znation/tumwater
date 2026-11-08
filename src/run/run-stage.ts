@@ -21,13 +21,15 @@ import { enqueueMerge, entryRevisionFields, queuedMerges } from "../merge/merge-
 import type { PriorReview } from "../merge/merge-queue.js";
 import { hasUnmergedPin } from "../runner/runner-leftover.js";
 import { plural } from "../text/phrases.js";
-import { squash } from "../text/text.js";
+import { squash, errorMessage } from "../text/text.js";
+import { formatDate } from "../text/datetime.js";
 import { recordDismissedFiling, recordDismissedFlow, recordDismissedRemote } from "./run-dismiss.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";
 import { stagedMovedEntries } from "../scheduling/claims.js";
 import { entryKey } from "../backlog/backlog-parts.js";
 import { assignedMovedFinding, heldMovedFinding } from "../stage/stage-backlog-checks.js";
 import { archiveNewFinishedEntries } from "../backlog/backlog-archive.js";
+import { fileBugsOnMain } from "../backlog/backlog-file-bugs.js";
 
 /** The most findings one self-check outcome event carries. */
 const SELF_CHECK_LOGGED_FINDINGS = 12;
@@ -54,6 +56,48 @@ function logSelfCheckOutcome(
     findings: findingDigest(findings),
     ...(remaining.length > 0 ? { open: findingDigest(remaining) } : {}),
   });
+}
+
+/** The cap on a filed finding's title: enough to name a finding (a policy scan names its file
+ * and line) while keeping the heading readable; the full finding text rides in the body. */
+const SELF_CHECK_FILED_FINDING_CHARS = 120;
+
+/** File one BUGS.md `## Open` entry per self-check finding the one-turn fix-up could not close
+ * and reverted the whole change over (the run ends `no_change` flagged `selfCheckReverted`, with
+ * the finding only in the warning event — nothing else surfaces it, so a recurring finding, one
+ * of the four repo-wide policy scans say, re-burns the same authoring next run instead of
+ * becoming bugfix work). Filed under the merge lock and deduped by the finding's text, so an
+ * already-open finding reuses its heading instead of piling up duplicate entries. Best-effort
+ * and never throws: a skipped or failed filing warns and keeps the finding in the warning
+ * event. */
+async function fileUnclosedSelfCheckFindings(ctx: RunStageContext, findings: readonly string[]): Promise<void> {
+  const date = formatDate(new Date());
+  const entries = findings.map((finding) => {
+    const quoted = `"${squash(finding, SELF_CHECK_FILED_FINDING_CHARS)}"`;
+    return {
+      title: `the stage self-check finding ${quoted} was not closed by the fix-up turn and re-fires each run (filed by tumwater ${date})`,
+      body: [
+        `- **Symptom:** the pre-queue self-check raised this finding on the run's change; the one-turn fix-up could not close it and reverted the whole change instead, so the run ended \`no_change\` (\`selfCheckReverted\`) and the finding lived only in the run's warning event.`,
+        `- **Finding:** \`${squash(finding, SELF_CHECK_FINDING_CHARS)}\``,
+        `- **Reproduce:** author a change that trips a pre-queue self-check finding the fix-up resolves by reverting the whole change (clean tree); the run ends \`no_change\` with only the self-check warning carrying the finding.`,
+        `- **Cause:** a finding the fix-up could not close was never filed to BUGS.md, so the same finding re-burned the same authoring each run instead of becoming bugfix work.`,
+        `- **Fix sketch:** fix the finding's cause — the file and line it names, or the check that raised it — and move this entry to Fixed with a Fix paragraph showing the finding gone.`,
+      ].join("\n"),
+      ifOpen: (open: string[]) => open.find((t) => t.includes(quoted)),
+    };
+  });
+  try {
+    const outcome = await fileBugsOnMain(
+      ctx.root,
+      entries,
+      (appended) => `File ${plural(appended, "stage self-check finding", "stage self-check findings")} in BUGS.md`,
+    );
+    if (outcome.status === "skipped") {
+      ctx.warn(`the stage self-check finding was not filed in BUGS.md (${outcome.reason})`);
+    }
+  } catch (err) {
+    ctx.warn(`the stage self-check finding was not filed in BUGS.md: ${errorMessage(err)}`);
+  }
 }
 
 /** The staged change's commit body, structurally mirroring commit-message.ts's module-private
@@ -326,6 +370,10 @@ async function applyStageFixUp(
       "stage self-check: the follow-up turn left no change; nothing to land",
       findings,
     );
+    // A finding the one-turn fix-up could not close would otherwise live only in the warning
+    // event above, so it never reaches BUGS.md and re-burns the same authoring next run
+    // (BUGS.md 2026-11-08). File it as open work before the no_change ends the run.
+    await fileUnclosedSelfCheckFindings(ctx, findings);
     return { result: "no_change", selfCheckReverted: true };
   }
   const remaining = await ctx.stageCheck(ctx.wt);

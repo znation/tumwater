@@ -6,13 +6,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-### A self-check fix-up that reverts the whole change leaves its finding only in the run's warning event, so an unfixable finding never escalates to BUGS.md as work for the bugfix role (found by the selfcheck role 2026-11-08; split 2026-11-08 by the reviewer role from the self-check-revert entry, whose loss-pricing half is fixed)
-
-- **Symptom:** when `applyStageFixUp`'s follow-up turn reverts the whole change, the run ends `no_change` flagged `selfCheckReverted` and the digest prices the discard as its own loss cause, but the finding text still lives only in the warning event's `findings`/`open` fields (`logSelfCheckOutcome`, src/run/run-stage.ts). The failure digest clusters warnings by message and shows none of the findings, and nothing files them to BUGS.md, so a finding the one-turn fix-up could not close (one of the four repo-wide policy scans, say) re-burns the same authoring next run.
-- **Reproduce:** author a change that trips a pre-queue self-check finding the fix-up resolves by reverting the whole change (clean tree). The run ends `no_change` with only the self-check warning; its finding is logged in the run's event feed but never filed to BUGS.md.
-- **Cause:** the self-check-revert path only adds the `selfCheckReverted` outcome flag and loss cause; it does not surface the finding itself, so the bugfix role never takes the recurring problem.
-- **Fix sketch:** surface a finding the one-turn fix-up cannot close to the backlog, so a recurring finding becomes work instead of being re-burned each run.
-
 ### `an aborted merge settles despite an unwritable state file: no throw, entry dropped, pin discarded` failed, then passed on the same tree (quarantined by tumwater 2026-11-08)
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
