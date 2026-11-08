@@ -11,11 +11,11 @@
 import { setConfigKey, setDailyBudgetUsd, setRoleModelFields, unsetConfigKey } from "../config/config-write.js";
 import { checkDailyBudgetUsd, checkMinRunInterval } from "../config/config-keys.js";
 import { testNotifyHook } from "../cli/cli-notify-command.js";
-import { rejectBadRole, requireConfigKey, requireRoleField, requireStringField } from "./gui-args.js";
+import { rejectBadRole, requireConfigKey, requireStringField } from "./gui-args.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
-import { readPostBody } from "./gui-endpoint-common.js";
+import { readPostBody, readRoleFieldBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
 
 /** Handle POST /api/budget: the dashboard's budget-badge editor saves the daily cost cap —
@@ -59,10 +59,9 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
  * the cap is about the role. A write failure is configKeyError's 400 exactly as handleConfigSet
  * reports it. A no-op write answers `unchanged: true`. */
 export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"role": "feature", "maxDailyCostUsd": 2}');
-  if (!body) return;
-  const role = requireRoleField(res, body);
-  if (role === null) return;
+  const input = await readRoleFieldBody(req, res, '{"role": "feature", "maxDailyCostUsd": 2}');
+  if (!input) return;
+  const { body, role } = input;
   if (role === DIRECTOR_ROLE) {
     badRequest(res, "the director has no daily cap");
     return;
@@ -99,10 +98,9 @@ export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerR
  * (baseRoleOf), since the interval is about the role. A write failure is configKeyError's 400
  * exactly as handleRoleCap reports it. A no-op set or clear says so in its message. */
 export async function handleRoleInterval(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"role": "feature", "minRunIntervalSeconds": 300}');
-  if (!body) return;
-  const role = requireRoleField(res, body);
-  if (role === null) return;
+  const input = await readRoleFieldBody(req, res, '{"role": "feature", "minRunIntervalSeconds": 300}');
+  if (!input) return;
+  const { body, role } = input;
   const value = body.minRunIntervalSeconds;
   if (value === undefined) {
     badRequest(res, "minRunIntervalSeconds required");
@@ -150,10 +148,9 @@ export async function handleRoleInterval(req: http.IncomingMessage, res: http.Se
  * since the count is about the role. A write failure is configKeyError's 400 exactly as
  * handleRoleInterval reports it. A no-op set or clear says so in its message. */
 export async function handleRoleInstances(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"role": "feature", "instances": 3}');
-  if (!body) return;
-  const role = requireRoleField(res, body);
-  if (role === null) return;
+  const input = await readRoleFieldBody(req, res, '{"role": "feature", "instances": 3}');
+  if (!input) return;
+  const { body, role } = input;
   const value = body.instances;
   if (value === undefined) {
     badRequest(res, "instances required");
@@ -195,10 +192,9 @@ export async function handleRoleInstances(req: http.IncomingMessage, res: http.S
  * roles.<base>.<field> on a bad value and refuses an unknown role, reported as a 400 exactly
  * as handleRoleInterval reports a write failure. A no-op write says so in its message. */
 export async function handleRoleModel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"role": "feature", "provider": "huggingface", "model": "claude-opus-5", "thinking": "high"}');
-  if (!body) return;
-  const role = requireRoleField(res, body);
-  if (role === null) return;
+  const input = await readRoleFieldBody(req, res, '{"role": "feature", "provider": "huggingface", "model": "claude-opus-5", "thinking": "high"}');
+  if (!input) return;
+  const { body, role } = input;
   const fields: { provider?: string; model?: string; thinking?: string; backend?: string } = {};
   for (const key of ["provider", "model", "thinking", "backend"] as const) {
     if (body[key] === undefined) continue;
@@ -232,10 +228,9 @@ export async function handleRoleModel(req: http.IncomingMessage, res: http.Serve
  * 4096-char cap and the unknown-role check, and a write failure is configKeyError's 400
  * naming the dotted key. A no-op set or clear says so in its message. */
 export async function handleRoleInstructions(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"role": "feature", "text": "…"}');
-  if (!body) return;
-  const role = requireRoleField(res, body);
-  if (role === null) return;
+  const input = await readRoleFieldBody(req, res, '{"role": "feature", "text": "…"}');
+  if (!input) return;
+  const { body, role } = input;
   const text = requireStringField(res, body, "text", `the full replacement instructions, or "" to clear it`);
   if (text === null) return;
   const base = baseRoleOf(role);
@@ -264,10 +259,9 @@ export async function handleRoleInstructions(req: http.IncomingMessage, res: htt
  * and mirrors the CLI's --enable. A role already in the requested state answers `already
  * enabled`/`already disabled` and writes nothing. */
 async function setRoleEnabled(req: http.IncomingMessage, res: http.ServerResponse, root: string, enabled: boolean): Promise<void> {
-  const body = await readPostBody(req, res, '{"role": "selfcheck"}');
-  if (!body) return;
-  const role = requireRoleField(res, body);
-  if (role === null) return;
+  const input = await readRoleFieldBody(req, res, '{"role": "selfcheck"}');
+  if (!input) return;
+  const { role } = input;
   const base = baseRoleOf(role);
   if (!enabled && base === DIRECTOR_ROLE) return badRequest(res, "the director cannot be disabled");
   const key = `roles.${base}.enabled`;
@@ -309,10 +303,9 @@ export async function handleRoleDisable(req: http.IncomingMessage, res: http.Ser
  * own the truth, and a write failure is configKeyError's 400 naming the dotted key. A no-op set
  * or clear says so in its message. */
 export async function handleRoleQuietHours(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"role": "feature", "window": "23:00-07:00"}');
-  if (!body) return;
-  const role = requireRoleField(res, body);
-  if (role === null) return;
+  const input = await readRoleFieldBody(req, res, '{"role": "feature", "window": "23:00-07:00"}');
+  if (!input) return;
+  const { body, role } = input;
   if (role === DIRECTOR_ROLE) return badRequest(res, "the director has no quiet hours");
   const window = requireStringField(res, body, "window", `a window like 23:00-07:00, or "" to clear it`);
   if (window === null) return;

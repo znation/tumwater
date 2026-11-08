@@ -7,7 +7,7 @@
  * inputs with — and sendRequestResult, the shared boolean-claiming marker reply. The
  * per-domain `checked*` validators live with their domain's module, not here.
  */
-import { rejectBadRole, requireSha } from "./gui-args.js";
+import { rejectBadRole, requireRoleField, requireSha } from "./gui-args.js";
 import { readJsonObject, sendJson } from "./gui-http-body.js";
 import type { RequestResult } from "../operator/operator-intent.js";
 import type http from "node:http";
@@ -48,6 +48,25 @@ export async function readRoleBody(
   if (body === null) return null; // 4xx already sent — oversized, malformed, or not an object
   if (rejectBadRole(root, res, body.role, allowMissing)) return null; // 400 already sent
   return body;
+}
+
+/** The role-field config POST handlers' shared prologue: readPostBody (400/413 sent on a null
+ * return) plus requireRoleField's non-blank-string role check (400 sent on a null return) —
+ * the pairing the seven role-cap/interval/instances/model/instructions/enable-disable/
+ * quiet-hours handlers in gui-config-commands.ts each open with. Unlike readRoleBody it does
+ * not validate the id against the catalog: these writers accept an instance id (`feature-2`)
+ * and defer the unknown-role check to validateConfig. Its null return means the response is
+ * already written and the handler must stop; callers keep their own `if (!input) return` bail. */
+export async function readRoleFieldBody(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  example: string,
+): Promise<{ body: Record<string, unknown>; role: string } | null> {
+  const body = await readPostBody(req, res, example);
+  if (body === null) return null; // 4xx already sent — oversized, malformed, or not an object
+  const role = requireRoleField(res, body);
+  if (role === null) return null; // 400 already sent
+  return { body, role };
 }
 
 /** The sha-addressed POST handlers' shared prologue: readPostBody (400/413 sent on a null
