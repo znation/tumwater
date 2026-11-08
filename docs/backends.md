@@ -1,15 +1,16 @@
 # Backends
 
-tumwater drives pi, and pi drives a model backend. Nothing in tumwater is tied to a
-particular one: any OpenAI-compatible endpoint pi can reach will do. Claude
-Code and OpenCode are selectable with `backend` beside `model` — `model` names the model, `backend`
-names the program that runs it (see [Claude Code](#claude-code-backend-claude) and
-[OpenCode](#opencode-backend-opencode) below).
+tumwater drives an agent backend, and that backend drives a model. pi is the default,
+and claude, opencode and codex are selectable with `backend` beside `model` — `model` names the
+model, `backend` names the program that runs it (see [Claude Code](#claude-code-backend-claude),
+[OpenCode](#opencode-backend-opencode) and [Codex](#codex-backend-codex) below). Nothing in
+tumwater is tied to a particular model: any OpenAI-compatible endpoint the pi backend can reach
+will do on pi.
 
 ## What a backend must provide
 
-- **An OpenAI-compatible endpoint pi can reach** — a hosted provider's base URL, or a local
-  server. Name it with `provider` and `model` in `tumwater.json` (and a per-role override under
+- **An OpenAI-compatible endpoint the pi backend can reach** — a hosted provider's base URL, or
+  a local server. Name it with `provider` and `model` in `tumwater.json` (and a per-role override under
   `roles.<id>` when a single role needs a different model).
 - **A context window large enough for a run's prompt.** Every run starts a fresh pi session
   (~8k-token prefill), but a dense run grows to tens of thousands of tokens before it ends.

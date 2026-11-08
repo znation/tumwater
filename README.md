@@ -8,8 +8,9 @@
 > fast. Set `maxDailyCostUsd` before you start, and watch actual spend with `tumwater report`
 > and `tumwater status`.
 
-tumwater is an opinionated autonomous development team, built on
-[pi](https://github.com/badlogic/pi-mono). You write a short project brief, and a team of
+tumwater is an opinionated autonomous development team running on a pluggable agent
+backend — [pi](https://github.com/badlogic/pi-mono) is the default, and Claude Code, OpenCode
+and Codex are selectable with `backend`. You write a short project brief, and a team of
 roles (feature, bugfix, planning, tests, cleanup, docs, and more) builds the project
 one small, reviewed commit at a time. It came from wanting to write only the brief and let a team
 of always-on specialists do the rest: each role owns one concern, merges one change per run,
@@ -91,6 +92,21 @@ DeepSeek tier needs no login or API key — and `"backend": "codex"` on the Code
 (no API key; its two usage windows behave like a claude subscription's). Requirements, the fallback, free-ness, and usage-window
 behavior, and how subscription runs are billed (as estimated spend, outside the daily cap) are in
 [docs/backends.md](docs/backends.md).
+
+**Default models by backend:** when a tier or job names no `model`, the backend's own tier
+defaults fill in (an explicit `model` always wins over them):
+
+| backend | small | default | strong |
+| --- | --- | --- | --- |
+| `pi` | its saved default | its saved default (`pi default` in `tumwater status`) | its saved default |
+| `claude` | `claude-haiku-5-5` | `claude-haiku-5-5` | `claude-opus-5-5` |
+| `opencode` | its own default | its own default | its own default |
+| `codex` | `gpt-6-luna` | `gpt-6-luna` | `gpt-6.1-sol` |
+
+pi and OpenCode carry no tier defaults of their own, so their own saved/default model applies
+when a job names no model; the others resolve the concrete model shown. The director runs the
+strong tier, so with no model configured it is `claude-opus-5-5` on claude and `gpt-6.1-sol` on
+codex.
 
 **Mixing providers:** `model` says which model, `backend` says which program runs it (`pi`, the
 default, `claude`, `opencode` or `codex`). A tier entry, a role, a review and a fallback step each take an

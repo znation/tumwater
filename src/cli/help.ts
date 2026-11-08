@@ -11,7 +11,7 @@ import { distinctOrdered } from "../collections.js";
  * (its `--by model` twin is the hardcoded `{ models, total }` beside it). */
 const SUMMARY_JSON_KEYS = "{ roles, total }";
 
-export const HELP = `tumwater — an autonomous development team, built on pi
+export const HELP = `tumwater — an autonomous development team running on pi, Claude Code, OpenCode or Codex
 
 Usage:
   tumwater init <prompt...>        Initialize this repo (--file <prompt.md>, --adopt: brief in
