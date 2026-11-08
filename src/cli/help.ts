@@ -737,6 +737,8 @@ Usage:
   tumwater completion --config-value <key>  Print what config set <key> <value> completes for a discrete-valued key (boolean/backend/model/thinking); nothing for a free-form value
   tumwater completion --models     Print the model selectors history --model completes (those the recent runs started on; nothing when the log is unreadable)
   tumwater help [<command>]        Show all commands, or one command's usage
+  tumwater help --grep <text>     Print the usage stanzas containing the text,
+                                   case-insensitively
   tumwater version                 Print the version
 
 tumwater runs inside a git repo. Each role owns a persistent workspace and branch
@@ -789,6 +791,10 @@ export function helpStanzas(help: string = HELP): HelpStanza[] {
  * whose topic they print. `run` is the older name of `start`. */
 export const HIDDEN_COMMAND_ALIASES: Readonly<Record<string, string>> = { run: "start", tick: "history" }; // retired-name-ok: legacy name
 
+/** The missing-value wording of `help --grep` (shared by cli.ts's parseGrepFlag fail and the
+ * tests that pin the error, so the two cannot drift). */
+export const HELP_GREP_VALUE_ERROR = "help --grep needs text (usage: tumwater help --grep <text>)";
+
 /** The usage text for one command — every stanza whose command matches, then a pointer back to
  * the full list — or null when nothing in the help names that command. */
 export function helpTopic(command: string, help: string = HELP): string | null {
@@ -796,6 +802,18 @@ export function helpTopic(command: string, help: string = HELP): string | null {
   const matches = helpStanzas(help).filter((s) => s.command === command);
   if (matches.length === 0) return null;
   return matches.map((s) => s.text).join("\n") + "\n\nSee `tumwater help` for the full command list.";
+}
+
+/** The usage stanzas whose command line or description contains a text, case-insensitively, in
+ * help order — the `tumwater help --grep` search. Each matching stanza's text is returned
+ * verbatim (multiple usage forms of one command each print separately, like helpTopic joins
+ * them), and an empty array means nothing matched. Searching the same stanza text helpStanzas
+ * derives keeps the search's answers from drifting out of sync with the full listing. */
+export function searchHelp(text: string, help: string = HELP): string[] {
+  const needle = text.toLowerCase();
+  return helpStanzas(help)
+    .filter((s) => s.text.toLowerCase().includes(needle))
+    .map((s) => s.text);
 }
 
 /** The free-form text commands and the flags that take a separate value token, for

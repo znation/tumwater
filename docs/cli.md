@@ -1,8 +1,10 @@
 # Command reference
 
 Every `tumwater` command and the main flags it takes. `tumwater help` lists every command and
-flag; `tumwater help <command>` shows one command's usage. The README's Usage section has the
-short version, and [config.md](config.md) covers the settings in `tumwater.json`.
+flag; `tumwater help <command>` shows one command's usage; `tumwater help --grep <text>`
+prints the usage stanzas containing the text, case-insensitively (no ready repo needed, like
+the topic form). The README's Usage section has the short version, and [config.md](config.md)
+covers the settings in `tumwater.json`.
 
 ## Start the team
 

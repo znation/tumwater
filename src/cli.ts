@@ -57,7 +57,7 @@ import { repoToplevel } from "./git/git.js";
 import { didYouMean } from "./text/suggest.js";
 import { errorMessage, gotSuffix, stripTerminalControls } from "./text/text.js";
 import { typoSuffix } from "./text/suggest.js";
-import { HELP, helpTopic, helpTopicForArgs, suggestCommand } from "./cli/help.js";
+import { HELP, HELP_GREP_VALUE_ERROR, helpTopic, helpTopicForArgs, searchHelp, suggestCommand } from "./cli/help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
 
 // The CLI's help text and its per-command topic parser live in help.ts — importing cli.ts
@@ -402,6 +402,28 @@ async function cmdHelpCase(args: string[]): Promise<void> {
   // `help <command>` prints that command's usage stanza(s), parsed from the same text the
   // full listing prints, so a topic cannot drift from it; a bare `help` (or an unknown
   // topic) points back at the full list rather than pretending the token was answered.
+  //
+  // `help --grep <text>` is the listing's search form, read before the arity check so the
+  // pattern's own token is not a second command name: it prints every stanza whose command
+  // line or description contains the text, case-insensitively, and a search that finds
+  // nothing is an answer (exit 0), not an unknown topic. The extra-token refusal names
+  // the search-only usage, matching how each `--grep` filter view reads one pattern token.
+  if (args.includes("--grep")) {
+    // parseGrepFlag removes the pattern value token (so a flag-shaped pattern like
+    // `--grep --since` is searched as text, never read as a flag) and leaves `rest` with
+    // the --grep flag token itself, so a leftover is any other token still in `rest`.
+    const { rest, pattern } = parseGrepFlag(args, HELP_GREP_VALUE_ERROR);
+    if (pattern === null) fail(HELP_GREP_VALUE_ERROR); // unreachable: parseGrepFlag fails valueless
+    const leftover = rest.filter((token) => token !== "--grep");
+    if (leftover.length > 0) fail(`help --grep takes only its search text (usage: tumwater help --grep <text>)`);
+    const matches = searchHelp(pattern);
+    if (matches.length === 0) {
+      say(`no help text matches ${JSON.stringify(pattern)}`);
+      return;
+    }
+    say(matches.join("\n\n")); // stanzas each keep their continuation lines, one blank line between
+    return;
+  }
   if (args.length > 1) fail(`help takes at most one command name${gotSuffix(args[1])}`);
   if (args.length === 1) {
     const name = args[0] ?? "";
