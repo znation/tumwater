@@ -14,6 +14,7 @@ import { queueDepth, queuedMergeFiles } from "../src/merge/merge-queue.js";
 import { abortRequestPath, mergeQueueDir, mergeRefName, mergeStatePath, statePath } from "../src/paths.js";
 import { deleteRef, refSha } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
+import { subscribeEvents } from "../src/events/events.js";
 import { readMergeMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig } from "../src/config/config.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
@@ -340,6 +341,73 @@ test("a fresh entry verifies and merges while the reviewer's provider is held �
     assert.equal(sh(root, "git", "show", "main:feature.txt").trim(), "work by feature", "the fresh feature entry merged despite the reviewer hold");
     assert.equal(sh(root, "git", "show", "main:dedupe.txt").trim(), "work by dedupe", "the fresh dedupe entry merged too — every role drains while the reviewer is held");
   } finally {
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+});
+
+test("a start gate that closes while a merge gate waits for its permit defers it without recording a failure", async () => {
+  const root = makeRepo();
+  await queueChanges(root, ["alpha"]);
+  let held = false;
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"]), { cap: 1, held: () => held });
+  await ctx.semaphore.acquire(0); // the one team permit: the gate's permit wait parks
+  try {
+    await drainMergeQueue(ctx, pipeline);
+    const merge = pipeline.merge as InFlightMerge | null;
+    assert.ok(merge, "the gate-then-merge task started");
+    held = true; // a restart or disk hold closes the start gate while the task waits
+    ctx.semaphore.release();
+    const [settled] = await Promise.allSettled([merge.promise]);
+    assert.equal(settled?.status, "fulfilled", "the deferral is control flow, not a failed task");
+    assert.equal(pipeline.merge, null, "the merge slot frees for the next poll");
+    assert.equal(queueDepth(root), 1, "the deferred entry stays queued");
+    assert.equal(readMergeMarker(root), null, "the marker is cleared, as a parked verification's would be");
+    assert.equal(eventsOfType(root, "merged").length, 0, "the gate did not start under the closed hold");
+    assert.equal(loadRunnerState(root, "alpha").lastError ?? undefined, undefined, "a deferral is not a failure");
+    assert.equal(ctx.semaphore.canLeaseAtOnce(0), true, "the unused permit was handed back");
+    held = false;
+    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the next open gate to merge the deferred entry");
+    assert.equal(queueDepth(root), 0, "the entry drains once the hold lifts");
+    assert.equal(eventsOfType(root, "merged").length, 1, "the change merged after the hold lifted");
+  } finally {
+    held = false;
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+});
+
+test("a user abort consumed after the fast-forward does not rewrite the landed change as aborted", async () => {
+  const root = makeRepo();
+  await queueChanges(root, ["alpha"]);
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"]));
+  let consumedLate = false;
+  // The orchestrator's abort pass runs synchronously as the merged event is logged — after the
+  // fast-forward landed but before mergeApprovedChange returns and the task settles.
+  const unsubscribe = subscribeEvents((e) => {
+    if (e.type !== "merged" || e.source !== "alpha" || consumedLate) return;
+    writeJsonFile(abortRequestPath(root, "alpha"), { at: Date.now() });
+    consumeAbortRequests(root, [], abortableMerges(pipeline));
+    consumedLate = true;
+  });
+  try {
+    await drainMergeQueue(ctx, pipeline);
+    const merge = pipeline.merge as InFlightMerge | null;
+    assert.ok(merge, "the gate-then-merge task started");
+    await merge.promise;
+    assert.equal(consumedLate, true, "the abort was consumed while the landed merge was still finishing");
+    assert.equal(loadRunnerState(root, "alpha").lastResult, "changed", "the landed change keeps its completed outcome");
+    assert.deepEqual(
+      readEvents(root).filter((e) => e.type === "merge_done" || e.type === "merge_failed").map((e) => [e.type, e.result]),
+      [["merge_done", "changed"]],
+      "the finished merge is not rewritten as an aborted failure",
+    );
+    assert.equal(queueDepth(root), 0, "the landed entry stays settled");
+    assert.equal(await refSha(root, mergeRefName("alpha")), null, "the landed change's pin is gone");
+  } finally {
+    unsubscribe();
     await Promise.allSettled(allTasks(pipeline));
     restore();
   }

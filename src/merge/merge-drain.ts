@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { mergeApprovedChange, type MergerContext } from "./merge-core.js";
+import { mergeApprovedChange, RETRIABLE_MERGE_RESULTS, type MergerContext } from "./merge-core.js";
 import { addMergeChange, mergeUsage, removeMergeChange, resolveWaitStage, setMergeChangeStatus } from "./merge-slot.js";
 import { withRunPermit } from "../concurrency/run-permit.js";
 import { dropMerge, entryRevisionFields, queuedMergeFiles, type MergeEntry } from "./merge-queue.js";
@@ -307,10 +307,12 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
       // next poll and clears its marker record; a user abort settles the change as "aborted" and
       // discards its pin in the finally below.
       if (!settled) {
-        // The result wins over a late abort: an abort that lands after the merge reached an
-        // outcome must not rewrite a landed change as "aborted". Only a change with no result
-        // (deferred or thrown before its outcome) settles aborted for a user stop.
-        if (result !== undefined) await settleOne(result);
+        // A completed outcome wins over a late abort, so a merge that already landed is never
+        // rewritten as "aborted". A retriable outcome has not landed, though: there the
+        // operator's stop wins, so the change cannot be re-queued against the pin the finally
+        // then discards. A change with no result (deferred or thrown before its outcome)
+        // settles aborted for a user stop as well.
+        if (result !== undefined && !(merge.userAborted && RETRIABLE_MERGE_RESULTS.has(result))) await settleOne(result);
         else if (merge.userAborted) await settleOne("aborted");
         else removeMergeChange(root, role);
       }
