@@ -78,6 +78,18 @@ test("checkFallbackModel reports the cap behavior and verifies a free fallback p
   assert.equal(freePrimaryOutcome.level, "ok");
   assert.match(freePrimaryOutcome.detail, /^local\/free-model — priced at zero/);
 
+  // A free opencode primary is served by its own seam too, priced from the opencode catalog
+  // the budget gate reads — not from pi's definitions, which cannot price it.
+  const opencodePrimary = readyRepo();
+  writeConfig(opencodePrimary, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
+  writeOpencodeCache(opencodePrimary, {
+    fetchedAt: Date.now(),
+    models: { "opencode/deepseek-v4.1-flash-free": { free: true, context: 200_000 } },
+  });
+  const opencodeOutcome = checkFallbackModel(opencodePrimary, models);
+  assert.equal(opencodeOutcome.level, "ok");
+  assert.match(opencodeOutcome.detail, /^opencode\/deepseek-v4\.1-flash-free — priced at zero/);
+
   // A free local pair is the case the fallback exists for — but a price is not readiness: a
   // backend that rejects every prompt is priced at zero too (BUGS.md 2026-09-20), so the line
   // must not claim more than it checked.

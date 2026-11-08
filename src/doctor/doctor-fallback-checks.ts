@@ -2,7 +2,9 @@ import { loadConfigForCheck } from "./doctor-model-checks.js";
 import { fallbackPair, tierChainSteps } from "../config/config-fallbacks.js";
 import { fallbackModelPair, piModelsPath, piPairFree, piProviderBaseUrl, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import type { FallbackModelConfig } from "../config/config-schema.js";
+import { readAccount } from "../agent/subscription-account.js";
 import { readClaudeAccount, type ClaudeAccount } from "../agent/claude/claude-account.js";
+import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { formatClock } from "../text/datetime.js";
 import { loadRunnerStates } from "./doctor-holds.js";
 import { modelPairName, pairDailyCost } from "../budget/budget.js";
@@ -31,7 +33,8 @@ import { joinWithMore } from "../text/text.js";
  * roles pause at the cap exactly as if no fallback existed. That refusal is the right runtime
  * behavior (spend must never climb past the cap), but a typo'd id would otherwise surface only
  * after the day's budget is already spent — so doctor checks it up front, before the operator
- * needs it. Read-only: it inspects pi's definitions file, never pi or the network. A price is not
+ * needs it. Read-only: it inspects pi's definitions file and the local per-backend account and
+ * opencode catalog caches, never pi or the network. A price is not
  * readiness, though: whether the backend can SERVE is known only from the fallback's own runs
  * (src/budget/fallback-breaker.ts's breaker, BUGS.md 2026-09-20), so a free pair reads "serving not
  * verified" — unless the running orchestrator has published that its breaker demoted the pair
@@ -57,11 +60,12 @@ export function checkFallbackModel(
   const hasDeclaredFallback = tierChainSteps(config).length > 0;
   const declared = fallbackPair(config);
   if (!declared) return okOutcome("none configured — roles pause at the cap");
-  // The claude account answer (6a/7); the fallback price lookup reads it only for "claude"
-  // (part 2a/9).
-  const account = readClaudeAccount(root);
-  const accounts = (b: string) => (b === "claude" ? account : null);
-  const free = fallbackModelPair(config, modelsPath, accounts);
+  // The per-backend subscription accounts and the opencode catalog, read the way the budget
+  // gate reads them (6a/7): a free primary or fallback may route to claude, codex or opencode,
+  // so the price lookup must not judge every non-pi pair as priced.
+  const accounts = (b: string) => readAccount(root, b);
+  const catalog = readOpencodeCache(root);
+  const free = fallbackModelPair(config, modelsPath, accounts, catalog);
   if (!hasDeclaredFallback && !free) return okOutcome("none configured — roles pause at the cap");
   if (free) return freeFallbackOutcome(fallbackPairName(free), demoted, checks?.find((c) => c.pair === modelPairName(free)));
   return warnOutcome(`${fallbackPairName(declared)} is not priced at zero in ${modelsPath} — at the cap roles pause instead of switching`);
