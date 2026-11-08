@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { collectSalvagePatches, grepSalvagePatches, readSalvagePatch } from "../src/status/status-salvage.js";
 import { salvageDir, salvagePendingDir } from "../src/paths.js";
-import { makeRepo } from "./fixtures/repo-fixtures.js";
+import { makeRepo, runningAsRoot } from "./fixtures/repo-fixtures.js";
 
 test("collectSalvagePatches returns [] for a missing salvage directory", () => {
   const root = makeRepo();
@@ -88,7 +88,7 @@ test("grepSalvagePatches matches file names and patch text, keeping whole-list p
   assert.equal(patches.length, 2, "the filter never mutates its input");
 });
 
-test("grepSalvagePatches lets an unreadable patch match by name only", () => {
+test("grepSalvagePatches lets an unreadable patch match by name only", { skip: runningAsRoot() }, () => {
   const root = makeRepo();
   fs.mkdirSync(salvageDir(root), { recursive: true });
   const unreadable = path.join(salvageDir(root), "keep-me.patch");
