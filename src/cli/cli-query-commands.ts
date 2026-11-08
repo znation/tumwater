@@ -343,12 +343,18 @@ export async function cmdQuarantine(root: string, args: string[], seams: FollowV
   // `--release <n>` is the read-only command's one destructive mode, and `--show <n>` its
   // read-only detail view: route each to its own branch before the read gate, exactly as
   // cmdReviews routes `--accept`. `--show` is checked first so its own flag gate owns a
-  // `--release` it finds beside it, refusing it by name.
-  if (args.includes("--show")) {
+  // `--release` it finds beside it, refusing it by name. A `--show`/`--release` token in
+  // --grep's value slot is the pattern, not the mode: routing on it would let
+  // `--grep --release 1` release an entry or `--grep --show` open the detail view.
+  const grepAt = args.indexOf("--grep");
+  const grepValueIndex = grepAt >= 0 ? grepAt + 1 : -1;
+  const modeNamed = (flag: string): boolean =>
+    args.some((arg, i) => arg === flag && i !== grepValueIndex);
+  if (modeNamed("--show")) {
     await cmdQuarantineShow(root, args);
     return;
   }
-  if (args.includes("--release")) {
+  if (modeNamed("--release")) {
     await cmdQuarantineRelease(root, args);
     return;
   }

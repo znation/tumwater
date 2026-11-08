@@ -167,6 +167,23 @@ test("quarantine --show and --release refuse a --grep beside them by name", asyn
   assert.equal(fs.readFileSync(quarantinePath(repo), "utf8"), before, "the file is byte-unchanged");
 });
 
+test("a --show or --release token in --grep's value slot is the pattern, not the mode", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine grep flag-shaped mode test");
+  const now = Date.now();
+  writeQuarantine(repo, [{ test: "test/a.test.ts", firstSeen: now - 24 * 3_600_000, lastSeen: now, count: 1, bug: "" }]);
+  const before = fs.readFileSync(quarantinePath(repo), "utf8");
+  const show = await cli(repo, "quarantine", "--grep", "--show");
+  assert.equal(show.code, 0);
+  assert.equal(show.stdout.trim(), 'no quarantined tests match "--show"', "the pattern is text, not the detail mode");
+  const release = await cli(repo, "quarantine", "--grep", "--release");
+  assert.equal(release.code, 0);
+  assert.equal(release.stdout.trim(), 'no quarantined tests match "--release"', "the pattern is text, not the release mode");
+  const destructive = await cli(repo, "quarantine", "--grep", "--release", "1");
+  assert.equal(destructive.code, 1, "a trailing position is still an unknown argument");
+  assert.equal(fs.readFileSync(quarantinePath(repo), "utf8"), before, "the flag-shaped pattern never releases an entry");
+});
+
 test("quarantine is read-only — the list is unchanged after the command", async () => {
   const repo = makeRepo();
   await initProject(repo, "quarantine read-only test");
