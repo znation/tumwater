@@ -154,32 +154,15 @@ async function markerBearingFiles(wt: string): Promise<string[]> {
   return files.filter((f) => hasConflictMarkers(wt, [f]));
 }
 
-/** Run one full run of a role runner: resolve the config, log the start, run the pipeline, then
- * let finalizeRun schedule the next run. Never throws: a failed run is an "error" result,
- * saved and logged like any other so the runner stays resumable and observable. */
-export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
+/** This run's effective config, resolved from the role's own primaryCfg: a pending blind-read
+ * image-reroute marker hops straight to the recorded target, otherwise a queued image
+ * attachment is preflighted before any run starts. A preflight with no vision target blocks
+ * the run (preflightBlocked true, lastError set) so it errors without spawning pi. */
+function resolveRunConfig(
+  ctx: RunnerRunContext,
+  primaryCfg: ResolvedModelConfig,
+): { cfg: ResolvedModelConfig; preflightBlocked: boolean } {
   const s = ctx.state;
-  // This role's view of the config (per-role provider/model/thinking + minRunIntervalSeconds
-  // overrides): resolved once so every interval-based scheduling branch honors a slow
-  // clock (e.g. the steward's ~6 h) and a live-reloaded config applies from this run on.
-  // While PLANS.md still has planning room (planBacklogFull false), plan schedules with a zero
-  // gap so a productive plan run reruns on the next poll; an unproductive run drops to the
-  // idle backoff, and once the target is met the plans-full deferral holds the run. The shared
-  // verdict below is the same one the gate and isEligible read, and scheduleConfigForRole is
-  // the one home of the rule, so the scheduler that admits plan and the nextRunAt this run
-  // writes cannot disagree. The projection refresh precedes the count so a run admitted
-  // right after a pin is written sees that pin (plans/duplicate-plans.md "Decision" 1). Only
-  // plan reads the verdict, so only plan pays the refresh: any other role leases its slot
-  // without waiting on git reads first (each orchestrator poll refreshes it for other readers).
-  const isPlan = baseRoleOf(ctx.role) === "plan";
-  if (isPlan) await refreshPendingPlans(ctx.root, ctx.mainBranch);
-  const planBacklogOpen = isPlan && !planBacklogFull(ctx.root, ctx.config);
-  // This run's effective config: the role's own resolved config (a run always resolves its
-  // role's own config — the model-fallback episode is gone, Subtract part 5o/6) unless an image
-  // reroute below moves it. The budget gate's fallback pair, when a cap episode is active, is
-  // installed into the live config itself, so the config here already names the pair the run
-  // uses.
-  const primaryCfg = scheduleConfigForRole(ctx.config, ctx.role, planBacklogOpen);
   let cfg = primaryCfg;
   // Image-input reroute (plans/image-input.md part 4/5). A pending one-shot marker means
   // THIS run is the blind-read reroute: start directly on the image-capable target the
@@ -230,6 +213,18 @@ export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
       }
     }
   }
+  return { cfg, preflightBlocked };
+}
+
+/** The per-run start bookkeeping for the config that run executes on: the run pair the budget
+ * handback matches, the counters reset to a fresh per-run window, the abort controller and
+ * running flags, the save, and the announced run_start event. Returns the run number and start
+ * time the finalize stage must describe. */
+function beginRun(
+  ctx: RunnerRunContext,
+  cfg: ResolvedModelConfig,
+): { runNumber: number; runStartedAt: number } {
+  const s = ctx.state;
   // Capture what this run runs on (the orchestrator's budget handback matches it against
   // the fallback pair) and clear any stale handback flag: an abort request that lands while
   // the runner is idle must not name a later run's resume.
@@ -270,6 +265,40 @@ export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
     ...(s.imageRerouteActive ? { reroute: "image" } : {}),
     ...modelSelectorField(cfg),
   });
+  return { runNumber, runStartedAt };
+}
+
+/** Run one full run of a role runner: resolve the config, log the start, run the pipeline, then
+ * let finalizeRun schedule the next run. Never throws: a failed run is an "error" result,
+ * saved and logged like any other so the runner stays resumable and observable. */
+export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
+  const s = ctx.state;
+  // This role's view of the config (per-role provider/model/thinking + minRunIntervalSeconds
+  // overrides): resolved once so every interval-based scheduling branch honors a slow
+  // clock (e.g. the steward's ~6 h) and a live-reloaded config applies from this run on.
+  // While PLANS.md still has planning room (planBacklogFull false), plan schedules with a zero
+  // gap so a productive plan run reruns on the next poll; an unproductive run drops to the
+  // idle backoff, and once the target is met the plans-full deferral holds the run. The shared
+  // verdict below is the same one the gate and isEligible read, and scheduleConfigForRole is
+  // the one home of the rule, so the scheduler that admits plan and the nextRunAt this run
+  // writes cannot disagree. The projection refresh precedes the count so a run admitted
+  // right after a pin is written sees that pin (plans/duplicate-plans.md "Decision" 1). Only
+  // plan reads the verdict, so only plan pays the refresh: any other role leases its slot
+  // without waiting on git reads first (each orchestrator poll refreshes it for other readers).
+  const isPlan = baseRoleOf(ctx.role) === "plan";
+  if (isPlan) await refreshPendingPlans(ctx.root, ctx.mainBranch);
+  const planBacklogOpen = isPlan && !planBacklogFull(ctx.root, ctx.config);
+  // This run's effective config: the role's own resolved config (a run always resolves its
+  // role's own config — the model-fallback episode is gone, Subtract part 5o/6) unless an image
+  // reroute below moves it. The budget gate's fallback pair, when a cap episode is active, is
+  // installed into the live config itself, so the config here already names the pair the run
+  // uses.
+  const primaryCfg = scheduleConfigForRole(ctx.config, ctx.role, planBacklogOpen);
+  // This run's config (with any image-input reroute or preflight applied) and the run-start
+  // bookkeeping: both stages run before the pi pipeline so the run below only passes their
+  // resolved pieces on to finalizeRun.
+  const { cfg, preflightBlocked } = resolveRunConfig(ctx, primaryCfg);
+  const { runNumber, runStartedAt } = beginRun(ctx, cfg);
 
   let outcome: RunOutcome;
   try {
