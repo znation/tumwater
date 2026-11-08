@@ -579,6 +579,27 @@ export function retireBug(root: string, n: number, reason?: string | null): { fi
   return withPrimaryWorktreeLock(root, () => retireEntryLocked(root, "BUGS.md", "Open", "Fixed", n, reason));
 }
 
+/** What a title-checked dashboard retire did, the CancelEntryOutcome shape: `retired` wrote
+ * the file; `gone` (no entry at the position) and `moved` (the entry there is not the heading
+ * the caller saw) refuse as data, writing nothing. */
+export type RetireEntryOutcome =
+  | { status: "retired"; file: string; title: string; retiredOn: string }
+  | { status: "gone" }
+  | { status: "moved"; title: string };
+
+/** The non-exiting, title-checked retire the dashboard calls: retireEntryLocked's move, but
+ * the nth-entry lookup and the heading comparison both run inside the lock (withLocatedEntry,
+ * like tryCancelEntry) — so a list that shifted since the poll answers gone/moved as data and
+ * an out-of-range position never reaches readEntryLines' fail(), which would exit the serving
+ * process. `expectedTitle` is the heading the caller saw (the status payload's `plans` string,
+ * the same `### ` text as ActionableEntryRange.title). */
+export function tryRetirePlan(root: string, n: number, expectedTitle: string): RetireEntryOutcome {
+  return withLocatedEntry(root, "PLANS.md", "Planned", n, expectedTitle, ({ file, md, entry }) => ({
+    status: "retired",
+    ...retireEntryAt(file, "PLANS.md", "Done", md.split("\n"), entry, null),
+  }));
+}
+
 /** The locked retire move shared by plan and bug: remove the `n`th `<fromSection>` entry whole
  * (removeEntry's splice shape, same range), then splice a retired copy under `<toSection>` —
  * fence-aware so a `## ` heading quoted inside an entry's code fence is body text, never the
@@ -601,6 +622,19 @@ function retireEntryLocked(
   reason?: string | null,
 ): { file: string; title: string; retiredOn: string } {
   const { file, lines, entry } = readEntryLines(root, fileName, fromSection, n);
+  return retireEntryAt(file, fileName, toSection, lines, entry, reason);
+}
+
+/** The splice half of the retire move, over lines and an entry the caller already located (and,
+ * for the dashboard, title-checked) under the lock. */
+function retireEntryAt(
+  file: string,
+  fileName: string,
+  toSection: string,
+  lines: string[],
+  entry: ActionableEntryRange,
+  reason?: string | null,
+): { file: string; title: string; retiredOn: string } {
   const title = stripEntryStamp(entry.title);
   const today = formatDate(new Date());
   const reasonText = reason === null || reason === undefined ? "" : reason.trim();

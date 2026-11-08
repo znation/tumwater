@@ -2564,6 +2564,12 @@ test("handleBacklogRetire names the bug refusal, and a position whose plan moved
   assert.deepEqual(moved.data, { ok: true, status: "gone" });
   assert.equal(fs.readFileSync(plansPath, "utf8"), plansBefore);
 
+  // A heading whose bare title matches but whose stamp differs is a different entry the drawer
+  // did not show (the duplicate-plan case): the exact heading decides, so it answers gone.
+  const restamped = await serve({ kind: "plan", position: 1, title: "S, part 1/2: a (planned 2026-10-05)" });
+  assert.deepEqual(restamped.data, { ok: true, status: "gone" });
+  assert.equal(fs.readFileSync(plansPath, "utf8"), plansBefore);
+
   const ok = await serve({ kind: "plan", position: 1, title: "S, part 1/2: a (planned 2026-10-01)" });
   assert.deepEqual(ok.data, { ok: true, status: "retired", file: "PLANS.md", title: "S, part 1/2: a", retiredOn: formatDate(new Date()), committed: false });
 });
