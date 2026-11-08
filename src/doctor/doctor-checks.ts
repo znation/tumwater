@@ -28,7 +28,7 @@ import {
   NOT_INITIALIZED_MESSAGE,
   teamWorkspaceMessage,
   NO_COMMITS_MESSAGE,
-} from "../gates/readiness.js";
+} from "../gates/readiness-gates.js";
 import { backendBinSourceLabelFor, backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
 import { resolvedBackendConfig } from "../config/config-views.js";
 import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, configPath, owningTeamRoot } from "../paths.js";

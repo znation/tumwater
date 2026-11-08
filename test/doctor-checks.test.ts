@@ -78,7 +78,7 @@ import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { envPath } from "../src/files/files.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { teamWorkspaceMessage } from "../src/gates/readiness.js";
+import { teamWorkspaceMessage } from "../src/gates/readiness-gates.js";
 import { headSha, teamWorkspace, makeRepo, runningAsRoot, sh, tmpdir, twoPlansDoc, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";

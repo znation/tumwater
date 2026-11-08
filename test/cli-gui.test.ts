@@ -76,7 +76,7 @@ test("gui --port validates its range instead of listening on an unexpected port"
 });
 
 test("gui gates on a ready repo, but names a flag typo before the gate", async () => {
-  // Outside any git repo the dispatch's ready-repo gate answers with readiness.ts's
+  // Outside any git repo the dispatch's ready-repo gate answers with readiness-gates.ts's
   // wording (exit 1) — the operator's diagnosis, like every other gated command's.
   const dir = tmpdir();
   const bare = await cli(dir, "gui");

@@ -14,7 +14,7 @@ import {
   readBriefText,
   readmeTemplate,
 } from "../brief/brief.js";
-import { teamWorkspaceMessage } from "../gates/readiness.js";
+import { teamWorkspaceMessage } from "../gates/readiness-gates.js";
 import { CONFIG_BASENAME, STATE_DIR, configPath, owningTeamRoot } from "../paths.js";
 import { projectName } from "../project-name.js";
 import { tooLongMessage } from "../text/text.js";

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { salvageDir, salvagePendingDir } from "../src/paths.js";
 import { makeRepo, teamWorkspace } from "./fixtures/repo-fixtures.js";
-import { teamWorkspaceMessage } from "../src/gates/readiness.js";
+import { teamWorkspaceMessage } from "../src/gates/readiness-gates.js";
 import { cli } from "./helpers/cli-harness.js";
 
 // The `salvage` command: the read-only view of the workspace patches kept under

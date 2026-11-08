@@ -11,7 +11,7 @@ import {
   NOT_INITIALIZED_MESSAGE,
   teamWorkspaceMessage,
   NO_COMMITS_MESSAGE,
-} from "../src/gates/readiness.js";
+} from "../src/gates/readiness-gates.js";
 import { newOpencodeCatalogRefresh, OPENCODE_CATALOG_RETRY_MS, opencodeProviders, repoNotReady, runStartupCheck, runStartupProblem, unregisteredBackendInUse, type OpenCodeSeedOptions } from "../src/gates/startup-gates.js";
 import { registerAgentBackend, type AgentBackend } from "../src/agent/agent-backend.js";
 import { gitInit, makeRepo, sh, teamWorkspace, tmpdir } from "./fixtures/repo-fixtures.js";

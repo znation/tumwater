@@ -15,7 +15,7 @@ import { validateConfig } from "../src/config/config-validation.js";
 import { VALIDATION_GAP_TAGS } from "../src/roles/role-guidance.js";
 import { exampleConfigPath } from "../src/paths.js";
 import { teamWorkspace } from "./fixtures/repo-fixtures.js";
-import { teamWorkspaceMessage } from "../src/gates/readiness.js";
+import { teamWorkspaceMessage } from "../src/gates/readiness-gates.js";
 import { assertClean, headSha, makeRepo, sh, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
 import { setEnv } from "./helpers/env.js";

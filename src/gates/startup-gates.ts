@@ -12,7 +12,7 @@ import {
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
   teamWorkspaceMessage,
-} from "./readiness.js";
+} from "./readiness-gates.js";
 import { owningTeamRoot } from "../paths.js";
 import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
@@ -41,7 +41,7 @@ import "../agent/agent-run.js";
  * died. On 2026-09-22 only the first existed: a redeploy swapped onto a build whose child found
  * tumwater.json missing, exited "not initialized", and the supervisor exited with it — 4 h 44 m
  * of a dead team and no event (BUGS.md 2026-09-23). The operator-facing wording lives in
- * readiness.ts, shared with doctor's per-check report.
+ * readiness-gates.ts, shared with doctor's per-check report.
  *
  * The one startup check deliberately outside the gate is cmdStart's "an orchestrator is already
  * running": to a redeploy asking on behalf of its successor, the live orchestrator is itself —

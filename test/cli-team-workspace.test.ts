@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { teamWorkspaceMessage } from "../src/gates/readiness.js";
+import { teamWorkspaceMessage } from "../src/gates/readiness-gates.js";
 import { cli } from "./helpers/cli-harness.js";
 import { sh, teamWorkspace } from "./fixtures/repo-fixtures.js";
 
