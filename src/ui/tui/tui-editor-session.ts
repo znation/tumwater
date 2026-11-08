@@ -7,7 +7,6 @@ import {
 import type { PromptImageInput } from "../../inbox/inbox-attachments.js";
 import { readTextIfExists } from "../../files/files.js";
 import type { TuiEditorsDeps } from "./tui-editors.js";
-import type { labeledBacklogEntries } from "./tui-backlog.js";
 
 /** Which modal editor currently holds the shared prompt line, mirrored by each editor module as
  * its mode changes. The editors are mutually exclusive — at most one owns the line — so at most
@@ -116,7 +115,7 @@ type EditorEnterKey =
  * the session history, the mutually-exclusive-mode registry, the
  * shared deps the modules call, and the shared helpers whose invariants hold here once — at the
  * module boundary — rather than being re-stated per editor. */
-export interface TuiEditorSession {
+export interface TuiEditorSession extends TuiEditorsDeps {
   /** The shared prompt-line text (the live draft a given editor is editing). */
   input: string;
   /** The shared prompt-line caret position. */
@@ -129,41 +128,6 @@ export interface TuiEditorSession {
   images: PromptImageInput[];
   /** The mutually-exclusive editor modes, mirrored here as they change (see TuiHeld). */
   held: TuiHeld;
-  root: string;
-  /** Injectable clock; the pause/stop editors compute now()+duration from it. */
-  now(): number;
-  /** The project-status pane's flat entry list (plans, then bugs, then questions), shared so
-   * answer/title-editor positions cannot drift. */
-  flat(): ReturnType<typeof labeledBacklogEntries>;
-  /** Re-read the Queued pane's rows and cached list after a commit/exit that touched the queue. */
-  refreshQueued(): void;
-  /** Repaint the notes view's cached notes after a replace/clear write. */
-  refreshNotes(role: string): void;
-  /** Repaint the Brief view's cached body after a replace write. */
-  refreshBrief(): void;
-  /** Repaint the Failures view's cached body after a release write while it is the current
-   * view (the report pane's `enter`, which re-reads loadQuarantine and re-enters at its head),
-   * a no-op off the Failures view. */
-  refreshReport(): void;
-  /** Clear the project-status pane's entry selection and its body scroll after a recorded
-   * answer/edited entry leaves the list. */
-  clearBacklogSelection(): void;
-  /** Apply a finished History search on the pane. */
-  applyHistorySearch(pattern: string | null): void;
-  /** Apply a finished Activity search on the pane. */
-  applyActivitySearch(pattern: string | null): void;
-  /** Apply a finished Backlog search on the pane. */
-  applyBacklogSearch(pattern: string | null): void;
-  /** Apply a finished Inbox search on the pane. */
-  applyQueuedSearch(pattern: string | null): void;
-  /** Apply a finished Transcript search on the viewed role's pane. */
-  applyTranscriptSearch(pattern: string | null): void;
-  /** Flash a one-line notice on the prompt line. */
-  flashMessage(message: string): void;
-  /** Flash a caught failure as `error: <message>`. */
-  flashError(err: unknown): void;
-  /** Commit an operator's backlog edit to main and flash when the commit did not land. */
-  commitBacklogEdit(file: string, subject: string): void;
   /** Take the prompt line's current draft (settling the recall state) and return the function that
    * restores it and resets the recall state — the shared entry and exit of every editor that takes
    * the prompt line. */
