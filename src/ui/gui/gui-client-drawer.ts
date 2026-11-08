@@ -7,7 +7,9 @@
  * with `&prompt=1`; a search box narrows it with `&grep=`). For a backlog entry it shows the entry
  * in full (/api/backlog), rendered as Markdown, with a shortcut into the composer — answering a
  * question, or asking the director about a plan or bug — and, for a plan or bug, a two-click
- * Cancel that removes the entry (/api/backlog-cancel). Esc, the close button, or clicking the
+ * Cancel that removes the entry (/api/backlog-cancel), plus, on an open plan only, a two-click
+ * Retire this plan that moves it to the top of `## Done` as a retired record without building it
+ * (/api/backlog-retire). Esc, the close button, or clicking the
  * same row again closes it. Spliced into gui-client.ts's script, reaching its helpers through
  * that concatenation. */
 export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "role", role } | { kind: "entry", file, index } while open
@@ -452,6 +454,13 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   const entryCancelArmed = (key, title) => entryCancel.armed(key, title);
   function disarmEntryCancel() { entryCancel.disarm(); }
   function armEntryCancel(key, title) { entryCancel.arm(key, title); }
+  // Retiring a plan is a two-click confirm too (the same 5 s slot shape): the entry leaves
+  // the ## Planned section as a ## Done retired record, so the button spells out that arming
+  // again in the drawer, and the server's post carries the same title guard as cancel's.
+  const entryRetire = confirmSlot(refreshEntry);
+  const entryRetireArmed = (key, title) => entryRetire.armed(key, title);
+  function disarmEntryRetire() { entryRetire.disarm(); }
+  function armEntryRetire(key, title) { entryRetire.arm(key, title); }
   // An open edit form: painted once, so a poll never overwrites the operator's draft; the
   // server's title check catches an entry that changed underneath it at save time.
   let entryEditing = null; // { key, title, painted }
@@ -495,7 +504,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         (d.refused ? "<button type='button' class='btn btn-sm btn-primary' data-act='entry-release' data-arg='" + esc(file + ":" + index) + "'>Release this entry</button>" : "") +
         (index > 0 ? "<button type='button' class='btn btn-sm' data-act='entry-top' data-arg='" + esc(file + ":" + index) + "'>Move to top</button>" : "") +
         "<button type='button' class='btn btn-sm' data-act='entry-edit' data-arg='" + esc(file + ":" + index) + "'>Edit this entry</button>" +
-        "<button type='button' class='btn btn-sm btn-danger' data-act='entry-cancel' data-arg='" + esc(file + ":" + index) + "'>" + (entryCancelArmed(file + ":" + index) ? "Click again to cancel" : "Cancel this entry") + "</button>";
+        "<button type='button' class='btn btn-sm btn-danger' data-act='entry-cancel' data-arg='" + esc(file + ":" + index) + "'>" + (entryCancelArmed(file + ":" + index) ? "Click again to cancel" : "Cancel this entry") + "</button>" +
+        (file === "plans" ? "<button type='button' class='btn btn-sm btn-danger' data-act='entry-retire' data-arg='" + esc(file + ":" + index) + "'>" + (entryRetireArmed(file + ":" + index) ? "Click again to retire" : "Retire this plan") + "</button>" : "");
     // The body is model-written Markdown: renderMarkdown escapes every piece of it.
     paintPanel("entrybody", (action ? "<div class='drawer-actions'>" + action + "</div>" : "") + "<div class='md'>" +
       (d.body ? renderMarkdown(d.body) : "<p class='muted'>No details for this entry.</p>") + "</div>");

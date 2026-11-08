@@ -8,7 +8,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { runNotFoundLastMessage } from "../src/history/run-detail.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleRun, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleArchiveBacklog, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRetire, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleArchiveBacklog, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { rootInstallResyncLines, type RootInstallResync } from "../src/build/dep-install.js";
 import { renderRunDetail } from "../src/history/run-detail-render.js";
 import { readRunDetail, type RunDetail } from "../src/history/run-detail-data.js";
@@ -42,6 +42,7 @@ import { readJson } from "./helpers/json-read.js";
 import { rolePayload } from "../src/roles/role-view.js";
 import { readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel } from "../src/history/history-data.js";
 import { bugWakeText, planWakeText } from "../src/backlog/backlog-write.js";
+import { formatDate } from "../src/text/datetime.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
 import { ROLE_INSTRUCTIONS_MAX_CHARS } from "../src/config/config-schema.js";
@@ -2491,6 +2492,80 @@ test("handleBacklogCancel adds releasedNote naming the planned part that require
   const note = String((required.data as { releasedNote?: string }).releasedNote);
   assert.match(note, /plan #1 required it/);
   assert.ok(note.includes("S, part 2/2: b"));
+});
+
+// ---- POST /api/backlog-retire: the plan drawer's Retire this plan ----
+test("handleBacklogRetire retires the middle plan, keeps every other byte, answers gone for stale/out-of-range, 400s bad input, and wakes nobody", async () => {
+  const root = tmpdir();
+  writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned", body: "### A (planned 2026-11-01 by the plan role)\n\nbody alpha\n\n### B (planned 2026-11-02 by the plan role)\n\nbody beta" }, { heading: "## Done" }]);
+  writeBacklogFile(root, "BUGS.md", [{ heading: "## Open", body: "### b1\n\nbody" }, { heading: "## Fixed" }]);
+  const serve = (body: unknown) => captureJson((res) => handleBacklogRetire(fakeReq(JSON.stringify(body)), res, root));
+  const plansPath = path.join(root, "PLANS.md");
+  const bugsPath = path.join(root, "BUGS.md");
+  const today = formatDate(new Date());
+  const plansBefore = fs.readFileSync(plansPath, "utf8");
+  const bugsBefore = fs.readFileSync(bugsPath, "utf8");
+
+  // A stale title at a real position answers gone with nothing written.
+  const stale = await serve({ kind: "plan", position: 2, title: "A" });
+  assert.equal(stale.captured.status, 200);
+  assert.deepEqual(stale.data, { ok: true, status: "gone" });
+  assert.equal(fs.readFileSync(plansPath, "utf8"), plansBefore);
+
+  // A position past the two-entry ## Planned answers gone too.
+  const over = await serve({ kind: "plan", position: 3, title: "B (planned 2026-11-02 by the plan role)" });
+  assert.deepEqual(over.data, { ok: true, status: "gone" });
+  assert.equal(fs.readFileSync(plansPath, "utf8"), plansBefore);
+
+  // The drawer's exact title retires B: the response, the ## Planned remainder, and the
+  // ## Done retired copy are retirePlan's shape (the same move the CLI makes).
+  const retired = await serve({ kind: "plan", position: 2, title: "B (planned 2026-11-02 by the plan role)" });
+  assert.equal(retired.captured.status, 200);
+  assert.deepEqual(retired.data, { ok: true, status: "retired", file: "PLANS.md", title: "B", retiredOn: today, committed: false });
+  const md = fs.readFileSync(plansPath, "utf8");
+  assert.match(md, /## Planned\n\n### A \(planned 2026-11-01 by the plan role\)\n\nbody alpha\n/);
+  assert.ok(!md.includes("### B (planned 2026-11-02 by the plan role)\n\nbody beta\n\n## Done"), "B leaves ## Planned");
+  assert.match(md, new RegExp(`## Done\\n\\n### B \\(planned 2026-11-02 by the plan role, retired ${today} by the user\\)\\n\\n\\*\\*Retired ${today} by the user\\*\\*\\n\\nbody beta\\n`));
+
+  // The 400 arms — a bug entry, an unknown kind, non-positive or non-integer positions, and a
+  // missing or empty title — leave both backlog files byte-identical.
+  const plansNow = fs.readFileSync(plansPath, "utf8");
+  const bugsNow = fs.readFileSync(bugsPath, "utf8");
+  for (const body of [
+    { kind: "bug", position: 1, title: "b1" },
+    { kind: "todo", position: 1, title: "x" },
+    { kind: "plan", position: 0, title: "A" },
+    { kind: "plan", position: 2.5, title: "A" },
+    { kind: "plan", position: 1 },
+    { kind: "plan", position: 1, title: "" },
+  ]) {
+    assert.equal((await serve(body)).captured.status, 400, JSON.stringify(body));
+  }
+  assert.equal(fs.readFileSync(plansPath, "utf8"), plansNow);
+  assert.equal(fs.readFileSync(bugsPath, "utf8"), bugsNow);
+  assert.equal(fs.readFileSync(bugsPath, "utf8"), bugsBefore);
+  for (const role of ["bugfix", "feature", "director"]) assert.deepEqual(queuedTexts(root, role), []);
+});
+
+test("handleBacklogRetire names the bug refusal, and a position whose plan moved answers gone", async () => {
+  const root = tmpdir();
+  writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned", body: "### S, part 1/2: a (planned 2026-10-01)\n\nbody\n\n### S, part 2/2: b (planned 2026-10-02)\n\nbody" }, { heading: "## Done" }]);
+  const serve = (body: unknown) => captureJson((res) => handleBacklogRetire(fakeReq(JSON.stringify(body)), res, root));
+  const plansPath = path.join(root, "PLANS.md");
+  const plansBefore = fs.readFileSync(plansPath, "utf8");
+
+  const bug = await serve({ kind: "bug", position: 1, title: "x" });
+  assert.equal(bug.captured.status, 400);
+  assert.match((bug.data as { error: string }).error, /only plans are retirable from the dashboard \(got "bug"\)/);
+
+  // The same stripped title at the position is not enough: the drawer's raw heading includes
+  // the stamp, so this one is stale (the old part 1 sat here before a reorder).
+  const moved = await serve({ kind: "plan", position: 1, title: "S, part 2/2: b (planned 2026-10-01)" });
+  assert.deepEqual(moved.data, { ok: true, status: "gone" });
+  assert.equal(fs.readFileSync(plansPath, "utf8"), plansBefore);
+
+  const ok = await serve({ kind: "plan", position: 1, title: "S, part 1/2: a (planned 2026-10-01)" });
+  assert.deepEqual(ok.data, { ok: true, status: "retired", file: "PLANS.md", title: "S, part 1/2: a", retiredOn: formatDate(new Date()), committed: false });
 });
 
 test("handleBacklogRelease lifts the Refused note, wakes the kind's role, and answers gone, not_refused, and 400s without writing", async () => {

@@ -514,6 +514,23 @@ test("the entry drawer offers Move to top on every plan entry but the first", as
   assert.doesNotMatch(t.paintedFor("entrybody"), /entry-top/);
 });
 
+test("the entry drawer offers Retire this plan on an open plan only, never on bugs", async () => {
+  const t = openDrawer(["toggleEntry"], {
+    status: { roles: [] },
+    responses: {
+      "/api/backlog?file=plans&index=0": { title: "A (planned 2026-10-01 by plan)", body: "body", refused: false },
+      "/api/backlog?file=bugs&index=0": { title: "B (found 2026-10-02 by bugfix)", body: "body", refused: false },
+    },
+  });
+  t.scope.toggleEntry("plans", 0);
+  await flush();
+  assert.match(t.paintedFor("entrybody"), /data-act='entry-retire' data-arg='plans:0'/);
+  assert.match(t.paintedFor("entrybody"), /Retire this plan/);
+  t.scope.toggleEntry("bugs", 0);
+  await flush();
+  assert.doesNotMatch(t.paintedFor("entrybody"), /entry-retire/, "no retire on the Bugs tab");
+});
+
 test("an open question entry offers the composer's answer action, an empty body says so", async () => {
   const t = openDrawer(["toggleEntry"], {
     status: { roles: [] },

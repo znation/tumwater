@@ -225,6 +225,59 @@ test("entry-cancel arms on the first click and posts the cancel on the second", 
   assert.equal(posts.length, 1);
 });
 
+test("entry-retire arms on the first click and posts the retire on the second", () => {
+  const posts: unknown[] = [];
+  let armed = false;
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      lastStatus: { plans: ["A", "B (planned 2026-10-12 by plan)"] },
+      entryRetireArmed: () => armed,
+      armEntryRetire: () => { armed = true; },
+      disarmEntryRetire: () => { armed = false; },
+      closeDrawer: () => {},
+      postAction: (path: string, body: unknown) => posts.push([path, body]),
+      splitTitle: (t: string) => ({ title: t }),
+    },
+  );
+  scope.runAct("entry-retire", "plans:1");
+  assert.deepEqual(posts, []);
+  scope.runAct("entry-retire", "plans:1");
+  assert.deepEqual(posts, [["/api/backlog-retire", { kind: "plan", position: 2, title: "B (planned 2026-10-12 by plan)" }]]);
+  // Firing disarms: the next click on the same position only re-arms.
+  scope.runAct("entry-retire", "plans:1");
+  assert.equal(posts.length, 1);
+  scope.runAct("entry-retire", "plans:7");
+  assert.equal(posts.length, 1);
+});
+
+test("entry-retire toasts a retired plan and the gone refusal, closing the drawer", () => {
+  const toast = (d: object): string => {
+    let out = "";
+    const scope = clientScope<{ runAct(a: string, b: string): void }>(
+      ["run-act"], ["runAct"],
+      {
+        lastStatus: { plans: ["A"] },
+        entryRetireArmed: () => true,
+        armEntryRetire: () => {},
+        disarmEntryRetire: () => {},
+        closeDrawer: () => {},
+        postAction: (p: string, _body: unknown, cb: (d: object) => string) => {
+          assert.equal(p, "/api/backlog-retire");
+          out = cb(d);
+        },
+        splitTitle: (t: string) => ({ title: t }),
+        uncommittedTail: (r: object) => (r as { committed: boolean }).committed ? "" : ", but NOT committed to main (uncommitted in the checkout)",
+      },
+    );
+    scope.runAct("entry-retire", "plans:0");
+    return out;
+  };
+  assert.ok(toast({ status: "retired", committed: true }).includes("Retired “A” in PLANS.md — closed without being built"));
+  assert.ok(toast({ status: "retired", committed: false }).includes("but NOT committed to main (uncommitted in the checkout)"));
+  assert.ok(toast({ status: "gone" }).includes("That entry was already removed or moved — refreshed"));
+});
+
 test("entry-release posts the release at once for plans and bugs", () => {
   const posts: unknown[] = [];
   const scope = clientScope<{ runAct(a: string, b: string): void }>(

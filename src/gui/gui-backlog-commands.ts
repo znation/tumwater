@@ -1,19 +1,20 @@
 /**
  * The dashboard's POST backlog/QUESTIONS command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts):
- * question-answer, backlog-file, backlog-cancel, backlog-release, backlog-top, and
- * backlog-edit — the `checkedBacklogKind` / `checkedEntryPositionAndTitle` validators they share
- * ride with them. Each handler adapts
+ * question-answer, backlog-file, backlog-cancel, backlog-retire, backlog-release, backlog-top,
+ * and backlog-edit — the `checkedBacklogKind` / `checkedEntryPositionAndTitle` validators they
+ * share ride with them. Each handler adapts
  * HTTP onto the domain work one layer down (backlog-write, backlog-question-answer, backlog-commit)
  * and touches no socket beyond its own `res`.
  */
 import { backlogHolds, cancelledClaimNote, stillHeldNote, type EntryHold } from "../backlog/backlog-eligibility.js";
 import { entryKey, plansReleasedBy, releasedPartsNote } from "../backlog/backlog-parts.js";
-import { plannedPlanEntries } from "../backlog/backlog.js";
+import { plannedPlanEntries, plannedPlans } from "../backlog/backlog.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
-import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome } from "../backlog/backlog-write.js";
+import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, retirePlan, tryCancelEntry, tryEditEntry, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome } from "../backlog/backlog-write.js";
+import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { tryMoveEntryToTop, tryReleaseEntry, type MoveEntryOutcome, type ReleaseEntryOutcome } from "../backlog/backlog-release.js";
 import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../backlog/backlog-question-answer.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
@@ -37,8 +38,8 @@ function checkedBacklogKind(res: http.ServerResponse, body: Record<string, unkno
 
 /** Shared 400-validation for an entry-target body's `position` (a positive integer) and
  * `title` (a non-empty string) — the two fields every backlog/QUESTIONS entry drawer asks
- * for, so the question-answer, backlog-cancel, backlog-release, backlog-top, and
- * backlog-edit endpoints report the same two errors and cannot drift on the messages. Sends the
+ * for, so the question-answer, backlog-cancel, backlog-retire, backlog-release, backlog-top,
+ * and backlog-edit endpoints report the same two errors and cannot drift on the messages. Sends the
  * 400 and returns null on the first bad field; the validated pair otherwise. */
 function checkedEntryPositionAndTitle(
   res: http.ServerResponse,
@@ -174,6 +175,50 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
   } else {
     okGone(res);
   }
+}
+
+/** Handle POST /api/backlog-retire: the plan drawer's Retire this plan — the same move as
+ * `tumwater plan --retire <n>` through the existing retirePlan (the in-range write the CLI
+ * uses; the non-exiting title-checked lower layer retireEntryLocked sits behind it): the nth
+ * `## Planned` entry leaves for `## Done` as a retired record (its body kept, a
+ * `retired YYYY-MM-DD by the user` heading stamp, a first `**Retired …**` audit line), because
+ * the drawer's cancel deletes with no record and an operator working from the dashboard would
+ * lose the audit trail the CLI leaves. Body `{"kind": "plan", "position": <1-based>, "title":
+ * "<heading>"}`; only plans
+ * are retirable from the dashboard — a bug answers 400 naming that (the CLI's `bug --retire`
+ * exists, but the drawer offers no bug-retire). The current entry is re-read before writing: an
+ * out-of-range position or a heading that differs from the posted title answers 200 { ok: true,
+ * status: "gone" } with nothing written (the list moved since the poll). showEntry cannot serve
+ * that re-read — like retirePlan's own read it is the CLI lookup, whose out-of-range position
+ * exits the process (`fail`), where a stale dashboard click must survive and answer gone — so
+ * the position is bounded against the same planned-section read the drawer's list came from
+ * (plannedPlans), and the current heading's stamp-stripped title is compared against the posted
+ * title stripped the same way. On a match retirePlan runs, the file is committed on main as
+ * `Retire plan: <title>`. No wake and no inbox prompt: retiring work must not wake a role. */
+export async function handleBacklogRetire(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"kind": "plan", "position": 1, "title": "<heading>"}');
+  if (!body) return;
+  if (body.kind !== "plan") {
+    badRequest(res, `only plans are retirable from the dashboard${gotSuffix(body.kind)}`);
+    return;
+  }
+  const pair = checkedEntryPositionAndTitle(res, body);
+  if (!pair) return;
+  const { position, title } = pair;
+  const titles = plannedPlans(root);
+  if (position > titles.length) {
+    okGone(res);
+    return;
+  }
+  const currentTitle = titles[position - 1] ?? "";
+  if (collapseWhitespace(stripEntryStamp(currentTitle)) !== collapseWhitespace(stripEntryStamp(title))) {
+    okGone(res);
+    return;
+  }
+  const retired = outcomeOrBadRequest(res, () => retirePlan(root, position));
+  if (retired === null) return;
+  const committed = await commitOperatorBacklogEdit(root, retired.file, stampedSubject("operator", `Retire plan: ${retired.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
+  sendJson(res, 200, { ok: true, status: "retired", file: retired.file, title: retired.title, retiredOn: retired.retiredOn, committed });
 }
 
 /** The hold on the kind's entry at a 1-based position (backlogHolds), `null` when eligible. */

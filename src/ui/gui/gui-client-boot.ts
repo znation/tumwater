@@ -122,14 +122,16 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     return { file, index: Number(index) };
   }
   // The backlog drawer rows resolve a list entry's title from the last polled status by its
-  // backlog file and 0-based position (entry-cancel, entry-edit, and the mention action).
+  // backlog file and 0-based position (entry-cancel, entry-retire, entry-edit, and the mention
+  // action).
   function entryTitleAt(file, index) {
     return ((lastStatus && lastStatus[file]) || [])[index];
   }
   // The backlog drawer rows carry their file as "bugs" or "plans"; three other words derive
   // from it — the singular kind the drawer's POST carries, the display filename the toasts name,
   // and the role that picks a newly eligible entry up. One discriminator, three derived values,
-  // so the mapping cannot drift among the cancel/release/top/edit drawers that all spell it out.
+  // so the mapping cannot drift among the cancel/retire/release/top/edit drawers that all spell
+  // it out.
   function kindOf(file) { return file === "bugs" ? "bug" : "plan"; }
   function entryFile(file) { return file === "bugs" ? "BUGS.md" : "PLANS.md"; }
   function pickupRole(file) { return file === "bugs" ? "bugfix" : "feature"; }
@@ -213,6 +215,18 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         closeDrawer();
         return d && d.status === "cancelled"
           ? "Cancelled “" + splitTitle(title).title + "” from " + entryFile(file) + uncommittedTail(d) + (d.workingNote ? " — " + d.workingNote : "") + (d.releasedNote ? " — " + d.releasedNote : "")
+          : "That entry was already removed or moved — refreshed";
+      });
+    } else if (act === "entry-retire") {
+      const { file, index } = entryRef(arg);
+      const title = entryTitleAt(file, index);
+      if (title === undefined) return;
+      if (!entryRetireArmed(arg, title)) { armEntryRetire(arg, title); return; }
+      disarmEntryRetire();
+      postAction("/api/backlog-retire", { kind: "plan", position: index + 1, title }, (d) => {
+        closeDrawer();
+        return d && d.status === "retired"
+          ? "Retired “" + splitTitle(title).title + "” in " + entryFile(file) + " — closed without being built" + uncommittedTail(d)
           : "That entry was already removed or moved — refreshed";
       });
     } else if (act === "entry-release") {
