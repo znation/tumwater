@@ -19,8 +19,9 @@ import {
 } from "../src/agent/agent-stream.js";
 
 /** A minimal fs.WriteStream-shaped fake: `write` returns true, `end(cb)` fires its callback
- * (so a not-broken log settles the run's promise, matching libuv's flush-callback ordering),
- * and `on`/`emit` carry the error listener finish() registers. */
+ * synchronously (so a not-broken log settles the run's promise without a real fd; a real
+ * stream fires it asynchronously on 'finish'), and `on`/`emit` carry the error listener
+ * finish() registers. */
 function fakeWriteStream() {
   const listeners = new Map<string, () => void>();
   const stream = {
@@ -45,12 +46,11 @@ interface Built {
   fed: string[];
   resolved: PiRunResult[];
   warnings: string[];
-  stderrLogAllocations: string[];
 }
 
 /** Build a pipeline wired to fakes that record what the module does, so each test asserts the
- * surface rather than the plumbing. `translator` defaults to the identity; `backendId` supplies
- * the backend for matchStderrWarning callers. */
+ * surface rather than the plumbing. `translator` defaults to the identity; `backend`/`stderrMatch`
+ * supply the backend and its stderr-warning matcher for the stderr case. */
 function build(over: {
   backend?: AgentBackend;
   preSpawnSessionId?: string;
@@ -110,7 +110,7 @@ function build(over: {
     resolve: (r: PiRunResult) => resolved.push(r),
   });
 
-  return { stream, fed, resolved, warnings, stderrLogAllocations: [] };
+  return { stream, fed, resolved, warnings };
 }
 
 test("an over-long native line without a newline is discarded and the stream resyncs on the next real line", () => {
