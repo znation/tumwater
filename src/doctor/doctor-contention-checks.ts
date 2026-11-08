@@ -28,6 +28,7 @@ import { hostLoadStarved, sampleHostLoad, type LoadSampler } from "../build/host
 import { INSTANCE_ROLES, runnerEnabled, runnerIds } from "../roles/runner-ids.js";
 import { staleClaimDetail, staleClaimEntries } from "../scheduling/claim-entries.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
+import { readOrchestratorInfo } from "../team/team-orchestrator-info.js";
 import { branchName, mergeLockDir, worktreesDir } from "../paths.js";
 import { artifactPhrase, retireRole } from "../operator/operator-retire.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
@@ -319,16 +320,68 @@ function waitContentionRow(
   return (verdict.warn ? warnOutcome : okOutcome)(verdict.detail);
 }
 
+/** One parked waiter the running orchestrator publishes under `permits.waiting` (semaphore.ts
+ * `snapshot`): its scheduling tier and how long it has waited so far (BUGS.md 2026-11-08). */
+interface LiveWait {
+  tier: number;
+  waitingMs: number;
+}
+
+/** The live team-slot waits the running orchestrator publishes under `permits.waiting` — the
+ * semaphore wait in progress, which the event log cannot show because `provider_wait` is only
+ * written when a wait ENDS. Absent when no orchestrator is running, when it predates the
+ * published list, or when nothing is parked. */
+function liveProviderWaits(root: string): readonly LiveWait[] {
+  return readOrchestratorInfo(root)?.permits?.waiting ?? [];
+}
+
+/** The live half of the provider-contention rule: fold the published in-progress waiters into
+ * the row's detail — the count, per-tier counts (so a tier-1 starve is named), and the oldest
+ * ongoing wait — and warn when the longest live wait already crosses PROVIDER_WAIT_WARN_TOTAL_MS.
+ * Returns null when nothing is waiting, so the row keeps its normal event-only arms. */
+function liveWaitContention(waits: readonly LiveWait[]): WaitContention | null {
+  if (waits.length === 0) return null;
+  let longestMs = 0;
+  const tiers = new Set<number>();
+  for (const w of waits) {
+    if (w.waitingMs > longestMs) longestMs = w.waitingMs;
+    tiers.add(w.tier);
+  }
+  const tierPhrase = [...tiers].sort((a, b) => a - b).join("/");
+  return {
+    warn: longestMs >= PROVIDER_WAIT_WARN_TOTAL_MS,
+    detail: `${plural(waits.length, "slot wait")} in progress now (tier ${tierPhrase}) — oldest so far ${shortSpanPhrase(longestMs)}`,
+  };
+}
+
 /** Provider-slot contention: sums the last 24 h of `provider_wait` events (each a role run
  * whose semaphore admission waited PROVIDER_WAIT_EVENT_MS or more, recorded in
  * orchestrator-launch.ts) and warns when the total reaches PROVIDER_WAIT_WARN_TOTAL_MS — the
  * provider cap is too small. Names every key that waited, busiest first (the key-less
  * bucket, which also takes every team-cap wait whatever its key, reads "the run cap") and, on
- * a warn, names `maxConcurrent` for the run cap.
+ * a warn, names `maxConcurrent` for the run cap. Folds in the live waits the orchestrator
+ * publishes under `permits.waiting` — an ongoing wait (e.g. a tier-1 starve, BUGS.md
+ * 2026-11-08) has no event until it ends, so it is surfaced here before it ends.
  * A counterpoint to checkWorktreePool's slot-wait half; read-only, like every doctor check.
  * `now` is a test seam for the window. */
 export function checkProviderContention(root: string, config: TumwaterConfig | undefined, now = Date.now()): CheckOutcome {
-  return waitContentionRow(root, PROVIDER_WAIT_CHECK_WINDOW_MS, "provider_wait", "provider waits", providerWaitContention, config, now);
+  const live = liveProviderWaits(root);
+  const liveVerdict = liveWaitContention(live);
+  let eventVerdict: WaitContention | null = null;
+  try {
+    const waits = eventsSince(root, PROVIDER_WAIT_CHECK_WINDOW_MS, now, (ev) => ev.type === "provider_wait");
+    if (waits.length > 0) eventVerdict = providerWaitContention(waits, config);
+  } catch (err) {
+    // A read error leaves the level ok, saying so rather than crying wolf — but a live wait is
+    // still worth naming, so it rides along with the read error instead of being lost.
+    const base = `could not read the event log for provider waits: ${errorMessage(err)}`;
+    if (liveVerdict === null) return okOutcome(base);
+    return (liveVerdict.warn ? warnOutcome : okOutcome)(`${base} — ${liveVerdict.detail}`);
+  }
+  if (eventVerdict === null && liveVerdict === null) return okOutcome("no provider waits");
+  const parts = [eventVerdict?.detail, liveVerdict?.detail].filter((d): d is string => d !== undefined);
+  const warn = (eventVerdict?.warn ?? false) || (liveVerdict?.warn ?? false);
+  return (warn ? warnOutcome : okOutcome)(parts.join(" — "));
 }
 
 /** Names the kind of check a `heldBy` label stands for, in checkCheckContention's tally. */

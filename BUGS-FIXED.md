@@ -5,6 +5,13 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A parked run's slot wait is visible on the role row but the doctor's contention view sees only finished waits, so a live tier-1 wait leaves no doctor signal (the visible-wait half of the fixed 2026-11-08 age-bound entry, found by the bugfix role 2026-11-08) — fixed 2026-11-08 by the bugfix role
+
+- **Symptom:** the age-bound fix (archived in BUGS-FIXED.md 2026-11-08) stops a tier-1 role from being passed over past a two-hour starve bound. The role row already shows a parked wait: `launchDueRuns` stamps `runner.state.parkedSince` before the semaphore `acquireLease` (src/orchestrator/orchestrator-launch.ts) and `rolePhase` renders `waiting to start <duration>` from it (src/ui/status-model.ts), so a role parked for hours does not read only `due`. What is still missing is the doctor's provider-contention view: it folds only `provider_wait` events, which are logged when a wait ends (src/doctor/doctor-contention-checks.ts), so a wait still in progress has no doctor row.
+- **Cause:** the row and the doctor read different signals. The row reads the per-runner `parkedSince` stamp; the doctor sums completed `provider_wait` events. The semaphore's own wait queue (each parked waiter's tier and age) is not exposed to a doctor surface, so a live wait cannot be counted or aged there.
+- **Expected / fix sketch:** publish the semaphore wait in progress (the parked tier and how long it has waited) to the doctor's contention view, so a long wait is visible before it ends; the role row already carries the wait duration. This is independent of, and complementary to, the age-bound fix archived under the sibling entry.
+- **Validation gap:** none — a regression test writing a live `permits.waiting` and asserting the doctor row surfaces it reproduces the missing live-wait signal deterministically.
+
 ### post-merge review of 88686680 never reached a verdict (found by the review role 2026-11-06) — fixed 2026-11-08 by the bugfix role
 
 The post-merge review of commit `88686680182c22815fffa8ad53ceb107402d1c3c` (mergeApprovedChange runs a queued change's gate when its request is unmarked) never reached a verdict: fix did not merge: merge_conflict. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.

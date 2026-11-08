@@ -42,6 +42,12 @@ export interface PermitSnapshot {
   inUse: number;
   limit: number;
   reserve: number;
+  /** A permit wait in progress: each parked waiter's scheduling tier and how long it has
+   * waited (BUGS.md 2026-11-08). The semaphore writes `provider_wait` only when a wait ENDS,
+   * so a live tier-1 starve would otherwise leave the doctor's provider-contention view
+   * silent until it ends; publishing the live waiters lets the doctor count and age one.
+   * Array entries are `{ tier, waitingMs }` (semaphore.ts's `snapshot`). */
+  waiting?: Array<{ tier: number; waitingMs: number }>;
 }
 
 /** The check-permit pool's published state (src/concurrency/check-permit.ts checkPermitSnapshot):
@@ -295,7 +301,19 @@ function parseCheckPermits(v: unknown): CheckPermitSnapshot | undefined {
 
 function parsePermits(v: unknown): PermitSnapshot | undefined {
   if (!isJsonObject(v) || !isFiniteNumber(v.inUse) || !isFiniteNumber(v.limit) || !isFiniteNumber(v.reserve)) return undefined;
-  return { inUse: v.inUse, limit: v.limit, reserve: v.reserve };
+  // A live-wait list is only meaningful to a doctor surface while the orchestrator publishes
+  // it; an absent, empty or foreign list is dropped so an older orchestrator (or a stalls-free
+  // pool) renders the row exactly as before.
+  const waiting: PermitSnapshot["waiting"] = [];
+  const raw = v.waiting;
+  if (Array.isArray(raw)) {
+    for (const w of raw) {
+      if (isJsonObject(w) && isFiniteNumber(w.tier) && isFiniteNumber(w.waitingMs)) {
+        waiting.push({ tier: w.tier, waitingMs: w.waitingMs });
+      }
+    }
+  }
+  return { inUse: v.inUse, limit: v.limit, reserve: v.reserve, ...(waiting.length > 0 ? { waiting } : {}) };
 }
 
 function parseSlotPool(v: unknown): SlotPoolSnapshot | undefined {

@@ -281,12 +281,26 @@ export class Semaphore {
     this.drive();
   }
 
-  /** The pool's live state for observability: the team in-use/cap and the reserve. */
+  /** The pool's live state for observability: the team in-use/cap and the reserve, plus the
+   * wait in progress — each parked waiter's scheduling tier and how long it has waited
+   * (BUGS.md 2026-11-08). The orchestrator publishes it as `permits`, so the doctor's
+   * provider-contention view can surface a live tier-1 starve before the wait ends and emits
+   * its `provider_wait` event. */
   snapshot(): {
     inUse: number;
     limit: number;
     reserve: number;
+    waiting: Array<{ tier: number; waitingMs: number }>;
   } {
-    return { inUse: this.inUse, limit: this.capacity, reserve: this.reserve };
+    const now = this.now();
+    return {
+      inUse: this.inUse,
+      limit: this.capacity,
+      reserve: this.reserve,
+      waiting: this.waiters.map((w) => ({
+        tier: this.effectiveTier(w),
+        waitingMs: now - (w.since ?? now),
+      })),
+    };
   }
 }

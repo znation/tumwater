@@ -68,6 +68,7 @@ import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
 import { checkRoleNotes } from "../src/doctor/doctor-role-notes.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
 import { roleNotesPath } from "../src/paths.js";
+import { writeOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { BRIEF_TEXT_MAX_CHARS } from "../src/brief/brief.js";
 import { fakeGh } from "./fakes/fake-gh.js";
 import { fakeCodexAppServer } from "./fakes/fake-codex.js";
@@ -1420,6 +1421,26 @@ test("checkCheckContention names what the waits sat behind, busiest first", () =
   const busy = checkCheckContention(root, undefined, Date.now(), () => ({ load1: 1, cpus: 8 }));
   assert.equal(busy.level, "warn");
   assert.match(busy.detail, /\(behind other checks 10m, .*\) — raise maxConcurrentChecks above 2$/);
+});
+
+test("checkProviderContention surfaces a live semaphore wait that has no finished event yet", () => {
+  // The doctor's event fold sums only provider_wait events, which are logged when a wait ENDS.
+  // A tier-1 waiter still parked under the starve bound (BUGS.md 2026-11-08) should be visible
+  // in the row before it ends via the orchestrator's published `permits.waiting`.
+  const root = readyRepo();
+  // No finished wait at all — everything comes from the live waiters.
+  assert.equal(checkProviderContention(root, defaultConfig()).detail, "no provider waits");
+
+  writeOrchestratorInfo(root, {
+    pid: 4242,
+    startedAt: 1,
+    roles: ["feature"],
+    permits: { inUse: 6, limit: 6, reserve: 0, waiting: [{ tier: 1, waitingMs: 3 * 3_600_000 }] },
+  });
+  const live = checkProviderContention(root, defaultConfig());
+  assert.equal(live.level, "warn"); // a single 3h live wait crosses the ten-minute threshold
+  assert.match(live.detail, /1 slot wait in progress now \(tier 1\) — oldest so far 180m/);
+  assert.doesNotMatch(live.detail, /no provider waits/);
 });
 
 test("checkProviderContention ranks keyed providers busiest first", () => {
