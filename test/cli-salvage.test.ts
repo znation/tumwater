@@ -133,7 +133,7 @@ test("salvage --show with a missing, zero or non-integer position fails with the
 test("salvage refuses an unknown flag, naming it, including -f/--follow", async () => {
   const repo = makeRepo();
   seedSalvage(repo);
-  for (const flag of ["--bogus", "--follow"]) {
+  for (const flag of ["--bogus", "-f", "--follow"]) {
     const r = await cli(repo, "salvage", flag);
     assert.equal(r.code, 1, flag);
     assert.ok(r.stderr.includes(flag), flag);
