@@ -63,6 +63,10 @@ interface MainBaseline {
    * re-run of only those tests selects files by. In memory only: a red restored from disk has
    * none, and its re-run names the tests alone. */
   failingTestFiles?: Record<string, string>;
+  /** Red only: the offender lists the repo-wide policy scans reported, keyed by failing test title
+   * (BuildCheckOutcome.failingOffenders — policy-offenders.ts). Unlike failingTestFiles it is
+   * persisted, so a later attribution can still name a change's offender against the base's own. */
+  failingOffenders?: Record<string, string[]>;
   /** Red only: the worktrees that have independently observed this red. A red seen in ONE
    * worktree is provisional evidence about the environment as much as the tree, so it is
    * re-verified elsewhere before it is trusted; two distinct worktrees agreeing makes it
@@ -176,6 +180,7 @@ function saveGreens(): void {
       sha: b.sha,
       script: b.script,
       failingTests: b.failingTests ?? [],
+      ...(b.failingOffenders !== undefined ? { failingOffenders: b.failingOffenders } : {}),
       ...(b.checkedAt !== undefined ? { checkedAt: b.checkedAt } : {}),
     }));
   try {
@@ -231,7 +236,26 @@ function restoreRedVerdict(entry: unknown): void {
     : [];
   const script = typeof parsed.script === "string" ? { script: parsed.script } : {};
   const checkedAt = typeof parsed.checkedAt === "number" ? { checkedAt: parsed.checkedAt } : {};
-  rememberBaseline(parsed.sha, { status: "red", sha: parsed.sha, ...script, ...checkedAt, failingTests });
+  const failingOffenders = parsedFailingOffenders(parsed.failingOffenders);
+  rememberBaseline(parsed.sha, {
+    status: "red",
+    sha: parsed.sha,
+    ...script,
+    ...checkedAt,
+    failingTests,
+    ...(failingOffenders !== undefined ? { failingOffenders } : {}),
+  });
+}
+
+/** A saved red's failingOffenders, or undefined when absent or malformed: its values must be
+ * arrays of strings (an old saved verdict without the field reads as none). */
+function parsedFailingOffenders(value: unknown): Record<string, string[]> | undefined {
+  if (!isJsonObject(value)) return undefined;
+  const out: Record<string, string[]> = {};
+  for (const [title, list] of Object.entries(value)) {
+    if (Array.isArray(list) && list.every((o) => typeof o === "string")) out[title] = [...list];
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** In-flight dedup: concurrent runs on the same not-yet-cached SHA (a fresh main move wakes
@@ -580,6 +604,7 @@ function baselineFromOutcome(sha: string, wt: string, outcome: BuildCheckOutcome
         outputTail: outcome.outputTail,
         failingTests: outcome.failingTests ?? [],
         ...(outcome.failingTestFiles ? { failingTestFiles: outcome.failingTestFiles } : {}),
+        ...(outcome.failingOffenders ? { failingOffenders: outcome.failingOffenders } : {}),
         redFrom: priorRedFrom.includes(wt) ? priorRedFrom : [...priorRedFrom, wt],
       };
 }

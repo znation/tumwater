@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { runBuildCheck } from "../src/build/build-check.js";
+import { policyOffenderLine } from "../src/build/policy-offenders.js";
 import { errCode } from "../src/errno.js";
 import { pidAlive } from "../src/process/process.js";
 import { buildCheckFixture } from "./fixtures/runner-fixtures.js";
@@ -244,6 +245,21 @@ test("cleanup of a stale process-group id swallows the EPERM from a reused pid",
   } finally {
     kill.mock.restore();
   }
+});
+
+// A failed check carries the offender lists its policy scans named in output (failingOffenders),
+// not just the failing test titles — part 1/2 of the policy-offender attribution (BUGS.md
+// 2026-11-08). This runs a real command that prints one machine-readable offender line and exits
+// 1, and asserts the failed outcome kept that list beside failingTests.
+test("a failed command check carries the policy-scan offenders its output named", async () => {
+  const wt = tmpdir();
+  const line = policyOffenderLine("scan A", "src/a.ts:1 (cols)");
+  // JSON.stringify escapes the tab separators, which node --eval re-interprets as tabs; the whole
+  // source sits in a shell single-quoted string so the backslashes reach node unquoted.
+  const command = `node --eval 'console.log(${JSON.stringify(line)}); process.exit(1)'`;
+  const outcome = await runBuildCheck(wt, { kind: "command", command, cwd: wt, timeoutMs: 30_000 }, 30_000, 800);
+  assert.equal(outcome.status, "failed");
+  assert.deepEqual(outcome.failingOffenders, { "scan A": ["src/a.ts:1 (cols)"] });
 });
 
 // The other half of the bound: a tree the SIGTERM takes down does not wait out the grace, so

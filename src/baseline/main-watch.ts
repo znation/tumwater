@@ -134,6 +134,12 @@ interface MainWatch {
 /** The failing tests of each root's newest watch verdict, keyed by root. */
 const knownFailures = new Map<string, string[]>();
 
+/** The policy-scan offender lists of each root's newest watch verdict, keyed by root then by
+ * failing test title (MainBaseline.failingOffenders, policy-offenders.ts). Part 1/2 of the
+ * policy-offender work carries it here (and on the open red spell below) so a restored or
+ * inherited red keeps it; nothing outside this plumbing reads it yet. */
+const knownOffenders = new Map<string, Record<string, string[]>>();
+
 /** Each root's open red spell (Hourly full check, part 3b/4): the commit that OPENED the red —
  * the tip of the first red verdict since the last green — and the failing tests STILL open on
  * the newest red tip. The open set starts from the confirmed red's tests and narrows as a later
@@ -151,6 +157,9 @@ interface OpenRedSpell {
    * re-run of only those tests selects files by (build-check-rerun.ts). Red only; absent when
    * the output named no file or a previous re-run dropped it. */
   files?: Readonly<Record<string, string>>;
+  /** The policy-scan offender lists the red carried (MainBaseline.failingOffenders), narrowed as
+   * the spell's tests narrow. Red only; plumbing for part 2/2, no reader yet. */
+  offenders?: Readonly<Record<string, string[]>>;
 }
 const redSpellOpeners = new Map<string, OpenRedSpell>();
 
@@ -159,6 +168,21 @@ const redSpellOpeners = new Map<string, OpenRedSpell>();
  * leaves the set while the spell is still open. */
 function openRedTests(root: string): string[] {
   return redSpellOpeners.get(root)?.tests ?? [];
+}
+
+/** Drop an offender map's entries whose test title is no longer open, so a red that narrows to
+ * still-failing tests keeps offenders only for them (undefined in → undefined out). */
+function narrowOffenders(
+  offenders: Readonly<Record<string, string[]>> | undefined,
+  stillOpen: readonly string[],
+): Record<string, string[]> | undefined {
+  if (offenders === undefined) return undefined;
+  const keep = new Set(stillOpen);
+  const out: Record<string, string[]> = {};
+  for (const [title, list] of Object.entries(offenders)) {
+    if (keep.has(title)) out[title] = [...list];
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** Main's known failures: while a red spell is open, the spell's remaining open failing tests —
@@ -348,6 +372,7 @@ export function createMainWatch(
     const quarantined = baseline.status === "red" ? onlyQuarantined(root, baseline.failingTests) : null;
     const red = baseline.status === "red" && !quarantined;
     knownFailures.set(root, red ? (baseline.failingTests ?? []) : []);
+    knownOffenders.set(root, red ? (baseline.failingOffenders ?? {}) : {});
     const covered = await countCovered(wt, previous, baseline.sha);
     logEventBestEffort(
       root,
@@ -581,6 +606,7 @@ export function createMainWatch(
         opener: open.opener,
         tests: baseline.failingTests ?? [],
         ...(baseline.failingTestFiles ? { files: baseline.failingTestFiles } : {}),
+        ...(baseline.failingOffenders ? { offenders: baseline.failingOffenders } : {}),
       });
       return;
     }
@@ -588,6 +614,7 @@ export function createMainWatch(
       opener: culprit,
       tests: baseline.failingTests ?? [],
       ...(baseline.failingTestFiles ? { files: baseline.failingTestFiles } : {}),
+      ...(baseline.failingOffenders ? { offenders: baseline.failingOffenders } : {}),
     });
     const runner = mergingRoleOf(root, culprit);
     logEventBestEffort(root, {
@@ -739,8 +766,15 @@ export function createMainWatch(
       // The spell stays open, narrowed: a passing test leaves the open set and the read of main's
       // known failures. The failing tests obey the spell's own opener attribution — no
       // re-attribution, no new culprit — and `redSpellOpeners` keeps the opener.
-      redSpellOpeners.set(root, { ...spell, tests: stillFailing });
+      const narrowed = narrowOffenders(spell.offenders, stillFailing);
+      redSpellOpeners.set(root, {
+        opener: spell.opener,
+        tests: stillFailing,
+        ...(spell.files !== undefined ? { files: spell.files } : {}),
+        ...(narrowed !== undefined ? { offenders: narrowed } : {}),
+      });
       knownFailures.set(root, stillFailing);
+      knownOffenders.set(root, narrowed ?? {});
       logEventBestEffort(root, mainCheckEvent(
         { status: "red", sha: tip, failingTests: stillFailing },
         true, // red
@@ -758,6 +792,7 @@ export function createMainWatch(
     // full run at once on this head.
     const covered = await countCovered(wt, before, tip);
     knownFailures.set(root, []);
+    knownOffenders.set(root, {});
     redSpellOpeners.delete(root);
     logEventBestEffort(root, mainCheckEvent({ status: "green", sha: tip }, false, null, covered, 0, undefined, true));
     clearHealKeyOnGreen();

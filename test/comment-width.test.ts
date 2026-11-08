@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { repoRoot } from "./helpers/repo-root.js";
+import { policyOffenderLine } from "../src/build/policy-offenders.js";
 
 // Comments in this tree wrap at 100 columns; code lines have no limit. This test makes that
 // a deterministic gate: a new long comment line fails the commit that adds it, and the clean
@@ -62,7 +63,9 @@ function offendersInFile(file: string): string[] {
   return commentOffenders(text).map(({ number, kind }) => `${file}:${number} (${kind})`);
 }
 
-test("every comment line in src/ and test/ fits in 100 columns and opens no block inside a block", () => {
+const POLICY_TITLE = "every comment line in src/ and test/ fits in 100 columns and opens no block inside a block";
+
+test(POLICY_TITLE, () => {
   const root = repoRoot(TEST_DIR);
   const offenders: string[] = [];
   for (const rootName of ["src", "test"]) {
@@ -77,6 +80,10 @@ test("every comment line in src/ and test/ fits in 100 columns and opens no bloc
       assert.ok(false, `over-wide or nested comment: ${offender}`);
     });
   }
+  // Emit one machine-readable offender line (policy-offenders.ts) before the assertion fails, so
+  // the check's complete output carries the offender list as well as this diff — how a later
+  // attribution tells a change's new offender from a base's or main's old one (BUGS.md 2026-11-08).
+  for (const offender of offenders) console.log(policyOffenderLine(POLICY_TITLE, offender));
   assert.deepEqual(offenders, []);
 });
 
@@ -102,6 +109,14 @@ test("commentOffenders flags over-wide comment lines only", () => {
   assert.ok(offenders.some((o) => o.text.startsWith(" * ")));
   assert.ok(!offenders.some((o) => o.text.startsWith("const code")));
   assert.ok(!offenders.some((o) => o.text.includes("bullet")));
+});
+
+test("this scan reports each offender on a machine-readable policy-offender line", () => {
+  // The scan must emit its own exact failing-test title with the shared prefix, or runBuildCheck's
+  // failingOffenders never lists this scan's offenders for later attribution (policy-offenders.ts).
+  const line = policyOffenderLine(POLICY_TITLE, "src/a.ts:10 (cols)");
+  assert.ok(line.startsWith(`tumwater-policy-offender\t${POLICY_TITLE}\t`), `contracted line: ${line}`);
+  assert.ok(line.endsWith("src/a.ts:10 (cols)"), `contracted line: ${line}`);
 });
 
 test("commentOffenders flags a block opened inside a block as nested", () => {

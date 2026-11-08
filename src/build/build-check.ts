@@ -2,6 +2,7 @@ import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck } from "./build-check-detect.js
 import { EXEC_MAX_BUFFER, execFileAsync } from "../process/process.js";
 import { KILL_GRACE_MS, runScriptGroup } from "../process/process-group.js";
 import { clipBuildTail, parseFailingTestFiles, parseFailingTests } from "./build-check-report.js";
+import { parsePolicyOffenders } from "./policy-offenders.js";
 import { parseTestCounts, type TestCounts } from "./build-check-counts.js";
 import { sampleSleepClock, sleptMsBetween, type SleepSampler } from "./host-sleep.js";
 import { type InstallRunner, npmInstall, syncInstall } from "./dep-install.js";
@@ -75,6 +76,10 @@ export interface BuildCheckOutcome {
    * what a re-run of only those tests (build-check-rerun.ts) selects files by. A title whose file
    * the output did not print is absent. */
   failingTestFiles?: Record<string, string>;
+  /** On failure: the offender lists the repo-wide policy scans reported, keyed by the failing test
+   * title (parsePolicyOffenders) — how attribution later tells a change's new offender from a
+   * base's or main's old one (policy-offenders.ts). Absent when no scan named an offender. */
+  failingOffenders?: Record<string, string[]>;
   /** Why no verdict was reached ("skipped"). */
   skipReason?: BuildSkipReason;
   /** On a "killed" skip: the signal that stopped the check — the harness's own timeout is
@@ -321,6 +326,7 @@ async function runDeclaredCheck(
       outputTail: clipBuildTail(output),
       failingTests: parseFailingTests(output),
       failingTestFiles: parseFailingTestFiles(output),
+      failingOffenders: parsePolicyOffenders(output),
       run,
       counts: parseTestCounts(output),
     };

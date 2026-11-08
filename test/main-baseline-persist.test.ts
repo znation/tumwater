@@ -110,6 +110,35 @@ test("a fresh full run stamps checkedAt, and it survives a restart on green and 
   assert.ok(savedRed?.checkedAt === redAt, "the saved red carries the same checkedAt");
 });
 
+test("a saved red's failingOffenders round-trip a restart, and a pre-capture verdict restores none", () => {
+  const root = tmpdir("persist-offenders-");
+  writeFileDeep(
+    baselineVerdictsPath(root),
+    JSON.stringify({
+      reds: [
+        { sha: sha(71), script: "test", failingTests: ["scan A"], failingOffenders: { "scan A": ["src/a.ts:1 (cols)"] } },
+        { sha: sha(72), script: "test", failingTests: ["scan B"] }, // saved before the capture: no field
+      ],
+    }),
+  );
+  persistBaselineVerdicts(root);
+  const cache = baselineCache as unknown as Map<string, { failingOffenders?: Record<string, string[]> }>;
+  assert.deepEqual(cache.get(sha(71))?.failingOffenders, { "scan A": ["src/a.ts:1 (cols)"] });
+  assert.equal(cache.get(sha(72))?.failingOffenders, undefined, "a pre-capture verdict restores no offenders");
+
+  noteGreenBaseline(sha(73)); // any write re-mirrors the cache
+  const saved = savedGreens(root) as { reds: Array<{ sha: string; failingOffenders?: Record<string, string[]> }> };
+  assert.deepEqual(
+    saved.reds.find((r) => r.sha === sha(71))?.failingOffenders,
+    { "scan A": ["src/a.ts:1 (cols)"] },
+    "the re-mirrored red keeps its offender lists",
+  );
+  assert.ok(
+    !("failingOffenders" in (saved.reds.find((r) => r.sha === sha(72)) ?? {})),
+    "a red with no offenders mirrors without the field",
+  );
+});
+
 test("a stamped green and red load back with their stamps through a restart", () => {
   const root = tmpdir("persist-stamps-");
   writeFileDeep(

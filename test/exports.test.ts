@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { repoRoot } from "./helpers/repo-root.js";
+import { policyOffenderLine } from "../src/build/policy-offenders.js";
 
 // A deterministic unused-export check: tsconfig's noUnusedLocals does not cover exports, so an
 // exported symbol nothing outside its own file uses would otherwise cost a clean run per case.
@@ -54,7 +55,15 @@ function rel(file: string): string {
   return path.relative(repoRoot(TEST_DIR), file).split(path.sep).join("/");
 }
 
-test("no exported symbol goes unused outside its own file", () => {
+const POLICY_TITLE = "no exported symbol goes unused outside its own file";
+
+test("this scan reports each offender on a machine-readable policy-offender line", () => {
+  const line = policyOffenderLine(POLICY_TITLE, "src/a.ts: unexported");
+  assert.ok(line.startsWith(`tumwater-policy-offender\t${POLICY_TITLE}\t`), `contracted line: ${line}`);
+  assert.ok(line.endsWith("src/a.ts: unexported"), `contracted line: ${line}`);
+});
+
+test(POLICY_TITLE, () => {
   const files = SCAN_ROOTS.flatMap((root) => (fs.existsSync(root) ? tsFiles(root) : []));
   assert.ok(files.length > 0, "the scan found TypeScript files under src/, test/, scripts/");
   const texts = new Map(files.map((file) => [file, fs.readFileSync(file, "utf8")]));
@@ -74,6 +83,9 @@ test("no exported symbol goes unused outside its own file", () => {
       assert.ok(false, `export with no user outside its own file: ${entry}`);
     });
   }
+  // Emit one machine-readable offender line each (policy-offenders.ts), so the complete output
+  // also carries the offender list alongside this diff (BUGS.md 2026-11-08).
+  for (const entry of unexpected) console.log(policyOffenderLine(POLICY_TITLE, entry));
   assert.deepEqual(
     unexpected,
     [],

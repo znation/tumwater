@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { repoRoot } from "./helpers/repo-root.js";
 import { LEGACY_FILES, exemptLines } from "./helpers/legacy-files.js";
+import { policyOffenderLine } from "../src/build/policy-offenders.js";
 
 /** The retired words, as regex sources; later series append here. This is the only list.
  * `dry(?![- ]run)` keeps `--dry-run` and "dry run" legal. */
@@ -166,7 +167,15 @@ function walk(dir: string, out: string[]): void {
 }
 
 
-test("scanned src modules use only plain terms", () => {
+const POLICY_TITLE = "scanned src modules use only plain terms";
+
+test("this scan reports each offender on a machine-readable policy-offender line", () => {
+  const line = policyOffenderLine(POLICY_TITLE, "src/a.ts: tick");
+  assert.ok(line.startsWith(`tumwater-policy-offender\t${POLICY_TITLE}\t`), `contracted line: ${line}`);
+  assert.ok(line.endsWith("src/a.ts: tick"), `contracted line: ${line}`);
+});
+
+test(POLICY_TITLE, () => {
   const root = repoRoot(fileURLToPath(new URL(".", import.meta.url)));
   const files: string[] = [];
   walk(path.join(root, "src"), files);
@@ -179,6 +188,9 @@ test("scanned src modules use only plain terms", () => {
       assert.ok(false, `non-plain term: ${finding}`);
     });
   }
+  // Emit one machine-readable offender line each (policy-offenders.ts), so the complete output
+  // also carries the offender list alongside this diff (BUGS.md 2026-11-08).
+  for (const finding of findings) console.log(policyOffenderLine(POLICY_TITLE, finding));
   assert.deepEqual(findings, []);
 });
 

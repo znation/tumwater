@@ -13,6 +13,7 @@ import ts from "typescript";
 
 import { repoRoot } from "./helpers/repo-root.js";
 import { LEGACY_FILES, exemptLines } from "./helpers/legacy-files.js";
+import { policyOffenderLine } from "../src/build/policy-offenders.js";
 
 interface RetiredFamily {
   family: string;
@@ -174,7 +175,15 @@ function scanIdentifiers(rel: string, read: () => string, legacy: readonly strin
   return legacy.includes(rel) ? [] : identifierFindings(rel, read());
 }
 
-test("no identifier or file name in src/ or test/ uses a retired name", () => {
+const POLICY_TITLE = "no identifier or file name in src/ or test/ uses a retired name";
+
+test("this scan reports each offender on a machine-readable policy-offender line", () => {
+  const line = policyOffenderLine(POLICY_TITLE, "src/a.ts:4 fleet (fleet → team)");
+  assert.ok(line.startsWith(`tumwater-policy-offender\t${POLICY_TITLE}\t`), `contracted line: ${line}`);
+  assert.ok(line.endsWith("src/a.ts:4 fleet (fleet → team)"), `contracted line: ${line}`);
+});
+
+test(POLICY_TITLE, () => {
   const hits: string[] = [];
   for (const abs of ["src", "test"].flatMap((d) => walk(path.join(ROOT, d)))) {
     const rel = path.relative(ROOT, abs).split(path.sep).join("/");
@@ -188,6 +197,9 @@ test("no identifier or file name in src/ or test/ uses a retired name", () => {
       assert.ok(false, `retired name: ${hit}`);
     });
   }
+  // Emit one machine-readable offender line each (policy-offenders.ts), so the complete output
+  // also carries the offender list alongside this diff (BUGS.md 2026-11-08).
+  for (const hit of hits) console.log(policyOffenderLine(POLICY_TITLE, hit));
   assert.deepEqual(hits, [], `retired names (rename them; never exempt a missed rename):\n${hits.join("\n")}`);
 });
 
