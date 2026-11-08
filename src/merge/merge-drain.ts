@@ -132,6 +132,11 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
   }
 }
 
+/** Signals that a restart or disk hold closed the start gate while the task waited for its
+ * gate permit, so the gate must not start. The task keeps its entry queued exactly as a parked
+ * verification did; it is control flow, not a failure, so the task's catch does not record it. */
+class GateDeferredByHold extends Error {}
+
 /** The merge task — main's one writer in the pipeline: the first eligible queue head's gate and
  * merge in one task (a rebase onto main's tip then the fast-forward under the merge lock). The
  * task's `mergeApprovedChange` call owns the change's ONE gate: without `alreadyGated` it runs
@@ -212,11 +217,18 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
       // a verification used to hold — and merge-core's mergeApprovedChange releases it before
       // `mergeToMain`, whose conflict resolver takes MERGE_TIER itself. So one merge never holds
       // both tiers at once, and the gate's lease waits for the same team total as a
-      // verification's did. An already-fired abort hands back any late grant (acquireUnlessAborted;
-      // merge-core returns "aborted" before the gate then).
+      // verification's did. A shutdown hands back any late grant and defers the gate: the entry
+      // stays queued for the next generation, exactly as a parked verification did.
       const lease = await acquireUnlessAborted(semaphore, VERIFY_TIER, merge.controller.signal);
-      return () => {
+      // The start gate can close while the permit wait runs (a restart or disk hold). Re-check it
+      // at the grant, as a parked verification does: a task queued before the hold must not start
+      // its gate mid-drain or into the storm.
+      if (lease === null || merge.controller.signal.aborted || ctx.startHeld(entry.role)) {
         lease?.release();
+        throw new GateDeferredByHold();
+      }
+      return () => {
+        lease.release();
       };
     },
   });
@@ -267,22 +279,25 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
             },
           );
         } catch (err) {
-          // A plumbing throw keeps the entry queued and unapproved: the change's gate-then-merge
-          // did not complete, the message rides on its role's state, and the next poll re-runs it
-          // on the surviving pin.
-          author.state.lastError = errorMessage(err);
-          // The catch exists to keep the entry queued when the merge throws. A throw out of
-          // this write — an unwritable state file — must not skip the settle and the finally
-          // that frees the merge slot, or the pipeline wedges with p.merge set forever; the
-          // write is bookkeeping a later save retries, so warn and keep going.
-          try {
-            saveRunnerState(root, author.state);
-          } catch (writeErr) {
-            warnEventBestEffort(
-              root,
-              TUMWATER_SOURCE,
-              `the merge error for ${role} could not be saved: ${errorMessage(writeErr)}`,
-            );
+          // A hold that closed the gate during the permit wait defers the gate: the task keeps
+          // its entry for the next poll and records no failure. Any other throw is a plumbing
+          // failure: the entry stays queued and unapproved, the message rides on its role's
+          // state, and the next poll re-runs it on the surviving pin.
+          if (!(err instanceof GateDeferredByHold)) {
+            author.state.lastError = errorMessage(err);
+            // The catch exists to keep the entry queued when the merge throws. A throw out of
+            // this write — an unwritable state file — must not skip the settle and the finally
+            // that frees the merge slot, or the pipeline wedges with p.merge set forever; the
+            // write is bookkeeping a later save retries, so warn and keep going.
+            try {
+              saveRunnerState(root, author.state);
+            } catch (writeErr) {
+              warnEventBestEffort(
+                root,
+                TUMWATER_SOURCE,
+                `the merge error for ${role} could not be saved: ${errorMessage(writeErr)}`,
+              );
+            }
           }
         }
       }
@@ -293,8 +308,11 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
       // next poll and clears its marker record; a user abort settles the change as "aborted" and
       // discards its pin in the finally below.
       if (!settled) {
-        if (merge.userAborted) await settleOne("aborted");
-        else if (result !== undefined) await settleOne(result);
+        // The result wins over a late abort: an abort that lands after the merge reached an
+        // outcome must not rewrite a landed change as "aborted". Only a change with no result
+        // (deferred or thrown before its outcome) settles aborted for a user stop.
+        if (result !== undefined) await settleOne(result);
+        else if (merge.userAborted) await settleOne("aborted");
         else removeMergeChange(root, role);
       }
     } finally {
