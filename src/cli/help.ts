@@ -347,20 +347,26 @@ Usage:
                                    stored, the kept failing output verbatim — read-only, needing
                                    no ready repo, like the list; --show <n> --json prints that
                                    entry's object
-  tumwater salvage [--show <n>] [--json]
+  tumwater salvage [--grep <text>] [--show <n>] [--json]
                                    List the workspace patches kept for you under
                                    .tumwater/salvage/ — a settled run's discarded edits or a
                                    verification's scratch output — as the doctor's "salvage
                                    patches" row counts them, oldest first, each naming its file,
-                                   how long ago it was saved and its size; empty prints "no
-                                   salvaged workspace patches are kept for you"; --json prints
-                                   the same patches as { patches: [...] }, each with position,
-                                   file, savedAt and bytes; read-only and needing no ready repo,
-                                   like the list; --show <n> prints the Nth patch as the list
-                                   numbers it, in full — a header naming the position and file,
-                                   the saved-ago and size line, then the patch text verbatim;
-                                   --show <n> --json prints that patch's object with the exact
-                                   patch text
+                                   how long ago it was saved and its size; an empty dir prints
+                                   "no salvaged workspace patches are kept for you"; --json
+                                   prints the same patches as { patches: [...] }, each with
+                                   position, file, savedAt and bytes; read-only and needing no
+                                   ready repo, like the list; --grep <text> keeps only the
+                                   patches whose file name or patch text contains the text,
+                                   case-insensitively, each under its whole-list number, so
+                                   --show <n> still addresses the same patch; a non-empty dir
+                                   where nothing matches prints "no salvaged workspace patches
+                                   match \"<pattern>\"" while an empty dir keeps "no salvaged
+                                   workspace patches are kept for you"; --show <n> prints the
+                                   Nth patch as the list numbers it, in full — a header naming
+                                   the position and file, the saved-ago and size line, then the
+                                   patch text verbatim; --show <n> --json prints that patch's
+                                   object with the exact patch text
   tumwater archive [--dry-run] [--json]
                                    Move the finished entries still under PLANS.md ## Done and
                                    BUGS.md ## Fixed to the top of PLANS-DONE.md and BUGS-FIXED.md

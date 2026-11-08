@@ -61,3 +61,34 @@ export function readSalvagePatch(root: string, file: string): string | null {
     return null;
   }
 }
+
+/** One filtered salvage row: a kept patch carrying the position the unfiltered list gives it —
+ * the shape `tumwater salvage --grep` keeps, each row's `position` still the whole-list one
+ * so `--show <n>` keeps addressing the same patch the unfiltered list numbers. */
+interface SalvagePatchRow extends SalvagePatch {
+  position: number;
+}
+
+/** The kept patches with only the ones whose file name or patch text contains `pattern`
+ * (case-insensitively), each kept row's `position` unchanged — the filter twin of
+ * grepQuarantineRows for the salvage list, so an operator who remembers only a file a patch
+ * touched, a role, or a phrase can narrow the list without shifting the numbers `--show`
+ * acts on. Each patch's text is read through readSalvagePatch (a missing or unreadable patch
+ * yields null text and can still match by name), reading never writes, throws or changes the
+ * collected order, and the filter never throws — the same best-effort rules
+ * collectSalvagePatches and readSalvagePatch use. */
+export function grepSalvagePatches(
+  root: string,
+  patches: readonly SalvagePatch[],
+  pattern: string,
+): SalvagePatchRow[] {
+  const needle = pattern.toLowerCase();
+  const rows: SalvagePatchRow[] = [];
+  patches.forEach((p, i) => {
+    const text = readSalvagePatch(root, p.file);
+    if (p.file.toLowerCase().includes(needle) || text?.toLowerCase().includes(needle)) {
+      rows.push({ position: i + 1, file: p.file, savedAt: p.savedAt, bytes: p.bytes });
+    }
+  });
+  return rows;
+}

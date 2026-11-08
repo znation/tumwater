@@ -8,42 +8,62 @@
  * list, so it reads in any directory and never writes), and its output shape. */
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
-import { scanPositionArgs } from "./cli-args.js";
-import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
+import { parseGrepFlag, scanPositionArgs } from "./cli-args.js";
+import { JSON_FLAG, grepFlagSpec, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
-import { collectSalvagePatches, readSalvagePatch } from "../status/status-salvage.js";
+import { collectSalvagePatches, grepSalvagePatches, readSalvagePatch } from "../status/status-salvage.js";
 import { formatAge } from "../text/datetime.js";
 import { formatBytes } from "../text/format.js";
 
-/** `tumwater salvage [--show <n>] [--json]`: list the kept workspace patches under
- * `.tumwater/salvage/` oldest first, as the doctor's `salvage patches` row counts them, each
- * naming its file, how long ago it was saved and its size — so an operator can see what a run
- * left behind before applying or deleting it. `--show <n>` prints the Nth patch as the list
- * numbers it, in full (the exact patch text), the read-only detail twin of `quarantine --show`
- * and `reviews --show`. Read-only and needing no ready repo: refuseTeamWorkspace is the whole
+/** `tumwater salvage [--grep <text>] [--show <n>] [--json]`: list the kept workspace
+ * patches under `.tumwater/salvage/` oldest first, as the doctor's `salvage patches` row
+ * counts them, each naming its file, how long ago it was saved and its size — so an operator
+ * can see what a run left behind before applying or deleting it. `--grep <text>` keeps only
+ * the patches whose file name or patch text contains the text (case-insensitively), each
+ * under its whole-list number. `--show <n>` prints the Nth patch as the list numbers it, in
+ * full (the exact patch text), the read-only detail twin of `quarantine --show` and
+ * `reviews --show`. Read-only and needing no ready repo: refuseTeamWorkspace is the whole
  * gate, so the list degrades to the empty line in a plain directory and no run ever writes a
  * patch. */
 export async function cmdSalvage(root: string, args: string[]): Promise<void> {
   // `--show <n>` is the command's read-only detail branch: route it before the list gate,
   // exactly as cmdQuarantine routes its `--show` first, so its own flag gate owns a token
-  // the list would otherwise refuse.
-  if (args.includes("--show")) {
+  // the list would otherwise refuse. A `--show` token sitting in `--grep`'s value slot is the
+  // pattern, not the mode: the scan skips it, so `salvage --grep --show` greps for the text
+  // "--show" instead of opening the detail view (the same quirk cmdQuarantine guards).
+  const grepAt = args.indexOf("--grep");
+  const grepValueIndex = grepAt >= 0 ? grepAt + 1 : -1;
+  const modeNamed = (flag: string): boolean => args.some((arg, i) => arg === flag && i !== grepValueIndex);
+  if (modeNamed("--show")) {
     await cmdSalvageShow(root, args);
     return;
   }
-  rejectUnknownArgs("salvage", args, [JSON_FLAG]);
+  // --grep filters the positioned patches to the ones whose file name or patch text contains
+  // the text (case-insensitively), each kept row's position unchanged so `--show` keeps
+  // addressing the whole list. The missing-value wording lives in SALVAGE_GREP_VALUE_ERROR,
+  // the flag gate's and this parser's shared string. The --json scan runs over `rest` (the
+  // pattern token removed), so a flag-shaped pattern like `--grep --json` is the text
+  // "--json", not the flag.
+  const SALVAGE_GREP_VALUE_ERROR = "salvage --grep needs text (usage: tumwater salvage --grep <text>)";
+  rejectUnknownArgs("salvage", args, [JSON_FLAG, grepFlagSpec(SALVAGE_GREP_VALUE_ERROR)]);
   refuseTeamWorkspace(root);
   const patches = collectSalvagePatches(root);
+  const { rest, pattern } = parseGrepFlag(args, SALVAGE_GREP_VALUE_ERROR);
+  const rows =
+    pattern === null
+      ? patches.map((p, i) => ({ position: i + 1, file: p.file, savedAt: p.savedAt, bytes: p.bytes }))
+      : grepSalvagePatches(root, patches, pattern);
   const now = Date.now();
   sayJsonOrRender(
-    args,
-    { patches: patches.map((p, i) => ({ position: i + 1, file: p.file, savedAt: p.savedAt, bytes: p.bytes })) },
+    rest,
+    { patches: rows },
     () => {
       if (patches.length === 0) return "no salvaged workspace patches are kept for you";
-      const lines = patches.map(
-        (p, i) => `${i + 1}. ${p.file} — saved ${formatAge(now - p.savedAt)} ago, ${formatBytes(p.bytes)}`,
+      if (rows.length === 0) return `no salvaged workspace patches match "${pattern}"`;
+      const lines = rows.map(
+        (p) => `${p.position}. ${p.file} — saved ${formatAge(now - p.savedAt)} ago, ${formatBytes(p.bytes)}`,
       );
-      return [`salvaged workspace patches: ${patches.length}`, ...lines].join("\n");
+      return [`salvaged workspace patches: ${rows.length}`, ...lines].join("\n");
     },
   );
 }

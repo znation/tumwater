@@ -146,3 +146,68 @@ test("salvage inside a team workspace fails naming the owning team root", async 
   assert.equal(r.code, 1);
   assert.ok(r.stderr.includes(teamWorkspaceMessage(root)));
 });
+
+test("salvage --grep keeps each matching patch under its whole-list number", async () => {
+  const repo = makeRepo();
+  const { older, newer } = seedSalvage(repo);
+  const before = bytesOf(older, newer);
+  // A phrase present in only the older patch's text keeps that patch under position 1.
+  let r = await cli(repo, "salvage", "--grep", "+new");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trimEnd(), "salvaged workspace patches: 1\n1. a.patch — saved 3h ago, 38 B");
+  // A pattern matching only the other patch's file name keeps it under position 2.
+  r = await cli(repo, "salvage", "--grep", "b.patch");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trimEnd(), "salvaged workspace patches: 1\n2. b.patch — saved 0m ago, 17 B");
+  assert.deepEqual(bytesOf(older, newer), before, "the filtered list never writes a patch");
+});
+
+test("salvage --grep with no match or an empty dir keeps the no-match and empty lines and writes nothing", async () => {
+  let repo = makeRepo();
+  const { older, newer } = seedSalvage(repo);
+  const before = bytesOf(older, newer);
+  let r = await cli(repo, "salvage", "--grep", "nowhere-in-the-patches");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), `no salvaged workspace patches match "nowhere-in-the-patches"`);
+  assert.deepEqual(bytesOf(older, newer), before, "a no-match filter never writes a patch");
+  repo = makeRepo();
+  r = await cli(repo, "salvage", "--grep", "zzz");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "no salvaged workspace patches are kept for you");
+  assert.equal(fs.existsSync(salvageDir(repo)), false, "no salvage dir is created");
+  assert.equal(fs.existsSync(path.join(repo, ".tumwater")), false, "no .tumwater is created");
+});
+
+test("salvage --grep <text> --json serves only the kept rows with whole-list positions", async () => {
+  const repo = makeRepo();
+  seedSalvage(repo);
+  const r = await cli(repo, "salvage", "--grep", "+new", "--json");
+  assert.equal(r.code, 0);
+  const payload = JSON.parse(r.stdout) as { patches: { position: number; file: string; savedAt: number; bytes: number }[] };
+  assert.equal(payload.patches.length, 1);
+  assert.equal(payload.patches[0]!.position, 1);
+  assert.equal(payload.patches[0]!.file, "a.patch");
+  assert.equal(payload.patches[0]!.bytes, 38);
+  const noMatch = await cli(repo, "salvage", "--grep", "zzz", "--json");
+  assert.equal(noMatch.code, 0);
+  assert.deepEqual(JSON.parse(noMatch.stdout), { patches: [] });
+});
+
+test("salvage --show 2 --grep x is refused naming --grep", async () => {
+  const repo = makeRepo();
+  seedSalvage(repo);
+  const r = await cli(repo, "salvage", "--show", "2", "--grep", "x");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("--grep"), "the refusal names the flag the detail view rejects");
+});
+
+test("salvage --grep with no value fails with the shared missing-value wording", async () => {
+  const repo = makeRepo();
+  seedSalvage(repo);
+  const r = await cli(repo, "salvage", "--grep");
+  assert.equal(r.code, 1);
+  assert.ok(
+    r.stderr.includes("salvage --grep needs text (usage: tumwater salvage --grep <text>)"),
+    "a valueless --grep fails with the shared missing-value wording",
+  );
+});
