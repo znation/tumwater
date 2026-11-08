@@ -1,5 +1,7 @@
-import { tryCancelEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
+import { retirePlan, tryCancelEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
 import { tryMoveEntryToTop, tryReleaseEntry, liftedNotePhrase } from "../../backlog/backlog-release.js";
+import { stripEntryStamp } from "../../backlog/backlog-structure.js";
+import { collapseWhitespace } from "../../text/text.js";
 import { backlogHolds, cancelledClaimNote, stillHeldNote } from "../../backlog/backlog-eligibility.js";
 import { entryKey, plansReleasedBy, releasedPartsNote } from "../../backlog/backlog-parts.js";
 import { plannedPlanEntries } from "../../backlog/backlog.js";
@@ -11,8 +13,9 @@ import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-
 import { guardError } from "./tui-guard.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
-/** Resolve the selected plan/bug from the flat backlog list, deduping the four entry-action
- * arms' common prologue (Ctrl+X cancel, Ctrl+V move-to-top, Ctrl+R release, Ctrl+E edit): the
+/** Resolve the selected plan/bug from the flat backlog list, deduping the five entry-action
+ * arms' common prologue (Ctrl+X cancel, Ctrl+V move-to-top, Ctrl+R release, Ctrl+E edit,
+ * Ctrl+Y retire): the
  * flat-index clamp and the empty / read-only-done / question guards, whose refusal flash
  * differs only in the action's verb. Returns the actionable `{ kind, position, picked }`, or
  * null — after flashing the guard's message — when the selection is unactionable (an emptied
@@ -23,7 +26,7 @@ import type { TuiPaneSession } from "./tui-pane-session.js";
 export function selectedEditableEntry(
   session: { flat(): ReturnType<typeof labeledBacklogEntries>; flashMessage(message: string): void },
   selectedEntry: number | null,
-  verb: "cancelled" | "moved" | "released" | "edited",
+  verb: "cancelled" | "moved" | "released" | "edited" | "retired",
 ): { kind: "plan" | "bug"; position: number; picked: ReturnType<typeof labeledBacklogEntries>[number] } | null {
   if (selectedEntry === null) return null;
   const entries = session.flat();
@@ -44,9 +47,10 @@ export function selectedEditableEntry(
 }
 
 /** The project-status pane (view roleIds.length + 1) of the TUI (src/ui/tui/tui.tsx): the
- * entry browser's selection/scroll state, and its six key arms — the Ctrl+O Ready-only
+ * entry browser's selection/scroll state, and its seven key arms — the Ctrl+O Ready-only
  * toggle, the two-press Ctrl+X cancel, the one-press Ctrl+V move-to-top, the two-press
- * Ctrl+R release, the arrow up/down entry selection and the PgUp/PgDn body page — each
+ * Ctrl+R release, the two-press Ctrl+Y retire, the arrow up/down entry selection and the
+ * PgUp/PgDn body page — each
  * one inner named helper owning its whole guard, flash wording and repaint, dispatched in
  * order by `handleKey`. The entry-action arms are each two-step except the one-press move;
  * the answer/title-edit selection clear the editors call back through
@@ -83,11 +87,12 @@ export function createBacklogPane(
   };
 
 
-  // The pane's three entry actions (Ctrl+X cancel, Ctrl+V move-to-top, Ctrl+R release) live in
+  // The pane's four entry actions (Ctrl+X cancel, Ctrl+V move-to-top, Ctrl+R release, Ctrl+Y
+  // retire) live in
   // named helpers so each handler stays at two or three levels: the handler resolves the
   // selection, picks the armed/guard path, then delegates the try/commit/scroll-reset/flash to
   // the helper. The core's status decides the flash, so the one-press move and the two-press
-  // cancel/release read the same as the dashboard drawer's non-exiting action.
+  // cancel/release/retire read the same as the dashboard drawer's non-exiting action.
   const cancelArmed = (
     target: { kind: "plan" | "bug"; position: number; title: string },
     armedTitle: string,
@@ -158,6 +163,37 @@ export function createBacklogPane(
             ? `that ${kind} carries no Refused note`
             : `that ${kind} was already removed or moved — nothing released`,
       );
+    });
+  };
+  // The second Ctrl+Y arm: retire the armed plan through the locked `tumwater plan --retire`
+  // core once its position still holds the armed title. The plan is re-read (plannedPlanEntries,
+  // the same fresh list the pane's flat browse comes from — showEntry cannot serve the stale
+  // lookups: its CLI lookup exits the process on an out-of-range position, where a list that
+  // moved since the arm must survive) and both sides of the compare are stamp-stripped, like
+  // the dashboard drawer's retire endpoint: an out-of-range position or a different heading
+  // flashes the moved refusal, clears the selection and writes nothing. On a match the entry
+  // leaves `## Planned` for `## Done` as a retired record, committed on main with no wake.
+  const retirePlanArmed = (
+    target: { kind: "plan"; position: number; title: string },
+    armedTitle: string,
+  ): void => {
+    guardError(session, () => {
+      const current = plannedPlanEntries(session.root);
+      const reread = current[target.position - 1];
+      if (
+        reread === undefined ||
+        collapseWhitespace(stripEntryStamp(reread.title)) !== collapseWhitespace(stripEntryStamp(armedTitle))
+      ) {
+        selectedEntry = null;
+        entryScroll = 0;
+        session.flashMessage("that plan was already removed or moved — nothing retired");
+        return;
+      }
+      const outcome = retirePlan(session.root, target.position);
+      session.commitBacklogEdit(outcome.file, `Retire plan: ${outcome.title}`);
+      selectedEntry = null;
+      entryScroll = 0;
+      session.flashMessage(`retired plan #${target.position}: ${outcome.title} (not built)`);
     });
   };
 
@@ -259,6 +295,41 @@ export function createBacklogPane(
     }
     return false;
   };
+  // The two-press Ctrl+Y arm: retires the selected plan through the locked `tumwater plan
+  // --retire` core, the terminal twin of the CLI's retire and the dashboard drawer's Retire
+  // action. Returns false when the prompt is busy or the Backlog view is not showing, so the
+  // key falls through the dispatch as today (the Transcript diffstat arm and the History
+  // Summary cycle keep the key on their own views).
+  const backlogRetire = (ctx: TuiPaneCtx): boolean => {
+    if (promptLineFree(ctx.es) && session.view === session.roleIds.length + 1) {
+      // Ctrl+Y twice retires the selected plan through the locked `retirePlan` core the CLI
+      // and the dashboard drawer use: the plan leaves ## Planned for ## Done as a retired
+      // record, with no wake — retiring is closing work as not built, which must not prompt
+      // a role. A selected bug flashes that only a plan can be retired here and arms
+      // nothing; a question and the read-only done/fixed/answered rows are refused by
+      // selectedEditableEntry.
+      const selected = selectedEditableEntry(session, selectedEntry, "retired");
+      if (selected !== null) {
+        if (selected.kind === "bug") {
+          session.flashMessage("only a plan can be retired here");
+        } else {
+          const position = selected.position;
+          const target = { kind: "plan" as const, position, title: selected.picked.title };
+          if (session.armedRetire !== null && session.armedRetire.kind === "plan" && session.armedRetire.position === position) {
+            // The armed title (not the re-read one) drives the stale check, so an entry that
+            // changed since the arm reports `moved` instead of being retired.
+            retirePlanArmed(target, session.armedRetire.title);
+          } else {
+            session.retireArmed = target;
+            session.flashMessage(`press Ctrl+Y again to retire plan #${position} — any other key keeps it`);
+          }
+        }
+      }
+      session.requestRender();
+      return true;
+    }
+    return false;
+  };
   // The up/down arm: browses entries in full instead of editing the prompt, stepping only
   // through the search/Ready-only kept entries when either filter is applied.
   const backlogSelect = (ctx: TuiPaneCtx, arrow: "up" | "down"): boolean => {
@@ -309,14 +380,15 @@ export function createBacklogPane(
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
   ): boolean => {
-    // The Backlog view's six key arms live in the named helpers above, each owning its whole
+    // The Backlog view's seven key arms live in the named helpers above, each owning its whole
     // guard, flash wording and repaint; this body is only the flat ordered dispatch in today's
-    // arm order (Ctrl+O, Ctrl+X, Ctrl+V, Ctrl+R, up/down, PgUp/PgDn), so each key's behavior
-    // is found by name.
+    // arm order (Ctrl+O, Ctrl+X, Ctrl+V, Ctrl+R, Ctrl+Y, up/down, PgUp/PgDn), so each key's
+    // behavior is found by name.
     if (key.ctrl && key.name === "o") return backlogToggleReady(ctx);
     if (key.ctrl && key.name === "x") return backlogCancel(ctx);
     if (key.ctrl && key.name === "v") return backlogMoveToTop(ctx);
     if (key.ctrl && key.name === "r") return backlogRelease(ctx);
+    if (key.ctrl && key.name === "y") return backlogRetire(ctx);
     const arrow = arrowDir(key.name);
     if (arrow !== null) return backlogSelect(ctx, arrow);
     const page = pageDir(key.name);
@@ -346,7 +418,7 @@ export function createBacklogPane(
       session.requestRender();
     },
     state() {
-      return { selectedEntry, entryScroll, releaseArmed: session.releaseArmed, backlogGrep, backlogReadyOnly };
+      return { selectedEntry, entryScroll, releaseArmed: session.releaseArmed, retireArmed: session.retireArmed, backlogGrep, backlogReadyOnly };
     },
   } satisfies TuiPaneModule & { clearBacklogSelection(): void; grep(): string | null; applySearch(pattern: string | null): void };
 }

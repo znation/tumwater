@@ -14,9 +14,10 @@ import { baseRoleOf } from "../../roles/runner-ids.js";
 import { distinctOrdered } from "../../collections.js";
 import type { labeledBacklogEntries } from "./tui-backlog.js";
 
-/** A backlog-entry cancel or release target (plan or bug position + title), shared by the
- * backlog pane's two-step Ctrl+X arm, its two-step Ctrl+R release arm, and the shell's
- * beginKey. Internal to the pane session module: the armed targets ride on the session only. */
+/** A backlog-entry cancel, release, or retire target (plan or bug position + title), shared
+ * by the backlog pane's two-step Ctrl+X arm, its two-step Ctrl+R release arm, its two-step
+ * Ctrl+Y retire arm, and the shell's beginKey. Internal to the pane session module: the
+ * armed targets ride on the session only. */
 interface CancelTarget {
   kind: "plan" | "bug";
   position: number;
@@ -133,9 +134,9 @@ export function steppedWindowBounds(
 /** The shared cross-pane session and seams every pane module takes (the analog of
  * `TuiEditorSession`): the state `createTuiKeys` and the pane arms all share — the view index,
  * the roster, the shared pane scroll/budget state, the active pane's cache slot, and the armed
- * two-step Ctrl+X and Ctrl+R targets — plus every seam (`TuiPanesDeps`) and the shared cycle
- * helpers, single-homed here so the panes cannot drift. Per-pane state and arms live in each
- * pane module beside this session. */
+ * two-step Ctrl+X, Ctrl+R and Ctrl+Y targets — plus every seam (`TuiPanesDeps`) and the shared
+ * cycle helpers, single-homed here so the panes cannot drift. Per-pane state and arms live in
+ * each pane module beside this session. */
 export interface TuiPaneSession extends TuiPanesDeps {
   /** The current pane index (the transcript/view window). */
   view: number;
@@ -163,6 +164,10 @@ export interface TuiPaneSession extends TuiPanesDeps {
   armedRelease: CancelTarget | null;
   /** The backlog pane's armed target for a second Ctrl+R; moved to `armedRelease` by beginKey. */
   releaseArmed: CancelTarget | null;
+  /** The armed backlog retire (first Ctrl+Y on a selected plan), read by the second. */
+  armedRetire: CancelTarget | null;
+  /** The backlog pane's armed target for a second Ctrl+Y; moved to `armedRetire` by beginKey. */
+  retireArmed: CancelTarget | null;
   /** The armed notes clear (first Ctrl+X on a transcript notes view), read by the second. */
   armedNotes: string | null;
   /** The transcript pane's armed role for a second Ctrl+X; moved to `armedNotes` by beginKey. */
@@ -215,6 +220,8 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     cancelArmed: null,
     armedRelease: null,
     releaseArmed: null,
+    armedRetire: null,
+    retireArmed: null,
     armedNotes: null,
     notesClearArmed: null,
     armedKillOrphans: false,

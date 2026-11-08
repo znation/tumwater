@@ -162,6 +162,9 @@ interface TuiKeysState {
    * plan or bug): the entry a second Ctrl+R would release, null
    * once any other key lands. */
   releaseArmed: { kind: "plan" | "bug"; position: number; title: string } | null;
+  /** The armed backlog retire (first Ctrl+Y on a selected plan): the entry a second Ctrl+Y
+   * would retire, null once any other key lands. */
+  retireArmed: { kind: "plan" | "bug"; position: number; title: string } | null;
   entryScroll: number;
   /** The Queued pane's row selection (null = list mode): the index into queuedRows of the
    * prompt shown in full, cleared on every Ctrl+T cycle like selectedEntry. */

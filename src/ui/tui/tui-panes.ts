@@ -17,7 +17,7 @@ import type { TuiPaneCtx, TuiPaneEditorState } from "./tui-pane-ctx.js";
  * per-pane factories live beside it in tui-pane-session.ts and the tui-pane-*.ts modules, each
  * owning the state and the handler arms of the views it serves. This factory builds the session
  * and the modules, then owns the cross-cutting seams the shell calls: beginKey (the armed
- * two-step Ctrl+X and Ctrl+R targets), editorCtx (the per-keypress pane read the editors'
+ * two-step Ctrl+X, Ctrl+R and Ctrl+Y targets), editorCtx (the per-keypress pane read the editors'
  * open arms use), cycleView (routing each view's enter in today's view order), handleKey
  * (routing each key to the matching pane module in today's dispatch order), syncRoster (the
  * roster shift/clamp and the per-module scope drops), setLineBudgets, and state (merging each
@@ -35,14 +35,16 @@ export function createTuiPanes(deps: TuiPanesDeps) {
   const health = createHealthPane(session);
   const brief = createBriefPane(session);
 
-  /** Every key starts disarmed; only the backlog Ctrl+X/Ctrl+R branches read `armed`/
-   * `armedRelease`, only the notes Ctrl+X branch reads `armedNotes`, and only the Health
-   * Ctrl+K branch reads `armedKillOrphans`. */
+  /** Every key starts disarmed; only the backlog Ctrl+X/Ctrl+R/Ctrl+Y branches read `armed`/
+   * `armedRelease`/`armedRetire`, only the notes Ctrl+X branch reads `armedNotes`, and only
+   * the Health Ctrl+K branch reads `armedKillOrphans`. */
   const beginKey = (): void => {
     session.armed = session.cancelArmed;
     session.cancelArmed = null;
     session.armedRelease = session.releaseArmed;
     session.releaseArmed = null;
+    session.armedRetire = session.retireArmed;
+    session.retireArmed = null;
     session.armedNotes = session.notesClearArmed;
     session.notesClearArmed = null;
     session.armedKillOrphans = session.killOrphansArmed;
@@ -284,8 +286,10 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
   ): boolean => {
-    // Ctrl+Y's transcript change-step arm (the diffstat toggle) is routed first and falls
-    // through off it, so History keeps its Summary cycle on every other view.
+    // On the Backlog view (roleIds.length + 1) the pane's own Ctrl+Y arm consumes the key
+    // (the plan retire); every other view keeps the Transcript change-step diffstat toggle
+    // (routed first, falling through off it, so History keeps its Summary cycle).
+    if (session.view === session.roleIds.length + 1) return backlog.handleKey?.(key, ctx) ?? false;
     if (transcript.handleKey?.(key, ctx)) return true;
     return history.handleKey?.(key, ctx) ?? false;
   };
@@ -465,6 +469,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       view: session.view,
       cancelArmed: session.cancelArmed,
       releaseArmed: back.releaseArmed,
+      retireArmed: back.retireArmed,
       paneCache: session.paneCache,
       paneScroll: session.paneScroll,
       eventBudget: session.eventBudget,

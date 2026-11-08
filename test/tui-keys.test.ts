@@ -764,6 +764,125 @@ test("backlog Ctrl+R on a note-less entry, question, or done row refuses, and bu
   assert.equal(read("PLANS.md"), withDone);
 });
 
+function backlogRetireRig(seed?: string) {
+  const root = makeRoot();
+  const plans =
+    seed ?? "## Planned\n\n### Plan one (planned 2026-10-02 by test)\n\nbody\n\n### Plan two (planned 2026-10-02 by test)\n\nbody\n";
+  const bugs =
+    "## Open\n\n### Bug one (found by test 2026-10-02)\n\nbody\n\n### Bug two (found by test 2026-10-02)\n\nbody\n";
+  // A retire needs the ## Done section the locked move writes into; the phonebook fixtures
+  // above (cancel/release) seed no Done section, so this rig carries its own.
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans + "\n## Done\n\n_None yet._\n");
+  fs.writeFileSync(path.join(root, "BUGS.md"), bugs);
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), "## Open\n\n### A question (asked by test 2026-10-02)\n\nbody\n");
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  const down = (n: number): void => {
+    for (let i = 0; i < n; i++) keys.handleKey(undefined, { name: "down" });
+  };
+  const ctrlY = (): void => keys.handleKey(undefined, { ctrl: true, name: "y" });
+  const read = (f: string): string => fs.readFileSync(path.join(root, f), "utf8");
+  return { root, keys, down, ctrlY, read, plans, bugs };
+}
+
+test("backlog Ctrl+Y arms, then a second Ctrl+Y retires the selected plan as a ## Done record", () => {
+  const { keys, down, ctrlY, read, bugs, root } = backlogRetireRig();
+  const before = read("PLANS.md");
+  down(2); // plan 1, plan 2
+  ctrlY();
+  assert.deepEqual(keys.state().retireArmed, {
+    kind: "plan",
+    position: 2,
+    title: "Plan two (planned 2026-10-02 by test)",
+  });
+  assert.equal(read("PLANS.md"), before, "the arm writes nothing");
+  assert.match(keys.state().flash ?? "", /press Ctrl\+Y again to retire plan #2/);
+  ctrlY();
+  const after = read("PLANS.md");
+  // Plan one and every other byte of ## Planned survive at position 1.
+  assert.match(after, /## Planned\n\n### Plan one \(planned 2026-10-02 by test\)\n\nbody\n/);
+  assert.ok(!after.includes("## Planned\n\n### Plan two"), "the retired plan leaves ## Planned");
+  // The retired copy lands first under ## Done with the heading stamp and the first
+  // `**Retired …**` audit body line, keeping the body; the placeholder is dropped.
+  assert.match(
+    after,
+    /## Done\n\n### Plan two \(planned 2026-10-02 by test, retired \d{4}-\d{2}-\d{2} by the user\)\n\n\*\*Retired \d{4}-\d{2}-\d{2} by the user\*\*\n\nbody\n/,
+  );
+  assert.ok(!after.includes("_None yet._"), "the Done placeholder is dropped");
+  assert.equal(read("BUGS.md"), bugs);
+  assert.equal(keys.state().retireArmed, null);
+  assert.equal(keys.state().selectedEntry, null);
+  assert.match(keys.state().flash ?? "", /retired plan #2: Plan two .*not built/);
+  // Retiring wakes no role: no wake marker is written.
+  assert.ok(!fs.existsSync(wakeRequestPath(root)));
+});
+
+test("backlog Ctrl+Y disarms on any other key, and a re-arm writes nothing", () => {
+  const { keys, down, ctrlY, read } = backlogRetireRig();
+  const before = read("PLANS.md");
+  down(2);
+  ctrlY();
+  assert.notEqual(keys.state().retireArmed, null);
+  assert.equal(read("PLANS.md"), before);
+  keys.handleKey("a", { name: "a" });
+  assert.equal(keys.state().retireArmed, null, "any other key disarms");
+  ctrlY(); // re-arm
+  assert.equal(read("PLANS.md"), before, "a re-arm writes nothing");
+  assert.notEqual(keys.state().retireArmed, null);
+  assert.equal(keys.state().selectedEntry, 1);
+});
+
+test("backlog Ctrl+Y on a stale or out-of-range plan retires nothing and leaves the files byte-identical", () => {
+  const { root, keys, down, ctrlY, read, bugs } = backlogRetireRig();
+  down(2);
+  ctrlY();
+  // PLANS.md is rewritten so plan #2's position holds another title: the armed entry is stale.
+  const stale = "## Planned\n\n### Plan one (planned 2026-10-02 by test)\n\nbody\n\n### Other (planned 2026-10-02 by test)\n\nother body\n\n## Done\n\n_None yet._\n";
+  fs.writeFileSync(path.join(root, "PLANS.md"), stale);
+  ctrlY();
+  assert.equal(read("PLANS.md"), stale, "a stale title is not retired");
+  assert.equal(read("BUGS.md"), bugs);
+  assert.match(keys.state().flash ?? "", /that plan was already removed or moved — nothing retired/);
+  assert.equal(keys.state().selectedEntry, null);
+});
+
+test("backlog Ctrl+Y refuses a bug, a question, and a done row, and the budget editor blocks it", () => {
+  const { root, keys, down, ctrlY, read, plans, bugs } = backlogRetireRig();
+  down(3); // plan 1, plan 2, bug 1
+  ctrlY();
+  assert.equal(keys.state().retireArmed, null, "a bug arms nothing");
+  assert.match(keys.state().flash ?? "", /only a plan can be retired here/);
+  assert.equal(read("BUGS.md"), bugs);
+  down(2); // bug 2, the open question
+  assert.equal(keys.state().selectedEntry, 4);
+  ctrlY();
+  assert.equal(keys.state().retireArmed, null, "a question arms nothing");
+  assert.match(keys.state().flash ?? "", /only a plan or open bug can be retired here/);
+  assert.equal(read("PLANS.md"), plans + "\n## Done\n\n_None yet._\n");
+  // a done plan row is read-only
+  const withDone = plans + "\n## Done\n\n### Shipped (planned 2026-09-01, done 2026-10-06)\n\nbody\n";
+  fs.writeFileSync(path.join(root, "PLANS.md"), withDone);
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedEntry, 5); // the done row
+  ctrlY();
+  assert.equal(keys.state().retireArmed, null);
+  assert.match(keys.state().flash ?? "", /a done plan, fixed bug or answered question is read-only/);
+  assert.equal(read("PLANS.md"), withDone);
+  // the budget editor blocks retire through the promptLineFree guard
+  keys.handleKey(undefined, { name: "up" });
+  keys.handleKey(undefined, { name: "up" });
+  keys.handleKey(undefined, { name: "up" });
+  keys.handleKey(undefined, { name: "up" }); // back onto plan 2 (index 1)
+  assert.equal(keys.state().selectedEntry, 1);
+  ctrlY(); // arm
+  assert.notEqual(keys.state().retireArmed, null);
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  ctrlY();
+  assert.equal(keys.state().retireArmed, null);
+  assert.equal(read("PLANS.md"), withDone);
+});
+
 test("PgUp/PgDn page the Activity feed and return to the live tail", () => {
   const root = makeRoot();
   // 20 events; the 5-line budget leaves a 16-event page window — the feed shows rows =
