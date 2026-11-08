@@ -103,7 +103,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (openEntryKey() === file + ":" + index) closeDrawer();
     else openEntry(file, index);
   }
-  // The change the merge slot holds for a role — what a merge (or approved) row is about.
+  // The change the merge slot holds for a role — what a merge row is about.
   function mergeSummary(d, role) {
     const f = d.mergeQueue && d.mergeQueue.inFlight;
     if (!f) return "";

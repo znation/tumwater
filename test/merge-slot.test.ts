@@ -537,6 +537,20 @@ test("a foreign changes shape or a null record degrades instead of crashing a me
   const after = mergeChanges(readMergeMarker(root)!);
   assert.deepEqual(after.map((c) => c.role), ["y"]);
   assert.equal(after[0]!.status, "done");
+
+  // A record from the retired `approved` status is not a live change: mergeChanges drops it,
+  // like any other record the current pipeline cannot act on.
+  fs.writeFileSync(
+    mergeStatePath(root),
+    JSON.stringify({
+      role: "old",
+      sha: "o",
+      summary: "s",
+      startedAt: 1,
+      changes: [{ role: "old", sha: "o".repeat(40), summary: "s", status: "approved" }],
+    }),
+  );
+  assert.deepEqual(mergeChanges(readMergeMarker(root)!), [], "a retired approved record is not accepted");
 });
 
 test("a queued merge's record names the gate's pre-check stage while it runs", async () => {
