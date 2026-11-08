@@ -511,8 +511,9 @@ conflict markers, and hunks git cannot place arrive in the prompt to apply by ha
 resolves both like any conflict. Edits nothing gives back (ones a run chose to discard, or a
 check's scratch files) are saved directly under `.tumwater/salvage/` for you to read. Those kept
 patches are surfaced until session retention prunes them: a doctor `salvage patches` row and the
-standing amber `salvage-patches` alert on `tumwater status`, the dashboard and the TUI name each
-one, so work a run left behind is never silently discarded. Both kinds
+standing amber `salvage-patches` alert on `tumwater status`, the dashboard and the TUI name them
+(capped, with a count of the rest), so work a run left behind is never silently discarded. Both
+kinds
 are deleted after `sessionRetentionDays`. An
 interrupted merge goes back through the pipeline, and an interrupted director prompt goes back to
 its inbox. In the merge pipeline too, git commands that fail never read as "nothing there": a

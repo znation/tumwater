@@ -1402,19 +1402,19 @@ stat-keyed cache without re-reading" (it pins the cache hit and the per-poll cop
 
 ### INV-T6: each standing doctor-twin alert is gated by its snapshot flag and worded by its doctor row
 
-**Guarantee.** The seven standing amber alerts — no-check, no-brief, brief-truncated,
-role-notes-truncated, instance-pool, principles-truncated, config-problem — are raised by
-`buildStandingAlerts` (team-alert-standings.ts) only when their snapshot flag stands
-(`noDeclaredCheck`, `noBrief`, `briefTruncated`, a non-empty `roleNotesOverCap`,
-`principlesTruncated`, or a non-empty `configProblem`; instance-pool by the configured pool
-itself, `smallPoolProblems`), and each alert's detail is the warn sentence of the doctor row
-it twins (checkBuildCheck, checkBrief, checkRoleNotes, smallPoolProblems, checkPrinciples;
-config-problem phrases the `init` row's config-validity failure from the `configProblem`
-string, with the remedy) — so the rendered alert and the `tumwater doctor` row cannot
-disagree on the trigger, the caps, or the remedy, and all three surfaces (`tumwater status`'s
-banners, the dashboard's `alerts`, the TUI's attention lines) show them from the one
-`teamAlerts` source. A caller that passes no standing inputs raises none of them (the
-pre-alert rendering), never a false one.
+**Guarantee.** The eight standing amber alerts — no-check, no-brief, brief-truncated,
+role-notes-truncated, salvage-patches, instance-pool, principles-truncated, config-problem — are
+raised by `buildStandingAlerts` (team-alert-standings.ts) only when their snapshot flag stands
+(`noDeclaredCheck`, `noBrief`, `briefTruncated`, a non-empty `roleNotesOverCap`, a non-empty
+`salvagePatches`, `principlesTruncated`, or a non-empty `configProblem`; instance-pool by the
+configured pool itself, `smallPoolProblems`), and each alert's detail is the warn sentence of the
+doctor row it twins (checkBuildCheck, checkBrief, checkRoleNotes, checkSalvagePatches,
+smallPoolProblems, checkPrinciples; config-problem phrases the `init` row's config-validity
+failure from the `configProblem` string, with the remedy) — so the rendered alert and the
+`tumwater doctor` row cannot disagree on the trigger, the caps, or the remedy, and all three
+surfaces (`tumwater status`'s banners, the dashboard's `alerts`, the TUI's attention lines) show
+them from the one `teamAlerts` source. A caller that passes no standing inputs raises none of
+them (the pre-alert rendering), never a false one.
 
 **Binds.** `src/ui/team-alert-standings.ts` (`buildStandingAlerts`),
 `src/ui/team-alerts.ts` (`teamAlerts`' `standings` argument),

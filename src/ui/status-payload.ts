@@ -211,8 +211,8 @@ function headerFields(root: string, snap: ReturnType<typeof snapshot>, now: numb
 /** Merge-queue and main-check state (status-payload.ts's field-group split): the merge queue
  * and its labels, the post-merge review queue, main's newest merge-scope check and its badge,
  * the ci-parity badge/tone, the remote-CI badge/tone, and the raw twins of the
- * no-check/no-brief/brief-truncated/
- * role-notes/principles and config-problem alerts for `status --json` scripts. */
+ * no-check/no-brief/brief-truncated/role-notes/salvage-patches/principles and config-problem
+ * alerts for `status --json` scripts. */
 function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, now: number) {
   return {
     // The merge queue (plans/merge-queue.md 4/5): depth always (machine-readable for

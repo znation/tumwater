@@ -9,7 +9,7 @@ import { okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 const SALVAGE_NAMED_CAP = 3;
 
 /** The `salvage patches` check: whether any operator-kept workspace patch sits under
- * `.tumwater/salvage/` waiting for session retention to prune it. Only patches a no role will
+ * `.tumwater/salvage/` waiting for session retention to prune it. Only patches no role will
  * restore — settled runs' discarded edits, a verification's scratch output — are kept there for
  * the operator (src/git/slot-salvage.ts); each is read-only against .tumwater/, never written.
  * The kept-patch walk is shared with the status snapshot's collectSalvagePatches
