@@ -240,6 +240,31 @@ test("a baseline check names the head it covered, not a merge that landed after 
   assert.equal(result?.nextDueAt, ts + 60 * 60_000, "the due clock still runs from that covered verdict");
 });
 
+test("a baseline check names the head it ran on when a merge lands during its run", () => {
+  const root = makeRepo();
+  const coveredHead = "a".repeat(40);
+  const laterHead = "b".repeat(40);
+  const spawnedAt = Date.now() - 30 * 60_000;
+  writeEvents(root, [
+    { source: "lander", type: "merge_done", commit: coveredHead, ts: spawnedAt - 1_000 },
+    // Main moves while the baseline check is in flight: the check never saw this merge.
+    { source: "lander", type: "merge_done", commit: laterHead, ts: spawnedAt + 5_000 },
+    {
+      source: "tumwater",
+      type: "build_check",
+      scope: "baseline",
+      status: "passed",
+      script: "npm test",
+      spawnedAt,
+      settledAt: spawnedAt + 60_000,
+      ts: spawnedAt + 60_000,
+    },
+  ]);
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.sha, coveredHead, "the verdict covers the head main held when the run spawned");
+  assert.equal(result?.checkedAt, spawnedAt + 60_000);
+});
+
 test("mainCheckForPoll prefers the run's settle time as checkedAt when the event carries it", () => {
   const root = makeRepo();
   const tip = mainSha(root);

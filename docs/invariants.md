@@ -1323,7 +1323,9 @@ reader must therefore tolerate a torn, foreign or stale file, and show only what
 accepts: `merge`, `batch` or `baseline`, and never a `gate` check or one with `full: false`. A
 pre-merge merge/batch check takes its sha from the merge_done event that follows it; a `baseline`
 check runs on main's tip after the merge that put it there, so its sha is the newest merge_done at
-or before it (main's branch head when no merge precedes it), never a merge that landed after it.
+or before its run's spawn (its log time when the event carries no spawn stamp; main's branch
+head when no merge precedes it), never a merge that landed while the run was in flight or after
+it.
 Each falls back to main's branch head, then to the other merge. The event tail grows up to
 `MAIN_CHECK_SCAN_MAX_EVENTS`, past which the badge drops. A check whose status is not one of the
 three (`isMainCheckStatus`) or which has no numeric ts reads as no check. A verdict that ran
@@ -1347,7 +1349,8 @@ a merge-scope check"; `test/status-polls.test.ts` — "mainCheckForPoll derives 
 verdict's checked time and the interval (part 4/4)", "mainCheckForPoll prefers the run's settle
 time as checkedAt when the event carries it", "a red verdict carries checkedAt but no interval
 nextDueAt (a red is rechecked on each new head)", "a baseline check names the head it covered,
-not a merge that landed after it (part 4/4)", "an interval of 0 (one full run per new head)
+not a merge that landed after it (part 4/4)", "a baseline check names the head it ran on when a
+merge lands during its run", "an interval of 0 (one full run per new head)
 leaves nextDueAt absent", "a cleared red whose confirming full run has not settled reads cleared
 (part 4/4)" and "a cleared red ends when its confirming full run settles".
 

@@ -51,8 +51,9 @@ export interface MainCheckStatus {
   /** The epoch-ms the next full check is due: checkedAt + `check.fullIntervalMinutes` (the
    * cadence part 2b/4 already measures from the newest full verdict's checkedAt), so a
    * surface can say "next in …" or, once the interval has passed, "due now". Absent when the
-   * operator set the interval to 0 (one full run per new head — nothing is due) or there is
-   * no checkedAt. */
+   * verdict is a red (the watch rechecks the next head rather than the interval), when the
+   * operator set the interval to 0 (one full run per new head — nothing is due), or when
+   * there is no checkedAt. */
   nextDueAt?: number;
   /** Present when a red cleared (part 3b/4) and its one confirming full run has not settled
    * yet: no full verdict covers the clearing head, so the surfaces show "cleared at <sha> ·
@@ -123,8 +124,11 @@ interface MainCheckScan {
   /** The newest merged commit before or at the check's ts — the fallback when nothing merged
    * after it. */
   mergeDoneBeforeCommit?: string;
-  /** The newest merged commit after the check's ts — the sha the check verified. */
+  /** The newest merged commit after the check's ts — the sha a pre-merge check verified. */
   mergeDoneAfterCommit?: string;
+  /** The newest merged commit at or before a baseline run's spawn — the head a baseline
+   * check covers, even when a merge lands while the run is still in flight. */
+  mergeDoneBeforeSpawnCommit?: string;
   /** The newest main_culprit event in the tail — the main watch's blame for the red it named
    * (src/baseline/main-watch.ts). Collected in the same single pass as the check. */
   culprit?: HarnessEvent;
@@ -227,11 +231,19 @@ function scanMainCheck(root: string): MainCheckScan {
       ...(opener ? { spellOpener: opener } : {}),
     };
   }
+  // A baseline check runs on the head main held at its spawn; a merge that lands while the
+  // run is in flight logs before the check's settle stamp but is not covered by it. Capture
+  // that spawn-bounded merge separately so the sha can name the head the run actually saw.
+  const spawnedAt = check.scope === "baseline" && typeof check.spawnedAt === "number" ? check.spawnedAt : undefined;
   let mergeDoneAfter: HarnessEvent | undefined;
   let mergeDoneBefore: HarnessEvent | undefined;
+  let mergeDoneBeforeSpawn: HarnessEvent | undefined;
   for (const e of mergeDone) {
     if (e.ts > check.ts) mergeDoneAfter = e;
-    else mergeDoneBefore = e;
+    else {
+      mergeDoneBefore = e;
+      if (spawnedAt !== undefined && e.ts <= spawnedAt) mergeDoneBeforeSpawn = e;
+    }
   }
   return {
     check,
@@ -240,6 +252,7 @@ function scanMainCheck(root: string): MainCheckScan {
     ...(opener ? { spellOpener: opener } : {}),
     ...(typeof mergeDoneAfter?.commit === "string" ? { mergeDoneAfterCommit: mergeDoneAfter.commit } : {}),
     ...(typeof mergeDoneBefore?.commit === "string" ? { mergeDoneBeforeCommit: mergeDoneBefore.commit } : {}),
+    ...(typeof mergeDoneBeforeSpawn?.commit === "string" ? { mergeDoneBeforeSpawnCommit: mergeDoneBeforeSpawn.commit } : {}),
   };
 }
 
@@ -284,12 +297,14 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
   const branch = targetBranch(cfg.baseBranch, currentBranchFromHeadFile(root));
   // A baseline check runs ON main's tip, after the merge that put it there (the watch's
   // hourly pass, a redeploy green, a gate's main-tip verdict), so the head it covers is the
-  // newest merge at or before it — never a merge that landed afterwards. The after-first
-  // pairing still serves a pre-merge merge/batch check, whose verified head is the merge it
-  // precedes. Without the baseline branch an hour-old green is shown "at" the newest head the
-  // interval has not covered yet, which is the implication part 4/4 exists to remove.
+  // newest merge at or before its run's spawn (its log stamp when the event carries no
+  // spawn) — never a merge that landed while the run was in flight or afterwards. The
+  // after-first pairing still serves a pre-merge merge/batch check, whose verified head is
+  // the merge it precedes. Without the baseline branch an hour-old green is shown "at" the
+  // newest head the interval has not covered yet, which is the implication part 4/4 exists
+  // to remove.
   const sha = check.scope === "baseline"
-    ? scan.mergeDoneBeforeCommit ?? readBranchHead(root, branch) ?? scan.mergeDoneAfterCommit
+    ? scan.mergeDoneBeforeSpawnCommit ?? scan.mergeDoneBeforeCommit ?? readBranchHead(root, branch) ?? scan.mergeDoneAfterCommit
     : scan.mergeDoneAfterCommit ?? readBranchHead(root, branch) ?? scan.mergeDoneBeforeCommit;
   const counts = asTestCounts(check.counts);
   // The red evidence names the failing test and the merge the main watch blamed — and that

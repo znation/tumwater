@@ -330,14 +330,16 @@ export interface StatusSnapshot {
    * event tail — the live replacement for the committed README stamp the readme role used to
    * maintain. `sha` is the main commit the check verified: a `merged` event after the check
    * names it via its `commit` field (a merge/batch check runs pre-merge; the merge's own
-   * `merged` commit is the head it produced), otherwise main's current tip (a baseline check
-   * runs ON the tip, and a later merge would have logged a newer check). Unresolvable from
-   * either source — no merge yet and no readable ref — drops the field. Absent entirely
+   * `merged` commit is the head it produced), while a baseline check names the newest merge
+   * at or before its run's spawn (the head it ran on), never a later merge that landed after
+   * it; otherwise main's current tip. Unresolvable from either source — no merge yet and no
+   * readable ref — drops the field. Absent entirely
    * before any merge-scope check has run (and in tests that assemble snapshots by hand).
-   * The verdict also carries how old it is and when the next full check is due (`checkedAt`,
-   * `nextDueAt` — Hourly full check part 4/4), and, while a red's one confirming full run is
-   * still settling after a cleared red, `cleared` names the clearing head so the surfaces say
-   * "full check running" instead of a verdict. */
+   * The verdict also carries how old it is (`checkedAt`) and, for a green, when the next full
+   * check is due (`nextDueAt` — Hourly full check part 4/4); a red is rechecked on the next
+   * head, not on the interval. While a red's one confirming full run is still settling after
+   * a cleared red, `cleared` names the clearing head so the surfaces say "full check running"
+   * instead of a verdict. */
   mainCheck?: MainCheckStatus;
   /** The disk floor's measured state (plans/disk-floor.md, part 4/4), read from the running
    * orchestrator's published info file: free space (one decimal), the configured floor and
