@@ -800,54 +800,73 @@ export function createMainWatch(
     return true; // the open red was narrowed or cleared on this head
   }
 
+  /** Start one quarantine housekeeping pass unless one is already in flight. */
+  function startQuarantineHousekeeping(held: boolean): void {
+    if (!held && !housekeeping) {
+      housekeeping = settleQuarantine().finally(() => {
+        housekeeping = null;
+      });
+    }
+  }
+
+  /** Whether a suspended full check has come due on this head: its clock deadline has passed, or
+   * another check (the gate's main-tip attribution) recorded that same head red. A red is settled
+   * and healed at once, never held back by the interval. */
+  function suspendedFullCheckDue(mainHead: string): boolean {
+    return (
+      fullCheckDueAt !== undefined &&
+      (now() >= fullCheckDueAt || baselineCache.get(mainHead)?.status === "red")
+    );
+  }
+
+  /** Start the per-head diff-rules pass behind its own in-flight guard: a rules pass that was
+   * busy when a head arrived must still judge that head. */
+  function startRulesPass(mainHead: string, config: TumwaterConfig, rulesCovered: boolean): void {
+    if (!rulesInFlight && !rulesCovered) {
+      const previous = lastRulesWatched;
+      lastRulesWatched = mainHead;
+      rulesInFlight = rulesPass(mainHead, previous, config)
+        .catch((err: unknown) => {
+          // A failed rules pass (main unreadable, checkout refused) is not retried until main
+          // moves, so a persistent failure warns once per head.
+          warnCouldNotCheck(mainHead, err);
+        })
+        .finally(() => {
+          rulesInFlight = null;
+        });
+    }
+  }
+
+  /** Start the due full-check pass behind its own in-flight guard, so a slow full run never
+   * holds the `_gate-main` mirror a later poll's rules pass or a gate's main-tip verdict needs.
+   * (Hourly full check, part 2c/4) */
+  function startFullPass(mainHead: string, config: TumwaterConfig, fullDue: boolean): void {
+    if (detectBuildCheck(root, config) && !fullInFlight && (mainHead !== lastWatched || fullDue)) {
+      const previous = lastWatched;
+      fullInFlight = fullPass(previous, config)
+        .catch((err: unknown) => {
+          // A failed full pass (main unreadable, checkout refused) records nothing and is not
+          // retried until main moves, so a persistent failure warns once per head.
+          lastWatched = mainHead;
+          fullCheckDueAt = undefined;
+          fullCheckBase = undefined;
+          warnCouldNotCheck(mainHead, err);
+        })
+        .finally(() => {
+          fullInFlight = null;
+        });
+    }
+  }
+
   return {
     poll(mainHead, held, config) {
-      if (!held && !housekeeping) {
-        housekeeping = settleQuarantine().finally(() => {
-          housekeeping = null;
-        });
-      }
+      startQuarantineHousekeeping(held);
       if (held || mainHead === "") return;
-      // A head already watched is a no-op unless a suspended full check has now come due, or
-      // another check (the gate's main-tip attribution) recorded that same head red: a red is
-      // settled and healed at once, never held back by the interval. The rules pass may still
-      // owe this head a run when a previous poll's pass was busy as the head arrived.
       const rulesCovered = lastRulesWatched === mainHead;
-      const fullDue =
-        fullCheckDueAt !== undefined &&
-        (now() >= fullCheckDueAt || baselineCache.get(mainHead)?.status === "red");
+      const fullDue = suspendedFullCheckDue(mainHead);
       if (mainHead === lastWatched && rulesCovered && !fullDue) return;
-      // Two independent passes (Hourly full check, part 2c/4): the per-head rules pass and the
-      // due full-check pass, each behind its own in-flight guard, so a slow full run never holds
-      // the `_gate-main` mirror a later poll's rules pass or a gate's main-tip verdict needs.
-      if (!rulesInFlight && !rulesCovered) {
-        const previous = lastRulesWatched;
-        lastRulesWatched = mainHead;
-        rulesInFlight = rulesPass(mainHead, previous, config)
-          .catch((err: unknown) => {
-            // A failed rules pass (main unreadable, checkout refused) is not retried until main
-            // moves, so a persistent failure warns once per head.
-            warnCouldNotCheck(mainHead, err);
-          })
-          .finally(() => {
-            rulesInFlight = null;
-          });
-      }
-      if (detectBuildCheck(root, config) && !fullInFlight && (mainHead !== lastWatched || fullDue)) {
-        const previous = lastWatched;
-        fullInFlight = fullPass(previous, config)
-          .catch((err: unknown) => {
-            // A failed full pass (main unreadable, checkout refused) records nothing and is not
-            // retried until main moves, so a persistent failure warns once per head.
-            lastWatched = mainHead;
-            fullCheckDueAt = undefined;
-            fullCheckBase = undefined;
-            warnCouldNotCheck(mainHead, err);
-          })
-          .finally(() => {
-            fullInFlight = null;
-          });
-      }
+      startRulesPass(mainHead, config, rulesCovered);
+      startFullPass(mainHead, config, fullDue);
     },
     idle: async () => {
       while (rulesInFlight || fullInFlight || housekeeping) {
