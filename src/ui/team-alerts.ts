@@ -39,7 +39,7 @@ interface StandingAlertInputs {
 }
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget,
- * roles failing run after run, roles that look stuck, disk and install drift, the six
+ * roles failing run after run, roles that look stuck, disk and install drift, the seven
  * standing doctor twins (no-check, no-brief, brief-truncated, role-notes-truncated,
  * instance-pool, principles-truncated, config-problem), open questions, refused
  * entries, orphaned processes, and a stopped team.
