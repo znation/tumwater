@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { quarantineEntryAt, quarantineRows, quarantineViewRows, renderQuarantine, renderQuarantineDetail, renderQuarantineSection } from "../src/review/quarantine-render.js";
+import { grepQuarantineRows, quarantineEntryAt, quarantineRows, quarantineViewRows, renderQuarantine, renderQuarantineDetail, renderQuarantineSection } from "../src/review/quarantine-render.js";
 import { QUARANTINE_AGE_MS, QUARANTINE_WARN_COUNT } from "../src/baseline/main-guardrails.js";
 import type { QuarantineEntry } from "../src/review/known-flakes.js";
 
@@ -85,6 +85,53 @@ test("renderQuarantine appends the doctor's warning phrase for an old entry and 
     const lines = renderQuarantine(rows, now).split("\n");
     assert.equal(lines.length, 2, "no warning line for a fresh, quiet list");
   }
+});
+
+test("grepQuarantineRows keeps a test-path match and a filed-bug match case-insensitively", () => {
+  const rows = quarantineRows([
+    entry({ test: "test/old.test.ts", firstSeen: 100, bug: "" }),
+    entry({ test: "test/mid.test.ts", firstSeen: 200, bug: "api timeouts under load" }),
+    entry({ test: "test/new.test.ts", firstSeen: 300, bug: "" }),
+  ]);
+  // Oldest first: 1 old, 2 mid, 3 new.
+  assert.deepEqual(
+    grepQuarantineRows(rows, "MID").map((r) => [r.position, r.test]),
+    [[2, "test/mid.test.ts"]],
+  );
+  assert.deepEqual(
+    grepQuarantineRows(rows, "api").map((r) => [r.position, r.test]),
+    [[2, "test/mid.test.ts"]],
+    "a filed-bug-heading match keeps the entry under its whole-list position",
+  );
+  assert.deepEqual(grepQuarantineRows(rows, "zzz"), []);
+});
+
+test("grepQuarantineRows preserves each kept row's original position, including a gap", () => {
+  const rows = quarantineRows([
+    entry({ test: "test/a.test.ts", firstSeen: 100 }),
+    entry({ test: "test/b.test.ts", firstSeen: 200 }),
+    entry({ test: "test/c.test.ts", firstSeen: 300 }),
+  ]);
+  const all = grepQuarantineRows(rows, "test");
+  assert.deepEqual(all.map((r) => r.position), [1, 2, 3], "every row keeps its whole-list number");
+  const gap = grepQuarantineRows(rows, "b.test");
+  assert.deepEqual(gap.map((r) => [r.position, r.test]), [[2, "test/b.test.ts"]]);
+  assert.deepEqual(grepQuarantineRows([], "anything"), []);
+});
+
+test("renderQuarantine headers and numbers the filtered rows exactly as any other rows", () => {
+  const rows = quarantineRows([
+    entry({ test: "test/old.test.ts", firstSeen: now - 2 * 24 * 3_600_000, lastSeen: now - 24 * 3_600_000, count: 3, bug: "A filed flake" }),
+    entry({ test: "test/new.test.ts", firstSeen: now - 2 * 3_600_000, lastSeen: now, count: 1, bug: "" }),
+    entry({ test: "test/mid.test.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 2, bug: "" }),
+  ]);
+  // Oldest first: 1 old, 2 new, 3 mid.
+  const kept = grepQuarantineRows(rows, "MID");
+  const text = renderQuarantine(kept, now);
+  const lines = text.split("\n");
+  assert.equal(lines[0], "flake quarantine: 1 test");
+  assert.equal(lines.length, 2);
+  assert.match(lines[1]!, /^3\. test\/mid\.test\.ts — first seen 1h ago, last seen 0s ago, 2 flakes — not filed$/);
 });
 
 test("quarantineViewRows positions and details each entry", () => {

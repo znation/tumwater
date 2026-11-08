@@ -100,6 +100,49 @@ test("quarantine -f re-reads the file each frame — a rewrite shows in the next
   );
 });
 
+test("quarantine -f --grep repaints only the matching rows under their whole-list numbers", async () => {
+  await withQuarantineFollow(
+    (repo) =>
+      writeQuarantine(repo, [
+        qrow("test/old.test.ts", 3 * 24 * 3_600_000),
+        qrow("test/mid.test.ts", 2 * 24 * 3_600_000),
+        qrow("test/new.test.ts", 24 * 3_600_000),
+      ]),
+    ["-f", "--grep", "mid"],
+    5,
+    false,
+    async ({ cap, done, stop }) => {
+      await sleep(60);
+      const frames = cap.out();
+      assert.ok((frames.match(/flake quarantine: 1 test/g) ?? []).length >= 2, "at least two filtered frames repainted");
+      assert.match(frames, /2\. test\/mid\.test\.ts/, "the matching row keeps its whole-list number");
+      assert.doesNotMatch(frames, /old\.test\.ts|new\.test\.ts/, "non-matching rows never print");
+      stop();
+      for (let i = 0; i < 500 && !done(); i++) await sleep(10);
+      assert.ok(done(), "follow resolves once the parent is gone");
+      const before = cap.out();
+      await sleep(30);
+      assert.equal(cap.out(), before, "nothing printed after the follow ended");
+    },
+  );
+});
+
+test("quarantine -f --json --grep is refused before any frame", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine follow json grep");
+  writeQuarantine(repo, [qrow("test/aaa.test.ts", 3_600_000)]);
+  await sleep(50);
+  const cap = captureStdout();
+  try {
+    const err = await expectFailAsync(() => cmdQuarantine(repo, ["-f", "--json", "--grep", "mid"], { ppid: () => 4242, intervalMs: 5 }));
+    assert.match(err, /quarantine --json prints one document/);
+    const out = cap.out();
+    assert.doesNotMatch(out, /flake quarantine/, "no quarantine frame before the refusal");
+  } finally {
+    cap.restore();
+  }
+});
+
 test("quarantine -f --json is refused before any frame", async () => {
   const repo = makeRepo();
   await initProject(repo, "quarantine follow json");

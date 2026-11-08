@@ -72,6 +72,101 @@ test("quarantine rejects an unknown flag, naming it", async () => {
   assert.ok(r.stderr.includes("--bogus"));
 });
 
+test("quarantine --grep keeps only the matching entries under their whole-list numbers", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine grep test");
+  const now = Date.now();
+  const tests = [
+    { test: "test/old.test.ts", firstSeen: now - 3 * 24 * 3_600_000, lastSeen: now, count: 3, bug: "a flaky api call under load" },
+    { test: "test/mid.test.ts", firstSeen: now - 2 * 24 * 3_600_000, lastSeen: now, count: 2, bug: "" },
+    { test: "test/new.test.ts", firstSeen: now - 24 * 3_600_000, lastSeen: now, count: 1, bug: "" },
+  ];
+  writeQuarantine(repo, tests);
+  const before = fs.readFileSync(quarantinePath(repo), "utf8");
+  // Whole-list order: 1 old, 2 mid, 3 new.
+  const mid = await cli(repo, "quarantine", "--grep", "mid");
+  assert.equal(mid.code, 0);
+  assert.equal(mid.stdout.trim().split("\n")[0], "flake quarantine: 1 test");
+  assert.match(mid.stdout, /^2\. test\/mid\.test\.ts /m);
+  assert.ok(!mid.stdout.includes("old.test.ts") && !mid.stdout.includes("new.test.ts"), "non-matching entries print nothing");
+  const old = await cli(repo, "quarantine", "--grep", "OLD");
+  assert.equal(old.code, 0);
+  assert.equal(old.stdout.trim().split("\n")[0], "flake quarantine: 1 test");
+  assert.match(old.stdout, /^1\. test\/old\.test\.ts /m, "the path matches case-insensitively and keeps position 1");
+  const api = await cli(repo, "quarantine", "--grep", "api");
+  assert.equal(api.code, 0);
+  assert.match(api.stdout, /^1\. test\/old\.test\.ts /m, "a filed-bug-heading match keeps the entry at its whole-list position");
+  assert.equal(fs.readFileSync(quarantinePath(repo), "utf8"), before, "the quarantine file is byte-unchanged");
+});
+
+test("quarantine --grep applies to --json, kept rows under whole-list positions, tests: [] when nothing matches", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine grep json test");
+  const now = Date.now();
+  const tests = [
+    { test: "test/old.test.ts", firstSeen: now - 3 * 24 * 3_600_000, lastSeen: now, count: 3, bug: "" },
+    { test: "test/mid.test.ts", firstSeen: now - 2 * 24 * 3_600_000, lastSeen: now, count: 2, bug: "" },
+    { test: "test/new.test.ts", firstSeen: now - 24 * 3_600_000, lastSeen: now, count: 1, bug: "" },
+  ];
+  writeQuarantine(repo, tests);
+  const before = fs.readFileSync(quarantinePath(repo), "utf8");
+  const r = await cli(repo, "quarantine", "--grep", "old", "--json");
+  assert.equal(r.code, 0);
+  const payload = JSON.parse(r.stdout) as { tests: QuarantineRow[] };
+  assert.equal(payload.tests.length, 1);
+  assert.equal(payload.tests[0]!.position, 1);
+  assert.equal(payload.tests[0]!.test, "test/old.test.ts");
+  const none = await cli(repo, "quarantine", "--grep", "zzz", "--json");
+  assert.equal(none.code, 0);
+  assert.deepEqual(JSON.parse(none.stdout), { tests: [] });
+  assert.equal(fs.readFileSync(quarantinePath(repo), "utf8"), before, "neither form writes quarantine.json");
+});
+
+test("quarantine --grep with nothing matching prints the no-match prose; an empty quarantine keeps the empty line", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine grep no-match test");
+  const now = Date.now();
+  writeQuarantine(repo, [{ test: "test/a.test.ts", firstSeen: now - 24 * 3_600_000, lastSeen: now, count: 1, bug: "" }]);
+  const r = await cli(repo, "quarantine", "--grep", "zzz");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), 'no quarantined tests match "zzz"');
+  const flagShaped = await cli(repo, "quarantine", "--grep", "--json");
+  assert.equal(flagShaped.code, 0, "a flag-spelling pattern is text, not the --json rival flag");
+  assert.equal(flagShaped.stdout.trim(), 'no quarantined tests match "--json"');
+  const empty = makeRepo();
+  await initProject(empty, "quarantine grep empty test");
+  const e = await cli(empty, "quarantine", "--grep", "mid");
+  assert.equal(e.code, 0);
+  assert.equal(e.stdout.trim(), "flake quarantine is empty");
+});
+
+test("quarantine --grep with missing or empty text fails with the usage wording", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine grep novalue test");
+  let r = await cli(repo, "quarantine", "--grep");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("quarantine --grep needs text (usage: tumwater quarantine --grep <text>)"));
+  r = await cli(repo, "quarantine", "--grep", "");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("quarantine --grep needs text (usage: tumwater quarantine --grep <text>)"));
+});
+
+test("quarantine --show and --release refuse a --grep beside them by name", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine grep show release test");
+  const now = Date.now();
+  const tests = [{ test: "test/a.test.ts", firstSeen: now - 24 * 3_600_000, lastSeen: now, count: 1, bug: "" }];
+  writeQuarantine(repo, tests);
+  const before = fs.readFileSync(quarantinePath(repo), "utf8");
+  const show = await cli(repo, "quarantine", "--show", "1", "--grep", "x");
+  assert.equal(show.code, 1);
+  assert.ok(show.stderr.includes("--grep"), "the refusal names --grep");
+  const release = await cli(repo, "quarantine", "--release", "1", "--grep", "x");
+  assert.equal(release.code, 1);
+  assert.ok(release.stderr.includes("--grep"), "the refusal names --grep");
+  assert.equal(fs.readFileSync(quarantinePath(repo), "utf8"), before, "the file is byte-unchanged");
+});
+
 test("quarantine is read-only — the list is unchanged after the command", async () => {
   const repo = makeRepo();
   await initProject(repo, "quarantine read-only test");

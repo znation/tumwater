@@ -19,7 +19,7 @@ import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
 import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
 import { loadQuarantine, releaseQuarantinedTest } from "../review/known-flakes.js";
-import { quarantineEntryAt, quarantineRows, renderQuarantine, renderQuarantineDetail } from "../review/quarantine-render.js";
+import { grepQuarantineRows, quarantineEntryAt, quarantineRows, renderQuarantine, renderQuarantineDetail, type QuarantineRow } from "../review/quarantine-render.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, collectRoleChanges, normalizeDiffPath } from "../change/change-data.js";
 import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
 import { readMergeQueue, type MergeQueueView } from "../merge/merge-queue.js";
@@ -352,19 +352,39 @@ export async function cmdQuarantine(root: string, args: string[], seams: FollowV
     await cmdQuarantineRelease(root, args);
     return;
   }
-  rejectUnknownArgs("quarantine", args, [JSON_FLAG, FOLLOW_FLAG]);
+  // --grep filters the positioned rows to the entries whose test path or filed-bug heading
+  // contains the text (case-insensitively), each kept row's position unchanged so `--show`/
+  // `--release` keep addressing the whole list. The missing-value wording lives in
+  // QUARANTINE_GREP_VALUE_ERROR, the flag gate's and this parser's shared string.
+  // -f/--follow and --json scan over `rest` (the pattern token removed), so a flag-shaped
+  // pattern like `--grep --json` is the text "--json", not the rival flag.
+  const QUARANTINE_GREP_VALUE_ERROR = "quarantine --grep needs text (usage: tumwater quarantine --grep <text>)";
+  rejectUnknownArgs("quarantine", args, [JSON_FLAG, FOLLOW_FLAG, grepFlagSpec(QUARANTINE_GREP_VALUE_ERROR)]);
   refuseTeamWorkspace(root);
-  const follow = hasFollowFlag(args);
-  if (follow && args.includes("--json")) failFollowJsonRival("quarantine --json");
+  const { rest, pattern } = parseGrepFlag(args, QUARANTINE_GREP_VALUE_ERROR);
+  const follow = hasFollowFlag(rest);
+  if (follow && rest.includes("--json")) failFollowJsonRival("quarantine --json");
   // Each frame re-reads the quarantine file and reads the clock once, so an entry that
   // appears, ages toward the ceiling, or leaves when its bug closes shows up in the next
-  // repaint — the same per-frame read `queue -f` uses.
+  // repaint — the same per-frame read `queue -f` uses. The --grep filter applies inside the
+  // per-frame read, so a filtered frame still numbers the kept rows whole-list.
+  const readRows = (): { full: QuarantineRow[]; kept: QuarantineRow[] } => {
+    const rows = quarantineRows(loadQuarantine(root));
+    return { full: rows, kept: pattern === null ? rows : grepQuarantineRows(rows, pattern) };
+  };
+  // The no-match prose is a filter's line (the list is non-empty but nothing matches); a
+  // genuinely empty quarantine keeps "flake quarantine is empty", and --json prints the
+  // filtered rows in both cases.
+  const renderRows = (r: { full: QuarantineRow[]; kept: QuarantineRow[] }): string =>
+    pattern !== null && r.kept.length === 0 && r.full.length > 0
+      ? `no quarantined tests match "${pattern}"`
+      : renderQuarantine(r.kept, Date.now());
   if (follow) {
-    await followView(() => renderQuarantine(quarantineRows(loadQuarantine(root)), Date.now()), seams);
+    await followView(() => renderRows(readRows()), seams);
     return;
   }
-  const rows = quarantineRows(loadQuarantine(root));
-  sayJsonOrRender(args, { tests: rows }, () => renderQuarantine(rows, Date.now()));
+  const rows = readRows();
+  sayJsonOrRender(rest, { tests: rows.kept }, () => renderRows(rows));
 }
 
 /** The `tumwater quarantine --show <n>` branch: print the Nth entry `tumwater quarantine`

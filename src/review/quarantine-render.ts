@@ -39,6 +39,16 @@ export function quarantineRows(entries: readonly QuarantineEntry[]): QuarantineR
     }));
 }
 
+/** The rows with only the entries whose test path or filed-bug heading contains `pattern`
+ * (case-insensitively), each kept row's `position` unchanged — the pure twin of `grepBacklog`
+ * for the quarantine list, so `--grep` can narrow the list an operator reads without shifting
+ * the numbers `--show`/`--release` act on. `bug` `""` matches nothing but itself, and an
+ * empty pattern never reaches it (the flag parser refuses one). */
+export function grepQuarantineRows(rows: readonly QuarantineRow[], pattern: string): QuarantineRow[] {
+  const needle = pattern.toLowerCase();
+  return rows.filter((r) => r.test.toLowerCase().includes(needle) || r.bug.toLowerCase().includes(needle));
+}
+
 /** Resolve what position N names in the quarantine, by the same oldest-first rule `quarantineRows`
  * uses (firstSeen ascending, ties by test name), so the detail view and the list can never
  * disagree on which entry position N denotes. Returns the entry itself (so the caller reads its
