@@ -53,6 +53,7 @@ import { fail, say } from "./cli/cli-output.js";
 import { historyTrailForm, parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli/cli-repo-gate.js";
 import { repoToplevel } from "./git/git.js";
+import { errCode } from "./errno.js";
 
 import { didYouMean } from "./text/suggest.js";
 import { errorMessage, gotSuffix, stripTerminalControls } from "./text/text.js";
@@ -567,6 +568,22 @@ const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
  * adds its row to the table here and its usage stanza in help.ts. */
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
+  // A reader that closes the pipe a command writes into — `status | head -1`, a follow view
+  // piped to a `grep` the operator quits, or a `start | tee` whose tee died — makes the next
+  // stdout/stderr write fail
+  // EPIPE. With no 'error' listener Node throws that failure from the event loop as an uncaught
+  // exception: a stack trace and a crash exit where the reader deliberately closed the pipe —
+  // and on `tumwater start` the crash takes the whole team process down. The CLI's output is
+  // the command's contract with the operator, and once the reader is gone there is nothing left
+  // to say, so exit 0 quietly: the output up to the close was delivered. Any other write error
+  // (ENOSPC on a full disk, EIO on a closed TTY) still surfaces through the normal
+  // uncaught-exception path, so a real failure is never turned silent.
+  for (const stream of [process.stdout, process.stderr]) {
+    stream.on("error", (err: unknown) => {
+      if (errCode(err) === "EPIPE") process.exit(0);
+      throw err;
+    });
+  }
   // The Node-floor gate, before any command does work: package.json's engines spec is the
   // declared minimum, and a runtime below it fails with the fix instead of whatever the
   // first unsupported API call happens to throw. A floor the package read cannot supply

@@ -5053,3 +5053,22 @@ instead of skipping its re-review".
 **Binds.** `test/affected-tests.ts` (`POLICY_SCANS`, `isPolicyScan`, `selectAffected`, `fitBudget`), `test/test-runner.ts` (`affectedTestFiles`, the `--budget` path that calls `fitBudget`).
 
 **Pinned by.** `test/affected-tests.test.ts` — "a repo-wide policy scan ranks at distance 0 for a code change, ahead of a direct importer" (the ranking, including that a doc change reaches no scan) and "a policy scan is in the gate's run even when the budget would crowd it out" (the force-keep).
+
+## A closed stdout pipe: a CLI command ends quietly when the reader stops reading
+
+### INV-DC1: a CLI whose stdout or stderr pipe reader closes exits 0, never an uncaught EPIPE crash
+
+**Guarantee.** The CLI entry (`src/cli.ts` main) installs an `error` listener on
+`process.stdout` and `process.stderr` before any command writes: a write that fails EPIPE — the
+reader (`head`, a `grep` a follow view pipes into, a `tee` that died) closed the pipe — exits 0
+quietly, because the output up to the close was delivered and a follow view's only purpose is
+its stdout. Without the listener Node throws that failure from the event loop as an uncaught
+exception: a stack trace and a crash exit where the reader deliberately stopped reading, and on
+`tumwater start` a crash that takes the whole team process down. Any other write error (ENOSPC,
+EIO) still throws through the normal uncaught-exception path, so a real failure is never turned
+silent.
+
+**Binds.** `src/cli.ts` (`main`), `src/errno.ts` (`errCode`).
+
+**Pinned by.** `test/cli-epipe.test.ts` — "a follow view whose stdout pipe closes exits 0
+quietly, not with an EPIPE crash".
