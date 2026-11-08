@@ -121,7 +121,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   // TUI header — the badge is built once in status-model, both surfaces render it).
   const payload = statusPayload(repo) as { mainCheck: unknown; mainCheckBadge: string; mainCounts: string };
   assert.deepEqual(payload.mainCheck, mergeDone);
-  assert.match(payload.mainCheckBadge, / · main a{8}: green · 9\/10 \(1 skipped\)/);
+  assert.match(payload.mainCheckBadge, / · full check green at a{8}, .* ago · (next in|due now)/, "the badge carries the covered sha, the verdict age and the due");
   // The sidebar's counts fragment ships preformatted too (badges.ts's mainCountsFragment) —
   // the GUI must not re-derive pass/tests from the raw counts and drift (BUGS.md 2026-09-30).
   assert.equal(payload.mainCounts, "9/10 (1 skipped)");

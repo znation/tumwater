@@ -333,7 +333,11 @@ export interface StatusSnapshot {
    * `merged` commit is the head it produced), otherwise main's current tip (a baseline check
    * runs ON the tip, and a later merge would have logged a newer check). Unresolvable from
    * either source — no merge yet and no readable ref — drops the field. Absent entirely
-   * before any merge-scope check has run (and in tests that assemble snapshots by hand). */
+   * before any merge-scope check has run (and in tests that assemble snapshots by hand).
+   * The verdict also carries how old it is and when the next full check is due (`checkedAt`,
+   * `nextDueAt` — Hourly full check part 4/4), and, while a red's one confirming full run is
+   * still settling after a cleared red, `cleared` names the clearing head so the surfaces say
+   * "full check running" instead of a verdict. */
   mainCheck?: MainCheckStatus;
   /** The disk floor's measured state (plans/disk-floor.md, part 4/4), read from the running
    * orchestrator's published info file: free space (one decimal), the configured floor and

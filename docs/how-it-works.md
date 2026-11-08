@@ -325,7 +325,15 @@ never has to wait a parked check out.
   names the commit that opened the red as the culprit — bisecting the first-parent commits since
   the newest full green and re-running only the failing tests at each candidate (Hourly full check
   part 3a/4), so an hour's worth of commits names its breaker instead of the newest head — logging
-  a `main_culprit` event with the culprit, its merging runner and the failing tests. The watch
+  a `main_culprit` event with the culprit, its merging runner and the failing tests. Every
+  surface that shows main's verdict — the `tumwater status`/TUI header badge, the dashboard's
+  `Main` row and `status --json` — says which SHA the full verdict covers, how long ago it ran,
+  and when the next full run is due: ` · full check green at abc1234, 23m ago · next in 37m`,
+  read from the newest merge-scope check's checked time (its settle stamp) and
+  `check.fullIntervalMinutes` (Hourly full check part 4/4). A cleared red whose confirming full
+  run is still settling reads ` · cleared at def5678 · full check running` instead of quoting a
+  verdict, so the badge never implies the newest commit was fully checked while the hour's full
+  verdict is older than main. The watch
   also runs the deterministic diff rules' full set — conflict markers, protected edits,
   secret leaks, a false-fix claim on a doc-only tip, and backlog structure — against each first-parent
   commit's own diff in the watched range, attributed to that commit's own merging role; a violation is

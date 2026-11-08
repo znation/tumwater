@@ -78,8 +78,12 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
         const tone = c.status === "passed" ? "green" : c.status === "failed" ? "red" : "amber";
         const word = c.status === "passed" ? "green" : c.status === "failed" ? "red" : c.status;
         const glyph = c.status === "passed" ? "check" : c.status === "failed" ? "fail" : "info";
-        rows += row(tone, icon(glyph),
-          "Main " + word + esc(counts), (stripBadge(d.mainCheckBadge) + (c.at ? " — checked " + fmtAgo(c.at) : "")).trim());
+        // A cleared red whose confirming full run is in flight (part 4/4): no verdict covers
+        // the clearing head, so the row reads "Main cleared" in amber and the badge (below)
+        // says the rest — "cleared at <sha> · full check running".
+        const cleared = c.cleared === true;
+        rows += row(cleared ? "amber" : tone, icon(cleared ? "check" : glyph),
+          "Main " + (cleared ? "cleared" : word) + esc(counts), stripBadge(d.mainCheckBadge));
       }
       // The ci parity row (the full suite's glance verdict): the payload's preformatted
       // ciParityBadge/ciParityTone, upcased for the row's label style like the other badges —

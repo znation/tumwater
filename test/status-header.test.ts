@@ -233,20 +233,21 @@ test("renderStatus shows the merge queue badge in the header and the label in th
 test("the status header carries a mainCheck badge only after a merge-scope check", () => {
   // No check yet: no badge — the header of a quiet team stays byte-identical to before.
   const none = headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
-  assert.doesNotMatch(none, /· main /);
-  // Green with counts (wording: the old README
-  // stamp's `suite N/N (N skipped)` shape, rendered live instead of committed).
+  assert.doesNotMatch(none, /· full check /);
+  // Green (Hourly full check part 4/4 wording): the covered sha; a hand-built snapshot
+  // carries no checkedAt/nextDueAt, so the age and next-due reads are empty — the count
+  // fragment no longer rides the badge (it ships as mainCounts instead).
   const green = headerOf(renderStatus(tmpdir(), {
     ...snapshotWith([{ role: "clean" }]),
     mainCheck: { sha: "a".repeat(40), status: "passed", counts: { tests: 10, pass: 9, fail: 0, skipped: 1 }, at: 0 },
   }));
-  assert.match(green, /· main a{8}: green · 9\/10 \(1 skipped\)/);
+  assert.match(green, /· full check green at a{8}/);
   // Red with no counts (the check never printed a summary block): verdict only.
   const red = headerOf(renderStatus(tmpdir(), {
     ...snapshotWith([{ role: "clean" }]),
     mainCheck: { sha: "a".repeat(40), status: "failed", at: 0 },
   }));
-  assert.match(red, /· main a{8}: red$/);
+  assert.match(red, /· full check red at a{8}$/);
 });
 
 // The ci parity badge (src/observer/ci-parity.ts, read through status-polls.ts's ciParityForPoll):

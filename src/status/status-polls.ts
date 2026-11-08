@@ -42,6 +42,24 @@ export interface MainCheckStatus {
   status: "passed" | "failed" | "skipped";
   counts?: TestCounts;
   at: number;
+  /** When the newest full verdict's check completed (Hourly full check part 4/4): the
+   * build_check event's run-settle stamp (`settledAt` — main-watch stamps the baseline's
+   * `checkedAt` at the run's end), falling back to the event's log time. What the surfaces
+   * show as how long ago main was fully checked. Absent when the newest full-scope check
+   * carried no verdict (a skipped one). */
+  checkedAt?: number;
+  /** The epoch-ms the next full check is due: checkedAt + `check.fullIntervalMinutes` (the
+   * cadence part 2b/4 already measures from the newest full verdict's checkedAt), so a
+   * surface can say "next in …" or, once the interval has passed, "due now". Absent when the
+   * operator set the interval to 0 (one full run per new head — nothing is due) or there is
+   * no checkedAt. */
+  nextDueAt?: number;
+  /** Present when a red cleared (part 3b/4) and its one confirming full run has not settled
+   * yet: no full verdict covers the clearing head, so the surfaces show "cleared at <sha> ·
+   * full check running" instead of a verdict. `sha` is the cleared head, `at` when it
+   * cleared, and `status` reads "passed" because the open failures passed there — surfaces
+   * render the word "cleared", never "green". */
+  cleared?: true;
   /** The red-main evidence the status payload carries (it rides the machine-readable
    * `status --json` output through status-payload.ts's wholesale spread of mainCheck):
    * present only when `status` is
@@ -116,6 +134,12 @@ interface MainCheckScan {
    * spell's OPENER as culprit even after later tips re-check red, so the red detail is
    * published for that commit while its spell is open, not only when it is the newest tip. */
   spellOpener?: HarnessEvent;
+  /** A red that cleared (part 3b/4) whose one confirming full run has not settled: the newest
+   * main_check with `cleared: true` that is NEWER than the newest full build_check and has no
+   * later settled main_check — the confirming run's verdict, or a newer full build_check, ends
+   * the state. When it is present the surfaces show no verdict for the clearing head (none was
+   * written) — just who cleared and that the full check is running. */
+  cleared?: HarnessEvent;
 }
 
 /** Per-root scan cache (stat-cache.cachedByStat): both dashboards poll snapshot every second,
@@ -137,6 +161,7 @@ function scanMainCheck(root: string): MainCheckScan {
   let mergeDone: HarnessEvent[] = [];
   let culprit: HarnessEvent | undefined;
   let opener: HarnessEvent | undefined;
+  let cleared: HarnessEvent | undefined;
   const grewFull = mainCheckGrewFull.has(root);
   // A set note means the previous scan reached the cap without finding a check, so start
   // there: starting at DEFAULT_EVENT_TAIL would only re-read (and re-parse on a cache miss)
@@ -152,6 +177,7 @@ function scanMainCheck(root: string): MainCheckScan {
     mergeDone = [];
     culprit = undefined;
     opener = undefined;
+    cleared = undefined;
     // One pass collects all four facts the derivation needs: the newest merge-scope check,
     // every merged event, the newest main_culprit blame, and the spell opener — the oldest
     // main_culprit still open at the tail's end (a passing full main_check after it closed
@@ -163,8 +189,13 @@ function scanMainCheck(root: string): MainCheckScan {
         check = e;
       } else if (e.type === "merge_done" && typeof e.ts === "number") {
         mergeDone.push(e);
-      } else if (e.type === "main_check" && isPassingMainCheck(e)) {
-        opener = undefined; // a passing full main check closes the open red spell
+      } else if (e.type === "main_check") {
+        if (isPassingMainCheck(e)) opener = undefined; // a passing full main check closes the open red spell
+        // A cleared red (part 3b/4) whose one confirming full run has not settled: the
+        // surfaces read "full check running" from the cleared event alone — no full verdict
+        // was written. A settled main_check after it (the confirming run's verdict) closes the
+        // state, and so does a newer full build_check (the clearedLive guard below).
+        cleared = e.cleared === true ? e : undefined;
       } else if (e.type === "main_culprit") {
         culprit = e;
         if (opener === undefined) opener = e; // the oldest main_culprit since the last pass
@@ -181,8 +212,20 @@ function scanMainCheck(root: string): MainCheckScan {
   else mainCheckGrewFull.add(root);
   // The loop's last pass over the FINAL tail left `opener` current: an earlier window's value
   // was reset before its own scan, and the break exits with the final tail's result.
+  // The cleared state is live when the newest cleared main_check is newer than the newest
+  // full build_check: the confirming full run has not settled, so no full verdict covers the
+  // clearing head. A confirming run that settled logs its own build_check (or a settled
+  // main_check) after the cleared event; either ends the state.
+  const clearedLive =
+    cleared !== undefined &&
+    typeof cleared.ts === "number" &&
+    (check === undefined || typeof check.ts !== "number" || cleared.ts > check.ts);
   if (!check || typeof check.ts !== "number" || !isMainCheckStatus(check.status)) {
-    return { ...(culprit ? { culprit } : {}), ...(opener ? { spellOpener: opener } : {}) };
+    return {
+      ...(clearedLive ? { cleared } : {}),
+      ...(culprit ? { culprit } : {}),
+      ...(opener ? { spellOpener: opener } : {}),
+    };
   }
   let mergeDoneAfter: HarnessEvent | undefined;
   let mergeDoneBefore: HarnessEvent | undefined;
@@ -192,6 +235,7 @@ function scanMainCheck(root: string): MainCheckScan {
   }
   return {
     check,
+    ...(clearedLive ? { cleared } : {}),
     ...(culprit ? { culprit } : {}),
     ...(opener ? { spellOpener: opener } : {}),
     ...(typeof mergeDoneAfter?.commit === "string" ? { mergeDoneAfterCommit: mergeDoneAfter.commit } : {}),
@@ -214,6 +258,7 @@ function mainCheckScanFor(root: string): MainCheckScan {
         ...(v.check ? { check: { ...v.check } } : {}),
         ...(v.culprit ? { culprit: { ...v.culprit } } : {}),
         ...(v.spellOpener ? { spellOpener: { ...v.spellOpener } } : {}),
+        ...(v.cleared ? { cleared: { ...v.cleared } } : {}),
       }),
     ) ?? { check: undefined }
   );
@@ -226,6 +271,14 @@ function mainCheckScanFor(root: string): MainCheckScan {
  * checkout change is observed even while the log sits still. */
 export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckStatus | undefined {
   const scan = mainCheckScanFor(root);
+  // A cleared red whose confirming full run has not settled (part 3b/4 → part 4/4): the
+  // newest full build_check is the pre-clearing red, so reading it would call a head "red"
+  // on which every open failure has passed. The cleared main_check alone carries the state —
+  // no full verdict was written — until the confirming run settles (a newer full build_check
+  // or a settled main_check ends it in the scan).
+  if (scan.cleared && typeof scan.cleared.sha === "string" && typeof scan.cleared.ts === "number") {
+    return { sha: scan.cleared.sha, status: "passed", at: scan.cleared.ts, cleared: true };
+  }
   const check = scan.check;
   if (!check || typeof check.ts !== "number" || !isMainCheckStatus(check.status)) return undefined;
   const branch = targetBranch(cfg.baseBranch, currentBranchFromHeadFile(root));
@@ -260,11 +313,23 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
       }
     }
   }
+  // Part 4/4: how old this verdict is and when the next full check is due. The checked time is
+  // the run's settle stamp (main-watch stamps the baseline's checkedAt at the run's end; the
+  // event carries the same settle time) falling back to the event's log time (test fixtures
+  // and older events). The next due rides the cadence part 2b/4 measures from — the newest
+  // full verdict's checkedAt + check.fullIntervalMinutes (default 60). A skipped check
+  // produced no verdict, so it carries neither; interval 0 (one full run per new head) has
+  // nothing due.
+  const checkedAt = typeof check.settledAt === "number" ? check.settledAt : check.ts;
+  const interval = cfg.check?.fullIntervalMinutes ?? 60;
+  const hasVerdict = check.status !== "skipped";
   return {
     ...(sha ? { sha } : {}),
     status: check.status,
     ...(counts ? { counts } : {}),
     at: check.ts,
+    ...(hasVerdict ? { checkedAt } : {}),
+    ...(hasVerdict && interval > 0 ? { nextDueAt: checkedAt + interval * 60_000 } : {}),
     ...(red ? { red } : {}),
   };
 }

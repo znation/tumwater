@@ -300,10 +300,12 @@ function statusHeaderLine(root: string, snap: StatusSnapshot, now: number): Stat
     // New-project bootstrap (plans/work-ratio.md, part 2/2): the progress reading while the
     // hold is active. Empty in every normal project, so the header stays byte-identical.
     ...badgeSpans(bootstrapBadge(snap.bootstrap), "blue"),
-    ...badgeSpans(mainCheckBadge(snap.mainCheck), snap.mainCheck
+    ...badgeSpans(mainCheckBadge(snap.mainCheck, now), snap.mainCheck
       // The helper's tone is string (the GUI's palette differs); with a Tone fallback here
       // every branch is a Tone, so the cast cannot widen the value.
-      ? mainCheckVerdict(snap.mainCheck.status, "yellow").tone as Tone
+      // A cleared red's confirming full run is in flight: amber, not green — every open
+      // failure passed on the head but no full verdict covers it yet (part 4/4).
+      ? (snap.mainCheck.cleared ? "yellow" : mainCheckVerdict(snap.mainCheck.status, "yellow").tone) as Tone
       : undefined),
     // The ci parity badge (the full suite's glance verdict) rides immediately after the fast
     // main check: `· ci: covered <sha> <age> ago` when the ledger's last green run covered

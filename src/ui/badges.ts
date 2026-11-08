@@ -108,19 +108,35 @@ export function mainCheckVerdict(
 }
 
 /** Main's newest merge-scope check as a header badge (PLANS.md "Retire the README freshness
- * stamp"): `· main <sha>: green · N/N (N skipped)` — the live replacement for the committed
- * README stamp the readme role used to maintain. Empty when the snapshot carries no check
- * (none has run yet), so a quiet header stays byte-identical to a pre-check team. The
- * verdict maps passed→green, failed→red; anything else (a skipped scope check) renders its
- * raw word — an unverified tree must not read green. The counts fragment (mainCountsFragment)
- * omits parentheticals for zero counts, matching the stamp wording the README carried. */
-export function mainCheckBadge(mainCheck: StatusSnapshot["mainCheck"]): string {
+ * stamp"; Hourly full check part 4/4): ` · full check green at aaaaaaaa, 23m ago · next in
+ * 37m` — how fresh main's newest full verdict is and when the next is due, so the header stops
+ * implying the newest commit was fully checked. The verdict maps passed→green, failed→red;
+ * anything else (a skipped scope check) renders its raw word — an unverified tree must not
+ * read green — with no age or due (it produced no verdict). A red that cleared while its one
+ * confirming full run is still settling renders ` · cleared at aaaaaaaa · full check
+ * running` instead of a verdict. The counts fragment (mainCountsFragment) is shipped
+ * separately (status-payload.ts's mainCounts); it no longer rides the badge so the age and
+ * due can read. Empty when the snapshot carries no check (none has run yet), so a quiet
+ * header stays byte-identical to a pre-check team. */
+export function mainCheckBadge(mainCheck: StatusSnapshot["mainCheck"], now = Date.now()): string {
   if (!mainCheck) return "";
+  // A cleared red whose confirming full run has not settled: no full verdict names the head —
+  // say who cleared and that the full check is running (part 3b/4's clearing leaves the hour's
+  // anchor and the redeploy target to the confirming run, so the badge implies no checked head).
+  if (mainCheck.cleared) {
+    const clearedSha = mainCheck.sha ? shortSha(mainCheck.sha) : "";
+    return ` · cleared at ${clearedSha} · full check running`;
+  }
   const verdict = mainCheckVerdict(mainCheck.status).word;
-  const fragment = mainCountsFragment(mainCheck.counts);
-  const counts = fragment ? ` · ${fragment}` : "";
-  const sha = mainCheck.sha ? `${shortSha(mainCheck.sha)}: ` : "";
-  return ` · main ${sha}${verdict}${counts}`;
+  const sha = mainCheck.sha ? ` at ${shortSha(mainCheck.sha)}` : "";
+  const when = typeof mainCheck.checkedAt === "number" ? `, ${humanAgo(mainCheck.checkedAt, now)}` : "";
+  const next =
+    typeof mainCheck.nextDueAt === "number"
+      ? mainCheck.nextDueAt <= now
+        ? " · due now"
+        : ` · next in ${humanUntil(mainCheck.nextDueAt, now)}`
+      : "";
+  return ` · full check ${verdict}${sha}${when}${next}`;
 }
 
 /** The team's current budget-gate state, derived from a snapshot's budget block — the header

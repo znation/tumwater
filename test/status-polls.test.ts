@@ -9,7 +9,7 @@ import { ciParityForPoll, configForStatus, liveMergeMarker, mainCheckForPoll, re
 import { recordParity } from "../src/observer/ci-parity.js";
 import { recordRemoteCi } from "../src/observer/remote-ci.js";
 import { remoteCiPath } from "../src/paths.js";
-import { commitIn, makeRepo, mainSha } from "./fixtures/repo-fixtures.js";
+import { commitIn, makeRepo, mainSha, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import type { MergeChange, MergeInFlight } from "../src/merge/merge-slot.js";
 
@@ -193,4 +193,83 @@ test("a passing check carries no red detail", () => {
   const result = mainCheckForPoll(root, configForStatus(root));
   assert.equal(result?.status, "passed");
   assert.equal(result?.red, undefined);
+});
+
+test("mainCheckForPoll derives nextDueAt from the verdict's checked time and the interval (part 4/4)", () => {
+  const root = makeRepo();
+  const tip = mainSha(root);
+  const checkedAt = Date.now() - 23 * 60_000; // a full green 23 min old
+  writeEvents(root, [
+    { source: "merge", type: "build_check", scope: "merge", status: "passed", script: "npm test", ts: checkedAt },
+    { source: "lander", type: "merge_done", commit: tip, ts: checkedAt + 1 },
+  ]);
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.status, "passed");
+  assert.equal(result?.checkedAt, checkedAt, "no settledAt on the event: the checked time falls back to the log stamp");
+  assert.equal(result?.nextDueAt, checkedAt + 60 * 60_000, "next due is the verdict's checked time plus the default 60-minute interval");
+});
+
+test("mainCheckForPoll prefers the run's settle time as checkedAt when the event carries it", () => {
+  const root = makeRepo();
+  const tip = mainSha(root);
+  const ts = Date.now() - 20 * 60_000;
+  writeEvents(root, [
+    { source: "merge", type: "build_check", scope: "merge", status: "passed", script: "npm test", settledAt: ts + 2_000, ts },
+    { source: "lander", type: "merge_done", commit: tip, ts: ts + 1 },
+  ]);
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.checkedAt, ts + 2_000, "the run's settle stamp names when the check finished");
+  assert.equal(result?.nextDueAt, ts + 2_000 + 60 * 60_000);
+});
+
+test("an interval of 0 (one full run per new head) leaves nextDueAt absent", () => {
+  const root = makeRepo();
+  const tip = mainSha(root);
+  const ts = Date.now() - 5 * 60_000;
+  writeEvents(root, [
+    { source: "merge", type: "build_check", scope: "merge", status: "passed", script: "npm test", ts },
+    { source: "lander", type: "merge_done", commit: tip, ts: ts + 1 },
+  ]);
+  writeConfig(root, { provider: "p", model: "m", check: { fullIntervalMinutes: 0 } });
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.checkedAt, ts);
+  assert.equal(result?.nextDueAt, undefined, "interval 0: every new head is checked, nothing is due");
+});
+
+test("a cleared red whose confirming full run has not settled reads cleared (part 4/4)", () => {
+  const root = makeRepo();
+  const tip = mainSha(root);
+  writeEvents(root, [
+    { source: "merge", type: "build_check", scope: "merge", status: "failed", script: "npm test", ts: 1_000 },
+    { source: "tumwater", type: "main_culprit", commit: tip, runner: "feature", failingTests: ["a"], ts: 2_000 },
+    // The red cleared: every open failure passed on this head, and the one confirming full run
+    // started at once — it has not settled yet (no newer build_check or main_check follows).
+    { source: "tumwater", type: "main_check", sha: tip, status: "passed", cleared: true, durationMs: 0, covered: 2, ts: 3_000 },
+  ]);
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.cleared, true);
+  assert.equal(result?.sha, tip);
+  assert.equal(result?.status, "passed");
+  assert.equal(result?.at, 3_000);
+  assert.equal(result?.checkedAt, undefined, "no full verdict: no checked time, no next due");
+  assert.equal(result?.red, undefined, "the pre-clearing red is not re-asserted once the spell cleared");
+});
+
+test("a cleared red ends when its confirming full run settles", () => {
+  const root = makeRepo();
+  const tip = mainSha(root);
+  writeEvents(root, [
+    { source: "merge", type: "build_check", scope: "merge", status: "failed", script: "npm test", ts: 1_000 },
+    { source: "tumwater", type: "main_check", sha: tip, status: "passed", cleared: true, durationMs: 0, covered: 2, ts: 2_000 },
+    // The confirming full run settled green on the same head: a settled main_check and a
+    // newer baseline build_check both follow the cleared event, so cleared is no longer the
+    // newest state — the badge reads the confirming verdict, not "full check running".
+    { source: "tumwater", type: "main_check", sha: tip, status: "passed", durationMs: 120_000, covered: 2, ts: 3_000 },
+    { source: "tumwater", type: "build_check", scope: "baseline", status: "passed", script: "npm test", ts: 4_000 },
+  ]);
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.cleared, undefined);
+  assert.equal(result?.status, "passed");
+  assert.equal(result?.checkedAt, 4_000);
+  assert.equal(result?.at, 4_000);
 });

@@ -760,3 +760,70 @@ test("the browser stall check matches the silent-run text inFlightDetail renders
   assert.match(detail, /no agent output for 9m/);
   assert.ok(model.STALL.test(detail), `the page flags "${detail}" as stalled`);
 });
+
+// The sidebar's main-check row (gui-client-team.ts's renderSidebar, marks its own `sidebar`
+// regions — the dashboard card the Hourly full check part 4/4 surfaces): it renders the
+// payload's preformatted mainCheckBadge — the same string badges.ts builds for the TUI/status
+// header — so the card cannot re-derive (or drift from) the covered sha, the verdict age and
+// the next due.
+function sidebarScope(): { renderSidebar: (d: unknown) => void; panels: Record<string, string> } {
+  const panels: Record<string, string> = {};
+  const scope = clientScope<{ renderSidebar: (d: unknown) => void }>(
+    ["restart-button", "sidebar"],
+    ["renderSidebar"],
+    {
+      offline: false,
+      $: () => ({ textContent: "" }),
+      plural: (n: number, word: string) => `${n} ${n === 1 ? word : word + "s"}`,
+      capitalize: (s: string) => s.charAt(0).toUpperCase() + s.slice(1),
+      icon: iconStub,
+      shortSha: (s: string) => String(s).slice(0, 8),
+      localizeInstants: (s: string) => s,
+      fmtAgo: () => "just now",
+      mergeTitle: () => "",
+      paintPanel: (id: string, html: string) => { panels[id] = html; },
+      renderBudgetBadge: () => {},
+      renderPauseBadge: () => {},
+      renderStopControl: () => {},
+    },
+  );
+  return { renderSidebar: scope.renderSidebar, panels };
+}
+
+test("the sidebar's main row carries the payload's badge text for green, red and cleared (part 4/4)", () => {
+  const gone = sidebarScope();
+  gone.renderSidebar({
+    running: true,
+    pid: 123,
+    mainCheck: { sha: "a".repeat(40), status: "passed", at: 0 },
+    mainCounts: "2429/2430 (1 skipped)",
+    mainCheckBadge: " · full check green at aaaaaaaa, 23m ago · next in 37m",
+  });
+  assert.match(gone.panels.statuschips!, /Main green · 2429\/2430 \(1 skipped\)/);
+  assert.match(gone.panels.statuschips!, /title='full check green at aaaaaaaa, 23m ago · next in 37m'/, "the badge's sha, age and next due ride the row verbatim");
+
+  const red = sidebarScope();
+  red.renderSidebar({
+    running: true,
+    pid: 123,
+    mainCheck: { sha: "b".repeat(40), status: "failed", at: 0 },
+    mainCounts: "2427/2430 (2 failed)",
+    mainCheckBadge: " · full check red at bbbbbbbb, 5m ago · next in 55m",
+  });
+  assert.match(red.panels.statuschips!, /Main red · 2427\/2430 \(2 failed\)/);
+  assert.match(red.panels.statuschips!, /title='full check red at bbbbbbbb, 5m ago · next in 55m'/);
+
+  // A cleared red whose confirming full run is still settling: the row reads "Main cleared"
+  // in amber, and the badge says "cleared at <sha> · full check running" — no check implied.
+  const cleared = sidebarScope();
+  cleared.renderSidebar({
+    running: true,
+    pid: 123,
+    mainCheck: { sha: "c".repeat(40), status: "passed", at: 1, cleared: true },
+    mainCounts: "",
+    mainCheckBadge: " · cleared at cccccccc · full check running",
+  });
+  assert.match(cleared.panels.statuschips!, /t-amber/, "an unsettled clearing tones amber, not green");
+  assert.match(cleared.panels.statuschips!, /Main cleared(?! ·)/);
+  assert.match(cleared.panels.statuschips!, /title='cleared at cccccccc · full check running'/);
+});

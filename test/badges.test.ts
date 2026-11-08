@@ -167,10 +167,31 @@ test("mainCountsFragment names the skipped and failed counts the pass ratio woul
   assert.equal(mainCountsFragment(undefined), "", "a check without counts renders nothing");
 });
 
-test("mainCheckBadge renders the shared counts fragment", () => {
+// The main-check badge (Hourly full check part 4/4): how old main's newest full verdict is and
+// when the next is due, with the covered sha — so the header stops implying the newest commit
+// was fully checked. Ages and dues read the poll clock passed in; counts ride the separate
+// mainCountsFragment (status-payload.ts's mainCounts), not this badge.
+test("mainCheckBadge shows the covered sha, the verdict age and the next due", () => {
+  const now = 1_800_000_000_000;
+  const checkedAt = now - 23 * 60_000; // 23 min ago
   assert.equal(
-    mainCheckBadge({ sha: "a".repeat(40), status: "passed", counts: { tests: 10, pass: 9, fail: 0, skipped: 1 }, at: 0 }),
-    " · main aaaaaaaa: green · 9/10 (1 skipped)",
+    mainCheckBadge({ sha: "a".repeat(40), status: "passed", at: checkedAt, checkedAt, nextDueAt: now + 37 * 60_000 }, now),
+    " · full check green at aaaaaaaa, 23m ago · next in 37m",
+  );
+  // A verdict whose interval has already passed reads "due now" — the run may start any moment.
+  assert.equal(
+    mainCheckBadge({ sha: "b".repeat(40), status: "passed", at: now - 60 * 60_000, checkedAt: now - 60 * 60_000, nextDueAt: now - 1 }, now),
+    " · full check green at bbbbbbbb, 1h ago · due now",
+  );
+  assert.equal(
+    mainCheckBadge({ sha: "c".repeat(40), status: "skipped", at: now }),
+    " · full check skipped at cccccccc",
+    "a skipped check produced no verdict: no age, no next due",
+  );
+  assert.equal(
+    mainCheckBadge({ sha: "d".repeat(40), status: "passed", at: now, cleared: true }),
+    " · cleared at dddddddd · full check running",
+    "a cleared red whose confirming run is still settling reads 'cleared … full check running'",
   );
   assert.equal(mainCheckBadge(undefined), "", "no check: no badge");
 });

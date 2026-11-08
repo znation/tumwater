@@ -777,3 +777,30 @@ test("a mixed-model table keeps each row's suffix and prints no shared-model lin
   assert.doesNotMatch(renderStatus(tmpdir(), oneBare), /model \(every role\)/);
 });
 
+// The status header's main-check badge (Hourly full check part 4/4 text): how old main's
+// newest full verdict is and when the next is due, in the same words the dashboard card and
+// the JSON payload carry (both build through badges.ts's mainCheckBadge).
+test("the status header's main check badge names the verdict, its age and the next due", () => {
+  const now = Date.now();
+  const base = snapshotWith([{ role: "clean" }]);
+  // A full green 23 min old with a 60-minute interval: next in 37 min (the entry's acceptance).
+  const green = headerOf(renderStatus(tmpdir(), {
+    ...base,
+    mainCheck: { sha: "a".repeat(40), status: "passed", at: now - 23 * 60_000, checkedAt: now - 23 * 60_000, nextDueAt: now + 37 * 60_000 },
+  }));
+  assert.match(green, /· full check green at a{8}, 23m ago · next in 37m/);
+  // Red carries the same shape.
+  const red = headerOf(renderStatus(tmpdir(), {
+    ...base,
+    mainCheck: { sha: "b".repeat(40), status: "failed", at: now - 5 * 60_000, checkedAt: now - 5 * 60_000, nextDueAt: now + 55 * 60_000 },
+  }));
+  assert.match(red, /· full check red at b{8}, 5m ago · next in 55m/);
+  // A cleared red while its confirming full run is still settling: no verdict, just the
+  // clearing head and "full check running".
+  const cleared = headerOf(renderStatus(tmpdir(), {
+    ...base,
+    mainCheck: { sha: "c".repeat(40), status: "passed", at: now, cleared: true },
+  }));
+  assert.match(cleared, /· cleared at c{8} · full check running/);
+});
+

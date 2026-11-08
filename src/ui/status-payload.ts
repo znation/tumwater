@@ -236,7 +236,7 @@ function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, no
     // null) before any merge-scope check has run — the same omit-undefined idiom as
     // pausedUntil.
     ...(snap.mainCheck ? { mainCheck: snap.mainCheck } : {}),
-    mainCheckBadge: mainCheckBadge(snap.mainCheck),
+    mainCheckBadge: mainCheckBadge(snap.mainCheck, now),  // the age and next due read the poll clock
     // The ci parity badge and its tone, preformatted through badges.ts's ciParityBadge/
     // ciParityTone — the same string and state→tone the TUI/status header renders — so the
     // page's sidebar row carries the full suite's glance verdict verbatim and cannot
