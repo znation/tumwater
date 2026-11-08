@@ -466,10 +466,11 @@ test("the marker's records come and go per change, and its top level follows the
   assert.equal(readMergeMarker(root)!.role, "alpha", "the top level names the first change in flight");
   assert.equal(readMergeMarker(root)!.stage, "rebasing", "at that change's own stage");
 
-  // alpha's verification approves it: it waits for the merge, and beta, still under review, becomes
-  // the top level — with its own start and its own stage.
+  // alpha's verification reaches its outcome: its record is written `done`, so it is no longer
+  // the first change in flight, and beta, still under review, becomes the top level — with its
+  // own start and its own stage.
   setMergeStage(root, "alpha", "merging");
-  setMergeChangeStatus(root, "alpha", "approved");
+  setMergeChangeStatus(root, "alpha", "done");
   const marker = readMergeMarker(root)!;
   assert.deepEqual(
     [marker.role, marker.sha, marker.stage, marker.startedAt],
@@ -481,10 +482,9 @@ test("the marker's records come and go per change, and its top level follows the
   assert.deepEqual(records(), ["beta=merging/reviewing", "gamma=merging/rebasing"]);
   addMergeChange(root, entries.alpha!, new Set(["alpha", "beta", "gamma"]));
 
-  // The merge reaches alpha: re-entering `merging` keeps its first start and restages it
+  // The merge reaches alpha: entering `merging` keeps its first start and restages it
   // `merging` — the merge slot's own stage.
   const alphaStart = readMergeMarker(root)!.changes!.find((c) => c.role === "alpha")!.startedAt;
-  setMergeChangeStatus(root, "alpha", "approved");
   setMergeChangeStatus(root, "alpha", "merging");
   const alpha = readMergeMarker(root)!.changes!.find((c) => c.role === "alpha")!;
   assert.equal(alpha.stage, "merging");
@@ -518,7 +518,7 @@ test("a foreign changes shape or a null record degrades instead of crashing a me
   writeFileDeep(mergeStatePath(root),
     JSON.stringify({ role: "improve", sha: "a", summary: "s", startedAt: 1, changes: "oops" }),
   );
-  assert.doesNotThrow(() => setMergeChangeStatus(root, "improve", "approved"));
+  assert.doesNotThrow(() => setMergeChangeStatus(root, "improve", "done"));
   assert.deepEqual(mergeChanges(readMergeMarker(root)!).map((c) => c.role), ["improve"]);
 
   // A record array carrying a null entry: the bad entries read as absent and the good one still
@@ -533,10 +533,10 @@ test("a foreign changes shape or a null record degrades instead of crashing a me
       changes: [null, { role: "y", sha: "y".repeat(40), summary: "s", status: "merging" }],
     }),
   );
-  assert.doesNotThrow(() => setMergeChangeStatus(root, "y", "approved"));
+  assert.doesNotThrow(() => setMergeChangeStatus(root, "y", "done"));
   const after = mergeChanges(readMergeMarker(root)!);
   assert.deepEqual(after.map((c) => c.role), ["y"]);
-  assert.equal(after[0]!.status, "approved");
+  assert.equal(after[0]!.status, "done");
 });
 
 test("a queued merge's record names the gate's pre-check stage while it runs", async () => {
@@ -586,14 +586,14 @@ test("a queued merge's record names the gate's pre-check stage while it runs", a
 test("setMergeChangeStatus and removeMergeChange no-op when the marker is absent or shapeless", () => {
   const root = makeRepo();
   // No marker file: neither call may invent one.
-  setMergeChangeStatus(root, "improve", "approved");
+  setMergeChangeStatus(root, "improve", "done");
   removeMergeChange(root, "improve");
   assert.equal(readMergeMarker(root), null, "no marker was invented");
   // A marker an older generation wrote carries no per-change records: there is no record to
   // advance, and the file is left exactly as it was.
   const legacy = { role: "improve", sha: "b", summary: "s", startedAt: 2, stage: "merging" } as const;
   writeMergeMarker(root, legacy);
-  setMergeChangeStatus(root, "improve", "approved");
+  setMergeChangeStatus(root, "improve", "done");
   assert.deepEqual(readMergeMarker(root), legacy, "a shapeless marker is untouched");
 });
 
@@ -635,7 +635,7 @@ test("a marker whose top level lost its stage falls back to merging on the next 
       sha: "a".repeat(40),
       summary: "s",
       startedAt: 5,
-      changes: [{ role: "alpha", sha: "a".repeat(40), summary: "s", status: "approved" }],
+      changes: [{ role: "alpha", sha: "a".repeat(40), summary: "s", status: "merging" }],
     }),
   );
   setMergeChangeStatus(root, "alpha", "done");

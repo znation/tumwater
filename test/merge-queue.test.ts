@@ -484,12 +484,12 @@ test("renderMergeQueue marks entries with a live in-flight record and leaves the
     ...base,
     changes: [
       { role: "a", sha: "1".repeat(40), summary: "s", status: "merging" as const, startedAt: now - 120_000, stage: "reviewing" as const },
-      { role: "b", sha: "2".repeat(40), summary: "s", status: "approved" as const },
+      { role: "b", sha: "2".repeat(40), summary: "s", status: "merging" as const, startedAt: now - 60_000, stage: "build-check" as const },
     ],
   };
   const lines = renderMergeQueue(view, now, inFlight).split("\n");
   assert.match(lines[1]!, / · 5m ago · \[merging 2m · reviewing\] · s a$/);
-  assert.match(lines[2]!, / · 5m ago · \[approved, waiting to merge\] · s b$/);
+  assert.match(lines[2]!, / · 5m ago · \[merging 1m · checking\] · s b$/);
   assert.equal(lines[3], renderMergeQueue(view, now).split("\n")[3]);
   const plain = renderMergeQueue(view, now);
   const done = { ...inFlight, changes: [{ ...inFlight.changes[0]!, status: "done" as const }] };

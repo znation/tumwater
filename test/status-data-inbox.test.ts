@@ -183,7 +183,6 @@ test("the marker is cross-checked per change and each row reads its own change's
     changes: [
       { role: "clean", sha: "c1ea000", summary: "clean work", status: "done", startedAt: t0 },
       { role: "bugfix", sha: "b0f1000", summary: "bugfix work", status: "merging", startedAt: betaStart },
-      { role: "feature", sha: "fea7000", summary: "feature work", status: "approved", startedAt: t0, stage: "merging" },
       { role: "dedupe", sha: "d1a0000", summary: "dedupe work", status: "merging", startedAt: t0, stage: "build-check" },
       // A record whose entry is gone (its outcome written, or a crash) is finished, whatever
       // its record last said: the cross-check drops it.
@@ -193,12 +192,11 @@ test("the marker is cross-checked per change and each row reads its own change's
   let snap = snapshot(repo);
   assert.deepEqual(
     snap.mergeQueue.inFlight?.changes?.map((c) => c.role),
-    ["clean", "bugfix", "feature", "dedupe"],
+    ["clean", "bugfix", "dedupe"],
     "only the records whose entry is still queued survive the cross-check",
   );
   const text = renderStatus(repo, snap);
   assert.match(text, /^bugfix +merging 1m30s/m, "the change under review reads merge with its own elapsed");
-  assert.match(text, /^feature +approved, waiting to merge/m);
   assert.match(text, /^dedupe +merging 20m\S* · checking/m, "a second verification in flight reads its own elapsed and stage");
   assert.doesNotMatch(text, /^clean +merging/m, "a finished change keeps no live merge label");
   assert.match(text, /^clean +due/m, "its row reads its own state again");

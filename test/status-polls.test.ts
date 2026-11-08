@@ -39,8 +39,7 @@ test("liveMergeMarker shows a single-change marker only while its sha is queued"
 test("liveMergeMarker keeps only the queued records and hides a marker whose queued records are all done", () => {
   const merging = record("feature", "a", "merging");
   const done = record("fixer", "b", "done");
-  const approved = record("review", "c", "approved");
-  const m = marker([merging, done, approved]);
+  const m = marker([merging, done]);
   const live = liveMergeMarker(m, new Set([sha("a"), sha("b")]));
   assert.deepEqual(live?.changes, [merging, done]);
   assert.equal(liveMergeMarker(m, new Set([sha("b")])), undefined);

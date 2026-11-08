@@ -255,7 +255,7 @@ Usage:
                                    List the durable merge queue in execution order (oldest
                                    first): one line per waiting merge — position, role, run
                                    number, short pinned sha, age, and summary — plus a bracketed
-                                   \`[merging 2m · reviewing]\` / \`[approved, waiting to merge]\`
+                                   \`[merging 2m · reviewing]\`
                                    label while a running team works on it; an empty queue
                                    prints \`merge queue empty\`, and any torn/foreign queue file
                                    the reader skipped is counted on a trailing line; --json

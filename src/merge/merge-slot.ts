@@ -69,13 +69,11 @@ export const MERGE_STAGE_LABELS: Record<MergeStage, string> = {
  *   gate check and review, or the merge's rebase and fast-forward —
  *   `merging <its elapsed> · <stage>`, the only live state (several changes hold it at once:
  *   verifications run in parallel);
- * - `approved`: its verification approved it and it waits for the merge slot —
- *   `approved, waiting to merge`;
  * - `done`: the merge is finished with it — merged, attributed, or left for the next merge —
  *   and the marker shows nothing for it: its row reads its own state until the record goes.
  * A queued change whose verification is still waiting for a permit has no record at all: its row
  * reads plainly queued. */
-type MergeChangeStatus = "merging" | "approved" | "done";
+type MergeChangeStatus = "merging" | "done";
 
 /** One change's record in the in-flight marker. `startedAt` is stamped when its gate-then-merge
  * task starts and kept through its merge, so its `merging <elapsed>` measures this change's own
@@ -351,7 +349,7 @@ export function mergeHoldsSha(marker: MergeInFlight, sha: string): boolean {
 }
 
 /** True when a persisted `changes` entry is a record the pipeline and the observers can act on:
- * a role, sha and summary string and one of the three statuses. A hand-edited, torn, or foreign
+ * a role, sha and summary string and one of the two statuses. A hand-edited, torn, or foreign
  * entry (a `null`/scalar, or one missing `status`) is dropped by mergeChanges rather than read
  * field-by-field — without this, `c.role` on a `null` entry threw `Cannot read properties of
  * null` straight into setMergeChangeStatus and the every-second status poll. */
@@ -361,7 +359,7 @@ export function isMergeChange(value: unknown): value is MergeChange {
     typeof value.role === "string" &&
     typeof value.sha === "string" &&
     typeof value.summary === "string" &&
-    (value.status === "merging" || value.status === "approved" || value.status === "done") &&
+    (value.status === "merging" || value.status === "done") &&
     (value.stageSince === undefined || nonNegativeNumber(value.stageSince, null) !== null)
   );
 }

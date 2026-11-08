@@ -13,15 +13,14 @@ import type { MergeEntry, MergeQueueView } from "./merge-queue.js";
 import { mergeChanges, MERGE_STAGE_LABELS, type MergeInFlight } from "./merge-slot.js";
 
 /** The bracketed-label text for one queue entry, in the wording the role rows use (status-model's
- * rolePhase): `merge <elapsed> · <stage>` while a verify or the merge holds the change,
- * `approved, awaiting merge` once approved, and "" when the marker is absent, names no record for
- * `sha`, or the record is `done`. Reads the marker through mergeChanges, so an older-generation
- * single-change marker counts as one `merge` record. */
+ * rolePhase): `merge <elapsed> · <stage>` while the merge holds the change, and "" when the
+ * marker is absent, names no record for `sha`, or the record is `done`. Reads the marker
+ * through mergeChanges, so an older-generation single-change marker counts as one `merge`
+ * record. */
 export function queueEntryMergeLabel(sha: string, inFlight: MergeInFlight | undefined, now: number): string {
   if (!inFlight) return "";
   const change = mergeChanges(inFlight).find((c) => c.sha === sha);
   if (!change || change.status === "done") return "";
-  if (change.status === "approved") return "approved, waiting to merge";
   let label = "merging";
   if (change.startedAt) label += ` ${humanSince(change.startedAt, now)}`;
   if (change.stage) label += ` · ${MERGE_STAGE_LABELS[change.stage]}`;

@@ -159,7 +159,6 @@ test("run is a hidden alias of start: same topic, no listing", () => {
 test("help text uses plain terms: the merge queue tags and no retired words", () => {
   const queue = helpTopic("queue")!;
   assert.match(queue, /\[merging 2m · reviewing\]/);
-  assert.match(queue, /\[approved, waiting to merge\]/);
   assert.match(queue, /merge queue empty/);
   assert.doesNotMatch(HELP, /\b(fleet|tick|landing|operator|notebook|drain)/i); // retired-name-ok: legacy name
 });

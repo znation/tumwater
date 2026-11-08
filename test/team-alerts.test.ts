@@ -247,7 +247,7 @@ test("the terminal's tones and the dashboard's tell the same story", () => {
     resultInfo(result: string): { tone: string };
   }>(["format", "labels", "view-model"], ["phaseInfo", "resultInfo"]);
   const family: Record<string, string | undefined> = { blue: "blue", violet: "blue", orange: "blue", indigo: "blue", red: "red", amber: "yellow", gray: undefined };
-  for (const phase of ["working 1m", "reviewing 2m", "merging 1m · merging", "approved, waiting to merge", "waiting to start 5s", "failing",
+  for (const phase of ["working 1m", "reviewing 2m", "merging 1m · merging", "waiting to start 5s", "failing",
     "paused", "waiting: budget spent", "waiting: daily cap spent", "waiting: low disk", "waiting: bootstrap", "sleeping (for 5m)", "due", "ready for messages", "stopped"]) {
     const page = phaseInfo(phase).tone;
     // Awaiting a slot is pipeline work (blue) in the terminal; the page draws it quietly gray.

@@ -31,8 +31,8 @@ import { restartHoldRolePhase } from "./badges.js";
 type MergeCell = Pick<MergeChange, "status" | "startedAt" | "stage" | "stageSince">;
 
 /** The snapshot's in-flight merge record (merge queue 4/5) filtered to one role: this
- * role's change record while the pipeline holds it — verifying or merging it (`merge`), or
- * keeping it for the merge slot (`approved`) — and null otherwise, including once the merge is
+ * role's change record while the pipeline holds it — working on it (`merge`) — and null
+ * otherwise, including once the merge is
  * `done` with it (a change that reached its outcome must not keep a live label while other
  * changes in the merge task still proceed — BUGS.md 2026-09-23). An older generation's
  * one-change marker reads as one `merge` record (mergeChanges). The single home of the
@@ -73,11 +73,8 @@ export function idleClaimText(s: { claim?: RunnerState["claim"]; role: string },
  * roles show `paused`, checked before the budget gate because user intent is more specific
  * than spend state — while both hold, "paused" tells the operator what to do (`resume`).
  * `merge`, when given for this role, is its change's record in the snapshot's in-flight
- * merge — build it with mergeForRole so the marker's role filter lives in one place. A
- * change the pipeline holds but is not working on reads `approved, awaiting merge`, with no
- * elapsed since nothing of its own is running: its verification approved it and it waits for the
- * merge slot. (A queued change whose verification is still parked for a permit has no record:
- * it reads
+ * merge — build it with mergeForRole so the marker's role filter lives in one place. (A
+ * queued change whose verification is still parked for a permit has no record: it reads
  * plainly queued.)
  * Otherwise its elapsed is the CHANGE's own merge (its record's startedAt — from its verification's
  * start, never another change's), never the authoring run's,
@@ -127,7 +124,6 @@ export function rolePhase(
     // passed gets it (callers derive it via mergeForRole), and a stopped harness never
     // shows it — a dead team's marker is stale by definition.
     if (merge) {
-      if (merge.status === "approved") return "approved, waiting to merge";
       const head = merge.startedAt === undefined ? "merging" : `merging ${duration(Date.now() - merge.startedAt)}`;
       if (!merge.stage) return head;
       const base = `${head} · ${MERGE_STAGE_LABELS[merge.stage]}`;
@@ -381,8 +377,7 @@ export const ACTIVE_PHASE_PREFIXES = ["working", "reviewing", "merging"] as cons
 
 /** Is this phase one of the PERMIT-HOLDER in-flight states — the rows an operator counts
  * against maxConcurrent? The three labels come from rolePhase: `working …`, `reviewing …`,
- * and the marker-driven `merge …` (merge queue 4/5) — an approved change waiting for the merge
- * slot (`approved, awaiting merge`) runs nothing, so it is not in flight. The running director's
+ * and the marker-driven `merge …` (merge queue 4/5). The running director's
  * `director working …` label is deliberately outside the set: the director never calls
  * `semaphore.acquire`, so the cap-mirroring rows are exactly the permit holders (BUGS.md
  * 2026-10-06). Named once so the two rendered tables and their lockstep test share the rule
@@ -397,8 +392,8 @@ export function isActivePhase(phase: string): boolean {
 /** A role's rank in the rendered tables, from its phase label (rolePhase): -1 a RUNNING
  * DIRECTOR — live work of its own, outside the maxConcurrent cap it bypasses, so it groups
  * apart and never inflates the permit-holder count (BUGS.md 2026-10-06); 0 live work —
- * working, reviewing, merge (isActivePhase); 1 work waiting in the pipeline — an approved change
- * awaiting the merge slot, or a run parked awaiting a permit; 2 needs attention — failing;
+ * working, reviewing, merge (isActivePhase); 1 work waiting in the pipeline — a run parked
+ * awaiting a permit; 2 needs attention — failing;
  * 3 paused — by the operator, by the budget, or by the role's own
  * per-role cap; 4 everything else (idle: sleeping, queued, the director waiting for prompts, a
  * stopped team). The dashboard groups its role table by these ranks; the TUI/status table
@@ -415,7 +410,7 @@ export const ROLE_RANK_RULES: ReadonlyArray<{
 }> = [
   { rank: -1, prefixes: ["director working"] },
   { rank: 0, active: true },
-  { rank: 1, prefixes: ["approved", "waiting to start"] },
+  { rank: 1, prefixes: ["waiting to start"] },
   { rank: 2, phases: ["failing"] },
   { rank: 3, phases: ["paused"] },
   { rank: 3, prefixes: ["paused", "waiting:"] },

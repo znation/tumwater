@@ -43,7 +43,6 @@ test("every phase label rolePhase renders maps to a known status on the page", (
     [rolePhase(at({ running: true, lastRunStartedAt: now - 90_000 }, "director"), true), "working", true],
     [rolePhase(at({ running: true, phase: "review", lastRunStartedAt: now - 30_000 }), true), "reviewing", true],
     [rolePhase(at({}), true, undefined, false, null, false, { status: "merging", startedAt: now - 60_000, stage: "build-check" }), "landing", true],
-    [rolePhase(at({}), true, undefined, false, null, false, { status: "approved", startedAt: now }), "vetted", false],
     [rolePhase(at({ running: true, parkedSince: now - 5_000 }), true), "awaiting", false],
     [rolePhase(at({}, "director"), true), "waiting", false],
     [rolePhase(at({}), true, undefined, false, null, true), "paused", false],
@@ -121,8 +120,8 @@ test("the page's role order is status-model's, rank by rank", () => {
     { role: "queued-z", phase: "due", lastRunEndedAt: t(5) },
     { role: "landing-x", phase: "merging 2m · finishing the merge", lastRunEndedAt: t(0) },
     { role: "director", phase: "director working 1m", lastRunEndedAt: t(7) },
-    { role: "vetted-v", phase: "approved, waiting to merge", lastRunEndedAt: t(4) },
-    { role: "parked-p", phase: "waiting to start 10s", lastRunEndedAt: t(6) },
+    { role: "parked-v", phase: "waiting to start 10s", lastRunEndedAt: t(4) },
+    { role: "parked-p", phase: "waiting to start 20s", lastRunEndedAt: t(6) },
     { role: "never-ran", phase: "stopped", lastRunEndedAt: null },
     { role: "broken", phase: "failing", lastRunEndedAt: t(2) },
     { role: "held", phase: "paused", lastRunEndedAt: t(9) },
@@ -135,7 +134,7 @@ test("the page's role order is status-model's, rank by rank", () => {
   assert.deepEqual(order, [
     "director", // its own live work, outside the permit-holder group
     "working-b", "landing-x", "reviewing-a", // live work, newest run first, never-ran last
-    "parked-p", "vetted-v", // waiting in the pipeline
+    "parked-p", "parked-v", // waiting in the pipeline
     "broken", // needs attention
     "held", "timed", "capped", "broke", "bootstrapped", // paused, newest run first
     "queued-z", "sleepy", "never-ran", // idle
