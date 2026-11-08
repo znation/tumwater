@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { parseFailingTests } from "../src/build/build-check-report.js";
 import { parsePolicyOffenders } from "../src/build/policy-offenders.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { repoRoot } from "./helpers/repo-root.js";
 
 // A repo-wide policy scan (BUGS.md 2026-11-05) must name its offender as a failing test, not
 // only its aggregate test. When main is red on a scan, a change that adds ITS OWN offender makes
@@ -17,9 +18,9 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 // failing output names that offender's file:line (which the aggregate test alone never did).
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
-// The worktree root that holds dist/: one level above the compiled suite (dist/test) or the
-// source suite (test).
-const REPO_ROOT = path.resolve(TEST_DIR, "..", "..");
+// The worktree root that holds dist/, found the same way whether this file runs from the compiled
+// suite (dist/test) or the source suite (test).
+const REPO_ROOT = repoRoot(TEST_DIR);
 
 test("a policy scan names its offender as a failing test, not only its aggregate", () => {
   const temp = tmpdir("scan-offender-");
@@ -52,9 +53,11 @@ test("a policy scan names its offender as a failing test, not only its aggregate
     const names = parseFailingTests(`${run.stdout ?? ""}\n${run.stderr ?? ""}`);
     // The scan must name the offending file:line as a failing test, so a new offender on a red
     // main is distinguishable from main's own offenders instead of hiding behind the aggregate.
+    // The name is repo-relative, not an absolute worktree path: a change's gate compares these
+    // names with main's, which runs in a different worktree where an absolute path never matches.
     assert.ok(
-      names.some((n) => n.endsWith("src/a.ts:1 (cols)")),
-      `expected the over-wide comment's file:line among failing tests; got: ${JSON.stringify(names)}`,
+      names.includes("violation src/a.ts:1 (cols)"),
+      `expected the over-wide comment's repo-relative file:line among failing tests; got: ${JSON.stringify(names)}`,
     );
     // And it must emit the machine-readable offender line, so runBuildCheck's failingOffenders
     // carries this offender (policy-offenders.ts): the map keyed by this scan's exact title.

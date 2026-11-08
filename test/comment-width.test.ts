@@ -58,9 +58,13 @@ function commentOffenders(text: string): Offender[] {
   return offenders;
 }
 
-function offendersInFile(file: string): string[] {
+// The offender names the file repo-relative, like the other scans: the failing test names and
+// policy-offender lines are compared across worktrees (a change's gate, main's mirror), so an
+// absolute path would make the same offender read as a different one in each tree.
+function offendersInFile(root: string, file: string): string[] {
+  const rel = path.relative(root, file).split(path.sep).join("/");
   const text = fs.readFileSync(file, "utf8");
-  return commentOffenders(text).map(({ number, kind }) => `${file}:${number} (${kind})`);
+  return commentOffenders(text).map(({ number, kind }) => `${rel}:${number} (${kind})`);
 }
 
 const POLICY_TITLE = "every comment line in src/ and test/ fits in 100 columns and opens no block inside a block";
@@ -70,7 +74,7 @@ test(POLICY_TITLE, () => {
   const offenders: string[] = [];
   for (const rootName of ["src", "test"]) {
     for (const file of tsFiles(path.join(root, rootName))) {
-      offenders.push(...offendersInFile(file));
+      offenders.push(...offendersInFile(root, file));
     }
   }
   // Name each offender as its own failing test, so a new offender on a red main is
