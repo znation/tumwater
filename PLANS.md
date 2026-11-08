@@ -54,6 +54,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Subtract, part 3e/7: A run's merge pin is merged directly, without a queue entry (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3d/7 landed; touches src/run/run-stage.ts src/runner/runner-leftover.ts src/orchestrator/orchestrator-poll.ts src/merge/merge-core.ts docs/how-it-works.md test/run-stage.test.ts test/runner-leftover.test.ts test/orchestrator-merge-pin.test.ts)
 
+**Needs review 2026-11-08 by feature: too large for one run** — the pin-only change cascades beyond the listed files: test/runner-leftover-recovery.test.ts's recovery e2e and test/fixtures/orchestrator-fixtures.ts's `mergeHead` both drive a queue entry (queueDepth/headMerge), so they need rework; the merge drain's one-at-a-time slot and startMerge/settle/requeue in src/merge/merge-drain.ts, merge-pipeline.ts and merge-slot.ts must accept a null queue file and suppress requeue for a kept pin; and the drain needs a pin reader (pinnedRetrySha + recoveredMetadata + recoveredMergeEntry) with stale/conflict-cap handling.
+
 **Goal.** New work stops writing a durable queue entry: a run pins its commit by `refs/tumwater/landing/<role>` and the orchestrator merges that pin on a poll. The queue reader still drains files an older build left, so the two paths coexist until part 3f deletes the queue.
 
 **Approach.**
