@@ -27,11 +27,11 @@ what to do, not what to avoid.
 The steward's standing measure of where the codebase stands (measured from the repo, not vibes —
 refresh the numbers with `wc -l` and `find` when this section is touched, and note the date).
 
-- **Code size**: 505 src modules / ~123,000 lines; 636 test modules / ~183,000 lines. Trend:
+- **Code size**: 510 src modules / ~127,000 lines; 652 test modules / ~190,000 lines. Trend:
   grows with every merge; the split-large-function family below is the standing driver of
   per-function (not per-file) growth.
-- **Module-size ceiling**: 21 src files exceed 600 lines, 7 exceed 700, 2 exceed 800; the largest
-  is src/roles/role-view.ts at 882. The ceiling holds because complexity is extracted into named
+- **Module-size ceiling**: 29 src files exceed 600 lines, 11 exceed 700, 4 exceed 800; the largest
+  is src/baseline/main-watch.ts at 970. The ceiling holds because complexity is extracted into named
   helpers, not by shrinking files — a file may stay large while its functions stay small; do not
   re-split an already-small function to chase a line count.
 - **Dependencies**: 2 runtime (ink, react) — the ink decision of 2026-10-01 and the react that
@@ -40,10 +40,10 @@ refresh the numbers with `wc -l` and `find` when this section is touched, and no
   and the type packages for node and react (@types/node, @types/react). Zero incidental runtime
   deps: any new one needs an explicit user decision recorded here, matching the principle above.
 - **Per-function complexity**: the split-large-function family is the team's main complexity
-  pressure — 237 such plans have landed (counted as `## Done` headings that name a body "split
+  pressure — 252 such plans have landed (counted as `## Done` headings that name a body "split
   into" named steps or one named helper per concern) and more sit in `## Planned`. A split earns a
   plan only when a named function is genuinely large and a reader's question is answered better by
   a name; a complexity-N number alone is not the reason. This keeps the family finite instead of a
   bottomless re-split of already-named helpers.
 
-_Last measured 2026-11-06 by the steward role._
+_Last measured 2026-11-08 by the steward role._
