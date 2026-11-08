@@ -3,7 +3,7 @@
  * budgets but clamp both timeouts to the follow-up's own tighter caps, and force the quiet
  * cap when the config has no quiet timeout (0 means "unset" there). One call site, which
  * passes its own per-turn cap constants. */
-import type { TumwaterConfig } from "./config/config-schema.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
 
 export function cappedRequestTimeouts(
   cfg: TumwaterConfig,

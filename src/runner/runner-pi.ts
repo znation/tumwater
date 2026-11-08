@@ -16,7 +16,7 @@ import { logBlindRead } from "../events/events.js";
 import { nativeLogPath, piLogPath, roleNotesPath, sessionDir } from "../paths.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { cappedRequestTimeouts } from "../request-timeouts.js";
+import { cappedRequestTimeouts } from "./runner-request-timeouts.js";
 
 /** Upper bound on how long the transient retry waits out a provider's Retry-After hint
  * before re-attempting a rate-limited agent run. Honoring the hint is the point; capping it is

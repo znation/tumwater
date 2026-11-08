@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cappedRequestTimeouts } from "../src/request-timeouts.js";
+import { cappedRequestTimeouts } from "../src/runner/runner-request-timeouts.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 
 const cfg = (run: number, quiet: number) =>

@@ -258,8 +258,9 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 ## Layout
 
 - `src/runner/runner.ts`: the runner class and its lifecycle/public surface. `src/runner/runner-pi.ts`
-  holds its pi-run plumbing, `runner-run.ts` the run pipeline phases, and `runner-recovery.ts`
-  the abort/pin/recovery phases.
+  holds its pi-run plumbing, `runner-run.ts` the run pipeline phases, `runner-recovery.ts`
+  the abort/pin/recovery phases, and `runner-request-timeouts.ts` the capped-config idiom the two
+  `--continue` follow-up turns share.
 - `src/orchestrator/orchestrator.ts`: the scheduler; `src/orchestrator/orchestrator-launch.ts`
   holds its launch pass (admitting due roles to their runs).
 - `src/agent/`: the backend-neutral agent runner (`agent-run.ts` — the spawn, the
@@ -401,6 +402,6 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   operator surfaces read them (doctor, status, the role view and prompt).
 - Top-level modules: `src/cli.ts` (the dispatcher), `src/paths.ts` (repo layout constants),
   `src/version.ts`, `src/project-name.ts`, `src/collections.ts`, `src/errno.ts`,
-  `src/request-timeouts.ts`, and `src/notes-cli.ts` (the second `bin` entry, `tumwater-notes` —
+  and `src/notes-cli.ts` (the second `bin` entry, `tumwater-notes` —
   the command carrier for writing a role's note).
 - `test/`: unit tests.
