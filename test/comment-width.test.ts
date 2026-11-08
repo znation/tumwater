@@ -70,6 +70,13 @@ test("every comment line in src/ and test/ fits in 100 columns and opens no bloc
       offenders.push(...offendersInFile(file));
     }
   }
+  // Name each offender as its own failing test, so a new offender on a red main is
+  // distinguishable from main's own (the aggregate name alone hid it; BUGS.md 2026-11-05).
+  for (const offender of offenders) {
+    test(`violation ${offender}`, () => {
+      assert.ok(false, `over-wide or nested comment: ${offender}`);
+    });
+  }
   assert.deepEqual(offenders, []);
 });
 

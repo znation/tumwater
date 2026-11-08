@@ -67,6 +67,13 @@ test("no exported symbol goes unused outside its own file", () => {
     }
   }
   const unexpected = offenders.filter((entry) => !ALLOWED.has(entry));
+  // Name each offender as its own failing test, so a new offender on a red main is
+  // distinguishable from main's own (the aggregate name alone hid it; BUGS.md 2026-11-05).
+  for (const entry of unexpected) {
+    test(`violation ${entry}`, () => {
+      assert.ok(false, `export with no user outside its own file: ${entry}`);
+    });
+  }
   assert.deepEqual(
     unexpected,
     [],

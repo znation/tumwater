@@ -172,6 +172,13 @@ test("scanned src modules use only plain terms", () => {
   walk(path.join(root, "src"), files);
   assert.ok(files.length > 0, "the vocabulary scan found no sources under src/");
   const findings = files.flatMap((f) => vocabularyFindings(path.relative(root, f), fs.readFileSync(f, "utf8")));
+  // Name each offender as its own failing test, so a new offender on a red main is
+  // distinguishable from main's own (the aggregate name alone hid it; BUGS.md 2026-11-05).
+  for (const finding of findings) {
+    test(`violation ${finding}`, () => {
+      assert.ok(false, `non-plain term: ${finding}`);
+    });
+  }
   assert.deepEqual(findings, []);
 });
 

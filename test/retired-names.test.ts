@@ -181,6 +181,13 @@ test("no identifier or file name in src/ or test/ uses a retired name", () => {
     hits.push(...fileFindings(rel));
     if (/\.tsx?$/.test(rel)) hits.push(...scanIdentifiers(rel, () => fs.readFileSync(abs, "utf8")));
   }
+  // Name each offender as its own failing test, so a new offender on a red main is
+  // distinguishable from main's own (the aggregate name alone hid it; BUGS.md 2026-11-05).
+  for (const hit of hits) {
+    test(`violation ${hit}`, () => {
+      assert.ok(false, `retired name: ${hit}`);
+    });
+  }
   assert.deepEqual(hits, [], `retired names (rename them; never exempt a missed rename):\n${hits.join("\n")}`);
 });
 
