@@ -146,32 +146,36 @@ async function fileDroppedReview(ctx: MergePipelineContext, entry: PostReview, f
   }
 }
 
-/** Land a reviewer's fix commit on main: first through the deterministic gate check (the same
- * scoped build pre-check a queued change's review gate runs), then through the ordinary write
- * path — mergeToMain, whose mergeLockDir lock serializes it with every other write to main — and
- * settle the entry `fixed` naming the landed fix. Since part 4l/3 mergeToMain is a bare rebase
- * and fast-forward with no check of its own, the pre-check is what verifies the fix tree (BUGS.md
- * 2026-11-04). A check that rejects the fix withholds it before main moves and records the finding
- * as the reviewed entry's rejection; an unverified (host-sleep) tree is also withheld, but that
- * entry stays queued for another review. A landing that fails (a conflict, a refused fast-forward)
- * leaves main at the reviewed commit and keeps the entry with its failure recorded for the next
- * poll's retry, exactly as a failed run is kept today — up to the same POST_REVIEW_FAILURE_LIMIT
- * the verdict-less-review path obeys, so the at-risk doctor row/alert's "one more failed run drops
- * it" stays true and the reviewer is not re-run forever; the review-fix ref survives so the
- * withheld commit remains reachable.
+/** Land a reviewer's fix commit on main, in four named phases: the deterministic pre-check that
+ * may withhold the fix, the guarded merge onto main that names the sha that actually landed, the
+ * landed-fix settle and requeue, and the failed-merge settle with its drop-at-the-limit path.
+ * Each phase reads from one helper below; this body only orders them, with no behavior change.
  * Throws when git could not start; a failed merge itself returns a non-terminal RunResult and
  * is never a throw. */
 async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fix: string, state: RunnerState): Promise<void> {
   const author = resolveAuthor(ctx, entry.role);
-  // A reviewer's fix is reviewer-authored bytes main has never checked: since part 4l/3
-  // mergeToMain is a bare rebase and fast-forward with no check of its own, the fix tree runs
-  // through the same deterministic gate check a queued change gets (review-precheck.ts) BEFORE
-  // the write path touches main (BUGS.md 2026-11-04: a broken repair landed unchecked and main
-  // sat red ~20 h). It runs OUTSIDE the merge lock, over the fix tree as pinned: a passing
-  // check or a failure main already carries lands as before (a conflict still hands the tree to
-  // the resolver path below), while a reproduced failure that is the fix's — or a check that
-  // could not be run at all — is withheld without touching main. It is deterministic: no model
-  // run, so no reviewer budget is consumed. A withholding never throws.
+  if (!(await precheckReviewerFix(ctx, entry, fix, state))) return;
+  const outcome = await mergeReviewerFixCommit(ctx, entry, fix, author);
+  if (outcome.result === "changed") {
+    await settleMergedReviewerFix(ctx, entry, outcome.merged);
+    return;
+  }
+  await settleFailedReviewerFix(ctx, entry, outcome.result);
+}
+
+/** The deterministic pre-check that withholds a reviewer's fix before main moves. A reviewer's
+ * fix is reviewer-authored bytes main has never checked: since part 4l/3 mergeToMain is a bare
+ * rebase and fast-forward with no check of its own, the fix tree runs through the same
+ * deterministic gate check a queued change gets (review-precheck.ts) BEFORE the write path
+ * touches main (BUGS.md 2026-11-04: a broken repair landed unchecked and main sat red ~20 h). It
+ * runs OUTSIDE the merge lock, over the fix tree as pinned: a passing check or a failure main
+ * already carries lands as before (a conflict still hands the tree to the resolver path below),
+ * while a reproduced failure that is the fix's — or a check that could not be run at all — is
+ * withheld without touching main. It is deterministic: no model run, so no reviewer budget is
+ * consumed. A withholding never throws.
+ * Returns false when the pre-check resolved `rejected` or `failed` — the fix must not land — and
+ * true otherwise. */
+async function precheckReviewerFix(ctx: MergePipelineContext, entry: PostReview, fix: string, state: RunnerState): Promise<boolean> {
   const wt = postReviewWorktreePath(ctx.root);
   const pre = await gateBuildPrecheck(
     {
@@ -204,16 +208,38 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
       return { decision: "rejected" as const, detail: firstReason(reasons) };
     },
   );
-  if (pre.resolved && (pre.resolved.decision === "rejected" || pre.resolved.decision === "failed")) return;
   // `verifiedHead` (a passing check) and `knownMainFailures` (main's own failures, not the
   // fix's) both land: the known-failure excuse is the gate's own and the main watch re-checks
   // the tip after it lands. An unverified (host-sleep) tree is also a `failed` the pre-check
-  // attributes to nothing — it stays out of main for the next poll's retry, as the line above
-  // already withholds it.
-  // The fix merge's conflict resolver rides the same team permit the merge slot's resolver
-  // does (merge-drain.ts startMerge): the MERGE_TIER lease is acquired on the one team total
-  // and rides in the run-permit store, so a conflict resolution counts against maxConcurrent
-  // like any other strong-tier run.
+  // attributes to nothing — it stays out of main for the next poll's retry, as the `rejected`
+  // withholding above already covers the fix that must not land.
+  if (pre.resolved && (pre.resolved.decision === "rejected" || pre.resolved.decision === "failed")) return false;
+  return true;
+}
+
+/** Land the withheld fix through the merge's own write path while naming the sha that actually
+ * merged. The fix merge's conflict resolver rides the same team permit the merge slot's resolver
+ * does (merge-drain.ts startMerge): the MERGE_TIER lease is acquired on the one team total and
+ * rides in the run-permit store, so a conflict resolution counts against maxConcurrent like any
+ * other strong-tier run. mergeToMain fast-forwards main under the shared mergeLockDir mutex, so
+ * a fix landing and the ordinary merge slot serialize on main's one writer either way — but from
+ * the DEDICATED post-review worktree (which already holds the fix commit), NOT the shared
+ * `_merge` checkout that belongs to the merge slot. That removes the race the merge slot's
+ * mergeApprovedChangeIn has: each resets and merges its own worktree, so a fix landing can never
+ * reset or merge the shared `_merge` worktree concurrently with the merge slot (both could start
+ * in one poll), while main's writes stay serialized by the real mergeLockDir mutex. Hold the
+ * worktree from before ensureDetachedWorktree through the merge (plans/disk-floor.md part 2/4);
+ * this task is the only user of the post-review worktree while p.postReview is held, so the
+ * reset-and-merge cannot collide with a fresh review.
+ * Resolves `merged` to the commit that actually landed — from our own `merged` event (not the
+ * pre-rebase `fix`), falling back to main's head — and unsubscribes in `finally`. A failed merge
+ * returns a non-terminal RunResult and is never a throw. */
+async function mergeReviewerFixCommit(
+  ctx: MergePipelineContext,
+  entry: PostReview,
+  fix: string,
+  author: ReturnType<typeof resolveAuthor>,
+): Promise<{ result: RunResult; merged: string }> {
   const runPi = async (wt: string, prompt: string, sessionName: string, config?: Parameters<typeof author.runMergePi>[3]) => {
     const hooks = resolveWaitStage(ctx.root, entry.role);
     if (!ctx.semaphore.canLeaseAtOnce(MERGE_TIER)) hooks.waiting();
@@ -228,17 +254,6 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
       lease.release();
     }
   };
-  // Land through the merge's own write path — mergeToMain fast-forwards main under the shared
-  // mergeLockDir mutex, so a fix landing and the ordinary merge slot serialize on main's one
-  // writer either way — but from the DEDICATED post-review worktree (which already holds the fix
-  // commit), NOT the shared `_merge` checkout that belongs to the merge slot. That removes the
-  // race the merge slot's mergeApprovedChangeIn has: each resets and merges its own worktree, so
-  // a fix landing can never reset or merge the shared `_merge` worktree concurrently with the
-  // merge slot (both could start in one poll), while main's writes stay serialized by the real
-  // mergeLockDir mutex. Hold the worktree from before ensureDetachedWorktree through the merge
-  // (plans/disk-floor.md part 2/4); this task is the only user of the post-review worktree while
-  // p.postReview is held, so the reset-and-merge cannot collide with a fresh review.
-  let result: RunResult;
   // The commit that actually merges, from our own `merged` event (not the pre-rebase `fix`):
   // mergeToMain rebases `fix` onto main's tip, so when main moved under the review the landed
   // commit is a different sha — and `fixed` must name a commit that is provably on main.
@@ -248,6 +263,7 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
   const unsubscribe = subscribeEvents((e) => {
     if (e.type === "merged" && typeof e.commit === "string") mergedMine.set(e.source, e.commit);
   });
+  let result: RunResult;
   try {
     result = await useWorktree(ctx.root, postReviewWorktreePath(ctx.root), async () => {
       const wt = await ensureDetachedWorktree(ctx.root, postReviewWorktreePath(ctx.root), fix);
@@ -308,19 +324,26 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
   } finally {
     unsubscribe();
   }
-  if (result === "changed") {
-    const merged = mergedMine.get(entry.role) ?? (await headOf(ctx.root, ctx.mainBranch));
-    await deleteRef(ctx.root, reviewFixRef(entry.commit)); // the fix is on main; the ref has done its job
-    settlePostReview(ctx.root, entry.commit, { ...entry, fixed: merged }); // the entry names the landed fix
-    // A landed fix is a new post-review entry (Forward never back 2/6): re-queue it so the next
-    // iteration reviews it like any unreviewed commit, counting its round toward the same
-    // REVISION_BACKSTOP — the round lives on the fix commit's `Revision:` trailer.
-    addPostReview(ctx.root, { commit: merged, role: entry.role, summary: entry.summary });
-    return;
-  }
-  // A failed merge: main is unmoved, the fix ref survives. Count it against the drop limit -
-  // keeping the entry (with the failure recorded) so the next poll retries the review, but
-  // dropping it once the limit is reached, so the reviewer is not re-run unboundedly.
+  const merged = mergedMine.get(entry.role) ?? (await headOf(ctx.root, ctx.mainBranch));
+  return { result, merged };
+}
+
+/** Settle a fix that landed on main as `fixed`: delete the fix ref, settle the entry naming the
+ * landed sha, and re-queue it as a post-review entry. The fix is on main, so the ref has done its
+ * job; a landed fix is a new post-review entry (Forward never back 2/6) — re-queue it so the next
+ * iteration reviews it like any unreviewed commit, counting its round toward the same
+ * REVISION_BACKSTOP — the round lives on the fix commit's `Revision:` trailer. */
+async function settleMergedReviewerFix(ctx: MergePipelineContext, entry: PostReview, merged: string): Promise<void> {
+  await deleteRef(ctx.root, reviewFixRef(entry.commit)); // the fix is on main; the ref has done its job
+  settlePostReview(ctx.root, entry.commit, { ...entry, fixed: merged }); // the entry names the landed fix
+  addPostReview(ctx.root, { commit: merged, role: entry.role, summary: entry.summary });
+}
+
+/** Settle a fix whose merge failed: main is unmoved and the fix ref survives. Count the failure
+ * against the drop limit — keeping the entry (with the failure recorded) so the next poll retries
+ * the review, but dropping it once the limit is reached, so the reviewer is not re-run
+ * unboundedly. At the limit, warn, delete the ref, file the bug, and settle the entry away. */
+async function settleFailedReviewerFix(ctx: MergePipelineContext, entry: PostReview, result: RunResult): Promise<void> {
   const failures = (entry.failures ?? 0) + 1;
   if (failures >= POST_REVIEW_FAILURE_LIMIT) {
     warnEventBestEffort(ctx.root, entry.role, `dropping the post-merge review of ${shortSha(entry.commit)} after ${failures} failed fix merges; the fix stays unreviewed`);
