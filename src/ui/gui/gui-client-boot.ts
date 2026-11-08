@@ -223,10 +223,10 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       if (title === undefined) return;
       if (!entryRetireArmed(arg, title)) { armEntryRetire(arg, title); return; }
       disarmEntryRetire();
-      postAction("/api/backlog-retire", { kind: "plan", position: index + 1, title }, (d) => {
+      postAction("/api/backlog-retire", { kind: kindOf(file), position: index + 1, title }, (d) => {
         closeDrawer();
         return d && d.status === "retired"
-          ? "Retired “" + splitTitle(title).title + "” in " + entryFile(file) + " — closed without being built" + uncommittedTail(d)
+          ? "Retired “" + splitTitle(title).title + "” in " + entryFile(file) + " — closed without being " + (kindOf(file) === "bug" ? "fixed" : "built") + uncommittedTail(d)
           : "That entry was already removed or moved — refreshed";
       });
     } else if (act === "entry-release") {

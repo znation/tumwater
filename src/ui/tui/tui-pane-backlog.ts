@@ -1,4 +1,4 @@
-import { tryCancelEntry, tryRetirePlan, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
+import { tryCancelEntry, tryRetireBug, tryRetirePlan, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
 import { tryMoveEntryToTop, tryReleaseEntry, liftedNotePhrase } from "../../backlog/backlog-release.js";
 import { backlogHolds, cancelledClaimNote, stillHeldNote } from "../../backlog/backlog-eligibility.js";
 import { entryKey, plansReleasedBy, releasedPartsNote } from "../../backlog/backlog-parts.js";
@@ -15,7 +15,7 @@ import type { TuiPaneSession } from "./tui-pane-session.js";
  * arms' common prologue (Ctrl+X cancel, Ctrl+V move-to-top, Ctrl+R release, Ctrl+E edit,
  * Ctrl+Y retire): the
  * flat-index clamp and the empty / read-only-done / question guards, whose refusal flash
- * names the action's verb (a retire names only a plan, since a bug has no TUI retire).
+ * names the action's verb (a retire names an open plan or bug, like cancel).
  * Returns the actionable `{ kind, position, picked }`, or
  * null — after flashing the guard's message — when the selection is unactionable (an emptied
  * list, a done/fixed/answered entry, or a question). The caller then runs its own arm on the
@@ -37,7 +37,7 @@ export function selectedEditableEntry(
     return null;
   }
   if (picked.label === "question") {
-    session.flashMessage(verb === "retired" ? "only a plan can be retired here" : `only a plan or open bug can be ${verb} here`);
+    session.flashMessage(`only a plan or open bug can be ${verb} here`);
     return null;
   }
   const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
@@ -164,28 +164,31 @@ export function createBacklogPane(
       );
     });
   };
-  // The second Ctrl+Y arm: retire the armed plan through the locked `tumwater plan --retire`
-  // core once its position still holds the armed title. tryRetirePlan is the dashboard's
-  // non-exiting, title-checked retire: its lookup runs inside the same cross-process lock as
-  // the write, so a list that shrank or shifted since the arm answers gone/moved as data
-  // instead of readEntryLines' fail() exiting the pane, and no plan but the armed one is
-  // retired. An out-of-range position or a different heading flashes the moved refusal, clears
-  // the selection and writes nothing. On a match the entry leaves `## Planned` for `## Done` as
-  // a retired record, committed on main with no wake.
-  const retirePlanArmed = (
-    target: { kind: "plan"; position: number; title: string },
+  // The second Ctrl+Y arm: retire the armed plan or bug through the locked `tumwater plan
+  // --retire` / `bug --retire` core once its position still holds the armed title.
+  // tryRetirePlan/tryRetireBug are the dashboard's non-exiting, title-checked retires: their
+  // lookup runs inside the same cross-process lock as the write, so a list that shrank or
+  // shifted since the arm answers gone/moved as data instead of readEntryLines' fail() exiting
+  // the pane, and no entry but the armed one is retired. An out-of-range position or a
+  // different heading flashes the moved refusal, clears the selection and writes nothing. On a
+  // match a plan leaves `## Planned` for `## Done`, or a bug `## Open` for `## Fixed`, as a
+  // retired record, committed on main with no wake.
+  const retireArmed = (
+    target: { kind: "plan" | "bug"; position: number; title: string },
     armedTitle: string,
   ): void => {
     guardError(session, () => {
-      const outcome = tryRetirePlan(session.root, target.position, armedTitle);
+      const outcome = target.kind === "bug"
+        ? tryRetireBug(session.root, target.position, armedTitle)
+        : tryRetirePlan(session.root, target.position, armedTitle);
       selectedEntry = null;
       entryScroll = 0;
       if (outcome.status === "retired") {
-        session.commitBacklogEdit(outcome.file, `Retire plan: ${outcome.title}`);
-        session.flashMessage(`retired plan #${target.position}: ${outcome.title} (not built)`);
+        session.commitBacklogEdit(outcome.file, `Retire ${target.kind}: ${outcome.title}`);
+        session.flashMessage(`retired ${target.kind} #${target.position}: ${outcome.title} (not ${target.kind === "bug" ? "fixed" : "built"})`);
         return;
       }
-      session.flashMessage("that plan was already removed or moved — nothing retired");
+      session.flashMessage(`that ${target.kind} was already removed or moved — nothing retired`);
     });
   };
 
@@ -287,34 +290,30 @@ export function createBacklogPane(
     }
     return false;
   };
-  // The two-press Ctrl+Y arm: retires the selected plan through the locked `tumwater plan
-  // --retire` core, the terminal twin of the CLI's retire and the dashboard drawer's Retire
-  // action. Returns false when the prompt is busy or the Backlog view is not showing, so the
-  // key falls through the dispatch as today (the Transcript diffstat arm and the History
+  // The two-press Ctrl+Y arm: retires the selected plan or bug through the locked `tumwater
+  // plan|bug --retire` core, the terminal twin of the CLI's retire and the dashboard drawer's
+  // Retire action. Returns false when the prompt is busy or the Backlog view is not showing, so
+  // the key falls through the dispatch as today (the Transcript diffstat arm and the History
   // Summary cycle keep the key on their own views).
   const backlogRetire = (ctx: TuiPaneCtx): boolean => {
     if (promptLineFree(ctx.es) && session.view === session.roleIds.length + 1) {
-      // Ctrl+Y twice retires the selected plan through the locked `retirePlan` core the CLI
-      // and the dashboard drawer use: the plan leaves ## Planned for ## Done as a retired
-      // record, with no wake — retiring is closing work as not built, which must not prompt
-      // a role. A selected bug flashes that only a plan can be retired here and arms
-      // nothing; a question and the read-only done/fixed/answered rows are refused by
-      // selectedEditableEntry.
+      // Ctrl+Y twice retires the selected plan or bug through the locked `retirePlan`/
+      // `retireBug` core the CLI and the dashboard drawer use: a plan leaves ## Planned for
+      // ## Done, or a bug ## Open for ## Fixed, as a retired record, with no wake — retiring
+      // is closing work as not built or fixed, which must not prompt a role. A question and
+      // the read-only done/fixed/answered rows are refused by selectedEditableEntry.
       const selected = selectedEditableEntry(session, selectedEntry, "retired");
       if (selected !== null) {
-        if (selected.kind === "bug") {
-          session.flashMessage("only a plan can be retired here");
+        const kind = selected.kind;
+        const position = selected.position;
+        const target = { kind, position, title: selected.picked.title };
+        if (session.armedRetire !== null && session.armedRetire.kind === kind && session.armedRetire.position === position) {
+          // The armed title (not the re-read one) drives the stale check, so an entry that
+          // changed since the arm reports `moved` instead of being retired.
+          retireArmed(target, session.armedRetire.title);
         } else {
-          const position = selected.position;
-          const target = { kind: "plan" as const, position, title: selected.picked.title };
-          if (session.armedRetire !== null && session.armedRetire.kind === "plan" && session.armedRetire.position === position) {
-            // The armed title (not the re-read one) drives the stale check, so an entry that
-            // changed since the arm reports `moved` instead of being retired.
-            retirePlanArmed(target, session.armedRetire.title);
-          } else {
-            session.retireArmed = target;
-            session.flashMessage(`press Ctrl+Y again to retire plan #${position} — any other key keeps it`);
-          }
+          session.retireArmed = target;
+          session.flashMessage(`press Ctrl+Y again to retire ${kind} #${position} — any other key keeps it`);
         }
       }
       session.requestRender();

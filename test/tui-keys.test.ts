@@ -766,9 +766,9 @@ function backlogRetireRig(seed?: string) {
   const plans =
     seed ?? "## Planned\n\n### Plan one (planned 2026-10-02 by test)\n\nbody\n\n### Plan two (planned 2026-10-02 by test)\n\nbody\n";
   const bugs =
-    "## Open\n\n### Bug one (found by test 2026-10-02)\n\nbody\n\n### Bug two (found by test 2026-10-02)\n\nbody\n";
-  // A retire needs the ## Done section the locked move writes into; the phonebook fixtures
-  // above (cancel/release) seed no Done section, so this rig carries its own.
+    "## Open\n\n### Bug one (found by test 2026-10-02)\n\nbody\n\n### Bug two (found by test 2026-10-02)\n\nbody\n\n## Fixed\n\n_None yet._\n";
+  // A retire needs the ## Done / ## Fixed section the locked move writes into; the phonebook
+  // fixtures above (cancel/release) seed neither, so this rig carries its own.
   fs.writeFileSync(path.join(root, "PLANS.md"), plans + "\n## Done\n\n_None yet._\n");
   fs.writeFileSync(path.join(root, "BUGS.md"), bugs);
   fs.writeFileSync(path.join(root, "QUESTIONS.md"), "## Open\n\n### A question (asked by test 2026-10-02)\n\nbody\n");
@@ -844,19 +844,59 @@ test("backlog Ctrl+Y on a stale or out-of-range plan retires nothing and leaves 
   assert.equal(keys.state().selectedEntry, null);
 });
 
-test("backlog Ctrl+Y refuses a bug, a question, and a done row, and the budget editor blocks it", () => {
-  const { root, keys, down, ctrlY, read, plans, bugs } = backlogRetireRig();
+test("backlog Ctrl+Y retires a selected open bug to ## Fixed and wakes no role", () => {
+  const { root, keys, down, ctrlY, read, plans } = backlogRetireRig();
+  const before = read("BUGS.md");
   down(3); // plan 1, plan 2, bug 1
   ctrlY();
-  assert.equal(keys.state().retireArmed, null, "a bug arms nothing");
-  assert.match(keys.state().flash ?? "", /only a plan can be retired here/);
-  assert.equal(read("BUGS.md"), bugs);
-  down(2); // bug 2, the open question
+  assert.deepEqual(keys.state().retireArmed, {
+    kind: "bug",
+    position: 1,
+    title: "Bug one (found by test 2026-10-02)",
+  });
+  assert.equal(read("BUGS.md"), before, "the arm writes nothing");
+  assert.match(keys.state().flash ?? "", /press Ctrl\+Y again to retire bug #1/);
+  ctrlY();
+  const after = read("BUGS.md");
+  // Bug one leaves ## Open whole (no ## Open entry can be its half-retired remainder) and the
+  // other open bug keeps every byte; the retired copy lands first under ## Fixed.
+  assert.ok(!after.includes("## Open\n\n### Bug one"), "the retired bug leaves ## Open");
+  assert.match(
+    after,
+    /## Fixed\n\n### Bug one \(found by test 2026-10-02, retired \d{4}-\d{2}-\d{2} by the user\)\n\n\*\*Retired \d{4}-\d{2}-\d{2} by the user\*\*\n\nbody\n/,
+  );
+  assert.ok(after.includes("### Bug two"), "the other open bug is untouched");
+  assert.ok(!after.includes("_None yet._"), "the Fixed placeholder is dropped");
+  assert.equal(read("PLANS.md"), plans + "\n## Done\n\n_None yet._\n", "a bug retire leaves PLANS.md alone");
+  assert.equal(keys.state().retireArmed, null);
+  assert.equal(keys.state().selectedEntry, null);
+  assert.match(keys.state().flash ?? "", /retired bug #1: Bug one .*not fixed/);
+  // Retiring a bug wakes no role: no wake marker is written.
+  assert.ok(!fs.existsSync(wakeRequestPath(root)));
+});
+
+test("backlog Ctrl+Y on a stale or out-of-range bug retires nothing and leaves the files byte-identical", () => {
+  const { root, keys, down, ctrlY, read, plans } = backlogRetireRig();
+  down(3); // bug 1
+  ctrlY(); // arm on Bug one
+  const stale = "## Open\n\n### Other (found by test 2026-10-05)\n\nbody\n\n### Bug one (found by test 2026-10-02)\n\nbody\n\n## Fixed\n\n_None yet._\n";
+  fs.writeFileSync(path.join(root, "BUGS.md"), stale);
+  ctrlY();
+  assert.equal(read("BUGS.md"), stale, "a stale title is not retired");
+  assert.equal(read("PLANS.md"), plans + "\n## Done\n\n_None yet._\n");
+  assert.match(keys.state().flash ?? "", /that bug was already removed or moved — nothing retired/);
+  assert.equal(keys.state().selectedEntry, null);
+});
+
+test("backlog Ctrl+Y refuses a question and a done row, and the budget editor blocks it", () => {
+  const { root, keys, down, ctrlY, read, plans, bugs } = backlogRetireRig();
+  down(5); // plan 1, plan 2, bug 1, bug 2, the open question
   assert.equal(keys.state().selectedEntry, 4);
   ctrlY();
   assert.equal(keys.state().retireArmed, null, "a question arms nothing");
-  assert.match(keys.state().flash ?? "", /only a plan can be retired here/);
+  assert.match(keys.state().flash ?? "", /only a plan or open bug can be retired here/);
   assert.equal(read("PLANS.md"), plans + "\n## Done\n\n_None yet._\n");
+  assert.equal(read("BUGS.md"), bugs);
   // a done plan row is read-only
   const withDone = plans + "\n## Done\n\n### Shipped (planned 2026-09-01, done 2026-10-06)\n\nbody\n";
   fs.writeFileSync(path.join(root, "PLANS.md"), withDone);

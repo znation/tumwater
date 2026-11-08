@@ -454,9 +454,10 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   const entryCancelArmed = (key, title) => entryCancel.armed(key, title);
   function disarmEntryCancel() { entryCancel.disarm(); }
   function armEntryCancel(key, title) { entryCancel.arm(key, title); }
-  // Retiring a plan is a two-click confirm too (the same 5 s slot shape): the entry leaves
-  // the ## Planned section as a ## Done retired record, so the button spells out that arming
-  // again in the drawer, and the server's post carries the same title guard as cancel's.
+  // Retiring an open plan or bug is a two-click confirm too (the same 5 s slot shape): the
+  // entry leaves the ## Planned section as a ## Done retired record, or ## Open for ## Fixed,
+  // so the button spells out that arming again in the drawer, and the server's post carries
+  // the same title guard as cancel's.
   const entryRetire = confirmSlot(refreshEntry);
   const entryRetireArmed = (key, title) => entryRetire.armed(key, title);
   function disarmEntryRetire() { entryRetire.disarm(); }
@@ -505,7 +506,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         (index > 0 ? "<button type='button' class='btn btn-sm' data-act='entry-top' data-arg='" + esc(file + ":" + index) + "'>Move to top</button>" : "") +
         "<button type='button' class='btn btn-sm' data-act='entry-edit' data-arg='" + esc(file + ":" + index) + "'>Edit this entry</button>" +
         "<button type='button' class='btn btn-sm btn-danger' data-act='entry-cancel' data-arg='" + esc(file + ":" + index) + "'>" + (entryCancelArmed(file + ":" + index) ? "Click again to cancel" : "Cancel this entry") + "</button>" +
-        (file === "plans" ? "<button type='button' class='btn btn-sm btn-danger' data-act='entry-retire' data-arg='" + esc(file + ":" + index) + "'>" + (entryRetireArmed(file + ":" + index) ? "Click again to retire" : "Retire this plan") + "</button>" : "");
+        (file === "plans" || file === "bugs" ? "<button type='button' class='btn btn-sm btn-danger' data-act='entry-retire' data-arg='" + esc(file + ":" + index) + "'>" + (entryRetireArmed(file + ":" + index) ? "Click again to retire" : file === "bugs" ? "Retire this bug" : "Retire this plan") + "</button>" : "");
     // The body is model-written Markdown: renderMarkdown escapes every piece of it.
     paintPanel("entrybody", (action ? "<div class='drawer-actions'>" + action + "</div>" : "") + "<div class='md'>" +
       (d.body ? renderMarkdown(d.body) : "<p class='muted'>No details for this entry.</p>") + "</div>");

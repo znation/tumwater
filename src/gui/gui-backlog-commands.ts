@@ -13,7 +13,7 @@ import { plannedPlanEntries } from "../backlog/backlog.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
-import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry, tryRetirePlan, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome, type RetireEntryOutcome } from "../backlog/backlog-write.js";
+import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry, tryRetireBug, tryRetirePlan, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome, type RetireEntryOutcome } from "../backlog/backlog-write.js";
 import { tryMoveEntryToTop, tryReleaseEntry, type MoveEntryOutcome, type ReleaseEntryOutcome } from "../backlog/backlog-release.js";
 import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../backlog/backlog-question-answer.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
@@ -176,38 +176,36 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
   }
 }
 
-/** Handle POST /api/backlog-retire: the plan drawer's Retire this plan — the same move as
- * `tumwater plan --retire <n>` through the non-exiting, title-checked tryRetirePlan (the
- * dashboard twin of tryCancelEntry, sharing withLocatedEntry's lookup-under-lock): the nth
- * `## Planned` entry leaves for `## Done` as a retired record (its body kept, a
+/** Handle POST /api/backlog-retire: the Plans or Bugs drawer's Retire this plan/this bug — the
+ * same move as `tumwater plan --retire <n>` / `tumwater bug --retire <n>` through the
+ * non-exiting, title-checked tryRetirePlan/tryRetireBug (the dashboard twin of tryCancelEntry,
+ * sharing withLocatedEntry's lookup-under-lock): the nth `## Planned` entry leaves for
+ * `## Done`, or the nth `## Open` entry for `## Fixed`, as a retired record (its body kept, a
  * `retired YYYY-MM-DD by the user` heading stamp, a first `**Retired …**` audit line), because
  * the drawer's cancel deletes with no record and an operator working from the dashboard would
- * lose the audit trail the CLI leaves. Body `{"kind": "plan", "position": <1-based>, "title":
- * "<heading>"}`; only plans
- * are retirable from the dashboard — a bug answers 400 naming that (the CLI's `bug --retire`
- * exists, but the drawer offers no bug-retire). An out-of-range position or a heading that
- * differs from the posted title answers 200 { ok: true, status: "gone" } with nothing written
- * (the list moved since the poll); the exact heading is compared under the lock, so a shifted
- * duplicate cannot be retired in the selected one's place. On a match the file is committed on
- * main as `Retire plan: <title>`. No wake and no inbox prompt: retiring work must not wake a
- * role. */
+ * lose the audit trail the CLI leaves. Body `{"kind": "bug"|"plan", "position": <1-based>,
+ * "title": "<heading>"}`; an unknown kind answers 400. An out-of-range position or a heading
+ * that differs from the posted title answers 200 { ok: true, status: "gone" } with nothing
+ * written (the list moved since the poll); the exact heading is compared under the lock, so a
+ * shifted duplicate cannot be retired in the selected one's place. On a match the file is
+ * committed on main as `Retire plan: <title>` or `Retire bug: <title>`. No wake and no inbox
+ * prompt: retiring work must not wake a role. */
 export async function handleBacklogRetire(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"kind": "plan", "position": 1, "title": "<heading>"}');
+  const body = await readPostBody(req, res, '{"kind": "bug"|"plan", "position": 1, "title": "<heading>"}');
   if (!body) return;
-  if (body.kind !== "plan") {
-    badRequest(res, `only plans are retirable from the dashboard${gotSuffix(body.kind)}`);
-    return;
-  }
+  const kind = checkedBacklogKind(res, body);
+  if (!kind) return;
   const pair = checkedEntryPositionAndTitle(res, body);
   if (!pair) return;
   const { position, title } = pair;
-  const outcome = outcomeOrBadRequest<RetireEntryOutcome>(res, () => tryRetirePlan(root, position, title));
+  const retire = kind === "bug" ? tryRetireBug : tryRetirePlan;
+  const outcome = outcomeOrBadRequest<RetireEntryOutcome>(res, () => retire(root, position, title));
   if (outcome === null) return;
   if (outcome.status !== "retired") {
     okGone(res);
     return;
   }
-  const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Retire plan: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
+  const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Retire ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
   sendJson(res, 200, { ok: true, status: "retired", file: outcome.file, title: outcome.title, retiredOn: outcome.retiredOn, committed });
 }
 

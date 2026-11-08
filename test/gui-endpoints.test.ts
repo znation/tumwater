@@ -2527,12 +2527,11 @@ test("handleBacklogRetire retires the middle plan, keeps every other byte, answe
   assert.ok(!md.includes("### B (planned 2026-11-02 by the plan role)\n\nbody beta\n\n## Done"), "B leaves ## Planned");
   assert.match(md, new RegExp(`## Done\\n\\n### B \\(planned 2026-11-02 by the plan role, retired ${today} by the user\\)\\n\\n\\*\\*Retired ${today} by the user\\*\\*\\n\\nbody beta\\n`));
 
-  // The 400 arms — a bug entry, an unknown kind, non-positive or non-integer positions, and a
-  // missing or empty title — leave both backlog files byte-identical.
+  // The 400 arms — an unknown kind, non-positive or non-integer positions, and a missing or
+  // empty title — leave both backlog files byte-identical.
   const plansNow = fs.readFileSync(plansPath, "utf8");
   const bugsNow = fs.readFileSync(bugsPath, "utf8");
   for (const body of [
-    { kind: "bug", position: 1, title: "b1" },
     { kind: "todo", position: 1, title: "x" },
     { kind: "plan", position: 0, title: "A" },
     { kind: "plan", position: 2.5, title: "A" },
@@ -2547,16 +2546,32 @@ test("handleBacklogRetire retires the middle plan, keeps every other byte, answe
   for (const role of ["bugfix", "feature", "director"]) assert.deepEqual(queuedTexts(root, role), []);
 });
 
-test("handleBacklogRetire names the bug refusal, and a position whose plan moved answers gone", async () => {
+test("handleBacklogRetire retires a title-matched bug to ## Fixed and refuses stale/out-of-range with gone", async () => {
   const root = tmpdir();
   writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned", body: "### S, part 1/2: a (planned 2026-10-01)\n\nbody\n\n### S, part 2/2: b (planned 2026-10-02)\n\nbody" }, { heading: "## Done" }]);
+  writeBacklogFile(root, "BUGS.md", [{ heading: "## Open", body: "### b1 (found by the qa role 2026-10-03)\n\nb-bug body\n\n### b2\n\nbody2" }, { heading: "## Fixed" }]);
   const serve = (body: unknown) => captureJson((res) => handleBacklogRetire(fakeReq(JSON.stringify(body)), res, root));
   const plansPath = path.join(root, "PLANS.md");
+  const bugsPath = path.join(root, "BUGS.md");
   const plansBefore = fs.readFileSync(plansPath, "utf8");
+  const today = formatDate(new Date());
 
-  const bug = await serve({ kind: "bug", position: 1, title: "x" });
-  assert.equal(bug.captured.status, 400);
-  assert.match((bug.data as { error: string }).error, /only plans are retirable from the dashboard \(got "bug"\)/);
+  // The exact bug heading retires b1 to ## Fixed with the same record the CLI leaves; b2 stays
+  // under ## Open, PLANS.md is untouched, and no role is woken.
+  const bug = await serve({ kind: "bug", position: 1, title: "b1 (found by the qa role 2026-10-03)" });
+  assert.equal(bug.captured.status, 200);
+  assert.deepEqual(bug.data, { ok: true, status: "retired", file: "BUGS.md", title: "b1", retiredOn: today, committed: false });
+  const bugsMd = fs.readFileSync(bugsPath, "utf8");
+  assert.ok(!bugsMd.includes("## Open\n\n### b1"), "b1 leaves ## Open");
+  assert.match(bugsMd, new RegExp(`## Fixed\\n\\n### b1 \\(found by the qa role 2026-10-03, retired ${today} by the user\\)\\n\\n\\*\\*Retired ${today} by the user\\*\\*\\n\\nb-bug body\\n`));
+  assert.ok(bugsMd.includes("### b2"), "b2 stays under ## Open");
+  assert.equal(fs.readFileSync(plansPath, "utf8"), plansBefore);
+  for (const role of ["bugfix", "feature", "director"]) assert.deepEqual(queuedTexts(root, role), []);
+
+  // A stale bug title at a real position answers gone with nothing written.
+  const staleBug = await serve({ kind: "bug", position: 2, title: "b1 (found by the qa role 2026-10-03)" });
+  assert.deepEqual(staleBug.data, { ok: true, status: "gone" });
+  assert.equal(fs.readFileSync(bugsPath, "utf8"), bugsMd);
 
   // The same stripped title at the position is not enough: the drawer's raw heading includes
   // the stamp, so this one is stale (the old part 1 sat here before a reorder).
@@ -2572,6 +2587,20 @@ test("handleBacklogRetire names the bug refusal, and a position whose plan moved
 
   const ok = await serve({ kind: "plan", position: 1, title: "S, part 1/2: a (planned 2026-10-01)" });
   assert.deepEqual(ok.data, { ok: true, status: "retired", file: "PLANS.md", title: "S, part 1/2: a", retiredOn: formatDate(new Date()), committed: false });
+  // Re-retiring the moved bug position: b2 still sits there under its own heading.
+  assert.equal(fs.readFileSync(bugsPath, "utf8"), bugsMd);
+});
+
+test("handleBacklogRetire commits a bug retirement on main as Retire bug: <title>, waking no role", async () => {
+  const repo = await initializedRepo();
+  writeBacklogFile(repo, "BUGS.md", [{ heading: "## Open", body: "### b1 (found by the qa role 2026-10-03)\n\nbody" }, { heading: "## Fixed" }]);
+  const serve = (body: unknown) => captureJson((res) => handleBacklogRetire(fakeReq(JSON.stringify(body)), res, repo));
+  const retired = await serve({ kind: "bug", position: 1, title: "b1 (found by the qa role 2026-10-03)" });
+  assert.equal(retired.captured.status, 200);
+  assert.deepEqual(retired.data, { ok: true, status: "retired", file: "BUGS.md", title: "b1", retiredOn: formatDate(new Date()), committed: true });
+  assertClean(repo);
+  assert.equal(sh(repo, "git", "log", "-1", "--format=%s"), "tumwater(operator): Retire bug: b1");
+  for (const role of ["bugfix", "feature", "director"]) assert.deepEqual(queuedTexts(repo, role), []);
 });
 
 test("handleBacklogRelease lifts the Refused note, wakes the kind's role, and answers gone, not_refused, and 400s without writing", async () => {

@@ -251,6 +251,32 @@ test("entry-retire arms on the first click and posts the retire on the second", 
   assert.equal(posts.length, 1);
 });
 
+test("entry-retire posts kind: bug for the Bugs tab and toasts the not-fixed close", () => {
+  const posts: unknown[] = [];
+  let out = "";
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      lastStatus: { plans: [], bugs: ["C", "D (found 2026-10-12 by bugfix)"], done: [], fixed: [], answered: [] },
+      entryRetireArmed: () => true,
+      armEntryRetire: () => {},
+      disarmEntryRetire: () => {},
+      closeDrawer: () => {},
+      postAction: (p: string, body: unknown, cb: (d: object) => string) => {
+        posts.push([p, body]);
+        out = cb({ status: "retired", committed: true });
+      },
+      splitTitle: (t: string) => ({ title: t }),
+      uncommittedTail: () => "",
+    },
+  );
+  scope.runAct("entry-retire", "bugs:1");
+  assert.deepEqual(posts, [["/api/backlog-retire", { kind: "bug", position: 2, title: "D (found 2026-10-12 by bugfix)" }]]);
+  assert.ok(out.includes("Retired “D (found 2026-10-12 by bugfix)” in BUGS.md"), out);
+  assert.ok(out.includes("closed without being fixed"), out);
+  assert.ok(!out.includes("built"), out);
+});
+
 test("entry-retire toasts a retired plan and the gone refusal, closing the drawer", () => {
   const toast = (d: object): string => {
     let out = "";

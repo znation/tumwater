@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
-import { retireBug, retirePlan } from "../src/backlog/backlog-write.js";
+import { retireBug, retirePlan, tryRetireBug } from "../src/backlog/backlog-write.js";
 import { fixedBugEntries, openBugs, plannedPlans, donePlans } from "../src/backlog/backlog.js";
 import { strandedPlanEntriesFor } from "../src/backlog/backlog-structure.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
@@ -220,6 +220,37 @@ test("retireBug moves the middle entry to ## Fixed as retired, keeping other byt
   assert.deepEqual(openBugs(repo), ["Alpha (found by the qa role 2026-11-01)"]);
   assert.equal(fixedBugEntries(repo).length, 1);
   assert.equal(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8"), plansBefore);
+});
+
+test("tryRetireBug answers moved for a stale title, gone out of range, and retires a title-matched bug with nothing else touched", () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "BUGS.md"), TWO_BUGS);
+  const before = fs.readFileSync(path.join(repo, "BUGS.md"), "utf8");
+
+  // A different heading at a real position answers moved with nothing written.
+  const moved = tryRetireBug(repo, 1, "Alpha (found by the qa role 2026-11-05)");
+  assert.deepEqual(moved, { status: "moved", title: "Alpha (found by the qa role 2026-11-01)" });
+  assert.equal(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), before);
+
+  // A position past the two-entry ## Open answers gone.
+  const gone = tryRetireBug(repo, 3, "Beta (found by the qa role 2026-11-02)");
+  assert.deepEqual(gone, { status: "gone" });
+  assert.equal(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), before);
+
+  // The exact heading retires Beta: the same ## Fixed record retireBug leaves (the title
+  // comparison runs under the lock, so no shifted duplicate is retired in its place).
+  const retired = tryRetireBug(repo, 2, "Beta (found by the qa role 2026-11-02)");
+  assert.equal(retired.status, "retired");
+  if (retired.status !== "retired") return;
+  assert.equal(retired.file, "BUGS.md");
+  assert.equal(retired.title, "Beta");
+  assert.match(retired.retiredOn, /^\d{4}-\d{2}-\d{2}$/);
+  const md = fs.readFileSync(path.join(repo, "BUGS.md"), "utf8");
+  assert.match(md, /## Open\n\n### Alpha \(found by the qa role 2026-11-01\)\n\nbody alpha/);
+  assert.match(
+    md,
+    /## Fixed\n\n### Beta \(found by the qa role 2026-11-02, retired \d{4}-\d{2}-\d{2} by the user\)\n\n\*\*Retired \d{4}-\d{2}-\d{2} by the user\*\*\n\nbody beta\n/,
+  );
 });
 
 test("retireBug records the reason in the first body line, and an unstamped heading gets a fresh parenthetical", () => {

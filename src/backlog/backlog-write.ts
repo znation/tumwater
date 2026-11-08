@@ -587,17 +587,40 @@ export type RetireEntryOutcome =
   | { status: "gone" }
   | { status: "moved"; title: string };
 
-/** The non-exiting, title-checked retire the dashboard calls: retireEntryLocked's move, but
- * the nth-entry lookup and the heading comparison both run inside the lock (withLocatedEntry,
- * like tryCancelEntry) — so a list that shifted since the poll answers gone/moved as data and
- * an out-of-range position never reaches readEntryLines' fail(), which would exit the serving
- * process. `expectedTitle` is the heading the caller saw (the status payload's `plans` string,
- * the same `### ` text as ActionableEntryRange.title). */
-export function tryRetirePlan(root: string, n: number, expectedTitle: string): RetireEntryOutcome {
-  return withLocatedEntry(root, "PLANS.md", "Planned", n, expectedTitle, ({ file, md, entry }) => ({
+/** The shared lock-and-locate half of the title-checked plan/bug retire the dashboard and the
+ * TUI call: tryRetirePlan's move, but the nth-entry lookup and the heading comparison both run
+ * inside the lock (withLocatedEntry, like tryCancelEntry) — so a list that shifted since the
+ * poll answers gone/moved as data and an out-of-range position never reaches readEntryLines'
+ * fail(), which would exit the serving process. The kind's own sections are passed in
+ * (PLANS.md Planned→Done, BUGS.md Open→Fixed), so plan and bug share the one lookup-and-move
+ * and the title comparison cannot drift between them. `expectedTitle` is the heading the caller
+ * saw (the status payload's `plans`/`bugs` string, the same `### ` text as
+ * ActionableEntryRange.title). */
+function tryRetireEntry(
+  root: string,
+  fileName: string,
+  fromSection: string,
+  toSection: string,
+  n: number,
+  expectedTitle: string,
+): RetireEntryOutcome {
+  return withLocatedEntry(root, fileName, fromSection, n, expectedTitle, ({ file, md, entry }) => ({
     status: "retired",
-    ...retireEntryAt(file, "PLANS.md", "Done", md.split("\n"), entry, null),
+    ...retireEntryAt(file, fileName, toSection, md.split("\n"), entry, null),
   }));
+}
+
+/** `tumwater plan --retire` and its dashboard/TUI twins, title-checked: tryRetireEntry over
+ * PLANS.md's Planned→Done, so a shifted ## Planned answers gone/moved as data. */
+export function tryRetirePlan(root: string, n: number, expectedTitle: string): RetireEntryOutcome {
+  return tryRetireEntry(root, "PLANS.md", "Planned", "Done", n, expectedTitle);
+}
+
+/** The title-checked bug twin of tryRetirePlan: the same locked move over BUGS.md's Open→Fixed,
+ * so the dashboard Bugs drawer and the TUI's Ctrl+Y retire an open bug with the same
+ * gone/moved refusals and the same retired record `tumwater bug --retire` leaves. */
+export function tryRetireBug(root: string, n: number, expectedTitle: string): RetireEntryOutcome {
+  return tryRetireEntry(root, "BUGS.md", "Open", "Fixed", n, expectedTitle);
 }
 
 /** The locked retire move shared by plan and bug: remove the `n`th `<fromSection>` entry whole
