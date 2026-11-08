@@ -18,10 +18,11 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { createMainWatch, knownMainFailures } from "../src/baseline/main-watch.js";
+import { baselineCache } from "../src/baseline/main-baseline.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { commitIn, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
-import { piRanMarker, withPi } from "./fakes/fake-pi.js";
+import { piRanMarker, withApprovePi, withPi } from "./fakes/fake-pi.js";
 import { gateCtx, reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
 import {
   buildCheckEvents,
@@ -131,15 +132,22 @@ test("a gate failure beyond the base's red failures is still rejected on a green
   });
 });
 
-// BUGS.md part 2/2: a policy scan's offender is now its own failing test name (the parent ▸
-// `violation <offender>` subtest de1abd5b7 named), so a change's new offender surfaces as a
-// failing test the base's red verdict never lists. `staleBaseFailures` excuses only tests the
-// base already failed; the change's own offender (src/b.ts:20) is not among them, so the change
-// is rejected for it instead of slipping past on the aggregate comment-width name.
+// BUGS.md part 2/2: a policy scan names each offender as its own failing test (`violation
+// <file>:<line> (<kind>)`, de1abd5b7), so a change's new offender surfaces as a failing test the
+// base's red verdict never lists. `staleBaseFailures` excuses only tests the base already failed;
+// the change's own offender (src/b.ts:20) is not among them, so the change is rejected for it
+// instead of slipping past on the aggregate comment-width name.
+const POLICY_TITLE = "every comment line in src/ and test/ fits in 100 columns and opens no block inside a block";
 const POLICY_BASE_FIXED_TOOL =
-  "#!/bin/sh\nout=0\n[ -f a-break.txt ] && { echo '✖ every comment line in src/ and test/ fits in 100 columns ▸ violation src/a.ts:10 (cols) (1ms)'; out=1; }\n[ -f b-break.txt ] && { echo '✖ every comment line in src/ and test/ fits in 100 columns ▸ violation src/b.ts:20 (cols) (1ms)'; out=1; }\nexit $out\n";
+  "#!/bin/sh\nout=0\n" +
+  `[ -f a-break.txt ] && { echo '✖ ${POLICY_TITLE} (1ms)'; echo '✖ violation src/a.ts:10 (cols) (1ms)'; out=1; }\n` +
+  `[ -f b-break.txt ] && { echo '✖ ${POLICY_TITLE} (1ms)'; echo '✖ violation src/b.ts:20 (cols) (1ms)'; out=1; }\n` +
+  "exit $out\n";
 
-test("a change's own policy offender beyond its red base's is rejected on a green main", async () => {
+/** A repo whose base is red on the comment-width scan at src/a.ts:10 and whose main has since
+ * fixed it. `newOffender` adds the change's own offender at src/b.ts:20; `oldVerdict` seeds the
+ * base verdict with only the aggregate title, as a saved verdict from before de1abd5b7 has. */
+async function policyStaleBaseFixture(opts: { newOffender: boolean; oldVerdict?: string }): Promise<{ root: string; wt: string }> {
   const root = makeRepo();
   fs.mkdirSync(path.join(root, "node_modules", ".bin"), { recursive: true });
   writeScript(path.join(root, "node_modules", ".bin", "buildcheck-tool"), POLICY_BASE_FIXED_TOOL);
@@ -147,25 +155,55 @@ test("a change's own policy offender beyond its red base's is rejected on a gree
   fs.writeFileSync(path.join(root, "a-break.txt"), "wide\n");
   sh(root, "git", "add", "a-break.txt", "package.json");
   sh(root, "git", "commit", "-m", "main carries one over-wide comment");
-  uniqueMain(root);
+  const base = uniqueMain(root);
   const watch = createMainWatch(root, "main");
-  watch.poll(mainSha(root), false, defaultConfig());
-  await watch.idle();
+  if (opts.oldVerdict !== undefined) {
+    baselineCache.set(base, { status: "red", sha: base, failingTests: [opts.oldVerdict] });
+  } else {
+    watch.poll(base, false, defaultConfig());
+    await watch.idle();
+  }
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.writeFileSync(path.join(wt, "package.json"), projManifest({ build: "buildcheck-tool" }));
   fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
-  fs.writeFileSync(path.join(wt, "b-break.txt"), "wide\n"); // the change's OWN new offender
+  if (opts.newOffender) fs.writeFileSync(path.join(wt, "b-break.txt"), "wide\n");
   commitIn(wt, "wip change");
   sh(root, "git", "rm", "a-break.txt");
   sh(root, "git", "commit", "-m", "main fixes its wide comment");
   watch.poll(mainSha(root), false, defaultConfig());
   await watch.idle();
   assert.deepEqual(knownMainFailures(root), [], "the newest verdict is green");
+  return { root, wt };
+}
+
+test("a change's own policy offender beyond its red base's is rejected on a green main", async () => {
+  const { root, wt } = await policyStaleBaseFixture({ newOffender: true });
   await withPi('true', async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     const reasons = String(eventsOfType(root, "review_rejected")[0]?.reasons);
     assert.match(reasons, /src\/b\.ts:20 \(cols\)/);
     assert.ok(!warningMessages(root).some((m) => m.includes("already failed")), "the stale-base excuse must not fire");
+  });
+});
+
+test("a change whose only policy offender is its red base's goes on to review", async () => {
+  const { root, wt } = await policyStaleBaseFixture({ newOffender: false });
+  await withApprovePi(async () => {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "approved");
+    assert.ok(
+      warningMessages(root).some((m) => m.includes("already failed") && m.includes(POLICY_TITLE)),
+      "the stale-base warning names the aggregate scan the base failed",
+    );
+  });
+});
+
+test("a base verdict saved before offender names keeps the name-only stale-base excuse", async () => {
+  const { root, wt } = await policyStaleBaseFixture({ newOffender: false, oldVerdict: POLICY_TITLE });
+  await withApprovePi(async () => {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "approved");
+    assert.ok(warningMessages(root).some((m) => m.includes("already failed")));
   });
 });

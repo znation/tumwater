@@ -37,11 +37,20 @@ interface GatePrecheckResult {
   knownMainFailures?: string[];
 }
 
+/** The prefix a policy scan gives each offender as its own failing test (`violation <file>:<line>
+ * (<kind>)`, test/comment-width.test.ts and its three siblings). A base verdict saved before that
+ * naming carries only the scan's aggregate title, so its offender subtests cannot match by name;
+ * treating those as gaps would reject a branch for its base's own offender. */
+const POLICY_OFFENDER_TEST_PREFIX = "violation ";
+
 /** The tests a gate failure shares with the change's own base, when that base is not main's tip:
  * the main watch recorded the base red with every one of them. A branch behind a fix fails the
  * old test on its base while main's tip is green (2026-10-20, report --role), so the tip verdict
  * alone is the wrong question. Null when the failures are not all the base's, the list may have
- * been cut short (the cap onlyKnownMainFailures uses), or git cannot say. */
+ * been cut short (the cap onlyKnownMainFailures uses), or git cannot say. A base verdict saved
+ * before policy scans named their offenders has only the aggregate title; then compare the
+ * names that verdict can hold and let its scan's offender subtests through, today's name-only
+ * behaviour. */
 async function staleBaseFailures(
   wt: string,
   mainBranch: string,
@@ -56,7 +65,11 @@ async function staleBaseFailures(
     const verdict = await watchedBaseline(wt, base);
     if (verdict?.status !== "red") return null;
     const baseFailed = verdict.failingTests ?? [];
-    if (!failingTests.every((t) => baseFailed.includes(t))) return null;
+    const baseNamesOffenders = baseFailed.some((t) => t.startsWith(POLICY_OFFENDER_TEST_PREFIX));
+    const comparable = baseNamesOffenders
+      ? [...failingTests]
+      : failingTests.filter((t) => !t.startsWith(POLICY_OFFENDER_TEST_PREFIX));
+    if (comparable.length === 0 || !comparable.every((t) => baseFailed.includes(t))) return null;
     return { base, tests: [...failingTests] };
   } catch {
     return null;
