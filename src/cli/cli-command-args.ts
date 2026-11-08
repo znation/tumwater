@@ -9,7 +9,7 @@
  * the prompt-file reads and the stdin memo — lives beside them in cli/cli-prompt-file.ts, the
  * cross-command prompt-source module. */
 
-import { failOverDurationCap, parseBranchFlag, parseDurationFlag, parsePositionFlag, rejectFlagLookingValue, rejectRepeatFlag } from "./cli-args.js";
+import { failOverDurationCap, parseBranchFlag, parseDurationFlag, parseGrepFlag, parsePositionFlag, rejectFlagLookingValue, rejectRepeatFlag } from "./cli-args.js";
 import { promptFileValue, readPromptFileArg, readPromptFileChecked } from "./cli-prompt-file.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import {
@@ -278,7 +278,7 @@ interface PromptFlags {
   topFlag: number;
   showFlag: number;
   fileFlag: number;
-  grepRaw: string | undefined;
+  grepRaw: string | null;
   grepClaim: number[];
   roleClaim: number[];
   attachPaths: string[];
@@ -298,7 +298,6 @@ interface PromptScan {
   showFlag: number;
   fileFlag: number;
   atFlag: number;
-  grepFlag: number;
   attachFlags: number[];
   roleFlag: number;
   followFlags: number[];
@@ -319,39 +318,52 @@ const PROMPT_MODE_EXCLUSIONS: readonly (readonly [string, string])[] = [
   ["--top", "--show"],
 ];
 
-/** The flag-vocabulary gate and the once-check: the unknown-double-dash gate, the eleven index
- * collections and rejectDuplicateFlags's once-check all ride here, one scan, one home. */
-function scanPromptFlags(args: string[]): PromptScan {
+/** The flag-vocabulary gate and the once-check: the unknown-double-dash gate, the index
+ * collections, rejectDuplicateFlags's once-check and the leftover-`--grep` repeat all ride
+ * here, one scan, one home. `consumed` holds the peeled `--grep` pair's positions — the flag
+ * token and its value token, which parsePromptFlags' parseGrepFlag already took as pattern
+ * text — so both are invisible to every collection here and a flag-shaped pattern cannot
+ * impersonate a rival flag, while the indices that remain still address the original args
+ * for the mode branches' stray-argument claims. */
+function scanPromptFlags(args: string[], consumed: ReadonlySet<number>): PromptScan {
   // The unknown-double-dash gate reads PROMPT_FLAG_SPECS, so the list its error names admits
   // exactly what the duplicate-flag check below accepts — one vocabulary, one message renderer.
-  rejectUnknownDoubleDash("prompt", args, PROMPT_FLAG_SPECS);
+  // The grep pair is peeled before the scan, so its value token never reaches the gate: a
+  // flag-shaped pattern is text, like every other --grep view.
+  const scanArgs = args.filter((_, i) => !consumed.has(i));
+  rejectUnknownDoubleDash("prompt", scanArgs, PROMPT_FLAG_SPECS);
+  const unpeeled = (i: number) => !consumed.has(i);
   // --json's positions, collected in one pass: the list branch's stray-argument claim and
   // json flag need the indices (the once-check rides rejectDuplicateFlags below).
-  const jsonFlags = args.flatMap((a, i) => (a === "--json" ? [i] : []));
-  const listFlag = args.indexOf("--list");
-  const cancelFlag = args.indexOf("--cancel");
-  const editFlag = args.indexOf("--edit");
-  const topFlag = args.indexOf("--top");
-  const showFlag = args.indexOf("--show");
-  const fileFlag = args.indexOf("--file");
-  const atFlag = args.indexOf("--at");
-  const grepFlag = args.indexOf("--grep");
+  const jsonFlags = args.flatMap((a, i) => (a === "--json" && unpeeled(i) ? [i] : []));
+  const listFlag = args.findIndex((a, i) => a === "--list" && unpeeled(i));
+  const cancelFlag = args.findIndex((a, i) => a === "--cancel" && unpeeled(i));
+  const editFlag = args.findIndex((a, i) => a === "--edit" && unpeeled(i));
+  const topFlag = args.findIndex((a, i) => a === "--top" && unpeeled(i));
+  const showFlag = args.findIndex((a, i) => a === "--show" && unpeeled(i));
+  const fileFlag = args.findIndex((a, i) => a === "--file" && unpeeled(i));
+  const atFlag = args.findIndex((a, i) => a === "--at" && unpeeled(i));
   // -f/--follow's positions, like --json's: the list branch claims them in its stray-argument
   // accounting, and the enqueue branch refuses the --follow spelling by name before it can be
-  // baked into the queued text (the -f spelling stays free-form content in that mode).
-  const followFlags = args.flatMap((a, i) => (FOLLOW_FLAG.names.includes(a) ? [i] : []));
+  // baked into the queued text (the -f spelling stays free-form content in that mode). A token
+  // in the peeled grep pair is gone, so it is never a follow flag here.
+  const followFlags = args.flatMap((a, i) => (FOLLOW_FLAG.names.includes(a) && unpeeled(i) ? [i] : []));
   // --attach is repeatable: every occurrence claims itself and its value token, like --role's
   // single pair, so the pairs ride out of the prompt text in every mode.
-  const attachFlags = args.flatMap((a, i) => (a === "--attach" ? [i] : []));
-  const roleFlag = args.indexOf("--role");
+  const attachFlags = args.flatMap((a, i) => (a === "--attach" && unpeeled(i) ? [i] : []));
+  const roleFlag = args.findIndex((a, i) => a === "--role" && unpeeled(i));
   // --attach is repeatable, so the once-check skips it. Follow is checked by parsePromptFollow
   // instead of the raw occurrence count here: a `-f` in a valued flag's slot is that flag's
   // value, so only an unconsumed follow token is a repeat.
   const known = PROMPT_FLAG_SPECS.flatMap((s) => s.names).filter(
     (f) => f !== "--attach" && !FOLLOW_FLAG.names.includes(f),
   );
-  rejectDuplicateFlags(args, known);
-  return { jsonFlags, listFlag, cancelFlag, editFlag, topFlag, showFlag, fileFlag, atFlag, grepFlag, attachFlags, roleFlag, followFlags };
+  rejectDuplicateFlags(scanArgs, known);
+  // A `--grep` beyond the peeled first is a duplicate, not a second filter: parseGrepFlag only
+  // peels one pair, so a second --grep token survives into the scan and is refused by name
+  // like any other repeated flag.
+  if (args.some((a, i) => a === "--grep" && unpeeled(i))) rejectRepeatFlag(true, "--grep");
+  return { jsonFlags, listFlag, cancelFlag, editFlag, topFlag, showFlag, fileFlag, atFlag, attachFlags, roleFlag, followFlags };
 }
 
 /** The ten mode mutual exclusions: the mutually-exclusive `--list`/`--cancel`/`--edit`/
@@ -393,14 +405,18 @@ function assertPromptJsonListOnly(scan: PromptScan): void {
   if (scan.jsonFlags.length > 0 && scan.listFlag < 0 && scan.showFlag < 0) fail("--json only applies to --list");
 }
 
-/** The `--grep <text>` value pair and its list-only refusal, verbatim. */
-function parsePromptGrep(args: string[], scan: PromptScan): { grepRaw: string | undefined; grepClaim: number[] } {
-  if (scan.grepFlag >= 0 && scan.listFlag < 0) fail("--grep only applies to --list");
-  const grepRaw = scan.grepFlag >= 0 ? args[scan.grepFlag + 1] : undefined;
-  if (scan.grepFlag >= 0 && (!grepRaw || grepRaw.startsWith("--"))) {
-    fail("--grep needs text (usage: tumwater prompt --list --grep <text>)");
-  }
-  const grepClaim = pairClaim(scan.grepFlag);
+/** The missing-or-empty `--grep` wording parseGrepFlag's own fail uses (parsePromptFlags
+ * peels --grep with it, like every sibling filtering view). */
+const PROMPT_GREP_VALUE_ERROR = "--grep needs text (usage: tumwater prompt --list --grep <text>)";
+
+/** The `--grep <text>` list-only gate and its pair claim, verbatim. parseGrepFlag — peeled
+ * by parsePromptFlags ahead of this — already refuses a missing or empty pattern and treats
+ * a flag-shaped value token as the pattern, so only the --list-only refusal remains here,
+ * beside the flag-and-value claim computed from the original --grep index so the
+ * stray-argument accounting excuses both tokens in every mode. */
+function parsePromptGrep(grepRaw: string | null, listFlag: number, grepFlag: number): { grepRaw: string | null; grepClaim: number[] } {
+  if (grepRaw !== null && listFlag < 0) fail("--grep only applies to --list");
+  const grepClaim = pairClaim(grepFlag);
   return { grepRaw, grepClaim };
 }
 
@@ -408,12 +424,13 @@ function parsePromptGrep(args: string[], scan: PromptScan): { grepRaw: string | 
  * list mode the `-f` spelling is free-form content (the free-form rule), while the `--follow`
  * spelling names the missing `--list` instead of being baked into the queued text. A token in
  * a valued flag's value slot is that flag's value, not the follow flag: `--list --grep -f`
- * keeps `-f` as the literal pattern (claimed by grepClaim, unclaimed here), and
- * `--list --follow --grep -f` still follows with that pattern. Only the value-slot occurrence
- * is excluded; any other `-f`/`--follow` token still claims itself. */
+ * keeps `-f` as the literal pattern (the peeled grep pair already removes the token, so the
+ * value-slot table below covers only the other valued flags), and `--list --follow --grep -f`
+ * still follows with that pattern. Only the value-slot occurrence is excluded; any other
+ * `-f`/`--follow` token still claims itself. */
 function parsePromptFollow(args: string[], scan: PromptScan): { followClaim: number[] } {
   const valueSlots = new Set<number>();
-  for (const flagIndex of [scan.grepFlag, scan.roleFlag, scan.fileFlag, scan.atFlag, scan.cancelFlag, scan.editFlag, scan.topFlag, scan.showFlag, ...scan.attachFlags]) {
+  for (const flagIndex of [scan.roleFlag, scan.fileFlag, scan.atFlag, scan.cancelFlag, scan.editFlag, scan.topFlag, scan.showFlag, ...scan.attachFlags]) {
     if (flagIndex >= 0) valueSlots.add(flagIndex + 1);
   }
   const followClaim = scan.followFlags.filter((i) => !valueSlots.has(i));
@@ -489,11 +506,20 @@ function parsePromptDeferral(args: string[], atFlag: number): { atDelayMs: numbe
  * parsePromptAttachments and parsePromptDeferral — so a check is found by name. Returns a
  * struct the mode branches read. */
 function parsePromptFlags(args: string[]): PromptFlags {
-  const scan = scanPromptFlags(args);
+  // Peel --grep's pair before the flag scan, matching the sibling filtering views (logs,
+  // history, reviews, salvage): a flag-shaped pattern (`--list --grep --show`) is grep TEXT,
+  // not the flag it spells — parseGrepFlag owns the missing/empty-value refusal, and its value
+  // token is skipped by the scan below (via `consumed`) so the pattern cannot impersonate a
+  // rival flag or become a stray claim. The list-only gate still reads the sanitized --list
+  // index, and the pair claim comes from the original --grep index.
+  const { pattern: grepPattern } = parseGrepFlag(args, PROMPT_GREP_VALUE_ERROR);
+  const grepFlag = args.indexOf("--grep");
+  const consumed = new Set(grepFlag >= 0 ? [grepFlag, grepFlag + 1] : []);
+  const scan = scanPromptFlags(args, consumed);
   assertPromptModesDisjoint(scan);
   const { role, roleClaim } = parsePromptRole(args, scan.roleFlag);
   assertPromptJsonListOnly(scan);
-  const { grepRaw, grepClaim } = parsePromptGrep(args, scan);
+  const { grepRaw, grepClaim } = parsePromptGrep(grepPattern, scan.listFlag, grepFlag);
   const { followClaim } = parsePromptFollow(args, scan);
   assertPromptQueueOnlyFlags(scan);
   const { attachPaths, attachClaims } = parsePromptAttachments(args, scan.attachFlags);

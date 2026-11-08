@@ -205,6 +205,37 @@ test("prompt --list --grep -f treats -f as the literal pattern, one snapshot, th
   assert.equal((r.stdout.match(/the -f flag in the prompt/g) ?? []).length, 1, "one snapshot frame, then it exited");
 });
 
+test("prompt --list --grep --follow treats --follow as the literal pattern, one snapshot, then it exits", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "prompt list grep follow spelling");
+  submitPrompt(repo, "the --follow flag as text");
+  // The pattern "--follow" is the grep's value token, not the follow flag: the command prints
+  // one snapshot and exits. cli() bounds the run at 60 s, so a plain exit-0 with one matched
+  // frame IS the assertion — a follow would never exit on its own.
+  const r = await cli(repo, "prompt", "--list", "--grep", "--follow");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /the --follow flag as text/);
+  assert.equal((r.stdout.match(/the --follow flag as text/g) ?? []).length, 1, "one snapshot frame, then it exited");
+});
+
+test("prompt --list --follow --grep --follow follows with the literal second --follow as pattern", async (t) => {
+  const repo = await seedPromptRepo("prompt list follow grep follow spelling");
+  const parent = { value: 4242 };
+  const out = await runFollow(
+    t,
+    repo,
+    ["--list", "--follow", "--grep", "--follow"],
+    { ppid: () => parent.value, intervalMs: 5, tty: false },
+    3,
+    (o) => (o.match(/no queued prompt matches "--follow"/g) ?? []).length,
+    () => (parent.value = 1),
+  );
+  // The first --follow is the real follow flag (the live view repaints every tick); the second
+  // --follow is grep's literal pattern — no seeded prompt contains it, so every frame prints
+  // the no-match line, and three frames mean it followed rather than exiting after one snapshot.
+  assert.match(out, /no queued prompt matches "--follow"/);
+});
+
 test("prompt -f enqueues -f as prompt content; prompt --follow without --list is refused", async () => {
   const repo = makeRepo();
   await initProject(repo, "prompt follow single dash");

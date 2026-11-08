@@ -687,6 +687,41 @@ test("prompt --list --grep keeps matching prompts under their unfiltered numbers
   assert.match(r.stdout, /^no queued prompt matches "nothing-here"$/m);
 });
 
+test("prompt --list --grep treats a flag-shaped pattern as text, not the flag it spells", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt list grep flag-shaped");
+  submitPrompt(repo, "first task");
+  submitPrompt(repo, "add a --show toggle");
+  submitRolePrompt(repo, "qa", "qa one");
+  submitRolePrompt(repo, "qa", "log --json rows");
+  submitRolePrompt(repo, "readme", "readme one");
+  submitRolePrompt(repo, "readme", "document --cancel flow");
+
+  // Each flag-shaped pattern is grep's literal text: the matching prompt prints under its
+  // unfiltered per-role position, and no mode, serialization or rival flag engages.
+  for (const [pattern, role, text] of [
+    ["--show", "director", "add a --show toggle"],
+    ["--json", "qa", "log --json rows"],
+    ["--cancel", "readme", "document --cancel flow"],
+  ] as const) {
+    const r = await cli(repo, "prompt", "--list", "--grep", pattern);
+    assert.equal(r.code, 0, `--list --grep ${pattern} should list`);
+    assert.ok(r.stdout.includes(`${role}:`), `keeps the ${role} section for pattern ${pattern}`);
+    assert.ok(r.stdout.includes(`2. ${text}`), `keeps ${text} at its unfiltered position for pattern ${pattern}`);
+    assert.ok(!r.stdout.includes("first task") && !r.stdout.includes("qa one") && !r.stdout.includes("readme one"), `excludes non-matching rows for pattern ${pattern}`);
+  }
+
+  // --json is the pattern here, not the format flag: the output is still the prose list.
+  let r = await cli(repo, "prompt", "--list", "--grep", "--json");
+  assert.equal(r.code, 0);
+  assert.ok(!r.stdout.startsWith("{"), "--grep --json prints the prose list, not a JSON document");
+
+  // The no-match fixture keeps the existing prose, naming the literal pattern.
+  r = await cli(repo, "prompt", "--list", "--grep", "--show", "--role", "qa");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^no queued prompt matches "--show"$/m);
+});
+
 test("prompt --list --grep rejects a missing value, a repeat, and non-list modes", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli prompt grep reject");
