@@ -60,6 +60,12 @@ test("prompt --show --role scopes to that role's queue", async () => {
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /^qa #2 \(queued \d+[smh] ago\)$/m);
   assert.ok(r.stdout.includes("qa two"), `shows qa's second prompt:\n${r.stdout}`);
+
+  // A position past that role's own queue is a miss, with the same out-of-range wording
+  // --cancel --role prints — not the "already took it" race reply.
+  const miss = await cli(repo, "prompt", "--show", "3", "--role", "qa");
+  assert.equal(miss.code, 1);
+  assert.match(miss.stderr, /no prompt at position 3 .*2 in the inbox/);
 });
 
 test("prompt --show without --role reports a shared position as ambiguous and a miss as missing", async () => {

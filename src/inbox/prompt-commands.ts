@@ -317,13 +317,23 @@ function runPromptShow(root: string, position: number, role: string | null, json
   // The same list-wide position resolution --cancel makes (ambiguity/miss wordings included),
   // then one pass of the same queuedListRows --list renders, so --show can never disagree
   // with the list's numbering, the role a position addresses, or the age/countdown wording.
-  // A --role-scoped show reads that role's queue directly, like the cancel branch's role
-  // path; a row read as empty here — a position past the queue, or a file that vanished
-  // between resolution and read — is the same concurrent-dequeue race the other verbs report
-  // as gone.
+  // The position is addressed by queue-file name, like --cancel: a row that vanishes between
+  // the listing and the read reports gone instead of showing whichever prompt shifted into
+  // its place. A --role-scoped show reads that role's queue directly, so an out-of-range
+  // position there is a miss (the shared --cancel wording, via queuedFileAtPosition), not a
+  // concurrent dequeue.
   const targetRole = role ?? resolveListedRole(root, position);
-  const rows = queuedListRows(root, targetRole, listWideScope(root));
-  const row = rows[position - 1];
+  let file: string;
+  try {
+    file = path.basename(queuedFileAtPosition(root, targetRole, position));
+  } catch (err) {
+    if (role === null) {
+      sayPromptGone(position, targetRole);
+      return;
+    }
+    return fail(errorMessage(err));
+  }
+  const row = queuedListRows(root, targetRole, listWideScope(root)).find((r) => r.file === file);
   if (row === undefined) {
     sayPromptGone(position, targetRole);
     return;
