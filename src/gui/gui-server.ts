@@ -188,6 +188,132 @@ function recordServerError(root: string, err: unknown): void {
   }
 }
 
+/** The `watch` seams startGui's reload wiring accepts: the self-reload watch's injectables
+ * (ReloadWatchSeams), the re-exec itself, and the supervised child's supervisor watch plus
+ * its exit — startGui's `watch` parameter, and the shape armGuiReloadWatches consumes. */
+type GuiWatchSeams = ReloadWatchSeams & {
+  reexec?: () => void;
+  supervisor?: SupervisorWatchSeams;
+  exit?: (code: number) => void;
+};
+
+/** The pre-routing refusal sequence `startGui` runs before dispatch, one gate ahead of every
+ * route: a rebinding Host on a loopback-bound server, a missing or wrong bearer/query token
+ * on a token-gated server, and a state-changing cross-origin POST — in that order. Writes
+ * each gate's JSON refusal itself and returns true when the request is refused, false when
+ * it may route, so one name answers "which requests are refused before routing, and in what
+ * order?". */
+function refuseGuiRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  target: URL | null,
+  allInterfaces: boolean,
+  token: string,
+): boolean {
+  // DNS-rebinding gate, ahead of every route on a loopback-bound server: a hostile page
+  // whose domain resolves to 127.0.0.1 is same-origin with this server, so the
+  // cross-origin gate below cannot tell its requests from the dashboard's — but its
+  // Host header must name the attacker's domain, which a request to the loopback
+  // dashboard never legitimately does. Refusing that Host blocks the read endpoints
+  // (status, config, transcripts) and the state-changing POSTs together. An
+  // all-interfaces server is deliberately network-facing, so it keeps accepting every
+  // Host (the operator's exposure choice); a token, if set, still gates it.
+  if (!allInterfaces && !loopbackHostAllowed(req.headers.host ?? "")) {
+    sendJson(res, 403, {
+      error: "request Host is not this loopback dashboard's — a rebinding name is refused",
+    });
+    return true;
+  }
+  // Opt-in shared-token gate, ahead of every route: with a token set, the page and all
+  // /api endpoints require it as `Authorization: Bearer <token>` or `?token=`; anything
+  // else — including `GET /` — gets the same JSON 401 every handler uses, deliberately
+  // no HTML login form: the CLI prints the token-bearing URL, and a bare 401 body is the
+  // honest signal that the URL needs `?token=`.
+  if (token) {
+    const auth = req.headers.authorization ?? "";
+    const bearer = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
+    const provided = bearer || target?.searchParams.get("token") || "";
+    if (!tokenMatches(token, provided)) {
+      sendJson(res, 401, { error: "token required" });
+      return true;
+    }
+  }
+  // Cross-origin gate, ahead of every state-changing route: a hostile webpage can POST
+  // to the open localhost server with a CORS-safelisted text/plain body (no preflight,
+  // no readable response) and the side effect alone is the payload — a forged director
+  // prompt, a team pause, an abort. Browsers mark every cross-site POST with an Origin
+  // naming the hostile server, so one header check here refuses the forgery while the
+  // dashboard's own POSTs (same-host Origin) and non-browser clients (no Origin) pass.
+  if (req.method === "POST" && crossOriginRequest(req)) {
+    sendJson(res, 403, {
+      error: "cross-origin request rejected — dashboard POSTs must come from this dashboard's own origin",
+    });
+    return true;
+  }
+  return false;
+}
+
+/** The listen contract: resolve once the server is listening, reject once on a bind error,
+ * and replace the one-shot rejection listener with the post-listen recorder so a socket
+ * error after the listen is visible in the event feed instead of a rejected settled
+ * promise. One name answers "how does the server bind and resolve once listening?". */
+function startGuiListener(
+  server: http.Server,
+  port: number,
+  allInterfaces: boolean,
+  root: string,
+): Promise<http.Server> {
+  return new Promise((resolve, reject) => {
+    const onListenError = (err: Error): void => reject(err);
+    server.once("error", onListenError);
+    const onListening = (): void => {
+      // The listen-time listener must not outlive the listen: an 'error' after this point
+      // would call reject on a settled promise and be swallowed. Replace it with a handler
+      // that records the failure, so a post-listen socket error (EMFILE on accept, …) is
+      // visible in the event feed instead of silently leaving a dead dashboard.
+      server.removeListener("error", onListenError);
+      server.on("error", (err) => recordServerError(root, err));
+      resolve(server);
+    };
+    const host = guiBindHost(allInterfaces);
+    if (host === undefined) server.listen(port, onListening);
+    else server.listen(port, host, onListening);
+  });
+}
+
+/** The reload and supervisor watches that outlive the listen, armed once and stopped together:
+ * the self-reload watch (close the server, then re-exec) and the supervisor watch that stops
+ * the reload watch, frees the port and exits when the reload supervisor dies without a
+ * respawn — one name answers "which reload watches outlive the listen?". */
+function armGuiReloadWatches(
+  root: string,
+  startupBuild: ReturnType<typeof captureStartupBuild>,
+  server: http.Server,
+  watch: GuiWatchSeams,
+): void {
+  // Reload onto a newer compiled tree: close the server, then re-exec. The page's own poll sees
+  // the new process's changed serverBuildSha and reloads; failed polls while the port is down
+  // are swallowed by its existing catch.
+  const reloadWatch = createReloadWatch({
+    root,
+    startupInfo: startupBuild,
+    ...watch,
+    onTrigger: () => {
+      server.close();
+      (watch.reexec ?? reexecSelf)();
+    },
+  });
+  void reloadWatch.start();
+  // A reloaded child whose reload supervisor died outright: nothing will respawn or stop it,
+  // so it frees the port and exits instead of serving on at PPID 1.
+  const stopSupervisorWatch = watchReloadSupervisor(() => {
+    reloadWatch.stop();
+    server.close();
+    (watch.exit ?? process.exit)(0);
+  }, watch.supervisor);
+  server.once("close", stopSupervisorWatch);
+}
+
 /** Start the dashboard server. Binds to 127.0.0.1 by default; with `allInterfaces` it
  * binds the unspecified address (every interface, IPv4 and IPv6), making the dashboard —
  * including the director prompt box, which anyone reaching it can use to steer the team —
@@ -208,11 +334,7 @@ export function startGui(
   port: number,
   allInterfaces = false,
   token = "",
-  watch: ReloadWatchSeams & {
-    reexec?: () => void;
-    supervisor?: SupervisorWatchSeams;
-    exit?: (code: number) => void;
-  } = {},
+  watch: GuiWatchSeams = {},
 ): Promise<http.Server> {
   // The serving process's own startup stamp: added to every /api/status payload so the page can
   // notice a newer server (a redeploy or manual build re-execs this process) and reload itself.
@@ -299,46 +421,7 @@ export function startGui(
     try {
       const target = parseRequestTarget(req);
       const pathname = target?.pathname ?? null;
-      // DNS-rebinding gate, ahead of every route on a loopback-bound server: a hostile page
-      // whose domain resolves to 127.0.0.1 is same-origin with this server, so the
-      // cross-origin gate below cannot tell its requests from the dashboard's — but its
-      // Host header must name the attacker's domain, which a request to the loopback
-      // dashboard never legitimately does. Refusing that Host blocks the read endpoints
-      // (status, config, transcripts) and the state-changing POSTs together. An
-      // all-interfaces server is deliberately network-facing, so it keeps accepting every
-      // Host (the operator's exposure choice); a token, if set, still gates it.
-      if (!allInterfaces && !loopbackHostAllowed(req.headers.host ?? "")) {
-        sendJson(res, 403, {
-          error: "request Host is not this loopback dashboard's — a rebinding name is refused",
-        });
-        return;
-      }
-      // Opt-in shared-token gate, ahead of every route: with a token set, the page and all
-      // /api endpoints require it as `Authorization: Bearer <token>` or `?token=`; anything
-      // else — including `GET /` — gets the same JSON 401 every handler uses, deliberately
-      // no HTML login form: the CLI prints the token-bearing URL, and a bare 401 body is the
-      // honest signal that the URL needs `?token=`.
-      if (token) {
-        const auth = req.headers.authorization ?? "";
-        const bearer = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
-        const provided = bearer || target?.searchParams.get("token") || "";
-        if (!tokenMatches(token, provided)) {
-          sendJson(res, 401, { error: "token required" });
-          return;
-        }
-      }
-      // Cross-origin gate, ahead of every state-changing route: a hostile webpage can POST
-      // to the open localhost server with a CORS-safelisted text/plain body (no preflight,
-      // no readable response) and the side effect alone is the payload — a forged director
-      // prompt, a team pause, an abort. Browsers mark every cross-site POST with an Origin
-      // naming the hostile server, so one header check here refuses the forgery while the
-      // dashboard's own POSTs (same-host Origin) and non-browser clients (no Origin) pass.
-      if (req.method === "POST" && crossOriginRequest(req)) {
-        sendJson(res, 403, {
-          error: "cross-origin request rejected — dashboard POSTs must come from this dashboard's own origin",
-        });
-        return;
-      }
+      if (refuseGuiRequest(req, res, target, allInterfaces, token)) return;
       const route = guiRoutes[`${req.method ?? ""} ${pathname ?? ""}`];
       if (route) await route(req, res, target!);
       else {
@@ -356,41 +439,6 @@ export function startGui(
       sendJson(res, 500, { error: errorMessage(err) });
     }
   });
-  // Reload onto a newer compiled tree: close the server, then re-exec. The page's own poll sees
-  // the new process's changed serverBuildSha and reloads; failed polls while the port is down
-  // are swallowed by its existing catch.
-  const reloadWatch = createReloadWatch({
-    root,
-    startupInfo: startupBuild,
-    ...watch,
-    onTrigger: () => {
-      server.close();
-      (watch.reexec ?? reexecSelf)();
-    },
-  });
-  void reloadWatch.start();
-  // A reloaded child whose reload supervisor died outright: nothing will respawn or stop it,
-  // so it frees the port and exits instead of serving on at PPID 1.
-  const stopSupervisorWatch = watchReloadSupervisor(() => {
-    reloadWatch.stop();
-    server.close();
-    (watch.exit ?? process.exit)(0);
-  }, watch.supervisor);
-  server.once("close", stopSupervisorWatch);
-  return new Promise((resolve, reject) => {
-    const onListenError = (err: Error): void => reject(err);
-    server.once("error", onListenError);
-    const onListening = (): void => {
-      // The listen-time listener must not outlive the listen: an 'error' after this point
-      // would call reject on a settled promise and be swallowed. Replace it with a handler
-      // that records the failure, so a post-listen socket error (EMFILE on accept, …) is
-      // visible in the event feed instead of silently leaving a dead dashboard.
-      server.removeListener("error", onListenError);
-      server.on("error", (err) => recordServerError(root, err));
-      resolve(server);
-    };
-    const host = guiBindHost(allInterfaces);
-    if (host === undefined) server.listen(port, onListening);
-    else server.listen(port, host, onListening);
-  });
+  armGuiReloadWatches(root, startupBuild, server, watch);
+  return startGuiListener(server, port, allInterfaces, root);
 }
