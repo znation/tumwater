@@ -271,6 +271,10 @@ interface TuiKeysState {
   /** The Backlog pane's Ready-only filter (Ctrl+O): whether the list keeps only the open plans
    * and bugs no hold keeps from being picked, the terminal twin of `tumwater backlog --ready`. */
   backlogReadyOnly: boolean;
+  /** The Backlog pane's Held-only filter (Ctrl+O): whether the list keeps only the open plans
+   * and bugs a hold keeps from being picked, the terminal twin of `tumwater backlog --held`.
+   * The two stops are mutually exclusive by construction. */
+  backlogHeldOnly: boolean;
   transcriptGrep: string | null;
   /** The History pane's session model filter (Ctrl+X), or null for every model; named in the
    * pane's `model:` header and in the hint line. */

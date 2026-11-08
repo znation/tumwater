@@ -421,7 +421,7 @@ test("history recall: a submitted prompt comes back on Up", () => {
   assert.equal(keys.state().input, "", "Down past the newest entry returns to the blank line");
 });
 
-test("Ctrl+O on the Backlog view toggles ready-only", () => {
+test("Ctrl+O on the Backlog view cycles the all/ready/held filter stops", () => {
   const root = makeRoot();
   fs.writeFileSync(path.join(root, "PLANS.md"), "## Planned\n\n### A plan (planned 2026-10-02 by test)\n\nbody\n");
   const { keys } = makeKeys(root, () => 0);
@@ -430,13 +430,60 @@ test("Ctrl+O on the Backlog view toggles ready-only", () => {
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → backlog (roleIds.length+1 = 1)
   assert.equal(keys.state().view, 1);
   assert.equal(keys.state().backlogReadyOnly, false, "off by default");
+  assert.equal(keys.state().backlogHeldOnly, false, "held off by default");
   keys.handleKey(undefined, { ctrl: true, name: "o" });
-  assert.equal(keys.state().backlogReadyOnly, true, "the first Ctrl+O turns Ready only on");
+  assert.equal(keys.state().backlogReadyOnly, true, "the first Ctrl+O reaches Ready only");
+  assert.equal(keys.state().backlogHeldOnly, false, "the first Ctrl+O is not Held only");
   keys.handleKey(undefined, { ctrl: true, name: "o" });
-  assert.equal(keys.state().backlogReadyOnly, false, "the second Ctrl+O restores the full list");
+  assert.equal(keys.state().backlogReadyOnly, false, "the second Ctrl+O leaves Ready only");
+  assert.equal(keys.state().backlogHeldOnly, true, "the second Ctrl+O reaches Held only");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().backlogReadyOnly, false, "the third Ctrl+O is neither stop");
+  assert.equal(keys.state().backlogHeldOnly, false, "the third Ctrl+O returns to all");
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage (a non-Backlog view)
   keys.handleKey(undefined, { ctrl: true, name: "o" });
   assert.equal(keys.state().backlogReadyOnly, false, "Ctrl+O on a non-Backlog view never sets it");
+  assert.equal(keys.state().backlogHeldOnly, false, "Ctrl+O on a non-Backlog view never sets it either");
+});
+
+test("backlog Ctrl+O's Held-only stop steps only through held entries of every hold kind", () => {
+  const root = makeRoot();
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    "## Planned\n\n### Ready plan (planned 2026-10-02 by test)\n\nbody\n\n" +
+      "### Needs review plan (planned 2026-10-02 by test)\n\n**Needs review 2026-10-10 by feature: too large for one run**\n" +
+      "\n## Done\n\n_None yet._\n",
+  );
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Open\n\n### Ready bug (found by test 2026-10-02)\n\nbody\n\n" +
+      "### Refused bug (found by test 2026-10-02)\n\nbody\n\n**Refused 2026-10-02 by feature: no**\n\n" +
+      "### Waiting bug (found by test 2026-10-02)\n\nbody\n\n**Needs review 2026-10-10 by bugfix: waiting for a recurrence**\n" +
+      "\n## Fixed\n\n_None yet._\n",
+  );
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), "## Open\n\n### A question (asked by test 2026-10-02)\n\nbody\n");
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.setLineBudgets(5, 4);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → backlog
+  keys.handleKey(undefined, { ctrl: true, name: "o" }); // → ready
+  keys.handleKey(undefined, { ctrl: true, name: "o" }); // → held
+  assert.equal(keys.state().backlogHeldOnly, true, "two Ctrl+O presses reach the Held-only stop");
+  assert.equal(keys.state().selectedEntry, null, "changing the stop clears the selection");
+  // The flat list is ready plan (0), needs-review plan (1), ready bug (2), refused bug (3),
+  // awaiting-recurrence bug (4), question (5); under Held-only up/down step only the held
+  // indexes 1, 3 and 4, wrapping at that list's ends.
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedEntry, 1, "the first held row is the Needs-review plan");
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedEntry, 3, "the second held row is the Refused bug");
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedEntry, 4, "the third held row is the awaiting-recurrence bug");
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedEntry, 1, "down wraps to the first held row");
+  keys.handleKey(undefined, { name: "up" });
+  assert.equal(keys.state().selectedEntry, 4, "up from the first wraps to the last held row");
+  assert.equal(keys.state().entryScroll, 0, "a newly opened held entry starts at its head");
 });
 
 test("Ctrl+T cycles the views and PgDn/PgUp page a selected backlog entry's body", () => {

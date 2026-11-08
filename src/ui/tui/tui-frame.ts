@@ -200,7 +200,7 @@ function transcriptKeyHints(view: Extract<TuiView, { kind: "transcript" }>): Arr
 
 /** The backlog pane's keys: entry selection, search, and the per-entry actions. */
 function backlogKeyHints(): Array<[string, string]> {
-  return [["Enter", "send"], ["↑↓", "open entries"], ["/", "search entries"], ["Ctrl+O", "ready only"], ["Ctrl+X", "cancel entry"], ["Ctrl+R", "release entry"], ["Ctrl+Y", "retire plan/bug"], ["Ctrl+V", "top entry"], ["Ctrl+E", "edit entry"], ["Ctrl+N", "new plan/bug"], ["Ctrl+A", "answer question"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  return [["Enter", "send"], ["↑↓", "open entries"], ["/", "search entries"], ["Ctrl+O", "filter: ready/held"], ["Ctrl+X", "cancel entry"], ["Ctrl+R", "release entry"], ["Ctrl+Y", "retire plan/bug"], ["Ctrl+V", "top entry"], ["Ctrl+E", "edit entry"], ["Ctrl+N", "new plan/bug"], ["Ctrl+A", "answer question"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
 }
 
 /** The usage/failures pane's keys: the history navigation, scope and window, and the failure

@@ -34,6 +34,11 @@ interface TuiPaneState {
   /** The Backlog pane's Ready-only filter (Ctrl+O): the list keeps only the open plans and
    * bugs no hold keeps from being picked (null = full list). */
   backlogReadyOnly?: boolean;
+  /** The Backlog pane's Held-only filter (Ctrl+O): the list keeps only the open plans and
+   * bugs a hold keeps from being picked (only entries whose hold is non-null; ready rows,
+   * questions and the answered/done/fixed rows all carry a null hold and drop). The two
+   * stops are mutually exclusive by construction. */
+  backlogHeldOnly?: boolean;
 
   /** The Queued pane's row selection (null = list mode) and the rows it indexes (the same
    * renderQueuedList traversal `tumwater prompt --list` prints). A set selection shows the
@@ -187,9 +192,17 @@ function backlogBody(_pane: Extract<TuiView, { kind: "backlog" }>, opts: PaneBod
   // fixed rows are read-only and hidden while a search is applied); entry mode still opens
   // `flat[sel]`, the unfiltered index the selection holds.
   const grep = state.backlogGrep ?? null;
+  // The Held-only stop keeps only the open entries a hold keeps from being picked: ready rows,
+  // questions and the answered/done/fixed rows all carry a null hold and drop under it, where
+  // the Ready-only stop drops only the held open entries and keeps everything else.
+  const heldOnly = state.backlogHeldOnly === true;
   const shown = flat.filter((e) => {
     if (grep !== null && !(isOpenBacklogLabel(e.label) && entryMatches(e, grep))) return false;
-    if (state.backlogReadyOnly && isOpenBacklogLabel(e.label) && e.hold !== null) return false;
+    if (heldOnly) {
+      if (!isOpenBacklogLabel(e.label) || e.hold === null || e.hold === undefined) return false;
+    } else if (state.backlogReadyOnly && isOpenBacklogLabel(e.label) && e.hold !== null) {
+      return false;
+    }
     return true;
   });
   // A stale selection (an entry removed since the last render) clamps to the last; no
@@ -218,17 +231,27 @@ function backlogBody(_pane: Extract<TuiView, { kind: "backlog" }>, opts: PaneBod
       };
     }
     // The newest answered questions follow the open ones: they are in `flat` (up/down open
-    // their bodies), but no edit key acts on them.
-    const answered = answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS).map((q) =>
+    // their bodies), but no edit key acts on them. The Held-only stop drops them and the
+    // done/fixed rows too (an answered question or finished entry carries a null hold).
+    const answered = heldOnly ? [] : answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS).map((q) =>
       q.decision ? `${q.title} — ${q.decision}` : q.title,
     );
     // Done plans and fixed bugs follow, browsable and read-only the same way.
     const finishedRows = (rows: ReturnType<typeof recentFinished>, verb: string) =>
       rows.map((r) => (r.completedOn ? `${r.title} — ${verb} ${r.completedOn}` : r.title));
-    const finished = {
-      done: finishedRows(recentFinished(donePlanEntries(root), DONE_DATE_RE), "done"),
-      fixed: finishedRows(recentFinished(fixedBugEntries(root), FIXED_DATE_RE), "fixed"),
-    };
+    const finished = heldOnly
+      ? {}
+      : {
+          done: finishedRows(recentFinished(donePlanEntries(root), DONE_DATE_RE), "done"),
+          fixed: finishedRows(recentFinished(fixedBugEntries(root), FIXED_DATE_RE), "fixed"),
+        };
+    // With no held entries the Held-only stop says so instead of painting blank sections.
+    if (heldOnly && shown.length === 0) {
+      return {
+        body: [toneLine("(no held entries)", width, "dim")],
+        emptyNote: "(no events yet)",
+      };
+    }
     return {
       body: backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length, answered, finished)
         .slice(0, eventBudget)

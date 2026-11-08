@@ -130,21 +130,30 @@ test("visibleBacklogIndexes returns only open entries, matching heading or body 
   assert.deepEqual(visibleBacklogIndexes(entries, "gizmo"), [], "a term matching nothing returns none");
 });
 
-test("visibleBacklogIndexes drops held entries when readyOnly", () => {
+test("visibleBacklogIndexes filters by the all/ready/held Ctrl+O stops", () => {
   const entries = [
     { label: "plan", title: "Eligible plan", body: "", hold: null },
     { label: "plan", title: "Held plan", body: "", hold: { blockedBy: ["x"] } },
-    { label: "bug", title: "Eligible bug", body: "", hold: null },
+    { label: "bug", title: "Refused bug", body: "", hold: "refused" },
+    { label: "bug", title: "Waiting bug", body: "", hold: "awaiting-recurrence" },
     { label: "question", title: "A question", body: "", hold: null },
     { label: "done", title: "Done thing", body: "", hold: null },
-  ] as Array<{ label: string; title: string; body: string; hold: { blockedBy: string[] } | null }>;
+  ] as Array<{ label: string; title: string; body: string; hold: "refused" | "awaiting-recurrence" | { blockedBy: string[] } | null }>;
+  assert.deepEqual(visibleBacklogIndexes(entries, null, "all"), [0, 1, 2, 3, 4], "all keeps every open index");
   assert.deepEqual(
-    visibleBacklogIndexes(entries, null, true),
-    [0, 2, 3],
-    "ready-only keeps the eligible plan, bug and question indexes and drops the held plan",
+    visibleBacklogIndexes(entries, null, "ready"),
+    [0, 4],
+    "ready keeps the eligible plan and the question (both null-hold) and drops every held open entry",
   );
-  assert.deepEqual(visibleBacklogIndexes(entries, null, false), [0, 1, 2, 3], "with ready-only off every open index returns");
-  assert.deepEqual(visibleBacklogIndexes(entries, "Eligible", true), [0, 2], "a / pattern still composes with ready-only");
+  assert.deepEqual(
+    visibleBacklogIndexes(entries, null, "held"),
+    [1, 2, 3],
+    "held keeps only the non-null-hold open indexes, whatever the hold kind",
+  );
+  assert.deepEqual(visibleBacklogIndexes(entries, "Eligible", "ready"), [0], "a / pattern still composes with ready");
+  assert.deepEqual(visibleBacklogIndexes(entries, "Held", "held"), [1], "a / pattern composes with held by heading");
+  assert.deepEqual(visibleBacklogIndexes(entries, "thing", "held"), [], "a finished row matching the pattern still never returns");
+  assert.deepEqual(visibleBacklogIndexes(entries, "Eligible", "held"), [], "a ready entry matching the pattern is dropped under held");
 });
 
 test("entryBodyWindow at offset zero clips each line and keeps the head within budget", () => {
@@ -295,6 +304,14 @@ test("paneBody's backlog list and entry mode show the same eligibility mark besi
     },
     { heading: "## Done" },
   ]);
+  writeBacklogFile(dir, "BUGS.md", [
+    { heading: "## Open", body: "### Live bug (reported 2026-10-01)\n\nRepro." },
+    { heading: "## Fixed" },
+  ]);
+  writeBacklogFile(dir, "QUESTIONS.md", [
+    { heading: "## Open", body: "### Q1: which?" },
+    { heading: "## Answered" },
+  ]);
   const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: null, noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
   const opts = { root: dir, width: 300, eventBudget: 20, entryBudget: 5 };
   const listText = paneBody({ kind: "backlog" }, { ...opts, state }).body.map((l) => l.map((s) => s.text).join(""));
@@ -310,11 +327,33 @@ test("paneBody's backlog list and entry mode show the same eligibility mark besi
   assert.ok(readyText.includes("Base, part 1/2: x (planned 2026-10-01)"), "the eligible row stays under ready-only");
   assert.ok(!readyText.includes("Later, part 2/2: y"), "the held row is dropped under ready-only");
 
+  // Held-only keeps the held plan and drops the eligible plan, the ready bug and the question
+  // (all null-hold rows) from the list render.
+  const heldText = paneBody({ kind: "backlog" }, { ...opts, state: { ...state, backlogHeldOnly: true } }).body
+    .map((l) => l.map((x) => x.text).join(""));
+  assert.ok(heldText.includes("Later, part 2/2: y (planned 2026-10-02; requires Base 1/2 landed) [blocked: requires Base 1/2]"), "the held row stays under held-only");
+  assert.ok(!heldText.includes("Base, part 1/2: x"), "the eligible plan drops under held-only");
+  assert.ok(!heldText.includes("Live bug"), "the ready bug drops under held-only");
+  assert.ok(!heldText.includes("Q1: which?"), "the question drops under held-only");
+
   const header = paneBody({ kind: "backlog" }, { ...opts, state: { ...state, selectedEntry: 1 } }).body[0]!;
   assert.equal(
     header.map((s) => s.text).join(""),
     "plan: Later, part 2/2: y (planned 2026-10-02; requires Base 1/2 landed) [blocked: requires Base 1/2]",
   );
+});
+
+test("paneBody's Held-only stop paints an explicit empty line when nothing is held", () => {
+  const dir = tmpdir();
+  writeBacklogFile(dir, "PLANS.md", [
+    { heading: "## Planned", body: "### Ready plan (planned 2026-10-01)\n\nBody." },
+    { heading: "## Done" },
+  ]);
+  const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: null, noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
+  const opts = { root: dir, width: 300, eventBudget: 20, entryBudget: 5 };
+  const body = paneBody({ kind: "backlog" }, { ...opts, state: { ...state, backlogHeldOnly: true } }).body
+    .map((l) => l.map((x) => x.text).join(""));
+  assert.deepEqual(body, ["(no held entries)"]);
 });
 
 const blockedHold = { blockedBy: ["S 1/3"] };

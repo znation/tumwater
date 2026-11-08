@@ -137,23 +137,32 @@ export function isOpenBacklogLabel(label: string): boolean {
   return label === "plan" || label === "bug" || label === "question";
 }
 
+/** The Backlog pane's three Ctrl+O filter stops: "all" (every open entry), "ready" (the open
+ * entries no hold keeps from being picked) and "held" (only the entries a hold keeps from being
+ * picked). "ready" is the terminal twin of `tumwater backlog --ready`, "held" of `tumwater
+ * backlog --held`; Ctrl+O cycles all → ready → held → all. */
+export type BacklogFilter = "all" | "ready" | "held";
+
 /** The flat entries a `/` text search keeps visible: with no pattern, every open entry's index
  * (label plan, bug or question); with a pattern, only the open entries whose heading or body
  * matches it case-insensitively (the exported entryMatches, the same rule the finished-entry
- * listings use). When `readyOnly` is true it keeps only the open entries no hold keeps from
- * being picked (`hold === null`; questions and the answered/done/fixed rows carry null and so
- * stay), the terminal twin of `tumwater backlog --ready`; `/` composes with it. It never
- * returns an answered/done/fixed index. Pure, so it is unit-testable without a TTY — the pane
- * calls it before moveEntrySelection so up/down step within the matching indexes. */
+ * listings use). The `filter` stop narrows it further: "ready" keeps only the open entries no
+ * hold keeps from being picked (`hold === null`, so questions carry null and stay), "held" only
+ * the held ones (every entry whose `hold` is non-null) — the terminal twins of `tumwater
+ * backlog --ready` and `tumwater backlog --held`; `/` composes with whichever stop is active.
+ * It never returns an answered/done/fixed index. Pure, so it is unit-testable without a TTY —
+ * the pane calls it before moveEntrySelection so up/down step within the matching indexes. */
 export function visibleBacklogIndexes(
   entries: ReadonlyArray<{ label: string; hold?: EntryHold | null } & BacklogEntry>,
   pattern: string | null,
-  readyOnly = false,
+  filter: BacklogFilter = "all",
 ): number[] {
   const open = (e: { label: string }): boolean => isOpenBacklogLabel(e.label);
+  const kept = (e: { hold?: EntryHold | null }): boolean =>
+    filter === "all" ? true : filter === "ready" ? e.hold === null || e.hold === undefined : e.hold !== null && e.hold !== undefined;
   const out: number[] = [];
   entries.forEach((e, i) => {
-    if (open(e) && (pattern === null || entryMatches(e, pattern)) && (!readyOnly || e.hold === null || e.hold === undefined)) out.push(i);
+    if (open(e) && (pattern === null || entryMatches(e, pattern)) && kept(e)) out.push(i);
   });
   return out;
 }

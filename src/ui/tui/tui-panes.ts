@@ -487,6 +487,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       entryScroll: back.entryScroll,
       backlogGrep: back.backlogGrep,
       backlogReadyOnly: back.backlogReadyOnly,
+      backlogHeldOnly: back.backlogHeldOnly,
       scopeRole: rep.scopeRole,
       reportSince: rep.reportSince,
       reportStep: rep.reportStep,
