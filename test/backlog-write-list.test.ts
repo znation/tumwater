@@ -445,6 +445,67 @@ test("plan|bug --list --grep searches the active entries under their unfiltered 
   assert.equal(r.stdout, ["open bugs in BUGS.md:", `2. ${b2}${entryAgeSuffix(b2)}`, ""].join("\n"));
 });
 
+test("a --show in --grep's value slot is the pattern, so plan|bug --list --grep --show filters instead of entering the detail view", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "flag-shaped grep test");
+  // The bodies spelling the runbook's literal "--show" are the pattern the list greps for.
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    [
+      "# Plans", "", "## Planned", "",
+      "### Grepable plan (planned 2026-10-01)", "",
+      "follow tumwater plan --show 2 from the guide", "",
+      "## Done", "", "_None yet._", "",
+    ].join("\n"),
+  );
+  fs.writeFileSync(
+    path.join(repo, "BUGS.md"),
+    [
+      "# Bugs", "", "## Open", "",
+      "### grepable bug (reported by the operator 2026-10-02)", "",
+      "the TUI --show half never paints", "",
+      "## Fixed", "", "_None yet._", "",
+    ].join("\n"),
+  );
+  const plan = "Grepable plan (planned 2026-10-01)";
+  const bug = "grepable bug (reported by the operator 2026-10-02)";
+  // The token --grep consumes is the pattern: a --show right after it lists, it does not
+  // claim the detail mode (previously this exited 1 with --show's missing-position error).
+  let r = await cli(repo, "plan", "--list", "--grep", "--show");
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(r.stdout, ["planned features in PLANS.md:", `1. ${plan}${entryAgeSuffix(plan)}`, ""].join("\n"));
+  r = await cli(repo, "bug", "--list", "--grep", "--show");
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(r.stdout, ["open bugs in BUGS.md:", `1. ${bug}${entryAgeSuffix(bug)}`, ""].join("\n"));
+  // A no-match --show pattern prints the no-match prose, never --show's missing-position error.
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    ["# Plans", "", "## Planned", "", "### Other plan (planned 2026-10-01)", "", "no flags here", "", "## Done", "", "_None yet._", ""].join("\n"),
+  );
+  r = await cli(repo, "plan", "--list", "--grep", "--show");
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(r.stdout, 'no planned features match "--show"\n');
+  // The flag-shaped pattern composes with --json: the filtered document, not the detail view.
+  const doc = JSON.parse((await cli(repo, "plan", "--list", "--grep", "--show", "--json")).stdout) as {
+    entries: { position: number }[];
+  };
+  assert.deepEqual(doc.entries.map((e) => e.position), []);
+  // A real --show still enters the detail view and refuses the --grep beside it by name,
+  // for the plan and bug twins alike.
+  r = await cli(repo, "plan", "--show", "2", "--grep", "x");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--grep/);
+  r = await cli(repo, "bug", "--show", "1", "--grep", "x");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--grep/);
+  // And a real --show 2 / --cancel 2 arm still runs, unchanged by the guard.
+  fs.writeFileSync(path.join(repo, "PLANS.md"), seededPlansForList());
+  assert.match((await cli(repo, "plan", "--show", "2")).stdout, /Export series, part 2\/2: add import/);
+  r = await cli(repo, "plan", "--cancel", "2");
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(!fs.readFileSync(path.join(repo, "PLANS.md"), "utf8").includes("part 2/2: add import"), r.stdout);
+});
+
 test("plan --list --grep compresses a matching blocked series as one line", async () => {
   const repo = makeRepo();
   fs.writeFileSync(

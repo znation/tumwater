@@ -267,12 +267,24 @@ interface BacklogCommandSpec {
 
 /** The one dispatch `bug` and `plan` both run through (see BacklogCommandSpec): route on the
  * leading flag token and hand off to the matching shared AndAnnounce shell, or file a text
- * entry by default. */
+ * entry by default. A mode flag sitting in `--grep`'s value slot is the pattern, not the
+ * mode: `plan --list --grep --show` greps for the literal "--show" like every other text,
+ * exactly as cmdQuarantine and its sibling commands guard the same slot. */
 async function runBacklogCommand(root: string, args: string[], s: BacklogCommandSpec): Promise<void> {
   const { cancelAndAnnounce, editAndAnnounce, fileAndAnnounce, releaseAndAnnounce, retireAndAnnounce, topAndAnnounce } =
     await import("./cli/backlog-cli.js");
   const { listAndAnnounce, showAndAnnounce } = await import("./cli/backlog-cli-view.js");
-  if (args.includes("--show")) {
+  // The token `--grep` consumes as its pattern is text, never the dispatch's mode flag: the
+  // branch scan must skip exactly that slot, or `plan --list --grep --show` claims the
+  // literal "--show" as the detail mode and fails with its missing-position error instead of
+  // filtering (the same guard cmdQuarantine and its siblings use). `--list` keeps the plain
+  // includes check: the list shell itself consumes the --grep pattern, so a flag-shaped
+  // pattern like `--list --grep --list` still routes on the real `--list` token.
+  const grepAt = args.indexOf("--grep");
+  const grepValueIndex = grepAt >= 0 ? grepAt + 1 : -1;
+  const modeNamed = (flag: string): boolean =>
+    args.some((arg, i) => arg === flag && i !== grepValueIndex);
+  if (modeNamed("--show")) {
     showAndAnnounce(root, args, s.command);
     return;
   }
@@ -280,23 +292,23 @@ async function runBacklogCommand(root: string, args: string[], s: BacklogCommand
     await listAndAnnounce(root, args, s.command, s.file, s.section);
     return;
   }
-  if (args.includes("--edit")) {
+  if (modeNamed("--edit")) {
     await editAndAnnounce(root, args, s.command, s.edit, s.editText);
     return;
   }
-  if (args.includes("--cancel")) {
+  if (modeNamed("--cancel")) {
     await cancelAndAnnounce(root, args, s.command, s.cancel);
     return;
   }
-  if (s.retire && args.includes("--retire")) {
+  if (s.retire && modeNamed("--retire")) {
     await retireAndAnnounce(root, args, s.command, s.retire);
     return;
   }
-  if (args.includes("--top")) {
+  if (modeNamed("--top")) {
     await topAndAnnounce(root, args, s.command, s.top);
     return;
   }
-  if (args.includes("--release")) {
+  if (modeNamed("--release")) {
     await releaseAndAnnounce(root, args, s.command, s.release, s.releaseRole);
     return;
   }
