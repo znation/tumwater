@@ -52,7 +52,9 @@ test("parseRunWindow rejects --for together with --once", () => {
 
 test("parseRunWindow enforces pause --for's 90-day cap", () => {
   const r = expectFail(() => parseRunWindow(["--for", "200d"], false));
-  assert.match(r.stderr, /--for is capped at 90d \(got 200d\)/);
+  // The command-scoped label matches the durationFlagSpec("start --for") gate's cap
+  // wording, so the same overflow prints one message whichever check fires first.
+  assert.match(r.stderr, /start --for is capped at 90d \(got 200d\)/);
 });
 
 // --- guiChildPlan: the run --gui arg split the supervisor spawns from ---

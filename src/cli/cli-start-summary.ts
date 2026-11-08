@@ -81,7 +81,11 @@ export function parseRunWindow(args: string[], once: boolean): number | null {
   if (raw === null) return null;
   const ms = parseDurationFlag("start --for", raw);
   if (once) failRivalShapes("--for", "--once", "a one-round run and a windowed run cannot both apply");
-  failOverDurationCap("--for", ms, PAUSE_FOR_MAX_MS);
+  // The same command-scoped label the parse above and the dispatcher's
+  // durationFlagSpec("start --for") gate use, so an over-cap `run --for` always names the
+  // command it came from ("start --for is capped at 90d", never a bare "--for is capped")
+  // whichever validation catches it first.
+  failOverDurationCap("start --for", ms, PAUSE_FOR_MAX_MS);
   return ms;
 }
 
