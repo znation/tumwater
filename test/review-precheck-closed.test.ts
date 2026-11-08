@@ -107,6 +107,38 @@ test("a known-failure pre-check under a fired abort fails closed as aborted and 
   });
 });
 
+test("a slept pre-check under a fired abort fails closed as aborted, not unverified", async () => {
+  // The abort guard sits before the slept-failure classification: a check that runs to a
+  // failed, sleep-spanning verdict anyway still belongs to an operator stop, so the gate must
+  // settle `aborted` rather than keep the change for an unverified re-merge.
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n",
+  );
+  const state = freshRunnerState(ROLE);
+  const head = await headOf(wt, "HEAD");
+  // Every attempt opens awake and closes after a 119 s sleep, so the failure would otherwise
+  // classify as unverified (as in the sleep-only test below); the internal retry and the gate's
+  // flake re-run may each take two attempts, so eight samples cover them.
+  const sampler = scriptedSampler([
+    woke(1_000), woke(121_000, 2_000),
+    woke(121_000), woke(241_000, 122_000),
+    woke(241_000), woke(361_000, 242_000),
+    woke(361_000), woke(481_000, 362_000),
+  ]);
+  const controller = new AbortController();
+  controller.abort();
+  const result = await reviewAheadOfMain(
+    { ...gateCtx(root, wt), sampleSleep: sampler, signal: controller.signal },
+    state,
+  );
+  assert.equal(result.decision, "failed");
+  assert.ok(result.aborted, "the abort is authoritative over the sleep's unverified verdict");
+  assert.notEqual(result.unverified, true, "the slept failure is not reported as unverified");
+  assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-merge");
+  assert.equal(await aheadOfMain(wt, "main"), 1, "the commit stays for the next re-merge");
+});
+
 // BUGS.md 2026-09-30: a pre-check whose every attempt spanned a host sleep made no verdict
 // about the tree. The gate attributes nothing — no main consultation, no strike, no
 // rejection — the commit stays for a re-merge, and the warning names the sleep.

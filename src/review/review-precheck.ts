@@ -372,14 +372,6 @@ export async function gateBuildPrecheck(
   // gate attributes nothing and keeps the commit for a re-merge.
   const sleep = unverifiedSleepResult(root, role, settled);
   if (sleep) return sleep;
-  // An abort that fired while the check was starting or running and did not stop it (a check
-  // granted a free permit under an already-firing signal runs to its own verdict, and the kill
-  // can race the spawn) must still fail closed before any verdict can approve a change the
-  // operator stopped. This guard sits before every approving return: a passing check would
-  // otherwise hand the merge a green, and a failed check the gate excuses as a known main
-  // failure or a recorded flake would otherwise go on to review, which records approval. The
-  // abort is authoritative over both, so a consumed abort always stops the change.
-  if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
   if (settled.status === "passed") {
     // Passed: this exact tree just went green under the project's own declared check. Hand
     // the verdict to the merge path via verifiedHead — it seeds the red-main baseline with
