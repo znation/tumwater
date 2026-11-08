@@ -39,6 +39,34 @@ export function quarantineRows(entries: readonly QuarantineEntry[]): QuarantineR
     }));
 }
 
+/** Resolve what position N names in the quarantine, by the same oldest-first rule `quarantineRows`
+ * uses (firstSeen ascending, ties by test name), so the detail view and the list can never
+ * disagree on which entry position N denotes. Returns the entry itself (so the caller reads its
+ * `tail` and `recurred`, which the row shape drops), or null past the end of the list or below
+ * 1. */
+export function quarantineEntryAt(entries: readonly QuarantineEntry[], position: number): QuarantineEntry | null {
+  if (position < 1) return null;
+  const sorted = [...entries].sort((a, b) => a.firstSeen - b.firstSeen || compareCodeUnits(a.test, b.test));
+  return sorted[position - 1] ?? null;
+}
+
+/** The read-only detail twin of `renderQuarantine`'s one-line rows for `tumwater quarantine
+ * --show <n>`: the whole test path, both ages, the flake count, the whole filed-bug heading (or
+ * `not filed`), a `recurred` entry's recurrence line, and — when the entry still carries its
+ * failing output — a `failing output:` line followed by the tail verbatim. It exists because the
+ * list squashes the test path and bug heading to 80 characters and never prints the tail; this
+ * view never calls `squash`. Pure over its inputs (no I/O, no clock). */
+export function renderQuarantineDetail(entry: QuarantineEntry, position: number, now: number): string {
+  const lines = [
+    `quarantined test ${position}: ${entry.test}`,
+    `first seen ${humanAgo(entry.firstSeen, now)}, last seen ${humanAgo(entry.lastSeen, now)}, ${plural(entry.count, "flake")}`,
+    entry.bug ? `filed: ${entry.bug}` : "not filed",
+  ];
+  if (entry.recurred) lines.push("recurred since its bug last heard of it");
+  if (entry.tail) lines.push("failing output:", entry.tail);
+  return lines.join("\n");
+}
+
 /** The command's text for `rows`: an empty list prints the empty line (the merge queue empty
  * convention), otherwise a `flake quarantine: N tests` header, the shared quarantineWarning
  * phrase on its own line when one fires (so the command and the doctor's row agree), then one

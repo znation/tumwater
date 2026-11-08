@@ -19,7 +19,7 @@ import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
 import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
 import { loadQuarantine, releaseQuarantinedTest } from "../review/known-flakes.js";
-import { quarantineRows, renderQuarantine } from "../review/quarantine-render.js";
+import { quarantineEntryAt, quarantineRows, renderQuarantine, renderQuarantineDetail } from "../review/quarantine-render.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, collectRoleChanges, normalizeDiffPath } from "../change/change-data.js";
 import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
 import { readMergeQueue, type MergeQueueView } from "../merge/merge-queue.js";
@@ -340,8 +340,14 @@ export async function cmdBacklog(root: string, args: string[], seams: FollowView
 // the read never writes quarantine.json (a test otherwise leaves the list through
 // releaseQuarantine). --json serves the same positioned rows to scripts.
 export async function cmdQuarantine(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
-  // `--release <n>` is the read-only command's one destructive mode: route it to its own
-  // branch before the read gate, exactly as cmdReviews routes `--accept`.
+  // `--release <n>` is the read-only command's one destructive mode, and `--show <n>` its
+  // read-only detail view: route each to its own branch before the read gate, exactly as
+  // cmdReviews routes `--accept`. `--show` is checked first so its own flag gate owns a
+  // `--release` it finds beside it, refusing it by name.
+  if (args.includes("--show")) {
+    await cmdQuarantineShow(root, args);
+    return;
+  }
   if (args.includes("--release")) {
     await cmdQuarantineRelease(root, args);
     return;
@@ -359,6 +365,41 @@ export async function cmdQuarantine(root: string, args: string[], seams: FollowV
   }
   const rows = quarantineRows(loadQuarantine(root));
   sayJsonOrRender(args, { tests: rows }, () => renderQuarantine(rows, Date.now()));
+}
+
+/** The `tumwater quarantine --show <n>` branch: print the Nth entry `tumwater quarantine`
+ * lists read-only and in full — the whole test path, both ages, flake count, the whole
+ * filed-bug heading (`not filed` when none), a `recurred` entry's recurrence line, and the kept
+ * failing output verbatim when one is stored — so an operator can read why the gate is
+ * excusing a test without opening quarantine.json. It is the detail twin of `--release <n>`'s
+ * position addressing and shares its parse (`scanPositionArgs`) and out-of-range wording, but
+ * stays on the read's `refuseTeamWorkspace` (no `requireReadyRepo`) so it never needs a
+ * ready-tree like the destructive branch does. `--json` serves the entry's unsquashed fields.
+ */
+async function cmdQuarantineShow(root: string, args: string[]): Promise<void> {
+  const { json, position, rest } = scanPositionArgs(args, "--show", "--show 2");
+  rejectUnknownArgs("quarantine", rest, []);
+  if (position === null) fail("--show needs a position (usage: tumwater quarantine --show <n>)");
+  refuseTeamWorkspace(root);
+  const entries = loadQuarantine(root);
+  const entry = quarantineEntryAt(entries, position);
+  if (entry === null) {
+    fail(`no quarantined test at position ${position} (flake quarantine holds ${entries.length} tests)`);
+  }
+  if (json) {
+    sayJson({
+      position,
+      test: entry.test,
+      firstSeen: entry.firstSeen,
+      lastSeen: entry.lastSeen,
+      count: entry.count,
+      bug: entry.bug,
+      ...(entry.tail ? { tail: entry.tail } : {}),
+      ...(entry.recurred ? { recurred: true } : {}),
+    });
+  } else {
+    say(renderQuarantineDetail(entry, position, Date.now()));
+  }
 }
 
 /** The `tumwater quarantine --release <n>` branch: remove the Nth entry `tumwater quarantine`

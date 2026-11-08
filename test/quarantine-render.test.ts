@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { quarantineRows, quarantineViewRows, renderQuarantine, renderQuarantineSection } from "../src/review/quarantine-render.js";
+import { quarantineEntryAt, quarantineRows, quarantineViewRows, renderQuarantine, renderQuarantineDetail, renderQuarantineSection } from "../src/review/quarantine-render.js";
 import { QUARANTINE_AGE_MS, QUARANTINE_WARN_COUNT } from "../src/baseline/main-guardrails.js";
 import type { QuarantineEntry } from "../src/review/known-flakes.js";
 
@@ -133,4 +133,60 @@ test("renderQuarantineSection shows a test name over 80 chars in full, not squas
   const long = `test/${"a".repeat(120)}.test.ts`;
   const rows = quarantineRows([entry({ test: long, firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "" })]);
   assert.match(renderQuarantineSection(rows, now), new RegExp(`- ${long} —`));
+});
+
+test("renderQuarantineDetail prints a bare entry's header, ages and filed line", () => {
+  const d = renderQuarantineDetail(
+    entry({ test: "test/a.test.ts", firstSeen: now - 2 * 24 * 3_600_000, lastSeen: now - 3_600_000, count: 3, bug: "A filed flake" }),
+    2,
+    now,
+  );
+  assert.equal(
+    d,
+    "quarantined test 2: test/a.test.ts\n" +
+      "first seen 2d ago, last seen 1h ago, 3 flakes\n" +
+      "filed: A filed flake",
+  );
+});
+
+test("renderQuarantineDetail prints not filed and skips the absent recurrence and output lines", () => {
+  const d = renderQuarantineDetail(entry({ test: "test/a.test.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "" }), 1, now);
+  assert.equal(d, "quarantined test 1: test/a.test.ts\nfirst seen 1h ago, last seen 0s ago, 1 flake\nnot filed");
+  assert.ok(!d.includes("failing output:"));
+  assert.ok(!d.includes("recurred"));
+});
+
+test("renderQuarantineDetail adds the recurrence line only for a recurred entry", () => {
+  assert.ok(renderQuarantineDetail(entry({ recurred: true }), 1, now).includes("recurred since its bug last heard of it"));
+  assert.ok(!renderQuarantineDetail(entry({}), 1, now).includes("recurred since its bug last heard of it"));
+});
+
+test("renderQuarantineDetail adds failing output verbatim only for a non-empty tail", () => {
+  const d = renderQuarantineDetail(entry({ tail: "line1\nline2\nline3" }), 1, now);
+  assert.ok(d.endsWith("failing output:\nline1\nline2\nline3"));
+  assert.ok(!renderQuarantineDetail(entry({}), 1, now).includes("failing output:"));
+});
+
+test("renderQuarantineDetail keeps a long test path, bug heading and tail whole", () => {
+  const long = `test/${"a".repeat(120)}.test.ts`;
+  const bug = `BUGS.md ${"b".repeat(100)} flake heading ${"c".repeat(40)}`;
+  const d = renderQuarantineDetail(entry({ test: long, bug, tail: "oops: lost" }), 3, now);
+  assert.ok(d.includes(`quarantined test 3: ${long}`), "the test path is not squashed");
+  assert.ok(d.includes(`filed: ${bug}`), "the bug heading is not squashed");
+  assert.ok(d.includes("oops: lost"), "the tail rides through verbatim");
+});
+
+test("quarantineEntryAt and quarantineRows agree on what each position names, and null past the end", () => {
+  const entries = [
+    entry({ test: "new", firstSeen: 300 }),
+    entry({ test: "oldest", firstSeen: 100 }),
+    entry({ test: "mid", firstSeen: 200 }),
+  ];
+  const rows = quarantineRows(entries);
+  assert.equal(quarantineEntryAt(entries, 1)!.test, rows[0]!.test);
+  assert.equal(quarantineEntryAt(entries, 2)!.test, rows[1]!.test);
+  assert.equal(quarantineEntryAt(entries, 3)!.test, rows[2]!.test);
+  assert.equal(quarantineEntryAt(entries, 4), null);
+  assert.equal(quarantineEntryAt(entries, 0), null);
+  assert.equal(quarantineEntryAt([], 1), null);
 });

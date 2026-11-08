@@ -159,3 +159,94 @@ test("quarantine --release <n> -f is refused — the destructive branch keeps it
   assert.ok(r.stderr.includes("-f"), "the refusal names the -f flag");
   assert.deepEqual(loadQuarantine(repo), before, "the destructive branch was not run");
 });
+
+test("quarantine --show <n> prints the Nth entry in full, unsquashed, and leaves the file unchanged", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine show test");
+  const now = Date.now();
+  const long = `test/${"a".repeat(120)}.test.ts`;
+  const bug = `BUGS.md ${"b".repeat(100)} flake heading ${"c".repeat(40)}`;
+  writeQuarantine(repo, [
+    { test: "test/shorter.test.ts", firstSeen: now - 2 * 24 * 3_600_000, lastSeen: now - 24 * 3_600_000, count: 2, bug: "" },
+    { test: long, firstSeen: now - 24 * 3_600_000, lastSeen: now - 3_600_000, count: 3, bug, tail: "line1\nline2\nline3" },
+    { test: "test/plain.test.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "", recurred: true },
+  ]);
+  const before = fs.readFileSync(quarantinePath(repo), "utf8");
+  const list = await cli(repo, "quarantine");
+  assert.equal(list.code, 0);
+  assert.ok(!list.stdout.includes(long), "the plain list squashes the long path");
+  assert.ok(!list.stdout.includes(bug), "the plain list squashes the long bug heading");
+  const r = await cli(repo, "quarantine", "--show", "2");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.includes(`quarantined test 2: ${long}`), "detail prints the whole test path");
+  assert.ok(r.stdout.includes(`filed: ${bug}`), "detail prints the whole bug heading");
+  assert.ok(r.stdout.includes("failing output:\nline1\nline2\nline3"), "the tail prints verbatim");
+  assert.ok(!r.stdout.includes("recurred since its bug last heard of it"), "a non-recurred entry carries no recurrence line");
+  const rec = await cli(repo, "quarantine", "--show", "3");
+  assert.equal(rec.code, 0);
+  assert.ok(rec.stdout.includes("quarantined test 3: test/plain.test.ts"));
+  assert.ok(rec.stdout.includes("recurred since its bug last heard of it"));
+  assert.ok(!rec.stdout.includes("failing output:"), "an entry without a tail prints no failing-output line");
+  assert.equal(fs.readFileSync(quarantinePath(repo), "utf8"), before, "the quarantine file is byte-unchanged after a shown entry");
+});
+
+test("quarantine --show <n> --json prints the entry's fields, omitting absent tail and recurred", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine show json test");
+  const now = Date.now();
+  const long = `test/${"a".repeat(120)}.test.ts`;
+  writeQuarantine(repo, [
+    { test: long, firstSeen: now - 24 * 3_600_000, lastSeen: now - 3_600_000, count: 3, bug: "", tail: "line1\nline2" },
+    { test: "test/plain.test.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "A filed flake", recurred: true },
+  ]);
+  const r = await cli(repo, "quarantine", "--show", "1", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    position: 1, test: long, firstSeen: now - 24 * 3_600_000, lastSeen: now - 3_600_000, count: 3, bug: "", tail: "line1\nline2",
+  });
+  assert.ok(!("recurred" in JSON.parse(r.stdout)), "recurred is absent for an entry that lacks it");
+  const r2 = await cli(repo, "quarantine", "--show", "2", "--json");
+  assert.equal(r2.code, 0);
+  assert.ok(!r2.stdout.includes("quarantined test"), "--json prints no header text");
+  const obj = JSON.parse(r2.stdout) as Record<string, unknown>;
+  assert.deepEqual(obj, { position: 2, test: "test/plain.test.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "A filed flake", recurred: true });
+});
+
+test("quarantine --show <n> fails past the depth naming it, and on an empty list reports position 1 with a depth of 0", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine show range test");
+  const now = Date.now();
+  writeQuarantine(repo, [{ test: "test/a.test.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "" }]);
+  const before = fs.readFileSync(quarantinePath(repo), "utf8");
+  const r = await cli(repo, "quarantine", "--show", "2");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("no quarantined test at position 2 (flake quarantine holds 1 tests)"));
+  assert.equal(fs.readFileSync(quarantinePath(repo), "utf8"), before, "the file is byte-unchanged");
+  const empty = makeRepo();
+  await initProject(empty, "quarantine show empty test");
+  const e = await cli(empty, "quarantine", "--show", "1");
+  assert.equal(e.code, 1, "no quarantine file degrades to an empty list, so position 1 is past the end");
+  assert.ok(e.stderr.includes("no quarantined test at position 1 (flake quarantine holds 0 tests)"));
+});
+
+test("quarantine --show refuses --release, -f and a missing, zero or non-integer position", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine show flag test");
+  const now = Date.now();
+  writeQuarantine(repo, [{ test: "test/a.test.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "" }]);
+  let r = await cli(repo, "quarantine", "--show", "1", "--release");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("--release"), "the refusal names --release");
+  r = await cli(repo, "quarantine", "--show", "1", "-f");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("-f"), "the refusal names -f");
+  r = await cli(repo, "quarantine", "--show");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("--show needs a position"), "missing position fails with the --show 2 usage wording");
+  r = await cli(repo, "quarantine", "--show", "0");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("positive integer"));
+  r = await cli(repo, "quarantine", "--show", "abc");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("positive integer"));
+});

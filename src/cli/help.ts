@@ -306,7 +306,7 @@ Usage:
                                    -f/--follow repaints the backlog every couple of seconds until
                                    Ctrl+C or the process that started it exits, so a backgrounded
                                    follow does not outlive its parent; it refuses --json
-  tumwater quarantine [-f/--follow] [--release <n>] [--json]
+  tumwater quarantine [-f/--follow] [--show <n>] [--release <n>] [--json]
                                    List the flake quarantine — the tests the review gate recorded
                                    as failing then passing on the same tree
                                    (.tumwater/state/quarantine.json), oldest first, each naming
@@ -320,7 +320,13 @@ Usage:
                                    removes the Nth entry the list prints at the user's
                                    request, logging a warning — for a flake fixed or judged gone
                                    before its bug closes; otherwise a test leaves the list when
-                                   its filed bug leaves BUGS.md ## Open
+                                   its filed bug leaves BUGS.md ## Open; --show <n> prints the
+                                   Nth entry as the list numbers it, in full — the whole test
+                                   path, first-seen and last-seen ages, flake count, the whole
+                                   filed bug (or "not filed"), a recurred flag and, when one is
+                                   stored, the kept failing output verbatim — read-only, needing
+                                   no ready repo, like the list; --show <n> --json prints that
+                                   entry's object
   tumwater archive [--json]        Move the finished entries still under PLANS.md ## Done and
                                    BUGS.md ## Fixed to the top of PLANS-DONE.md and BUGS-FIXED.md
                                    and commit them on the base branch, waiting for a merge in
