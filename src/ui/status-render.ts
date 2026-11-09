@@ -260,26 +260,23 @@ function queuedPromptMarker(snap: StatusSnapshot, role: string): string {
   return n > 0 ? ` p:${n}` : "";
 }
 
-/** Status stage — the header badge line: the `running` reading plus the whole first line
- * (`tumwater` brand, project name, and every badge) from the snapshot and the one shared
- * clock read. */
-function statusHeaderLine(root: string, snap: StatusSnapshot, now: number): StatusLine {
-  // The questions badge (like the inbox one) appears only when something needs an answer.
-  // The budget badge is standing information for a money-spending system in EVERY cap state
-  // (disabled reads `· no cap` — and it is the affordance for editing the cap); on narrow
-  // terminals the header's existing last-resort whole-line clipping applies. A team whose
-  // models are all free reads n/a — spend can never accumulate against a cap that cannot be
-  // reached, so a dollar figure would mislead. The timed-pause badge (plans/pause-countdown
-  // wording) rides last so a team under a timed pause reads how long until it comes back —
-  // empty unless the team marker's deadline stands in the future, so a role-only or
-  // indefinite pause keeps today's header byte-identical.
-  const running: StatusSpan[] = snap.running
+function headerRunningSpans(snap: StatusSnapshot, now: number): StatusSpan[] {
+  return snap.running
     ? [{ text: "running", tone: "green" }, { text: ` (pid ${snap.pid}` }, ...badgeSpans(buildBadge(snap.build, now), snap.build?.stale || snap.build?.waitingForCheck ? "yellow" : undefined), { text: ")" }]
     : [{ text: "not running — start with `tumwater start`", tone: "dim" }];
+}
+
+// The questions badge (like the inbox one) appears only when something needs an answer.
+// The budget badge is standing information for a money-spending system in EVERY cap state
+// (disabled reads `· no cap` — and it is the affordance for editing the cap); on narrow
+// terminals the header's existing last-resort whole-line clipping applies. A team whose
+// models are all free reads n/a — spend can never accumulate against a cap that cannot be
+// reached, so a dollar figure would mislead. The timed-pause badge (plans/pause-countdown
+// wording) rides last so a team under a timed pause reads how long until it comes back —
+// empty unless the team marker's deadline stands in the future, so a role-only or
+// indefinite pause keeps today's header byte-identical.
+function headerWorkAndSpendSpans(snap: StatusSnapshot, now: number): StatusSpan[] {
   return [
-    { text: "tumwater", tone: "brand" },
-    { text: ` · ${projectName(root)} · ` },
-    ...running,
     ...(snap.running ? badgeSpans(runWindowBadge(snap.runStopsAt, now), "blue") : []),
     ...badgeSpans(mergeBadge(snap.mergeQueue), "blue"),
     ...(snap.inbox ? [{ text: ` · inbox: ${snap.inbox}` }] : []),
@@ -289,6 +286,11 @@ function statusHeaderLine(root: string, snap: StatusSnapshot, now: number): Stat
     // while the hold is on, or the bare reading below the reclaim threshold. Empty in every
     // comfortable or unmeasured state, so an unaffected header stays byte-identical.
     ...badgeSpans(diskBadge(snap.disk), snap.disk?.held ? "yellow" : "blue"),
+  ];
+}
+
+function headerCapacitySpans(snap: StatusSnapshot): StatusSpan[] {
+  return [
     // The permit pool's live state (plans/provider-concurrency.md §8): the team line reads
     // `running 5 of 8` — the team total's in-use/cap — for any team with a published permit
     // snapshot; empty until one has been published.
@@ -300,6 +302,11 @@ function statusHeaderLine(root: string, snap: StatusSnapshot, now: number): Stat
     // New-project bootstrap (plans/work-ratio.md, part 2/2): the progress reading while the
     // hold is active. Empty in every normal project, so the header stays byte-identical.
     ...badgeSpans(bootstrapBadge(snap.bootstrap), "blue"),
+  ];
+}
+
+function headerHealthSpans(snap: StatusSnapshot, now: number): StatusSpan[] {
+  return [
     ...badgeSpans(mainCheckBadge(snap.mainCheck, now), snap.mainCheck
       // The helper's tone is string (the GUI's palette differs); with a Tone fallback here
       // every branch is a Tone, so the cast cannot widen the value.
@@ -319,6 +326,11 @@ function statusHeaderLine(root: string, snap: StatusSnapshot, now: number): Stat
     // without a remote verdict stays byte-identical. remoteCiTone is the one
     // result→tone map.
     ...badgeSpans(remoteCiBadge(snap.remoteCi, now), remoteCiTone(snap.remoteCi)),
+  ];
+}
+
+function headerScheduleSpans(snap: StatusSnapshot, now: number): StatusSpan[] {
+  return [
     ...badgeSpans(pauseBadge(snap.pausedUntil, now, snap.pauseReason), "yellow"),
     ...badgeSpans(wakeBadge(snap.scheduledWake, now), "blue"),
     // Quiet hours 2/2 rides the header last: the window as standing information whenever it
@@ -326,6 +338,21 @@ function statusHeaderLine(root: string, snap: StatusSnapshot, now: number): Stat
     // ask-me-nothing informality the pause badge's countdown uses, without stealing its
     // urgency. Unset keeps the header byte-identical (the badge is empty).
     ...badgeSpans(quietBadge(snap.quietHours, snap.inQuietHours), snap.inQuietHours ? "yellow" : undefined),
+  ];
+}
+
+/** Status stage — the header badge line: the `running` reading plus the whole first line
+ * (`tumwater` brand, project name, and every badge) from the snapshot and the one shared
+ * clock read. */
+function statusHeaderLine(root: string, snap: StatusSnapshot, now: number): StatusLine {
+  return [
+    { text: "tumwater", tone: "brand" },
+    { text: ` · ${projectName(root)} · ` },
+    ...headerRunningSpans(snap, now),
+    ...headerWorkAndSpendSpans(snap, now),
+    ...headerCapacitySpans(snap),
+    ...headerHealthSpans(snap, now),
+    ...headerScheduleSpans(snap, now),
   ];
 }
 
