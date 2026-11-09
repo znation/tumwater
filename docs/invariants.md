@@ -2407,6 +2407,36 @@ names the torn file and, when a role was recovered, that role.
 **Pinned by.** `test/merge-queue.test.ts` — "a torn queue head is dropped and its change re-queued
 from the recovered pin in leftover-recovery shape, or dropped with no re-queue".
 
+## The merge drain is single-flight: overlapping polls start one queue head, not one each
+
+The scheduler polls the merge queue 50 ms apart, but two `drainMerge` calls can still overlap in
+one process — a test's background pump plus an explicit `pumpUntil`, a shutdown that runs a final
+drain behind an already-running one. `drainMerge` reads git (the dedupe against main) between its
+slot check and its `startMerge`, so a slot that was free at entry can be taken by a drain that
+started first. Without a re-check at the start, two overlapping drains each pass the empty-slot
+gate and each `startMerge` the same head: one task overwrites the other in `p.merge`, the orphan
+is invisible to `mergeTasks`/`abortableMerges`, and its unconditional slot free (a `finally`
+doing `p.merge = null`) clears the slot out from under the owned task — letting a third drain start
+a further duplicate. Duplicates then reset and run the gate in the shared `_merge` worktree over
+each other, which is the shape the 2026-11-09 merge-pipeline-2 abort flakes reported (a change
+approved-and-merged where the abort expected one; a `merged` event with no corresponding task).
+
+### INV-BF1: a queue head (or a pin with no queue entry) is started at most once, whatever the overlapping polls do
+
+**Guarantee.** `drainMerge` re-checks `p.merge !== null` immediately before each `startMerge`
+assignment (after every read that awaited git), and `startMerge`'s `finally` clears the slot only
+if the settling task still owns it (`if (p.merge === merge) p.merge = null`). Two drains that both
+entered with the slot free therefore start the head once: the later one finds the slot taken and
+returns, and the orphaned-task path — an overwrite that would let a stale `finally` free a slot the
+owned task still runs against — is closed at both ends.
+
+**Binds.** `src/merge/merge-drain.ts` (`drainMerge`'s start re-checks and `startMerge`'s
+ownership-guarded slot free).
+
+**Pinned by.** `test/merge-drain.test.ts` — "a queue head the drain sees through an await is
+started once, not once per concurrent drain": two `drainMergeQueue` calls fired back to back over
+one queued change; the gate check runs once, not once per drain.
+
 ## Deferred prompts: only the writer's exact marker defers or is stripped, and a prompt is due at its stamp
 
 `tumwater prompt --at` keeps the deferral inside the queue file's text, so no queue format migrates.

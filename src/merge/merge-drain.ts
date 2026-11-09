@@ -88,6 +88,10 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
   // the overlap that passes this gate in the drain's async gaps.
   if (p.merge !== null) return;
   await dropTornHead(ctx.root);
+  // The reads below await git, so a drain that entered with the slot free can find it taken by a
+  // concurrent drain that started first. Each start re-checks just before the assignment (single
+  // flight: one gate-then-merge task at a time, BUGS.md 2026-11-09).
+  if (p.merge !== null) return;
   const queued = queuedMergeFiles(ctx.root);
   // One main-head read per poll with a non-empty queue (branchHead's ref-file fast path — no
   // spawn), serving every entry's cached dedupe verdict below.
