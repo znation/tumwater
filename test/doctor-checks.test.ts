@@ -647,7 +647,8 @@ test("checkSalvagePatches ok with no direct patch, warn naming count and age for
   fs.writeFileSync(path.join(salvagePendingDir(pending, "feature"), "a.patch"), "pending");
   assert.equal(checkSalvagePatches(pending).level, "ok");
 
-  // One direct patch: warn naming the count and the oldest patch's age.
+  // One direct patch: warn naming the count, the oldest patch's age, the patch under its
+  // whole-list number, and the `tumwater salvage` remedy.
   const warn = makeRepo();
   fs.mkdirSync(salvageDir(warn), { recursive: true });
   const file = path.join(salvageDir(warn), "a.patch");
@@ -657,8 +658,25 @@ test("checkSalvagePatches ok with no direct patch, warn naming count and age for
   assert.equal(out.level, "warn");
   assert.match(out.detail, /1 salvaged workspace patch kept for you/);
   assert.match(out.detail, /oldest 1h/);
-  assert.match(out.detail, /a\.patch/);
-  assert.match(out.detail, /\.tumwater\/salvage\//);
+  assert.match(out.detail, /1\. a\.patch/);
+  assert.match(out.detail, /tumwater salvage --show/);
+  assert.match(out.detail, /tumwater salvage --drop/);
+
+  // Two patches name each under its oldest-first position, so a printed name is directly
+  // addressable by the `--show <n>` / `--drop <n>` the remedy names.
+  const two = makeRepo();
+  fs.mkdirSync(salvageDir(two), { recursive: true });
+  const older = path.join(salvageDir(two), "a.patch");
+  fs.writeFileSync(older, "older patch body");
+  fs.utimesSync(older, new Date(now - 7_200_000), new Date(now - 7_200_000));
+  const newer = path.join(salvageDir(two), "b.patch");
+  fs.writeFileSync(newer, "newer patch body");
+  fs.utimesSync(newer, new Date(now - 1_800_000), new Date(now - 1_800_000));
+  const twoOut = checkSalvagePatches(two, now);
+  assert.equal(twoOut.level, "warn");
+  assert.match(twoOut.detail, /2 salvaged workspace patches kept for you/);
+  assert.match(twoOut.detail, /oldest 2h/);
+  assert.match(twoOut.detail, /1\. a\.patch, 2\. b\.patch/);
 });
 
 test("checkEventLog fails an events.jsonl whose permissions deny reading", { skip: runningAsRoot() }, () => {

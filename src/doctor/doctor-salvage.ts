@@ -21,15 +21,18 @@ export function checkSalvagePatches(root: string, now: number = Date.now()): Che
     return okOutcome("no salvaged workspace patches are kept for you");
   }
   const oldest = patches[0]!;
+  // Number each named file with its 1-based position in the whole oldest-first list, exactly
+  // the position the `tumwater salvage` list prints, so the row's names are directly addressable
+  // by the `--show <n>` / `--drop <n>` the remedy names.
   const named = patches
     .slice(0, SALVAGE_NAMED_CAP)
-    .map((p) => p.file)
+    .map((p, i) => `${i + 1}. ${p.file}`)
     .join(", ");
   const more =
     patches.length > SALVAGE_NAMED_CAP
       ? ` and ${patches.length - SALVAGE_NAMED_CAP} more`
       : "";
   return warnOutcome(
-    `${plural(patches.length, "salvaged workspace patch", "salvaged workspace patches")} kept for you (oldest ${formatAge(now - oldest.savedAt)}, ${oldest.file}): ${named}${more} — apply or delete them under .tumwater/salvage/ before session retention prunes them`,
+    `${plural(patches.length, "salvaged workspace patch", "salvaged workspace patches")} kept for you (oldest ${formatAge(now - oldest.savedAt)}, ${oldest.file}): ${named}${more} — apply one by hand, or read one with \`tumwater salvage --show <n>\` or delete one with \`tumwater salvage --drop <n>\` before session retention prunes them`,
   );
 }

@@ -397,6 +397,8 @@ test("the standing amber alerts raise from the snapshot's raw flags, worded like
   assert.equal(salvage?.tone, "amber");
   assert.equal(salvage?.title, "Salvaged workspace patches kept for you");
   assert.match(salvage?.detail ?? "", /salvaged workspace patch kept for you/);
+  assert.match(salvage?.detail ?? "", /1\. a\.patch/);
+  assert.match(salvage?.detail ?? "", /tumwater salvage --drop/);
   assert.ok(!has({}, "salvage-patches"), "no kept patch raises nothing");
 });
 
