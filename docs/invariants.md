@@ -270,7 +270,9 @@ silent.
 (`directorRequestPath`), `src/run/run-verdict.ts` (the bugfix `applyDirectorRequest` call).
 
 **Pinned by.** `test/director-request.test.ts` (absent/valid/empty/over-cap-truncated/over-cap-
-surrogate-cut/throw paths and the delete-on-every-path guarantee), `test/prompt-roles.test.ts`
+surrogate-cut/throw paths, the failed-unlink path — a valid request whose file cannot be deleted
+is still queued, still on disk, and surfaces the deletion as the error rather than a clean queue —
+and the delete-on-every-path guarantee), `test/prompt-roles.test.ts`
 (the bugfix find text names the body's ~3659-char bound), `test/run-verdict.test.ts` (a bugfix
 run consumes the file before a dirty/staging outcome and a feature run leaves it).
 

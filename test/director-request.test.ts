@@ -6,7 +6,8 @@ import { directorRequestPath } from "../src/paths.js";
 import { DIRECTOR_PROMPT_MAX_CHARS, submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { inboxSize, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { initializedWorktree } from "./fixtures/repo-fixtures.js";
+import { withReadOnlyDir } from "./helpers/fs-faults.js";
+import { initializedRepo, initializedWorktree, skipIfRoot, tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/inbox/director-request.ts (INV-B8): the bugfix role's
  * cannot-reproduce handoff file is consumed into one director prompt and deleted on every
@@ -105,4 +106,28 @@ test("the default queue seam is submitRolePrompt: a real submit enqueues under d
   const direct = submitRolePrompt(root, "director", "sanity");
   assert.equal(direct, "sanity");
   assert.equal(inboxSize(root, "director"), 2, "both prompts queued under director");
+});
+
+// The one failure the delete-on-every-path rule cannot absorb (INV-B8): the unlink itself
+// fails — a permissions surprise on the worktree directory, the same shape as a full disk or
+// an externally locked file. The queue happens before the unlink (the prompt is enqueued while
+// the request is being consumed), so the director is still told and the file is still on disk
+// for a retry, but the caller must surface the failed deletion as an error — never the silent
+// { queued: true } the surviving file would otherwise read as — so the run warns and the file
+// is never assumed gone. The worktree dir is made read-only, which lets the file be READ
+// (searchable) but not unlinked; the queue directory lives under the repo, not the worktree,
+// so only the unlink fails. (Mirrors config-request.test.ts's twin for the config-request path.)
+test("a valid director request whose unlink fails is still queued, and the failed deletion surfaces as the error", async (t) => {
+  if (skipIfRoot(t)) return;
+  const root = await initializedRepo();
+  const wt = tmpdir();
+  fs.writeFileSync(directorRequestPath(wt), "attempt 1: test X fails with Y");
+  await withReadOnlyDir(wt, async () => {
+    const out = applyDirectorRequest(root, wt);
+    assert.notEqual(out, null, "a present request file is never read as null");
+    assert.ok(out && "error" in out, "the failed deletion is surfaced, not a clean queue");
+    assert.match(out.error, /could not be deleted/, "the error names the undeletable file");
+    assert.equal(queuedRolePrompts(root, "director").length, 1, "the queue preceded the failed cleanup, so the director is still told");
+    assert.ok(fs.existsSync(directorRequestPath(wt)), "the undeletable request is still on disk for a retry");
+  });
 });
