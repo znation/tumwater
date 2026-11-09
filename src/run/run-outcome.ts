@@ -110,8 +110,8 @@ export interface RunOutcome {
    * model check probe the run's pair again, as for `undeclared`. A run whose request is still
    * unanswered mid-run reaches the check sooner, through RoleRunner.unansweredRunPair. */
   unanswered?: boolean;
-  /** The run ended on leftover recovery (runner-leftover.ts) — the leftover went on the merge
-   * queue (or already was there, or could not be pinned) — without an authoring run. No model
+  /** The run ended on leftover recovery (runner-leftover.ts) — the leftover was re-pinned (or
+   * already had a queued entry, or could not be pinned) — without an authoring run. No model
    * ran, so the orchestrator's fallback breaker takes the run as no evidence about the backend. */
   recoveredLeftover?: boolean;
   /** The run committed but enqueued nothing because the role already had a queued change or an

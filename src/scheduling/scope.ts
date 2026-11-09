@@ -136,7 +136,7 @@ export interface SchedulingScope {
   deferredDue: Map<string, boolean>;
   workMergedSince: WorkMergedCache;
   modelCheckHeld: ReadonlySet<string>;
-  /** The director holds a kept merge pin: owed an authoring run to re-queue it. */
+  /** The director holds a kept merge pin: owed an authoring run to re-pin it. */
   pinnedDirector: boolean;
   claimGroups: Map<string, ClaimGroup>;
   /** Each claim-taking base's entries its OWN queued merges already claim (keyed by base):
@@ -408,8 +408,8 @@ function orderForAdmission(
  * the branch-ahead check inside the queued case guarded nothing, and the predicate is now just
  * "an unmerged pin whose change is not queued" — the KEPT pin (a non-terminal merge failure
  * that left no queued entry) and the crash-between-commit-and-queue-write shape, both of which
- * only a run can re-queue. The queued entry deletes the pin on drain, which clears
- * leftoverPending on its own. */
+ * only a run can re-pin. The drain deletes the pin when it merges (or a queued entry's drain
+ * does), which clears leftoverPending on its own. */
 async function directorPinOwedRun(root: string): Promise<boolean> {
   return (await hasUnmergedPin(root, DIRECTOR_ROLE)) && !queuedMergeRoles(root).has(DIRECTOR_ROLE);
 }

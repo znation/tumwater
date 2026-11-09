@@ -77,6 +77,14 @@ test("pinnedMergeEntry labels a current-run pin by its subject and an earlier-ru
     `recovered leftover work from ${ROLE}: ${subject}`,
     "a torn-head re-queue passes no current run and keeps the recovered label",
   );
+
+  const { root: handmadeRoot, sha: handmadeSha } = await pinnedFixture(subject);
+  const beforeAnyRun = await pinnedMergeEntry(handmadeRoot, ROLE, handmadeSha, { currentRun: 0 });
+  assert.equal(
+    beforeAnyRun.summary,
+    `recovered leftover work from ${ROLE}: ${subject}`,
+    "a hand-made commit with no Run trailer is never a current-run pin, even before the first run",
+  );
 });
 
 test("a pinned commit not in main is re-pinned for the drain, not merged", async () => {

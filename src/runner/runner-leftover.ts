@@ -26,8 +26,8 @@ import type { RunnerState } from "./runner-state.js";
  * streak and outstanding hand-back. */
 
 /** Consecutive merges of one pinned sha that may end `merge_conflict` before recovery stops
- * re-queuing it (RunnerState.mergeConflicts). Each attempt costs a conflict-resolution run, and
- * a role holding a pin never authors: without a cap an unmergeable change would re-queue
+ * re-pinning it (RunnerState.mergeConflicts). Each attempt costs a conflict-resolution run, and
+ * a role holding a pin never authors: without a cap an unmergeable change would retry
  * forever, burning one resolution run per drain. At the cap the pin is handed back to its
  * author with the markers in place rather than discarded (PLANS.md "Robust conflict landing,
  * part 2/2"); a lineage already handed back once is discarded instead. */
@@ -35,7 +35,7 @@ export const MERGE_CONFLICT_LIMIT = 2;
 
 /** Delete a pin main already contains — the work merged and a crash skipped its un-pinning —
  * so nothing re-merges what main holds. True when it was stale and is gone. Shared by the
- * author's recovery and the pipeline's re-queue (pinnedRetrySha). */
+ * author's recovery and the pipeline's retry (pinnedRetrySha). */
 async function dropStalePin(root: string, ref: string, sha: string, mainBranch: string): Promise<boolean> {
   if (!(await isMergedInto(root, sha, mainBranch))) return false;
   await deleteRef(root, ref);
@@ -60,7 +60,7 @@ function conflictAttempts(streak: RunnerState["mergeConflicts"], sha: string): n
   return streak?.sha === sha ? streak.count : 0;
 }
 
-/** The sha of a role's kept pin when the merge pipeline may re-queue it itself: the pin exists,
+/** The sha of a role's kept pin when the merge pipeline may retry it itself: the pin exists,
  * main does not already contain it (a stale pin is deleted, as recovery does), and its conflict
  * streak is under MERGE_CONFLICT_LIMIT. Null otherwise — a pin at the limit is the author's
  * conflict hand-back, and it stays with recoverLeftover. */
@@ -337,7 +337,8 @@ export function recoveredMergeEntry(role: string, sha: string, meta: CommitMetad
  * the runner's current run number, so a pin its commit's Run trailer attributes to that run
  * keeps its own subject as the summary instead of being labelled recovered leftover work.
  * A pin from an earlier run (a leftover recovery re-pin) keeps the recovered label, as does a
- * torn-head re-queue that passes no current run. */
+ * torn-head re-queue that passes no current run, and a hand-made commit with no `Run:` trailer
+ * (its run reads 0, never a real current run). */
 export async function pinnedMergeEntry(
   root: string,
   role: string,
@@ -351,8 +352,10 @@ export async function pinnedMergeEntry(
   // A fresh pin is the caller's own current run's change (part 3e/7): merge it under its own
   // subject, not labelled recovered leftover work. A pin the commit's Run trailer attributes to
   // an earlier run — leftover recovery re-pinning what the prior run left behind (part 3i/7) —
-  // keeps the recovered label, as does a torn-head re-queue that passes no currentRun. Same
-  // run-vs-current comparison the drain's pin-claim withdrawal already relies on.
-  const isFresh = opts.currentRun !== undefined && run === opts.currentRun;
+  // keeps the recovered label, as does a torn-head re-queue that passes no currentRun. A
+  // hand-made commit with no Run trailer reads run 0, which no real run number uses, so it is
+  // never fresh even before the role's first run. Same run-vs-current comparison the drain's
+  // pin-claim withdrawal already relies on.
+  const isFresh = opts.currentRun !== undefined && run !== 0 && run === opts.currentRun;
   return isFresh && meta.subject !== undefined ? { ...entry, summary: meta.subject } : entry;
 }
