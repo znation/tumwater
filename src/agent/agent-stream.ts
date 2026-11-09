@@ -80,7 +80,13 @@ export function createAgentStream(input: {
   let nativeTail = "";
   let nativeOverflow = false;
 
-  const onLine = (line: string) => rawLog.stream.write(line + "\n");
+  const onLine = (line: string) => {
+    // A stream a write failure or destroy already closed (AppendLog.finished) must not be
+    // written to again: a write to a destroyed stream fails and a write to a closed one
+    // throws, and either would surface as an uncaught exception in the stream pipeline.
+    if (rawLog.broken || rawLog.finished) return;
+    rawLog.stream.write(line + "\n");
+  };
   // The translator's session id, once the stream has named it (codex's `thread.started`).
   // The pre-spawn record for a fresh codex run carries the session name; the id it actually
   // ran with is born in the stream, so the first time this returns one the pre-spawn record
@@ -88,7 +94,7 @@ export function createAgentStream(input: {
   // record a later `exec resume` resumes (design §4 "Sessions").
   let streamMintedSession = false;
   const emitNativeLine = (line: string) => {
-    if (!nativeLog.broken) nativeLog.stream.write(line + "\n");
+    if (!nativeLog.broken && !nativeLog.finished) nativeLog.stream.write(line + "\n");
     for (const canonical of translator.translate(line)) parser.feed(canonical + "\n", onLine);
     const sid = translator.sessionId?.();
     if (sid !== undefined && sid !== preSpawnSessionId && !streamMintedSession) {
@@ -192,7 +198,7 @@ export function createAgentStream(input: {
     };
     for (const log of [rawLog, nativeLog]) {
       log.stream.on("error", settle);
-      if (!log.broken) {
+      if (!log.broken && !log.finished) {
         pending += 1;
         log.stream.end(flushed);
       }

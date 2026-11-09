@@ -13,7 +13,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
-import { ensureParentDir, rotateIfLarge } from "../files/files.js";
+import { ensureParentDir, rotateIfLarge, statOrNull, terminateTornTail } from "../files/files.js";
 import type { ResolvedBackendBin } from "../pi/pi-bin.js";
 import { terminateChild } from "../process/process.js";
 import { makeRunMarker } from "../process/run-marker.js";
@@ -31,13 +31,21 @@ import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import type { PiRunOptions } from "./agent-run.js";
 
 /** A best-effort append log: its parent is created and it is rotated when oversized before the
- * stream opens, and an 'error' event (EACCES, ENOSPC) flips `broken` so the caller can skip
- * waiting on a 'finish' that will never come. A broken log degrades to a lost log, never an
+ * stream opens, an 'error' event (EACCES, ENOSPC) flips `broken`, and an early end — the
+ * stream destroyed or a write failure closing it (a SIGKILLed run, a torn append) — flips
+ * `finished`, so the caller can skip writes to a dead stream and can skip waiting on a
+ * 'finish' that will never come. A broken or finished log degrades to a lost log, never an
  * unhandled 'error' or a stuck run. Both the raw transcript and the backend-native debug log
  * use one. */
 export interface AppendLog {
   stream: fs.WriteStream;
   broken: boolean;
+  /** True once the stream ended by ANY path (normal end, destroy, or a write failure's
+   * implicit close). From then on writes are skipped and end() is a no-op — the end handlers
+   * (finish's flush wait, openAppendLog's held count) have all fired once, so this is the one
+   * flag that means "this stream is closed" as opposed to `broken`, which is the 'error'
+   * subset of it. */
+  finished: boolean;
 }
 
 /** The append logs this process still has open, keyed by resolved path, with their count. The
@@ -54,13 +62,40 @@ export function openAppendLog(file: string, maxBytes: number): AppendLog {
   // stream closes rotates it. Held counts also keep a later rotation from deleting the .1 a
   // live run writes to.
   const key = path.resolve(file);
-  if ((openAppendLogs.get(key) ?? 0) === 0) rotateIfLarge(file, maxBytes);
-  const log: AppendLog = { stream: fs.createWriteStream(file, { flags: "a" }), broken: false };
-  openAppendLogs.set(key, (openAppendLogs.get(key) ?? 0) + 1);
+  const priorWriters = openAppendLogs.get(key) ?? 0;
+  if (priorWriters === 0) {
+    rotateIfLarge(file, maxBytes);
+    // A run killed before its final newline (the SIGTERM → SIGKILL group sweep, a write
+    // failure, a power loss) leaves the log's last line torn. Without this repair the next
+    // run's first record would glue onto the fragment into one unparseable line that every
+    // reader of the pi log drops (readCompleteLines and readTranscriptTail both hold back a
+    // line without its newline) — the run's output silently lost. Repair here, synchronously,
+    // not in an 'open' handler: the stream's open is asynchronous, so a path-keyed repair in
+    // that handler could fire after an unrelated append or after a later rotation renamed the
+    // path, appending a newline into the wrong file. Here, the file is the one this stream
+    // will open, and a just-rotated file is empty (terminateTornTail's no-op) and an
+    // already-newline-terminated file needs nothing. Swallowed: a failed repair degrades to
+    // the torn tail every append-log reader already tolerates; a throw here would kill the
+    // orchestrator, and a live run still holds the path (priorWriters > 0) means its bytes,
+    // not ours, own the tail, so the held branch must never touch the file.
+    try {
+      terminateTornTail(file, statOrNull(file));
+    } catch {
+      // Best-effort; see the comment above.
+    }
+  }
+  const log: AppendLog = { stream: fs.createWriteStream(file, { flags: "a" }), broken: false, finished: false };
+  openAppendLogs.set(key, priorWriters + 1);
   log.stream.on("error", () => {
     log.broken = true;
   });
+  log.stream.on("finish", () => {
+    log.finished = true;
+  });
   log.stream.on("close", () => {
+    // 'close' fires for every terminal path, an un-ended destroy included, so it — not
+    // 'finish' — is the authoritative "the stream is dead" signal.
+    log.finished = true;
     const left = (openAppendLogs.get(key) ?? 1) - 1;
     if (left <= 0) openAppendLogs.delete(key);
     else openAppendLogs.set(key, left);

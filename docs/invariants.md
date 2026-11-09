@@ -297,6 +297,33 @@ live run in the process still writes" (a held second open leaves the live file a
 does not shift the first generation), and "openAppendLog still rotates an oversized file nobody
 else in the process holds" (an unheld oversized file rotates as before).
 
+### INV-B10: an append log opens onto a complete line, never gluing its first record onto a torn tail
+
+**Guarantee.** When `openAppendLog` opens a log no run in the process still holds, it first
+appends a newline to the file only if its last byte is not already one — terminating the torn
+trailing line a killed run left — before the stream opens. The orchestrator shares a role's pi
+log path between a run and its post-merge reviews; a run killed before its final newline (the
+SIGTERM → SIGKILL group sweep, a write failure, a power loss) leaves that line torn, and
+without the repair the next run's first record would glue onto the fragment into one unparseable
+line that every reader of the pi log drops (`readCompleteLines` and `readTranscriptTail` hold
+back a line without its newline), silently losing the run's output. The repair runs
+synchronously in `openAppendLog`, not in the stream's async `open` handler: a handler could fire
+after an unrelated append or after a later rotation renamed the path, appending a newline into the
+wrong file. It is gated on the path being unheld, so a held open (a live run still writing it) is
+never touched, and on `terminateTornTail`'s own no-ops, so an empty or already-newline-terminated
+file is left byte-identical.
+
+**Binds.** `src/agent/agent-spawn.ts` (`openAppendLog`), `src/files/files.ts` (`terminateTornTail`,
+`statOrNull`), `src/agent/agent-stream.ts` (the raw and native log writes it feeds).
+
+**Pinned by.** `test/agent-append-log.test.ts` — "a next open terminates a torn tail the previous
+run left, so no reader glues two records into one" (the next open appends the missing newline so
+the two records each parse on their own line), "a held live writer's file is not torn-tail-repaired
+by another open of the same path" (a held open leaves the file byte-identical), "a next open leaves
+an already-newline-terminated log untouched (the repair is a no-op)", and "a destroyed or ended
+append log reports finished, so a later write or end is skipped" (a dead stream is not written to
+again).
+
 ## Sibling result shapes a classifier treats alike
 
 When a classifier groups outcomes into classes, every result shape that belongs to a class must
