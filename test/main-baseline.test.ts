@@ -1,7 +1,7 @@
 /** The team-shared main-baseline verdict cache (src/baseline/main-baseline.ts): what a check of
  * main reports, one run per SHA (a repeat or concurrent call re-runs nothing, a new SHA
- * re-checks), green seeding from the merge path, the cap on cached SHAs, and the runs it never
- * caches as red: environmental skips and runs the host slept through. Sibling slices:
+ * re-checks), direct green seeding (noteGreenBaseline), the cap on cached SHAs, and the runs it
+ * never caches as red: environmental skips and runs the host slept through. Sibling slices:
  * main-baseline-reverify.test.ts (a one-worktree red re-run by the next worktree),
  * main-baseline-check.test.ts (which check verifies main, and the check permit),
  * main-baseline-inherit.test.ts (the doc-only green carry-over) and
@@ -135,18 +135,18 @@ test("checkMainBaseline dedups concurrent checks of one new SHA into a single ru
   assert.equal(runsOf(counter), 1, "one npm run for concurrent callers of the same SHA");
 });
 
-// --- noteGreenBaseline: the merge path (src/merge/merge-to-main.ts) seeds this cache with the
-// post-rebase head after a green check, so a merged tree is never re-verified by checkMainBaseline.
+// --- noteGreenBaseline: a caller records a directly observed green for a SHA, so a later
+// checkMainBaseline of that tree is a cache hit (no merge path has seeded since parts 4l/3).
 
 test("noteGreenBaseline records a directly-observed green verdict: checkMainBaseline returns it without running the suite", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; echo ok`);
-  // The merge path just verified this exact tree (branch HEAD == main here) and passed: record that
-  // verdict the way the stack lander does after a green scope-`batch` check.
+  // A caller just observed this exact tree pass (branch HEAD == main here): record that verdict
+  // directly, as the gate pre-check did when it ran green (no merge path seeds since 4l/3).
   noteGreenBaseline(headSha(root));
   const result = await checkMainBaseline(wt, CFG);
   assert.equal(result.baseline?.status, "green");
-  assert.ok(!fs.existsSync(counter), "the suite never ran — the merge path's verdict is trusted for this SHA");
+  assert.ok(!fs.existsSync(counter), "the suite never ran — the recorded verdict is trusted for this SHA");
 });
 
 // BUGS.md 2026-09-30: a FAILED baseline run the host slept through made no verdict about the
