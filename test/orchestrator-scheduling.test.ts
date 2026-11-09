@@ -158,7 +158,7 @@ test("a subscription-window hold stops the director too, while a 429-storm hold 
   assert.equal((await pollRunnerReasons(storm)).has(runners[0]!), true, "429 hold: director keeps running");
 });
 
-test("a director holding a kept merge pin with an empty inbox is due as leftover, queued pin or not", async () => {
+test("a director holding a kept merge pin with an empty inbox is due as leftover, but a queued pin is not", async () => {
   const repo = await initializedRepo();
   const runners = [fakeRunner("director", defaultConfig())];
   const roleProviders = new Map<string, string | undefined>();
@@ -169,13 +169,15 @@ test("a director holding a kept merge pin with an empty inbox is due as leftover
   const due = await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders));
   assert.equal(due.get(runners[0]!), "leftover");
 
-  // The queue is not a scheduling gate: a queued pin is offered the leftover reason like any
-  // other unmerged pin, so the authoring run is admitted.
+  // A queued pin is owed NO authoring run: the queue drain settles it, and every run the
+  // poll would admit only spins leftover recovery's `already_queued`/`relief_wait` arms into
+  // a `skipped` end — the director idles until the entry drains (BUGS.md 2026-11-04 and
+  // 2026-11-09). A KEPT pin (no queued entry) still owes the run, as the `leftover` above.
   enqueueMerge(repo, { role: "director", sha, run: 1, summary: "kept", enqueuedAt: Date.now() });
   assert.equal(
-    (await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).get(runners[0]!),
-    "leftover",
-    "a queued pin is still owed the authoring run",
+    (await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(runners[0]!),
+    false,
+    "a queued pin is not owed the authoring run",
   );
 });
 
@@ -185,13 +187,12 @@ test("a director whose queued change is still in the queue and a second commit w
   const roleProviders = new Map<string, string | undefined>();
   // The director's FIRST change is pinned and on the merge queue; its SECOND commit (the
   // interlock-relief hold, run-stage's `heldOnBranch`) still sits on the role's branch ahead
-  // of main. While the queue drains, the director owes no leftover run: each such run would
-  // only hit leftover recovery's `relief_wait` arm and end `skipped` (runner-recovery.ts),
-  // re-queueing nothing, so the poll spinning it gains nothing. The held commit stays on the
-  // branch; once the drain deletes the pin, the director's next run (any reason, e.g. a new
-  // inbox prompt) takes leftover recovery's no-pin branch and re-queues it. (BUGS.md
-  // 2026-11-04, "The director re-runs every poll while a second commit of its waits on the
-  // branch".)
+  // of main. A queued pin owes no leftover run — `relief_wait` (with the held commit) and
+  // `already_queued` (without one) both end `skipped` and re-queue nothing — so the held
+  // commit stays on the branch; once the drain deletes the pin, the director's next run (any
+  // reason, e.g. a new inbox prompt) takes leftover recovery's no-pin branch and re-queues
+  // it. (BUGS.md 2026-11-04, "The director re-runs every poll while a second commit of its
+  // waits on the branch"; 2026-11-09 for the no-second-commit spin.)
   const first = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "one.txt"), "one\n"), "one");
   sh(repo, "git", "checkout", "-b", "tumwater/director", "main");
   fs.writeFileSync(path.join(repo, "two.txt"), "two\n");
@@ -202,13 +203,14 @@ test("a director whose queued change is still in the queue and a second commit w
   const due = await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders));
   assert.equal(due.has(runners[0]!), false, "queued pin + held second commit: not owed a leftover run");
 
-  // The same pin with NO second commit on the branch (the branch at main) IS still owed the
-  // leftover run: there is no held wait for the queue to settle.
+  // The same pin with NO second commit on the branch (the branch at main) is owed the run
+  // no more than the relief-wait shape: both queued-pin arms of leftover recovery end
+  // `skipped` and re-queue nothing, so the branch-ahead distinction guarded nothing.
   sh(repo, "git", "checkout", "-B", "tumwater/director", "main");
   assert.equal(
-    (await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).get(runners[0]!),
-    "leftover",
-    "a queued pin whose branch holds nothing extra still owes the authoring run",
+    (await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(runners[0]!),
+    false,
+    "a queued pin whose branch holds nothing extra is not owed the authoring run either",
   );
 });
 
