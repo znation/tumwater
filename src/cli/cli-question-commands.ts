@@ -314,41 +314,55 @@ async function runQuestionsAnswer(root: string, inv: QuestionsInvocation): Promi
   return answerFromDecision(root, n, words, jsonFlag);
 }
 
+/** A follow repaints a LIST; it cannot compose with a mode that is not a list — a JSON
+ * document (--json), one question in full (--show), or the answer form, which writes one
+ * change rather than re-reading one. Refuse each naming the conflict, before any output. */
+function refuseFollowRivals(inv: QuestionsInvocation): void {
+  if (inv.jsonFlag) failFollowJsonRival("questions --json");
+  if (inv.show !== undefined) fail("-f/--follow repaints the list; --show prints one question in full — drop one of them");
+  if (inv.words.length > 0) fail("-f/--follow repaints the list; questions answer writes one change — drop the follow");
+  if (inv.file !== undefined) fail("--file only applies to questions answer <n>");
+}
+
+/** `tumwater questions --answered` — one list, once or followed: the follow arm repaints the
+ * answered list until Ctrl+C or the parent exits, the once arm prints it. */
+async function runAnsweredList(root: string, inv: QuestionsInvocation, seams: FollowViewSeams): Promise<void> {
+  if (inv.followFlag) {
+    // Each frame re-reads QUESTIONS.md, so a newly answered entry appears in the next repaint.
+    await followView(() => answeredQuestionList(root, inv.limit ?? 10, inv.grep), seams);
+    return;
+  }
+  sayAnsweredQuestions(root, inv);
+}
+
+/** `tumwater questions` with no subcommand — one list, once or followed: the follow arm
+ * repaints the open list until Ctrl+C or the parent exits, the once arm prints it. */
+async function runOpenList(root: string, inv: QuestionsInvocation, seams: FollowViewSeams): Promise<void> {
+  if (inv.file !== undefined) fail("--file only applies to questions answer <n>");
+  if (inv.followFlag) {
+    // Each frame re-reads QUESTIONS.md, so an answered question leaves the next repaint.
+    await followView(() => openQuestionList(root, inv.grep), seams);
+    return;
+  }
+  sayQuestionList(root, inv.jsonFlag, inv.grep);
+}
+
 /** `tumwater questions`: list open questions (with `-f/--follow` repainting the outbox until
  * Ctrl+C or the parent exits), or answer one with `answer <n> <decision>`. */
 export async function cmdQuestions(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   const inv = parseQuestionsInvocation(args);
   refuseTeamWorkspace(root);
-  // A follow repaints a LIST; it cannot compose with a mode that is not a list — a JSON
-  // document (--json), one question in full (--show), or the answer form, which writes one
-  // change rather than re-reading one. Refuse each naming the conflict, before any output.
-  if (inv.followFlag) {
-    if (inv.jsonFlag) failFollowJsonRival("questions --json");
-    if (inv.show !== undefined) fail("-f/--follow repaints the list; --show prints one question in full — drop one of them");
-    if (inv.words.length > 0) fail("-f/--follow repaints the list; questions answer writes one change — drop the follow");
-    if (inv.file !== undefined) fail("--file only applies to questions answer <n>");
-  }
+  if (inv.followFlag) refuseFollowRivals(inv);
   if (inv.show !== undefined) {
     sayShownQuestion(root, inv);
     return;
   }
   if (inv.answeredFlag) {
-    // Each frame re-reads QUESTIONS.md, so a newly answered entry appears in the next repaint.
-    if (inv.followFlag) {
-      await followView(() => answeredQuestionList(root, inv.limit ?? 10, inv.grep), seams);
-      return;
-    }
-    sayAnsweredQuestions(root, inv);
+    await runAnsweredList(root, inv, seams);
     return;
   }
   if (inv.words.length === 0) {
-    if (inv.file !== undefined) fail("--file only applies to questions answer <n>");
-    // Each frame re-reads QUESTIONS.md, so an answered question leaves the next repaint.
-    if (inv.followFlag) {
-      await followView(() => openQuestionList(root, inv.grep), seams);
-      return;
-    }
-    sayQuestionList(root, inv.jsonFlag, inv.grep);
+    await runOpenList(root, inv, seams);
     return;
   }
   await runQuestionsAnswer(root, inv);
