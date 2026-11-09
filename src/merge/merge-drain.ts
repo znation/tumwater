@@ -54,6 +54,17 @@ async function postReviewDue(config: TumwaterConfig, root: string, commit: strin
   return files === null || !isExemptDiff(files, config.review.exemptPaths);
 }
 
+// Single-flight per pipeline: a pipeline object is one team's scheduler state, so two
+// overlapping drains of it (the test pump + pumpUntil shape, and any restart/hand-off that
+// overlaps the poll) share one drain instead of both running the dedupe scan and both calling
+// startMerge for the same head. drainMerge checks p.merge between its dedupe awaits without
+// reserving the slot, so a second drain that passed that check before the await could otherwise
+// start a duplicate task for the same queue head — the duplicate tasks then reset and run their
+// gate checks in the shared _merge worktree over each other (the green-fast / duplicate-merged
+// flake of BUGS.md 2026-11-09). drainMerge never awaits a task promise, so the shared drain
+// resolves in milliseconds even while a task runs and waiting callers return without delay.
+const mergeDrainInFlight = new WeakMap<MergePipeline, Promise<void>>();
+
 /** One poll of the merge queue (the scheduler's WHEN: after the gates, never while a restart
  * or a disk hold is pending — a reviewer-provider hold does not stop the whole drain: it parks
  * only the post-merge review drain, whose no-role startHeld reads it, never a merge entry, so
@@ -66,7 +77,18 @@ async function postReviewDue(config: TumwaterConfig, root: string, commit: strin
  * — authors keep running behind them, which is the entire point. */
 export async function drainMergeQueue(ctx: MergePipelineContext, p: MergePipeline): Promise<void> {
   drainPostReviews(ctx, p);
-  await drainMerge(ctx, p);
+  const inFlight = mergeDrainInFlight.get(p);
+  if (inFlight !== undefined) {
+    await inFlight;
+    return;
+  }
+  const drain = drainMerge(ctx, p);
+  mergeDrainInFlight.set(p, drain);
+  try {
+    await drain;
+  } finally {
+    if (mergeDrainInFlight.get(p) === drain) mergeDrainInFlight.delete(p);
+  }
 }
 
 /** The merge drain — the queue's one whole stage: drop the torn head, dedupe every

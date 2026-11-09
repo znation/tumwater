@@ -2407,6 +2407,24 @@ names the torn file and, when a role was recovered, that role.
 **Pinned by.** `test/merge-queue.test.ts` — "a torn queue head is dropped and its change re-queued
 from the recovered pin in leftover-recovery shape, or dropped with no re-queue".
 
+### INV-AG6: the merge drain is single-flight per pipeline, so two overlapping drains start one task, not two
+
+**Guarantee.** `drainMergeQueue` serializes a pipeline's drains through a per-pipeline in-flight
+promise: a drain that arrives while one is running awaits the in-flight one and returns, so the
+dedupe scan runs once and the merge slot is assigned at most once per head. `drainMerge` checks
+`p.merge` only between its dedupe awaits without reserving the slot (it awaits the dedupe's git
+spawn between the slot check and `startMerge`), so two unserialized drains of the same pipeline
+would otherwise each read the slot as free and each call `startMerge` for the same head: the
+duplicate tasks then reset and run their gate checks in the shared `_merge` worktree over each
+other (a green-fast check against a tree a sibling reset, a duplicate merged event, a wedged
+slot). The drain awaits no task promise, so the shared in-flight promise resolves in milliseconds
+and waiting callers return without delay.
+
+**Binds.** `src/merge/merge-drain.ts` (`drainMergeQueue`, the `mergeDrainInFlight` map).
+
+**Pinned by.** `test/merge-drain.test.ts` — "two overlapping drains of one pipeline start one
+merge task, not two".
+
 ## Deferred prompts: only the writer's exact marker defers or is stripped, and a prompt is due at its stamp
 
 `tumwater prompt --at` keeps the deferral inside the queue file's text, so no queue format migrates.

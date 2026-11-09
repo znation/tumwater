@@ -11,7 +11,7 @@ import { mergeQueueDir, mergeRefName } from "../src/paths.js";
 import { readPostReviews } from "../src/review/post-merge-review.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { refSha, setRef } from "../src/git/git.js";
-import { APPROVE, drained, entry, makePipeline, pump, pumpUntil, queueChanges, runnersFor } from "./fixtures/merge-fixtures.js";
+import { APPROVE, allTasks, drained, entry, makePipeline, pump, pumpUntil, queueChanges, runnersFor } from "./fixtures/merge-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -229,4 +229,39 @@ test("a null-file settle writes the outcome, drops no file and queues no retry e
   );
   assert.equal(await refSha(root, mergeRefName("improve")).catch(() => null), sha, "the pin survives — nothing dropped it");
   assert.equal(queueDepth(root), 0, "no retry entry was queued");
+});
+
+test("two overlapping drains of one pipeline start one merge task, not two", async () => {
+  // drainMerge checks p.merge between its dedupe awaits without reserving the slot, so two
+  // overlapping drains of the SAME pipeline (the pump + pumpUntil shape) each read the slot as
+  // free and each call startMerge for the same queue head: a duplicate task. Each task runs the
+  // change's check exactly once, so the change's check runs a second time iff a duplicate task
+  // started — that is the decisive, timing-independent signal the flaky abort tests left (a
+  // green-fast check against a worktree a sibling task reset, a duplicate merged event).
+  const root = makeRepo();
+  const counters = tmpdir("drain-single-flight-");
+  const counter = path.join(counters, "check-count");
+  fs.writeFileSync(counter, "0");
+  const config = {
+    ...defaultConfig(),
+    review: { enabled: true, exemptPaths: ["*.md", "docs/**"] },
+    check: { command: `n=$(cat '${counter}'); echo $((n+1)) > '${counter}'; exit 0` },
+  };
+  await queueChanges(root, ["alpha"]);
+  const restore = fakePi("VERDICT: approve\nok");
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"], undefined, config), { config });
+  const bg = pump(ctx, pipeline);
+  try {
+    // pump (background) + pumpUntil (foreground) overlap on the same pipeline — the exact shape
+    // that double-started the flaky test. Drive until the one queued change fully drains.
+    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the one change to fully drain", 45_000);
+  } finally {
+    await bg.stop().catch(() => {});
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+  const runs = Number.parseInt(fs.readFileSync(counter, "utf8").trim(), 10);
+  assert.equal(queueDepth(root), 0, "the one queued change drained");
+  assert.equal(await refSha(root, mergeRefName("alpha")), null, "the merged change's pin was consumed");
+  assert.equal(runs, 1, `the one queued change's check ran exactly once (one task); observed ${runs}`);
 });
