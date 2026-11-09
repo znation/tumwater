@@ -142,7 +142,11 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
       (backlogBodyHits.queued || []).some((m) => m.role === q.role && m.file === q.file);
     let shown = 0;
     let html;
-    if (!list.length) html = "<div class='empty'><strong>" + esc(emptyTitle) + "</strong>" + esc(emptyText) + "</div>";
+    // Held only inverts even an empty tab: with no held entry it paints the held empty state
+    // rather than the plain one, matching the TUI's Held-only stop and the documented promise.
+    if (!list.length) html = "<div class='empty'><strong>" +
+      esc(heldOnly ? "No held " + (key === "plans" ? "plans" : "bugs") : emptyTitle) + "</strong>" +
+      esc(heldOnly ? "No entry is held." : emptyText) + "</div>";
     else if (key === "queued") {
       // Each role's queue head carries no Move to top (a no-op there); every later row of
       // that role does. The rows arrive grouped by role — director first, then each role in

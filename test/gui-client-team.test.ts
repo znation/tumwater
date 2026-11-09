@@ -294,6 +294,13 @@ test("the Held only toggle paints the held rows, hides the pickable ones, and su
   assert.ok(!qhtml.includes("Blocked ("), "no Blocked divider when nothing is held");
   assert.ok(!qhtml.includes("Done recently"), "the Done section stays suppressed");
   assert.ok(qhtml.includes("New plan"), "the New plan control stays");
+
+  // An empty tab still gets the held empty state, not the plain "Nothing planned" one.
+  q.scope.renderBacklog({ ...payload, plans: [], planHolds: [], planBlocked: [], donePlans: [{ title: "Done plan", completedOn: "2026-10-05" }] });
+  const emptyHtml = q.panels["backlog"] ?? "";
+  assert.ok(emptyHtml.includes("No held plans"), "an empty Plans tab paints the held empty message");
+  assert.ok(!emptyHtml.includes("Nothing planned"), "the plain empty message stays off the held view");
+  assert.ok(!emptyHtml.includes("Done recently"), "the Done section stays suppressed on an empty held tab");
 });
 
 test("the Held only tab paints a blocked series and expands its held parts", () => {
