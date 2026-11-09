@@ -38,6 +38,155 @@ export function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title
   return entries.slice(0, DASHBOARD_RECENT_FINISHED).map((e) => ({ title: finishedTitle(e.title, dateRe), completedOn: completionDate(e.title, dateRe) }));
 }
 
+// The per-role row's field-group reads, shared by the role-field helpers below: `snap.roles`'
+// element type (the RunnerState & view-layer intersection snapshot computes) and `roleRowCells`'
+// live read, so each helper re-reads the same single-home sources roleRows does.
+type RoleState = ReturnType<typeof snapshot>["roles"][number];
+type RoleLive = ReturnType<typeof roleRowCells>["live"];
+
+/** The row's identity and failure streak: the role name, its own failure-streak tell, and the
+ * user-defined-role marker. */
+function roleIdentityFields(s: RoleState) {
+  return {
+    role: s.role,
+    // The role's own failure-streak tell (onErrorStreak, status-model.ts): the red
+    // "failing run after run" alert keys on this rather than the rendered phase, so it
+    // stays up while the role's next run is in progress (phase reads "working") and clears only
+    // when the streak resets (BUGS.md 2026-10-14).
+    errorStreak: onErrorStreak(s),
+    // User-defined-role marker (computed in snapshot — see StatusSnapshot.roles[].custom):
+    // the GUI renders it as an asterisk beside the role name.
+    custom: s.custom,
+  };
+}
+
+/** The row's resolved model and slot: the selector (a single string or a tier map), pi's own
+ * saved-default marker, and the slot and its pinned flag — each present only when the snapshot
+ * carries it. */
+function roleModelFields(s: RoleState) {
+  return {
+    // The role's resolved selector, present whenever a model resolves (a single string
+    // `model` or a tier map); the seam tier tag (part 7a, model-tiers.md
+    // "Observability") rides only under a tier map. The GUI renders a tier tag beside
+    // the role name and the selector in the sub line.
+    ...(s.modelTier ? { modelTier: s.modelTier } : {}),
+    ...(s.model ? { model: s.model } : {}),
+    // pi's own saved default (see StatusSnapshot.roles[].modelFromPi): ships beside `model` so
+    // the dashboard can mark a row whose model tumwater.json did not name. Same conditional
+    // spread as `model`, present on exactly the rows that carry the flag.
+    ...(s.modelFromPi ? { modelFromPi: true } : {}),
+    ...(s.slot ? { slot: s.slot, slotPinned: s.slotPinned === true } : {}),
+  };
+}
+
+/** The row's parallel-work instance claim and image surface: the claimed backlog entry and its
+ * base role, plus whether its model reads images and where a blind prompt reroutes — all absent
+ * on a bare row so the common payload shape is unchanged. */
+function roleInstanceFields(s: RoleState) {
+  return {
+    // Parallel work instances (plans/parallel-work-instances.md "Observability", part
+    // 6/7): the backlog entry this instance claimed, shown by the dashboards while it is
+    // idle or merge, and the base role it belongs to (`feature-2` → `feature`). `claim`
+    // is the claimed heading text, not the persisted record; both are absent on a bare,
+    // unclaimed row so the common payload shape is unchanged.
+    ...(s.claim ? { claim: s.claim.title } : {}),
+    ...(s.instanceOf ? { instanceOf: s.instanceOf } : {}),
+    // The role's image-input surface (plans/image-input.md "Surfaces", part 5/5), always
+    // present: whether its own model reads images and where a blind prompt reroutes — the
+    // GUI's images alert and composer notice read them (the JSON field is `imageReroute`, the
+    // display label, not the persisted handoff state).
+    ...(s.imageInput !== undefined ? { imageInput: s.imageInput } : {}),
+    ...(s.imageRerouteLabel !== undefined ? { imageReroute: s.imageRerouteLabel } : {}),
+  };
+}
+
+/** The row's rendered phase and live activity: the phase, its in-flight flag, the stuck-alert
+ * silence span, and the in-flight run's current work. */
+function roleActivityFields(phase: string, live: RoleLive) {
+  return {
+    phase,
+    // In-flight flag derived from the same rendered phase (isActivePhase's
+    // permit-holder prefixes: working/reviewing/merge). The running director is excluded
+    // (it holds no maxConcurrent permit), so this is the cap count, not the abort set — the
+    // GUI's row actions derive their own live flag from the phase instead (BUGS.md
+    // 2026-10-06).
+    inFlight: isActivePhase(phase),
+    // The stuck alert's silence span (ms since the last pi log write, capped to the run by
+    // progressOfRun) — the dashboards render it as "for <duration>" on a tool-call stall.
+    // Present only while the role holds a live tail, so the common payload shape is unchanged.
+    ...(live?.quietMs !== undefined ? { stuckMs: live.quietMs } : {}),
+    // What a working role is doing right now (first assistant text of the in-flight run).
+    // Null when idle — never show a stale item from a finished run.
+    currentWork: live?.currentWork ?? null,
+  };
+}
+
+/** The row's runs, commits, generated/peak context, and spend tallies: the run and commit
+ * counts, the generated and peak context, the preformatted peak share, and the total and today
+ * spend. */
+function roleTallyFields(s: RoleState, generated: number, peakCtx: number) {
+  return {
+    runs: s.runs,
+    commits: s.commits,
+    generated,
+    peakCtx,
+    // The preformatted peak-ctx share of the role's declared window (part 3c): shipped
+    // beside `peakCtx` so `status --json` and the GUI carry the label the TUI prints without
+    // re-resolving the window. Present only where a window is declared, so a window-less
+    // role's payload shape is unchanged.
+    ...(s.contextWindow !== undefined ? { peakCtxLabel: contextShareLabel(peakCtx, s.contextWindow) } : {}),
+    costUsd: s.totalCostUsd,
+    // The role's spend for the local day (the daily budget window): 0 while its stamp
+    // is stale or missing — same helper and semantics as the TUI's `today` column.
+    todayUsd: dailyCost(s),
+  };
+}
+
+/** The row's last-run history: the last result, summary, and error, and when the last run
+ * ended and the last merge landed. */
+function roleHistoryFields(s: RoleState) {
+  return {
+    lastResult: s.lastResult ?? null,
+    lastSummary: s.lastSummary ?? null,
+    // The last failure's text (a run error, a failed merge's reason); the dashboard shows it
+    // beside a problem result that carries no summary of its own.
+    lastError: s.lastError ?? null,
+    lastRunEndedAt: s.lastRunEndedAt ?? null,
+    // When the role last actually merged a change on main (epoch ms; null until it ever
+    // does) — the direct answer to "how long has the dry spell been", the productivity
+    // complement to lastError/lastRunEndedAt.
+    lastMergedAt: s.lastMergedAt ?? null,
+  };
+}
+
+/** The row's next-run schedule: the raw next-run time and backoff, the yield multiplier, and
+ * the no-change and cut-off streaks. */
+function roleScheduleFields(s: RoleState) {
+  return {
+    // The scheduling facts behind the `next run` column: raw epoch ms and seconds, formatted
+    // client-side like lastRunEndedAt/costUsd — the GUI's fmtNextRun twin applies the same
+    // rules nextRunCell does (see status-render.ts).
+    nextRunAt: s.nextRunAt,
+    backoffSeconds: s.backoffSeconds,
+    // The yield multiplier behind the next-run cell's `×N` suffix (yield-scaled
+    // clocks, PLANS.md): the payload carries the computed number, not the ring, so the
+    // GUI's JS twin applies the same display rule without re-deriving the role sets.
+    yieldMultiplier: yieldMultiplierFor(s),
+    // The consecutive no-change streak (run-apply.ts applyRunOutcome's noChangeStreak, an
+    // observational counter): how many completed runs in a row returned nothing to do. The
+    // TUI reads it off the rendered label; the GUI's phaseDetailBase re-derives the ` · no
+    // change ×N` suffix from this number (its row and drawer share noChangeStreak) so its
+    // JS twin applies the same display rule without re-parsing the phase text.
+    noChangeStreak: s.noChangeStreak ?? 0,
+    // The consecutive cut-off streak (run-apply.ts applyRunOutcome's cutOffStreak, an
+    // observational counter parallel to noChangeStreak): how many completed runs in a row
+    // hit the context ceiling. The GUI's phaseDetailBase re-derives the ` · cut off ×N`
+    // suffix from this number (preferred over noChangeStreak, since a cut-off run is also a
+    // no_change and its prose names the costly cause) without re-parsing the phase text.
+    cutOffStreak: s.cutOffStreak ?? 0,
+  };
+}
+
 /** The per-role rows (status-payload.ts's field-group split): roleRows assembles each role's
  * fields from `snap.roles` — the same single-home roleRowCells/onErrorStreak/metrics reads the
  * TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot drift apart. */
@@ -48,97 +197,13 @@ function roleRows(snap: ReturnType<typeof snapshot>, root: string) {
     // drift apart.
     const { live, generated, peakCtx, phase } = roleRowCells(snap, root, s);
     return {
-      role: s.role,
-      // The role's own failure-streak tell (onErrorStreak, status-model.ts): the red
-      // "failing run after run" alert keys on this rather than the rendered phase, so it
-      // stays up while the role's next run is in progress (phase reads "working") and clears only
-      // when the streak resets (BUGS.md 2026-10-14).
-      errorStreak: onErrorStreak(s),
-      // User-defined-role marker (computed in snapshot — see StatusSnapshot.roles[].custom):
-      // the GUI renders it as an asterisk beside the role name.
-      custom: s.custom,
-      // The role's resolved selector, present whenever a model resolves (a single string
-      // `model` or a tier map); the seam tier tag (part 7a, model-tiers.md
-      // "Observability") rides only under a tier map. The GUI renders a tier tag beside
-      // the role name and the selector in the sub line.
-      ...(s.modelTier ? { modelTier: s.modelTier } : {}),
-      ...(s.model ? { model: s.model } : {}),
-      // pi's own saved default (see StatusSnapshot.roles[].modelFromPi): ships beside `model` so
-      // the dashboard can mark a row whose model tumwater.json did not name. Same conditional
-      // spread as `model`, present on exactly the rows that carry the flag.
-      ...(s.modelFromPi ? { modelFromPi: true } : {}),
-      ...(s.slot ? { slot: s.slot, slotPinned: s.slotPinned === true } : {}),
-      // Parallel work instances (plans/parallel-work-instances.md "Observability", part
-      // 6/7): the backlog entry this instance claimed, shown by the dashboards while it is
-      // idle or merge, and the base role it belongs to (`feature-2` → `feature`). `claim`
-      // is the claimed heading text, not the persisted record; both are absent on a bare,
-      // unclaimed row so the common payload shape is unchanged.
-      ...(s.claim ? { claim: s.claim.title } : {}),
-      ...(s.instanceOf ? { instanceOf: s.instanceOf } : {}),
-      // The role's image-input surface (plans/image-input.md "Surfaces", part 5/5), always
-      // present: whether its own model reads images and where a blind prompt reroutes — the
-      // GUI's images alert and composer notice read them (the JSON field is `imageReroute`, the
-      // display label, not the persisted handoff state).
-      ...(s.imageInput !== undefined ? { imageInput: s.imageInput } : {}),
-      ...(s.imageRerouteLabel !== undefined ? { imageReroute: s.imageRerouteLabel } : {}),
-      phase,
-      // In-flight flag derived from the same rendered phase (isActivePhase's
-      // permit-holder prefixes: working/reviewing/merge). The running director is excluded
-      // (it holds no maxConcurrent permit), so this is the cap count, not the abort set — the
-      // GUI's row actions derive their own live flag from the phase instead (BUGS.md
-      // 2026-10-06).
-      inFlight: isActivePhase(phase),
-      // The stuck alert's silence span (ms since the last pi log write, capped to the run by
-      // progressOfRun) — the dashboards render it as "for <duration>" on a tool-call stall.
-      // Present only while the role holds a live tail, so the common payload shape is unchanged.
-      ...(live?.quietMs !== undefined ? { stuckMs: live.quietMs } : {}),
-      // What a working role is doing right now (first assistant text of the in-flight run).
-      // Null when idle — never show a stale item from a finished run.
-      currentWork: live?.currentWork ?? null,
-      runs: s.runs,
-      commits: s.commits,
-      generated,
-      peakCtx,
-      // The preformatted peak-ctx share of the role's declared window (part 3c): shipped
-      // beside `peakCtx` so `status --json` and the GUI carry the label the TUI prints without
-      // re-resolving the window. Present only where a window is declared, so a window-less
-      // role's payload shape is unchanged.
-      ...(s.contextWindow !== undefined ? { peakCtxLabel: contextShareLabel(peakCtx, s.contextWindow) } : {}),
-      costUsd: s.totalCostUsd,
-      // The role's spend for the local day (the daily budget window): 0 while its stamp
-      // is stale or missing — same helper and semantics as the TUI's `today` column.
-      todayUsd: dailyCost(s),
-      lastResult: s.lastResult ?? null,
-      lastSummary: s.lastSummary ?? null,
-      // The last failure's text (a run error, a failed merge's reason); the dashboard shows it
-      // beside a problem result that carries no summary of its own.
-      lastError: s.lastError ?? null,
-      lastRunEndedAt: s.lastRunEndedAt ?? null,
-      // When the role last actually merged a change on main (epoch ms; null until it ever
-      // does) — the direct answer to "how long has the dry spell been", the productivity
-      // complement to lastError/lastRunEndedAt.
-      lastMergedAt: s.lastMergedAt ?? null,
-      // The scheduling facts behind the `next run` column: raw epoch ms and seconds, formatted
-      // client-side like lastRunEndedAt/costUsd — the GUI's fmtNextRun twin applies the same
-      // rules nextRunCell does (see status-render.ts).
-      nextRunAt: s.nextRunAt,
-      backoffSeconds: s.backoffSeconds,
-      // The yield multiplier behind the next-run cell's `×N` suffix (yield-scaled
-      // clocks, PLANS.md): the payload carries the computed number, not the ring, so the
-      // GUI's JS twin applies the same display rule without re-deriving the role sets.
-      yieldMultiplier: yieldMultiplierFor(s),
-      // The consecutive no-change streak (run-apply.ts applyRunOutcome's noChangeStreak, an
-      // observational counter): how many completed runs in a row returned nothing to do. The
-      // TUI reads it off the rendered label; the GUI's phaseDetailBase re-derives the ` · no
-      // change ×N` suffix from this number (its row and drawer share noChangeStreak) so its
-      // JS twin applies the same display rule without re-parsing the phase text.
-      noChangeStreak: s.noChangeStreak ?? 0,
-      // The consecutive cut-off streak (run-apply.ts applyRunOutcome's cutOffStreak, an
-      // observational counter parallel to noChangeStreak): how many completed runs in a row
-      // hit the context ceiling. The GUI's phaseDetailBase re-derives the ` · cut off ×N`
-      // suffix from this number (preferred over noChangeStreak, since a cut-off run is also a
-      // no_change and its prose names the costly cause) without re-parsing the phase text.
-      cutOffStreak: s.cutOffStreak ?? 0,
+      ...roleIdentityFields(s),
+      ...roleModelFields(s),
+      ...roleInstanceFields(s),
+      ...roleActivityFields(phase, live),
+      ...roleTallyFields(s, generated, peakCtx),
+      ...roleHistoryFields(s),
+      ...roleScheduleFields(s),
     };
   });
 }
