@@ -200,6 +200,50 @@ function messageSection(
   );
 }
 
+/** A blocked or conflicted `merge_failed`'s message: its own `reason`, else the role's last
+ * warning's text, else the placeholder; the role's warning is consumed either way. */
+function mergeFailedMessage(
+  role: string,
+  result: string,
+  ev: HarnessEvent,
+  lastWarning: Map<string, string>,
+): { message: string; role: string; ts: number; keyPrefix: string } {
+  const own = typeof ev.reason === "string" ? ev.reason.trim() : "";
+  const why = own !== "" ? own : (lastWarning.get(role) ?? NO_MERGE_REASON);
+  lastWarning.delete(role);
+  return { message: `${result} — ${why}`, role, ts: ev.ts, keyPrefix: `${role}\u0000` };
+}
+
+/** One event's entry in the merge-failure section's last-warning tracking: a `warning` records
+ * the role's (reworded) warning and yields no message; a `merge_done` or any non-blocking,
+ * non-conflict `merge_failed` clears it and yields no message; a blocked or conflicted
+ * `merge_failed` yields its message (mergeFailedMessage) and clears it. Rejected and
+ * review_error merges have their own sections; only a block or a conflict is unaccounted for
+ * here. The section's loop calls it per ordered event. */
+function mergeFailureMessage(
+  ev: HarnessEvent,
+  lastWarning: Map<string, string>,
+): { message: string; role: string; ts: number; keyPrefix: string } | undefined {
+  const role = eventRole(ev);
+  if (ev.type === "warning" && typeof ev.message === "string" && ev.message !== "") {
+    lastWarning.set(role, ev.message.replace(OLD_MERGE_CHECK_WORDING, "merge check failed (kept for one retry)"));
+    return undefined;
+  }
+  if (ev.type === "merge_done") {
+    lastWarning.delete(role);
+    return undefined;
+  }
+  if (ev.type !== "merge_failed") return undefined;
+  const result = typeof ev.result === "string" ? ev.result : "";
+  // Rejected and review_error merges have their own sections; only a block or a conflict
+  // is unaccounted for here.
+  if (result !== "merge_blocked" && result !== "merge_conflict") {
+    lastWarning.delete(role);
+    return undefined;
+  }
+  return mergeFailedMessage(role, result, ev, lastWarning);
+}
+
 /** The merge-failure section: each blocked or conflicted `merge_failed` clusters on
  * (role, result, reason).
  * A `merge_failed` with a `reason` field uses it; an older one carries none, so the reason is
@@ -212,24 +256,10 @@ function mergeFailureSection(events: HarnessEvent[]): ClusterSection {
   const messages: Array<{ message: string; role: string; ts: number; keyPrefix: string }> = [];
   let total = 0;
   for (const ev of ordered) {
-    const role = eventRole(ev);
-    if (ev.type === "warning" && typeof ev.message === "string" && ev.message !== "") {
-      lastWarning.set(role, ev.message.replace(OLD_MERGE_CHECK_WORDING, "merge check failed (kept for one retry)"));
-    } else if (ev.type === "merge_done") {
-      lastWarning.delete(role);
-    } else if (ev.type === "merge_failed") {
-      const result = typeof ev.result === "string" ? ev.result : "";
-      // Rejected and review_error merges have their own sections; only a block or a conflict
-      // is unaccounted for here.
-      if (result !== "merge_blocked" && result !== "merge_conflict") {
-        lastWarning.delete(role);
-        continue;
-      }
+    const message = mergeFailureMessage(ev, lastWarning);
+    if (message !== undefined) {
       total++;
-      const own = typeof ev.reason === "string" ? ev.reason.trim() : "";
-      const reason = own !== "" ? own : (lastWarning.get(role) ?? NO_MERGE_REASON);
-      lastWarning.delete(role);
-      messages.push({ message: `${result} — ${reason}`, role, ts: ev.ts, keyPrefix: `${role}\u0000` });
+      messages.push(message);
     }
   }
   return section(clusterMessages(messages, MERGE_FAILURE_TOP), total);
@@ -316,6 +346,29 @@ export function collectFailureReport(root: string, days: number, role?: string |
   // collide in the memo.
   const key = `${root}\u0000${days}\u0000${bases?.join(",") ?? ""}`;
   const stat = digestStat(root);
+  // A cached digest whose window and log identity both match the request is served as-is:
+  // one stat, no re-read, no re-fold.
+  const cachedHit = cachedFailureReport(key, from, to, priorFrom, stat);
+  if (cachedHit !== undefined) return cachedHit;
+
+  const { events, coversFullWindow, logState } = readWindowEvents(root, priorFrom);
+  const { current, prior } = partitionFailureEvents(events, from, to, priorFrom);
+
+  const data = assembleFailureReport(current, prior, events, coversFullWindow, logState, { days, from, to }, role);
+  memoSetLru(failureDigestCache, key, { from, to, priorFrom, stat, data }, FAILURE_DIGEST_CACHE_MAX);
+  return data;
+}
+
+/** A memoized digest hit: the cached entry whose window (`from`/`to`/`priorFrom`) and live-log
+ * identity both match the request. Its LRU slot is refreshed before the data is returned, so
+ * the hit counts as a use; a window or log change of any field re-derives instead. */
+function cachedFailureReport(
+  key: string,
+  from: string,
+  to: string,
+  priorFrom: string,
+  stat: FailureDigestStat,
+): FailureReportData | undefined {
   const cached = failureDigestCache.get(key);
   if (
     cached?.from === from &&
@@ -326,8 +379,18 @@ export function collectFailureReport(root: string, days: number, role?: string |
     memoSetLru(failureDigestCache, key, cached, FAILURE_DIGEST_CACHE_MAX);
     return cached.data;
   }
+  return undefined;
+}
 
-  const { events, coversFullWindow, logState } = readWindowEvents(root, priorFrom);
+/** Split a read's events into the digest's current window (`from`..`to`) and the equal prior
+ * window (`priorFrom`..`from`), by each event's day key; an event with no day key is skipped
+ * (unreachable: the reader filters on `ts`). Events after `to` are absent from the read. */
+function partitionFailureEvents(
+  events: readonly HarnessEvent[],
+  from: string,
+  to: string,
+  priorFrom: string,
+): { current: HarnessEvent[]; prior: HarnessEvent[] } {
   const current: HarnessEvent[] = [];
   const prior: HarnessEvent[] = [];
   for (const ev of events) {
@@ -336,10 +399,7 @@ export function collectFailureReport(root: string, days: number, role?: string |
     if (day >= from && day <= to) current.push(ev);
     else if (day >= priorFrom) prior.push(ev);
   }
-
-  const data = assembleFailureReport(current, prior, events, coversFullWindow, logState, { days, from, to }, role);
-  memoSetLru(failureDigestCache, key, { from, to, priorFrom, stat, data }, FAILURE_DIGEST_CACHE_MAX);
-  return data;
+  return { current, prior };
 }
 
 /** Collect the digest over the trailing `sinceMs` window ending now, partitioning the read into
