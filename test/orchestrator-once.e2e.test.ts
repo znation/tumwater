@@ -390,9 +390,9 @@ test("once: a merge_blocked change is re-queued by the pipeline and merges with 
   // overwrite (primaryCheckoutBlockers). The check command is the gate's pre-check, and every
   // invocation is green. Invocation 1, the first attempt's, plants an untracked hello.txt (the
   // file the change adds) in the primary checkout, so that attempt is merge_blocked and the
-  // pipeline re-queues the kept pin. It also moves main (`bump`): the re-queued attempt's rebase
-  // then yields a new head, which the gate cannot approve on lastApprovedHead, so its pre-check
-  // runs again. That invocation (2) removes the planted file, and the retry merges.
+  // pin-only merge keeps the pin (part 3e/7). It also moves main (`bump`): the next attempt's
+  // rebase then yields a new head, which the gate cannot approve on lastApprovedHead, so its
+  // pre-check runs again. That invocation (2) removes the planted file, and the retry merges.
   const plantAndBump =
     `echo stray > '${repo}/hello.txt'; ` +
     `echo bump > '${repo}/bump.txt'; git -C '${repo}' add bump.txt; ` +
@@ -426,9 +426,15 @@ test("once: a merge_blocked change is re-queued by the pipeline and merges with 
         false,
         "no run_start for the author between merge_failed and merge_done",
       );
-      const requeue = events.slice(failed, done).find((e) => e.type === "merge_queued");
-      assert.equal(requeue?.retry, "merge_blocked", "the pipeline's re-queue names the result it retries");
-      assert.equal(requeue?.summary, "add hello file", "the re-queue keeps the original summary");
+      // Part 3e/7: a fresh run's change waits on its pin, not a queue file, so a merge_blocked
+      // attempt re-queues nothing — the pin survives and the next poll retries it. The first
+      // attempt's merge_queued (the run's pin event) precedes merge_failed, and the retry fires
+      // none.
+      assert.equal(
+        events.slice(failed, done).some((e) => e.type === "merge_queued"),
+        false,
+        "no retry queue entry after the pin-only merge_blocked attempt",
+      );
       assert.equal(events[done]!.result, "changed");
     },
   );
