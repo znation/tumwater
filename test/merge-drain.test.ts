@@ -243,11 +243,14 @@ test("two overlapping drains of one pipeline start one merge task, not two", asy
   const root = makeRepo();
   const counters = tmpdir("drain-single-flight-");
   const counter = path.join(counters, "check-count");
-  fs.writeFileSync(counter, "0");
+  fs.writeFileSync(counter, "");
   const config = {
     ...defaultConfig(),
     review: { enabled: true, exemptPaths: ["*.md", "docs/**"] },
-    check: { command: `n=$(cat '${counter}'); echo $((n+1)) > '${counter}'; exit 0` },
+    // One atomic append per check, so two duplicate tasks running their checks concurrently (the
+    // default check cap is 2) cannot lose an increment to a read-modify-write and hide the
+    // duplicate-start signal this regression reads.
+    check: { command: `echo x >> '${counter}'; exit 0` },
   };
   await queueChanges(root, ["alpha"]);
   const restore = fakePi("VERDICT: approve\nok");
@@ -262,7 +265,7 @@ test("two overlapping drains of one pipeline start one merge task, not two", asy
     await Promise.allSettled(allTasks(pipeline));
     restore();
   }
-  const runs = Number.parseInt(fs.readFileSync(counter, "utf8").trim(), 10);
+  const runs = fs.readFileSync(counter, "utf8").split("\n").filter((line) => line !== "").length;
   assert.equal(queueDepth(root), 0, "the one queued change drained");
   assert.equal(await refSha(root, mergeRefName("alpha")), null, "the merged change's pin was consumed");
   assert.equal(runs, 1, `the one queued change's check ran exactly once (one task); observed ${runs}`);
