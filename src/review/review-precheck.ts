@@ -30,7 +30,7 @@ interface GatePrecheckResult {
   /** Set when the pre-check alone resolved the gate; the caller returns it verbatim. */
   resolved?: GateResult;
   /** The head the pre-check just verified (see GateResult.verifiedHead) — handed to the
-   * merge path, which owns the baseline seeding for the SHA that actually becomes main. */
+   * merge path, which pins the change's merge ref to it when the gate approves. */
   verifiedHead?: string;
   /** Set when the gate check failed only main's known failures (the watch's, via
    * onlyKnownMainFailures): the change goes on to review unverified by a green run, and the
@@ -195,9 +195,9 @@ function knownFailureResult(
  * answered by running something on main's tip, never by waiting on the main watch: named
  * failures are re-run alone on main's tip when they can be (mainTipFailures), else main's full
  * check runs fresh, bypassing the per-SHA cache, because a clock- or load-sensitive test can
- * pass on an immutable SHA early and fail later, and a cached green — usually seeded by an
- * earlier merge — rejected an unrelated change (BUGS.md 2026-10-06). A failure that names no
- * test runs the gate command itself at main's tip (mainTipGateVerdict). */
+ * pass on an immutable SHA early and fail later, and a cached green — perhaps an earlier full
+ * check of that immutable SHA — rejected an unrelated change (BUGS.md 2026-10-06). A failure
+ * that names no test runs the gate command itself at main's tip (mainTipGateVerdict). */
 async function mainVerdictForFailure(
   ctx: ReviewContext,
   failed: { tests: string[]; files: Record<string, string> | undefined },
@@ -375,9 +375,9 @@ export async function gateBuildPrecheck(
   if (sleep) return sleep;
   if (settled.status === "passed") {
     // Passed: this exact tree just went green under the project's own declared check. Hand
-    // the verdict to the merge path via verifiedHead — it pins the merge to the SHA that
-    // actually becomes main (the rebased head, which may differ from `head`), so the change
-    // merges the tree the gate judged.
+    // the verdict to the merge path via verifiedHead — the head the pre-check just judged
+    // (`head`, the synced tree that becomes main), so a recovery re-merges the tree the gate
+    // judged instead of a stale pin.
     return { verifiedHead: head };
   }
   // A check the harness skipped for a reason other than the verify's abort (a killed run) is

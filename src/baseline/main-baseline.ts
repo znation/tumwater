@@ -135,9 +135,8 @@ export const baselineCache = new Map<string, MainBaseline>();
  * merged code SHA and a red entry carries the failed run's output tail, so a team running for
  * weeks would accumulate one entry per merge forever. Evicting the oldest entry (Map's insertion
  * order) costs at most one redundant suite run if that SHA is consulted again: a green for a SHA
- * that becomes main is re-seeded by the next merge (or its own checkMainBaseline run), and a red
- * is provisional by shouldRerunRed anyway. In-place updates never grow the map and are never
- * evicted. */
+ * that becomes main is re-seeded by its own checkMainBaseline run, and a red is provisional by
+ * shouldRerunRed anyway. In-place updates never grow the map and are never evicted. */
 const BASELINE_CACHE_MAX = 256;
 
 /** Insert or update `sha`'s verdict, evicting the oldest entry when a NEW SHA would exceed the
@@ -319,11 +318,10 @@ export function settleRedByRerun(sha: string, failing: readonly string[]): MainB
 }
 
 /** Record an INHERITED green for `sha` (MainBaseline.inheritedFrom): a tree no check ran on, whose
- * only difference from the green-verified `from` is in review-exempt paths. It seeds the head
- * about to become main, as
- * noteGreenBaseline calls do. If the fast-forward then fails, the entry is
- * still true of that tree and simply never consulted. It never displaces an observed verdict: a
- * check that actually ran on this tree knows more than the carry-over. */
+ * only difference from the green-verified `from` is in review-exempt paths. Historically the
+ * merge path seeded the head about to become main this way, as noteGreenBaseline calls did; that
+ * caller went with parts 4l/3 and 4m/3, so no live src caller remains. It never displaces an
+ * observed verdict: a check that actually ran on this tree knows more than the carry-over. */
 export function noteInheritedGreen(sha: string, from: string): void {
   const prior = baselineCache.get(sha);
   if (prior && prior.inheritedFrom === undefined) return;
