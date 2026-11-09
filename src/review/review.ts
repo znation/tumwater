@@ -193,7 +193,14 @@ async function reviewAttempt(
   };
 
   // Already reviewed this exact HEAD (e.g. a merge_blocked retry): do not burn another run.
+  // An already-consumed abort is authoritative over the cached approval: this bypass runs
+  // BEFORE the pre-check's own abort guard, and the caller (reviewPinnedChange) reads the
+  // signal only before it opens the gate, so a stop landing in that window was otherwise
+  // never observed and the re-merged change sailed its gate as `approved` (gate.aborted
+  // false) into mergeToMain to land as `changed` instead of settling aborted. Fail closed
+  // before the bypass approves.
   if (state.lastApprovedHead === head) {
+    if (ctx.signal?.aborted) return abortedGateResult();
     return { decision: "approved" };
   }
 

@@ -575,18 +575,25 @@ there.
 read, and skips a missing one", "secretLeakReason passes a value already at the merge-base, a
 directory, and no secrets", "secretLeakReason does not follow a symlink out of the worktree".
 
-### INV-G5: a consumed abort fails the merge gate closed even when its pre-check finished green
+### INV-G5: a consumed abort fails the gate closed — on a green pre-check or an already-approved head
 
-**Guarantee.** When a user abort or shutdown fires while the gate's build pre-check is running,
-the gate fails the change closed (`aborted`) — even if the check's own subprocess finished green
-before the harness's abort kill landed. `reviewPinnedChange` observes the signal before the gate
-and the merge's step boundaries keep observing it, but a green pre-check approving is the seam
-the late kill slips through; this closes it, so a stopped change never sails into the merge.
+**Guarantee.** When a user abort or shutdown is consumed, the review gate fails the change
+aborted before anything approves it. Two seams let a late kill slip through; both are closed so a
+stopped change never sails into the merge. (1) The build pre-check: `reviewPinnedChange` observes
+the signal before the gate and the merge's step boundaries keep observing it, but a green (or
+known-failure) pre-check approving is the seam — a late kill that lands after the check's own
+subprocess finished was otherwise waved into review and approved, so `gateBuildPrecheck` fails
+closed. (2) The `lastApprovedHead` short-circuit in `reviewAttempt` returns `approved` on a
+cached head before the pre-check even runs, and `reviewPinnedChange` reads the signal only before
+it opens the gate — so a stop landing in that window was otherwise never observed and the change
+merged as `changed`; `reviewAttempt` now fails closed on a consumed abort at the bypass.
 
-**Binds.** `src/review/review-precheck.ts` (`gateBuildPrecheck`).
+**Binds.** `src/review/review-precheck.ts` (`gateBuildPrecheck`); `src/review/review.ts`
+(`reviewAttempt`).
 
 **Pinned by.** `test/review-precheck-verdict.test.ts` — "a consumed abort overrides a green
-pre-check: the gate fails closed, not approved".
+pre-check: the gate fails closed, not approved" — and `test/review.test.ts` — "an
+already-approved head under a fired abort fails closed as aborted, never approved".
 
 ## Tumwater owns every commit
 

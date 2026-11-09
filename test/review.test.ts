@@ -141,6 +141,30 @@ test("gate skips the run when this exact HEAD was already approved", async () =>
   });
 });
 
+test("an already-approved head under a fired abort fails closed as aborted, never approved", async () => {
+  // BUGS.md 2026-11-09 (quarantined flake), directed by the director: the pre-check's fail-closed
+  // guard (72c59b221) fails the pre-check closed under a fired abort, but the gate's
+  // lastApprovedHead short-circuit in reviewAttempt returns `approved` BEFORE the pre-check runs.
+  // The signal is read in reviewPinnedChange only before the gate opens, so an abort that fires
+  // in that window left the gate mergeable (decision "approved", gate.aborted false) and the
+  // stopped change sailed through mergeToMain to land as `changed`. Fail closed at the top of the
+  // attempt instead: an already-stopped change is not re-approved on a cached head, and the
+  // abort is observed before any approving path runs.
+  const { root, wt, head } = await gateFixture();
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const state = freshRunnerState(ROLE);
+    state.lastApprovedHead = head; // a merge_blocked retry of the same head, or the run's own gate
+    const controller = new AbortController();
+    controller.abort(); // the stop fires before the gate settles
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), signal: controller.signal }, state);
+    assert.equal(result.decision, "failed");
+    assert.ok(result.aborted, "the already-approved head settles aborted under a fired abort, never approved");
+    assert.equal(result.verifiedHead, undefined, "the short-circuit ran no pre-check, so no verified head is handed to the merge");
+    assert.ok(!fs.existsSync(marker), "no reviewer run under a fired abort");
+  });
+});
+
 test("gate runs no reviewer on a shutdown, leaving the commit and no reject bookkeeping", async () => {
   // The abort path itself (a pre-check stopped by the verify's signal fails closed as
   // aborted) is covered in review-precheck-closed.test.ts; this case holds the gate-orchestration

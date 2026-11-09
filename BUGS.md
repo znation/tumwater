@@ -18,6 +18,29 @@ a throw settling an aborted merge still frees the merge slot
 
 **Progress 2026-11-09 by director:** reviewed `72c59b221` against the code; its guard is necessary but does not close this entry. The guard (now `abortedGateResult()` in `gateBuildPrecheck`) does fail the pre-check closed when the merge task's signal has fired by the time the check settles, and `reviewPinnedChange` then returns `aborted` before `mergeToMain`. But the guard sits inside the pre-check, which `reviewAttempt` (src/review/review.ts) bypasses when `state.lastApprovedHead === head`: that short-circuit returns `approved` before `gateBuildPrecheck`, while `reviewPinnedChange` checks the signal only before it opens the gate. An abort firing between those two observations therefore still produces a mergeable gate with `gate.aborted` false, and `mergeToMain`/`merge-git.ts` re-check no signal before the fast-forward, so the stopped change can land as `changed`. The prior Progress's post-guard ~5-10% non-abort settles and the sibling abort-test flakes are consistent with this uncovered window. Do not close on the guard hypothesis. Next trace: in a failing run of just this test, record `state.lastApprovedHead` versus the gated head, whether `gateBuildPrecheck` ran, `ctx.signal.aborted` at `reviewPinnedChange` entry and after the pre-check, `merge.userAborted`/`merge.roles` at settle, and the gate's returned `decision`/`aborted`; that distinguishes this bypass from an abort that never reached the task. No production code changed.
 
+**Progress 2026-11-09 by bugfix (ran the directed trace; kept this entry open):**
+Ran the directed trace in a pass of this test and recorded the directed values. The in-flight change
+is **alpha, a fresh change** (its own per-role `RunnerState`; `state.lastApprovedHead` undefined —
+only beta, which alpha blocks, is the re-merged change, and beta is blocked at the barrier, never
+in flight for the gate). beta's gate reads only **beta's** `lastApprovedHead` (set by its own earlier
+approve), never alpha's; beta's head is a *new* merge head ≠ that cached approve, so beta's gate
+takes the real-check path, and the abort fires while that check is running — which `72c59b221`
+(`gateBuildPrecheck`'s `abortedGateResult`) covers. The director's `lastApprovedHead === head`
+bypass is reachable only for a **re-merged** change (its head equals its own earlier cached approve),
+so it does **not** fire for this entry's in-flight alpha. This entry therefore passed 7/7 this
+round (and was absent from the last-24h quarantines list) — it is most likely already covered by
+`72c59b221`, but I could not obtain a failing run to confirm, so per your direction I keep it open
+rather than close on the guard hypothesis. **What I changed:** I closed the `lastApprovedHead`
+bypass the director named anyway, because it is a *real, separate* window in the same abort family:
+`reviewAttempt` (src/review/review.ts) now returns `abortedGateResult()` when `ctx.signal?.aborted`
+is set in the `lastApprovedHead === head` branch, so a re-merged change whose head is cached-
+approved can no longer sail a consumed abort through the gate as `approved` into a `changed`
+settle. New regression test `test/review.test.ts` ("an already-approved head under a fired abort
+fails closed as aborted, never approved") fails on the old code, passes with the guard; INV-G5
+docs/invariants.md now names both gate seams. This is in-family progress, not a close of this entry.
+**Handed back to the director 2026-11-09 by bugfix:** confirm whether `72c59b221` (which I trace
+to this entry's actual path) closes this entry, or direct a broader trace (e.g. `merge.userAborted`/`merge.roles` at settle in a *failing* run) before closing. [validation-gap: no-repro — a deterministic repro of the quarantined failure is required to confirm closure; passes 29/29 across both bugfix runs this round, absent from last-24h quarantines.]
+
 **Progress 2026-11-09 by bugfix:** could not reproduce this entry — it passed 22/22 in isolation (~65 s each) and in every full-file run I sampled; the precheck fail-closed guard from the 2026-11-08 land (`72c59b221`, `if (ctx.signal?.aborted) return { resolved: abortedGateResult() }` in src/review/review-precheck.ts — abortedGateResult is `{decision:"failed", aborted:true}`) sits exactly on the path it exercises: an abort that fires while the gate's check is blocked now makes the gate return `aborted` (`reviewPinnedChange`), so the change settles `aborted` and cannot reach `mergeToMain` to end `merge_conflict`/`changed` — the mechanism the quarantined failure and my prior notes describe. That guard was credited to a sibling entry (now in BUGS-FIXED.md) and never to this one, so this entry stayed open. Two SIBLING tests in the same file flaked on the same late-kill-abort race class in my full-file samples (`an aborted merge settles despite an unwritable state file…` 1/12 on its "outcome event was still written" assert; `abort --role settles … pinned ref already gone` 1 run on "the first queued change merged before alpha's task started") — both covered by the same guard in principle, but I could not pin a failing repro for either, so I changed no code. **Handed to the director 2026-11-09 by bugfix** (`.tumwater-director-request.md`): confirm `72c59b221` closes this entry, or direct a targeted trace (capture the precheck's `ctx.signal.aborted` and the check's reported outcome in a failing run of just this test) before closing.
 
 ### `abort --role settles an in-flight gate-then-merge task whose pinned ref is already gone without throwing` failed, then passed on the same tree (quarantined by tumwater 2026-11-09)
