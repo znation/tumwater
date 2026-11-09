@@ -28,6 +28,10 @@ import { firstReason } from "../text/phrases.js";
 import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import type { RunResult } from "../run/run-outcome.js";
 
+/** Distinguishes this task's `merged` event from another merge for the same role: a role's queued
+ * change (or another fix) logs `merged` under the same `source` while this fix's merge finishes. */
+let postReviewMergeSeq = 0;
+
 /** One poll of the post-merge reviews: a rejected commit is answered by the reviewer's own fix
  * (Forward, never back 1/6) — never by a revert — and a fix its pre-check rejects leaves that
  * entry rejected with no landed fix; an unverified (host-sleep) tree is also withheld, but that
@@ -257,11 +261,15 @@ async function mergeReviewerFixCommit(
   // The commit that actually merges, from our own `merged` event (not the pre-rebase `fix`):
   // mergeToMain rebases `fix` onto main's tip, so when main moved under the review the landed
   // commit is a different sha — and `fixed` must name a commit that is provably on main.
-  // Subscribing mirrors the merge slot's startMerge, so a concurrent merge of another role
-  // landing after ours cannot overwrite the sha we record.
+  // Subscribing mirrors the merge slot's startMerge, so a concurrent merge landing after ours
+  // cannot overwrite the sha we record. Only this fix merge's own tagged event counts: another
+  // merge for the same role logs `merged` under the same source.
+  const mergedTag = `post-review-${++postReviewMergeSeq}`;
   const mergedMine = new Map<string, string>();
   const unsubscribe = subscribeEvents((e) => {
-    if (e.type === "merged" && typeof e.commit === "string") mergedMine.set(e.source, e.commit);
+    if (e.type === "merged" && e.mergedTag === mergedTag && e.source === entry.role && typeof e.commit === "string") {
+      mergedMine.set(e.source, e.commit);
+    }
   });
   let result: RunResult;
   try {
@@ -274,6 +282,7 @@ async function mergeReviewerFixCommit(
           mainBranch: ctx.mainBranch,
           config: ctx.liveConfig,
           runNumber: author.state.runs,
+          mergedTag,
           runPi,
           // A conflict resolution of the reviewer's fix is resolver-authored bytes the reviewer
           // never judged, so a resolved tree must not land silently on the fix's pre-check alone

@@ -9,7 +9,7 @@ import { Semaphore } from "../src/concurrency/semaphore.js";
 import { drainPostReviews } from "../src/merge/merge-post-review-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-pipeline.js";
 import { addPostReview, readPostReviews, POST_REVIEW_FAILURE_LIMIT, postMergeRejectionCounts, reviewMergedCommit } from "../src/review/post-merge-review.js";
-import type { HarnessEvent } from "../src/events/events.js";
+import { logEvent, subscribeEvents, type HarnessEvent } from "../src/events/events.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { postReviewPath, reviewFixRef } from "../src/paths.js";
@@ -840,6 +840,54 @@ test("a fix that lands on a main which moved under the review records the actual
   assert.equal(fixedRec.fixed, tip, "fixed names the actually-rebased landed commit, not the pre-rebase fix");
   const merged = eventsOfType(root, "merged").slice(-1)[0]!;
   assert.equal(merged.commit, tip, "the landed merge's event recorded the merged sha");
+});
+
+test("another same-role merge's event does not stand in for the reviewer fix's landed sha", async () => {
+  const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+  // A role's queued change can land through mergeToMain under the same role while its earlier
+  // commit's post-merge fix is finishing; that event must not be recorded as this fix's landing.
+  const other = "f".repeat(40);
+  let injected = false;
+  let unsubscribeInjected: (() => void) | undefined;
+  (ctx as { runners: RoleRunner[] }).runners = [
+    {
+      role: "improve",
+      baseRole: "improve",
+      state: freshRunnerState("improve"),
+      runGatePi: async (opts: { cwd: string }) => {
+        // A concurrent main commit conflicts with the fix, so the resolver hook below runs
+        // after this fix's merge subscription is live but before its merged event.
+        fs.writeFileSync(path.join(root, "x.txt"), "main\n");
+        sh(root, "git", "add", "--", "x.txt");
+        sh(root, "git", "commit", "-m", "main lands a conflicting edit");
+        fs.writeFileSync(path.join(opts.cwd, "x.txt"), "fixed\n");
+        return { ok: true, verdictText: "VERDICT: reject\n1. breaks the contract\nFIX: x.txt" };
+      },
+      runMergePi: async (wt: string) => {
+        fs.writeFileSync(path.join(wt, "x.txt"), "main and fixed\n");
+        // Subscribed after the post-review task's own listener: on the fix's real merged event
+        // this runs second and logs another same-role landing, the event that must not win.
+        unsubscribeInjected = subscribeEvents((e) => {
+          if (injected || e.type !== "merged" || e.source !== "improve") return;
+          injected = true;
+          logEvent(root, { source: "improve", type: "merged", commit: other, summary: "an earlier fix" });
+        });
+        return piRunResult({ finalText: "resolved" });
+      },
+    } as unknown as RoleRunner,
+  ];
+  try {
+    const p = newMergePipeline();
+    drainPostReviews(ctx, p);
+    await p.postReview!.promise;
+    const tip = headSha(root);
+    assert.equal(injected, true, "another same-role merge landed while the fix's merge finished");
+    const settled = readPostReviews(root);
+    assert.equal(settled.find((e) => e.commit === commit)?.fixed, tip, "fixed names the fix's own landed commit");
+    assert.equal(settled.some((e) => e.commit === other), false, "the unrelated merge is not queued as this fix's landing");
+  } finally {
+    unsubscribeInjected?.();
+  }
 });
 
 test("a fix whose landing fails keeps the entry and leaves main unmoved", async () => {
