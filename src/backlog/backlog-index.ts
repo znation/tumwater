@@ -108,14 +108,12 @@ function collapseBlockedSeries(rows: readonly IndexRow[]): string[] {
 }
 
 
-/** The `<backlog-index>` prompt block: each actionable entry (PLANS.md ## Planned, BUGS.md
- * ## Open, QUESTIONS.md ## Open) with its 1-based line range, rendered from the primary
- * checkout `root`. Replaces the per-run `grep -n '^##'` heading map, whose pattern also matched
- * every `###` title in BUGS.md's closed history and so re-sent ~108 KB on every turn (BUGS.md
- * 2026-10-06). A missing or unreadable file contributes no sections; undefined when no section
- * has entries, so an empty backlog leaves the prompt unchanged. The per-file actionable entries
- * are stat-cached (indexSectionCache), so an unchanged backlog file is not re-read or re-walked. */
-export function renderBacklogIndexBlock(root: string): string | undefined {
+/** The actionable half of the block: PLANS.md ## Planned, BUGS.md ## Open and QUESTIONS.md ##
+ * Open, in INDEX_SECTIONS order — a section heading, then each entry as a line with its range,
+ * stamp-free title, hold mark and in-flight suffix; a PLANS.md blocked series collapses into
+ * one line. A missing or unreadable file contributes no lines. The per-file entries are
+ * stat-cached (indexSectionCache), so an unchanged backlog file is not re-read or re-walked. */
+function renderActionableSections(root: string): string[] {
   // The still-planned set every section's holds are judged against. A prerequisite clause rides
   // in the entry heading, and the eligibility gate (backlog-eligibility.ts's eligibleEntries)
   // and `tumwater backlog`'s holds read it for BUGS.md's Open entries too, so the same set must
@@ -130,7 +128,7 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
   // (its assignment note is the instruction), and every other role reads it as taken instead of
   // re-implementing a change someone's merge is already carrying to main.
   const claimed = allLiveClaims(root);
-  const listed: string[] = [];
+  const lines: string[] = [];
   for (const { file, section } of INDEX_SECTIONS) {
     const full = path.join(root, file);
     const entries = cachedTextByStat(
@@ -140,20 +138,20 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
       (md) => {
         const ranges = actionableEntryRanges(md, section);
         if (ranges.length === 0) return [];
-        const lines = md.split(/\r?\n/);
+        const entryLines = md.split(/\r?\n/);
         // The body slice is the lines after the heading through the last body line, so a note
         // is found whether it sits first or last (the heading is at 1-based line e.start).
         return ranges.map((e) => ({
           start: e.start,
           end: e.end,
           title: e.title,
-          body: lines.slice(e.start, e.end).join("\n"),
+          body: entryLines.slice(e.start, e.end).join("\n"),
         }));
       },
       (v) => v.slice(), // A copy: callers may treat the result as their own.
     );
     if (entries === null || entries.length === 0) continue;
-    listed.push(`${file} ## ${section}`);
+    lines.push(`${file} ## ${section}`);
     // Build the rows once per section, then collapse a PLANS.md series' blocked parts (this
     // plan) — BUGS.md and QUESTIONS.md sections keep every entry on its own line.
     const rows: IndexRow[] = entries.map((e) => {
@@ -169,8 +167,16 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
       };
     });
     const isPlans = file === "PLANS.md" && section === "Planned";
-    listed.push(...(isPlans ? collapseBlockedSeries(rows) : rows.map(renderIndexRow)));
+    lines.push(...(isPlans ? collapseBlockedSeries(rows) : rows.map(renderIndexRow)));
   }
+  return lines;
+}
+
+/** The closed half of the block: for each live section and its archive (CLOSED_SECTIONS), the
+ * newest RECENT_CLOSED_MAX entries across both files, live first, each as a range line with its
+ * stamp-free title. A missing or unreadable file contributes no lines. */
+function renderClosedSections(root: string): string[] {
+  const lines: string[] = [];
   for (const { files, section } of CLOSED_SECTIONS) {
     // The newest RECENT_CLOSED_MAX across the live section (normally empty) and the archive.
     let room = RECENT_CLOSED_MAX;
@@ -186,10 +192,22 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
       )?.slice(0, room);
       if (entries === undefined || entries.length === 0) continue;
       room -= entries.length;
-      listed.push(`${file} ## ${section} (newest ${entries.length})`);
-      for (const e of entries) listed.push(`- ${e.start}-${e.end}: ${indexTitle(e.title)}`);
+      lines.push(`${file} ## ${section} (newest ${entries.length})`);
+      for (const e of entries) lines.push(`- ${e.start}-${e.end}: ${indexTitle(e.title)}`);
     }
   }
+  return lines;
+}
+
+/** The `<backlog-index>` prompt block: each actionable entry (PLANS.md ## Planned, BUGS.md
+ * ## Open, QUESTIONS.md ## Open) with its 1-based line range, rendered from the primary
+ * checkout `root`. Replaces the per-run `grep -n '^##'` heading map, whose pattern also matched
+ * every `###` title in BUGS.md's closed history and so re-sent ~108 KB on every turn (BUGS.md
+ * 2026-10-06). A missing or unreadable file contributes no sections; undefined when no section
+ * has entries, so an empty backlog leaves the prompt unchanged. The per-file actionable entries
+ * are stat-cached (indexSectionCache), so an unchanged backlog file is not re-read or re-walked. */
+export function renderBacklogIndexBlock(root: string): string | undefined {
+  const listed = [...renderActionableSections(root), ...renderClosedSections(root)];
   if (listed.length === 0) return undefined;
   return `Backlog index — each actionable entry, then the newest closed ones, with the 1-based line range it occupies in its file.
 Read the entries you need by those ranges; the archive files (PLANS-DONE.md, BUGS-FIXED.md) grow
