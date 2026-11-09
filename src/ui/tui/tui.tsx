@@ -119,18 +119,23 @@ function directorRunInFlight(status: ReturnType<typeof renderStatusSpans>): bool
   return director?.inFlight === true || director?.phase.startsWith("director working") === true;
 }
 
-/** Observer TUI: renders status + recent events from the on-disk state, and feeds
- * typed prompts into the inbox. Works alongside (not instead of) `tumwater run`. */
-export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> {
-  const stdin = seams.stdin ?? (process.stdin);
-  const stdout = seams.stdout ?? process.stdout;
-  if (!stdin.isTTY || !stdout.isTTY) {
-    throw new Error(tuiTerminalError(Boolean(stdin.isTTY), Boolean(stdout.isTTY)));
-  }
-  // The no-color.org convention (no-color.org): a set, non-empty variable drops every color —
-  // the ink tree takes the terminal's default for every span.
-  const noColor = (process.env.NO_COLOR ?? "") !== "";
+/** The TUI's three end-of-run triggers as one object: Ctrl+D's quit, the promise the main
+ * loop awaits, the watch teardowns, and the reload-only re-exec decision — so "how does a
+ * reload, a dead supervisor, or a hosted run's abort end the TUI, and when does it re-exec?"
+ * reads from this name instead of from runTui's watch wiring. */
+interface TuiExitControl {
+  quit(): void;
+  wait(): Promise<void>;
+  stop(): void;
+  shouldReexec(): boolean;
+}
 
+/** Wire the three end-of-run triggers — the self-reload watch (re-exec), the reload
+ * supervisor's gone watch (no re-exec), and a hosted run's abort (no re-exec) — into the one
+ * quit/teardown the main loop uses, then report the reload-only re-exec decision. A hosted
+ * run (`seams.reloadDisabled`) creates no reload watch: it never re-execs, matching the
+ * supervisor that respawns its team children instead. */
+function startTuiExitControl(root: string, seams: TuiSeams): TuiExitControl {
   // Auto-reload onto a newer compiled tree as soon as one lands on disk (redeploy's dist swap
   // or a manual build). The watch's trigger takes the same teardown path Ctrl+C does, then
   // re-execs after the terminal is restored. `reloadRequested` closes the
@@ -169,11 +174,123 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   if (seams.abortSignal) {
     seams.abortSignal.addEventListener("abort", () => resolveMain?.(), { once: true });
   }
+  return {
+    quit() {
+      resolveMain?.();
+    },
+    wait() {
+      return new Promise<void>((resolve) => {
+        resolveMain = resolve;
+        // The reload trigger, the supervisor watch, or a hosted run's abort may have fired between
+        // `start()` and this await; the executor resolves immediately in that case so all orderings
+        // reach the same teardown.
+        if (reloadRequested || supervisorGone || seams.abortSignal?.aborted) resolve();
+      });
+    },
+    stop() {
+      reloadWatch?.stop();
+      stopSupervisorWatch();
+    },
+    // A hosted TUI (reloadDisabled) never set reloadRequested; only a standalone reload does.
+    shouldReexec() {
+      return !reloadDisabled && reloadRequested && !supervisorGone;
+    },
+  };
+}
+
+/** Map the frame's key-handler state onto the editor-mode flags `hintLine` and `promptPrefix`
+ * read: which keys the footer offers and which target the prompt line names, in the literal's
+ * original field order. */
+function promptLineMode(s: FrameState): Parameters<typeof hintLine>[1] {
+  return { budget: s.budgetMode, concurrencyMode: s.concurrencyMode, checksMode: s.checksMode, checkMode: s.checkMode, fallbackMode: s.fallbackMode, modelMode: s.modelMode, rolePromptFor: s.rolePromptFor, attachMode: s.attachMode, pauseEditMode: s.pauseEditMode, pauseEditRole: s.pauseEditRole, pauseEditWake: s.pauseEditWake, pauseEditStop: s.pauseEditStop, queuedEditFor: s.queuedEditFor, answerFor: s.answerFor, entryEditFor: s.entryEditFor, notesEditFor: s.notesEditFor, briefEditMode: s.briefEditMode, retireMode: s.retireMode, releaseMode: s.releaseMode, roleEnabledMode: s.roleEnabledMode, quietMode: s.quietMode, quietTeam: s.quietTeam, intervalMode: s.intervalMode, roleModelMode: s.roleModelMode, instructionsEditFor: s.instructionsEditFor, slotsMode: s.slotsMode, images: s.images, notifyMode: s.notifyMode, backendsMode: s.backendsMode, instancesMode: s.instancesMode };
+}
+
+/** Compose one frame from the snapshot, the key-handler state and the pane body: the
+ * attention lines, the queued previews, the line budgets, the pane body, the flash/hint
+ * lines, and the prompt line — the rows of the TuiAppView the ink tree draws, sanitized.
+ * The caller keeps the terminal size, the snapshot, the status spans, and the ink draw. */
+function composeTuiFrame(
+  root: string,
+  width: number,
+  rows: number,
+  snap: ReturnType<typeof snapshot>,
+  status: ReturnType<typeof renderStatusSpans>,
+  keys: TuiKeys,
+): TuiAppView {
+  // Ctrl+C's interrupt gate (directorRunInFlight): render already computes the per-role
+  // rows, so it feeds them back rather than re-deriving the director row itself.
+  keys.syncSnapshot(snap.budget.capUsd, snap.budget.free, snap.roles.map((l) => l.role),
+    directorRunInFlight(status));
+  const s = keys.state(); // the handler's state this frame renders
+  const roleIds = s.roleIds;
+  const view = s.view;
+  // What needs the operator — the dashboard's alert banners (team-alerts.ts's teamAlerts), as
+  // attention lines under the header. Each consumes one line of the height budget.
+  const attention = alertLines(
+    teamAlerts(snap, openQuestions(root), status.roles, Date.now(), refusedEntries(root), getOrphanAlert(root),
+      { snap, config: configForStatus(root), root }),
+    width,
+  );
+  const statusLines = [status.lines[0] ?? [], ...attention, ...status.lines.slice(1)];
+  // Numbered previews of prompts queued for the director, between the table and the
+  // activity pane: what will run next, in execution order. Each line consumes exactly
+  // one line of the budget, like the attention lines above.
+  const queued = snap.inboxPrompts;
+  const eventBudget = Math.max(3, rows - statusLines.length - 6 - queued.length);
+  const entryBudget = Math.max(1, eventBudget - 1);
+  keys.setLineBudgets(eventBudget, entryBudget);
+  // The pane occupies one tab-strip line plus at most eventBudget clipped lines, so the
+  // height-budget math is the same in every view.
+  const pane = paneForView(view, roleIds, s);
+  // The pane's body lines (tui-pane.ts, extracted from this closure): transcripts, the
+  // backlog views, usage/failures, or activity, composed at this frame's budgets.
+  const paneResult = paneBody(pane, { root, width, eventBudget, entryBudget, state: s });
+  const body = paneResult.body;
+  const emptyNote = paneResult.emptyNote;
+
+  // The frame as the ink tree draws it (tui-app.tsx): the same composed lines the
+  // hand-painted string frame joined, as clipped StatusLines — one column row per line,
+  // one styled Text per span, colors through tui-app.tsx's toneColor.
+  const mode = promptLineMode(s);
+  const lines: StatusLine[] = [...statusLines, []]; // a blank row below the header
+  for (const [i, preview] of queued.entries()) lines.push(toneLine(`${i + 1}. ${preview}`, width));
+  lines.push(tabStrip(pane, width));
+  if (body.length) lines.push(...body);
+  else lines.push(toneLine(emptyNote, width, "dim"));
+  lines.push([]); // a blank row above the flash/hint block
+  if (s.flash) lines.push(toneLine(s.flash, width, "bold"));
+  lines.push(hintLine(pane, mode, width));
+  // The prompt line names its target, like the dashboard's composer; long prompts window
+  // around the cursor so its position stays visible.
+  const prefix = promptPrefix(mode);
+  lines.push([...prefix, { text: renderInputView(s.input, s.cursor, width - prefixWidth(prefix) + 2) }]);
+  // The terminal boundary: every composed line, from every builder, loses terminal control
+  // characters here (tui-frame.ts's sanitizeFrameLines) so model-written text cannot drive
+  // the operator's terminal. Kept out of the builders so the status payload/--json data
+  // surfaces, which reuse their inputs, stay byte-exact.
+  return { lines: sanitizeFrameLines(lines) };
+}
+
+/** Observer TUI: renders status + recent events from the on-disk state, and feeds
+ * typed prompts into the inbox. Works alongside (not instead of) `tumwater run`. */
+export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> {
+  const stdin = seams.stdin ?? (process.stdin);
+  const stdout = seams.stdout ?? process.stdout;
+  if (!stdin.isTTY || !stdout.isTTY) {
+    throw new Error(tuiTerminalError(Boolean(stdin.isTTY), Boolean(stdout.isTTY)));
+  }
+  // The no-color.org convention (no-color.org): a set, non-empty variable drops every color —
+  // the ink tree takes the terminal's default for every span.
+  const noColor = (process.env.NO_COLOR ?? "") !== "";
+
+  // The three end-of-run triggers — the self-reload watch, the reload supervisor's gone
+  // watch, and a hosted run's abort — wired into one quit/teardown (startTuiExitControl).
+  const exit = startTuiExitControl(root, seams);
 
   // The framework-free keypress handler (src/ui/tui/tui-keys.ts, extracted from runTui): it owns
   // every mutable local the dispatch used to keep in this closure; render syncs snapshot
   // data and line budgets in and reads the resulting state out each frame.
-  const keys = createTuiKeys({ root, quit: () => resolveMain?.(), requestRender: () => render() });
+  const keys = createTuiKeys({ root, quit: () => exit.quit(), requestRender: () => render() });
 
   // Every rendered line is clipped to the terminal width (clipToWidth), so one logical
   // line is always one visual line and the height budget below is exact — nothing wraps,
@@ -187,59 +304,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     const width = stdout.columns || 120;
     const snap = snapshot(root);
     const status = renderStatusSpans(root, snap, width);
-    // Ctrl+C's interrupt gate (directorRunInFlight): render already computes the per-role
-    // rows, so it feeds them back rather than re-deriving the director row itself.
-    keys.syncSnapshot(snap.budget.capUsd, snap.budget.free, snap.roles.map((l) => l.role),
-      directorRunInFlight(status));
-    const s = keys.state(); // the handler's state this frame renders
-    const roleIds = s.roleIds;
-    const view = s.view;
-    // What needs the operator — the dashboard's alert banners (team-alerts.ts's teamAlerts), as
-    // attention lines under the header. Each consumes one line of the height budget.
-    const attention = alertLines(
-      teamAlerts(snap, openQuestions(root), status.roles, Date.now(), refusedEntries(root), getOrphanAlert(root),
-        { snap, config: configForStatus(root), root }),
-      width,
-    );
-    const statusLines = [status.lines[0] ?? [], ...attention, ...status.lines.slice(1)];
-    // Numbered previews of prompts queued for the director, between the table and the
-    // activity pane: what will run next, in execution order. Each line consumes exactly
-    // one line of the budget, like the attention lines above.
-    const queued = snap.inboxPrompts;
-    const eventBudget = Math.max(3, rows - statusLines.length - 6 - queued.length);
-    const entryBudget = Math.max(1, eventBudget - 1);
-    keys.setLineBudgets(eventBudget, entryBudget);
-    // The pane occupies one tab-strip line plus at most eventBudget clipped lines, so the
-    // height-budget math is the same in every view.
-    const pane = paneForView(view, roleIds, s);
-    // The pane's body lines (tui-pane.ts, extracted from this closure): transcripts, the
-    // backlog views, usage/failures, or activity, composed at this frame's budgets.
-    const paneResult = paneBody(pane, { root, width, eventBudget, entryBudget, state: s });
-    const body = paneResult.body;
-    const emptyNote = paneResult.emptyNote;
-
-    // The frame as the ink tree draws it (tui-app.tsx): the same composed lines the
-    // hand-painted string frame joined, as clipped StatusLines — one column row per line,
-    // one styled Text per span, colors through tui-app.tsx's toneColor.
-    const mode = { budget: s.budgetMode, concurrencyMode: s.concurrencyMode, checksMode: s.checksMode, checkMode: s.checkMode, fallbackMode: s.fallbackMode, modelMode: s.modelMode, rolePromptFor: s.rolePromptFor, attachMode: s.attachMode, pauseEditMode: s.pauseEditMode, pauseEditRole: s.pauseEditRole, pauseEditWake: s.pauseEditWake, pauseEditStop: s.pauseEditStop, queuedEditFor: s.queuedEditFor, answerFor: s.answerFor, entryEditFor: s.entryEditFor, notesEditFor: s.notesEditFor, briefEditMode: s.briefEditMode, retireMode: s.retireMode, releaseMode: s.releaseMode, roleEnabledMode: s.roleEnabledMode, quietMode: s.quietMode, quietTeam: s.quietTeam, intervalMode: s.intervalMode, roleModelMode: s.roleModelMode, instructionsEditFor: s.instructionsEditFor, slotsMode: s.slotsMode, images: s.images, notifyMode: s.notifyMode, backendsMode: s.backendsMode, instancesMode: s.instancesMode };
-    const lines: StatusLine[] = [...statusLines, []]; // a blank row below the header
-    for (const [i, preview] of queued.entries()) lines.push(toneLine(`${i + 1}. ${preview}`, width));
-    lines.push(tabStrip(pane, width));
-    if (body.length) lines.push(...body);
-    else lines.push(toneLine(emptyNote, width, "dim"));
-    lines.push([]); // a blank row above the flash/hint block
-    if (s.flash) lines.push(toneLine(s.flash, width, "bold"));
-    lines.push(hintLine(pane, mode, width));
-    // The prompt line names its target, like the dashboard's composer; long prompts window
-    // around the cursor so its position stays visible.
-    const prefix = promptPrefix(mode);
-    lines.push([...prefix, { text: renderInputView(s.input, s.cursor, width - prefixWidth(prefix) + 2) }]);
-    // The terminal boundary: every composed line, from every builder, loses terminal control
-    // characters here (tui-frame.ts's sanitizeFrameLines) so model-written text cannot drive
-    // the operator's terminal. Kept out of the builders so the status payload/--json data
-    // surfaces, which reuse their inputs, stay byte-exact.
-    const frame: TuiAppView = { lines: sanitizeFrameLines(lines) };
-    inkApp.rerender(<TuiApp view={frame} noColor={noColor} keys={keys} />);
+    inkApp.rerender(<TuiApp view={composeTuiFrame(root, width, rows, snap, status, keys)} noColor={noColor} keys={keys} />);
   };
 
   // Ink renders the frame (tui-app.tsx) into the same stdout every earlier frame went to,
@@ -267,19 +332,11 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   const timer = setInterval(render, 1000);
   render();
 
-  await new Promise<void>((resolve) => {
-    resolveMain = resolve;
-    // The reload trigger, the supervisor watch, or a hosted run's abort may have fired between
-    // `start()` and this await; the executor resolves immediately in that case so all orderings
-    // reach the same teardown.
-    if (reloadRequested || supervisorGone || seams.abortSignal?.aborted) resolve();
-  });
+  await exit.wait();
 
   clearInterval(timer);
   inkApp.unmount(); // restore the cursor and raw mode; the newline below closes it
   stdout.write("\n");
-  reloadWatch?.stop();
-  stopSupervisorWatch();
-  // A hosted TUI (reloadDisabled) never set reloadRequested; only a standalone reload does.
-  if (!reloadDisabled && reloadRequested && !supervisorGone) (seams.watch?.reexec ?? reexecSelf)();
+  exit.stop();
+  if (exit.shouldReexec()) (seams.watch?.reexec ?? reexecSelf)();
 }
