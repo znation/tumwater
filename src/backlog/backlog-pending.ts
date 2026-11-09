@@ -152,6 +152,116 @@ function diffIsEmpty(diff: PendingPlanDiff): boolean {
   return diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0;
 }
 
+/** Whether a poll may skip the git spawn. The per-poll ref fingerprint says whether anything
+ * the refresh reads moved since the last successful refresh; an unchanged fingerprint skips
+ * the git spawn (the snapshot still reflects those refs). Only main's head and the loose/packed
+ * ref stores decide the for-each-ref output, so an unchanged fingerprint proves the output is
+ * unchanged too. Returns the fingerprint the later record needs. */
+function refreshIsRedundant(
+  root: string,
+  mainBranch: string,
+): { fingerprint: string | undefined; redundant: boolean } {
+  const fingerprint = pendingRefsFingerprint(root, mainBranch);
+  return {
+    fingerprint,
+    redundant: fingerprint !== undefined && lastRefsFingerprint.get(root) === fingerprint,
+  };
+}
+
+/** One for-each-ref over the merge pins and the role branches, unmerged against `mainBranch`
+ * only, parsed into ref/sha pairs. gitTry answers a failed spawn with null, not a throw; a
+ * thrown or null result is the failed refresh — `null` so the caller keeps the old snapshot
+ * (an empty array is a successful empty read). */
+async function readPendingRefs(
+  root: string,
+  mainBranch: string,
+  run: PendingGitRunner,
+): Promise<Array<{ ref: string; sha: string }> | null> {
+  let out: string | null = null;
+  try {
+    out = await run(
+      root,
+      "for-each-ref",
+      `--no-merged=${mainBranch}`,
+      "--format=%(refname) %(objectname)",
+      "refs/tumwater/merge/",
+      "refs/heads/tumwater/",
+    );
+  } catch {
+    return null;
+  }
+  // gitTry answers a failed spawn with null, not a throw: treat it as the failed refresh it is,
+  // so the snapshot survives and the missing fingerprint makes the next poll retry.
+  if (out === null) return null;
+  return gitLines(out).map((line) => {
+    const [ref, sha] = line.split(" ") as [string, string];
+    return { ref, sha };
+  });
+}
+
+/** The deduplicated refs, keyed by role and sha: a pin and a branch of one role on one sha
+ * count once (for-each-ref's refname order lists the branch first, so the pin's ref name wins
+ * the record). */
+function refsByRoleSha(
+  refs: readonly { ref: string; sha: string }[],
+): Map<string, { ref: string; sha: string }> {
+  const byRoleSha = new Map<string, { ref: string; sha: string }>();
+  for (const { ref, sha } of refs) {
+    if (sha === undefined) continue;
+    byRoleSha.set(`${roleOfRef(ref)}\u0000${sha}`, { ref, sha });
+  }
+  return byRoleSha;
+}
+
+/** What one ref contributes to the snapshot: the sha-keyed diff memo, falling back to the
+ * role's earlier entry when the diff read failed (a failed git read must not erase what a good
+ * read found). Returns `null` where the ref contributes nothing — a definitive no-contribution,
+ * an empty diff, or a failed read with no earlier entry. */
+async function pendingChangeForRef(
+  root: string,
+  mainBranch: string,
+  ref: { ref: string; sha: string },
+  previous: PendingPlanChange | undefined,
+  run: PendingGitRunner,
+): Promise<PendingPlanChange | null> {
+  const { ref: refName, sha } = ref;
+  let diff = diffMemo.get(sha);
+  if (diff === undefined) {
+    diff = await diffAt(root, mainBranch, sha, run);
+    if (diffMemo.size >= DIFF_MEMO_MAX) diffMemo.clear();
+    diffMemo.set(sha, diff);
+  }
+  if (diff === "unchanged") return null;
+  if (diff === null) {
+    // A read failure contributes nothing, and the role's earlier entry (its last good
+    // read) stays in the snapshot: a failed git read must not erase what a good read found.
+    if (previous !== undefined) return previous;
+    return null;
+  }
+  if (diffIsEmpty(diff)) return null;
+  return {
+    ref: refName,
+    role: roleOfRef(refName),
+    sha,
+    subject: diff.subject,
+    added: diff.added,
+    removed: diff.removed,
+    changed: diff.changed,
+  };
+}
+
+/** What a successful refresh saves: the rebuilt snapshot, and, when the fingerprint settled,
+ * the ref fingerprint it was refreshed against (a failed refresh records no fingerprint, so
+ * the next poll retries). */
+function recordPendingRefresh(
+  root: string,
+  fingerprint: string | undefined,
+  changes: PendingPlanChange[],
+): void {
+  snapshots.set(root, changes);
+  if (fingerprint !== undefined) lastRefsFingerprint.set(root, fingerprint);
+}
+
 /** Rebuild `root`'s snapshot from the refs that outlive the merge queue: one for-each-ref
  * over the merge pins and the role branches, unmerged against `mainBranch` only. A ref whose
  * sha the memo already knows re-reads no commit; a pin and a branch of one role on one sha
@@ -165,71 +275,26 @@ export async function refreshPendingPlans(
   mainBranch: string,
   run: PendingGitRunner = gitTry,
 ): Promise<void> {
-  // The per-poll ref fingerprint says whether anything the refresh reads moved since the last
-  // successful refresh; an unchanged fingerprint skips the git spawn (the snapshot still
-  // reflects those refs). Only main's head and the loose/packed ref stores decide the
-  // for-each-ref output, so an unchanged fingerprint proves the output is unchanged too.
-  const fingerprint = pendingRefsFingerprint(root, mainBranch);
-  if (fingerprint !== undefined && lastRefsFingerprint.get(root) === fingerprint) {
-    return;
-  }
-  let out: string | null = null;
-  try {
-    out = await run(
-      root,
-      "for-each-ref",
-      `--no-merged=${mainBranch}`,
-      "--format=%(refname) %(objectname)",
-      "refs/tumwater/merge/",
-      "refs/heads/tumwater/",
-    );
-  } catch {
-    return;
-  }
-  // gitTry answers a failed spawn with null, not a throw: treat it as the failed refresh it is,
-  // so the snapshot survives and the missing fingerprint makes the next poll retry.
-  if (out === null) return;
-  const refs = gitLines(out).map((line) => {
-    const [ref, sha] = line.split(" ") as [string, string];
-    return { ref, sha };
-  });
-  const byRoleSha = new Map<string, { ref: string; sha: string }>();
-  for (const { ref, sha } of refs) {
-    if (sha === undefined) continue;
-    byRoleSha.set(`${roleOfRef(ref)}\u0000${sha}`, { ref, sha });
-  }
+  const { fingerprint, redundant } = refreshIsRedundant(root, mainBranch);
+  if (redundant) return;
+  const refs = await readPendingRefs(root, mainBranch, run);
+  if (refs === null) return;
+  const byRoleSha = refsByRoleSha(refs);
   const previousByRole = new Map(
     (snapshots.get(root) ?? []).map((c) => [c.role, c] as const),
   );
   const changes: PendingPlanChange[] = [];
-  for (const { ref, sha } of byRoleSha.values()) {
-    let diff = diffMemo.get(sha);
-    if (diff === undefined) {
-      diff = await diffAt(root, mainBranch, sha, run);
-      if (diffMemo.size >= DIFF_MEMO_MAX) diffMemo.clear();
-      diffMemo.set(sha, diff);
-    }
-    if (diff === "unchanged") continue;
-    if (diff === null) {
-      // A read failure contributes nothing, and the role's earlier entry (its last good
-      // read) stays in the snapshot: a failed git read must not erase what a good read found.
-      const previous = previousByRole.get(roleOfRef(ref));
-      if (previous !== undefined) changes.push(previous);
-      continue;
-    }
-    if (diffIsEmpty(diff)) continue;
-    changes.push({
-      ref,
-      role: roleOfRef(ref),
-      sha,
-      subject: diff.subject,
-      added: diff.added,
-      removed: diff.removed,
-      changed: diff.changed,
-    });
+  for (const entry of byRoleSha.values()) {
+    const change = await pendingChangeForRef(
+      root,
+      mainBranch,
+      entry,
+      previousByRole.get(roleOfRef(entry.ref)),
+      run,
+    );
+    if (change !== null) changes.push(change);
   }
-  snapshots.set(root, changes);
-  if (fingerprint !== undefined) lastRefsFingerprint.set(root, fingerprint);
+  recordPendingRefresh(root, fingerprint, changes);
 }
 
 /** `root`'s current snapshot: what the last refreshPendingPlans found, in ref order. Empty
