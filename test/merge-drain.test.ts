@@ -232,12 +232,14 @@ test("a null-file settle writes the outcome, drops no file and queues no retry e
 });
 
 test("two overlapping drains of one pipeline start one merge task, not two", async () => {
-  // drainMerge checks p.merge between its dedupe awaits without reserving the slot, so two
-  // overlapping drains of the SAME pipeline (the pump + pumpUntil shape) each read the slot as
-  // free and each call startMerge for the same queue head: a duplicate task. Each task runs the
-  // change's check exactly once, so the change's check runs a second time iff a duplicate task
-  // started — that is the decisive, timing-independent signal the flaky abort tests left (a
-  // green-fast check against a worktree a sibling task reset, a duplicate merged event).
+  // drainMerge checks p.merge before its first await and re-checks it synchronously right before
+  // each startMerge, so two overlapping drains of the SAME pipeline (the pump + pumpUntil shape)
+  // cannot both start a task for the same queue head: whichever reaches the re-check first assigns
+  // the slot and the other sees it taken. If that guard regressed, a duplicate task would run the
+  // change's check a second time. Each task runs the change's check exactly once, so the change's
+  // check runs a second time iff a duplicate task started — that is the decisive, timing-
+  // independent signal the flaky abort tests left (a green-fast check against a worktree a sibling
+  // task reset, a duplicate merged event).
   const root = makeRepo();
   const counters = tmpdir("drain-single-flight-");
   const counter = path.join(counters, "check-count");
