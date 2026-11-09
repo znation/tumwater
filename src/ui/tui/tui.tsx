@@ -19,7 +19,7 @@ import {
   renderInputView,
   tuiTerminalError,
 } from "./tui-input.js";
-import { createTuiKeys } from "./tui-keys.js";
+import { createTuiKeys, type TuiKeys } from "./tui-keys.js";
 import { paneBody } from "./tui-pane.js";
 import {
   alertLines,
@@ -86,6 +86,37 @@ export interface TuiSeams {
    * supervisor runs, exactly as the supervisor itself does, and gets fresh code on the next
    * run. Omit it (or leave false) for a standalone `tumwater tui`, whose reload is unchanged. */
   reloadDisabled?: boolean;
+}
+
+/** The keypress handler's per-frame state the frame composes from (tui-keys.ts). */
+type FrameState = ReturnType<TuiKeys["state"]>;
+
+/** Resolve the frame's view index to the pane it renders — the role transcript for
+ * 1..roleIds.length, then the fixed panes (backlog, usage, failures, history, pending,
+ * queued, health, brief), else the activity pane — each with its current fields. */
+function paneForView(view: number, roleIds: readonly string[], s: FrameState): TuiView {
+  const role = view > 0 && view <= roleIds.length ? roleIds[view - 1] : undefined; // defined: view is clamped above
+  return role
+    ? { kind: "transcript", role, index: view, count: roleIds.length, note: s.noteMode, change: s.changeMode, changeStat: s.changeStat, grep: s.transcriptGrep }
+    : view === roleIds.length + 1 ? { kind: "backlog" }
+      : view === roleIds.length + 2 ? { kind: "usage", scope: s.scopeRole, window: s.reportSince }
+        : view === roleIds.length + 3 ? { kind: "failures", scope: s.scopeRole, window: s.reportSince }
+          : view === roleIds.length + 4 ? { kind: "history", since: s.historySince, result: s.historyResult, model: s.historyModel, role: s.historyRole, grep: s.historyGrep, trail: s.trailMode, trailTranscript: s.trailTranscript, trailPatch: s.trailPatch, trailGrep: s.trailGrep, summary: s.historySummary }
+            : view === roleIds.length + 5 ? { kind: "pending" }
+              : view === roleIds.length + 6 ? { kind: "queued", grep: s.queuedGrep }
+              : view === roleIds.length + 7 ? { kind: "health", problems: s.healthProblems }
+              : view === roleIds.length + 8 ? { kind: "brief" }
+                : { kind: "activity", role: s.activityRole, grep: s.activityGrep, type: s.activityType, notable: s.activityNotable, since: s.activityWindow, window: s.activitySince };
+}
+
+/** Whether the director role counts as in flight for Ctrl+C's interrupt gate (tui-keys.ts):
+ * the row's `inFlight` flag is the permit-holder set, which deliberately excludes the exempt
+ * director's own `director working` run (BUGS.md 2026-10-06), so that phase is accepted too —
+ * the same live set the GUI's row actions read. A director merge still carries `merge …`
+ * (inFlight true) because rolePhase checks the merge marker first. */
+function directorRunInFlight(status: ReturnType<typeof renderStatusSpans>): boolean {
+  const director = status.roles.find((r) => r.role === "director");
+  return director?.inFlight === true || director?.phase.startsWith("director working") === true;
 }
 
 /** Observer TUI: renders status + recent events from the on-disk state, and feeds
@@ -156,15 +187,10 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     const width = stdout.columns || 120;
     const snap = snapshot(root);
     const status = renderStatusSpans(root, snap, width);
-    // Whether the director has work in flight is Ctrl+C's interrupt gate (tui-keys.ts): the
-    // render already computes the per-role rows, so it feeds them back rather than re-deriving.
-    // The row's `inFlight` flag is the permit-holder set, which deliberately excludes the
-    // exempt director's own `director working` run (BUGS.md 2026-10-06), so accept that phase
-    // too — the same live set the GUI's row actions read. A director merge still carries
-    // `merge …` (inFlight true) because rolePhase checks the merge marker first.
-    const director = status.roles.find((r) => r.role === "director");
+    // Ctrl+C's interrupt gate (directorRunInFlight): render already computes the per-role
+    // rows, so it feeds them back rather than re-deriving the director row itself.
     keys.syncSnapshot(snap.budget.capUsd, snap.budget.free, snap.roles.map((l) => l.role),
-      director?.inFlight === true || director?.phase.startsWith("director working") === true);
+      directorRunInFlight(status));
     const s = keys.state(); // the handler's state this frame renders
     const roleIds = s.roleIds;
     const view = s.view;
@@ -185,18 +211,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     keys.setLineBudgets(eventBudget, entryBudget);
     // The pane occupies one tab-strip line plus at most eventBudget clipped lines, so the
     // height-budget math is the same in every view.
-    const role = view > 0 && view <= roleIds.length ? roleIds[view - 1] : undefined; // defined: view is clamped above
-    const pane: TuiView = role
-      ? { kind: "transcript", role, index: view, count: roleIds.length, note: s.noteMode, change: s.changeMode, changeStat: s.changeStat, grep: s.transcriptGrep }
-      : view === roleIds.length + 1 ? { kind: "backlog" }
-        : view === roleIds.length + 2 ? { kind: "usage", scope: s.scopeRole, window: s.reportSince }
-          : view === roleIds.length + 3 ? { kind: "failures", scope: s.scopeRole, window: s.reportSince }
-            : view === roleIds.length + 4 ? { kind: "history", since: s.historySince, result: s.historyResult, model: s.historyModel, role: s.historyRole, grep: s.historyGrep, trail: s.trailMode, trailTranscript: s.trailTranscript, trailPatch: s.trailPatch, trailGrep: s.trailGrep, summary: s.historySummary }
-              : view === roleIds.length + 5 ? { kind: "pending" }
-                : view === roleIds.length + 6 ? { kind: "queued", grep: s.queuedGrep }
-                : view === roleIds.length + 7 ? { kind: "health", problems: s.healthProblems }
-                : view === roleIds.length + 8 ? { kind: "brief" }
-                  : { kind: "activity", role: s.activityRole, grep: s.activityGrep, type: s.activityType, notable: s.activityNotable, since: s.activityWindow, window: s.activitySince };
+    const pane = paneForView(view, roleIds, s);
     // The pane's body lines (tui-pane.ts, extracted from this closure): transcripts, the
     // backlog views, usage/failures, or activity, composed at this frame's budgets.
     const paneResult = paneBody(pane, { root, width, eventBudget, entryBudget, state: s });
