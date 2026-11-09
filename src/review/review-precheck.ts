@@ -6,7 +6,7 @@
  * rejection never shows as "reviewing" on the dashboards and consumes no reviewer budget. */
 
 import type { ReviewContext, GateResult } from "./review.js";
-import { abortedGateResult } from "./review.js";
+import { abortedGateResult } from "./gate-result.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";

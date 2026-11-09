@@ -17,6 +17,7 @@ import { isExemptDiff } from "./exemptions.js";
 import { idleWithoutPermit } from "../concurrency/run-permit.js";
 import type { SlotLeaseHandle } from "../git/worktree-pool.js";
 import { gateBuildPrecheck } from "./review-precheck.js";
+import { abortedGateResult } from "./gate-result.js";
 import { diffRuleReasons } from "./diff-rules.js";
 
 /** Everything reviewAheadOfMain needs from its caller (a RoleRunner run or recovery). */
@@ -114,15 +115,6 @@ export interface GateResult {
   /** Internal to reviewAheadOfMain: the attempt failed in a way worth retrying in place. Never
    * set on a result the wrapper returns. */
   retryable?: boolean;
-}
-
-/** The one verdict a gate path returns when its signal has aborted: fail closed, leave the
- * commit, and let the run report aborted (resume re-reviews via the combined diff). The
- * reviewer retry loop (below) and the pre-check's four abort guards (review-precheck.ts) all
- * settle a consumed abort on this same shape, so a stopped change never slips through an
- * approving path and a late kill never waits a parked check out. */
-export function abortedGateResult(): GateResult {
-  return { decision: "failed", aborted: true };
 }
 
 /** In-place retries of a failed reviewer run within one verify, after the first run. */
