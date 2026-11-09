@@ -344,8 +344,9 @@ function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, no
     ...(snap.roleNotesOverCap && snap.roleNotesOverCap.length > 0 ? { roleNotesOverCap: snap.roleNotesOverCap } : {}),
     // The raw machine-readable twin of the amber `salvage-patches` alert (present only while
     // at least one operator-kept workspace patch sits under .tumwater/salvage/ — the array of
-    // `{ file, savedAt, bytes }` the same collectSalvagePatches returns and the alert names, so
-    // `tumwater status --json` scripts can read what the alert renders). Omitted (absent) when
+    // `{ position, file, savedAt, bytes }` the same collectSalvagePatches returns and the
+    // alert names, so `tumwater status --json` scripts can read what the alert renders).
+    // Omitted (absent) when
     // no kept patch exists, the same omit-undefined idiom as noBrief.
     ...(snap.salvagePatches && snap.salvagePatches.length > 0 ? { salvagePatches: snap.salvagePatches } : {}),
     // The machine-readable diagnostic for PRINCIPLES.md being over its prompt cap (present

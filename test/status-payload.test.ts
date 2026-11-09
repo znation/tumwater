@@ -959,7 +959,7 @@ test("the payload's roleNotesOverCap follows the notes read bound and clears und
 test("the payload's salvagePatches follows the direct kept patches and clears without them", () => {
   const now = Date.now();
   const root = makeRepo();
-  interface Payload { salvagePatches?: Array<{ file: string; savedAt: number; bytes: number }>; alerts: Array<{ key: string; title: string }> };
+  interface Payload { salvagePatches?: Array<{ position: number; file: string; savedAt: number; bytes: number }>; alerts: Array<{ key: string; title: string }> };
   const payload = () => statusPayload(root, now) as Payload;
   // No salvage dir (nothing kept): no field, no key, no alert.
   assert.equal(snapshot(root, undefined, now).salvagePatches, undefined, "no salvage dir leaves the field absent");
@@ -982,8 +982,8 @@ test("the payload's salvagePatches follows the direct kept patches and clears wi
   fs.utimesSync(older, new Date(now - 60_000), new Date(now - 60_000));
   fs.utimesSync(newer, new Date(now), new Date(now));
   const expected = [
-    { file: "a.patch", savedAt: now - 60_000, bytes: 3 },
-    { file: "b.patch", savedAt: now, bytes: 5 },
+    { position: 1, file: "a.patch", savedAt: now - 60_000, bytes: 3 },
+    { position: 2, file: "b.patch", savedAt: now, bytes: 5 },
   ];
   assert.deepEqual(snapshot(root, undefined, now).salvagePatches, expected, "two direct patches surface oldest first with sizes");
   assert.deepEqual(payload().salvagePatches, expected, "the payload carries the same array");

@@ -392,7 +392,7 @@ test("the standing amber alerts raise from the snapshot's raw flags, worded like
   // doctor row's detail; none raises nothing.
   fs.mkdirSync(salvageDir(root), { recursive: true });
   fs.writeFileSync(path.join(salvageDir(root), "a.patch"), "body");
-  const salvage = has({ salvagePatches: [{ file: "a.patch", savedAt: Date.now(), bytes: 4 }] }, "salvage-patches");
+  const salvage = has({ salvagePatches: [{ position: 1, file: "a.patch", savedAt: Date.now(), bytes: 4 }] }, "salvage-patches");
   assert.ok(salvage, "a salvagePatches snapshot raises the standing salvage-patches alert");
   assert.equal(salvage?.tone, "amber");
   assert.equal(salvage?.title, "Salvaged workspace patches kept for you");

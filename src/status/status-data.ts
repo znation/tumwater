@@ -420,9 +420,10 @@ export interface StatusSnapshot {
   /** Every operator-kept workspace patch under `.tumwater/salvage/` (src/status/status-salvage.ts's
    * collectSalvagePatches), the doctor `salvage patches` row's warning state raised as a standing
    * amber alert on `tumwater status`, the dashboard and the TUI — so a run's kept leftovers are
-   * not silently pruned by session retention. Each entry is the patch's file name, save time and
-   * byte size, oldest first; present only when non-empty, so the surfaces render exactly as
-   * before. */
+   * not silently pruned by session retention. Each entry is the patch's position in the
+   * oldest-first list (the number the doctor row and `tumwater salvage` print, which
+   * `salvage --show <n>` / `--drop <n>` address), its file name, save time and byte size;
+   * present only when non-empty, so the surfaces render exactly as before. */
   salvagePatches?: SalvagePatch[];
   /** True when PRINCIPLES.md's trimmed text exceeds the prompt cap, so every role's
    * <principles> block carries only its head plus a truncation marker (src/prompt/

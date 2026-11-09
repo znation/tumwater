@@ -39,6 +39,7 @@ test("collectSalvagePatches returns two direct patches oldest first with their s
   fs.utimesSync(newer, new Date(now), new Date(now));
   const patches = collectSalvagePatches(root);
   assert.deepEqual(patches.map((p) => p.file), ["a.patch", "b.patch"]);
+  assert.deepEqual(patches.map((p) => p.position), [1, 2], "positions number the sorted list oldest first");
   assert.equal(patches[0]!.savedAt, now - 10_000);
   assert.equal(patches[0]!.bytes, 3);
   assert.equal(patches[1]!.savedAt, now);
@@ -64,6 +65,7 @@ test("collectSalvagePatches skips non-regular children and never throws", () => 
   fs.utimesSync(regular, new Date(0), new Date(0));
   const patches = collectSalvagePatches(root);
   assert.deepEqual(patches.map((p) => p.file), ["ok.patch"]);
+  assert.deepEqual(patches.map((p) => p.position), [1], "a lone patch takes position 1");
   assert.equal(patches[0]!.savedAt, 0);
 });
 
@@ -91,6 +93,12 @@ test("grepSalvagePatches matches file names and patch text, keeping whole-list p
   );
   assert.deepEqual(grepSalvagePatches(root, patches, "zzz"), []);
   assert.equal(patches.length, 2, "the filter never mutates its input");
+  // A kept row carries the patch's own whole-list position, not a renumbered index.
+  assert.deepEqual(
+    grepSalvagePatches(root, patches, "B.patch").map((r) => r.position),
+    [2],
+    "the filtered row keeps the whole-list position",
+  );
 });
 
 test("grepSalvagePatches lets an unreadable patch match by name only", { skip: runningAsRoot() }, () => {
