@@ -73,6 +73,54 @@ interface ImageReroute {
  * and takes the first tier whose model reads images. `regime` picks the pair set (see
  * RerouteRegime); `modelsPath` and `account` are injectable so tests need no real pi install
  * or account. */
+/** The primary-regime walk (plans/image-input.md "Reroute target"): for each candidate tier in
+ * borrow order, resolve its top-level selector's model and take the first one that reads images.
+ * This is the answer to "which peer tier reads an image under the primary selector?" */
+function imageReroutePrimary(
+  config: TumwaterConfig,
+  candidates: ModelTier[],
+  providerMap: Map<string, PiModelDef[]> | null,
+  listed: PiListedModels | null,
+): ImageReroute | null {
+  const capable = (rc: ResolvedModelConfig): boolean => seamImageInput(rc, providerMap, listed) === true;
+  for (const t of candidates) {
+    const rc = withModelOverrides(config, t, {});
+    if (capable(rc)) return { tier: t, config: rc };
+  }
+  return null;
+}
+
+/** The fallback-regime walk (while the budget gate is on fallback): resolve each tier's free
+ * fallback pair first, then walk the same candidates taking the first pair that reads images —
+ * a reroute must never spend past the daily cap. This is the answer to "which free fallback
+ * pair reads an image while the budget gate is on fallback?" */
+function imageRerouteFallback(
+  config: TumwaterConfig,
+  candidates: ModelTier[],
+  providerMap: Map<string, PiModelDef[]> | null,
+  account: ClaudeAccount | null,
+  listed: PiListedModels | null,
+): ImageReroute | null {
+  // Fallback regime: only the tiers' free fallback pairs qualify (resolveTierFallbacks over the
+  // price check), never a priced primary model — a reroute must not spend past the cap.
+  const resolved = resolveTierFallbacks(config, (p: FallbackModelConfig) =>
+    // The free-ness lookup reads the one claude account held here (part 2a/9).
+    piPairFree(providerMap, p, (b: string) => (b === "claude" ? account : null)),
+  );
+  const capable = (rc: ResolvedModelConfig): boolean => seamImageInput(rc, providerMap, listed) === true;
+  for (const t of candidates) {
+    const pair = resolved[t].pair;
+    if (!pair) continue;
+    const rc = withModelOverrides(config, t, {
+      provider: pair.provider,
+      model: pair.model,
+      thinking: pair.thinking,
+    });
+    if (capable(rc)) return { tier: t, config: rc };
+  }
+  return null;
+}
+
 export function imageReroute(
   config: TumwaterConfig,
   role: string,
@@ -86,31 +134,8 @@ export function imageReroute(
   const candidates = BORROW_ORDER[tier].filter((t) => t !== tier);
   if (candidates.length === 0) return null;
   const providerMap = providers ?? readPiProviders(modelsPath);
-  const capable = (rc: ResolvedModelConfig): boolean => seamImageInput(rc, providerMap, listed) === true;
-  if (regime === "primary") {
-    for (const t of candidates) {
-      const rc = withModelOverrides(config, t, {});
-      if (capable(rc)) return { tier: t, config: rc };
-    }
-    return null;
-  }
-  // Fallback regime: only the tiers' free fallback pairs qualify (resolveTierFallbacks over the
-  // price check), never a priced primary model — a reroute must not spend past the cap.
-  const resolved = resolveTierFallbacks(config, (p: FallbackModelConfig) =>
-    // The free-ness lookup reads the one claude account held here (part 2a/9).
-    piPairFree(providerMap, p, (b: string) => (b === "claude" ? account : null)),
-  );
-  for (const t of candidates) {
-    const pair = resolved[t].pair;
-    if (!pair) continue;
-    const rc = withModelOverrides(config, t, {
-      provider: pair.provider,
-      model: pair.model,
-      thinking: pair.thinking,
-    });
-    if (capable(rc)) return { tier: t, config: rc };
-  }
-  return null;
+  if (regime === "primary") return imageReroutePrimary(config, candidates, providerMap, listed);
+  return imageRerouteFallback(config, candidates, providerMap, account, listed);
 }
 
 /** The config of imageReroute, for callers that want only the target model. */
