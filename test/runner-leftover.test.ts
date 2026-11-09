@@ -210,6 +210,50 @@ test("recovery reads the pinned commit's body and high-friction flag back out of
   );
 });
 
+test("recovery copies the commit's Claim and Prior-review trailers into the recovered entry", async () => {
+  const rejected = "a".repeat(40);
+  const claim = { file: "PLANS.md" as const, key: "alpha", title: "Alpha (planned 2026-01-01 by operator)" };
+  const priorReview = { sha: rejected, reasons: ["fix the bug", "add a test"], counts: [1, 1] };
+  const { root, sha } = await pinnedFixture(
+    [
+      "tumwater(improve): revise the feature",
+      "",
+      "WHY: resolving the rejection",
+      "",
+      commitTrailer("improve", 5, 3, 10_000, undefined, 1, undefined, claim, priorReview),
+    ].join("\n"),
+  );
+  const wt = await ensureWorktree(root, ROLE, "main");
+
+  assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued");
+  const [entry] = queuedMerges(root);
+  assert.equal(entry?.sha, sha);
+  assert.equal(entry?.revisionRound, 1, "the Revision trailer still sets the round");
+  assert.deepEqual(entry?.claim, claim, "the Claim trailer rides into the recovered entry");
+  assert.deepEqual(entry?.priorReview, priorReview, "the Prior-review trailer rides into the recovered entry");
+});
+
+test("recovery of a commit that stamps no Claim or Prior-review trailer carries neither field", async () => {
+  // A commit predating the trailers (e.g. a routine friction-only commit): the recovered entry
+  // is exactly the pre-3j shape — the two fields are absent, not undefined keys.
+  const { root, sha } = await pinnedFixture(
+    [
+      "tumwater(improve): slow but worthwhile",
+      "",
+      "WHY: the fix was fiddly",
+      "",
+      commitTrailer("improve", 5, 44, 20_000, 4.2),
+    ].join("\n"),
+  );
+  const wt = await ensureWorktree(root, ROLE, "main");
+
+  assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued");
+  const [entry] = queuedMerges(root);
+  assert.equal(entry?.sha, sha);
+  assert.equal(entry?.claim, undefined);
+  assert.equal(entry?.priorReview, undefined);
+});
+
 test("a stale ref already contained in main is deleted without queuing anything", async () => {
   const { root, sha } = await pinnedFixture();
   // Simulate the crash window: the work merged on main but the ref deletion never ran.

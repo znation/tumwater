@@ -19,6 +19,7 @@ import type { StagedDescription } from "../prompt/gate-prompts.js";
 import { logEventBestEffort } from "../events/events.js";
 import { enqueueMerge, entryRevisionFields, queuedMerges } from "../merge/merge-queue.js";
 import type { PriorReview } from "../merge/merge-queue.js";
+import type { MergeClaim } from "../merge/merge-withdrawn.js";
 import { hasUnmergedPin } from "../runner/runner-leftover.js";
 import { plural } from "../text/phrases.js";
 import { squash, errorMessage } from "../text/text.js";
@@ -416,17 +417,22 @@ function frictionSnapshot(ctx: RunStageContext): { minutes: number; authoringTur
 }
 
 /** Build the commit message from the staged description and the friction snapshot: the stamped
- * subject, the body, and the harness-stamped trailer with the run's revision and model seam. */
+ * subject, the body, and the harness-stamped trailer with the run's revision, claim, prior
+ * review and model seam. */
 function stagedCommitMessage(
   ctx: RunStageContext,
   desc: StagedCommitDescription,
   revisionRound: number | undefined,
   friction: ReturnType<typeof frictionSnapshot>,
+  priorReview: PriorReview | undefined,
+  claim: MergeClaim | undefined,
 ): string {
   const s = ctx.state;
   // The trailer is harness-stamped truth: turns and peak ctx over this run's pre-commit
   // runs only (conflict-resolution and review runs fold after the commit). A high-friction
-  // run appends its Friction line here — both values are already computed above.
+  // run appends its Friction line here — both values are already computed above. The claim and
+  // prior-review trailers ride the same line (commitTrailer) so a pin-only merge can read them
+  // back off the commit; each is absent-when-unset, so a routine commit's trailer is unchanged.
   return buildCommitMessage(
     stampedSubject(baseRoleOf(ctx.role), desc.summary),
     desc.body,
@@ -438,6 +444,8 @@ function stagedCommitMessage(
       friction.highFriction ? friction.minutes : undefined,
       revisionRound,
       ctx.modelLine,
+      claim,
+      priorReview,
     ),
   );
 }
@@ -679,7 +687,14 @@ export async function stageRunMerge(ctx: RunStageContext): Promise<RunOutcome> {
   const selfCheck = await runStageSelfCheck(ctx, desc);
   if (selfCheck) return selfCheck;
   const friction = frictionSnapshot(ctx);
-  const message = stagedCommitMessage(ctx, desc, revisionRound, friction);
+  // The backlog entry this run worked rides the commit trailer (the queue entry used to hold it;
+  // a user-request run works something else and stamps none) — part 3e/7's pin-only merge reads
+  // it back off the commit.
+  const claim =
+    ctx.state.claim !== undefined && ctx.userPrompt === null
+      ? { file: ctx.state.claim.file, key: ctx.state.claim.key, title: ctx.state.claim.title }
+      : undefined;
+  const message = stagedCommitMessage(ctx, desc, revisionRound, friction, priorReview, claim);
   // The backlog archive (plans/backlog-archive.md): an entry this change pasted under PLANS.md's
   // ## Done or BUGS.md's ## Fixed moves to the top of PLANS-DONE.md or BUGS-FIXED.md now, after
   // the self-check and its fix-up turn worked on the tree the author wrote and before the

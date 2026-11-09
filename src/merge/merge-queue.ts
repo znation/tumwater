@@ -179,8 +179,10 @@ const entryCache = new Map<string, StatKeyedValue<MergeEntry>>();
  * The three numeric fields go through nonNegativeNumber, not a bare `typeof === "number"`:
  * JSON's `1e999` parses to Infinity, so a hand-edited file could carry a non-finite run or
  * enqueuedAt past a typeof check, and both feed plumbing downstream (session names, queue
- * ordering, the status payload). */
-function isPriorReview(v: unknown): v is PriorReview {
+ * ordering, the status payload). Exported too: the commit-trailer readers in commit-message.ts
+ * (claimOf / priorReviewOf) fail closed on the exact shapes this module's queue-file reader
+ * accepts, so the commit and the queue cannot drift out of agreement. */
+export function isPriorReview(v: unknown): v is PriorReview {
   if (!isJsonObject(v)) return false;
   return (
     typeof v.sha === "string" &&
@@ -210,7 +212,11 @@ function isMergeEntry(v: unknown): v is MergeEntry {
   );
 }
 
-function isMergeClaim(v: unknown): v is MergeClaim {
+/** Whether an untrusted JSON value is a well-formed backlog claim (a `MergeClaim`): a plain
+ * object whose `file` is a backlog file, and whose `key` and `title` are strings. Exported so
+ * the commit-trailer reader in commit-message.ts (claimOf) fails closed on the exact shape this
+ * module's queue-file reader accepts, keeping the commit and the queue in agreement. */
+export function isMergeClaim(v: unknown): v is MergeClaim {
   return (
     isJsonObject(v) &&
     (v.file === "PLANS.md" || v.file === "BUGS.md") &&

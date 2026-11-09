@@ -268,26 +268,29 @@ export async function setAsideWithdrawnWork(
   return backups;
 }
 
-/** The review-gate metadata a pinned leftover commit carries in its own message: its
- * subject, high-friction flag, and author's body, or an empty object when the commit
- * predates the contract or the message cannot be read. Recovery merges through the same gate
- * as a fresh run, so it must present those fields the same way — otherwise a flagged change
- * is silently reviewed as routine (BUGS.md 2026-09-19), and the merged event names the
- * recovery but not the work (BUGS.md 2026-09-21). The merge drain's torn-head step
- * (dropTornHead) reads it too, so a change it re-queues keeps exactly this shape. */
+/** The review-gate metadata a pinned leftover commit carries in its own message: its subject,
+ * high-friction flag, author's body, and the revision round, claim, and prior review stamped as
+ * trailers — or an empty object when the commit predates the contract or the message cannot be
+ * read. Recovery merges through the same gate as a fresh run, so it must present those fields the
+ * same way — otherwise a flagged change is silently reviewed as routine (BUGS.md 2026-09-19), and
+ * the merged event names the recovery but not the work (BUGS.md 2026-09-21). The merge drain's
+ * torn-head step (dropTornHead) reads it too, so a change it re-queues keeps exactly this shape. */
 export async function recoveredMetadata(root: string, sha: string): Promise<CommitMetadata> {
   const message = await commitMessage(root, sha);
   return message ? parseCommitMetadata(message) : {};
 }
 
 /** The queue entry leftover recovery builds for a recovered commit: the pinned sha plus the
- * summary, body, and high-friction flag read back from its commit message, and the revision
- * round from its Revision trailer. Also the exact shape the merge drain's torn-head step
- * (dropTornHead, merge-head.ts) re-queues through — so a torn file whose change is
- * re-queued keeps the flag/round its authoring run stamped and is never silently reviewed as
- * routine (BUGS.md 2026-09-19). A recovery never carries `priorReview` (run-stage fills it
- * only from RunnerState.lastReview on a run that held the rejected diff; a recovery's author
- * is gone). */
+ * summary, body, and high-friction flag read back from its commit message, the revision round
+ * from its Revision trailer, and — when the commit stamps them — the Claim and Prior-review
+ * trailers, so a recovered pin carries the two merge-only fields a queue entry used to hold
+ * (the backlog entry the run worked and the review a revision answers). Also the exact shape the
+ * merge drain's torn-head step (dropTornHead, merge-head.ts) re-queues through — so a torn file
+ * whose change is re-queued keeps the flag/round/claim/review its authoring run stamped and is
+ * never silently reviewed as routine (BUGS.md 2026-09-19). A recovery never re-derives
+ * `priorReview` from the run's state (run-stage fills it only from RunnerState.lastReview on a
+ * run that held the rejected diff; a recovery's author is gone) — it reads it back only if the
+ * commit's own Prior-review trailer names it. */
 export function recoveredMergeEntry(role: string, sha: string, meta: CommitMetadata, run: number): MergeEntry {
   return {
     role,
@@ -306,6 +309,11 @@ export function recoveredMergeEntry(role: string, sha: string, meta: CommitMetad
     // rejection records the following round (not round 1 again) and a recovered merge still
     // deletes the rejected ref (plans/revise-rejected.md). Absent on a fresh change.
     ...(meta.revisionRound !== undefined ? { revisionRound: meta.revisionRound } : {}),
+    // The two merge-only fields the durable queue entry used to hold, read back off the commit's
+    // trailers when its authoring run stamped them (a commit predating the contract stamps
+    // neither, so the recovered entry simply carries none, as today).
+    ...(meta.claim !== undefined ? { claim: meta.claim } : {}),
+    ...(meta.priorReview !== undefined ? { priorReview: meta.priorReview } : {}),
     enqueuedAt: Date.now(),
   };
 }

@@ -13,6 +13,8 @@ import {
   hasFrictionTrailer,
   appendSelfCheckNotes,
   parseCommitMetadata,
+  claimOf,
+  priorReviewOf,
 } from "../src/git/commit-message.js";
 
 test("summaryOverCap reports the untruncated length only past the 100-character cap", () => {
@@ -281,4 +283,69 @@ test("commitTrailer puts the Model line right after Run, with Revision last", ()
   const meta = parseCommitMetadata(buildCommitMessage("tumwater(feature): x", null, commitTrailer("feature", 7, 41, 9_999, 62.4, 2, line)));
   assert.equal(meta.highFriction, true);
   assert.equal(commitTrailer("feature", 7, 2, 9_999, undefined, undefined, undefined), "Run: feature #7 · turns 2 · ctx 9999");
+});
+
+test("commitTrailer puts the Claim and Prior-review lines after Friction, with Revision last", () => {
+  const claim = { file: "PLANS.md" as const, key: "alpha", title: "Alpha (planned 2026-01-01 by operator)" };
+  const priorReview = { sha: "a".repeat(40), reasons: ["fix the bug"], counts: [1] };
+  const line = "Model: claude-opus-5-5 · backend claude";
+  assert.equal(
+    commitTrailer("feature", 7, 41, 9_999, 62.4, 2, line, claim, priorReview),
+    `Run: feature #7 · turns 41 · ctx 9999\n${line}\nFriction: high (41 turns / 62m)\n` +
+      `Claim: ${JSON.stringify(claim)}\nPrior-review: ${JSON.stringify(priorReview)}\nRevision: 2`,
+  );
+  // A user-request run stamps no claim and a fresh change no prior review: each unset field
+  // adds no line, so the trailer is unchanged from the pre-3j shape.
+  assert.equal(
+    commitTrailer("feature", 7, 2, 9_999, undefined, undefined, undefined, undefined, undefined),
+    "Run: feature #7 · turns 2 · ctx 9999",
+  );
+});
+
+test("claimOf reads a whole Claim line, and a malformed, wrong-shape, or prose line reads absent", () => {
+  const claim = { file: "PLANS.md" as const, key: "alpha", title: "Alpha" };
+  const stamped = commitTrailer("feature", 7, 2, 9_999, undefined, undefined, undefined, claim);
+  assert.deepEqual(claimOf(stamped), claim);
+  // A hand-made commit carries no trailer line: absent.
+  assert.equal(claimOf("a hand-made commit"), undefined);
+  // A whole line that is not valid JSON reads absent.
+  assert.equal(claimOf(`Claim: not json`), undefined);
+  // A whole line that parses but is not the claim shape (wrong file) reads absent.
+  assert.equal(claimOf(`Claim: {"file":"NOT.md","key":"a","title":"b"}`), undefined);
+  // The same text inside the body prose is not a trailer line: absent.
+  assert.equal(claimOf(`tumwater(feature): x\n\nWHY: Claim: ${JSON.stringify(claim)}`), undefined);
+});
+
+test("priorReviewOf reads a whole Prior-review line, and a malformed, wrong-shape, or prose line reads absent", () => {
+  const priorReview = { sha: "a".repeat(40), reasons: ["fix the bug", "add a test"] };
+  const stamped = commitTrailer("feature", 7, 2, 9_999, undefined, 1, undefined, undefined, priorReview);
+  assert.deepEqual(priorReviewOf(stamped), priorReview);
+  assert.equal(priorReviewOf("a hand-made commit"), undefined);
+  // A whole line that is not valid JSON reads absent.
+  assert.equal(priorReviewOf(`Prior-review: {`), undefined);
+  // A whole line that parses but is not the review shape (reasons not a list) reads absent.
+  assert.equal(priorReviewOf(`Prior-review: {"sha":"a","reasons":"not a list"}`), undefined);
+  // The same text inside the body prose is not a trailer line: absent.
+  assert.equal(priorReviewOf(`tumwater(feature): x\n\nWHY: Prior-review: ${JSON.stringify(priorReview)}`), undefined);
+});
+
+test("parseCommitMetadata carries a stamped claim and prior review, and omits each when unset", () => {
+  const claim = { file: "PLANS.md" as const, key: "alpha", title: "Alpha" };
+  const priorReview = { sha: "a".repeat(40), reasons: ["fix the bug"], counts: [1] };
+  const stamped = buildCommitMessage(
+    "tumwater(feature): x",
+    { why: "w" },
+    commitTrailer("feature", 7, 2, 9_999, undefined, 1, undefined, claim, priorReview),
+  );
+  assert.deepEqual(parseCommitMetadata(stamped), {
+    subject: "x",
+    body: "WHY: w",
+    highFriction: undefined,
+    revisionRound: 1,
+    claim,
+    priorReview,
+  });
+  // A routine run stamps neither trailer: the metadata omits both fields (not undefined keys).
+  const plain = buildCommitMessage("tumwater(clean): tidy", { why: "w" }, commitTrailer("clean", 1, 3, 500));
+  assert.deepEqual(parseCommitMetadata(plain), { subject: "tidy", body: "WHY: w", highFriction: undefined });
 });

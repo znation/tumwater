@@ -3648,26 +3648,32 @@ leftover recovery calls `parseCommitMetadata`, a rejection's round counter calls
 
 **Guarantee.** A run commit is the stamped subject, then the WHY/RISK/VERIFIED body when present,
 then the harness trailer, with each part a separate paragraph. The trailer's Model line comes right
-after Run, and Revision comes last.
+after Run; the Claim and Prior-review lines, when stamped, come after Friction; and Revision comes
+last.
 
 **Binds.** `src/git/commit-message.ts` (`buildCommitMessage`, `commitTrailer`, `stampedSubject`).
 
 **Pinned by.** `test/commit-message.test.ts` — "buildCommitMessage assembles subject, body, and
 trailer as separate paragraphs", "commitTrailer appends a sibling Friction line only when flagged
-high-friction" and "commitTrailer puts the Model line right after Run, with Revision last".
+high-friction", "commitTrailer puts the Model line right after Run, with Revision last" and
+"commitTrailer puts the Claim and Prior-review lines after Friction, with Revision last".
 
-### INV-BB2: the Friction and Revision trailers count only as whole lines
+### INV-BB2: the Friction, Claim, and Prior-review trailers count only as whole lines
 
-**Guarantee.** The Friction and Revision trailers count only as whole lines, so prose in a body
-cannot flag friction or claim a round. Leftover recovery gets the round back from the trailer.
+**Guarantee.** The Friction, Claim, and Prior-review trailers count only as whole lines, so prose in
+a body cannot flag friction, claim a round, or be read as a backlog claim or a prior review.
+Leftover recovery gets the round, claim, and prior review back from the trailers.
 
-**Binds.** `src/git/commit-message.ts` (`hasFrictionTrailer`, `revisionRoundOf`,
-`parseCommitMetadata`).
+**Binds.** `src/git/commit-message.ts` (`hasFrictionTrailer`, `revisionRoundOf`, `claimOf`,
+`priorReviewOf`, `parseCommitMetadata`).
 
 **Pinned by.** `test/commit-message.test.ts` — "hasFrictionTrailer matches only the
-harness-stamped Friction line"; `test/runner-revision.test.ts` — "leftover recovery rebuilds a revision's
-round from its commit trailer"; `test/commit-message-stamps.test.ts` — "revisionRoundOf reads only
-a whole harness Revision line, and parseCommitMetadata carries it".
+harness-stamped Friction line", "claimOf reads a whole Claim line, and a malformed, wrong-shape, or
+prose line reads absent" and "priorReviewOf reads a whole Prior-review line, and a malformed,
+wrong-shape, or prose line reads absent"; `test/runner-revision.test.ts` — "leftover recovery
+rebuilds a revision's round from its commit trailer"; `test/commit-message-stamps.test.ts` —
+"revisionRoundOf reads only a whole harness Revision line, and parseCommitMetadata carries it" and
+"parseCommitMetadata carries a whole harness Prior-review line, and reads prose as absent".
 
 ### INV-BB3: a subject is stamped only as `tumwater(<role>):` plus a space or the line's end
 

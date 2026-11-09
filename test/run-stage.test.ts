@@ -16,6 +16,7 @@ import { readFeedbackFilings } from "../src/observer/feedback-filings.js";
 import { qaCoveragePath, feedbackFilingsPath, remoteCiPath } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { queueDepth, queuedMerges, enqueueMerge } from "../src/merge/merge-queue.js";
+import { claimOf, priorReviewOf } from "../src/git/commit-message.js";
 import { setRef, refSha } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
 import type { RunOutcome } from "../src/run/run-outcome.js";
@@ -500,6 +501,12 @@ test("a revision run's queued merge carries the prior review's objections", asyn
   const queued = queuedMerges(root);
   assert.equal(queued[0]!.revisionRound, 1);
   assert.deepEqual(queued[0]!.priorReview, { sha: rejected, reasons: ["fix the bug", "add a test"] });
+  // The revision's commit carries the same prior review as a whole Prior-review trailer line
+  // (a pin-only merge reads it back off the commit).
+  assert.deepEqual(priorReviewOf(sh(wt, "git", "log", "-1", "--format=%B")), {
+    sha: rejected,
+    reasons: ["fix the bug", "add a test"],
+  });
   assert.equal(state.revision, undefined, "the revision is now in flight");
 });
 
@@ -511,9 +518,17 @@ test("a queued merge records the claim its run worked, so the merge can drop it 
   const state: RunnerState = { ...freshRunnerState("feature-2"), claim: { ...claim } };
   const { ctx } = makeCtx(worked.root, worked.wt, state, { role: "feature-2", finalText: "SUMMARY: implement alpha\n" });
   assert.equal((await stageRunMerge(ctx)).result, "queued");
+  // The commit carries the backlog entry its run worked as a whole Claim trailer line
+  // (part 3e/7's pin-only merge reads it back off the commit); the queue entry keeps it too.
+  assert.deepEqual(claimOf(sh(worked.wt, "git", "log", "-1", "--format=%B")), {
+    file: "PLANS.md",
+    key: "alpha",
+    title: claim.title,
+  });
   assert.deepEqual(queuedMerges(worked.root)[0]!.claim, { file: "PLANS.md", key: "alpha", title: claim.title });
 
-  // A run executing a user request keeps its claim for a later run and works something else.
+  // A run executing a user request keeps its claim for a later run and works something else:
+  // its commit stamps no Claim line.
   const request = await setup();
   const requestState: RunnerState = { ...freshRunnerState("feature-2"), claim: { ...claim } };
   const { ctx: requestCtx } = makeCtx(request.root, request.wt, requestState, {
@@ -522,6 +537,7 @@ test("a queued merge records the claim its run worked, so the merge can drop it 
     finalText: "SUMMARY: rename the flag\n",
   });
   assert.equal((await stageRunMerge(requestCtx)).result, "queued");
+  assert.equal(claimOf(sh(request.wt, "git", "log", "-1", "--format=%B")), undefined);
   assert.equal(queuedMerges(request.root)[0]!.claim, undefined);
 });
 

@@ -2,6 +2,13 @@ import { truncate, joinParts } from "../text/text.js";
 import { compactTokens } from "../text/format.js";
 import { modelLabel } from "../agent/backend-traits.js";
 import { labeledLine } from "../verdict/reply-contract.js";
+import type { MergeClaim } from "../merge/merge-withdrawn.js";
+import type { PriorReview } from "../merge/merge-queue.js";
+// The trailer-line shapes are owned by the merge queue: reusing its fail-closed validators here
+// (the same ones its queue-file reader applies) keeps the commit-trailer and queue-file readers
+// agreeing on what a well-formed Claim / Prior-review value is, instead of spelling the check
+// twice. merge-queue imports nothing from the git layer, so this adds no cycle.
+import { isMergeClaim, isPriorReview } from "../merge/merge-queue.js";
 
 /** Assembling run commit messages from pi's final reply: the SUMMARY line becomes the
  * subject, the WHY/RISK/VERIFIED block becomes the body, and the harness stamps a trailer
@@ -131,7 +138,11 @@ export function formatCommitBody(body: CommitBody): string {
  * e.g. `Friction: high (41 turns / 62m)`; only changed runs carry it, so the refusal path
  * never passes the argument and the Run line's asserted format stays stable. A `modelLine` (see
  * modelTrailerLine) goes on its own line directly after the Run line, before Friction and
- * Revision, so Revision stays last. */
+ * Revision. A `claim` (the backlog entry a run worked) and a `priorReview` (the review a
+ * revision answers) each ride on their own trailer line — `Claim:` and `Prior-review:` —
+ * appended after the Friction line and before Revision, so Revision stays last; each is absent
+ * on the runs that do not carry it (a user-request run has no claim, a fresh change no prior
+ * review), keeping the line order stable for the other cases. */
 export function commitTrailer(
   role: string,
   runNumber: number,
@@ -140,6 +151,8 @@ export function commitTrailer(
   highFrictionMinutes?: number,
   revisionRound?: number,
   modelLine?: string,
+  claim?: MergeClaim,
+  priorReview?: PriorReview,
 ): string {
   const base = `Run: ${role} #${runNumber} · turns ${turns} · ctx ${compactTokens(peakCtx)}`;
   const model = modelLine === undefined ? "" : `\n${modelLine}`;
@@ -147,10 +160,15 @@ export function commitTrailer(
     highFrictionMinutes === undefined
       ? ""
       : `\nFriction: high (${turns} turns / ${Math.round(highFrictionMinutes)}m)`;
+  // Each merge-only field rides on its own trailer line, appended before the Revision line so
+  // Revision stays last; absent fields add nothing, keeping the line order the other cases assert.
+  const claimLine = claim === undefined ? "" : `\nClaim: ${JSON.stringify(claim)}`;
+  const priorReviewLine =
+    priorReview === undefined ? "" : `\nPrior-review: ${JSON.stringify(priorReview)}`;
   // The revision line is last and absent on a fresh change: leftover recovery reads it back to
   // keep the rejected change's round when the queue marker is lost (plans/revise-rejected.md).
   const revision = revisionRound === undefined ? "" : `\nRevision: ${revisionRound}`;
-  return `${base}${model}${friction}${revision}`;
+  return `${base}${model}${friction}${claimLine}${priorReviewLine}${revision}`;
 }
 
 /** The trailer's Model line: the model and backend a run's seam started on, e.g.
@@ -202,14 +220,61 @@ export function commitRunOf(message: string): number | undefined {
 
 /** The fields a merge request needs that a commit message can supply: the commit's subject (WHAT
  * merged — recovery rides it into its `merged` summary so the failure digest can name recovered
- * work, BUGS.md 2026-09-21), the author's body (WHY/RISK/VERIFIED, reformatted), and whether the
- * run was high-friction. */
+ * work, BUGS.md 2026-09-21), the author's body (WHY/RISK/VERIFIED, reformatted), whether the run
+ * was high-friction, the revision round, and — the two merge-only fields the durable queue entry
+ * used to hold — the backlog claim the run worked and the review a revision answers; a pin-only
+ * merge reads them back off the commit (part 3e/7). */
 export interface CommitMetadata {
   subject?: string;
   body?: string;
   highFriction?: boolean;
   /** The revision round this commit is, absent for a fresh change (plans/revise-rejected.md). */
   revisionRound?: number;
+  /** The backlog entry the run worked — its file, key and title — absent for a run executing a
+   * user request (run-stage stamps it only when `userPrompt` is null). */
+  claim?: MergeClaim;
+  /** The review a revision answers — the prior head, its objections and their counts — absent on a
+   * fresh change. */
+  priorReview?: PriorReview;
+}
+
+/** The backlog-claim trailer line a run commit carries (see commitTrailer): a whole `Claim: <json>`
+ * line — JSON with `file` (PLANS.md or BUGS.md), `key` and `title` — stamped only when the run
+ * worked a backlog entry, never when it executed a user request. Anchored to the whole line and
+ * validated fail-closed (isMergeClaim) like revisionRoundOf, so prose that merely names the backlog
+ * cannot be read as a claim. */
+export function claimOf(message: string): MergeClaim | undefined {
+  for (const line of message.split("\n")) {
+    if (!line.startsWith("Claim: ")) continue;
+    const value: unknown = parseJson(line.slice("Claim: ".length));
+    return isMergeClaim(value) ? value : undefined;
+  }
+  return undefined;
+}
+
+/** The prior-review trailer line a revision commit carries (see commitTrailer): a whole
+ * `Prior-review: <json>` line — JSON with `sha`, `reasons` and optional `counts` — stamped only
+ * on a revision run that held the rejected diff, absent on a fresh change. Anchored to the whole
+ * line and validated fail-closed (isPriorReview) like revisionRoundOf, so prose cannot be read
+ * as a prior review. */
+export function priorReviewOf(message: string): PriorReview | undefined {
+  for (const line of message.split("\n")) {
+    if (!line.startsWith("Prior-review: ")) continue;
+    const value: unknown = parseJson(line.slice("Prior-review: ".length));
+    return isPriorReview(value) ? value : undefined;
+  }
+  return undefined;
+}
+
+/** Parse one trailer line's JSON payload, returning null (not a throw) when it is malformed or not
+ * a plain object — the fail-closed base of the `Claim:` and `Prior-review:` readers above, which
+ * read a bad line as the field being absent rather than crashing a parse. */
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 /** The harness-stamped commit-subject prefix — the `tumwater(<role>):` part run-stage.ts (and
@@ -252,11 +317,15 @@ export function stampedRole(message: string): string | undefined {
 export function parseCommitMetadata(message: string): CommitMetadata {
   const body = extractCommitBody(message);
   const revisionRound = revisionRoundOf(message);
+  const claim = claimOf(message);
+  const priorReview = priorReviewOf(message);
   return {
     subject: commitSubject(message),
     body: body ? formatCommitBody(body) : undefined,
     highFriction: hasFrictionTrailer(message) || undefined,
     ...(revisionRound !== undefined ? { revisionRound } : {}),
+    ...(claim !== undefined ? { claim } : {}),
+    ...(priorReview !== undefined ? { priorReview } : {}),
   };
 }
 
