@@ -770,28 +770,57 @@ export function createMainWatch(
     if (rerun === null) return false; // cannot narrow: the caller re-checks in full
     const stillFailing = spell.tests.filter((t) => rerun.failing.includes(t));
     if (stillFailing.length > 0) {
-      // The spell stays open, narrowed: a passing test leaves the open set and the read of main's
-      // known failures. The failing tests obey the spell's own opener attribution — no
-      // re-attribution, no new culprit — and `redSpellOpeners` keeps the opener.
-      const narrowed = narrowOffenders(spell.offenders, stillFailing);
-      redSpellOpeners.set(root, {
-        opener: spell.opener,
-        tests: stillFailing,
-        ...(spell.files !== undefined ? { files: spell.files } : {}),
-        ...(narrowed !== undefined ? { offenders: narrowed } : {}),
-      });
-      knownFailures.set(root, stillFailing);
-      knownOffenders.set(root, narrowed ?? {});
-      logEventBestEffort(root, mainCheckEvent(
-        { status: "red", sha: tip, failingTests: stillFailing },
-        true, // red
-        null, // quarantined
-        1,
-        0, // a re-run, not a full run: no durationMs to print
-        spell.opener,
-      ));
+      narrowStillFailingRed(tip, spell, stillFailing);
       return true;
     }
+    await confirmClearedRed(wt, tip, before, config);
+    return true; // the open red was narrowed or cleared on this head
+  }
+
+  /** While `root`'s red spell is open (part 3b/4) and a re-run of the open failures still
+   * fails: narrow the spell to the tests that failed again. A passing test has already left
+   * the open set in `stillFailing`; this rewrites `redSpellOpeners` to the still-failing set —
+   * keeping the spell's own opener, its files, and the narrowed offenders — and the
+   * known-failure maps, and logs the narrowed red `main_check` with the spell's opener: no
+   * re-attribution, no new culprit. */
+  function narrowStillFailingRed(tip: string, spell: OpenRedSpell, stillFailing: string[]): void {
+    // The spell stays open, narrowed: a passing test leaves the open set and the read of main's
+    // known failures. The failing tests obey the spell's own opener attribution — no
+    // re-attribution, no new culprit — and `redSpellOpeners` keeps the opener.
+    const narrowed = narrowOffenders(spell.offenders, stillFailing);
+    redSpellOpeners.set(root, {
+      opener: spell.opener,
+      tests: stillFailing,
+      ...(spell.files !== undefined ? { files: spell.files } : {}),
+      ...(narrowed !== undefined ? { offenders: narrowed } : {}),
+    });
+    knownFailures.set(root, stillFailing);
+    knownOffenders.set(root, narrowed ?? {});
+    logEventBestEffort(root, mainCheckEvent(
+      { status: "red", sha: tip, failingTests: stillFailing },
+      true, // red
+      null, // quarantined
+      1,
+      0, // a re-run, not a full run: no durationMs to print
+      spell.opener,
+    ));
+  }
+
+  /** While `root`'s red spell is open (part 3b/4) and a re-run of the open failures shows every
+   * test passing: clear the red. Count the covered commits and record a passed `main_check`
+   * with `cleared: true` that writes no full verdict (so `redeployTarget` does not target this
+   * head and the hour's anchor stays the last real full verdict), clear the known-failure maps,
+   * delete the spell, clear the heal-dedup key, and drop the heal prompts still waiting for
+   * this red. Then, when a build check is declared, run one confirming full run on the
+   * `_main-full` mirror (`wt`, which already holds this head) and settle or report it through
+   * `recordMainCheck` and `reportCulprit` — or leave the cleared head watched with no verdict
+   * when that run reports none. */
+  async function confirmClearedRed(
+    wt: string,
+    tip: string,
+    before: string | undefined,
+    config: TumwaterConfig,
+  ): Promise<void> {
     // Every open test passed on this head: the red clears. Record a passed main_check with
     // `cleared: true` that writes no full verdict (so redeployTarget does not target this head
     // and the hour's anchor stays the last real full verdict), clear the heal-dedup key, drop
@@ -811,7 +840,7 @@ export function createMainWatch(
       const confirmStarted = Date.now();
       const { check: confirmCheck } = await runBaselineCheck(root, wt, config);
       const confirmBaseline = confirmCheck.baseline;
-      if (!confirmBaseline) return true; // no verdict: the cleared head stays watched, with no full verdict
+      if (!confirmBaseline) return; // no verdict: the cleared head stays watched, with no full verdict
       lastWatched = confirmBaseline.sha;
       fullCheckDueAt = undefined;
       fullCheckBase = undefined;
@@ -838,11 +867,10 @@ export function createMainWatch(
         clearHealKeyOnGreen();
         await dropHealPromptsCoveredBy(root, wt, confirmBaseline.sha);
         redSpellOpeners.delete(root);
-        return true;
+        return;
       }
       reportCulprit(root, onCulprit, confirmBaseline, confirmedOpener ?? confirmBaseline.sha);
     }
-    return true; // the open red was narrowed or cleared on this head
   }
 
   /** Start one quarantine housekeeping pass unless one is already in flight. */
