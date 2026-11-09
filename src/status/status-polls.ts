@@ -240,7 +240,6 @@ function mergesAroundCheck(
  * MAIN_CHECK_SCAN_MAX_EVENTS): a check older than the default tail must still badge the header,
  * and every event after the check — the merged pairing the sha needs — is newer, so one window
  * holds the whole derivation. */
-
 function scanMainCheck(root: string): MainCheckScan {
   const grewFull = mainCheckGrewFull.has(root);
   // A set note means the previous scan reached the cap without finding a check, so start
@@ -320,12 +319,6 @@ function mainCheckScanFor(root: string): MainCheckScan {
     ) ?? { check: undefined }
   );
 }
-
-/** The newest merge-scope build_check in the event tail, with the main sha it verified
- * (mainCheck's derivation — see the field's comment). A gate-scope check is excluded: it
- * verified a role worktree, not main. The log-derived scan is stat-cached per events.jsonl
- * (mainCheckScanFor); only the branch/sha fallback reads here are per call, so a config or
- * checkout change is observed even while the log sits still. */
 
 /** The verdict while a cleared red's confirming full run has not settled (part 3b/4 → part
  * 4/4): the newest full build_check is the pre-clearing red, so reading it would call a head
@@ -408,6 +401,11 @@ function mainCheckCadence(check: HarnessEvent, cfg: TumwaterConfig): {
   return { checkedAt, hasVerdict, nextDueAt };
 }
 
+/** The newest merge-scope build_check in the event tail, with the main sha it verified
+ * (mainCheck's derivation — see the field's comment). A gate-scope check is excluded: it
+ * verified a role worktree, not main. The log-derived scan is stat-cached per events.jsonl
+ * (mainCheckScanFor); only the branch/sha fallback reads here are per call, so a config or
+ * checkout change is observed even while the log sits still. */
 export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckStatus | undefined {
   const scan = mainCheckScanFor(root);
   // A cleared red whose confirming full run has not settled: the cleared main_check alone
