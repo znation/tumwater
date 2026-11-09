@@ -46,6 +46,20 @@ function positionRuns(positions: readonly number[]): string {
   return runs.join(", ");
 }
 
+/** The `--list` flag vocabulary as parsed: the `--json`/`--done`/`--ready`/`--held` booleans,
+ * the `-n` count and `--grep` text (each nullable when absent), the `--follow` boolean, and
+ * `rest`, the leftover args `rejectUnknownArgs` refuses. */
+interface ListArgs {
+  json: boolean;
+  done: boolean;
+  ready: boolean;
+  held: boolean;
+  count: number | null;
+  grep: string | null;
+  follow: boolean;
+  rest: string[];
+}
+
 /** Scans the `--list` flag vocabulary (`--list`, `--json`, `--done`, `--ready`, `--held`,
  * `-n`, `--grep`, `-f/--follow`, each once, plus tolerated `--help`/`-h`) into the parsed
  * locals and returns them with `rest`, the leftover args rejectUnknownArgs will
@@ -55,16 +69,7 @@ function positionRuns(positions: readonly number[]): string {
  * `backlog` and `questions` follows do. Reads no entry, filters nothing, prints nothing; the
  * `fail` calls it makes are the flag-usage refusals (a repeat or a `--grep`/`-n` with missing
  * text). */
-function parseListArgs(args: string[], command: string): {
-  json: boolean;
-  done: boolean;
-  ready: boolean;
-  held: boolean;
-  count: number | null;
-  grep: string | null;
-  follow: boolean;
-  rest: string[];
-} {
+function parseListArgs(args: string[], command: string): ListArgs {
   let json = false;
   let list = false;
   let done = false;
@@ -320,6 +325,67 @@ function renderActiveList(
   return activeListProse(view, fileName, command, bugSection);
 }
 
+/** The `--done` rivals a list cannot honour, in the order the shell checked them: `-n`
+ * only limits the finished entries listed, and `--ready`/`--held` are active-list filters
+ * (`--done`'s entries carry no holds). */
+function refuseListDoneRivals(args: ListArgs): void {
+  if (args.count !== null && !args.done) fail("-n needs --done (it limits the finished entries listed)");
+  if (args.ready && args.done) fail("--ready needs the active list (finished entries carry no holds)");
+  if (args.held && args.done) fail("--held needs the active list (finished entries carry no holds)");
+}
+
+/** `--ready` and `--held` keep opposite entry sets, so one list cannot honour both. */
+function refuseListHoldRival(args: ListArgs): void {
+  if (args.ready && args.held) fail("--ready and --held are mutually exclusive: each keeps the entries the other hides");
+}
+
+/** `--follow` and `--json` are rivals: a live view is one repainted document, not one
+ * snapshot, so a follow frame can never be the JSON document. */
+function refuseListFollowJsonRival(command: string, args: ListArgs): void {
+  if (args.follow && args.json) failFollowJsonRival(`${command} --list --json`);
+}
+
+/** The list shell's frame: the `--done` list or the active list, whichever the parsed flags
+ * choose, re-read on each call so a follow frame renumbers as a fresh list would. The
+ * renderers keep their own reads; this chooses between them. */
+function buildListFrame(
+  root: string,
+  fileName: string,
+  command: string,
+  sectionTitle: string,
+  args: ListArgs,
+): string | object {
+  // BUGS.md's `## Open` is the one section whose noun is "bug"; every other caller is a plan.
+  const bugSection = sectionTitle === "Open";
+  return args.done
+    ? renderFinishedList(root, fileName, bugSection, args.grep, args.count, args.json)
+    : renderActiveList(root, fileName, command, bugSection, sectionTitle, args.grep, args.ready, args.held, args.json);
+}
+
+/** Delivers a built list frame: a follow invocation re-runs `build` on every repaint (so each
+ * frame re-reads the backlog, the holds and the claims) until the process that started it
+ * exits, and a one-shot prints the frame once. */
+async function emitListFrame(
+  build: () => string | object,
+  follow: boolean,
+  seams: FollowViewSeams,
+): Promise<void> {
+  if (follow) {
+    // follow refuses --json in the shell's flag gates, so every frame is prose here; stringify
+    // defensively for the union the one-shot branch shares with it.
+    await followView(() => {
+      const frame = build();
+      return typeof frame === "string" ? frame : JSON.stringify(frame, null, 2);
+    }, seams);
+    return;
+  }
+  const frame = build();
+  // Prose goes through say's terminal sanitization; the JSON document keeps its raw bytes
+  // through sayJson, the data-surface rule every --json command follows.
+  if (typeof frame === "string") say(frame);
+  else sayJson(frame);
+}
+
 /** The shared shell of the `bug --list` and `plan --list` CLI cases — the read half of the
  * operator queue whose `--edit`/`--cancel` flags address entries by position. Reads the same
  * entries, in the same file order, that locateEntry numbers for `--edit`/`--cancel`, pairs
@@ -361,37 +427,17 @@ export async function listAndAnnounce(
   sectionTitle: string,
   seams: FollowViewSeams = {},
 ): Promise<void> {
-  const { json, done, ready, held, count, grep, follow, rest } = parseListArgs(args, command);
+  const parsed = parseListArgs(args, command);
   // rejectUnknownArgs names a stray positional and an unknown flag with this command's (empty)
   // valid-flag list: every flag a list invocation accepts is consumed above, so anything left
   // is outside the vocabulary.
-  rejectUnknownArgs(command, rest, []);
+  rejectUnknownArgs(command, parsed.rest, []);
   refuseTeamWorkspace(root);
-  if (count !== null && !done) fail("-n needs --done (it limits the finished entries listed)");
-  // BUGS.md's `## Open` is the one section whose noun is "bug"; every other caller is a plan.
-  if (ready && done) fail("--ready needs the active list (finished entries carry no holds)");
-  if (held && done) fail("--held needs the active list (finished entries carry no holds)");
-  if (ready && held) fail("--ready and --held are mutually exclusive: each keeps the entries the other hides");
-  if (follow && json) failFollowJsonRival(`${command} --list --json`);
-  const bugSection = sectionTitle === "Open";
-  const build = (): string | object =>
-    done
-      ? renderFinishedList(root, fileName, bugSection, grep, count, json)
-      : renderActiveList(root, fileName, command, bugSection, sectionTitle, grep, ready, held, json);
-  if (follow) {
-    // follow refuses --json above, so every frame is prose here; stringify defensively for the
-    // union the one-shot branch shares with it.
-    await followView(() => {
-      const frame = build();
-      return typeof frame === "string" ? frame : JSON.stringify(frame, null, 2);
-    }, seams);
-    return;
-  }
-  const frame = build();
-  // Prose goes through say's terminal sanitization; the JSON document keeps its raw bytes
-  // through sayJson, the data-surface rule every --json command follows.
-  if (typeof frame === "string") say(frame);
-  else sayJson(frame);
+  refuseListDoneRivals(parsed);
+  refuseListHoldRival(parsed);
+  refuseListFollowJsonRival(command, parsed);
+  const build = () => buildListFrame(root, fileName, command, sectionTitle, parsed);
+  await emitListFrame(build, parsed.follow, seams);
 }
 
 /** The shell of `bug --show` and `plan --show`: `--show <n>` (once), an optional `--json`
