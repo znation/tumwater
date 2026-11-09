@@ -5,6 +5,7 @@
  * memo, reasons map). Parts 2/3 and 3/3 lift the loop's skip and admit halves against this
  * scope. */
 import { increment } from "../collections.js";
+import { claimOf } from "../git/commit-message.js";
 import type { RoleRunner } from "../runner/runner.js";
 import type { OnceRound } from "./once-round.js";
 import type { WorkMergedCache } from "./work-merged-cache.js";
@@ -16,9 +17,9 @@ import { hasOutstandingWork, saveRunnerStateBestEffort, type SkipReason } from "
 import { hasUnmergedPin } from "../runner/runner-leftover.js";
 import { queuedMerges } from "../merge/merge-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
-import { aheadOfMainBranch } from "../git/git.js";
+import { aheadOfMainBranch, commitMessage, refSha } from "../git/git.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
-import { branchName } from "../paths.js";
+import { branchName, mergeRefName } from "../paths.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
 import {
   CLAIM_IDLE_MAX_MS,
@@ -167,24 +168,41 @@ export function noteSkip(root: string, runner: RoleRunner, reason: SkipReason | 
 }
 
 /** The merge queue's claim records, keyed by the authoring runner's base role: every entry a
- * queued or pinned change of that base already claims. The queue record, not the runner's
- * live claim, is what the merge's withdrawn check reads, so this set is what keeps a released
- * claim's entry held for the group while the change waits. A missing queue dir reads as
- * nothing queued, like every reader in merge-queue.ts. */
-function queuedMergeClaimKeys(root: string, runners: readonly RoleRunner[]): Map<string, Set<string>> {
+ * queued or pinned change of that base already claims. The record, not the runner's live
+ * claim, is what the merge's withdrawn check reads, so this set is what keeps a released
+ * claim's entry held for the group while the change waits. A changed fresh run now leaves
+ * only its merge pin (part 3e/7), so a pin with no queue file is read back through its
+ * commit's Claim trailer; a missing queue dir reads as nothing queued, like every reader in
+ * merge-queue.ts. */
+async function queuedMergeClaimKeys(root: string, runners: readonly RoleRunner[]): Promise<Map<string, Set<string>>> {
   const byBase = new Map<string, Set<string>>();
   const roleBases = new Map<string, string>();
   for (const r of runners) roleBases.set(r.role, baseRoleOf(r.role));
-  for (const e of queuedMerges(root)) {
-    if (e.claim === undefined) continue;
-    const base = roleBases.get(e.role) ?? baseRoleOf(e.role);
-    if (!INSTANCE_ROLES.has(base)) continue;
+  const add = (role: string, key: string): void => {
+    const base = roleBases.get(role) ?? baseRoleOf(role);
+    if (!INSTANCE_ROLES.has(base)) return;
     let set = byBase.get(base);
     if (set === undefined) {
       set = new Set<string>();
       byBase.set(base, set);
     }
-    set.add(e.claim.key);
+    set.add(key);
+  };
+  for (const e of queuedMerges(root)) {
+    if (e.claim === undefined) continue;
+    add(e.role, e.claim.key);
+  }
+  // A pin-only writer has no queue file to read, so the Claim trailer stamped on its commit
+  // (part 3j/7) is its queue record. A role that still holds a queue file is already covered
+  // above, and a pin with no Claim trailer simply holds nothing (a user-request run).
+  const queuedRoles = queuedMergeRoles(root);
+  for (const r of runners) {
+    if (queuedRoles.has(r.role) || !INSTANCE_ROLES.has(baseRoleOf(r.role))) continue;
+    const sha = await refSha(root, mergeRefName(r.role)).catch(() => null);
+    if (!sha) continue;
+    const message = await commitMessage(root, sha).catch(() => null);
+    const claim = message === null ? undefined : claimOf(message);
+    if (claim !== undefined) add(r.role, claim.key);
   }
   return byBase;
 }
@@ -440,7 +458,7 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
   // settle on its own — see directorPinOwedRun. A queued pin whose branch holds nothing extra
   // still owes the run (the queue is not a scheduling gate in that case).
   const pinnedDirector = await directorPinOwedRun(root, mainBranch);
-  const queuedMergeClaims = queuedMergeClaimKeys(root, runners);
+  const queuedMergeClaims = await queuedMergeClaimKeys(root, runners);
   const claimGroups = await collectClaimGroups(root, runners, pausedRoles, now, queuedMergeClaims);
   // The team gates' block predicate (the director exempt — an explicit human prompt
   // outranks any autonomous gate, quiet hours included): the once-mode settle below and

@@ -393,9 +393,11 @@ export async function mergeHead(
   for (const { entry, file } of queuedMergeFiles(repo)) {
     if (entry.role === role && entry.retry !== undefined) dropMerge(file);
   }
-  // The settled task must have dropped every queue file; a pin-only merge writes none, so any
-  // file left here is one the merge failed to settle.
-  if (queueDepth(repo) > 0) throw new Error(`the merge of ${role} left a queue file`);
+  // The settled task must have dropped the queue file it started with; a pin-only merge
+  // writes none, so a queue file present then is one the merge failed to settle. Any other
+  // entry the queue held is another role's and stays for its own drive.
+  if (head ? fs.existsSync(head.file) : queueDepth(repo) > 0)
+    throw new Error(`the merge of ${role} left a queue file`);
   const result = runner.state.lastResult;
   if (result === undefined) throw new Error(`the merge of ${role} recorded no result`);
   return result;

@@ -40,6 +40,13 @@ test("a pin with no queue file is gated and merged on a poll", async () => {
   assert.equal(await refSha(root, mergeRefName("improve")).catch(() => null), null, "the pin was deleted with the merge");
   assert.equal(queueDepth(root), 0, "no queue file was written");
   assert.ok(readEvents(root).some((e) => e.type === "merge_done"), "merge_done fired");
+  // A pin-only writer is not a recovery: the merged event names the change's own subject,
+  // not the recovered-leftover label the leftover path uses.
+  assert.equal(
+    readEvents(root).find((e) => e.type === "merged")?.summary,
+    "work by improve",
+    "the merged summary is the commit's own subject",
+  );
 });
 
 test("a pin whose commit main already contains is deleted without a gate", async () => {

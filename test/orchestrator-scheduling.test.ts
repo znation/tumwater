@@ -371,6 +371,40 @@ test("a primary whose queued change already claims its entry is not handed the e
   assert.equal(feature2.state.claim?.key, "beta", "the sibling's own entry is untouched");
 });
 
+test("a primary whose pinned change already claims its entry is not handed the entry again", async () => {
+  const root = await initializedRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), THREE_PLANS);
+  commitIn(root, "plans");
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  // Poll 1 assigns: feature takes alpha, feature-2 takes beta; gamma stays free.
+  await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(feature.state.claim?.key, "alpha");
+  // Feature's changed run now leaves only its merge pin, with the alpha claim on the commit's
+  // Claim trailer (part 3e/7); main still lists alpha while the pin waits. The next poll must
+  // read that trailer as the queue record: release feature's claim and keep alpha held, so the
+  // primary takes the free gamma instead of alpha again.
+  const sha = pinOffMain(
+    root,
+    (d) => fs.writeFileSync(path.join(d, "alpha.txt"), "work alpha\n"),
+    'tumwater(feature): work alpha\n\nRun: feature #1 · turns 1 · ctx 0\nClaim: {"file":"PLANS.md","key":"alpha","title":"Alpha (planned 2026-01-01 by operator)"}',
+  );
+  await setRef(root, mergeRefName("feature"), sha);
+  const second = await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(second.has(feature), true, "the primary is admitted on a different entry");
+  assert.equal(
+    feature.state.claim?.key,
+    "gamma",
+    "the pin's claim is released and reassigned to a free entry, never its own",
+  );
+  assert.equal(feature2.state.claim?.key, "beta", "the sibling's own entry is untouched");
+});
+
 test("a primary owed a revision keeps its claim while its earlier change is queued", async () => {
   const root = tmpdir("tumwater-scheduling-queued-claim-revision-");
   fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);

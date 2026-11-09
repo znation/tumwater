@@ -323,10 +323,18 @@ export function recoveredMergeEntry(role: string, sha: string, meta: CommitMetad
  * body, and high-friction flag read back from its commit message (recoveredMetadata) and the
  * authoring run from its `Run:` trailer — the drain has no run number of its own, so session
  * naming keeps the authoring run; a hand-made commit with no trailer falls back to the zero
- * slot. The one pin-to-entry builder, so the drain and the torn-head re-queue cannot drift. */
-export async function pinnedMergeEntry(root: string, role: string, sha: string): Promise<MergeEntry> {
+ * slot. The one pin-to-entry builder, so the drain and the torn-head re-queue cannot drift.
+ * A changed fresh run is a pin-only writer now (part 3e/7), not a recovery: `recovered: false`
+ * keeps its own subject as the summary instead of labelling it recovered leftover work. */
+export async function pinnedMergeEntry(
+  root: string,
+  role: string,
+  sha: string,
+  opts: { recovered?: boolean } = {},
+): Promise<MergeEntry> {
   const meta = await recoveredMetadata(root, sha);
   const message = await commitMessage(root, sha);
   const run = message === null ? 0 : (commitRunOf(message) ?? 0);
-  return recoveredMergeEntry(role, sha, meta, run);
+  const entry = recoveredMergeEntry(role, sha, meta, run);
+  return opts.recovered === false && meta.subject !== undefined ? { ...entry, summary: meta.subject } : entry;
 }

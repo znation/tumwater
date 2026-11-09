@@ -137,7 +137,7 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
     if (refAbsentFromFiles(ctx.root, mergeRefName(runner.role))) continue;
     const sha = await pinnedRetrySha(ctx.root, runner.role, ctx.mainBranch, runner.state);
     if (sha === null) continue;
-    const entry = await pinnedMergeEntry(ctx.root, runner.role, sha);
+    const entry = await pinnedMergeEntry(ctx.root, runner.role, sha, { recovered: false });
     if (await pinClaimWithdrawn(ctx, runner, entry.run)) continue;
     if (ctx.startHeld(runner.role)) continue;
     p.merge = startMerge(ctx, p, entry, null);
