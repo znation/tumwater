@@ -162,6 +162,33 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   assert.match(demoted, /after a cool-down\); roles start/);
 });
 
+// The maintenance-admission events (src/gates/maintenance-quota-gates.ts and
+// src/gates/bootstrap-gates.ts): the team-wide maintenance hold and its reopen, and the
+// bootstrap completion. The hold names the window's counts; the reopen says the roles run;
+// the bootstrap names the plans done. Routine state changes, no warning prefix.
+test("formatEvent renders the maintenance allowance hold, reopen and bootstrap completion", () => {
+  const hold = formatEvent({
+    ts: 0, source: "tumwater", type: "maintenance_quota_hold", maint: 3, allowance: 4, work: 20,
+  } as never);
+  assert.match(hold, /tumwater\s+waiting: maintenance allowance used — 3 maintenance merges against an allowance of 4 in the last 24h \(20 work\); the maintenance roles wait until the window rolls over/);
+  assert.ok(!hold.includes("warning"), "the maintenance hold is routine, not a warning");
+
+  const reopened = formatEvent({
+    ts: 0, source: "tumwater", type: "maintenance_quota_resumed", maint: 3, allowance: 4,
+  } as never);
+  assert.match(reopened, /tumwater\s+maintenance allowance reopened — 3 maintenance merges against an allowance of 4 in the last 24h; the maintenance roles run again/);
+
+  const bootstrap = formatEvent({
+    ts: 0, source: "tumwater", type: "bootstrap_complete", plansDone: 5, untilPlansDone: 5,
+  } as never);
+  assert.match(bootstrap, /tumwater\s+bootstrap complete — 5\/5 plans done; the maintenance roles now run/);
+
+  // A torn event with no counts renders the "?" placeholder, never "undefined".
+  const torn = formatEvent({ ts: 0, source: "tumwater", type: "maintenance_quota_hold" } as never);
+  assert.ok(!torn.includes("undefined"), `torn maintenance hold must not render undefined: ${torn}`);
+  assert.match(torn, /maintenance allowance used — \? maintenance merges against an allowance of \? in the last 24h \(\? work\)/);
+});
+
 // The live concurrency-cap change event: a routine state
 // change like counters_reset — a plain line carrying from → to in that order, no warning
 // prefix.
