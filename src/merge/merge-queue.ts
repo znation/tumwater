@@ -29,8 +29,8 @@ import type { MergeClaim } from "./merge-withdrawn.js";
  * between the two versions. `counts` carries each objection's persistence count (aligned with
  * `reasons`; BUGS.md 2026-10-14) so the next rejection can resolve a `(prior N)` restatement
  * in the re-review's reasons to a count and end a chain whose objection has stopped converging.
- * Absent on a fresh change and read back as absent on a recovery merge, which is reviewed
- * like a fresh change — a `(prior N)` tag then counts as a new objection. */
+ * Absent on a fresh change and on a recovery whose commit stamps no Prior-review trailer; such
+ * a merge is reviewed like a fresh change, so a `(prior N)` tag counts as a new objection. */
 export interface PriorReview {
   sha: string;
   reasons: string[];
@@ -67,7 +67,8 @@ export interface MergeEntry {
   revisionRound?: number;
   /** The prior rejection this merge is revising, absent for a fresh change
    * (plans/revise-rejected.md part 2/2). Filled by run-stage.ts from RunnerState.lastReview only
-   * on a run that held the rejected diff; a recovery merge never carries one. */
+   * on a run that held the rejected diff; a recovery carries it only when the pinned commit's
+   * Prior-review trailer stamps it. */
   priorReview?: PriorReview;
   /** Earliest time (epoch ms) the gate-then-merge task may start, absent for an entry that is
    * ready at once. Set on the pipeline's own re-queue of a `review_error` change, so a flaky
@@ -85,7 +86,7 @@ export interface MergeEntry {
    * for a run that worked its claim, not a queued user request. The poll releases the claim
    * while the change waits, so this copy is what the merge checks: a change whose claimed
    * entry main no longer lists is dropped as `withdrawn` (merge-withdrawn.ts). Carried by
-   * re-queues; absent on a recovery merge, whose authoring run is gone. */
+   * re-queues; a recovery carries it only when the pinned commit's Claim trailer stamps it. */
   claim?: MergeClaim;
 }
 

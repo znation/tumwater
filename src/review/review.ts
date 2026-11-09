@@ -46,7 +46,8 @@ export interface ReviewContext {
   revisionRound?: number;
   /** The rejected change's head and objections when this merge is a revision, absent
    * otherwise: built from the merge entry's PriorReview and used to show the re-review what
-   * the revision had to resolve. A recovery merge carries none. */
+   * the revision had to resolve. A recovery carries one only when its commit stamps a
+   * Prior-review trailer. */
   priorReview?: PriorReview;
   /** The reviewer's pi runs (the review run and the verdict follow-up), through the owning
    * runner's shared transient-retry wiring (RunnerPi.runGatePi — BUGS.md 2026-10-01: a 429 in the

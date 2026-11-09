@@ -332,8 +332,9 @@ export const RETRIABLE_MERGE_RESULTS: ReadonlySet<RunResult> = new Set([
  * RunnerState.revision (with each reason's persistence count) so the author's next run re-applies
  * it; when final, clear the revision, delete the ref and log `exhausted`. `priorCounts` is the
  * previous round's per-reason persistence counts, carried from the queued merge's PriorReview;
- * absent for a fresh change's first rejection and on a recovery merge, a `(prior N)` tag then
- * counts as having survived one revision (count 1): not final that round. Shared by a pinned
+ * absent for a fresh change's first rejection and for a recovery whose commit carries no
+ * Prior-review trailer, a `(prior N)` tag then counts as having survived one revision (count 1):
+ * not final that round. Shared by a pinned
  * change's rejection (reviewPinnedChange) and the in-lock re-review rejection of a resolved
  * conflict (mergeApprovedChange), so both send the change back for revision the same way. A
  * rejection with no `revisionRound` is a fresh change's first round (1). The director never

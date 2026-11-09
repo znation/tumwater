@@ -132,8 +132,9 @@ function revisionFields(ctx: RunStageContext): { revisionRound: number | undefin
   // part 2/2): the prior head, its numbered objections, and each objection's persistence count
   // ride the queued entry so the re-review can check each one against the interdiff and the next
   // rejection can resolve a `(prior N)` restatement (BUGS.md 2026-10-14). Only a run that
-  // actually held the rejected diff attaches it; a fresh change — including a user-request run
-  // that leaves a pending revision untouched — and a recovery merge carry none.
+  // actually held the rejected diff attaches it from state; a fresh change — including a
+  // user-request run that leaves a pending revision untouched — and a recovery whose commit
+  // stamps no Prior-review trailer carry none.
   const priorReview =
     revisionRound !== undefined && s.lastReview?.head
       ? {
