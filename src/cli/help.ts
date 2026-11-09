@@ -259,7 +259,10 @@ Usage:
                                    (\`[rejected — <reasons>]\`) or its
                                    failed-review-run count (\`[N failed review runs]\`); an empty
                                    queue prints \`post-merge review queue empty\`; --json prints
-                                   the normalized { pending: [...] } list for scripts; --role
+                                   the normalized { pending: [...] } list for scripts, each row
+                                   carrying \`position\` — the 1-based whole-queue number the
+                                   list prints and \`--show <n>\`/\`--accept <n>\` address, kept
+                                   even when a filter narrows the list; --role
                                    keeps only the listed roles' entries (a base role id taking
                                    its instances too), each under its position in the whole
                                    queue; --status keeps only the entries in the listed states
@@ -289,7 +292,8 @@ Usage:
                                    why a merged commit was turned back without opening
                                    post-review.json; read-only and needing no ready repo, like
                                    the list; --json prints the entry object unsquashed for
-                                   scripts (no header text)
+                                   scripts (no header text) — the same object, plus the
+                                   \`position\` its list row carries
   tumwater backlog [--ready] [--held] [--grep <text>] [-f/--follow] [--json]
                                    Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable

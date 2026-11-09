@@ -138,7 +138,16 @@ export async function cmdReviews(root: string, args: string[], seams: FollowView
     return;
   }
   const { entries, scope } = readScoped();
-  sayJsonOrRender(rest, { pending: entries }, () => renderPostReviews(entries, scope, Date.now()));
+  // The JSON rows are the list's rows: each kept entry carries its 1-based whole-queue number
+  // (scope.positions when a filter is active, else its FIFO index) — the number the list
+  // prints and `--show <n>`/`--accept <n>` address, kept even when --role/--status/--grep
+  // narrow the list, so a script can read a row and act on its number. The text render keeps
+  // the raw entries and scope, so the list output is unchanged.
+  const positioned = entries.map((entry, i) => ({
+    position: scope ? (scope.positions[i] ?? i + 1) : i + 1,
+    ...entry,
+  }));
+  sayJsonOrRender(rest, { pending: positioned }, () => renderPostReviews(entries, scope, Date.now()));
 }
 
 /** The `tumwater reviews --accept <n>` branch (PLANS.md): remove the Nth pending post-merge
@@ -199,7 +208,9 @@ async function cmdReviewsShow(root: string, args: string[]): Promise<void> {
   }
   const entry = entries[position - 1]!;
   if (json) {
-    sayJson(entry);
+    // The same `position` the list's pending rows carry, so `--show <n> --json` prints an
+    // object of the list's row shape — a script can read it and address it by that number.
+    sayJson({ position, ...entry });
   } else {
     say(renderPostReviewDetail(entry, position, Date.now()));
   }

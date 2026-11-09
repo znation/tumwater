@@ -83,9 +83,10 @@ test("reviews --role keeps only the listed roles' entries under their whole-queu
 
   const json = await cli(repo, "reviews", "--json", "--role", "clean");
   assert.equal(json.code, 0);
-  const doc = JSON.parse(json.stdout) as { pending: { role: string }[] };
+  const doc = JSON.parse(json.stdout) as { pending: { role: string; position: number }[] };
   assert.equal(doc.pending.length, 1);
   assert.equal(doc.pending[0]!.role, "clean");
+  assert.equal(doc.pending[0]!.position, 2, "the kept row keeps its whole-queue number, not a renumbered 1");
 
   const accept = await cli(repo, "reviews", "--accept", "1", "--role", "clean");
   assert.notEqual(accept.code, 0);
@@ -126,9 +127,10 @@ test("reviews --status keeps only the listed states under their whole-queue posi
 
   const json = await cli(repo, "reviews", "--json", "--status", "rejected");
   assert.equal(json.code, 0);
-  const doc = JSON.parse(json.stdout) as { pending: { role: string }[] };
+  const doc = JSON.parse(json.stdout) as { pending: { role: string; position: number }[] };
   assert.equal(doc.pending.length, 1);
   assert.equal(doc.pending[0]!.role, "clean");
+  assert.equal(doc.pending[0]!.position, 2, "the kept row keeps its whole-queue number, not a renumbered 1");
 
   const bogus = await cli(repo, "reviews", "--status", "bogus");
   assert.notEqual(bogus.code, 0);
@@ -316,11 +318,12 @@ test("reviews --grep composes with --status, --role and --json", async () => {
   assert.equal(none.code, 0);
   assert.match(none.stdout, /no post-merge reviews matching --status rejected --grep zzz \(post-merge review queue holds 5\)/);
 
-  // --json prints only the kept entries in queue order.
+  // --json prints only the kept entries in queue order, each under its whole-queue number.
   const json = await cli(repo, "reviews", "--json", "--grep", "crlf");
   assert.equal(json.code, 0);
-  const doc = JSON.parse(json.stdout) as { pending: { role: string }[] };
+  const doc = JSON.parse(json.stdout) as { pending: { role: string; position: number }[] };
   assert.deepEqual(doc.pending.map((p) => p.role), ["clean"], "the JSON document holds only the kept entry");
+  assert.equal(doc.pending[0]!.position, 2, "the grep-kept row keeps its whole-queue number, not a renumbered 1");
 
   assert.deepEqual(readPostReviews(repo), before, "the composed grep reads change nothing");
 });
@@ -349,8 +352,11 @@ test("reviews --json prints the normalized pending list", async () => {
   seed(repo);
   const r = await cli(repo, "reviews", "--json");
   assert.equal(r.code, 0);
-  const doc = JSON.parse(r.stdout) as { pending: { commit: string; role: string; summary: string; rejected?: string[] }[] };
+  const doc = JSON.parse(r.stdout) as { pending: { position: number; commit: string; role: string; summary: string; rejected?: string[] }[] };
   assert.equal(doc.pending.length, 2);
+  // Each row carries its 1-based whole-queue position, in FIFO order — the number the list
+  // prints and --show/--accept address.
+  assert.deepEqual(doc.pending.map((p) => p.position), [1, 2]);
   assert.deepEqual(
     doc.pending.map((p) => [p.role, p.rejected]),
     [
@@ -560,7 +566,8 @@ test("reviews --show <n> --json prints the same normalized entry the list's pend
   const doc = JSON.parse(list.stdout) as { pending: unknown[] };
   assert.deepEqual(JSON.parse(show.stdout), doc.pending[1]);
   // The full reason and summary are present unsquashed, and there is no header text.
-  const parsed = JSON.parse(show.stdout) as { summary: string; rejected: string[] };
+  const parsed = JSON.parse(show.stdout) as { position: number; summary: string; rejected: string[] };
+  assert.equal(parsed.position, 2, "the show JSON carries the number it was addressed by");
   assert.ok(parsed.summary.startsWith("rework the whole module boundary "), show.stdout);
   assert.ok(parsed.rejected[0]!.startsWith("a very long rejection reason "), show.stdout);
   assert.ok(!show.stdout.includes("post-merge review 2"), "--json prints no header text");
