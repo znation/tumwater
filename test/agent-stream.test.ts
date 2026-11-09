@@ -193,6 +193,9 @@ test("a finished append log is neither written nor ended again at settle", () =>
   // listeners): a later data event or the settle flush must not touch the dead streams — a
   // write fails on a destroyed stream and a write to a closed one throws.
   stream.feedCanonical("line one\nline two\n");
+  // The fake parser never invokes the raw-log callback, so feed a canonical line to it directly:
+  // this is the write site the finished guard protects.
+  stream.onLine("raw line");
   assert.deepEqual(rawWrites, [], "a finished raw log gets no record");
   assert.deepEqual(nativeWrites, [], "a finished native log gets no line");
 
