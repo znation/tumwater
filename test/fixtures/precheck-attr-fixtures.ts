@@ -22,63 +22,6 @@ function flakeBuildScript(counterFile: string): string {
   ].join("\n");
 }
 
-/** `counterFile` is absolute (under root's tmp dir); `$0` is the worktree the script runs in. */
-function buildScript(counterFile: string): string {
-  return `#!/bin/sh\n` +
-    `n=$(cat '${counterFile}' 2>/dev/null || echo 0)\n` +
-    `n=$((n+1)); echo $n > '${counterFile}'\n` +
-    `[ $n -le 2 ] && { echo "✖ X (1ms)"; echo "test at t.test.js:1:1"; exit 1; }\n` +
-    "exit 0\n";
-}
-
-/** A repo whose change worktree fails the gate's named test X for its first two runs (then
- * passes), main's tip (the root's committed manifest) runs `mainBuild`, and the named re-run
- * (`test:rerun`) at main's tip is `mainRerun`. `counter` is a fresh per-test file. */
-export async function namedGateFixture(mainBuild: string, mainRerun: string): Promise<{ root: string; wt: string; counter: string }> {
-  const root = makeRepo();
-  const counter = path.join(root, `cnt-${process.pid}-${Date.now()}.txt`);
-  fs.mkdirSync(path.join(root, "node_modules", ".bin"), { recursive: true });
-  fs.writeFileSync(
-    path.join(root, "package.json"),
-    projManifest({ build: mainBuild, "test:rerun": mainRerun }),
-  );
-  sh(root, "git", "add", "package.json");
-  sh(root, "git", "commit", "-m", "declare the check");
-  const wt = await ensureWorktree(root, ROLE, "main");
-  // The change's own re-run is `true` — a filter-tolerant pass: npm run appends the `#X`
-  // filter args to the script, and `exit 0 X` would fail with "too many arguments".
-  fs.writeFileSync(
-    path.join(wt, "package.json"),
-    projManifest({ build: buildScript(counter), "test:rerun": "true" }),
-  );
-  fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
-  commitIn(wt, "wip change");
-  return { root, wt, counter };
-}
-
-/** A repo whose change worktree fails the gate NAMELESSLY (a compile-style error, no test named)
- * every run, and main's tip (the root's committed manifest) runs `mainBuild`. No `test:rerun`
- * script is declared, so the named re-run is unavailable and a twice-failed nameless failure is
- * decided by the gate command at main's tip (mainTipGateVerdict). */
-export async function namelessGateFixture(mainBuild: string): Promise<{ root: string; wt: string }> {
-  const root = makeRepo();
-  fs.mkdirSync(path.join(root, "node_modules", ".bin"), { recursive: true });
-  fs.writeFileSync(
-    path.join(root, "package.json"),
-    projManifest({ build: mainBuild }),
-  );
-  sh(root, "git", "add", "package.json");
-  sh(root, "git", "commit", "-m", "declare the check");
-  const wt = await ensureWorktree(root, ROLE, "main");
-  fs.writeFileSync(
-    path.join(wt, "package.json"),
-    projManifest({ build: "echo 'error TS2345: boom' >&2; exit 1" }),
-  );
-  fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
-  commitIn(wt, "wip change");
-  return { root, wt };
-}
-
 /** A repo for the flake case: the change worktree's check fails with named test X on its FIRST
  * run only (the pre-check's immediate re-run passes), and the named re-run (`test:rerun`) is
  * filter-tolerant (`true`). Main's tip check passes. `counter` is a fresh per-test file. */
