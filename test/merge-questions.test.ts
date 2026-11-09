@@ -1,12 +1,13 @@
 /** Direct unit tests for src/merge/merge-questions.ts logNewQuestions — the capture-and-diff
  * that emits one `question_posted` per QUESTIONS.md `## Open` heading gained since `before`.
  *
- * This is the half of the questions-outbox feature (plans/questions-outbox.md) the e2e runner
- * suite (test/runner-4.test.ts) reaches only through the full merge path. There the pre-merge
- * capture is always the seeded empty `_None yet._` list, so the e2e pins only "one new heading →
- * one event" and "no new heading → none". The branches this file drives directly — a heading
- * already in `before` being skipped, and the `position`/`open` numbering of the WHOLE current
- * Open list, not of the new headings alone — are untested by any merge that runs. A plausible
+ * The e2e runner suite (test/runner-4.test.ts) reaches the questions-outbox feature
+ * (plans/questions-outbox.md) only through the full merge path, with the pre-merge capture
+ * always the seeded empty `_None yet._` list, so it pins only "one new heading → one event"
+ * and "no new heading → none". The full merge path test (test/merge-to-main.test.ts) already
+ * covers one pre-existing heading being skipped and one new heading numbered into the combined
+ * list; this file pins those branches directly and adds several new headings at once, exact
+ * title rather than substring matching, and the event shape/source. A plausible
  * bug they would catch: number the new headings 1..k instead of their real 1-based place in the
  * (combined) list. `open` is `titles.length` (the list after the merge, the number the answer
  * command reads against), and `position` is `index + 1` of the same list — the event-format
