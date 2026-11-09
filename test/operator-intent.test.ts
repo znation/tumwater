@@ -406,14 +406,18 @@ test("renderWakeList numbers wakes and words the empty case", () => {
   );
 });
 
-test("listWakes filters by role and keeps full roles lists, earliest first", () => {
+test("listWakes filters by role and keeps full roles lists, earliest first, numbered", () => {
   const root = tmpdir();
   requestWake(root, ["clean"], 3_600_000);
   requestWake(root, ["feature", "qa"], 7_200_000);
   requestWake(root, ["qa"], 60_000);
   const now = Date.now();
+  // earliest first: qa (60s), clean (3600s), feature+qa (7200s)
+  assert.deepEqual(listWakes(root, undefined, now).map((w) => w.position), [1, 2, 3]);
   assert.deepEqual(listWakes(root, undefined, now).map((w) => w.roles), [["qa"], ["clean"], ["feature", "qa"]]);
+  assert.deepEqual(listWakes(root, ["feature"], now).map((w) => w.position), [1]);
   assert.deepEqual(listWakes(root, ["feature"], now).map((w) => w.roles), [["feature", "qa"]]);
+  assert.deepEqual(listWakes(root, ["clean", "feature"], now).map((w) => w.position), [1, 2]);
   assert.deepEqual(listWakes(root, ["clean", "feature"], now).map((w) => w.roles), [["clean"], ["feature", "qa"]]);
 });
 

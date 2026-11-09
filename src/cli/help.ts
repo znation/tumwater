@@ -697,7 +697,8 @@ Usage:
                                    --cancel drops pending scheduled wakes (the named roles' share),
                                    or --cancel <n> drops just the NTH whole wake as wake --list
                                    numbers it under that --role scope; --list shows every pending
-                                   scheduled wake, earliest first (--json for scripts)
+                                   scheduled wake, earliest first (--json prints {position, roles,
+                                   atMs})
   tumwater reclaim [--dry-run [--json]]
                                    Reclaim gitignored build outputs from every
                                    workspace; --dry-run lists each candidate with its idle age

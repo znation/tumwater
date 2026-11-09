@@ -527,8 +527,22 @@ test("wake --list shows pending scheduled wakes read-only", async () => {
   r = await cli(repo, "wake", "--list", "--json");
   const parsed = JSON.parse(r.stdout);
   assert.equal(parsed.length, 2);
-  assert.deepEqual(Object.keys(parsed[0]).sort(), ["atMs", "roles"]);
-  assert.equal(readScheduledWakes(repo).length, 2);
+  assert.deepEqual(Object.keys(parsed[0]).sort(), ["atMs", "position", "roles"]);
+  assert.equal(parsed[0].position, 1);
+  assert.equal(parsed[1].position, 2);
+  r = await cli(repo, "wake", "--list", "--json", "--role", "qa");
+  const scoped = JSON.parse(r.stdout);
+  assert.equal(scoped.length, 1);
+  assert.equal(scoped[0].position, 1);
+  assert.deepEqual(scoped[0].roles, ["qa"]);
+  r = await cli(repo, "wake", "--cancel", "1", "--role", "qa");
+  assert.match(r.stdout, /cancelled scheduled wake 1/);
+  r = await cli(repo, "wake", "--list", "--json");
+  const remaining = JSON.parse(r.stdout);
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].position, 1);
+  assert.deepEqual(remaining[0].roles, ["feature"]);
+  assert.equal(readScheduledWakes(repo).length, 1);
   assert.ok(!fs.existsSync(wakeRequestPath(repo)));
   for (const extra of [["--cancel"], ["--in", "5m"]]) {
     r = await cli(repo, "wake", "--list", ...extra);

@@ -121,10 +121,16 @@ export function cancelWakeAt(root: string, position: number, roles?: string[], n
 }
 
 /** The pending scheduled wakes (`tumwater wake --list`), earliest first; with `roles`, only the
- * wakes naming any of them. Entries keep their full roles list. Read-only. */
-export function listWakes(root: string, roles: string[] | undefined, now: number): { roles: string[]; atMs: number }[] {
+ * wakes naming any of them. Each row carries its 1-based `position` in the (optionally scoped)
+ * list — the same number `wake --list` prints and `wake --cancel <n>` addresses. Read-only. */
+export function listWakes(
+  root: string,
+  roles: string[] | undefined,
+  now: number,
+): { position: number; roles: string[]; atMs: number }[] {
   const wakes = pendingScheduledWakes(root, now);
-  return roles ? wakes.filter((w) => w.roles.some((r) => roles.includes(r))) : wakes;
+  const kept = roles ? wakes.filter((w) => w.roles.some((r) => roles.includes(r))) : wakes;
+  return kept.map((w, i) => ({ position: i + 1, ...w }));
 }
 
 /** `wake --list`'s text: one numbered line per wake, or the empty wording `cancelWakes` uses. */

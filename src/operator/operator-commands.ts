@@ -141,7 +141,7 @@ export async function cmdResetCounters(root: string, args: string[]): Promise<vo
  * auto-resume takes — the wake applies at the deadline, not at submit. With `--cancel`, the
  * pending scheduled wakes (or the named roles' share) are dropped instead; no wake is
  * written. With `--list`, every pending scheduled wake (or the named roles')
- * is printed, earliest first — `--json` as an array of {roles, atMs}; read-only. */
+ * is printed, earliest first — `--json` as an array of {position, roles, atMs}; read-only. */
 export async function cmdWake(root: string, args: string[]): Promise<void> {
   // `--in <duration>` (the scheduled wake): the command's own gate (runMarkerCommand's
   // rejectUnknownArgs, not cli.ts — the marker dispatch moved out from under main()'s switch)
