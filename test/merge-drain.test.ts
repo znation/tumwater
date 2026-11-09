@@ -42,12 +42,12 @@ test("an empty queue drains nothing", async () => {
 test("overlapping merge drains start at most one task for the same queue head (single-flight)", async () => {
   // INV-G6 / the 2026-11-09 drain race: a test (or the poll loop) that runs a background pump
   // and a pumpUntil overlaps two drainMerge calls. Both pass the drain's first slot check while
-  // the slot is still null — the slot is assigned only inside startMerge, which runs in the
-  // task's background body after an await — so on the unfixed code both start a gate-then-merge
-  // task for the SAME queue head. The gate's check blocks on a release file this test never
-  // writes until cleanup, so neither task settles: the duplicate-start count is observable the
-  // whole time. The fix re-checks the slot synchronously right before each startMerge, so the
-  // second drain backs off and exactly one task starts.
+  // the slot is still null — the slot is assigned by the drain only after the awaits ahead of
+  // startMerge, and startMerge launches the task in the background — so on the unfixed code both
+  // start a gate-then-merge task for the SAME queue head. The gate's check blocks on a release
+  // file this test never writes until cleanup, so neither task settles: the duplicate-start count
+  // is observable the whole time. The fix re-checks the slot synchronously right before each
+  // startMerge, so the second drain backs off and exactly one task starts.
   const root = makeRepo();
   await queueChanges(root, ["alpha"]);
   const flags = tmpdir("drain-single-flight-");

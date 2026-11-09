@@ -78,7 +78,7 @@ export async function drainMergeQueue(ctx: MergePipelineContext, p: MergePipelin
  * queued change is gated and merged by the one task (startMerge) and no verification starts at
  * all. An entry whose gate/merge the pipeline does not reach stays queued for the next poll;
  * the merge slot frees when its task settles, so the next poll starts the next head. The drain
- * is single-flight (INV-G6): it reserves the slot at the first check and re-checks it right
+ * is single-flight (INV-G6): it checks the slot before its first await and re-checks it right
  * before each startMerge, so overlapping drains (a test that runs a background pump and a
  * pumpUntil) never start a duplicate task for the same head. */
 export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): Promise<void> {
