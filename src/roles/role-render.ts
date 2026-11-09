@@ -47,20 +47,30 @@ export function inspectMarkdownLines(p: RoleViewPayload, now = Date.now()): stri
 }
 
 /** The notes, prompt and disclosure blocks alone — what renderRoleMarkdown splices after
- * its own Team lines, which already carry the fallback-step bullet. */
+ * its own Team lines, which already carry the fallback-step bullet. Each optional section
+ * renders through its own helper; the body is the ordered concatenation. */
 function inspectBodyLines(p: RoleViewPayload, now: number): string[] {
-  const lines: string[] = [];
-  lines.push(
+  return [
+    ...inspectNotesLines(p, now),
+    ...inspectFlowCoverageLines(p, now),
+    ...inspectFilingLines(p, now),
+    ...inspectNextPromptLines(p),
+  ];
+}
+
+/** The Notes fence plus the note's save-age line — the operator twin of the `<role-notes>`
+ * prompt block's save age: name when the note was last saved, so a note from five minutes ago
+ * and one from five days ago read differently. The age line is present only when there is a
+ * note (noteSavedAt is null with none), so a note-less role's render is byte-identical to
+ * one without it. */
+function inspectNotesLines(p: RoleViewPayload, now: number): string[] {
+  const lines: string[] = [
     ...fencedOrNone(
       "Notes",
       p.notes,
       "none yet — the role's own earlier runs write them, and the director has none",
     ),
-  );
-  // The operator twin of the `<role-notes>` prompt block's save age: name when the note was
-  // last saved, so a note from five minutes ago and one from five days ago read differently.
-  // Present only when there is a note (noteSavedAt is null with none), so a note-less role's
-  // render is byte-identical to today's.
+  ];
   if (p.noteSavedAt !== null) {
     lines.push(
       `_Last saved ${formatTimestamp(p.noteSavedAt)} (${humanAgo(
@@ -69,47 +79,60 @@ function inspectBodyLines(p: RoleViewPayload, now: number): string[] {
       )}) — a snapshot of the past; verify its claims against the code._`,
     );
   }
-  // The qa observer's flow-coverage ledger (role-view.ts's flowCoverage, qa-coverage.ts's
-  // coverageRows): each flow's last exercise and result, in the same order and wording family
-  // as the prompt block (never-exercised first, then stalest-first), without the prompt's
-  // intro sentence — the operator twin of the ledger that is otherwise the observer's only
-  // memory. Present only for qa, so every other role's render stays byte-identical.
-  if (p.flowCoverage) {
-    lines.push("## Flow coverage", "");
-    for (const row of p.flowCoverage) {
-      if (row.lastRunAt === null) {
-        lines.push(`- ${row.flow}: never exercised`);
-      } else {
-        const age = formatAge(now - row.lastRunAt);
-        const status =
-          row.result === "bug"
-            ? `bug filed (BUGS.md: "${row.summary ?? "see BUGS.md"}")`
-            : "passed";
-        lines.push(`- ${row.flow}: ${age} ago, ${status}`);
-      }
-    }
-    lines.push("");
-  }
-  // The feedback observer's per-install filing ledger (role-view.ts's filings,
-  // feedback-filings.ts's filingRows): each issue this install filed, newest-first, its number,
-  // title, and age — the operator twin of the ledger that is otherwise the observer's only
-  // memory. Present only for feedback, so every other role's render stays byte-identical; an
-  // enabled-but-quiet observer reads as "none filed yet" rather than a truncated report.
-  if (p.filings) {
-    lines.push("## Filings", "");
-    if (p.filings.length === 0) {
-      lines.push("- none filed yet");
+  return lines;
+}
+
+/** The qa observer's flow-coverage ledger (role-view.ts's flowCoverage, qa-coverage.ts's
+ * coverageRows): each flow's last exercise and result, in the same order and wording family
+ * as the prompt block (never-exercised first, then stalest-first), without the prompt's
+ * intro sentence — the operator twin of the ledger that is otherwise the observer's only
+ * memory. Present only for qa, so every other role's render stays byte-identical. */
+function inspectFlowCoverageLines(p: RoleViewPayload, now: number): string[] {
+  if (!p.flowCoverage) return [];
+  const lines: string[] = ["## Flow coverage", ""];
+  for (const row of p.flowCoverage) {
+    if (row.lastRunAt === null) {
+      lines.push(`- ${row.flow}: never exercised`);
     } else {
-      for (const f of p.filings) {
-        lines.push(`- #${f.issue} ${f.title} — ${formatAge(now - f.filedAt)} ago`);
-      }
+      const age = formatAge(now - row.lastRunAt);
+      const status =
+        row.result === "bug"
+          ? `bug filed (BUGS.md: "${row.summary ?? "see BUGS.md"}")`
+          : "passed";
+      lines.push(`- ${row.flow}: ${age} ago, ${status}`);
     }
-    lines.push("");
   }
-  lines.push(...fencedOrNone("Next run's prompt", p.nextPrompt, "nothing to do this run"));
-  // run-prompt.ts dequeues exactly one queued prompt per run, so with more than one
-  // waiting the block above shows only the oldest — say so, so the count line and the
-  // block never read as a contradiction (the 2026-10-04 BUGS.md entry under ## Fixed).
+  lines.push("");
+  return lines;
+}
+
+/** The feedback observer's per-install filing ledger (role-view.ts's filings,
+ * feedback-filings.ts's filingRows): each issue this install filed, newest-first, its number,
+ * title, and age — the operator twin of the ledger that is otherwise the observer's only
+ * memory. Present only for feedback, so every other role's render stays byte-identical; an
+ * enabled-but-quiet observer reads as "none filed yet" rather than a truncated report. */
+function inspectFilingLines(p: RoleViewPayload, now: number): string[] {
+  if (!p.filings) return [];
+  const lines: string[] = ["## Filings", ""];
+  if (p.filings.length === 0) {
+    lines.push("- none filed yet");
+  } else {
+    for (const f of p.filings) {
+      lines.push(`- #${f.issue} ${f.title} — ${formatAge(now - f.filedAt)} ago`);
+    }
+  }
+  lines.push("");
+  return lines;
+}
+
+/** The Next run's prompt fence plus the multi-prompt queue suffix. run-prompt.ts dequeues
+ * exactly one queued prompt per run, so with more than one waiting the fence shows only the
+ * oldest — say so, so the count line and the block never read as a contradiction (the
+ * 2026-10-04 BUGS.md entry under ## Fixed). */
+function inspectNextPromptLines(p: RoleViewPayload): string[] {
+  const lines: string[] = [
+    ...fencedOrNone("Next run's prompt", p.nextPrompt, "nothing to do this run"),
+  ];
   if (p.inboxCount > 1 && p.nextPrompt !== null && p.nextPrompt.trim() !== "") {
     const more = p.inboxCount - 1;
     lines.push(
