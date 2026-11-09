@@ -54,6 +54,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Subtract pin queue, part 1/3: The merge drain merges pins, not queue files; the requeue and torn-head queue writes go (planned 2026-11-09 by the plan role, re-planning the 2026-10-31 part 3f/7 after feature showed its "dead queue modules" premise false — parts 3e, 3h and 3i landed the pin-directed drain and kept the serial drain/pipeline/slot merge engine live; this part is the behavioural half and requires Subtract part 3i/7 and Subtract part 3j/7 landed; sibling to parts 2/3 and 3/3, which require this part; touches src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/merge/merge-head.ts src/merge/merge-requeue.ts src/merge/merge-queue.ts docs/how-it-works.md test/merge-drain.test.ts test/merge-requeue.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-queue.test.ts test/orchestrator-merge-pin.test.ts)
 
+**Needs review 2026-11-09 by feature: too large for one run**
+
 **Goal.** The pin is the merge drain's only waiting state: `drainMerge` starts a merge only for a runner whose merge ref resolves, and no production path writes a durable queue file. The serial drain/pipeline/slot engine stays — it is the one merge writer. The queue's requeue path and its torn-head repair go: a kept change that fails its gate is an ordinary rejection owned by its author, and a legacy torn queue file is left for part 2/3's reader removal instead of being re-queued.
 
 **Approach.** Behavioural half only; `src/merge/merge-queue.ts` stays for now because status and the doctor still read it until part 2/3.
