@@ -91,21 +91,57 @@ test("salvage --show <n> prints the Nth patch in full", async () => {
   const before = bytesOf(older, newer);
   const r = await cli(repo, "salvage", "--show", "2");
   assert.equal(r.code, 0);
+  // b.patch holds "newer patch body", not a diff git can parse, so no stat line is printed;
+  // the output is exactly the header, the saved line and the patch text verbatim.
   assert.equal(r.stdout, "salvaged workspace patch 2: b.patch\nsaved 0m ago, 17 B\nnewer patch body\n\n");
   assert.deepEqual(bytesOf(older, newer), before, "--show never writes a patch");
 });
 
-test("salvage --show <n> --json prints the entry object with the exact patch text", async () => {
+// a.patch is OLDER_TEXT, a valid single-file diff (f: one line swapped), so `git apply
+// --stat` sums to ` f |    2 +-` and ` 1 file changed, 1 insertion(+), 1 deletion(-)` —
+// worked from the seeded patch's one changed file and one swapped line, not copied from output.
+test("salvage --show <n> prints the patch's git diffstat under its saved line", async () => {
+  const repo = makeRepo();
+  const { older, newer } = seedSalvage(repo);
+  const before = bytesOf(older, newer);
+  const r = await cli(repo, "salvage", "--show", "1");
+  assert.equal(r.code, 0);
+  assert.equal(
+    r.stdout,
+    "salvaged workspace patch 1: a.patch\nsaved 3h ago, 38 B\n"
+      + " f |    2 +-\n"
+      + " 1 file changed, 1 insertion(+), 1 deletion(-)\n"
+      + OLDER_TEXT + "\n",
+  );
+  assert.deepEqual(bytesOf(older, newer), before, "--show never writes a patch");
+});
+
+test("salvage --show <n> --json prints the entry object with the exact patch text and no stat for a non-diff patch", async () => {
   const repo = makeRepo();
   seedSalvage(repo);
   const r = await cli(repo, "salvage", "--show", "2", "--json");
   assert.equal(r.code, 0);
-  const payload = JSON.parse(r.stdout) as { position: number; file: string; savedAt: number; bytes: number; patch: string };
+  const payload = JSON.parse(r.stdout) as { position: number; file: string; savedAt: number; bytes: number; stat: string | null; patch: string };
   assert.equal(payload.position, 2);
   assert.equal(payload.file, "b.patch");
   assert.equal(payload.bytes, 17);
   assert.ok(typeof payload.savedAt === "number");
+  assert.equal(payload.stat, null, "a non-diff patch carries no stat");
   assert.equal(payload.patch, NEWER_TEXT);
+});
+
+test("salvage --show <n> --json carries the patch's diffstat as stat", async () => {
+  const repo = makeRepo();
+  seedSalvage(repo);
+  const r = await cli(repo, "salvage", "--show", "1", "--json");
+  assert.equal(r.code, 0);
+  const payload = JSON.parse(r.stdout) as { position: number; file: string; savedAt: number; bytes: number; stat: string | null; patch: string };
+  assert.equal(payload.position, 1);
+  assert.equal(payload.file, "a.patch");
+  assert.equal(payload.bytes, 38);
+  assert.ok(typeof payload.savedAt === "number");
+  assert.equal(payload.stat, " f |    2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)");
+  assert.equal(payload.patch, OLDER_TEXT);
 });
 
 test("salvage --show past the list fails naming the position and the depth", async () => {

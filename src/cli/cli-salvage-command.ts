@@ -13,6 +13,7 @@ import { failFollowJsonRival, parseGrepFlag, scanPositionArgs } from "./cli-args
 import { FOLLOW_FLAG, JSON_FLAG, grepFlagSpec, hasFollowFlag, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
+import { salvagePatchStat } from "../git/slot-salvage.js";
 import {
   collectSalvagePatches,
   dropSalvagePatch,
@@ -111,11 +112,13 @@ export async function cmdSalvage(root: string, args: string[], seams: FollowView
 
 /** The `tumwater salvage --show <n>` branch: print the Nth patch `tumwater salvage` lists
  * read-only and in full — a header naming the position and file, the saved-ago and size line,
- * then the patch text verbatim — so an operator can read what a run left behind without
- * guessing the directory. Parsed the way cmdQuarantineShow parses `--show`, sharing its
+ * git's per-file diffstat (`git apply --stat`) when the patch is a valid diff, then the patch
+ * text verbatim — so an operator can see which files a kept patch touches before reading every
+ * hunk. Parsed the way cmdQuarantineShow parses `--show`, sharing its
  * scanPositionArgs and out-of-range wording, and staying on the read's refuseTeamWorkspace
  * (no requireReadyRepo) so it never needs a ready tree. `--json` serves the position, file,
- * savedAt, bytes and the exact patch text. */
+ * savedAt, bytes, the diffstat as `stat` (null when it is not a valid diff) and the exact
+ * patch text. */
 async function cmdSalvageShow(root: string, args: string[]): Promise<void> {
   const { json, position, rest } = scanPositionArgs(args, "--show", "--show 2");
   rejectUnknownArgs("salvage", rest, []);
@@ -128,12 +131,17 @@ async function cmdSalvageShow(root: string, args: string[]): Promise<void> {
   const patch = patches[position - 1]!;
   const text = readSalvagePatch(root, patch.file);
   if (text === null) fail(`could not read salvaged patch ${patch.file}`);
+  // `git apply --stat` reads the patch without applying it, so the summary is safe to compute
+  // in any directory; a non-diff patch (or a git that fails) yields null and the text branch
+  // simply omits the stat line, so a malformed patch prints exactly what it printed before.
+  const stat = await salvagePatchStat(root, patch.file);
   if (json) {
-    sayJson({ position, file: patch.file, savedAt: patch.savedAt, bytes: patch.bytes, patch: text });
+    sayJson({ position, file: patch.file, savedAt: patch.savedAt, bytes: patch.bytes, stat, patch: text });
   } else {
     const now = Date.now();
     say(`salvaged workspace patch ${position}: ${patch.file}`);
     say(`saved ${formatAge(now - patch.savedAt)} ago, ${formatBytes(patch.bytes)}`);
+    if (stat !== null) say(stat);
     say(text);
   }
 }

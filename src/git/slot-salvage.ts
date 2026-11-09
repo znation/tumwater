@@ -267,6 +267,17 @@ async function applySalvage(dir: string, patch: string): Promise<Omit<RestoredWo
   return { conflicted, unplaced };
 }
 
+/** The patch's `git apply --stat` summary — the per-file ` f |    2 +-` lines and the
+ * `N file changed, …` total — read without applying, so `salvage --show` (the read path in
+ * cli-salvage-command.ts) can print the per-file summary between its saved line and the patch
+ * text. `--stat` only reads the patch: it works in a plain directory as well as a repository
+ * and writes nothing. It returns the trimmed output, or `null` when git prints nothing or
+ * the file is not a diff git can parse (a non-diff body); through `gitTry` it never throws. */
+export async function salvagePatchStat(root: string, file: string): Promise<string | null> {
+  const stat = await gitTry(root, "apply", "--stat", path.join(salvageDir(root), file));
+  return stat === null || stat === "" ? null : stat;
+}
+
 /** The paths one file's section of a patch touches (`git apply --numstat -z`: a rename names its
  * new path), without decoding git's quoting by hand. */
 async function sectionPaths(dir: string, file: string): Promise<string[]> {

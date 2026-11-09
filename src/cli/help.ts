@@ -355,9 +355,12 @@ Usage:
                                    without a rerun; it composes with --grep and refuses
                                    --json; --show <n> prints the
                                    Nth patch as the list numbers it, in full — a header naming
-                                   the position and file, the saved-ago and size line, then the
-                                   patch text verbatim; --show <n> --json prints that patch's
-                                   object with the exact patch text; --drop <n> deletes the
+                                   the position and file, the saved-ago and size line, git's
+                                   per-file diffstat (git apply --stat) when the patch is a
+                                   valid diff (omitted otherwise), then the patch text
+                                   verbatim; --show <n> --json prints that patch's object
+                                   with the diffstat as stat (null when it is not a valid
+                                   diff) and the exact patch text; --drop <n> deletes the
                                    Nth patch as the list numbers it, leaving every other kept
                                    patch and pending/<role>/ alone, printing "dropped
                                    salvaged workspace patch <n>: <file>" (or that object
