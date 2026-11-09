@@ -207,7 +207,7 @@ async function cmdLogsCase(root: string, args: string[]): Promise<void> {
 async function cmdNotifyCase(root: string, args: string[]): Promise<void> {
   rejectUnknownArgs("notify", args, [{ names: ["--test"] }]);
   await requireReadyRepo(root);
-  await (await import("./cli/cli-notify-command.js")).cmdNotify(root, args);
+  await (await import("./events/notify-test.js")).cmdNotify(root, args);
 }
 
 async function cmdHistoryCase(root: string, args: string[]): Promise<void> {

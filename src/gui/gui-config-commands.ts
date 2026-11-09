@@ -10,7 +10,7 @@
  */
 import { setConfigKey, setDailyBudgetUsd, setRoleModelFields, unsetConfigKey } from "../config/config-write.js";
 import { checkDailyBudgetUsd, checkMinRunInterval } from "../config/config-keys.js";
-import { testNotifyHook } from "../cli/cli-notify-command.js";
+import { testNotifyHook } from "../events/notify-test.js";
 import { rejectBadRole, requireConfigKey, requireStringField } from "./gui-args.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";

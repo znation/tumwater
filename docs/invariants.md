@@ -412,10 +412,10 @@ cannot drop it silently.
 hook forever; the bound is cleared on every outcome, so a hook that exits promptly never keeps
 the CLI alive. The dashboard's `POST /api/notify-test` runs the same test under the same bound.
 
-**Binds.** `src/cli/cli-notify-command.ts` (`runNotifyHook`, `testNotifyHook`, `cmdNotify`, `NOTIFY_TEST_TIMEOUT_MS`) and
+**Binds.** `src/events/notify-test.ts` (`runNotifyHook`, `testNotifyHook`, `cmdNotify`, `NOTIFY_TEST_TIMEOUT_MS`) and
 `src/gui/gui-config-commands.ts` (`handleNotifyTest`).
 
-**Pinned by.** `test/cli-notify-command.test.ts` — "a hook that never exits is killed at the timeout
+**Pinned by.** `test/notify-test.test.ts` — "a hook that never exits is killed at the timeout
 and reported, not awaited forever" and "runNotifyHook resolves a never-ending hook at the
 injected timeout"; `test/gui-endpoints.test.ts` — the `handleNotifyTest` tests.
 
