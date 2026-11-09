@@ -171,7 +171,12 @@ export function renderRemoteCiBlock(
   } else if (entry.result === "unavailable") {
     lines.push(`  last checked — unavailable ${humanAgo(entry.checkedAt, now)}: ${entry.reason}`);
   } else {
-    lines.push(`  last checked ${entry.sha!.slice(0, 7)} — ${entry.result} ${humanAgo(entry.checkedAt, now)}`);
+    // sha is optional on the type (absent only for `unavailable`, which the arm above takes),
+    // but the type still allows a sha-less passed/failed/pending record: render a placeholder
+    // for it instead of asserting it away — the doctor's commit label (remoteCiCommitLabel) and
+    // the status badge (remoteCiForPoll) read the same field defensively, and a renderer that
+    // asserted would throw on `.slice` where they render.
+    lines.push(`  last checked ${entry.sha ? entry.sha.slice(0, 7) : "?"} — ${entry.result} ${humanAgo(entry.checkedAt, now)}`);
   }
   lines.push(
     `  Check it this run with: gh run list --repo ${target.repo} --branch ${target.branch} --event push --limit 20 --json headSha,status,conclusion,workflowName,databaseId,url,createdAt`,

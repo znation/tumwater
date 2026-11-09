@@ -201,6 +201,20 @@ test("renderRemoteCiBlock renders an unavailable record with its reason", () => 
   assert.match(block, /  last checked — unavailable 5m ago: gh is not logged in$/m);
 });
 
+test("renderRemoteCiBlock renders a sha-less passed record with a placeholder, not a throw", () => {
+  // The type allows a passed/failed/pending record with no sha (readRemoteCi rejects it, and
+  // recordRemoteCi only writes a sha when the REMOTE line carried one); the renderer must read
+  // the optional field defensively like the doctor's commit label and status badge do — a
+  // sha-less record renders "?" rather than asserting the optional field away and throwing.
+  const entry: RemoteCiEntry = {
+    repo: "znation/tumwater",
+    result: "passed",
+    checkedAt: NOW - 5 * 60_000,
+  };
+  const block = renderRemoteCiBlock(target, entry, NOW);
+  assert.match(block, /  last checked \? — passed 5m ago$/m);
+});
+
 // --- remoteCiStalled: the one stall predicate the doctor's `remote CI` row applies (INV-BW5).
 
 test("remoteCiStalled is true with no record, at the boundary false, one past it true", () => {
