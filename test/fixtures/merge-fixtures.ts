@@ -12,7 +12,7 @@ import {
 import type { RoleRunner } from "../../src/runner/runner.js";
 import { enqueueMerge, queueDepth } from "../../src/merge/merge-queue.js";
 import { mergeRefName } from "../../src/paths.js";
-import { setRef } from "../../src/git/git.js";
+import { refAbsentFromFiles, setRef } from "../../src/git/git.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
 import { defaultConfig } from "../../src/config/config.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
@@ -27,7 +27,8 @@ import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
  * within one file run one after another). The pipeline context and poll loop the drain is
  * driven through, queue-shaped pinned commits, the per-role reviewer shim, a pipeline whose
  * merge slot is held busy, and the row the status observers render: until now the slices
- * carried byte-identical copies of all of it — they build on this module instead. The
+ * carried byte-identical copies of all of it — they build on this module instead (pins with the
+ * queue file still written, for the suites not yet migrated to pin-only seeding). The
  * merger*.test.ts family shares merger-fixtures.ts (a different wiring shape), not this. */
 
 export const APPROVE = (reply = "the work looks right") => reviewerPi(`VERDICT: approve\n${reply}`);
@@ -116,6 +117,34 @@ export function pump(ctx: MergePipelineContext, p: MergePipeline): { stop: () =>
 /** The queue is empty and no verification or merge is running. */
 export const drained = (root: string, p: MergePipeline) => () => queueDepth(root) === 0 && mergeTasks(p).length === 0;
 
+/** Pin and enqueue one change per role, every pin before any enqueue (a pin's `git add -A`
+ * would sweep an already-written queue file into the next pin). */
+export async function queueChanges(root: string, roles: string[]): Promise<Record<string, string>> {
+  const shas = Object.fromEntries(roles.map((role) => [role, pinnedCommit(root, role)]));
+  for (const role of roles) {
+    await setRef(root, mergeRefName(role), shas[role]!);
+    enqueueMerge(root, entry(role, shas[role]!));
+  }
+  return shas;
+}
+
+/** Pin one change per role and enqueue nothing — the pin-only counterpart of queueChanges for
+ * the suites migrated off the queue file: the drain's kept-pin path merges each ref. */
+export async function pinChanges(root: string, roles: string[]): Promise<Record<string, string>> {
+  const shas = Object.fromEntries(roles.map((role) => [role, pinnedCommit(root, role)]));
+  for (const role of roles) {
+    await setRef(root, mergeRefName(role), shas[role]!);
+  }
+  return shas;
+}
+
+/** Every listed role's merge ref is absent from the ref files and no task is still settling.
+ * `refAbsentFromFiles` is the same ref check the drain's pin scan runs, so a kept pin makes
+ * this false even when no queue file exists; a merged change deletes its pin and a retriable
+ * failure keeps it, so the pin clears exactly when the change settles away. */
+export const pinDrained = (root: string, p: MergePipeline, roles: string[]) => () =>
+  roles.every((role) => refAbsentFromFiles(root, mergeRefName(role))) && mergeTasks(p).length === 0;
+
 /** Every task still settling — the merge slot's task and the post-merge review included — for a
  * test's cleanup. A busySlot stand-in never settles, so it is skipped: a test that fails before
  * freeing its slot then reports the failure instead of hanging in its finally. The post-merge
@@ -127,17 +156,6 @@ export const allTasks = (p: MergePipeline) =>
     ...(p.merge && !standIns.has(p.merge) ? [p.merge] : []),
     ...(p.postReview ? [p.postReview] : []),
   ].map((t) => t.promise);
-
-/** Pin and enqueue one change per role, every pin before any enqueue (a pin's `git add -A`
- * would sweep an already-written queue file into the next pin). */
-export async function queueChanges(root: string, roles: string[]): Promise<Record<string, string>> {
-  const shas = Object.fromEntries(roles.map((role) => [role, pinnedCommit(root, role)]));
-  for (const role of roles) {
-    await setRef(root, mergeRefName(role), shas[role]!);
-    enqueueMerge(root, entry(role, shas[role]!));
-  }
-  return shas;
-}
 
 /** A fake reviewer that tells the roles apart by the lease on its pooled checkout (a verification
  * no longer runs in `_land-<role>`): each role touches `<role>-reviewing`, a `held` role then

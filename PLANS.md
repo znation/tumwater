@@ -52,25 +52,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Run test/doctor-checks.test.ts, test/doctor.test.ts, test/event-format.test.ts, test/retention.test.ts, test/config.test.ts and test/config-aliases.test.ts, then the project's gate. If a surviving row or key loses its case, restore it; do not weaken an assertion to make the gate pass.
 
-### Subtract pin queue, part 1d/5: Pin-based fixture helpers and the merge drain tests (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large part 1a/3 after feature held it; requires Subtract part 3i/7 and Subtract part 3j/7 landed; sibling to parts 1e/5, 1f/5 and 1g/5, which require this part, and part 1h/5, which removes the queue helper they leave behind; touches test/fixtures/merge-fixtures.ts test/merge-drain.test.ts)
-
-**Goal.** The merge-drain suite starts every merge from a role's merge pin, not a queue file, and the shared fixture gains the pin helpers the other merge suites will use. The queue helpers stay for the suites not yet migrated, so this part merges green on its own.
-
-**Approach.** Test and fixture edits only.
-- test/fixtures/merge-fixtures.ts: add `pinChanges(root, roles)` beside `queueChanges` — compute every role's `pinnedCommit` first, then `setRef(root, mergeRefName(role), sha)` for each, and enqueue nothing; add `pinDrained(root, p, roles)` returning `() => roles.every((role) => refAbsentFromFiles(root, mergeRefName(role))) && mergeTasks(p).length === 0`, importing `refAbsentFromFiles` from src/git/git.ts. Leave `queueChanges`, `drained`, `entry` and their behavior untouched for the other suites.
-- test/merge-drain.test.ts: use `pinChanges` and `pinDrained(root, pipeline, roles)`; where a case directly enqueued a `MergeEntry`, seed the role's pin instead; assert a kept pin through `refSha`/`mergeRefName` where queue depth was the stand-in. Delete the cases whose subject is the queue-file path — the torn merge-queue head, the queued entry whose sha main already holds, and the dedupe-cache eviction. Keep the pin scan, single-flight, post-landing-review and null-file settle cases.
-
-**Files touched.** test/fixtures/merge-fixtures.ts test/merge-drain.test.ts
-
-**Acceptance criteria.**
-- `grep -n 'enqueueMerge' test/merge-drain.test.ts` prints nothing, and the suite starts every merge from a pin.
-- `pinDrained(root, pipeline, roles)()` is false while any listed role's merge ref resolves even when no queue file exists, and true after the pin clears and its task settles.
-- The deleted cases are gone; the pin scan, single-flight, post-landing-review and null-file settle outcomes still assert what they did.
-- test/post-merge-review.test.ts, which still seeds a queue entry directly, passes unchanged.
-- `npm run test:gate` passes.
-
-**Tests.** Run test/merge-drain.test.ts and test/post-merge-review.test.ts, then the project's gate.
-
 ### Subtract pin queue, part 1e/5: The merge pipeline test seeds pins (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large part 1a/3 after feature held it; requires Subtract pin queue part 1d/5 landed; sibling to parts 1f/5 and 1g/5, which require part 1d/5; touches test/merge-pipeline.test.ts)
 
 **Goal.** test/merge-pipeline.test.ts drives every merge from a role's pin and never from a queue file.

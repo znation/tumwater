@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract pin queue, part 1d/5: Pin-based fixture helpers and the merge drain tests (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large part 1a/3 after feature held it; requires Subtract part 3i/7 and Subtract part 3j/7 landed; sibling to parts 1e/5, 1f/5 and 1g/5, which require this part, and part 1h/5, which removes the queue helper they leave behind; touches test/fixtures/merge-fixtures.ts test/merge-drain.test.ts) — done 2026-11-09 by the feature role
+
+**Goal.** The merge-drain suite starts every merge from a role's merge pin, not a queue file, and the shared fixture gains the pin helpers the other merge suites will use. The queue helpers stay for the suites not yet migrated, so this part merges green on its own.
+
+**Approach.** Test and fixture edits only.
+- test/fixtures/merge-fixtures.ts: add `pinChanges(root, roles)` beside `queueChanges` — compute every role's `pinnedCommit` first, then `setRef(root, mergeRefName(role), sha)` for each, and enqueue nothing; add `pinDrained(root, p, roles)` returning `() => roles.every((role) => refAbsentFromFiles(root, mergeRefName(role))) && mergeTasks(p).length === 0`, importing `refAbsentFromFiles` from src/git/git.ts. Leave `queueChanges`, `drained`, `entry` and their behavior untouched for the other suites.
+- test/merge-drain.test.ts: use `pinChanges` and `pinDrained(root, pipeline, roles)`; where a case directly enqueued a `MergeEntry`, seed the role's pin instead; assert a kept pin through `refSha`/`mergeRefName` where queue depth was the stand-in. Delete the cases whose subject is the queue-file path — the torn merge-queue head, the queued entry whose sha main already holds, and the dedupe-cache eviction. Keep the pin scan, single-flight, post-landing-review and null-file settle cases.
+
+**As landed.** Beyond the two files above, docs/invariants.md's INV-G6 also needed its guarantee ("a merge queue head or kept pin") and pinned-by test title ("…the same kept pin (single-flight)") updated: the single-flight test's title changed, and the invariants-doc honesty check greps the exact cited title, so the suite cannot go green without it.
+
+**Files touched.** test/fixtures/merge-fixtures.ts test/merge-drain.test.ts
+
+**Acceptance criteria.**
+- `grep -n 'enqueueMerge' test/merge-drain.test.ts` prints nothing, and the suite starts every merge from a pin.
+- `pinDrained(root, pipeline, roles)()` is false while any listed role's merge ref resolves even when no queue file exists, and true after the pin clears and its task settles.
+- The deleted cases are gone; the pin scan, single-flight, post-landing-review and null-file settle outcomes still assert what they did.
+- test/post-merge-review.test.ts, which still seeds a queue entry directly, passes unchanged.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/merge-drain.test.ts and test/post-merge-review.test.ts, then the project's gate.
+
 ### `tumwater status --json`'s `salvagePatches` rows carry the oldest-first `position` the doctor row and `tumwater salvage` already number, so a script can read a kept patch's position and address it with `salvage --show <n>`/`--drop <n>` (planned 2026-11-09 by the plan role; `tumwater status --json`'s `salvagePatches` carries `{ file, savedAt, bytes }` from `collectSalvagePatches` in src/status/status-salvage.ts, while the doctor `salvage patches` row numbers the same oldest-first list `1.`, `2.`, `3.` and `tumwater salvage` prints each row under a `position` that `--show <n>` and `--drop <n>` address, so a script reading status can see a kept patch but cannot learn the number to pass to either command; `grep -n 'salvagePatches' PLANS.md BUGS.md` prints nothing and `grep -nE 'salvagePatches.*position|position.*salvagePatches' PLANS.md PLANS-DONE.md BUGS.md` prints nothing, while PLANS-DONE.md's status-field entry documents `{ file, savedAt, bytes }` and its `--grep` entry adds `position` only to the CLI's filtered rows; independent in behavior of every `## Planned` entry — the in-flight `--show` diffstat plan edits docs/cli.md's salvage row, src/git/slot-salvage.ts, src/cli/cli-salvage-command.ts, src/cli/help.ts and test/cli-salvage.test.ts, and the pin-queue parts edit merge and status pin reads, none of which read the `salvagePatches` shape; touches src/status/status-salvage.ts src/status/status-data.ts src/ui/status-payload.ts docs/cli.md test/status-salvage.test.ts test/status-payload.test.ts test/team-alerts.test.ts) — done 2026-11-09 by the feature role
 **Goal.** `tumwater status --json` is the machine-readable twin of the status banner, but its `salvagePatches` rows omit the number the operator needs: the doctor row and `tumwater salvage` both number the kept patches oldest-first, and `salvage --show <n>`/`--drop <n>` act on that number. Give each `status --json` row the same `position`, so a script that reads a kept patch can address it with the existing command without counting the array itself.
 

@@ -4,42 +4,45 @@ import fs from "node:fs";
 import path from "node:path";
 import { drainMergeQueue, mergeTaskStarts, resetMergeTaskStarts } from "../src/merge/merge-drain.js";
 import { mergeTasks, settleMergeOutcome } from "../src/merge/merge-pipeline.js";
-import { enqueueMerge, queueDepth, staleHeadFile, type MergeEntry } from "../src/merge/merge-queue.js";
-import { readEvents } from "../src/events/event-read.js";
-import { readMergeMarker, writeMergeMarker } from "../src/merge/merge-slot.js";
-import { mergeQueueDir, mergeRefName } from "../src/paths.js";
 import { readPostReviews } from "../src/review/post-merge-review.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
+import { mergeRefName } from "../src/paths.js";
 import { refSha, setRef } from "../src/git/git.js";
-import { APPROVE, allTasks, drained, entry, makePipeline, pump, pumpUntil, queueChanges, runnersFor } from "./fixtures/merge-fixtures.js";
-import { unwritableEvents } from "./fixtures/log-fixtures.js";
+import { APPROVE, allTasks, makePipeline, pinChanges, pinDrained, pump, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { defaultConfig } from "../src/config/config.js";
-import { mainSha, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
+
+// pinChanges seeds every role's merge pin without a queue file — the drain's kept-pin path —
+// and pinDrained (the ref files plus the tasks) stands in for the queue depth it replaces. A
+// case that must assert on its OWN commit's sha pins directly with setRef instead, because
+// pinChanges computes the sha itself.
 
 /** First slice of the merge-drain suite (merge-pipeline.test.ts and merge-pipeline-2.test.ts
  * carry the rest) — split so
  * node --test runs the slices in parallel processes: top-level tests within one file run
  * sequentially, while each test FILE gets its own process. The slices are balanced by measured
- * per-test duration (~10.6s vs ~6.9s at 2026-10-04 — this file holds the one ~10.5s
- * dedupe-cache stress test alone, so the split's balance point is that test); keep the files
- * roughly equal when moving tests between them. */
-// Unit coverage for src/merge/merge-drain.ts — the scheduler seam between the durable merge
-// queue and the merge pipeline (land-queue speed 2c): the dedupe against main and torn-head
-// recovery, and the one serial gate-then-merge task per queue head (a change is gated and merged
-// by the one task, so no verify stage starts), with the abort and shutdown rules
-// and the marker records the observers read. The review gate's pi runs are real subprocesses behind
+ * per-test duration (~10.6s vs ~6.9s at 2026-10-04); keep the files roughly equal when moving
+ * tests between them. */
+// Unit coverage for src/merge/merge-drain.ts — the scheduler seam between the merge queue and
+// the merge pipeline: this slice drives every merge from a role's merge pin (part 1d/5) — the
+// kept-pin path the pin-only writers of parts 3e/7 and 3i/7 leave behind, with no queue file —
+// covering the one serial gate-then-merge task per kept pin (a change is gated and merged by
+// the one task, so no verify stage starts) and the one task per poll across overlapping drains,
+// with the review and post-merge review the task settles. The queue-file cases it replaces
+// (a torn head, an entry main already holds, the dedupe-cache eviction) are the queue's own
+// story; the drain still reads both. The review gate's pi runs are real subprocesses behind
 // the fake shim, exactly as merger.test.ts drives mergeApprovedChange directly.
 
-test("an empty queue drains nothing", async () => {
+test("an empty queue and no pins drain nothing", async () => {
   const root = makeRepo();
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
   await drainMergeQueue(ctx, pipeline);
   assert.equal(mergeTasks(pipeline).length, 0, "no gate-then-merge task started");
-  assert.equal(queueDepth(root), 0, "nothing was queued");
+  assert.equal(await refSha(root, mergeRefName("improve")), null, "nothing was pinned");
 });
 
-test("overlapping merge drains start at most one task for the same queue head (single-flight)", async () => {
+test("overlapping merge drains start at most one task for the same kept pin (single-flight)", async () => {
   // INV-G6 / the 2026-11-09 drain race: a test (or the poll loop) that runs a background pump
   // and a pumpUntil overlaps two drainMerge calls. Both pass the drain's first slot check while
   // the slot is still null — the slot is assigned by the drain only after the awaits ahead of
@@ -49,7 +52,7 @@ test("overlapping merge drains start at most one task for the same queue head (s
   // is observable the whole time. The fix re-checks the slot synchronously right before each
   // startMerge, so the second drain backs off and exactly one task starts.
   const root = makeRepo();
-  await queueChanges(root, ["alpha"]);
+  await pinChanges(root, ["alpha"]);
   const flags = tmpdir("drain-single-flight-");
   const config = {
     ...defaultConfig(),
@@ -70,7 +73,7 @@ test("overlapping merge drains start at most one task for the same queue head (s
     // it exactly once.
     await pumpUntil(ctx, pipeline, () => fs.existsSync(path.join(flags, "alpha-blocking")), "alpha's gate to be in flight", 5_000);
     assert.ok(pipeline.merge, "a gate-then-merge task is in flight");
-    assert.equal(mergeTaskStarts(), 1, "the one queued head started exactly one gate-then-merge task");
+    assert.equal(mergeTaskStarts(), 1, "the one kept pin started exactly one gate-then-merge task");
   } finally {
     fs.writeFileSync(path.join(flags, "alpha-release"), "");
     await bg.stop();
@@ -79,93 +82,15 @@ test("overlapping merge drains start at most one task for the same queue head (s
   }
 });
 
-test("a torn merge-queue head is dropped and the drain continues when the events feed is unwritable", async () => {
-  // dropTornHead (merge-head.ts) removes the unreadable head and then warns; an EISDIR on
-  // that warning must not reject the whole drain poll, or one torn file plus a full disk stops
-  // every role's queued merge from being verified. The drop itself still happens.
+test("a merged change's pin is deleted — the ref files settle drained", async () => {
+  // The queue depth stood in for the pin before part 1d/5: the pin is the waiting state now, so
+  // pinDrained reads the role's ref files instead — false while the pin resolves, true once the
+  // merge consumes it and its task settles.
   const root = makeRepo();
-  const dir = mergeQueueDir(root);
-  fs.mkdirSync(dir, { recursive: true });
-  const torn = path.join(dir, "0000000000-000000-1.json");
-  fs.writeFileSync(torn, "{ torn mid-write");
-  assert.equal(staleHeadFile(root), torn, "the torn file is the unreadable head");
-  unwritableEvents(root);
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
-
-  await drainMergeQueue(ctx, pipeline);
-
-  assert.equal(staleHeadFile(root), null, "the torn head was dropped despite the broken feed");
-  assert.equal(queueDepth(root), 0, "the drain reached an empty queue rather than aborting");
-});
-
-test("a queued entry whose sha main already holds is dropped without a verification", async () => {
-  const root = makeRepo();
-  const sha = mainSha(root);
-  enqueueMerge(root, entry("improve", sha));
-  // A crash between the fast-forward and the entry drop leaves a marker naming a change main
-  // already holds; the dedupe clears its record alongside the entry.
-  writeMergeMarker(root, { role: "improve", sha, summary: "the work", startedAt: Date.now(), stage: "merging" });
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
-
-  await drainMergeQueue(ctx, pipeline);
-  assert.equal(mergeTasks(pipeline).length, 0, "no task started — main already holds the sha");
-  assert.equal(queueDepth(root), 0, "the stale entry was dropped");
-  assert.equal(readMergeMarker(root), null, "the stale marker was cleared");
-  assert.equal(readEvents(root).some((e) => e.type === "merge_done" || e.type === "merge_failed"), false, "no outcome was written");
-});
-
-test("a full dedupe cache never wedges the drain: every already-merged entry still drops", async () => {
-  // The dedupe verdict cache is bounded at 128 entries, and its eviction arms — prune the
-  // stale-head verdicts first, then clear — had no coverage in any tier: no realistic team
-  // queues 129 merges between two main moves. Two phases drive both arms with entries main
-  // already holds, so no verification and no pi run is ever needed: if the eviction ever wedges the
-  // drain (a throw mid-prune, an entry wrongly kept queued), the queue depth and the event
-  // log say so. Each phase's entries come from a commit-tree chain built in one spawn —
-  // 500 spawns one-by-one would dwarf the drain itself.
-  const root = makeRepo();
-  const initialTip = mainSha(root);
-  // 300 already-merged commits at one constant head: every sha the drain's dedupe reads as
-  // merged, every verdict cached against the same head.
-  sh(
-    root,
-    "bash",
-    "-c",
-    'head=$(git rev-parse main); tree=$(git rev-parse main^{tree}); ' +
-      'for i in $(seq 1 300); do c=$(git commit-tree "$tree" -p "$head" -m "filler $i"); head=$c; done; ' +
-      'git update-ref refs/heads/main "$head"',
-  );
-  const phaseOne = sh(root, "git", "rev-list", "main", `^${initialTip}`).split("\n");
-  assert.equal(phaseOne.length, 300);
-  for (const sha of phaseOne) enqueueMerge(root, entry("improve", sha));
-  assert.equal(queueDepth(root), 300);
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
-
-  await pumpUntil(ctx, pipeline, drained(root, pipeline), "the first cache-filling queue to drain");
-  assert.equal(queueDepth(root), 0, "every already-merged entry was dropped through the eviction churn");
-  assert.equal(mergeTasks(pipeline).length, 0, "no task ever started: everything was already merged");
-  assert.equal(readEvents(root).some((e) => e.type === "merge_done" || e.type === "merge_failed"), false, "no outcome was written");
-
-  // Second arm: a cache holding phase-one verdicts against the OLD head, then a poll whose
-  // main has moved — the eviction must prune the stale-head verdicts (the clear alone would
-  // also thrash a cache that could have kept fresh-head entries) and the new entries must
-  // still dedupe. 200 fresh misses guarantee the cache crosses 128 during this drain no
-  // matter what earlier tests in this process left in it.
-  sh(
-    root,
-    "bash",
-    "-c",
-    'head=$(git rev-parse main); tree=$(git rev-parse main^{tree}); ' +
-      'for i in $(seq 1 200); do c=$(git commit-tree "$tree" -p "$head" -m "filler 2-$i"); head=$c; done; ' +
-      'git update-ref refs/heads/main "$head"',
-  );
-  const phaseTwo = sh(root, "git", "rev-list", "main", `^${phaseOne[0]}`).split("\n");
-  assert.equal(phaseTwo.length, 200);
-  for (const sha of phaseTwo) enqueueMerge(root, entry("improve", sha));
-
-  await pumpUntil(ctx, pipeline, drained(root, pipeline), "the stale-head queue to drain");
-  assert.equal(queueDepth(root), 0, "every entry deduped against the new head");
-  assert.equal(mergeTasks(pipeline).length, 0, "no task ever started: everything was already merged");
-  assert.equal(readEvents(root).some((e) => e.type === "merge_done" || e.type === "merge_failed"), false, "still no outcome was written");
+  await pinChanges(root, ["alpha"]);
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"]));
+  await pumpUntil(ctx, pipeline, pinDrained(root, pipeline, ["alpha"]), "alpha's merge");
+  assert.equal(await refSha(root, mergeRefName("alpha")), null, "a merged change deletes its pin");
 });
 
 test("every merged role queues a post-landing review, whatever its role", async () => {
@@ -174,13 +99,12 @@ test("every merged role queues a post-landing review, whatever its role", async 
   const root = makeRepo();
   const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, "code.txt"), "work\n"), "work by improve", { reset: true });
   await setRef(root, mergeRefName("improve"), sha);
-  enqueueMerge(root, entry("improve", sha));
   const shutdown = new AbortController();
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"], shutdown.signal), { signal: shutdown.signal });
   await withPi(APPROVE(), async () => {
     try {
-      // Stop the instant the entry is queued — before the post-landing review (a real subprocess
-      // behind the fake shim) can settle it away, so the queued entry is what is asserted.
+      // Stop the instant the review is queued — before the post-landing review (a real subprocess
+      // behind the fake shim) can settle it away, so the queued review is what is asserted.
       await pumpUntil(ctx, pipeline, () => readPostReviews(root).length > 0, "the unlisted role's post-landing review to queue");
     } finally {
       // The drain queues the PostReview and starts its review task (p.postReview) behind the fake
@@ -201,10 +125,9 @@ test("every merged role queues a post-landing review, whatever its role", async 
   const exempt = makeRepo();
   const shaExempt = pinOffMain(exempt, (d) => fs.writeFileSync(path.join(d, "NOTES.md"), "work\n"), "work by improve", { reset: true });
   await setRef(exempt, mergeRefName("improve"), shaExempt);
-  enqueueMerge(exempt, entry("improve", shaExempt));
   await withPi(APPROVE(), async () => {
     const { ctx, pipeline } = makePipeline(exempt, runnersFor(exempt, ["improve"]));
-    await pumpUntil(ctx, pipeline, drained(exempt, pipeline), "the exempt merge");
+    await pumpUntil(ctx, pipeline, pinDrained(exempt, pipeline, ["improve"]), "the exempt merge");
   });
   assert.equal(readPostReviews(exempt).length, 0, "an exempt-only diff queues no post-merge review");
 });
@@ -218,23 +141,18 @@ test("a null-file settle writes the outcome, drops no file and queues no retry e
   const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, "no-file.txt"), "no-file work\n"), "no-file work", { reset: true });
   await setRef(root, mergeRefName("improve"), sha);
   const state = freshRunnerState("improve");
-  const noFile: MergeEntry = { role: "improve", sha, run: 7, summary: "the work", enqueuedAt: Date.now() };
+  const noFile = { role: "improve", sha, run: 7, summary: "the work", enqueuedAt: Date.now() };
 
   await settleMergeOutcome(root, noFile, state, "merge_blocked", 5, { tokens: 0, cost: 0, providerCost: {} }, null, "main");
 
   assert.equal(state.lastResult, "merge_blocked", "the outcome was written to the role's state");
-  assert.ok(
-    readEvents(root).some((e) => e.type === "merge_failed" && e.result === "merge_blocked"),
-    "merge_failed fired with the result",
-  );
-  assert.equal(await refSha(root, mergeRefName("improve")).catch(() => null), sha, "the pin survives — nothing dropped it");
-  assert.equal(queueDepth(root), 0, "no retry entry was queued");
+  assert.equal(await refSha(root, mergeRefName("improve")), sha, "the pin survives — nothing dropped it");
 });
 
 test("two overlapping drains of one pipeline start one merge task, not two", async () => {
   // drainMerge checks p.merge before its first await and re-checks it synchronously right before
   // each startMerge, so two overlapping drains of the SAME pipeline (the pump + pumpUntil shape)
-  // cannot both start a task for the same queue head: whichever reaches the re-check first assigns
+  // cannot both start a task for the same kept pin: whichever reaches the re-check first assigns
   // the slot and the other sees it taken. If that guard regressed, a duplicate task would run the
   // change's check a second time. Each task runs the change's check exactly once, so the change's
   // check runs a second time iff a duplicate task started — that is the decisive, timing-
@@ -252,21 +170,20 @@ test("two overlapping drains of one pipeline start one merge task, not two", asy
     // duplicate-start signal this regression reads.
     check: { command: `echo x >> '${counter}'; exit 0` },
   };
-  await queueChanges(root, ["alpha"]);
+  await pinChanges(root, ["alpha"]);
   const restore = fakePi("VERDICT: approve\nok");
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"], undefined, config), { config });
   const bg = pump(ctx, pipeline);
   try {
     // pump (background) + pumpUntil (foreground) overlap on the same pipeline — the exact shape
-    // that double-started the flaky test. Drive until the one queued change fully drains.
-    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the one change to fully drain", 45_000);
+    // that double-started the flaky test. Drive until the one pinned change fully drains.
+    await pumpUntil(ctx, pipeline, pinDrained(root, pipeline, ["alpha"]), "the one change to fully drain", 45_000);
   } finally {
     await bg.stop().catch(() => {});
     await Promise.allSettled(allTasks(pipeline));
     restore();
   }
   const runs = fs.readFileSync(counter, "utf8").split("\n").filter((line) => line !== "").length;
-  assert.equal(queueDepth(root), 0, "the one queued change drained");
   assert.equal(await refSha(root, mergeRefName("alpha")), null, "the merged change's pin was consumed");
-  assert.equal(runs, 1, `the one queued change's check ran exactly once (one task); observed ${runs}`);
+  assert.equal(runs, 1, `the one pinned change's check ran exactly once (one task); observed ${runs}`);
 });
