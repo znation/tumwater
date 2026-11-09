@@ -98,7 +98,7 @@ export class RoleRunner {
    * primary regime unless they set it. */
   budgetFallbackActive = false;
   /** The merge failure this run's leftover recovery is retrying, if any (a retriable merger
-   * outcome that kept the pin, which recovery re-queued): set in finishRecoveryRun and
+   * outcome that kept the pin, which recovery re-pinned): set in finishRecoveryRun and
    * attached to the returned RunOutcome so applyRunOutcome can feed it into the error streak
    * even though the run itself ends `queued` (BUGS.md 2026-09-21). Reset at every run start. */
   private recoveryFailure?: string;

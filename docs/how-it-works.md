@@ -86,8 +86,8 @@ A run ends as soon as its commit is pinned: a changed run pins its commit by its
 logs `merge_queued`, and is done — the pin plus the commit's trailers are its waiting state, and
 no queue file is written. The poll's drain then gates and merges the pin in the merge worktree
 under the merge lock — one at a time — so other roles keep running while a change is in the
-pipeline. (A queue file an older build left, or a leftover recovery's, is legacy input the same
-drain merges until it is gone.)
+pipeline. (A queue file an older build left is legacy input the same drain merges until it is
+gone.)
 
 - **Rebase.** The change is rebased onto current main first, so the pipeline checks what will
   actually merge.
@@ -529,14 +529,15 @@ its inbox. In the merge pipeline too, git commands that fail never read as "noth
 conflict list, a change's diff or a resolution's diff that git cannot produce fails that merge or
 review instead of letting unreviewed or unchecked work through, and the change stays unmerged for
 its next attempt. When git cannot start at all, a revision waits for its role's next run and a
-post-merge review for the next poll, neither counted as failed. A change whose merge ends blocked, in a review error, or in a conflict that stays
-under the limit is put back in the merge queue by the pipeline itself, at once, with its original
-summary and no author run; a review error waits 60 s first. A change kept because main's check was
-failing goes back once main's head moves. A commit left unmerged by a crash or a restart (or one before it was queued) goes back in
-the merge queue at the role's next run, which ends there instead of authoring, so the one merge
-step stays main's only writer. The director's next run is otherwise only ever your prompt, so while
-it holds a kept commit it is also due on its own min-run clock. A commit whose last three merges
-all hit conflicts that
+post-merge review for the next poll, neither counted as failed. A queued change whose merge ends
+blocked, in a review error, or in a conflict that stays under the limit is put back in the merge
+queue by the pipeline itself, at once, with its original summary and no author run; a review error
+waits 60 s first. A pin-only change whose merge ends that way keeps its pin, and the next poll
+retries it the same way. A change kept because main's check was failing goes back once main's head
+moves. A commit left unmerged by a crash or a restart (or one before it was queued) is re-pinned at
+the role's next run, which ends there instead of authoring, so the one merge step stays main's only
+writer. The director's next run is otherwise only ever your prompt, so while it holds a kept commit
+it is also due on its own min-run clock. A commit whose last three merges all hit conflicts that
 conflict resolution could not settle is dropped instead, and the role's next prompt says so.
 
 ## Updates

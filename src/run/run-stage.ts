@@ -456,7 +456,7 @@ function stagedCommitMessage(
  * waiting state — the poll's merge drain (merge-drain.ts) gates and merges it, and its commit
  * trailers (run-stage's commitTrailer, part 3j/7) carry the claim and prior review a pin-only
  * merge reads back — so a changed fresh run writes no queue file; a queue file an older build
- * left (or leftover recovery enqueues, part 3i/7) is legacy input the same drain merges. Returns
+ * left is legacy input the same drain merges. Returns
  * `{ heldOnBranch }` when the run may finish queued; an error outcome when the pin fails. */
 async function pinAndEnqueueChange(
   ctx: RunStageContext,

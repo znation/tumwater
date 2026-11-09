@@ -333,8 +333,11 @@ export function recoveredMergeEntry(role: string, sha: string, meta: CommitMetad
  * authoring run from its `Run:` trailer — the drain has no run number of its own, so session
  * naming keeps the authoring run; a hand-made commit with no trailer falls back to the zero
  * slot. The one pin-to-entry builder, so the drain and the torn-head re-queue cannot drift.
- * A changed fresh run is a pin-only writer now (part 3e/7), not a recovery: `recovered: false`
- * keeps its own subject as the summary instead of labelling it recovered leftover work. */
+ * A changed fresh run is a pin-only writer now (part 3e/7), not a recovery: the drain passes
+ * the runner's current run number, so a pin its commit's Run trailer attributes to that run
+ * keeps its own subject as the summary instead of being labelled recovered leftover work.
+ * A pin from an earlier run (a leftover recovery re-pin) keeps the recovered label, as does a
+ * torn-head re-queue that passes no current run. */
 export async function pinnedMergeEntry(
   root: string,
   role: string,

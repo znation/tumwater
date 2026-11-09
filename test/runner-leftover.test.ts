@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { MERGE_CONFLICT_LIMIT, hasUnmergedPin, pinnedRetrySha, recoverLeftover, type LeftoverContext } from "../src/runner/runner-leftover.js";
+import { MERGE_CONFLICT_LIMIT, hasUnmergedPin, pinnedMergeEntry, pinnedRetrySha, recoverLeftover, type LeftoverContext } from "../src/runner/runner-leftover.js";
 import { commitTrailer } from "../src/git/commit-message.js";
 import { readEvents } from "../src/events/event-read.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
@@ -14,14 +14,12 @@ import { eventsOfType, unwritableEvents, warningMessages } from "./fixtures/log-
 import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
-// Unit coverage for runner-leftover.ts's recoverLeftover — the salvage path that puts a commit
-// a
-// previous run left unmerged back on the durable merge queue (merge-queue speed 3c: the slot is
-// main's one writer): normally pinned by refs/tumwater/landing/<role>, or unpinned on the branch
-// when a crash landed in the commit→pin window. The queue and the ref mechanics are real; no
-// merge runs here. The runner e2e tests (test/runner-leftover-recovery.test.ts) drive the queued
-// entry through
-// the merge slot end-to-end.
+// Unit coverage for runner-leftover.ts's recoverLeftover — the salvage path that re-pins a
+// commit a previous run left unmerged (merge-queue speed 3c: the slot is main's one writer):
+// normally pinned by refs/tumwater/landing/<role>, or unpinned on the branch when a crash landed
+// in the commit→pin window. The pin and the ref mechanics are real; no merge runs here. The
+// runner e2e tests (test/runner-leftover-recovery.test.ts) drive the re-pinned change through the
+// merge slot end-to-end.
 
 const ROLE = "improve";
 
@@ -61,7 +59,27 @@ test("hasUnmergedPin is false with no merge ref and true with one", async () => 
   assert.equal(await hasUnmergedPin(pinned, ROLE), true);
 });
 
-test("a pinned commit not in main is put on the merge queue, not merged", async () => {
+test("pinnedMergeEntry labels a current-run pin by its subject and an earlier-run pin as recovered", async () => {
+  const subject = "work by improve";
+  const { root, sha } = await pinnedFixture(`${subject}\n\n${commitTrailer(ROLE, 7, 1, 1_000)}`);
+
+  const fresh = await pinnedMergeEntry(root, ROLE, sha, { currentRun: 7 });
+  assert.equal(fresh.summary, subject, "the drain's current run authored the pin, so it is not a recovery");
+  const recovered = await pinnedMergeEntry(root, ROLE, sha, { currentRun: 8 });
+  assert.equal(
+    recovered.summary,
+    `recovered leftover work from ${ROLE}: ${subject}`,
+    "a pin the commit's Run trailer attributes to an earlier run is recovered leftover work",
+  );
+  const torn = await pinnedMergeEntry(root, ROLE, sha);
+  assert.equal(
+    torn.summary,
+    `recovered leftover work from ${ROLE}: ${subject}`,
+    "a torn-head re-queue passes no current run and keeps the recovered label",
+  );
+});
+
+test("a pinned commit not in main is re-pinned for the drain, not merged", async () => {
   const { root, sha } = await pinnedFixture();
   const wt = await ensureWorktree(root, ROLE, "main"); // branch at main: only the pin matters
 
@@ -98,7 +116,7 @@ test("a stale pin is dropped", async () => {
   assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the stale pin was deleted");
 });
 
-test("a pin whose merges hit the merge-conflict cap is handed back, not re-queued", async () => {
+test("a pin whose merges hit the merge-conflict cap is handed back, not re-pinned", async () => {
   const { root, sha } = await pinnedFixture();
   const wt = await ensureWorktree(root, ROLE, "main");
 

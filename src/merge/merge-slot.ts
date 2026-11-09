@@ -441,9 +441,8 @@ export function writeMergeOutcome(
     summary: entry.summary,
     ...(reason !== undefined ? { reason: truncate(reason, 300) } : {}),
     durationMs,
-    // Enqueue-to-outcome span, including the slot's own durationMs. A leftover-recovery
-    // re-enqueue writes a new entry with its own enqueuedAt, so a retried change counts from
-    // its last enqueue.
+    // Enqueue-to-outcome span, including the slot's own durationMs. A pipeline retry writes a
+    // new entry with its own enqueuedAt, so a retried change counts from its last enqueue.
     queuedMs: Math.max(0, Date.now() - entry.enqueuedAt),
     ...usageFragment(usage.tokens, usage.cost, usage.notionalCost),
     // The merge's per-provider spend, keyed to its reviewer seam (the same reviewProvider

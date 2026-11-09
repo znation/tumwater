@@ -1327,9 +1327,9 @@ values".
 ### INV-S3: a queued row reads its change's verdict, and each attempt's verdict shows on one row
 
 **Guarantee.** The authoring row takes the change's final verdict, walking forward through
-recovery re-enqueues (`isRecoveryPin`) and stopping at a pin that starts a fresh change. A
-recovery row takes the retriable verdict of the attempt it re-enqueued (`recoveredAttemptVerdict`).
-While a re-enqueued attempt is pending, the authoring row keeps "queued". The `claimTop` cursor
+recovery re-pins (`isRecoveryPin`) and stopping at a pin that starts a fresh change. A
+recovery row takes the retriable verdict of the attempt it re-pinned (`recoveredAttemptVerdict`).
+While a re-pinned attempt is pending, the authoring row keeps "queued". The `claimTop` cursor
 hands each queued run the newest unclaimed pin at or before its end, so two runs never claim one
 pin.
 
@@ -5113,7 +5113,7 @@ instead of skipping its re-review".
 
 **Guarantee.** The director is owed a leftover authoring run exactly while its kept merge pin has no queued entry to settle it. A pin with no queued entry is always owed (the leftover run re-pins the held change — a non-terminal merge failure's kept pin, or a crash between the commit and the queue write). A pin whose entry is still draining is owed nothing: both of leftover recovery's queued-pin arms end `skipped` and re-queue nothing — `relief_wait` with a second commit held on the branch, `already_queued` without one — so offering the run every poll is pure waste (BUGS.md 2026-11-04 for the relief-wait spin, 2026-11-09 for the same spin with no second commit, ~3 skipped runs a minute for the whole queue wait). The held commit is never stranded by the suppression: it stays on the branch, and once the drain deletes the pin, the director's next run (any reason, e.g. a new inbox prompt) takes leftover recovery's no-pin branch and re-pins it. The queued entry's drain deletes the pin, which clears `leftoverPending` on its own.
 
-**Binds.** `src/scheduling/scope.ts` (`directorPinOwedRun`), `src/scheduling/skip.ts` (`leftoverPending`), `src/runner/runner-leftover.ts` (`relief_wait`, `already_queued`, the no-pin `aheadOfMain` re-queue).
+**Binds.** `src/scheduling/scope.ts` (`directorPinOwedRun`), `src/scheduling/skip.ts` (`leftoverPending`), `src/runner/runner-leftover.ts` (`relief_wait`, `already_queued`, the no-pin `aheadOfMain` re-pin).
 
 **Pinned by.** `test/orchestrator-scheduling.test.ts` — "a director whose queued change is still in the queue and a second commit waits on its branch is not offered leftover" (the held-commit case, the first bug) and "a director holding a kept merge pin with an empty inbox is due as leftover, but a queued pin is not" (the kept pin owed and the queued pin not, the second bug's rule).
 

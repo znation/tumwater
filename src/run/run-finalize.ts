@@ -56,7 +56,7 @@ const CLAIM_RELEASING: ReadonlySet<RunResult> = new Set([
 export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
   const { root, role, mainBranch, config, state: s, usage, runNumber } = deps;
   let { outcome } = deps;
-  // A re-queued leftover's merge failure is not the run's own result, so it rides the
+  // A re-pinned leftover's merge failure is not the run's own result, so it rides the
   // outcome separately: applyRunOutcome feeds it into the error streak, and the warning
   // below names it — even though runOnce cleared `lastError` so it never latched onto
   // `run_end` (BUGS.md 2026-09-21).

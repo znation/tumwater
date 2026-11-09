@@ -544,7 +544,7 @@ async function runWithWorktreePhase(
 }
 
 /** How does a run recover a leftover? A previous run may have left a commit unmerged
- * (runner-leftover.ts): recovery puts it back on the merge queue, so it merges through the
+ * (runner-leftover.ts): recovery re-pins it, so it merges through the
  * orchestrator's merge pipeline — the same gate as a fresh run's change, and main keeps exactly
  * one writer (an in-run recovery merge raced the slot's batches into `merge_blocked`). A
  * salvaged leftover ENDS the run: the role holds one merge ref, and the leftover owns it until

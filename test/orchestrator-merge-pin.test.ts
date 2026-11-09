@@ -25,11 +25,14 @@ test("a pin with no queue file is gated and merged on a poll", async () => {
   const sha = pinOffMain(
     root,
     (d) => fs.writeFileSync(path.join(d, "pin.txt"), "pinned work\n"),
-    "work by improve",
+    "work by improve\n\nRun: improve #7 · turns 1 · ctx 1k",
     { reset: true },
   );
   await setRef(root, mergeRefName("improve"), sha);
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
+  const [runner] = runnersFor(root, ["improve"]);
+  assert.ok(runner);
+  runner.state.runs = 7;
+  const { ctx, pipeline } = makePipeline(root, [runner]);
 
   await withPi(APPROVE(), async () => {
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the pin's gate-then-merge task to settle");

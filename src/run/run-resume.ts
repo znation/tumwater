@@ -16,7 +16,7 @@ export interface RunStartPlan {
   /** The last merge's failure (the merger's own vocabulary — review_error, merge_conflict,
    * merge_blocked — with the detail it wrote into `lastError`), captured before the plan
    * clears lastError: a non-terminally failed merge kept its pin, and when this run's
-   * recovery re-queues that pin the failure must still feed the error streak
+   * recovery re-pins that pin the failure must still feed the error streak
    * (finishRecoveryRun). Undefined when the last result was not a retriable merge failure. */
   priorMergeFailure: string | undefined;
   /** Resume the interrupted session instead of starting fresh. */
@@ -36,7 +36,7 @@ export interface RunStartPlan {
   /** The prompt this run runs: the resume bridge when resuming, the assembled run prompt
    * otherwise (runOnce may still append notes — a conflict-discard note, a main-red note —
    * before the run). Null only for a promptless recovery run (`recoveryOnly`): the run
-   * re-enqueues a kept merge pin and authors nothing. */
+   * re-pins a kept merge pin and authors nothing. */
   prompt: string | null;
   /** The raw user prompt this run is executing (null for role runners), so an unfulfilled
    * outcome can re-queue it. */
@@ -119,12 +119,12 @@ interface RunStartDecision {
 
 /** A run-start's first phase: read the last merge's failure and clear it, so a merge that
  * failed non-terminally (kept its pin) still feeds the error streak when this run's recovery
- * re-queues that pin (finishRecoveryRun). */
+ * re-pins that pin (finishRecoveryRun). */
 function readPriorMergeFailure(s: RunnerState): string | undefined {
   // The last merge's failure, read before the clear below: a merge that failed
   // non-terminally kept its pin (the merger's own vocabulary — review_error, merge_conflict,
   // merge_blocked — with the detail it wrote into `lastError`), and when this run's recovery
-  // re-queues that pin, the failure must still feed the error streak (finishRecoveryRun).
+  // re-pins that pin, the failure must still feed the error streak (finishRecoveryRun).
   const priorMergeFailure =
     s.lastResult !== undefined && RETRIABLE_MERGE_RESULTS.has(s.lastResult)
       ? (s.lastError ?? `merge failed: ${s.lastResult}`)

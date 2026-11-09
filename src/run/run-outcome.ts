@@ -18,7 +18,7 @@ export type RunResult =
   | "refused"
   /** pi decided there was nothing to do. */
   | "no_change"
-  /** Change was made but could not be merged; the pin is re-queued next run. At
+  /** Change was made but could not be merged; the pin is re-pinned next run. At
    * MERGE_CONFLICT_LIMIT in a row it is handed back to its author to resolve, or discarded
    * when that lineage was already handed back. */
   | "merge_conflict"
@@ -72,7 +72,7 @@ export interface RunOutcome {
    * but the failure digest prices the discarded authoring as its own loss cause instead of a
    * quiet idle (BUGS.md 2026-11-08). */
   selfCheckReverted?: boolean;
-  /** The run's leftover recovery re-queued a pin whose last merge failed and kept it for
+  /** The run's leftover recovery re-pinned a pin whose last merge failed and kept it for
    * another attempt (review_error, merge_conflict, merge_blocked): the run itself ends
    * `queued`, but the persistent merge failure must still feed the error streak so a dead
    * reviewer backend raises the alarm instead of resetting it every run (BUGS.md 2026-09-21).

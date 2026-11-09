@@ -17,7 +17,7 @@ import { errorMessage } from "../text/text.js";
  * before the drop, so the same poll's queuedMergeFiles sees it and no landing waits forever on
  * the one unreadable file (BUGS.md 2026-09-17). The re-queue is best-effort: a write failure
  * (ENOSPC/EMFILE) or an unreadable commit must not wedge the queue, so the torn head is still
- * dropped (the pin survives and leftover recovery re-queues the full shape on the role's next
+ * dropped (the pin survives and leftover recovery rebuilds the full shape on the role's next
  * run), and the drain's poll never aborts. A torn head with no recoverable role or no pin drops
  * with the warning alone; the crashed entry's commit, if any, still rides its merge ref into
  * next-run leftover recovery. The drop itself can throw (a queue file that is a directory fails

@@ -42,15 +42,15 @@ export function bucketMergeEvents(events: HarnessEvent[]): {
  *
  * One change can take several merge attempts: a retriable result (RETRIABLE_MERGE_RESULTS:
  * review_error, merge_conflict, merge_blocked) keeps the pin, and the role's next run — a
- * leftover-recovery run that does no work of its own and ends in about a second — re-enqueues
- * it (isRecoveryPin). The authoring run and the recovery runs resolve by different rules, so
- * every attempt's verdict shows on exactly one row:
- * - The run that authored the change (its pin is not a re-enqueue of a kept attempt) takes
+ * leftover-recovery run that does no work of its own and ends in about a second — re-pins it
+ * and logs a fresh `merge_queued` (isRecoveryPin). The authoring run and the recovery runs
+ * resolve by different rules, so every attempt's verdict shows on exactly one row:
+ * - The run that authored the change (its pin is not a recovery re-pin) takes
  *   the change's FINAL verdict, not its first attempt's: a retriable failure that recovery
- *   later merges reads "changed" (BUGS.md 2026-10-10). While a re-enqueued attempt is still
+ *   later merges reads "changed" (BUGS.md 2026-10-10). While a re-pinned attempt is still
  *   pending the row keeps the raw "queued" label — the change is waiting to merge again, and
  *   the failure before it already shows on the recovery run's row.
- * - A recovery run takes the verdict of the attempt it re-enqueued — the retriable failure
+ * - A recovery run takes the verdict of the attempt it re-pinned — the retriable failure
  *   that kept the pin and made the run happen (recoveredAttemptVerdict). So a change that
  *   timed out in review seven times and was then rejected reads "rejected" once (the
  *   authoring row) and "review failed" seven times (the authoring attempt's and six
@@ -60,7 +60,7 @@ export function bucketMergeEvents(events: HarnessEvent[]): {
  * (merge-core.ts), so the recovery pin carries the rebased sha while each attempt's own
  * merge_done/merge_failed logs its entry's sha (merge-slot.ts's entry.sha): the attempts' shas
  * differ, so the authoring row's walk follows the pin sequence (isRecoveryPin), not sha
- * equality alone. It stops at a pin that is not a recovery re-enqueue — a fresh change after a
+ * equality alone. It stops at a pin that is not a recovery re-pin — a fresh change after a
  * conflict-cap discard — so the row never credits a different change's verdict (BUGS.md
  * 2026-10-10). A recovery pin whose previous attempt shows no retriable verdict (a crash
  * left the commit unpinned or the merge unfinished, or that attempt sits outside the read) is
@@ -128,9 +128,9 @@ function claimQueuedPin(end: HarnessEvent, queuedList: HarnessEvent[], claimTop:
   return top;
 }
 
-/** The authoring row: walk forward while the next pin is a recovery re-enqueue and resolve to the
+/** The authoring row: walk forward while the next pin is a recovery re-pin and resolve to the
  * last attempt's verdict. `findLast` picks the newest same-sha outcome so an un-rebased retry
- * (recovery re-enqueues the identical sha, logged by both pins) does not re-match the first
+ * (recovery re-pins the identical sha, logged by both pins) does not re-match the first
  * attempt's outcome inside the recovery pin's walk. The returned pin/outcome ride the result so a
  * caller correlating sibling evidence (the failure digest's review-failure message) can key on
  * THIS attempt's position, not a sha a pre-review rebase may have moved (BUGS.md 2026-10-10). */
@@ -150,7 +150,7 @@ function authoringRowVerdict(queuedList: HarnessEvent[], outcomes: HarnessEvent[
     if (verdict === null) return resolved;
     // A merge or a rejection ends the change (the pin is discarded, so no recovery pin can
     // follow); any other verdict kept the pin, and the walk continues only if the next pin is
-    // the recovery re-enqueue that kept it. Otherwise this attempt's verdict is the final one
+    // the recovery re-pin that kept it. Otherwise this attempt's verdict is the final one
     // visible.
     if (endsChange(verdict.result) || !isRecoveryPin(queuedList[idx + 1])) return verdict;
     resolved = verdict;
@@ -175,20 +175,20 @@ function attemptVerdict(pin: HarnessEvent, outcome: HarnessEvent): QueuedVerdict
 }
 
 /** True when a verdict ends its change: a merge or a rejection discards the pin, so no recovery
- * re-enqueue can follow it. Every other verdict (the retriable ones) kept the pin. The one rule
+ * re-pin can follow it. Every other verdict (the retriable ones) kept the pin. The one rule
  * both directions of resolveQueuedResult's chain read — the authoring row's walk forward and a
  * recovery row's step back — so the two cannot disagree on where a change ends. */
 function endsChange(result: string): boolean {
   return result === "changed" || result === "rejected";
 }
 
-/** A recovery run's own row verdict: when the pin at `idx` is a recovery re-enqueue and the
- * previous pin's attempt ended in a retriable verdict (the kept pin this run re-enqueued), that
+/** A recovery run's own row verdict: when the pin at `idx` is a recovery re-pin and the
+ * previous pin's attempt ended in a retriable verdict (the kept pin this run re-pinned), that
  * verdict, carrying the previous attempt's pin and outcome. The outcome is the newest one for
  * the previous pin's sha logged between the two pins: recovery runs only after the previous
  * attempt's outcome is written, and bounding at this pin keeps an un-rebased retry (both pins
  * share a sha) from matching a LATER attempt's outcome. Null when the pin is not a recovery
- * re-enqueue, or is one with no retriable attempt visible before it — a crash's unpinned or
+ * re-pin, or is one with no retriable attempt visible before it — a crash's unpinned or
  * unfinished commit, or a previous pin outside the read — so the row takes the authoring rule. */
 function recoveredAttemptVerdict(queuedList: HarnessEvent[], idx: number, outcomes: HarnessEvent[]): QueuedVerdict | null {
   const pin = queuedList[idx]!;
@@ -201,7 +201,7 @@ function recoveredAttemptVerdict(queuedList: HarnessEvent[], idx: number, outcom
   return verdict === null || endsChange(verdict.result) ? null : verdict;
 }
 
-/** True when a pin re-enqueues the previous attempt's kept pin rather than starting a fresh
+/** True when a pin re-pins the previous attempt's kept pin rather than starting a fresh
  * change. `recoverLeftover` (runner-leftover.ts) is the one `merge_queued` producer whose
  * summary starts with this label, so a fresh change's pin after a conflict-cap discard ends
  * `resolveQueuedResult`'s walk. */

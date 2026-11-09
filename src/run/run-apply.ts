@@ -124,7 +124,7 @@ function applyRunStreaks(s: RunnerState, outcome: RunOutcome): void {
   s.cutOffStreak = bumpOrResetStreak(s.cutOffStreak, outcome.cutOff);
   // The error streak counts consecutive failed runs; any other result resets it
   // (BUGS.md 2026-09-15: 44 identical failures raised no alarm). A run whose leftover
-  // recovery re-queued a pin its last merge failed counts too, even though the run
+  // recovery re-pinned a pin its last merge failed counts too, even though the run
   // itself ends `queued` (outcome.recoveryFailure): a dead reviewer backend would otherwise
   // reset the streak every run and never raise the alarm (BUGS.md 2026-09-21).
   // run-finalize.ts emits one warning when the streak crosses ERROR_STREAK_WARN — once per
