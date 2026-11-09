@@ -142,7 +142,8 @@ test("noteGreenBaseline records a directly-observed green verdict: checkMainBase
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; echo ok`);
   // A caller just observed this exact tree pass (branch HEAD == main here): record that verdict
-  // directly, as the gate pre-check did when it ran green (no merge path seeds since 4l/3).
+  // directly, as the old merge path did after a green check (that caller went with parts 4l/3 and
+  // 4m/3, so no live src caller remains).
   noteGreenBaseline(headSha(root));
   const result = await checkMainBaseline(wt, CFG);
   assert.equal(result.baseline?.status, "green");
