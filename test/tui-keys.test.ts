@@ -5463,10 +5463,12 @@ test("Ctrl+X retire on the Health view: an empty id stays and Esc restores the d
 });
 
 test("promptLineFree is false while retire-edit mode holds the line, so the Health pane's own arms stay off it", () => {
-  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, releaseMode: false, roleEnabledMode: false, quietMode: false, intervalMode: false, roleModelMode: false, instructionsEditFor: null };
+  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, releaseMode: false, roleEnabledMode: false, quietMode: false, intervalMode: false, roleModelMode: false, instructionsEditFor: null, anyEditorHeld: true };
   // Ctrl+E (reclaim), Ctrl+R (doctor re-run) and Ctrl+O (problems toggle) are the Health
   // pane's own arms; while the retire editor holds the line they must see it busy, the same
-  // exclusion every other mode enforces, or they would run over the retire modal.
+  // exclusion every other mode enforces, or they would run over the retire modal. The guard
+  // reads the shared anyEditorHeld registry, so a held mode raises it and the line frees only
+  // once the mode leaves; the per-mode flags below stay set to document which editor holds it.
   assert.equal(promptLineFree(es), false, "the retire editor blocks the Health pane's own arms");
   es.retireMode = false;
   es.releaseMode = true;
@@ -5475,8 +5477,10 @@ test("promptLineFree is false while retire-edit mode holds the line, so the Heal
   es.roleEnabledMode = true;
   assert.equal(promptLineFree(es), false, "the role-enabled editor blocks the Health pane's own arms");
   es.roleEnabledMode = false;
+  es.anyEditorHeld = false;
   assert.equal(promptLineFree(es), true, "the line frees once retire-edit mode leaves");
   es.quietMode = true;
+  es.anyEditorHeld = true;
   assert.equal(promptLineFree(es), false, "the quiet editor blocks the Transcript pane's own arms");
   es.quietMode = false;
   es.intervalMode = true;
@@ -5487,6 +5491,29 @@ test("promptLineFree is false while retire-edit mode holds the line, so the Heal
   es.roleModelMode = false;
   es.instructionsEditFor = "clean";
   assert.equal(promptLineFree(es), false, "the instructions editor blocks the pane arms while it holds the line");
+  es.instructionsEditFor = null;
+  es.anyEditorHeld = false;
+  assert.equal(promptLineFree(es), true, "the line frees once the instructions editor leaves");
+});
+
+// The registry read covers an editor the old flat guard never named: the Activity view's
+// Ctrl+N run-cap editor. Opening it makes the state carry anyEditorHeld true, so promptLineFree
+// reads false even though no flag the flat list read is set; closing it restores both.
+test("promptLineFree reads the held-registry flag, so the run-cap editor (absent from the old flat list) blocks the pane arms", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []); // no roles: view 0 is Activity
+  const paneState = (): TuiPaneEditorState => keys.state() as unknown as TuiPaneEditorState;
+  assert.equal(paneState().anyEditorHeld, false, "no editor holds the line before the run-cap editor opens");
+  assert.equal(promptLineFree(paneState()), true, "the line is free before the run-cap editor opens");
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // Activity Ctrl+N opens the run-cap editor
+  assert.equal(keys.state().concurrencyMode, true, "Ctrl+N on Activity opens the run-cap editor");
+  assert.equal(paneState().anyEditorHeld, true, "the run-cap editor holds the line in the registry");
+  assert.equal(promptLineFree(paneState()), false, "a held run-cap editor blocks the pane arms");
+  keys.handleKey(undefined, { name: "escape" }); // Esc leaves the run-cap editor
+  assert.equal(keys.state().concurrencyMode, false, "Esc closes the run-cap editor");
+  assert.equal(paneState().anyEditorHeld, false, "the registry frees once the run-cap editor leaves");
+  assert.equal(promptLineFree(paneState()), true, "the line is free again once the run-cap editor leaves");
 });
 
 // Ctrl+X on the Failures view releases a quarantined test — the terminal twin of

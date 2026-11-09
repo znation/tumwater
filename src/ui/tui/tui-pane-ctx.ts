@@ -31,6 +31,11 @@ export interface TuiPaneEditorState {
   roleModelMode: boolean;
   /** The Transcript view's Ctrl+L replace-standing-instructions mode holds the prompt line. */
   instructionsEditFor: string | null;
+  /** The shared held-editor registry read (`TuiEditorSession.anyEditorHeld`): true while any
+   * prompt-line editor holds the line. `promptLineFree` reads this one flag instead of
+   * restating each per-editor mode, so a newly added editor holds the line here without
+   * touching the guard. */
+  anyEditorHeld: boolean;
   /** The prompt line's typed text, when the caller carries it (the editors' state does). */
   input?: string;
 }
@@ -44,17 +49,14 @@ export interface TuiPaneCtx {
 }
 
 /** Whether no editor currently holds the prompt line — the mutual-exclusion contract the pane
- * arms below restate when they open their own one-line editors. The editors consume every key
- * that reads or writes the line and return true while one is open, so by the time the pane
- * fallback runs the flags are already all false; the check stays explicit so each arm's
- * exclusion reads on its own instead of leaning on the routing order. */
+ * arms below restate when they open their own one-line editors. It reads the shared
+ * held-editor registry (`anyEditorHeld`), the one flag `TuiEditorSession.anyEditorHeld`
+ * maintains over every prompt-line editor, so a newly added editor holds the line here without
+ * touching this check. The editors consume every key that reads or writes the line and return
+ * true while one is open, so by the time the pane fallback runs no editor holds the line; the
+ * explicit read keeps each arm's exclusion legible instead of leaning on the routing order. */
 export function promptLineFree(es: TuiPaneEditorState): boolean {
-  return (
-    !es.budgetMode && !es.rolePromptFor && !es.searchMode &&
-    !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor &&
-    !es.notesEditFor && !es.briefEditMode && !es.retireMode && !es.releaseMode && !es.roleEnabledMode && !es.quietMode && !es.intervalMode &&
-    !es.roleModelMode && !es.instructionsEditFor
-  );
+  return !es.anyEditorHeld;
 }
 
 /** The shared Ctrl+letter dispatch guard the panes that carry a one-argument ctrl route table

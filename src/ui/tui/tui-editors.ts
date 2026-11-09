@@ -86,6 +86,11 @@ export interface TuiEditorsDeps {
 interface TuiEditorState {
   input: string;
   cursor: number;
+  /** The shared held-editor registry read (`TuiEditorSession.anyEditorHeld`): true while any
+   * prompt-line editor holds the line. Carried in the state so the pane arms' mutual-exclusion
+   * guard (`promptLineFree`) can read one flag instead of restating each per-editor mode — a
+   * newly added editor is then covered without touching the guard. */
+  anyEditorHeld: boolean;
   budgetMode: boolean;
   /** The Activity view's Ctrl+N run-cap (`maxConcurrent`) mode holds the prompt line. */
   concurrencyMode: boolean;
@@ -316,6 +321,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
       return {
         input: session.input,
         cursor: session.cursor,
+        anyEditorHeld: session.anyEditorHeld(),
         budgetMode: session.held.budget,
         concurrencyMode: session.held.concurrency,
         checksMode: session.held.checks,
