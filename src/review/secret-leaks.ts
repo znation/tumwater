@@ -109,6 +109,46 @@ function unreadable(file: string, err: unknown): string {
   return `\`${file}\` could not be read to check for leaked secrets (${errCode(err) ?? "error"})`;
 }
 
+/** The text of one changed file read for the scan: the file text when the path is a regular
+ * file under the size cap; `undefined` when the path is a missing/deleted file, a non-file
+ * (directory, symlink, gitlink), or larger than `MAX_SCAN_BYTES`; or `{ finding }` (the
+ * unreadable finding) when stat or read fails for a reason `noFile` does not classify. */
+function readFileForScan(wt: string, file: string): string | { finding: string } | undefined {
+  const full = path.join(wt, file);
+  let stat: fs.Stats | null;
+  try {
+    // lstat, not stat: a symlink in the change set is not followed. The gate scans the
+    // content each change writes, and a change that adds a symlink writes no content — its
+    // target (which lstat's isFile() leaves unreadable, unlike stat's, which follows it out
+    // of the worktree) is not what the change put there. Following it would read an
+    // arbitrary host path a malicious repo can point a link at, and would flag that outside
+    // file's contents as this change's leak.
+    stat = fs.lstatSync(full);
+  } catch (err) {
+    if (!noFile(err)) return { finding: unreadable(file, err) };
+    return undefined;
+  }
+  if (!stat.isFile() || stat.size > MAX_SCAN_BYTES) return undefined;
+  let head: string;
+  try {
+    head = fs.readFileSync(full, "utf8");
+  } catch (err) {
+    if (!noFile(err)) return { finding: unreadable(file, err) };
+    return undefined;
+  }
+  return head;
+}
+
+/** The reasons a readable file's content leaks: one naming the file and the secret (never the
+ * value) for each hit whose value is not already in `base` (the merge-base content). */
+function leakReasonsInText(file: string, hits: Secret[], base: string): string[] {
+  const out: string[] = [];
+  for (const s of hits) {
+    if (!base.includes(s.value)) out.push(`\`${file}\` contains the value of ${s.name}`);
+  }
+  return out;
+}
+
 /** The deterministic gate/stage finding for a change that writes the value of a secret
  * environment variable or stored pi credential into a file (a Node diagnostic report dumps
  * the whole environment). A value already present in the file at the merge-base is not this
@@ -125,35 +165,17 @@ export async function secretLeakReason(
   let baseRev: string | undefined;
   const leaks: string[] = [];
   for (const file of files) {
-    const full = path.join(wt, file);
-    let stat: fs.Stats | null;
-    try {
-      // lstat, not stat: a symlink in the change set is not followed. The gate scans the
-      // content each change writes, and a change that adds a symlink writes no content — its
-      // target (which lstat's isFile() leaves unreadable, unlike stat's, which follows it out
-      // of the worktree) is not what the change put there. Following it would read an
-      // arbitrary host path a malicious repo can point a link at, and would flag that outside
-      // file's contents as this change's leak.
-      stat = fs.lstatSync(full);
-    } catch (err) {
-      if (!noFile(err)) leaks.push(unreadable(file, err));
+    const read = readFileForScan(wt, file);
+    if (read === undefined) continue;
+    if (typeof read === "object") {
+      leaks.push(read.finding);
       continue;
     }
-    if (!stat.isFile() || stat.size > MAX_SCAN_BYTES) continue;
-    let head: string;
-    try {
-      head = fs.readFileSync(full, "utf8");
-    } catch (err) {
-      if (!noFile(err)) leaks.push(unreadable(file, err));
-      continue;
-    }
-    const hits = secrets.filter((s) => head.includes(s.value));
+    const hits = secrets.filter((s) => read.includes(s.value));
     if (hits.length === 0) continue;
     baseRev ??= await changeBaseRev(wt, mainBranch);
     const base = await fileContentAt(wt, baseRev, file);
-    for (const s of hits) {
-      if (!base.includes(s.value)) leaks.push(`\`${file}\` contains the value of ${s.name}`);
-    }
+    leaks.push(...leakReasonsInText(file, hits, base));
   }
   if (leaks.length === 0) return undefined;
   const shown = leaks.slice(0, MAX_NAMED).join("; ");
