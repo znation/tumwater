@@ -66,13 +66,6 @@ interface ImageReroute {
   config: ResolvedModelConfig;
 }
 
-/** The image-capable reroute target for `role`, or null when no peer tier can read images
- * (plans/image-input.md "Reroute target"). Walks the role's seam tier through BORROW_ORDER,
- * skipping the tier itself — small → default → strong, default → strong → small, strong →
- * default (a strong-tier seam never drops to small, the same rule as the budget fallback) —
- * and takes the first tier whose model reads images. `regime` picks the pair set (see
- * RerouteRegime); `modelsPath` and `account` are injectable so tests need no real pi install
- * or account. */
 /** The primary-regime walk (plans/image-input.md "Reroute target"): for each candidate tier in
  * borrow order, resolve its top-level selector's model and take the first one that reads images.
  * This is the answer to "which peer tier reads an image under the primary selector?" */
@@ -101,8 +94,6 @@ function imageRerouteFallback(
   account: ClaudeAccount | null,
   listed: PiListedModels | null,
 ): ImageReroute | null {
-  // Fallback regime: only the tiers' free fallback pairs qualify (resolveTierFallbacks over the
-  // price check), never a priced primary model — a reroute must not spend past the cap.
   const resolved = resolveTierFallbacks(config, (p: FallbackModelConfig) =>
     // The free-ness lookup reads the one claude account held here (part 2a/9).
     piPairFree(providerMap, p, (b: string) => (b === "claude" ? account : null)),
@@ -121,6 +112,13 @@ function imageRerouteFallback(
   return null;
 }
 
+/** The image-capable reroute target for `role`, or null when no peer tier can read images
+ * (plans/image-input.md "Reroute target"). Walks the role's seam tier through BORROW_ORDER,
+ * skipping the tier itself — small → default → strong, default → strong → small, strong →
+ * default (a strong-tier seam never drops to small, the same rule as the budget fallback) —
+ * and takes the first tier whose model reads images. `regime` picks the pair set (see
+ * RerouteRegime); `modelsPath` and `account` are injectable so tests need no real pi install
+ * or account. */
 export function imageReroute(
   config: TumwaterConfig,
   role: string,
