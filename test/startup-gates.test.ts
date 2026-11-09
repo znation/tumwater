@@ -508,7 +508,7 @@ test("a failing periodic catalog refresh warns once per retry interval and never
   await settle();
   r.poll(config);
   await settle();
-  assert.equal(warnings.filter((m) => m.startsWith("open code model catalog fetch failed")).length, 1);
+  assert.equal(warnings.filter((m) => m.startsWith("OpenCode model catalog fetch failed")).length, 1);
 });
 
 test("the startup seed logs a warning when the catalog fetch fails or the cache cannot be saved", async () => {
@@ -544,7 +544,7 @@ test("the startup seed logs a warning when the catalog fetch fails or the cache 
       now: () => 1_000,
     });
     assert.ok(!("problem" in failing), JSON.stringify(failing));
-    const fetchWarning = "open code model catalog fetch failed; keeping the cached copy";
+    const fetchWarning = "OpenCode model catalog fetch failed; keeping the cached copy";
     const countFetch = (): number => warningMessages(repoA).filter((m) => m.includes(fetchWarning)).length;
     assert.equal(countFetch(), 1);
     await runStartupCheck(repoA, null, { fetch: async () => { throw new Error("offline"); }, now: () => 2_000 });
@@ -561,7 +561,7 @@ test("the startup seed logs a warning when the catalog fetch fails or the cache 
     } finally {
       restore();
     }
-    const saveWarnings = warningMessages(repoB).filter((m) => m.startsWith("could not save the open code model catalog: "));
+    const saveWarnings = warningMessages(repoB).filter((m) => m.startsWith("could not save the OpenCode model catalog: "));
     assert.equal(saveWarnings.length, 1);
     assert.ok(saveWarnings[0]?.includes("disk full"), String(saveWarnings[0]));
   });

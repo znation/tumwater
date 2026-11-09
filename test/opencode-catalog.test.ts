@@ -377,5 +377,5 @@ test("a failed catalog write warns and still returns the fetched catalog", async
   assert.equal(cache.fetchedAt, 1_000);
   assert.equal(cache.models["opencode/deepseek-v4.1-flash-free"]?.free, true);
   assert.equal(warnings.length, 1);
-  assert.ok(warnings[0]?.startsWith("could not save the open code model catalog"));
+  assert.ok(warnings[0]?.startsWith("could not save the OpenCode model catalog"));
 });

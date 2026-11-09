@@ -332,7 +332,7 @@ export async function refreshOpencodeCatalog(root: string, opts: OpencodeRefresh
   try {
     body = await fetchOpencodeCatalog(opts.fetch);
   } catch {
-    opts.warn?.(`open code model catalog fetch failed; keeping the cached copy`);
+    opts.warn?.(`OpenCode model catalog fetch failed; keeping the cached copy`);
     return current.fetchedAt === 0 ? { fetchedAt: 0, cliVersion: version, models: {} } : current;
   }
   const parsed = parseOpencodeCatalog(body, opts.providers);
@@ -345,7 +345,7 @@ export async function refreshOpencodeCatalog(root: string, opts: OpencodeRefresh
   try {
     writeOpencodeCache(root, cache);
   } catch (err) {
-    opts.warn?.(`could not save the open code model catalog: ${errorMessage(err)}`);
+    opts.warn?.(`could not save the OpenCode model catalog: ${errorMessage(err)}`);
   }
   return cache;
 }

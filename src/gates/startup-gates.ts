@@ -195,7 +195,7 @@ export function newOpencodeCatalogRefresh(
       if (!opencodeCatalogStale(readOpencodeCache(root), clock())) return;
       lastAttempt = clock();
       void seedOpencodeCatalog(root, config, { ...seed, warn }).catch((err: unknown) =>
-        warn(`open code model catalog refresh failed: ${errorMessage(err)}`),
+        warn(`OpenCode model catalog refresh failed: ${errorMessage(err)}`),
       );
     },
   };

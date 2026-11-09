@@ -190,7 +190,7 @@ export function newLiveConfigReload(deps: {
         liveOpencodeSeedAttempted.add(deps.root);
         // Not awaited: poll() is synchronous and a models.dev fetch must not stall the loop.
         void seedOpencodeCatalog(deps.root, nextConfig, { ...deps.opencodeSeed, warn }).catch(
-          (err: unknown) => warn(`open code model catalog seed failed: ${errorMessage(err)}`),
+          (err: unknown) => warn(`OpenCode model catalog seed failed: ${errorMessage(err)}`),
         );
       }
     }

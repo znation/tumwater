@@ -183,7 +183,7 @@ test("the opencode plugin denies an edit or write decision for a stray path and 
   assert.equal(inside.effect, "allow");
   // A `write` action (create or overwrite a file) writes the same `resources` and must be guarded
   // like an `edit`: a new file a `../` climb points at the primary checkout or another slot is
-  // exactly the stray-write the guard exists to refuse (open code-config keeps `write` allowed
+  // exactly the stray-write the guard exists to refuse (OpenCode's config keeps `write` allowed
   // beside `edit` for parity with pi's write tool).
   const writeStray = { action: "write", resources: [stray], effect: "allow" };
   hook(writeStray);

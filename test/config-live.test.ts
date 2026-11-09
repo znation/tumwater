@@ -481,6 +481,6 @@ test("a failed live catalog seed warns instead of crashing the poll", async () =
     throw new Error("offline");
   }) as never);
   await pollAndSettle();
-  const warnings = warnMessages(root).filter((m) => m.startsWith("open code model catalog fetch failed"));
+  const warnings = warnMessages(root).filter((m) => m.startsWith("OpenCode model catalog fetch failed"));
   assert.equal(warnings.length, 1);
 });
