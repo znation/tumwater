@@ -1,63 +1,63 @@
-# tumwater 0.5.0
+# tumwater 0.5.1
 
 ## Highlights
 
-- **Remote CI: the team now sees GitHub Actions' verdict on what you pushed.** The ci role reads
-  the hosted CI result on main's newest pushed commit with your own `gh` (read-only), so a failure
-  that only happens on the hosted runner no longer goes unseen. A newly failed push pages you once
-  per commit. `tumwater doctor` gains a `remote CI` row, and the status line, TUI header and
-  dashboard show a `github: passed|failed|running` badge beside the ci parity badge. It runs only
-  when main's remote is on GitHub and the repo has a workflow; `roles.ci.remote: false` turns it off.
-- **No more duplicate plans.** The plan role's prompt now shows the plans that unmerged changes
-  already carry, and its stop count reads `## Planned` with those changes applied, so it stops
-  planning work that is waiting to merge. A new `retired` stamp closes a plan that is never built,
-  and the plan role retires extra copies of the same work. When feature finds nothing to build in
-  a plan, it hands the plan back to the plan role to fix instead of refusing it.
-- **Main's full check runs at most once per `check.fullIntervalMinutes`** (default 60), and only
-  while a code commit is newer than the last full verdict. It runs in its own `_main-full` mirror,
-  so a long suite no longer blocks the gate's main-tip verdicts. Set 0 to check every head again.
-- **Per-model reports.** Day and `--since` reports gain `Tokens by model`, `Cost by model` and
-  `Estimated by model` lines, ranked by spend. The failure digest adds a ranked
-  `Failed runs by model` line, so a team that mixes providers can see which model is failing or
-  costing the most.
-- **More live views.** `doctor`, `role <id>`, `plan --list`, `bug --list` (and `--done`),
-  `history --summary` and `history <role> <n>` gain `-f/--follow`.
+- **Bug retirement, everywhere plans retire.** `tumwater bug --retire <n> [--reason]` closes a
+  bug that will never be built, retiring it into `## Fixed` in BUGS.md. The same works from the
+  TUI Backlog pane and the dashboard drawer, with the same two-press confirm plan retirement
+  uses (`Ctrl+Y` for plans; `/api/backlog-retire` on the dashboard).
+- **Salvage is now a first-class command.** `tumwater salvage` lists the kept patches a failed
+  run left behind (`--show`/`--json` for detail), `salvage -f/--follow` repaints the kept-patch
+  list live, and `salvage --drop <n>` deletes a listed kept patch. Kept patches stay whole —
+  the saved diff is no longer trimmed by trailing-whitespace handling.
+- **Red spells heal by bisecting.** When main goes red, the bisect walks merged batches, re-runs
+  only the still-failing tests for each candidate, and names the commit that broke the suite —
+  not just main's tip. Status surfaces show the main-check verdict's age, next due time and
+  cleared-red state.
+- **Filtering everywhere.** `--grep` filters on `reviews`, `quarantine`, and `plan|bug --list`,
+  and `--show <n>` opens a read-only full entry for reviews, quarantine and prompts. Flag-shaped
+  patterns (`--grep --show`) are treated as literal text instead of being misrouted as flags.
+- **Held backlog views.** `--held` is the inverse of `--ready` on `tumwater backlog`, `plan
+  --list` and `bug --list`; the TUI's Ctrl+O cycle gains a held-only stop, and the dashboard
+  Backlog card gets a Held-only toggle.
 
 ## Fixes
 
-- Post-merge reviews no longer stall until a restart. They now wait for a run permit instead of
-  checking once for a free one. On a busy team that check failed and left the review slot stuck,
-  so on 2026-11-03 only 2 of 81 merges were reviewed.
-- A reviewer's post-merge fix goes through the gate's build check before it lands. On 2026-11-04 a
-  broken repair landed unchecked and kept main red for about 20 hours.
-- A role whose change is waiting in the merge queue is no longer given the same backlog entry
-  again. Before this fix, it built the same work twice.
-- A post-merge review no longer rotates a role log that a running run is still writing, which made
-  a healthy run look stuck on the dashboard.
-- The director no longer starts a run every poll (each one skipped) while a second commit waits
-  behind its queued change.
-- Merge verification runs one change at a time. The removed `main_red` run result no longer
-  appears in status, doctor or the dashboard.
-- Main is green again. It had been red since 2026-11-04 on four repo-wide lint scans and 11
-  runner tests. The runner tests broke because every role waited on a plan-only git refresh
-  before it leased its slot.
+- The merge gate fails closed when an abort fires, even over a green pre-check. A green
+  pre-check that raced an abort no longer lets an unverified merge land.
+- A merge that lands while the user is aborting settles as changed, so it is not re-leased
+  to the next run.
+- A post-merge reviewer fix that conflicts with main re-reviews the resolved tree instead of
+  landing blind.
+- Free primary with no fallback no longer pauses the budget gate at the cap.
+- A semaphore age bound promotes a starved tier-1 waiter instead of parking it indefinitely.
+- Policy scans name each offender as its own failing test, and the check, baseline and watch
+  capture the offender list; a stale-base aggregate no longer hides a fresh violation.
+- The doctor's provider-contention row surfaces live semaphore slot waits.
+- The remote CI doctor row is omitted when the ci role is disabled.
+- CLI pipes: a run whose stdout/stderr pipe reader closes exits quietly instead of
+  retrying with EPIPE noise.
 
 ## CLI
 
-- `-f/--follow` on `doctor`, `role <id>`, `plan|bug --list`, `history --summary` and
-  `history <role> <n>` refreshes the view until Ctrl+C or until its parent process exits.
-- `doctor` gains a `remote CI` row. The `check.fullIntervalMinutes` setting is new.
+- `bug --retire <n> [--reason]` retires a bug into `## Fixed`.
+- `salvage`, `salvage --show <n>`, `--json`, `--drop <n>`, `-f/--follow`.
+- `reviews --grep <text>` and `reviews --show <n>`; `quarantine --grep <text>` and
+  `quarantine --show <n>`.
+- `plan --list --grep` / `bug --list --grep` filter literally; `--grep --show` filters for the
+  literal `--show` text.
+- `prompt --list --grep` treats a flag-shaped pattern as literal text.
+- `backlog`, `plan --list` and `bug --list` gain `--held` (the inverse of `--ready`).
+- `wake --cancel <n>` drops one scheduled wake, numbered as in `wake --list`.
+- `config --diff` prints only the non-default resolved settings.
 
 ## Build and tests
 
-- Each release now chooses major, minor or patch when it is cut: `scripts/release.mjs <level>`,
-  `bump <level>`, and `--status` prints the level (DEVELOPMENT.md "Choosing the version").
-- A flaky merge-pipeline test now holds its second change's check, so the check can't finish
-  between polls.
-- New end-to-end tests cover the gate's re-run attribution when main is red and the failure
-  names no test.
-- Internals: `buildReviewPrompt` is split into four builders, duplicate merge-queue modules are
-  removed, eleven copies of the `--json`/`--follow` refusal now share one helper, dead exports
-  are deleted, and the PRINCIPLES.md budgets are refreshed.
+- Internals: more than 20 large functions split into named module-private stage helpers,
+  duplicated GUI role-field readers and the rev-list tokenizer folded into shared helpers,
+  pipeline tests rewritten to observe durable queue/check/event signals, direct unit tests
+  added for merge-questions, history-queued, agent-stream and inbox edge branches, and the
+  removed `approved in-flight` status is gone from status, GUI and queue surfaces.
+- Each agent run gets its own global git config, so runs cannot leak config into each other.
 
-210 files changed, +9,743 / −2,324 over 133 commits since v0.4.7.
+311 files changed, +16,132 / −6,548 over 280 commits since v0.5.0.
