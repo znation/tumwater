@@ -52,30 +52,69 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Run test/doctor-checks.test.ts, test/doctor.test.ts, test/event-format.test.ts, test/retention.test.ts, test/config.test.ts and test/config-aliases.test.ts, then the project's gate. If a surviving row or key loses its case, restore it; do not weaken an assertion to make the gate pass.
 
-### Subtract pin queue, part 1/3: The merge drain merges pins, not queue files; the requeue and torn-head queue writes go (planned 2026-11-09 by the plan role, re-planning the 2026-10-31 part 3f/7 after feature showed its "dead queue modules" premise false — parts 3e, 3h and 3i landed the pin-directed drain and kept the serial drain/pipeline/slot merge engine live; this part is the behavioural half and requires Subtract part 3i/7 and Subtract part 3j/7 landed; sibling to parts 2/3 and 3/3, which require this part; touches src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/merge/merge-head.ts src/merge/merge-requeue.ts src/merge/merge-queue.ts docs/how-it-works.md test/merge-drain.test.ts test/merge-requeue.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-queue.test.ts test/orchestrator-merge-pin.test.ts)
+### Subtract pin queue, part 1a/3: The merge test fixtures seed pins, not queue files (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large re-plan of the 2026-10-31 part 3f/7 after feature held it; requires Subtract part 3i/7 and Subtract part 3j/7 landed; sibling to parts 1b/3 and 1c/3, which require this part; touches test/fixtures/merge-fixtures.ts test/fixtures/orchestrator-fixtures.ts test/merge-drain.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/orchestrator-merge-pin.test.ts)
 
-**Needs review 2026-11-09 by feature: too large for one run**
+**Goal.** No merge-drain, merge-pipeline or orchestrator test depends on a queue file to start a merge: each fixture seeds the role's merge ref, the drain is driven from that pin, and the assertions read the pin and marker rather than queue depth. This is the preparatory half of the split so the queue-file path can be deleted in part 1b/3 without rewriting test intent; production `src/` does not change here.
 
-**Goal.** The pin is the merge drain's only waiting state: `drainMerge` starts a merge only for a runner whose merge ref resolves, and no production path writes a durable queue file. The serial drain/pipeline/slot engine stays — it is the one merge writer. The queue's requeue path and its torn-head repair go: a kept change that fails its gate is an ordinary rejection owned by its author, and a legacy torn queue file is left for part 2/3's reader removal instead of being re-queued.
+**Approach.** Test and fixture edits only.
+- test/fixtures/merge-fixtures.ts: `queueChanges` sets each role's `mergeRefName` and no longer calls `enqueueMerge` (keep its name and call sites, or rename to `pinChanges` in the same edit if the compiler is updated); update its doc comment. `drained(root, p)` becomes true when every runner's merge ref no longer resolves and no merge task remains, instead of `queueDepth(root) === 0`. Remove the now-unused `entry` helper unless another test still imports it.
+- test/fixtures/orchestrator-fixtures.ts: `mergeHead` resolves the expected role's pin and drives the drain through it; remove the `headMerge` queue-head branch, the queue-file drop loop and the queue-depth check, and assert the pin is gone after a `changed` merge and present after a retriable one.
+- test/merge-drain.test.ts: delete the cases whose subject is the queue-file path (torn head, a queued entry already on main, dedupe-cache eviction); keep the pin scan, single-flight, post-landing review and null-file settle cases.
+- test/merge-pipeline.test.ts, test/merge-pipeline-2.test.ts and test/orchestrator-merge-pin.test.ts: replace `queueDepth`/`queuedMergeFiles`/`headMerge` assertions with `refSha(root, mergeRefName(role))` assertions; delete the torn-head case and the "a queued entry drains before a pin" case, whose subject is queue priority and has no pin-only meaning; a case that says an entry stays queued says the role's pin stays.
+- test/merge-queue.test.ts keeps the queue module's own unit coverage; it is not a drain test.
 
-**Approach.** Behavioural half only; `src/merge/merge-queue.ts` stays for now because status and the doctor still read it until part 2/3.
-- `drainMerge` in src/merge/merge-drain.ts loses the `queuedMergeFiles` loop and the `dropTornHead` call; it begins at the existing kept-pin scan. The `queuedMergeRoles` skip and the `entryRevisionFields`/`dropMerge` imports go with that loop. Keep the single-flight checks, `startMerge` and the post-review drain.
-- Delete src/merge/merge-head.ts and src/merge/merge-requeue.ts. Both serve only the queue-file path: merge-head's torn-head re-queue calls `enqueueMerge`, and merge-requeue's `requeueKeptChange` calls it after a settled non-terminal change. In src/merge/merge-pipeline.ts remove the `requeueKeptChange` import and call and the now-unused `mainBranch` parameter of `settleMergeOutcome`; in src/merge/merge-drain.ts drop the `mainBranch` argument from its `settleMergeOutcome` call. Leave `writeMergeOutcome`'s `file` parameter in place for part 3/3, but every drain caller now passes null.
-- `enqueueMerge` and `entryRevisionFields` lose their last production callers; delete `entryRevisionFields` from src/merge/merge-queue.ts (its only caller was the drain) and leave the rest of the module for 2/3. Queue files an older build left on disk still read through status/doctor, but they no longer merge.
-- docs/how-it-works.md: state that a changed run pins its commit, the drain merges the oldest eligible pin, and a gate rejection is the author's next run — no queue file and no automatic requeue.
-
-**Files touched.** src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/merge/merge-head.ts src/merge/merge-requeue.ts src/merge/merge-queue.ts docs/how-it-works.md test/merge-drain.test.ts test/merge-requeue.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-queue.test.ts test/orchestrator-merge-pin.test.ts
+**Files touched.** test/fixtures/merge-fixtures.ts test/fixtures/orchestrator-fixtures.ts test/merge-drain.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/orchestrator-merge-pin.test.ts
 
 **Acceptance criteria.**
-- A fresh run's pin and a leftover-recovery pin each merge through `drainMerge` with no queue file created; a queue file present in `.tumwater/merge-queue/` does not start a merge.
-- `grep -rn 'enqueueMerge' src/` finds only its definition in src/merge/merge-queue.ts; no production caller remains.
-- A change whose gate rejects it is not re-queued: its pin and the rejection are the next run's input, and no retry `merge_queued` event is logged.
-- `grep -rn 'dropTornHead\|requeueKeptChange' src/ test/` prints nothing; the compiler is clean and the exports check passes (test files count as users).
+- `grep -rn 'enqueueMerge' test/merge-drain.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/orchestrator-merge-pin.test.ts test/fixtures/merge-fixtures.ts test/fixtures/orchestrator-fixtures.ts` prints nothing.
+- `drained(root, pipeline)()` is false while any runner's merge ref resolves even with no queue file present, and true after the pin clears and its task settles.
+- Every touched case keeps its observable outcome through the pin: a merged change clears its merge ref and the in-flight marker; a rejected or plumbing-throw change keeps its merge ref and records its error.
+- `git diff --stat -- src/` shows no production change, and `npm run test:gate` passes.
+
+**Tests.** Run test/merge-drain.test.ts, test/merge-pipeline.test.ts, test/merge-pipeline-2.test.ts, test/orchestrator-merge-pin.test.ts and test/merge-queue.test.ts, then the project's gate.
+
+### Subtract pin queue, part 1b/3: The merge drain merges pins, not queue files; the torn-head queue write goes (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large re-plan of the 2026-10-31 part 3f/7 after feature held it; requires Subtract pin queue part 1a/3 landed, which moves every merge test to pins; sibling to part 1c/3, which requires this part; touches src/merge/merge-drain.ts src/merge/merge-head.ts docs/how-it-works.md test/merge-drain.test.ts test/merge-queue.test.ts)
+
+**Goal.** `drainMerge` starts a merge only for a runner whose merge ref resolves; a queue file in `.tumwater/merge-queue/` starts nothing and the torn-head repair module goes. The serial drain/pipeline/slot engine and the requeue path stay for part 1c/3; `src/merge/merge-queue.ts` stays because status and the doctor still read it until part 2/3.
+
+**Approach.** Behavioural half only.
+- src/merge/merge-drain.ts: remove the `dropTornHead` call, the `queuedMergeFiles` loop with its `notBefore`/already-merged dedupe and `dropMerge` warning, and the `queuedMergeRoles` skip; the drain begins at the existing kept-pin scan. Remove the imports those branches were the only users of (`dropTornHead`, `mergedIntoMain`, `branchHead`, `queuedMergeFiles`, `queuedMergeRoles`, `dropMerge`, and `fs`/`path`/`errorMessage` where the remaining code no longer uses them; `errorMessage`/`warnEventBestEffort` stay for startMerge's catch). Update the `drainMergeQueue`/`drainMerge` doc comments. The only `startMerge` call passes null for the queue file.
+- Delete src/merge/merge-head.ts: `dropTornHead` loses its only caller and `mergedIntoMain` loses its only caller with the queue dedupe. Do not move either function.
+- test/merge-queue.test.ts: delete the torn-head step and its `dropTornHead` import; keep the reader cases for part 2/3. test/merge-drain.test.ts: add the missing pin-only case that a queue file with no live merge ref starts no merge, and delete any remaining queue-head assertion part 1a/3 did not remove.
+- docs/how-it-works.md: remove the sentences that promise a legacy queue file still merges (the "legacy input the same drain merges" note and the queue-head eligibility sentence); say the drain merges the oldest eligible pin and a queue file an older build left starts no merge.
+
+**Files touched.** src/merge/merge-drain.ts src/merge/merge-head.ts docs/how-it-works.md test/merge-drain.test.ts test/merge-queue.test.ts
+
+**Acceptance criteria.**
+- A role's merge ref with a queue file present merges through the pin path; a queue file with no resolvable merge ref starts no merge and logs no merge outcome.
+- `grep -rn 'dropTornHead\|mergedIntoMain' src/ test/` prints nothing and `src/merge/merge-head.ts` is gone.
+- `grep -rn 'queuedMergeFiles\|queuedMergeRoles' src/merge/` prints nothing outside src/merge/merge-queue.ts itself; status, scheduling and the doctor keep their readers for part 2/3.
+- Every `startMerge` call from the drain passes null for the queue-file argument (or the parameter is removed and the compiler is clean).
+- `grep -niE 'queue file.*(merge|drain)|legacy.*queue' docs/how-it-works.md` prints no claim that the drain reads a queue file; `npm run test:gate` passes.
+
+**Tests.** Run test/merge-drain.test.ts, test/merge-pipeline.test.ts, test/merge-pipeline-2.test.ts, test/orchestrator-merge-pin.test.ts and test/merge-queue.test.ts, then the project's gate.
+
+### Subtract pin queue, part 1c/3: A kept change is not re-queued; the requeue module and `entryRevisionFields` go (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large re-plan of the 2026-10-31 part 3f/7 after feature held it; requires Subtract pin queue part 1b/3 landed, so no drain caller passes a queue file; touches src/merge/merge-pipeline.ts src/merge/merge-drain.ts src/merge/merge-requeue.ts src/merge/merge-queue.ts test/merge-drain.test.ts test/merge-pipeline-2.test.ts test/merge-requeue.test.ts test/runner-revision.test.ts)
+
+**Goal.** A change that fails its gate is an ordinary rejection owned by its author: the pipeline writes the outcome, drops the marker and leaves the pin for the role's next run, and no retry `merge_queued` event is logged. The requeue module and the pipeline's requeue branch go; `writeMergeOutcome`'s `file` parameter stays for part 3/3.
+
+**Approach.**
+- src/merge/merge-pipeline.ts: remove the `requeueKeptChange` import and the `file !== null && mainBranch !== undefined` requeue block; drop `mainBranch` from `settleMergeOutcome`'s signature and its doc comment. Keep the `file` parameter and every caller's null pass-through.
+- src/merge/merge-drain.ts: drop the `mainBranch` argument from its `settleMergeOutcome` call; replace `...entryRevisionFields(entry)` in the merge request with the two explicit conditional spreads for `revisionRound` and `priorReview`, so the request keeps both fields.
+- Delete src/merge/merge-requeue.ts; delete `entryRevisionFields` from src/merge/merge-queue.ts (its only production caller was the drain). Leave the rest of `merge-queue.ts` for part 2/3.
+- Delete test/merge-requeue.test.ts. In test/merge-pipeline-2.test.ts retarget the retry/re-queue cases to the pin: a rejected or aborted kept change leaves its pin and logs no retry `merge_queued` event. Update the direct `settleMergeOutcome` callers in test/merge-drain.test.ts and test/runner-revision.test.ts to the shorter signature.
+
+**Files touched.** src/merge/merge-pipeline.ts src/merge/merge-drain.ts src/merge/merge-requeue.ts src/merge/merge-queue.ts test/merge-drain.test.ts test/merge-pipeline-2.test.ts test/merge-requeue.test.ts test/runner-revision.test.ts
+
+**Acceptance criteria.**
+- `grep -rn 'requeueKeptChange\|merge-requeue\|entryRevisionFields' src/ test/` prints nothing and `src/merge/merge-requeue.ts` is gone.
+- A gate rejection of a kept change leaves the role's pin in place, records the rejection in the author's state, and logs no retry `merge_queued` event; the author's next run is the retry.
+- `settleMergeOutcome` has no `mainBranch` parameter and every caller compiles; a revision request still carries `revisionRound` and `priorReview` (test/runner-revision.test.ts passes).
 - `npm run test:gate` passes.
 
-**Tests.** Delete test/merge-requeue.test.ts. In test/merge-drain.test.ts keep the pin-merge and single-flight cases and delete the queue-head and requeue cases; in test/merge-queue.test.ts delete the torn-head step only (the reader cases stay for 2/3); update test/merge-pipeline*.test.ts and test/orchestrator-merge-pin.test.ts to expect no requeue and no queue write. Run those files and the gate.
+**Tests.** Run test/merge-drain.test.ts, test/merge-pipeline.test.ts, test/merge-pipeline-2.test.ts, test/runner-revision.test.ts and test/merge-queue.test.ts, then the project's gate.
 
-### Subtract pin queue, part 2/3: `status`, the doctor, `scope` and `once` read the live pin and in-flight marker instead of the queue directory (planned 2026-11-09 by the plan role, re-planning the 2026-10-31 part 3f/7 after feature showed the queue modules are live engine code, not dead state; requires Subtract pin queue part 1/3 landed; sibling to part 3/3, which it enables and which deletes the then-unread queue module; touches src/status/status-data.ts src/status/status-roles.ts src/status/status-polls.ts src/doctor/doctor-backlog.ts src/doctor/doctor-check-names.ts src/doctor/doctor.ts src/orchestrator/orchestrator-poll.ts src/scheduling/scope.ts src/scheduling/once-round.ts src/run/run-stage.ts src/runner/runner-leftover.ts docs/how-it-works.md test/status-data.test.ts test/status-roles.test.ts test/doctor-checks.test.ts test/doctor-backlog.test.ts test/once-round.test.ts test/claims.test.ts test/run-stage.test.ts test/runner-leftover.test.ts)
+### Subtract pin queue, part 2/3: `status`, the doctor, `scope` and `once` read the live pin and in-flight marker instead of the queue directory (planned 2026-11-09 by the plan role, re-planning the 2026-10-31 part 3f/7 after feature showed the queue modules are live engine code, not dead state; requires Subtract pin queue part 1c/3 landed; sibling to part 3/3, which it enables and which deletes the then-unread queue module; touches src/status/status-data.ts src/status/status-roles.ts src/status/status-polls.ts src/doctor/doctor-backlog.ts src/doctor/doctor-check-names.ts src/doctor/doctor.ts src/orchestrator/orchestrator-poll.ts src/scheduling/scope.ts src/scheduling/once-round.ts src/run/run-stage.ts src/runner/runner-leftover.ts docs/how-it-works.md test/status-data.test.ts test/status-roles.test.ts test/doctor-checks.test.ts test/doctor-backlog.test.ts test/once-round.test.ts test/claims.test.ts test/run-stage.test.ts test/runner-leftover.test.ts)
 
 **Goal.** Every queue-file read becomes a pin read. `tumwater status` lists each role whose merge ref resolves as a waiting change, built from the pin's commit trailers, while the in-flight marker still decides "merging"; the doctor's stale row ages pinned waits and its queue-file row goes; `once --once`, the scheduling scope and the run-stage checks read pins. The merge engine and the status payload's `mergeQueue` shape stay unchanged.
 
