@@ -259,6 +259,40 @@ function sayAnsweredQuestions(root: string, inv: QuestionsInvocation): void {
   else say(answeredQuestionList(root, limit ?? 10, grep));
 }
 
+/** The `--file` answer flow: refuse a trailing word, answer from the file, and commit. */
+async function answerFromFile(root: string, n: number, file: string, words: string[], jsonFlag: boolean): Promise<void> {
+  if (words.length > 2) fail(`unexpected argument ${JSON.stringify(words[2])} — with --file the decision comes from the file`);
+  const answered = answerQuestionFromText(root, n, readPromptFileArg(file));
+  await commitAndReportAnswer(root, n, jsonFlag, answered.title, answered.decision);
+}
+
+/** The bare `answer <n>` flow: read the open question, open the editor, and commit its buffer. */
+async function answerFromEditor(root: string, n: number, jsonFlag: boolean): Promise<void> {
+  const open = questionListPayload(root).questions;
+  const question = open[n - 1];
+  if (question === undefined) {
+    const range = open.length > 0 ? ` — valid: 1-${open.length}` : "";
+    fail(`no question at position ${n} (${open.length} open)${range}`);
+  }
+  const edited = decisionFromEditorBuffer(
+    editInEditor(answerEditorBuffer(question.title, question.body), `answer-${n}.md`, "pass a decision or --file <path>"),
+  );
+  if (edited.trim() === "") fail("questions answer needs a decision: the editor left it blank; nothing changed");
+  const answered = answerQuestionFromText(root, n, edited, question.title);
+  await commitAndReportAnswer(root, n, jsonFlag, answered.title, answered.decision);
+}
+
+/** The positional `answer <n> "<decision>"` flow: collapse the words to one line and commit. */
+async function answerFromDecision(root: string, n: number, words: string[], jsonFlag: boolean): Promise<void> {
+  const decision = words.slice(2).join(" ").trim();
+  if (decision === "")
+    fail('questions answer needs a decision: questions answer <n> "<decision>"');
+  // answerQuestion collapses the free-form decision to one line before writing it; report
+  // that written text in the --json payload so it matches the file, not the caller's spacing.
+  const { title, decision: writtenDecision } = answerQuestion(root, n, decision);
+  await commitAndReportAnswer(root, n, jsonFlag, title, writtenDecision);
+}
+
 /** The `questions answer` branch: the inline, editor-backed and `--file` answer flows. */
 async function runQuestionsAnswer(root: string, inv: QuestionsInvocation): Promise<void> {
   const { jsonFlag, grep, words, file } = inv;
@@ -275,34 +309,9 @@ async function runQuestionsAnswer(root: string, inv: QuestionsInvocation): Promi
     fail(
       `questions answer needs a positive question number: questions answer <n> "<decision>"${gotSuffix(raw)}`,
     );
-  if (file !== undefined) {
-    if (words.length > 2) fail(`unexpected argument ${JSON.stringify(words[2])} — with --file the decision comes from the file`);
-    const answered = answerQuestionFromText(root, n, readPromptFileArg(file));
-    await commitAndReportAnswer(root, n, jsonFlag, answered.title, answered.decision);
-    return;
-  }
-  const decision = words.slice(2).join(" ").trim();
-  if (words.length === 2) {
-    const open = questionListPayload(root).questions;
-    const question = open[n - 1];
-    if (question === undefined) {
-      const range = open.length > 0 ? ` — valid: 1-${open.length}` : "";
-      fail(`no question at position ${n} (${open.length} open)${range}`);
-    }
-    const edited = decisionFromEditorBuffer(
-      editInEditor(answerEditorBuffer(question.title, question.body), `answer-${n}.md`, "pass a decision or --file <path>"),
-    );
-    if (edited.trim() === "") fail("questions answer needs a decision: the editor left it blank; nothing changed");
-    const answered = answerQuestionFromText(root, n, edited, question.title);
-    await commitAndReportAnswer(root, n, jsonFlag, answered.title, answered.decision);
-    return;
-  }
-  if (decision === "")
-    fail('questions answer needs a decision: questions answer <n> "<decision>"');
-  // answerQuestion collapses the free-form decision to one line before writing it; report
-  // that written text in the --json payload so it matches the file, not the caller's spacing.
-  const { title, decision: writtenDecision } = answerQuestion(root, n, decision);
-  await commitAndReportAnswer(root, n, jsonFlag, title, writtenDecision);
+  if (file !== undefined) return answerFromFile(root, n, file, words, jsonFlag);
+  if (words.length === 2) return answerFromEditor(root, n, jsonFlag);
+  return answerFromDecision(root, n, words, jsonFlag);
 }
 
 /** `tumwater questions`: list open questions (with `-f/--follow` repainting the outbox until
