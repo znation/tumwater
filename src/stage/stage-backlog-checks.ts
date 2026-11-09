@@ -340,50 +340,90 @@ export async function retireEvidenceFinding(
   head: string,
   base: string,
 ): Promise<string | undefined> {
-  const finishedKeyOf = (title: string): string => finishedKey(title, FINISHED_PLAN_RE);
-  const survivors: string[] = [
+  const survivors = retireSurvivorKeys(wt, head);
+  for (const { title, note } of newlyRetiredEvidence(head, base)) {
+    const finding = await retireNoteFinding(wt, mainBranch, title, note, survivors);
+    if (finding !== undefined) return finding;
+  }
+  return undefined;
+}
+
+/** The finishedKey of a title as a plan done or retired today — the survivor set's key.
+ * Matches the date form the archive headings carry. */
+const finishedKeyOf = (title: string): string => finishedKey(title, FINISHED_PLAN_RE);
+
+/** The headings that count as survivors of a retire: the `## Planned` entries of `head`
+ * (the edited PLANS.md) first, then the done, not retired, entries of the worktree's
+ * PLANS-DONE.md — a quoted title matched by finishedKey against either survives. A retired
+ * archive heading never counts. */
+function retireSurvivorKeys(wt: string, head: string): string[] {
+  return [
     ...parseEntryDetails(head, "Planned").map((e) => finishedKeyOf(e.title)),
     ...parseEntryDetails(readTextOrNull(path.join(wt, "PLANS-DONE.md")) ?? "", "Done")
       .filter((e) => !isRetiredTitle(e.title))
       .map((e) => finishedKeyOf(e.title)),
   ];
-  const retired = (md: string): string[] =>
-    parseEntryDetails(md, "Done")
+}
+
+/** The retired `## Done` entries of `head` that `base` does not already carry — this
+ * change's new retires, in file order — each paired with its `**Retired …**` body line. A
+ * retire already on `base` is not this change's to judge, and a retired entry whose body
+ * carries no evidence line passes: the post-merge review judges prose. */
+function newlyRetiredEvidence(head: string, base: string): { title: string; note: string }[] {
+  const wasRetired = new Set(
+    parseEntryDetails(base, "Done")
       .filter((e) => isRetiredTitle(e.title))
-      .map((e) => finishedKeyOf(e.title));
-  const wasRetired = new Set(retired(base));
+      .map((e) => finishedKeyOf(e.title)),
+  );
+  const out: { title: string; note: string }[] = [];
   for (const e of parseEntryDetails(head, "Done")) {
     if (!isRetiredTitle(e.title)) continue;
     if (wasRetired.has(finishedKeyOf(e.title))) continue; // Only newly retired entries count.
     const note = retiredNoteLine(e.body);
     if (note === null) continue; // No evidence line: the post-merge review judges prose.
-    const shas = note.match(/\b[0-9a-f]{7,40}\b/g) ?? [];
-    for (const sha of shas) {
-      if (!(await commitExists(wt, sha))) {
-        return (
-          `the Retired note of "${truncate(e.title, 160)}" cites commit ${sha.slice(0, 7)}, which this repository ` +
-          "does not hold — the retire rests on evidence that does not check out; name a real commit, the surviving " +
-          "entry, or say plainly why nothing is buildable"
-        );
-      }
-      if (!(await isMergedInto(wt, sha, mainBranch))) {
-        return (
-          `the Retired note of "${truncate(e.title, 160)}" cites commit ${sha.slice(0, 7)}, which main does not contain ` +
-          "— the retire rests on unmerged work; wait for it to merge, or cite evidence main already holds"
-        );
-      }
-    }
-    const quoted = note.match(/"([^"]*)"/g) ?? [];
-    for (const q of quoted) {
-      const title = q.slice(1, -1);
-      if (title === "") continue;
-      if (survivors.includes(finishedKeyOf(title))) continue;
+    out.push({ title: e.title, note });
+  }
+  return out;
+}
+
+/** The first evidence failure of one retired note, or undefined when it checks out: each
+ * cited short SHA must be held by the repository and merged into `mainBranch`, and each
+ * double-quoted title must be a survivor by finishedKey. The first bad SHA speaks first
+ * (repository does not hold; main does not contain), then the first uncarried quoted title
+ * (survivor does not exist). */
+async function retireNoteFinding(
+  wt: string,
+  mainBranch: string,
+  title: string,
+  note: string,
+  survivors: readonly string[],
+): Promise<string | undefined> {
+  const shas = note.match(/\b[0-9a-f]{7,40}\b/g) ?? [];
+  for (const sha of shas) {
+    if (!(await commitExists(wt, sha))) {
       return (
-        `the Retired note of "${truncate(e.title, 160)}" quotes a surviving entry, "${truncate(title, 160)}", that no ` +
-        "`## Planned` or done `## Done` heading carries — the survivor it claims does not exist; point the evidence at a " +
-        "real heading"
+        `the Retired note of "${truncate(title, 160)}" cites commit ${sha.slice(0, 7)}, which this repository ` +
+        "does not hold — the retire rests on evidence that does not check out; name a real commit, the surviving " +
+        "entry, or say plainly why nothing is buildable"
       );
     }
+    if (!(await isMergedInto(wt, sha, mainBranch))) {
+      return (
+        `the Retired note of "${truncate(title, 160)}" cites commit ${sha.slice(0, 7)}, which main does not contain ` +
+        "— the retire rests on unmerged work; wait for it to merge, or cite evidence main already holds"
+      );
+    }
+  }
+  const quoted = note.match(/"([^"]*)"/g) ?? [];
+  for (const q of quoted) {
+    const quotedTitle = q.slice(1, -1);
+    if (quotedTitle === "") continue;
+    if (survivors.includes(finishedKeyOf(quotedTitle))) continue;
+    return (
+      `the Retired note of "${truncate(title, 160)}" quotes a surviving entry, "${truncate(quotedTitle, 160)}", that no ` +
+      "`## Planned` or done `## Done` heading carries — the survivor it claims does not exist; point the evidence at a " +
+      "real heading"
+    );
   }
   return undefined;
 }
