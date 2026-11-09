@@ -211,8 +211,8 @@ function headerFields(root: string, snap: ReturnType<typeof snapshot>, now: numb
 /** Merge-queue and main-check state (status-payload.ts's field-group split): the merge queue
  * and its labels, the post-merge review queue, main's newest merge-scope check and its badge,
  * the ci-parity badge/tone, the remote-CI badge/tone, and the raw twins of the
- * no-check/no-brief/brief-truncated/role-notes/salvage-patches/principles and config-problem
- * alerts for `status --json` scripts. */
+ * no-check/no-brief/brief-truncated/role-notes/salvage-patches and config-problem
+ * alerts plus the `principlesTruncated` diagnostic key for `status --json` scripts. */
 function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, now: number) {
   return {
     // The merge queue (plans/merge-queue.md 4/5): depth always (machine-readable for
@@ -283,10 +283,12 @@ function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, no
     // `tumwater status --json` scripts can read what the alert renders). Omitted (absent) when
     // no kept patch exists, the same omit-undefined idiom as noBrief.
     ...(snap.salvagePatches && snap.salvagePatches.length > 0 ? { salvagePatches: snap.salvagePatches } : {}),
-    // The raw machine-readable twin of the amber `principles-truncated` alert (present only
-    // when PRINCIPLES.md is over its prompt cap, so `tumwater status --json` scripts can read
-    // the same state the alert renders). Omitted (absent) when the file is at or under the cap
-    // or missing, the same omit-undefined idiom as noDeclaredCheck.
+    // The machine-readable diagnostic for PRINCIPLES.md being over its prompt cap (present
+    // only when the file is over the cap, so `tumwater status --json` scripts can read the
+    // state the doctor `principles` row reports and the orchestrator's consolidation request
+    // acts on — the `principles-truncated` standing alert no longer exists, so this key has
+    // no alert twin). Omitted (absent) when the file is at or under the cap or missing, the
+    // same omit-undefined idiom as noDeclaredCheck.
     ...(snap.principlesTruncated ? { principlesTruncated: true } : {}),
     // The raw machine-readable twin of the amber `config-problem` alert (present only when
     // the live tumwater.json did not load — the error text or the missing-file sentence the

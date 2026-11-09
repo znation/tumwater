@@ -426,10 +426,11 @@ export interface StatusSnapshot {
   salvagePatches?: SalvagePatch[];
   /** True when PRINCIPLES.md's trimmed text exceeds the prompt cap, so every role's
    * <principles> block carries only its head plus a truncation marker (src/prompt/
-   * principles.ts's principlesBlockOverCap) — the doctor `principles` row's over-cap
-   * warning state. Present only in that state, so the always-on amber `principles-truncated`
-   * alert surfaces the silent truncation on `tumwater status`, the dashboard and the TUI;
-   * absent otherwise (including no PRINCIPLES.md), so the surfaces render exactly as before. */
+   * principles.ts's principlesBlockOverCap) — the diagnostic over-cap state the doctor
+   * `principles` row reports and the orchestrator's automatic consolidation request
+   * (src/prompt/principles-consolidation.ts) acts on, with no standing alert consumer.
+   * Present only in that state; absent otherwise (including no PRINCIPLES.md), so the
+   * `--json` key and surfaces read exactly as before. */
   principlesTruncated?: boolean;
   /** The check-permit pool's live state as the orchestrator published it; only while it runs. */
   checkPermits?: CheckPermitSnapshot;

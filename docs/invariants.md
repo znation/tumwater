@@ -1451,30 +1451,39 @@ stat-keyed cache without re-reading" (it pins the cache hit and the per-poll cop
 
 ### INV-T6: each standing doctor-twin alert is gated by its snapshot flag and worded by its doctor row
 
-**Guarantee.** The eight standing amber alerts — no-check, no-brief, brief-truncated,
-role-notes-truncated, salvage-patches, instance-pool, principles-truncated, config-problem — are
+**Guarantee.** The seven standing amber alerts — no-check, no-brief, brief-truncated,
+role-notes-truncated, salvage-patches, instance-pool, config-problem — are
 raised by `buildStandingAlerts` (team-alert-standings.ts) only when their snapshot flag stands
 (`noDeclaredCheck`, `noBrief`, `briefTruncated`, a non-empty `roleNotesOverCap`, a non-empty
-`salvagePatches`, `principlesTruncated`, or a non-empty `configProblem`; instance-pool by the
+`salvagePatches`, or a non-empty `configProblem`; instance-pool by the
 configured pool itself, `smallPoolProblems`), and each alert's detail is the warn sentence of the
 doctor row it twins (checkBuildCheck, checkBrief, checkRoleNotes, checkSalvagePatches,
-smallPoolProblems, checkPrinciples; config-problem phrases the `init` row's config-validity
+smallPoolProblems; config-problem phrases the `init` row's config-validity
 failure from the `configProblem` string, with the remedy) — so the rendered alert and the
 `tumwater doctor` row cannot disagree on the trigger, the caps, or the remedy, and all three
 surfaces (`tumwater status`'s banners, the dashboard's `alerts`, the TUI's attention lines) show
 them from the one `teamAlerts` source. A caller that passes no standing inputs raises none of
-them (the pre-alert rendering), never a false one.
+them (the pre-alert rendering), never a false one. An over-cap PRINCIPLES.md raises none of the
+seven: the `principlesTruncated` snapshot key and the doctor `principles` row stay the diagnostic,
+and the orchestrator instead queues the director a one-shot consolidation prompt
+(`requestPrinciplesConsolidation`, `src/prompt/principles-consolidation.ts`) — one at a time, gated
+so an over-cap episode never repeats the assignment.
 
 **Binds.** `src/ui/team-alert-standings.ts` (`buildStandingAlerts`),
 `src/ui/team-alerts.ts` (`teamAlerts`' `standings` argument),
 `src/ui/status-render.ts` (`renderStatus`), `src/ui/tui/tui.tsx`, `src/ui/status-payload.ts`
-(`alertFields`) — the three call sites that pass `{ snap, config, root }`.
+(`alertFields`) — the three call sites that pass `{ snap, config, root }` — and
+`src/prompt/principles-consolidation.ts` (`requestPrinciplesConsolidation`), the
+over-cap assignment that replaces the removed `principles-truncated` alert.
 
 **Pinned by.** `test/team-alerts.test.ts` — "the standing amber alerts raise from the
 snapshot's raw flags, worded like their doctor rows" (each flag raises its amber alert with
-the row's own wording; the flag gates it) and "tumwater status prints the standing no-check
+the row's own wording; the flag gates it, and an over-cap `principlesTruncated` snapshot raises
+no `principles-truncated` alert) and "tumwater status prints the standing no-check
 banner from the snapshot's flag"; `test/status-payload.test.ts` — the raw-flag suites (they
-assert the payload's `alerts` carry the twin key in each state).
+assert the `principlesTruncated` key stands while no `principles-truncated` alert accompanies
+it); `test/principles-consolidation.test.ts` — the one-assignment-at-a-time gate over an
+over-cap file.
 
 ## Runner ids: only feature and bugfix split, and everything about a role resolves through its base
 

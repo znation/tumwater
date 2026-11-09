@@ -45,6 +45,7 @@ import type { ReclaimController } from "../team/team-reclaim.js";
 import { heldProviders, windowHeldProviders } from "../team/team-hold.js";
 import { workReserveCount } from "../scheduling/claims.js";
 import type { ModelCheckGate } from "../model-check/model-check-gate.js";
+import { requestPrinciplesConsolidation } from "../prompt/principles-consolidation.js";
 
 /** The setup's constants and collaborators, fixed for the whole run. */
 export interface PollContext {
@@ -150,8 +151,10 @@ interface PollInputs {
   now: number;
 }
 
-/** Live-reload, notify/retention/launchservices, CLI request markers, abort settling and the
- * branch-divergence watch. Writes state.warnedBranchDivergence. */
+/** Live-reload, notify/retention/launchservices, CLI request markers, abort settling, the
+ * branch-divergence watch, and the over-cap PRINCIPLES.md consolidation request (one assignment
+ * at a time; the doctor `principles` row and the `principlesTruncated` key stay the diagnostic).
+ * Writes state.warnedBranchDivergence. */
 export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): Promise<PollInputs> {
   const { root, mainBranch, runners } = ctx;
   // Live-reload tumwater.json — the single reload point shared by all roles.
@@ -209,6 +212,20 @@ export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): 
     }
   } else {
     state.warnedBranchDivergence = false;
+  }
+  // PRINCIPLES.md over its prompt cap: the orchestrator queues the director (the role allowed
+  // to edit PRINCIPLES.md) a one-shot consolidation prompt instead of the team surfacing the
+  // old standing amber `principles-truncated` alert. `principlesBlockOverCap` is stat-cached
+  // per root, so the under-cap common case is one cheap read per poll; the queued/busy/pin
+  // checks inside keep an over-cap episode to one assignment at a time. An enqueue failure
+  // only warns — it never ends the poll loop.
+  {
+    const consolidation = await requestPrinciplesConsolidation(root, {
+      directorBusy: ctx.directorInFlight.size > 0,
+    });
+    if (!consolidation.requested && consolidation.error) {
+      ctx.warn(`could not queue the PRINCIPLES.md consolidation: ${consolidation.error}`);
+    }
   }
   return { liveConfig, mainHead, now: Date.now() };
 }

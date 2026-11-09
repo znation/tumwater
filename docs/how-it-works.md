@@ -573,7 +573,11 @@ for a mid-sized model with a finite context window: tool-call budgets, ranged re
 files, and bundled pi extensions that trim oversized tool output to its head and tail and, on
 a model with a window of at most 256k, stop sending the model's earlier thinking back to it.
 The file is capped for injection, so an over-cap PRINCIPLES.md silently degrades every run's
-design guidance — `tumwater doctor`'s `principles` row warns on it.
+design guidance. The orchestrator then queues the director (the role allowed to edit it) a
+one-shot consolidation prompt — read the file whole, merge overlapping rules, drop superseded
+wording, keep every active rule in its positive voice and keep the measured Budgets facts, and
+land a version under the cap — one at a time, not one per poll, while `tumwater doctor`'s
+`principles` row still warns on the over-cap state.
 The status table's `peak ctx` column reads each run against the role's declared window
 (`110.0k (84%)`), so an operator can see how close a run came to where pi compacts it.
 

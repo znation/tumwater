@@ -25,7 +25,7 @@ import { buildTailAlerts } from "./team-alert-tail.js";
 export type { TeamAlert, AlertRole } from "./team-alert-shared.js";
 
 /** The standing doctor-twin alerts' inputs (team-alert-standings.ts): the observer's
- * last-known-good config and the project root the seven rows read. Optional so a caller that
+ * last-known-good config and the project root the doctor-twin rows read. Optional so a caller that
  * holds neither (a test that exercises only the other arms) raises no standing alerts —
  * the pre-fix rendering, never a false one.
  */
@@ -33,16 +33,16 @@ interface StandingAlertInputs {
   snap: Pick<
     StatusSnapshot,
     "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "salvagePatches" |
-      "principlesTruncated" | "configProblem"
+      "configProblem"
   >;
   config: TumwaterConfig;
   root: string;
 }
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget,
- * roles failing run after run, roles that look stuck, disk and install drift, the eight
+ * roles failing run after run, roles that look stuck, disk and install drift, the seven
  * standing doctor twins (no-check, no-brief, brief-truncated, role-notes-truncated,
- * salvage-patches, instance-pool, principles-truncated, config-problem), open questions,
+ * salvage-patches, instance-pool, config-problem), open questions,
  * refused entries, orphaned processes, and a stopped team.
  */
 export function teamAlerts(

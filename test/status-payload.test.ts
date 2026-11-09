@@ -1010,12 +1010,14 @@ test("the payload's principlesTruncated follows principlesBlockOverCap and clear
   assert.equal(payload.principlesTruncated, undefined, "no principlesTruncated key with no PRINCIPLES.md");
   assert.equal(payload.alerts.find((a) => a.key === "principles-truncated"), undefined, "no principles-truncated alert with no PRINCIPLES.md");
 
-  // An over-cap PRINCIPLES.md is the silent state doctor warns on; the snapshot, payload and
-  // alert should all surface it.
+  // An over-cap PRINCIPLES.md is the silent state doctor warns on; the snapshot and the
+  // machine-readable key surface it, but it now raises no standing alert (the orchestrator
+  // queues the director a consolidation prompt instead — see INV-T6).
   fs.writeFileSync(path.join(root, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS + 1));
   assert.equal(snapshot(root, undefined, now).principlesTruncated, true, "over-cap PRINCIPLES.md is surfaced on the snapshot");
   payload = statusPayload(root, now) as { principlesTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.principlesTruncated, true, "the machine-readable payload field is present");
+  assert.equal(payload.alerts.find((a) => a.key === "principles-truncated"), undefined, "no principles-truncated alert accompanies the over-cap key");
 
   // Rewriting the file to exactly the cap clears the field and the alert.
   fs.writeFileSync(path.join(root, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS));

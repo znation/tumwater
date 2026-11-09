@@ -1,16 +1,19 @@
 /** The standing doctor-twin team alerts, in emission order: no-check, no-brief,
- * brief-truncated, role-notes-truncated, salvage-patches, instance-pool, principles-truncated,
- * and the config-problem alert. One of the per-domain builders split out of
+ * brief-truncated, role-notes-truncated, salvage-patches, instance-pool, and the
+ * config-problem alert. One of the per-domain builders split out of
  * src/ui/team-alerts.ts; the shared types and wording helpers live in team-alert-shared.ts.
  *
- * These eight are the standing amber alerts docs/cli.md promises on `tumwater status`, the
- * dashboard and the TUI — the always-on twins of their doctor rows. The snapshot carries
+ * These seven are the standing amber alerts docs/cli.md promises on `tumwater status`, the
+ * dashboard and the TUI — the always-on twins of their doctor rows. (An over-cap
+ * PRINCIPLES.md raises none: the orchestrator instead queues the director a consolidation
+ * prompt — src/prompt/principles-consolidation.ts — while the `principlesTruncated` key and
+ * the doctor `principles` row stay the diagnostic.) The snapshot carries
  * their state as raw fields (noDeclaredCheck, noBrief, briefTruncated, roleNotesOverCap,
- * salvagePatches, principlesTruncated, configProblem) and this module raises each as its
+ * salvagePatches, configProblem) and this module raises each as its
  * alert when its flag stands, phrasing the detail from the same check or selector the
  * doctor row runs (doctor-project-checks.ts checkBuildCheck, doctor-checks.ts checkBrief,
  * doctor-role-notes.ts checkRoleNotes, doctor-salvage.ts checkSalvagePatches,
- * doctor-contention-checks.ts smallPoolProblems, doctor-principles.ts checkPrinciples, or
+ * doctor-contention-checks.ts smallPoolProblems, or
  * the doctor `init` row's config-validity check for config-problem), so the alert and the
  * row cannot drift on the trigger, the caps, or the remedy. The raw fields stay the
  * machine-readable `--json` keys; the alert is the rendered half the docs name. */
@@ -23,7 +26,6 @@ import { checkBuildCheck } from "../doctor/doctor-project-checks.js";
 import { checkBrief } from "../doctor/doctor-checks.js";
 import { checkRoleNotes } from "../doctor/doctor-role-notes.js";
 import { checkSalvagePatches } from "../doctor/doctor-salvage.js";
-import { checkPrinciples } from "../doctor/doctor-principles.js";
 import { smallPoolProblems } from "../doctor/doctor-contention-checks.js";
 import { plural } from "../text/phrases.js";
 import { ROLE_NOTES_MAX_BYTES } from "../roles/role-notes-write.js";
@@ -37,7 +39,7 @@ interface StandingAlertsInput {
   snap: Pick<
     StatusSnapshot,
     "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "salvagePatches" |
-      "principlesTruncated" | "configProblem"
+      "configProblem"
   >;
   config: TumwaterConfig;
   root: string;
@@ -54,8 +56,8 @@ interface StandingAlertsInput {
  * construction — a row that reads ok is a state the snapshot flag's own read could not see
  * (a concurrent write between the flag's read and the row's), and it raises nothing. `key`
  * and `title` are the arm's own; the tone is fixed amber and the actions empty, as every
- * doctor-twin standing alert is. The six arms that read a CheckOutcome use it: no-check,
- * no-brief, brief-truncated, role-notes-truncated, salvage-patches and principles-truncated.
+ * doctor-twin standing alert is. The five arms that read a CheckOutcome use it: no-check,
+ * no-brief, brief-truncated, role-notes-truncated and salvage-patches.
  * instance-pool is not one — it reads the smallPoolProblems selector, not a doctor row, so it
  * keeps its own arm. */
 function pushDoctorTwinAlert(out: TeamAlert[], row: CheckOutcome, key: string, title: string): void {
@@ -113,15 +115,6 @@ function pushInstancePoolAlert(out: TeamAlert[], config: TumwaterConfig): void {
   });
 }
 
-function pushPrinciplesAlert(out: TeamAlert[], root: string): void {
-  pushDoctorTwinAlert(
-    out,
-    checkPrinciples(root),
-    "principles-truncated",
-    "PRINCIPLES.md over its prompt cap — roles see only the head",
-  );
-}
-
 // The doctor `init` row's config-validity failure is the sibling of configProblem (both
 // read the live tumwater.json), but the standing surface cannot wait on a doctor run, so
 // this arm raises from the snapshot string itself — the same trigger the `--json` key names.
@@ -147,8 +140,8 @@ function pushSalvagePatchesAlert(out: TeamAlert[], root: string): void {
 }
 
 /** The standing doctor-twin alerts, in emission order: no-check, no-brief,
- * brief-truncated, role-notes-truncated, salvage-patches, instance-pool, principles-truncated,
- * config-problem. The caller pushes the returned alerts at the position this run used to
+ * brief-truncated, role-notes-truncated, salvage-patches, instance-pool, config-problem.
+ * The caller pushes the returned alerts at the position this run used to
  * occupy, so the emitted key order is unchanged. */
 export function buildStandingAlerts(input: StandingAlertsInput): TeamAlert[] {
   const { snap, config, root } = input;
@@ -161,7 +154,6 @@ export function buildStandingAlerts(input: StandingAlertsInput): TeamAlert[] {
   if (snap.salvagePatches && snap.salvagePatches.length > 0)
     pushSalvagePatchesAlert(out, root);
   pushInstancePoolAlert(out, config);
-  if (snap.principlesTruncated) pushPrinciplesAlert(out, root);
   if (snap.configProblem) pushConfigProblemAlert(out, snap.configProblem);
   return out;
 }

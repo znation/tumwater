@@ -371,14 +371,13 @@ test("the standing amber alerts raise from the snapshot's raw flags, worded like
   // A single-instance role never contends, however small the pool.
   assert.ok(!withPool((c) => { c.worktreeSlots = 3; }).some((a) => a.key === "instance-pool"), "no multi-instance role: nothing");
 
-  // principles-truncated: an over-cap PRINCIPLES.md truncates every role's <principles> block.
+  // principlesTruncated: an over-cap PRINCIPLES.md truncates every role's <principles> block,
+  // but raises no standing alert — the orchestrator queues the director a consolidation prompt
+  // instead, so the over-cap state now surfaces only as the --json key and the doctor row.
   fs.writeFileSync(path.join(root, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS + 1));
-  const prin = has({ principlesTruncated: true }, "principles-truncated");
-  assert.ok(prin, "a principlesTruncated snapshot raises the standing principles-truncated alert");
-  assert.equal(prin?.tone, "amber");
-  assert.match(prin?.detail ?? "", /over the 4000-character prompt cap/);
+  assert.ok(!has({ principlesTruncated: true }, "principles-truncated"), "an over-cap principlesTruncated snapshot raises no alert");
   fs.rmSync(path.join(root, "PRINCIPLES.md"));
-  assert.ok(!has({ principlesTruncated: false }, "principles-truncated"), "no PRINCIPLES.md raises nothing");
+  assert.ok(!has({ principlesTruncated: false }, "principles-truncated"), "a no/under-cap principlesTruncated snapshot raises nothing");
 
   // config-problem: a non-empty configProblem stands from the snapshot string the `--json`
   // key carries — the sibling of the doctor `init` row's config-validity failure.
