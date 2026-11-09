@@ -52,6 +52,75 @@ interface SalvageParties {
   forRole: string;
 }
 
+/** The slot's uncommitted status (`git status --porcelain --untracked-files=all`). Returns the
+ * status text, or `null` for a clean slot (nothing to save) and for a worktree git cannot read
+ * (a slot about to be recreated). Rethrows when git could not start on a usable worktree, so
+ * the caller fails the lease with the slot untouched. */
+async function salvageStatus(dir: string): Promise<string | null> {
+  let status: string;
+  try {
+    status = await git(dir, "status", "--porcelain", "--untracked-files=all");
+  } catch (err) {
+    if (gitCouldNotStart(err) && (await isUsableWorktree(dir))) throw err;
+    return null;
+  }
+  if (status === "") return null;
+  return status;
+}
+
+/** Capture the slot's uncommitted changes as a raw binary patch against its HEAD, through a
+ * temporary index in `tmp` (the slot's own index is untouched). Returns the patch text, or
+ * `null` when the diff is empty (nothing to save). */
+async function captureSalvagePatch(dir: string, tmp: string): Promise<string | null> {
+  const env = { GIT_INDEX_FILE: path.join(tmp, "index") };
+  await runGit(dir, ["read-tree", "HEAD"], env);
+  await runGit(dir, ["add", "-A"], env);
+  // Raw, not runGit: its trimEnd drops a last hunk's trailing blank context line, and the
+  // patch then no longer applies (a 28-file patch kept on 2026-11-04 was cut that way).
+  const patch = await runGitRaw(dir, ["diff", "--cached", "--binary", "HEAD"], env);
+  if (patch === "") return null;
+  return patch;
+}
+
+/** Write the salvage patch file: resolve the destination (salvageDir for a settled run,
+ * salvagePendingDir for a role's unsettled work), ensure the directory, write atomically, and
+ * log the warning naming the slot, the role that left the work and the file. Returns the
+ * file's path. */
+function writeSalvagePatch(
+  root: string,
+  dir: string,
+  { leftBy, recoverFor, forRole }: SalvageParties,
+  patch: string,
+  base: string,
+  files: number,
+  now: Date,
+): string {
+  const slot = path.basename(dir);
+  const by = leftBy ?? "an unknown role";
+  const home = recoverFor === null ? salvageDir(root) : salvagePendingDir(root, recoverFor);
+  const file = path.join(home, salvageFileName(now, dir, leftBy));
+  ensureDir(home);
+  // Atomic: the patch is the only copy left once the lease resets the workspace, so a kill
+  // mid-write must never leave a truncated .patch that a later restore reads and partially
+  // applies. Written to a temp name and renamed, a reader (restoreSalvagedWork) sees either
+  // no file or the complete patch, never a prefix.
+  writeTextAtomic(
+    file,
+    `# ${plural(files, "uncommitted file")} ${by} left in workspace ${slot}, saved before ${forRole} reused it\n` +
+      `# base ${base}; apply with: git apply --index <this file> on a checkout of that commit\n` +
+      patch,
+  );
+  const saved = path.relative(root, file);
+  warnEventBestEffort(
+    root,
+    TUMWATER_SOURCE,
+    recoverFor === null
+      ? `workspace ${slot} still held ${plural(files, "uncommitted file")} ${by} left behind; saved them to ${saved} and reset it for ${forRole}`
+      : `workspace ${slot} still held ${plural(files, "uncommitted file")} from ${recoverFor}'s unfinished run; saved them to ${saved} for its next run and reset it for ${forRole}`,
+  );
+  return file;
+}
+
 /** Save the uncommitted changes in `dir` (modified, deleted and untracked files, ignored ones
  * excepted) as a patch against its HEAD, and log a warning naming the slot, the role that left
  * them and the file, before `forRole`'s lease resets it. The patch waits for `recoverFor`'s next
@@ -69,52 +138,20 @@ export async function salvageSlotLeftovers(
   { leftBy, recoverFor, forRole }: SalvageParties,
   now: Date = new Date(),
 ): Promise<string | null> {
-  const slot = path.basename(dir);
-  let status: string;
-  try {
-    status = await git(dir, "status", "--porcelain", "--untracked-files=all");
-  } catch (err) {
-    if (gitCouldNotStart(err) && (await isUsableWorktree(dir))) throw err;
-    return null;
-  }
-  if (status === "") return null;
+  const status = await salvageStatus(dir);
+  if (status === null) return null;
   const files = status.split("\n").filter((line) => line.trim() !== "").length;
   const by = leftBy ?? "an unknown role";
   let tmp: string | undefined;
   try {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-salvage-"));
-    const env = { GIT_INDEX_FILE: path.join(tmp, "index") };
-    await runGit(dir, ["read-tree", "HEAD"], env);
-    await runGit(dir, ["add", "-A"], env);
-    // Raw, not runGit: its trimEnd drops a last hunk's trailing blank context line, and the
-    // patch then no longer applies (a 28-file patch kept on 2026-11-04 was cut that way).
-    const patch = await runGitRaw(dir, ["diff", "--cached", "--binary", "HEAD"], env);
-    if (patch === "") return null;
+    const patch = await captureSalvagePatch(dir, tmp);
+    if (patch === null) return null;
     const base = await git(dir, "rev-parse", "HEAD");
-    const home = recoverFor === null ? salvageDir(root) : salvagePendingDir(root, recoverFor);
-    const file = path.join(home, salvageFileName(now, dir, leftBy));
-    ensureDir(home);
-    // Atomic: the patch is the only copy left once the lease resets the workspace, so a kill
-    // mid-write must never leave a truncated .patch that a later restore reads and partially
-    // applies. Written to a temp name and renamed, a reader (restoreSalvagedWork) sees either
-    // no file or the complete patch, never a prefix.
-    writeTextAtomic(
-      file,
-      `# ${plural(files, "uncommitted file")} ${by} left in workspace ${slot}, saved before ${forRole} reused it\n` +
-        `# base ${base}; apply with: git apply --index <this file> on a checkout of that commit\n` +
-        patch,
-    );
-    const saved = path.relative(root, file);
-    warnEventBestEffort(
-      root,
-      TUMWATER_SOURCE,
-      recoverFor === null
-        ? `workspace ${slot} still held ${plural(files, "uncommitted file")} ${by} left behind; saved them to ${saved} and reset it for ${forRole}`
-        : `workspace ${slot} still held ${plural(files, "uncommitted file")} from ${recoverFor}'s unfinished run; saved them to ${saved} for its next run and reset it for ${forRole}`,
-    );
-    return file;
+    return writeSalvagePatch(root, dir, { leftBy, recoverFor, forRole }, patch, base, files, now);
   } catch (err) {
     if (gitCouldNotStart(err)) throw err;
+    const slot = path.basename(dir);
     warnEventBestEffort(
       root,
       TUMWATER_SOURCE,
@@ -247,6 +284,36 @@ async function sectionPaths(dir: string, file: string): Promise<string[]> {
   return paths;
 }
 
+/** The label a section's unplaced hunks are reported under: the paths it touches, or the
+ * `diff --git a/… b/…` header's path, or "a file" when neither parses. */
+function salvageSectionLabel(paths: string[], section: string): string {
+  return paths.join(", ") || (/^diff --git a\/(.*?) b\//.exec(section)?.[1] ?? "a file");
+}
+
+/** Whether a deletion section is already done: the section declares a deleted file and every
+ * path it names is gone from the worktree (the branch has already removed them). */
+function salvageDeletionDone(dir: string, section: string, paths: string[]): boolean {
+  return (
+    /^deleted file mode /m.test(section) &&
+    paths.length > 0 &&
+    paths.every((p) => !fs.existsSync(path.join(dir, p)))
+  );
+}
+
+/** The `.rej` files a `--reject` apply left in `dir`, read and removed so they are never
+ * committed. Returns one entry per rejected file with its diff text; empty when git placed
+ * every hunk. */
+function collectRejectedHunks(dir: string, paths: string[]): RestoredWork["unplaced"] {
+  const rejected: RestoredWork["unplaced"] = [];
+  for (const p of paths) {
+    const rej = path.join(dir, `${p}.rej`);
+    if (!fs.existsSync(rej)) continue;
+    rejected.push({ path: p, diff: fs.readFileSync(rej, "utf8") });
+    fs.rmSync(rej, { force: true });
+  }
+  return rejected;
+}
+
 /** Put one file's section of a salvaged patch back into `dir`: by a three-way merge, which leaves
  * conflict markers where both sides changed the same lines, else by direct application hunk by
  * hunk. Returns the hunks that fit nowhere (git's `.rej` text, read and removed so it is never
@@ -257,21 +324,12 @@ async function placeSalvagedFile(dir: string, file: string, section: string): Pr
     if (gitCouldNotStart(err)) throw err;
     return [];
   });
-  const label = paths.join(", ") || (/^diff --git a\/(.*?) b\//.exec(section)?.[1] ?? "a file");
+  const label = salvageSectionLabel(paths, section);
   if (await applied(dir, ["apply", "--3way", file])) return [];
   if (paths.length > 0 && (await git(dir, "--literal-pathspecs", "ls-files", "-u", "--", ...paths)) !== "") return [];
-  // A deletion whose file the branch has already removed is done; there is nothing to hand back.
-  if (/^deleted file mode /m.test(section) && paths.length > 0 && paths.every((p) => !fs.existsSync(path.join(dir, p)))) {
-    return [];
-  }
+  if (salvageDeletionDone(dir, section, paths)) return [];
   if (await applied(dir, ["apply", "--reject", file])) return [];
-  const rejected: RestoredWork["unplaced"] = [];
-  for (const p of paths) {
-    const rej = path.join(dir, `${p}.rej`);
-    if (!fs.existsSync(rej)) continue;
-    rejected.push({ path: p, diff: fs.readFileSync(rej, "utf8") });
-    fs.rmSync(rej, { force: true });
-  }
+  const rejected = collectRejectedHunks(dir, paths);
   return rejected.length > 0 ? rejected : [{ path: label, diff: section }];
 }
 
