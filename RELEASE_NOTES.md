@@ -1,4 +1,4 @@
-# tumwater 0.5.1
+# tumwater 0.6.0
 
 ## Highlights
 
