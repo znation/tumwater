@@ -224,7 +224,14 @@ function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, no
     // The post-merge review queue (`tumwater reviews`): raw data for the browser exactly like
     // the merge queue — the page derives its card from this list and cannot import the
     // TypeScript reader. `readPostReviews` drops a torn entry as the CLI does.
-    postReviews: readPostReviews(root),
+    //
+    // The card renders each entry's role, commit, enqueuedAt, summary, and state — and the
+    // state label reads `rejected` and `lastFailure` — but never the reviewer's verdict `body`
+    // (the backlog drawer and `tumwater reviews` read the queue file directly, not this
+    // payload). The queue grows without settling, so that verdict text is unbounded on a field
+    // this 1-second poll re-serializes every tick: carry the fields the card reads and drop
+    // `body`, the bulk of each entry's size.
+    postReviews: readPostReviews(root).map(({ body: _dropped, ...rest }) => rest),
     // One bracketed merge label per merge queue entry (queueEntryMergeLabel, "" for none),
     // parallel to mergeQueue.entries — display-ready like mergeBadge, since browser JS cannot
     // import the TypeScript stage labels.
