@@ -127,36 +127,63 @@ export async function cmdDoctor(root: string, args: string[], seams: FollowViewS
   // modules or touches the repo: text prints each name on its own line in array order with
   // no header, verdict or blank line; --json prints the same names as one `checks` array.
   if (args.includes("--list-checks")) {
-    if (checkNames.length > 0) fail("tumwater doctor --list-checks takes no check names");
-    const rival = LIST_CHECKS_RIVALS.find((f) => args.includes(f));
-    if (rival !== undefined) fail(`tumwater doctor --list-checks takes no ${rival}`);
-    if (args.includes("--json")) sayJson({ checks: [...DOCTOR_CHECK_NAMES] });
-    else for (const name of DOCTOR_CHECK_NAMES) say(name);
+    runDoctorListChecks(args, checkNames);
     return;
   }
   const follow = hasFollowFlag(args);
   const only = parseDoctorChecks(checkNames);
-  const { runDoctor } = await import("../doctor/doctor.js");
-  if (follow && args.includes("--json"))
-    failFollowJsonRival("doctor --json");
   if (follow) {
-    const repair = ["--kill-orphans", "--commit-backlog", "--resync-install", "--drop-broken-pins", "--retire-leftovers"].find((f) =>
-      args.includes(f),
-    );
-    if (repair !== undefined) fail(`-f/--follow repaints the report read-only; ${repair} repairs — drop one of them`);
-    // The live form is the one-shot report repainted: each frame re-runs the named checks
-    // (or all) afresh, and followView serializes a slow frame so ticks cannot stack.
-    await followView(
-      async () => {
-        const { renderDoctor, renderDoctorProblems } = await import("../doctor/doctor-render.js");
-        const report = await runDoctor(root, undefined, undefined, only);
-        return (args.includes("--problems") ? renderDoctorProblems : renderDoctor)(report);
-      },
-      seams,
-    );
+    await runDoctorFollow(root, args, only, seams);
     return; // A Ctrl+C or parent-death end leaves process.exitCode untouched (the one-shot exit contract below is the one-shot's).
   }
+  await runDoctorOnce(root, args, only);
+}
+
+/** The `--list-checks` mode: refuse a check name (the listing is names-only) and each of the
+ * flags that rival it, then print every check name in report order — one per line in text
+ * form with no header, verdict or blank line, or one `checks` array under `--json`. Runs
+ * before `parseDoctorChecks` so it never imports the check modules or touches the repo. */
+function runDoctorListChecks(args: string[], checkNames: string[]): void {
+  if (checkNames.length > 0) fail("tumwater doctor --list-checks takes no check names");
+  const rival = LIST_CHECKS_RIVALS.find((f) => args.includes(f));
+  if (rival !== undefined) fail(`tumwater doctor --list-checks takes no ${rival}`);
+  if (args.includes("--json")) sayJson({ checks: [...DOCTOR_CHECK_NAMES] });
+  else for (const name of DOCTOR_CHECK_NAMES) say(name);
+}
+
+/** The `-f/--follow` mode: repaint the one-shot report live. The live form is read-only, so
+ * `--json` and every repair flag are refused (the repaint can never repair anything), then
+ * `followView` re-runs the named checks (or all) each frame until Ctrl+C or parent exit. */
+async function runDoctorFollow(root: string, args: string[], only: ReturnType<typeof parseDoctorChecks>, seams: FollowViewSeams): Promise<void> {
+  const { runDoctor } = await import("../doctor/doctor.js");
+  if (args.includes("--json"))
+    failFollowJsonRival("doctor --json");
+  const repair = ["--kill-orphans", "--commit-backlog", "--resync-install", "--drop-broken-pins", "--retire-leftovers"].find((f) =>
+    args.includes(f),
+  );
+  if (repair !== undefined) fail(`-f/--follow repaints the report read-only; ${repair} repairs — drop one of them`);
+  // The live form is the one-shot report repainted: each frame re-runs the named checks
+  // (or all) afresh, and followView serializes a slow frame so ticks cannot stack.
+  await followView(
+    async () => {
+      const { renderDoctor, renderDoctorProblems } = await import("../doctor/doctor-render.js");
+      const report = await runDoctor(root, undefined, undefined, only);
+      return (args.includes("--problems") ? renderDoctorProblems : renderDoctor)(report);
+    },
+    seams,
+  );
+  // A Ctrl+C or parent-death end leaves process.exitCode untouched, as does a follow; the one-
+  // shot exit contract below is the one-shot's.
+}
+
+/** The one-shot mode: run the optional repair side-effects (their lines print before the
+ * report in text form; `--json` carries each result on the payload), run the checks, render,
+ * and set the exit code — 1 when any check fails, 0 otherwise; warnings never fail the
+ * exit. `--problems` keeps the full report for the render (it counts the hidden ok rows)
+ * and hands `--json` the filtered one; the exit code reads the full report either way. */
+async function runDoctorOnce(root: string, args: string[], only: ReturnType<typeof parseDoctorChecks>): Promise<void> {
   const { renderDoctor, renderDoctorProblems, problemsOnly } = await import("../doctor/doctor-render.js");
+  const { runDoctor } = await import("../doctor/doctor.js");
   const parts: DoctorOptionalParts = {
     orphanKill: await doctorKillOrphans(root, args),
     backlogCommit: await doctorCommitBacklog(root, args),
@@ -168,8 +195,6 @@ export async function cmdDoctor(root: string, args: string[], seams: FollowViewS
   // --json prints the collector's own payload (the DoctorReport object), not a re-parse of
   // the render — the `report --json` precedent. The exit-code contract below holds in both
   // forms: 1 when any check fails, 0 otherwise; warnings never fail the exit.
-  // --problems keeps the full report for the render (it counts the hidden ok rows) and
-  // hands --json the filtered one; the exit code below reads the full report either way.
   // --kill-orphans adds the kill result to the JSON object as `orphanKill`.
   if (args.includes("--problems"))
     sayJsonOrRender(args, args.includes("--json") ? doctorPayload(problemsOnly(report), parts) : report, renderDoctorProblems);
