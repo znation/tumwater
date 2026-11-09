@@ -14,7 +14,7 @@ import { queueDepth, queuedMergeFiles } from "../src/merge/merge-queue.js";
 import { abortRequestPath, mergeQueueDir, mergeRefName, mergeStatePath, statePath } from "../src/paths.js";
 import { deleteRef, refSha } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
-import { subscribeEvents } from "../src/events/events.js";
+import { logEvent, subscribeEvents } from "../src/events/events.js";
 import { readMergeMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig } from "../src/config/config.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
@@ -445,6 +445,47 @@ test("a user abort after a retriable merge outcome settles aborted instead of re
     );
     assert.equal(queueDepth(root), 0, "the aborted change is not re-queued against the pin the abort discards");
     assert.equal(await refSha(root, mergeRefName("alpha")), null, "the stopped change's pin is gone");
+  } finally {
+    unsubscribe();
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+});
+
+test("another merge for the same role does not stand in for this change's own landing", async () => {
+  const root = makeRepo();
+  await queueChanges(root, ["alpha"]);
+  // A local file alpha's pin would overwrite: this change's own merge ends `merge_blocked` and
+  // never touches main.
+  fs.writeFileSync(path.join(root, "alpha.txt"), "local alpha\n");
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"]));
+  let consumed = false;
+  // A role's post-merge-review fix and its refusal notes merge through the same write path and
+  // log `merged` under the same `source` role. Simulate one landing while this change's own
+  // merge fails: it must not be read as this change's landing, or the failed change settles as
+  // "changed" and its entry is dropped without the operator's stop being honoured.
+  const unsubscribe = subscribeEvents((e) => {
+    if (e.type !== "warning" || e.source !== "alpha" || consumed || !String(e.message).startsWith("merge blocked:")) return;
+    logEvent(root, { source: "alpha", type: "merged", commit: "0".repeat(40), summary: "Fix an earlier change" });
+    writeJsonFile(abortRequestPath(root, "alpha"), { at: Date.now() });
+    consumeAbortRequests(root, [], abortableMerges(pipeline));
+    consumed = true;
+  });
+  try {
+    await drainMergeQueue(ctx, pipeline);
+    const merge = pipeline.merge as InFlightMerge | null;
+    assert.ok(merge, "the gate-then-merge task started");
+    await merge.promise;
+    assert.equal(consumed, true, "another same-role merge landed after this change's retriable outcome");
+    assert.equal(loadRunnerState(root, "alpha").lastResult, "aborted", "this change settles its own aborted outcome");
+    assert.deepEqual(
+      readEvents(root).filter((e) => e.type === "merge_done" || e.type === "merge_failed").map((e) => [e.type, e.result]),
+      [["merge_failed", "aborted"]],
+      "the unrelated merge's event does not rewrite this change as landed",
+    );
+    assert.equal(queueDepth(root), 0, "the stopped change is not re-queued");
+    assert.equal(await refSha(root, mergeRefName("alpha")), null, "the stopped change's pin is discarded");
   } finally {
     unsubscribe();
     await Promise.allSettled(allTasks(pipeline));

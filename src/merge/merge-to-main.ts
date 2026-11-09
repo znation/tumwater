@@ -57,6 +57,11 @@ export interface MergeContext extends RunsPi {
   config: TumwaterConfig;
   /** The current run number (names the conflict-resolution pi session). */
   runNumber: number;
+  /** An opaque token logged on this merge's `merged` event. A role can have other merges in
+   * flight (its post-merge-review fix, a refusal note), and they log `merged` under the same
+   * source role; a subscriber that must recognise its own landing matches this token. Omitted
+   * by merges no one needs to correlate. */
+  mergedTag?: string;
   /** How long to wait for merge.lock; defaults to withLock's. */
   lockTimeoutMs?: number;
   /** The gate, re-run over a conflict resolution's tree: a resolution whose diff ahead of main
@@ -162,6 +167,7 @@ async function tryMerge(
         type: "merged",
         commit,
         summary,
+        ...(ctx.mergedTag !== undefined ? { mergedTag: ctx.mergedTag } : {}),
       });
     }
     logNewQuestions(ctx.root, before, ctx.role);

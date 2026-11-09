@@ -95,6 +95,9 @@ interface MergeScopeContext {
  * places would count the reviewer twice). */
 export interface MergerContext extends PiRunWiring, MergeScopeContext {
   state: RunnerState;
+  /** Forwarded to mergeToMain's MergeContext: a token stamped on this merge's `merged` event so
+   * the task that started it can tell its own landing from another merge for the same role. */
+  mergedTag?: string;
   /** Acquire the team lease a gating call holds while it runs reviewQueuedChange (part 3b/6):
    * takes a VERIFY_TIER lease for the gate's length and returns the release. The merge drain
    * supplies it for every task; the fixtures leave it unset, so a fixture merge never contends
@@ -439,6 +442,7 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
       mainBranch: ctx.mainBranch,
       config: ctx.config,
       runNumber: req.runNumber,
+      ...(ctx.mergedTag !== undefined ? { mergedTag: ctx.mergedTag } : {}),
       // Main may have dropped the change's backlog entry since its verify: checked again in the
       // lock, where a withdrawn change deletes its pin and the merge settles `withdrawn`.
       withdrawn: async (mergeWt) => {

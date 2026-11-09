@@ -169,6 +169,11 @@ async function pinClaimWithdrawn(
  * verification did; it is control flow, not a failure, so the task's catch does not record it. */
 class GateDeferredByHold extends Error {}
 
+/** Distinguishes the tasks' `merged` events: a role's other merges can run concurrently with
+ * its queue entry's gate-then-merge (a post-merge-review fix or a refusal note merges through
+ * mergeToMain as the same `source` role), so the task must recognise its OWN landing. */
+let mergeTaskSeq = 0;
+
 /** The merge task — main's one writer in the pipeline: the first eligible queue head's gate and
  * merge in one task (a rebase onto main's tip then the fast-forward under the merge lock). The
  * task's `mergeApprovedChange` call owns the change's ONE gate: it runs
@@ -194,6 +199,9 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
     roles: [entry.role],
     userAborted: false,
   };
+  // Stamped on this task's own `merged` event, so a concurrent merge for the same role cannot
+  // look like this change's landing.
+  const mergedTag = `merge-${++mergeTaskSeq}`;
   const detachShutdown = abortOnShutdown(signal, merge.controller);
   // The one change the task holds. `file` is the entry's queue file (dropped once the outcome
   // is written) or null for a pin-only merge with no queue entry — a null file writes no
@@ -236,6 +244,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
       }
     },
     signal: () => merge.controller.signal,
+    mergedTag,
     reviewHeld: () => ctx.startHeld(),
     gatePermit: async () => {
       // A gating call holds a VERIFY_TIER team lease around its gate — the tier a verification
@@ -266,11 +275,13 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
     // throw, or a user abort that stopped the run) and it keeps its entry.
     let result: RunResult | undefined;
     let settled = false;
-    // A `merged` event names the commit the role produced, identified by its `source`: the
-    // post-merge review of the merged change is queued once it settles as merged.
+    // A `merged` event names the commit the role produced: the post-merge review of the merged
+    // change is queued once it settles as merged. Only this task's own tagged event counts —
+    // another merge for the same role (a post-merge-review fix, a refusal note) logs `merged`
+    // under the same source and must not stand in for this change's landing.
     let mergedCommit: string | undefined;
     const unsubscribe = subscribeEvents((e) => {
-      if (e.type === "merged" && e.source === role && typeof e.commit === "string") mergedCommit = e.commit;
+      if (e.type === "merged" && e.mergedTag === mergedTag && e.source === role && typeof e.commit === "string") mergedCommit = e.commit;
     });
     // A result reaches settleMergeOutcome the moment the merge finalizes it.
     const settleOne = async (r: RunResult): Promise<void> => {
@@ -338,15 +349,17 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
         // operator's stop wins, so the change cannot be re-queued against the pin the finally
         // then discards. A change with no result (deferred or thrown before its outcome)
         // settles aborted for a user stop as well.
-        // A `merged` event fires inside the lock the moment the fast-forward moves main, so a
-        // set mergedCommit is the ground truth that the change LANDED — it outranks whatever the
-        // merge reported. If a consumed abort lands after the ff, the merge can still end
-        // "aborted" (its signal check) or throw before it finalizes (result stays undefined), and
-        // either branch below would rewrite the already-landed change to "aborted". Landing means
-        // main holds the commit, so the only honest outcome is "changed" — the same path the
-        // ordinary merged settle takes. The retriable branch keeps the operator's stop for
-        // outcomes that never landed; a change with no result and no landing settles aborted for
-        // a user stop, or clears its marker otherwise.
+        // A `merged` event fires inside the lock the moment the fast-forward moves main, and the
+        // subscription keeps only THIS task's tagged event (a concurrent post-merge-review fix
+        // or refusal note also logs `merged` under the same role). So a set mergedCommit is the
+        // ground truth that this change LANDED — it outranks whatever the merge reported. If a
+        // consumed abort lands after the ff, the merge can still throw before it finalizes
+        // (result stays undefined), and the branch below would otherwise rewrite the
+        // already-landed change to "aborted". Landing means main holds the commit, so the only
+        // honest outcome is "changed" — the same path the ordinary merged settle takes. The
+        // retriable branch keeps the operator's stop for outcomes that never landed; a change
+        // with no result and no landing settles aborted for a user stop, or clears its marker
+        // otherwise.
         if (mergedCommit !== undefined) await settleOne("changed");
         else if (result !== undefined && !(merge.userAborted && RETRIABLE_MERGE_RESULTS.has(result))) await settleOne(result);
         else if (merge.userAborted) await settleOne("aborted");
