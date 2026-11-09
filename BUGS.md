@@ -6,24 +6,7 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-### A role's leftover recovery re-pins its own in-flight, already-queued merge and drops its queue file — `a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate` (test/orchestrator-3.e2e.test.ts) fails deterministically (found by the ci role 2026-11-09)
-
-The e2e test `a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate` fails at the tip. It is a real regression, not a flake: every isolated run of the single file fails (`node dist/test/test-runner.js orchestrator-3`), and the same test was green at the last green tip. Full `npm test` is green (8236 pass / 0 fail / 5 skip); the e2e tier is 88 pass / 1 fail — this is the one.
-
-**Repro:** `npm ci && npm run test:e2e` (or the faster `node dist/test/test-runner.js orchestrator-3`) at main. The assertion that fails:
-
-~~~~
-✖ a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate (700ms)
-  AssertionError [ERR_ASSERTION]: the entry stays queued until the merge settles
-  0 !== 1
-  at .../orchestrator-3.e2e.test.js (the `assert.equal(queueDepth(repo), 1, ...)` line)
-~~~~
-
-**Root cause (traced by instrumenting the tree):** the test seeds one change for role `clean`; the merge slot picks it up and its gate check hangs (in flight). A later nothing-to-do run's leftover recovery (`recoverLeftover` in src/runner/runner-leftover.ts) finds `clean`'s change no longer queued (the in-flight merge already left the queue file) and re-pins it pin-only, logging a `merge_queued` with summary `recovered leftover work from clean: <subject>` — dropping the entry. Observed event stream at the assertion: run 1 `merge_queued` summary `Update hello.txt` (in flight, gate hung, `hang=true`, no `merge_done`/`merge_failed`), then runs 2 and 3 each `merge_queued` summary `recovered leftover work from clean: Update hello.txt`, and `queueDepth=0`, `mergeRefExists(clean)=true`. `recoverLeftover` already guards the queued case (`queuedMerges(root).find(role)` → `relief_wait`/`already_queued`, no queue-file write); it re-pins only when the queue file is absent — and an in-flight merge leaves it absent while still running. So recovery disturbs work a merge is already holding.
-
-**Introduced by `dff4380f5`** (`tumwater(feature): Pin leftover recovery's commit; label recovery vs fresh pins in drain`, Subtract part 3i/7): recovery switched from `kind:"enqueued"` (wrote a queue file) to `kind:"pinned"` (re-pins, no queue file). Bisect in a scratch clone: `26d927388`…`7b18b0212` pass; `dff4380f5` is the first failing commit. Its own verification ran the unit suite + `test:gate` (affected tests) only — not the e2e tier, which is where this surfaces.
-
-**The fix is a feature-design decision, not a local patch:** whether a role's leftover recovery should skip work that is already queued/in-flight (the interlock invariant the test pins: an in-flight merge's entry persists until it settles) vs. re-pin it. This is Subtract's to resolve — recommend the feature/plan role refine 3i/7 so recovery does not re-pin a change another merge is already holding in flight (or the test's premise re-scoped if pin-only re-pin is intended). Filed by the ci role, which runs the whole e2e tier where the merge gate's affected-tests selection does not.
+_None yet._
 
 ## Fixed
 

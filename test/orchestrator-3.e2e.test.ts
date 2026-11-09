@@ -157,14 +157,17 @@ test("a role with a queued or in-flight merge keeps running: the queue is not a 
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // The run commits + enqueues; the merge slot picks the entry up and its gate check hangs.
-    await waitFor(() => runQueued(repo, "clean"), "the run to enqueue its merge");
+    // The run commits + pins the change (a fresh run is pin-only, part 3e/7 — no queue file);
+    // the merge slot picks the pin up and its gate check hangs.
+    await waitFor(() => runQueued(repo, "clean"), "the run to pin its merge");
     await waitFor(() => fs.existsSync(hang), "the merge's gate check to be in flight");
 
     // The role is due on every poll and nothing holds it: later runs start and end while its
-    // first change is still parked in the merge's gate check, and none queues a second entry.
+    // first change is still parked in the merge's gate check. The pin is the waiting state
+    // (parts 3e/7 and 3i/7): the in-flight change's pin persists until the merge settles, and
+    // no queue file is written (queueDepth stays 0), so the queue is not a scheduling gate.
     await waitFor(() => loadRunnerState(repo, "clean").runs >= 3, "the role's later runs while its merge is in flight");
-    assert.equal(queueDepth(repo), 1, "the entry stays queued until the merge settles");
+    assert.ok(mergeRefExists(repo, "clean"), "the in-flight change's pin persists until the merge settles");
     assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "the first change has not merged");
     // The pending change is never a run's result (BUGS.md 2026-09-23 — it used to read `queued`).
     assert.notEqual(loadRunnerState(repo, "clean").lastResult, "queued", "the in-flight merge is not a last result");
@@ -173,7 +176,10 @@ test("a role with a queued or in-flight merge keeps running: the queue is not a 
     // would discard the merge, but the role's very next run recovers its still-committed change
     // and queues it again — see the user-abort test above for the abort itself.)
     fs.writeFileSync(release, "");
-    await waitFor(() => queueDepth(repo) === 0 && fs.existsSync(path.join(repo, "hello.txt")), "the change to merge");
+    await waitFor(
+      () => !mergeRefExists(repo, "clean") && fs.existsSync(path.join(repo, "hello.txt")),
+      "the change to merge and its pin to be consumed",
+    );
   } finally {
     fs.writeFileSync(release, ""); // never leave a check parked
     await stopOrchestrator(orch, restore);

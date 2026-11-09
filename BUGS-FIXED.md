@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A role's leftover recovery re-pins its own in-flight, already-queued merge and drops its queue file — `a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate` (test/orchestrator-3.e2e.test.ts) fails deterministically (found by the ci role 2026-11-09) — fixed 2026-11-09 by the bugfix role
+
+The e2e test `a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate` failed deterministically at the tip: every isolated run of the single file failed (`node dist/test/test-runner.js orchestrator-3`), the e2e tier was 88 pass / 1 fail, and the same test was green at the last green tip. Filed by the ci role, which runs the whole e2e tier where the merge gate's affected-tests selection does not.
+
+**Repro:** `node dist/test/test-runner.js orchestrator-3` at main. The assertion that fails:
+
+~~~~
+✖ a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate (700ms)
+  AssertionError [ERR_ASSERTION]: the entry stays queued until the merge settles
+  0 !== 1
+  at .../orchestrator-3.e2e.test.js (the `assert.equal(queueDepth(repo), 1, ...)` line)
+~~~~
+
+**Root cause (re-verified by the bugfix role, correcting the filed diagnosis):** a *fresh* changed run is **pin-only** since Subtract part 3e/7 (`pinAndEnqueueChange` in src/run/run-stage.ts writes only the merge-ref pin — **no queue file** — so `queueDepth` is always 0, never 1). The test's in-flight assertion `queueDepth(repo) === 1` therefore measured the pre-3e/7 *enqueue* model, when a queued change lived in a queue file. It stayed green only during the transitional window in which *recovery* (part 3i/7's parent) still wrote a queue file via `enqueueMerge` (`kind:"enqueued"`); the file was `queueDepth`-counted until the in-flight merge dropped it. Once part 3i/7 (`dff4380f5`) made recovery pin-only too (`kind:"pinned"`, no queue file), **no queue file exists anywhere** in the in-flight window, so `queueDepth` read 0 and the stale `=== 1` assertion failed deterministically. The pin (`mergeRefExists`) is the actual waiting state and **persists in flight** (re-verified: the same pin held across all polls while the gate hung, deleted only after the merge) — exactly the settled design (3e/7 + 3i/7), not a regression. The entry's filed trace ("recovery re-pins and drops its queue file") was based on the same enqueue-model premise: the fresh run never wrote a queue file to drop. (Recovery re-pins the in-flight pin idempotently and logs a redundant `merge_queued` each poll — a Subtract 3i/7 design seam, not this bug.)
+
+**Fix:** re-scoped the stale assertion to what the settled design actually persists — the merge-ref **pin** — taking the branch the entry itself sanctioned ("or the test's premise re-scoped if pin-only re-pin is intended"). The in-flight assert now checks `mergeRefExists(repo, "clean")` (the pin is the waiting state) instead of `queueDepth(repo) === 1`; the settle wait keys on `!mergeRefExists && hello.txt` (the pin is consumed with the merge) instead of `queueDepth === 0`. No production code changed. The role-keeps-running interlock the test names (3a/7 retired merge queue 3/5's interlock) is unchanged.
+
+**Validation gap:** none — the existing e2e suite reproduced the `0 !== 1` failure deterministically in ~700 ms in isolation, and the re-scoped assertion fails identically without the fix, so nothing was missing to confirm the bug.
+
 ### `an aborted merge settles despite an unwritable state file: no throw, entry dropped, pin discarded` failed, then passed on the same tree (quarantined by tumwater 2026-11-09) — fixed 2026-11-09 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
