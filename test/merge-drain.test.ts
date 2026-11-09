@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { drainMergeQueue } from "../src/merge/merge-drain.js";
+import { drainMergeQueue, mergeTaskStarts, resetMergeTaskStarts } from "../src/merge/merge-drain.js";
 import { mergeTasks, settleMergeOutcome } from "../src/merge/merge-pipeline.js";
 import { enqueueMerge, queueDepth, staleHeadFile, type MergeEntry } from "../src/merge/merge-queue.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -11,10 +11,11 @@ import { mergeQueueDir, mergeRefName } from "../src/paths.js";
 import { readPostReviews } from "../src/review/post-merge-review.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { refSha, setRef } from "../src/git/git.js";
-import { APPROVE, drained, entry, makePipeline, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
+import { APPROVE, drained, entry, makePipeline, pump, pumpUntil, queueChanges, runnersFor } from "./fixtures/merge-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
-import { withPi } from "./fakes/fake-pi.js";
-import { mainSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
+import { fakePi, withPi } from "./fakes/fake-pi.js";
+import { defaultConfig } from "../src/config/config.js";
+import { mainSha, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** First slice of the merge-drain suite (merge-pipeline.test.ts and merge-pipeline-2.test.ts
  * carry the rest) — split so
@@ -36,6 +37,46 @@ test("an empty queue drains nothing", async () => {
   await drainMergeQueue(ctx, pipeline);
   assert.equal(mergeTasks(pipeline).length, 0, "no gate-then-merge task started");
   assert.equal(queueDepth(root), 0, "nothing was queued");
+});
+
+test("overlapping merge drains start at most one task for the same queue head (single-flight)", async () => {
+  // INV-G6 / the 2026-11-09 drain race: a test (or the poll loop) that runs a background pump
+  // and a pumpUntil overlaps two drainMerge calls. Both pass the drain's first slot check while
+  // the slot is still null — the slot is assigned only inside startMerge, which runs in the
+  // task's background body after an await — so on the unfixed code both start a gate-then-merge
+  // task for the SAME queue head. The gate's check blocks on a release file this test never
+  // writes until cleanup, so neither task settles: the duplicate-start count is observable the
+  // whole time. The fix re-checks the slot synchronously right before each startMerge, so the
+  // second drain backs off and exactly one task starts.
+  const root = makeRepo();
+  await queueChanges(root, ["alpha"]);
+  const flags = tmpdir("drain-single-flight-");
+  const config = {
+    ...defaultConfig(),
+    check: {
+      command:
+        `if [ -f alpha.txt ]; then touch '${path.join(flags, "alpha-blocking")}'; ` +
+        `i=0; while [ ! -f '${path.join(flags, "alpha-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi`,
+    },
+  };
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"], undefined, config), { cap: 3, config });
+  resetMergeTaskStarts();
+  const bg = pump(ctx, pipeline); // a second, background drain overlapping the pumpUntil below
+  try {
+    // Drive a first drain (pumpUntil's loop) until alpha's gate is in flight. Its check is
+    // blocked on the release file, so the task — and the slot — are held open while we read the
+    // start count. On unfixed code both drains started alpha here (count 2); fixed code starts
+    // it exactly once.
+    await pumpUntil(ctx, pipeline, () => fs.existsSync(path.join(flags, "alpha-blocking")), "alpha's gate to be in flight", 5_000);
+    assert.ok(pipeline.merge, "a gate-then-merge task is in flight");
+    assert.equal(mergeTaskStarts(), 1, "the one queued head started exactly one gate-then-merge task");
+  } finally {
+    fs.writeFileSync(path.join(flags, "alpha-release"), "");
+    await bg.stop();
+    await Promise.allSettled(mergeTasks(pipeline).map((t) => t.promise));
+    restore();
+  }
 });
 
 test("a torn merge-queue head is dropped and the drain continues when the events feed is unwritable", async () => {

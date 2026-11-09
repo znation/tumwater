@@ -77,8 +77,15 @@ export async function drainMergeQueue(ctx: MergePipelineContext, p: MergePipelin
  * already-merged dedupe, `notBefore` and `startHeld` — run here in the serial drain, so a
  * queued change is gated and merged by the one task (startMerge) and no verification starts at
  * all. An entry whose gate/merge the pipeline does not reach stays queued for the next poll;
- * the merge slot frees when its task settles, so the next poll starts the next head. */
+ * the merge slot frees when its task settles, so the next poll starts the next head. The drain
+ * is single-flight (INV-G6): it reserves the slot at the first check and re-checks it right
+ * before each startMerge, so overlapping drains (a test that runs a background pump and a
+ * pumpUntil) never start a duplicate task for the same head. */
 export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): Promise<void> {
+  // First gate (INV-G6): a merge already in flight means this poll starts nothing. Because this
+  // runs before the drain's first await, a concurrent drain that begins while one is in flight
+  // sees the slot taken and returns here; the re-checks right before each startMerge below cover
+  // the overlap that passes this gate in the drain's async gaps.
   if (p.merge !== null) return;
   await dropTornHead(ctx.root);
   const queued = queuedMergeFiles(ctx.root);
@@ -110,6 +117,11 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
     // landing waits on the reviewer); only a restart or disk hold (the start gate's other legs)
     // parks it here. The start gate decides.
     if (ctx.startHeld(entry.role)) continue;
+    // The dedupe awaited git: a concurrent drain that passed the reservation before that await
+    // may have assigned the slot in the meantime. Re-check synchronously, in the same block
+    // as the assignment, so the single-flight invariant holds regardless of how the overlap
+    // interleaved (INV-G6).
+    if (p.merge !== null) return;
     p.merge = startMerge(ctx, p, entry, file);
     return;
   }
@@ -140,6 +152,10 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
     const entry = await pinnedMergeEntry(ctx.root, runner.role, sha, { recovered: false });
     if (await pinClaimWithdrawn(ctx, runner, entry.run)) continue;
     if (ctx.startHeld(runner.role)) continue;
+    // Same single-flight re-check as the queue path: the pin's pinnedRetrySha / pinnedMergeEntry /
+    // pinClaimWithdrawn each awaited git, so a concurrent drain may have assigned the slot since
+    // the reservation at the top of the drain.
+    if (p.merge !== null) return;
     p.merge = startMerge(ctx, p, entry, null);
     return;
   }
@@ -174,6 +190,24 @@ class GateDeferredByHold extends Error {}
  * mergeToMain as the same `source` role), so the task must recognise its OWN landing. */
 let mergeTaskSeq = 0;
 
+/** How many gate-then-merge tasks this process has started, for the mergeTaskStarts() getter.
+ * Bumped once per startMerge call, before its task runs. */
+let mergeTaskStartsTotal = 0;
+
+/** How many gate-then-merge tasks this process has started. A single queue head may own at
+ * most one at a time (the single-flight invariant, INV-G6), so a drain that starts one for a
+ * head already held by a live task is the duplicate the drain race can produce; the merge-drain
+ * regression drives two overlapping drains and reads this to pin the shape. */
+export function mergeTaskStarts(): number {
+  return mergeTaskStartsTotal;
+}
+
+/** Clear the gate-then-merge start counter so a test that starts tasks can read its own starts
+ * in isolation. Exported for test/merge-drain.test.ts; production code never calls it. */
+export function resetMergeTaskStarts(): void {
+  mergeTaskStartsTotal = 0;
+}
+
 /** The merge task — main's one writer in the pipeline: the first eligible queue head's gate and
  * merge in one task (a rebase onto main's tip then the fast-forward under the merge lock). The
  * task's `mergeApprovedChange` call owns the change's ONE gate: it runs
@@ -202,6 +236,10 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
   // Stamped on this task's own `merged` event, so a concurrent merge for the same role cannot
   // look like this change's landing.
   const mergedTag = `merge-${++mergeTaskSeq}`;
+  // Bumped once per call so a test can pin that a queue head started at most one task (INV-G6):
+  // the drain race starts a duplicate for the same head, and this is what that duplicate does
+  // (a second startMerge) even when both tasks' downstream effects look like a normal merge.
+  mergeTaskStartsTotal += 1;
   const detachShutdown = abortOnShutdown(signal, merge.controller);
   // The one change the task holds. `file` is the entry's queue file (dropped once the outcome
   // is written) or null for a pin-only merge with no queue entry — a null file writes no
@@ -369,7 +407,12 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
       unsubscribe();
       detachShutdown();
       if (merge.userAborted) await discardPinnedRefs(root, merge.roles);
-      p.merge = null;
+      // Free the slot only if this task still owns it (INV-G6). The drain is single-flight, so
+      // in practice this is always true — but an orphaned task (one a duplicate drain started
+      // before the single-flight guard) or a test that overwrote p.merge must not clear the
+      // slot another live task now holds: it would free the slot early and let the next poll
+      // start a second task for the same head while this task is still running.
+      if (p.merge === merge) p.merge = null;
     }
   })();
   merge.promise = guardMergeTask(root, merge.roles.join(", "), task);

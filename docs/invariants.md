@@ -624,6 +624,28 @@ merged as `changed`; `reviewAttempt` now fails closed on a consumed abort at the
 pre-check: the gate fails closed, not approved" — and `test/review.test.ts` — "an
 already-approved head under a fired abort fails closed as aborted, never approved".
 
+### INV-G6: overlapping merge drains start at most one gate-then-merge task per queue head
+
+**Guarantee.** A merge queue head is held by at most one gate-then-merge task at a time, no
+matter how the drains overlap. `drainMerge` checks the slot before its first await and re-checks
+it synchronously right before each `startMerge` (queue path and pin path), and a settling task
+frees the slot only if it still owns it (`p.merge === merge`). The re-check and the assignment
+are one synchronous block, so two drains that both pass the first check while the slot is still
+null — the overlap a background `pump` plus a `pumpUntil` produces — still start exactly one
+task: whichever reaches the re-check first assigns the slot, and the other sees it taken and
+backs off. Without the re-check, both assigned and the second overwrote the first, leaving an
+orphaned task that no longer owns the slot, never receives a role abort (so it settles its own
+result, e.g. `merge_conflict`, instead of `aborted`), and races the owning task over the shared
+merge worktree. This is the root cause of the merge-pipeline-2 abort-test flakes.
+
+**Binds.** `src/merge/merge-drain.ts` (`drainMerge`, `startMerge`'s slot-release, the
+`mergeTaskStarts` counter).
+
+**Pinned by.** `test/merge-drain.test.ts` — "overlapping merge drains start at most one task for
+the same queue head (single-flight)" (two overlapping drains; the gate's check is blocked on a
+release file the test never writes until cleanup, so the start count is observable; fails at 2
+without the re-check, passes at 1 with it).
+
 ## Tumwater owns every commit
 
 ### INV-H1: a run's authoring, SUMMARY follow-up, and stage-fix runs cannot add a commit of their own to the merged history
