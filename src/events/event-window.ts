@@ -212,16 +212,13 @@ function scanEventsFile(file: string, fromKey: string): ScannedFile {
   );
 }
 
-/** One file's in-window events, scanned backwards with bounded I/O: the log is append-only and
- * chronological, so we scan backwards in chunks from EOF (tail.readTailText) and stop as soon
- * as the oldest complete line in hand predates the window — cost scales with the window's size,
- * not the file's. `coversFullWindow` records whether this file reaches back before the window
- * (see EventWindow's field doc), so the caller can tell "retention cut the window" from "the
- * team was idle": both leave the oldest returned event later than the window start, but only
- * the former means data was lost. This body is the cached loader scanEventsFile runs only on a
- * miss — a first observation or a changed file — so a steady-state poll re-reads nothing. */
-function scanEventsFileInner(file: string, fromKey: string): ScannedFile {
-  const st = statOrNull(file);
+/** The backward tail read: the backward scan of the file and the window-coverage decision it
+ * reaches. Scans backwards in chunks (readTailTextWithEnd) until the oldest complete line in
+ * hand predates the window; when the scan instead reached the file start without
+ * early-stopping, checks the file's own oldest line so "the retained log starts before the
+ * window" is still detected. Returns the decoded text, the covered end the read backed up to,
+ * and coversFullWindow. */
+function readWindowBackwards(file: string, fromKey: string): { text: string; coveredEnd: number; coversFullWindow: boolean } {
   let coversFullWindow = false;
   const { text, coveredEnd } = readTailTextWithEnd(file, (_chunk, parts) => {
     // The oldest chunk's leading line may be torn by the chunk boundary, so oldestCompleteLine
@@ -238,7 +235,19 @@ function scanEventsFileInner(file: string, fromKey: string): ScannedFile {
     }
     return false;
   });
+  if (!coversFullWindow) {
+    const first = text.split("\n")[0] ?? "";
+    const ev = parseEventLine(first);
+    const day = ev ? eventDayKey(ev) : null;
+    coversFullWindow = day !== null && day < fromKey;
+  }
+  return { text, coveredEnd, coversFullWindow };
+}
 
+/** The parsed events in a backwards read's text whose local day falls in the window (on or
+ * after `fromKey`), oldest first. Skips empty lines; a torn leading line fails to parse and is
+ * skipped with them. */
+function inWindowEvents(text: string, fromKey: string): HarnessEvent[] {
   const lines = text.split("\n");
   const events: HarnessEvent[] = [];
   for (const line of lines) {
@@ -248,24 +257,34 @@ function scanEventsFileInner(file: string, fromKey: string): ScannedFile {
     const day = eventDayKey(ev);
     if (day !== null && day >= fromKey) events.push(ev);
   }
-  // oldestCompleteLine always discards the earliest chunk's first line, so a read that reached
-  // the file start without early-stopping has not yet checked the file's own oldest line. On a
-  // one-chunk log that is the only line there is: check it here so "the retained log starts
-  // before the window" is still detected.
-  if (!coversFullWindow) {
-    const first = lines[0] ?? "";
-    const ev = parseEventLine(first);
-    const day = ev ? eventDayKey(ev) : null;
-    coversFullWindow = day !== null && day < fromKey;
-  }
-  // The last element is a newline-less trailing fragment (a write in flight). The loop above
-  // consumed it when it parsed as an event, so `end` must sit past it: a resume from the last
-  // complete line would re-parse the same event once its newline lands. A fragment that did not
-  // parse was not consumed, so `end` stays at the last complete line and the next read sees it
-  // whole once it completes.
+  return events;
+}
+
+/** The byte offset a later read resumes from, from a backwards read's covered end and its
+ * decoded text: the last element of a split is a newline-less trailing fragment (a write in
+ * flight). The in-window loop consumed it when it parsed as an event, so `end` must sit past
+ * it: a resume from the last complete line would re-parse the same event once its newline
+ * lands. A fragment that did not parse was not consumed, so `end` stays at the last complete
+ * line and the next read sees it whole once it completes. */
+function resumeEnd(text: string, coveredEnd: number): number {
+  const lines = text.split("\n");
   const trailing = lines[lines.length - 1] ?? "";
-  const end =
-    trailing !== "" && parseEventLine(trailing) !== null ? coveredEnd + Buffer.byteLength(trailing) : coveredEnd;
+  return trailing !== "" && parseEventLine(trailing) !== null ? coveredEnd + Buffer.byteLength(trailing) : coveredEnd;
+}
+
+/** One file's in-window events, scanned backwards with bounded I/O: the log is append-only and
+ * chronological, so we scan backwards in chunks from EOF (tail.readTailText) and stop as soon
+ * as the oldest complete line in hand predates the window — cost scales with the window's size,
+ * not the file's. `coversFullWindow` records whether this file reaches back before the window
+ * (see EventWindow's field doc), so the caller can tell "retention cut the window" from "the
+ * team was idle": both leave the oldest returned event later than the window start, but only
+ * the former means data was lost. This body is the cached loader scanEventsFile runs only on a
+ * miss — a first observation or a changed file — so a steady-state poll re-reads nothing. */
+function scanEventsFileInner(file: string, fromKey: string): ScannedFile {
+  const st = statOrNull(file);
+  const { text, coveredEnd, coversFullWindow } = readWindowBackwards(file, fromKey);
+  const events = inWindowEvents(text, fromKey);
+  const end = resumeEnd(text, coveredEnd);
   return { events, coversFullWindow, end, logState: classifyLogFile(text, st) };
 }
 
