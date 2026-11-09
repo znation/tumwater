@@ -493,7 +493,12 @@ function remoteCiFailedMessage(e: HarnessEvent): string {
   const repo = typeof e.repo === "string" ? e.repo : "";
   return `GitHub CI failed at ${sha ? shortSha(sha) : "?"} on ${repo || "?"}; the ci role reproduces it and fixes or files it${sha && repo ? ` — https://github.com/${repo}/commit/${sha}` : ""}`;
 }
-function budgetEventMessage(e: HarnessEvent): string {
+/** The daily-cap line builders: budget_warning (the early page beside budget_paused),
+ * budget_paused (the spent-cap pause and its demoted/refused fallback suffix) and
+ * budget_resumed (its lift). Each names the spend against the cap and, for the
+ * pause, the lift paths: a raised or removed cap, or the local day rolling over. */
+
+function budgetCapEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "budget_warning":
       // The early page beside budget_paused: the cap is not reached yet, so say so — the
@@ -514,6 +519,19 @@ function budgetEventMessage(e: HarnessEvent): string {
           : "";
       return `budget paused — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${mostByPhrase(e.topRoles)}${refused}; roles start no new runs until maxDailyCostUsd is raised or removed in tumwater.json or the local day rolls over`;
     }
+    case "budget_resumed":
+      return `budget resumed (${budgetPhrase(e.spentUsd, e.capUsd)} today)`;
+    default: return textOr(e.type);
+  }
+}
+
+/** The over-cap fallback line builders: budget_fallback names the free model the team
+ * switched to once the cap is spent (listing each tier's pair when the event carries
+ * two or more, else the single pair), and fallback_switched is the poll's one line
+ * for the per-tier switch changes. */
+
+function budgetFallbackEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
     case "budget_fallback": {
       // The cap is spent but the team keeps working: name the free model it switched to, the
       // one fact that distinguishes this from a pause. When the event carries the per-tier
@@ -525,16 +543,6 @@ function budgetEventMessage(e: HarnessEvent): string {
         return `over-cap model — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${mostByPhrase(e.topRoles)}; roles continue on ${tierEntries.join(", ")} (cost n/a)`;
       return `over-cap model — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${mostByPhrase(e.topRoles)}; roles continue on ${providerModelPair(e, "pi's default provider", "pi's default model")} (cost n/a)`;
     }
-    case "budget_resumed":
-      return `budget resumed (${budgetPhrase(e.spentUsd, e.capUsd)} today)`;
-    case "budget_handback": {
-      // Which runs were handed back: the roles still running on the fallback when the budget
-      // reopened. Their runs end `aborted` and resume promptly on the primary, so an operator
-      // reading the feed can connect the aborted runs to this one line.
-      const roles = rolesPhrase(e.roles, "?");
-      if (e.reason === "window") return `claude subscription window reset: handed ${roles} back to claude`;
-      return `budget reopened: handed ${roles} back to the primary`;
-    }
     case "fallback_switched": {
       // One line for the poll's changes: `<tier> → <pair> (<reason>)`, the primary as "primary".
       const tiers = isJsonObject(e.tiers) ? e.tiers : {};
@@ -544,6 +552,33 @@ function budgetEventMessage(e: HarnessEvent): string {
       });
       return `fallback: ${parts.join("; ")}`;
     }
+    default: return textOr(e.type);
+  }
+}
+
+/** The budget-handback line: which roles were handed back to the primary (or to claude
+ * after a subscription-window reset) when the budget reopened. */
+
+function budgetHandbackEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
+    case "budget_handback": {
+      // Which runs were handed back: the roles still running on the fallback when the budget
+      // reopened. Their runs end `aborted` and resume promptly on the primary, so an operator
+      // reading the feed can connect the aborted runs to this one line.
+      const roles = rolesPhrase(e.roles, "?");
+      if (e.reason === "window") return `claude subscription window reset: handed ${roles} back to claude`;
+      return `budget reopened: handed ${roles} back to the primary`;
+    }
+    default: return textOr(e.type);
+  }
+}
+
+/** The opencode free-model billing line: a run billed what the catalog called free, so
+ * the team prices that model as paid from here on — the demotion is the harness
+ * handling the spend. */
+
+function opencodeBillingEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
     case "opencode_free_model_billed":
       // The promotion ended (plans/opencode-backend.md §7, part 6c/7): a run billed what the
       // catalog called free, so the team now prices that model as paid from here on. No warning
@@ -553,7 +588,31 @@ function budgetEventMessage(e: HarnessEvent): string {
     default: return textOr(e.type);
   }
 }
-function holdEventMessage(e: HarnessEvent): string {
+
+function budgetEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
+    case "budget_warning":
+      return budgetCapEventMessage(e);
+    case "budget_paused":
+      return budgetCapEventMessage(e);
+    case "budget_fallback":
+      return budgetFallbackEventMessage(e);
+    case "budget_resumed":
+      return budgetCapEventMessage(e);
+    case "budget_handback":
+      return budgetHandbackEventMessage(e);
+    case "fallback_switched":
+      return budgetFallbackEventMessage(e);
+    case "opencode_free_model_billed":
+      return opencodeBillingEventMessage(e);
+    default: return textOr(e.type);
+  }
+}
+/** The team-and-role pause/resume lines: team_paused and team_resumed, then the
+ * per-role pair. A pause names its until/reason suffix and who keeps running;
+ * a resumed line appends the expired-pause suffix when the pause timed out. */
+
+function pauseResumeEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "team_paused":
       // Routine state change, like counters_reset — no warning prefix.
@@ -565,12 +624,32 @@ function holdEventMessage(e: HarnessEvent): string {
       return `${rolePausePhrase(textOr(e.role))}${pauseSuffix(e.until, undefined)} (the rest of the team keeps running)`;
     case "role_resumed":
       return roleResumePhrase(textOr(e.role)) + (e.expired === true ? PAUSE_EXPIRED_SUFFIX : "");
+    default: return textOr(e.type);
+  }
+}
+
+/** The repeated-failure pause line: a role that failed N runs in a row is paused;
+ * the line names the streak depth, the last error when one is recorded, and the
+ * lift command. */
+
+function roleFailureEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
     case "role_streak_paused":
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: the pause IS the
       // harness handling the failure. Names the streak depth and the lift command, so the
       // operator knows why the role stopped and what to do about it; names the last error
       // when one is recorded.
       return `role ${textOr(e.role)} paused — ${textOr(e.streak)} runs failed in a row${isNonBlankString(e.lastError) ? ` — last error: ${squash(e.lastError, 120)}` : ""}; fix the cause and resume it (tumwater resume --role <id>)`;
+    default: return textOr(e.type);
+  }
+}
+
+/** The per-role cap lines: role_cap_warning is the early page beside role_cap_paused
+ * (the spent-cap pause), and role_cap_resumed its lift; each names the spend against
+ * the role's own cap and the lift paths. */
+
+function roleCapEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
     case "role_cap_warning":
       // The per-role early page beside role_cap_paused: the cap is not reached yet, so say so —
       // the operator still has room to raise it before the role stops.
@@ -582,6 +661,16 @@ function holdEventMessage(e: HarnessEvent): string {
       return `role ${textOr(e.role)} paused — ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap spent; it starts no new runs until the cap is raised or removed in tumwater.json or the local day rolls over`;
     case "role_cap_resumed":
       return `role ${textOr(e.role)} resumed — it is under its daily cap again and runs again`;
+    default: return textOr(e.type);
+  }
+}
+
+/** The maintenance-admission lines: the maintenance-allowance hold and its reopen
+ * (each naming the window's maintenance/work counts) and bootstrap_complete, the
+ * team's bootstrap finishing and the maintenance roles being admitted. */
+
+function maintenanceAdmissionEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
     case "maintenance_quota_hold":
       // Routine state change, like role_cap_paused — no warning prefix: the hold IS the harness
       // keeping maintenance merges in proportion to work. Names the window's counts so the
@@ -593,6 +682,34 @@ function holdEventMessage(e: HarnessEvent): string {
       // Routine state change, like counters_reset — no warning prefix: the team just finished
       // its bootstrap and the maintenance roles are admitted.
       return `bootstrap complete — ${textOr(e.plansDone)}/${textOr(e.untilPlansDone)} plans done; the maintenance roles now run`;
+    default: return textOr(e.type);
+  }
+}
+
+function holdEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
+    case "team_paused":
+      return pauseResumeEventMessage(e);
+    case "team_resumed":
+      return pauseResumeEventMessage(e);
+    case "role_paused":
+      return pauseResumeEventMessage(e);
+    case "role_resumed":
+      return pauseResumeEventMessage(e);
+    case "role_streak_paused":
+      return roleFailureEventMessage(e);
+    case "role_cap_warning":
+      return roleCapEventMessage(e);
+    case "role_cap_paused":
+      return roleCapEventMessage(e);
+    case "role_cap_resumed":
+      return roleCapEventMessage(e);
+    case "maintenance_quota_hold":
+      return maintenanceAdmissionEventMessage(e);
+    case "maintenance_quota_resumed":
+      return maintenanceAdmissionEventMessage(e);
+    case "bootstrap_complete":
+      return maintenanceAdmissionEventMessage(e);
     default: return textOr(e.type);
   }
 }
