@@ -815,11 +815,17 @@ test("status payload scoped to a role lists only that role and keeps the team bu
   assert.deepEqual(scoped.budget, all.budget);
 });
 
-test("statusPayload carries the post-merge review queue", () => {
-  const entry = { commit: "a".repeat(40), role: "feature", summary: "add x", failures: 2 };
+test("statusPayload carries the post-merge review queue without each verdict body", () => {
+  // The payload backs the 1-second /api/status poll, which only ever renders the entry's
+  // remaining fields; the reviewer's verdict `body` is the entry's bulk and must not ride it.
+  const carried = {
+    commit: "a".repeat(40), role: "feature", summary: "add x", failures: 2,
+    lastFailure: "run ended without a verdict", rejected: ["the fix broke the build"],
+  };
+  const entry = { ...carried, body: "### Verdict\n\nlong reviewer prose that must not be polled" };
   const repo = makeRepo();
   writeJsonFile(postReviewPath(repo), { pending: [entry] });
-  assert.deepEqual((statusPayload(repo) as { postReviews: unknown[] }).postReviews, [entry]);
+  assert.deepEqual((statusPayload(repo) as { postReviews: unknown[] }).postReviews, [carried]);
   const empty = makeRepo();
   assert.deepEqual((statusPayload(empty) as { postReviews: unknown[] }).postReviews, []);
   // A torn entry is dropped exactly as readPostReviews drops it today.
