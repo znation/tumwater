@@ -14,6 +14,8 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 a throw settling an aborted merge still frees the merge slot
 ~~~~
 
+**Progress 2026-11-08 by bugfix:** the quarantined failure detail is unrecoverable (events.jsonl keeps only counts; the baseline's output tail is untracked state). The high-rate flake in this file turned out to be the SIBLING test (`a user abort consumed after the fast-forward does not rewrite the landed change as aborted`), which I reproduced at ~50-60% and fixed (see the new `## Fixed` entry): the settle guard let a consumed abort that lands after the fast-forward rewrite an already-landed change to "aborted". This throw-settle test is the one path in the file where the abort lands BEFORE the ff (its gate check is blocked), so its `mergedCommit` stays undefined and that guard change is a no-op for it. Repeated runs (20+) of just this test still show a separate, low-rate (~5-10%) flake where the aborted settle records `merge_conflict` instead of `aborted` — a distinct, pre-existing mechanism: the abort lands while the gate check is blocked (no fast-forward happens, so `mergedCommit` is undefined and the landed-rewrite guard above is a no-op for it), and the settling task ends on a non-abort outcome. I did not diagnose or change that path; it stays open. Next trace: capture the guard's `userAborted`/`result`/`mergedCommit` in a failing run of just this test to confirm whether the abort is consumed on the settling task at all.
+
 ## Fixed
 
 ## Verified

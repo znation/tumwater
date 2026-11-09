@@ -338,7 +338,17 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
         // operator's stop wins, so the change cannot be re-queued against the pin the finally
         // then discards. A change with no result (deferred or thrown before its outcome)
         // settles aborted for a user stop as well.
-        if (result !== undefined && !(merge.userAborted && RETRIABLE_MERGE_RESULTS.has(result))) await settleOne(result);
+        // A `merged` event fires inside the lock the moment the fast-forward moves main, so a
+        // set mergedCommit is the ground truth that the change LANDED — it outranks whatever the
+        // merge reported. If a consumed abort lands after the ff, the merge can still end
+        // "aborted" (its signal check) or throw before it finalizes (result stays undefined), and
+        // either branch below would rewrite the already-landed change to "aborted". Landing means
+        // main holds the commit, so the only honest outcome is "changed" — the same path the
+        // ordinary merged settle takes. The retriable branch keeps the operator's stop for
+        // outcomes that never landed; a change with no result and no landing settles aborted for
+        // a user stop, or clears its marker otherwise.
+        if (mergedCommit !== undefined) await settleOne("changed");
+        else if (result !== undefined && !(merge.userAborted && RETRIABLE_MERGE_RESULTS.has(result))) await settleOne(result);
         else if (merge.userAborted) await settleOne("aborted");
         else removeMergeChange(root, role);
       }
