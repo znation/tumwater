@@ -28,8 +28,17 @@ const sectionCache = new Map<string, StatKeyedValue<BacklogEntry[]>>();
 
 /** The entries under `<root>/<fileName>`'s `## <sectionTitle>`: fresh when the file's identity
  * or mtime/size changed since the last read, cached otherwise (see module docs). A missing or
- * unreadable file yields [] — a render path must never throw on backlog state. */
-function sectionEntries(root: string, fileName: string, sectionTitle: string): BacklogEntry[] {
+ * unreadable file yields [] — a render path must never throw on backlog state. `maxCopy` (a
+ * positive integer) returns a copy of only the first `maxCopy` entries; the cache still stores
+ * the full parsed section. Sections are newest first, so the prefix is the newest entries —
+ * enough for a dashboard that shows a bounded count without re-cloning the archive's whole
+ * multi-KB-body list on every poll. */
+function sectionEntries(
+  root: string,
+  fileName: string,
+  sectionTitle: string,
+  maxCopy?: number,
+): BacklogEntry[] {
   const file = path.join(root, fileName);
   return (
     cachedTextByStat(
@@ -37,7 +46,11 @@ function sectionEntries(root: string, fileName: string, sectionTitle: string): B
       `${file}\u0000${sectionTitle}`,
       file,
       (md) => parseEntryDetails(md, sectionTitle),
-      (entries) => entries.map((e) => ({ ...e })), // A copy: callers may treat the result as their own.
+      (entries) => {
+        // A copy: callers may treat the result as their own. Capped when asked, so a per-poll
+        // reader of a grown archive copies only the newest rows it shows, never the whole list.
+        return entries.slice(0, maxCopy ?? entries.length).map((e) => ({ ...e }));
+      },
     ) ?? []
   );
 }
@@ -214,10 +227,12 @@ export function plannedPlans(root: string): string[] {
 /** The finished entries of a live backlog file, newest first: its own finished section's
  * (normally none — tumwater moves a finished entry to the archive as the change that finished it
  * commits) followed by its archive file's (plans/backlog-archive.md). Both reads are stat-cached
- * like every section read here. */
-function finishedEntries(root: string, file: "PLANS.md" | "BUGS.md"): BacklogEntry[] {
+ * like every section read here. `maxCopy` caps the archive clone (the unbounded one) to the
+ * newest `maxCopy` entries; the live section stays uncapped (it is the small, often-empty file),
+ * and the result is at most a few entries, the newest, in order. */
+function finishedEntries(root: string, file: "PLANS.md" | "BUGS.md", maxCopy?: number): BacklogEntry[] {
   const { section, archive } = finishedArchiveOf(file);
-  return [...sectionEntries(root, file, section), ...sectionEntries(root, archive, section)];
+  return [...sectionEntries(root, file, section), ...sectionEntries(root, archive, section, maxCopy)];
 }
 
 /** The files a live backlog file's finished entries sit in: the file itself, then its archive.
@@ -236,14 +251,20 @@ export function donePlans(root: string): string[] {
   return finishedEntries(root, "PLANS.md").map((e) => e.title);
 }
 
-/** Done plans as entries (title and body), newest first. */
-export function donePlanEntries(root: string): BacklogEntry[] {
-  return finishedEntries(root, "PLANS.md");
+/** Done plans as entries (title and body), newest first. `maxCopy` (a positive integer) returns
+ * only the newest `maxCopy` as a copy — the archive clone is capped to that, so a per-poll
+ * dashboard that shows a bounded count does not re-clone the archive's whole list on every poll;
+ * the full parse is still cached, and a capped read of an unchanged file costs one stat plus a
+ * `maxCopy`-sized copy instead of a whole-list copy. Omit it for a cold reader that iterates
+ * every entry (the report, the doctor). */
+export function donePlanEntries(root: string, maxCopy?: number): BacklogEntry[] {
+  return finishedEntries(root, "PLANS.md", maxCopy);
 }
 
-/** Fixed bugs as entries (title and body), newest first. */
-export function fixedBugEntries(root: string): BacklogEntry[] {
-  return finishedEntries(root, "BUGS.md");
+/** Fixed bugs as entries (title and body), newest first. `maxCopy` caps the archive clone to
+ * the newest `maxCopy` entries, as donePlanEntries does — for the per-poll dashboard. */
+export function fixedBugEntries(root: string, maxCopy?: number): BacklogEntry[] {
+  return finishedEntries(root, "BUGS.md", maxCopy);
 }
 
 /** Open bugs: the `### ` headings under BUGS.md's `## Open` section. Missing or unreadable →

@@ -78,8 +78,8 @@ export function browsableBacklogEntries(root: string): ReturnType<typeof labeled
   return [
     ...labeledBacklogEntries(root),
     ...finished("answered", answeredQuestionEntries(root).reverse(), DASHBOARD_ANSWERED_QUESTIONS),
-    ...finished("done", donePlanEntries(root)),
-    ...finished("fixed", fixedBugEntries(root)),
+    ...finished("done", donePlanEntries(root, DASHBOARD_RECENT_FINISHED)),
+    ...finished("fixed", fixedBugEntries(root, DASHBOARD_RECENT_FINISHED)),
   ];
 }
 

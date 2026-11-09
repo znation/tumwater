@@ -522,8 +522,8 @@ function backlogFields(
     answeredQuestions: answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS),
     // The newest done plans and fixed bugs, newest first: cleaned titles only, no bodies, read
     // fresh each poll. Badges and alerts keep counting open entries only.
-    donePlans: recentFinished(donePlanEntries(root), DONE_DATE_RE),
-    fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
+    donePlans: recentFinished(donePlanEntries(root, DASHBOARD_RECENT_FINISHED), DONE_DATE_RE),
+    fixedBugs: recentFinished(fixedBugEntries(root, DASHBOARD_RECENT_FINISHED), FIXED_DATE_RE),
   };
 }
 

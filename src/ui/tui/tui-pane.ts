@@ -16,7 +16,7 @@ import { eventTypeTally } from "../../events/event-tally.js";
 import type { HarnessEvent } from "../../events/events.js";
 import { backlogLines, entryBodyWindow, browsableBacklogEntries, isOpenBacklogLabel, planListLines, clampSelection } from "./tui-backlog.js";
 import { answeredQuestionSummaries } from "../../backlog/backlog-question-answer.js";
-import { DASHBOARD_ANSWERED_QUESTIONS, recentFinished } from "../status-payload.js";
+import { DASHBOARD_ANSWERED_QUESTIONS, DASHBOARD_RECENT_FINISHED, recentFinished } from "../status-payload.js";
 import { donePlanEntries, DONE_DATE_RE, entryMatches, FIXED_DATE_RE, fixedBugEntries } from "../../backlog/backlog.js";
 import { isNotableEvent } from "../tone.js";
 import type { QueuedListRow } from "../../inbox/inbox.js";
@@ -267,8 +267,8 @@ function backlogBody(_pane: Extract<TuiView, { kind: "backlog" }>, opts: PaneBod
     const finished = heldOnly
       ? {}
       : {
-          done: finishedRows(recentFinished(donePlanEntries(root), DONE_DATE_RE), "done"),
-          fixed: finishedRows(recentFinished(fixedBugEntries(root), FIXED_DATE_RE), "fixed"),
+          done: finishedRows(recentFinished(donePlanEntries(root, DASHBOARD_RECENT_FINISHED), DONE_DATE_RE), "done"),
+          fixed: finishedRows(recentFinished(fixedBugEntries(root, DASHBOARD_RECENT_FINISHED), FIXED_DATE_RE), "fixed"),
         };
     // With no held entries the Held-only stop says so instead of painting blank sections.
     if (heldOnly && shown.length === 0) {
