@@ -1,3 +1,13 @@
+/** The notify-hook test capability: run the configured `notify` command once with the
+ * synthetic test event. The notifier's production spawn is detached fire-and-forget
+ * (src/events/event-notify.ts), so nothing in the real path waits on a hook — the only
+ * bounded, awaited hook run in the harness is this diagnostic, and three surfaces drive it:
+ * `tumwater notify --test` (`cmdNotify` below, inherited stdio), the dashboard
+ * Settings card's Send test (src/gui/gui-config-commands.ts) and the TUI Health tab's
+ * Ctrl+N (src/ui/tui/tui-pane-health.ts), both with stdio ignored so a chatty hook cannot
+ * corrupt a server terminal or the alternate screen. The capability lives in the notify
+ * domain with the notifier, not in the CLI layer, so those surfaces import a core module
+ * instead of reaching up into it. */
 import { spawn } from "node:child_process";
 import { fail, say } from "../cli/cli-output.js";
 import { loadConfig } from "../config/config.js";
@@ -17,17 +27,6 @@ const NOTIFY_TEST_MESSAGE = "tumwater notify --test";
  * terminal forever (e.g. a webhook `curl` to an unreachable host that never connects).
  * Generous enough not to misclassify a hook that is merely slow. */
 export const NOTIFY_TEST_TIMEOUT_MS = 10_000;
-
-/** The notify-hook test capability: run the configured `notify` command once with the
- * synthetic test event. The notifier's production spawn is detached fire-and-forget
- * (src/events/event-notify.ts), so nothing in the real path waits on a hook — the only
- * bounded, awaited hook run in the harness is this diagnostic, and three surfaces drive it:
- * `tumwater notify --test` (`cmdNotify` below, inherited stdio), the dashboard
- * Settings card's Send test (src/gui/gui-config-commands.ts) and the TUI Health tab's
- * Ctrl+N (src/ui/tui/tui-pane-health.ts), both with stdio ignored so a chatty hook cannot
- * corrupt a server terminal or the alternate screen. The capability lives in the notify
- * domain with the notifier, not in the CLI layer, so those surfaces import a core module
- * instead of reaching up into it. */
 
 /** One notify --test hook run's outcome: the hook's exit code, or the timeout that killed it. */
 type NotifyHookResult = { code: number } | { timedOut: true };
