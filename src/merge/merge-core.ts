@@ -53,7 +53,8 @@ export interface MergeRequest {
   revisionRound?: number;
   /** The prior rejection this merge is revising, absent for a fresh change
    * (plans/revise-rejected.md part 2/2): carried from the MergeEntry so the re-review sees the
-   * prior objections and the interdiff. Absent on a recovery merge. */
+   * prior objections and the interdiff. A recovery carries it only when the pinned commit's
+   * Prior-review trailer stamps it. */
   priorReview?: PriorReview;
   /** The head the one-step merge's gate pre-check ran green on, when it ran one on exactly
    * `sha` (GateResult.verifiedHead) — so a merge whose in-lock rebase is a no-op seeds the
