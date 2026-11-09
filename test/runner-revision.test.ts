@@ -695,11 +695,11 @@ test("leftover recovery rebuilds a revision's round from its commit trailer", as
 
   const recovered = await recoverLeftover({ root, role, mainBranch: "main", runNumber: 8, wt: root });
 
-  assert.equal(recovered?.kind, "enqueued");
-  assert.equal(recovered?.kind === "enqueued" ? recovered.entry.revisionRound : undefined, 1);
+  assert.equal(recovered?.kind, "pinned");
+  assert.equal(recovered?.kind === "pinned" ? recovered.entry.revisionRound : undefined, 1);
   // A recovery merge carries no prior review: the re-review sees it like a fresh change
   // (plans/revise-rejected.md part 2/2).
-  assert.equal(recovered?.kind === "enqueued" ? recovered.entry.priorReview : undefined, undefined);
+  assert.equal(recovered?.kind === "pinned" ? recovered.entry.priorReview : undefined, undefined);
 });
 
 test("a revision whose re-apply conflicts reaches the author with markers, not a plain rejection", async () => {

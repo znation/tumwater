@@ -79,14 +79,13 @@ export async function pinAndResetPhase(ctx: RecoveryContext, wt: string, sha: st
 
 /** End a run whose leftover recovery found work to salvage (runner-leftover.ts) without an
  * authoring run — the leftover owns the role's one merge ref until its merge resolves. A
- * run's dequeued user prompt goes back to its queue, since nothing ran it. A pin put on
- * the merge queue ends the run `queued` exactly like a fresh changed run (the merge-queue
- * interlock then holds the role until the slot merges it) and frees the worktree, the pin now
- * holding the commit. When the pin is left over from a merge that failed non-terminally
- * (`priorMergeFailure`), re-queuing it is a retry of a PERSISTENT failure the `queued` result
+ * run's dequeued user prompt goes back to its queue, since nothing ran it. A re-pinned leftover
+ * ends the run `queued` exactly like a fresh changed run (part 3e/7): the pin is the waiting
+ * state, no queue file is written, and the poll's drain merges it; the worktree is freed once the
+ * pin holds the commit. When the pin is left over from a merge that failed non-terminally
+ * (`priorMergeFailure`), re-pinning it is a retry of a PERSISTENT failure the `queued` result
  * cannot express, so it rides the outcome's recoveryFailure into the error streak and the
- * warning that names the stuck gate (BUGS.md 2026-09-21); an already-queued pin never reaches
- * this phase (runner-run routes that arm to the authoring run). A queued entry whose branch
+ * warning that names the stuck gate (BUGS.md 2026-09-21). A queued entry whose branch
  * also holds a relief commit ahead of main ends `skipped`, leaving both untouched. A leftover
  * that could
  * not be pinned stays on the branch and the run fails like a fresh run's failed pin. Every
@@ -112,9 +111,9 @@ export async function finishRecoveryRunPhase(
     // (plans/interlock-relief.md part 2/4).
     return { result: "skipped", recoveredLeftover: true };
   }
-  if (recovered.kind === "enqueued") {
+  if (recovered.kind === "pinned") {
     ctx.setRecoveryFailure(priorMergeFailure);
-    // Reset the worktree only when the branch is at main or its tip IS the re-queued pin: an
+    // Reset the worktree only when the branch is at main or its tip IS the re-pinned sha: an
     // unpinned relief commit (part 1/4) sitting ahead of main on a different tip must survive,
     // or the reset would discard it before it ever merges.
     const reset =

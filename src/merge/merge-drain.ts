@@ -149,7 +149,7 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
     if (refAbsentFromFiles(ctx.root, mergeRefName(runner.role))) continue;
     const sha = await pinnedRetrySha(ctx.root, runner.role, ctx.mainBranch, runner.state);
     if (sha === null) continue;
-    const entry = await pinnedMergeEntry(ctx.root, runner.role, sha, { recovered: false });
+    const entry = await pinnedMergeEntry(ctx.root, runner.role, sha, { currentRun: runner.state.runs });
     if (await pinClaimWithdrawn(ctx, runner, entry.run)) continue;
     if (ctx.startHeld(runner.role)) continue;
     // Same single-flight re-check as the queue path: the pin's pinnedRetrySha / pinnedMergeEntry /

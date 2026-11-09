@@ -82,8 +82,8 @@ test("a merge pin left behind by an interrupted run is re-merged through the gat
         "the run logged exactly one merge_queued, for the pin",
       );
       assert.equal(runEvents.filter((e) => e.type === "merged").length, 0, "no in-run merged");
-      assert.equal(queueDepth(repo), 1);
-      assert.equal(headMerge(repo)?.entry.sha, sha);
+      assert.equal(queueDepth(repo), 0, "no queue file is written — the pin is the waiting state");
+      assert.equal(await refSha(repo, mergeRefName("improve")), sha, "the pin is the waiting state");
       // The interlock state the orchestrator reads: the queued summary waits for the merge.
       assert.equal(runner.state.queuedSummary?.sha, sha);
 
@@ -239,8 +239,8 @@ test("a director run that ends on leftover recovery puts its user prompt back", 
     enqueuePrompt(repo, "important request");
     const runner = makeRoleRunner(repo, "director");
     const outcome = await runner.run();
-    assert.equal(outcome.result, "queued", "the director's leftover went on the merge queue");
-    assert.equal(headMerge(repo)?.entry.sha, sha);
+    assert.equal(outcome.result, "queued", "the director's leftover was pinned");
+    assert.equal(await refSha(repo, mergeRefName("director")), sha, "the pin is the waiting state");
     assert.ok(!fs.existsSync(ran), "no pi run: the prompt was never executed");
     assert.equal(inboxSize(repo), 1, "the prompt is back in the inbox");
     assert.equal(dequeuePrompt(repo), "important request");
@@ -256,7 +256,7 @@ test("a promptless director with a kept pin re-queues it, runs no pi, and keeps 
     runner.state.imageReroute = { tier: "default" };
     const outcome = await runner.run();
     assert.equal(outcome.result, "queued");
-    assert.equal(headMerge(repo)?.entry.sha, sha);
+    assert.equal(await refSha(repo, mergeRefName("director")), sha, "the pin is the waiting state");
     assert.ok(!fs.existsSync(ran), "no pi run");
     assert.equal(eventsOfType(repo, "prompt_taken").length, 0);
     assert.deepEqual(runner.state.imageReroute, { tier: "default" }, "the reroute waits for a prompt");

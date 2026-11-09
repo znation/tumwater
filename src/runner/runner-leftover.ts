@@ -1,7 +1,7 @@
 import { aheadOfMain, commitExists, commitMessage, deleteRef, deleteRefIfAt, headOf, isMergedInto, refSha, setRef } from "../git/git.js";
 import { commitRunOf, parseCommitMetadata, type CommitMetadata } from "../git/commit-message.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
-import { enqueueMerge, queuedMerges, type MergeEntry } from "../merge/merge-queue.js";
+import { queuedMerges, type MergeEntry } from "../merge/merge-queue.js";
 import { mergeRefName, withdrawnRefName } from "../paths.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
@@ -10,17 +10,19 @@ import type { RunnerState } from "./runner-state.js";
 
 /** Salvaging a commit a previous run left unmerged (plans/merge-queue.md). Since merge queue
  * 2/5 the role's branch is reset to main the moment its commit is pinned, so the leftover
- * normally lives in `refs/tumwater/landing/<role>`: recovery puts that sha back on the durable
- * merge queue, so it merges through the SAME slot, gate, and strike cap a fresh run's change
- * does — no crash or abort path smuggles unreviewed work into main (invariant 1), and main keeps
- * exactly one writer, the orchestrator's merge slot (an in-run recovery merge used to race
- * the slot's batches into `merge_blocked`). A commit with NO pin — a crash in the window between
- * the run's commit and its pin write, or a failed pin write itself — still sits on the branch
- * ahead of main; recovery adopts that tip into the pin scheme and queues it, so invariant 1
- * holds whether or not the pin survived. Split out of runner.ts — which keeps the run lifecycle
- * around it — because this is a self-contained concern with its own entry condition and git
- * surface; the only things it borrows from the runner are identity, the run number, the
- * worktree (for the no-pin fallback), and two pieces of the role's merge state: its conflict
+ * normally lives in `refs/tumwater/landing/<role>`: recovery re-pins that sha — the pin is the
+ * waiting state — and logs `merge_queued`, so the poll's drain merges it through the SAME slot,
+ * gate, and strike cap a fresh run's change does — no queue file is written (part 3e/7 made a
+ * fresh run's pin the waiting state; this recovery follows suit). No crash or abort path
+ * smuggles unreviewed work into main (invariant 1), and main keeps exactly one writer, the
+ * orchestrator's merge slot (an in-run recovery merge used to race the slot's batches into
+ * `merge_blocked`). A commit with NO pin — a crash in the window between the run's commit and
+ * its pin write, or a failed pin write itself — still sits on the branch ahead of main; recovery
+ * adopts that tip into the pin, so invariant 1 holds whether or not the pin survived. Split out
+ * of runner.ts — which keeps the run lifecycle around it — because this is a self-contained
+ * concern with its own entry condition and git surface; the only things it borrows from the
+ * runner are identity, the run number, the worktree (for the no-pin fallback), and two pieces of
+ * the role's merge state: its conflict
  * streak and outstanding hand-back. */
 
 /** Consecutive merges of one pinned sha that may end `merge_conflict` before recovery stops
@@ -77,14 +79,15 @@ export async function pinnedRetrySha(
   return sha;
 }
 
-/** What recoverLeftover needs from its owning runner: identity, the current run number, the
- * role's worktree (needed only for the no-pin ahead-of-main fallback), and the role's merge
- * state — its conflict streak and outstanding hand-back. */
+/** What recoverLeftover needs from its owning runner: identity, the current run number (the
+ * recovery run itself — the `pinned` arm's session and `merge_queued` are named by it, exactly
+ * as a fresh run's are), the role's worktree (needed only for the no-pin ahead-of-main
+ * fallback), and the role's merge state — its conflict streak and outstanding hand-back. */
 export interface LeftoverContext {
   root: string;
   role: string;
   mainBranch: string;
-  /** The current run number — the queued merge's review and conflict-resolution sessions
+  /** The current run number — the recovered commit's review and conflict-resolution sessions
    * are named by it, exactly as a fresh run's are. */
   runNumber: number;
   /** The role's worktree — read for the no-pin fallback only. */
@@ -98,9 +101,10 @@ export interface LeftoverContext {
 }
 
 /** What recovery did with a leftover, for the run to end on:
- * - `enqueued`: the pin went onto the merge queue and `merge_queued` was logged — the run ends
- *   `queued`, exactly like a fresh changed run, and the merge-queue interlock holds the role
- *   until the slot has merged it;
+ * - `pinned`: recovery re-pinned the recovered commit (or adopted the unpinned tip into the
+ *   pin) and logged `merge_queued` — the pin is the waiting state and no queue file is written;
+ *   the run ends `queued` exactly like a fresh changed run (part 3e/7) and the poll's drain
+ *   merges the pin;
  * - `already_queued`: the role already has a merge on the queue (the interlock relief admits
  *   it — runner-run.ts's `already_queued` arm falls through to author for every role) —
  *   nothing is enqueued twice and no ref is touched;
@@ -119,7 +123,7 @@ export interface LeftoverContext {
  *   current main with the markers in place so the author resolves them; the run logs a
  *   `conflict_handback` `queued` event. */
 type LeftoverRecovery =
-  | { kind: "enqueued"; entry: MergeEntry }
+  | { kind: "pinned"; entry: MergeEntry }
   | { kind: "already_queued"; entry: MergeEntry }
   | { kind: "relief_wait"; entry: MergeEntry }
   | { kind: "unpinned"; sha: string }
@@ -127,7 +131,7 @@ type LeftoverRecovery =
   | { kind: "discarded"; sha: string; summary: string; attempts: number };
 
 /** The recovery arms that end the run through the recovery-finishing phase (runner-recovery.ts
- * `finishRecoveryRunPhase`): `enqueued`, `relief_wait`, and `unpinned`. The other
+ * `finishRecoveryRunPhase`): `pinned`, `relief_wait`, and `unpinned`. The other
  * three arms never reach it — `handback` and `discarded` are resolved inline before the phase
  * (runner-run.ts), and `already_queued` falls through to authoring — so their exclusion from the
  * parameter type is stated once here and shared by the three `finishRecoveryRun` declarations. */
@@ -142,16 +146,18 @@ export async function hasUnmergedPin(root: string, role: string): Promise<boolea
   return (await refSha(root, mergeRefName(role)).catch(() => null)) !== null;
 }
 
-/** Queue a commit a previous run left unmerged. Entry condition: the merge ref exists and
- * its sha is not yet contained in main — or, with no pin at all, the role's branch is ahead of
- * main (crash between the commit and the pin). A present-but-contained ref is stale — a crash
- * between the ff-merge and the ref deletion — and is deleted without queuing anything, and so is
- * a pin whose commit is missing from the repository (with a warning — it can never merge).
- * Returns null when there was nothing to salvage. The queued entry carries the pin's sha plus the
- * summary, body, and high-friction flag read back from its commit message, because the
- * authoring run that set them is gone; from there the merge slot keeps or deletes the ref per
- * the merger's usual policy. An unreadable ref or worktree reads as no leftover — only git-level
- * errors in the stale-pin cleanup propagate. */
+/** Re-pin a commit a previous run left unmerged and log it for the drain. Entry condition: the
+ * merge ref exists and its sha is not yet contained in main — or, with no pin at all, the role's
+ * branch is ahead of main (crash between the commit and the pin). A present-but-contained ref is
+ * stale — a crash between the ff-merge and the ref deletion — and is deleted without pinning
+ * anything, and so is a pin whose commit is missing from the repository (with a warning — it can
+ * never merge). Returns null when there was nothing to salvage. The `pinned` arm carries the
+ * recovered sha plus the summary, body, and high-friction flag read back from its commit message
+ * (the authoring run that set them is gone), and `merge_queued` is logged exactly once: the pin
+ * is the waiting state and no queue file is written (part 3e/7), so the poll's drain merges it.
+ * From there the merge slot keeps or deletes the ref per the merger's usual policy. An unreadable
+ * ref or worktree reads as no leftover — only git-level errors in the stale-pin cleanup
+ * propagate. */
 export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRecovery | null> {
   // One merge ref per role, so at most one outstanding merge per role: a second entry beside
   // one the slot has yet to finish would share — and fight over — the same ref.
@@ -215,9 +221,12 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     return { kind: "handback", sha, summary, attempts };
   }
   const entry = recoveredMergeEntry(ctx.role, sha, meta, ctx.runNumber);
-  enqueueMerge(ctx.root, entry);
+  // The pin is the waiting state: recovery re-pins the recovered commit (or adopts the unpinned
+  // tip into the pin, above) and writes no queue file — part 3e/7 made a fresh run's pin its
+  // waiting state, and this recovery follows suit. `merge_queued` is logged exactly once, for
+  // the drain to merge; the role holds its one merge ref until the slot merges the pin.
   logEventBestEffort(ctx.root, { source: ctx.role, type: "merge_queued", commit: sha, summary: entry.summary });
-  return { kind: "enqueued", entry };
+  return { kind: "pinned", entry };
 }
 
 /** Set aside the unmerged work a withdrawn claim's interrupted run left, before leftover
@@ -330,11 +339,17 @@ export async function pinnedMergeEntry(
   root: string,
   role: string,
   sha: string,
-  opts: { recovered?: boolean } = {},
+  opts: { currentRun?: number } = {},
 ): Promise<MergeEntry> {
   const meta = await recoveredMetadata(root, sha);
   const message = await commitMessage(root, sha);
   const run = message === null ? 0 : (commitRunOf(message) ?? 0);
   const entry = recoveredMergeEntry(role, sha, meta, run);
-  return opts.recovered === false && meta.subject !== undefined ? { ...entry, summary: meta.subject } : entry;
+  // A fresh pin is the caller's own current run's change (part 3e/7): merge it under its own
+  // subject, not labelled recovered leftover work. A pin the commit's Run trailer attributes to
+  // an earlier run — leftover recovery re-pinning what the prior run left behind (part 3i/7) —
+  // keeps the recovered label, as does a torn-head re-queue that passes no currentRun. Same
+  // run-vs-current comparison the drain's pin-claim withdrawal already relies on.
+  const isFresh = opts.currentRun !== undefined && run === opts.currentRun;
+  return isFresh && meta.subject !== undefined ? { ...entry, summary: meta.subject } : entry;
 }

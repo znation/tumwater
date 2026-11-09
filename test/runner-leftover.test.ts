@@ -7,7 +7,7 @@ import { commitTrailer } from "../src/git/commit-message.js";
 import { readEvents } from "../src/events/event-read.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { enqueueMerge, queuedMerges } from "../src/merge/merge-queue.js";
-import { mergeQueueDir, mergeRefName } from "../src/paths.js";
+import { mergeRefName } from "../src/paths.js";
 import { shortSha } from "../src/text/format.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { eventsOfType, unwritableEvents, warningMessages } from "./fixtures/log-fixtures.js";
@@ -67,15 +67,17 @@ test("a pinned commit not in main is put on the merge queue, not merged", async 
 
   const recovered = await recoverLeftover(makeCtx(root, wt));
 
-  assert.equal(recovered?.kind, "enqueued");
-  const queued = queuedMerges(root);
-  assert.equal(queued.length, 1, "exactly one entry is queued");
+  assert.equal(recovered?.kind, "pinned");
+  assert.deepEqual(queuedMerges(root), [], "no queue file is written — the pin is the waiting state");
+  const entry = recovered?.kind === "pinned" ? recovered.entry : null;
   // A routine hand-made commit still names what merges — its whole subject, un-stamped — and
   // carries no recovered body or flag.
   assert.deepEqual(
-    { ...queued[0], enqueuedAt: 0 },
-    { role: ROLE, sha, run: 7, summary: "recovered leftover work from improve: stranded work", enqueuedAt: 0 },
+    entry ? { role: entry.role, sha: entry.sha, run: entry.run, summary: entry.summary } : null,
+    { role: ROLE, sha, run: 7, summary: "recovered leftover work from improve: stranded work" },
   );
+  assert.equal(entry?.body, undefined, "no body without a message");
+  assert.equal(entry?.highFriction, undefined, "no friction flag without a trailer");
   assert.ok(!(await isMergedInto(root, sha, "main")), "nothing was written to main");
   assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin stays for the merge slot");
   const events = readEvents(root);
@@ -102,14 +104,12 @@ test("a pin whose merges hit the merge-conflict cap is handed back, not re-queue
 
   // One short of the cap: still a retry.
   const below = { ...makeCtx(root, wt), mergeConflicts: { sha, count: MERGE_CONFLICT_LIMIT - 1 } };
-  assert.equal((await recoverLeftover(below))?.kind, "enqueued");
-  fs.rmSync(mergeQueueDir(root), { recursive: true, force: true }); // the slot took the entry
-  assert.deepEqual(queuedMerges(root), []);
+  assert.equal((await recoverLeftover(below))?.kind, "pinned");
+  assert.deepEqual(queuedMerges(root), [], "no queue file is written — the pin is the waiting state");
 
   // A streak for another sha says nothing about this pin.
   const other = { ...makeCtx(root, wt), mergeConflicts: { sha: "0".repeat(40), count: MERGE_CONFLICT_LIMIT } };
-  assert.equal((await recoverLeftover(other))?.kind, "enqueued");
-  fs.rmSync(mergeQueueDir(root), { recursive: true, force: true });
+  assert.equal((await recoverLeftover(other))?.kind, "pinned");
 
   // At the cap with no prior hand-back: the pin stays and the author gets it back to resolve.
   const atCap = { ...makeCtx(root, wt), mergeConflicts: { sha, count: MERGE_CONFLICT_LIMIT } };
@@ -194,8 +194,10 @@ test("recovery reads the pinned commit's body and high-friction flag back out of
   );
   const wt = await ensureWorktree(root, ROLE, "main");
 
-  assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued");
-  const [entry] = queuedMerges(root);
+  const recovered = await recoverLeftover(makeCtx(root, wt));
+  assert.equal(recovered?.kind, "pinned");
+  assert.deepEqual(queuedMerges(root), [], "no queue file is written — the pin is the waiting state");
+  const entry = recovered?.kind === "pinned" ? recovered.entry : null;
   assert.equal(entry?.sha, sha);
   assert.equal(entry?.highFriction, true, "the Friction trailer sets the review flag");
   assert.equal(
@@ -225,8 +227,10 @@ test("recovery copies the commit's Claim and Prior-review trailers into the reco
   );
   const wt = await ensureWorktree(root, ROLE, "main");
 
-  assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued");
-  const [entry] = queuedMerges(root);
+  const recovered = await recoverLeftover(makeCtx(root, wt));
+  assert.equal(recovered?.kind, "pinned");
+  assert.deepEqual(queuedMerges(root), [], "no queue file is written — the pin is the waiting state");
+  const entry = recovered?.kind === "pinned" ? recovered.entry : null;
   assert.equal(entry?.sha, sha);
   assert.equal(entry?.revisionRound, 1, "the Revision trailer still sets the round");
   assert.deepEqual(entry?.claim, claim, "the Claim trailer rides into the recovered entry");
@@ -247,8 +251,10 @@ test("recovery of a commit that stamps no Claim or Prior-review trailer carries 
   );
   const wt = await ensureWorktree(root, ROLE, "main");
 
-  assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued");
-  const [entry] = queuedMerges(root);
+  const recovered = await recoverLeftover(makeCtx(root, wt));
+  assert.equal(recovered?.kind, "pinned");
+  assert.deepEqual(queuedMerges(root), [], "no queue file is written — the pin is the waiting state");
+  const entry = recovered?.kind === "pinned" ? recovered.entry : null;
   assert.equal(entry?.sha, sha);
   assert.equal(entry?.claim, undefined);
   assert.equal(entry?.priorReview, undefined);
@@ -308,12 +314,10 @@ test("an unpinned commit ahead of main (crash in the commit→pin window) is ado
   const tip = headSha(wt);
   assert.equal(await refSha(root, mergeRefName(ROLE)), null, "fixture sanity: no pin exists");
 
-  assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued");
-  assert.deepEqual(
-    queuedMerges(root).map((e) => e.sha),
-    [tip],
-    "the branch tip is the sha to queue when no pin survived",
-  );
+  const recovered = await recoverLeftover(makeCtx(root, wt));
+  assert.equal(recovered?.kind, "pinned");
+  assert.deepEqual(queuedMerges(root), [], "no queue file is written — the pin is the waiting state");
+  assert.equal(recovered?.kind === "pinned" ? recovered.entry.sha : null, tip, "the branch tip is the recovered sha when no pin survived");
   // The unpinned commit was adopted into the pin scheme: an under-cap review failure keeps this
   // ref for the strike cap's retry exactly as for a normally pinned one.
   assert.equal(await refSha(root, mergeRefName(ROLE)), tip, "the fallback adopts the pin");
@@ -330,8 +334,8 @@ test("a no-pin ahead-of-main commit is adopted into the pin scheme and queued", 
 
   const recovered = await recoverLeftover(makeCtx(root, wt));
 
-  assert.equal(recovered?.kind, "enqueued");
-  assert.equal(recovered?.kind === "enqueued" ? recovered.entry.sha : null, tip);
+  assert.equal(recovered?.kind, "pinned");
+  assert.equal(recovered?.kind === "pinned" ? recovered.entry.sha : null, tip);
   assert.equal(await refSha(root, mergeRefName(ROLE)), tip, "the tip is adopted into a pin");
 });
 
@@ -343,7 +347,7 @@ test("a pin is never held by a reviewer config: a formerly-held leftover re-queu
 
   const recovered = await recoverLeftover(makeCtx(root, wt));
 
-  assert.equal(recovered?.kind, "enqueued");
+  assert.equal(recovered?.kind, "pinned");
   assert.equal((recovered as { entry?: { sha: string } })?.entry?.sha, sha, "the formerly-held pin is re-queued");
   assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin stays for the merge slot");
 });
@@ -405,8 +409,10 @@ test("a pinned commit with no readable subject is queued under the bare provenan
   const { root, sha } = await pinnedFixture("", ["--allow-empty-message"]);
   const wt = await ensureWorktree(root, ROLE, "main");
 
-  assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued");
-  const [entry] = queuedMerges(root);
+  const recovered = await recoverLeftover(makeCtx(root, wt));
+  assert.equal(recovered?.kind, "pinned");
+  assert.deepEqual(queuedMerges(root), [], "no queue file is written — the pin is the waiting state");
+  const entry = recovered?.kind === "pinned" ? recovered.entry : null;
   assert.equal(entry?.sha, sha);
   assert.equal(entry?.summary, "recovered leftover work from improve", "no subject: the bare label");
   assert.equal(entry?.body, undefined, "no body without a message");
@@ -440,8 +446,9 @@ test("a pinned leftover is still queued when the events feed is unwritable", asy
 
   const recovered = await recoverLeftover(makeCtx(root, wt));
 
-  assert.equal(recovered?.kind, "enqueued", "the enqueue result survives the failed log");
-  assert.deepEqual(queuedMerges(root).map((e) => e.sha), [sha], "the entry is on the queue");
+  assert.equal(recovered?.kind, "pinned", "the pin result survives the failed log");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin stays even when the log fails");
+  assert.deepEqual(queuedMerges(root), [], "no queue file is written — the pin is the waiting state");
 });
 
 test("a failed pin adoption still returns unpinned when the events feed is unwritable", async () => {

@@ -267,7 +267,7 @@ never has to wait a parked check out.
   and that one open bug puts it back on the every-wake schedule.
 - The director runs your prompts immediately, outside `maxConcurrent` and ahead of every role.
   With no prompt, a director holding a kept merge pin is also due on its own min-run clock (20 s
-  by default) and wakes as `woke (leftover)`; that run re-queues the pin and authors nothing.
+  by default) and wakes as `woke (leftover)`; that run re-pins the change and authors nothing.
 - `tumwater prompt --role <id>` puts a prompt in one role's inbox for its next run instead of the
   director's, and wakes it. `--list` shows the inboxes grouped by role; per-role prompts
   wait behind a paused role like the director's wait behind a team pause.

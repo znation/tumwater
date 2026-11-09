@@ -124,17 +124,17 @@ test("finishRecoveryRunPhase fails an unpinned leftover without resetting the wo
   assert.equal(inboxSize(root, "improve"), 1, "the run's request is requeued since nothing ran it");
 });
 
-test("finishRecoveryRunPhase queues a freshly enqueued pin, resets the worktree, and carries the prior failure", async () => {
+test("finishRecoveryRunPhase re-pins a leftover, resets the worktree, and carries the prior failure", async () => {
   const { root, wt } = await initializedWorktree();
   const { ctx, failures } = makeCtx(root);
   const entry: MergeEntry = { role: "improve", sha: "sha1", run: 4, summary: "the summary", enqueuedAt: 0 };
   fs.writeFileSync(path.join(wt, "dirty.txt"), "uncommitted leftover\n");
 
-  const outcome = await finishRecoveryRunPhase(ctx, { kind: "enqueued", entry }, null, wt, "the prior failure");
+  const outcome = await finishRecoveryRunPhase(ctx, { kind: "pinned", entry }, null, wt, "the prior failure");
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.commit, "sha1");
   assert.equal(outcome.recoveredLeftover, true);
-  assert.deepEqual(failures, ["the prior failure"], "a re-queued persistent failure rides into the error streak");
+  assert.deepEqual(failures, ["the prior failure"], "a re-pinned persistent failure rides into the error streak");
   assert.equal(headSha(wt), mainSha(root), "the worktree is freed once the pin owns the commit");
 });
 
@@ -158,16 +158,16 @@ test("finishRecoveryRunPhase keeps an unpinned relief commit when enqueuing a di
   fs.writeFileSync(path.join(wt, "held.txt"), "held commit on the branch\n");
   commitIn(wt, "held relief commit");
   const heldTip = headSha(wt);
-  // The re-queued pin is a DIFFERENT commit; the branch is ahead with the held commit.
+  // The re-pinned pin is a DIFFERENT commit; the branch is ahead with the held commit.
   const entry: MergeEntry = { role: "improve", sha: "sha1", run: 4, summary: "the summary", enqueuedAt: 0 };
 
-  const outcome = await finishRecoveryRunPhase(ctx, { kind: "enqueued", entry }, null, wt, undefined);
+  const outcome = await finishRecoveryRunPhase(ctx, { kind: "pinned", entry }, null, wt, undefined);
 
   assert.equal(outcome.result, "queued");
   assert.equal(headSha(wt), heldTip, "the held commit survives: the branch is NOT reset");
 });
 
-test("finishRecoveryRunPhase resets the worktree when the branch tip IS the re-queued pin", async () => {
+test("finishRecoveryRunPhase resets the worktree when the branch tip IS the re-pinned pin", async () => {
   const { root, wt } = await initializedWorktree();
   const { ctx } = makeCtx(root);
   fs.writeFileSync(path.join(wt, "pinned.txt"), "work\n");
@@ -175,8 +175,8 @@ test("finishRecoveryRunPhase resets the worktree when the branch tip IS the re-q
   const tip = headSha(wt);
   const entry: MergeEntry = { role: "improve", sha: tip, run: 4, summary: "the summary", enqueuedAt: 0 };
 
-  const outcome = await finishRecoveryRunPhase(ctx, { kind: "enqueued", entry }, null, wt, undefined);
+  const outcome = await finishRecoveryRunPhase(ctx, { kind: "pinned", entry }, null, wt, undefined);
 
   assert.equal(outcome.result, "queued");
-  assert.equal(headSha(wt), mainSha(root), "the branch is reset once its tip is the re-queued pin's commit");
+  assert.equal(headSha(wt), mainSha(root), "the branch is reset once its tip is the re-pinned pin's commit");
 });
