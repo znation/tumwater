@@ -155,76 +155,128 @@ interface MainCheckScan {
  * collide. Bounded inside cachedByStat. */
 const mainCheckScanCache = new Map<string, StatKeyedValue<MainCheckScan>>();
 
-/** Scan the log for MainCheckScan, growing the tail until a merge-scope check is inside it (see
- * MAIN_CHECK_SCAN_MAX_EVENTS): a check older than the default tail must still badge the header,
- * and every event after the check — the merged pairing the sha needs — is newer, so one window
- * holds the whole derivation. */
-function scanMainCheck(root: string): MainCheckScan {
+/** The single pass over one window of the event tail: what that window contributes to the
+ * main-check scan — the newest merge-scope build_check, every merged event, the newest
+ * main_culprit blame, the open red spell's opener (the oldest main_culprit still open at the
+ * window's end), and the newest cleared main_check. One pass collects all four facts the
+ * derivation needs: the newest merge-scope check, every merged event, the newest
+ * main_culprit blame, and the spell opener — the oldest main_culprit still open at the tail's
+ * end (a passing full main_check after it closed its spell, so the next culprit in the tail is
+ * a new spell's opener). The merges are re-read against the check's ts below — a pass over the
+ * merges alone, not a second pass over every event in the window. A cleared red (part 3b/4)
+ * whose one confirming full run has not settled: the surfaces read "full check running" from
+ * the cleared event alone — no full verdict was written. A settled main_check after it (the
+ * confirming run's verdict) closes the state, and so does a newer full build_check (the
+ * clearedRedIsLive guard). ("what does one log window contribute to a main-check scan?") */
+interface ScanWindowFacts {
+  check?: HarnessEvent;
+  /** The window's merged events, in scan order — collected in the same pass that finds the
+   * check instead of a second full scan of the window below. */
+  mergeDone: HarnessEvent[];
+  culprit?: HarnessEvent;
+  opener?: HarnessEvent;
+  cleared?: HarnessEvent;
+}
+function scanMainCheckWindow(events: readonly HarnessEvent[]): ScanWindowFacts {
   let check: HarnessEvent | undefined;
-  // The final window's merged events, in scan order — collected in the same pass that
-  // finds the check instead of a second full scan of the window below.
   let mergeDone: HarnessEvent[] = [];
   let culprit: HarnessEvent | undefined;
   let opener: HarnessEvent | undefined;
   let cleared: HarnessEvent | undefined;
+  for (const e of events) {
+    if (e.type === "build_check" && isFullCheckScope(e.scope, e.full)) {
+      check = e;
+    } else if (e.type === "merge_done" && typeof e.ts === "number") {
+      mergeDone.push(e);
+    } else if (e.type === "main_check") {
+      if (isPassingMainCheck(e)) opener = undefined; // a passing full main check closes the open red spell
+      cleared = e.cleared === true ? e : undefined;
+    } else if (e.type === "main_culprit") {
+      culprit = e;
+      if (opener === undefined) opener = e; // the oldest main_culprit since the last pass
+    }
+  }
+  return { check, mergeDone, culprit, opener, cleared };
+}
+
+/** Whether a cleared red is still live: the newest cleared main_check is newer than the newest
+ * full build_check, so the confirming full run has not settled and no full verdict covers the
+ * clearing head. A confirming run that settled logs its own build_check (or a settled
+ * main_check) after the cleared event; either ends the state.
+ * ("when is a cleared red still live?") */
+function clearedRedIsLive(cleared: HarnessEvent | undefined, check: HarnessEvent | undefined): boolean {
+  return (
+    cleared !== undefined &&
+    typeof cleared.ts === "number" &&
+    (check === undefined || typeof check.ts !== "number" || cleared.ts > check.ts)
+  );
+}
+
+/** The three-way pairing of the window's merged events against the check's ts: the newest merge
+ * after the check (the sha a pre-merge check verified), the newest merge at or before it (the
+ * fallback when nothing merged after), and — for a baseline check, which runs on the head main
+ * held at its spawn — the newest merge at or before the run's spawn, so a merge that lands while
+ * the run is in flight logs before the check's settle stamp but is not covered by it.
+ * ("which merge does a check cover?") */
+function mergesAroundCheck(
+  mergeDone: readonly HarnessEvent[],
+  checkTs: number,
+  spawnedAt: number | undefined,
+): { after?: HarnessEvent; before?: HarnessEvent; beforeSpawn?: HarnessEvent } {
+  let after: HarnessEvent | undefined;
+  let before: HarnessEvent | undefined;
+  let beforeSpawn: HarnessEvent | undefined;
+  for (const e of mergeDone) {
+    if (e.ts > checkTs) after = e;
+    else {
+      before = e;
+      if (spawnedAt !== undefined && e.ts <= spawnedAt) beforeSpawn = e;
+    }
+  }
+  return { after, before, beforeSpawn };
+}
+
+/** Scan the log for MainCheckScan, growing the tail until a merge-scope check is inside it (see
+ * MAIN_CHECK_SCAN_MAX_EVENTS): a check older than the default tail must still badge the header,
+ * and every event after the check — the merged pairing the sha needs — is newer, so one window
+ * holds the whole derivation. */
+
+function scanMainCheck(root: string): MainCheckScan {
   const grewFull = mainCheckGrewFull.has(root);
   // A set note means the previous scan reached the cap without finding a check, so start
   // there: starting at DEFAULT_EVENT_TAIL would only re-read (and re-parse on a cache miss)
   // a window the next step discards. This is what the note's "starts straight at the cap"
   // promises; the update keeps a non-set scan on the ×4 ladder it has always used.
-  for (
-    let window = grewFull ? MAIN_CHECK_SCAN_MAX_EVENTS : DEFAULT_EVENT_TAIL;
-    ;
-    window = grewFull ? MAIN_CHECK_SCAN_MAX_EVENTS : Math.min(window * 4, MAIN_CHECK_SCAN_MAX_EVENTS)
-  ) {
+  let window = grewFull ? MAIN_CHECK_SCAN_MAX_EVENTS : DEFAULT_EVENT_TAIL;
+  // The final window's facts — each iteration rescans from scratch, so no stale value from a
+  // previous, smaller window survives; the break exits with the final tail's result.
+  let facts: ScanWindowFacts = {
+    check: undefined,
+    mergeDone: [],
+    culprit: undefined,
+    opener: undefined,
+    cleared: undefined,
+  };
+  for (;;) {
     const events = readEvents(root, window);
-    check = undefined;
-    mergeDone = [];
-    culprit = undefined;
-    opener = undefined;
-    cleared = undefined;
-    // One pass collects all four facts the derivation needs: the newest merge-scope check,
-    // every merged event, the newest main_culprit blame, and the spell opener — the oldest
-    // main_culprit still open at the tail's end (a passing full main_check after it closed
-    // its spell, so the next culprit in the tail is a new spell's opener). The merges are
-    // re-read against the check's ts below — a pass over the merges alone, not a second pass
-    // over every event in the window.
-    for (const e of events) {
-      if (e.type === "build_check" && isFullCheckScope(e.scope, e.full)) {
-        check = e;
-      } else if (e.type === "merge_done" && typeof e.ts === "number") {
-        mergeDone.push(e);
-      } else if (e.type === "main_check") {
-        if (isPassingMainCheck(e)) opener = undefined; // a passing full main check closes the open red spell
-        // A cleared red (part 3b/4) whose one confirming full run has not settled: the
-        // surfaces read "full check running" from the cleared event alone — no full verdict
-        // was written. A settled main_check after it (the confirming run's verdict) closes the
-        // state, and so does a newer full build_check (the clearedLive guard below).
-        cleared = e.cleared === true ? e : undefined;
-      } else if (e.type === "main_culprit") {
-        culprit = e;
-        if (opener === undefined) opener = e; // the oldest main_culprit since the last pass
-      }
-    }
+    facts = scanMainCheckWindow(events);
+    const check = facts.check;
     // Found, the log is shorter than the window (nothing older exists to find), or the cap
-    // is reached: the tail is final. A stale `check` from a previous, smaller window cannot
-    // happen — each iteration rescans from scratch, and a later window's scan sees every
-    // event the smaller one did.
+    // is reached: the tail is final.
     if (check || events.length < window || window >= MAIN_CHECK_SCAN_MAX_EVENTS) break;
+    window = grewFull ? MAIN_CHECK_SCAN_MAX_EVENTS : Math.min(window * 4, MAIN_CHECK_SCAN_MAX_EVENTS);
   }
+  const check = facts.check;
+  const mergeDone = facts.mergeDone;
+  const culprit = facts.culprit;
+  const opener = facts.opener;
+  const cleared = facts.cleared;
   if (mainCheckGrewFull.size >= MAIN_CHECK_FULL_SET_MAX) mainCheckGrewFull.clear();
   if (check) mainCheckGrewFull.delete(root);
   else mainCheckGrewFull.add(root);
   // The loop's last pass over the FINAL tail left `opener` current: an earlier window's value
   // was reset before its own scan, and the break exits with the final tail's result.
-  // The cleared state is live when the newest cleared main_check is newer than the newest
-  // full build_check: the confirming full run has not settled, so no full verdict covers the
-  // clearing head. A confirming run that settled logs its own build_check (or a settled
-  // main_check) after the cleared event; either ends the state.
-  const clearedLive =
-    cleared !== undefined &&
-    typeof cleared.ts === "number" &&
-    (check === undefined || typeof check.ts !== "number" || cleared.ts > check.ts);
+  const clearedLive = clearedRedIsLive(cleared, check);
   if (!check || typeof check.ts !== "number" || !isMainCheckStatus(check.status)) {
     return {
       ...(clearedLive ? { cleared } : {}),
@@ -236,24 +288,15 @@ function scanMainCheck(root: string): MainCheckScan {
   // run is in flight logs before the check's settle stamp but is not covered by it. Capture
   // that spawn-bounded merge separately so the sha can name the head the run actually saw.
   const spawnedAt = check.scope === "baseline" && typeof check.spawnedAt === "number" ? check.spawnedAt : undefined;
-  let mergeDoneAfter: HarnessEvent | undefined;
-  let mergeDoneBefore: HarnessEvent | undefined;
-  let mergeDoneBeforeSpawn: HarnessEvent | undefined;
-  for (const e of mergeDone) {
-    if (e.ts > check.ts) mergeDoneAfter = e;
-    else {
-      mergeDoneBefore = e;
-      if (spawnedAt !== undefined && e.ts <= spawnedAt) mergeDoneBeforeSpawn = e;
-    }
-  }
+  const { after, before, beforeSpawn } = mergesAroundCheck(mergeDone, check.ts, spawnedAt);
   return {
     check,
     ...(clearedLive ? { cleared } : {}),
     ...(culprit ? { culprit } : {}),
     ...(opener ? { spellOpener: opener } : {}),
-    ...(typeof mergeDoneAfter?.commit === "string" ? { mergeDoneAfterCommit: mergeDoneAfter.commit } : {}),
-    ...(typeof mergeDoneBefore?.commit === "string" ? { mergeDoneBeforeCommit: mergeDoneBefore.commit } : {}),
-    ...(typeof mergeDoneBeforeSpawn?.commit === "string" ? { mergeDoneBeforeSpawnCommit: mergeDoneBeforeSpawn.commit } : {}),
+    ...(typeof after?.commit === "string" ? { mergeDoneAfterCommit: after.commit } : {}),
+    ...(typeof before?.commit === "string" ? { mergeDoneBeforeCommit: before.commit } : {}),
+    ...(typeof beforeSpawn?.commit === "string" ? { mergeDoneBeforeSpawnCommit: beforeSpawn.commit } : {}),
   };
 }
 
@@ -283,40 +326,44 @@ function mainCheckScanFor(root: string): MainCheckScan {
  * verified a role worktree, not main. The log-derived scan is stat-cached per events.jsonl
  * (mainCheckScanFor); only the branch/sha fallback reads here are per call, so a config or
  * checkout change is observed even while the log sits still. */
-export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckStatus | undefined {
-  const scan = mainCheckScanFor(root);
-  // A cleared red whose confirming full run has not settled (part 3b/4 → part 4/4): the
-  // newest full build_check is the pre-clearing red, so reading it would call a head "red"
-  // on which every open failure has passed. The cleared main_check alone carries the state —
-  // no full verdict was written — until the confirming run settles (a newer full build_check
-  // or a settled main_check ends it in the scan).
-  if (scan.cleared && typeof scan.cleared.sha === "string" && typeof scan.cleared.ts === "number") {
-    return { sha: scan.cleared.sha, status: "passed", at: scan.cleared.ts, cleared: true };
+
+/** The verdict while a cleared red's confirming full run has not settled (part 3b/4 → part
+ * 4/4): the newest full build_check is the pre-clearing red, so reading it would call a head
+ * "red" on which every open failure has passed. The cleared main_check alone carries the
+ * state — no full verdict was written — until the confirming run settles (a newer full
+ * build_check or a settled main_check ends it in the scan).
+ * ("what does a cleared verdict carry?") */
+function clearedMainCheckStatus(cleared: MainCheckScan["cleared"]): MainCheckStatus | undefined {
+  if (cleared && typeof cleared.sha === "string" && typeof cleared.ts === "number") {
+    return { sha: cleared.sha, status: "passed", at: cleared.ts, cleared: true };
   }
-  const check = scan.check;
-  if (!check || typeof check.ts !== "number" || !isMainCheckStatus(check.status)) return undefined;
+  return undefined;
+}
+
+/** The main sha a check's verdict names: a baseline check runs ON main's tip, after the merge
+ * that put it there (the watch's hourly pass, a redeploy green, a gate's main-tip verdict), so
+ * its covered head is the newest merge at or before its run's spawn (its log stamp when the
+ * event carries no spawn) — never a merge that landed while the run was in flight or
+ * afterwards. The after-first pairing still serves a pre-merge merge/batch check, whose
+ * verified head is the merge it precedes. Without the baseline branch an hour-old green is
+ * shown "at" the newest head the interval has not covered yet, which is the implication part
+ * 4/4 exists to remove. ("what head does a check cover?") */
+function mainCheckCoveredSha(scan: MainCheckScan, check: HarnessEvent, cfg: TumwaterConfig, root: string): string | undefined {
   const branch = targetBranch(cfg.baseBranch, currentBranchFromHeadFile(root));
-  // A baseline check runs ON main's tip, after the merge that put it there (the watch's
-  // hourly pass, a redeploy green, a gate's main-tip verdict), so the head it covers is the
-  // newest merge at or before its run's spawn (its log stamp when the event carries no
-  // spawn) — never a merge that landed while the run was in flight or afterwards. The
-  // after-first pairing still serves a pre-merge merge/batch check, whose verified head is
-  // the merge it precedes. Without the baseline branch an hour-old green is shown "at" the
-  // newest head the interval has not covered yet, which is the implication part 4/4 exists
-  // to remove.
-  const sha = check.scope === "baseline"
+  return check.scope === "baseline"
     ? scan.mergeDoneBeforeSpawnCommit ?? scan.mergeDoneBeforeCommit ?? readBranchHead(root, branch) ?? scan.mergeDoneAfterCommit
     : scan.mergeDoneAfterCommit ?? readBranchHead(root, branch) ?? scan.mergeDoneBeforeCommit;
-  const counts = asTestCounts(check.counts);
-  // The red evidence names the failing test and the merge the main watch blamed — and that
-  // data lives only on the main_culprit event (the main watch's verdict on the red; the
-  // build_check event itself carries no failing tests), attributed only when the verdict
-  // names the tip this poll derived or the opener of the red spell still open at the tail's
-  // end (spellOpener — the watch names the spell's opener as culprit even after a later tip
-  // re-checks red, so an ongoing red keeps its blame instead of dropping it), so a newer
-  // build_check failure can't borrow a blame the watch wrote for another head or a closed
-  // spell. A passing/skipped check, or a failing one whose tip the watch hasn't blamed,
-  // keeps today's exact MainCheckStatus shape (no `red`).
+}
+
+/** The red detail the status payload carries (it rides the machine-readable `status --json`
+ * output through status-payload.ts's wholesale spread of mainCheck): present only when the
+ * check failed and a main_culprit verdict names the checked tip or the opener of the red spell
+ * still open at the tail's end (spellOpener — the watch names the spell's opener as culprit
+ * even after a later tip re-checks red, so an ongoing red keeps its blame instead of dropping
+ * it) — with a well-formed failingTests list. A passing/skipped check, or a failing one whose
+ * tip the watch hasn't blamed, keeps today's exact MainCheckStatus shape (no `red`).
+ * ("what red detail does a verdict carry?") */
+function mainCheckRedDetail(check: HarnessEvent, sha: string | undefined, scan: MainCheckScan): MainCheckStatus["red"] {
   let red: MainCheckStatus["red"] | undefined;
   if (check.status === "failed" && sha !== undefined && scan.culprit && typeof scan.culprit.commit === "string") {
     const c = scan.culprit;
@@ -337,19 +384,42 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
       }
     }
   }
-  // Part 4/4: how old this verdict is and when the next full check is due. The checked time is
-  // the run's settle stamp (main-watch stamps the baseline's checkedAt at the run's end; the
-  // event carries the same settle time) falling back to the event's log time (test fixtures
-  // and older events). The next due rides the cadence part 2b/4 measures from — the newest
-  // full verdict's checkedAt + check.fullIntervalMinutes (default 60). A skipped check
-  // produced no verdict, so it carries neither. A red is rechecked on every new head rather
-  // than on the interval (main-watch's fullCheckPlan), so only a green carries a clock due;
-  // quoting "next in …" for a red would promise a run the cadence never starts. Interval 0
-  // (one full run per new head) has nothing due either.
+  return red;
+}
+
+/** The verdict's clock: how old it is and when the next full check is due. The checked time is
+ * the run's settle stamp (main-watch stamps the baseline's checkedAt at the run's end; the
+ * event carries the same settle time) falling back to the event's log time (test fixtures and
+ * older events). The next due rides the cadence part 2b/4 measures from — the newest full
+ * verdict's checkedAt + check.fullIntervalMinutes (default 60). A skipped check produced no
+ * verdict, so it carries neither. A red is rechecked on every new head rather than on the
+ * interval (main-watch's fullCheckPlan), so only a green carries a clock due; quoting "next
+ * in …" for a red would promise a run the cadence never starts. Interval 0 (one full run per
+ * new head) has nothing due either. ("what age and next-due does a verdict carry?") */
+function mainCheckCadence(check: HarnessEvent, cfg: TumwaterConfig): {
+  checkedAt: number;
+  hasVerdict: boolean;
+  nextDueAt?: number;
+} {
   const checkedAt = typeof check.settledAt === "number" ? check.settledAt : check.ts;
   const interval = cfg.check?.fullIntervalMinutes ?? 60;
   const hasVerdict = check.status !== "skipped";
   const nextDueAt = check.status === "passed" && interval > 0 ? checkedAt + interval * 60_000 : undefined;
+  return { checkedAt, hasVerdict, nextDueAt };
+}
+
+export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckStatus | undefined {
+  const scan = mainCheckScanFor(root);
+  // A cleared red whose confirming full run has not settled: the cleared main_check alone
+  // carries the state until the confirming run settles.
+  const cleared = clearedMainCheckStatus(scan.cleared);
+  if (cleared) return cleared;
+  const check = scan.check;
+  if (!check || typeof check.ts !== "number" || !isMainCheckStatus(check.status)) return undefined;
+  const sha = mainCheckCoveredSha(scan, check, cfg, root);
+  const counts = asTestCounts(check.counts);
+  const red = mainCheckRedDetail(check, sha, scan);
+  const { checkedAt, hasVerdict, nextDueAt } = mainCheckCadence(check, cfg);
   return {
     ...(sha ? { sha } : {}),
     status: check.status,
