@@ -196,7 +196,8 @@ export function createBacklogPane(
   // The Ctrl+O arm: cycles the list filter through all, Ready-only and Held-only — "ready"
   // keeps the open plans and bugs no hold keeps from being picked, "held" only the entries a
   // hold keeps from being picked — the terminal twins of `tumwater backlog --ready`/`--held`
-  // and the dashboard Backlog card's Ready only toggle. Returns false when the prompt is busy
+  // and the dashboard Backlog card's Ready-only and Held-only
+  // toggles. Returns false when the prompt is busy
   // or the Backlog view is not showing, so the key falls through the dispatch as today.
   const backlogCycleFilter = (ctx: TuiPaneCtx): boolean => {
     if (promptLineFree(ctx.es) && session.view === session.roleIds.length + 1) {

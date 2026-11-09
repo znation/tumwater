@@ -25,12 +25,14 @@ function backlogScope(backlogTab = "queued", extra: Record<string, unknown> = {}
     setBacklogTab(tab: string): void;
     setBacklogGrep(text: string): void;
     setBacklogReady(on: boolean): void;
+    setBacklogHeld(on: boolean): void;
     beginBacklogNew(kind: string): void;
     toggleBacklogSeries(name: string): void;
-  }>(["format", "labels", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab", "setBacklogGrep", "setBacklogReady", "beginBacklogNew", "toggleBacklogSeries"], {
+  }>(["format", "labels", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab", "setBacklogGrep", "setBacklogReady", "setBacklogHeld", "beginBacklogNew", "toggleBacklogSeries"], {
     backlogTab,
     backlogGrep: "",
     backlogReady: false,
+    backlogHeld: false,
     backlogBodyHits: null,
     getJson: async (path: string) => { getJsonPaths.push(path); return {}; },
     paintPanel: (id: string, html: string) => { panels[id] = html; },
@@ -260,6 +262,120 @@ test("the Ready only toggle hides the Blocked section and stays off the Question
   const qhtml = q.panels["backlog"] ?? "";
   assert.ok(qhtml.includes("Which one?"), "the Questions rows render unchanged");
   assert.ok(!qhtml.includes("Blocked ("), "questions carry no Blocked divider");
+});
+
+test("the Held only toggle paints the held rows, hides the pickable ones, and suppresses the recent sections", () => {
+  const { scope, panels, els } = backlogScope("plans");
+  const payload = {
+    questions: [], bugs: [], bugHolds: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {},
+    plans: ["Pick me (planned 2026-10-01)", "Hold me (planned 2026-10-02)"],
+    planHolds: ["", " [blocked: refused]"],
+    planBlocked: [false, true],
+    donePlans: [{ title: "Done plan", completedOn: "2026-10-05" }],
+  };
+  scope.renderBacklog(payload);
+  let html = panels["backlog"] ?? "";
+  assert.equal(els["backlogheldwrap"]?.hidden, false, "the Held only label is visible on the Plans tab");
+  assert.ok(html.includes("Pick me"), "the plain view paints the pickable row");
+  assert.ok(html.includes("Done recently"), "the plain view paints the Done recently section");
+  assert.ok(!html.includes("No held plans"), "no held empty message while held is off");
+  scope.setBacklogHeld(true);
+  html = panels["backlog"] ?? "";
+  assert.ok(html.includes("Blocked (1)"), "the held row paints under the Blocked divider");
+  assert.match(html, /data-index='1'/, "the held row keeps its whole-file data-index");
+  assert.ok(!html.includes("Pick me"), "the pickable row is hidden under Held only");
+  assert.ok(!html.includes("Done recently"), "the Done recently section is suppressed under Held only");
+
+  const q = backlogScope("plans");
+  q.scope.setBacklogHeld(true);
+  q.scope.renderBacklog({ ...payload, plans: ["Only pickable (planned 2026-10-01)"], planHolds: [""], planBlocked: [false], donePlans: [] });
+  const qhtml = q.panels["backlog"] ?? "";
+  assert.ok(qhtml.includes("No held plans"), "no held plan paints the held empty message");
+  assert.ok(!qhtml.includes("Blocked ("), "no Blocked divider when nothing is held");
+  assert.ok(!qhtml.includes("Done recently"), "the Done section stays suppressed");
+  assert.ok(qhtml.includes("New plan"), "the New plan control stays");
+});
+
+test("the Held only tab paints a blocked series and expands its held parts", () => {
+  const { scope, panels } = backlogScope("plans");
+  const slot = { name: "S", label: "S, 2 blocked parts (2/3-3/3)" };
+  const status = {
+    questions: [], bugs: [], bugHolds: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {},
+    plans: ["Ready", "S1", "S2", "Other"],
+    planHolds: ["", " [blocked: requires S]", " [blocked: requires S]", ""],
+    planBlocked: [false, true, true, false],
+    planSeries: [null, slot, slot, null],
+  };
+  scope.renderBacklog(status);
+  assert.ok((panels["backlog"] ?? "").includes("Ready"), "the plain view paints the eligible row");
+  scope.setBacklogHeld(true);
+  let html = panels["backlog"] ?? "";
+  assert.ok(html.includes("Blocked (2)"), "the held parts count under the Blocked divider");
+  assert.match(html, /S, 2 blocked parts/, "the blocked series renders its divider row");
+  assert.ok(!html.includes("data-index='1'"), "the series parts are collapsed by default");
+  assert.ok(!html.includes("Ready"), "the eligible row is hidden under Held only");
+  scope.toggleBacklogSeries("S");
+  html = panels["backlog"] ?? "";
+  const at = (s: string) => html.indexOf(s);
+  assert.ok(at("data-index='1'") > at("seriestoggle"), "the held parts expand under the series row");
+  assert.ok(at("data-index='1'") < at("data-index='2"));
+  assert.ok(!html.includes("Ready"), "the eligible row stays hidden");
+});
+
+test("a search that matches only the rows Held only drops paints Nothing matches this search", () => {
+  const { scope, panels } = backlogScope("plans");
+  const payload = {
+    questions: [], bugs: [], bugHolds: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {},
+    plans: ["Budget plan (planned 2026-10-01)", "Hold me (planned 2026-10-02)"],
+    planHolds: ["", " [blocked: refused]"],
+    planBlocked: [false, true],
+  };
+  scope.setBacklogHeld(true);
+  scope.renderBacklog(payload);
+  assert.ok((panels["backlog"] ?? "").includes("Hold me"), "the held row renders before the search");
+  scope.setBacklogGrep("budget"); // the test's getJson stub returns {}, so no body match; only the shown-text match holds
+  let html = panels["backlog"] ?? "";
+  assert.ok(html.includes("Nothing matches this search"), "the only match is the eligible row, which Held only drops");
+  assert.ok(!html.includes("Budget plan"), "the eligible row is not painted");
+  assert.ok(!html.includes("Hold me"), "the held row does not match the search");
+  scope.setBacklogGrep("hold"); // a search matching the held row paints it under the Blocked divider
+  html = panels["backlog"] ?? "";
+  assert.ok(html.includes("Blocked (1)"), "the held row paints under the Blocked divider");
+  assert.ok(html.includes("Hold me"), "the held row is the search match");
+  assert.ok(!html.includes("Nothing matches this search"));
+});
+
+test("the Ready only and Held only toggles are mutually exclusive, hidden off Plans/Bugs, and each is remembered", () => {
+  const stores: Record<string, string> = {};
+  const { scope, els } = backlogScope("plans", {
+    store: (k: string, v: string) => { stores[k] = v; },
+  });
+  const payload = {
+    questions: [], bugs: [], bugHolds: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {},
+    plans: ["Pick me (planned 2026-10-01)", "Hold me (planned 2026-10-02)"],
+    planHolds: ["", " [blocked: refused]"],
+    planBlocked: [false, true],
+  };
+  scope.renderBacklog(payload);
+  scope.setBacklogReady(true);
+  assert.equal(els["backlogready"]?.checked, true, "Ready only is checked when set");
+  assert.equal(els["backlogheld"]?.checked, false, "Held only is unchecked once Ready only is on");
+  assert.equal(stores["backlog-ready"], "1", "the Ready only choice is stored");
+  assert.equal(stores["backlog-held"], "", "the cleared Held only choice is un-remembered");
+  scope.setBacklogHeld(true);
+  assert.equal(els["backlogheld"]?.checked, true, "Held only is checked when set");
+  assert.equal(els["backlogready"]?.checked, false, "Ready only is unchecked once Held only is on");
+  assert.equal(stores["backlog-ready"], "", "the cleared Ready only choice is un-remembered");
+
+  const q = backlogScope("questions");
+  q.scope.renderBacklog({ ...payload, plans: [], questions: ["Which one? (asked 2026-10-01)"] });
+  assert.equal(q.els["backlogheldwrap"]?.hidden, true, "the Held only label is hidden on the Questions tab");
+  assert.equal(q.els["backlogreadywrap"]?.hidden, true, "the Ready only label is hidden on the Questions tab");
+
+  const remembered = backlogScope("plans", { backlogHeld: true });
+  remembered.scope.renderBacklog(payload);
+  assert.equal(remembered.els["backlogheld"]?.checked, true, "Held only is recalled and checked on load");
+  assert.ok((remembered.panels["backlog"] ?? "").includes("Hold me"), "the remembered held view repaints the held row");
 });
 
 test("the Plans tab shows a blocked series as one row that expands on click", () => {

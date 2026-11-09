@@ -9,6 +9,7 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
   let backlogTab = recall("backlog") || "";
   let backlogGrep = recall("backlog-grep") || "";
   let backlogReady = recall("backlog-ready") === "1";
+  let backlogHeld = recall("backlog-held") === "1";
   let backlogBodyHits = null;
   // backlog:start
   // The Queued tab's in-place editor state, beside the tab choice its rows paint from:
@@ -42,10 +43,25 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
     fetchBacklogMatch();
   }
   // The Ready only toggle: remembered like the Search text, and the last payload repainted
-  // through it so the Plans/Bugs tabs drop their Blocked section at once.
+  // through it so the Plans/Bugs tabs drop their Blocked section at once. It and the Held only
+  // toggle are mutually exclusive — turning one on clears the other — and the cleared one is
+  // un-remembered so it does not survive a reload.
   function setBacklogReady(on) {
     backlogReady = on;
+    if (on && backlogHeld) backlogHeld = false;
     store("backlog-ready", on ? "1" : "");
+    if (on) store("backlog-held", "");
+    if (backlogStatus) renderBacklog(backlogStatus);
+  }
+  // The Held only toggle: the inverse of Ready only, the browser twin of tumwater backlog
+  // --held and the TUI's Held-only stop. It shows only the rows a hold keeps from being
+  // picked, remembered like the Search text; turning it on clears the Ready only toggle the
+  // same way (and forgets its stored value).
+  function setBacklogHeld(on) {
+    backlogHeld = on;
+    if (on && backlogReady) backlogReady = false;
+    store("backlog-held", on ? "1" : "");
+    if (on) store("backlog-ready", "");
     if (backlogStatus) renderBacklog(backlogStatus);
   }
   // The server's body matches for the current Search text: { needle, plans: [index…], … } from
@@ -108,11 +124,15 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
     // Ready only keeps the pickable open plans/bugs (skipping the held/Blocked section); the
     // toggle is hidden on the Questions and Inbox tabs, where an open row is never held.
     const readyOnly = backlogReady && (key === "plans" || key === "bugs");
-    // Hide the whole toggle (input and its visible label) off the Plans/Bugs tabs, so its
-    // text does not stay on screen and remain clickable on the Questions/Inbox tabs.
+    const heldOnly = backlogHeld && (key === "plans" || key === "bugs");
+    // Hide both toggles (input and their visible labels) off the Plans/Bugs tabs, where an
+    // open row is never held, so their text does not stay on screen and remain clickable on
+    // the Questions/Inbox tabs.
     const readyTabs = key === "plans" || key === "bugs";
     $("backlogreadywrap").hidden = !readyTabs;
     $("backlogready").checked = backlogReady;
+    $("backlogheldwrap").hidden = !readyTabs;
+    $("backlogheld").checked = backlogHeld;
     // Search narrows rows by the text each one shows, or by a body match from /api/backlog-match;
     // indexes stay the payload's own. Inbox rows also match their full text there (the queued key).
     const needle = backlogGrep.toLowerCase();
@@ -170,10 +190,11 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
         const t = splitTitle(title);
         const mark = holds[i] || "";
         if (!hit(t.title + " " + t.meta + " " + mark, key, i)) return "";
-        // Ready-only drops the held/Blocked section entirely, so a blocked match is not rendered
-        // and must not count toward shown — otherwise a search that only matches blocked rows
-        // would suppress the "Nothing matches this search" empty state below.
-        if (!readyOnly || !blocked[i]) shown++;
+        // Count only the rows this view paints: the plain list paints every rendered row, Ready
+        // only the eligible (un-blocked) rows, and Held only the blocked ones — so a search that
+        // matches only the rows the view drops still falls through to "Nothing matches this
+        // search" instead of a blank list.
+        if (heldOnly ? blocked[i] : !readyOnly || !blocked[i]) shown++;
         return "<div class='list-item t-" + tone + (open === key + ":" + i ? " active" : "") + "'><span class='li-icon'>" + icon(ic) + "</span>" +
           "<button type='button' class='li-open backloglink' data-file='" + key + "' data-index='" + i + "'><span class='li-title'>" + esc(t.title) + "</span>" +
           (t.meta ? "<span class='li-meta'>" + esc(t.meta) + "</span>" : "") +
@@ -195,18 +216,24 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
         held.push("<div class='list-item list-series'><button type='button' class='li-open' data-action='seriestoggle' data-series='" + esc(s.name) + "'><span class='li-title'>" + esc(s.label) + "</span><span class='li-meta'>blocked: each waits on an earlier part</span></button></div>");
         if (openSeries.has(s.name)) rows.forEach((r2, j) => { if (blocked[j] && series[j] && series[j].name === s.name) held.push(r2); });
       });
-      html = ready.join("") + (readyOnly ? "" : (heldCount ? "<div class='list-item list-divider'><span class='li-meta'>Blocked (" + heldCount + ")</span></div>" + held.join("") : ""));
+      // Ready only paints the eligible rows and drops the held section; Held only inverts that,
+      // painting the held section (and its rows) and dropping the eligible rows.
+      html = (heldOnly ? "" : ready.join(""))
+        + (readyOnly ? "" : heldCount ? "<div class='list-item list-divider'><span class='li-meta'>Blocked (" + heldCount + ")</span></div>" + held.join("") : "")
+        + (heldOnly && !heldCount ? "<div class='empty'><strong>No held " + (key === "plans" ? "plans" : "bugs") + "</strong>No entry is held.</div>" : "");
     }
     const answered = (key === "questions" ? (d.answeredQuestions || []) : []).map((a, i) => ({ a, i })).filter((x) => hit(x.a.title + " " + (x.a.decision || ""), "answered", x.i));
-    shown += answered.length;
-    if (answered.length) {
+    // The answered/finished rows paint outside the held list, so only Held only suppresses them
+    // (and their shown contribution); they are untouched on every other tab/view.
+    if (!heldOnly) shown += answered.length;
+    if (answered.length && !heldOnly) {
       html += "<div class='list-item list-divider'><span class='li-meta'>Answered recently</span></div>" + answered.map(({ a, i }) =>
         "<div class='list-item t-gray" + (openEntryKey() === "answered:" + i ? " active" : "") + "'><span class='li-icon'>" + icon("check") + "</span><button type='button' class='li-open backloglink' data-file='answered' data-index='" + i + "'><span class='li-title'>" + esc(a.title) + "</span>" +
         (a.decision ? "<span class='li-meta'>" + esc(a.decision) + "</span>" : "") + "</button></div>").join("");
     }
     const finished = (key === "plans" ? (d.donePlans || []) : key === "bugs" ? (d.fixedBugs || []) : []).map((f, i) => ({ f, i })).filter((x) => hit(x.f.title, key === "plans" ? "done" : "fixed", x.i));
-    shown += finished.length;
-    if (finished.length) {
+    if (!heldOnly) shown += finished.length;
+    if (finished.length && !heldOnly) {
       html += "<div class='list-item list-divider'><span class='li-meta'>" + (key === "plans" ? "Done recently" : "Fixed recently") + "</span></div>" + finished.map(({ f, i }) => {
         const doneFile = key === "plans" ? "done" : "fixed";
         return "<div class='list-item t-gray" + (openEntryKey() === doneFile + ":" + i ? " active" : "") + "'><span class='li-icon'>" + icon("check") + "</span>" +
@@ -242,6 +269,8 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
   $("backloggrep").addEventListener("input", (ev) => setBacklogGrep(ev.target.value));
   $("backlogready").checked = backlogReady;
   $("backlogready").addEventListener("change", (ev) => setBacklogReady(ev.target.checked));
+  $("backlogheld").checked = backlogHeld;
+  $("backlogheld").addEventListener("change", (ev) => setBacklogHeld(ev.target.checked));
   $("backlog").addEventListener("click", async (ev) => {
     const ser = clickClosest(ev, "button[data-action='seriestoggle']");
     if (ser) { toggleBacklogSeries(ser.dataset.series); return; }

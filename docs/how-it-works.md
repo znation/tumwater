@@ -650,10 +650,13 @@ stale settings.
   through the same path `tumwater prompt --edit` uses — and can be moved to the front of its role's
   queue, the same reorder `tumwater prompt --top` makes, addressed by the row's queue file; an open question's Answer button opens its
   drawer, whose Record answer form writes the decision to QUESTIONS.md as `tumwater questions
-  answer` does. The Backlog card's Plans and Bugs tabs keep only the entries an operator could
-  pick when the Ready only toggle is on — hiding their held/`Blocked (n)` section while every
-  entry action still addresses the whole-file position — the browser twin of `tumwater backlog
-  --ready` and the TUI Backlog pane's Ctrl+O. Clicking a role opens its details — its notes and next run's prompt included — and, for the
+  answer` does. The Backlog card's Plans and Bugs tabs each carry a Ready only toggle that
+  keeps only the entries an operator could pick — hiding their held/`Blocked (n)` section while
+  every entry action still addresses the whole-file position — the browser twin of `tumwater
+  backlog --ready` and the TUI Backlog pane's Ctrl+O Ready-only stop — and a Held only toggle
+  beside it that inverts the view to just the rows a hold keeps from being picked, the twin of
+  `tumwater backlog --held` and the TUI's Held-only stop; the two are mutually exclusive and
+  each is remembered across reloads like the Search box. Clicking a role opens its details — its notes and next run's prompt included — and, for the
   `qa` role, its flow-coverage ledger (each flow it exercises with its last exercise age and
   result, the same rows `tumwater role qa` prints) — and
   its live transcript (`#role/<name>` links straight to it). A "Show prompts" button re-reads it through
