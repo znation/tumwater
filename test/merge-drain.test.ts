@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { drainMergeQueue, mergeTaskStarts, resetMergeTaskStarts } from "../src/merge/merge-drain.js";
 import { mergeTasks, settleMergeOutcome } from "../src/merge/merge-pipeline.js";
+import { queueDepth } from "../src/merge/merge-queue.js";
+import { readEvents } from "../src/events/event-read.js";
 import { readPostReviews } from "../src/review/post-merge-review.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { mergeRefName } from "../src/paths.js";
@@ -89,7 +91,10 @@ test("a merged change's pin is deleted — the ref files settle drained", async 
   const root = makeRepo();
   await pinChanges(root, ["alpha"]);
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"]));
-  await pumpUntil(ctx, pipeline, pinDrained(root, pipeline, ["alpha"]), "alpha's merge");
+  const done = pinDrained(root, pipeline, ["alpha"]);
+  assert.equal(queueDepth(root), 0, "no queue file was written");
+  assert.equal(done(), false, "a kept pin is not drained even with no queue file");
+  await pumpUntil(ctx, pipeline, done, "alpha's merge");
   assert.equal(await refSha(root, mergeRefName("alpha")), null, "a merged change deletes its pin");
 });
 
@@ -146,7 +151,12 @@ test("a null-file settle writes the outcome, drops no file and queues no retry e
   await settleMergeOutcome(root, noFile, state, "merge_blocked", 5, { tokens: 0, cost: 0, providerCost: {} }, null, "main");
 
   assert.equal(state.lastResult, "merge_blocked", "the outcome was written to the role's state");
+  assert.ok(
+    readEvents(root).some((e) => e.type === "merge_failed" && e.result === "merge_blocked"),
+    "merge_failed fired with the result",
+  );
   assert.equal(await refSha(root, mergeRefName("improve")), sha, "the pin survives — nothing dropped it");
+  assert.equal(queueDepth(root), 0, "no retry entry was queued");
 });
 
 test("two overlapping drains of one pipeline start one merge task, not two", async () => {

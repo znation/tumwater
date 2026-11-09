@@ -626,7 +626,7 @@ merged as `changed`; `reviewAttempt` now fails closed on a consumed abort at the
 pre-check: the gate fails closed, not approved" — and `test/review.test.ts` — "an
 already-approved head under a fired abort fails closed as aborted, never approved".
 
-### INV-G6: overlapping merge drains start at most one gate-then-merge task per queue head
+### INV-G6: overlapping merge drains start at most one gate-then-merge task per queue head or kept pin
 
 **Guarantee.** A merge queue head or kept pin is held by at most one gate-then-merge task at a time, no
 matter how the drains overlap. `drainMerge` checks the slot before its first await and re-checks
