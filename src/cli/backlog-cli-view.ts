@@ -60,6 +60,48 @@ interface ListArgs {
   rest: string[];
 }
 
+/** The boolean `--list` flags, in scan order: `--done`, `--ready`, `--held`, `--list`,
+ * `--json`, then `-f`/`--follow` (the shared FOLLOW_FLAG's spellings). Each entry carries the
+ * spellings that set it and the label a repeat refusal names; `--list` is accepted and
+ * repeat-refused like the rest but sets a scan-local rather than a ListArgs field, while the
+ * others set the named `ListArgs` key. The two value-taking flags — `--grep` and `-n` — claim
+ * their tokens through the named parsers below instead of appearing here, so a claimed value
+ * token is never read as a flag. */
+const LIST_BOOLEAN_FLAGS: {
+  names: string[];
+  label: string;
+  key: "json" | "done" | "ready" | "held" | "list" | "follow";
+}[] = [
+  { names: ["--done"], label: "--done", key: "done" },
+  { names: ["--ready"], label: "--ready", key: "ready" },
+  { names: ["--held"], label: "--held", key: "held" },
+  { names: ["--list"], label: "--list", key: "list" },
+  { names: ["--json"], label: "--json", key: "json" },
+  { names: FOLLOW_FLAG.names, label: "-f/--follow", key: "follow" },
+];
+
+/** The `--grep` branch of the list's flag scan: the repeat guard, the next-token claim and
+ * its empty-or-missing `fail` wording, and the assignment. Returns the consumed token's index
+ * so the scan resumes after it, keeping a claimed value token out of the flag vocabulary. */
+function parseGrepArg(args: string[], i: number, command: string, parsed: ListArgs): number {
+  rejectRepeatFlag(parsed.grep !== null, "--grep");
+  const text = args[++i];
+  if (text === undefined || text === "") {
+    fail(`--grep needs text (usage: tumwater ${command} --list --grep <text>)`);
+  }
+  parsed.grep = text;
+  return i;
+}
+
+/** The `-n` branch of the list's flag scan: its repeat guard and its count parse bounded by
+ * BACKLOG_MAX_LISTED, through the shared parseCountFlag. Returns the consumed token's index so
+ * the scan resumes after it, as parseGrepArg does. */
+function parseCountArg(args: string[], i: number, parsed: ListArgs): number {
+  rejectRepeatFlag(parsed.count !== null, "-n");
+  parsed.count = parseCountFlag("-n", args[++i], BACKLOG_MAX_LISTED);
+  return i;
+}
+
 /** Scans the `--list` flag vocabulary (`--list`, `--json`, `--done`, `--ready`, `--held`,
  * `-n`, `--grep`, `-f/--follow`, each once, plus tolerated `--help`/`-h`) into the parsed
  * locals and returns them with `rest`, the leftover args rejectUnknownArgs will
@@ -70,65 +112,45 @@ interface ListArgs {
  * `fail` calls it makes are the flag-usage refusals (a repeat or a `--grep`/`-n` with missing
  * text). */
 function parseListArgs(args: string[], command: string): ListArgs {
-  let json = false;
   let list = false;
-  let done = false;
-  let ready = false;
-  let held = false;
-  let count: number | null = null;
-  let grep: string | null = null;
-  let follow = false;
-  const rest: string[] = [];
+  const parsed: ListArgs = {
+    json: false,
+    done: false,
+    ready: false,
+    held: false,
+    count: null,
+    grep: null,
+    follow: false,
+    rest: [],
+  };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
     if (arg === "--grep") {
-      rejectRepeatFlag(grep !== null, "--grep");
-      const text = args[++i];
-      if (text === undefined || text === "") {
-        fail(`--grep needs text (usage: tumwater ${command} --list --grep <text>)`);
-      }
-      grep = text;
-      continue;
-    }
-    if (arg === "--done") {
-      rejectRepeatFlag(done, "--done");
-      done = true;
-      continue;
-    }
-    if (arg === "--ready") {
-      rejectRepeatFlag(ready, "--ready");
-      ready = true;
-      continue;
-    }
-    if (arg === "--held") {
-      rejectRepeatFlag(held, "--held");
-      held = true;
+      i = parseGrepArg(args, i, command, parsed);
       continue;
     }
     if (arg === "-n") {
-      rejectRepeatFlag(count !== null, "-n");
-      count = parseCountFlag("-n", args[++i], BACKLOG_MAX_LISTED);
+      i = parseCountArg(args, i, parsed);
       continue;
     }
-    if (arg === "--list") {
-      rejectRepeatFlag(list, "--list");
-      list = true;
-      continue;
-    }
-    if (arg === "--json") {
-      rejectRepeatFlag(json, "--json");
-      json = true;
-      continue;
-    }
-    if (FOLLOW_FLAG.names.includes(arg)) {
-      rejectRepeatFlag(follow, "-f/--follow");
-      follow = true;
+    const flag = LIST_BOOLEAN_FLAGS.find((f) => f.names.includes(arg));
+    if (flag !== undefined) {
+      // `--list` is accepted (and repeat-refused) like every other list flag, but its value
+      // is a scan-local that is not part of the returned ListArgs (the caller already routed
+      // on the `--list` token, so the shell never needs it); the other keys are ListArgs keys.
+      if (flag.key === "list") {
+        rejectRepeatFlag(list, flag.label);
+        list = true;
+      } else {
+        rejectRepeatFlag(parsed[flag.key], flag.label);
+        parsed[flag.key] = true;
+      }
       continue;
     }
     if (arg === "--help" || arg === "-h") continue;
-    rest.push(arg);
+    parsed.rest.push(arg);
   }
-  return { json, done, ready, held, count, grep, follow, rest };
+  return parsed;
 }
 
 /** The `--done` half of the list shell's frame builder: the newest finished entries (BUGS.md
