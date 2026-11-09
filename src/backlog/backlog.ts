@@ -229,10 +229,12 @@ export function plannedPlans(root: string): string[] {
  * commits) followed by its archive file's (plans/backlog-archive.md). Both reads are stat-cached
  * like every section read here. `maxCopy` caps the archive clone (the unbounded one) to the
  * newest `maxCopy` entries; the live section stays uncapped (it is the small, often-empty file),
- * and the result is at most a few entries, the newest, in order. */
+ * and the result is sliced to the newest `maxCopy`, so a caller that asks for a bound gets one
+ * even when the live section alone holds more. */
 function finishedEntries(root: string, file: "PLANS.md" | "BUGS.md", maxCopy?: number): BacklogEntry[] {
   const { section, archive } = finishedArchiveOf(file);
-  return [...sectionEntries(root, file, section), ...sectionEntries(root, archive, section, maxCopy)];
+  const entries = [...sectionEntries(root, file, section), ...sectionEntries(root, archive, section, maxCopy)];
+  return maxCopy === undefined ? entries : entries.slice(0, maxCopy);
 }
 
 /** The files a live backlog file's finished entries sit in: the file itself, then its archive.

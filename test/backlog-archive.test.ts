@@ -241,6 +241,26 @@ test("readers list the live section's finished entries first, then the archive's
   assert.deepEqual(fixedBugEntries(root).map((e) => e.title), ["Bug (found 2026-10-01; fixed 2026-10-02)"]);
 });
 
+test("a capped finished read returns only the newest maxCopy across the live section and archive", () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans("### Live (planned 2026-10-01, done 2026-10-20)\n\nL.\n"));
+  fs.writeFileSync(
+    path.join(root, "PLANS-DONE.md"),
+    `${archiveTemplate(PLANS)}\n### Archived newest (planned 2026-09-01, done 2026-10-05)\n\nN.\n\n### Archived older (planned 2026-08-01, done 2026-08-02)\n\nO.\n`,
+  );
+  const capped = donePlanEntries(root, 2);
+  assert.deepEqual(capped.map((e) => e.title), [
+    "Live (planned 2026-10-01, done 2026-10-20)",
+    "Archived newest (planned 2026-09-01, done 2026-10-05)",
+  ]);
+  // The capped read is only a view: the cache still holds the whole archive for a cold reader.
+  assert.deepEqual(donePlanEntries(root).map((e) => e.title), [
+    "Live (planned 2026-10-01, done 2026-10-20)",
+    "Archived newest (planned 2026-09-01, done 2026-10-05)",
+    "Archived older (planned 2026-08-01, done 2026-08-02)",
+  ]);
+});
+
 test("archiveFinishedOnMain commits the bulk move on the base branch, and refuses dirty files", async () => {
   const root = makeRepo();
   seedCommit(root, "PLANS.md", plans("### D1 (planned 2026-10-02, done 2026-10-03)\n\nOne.\n"), "seed plans");
