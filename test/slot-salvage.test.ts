@@ -67,6 +67,24 @@ test("restoreSalvagedWork finds nothing for a role with no waiting patch", async
   assert.equal(readdirSync(salvagePendingDir(root, "feature")).length, 1, "feature's patch still waits");
 });
 
+test("a patch whose last hunk ends on a blank context line is saved whole and restores exactly", async () => {
+  const { root, wt } = fixture();
+  // The edit's only trailing context is the file's blank last line, so the diff ends on a lone
+  // " " line — the line a trimmed git output used to cut, leaving `git apply` a corrupt patch.
+  writeFileSync(join(wt, "spaced.md"), "x1\n\n");
+  commitIn(wt, "spaced");
+  writeFileSync(join(wt, "spaced.md"), "x2\n\n");
+  const patch = await salvageSlotLeftovers(root, wt, { leftBy: "feature", recoverFor: "feature", forRole: "docs" }, new Date());
+  assert.ok(patch !== null);
+  assert.ok(readFileSync(patch, "utf8").endsWith("+x2\n \n"), "the trailing blank context line survives");
+  sh(wt, "git", "reset", "-q", "--hard");
+
+  const restored = await restoreSalvagedWork(root, "feature", wt);
+  assert.deepEqual(restored?.unplaced, [], "nothing comes back as text to apply by hand");
+  assert.deepEqual(restored?.conflicted, []);
+  assert.equal(readFileSync(join(wt, "spaced.md"), "utf8"), "x2\n\n");
+});
+
 test("a salvage patch whose save dies mid-write leaves no torn .patch behind", async (t) => {
   const { root, wt } = fixture();
   writeFileSync(join(wt, "notes.md"), "v2, half done\n");

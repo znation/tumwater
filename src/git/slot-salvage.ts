@@ -32,7 +32,7 @@ import { salvageDir, salvagePendingDir } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { formatDate, pad2 } from "../text/datetime.js";
 import { plural } from "../text/phrases.js";
-import { git, gitCouldNotStart, gitTry, runGit } from "./git-run.js";
+import { git, gitCouldNotStart, gitTry, runGit, runGitRaw } from "./git-run.js";
 import { isUsableWorktree } from "./worktree.js";
 
 /** The patch file's name: a sortable local timestamp, the slot's directory name and the role that
@@ -86,7 +86,9 @@ export async function salvageSlotLeftovers(
     const env = { GIT_INDEX_FILE: path.join(tmp, "index") };
     await runGit(dir, ["read-tree", "HEAD"], env);
     await runGit(dir, ["add", "-A"], env);
-    const patch = await runGit(dir, ["diff", "--cached", "--binary", "HEAD"], env);
+    // Raw, not runGit: its trimEnd drops a last hunk's trailing blank context line, and the
+    // patch then no longer applies (a 28-file patch kept on 2026-11-04 was cut that way).
+    const patch = await runGitRaw(dir, ["diff", "--cached", "--binary", "HEAD"], env);
     if (patch === "") return null;
     const base = await git(dir, "rev-parse", "HEAD");
     const home = recoverFor === null ? salvageDir(root) : salvagePendingDir(root, recoverFor);
@@ -100,7 +102,7 @@ export async function salvageSlotLeftovers(
       file,
       `# ${plural(files, "uncommitted file")} ${by} left in workspace ${slot}, saved before ${forRole} reused it\n` +
         `# base ${base}; apply with: git apply --index <this file> on a checkout of that commit\n` +
-        `${patch}\n`,
+        patch,
     );
     const saved = path.relative(root, file);
     warnEventBestEffort(

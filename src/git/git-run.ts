@@ -260,9 +260,23 @@ export async function runGit(
   timeoutMs: number = GIT_TIMEOUT_MS,
   killGraceMs: number = KILL_GRACE_MS,
 ): Promise<string> {
+  return (await runGitRaw(cwd, args, extraEnv, timeoutMs, killGraceMs)).trimEnd();
+}
+
+/** runGit with git's stdout exactly as printed, trailing whitespace and all, for output that is
+ * data to replay rather than an answer to read: a patch. runGit's trimEnd cuts a patch whose last
+ * hunk ends on a blank context line (a lone " "), leaving the hunk one line short of its header's
+ * count, and `git apply` then rejects the whole file as corrupt. */
+export async function runGitRaw(
+  cwd: string,
+  args: string[],
+  extraEnv?: NodeJS.ProcessEnv,
+  timeoutMs: number = GIT_TIMEOUT_MS,
+  killGraceMs: number = KILL_GRACE_MS,
+): Promise<string> {
   try {
     const { stdout } = await execGitBounded(args, { cwd, extraEnv, timeoutMs, killGraceMs });
-    return stdout.trimEnd();
+    return stdout;
   } catch (err) {
     if (err instanceof GitTimeoutError) throw new GitError(args, err.message, undefined);
     // execFile sets a numeric exit code on nonzero exits and a string errno ("ENOENT") when
