@@ -30,9 +30,10 @@ const holdingPermit = new AsyncLocalStorage<true>();
  * acquisition order. A check_wait event names them (PermitWaitHooks.waited). */
 const permitHolders = new Map<symbol, string>();
 
-/** Waiting-queue tiers (Semaphore.acquire): a merge-scope check runs inside the merge lock, so it
- * is granted the next free permit ahead of queued gate and baseline checks — every check it waited
- * behind would be lock-hold time for every other merge. A running check is never preempted. */
+/** Waiting-queue tiers (Semaphore.acquire): a merge-tier check (the main watch's rerun
+ * confirmation) is granted the next free permit ahead of queued gate and baseline checks, so it
+ * does not wait behind a full suite. The merge scope itself no longer runs a check (parts 4l/3 and
+ * 4m/3). A running check is never preempted. */
 export const CHECK_TIER = { merge: 0, other: 1 } as const;
 
 /** The live cap: config.maxConcurrentChecks when it is a positive integer (validateConfig

@@ -310,7 +310,8 @@ export function buildCheckEvent(
   scope: BuildCheckScope | "baseline" | "rerun",
   outcome: Pick<BuildCheckOutcome, "status" | "script" | "run" | "counts" | "install">,
   durationMs: number,
-  /** True for a merge/batch run of check.mergeCommand: the event then carries `full: false`. */
+  /** True for a historical merge/batch run of check.mergeCommand: the event then carries `full:
+   * false`. */
   cheaper = false,
 ): HarnessEventInput {
   return {

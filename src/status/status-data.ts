@@ -331,7 +331,7 @@ export interface StatusSnapshot {
    * the latest `build_check` event at the `merge`/`batch`/`baseline` scope, read from the
    * event tail — the live replacement for the committed README stamp the readme role used to
    * maintain. `sha` is the main commit the check verified: a `merged` event after the check
-   * names it via its `commit` field (a merge/batch check runs pre-merge; the merge's own
+   * names it via its `commit` field (a historical merge/batch check ran pre-merge; the merge's own
    * `merged` commit is the head it produced), while a baseline check names the newest merge
    * at or before its run's spawn (the head it ran on), never a later merge that landed after
    * it; otherwise main's current tip. Unresolvable from either source — no merge yet and no

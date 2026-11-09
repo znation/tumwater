@@ -20,14 +20,14 @@ import { memoSetLru } from "../collections.js";
 
 /** The team-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
  * machinery that produces it. Split out of build/build-check.ts — which keeps running and
- * classifying the project's declared check — because a verdict ABOUT a specific SHA is a
- * different concern from the mechanics of running one: this module owns the cache, the
- * in-flight dedup, the re-verification policy that keeps one worktree's environmental red
- * from affecting the team's read of main. Its verdict feeds the `ci` healer hand-off
- * (`mainRedHealNote`), the merge path's `mainTipVerdict`, redeploy's re-verify, and the
- * main watch's green clear — not an authoring block; merge-to-main.ts seeds a green
- * here after a post-rebase re-check; redeploy.ts re-verifies a red here before it strands the
- * team on a stale build. Choosing WHICH commit self-redeploy runs (`redeployTarget`) moved to
+ * classifying the project's declared check — because a verdict ABOUT a specific SHA is a different
+ * concern from the mechanics of running one: this module owns the cache, the in-flight dedup, the
+ * re-verification policy that keeps one worktree's environmental red from affecting the team's read
+ * of main. Its verdict feeds the `ci` healer hand-off (`mainRedHealNote`), the merge path's
+ * `mainTipVerdict`, redeploy's re-verify, and the main watch's green clear — not an authoring
+ * block; merge-to-main.ts used to seed a green here after its post-rebase re-check (parts 4l/3 and
+ * 4m/3 removed that check); redeploy.ts re-verifies a red here before it strands the team on a
+ * stale build. Choosing WHICH commit self-redeploy runs (`redeployTarget`) moved to
  * src/redeploy/redeploy-target.ts with the rest of the redeploy policy; it reads `baselineCache`
  * (exported here, written only here). */
 
@@ -110,13 +110,12 @@ interface MainBaselineCheck {
  * `noteInheritedGreen` — so the cache's write policy has one home. In-memory only: after a
  * restart the cache is cold and one re-check per red SHA happens — cheap and deterministic,
  * mirroring the budget gate's
- * stateless resume. Entries come from two sources: checkMainBaseline's own runs, and
- * noteGreenBaseline seeding a green verdict for a SHA that just became main
- * (src/merge/merge-to-main.ts: either its in-lock post-rebase re-check passed on exactly that
- * tree, or the rebase was a no-op so the review gate's pre-check had already run green on it).
- * A third kind of entry is an inherited green (MainBaseline.inheritedFrom), which no check
- * observed. It is carried over across doc-only differences (inheritedGreen, noteInheritedGreen)
- * and ranks below both observed verdicts.
+ * stateless resume. Entries come from checkMainBaseline's own runs and an inherited green
+ * (MainBaseline.inheritedFrom), which no check observed; noteGreenBaseline can also seed a
+ * directly observed green, though its last src caller — the merge path, after its in-lock check
+ * or a no-op pre-check — went with parts 4l/3 and 4m/3. An inherited green is carried over
+ * across doc-only differences (inheritedGreen, noteInheritedGreen) and ranks below both observed
+ * verdicts.
  *
  * The two verdicts are not equally trustworthy, and the cache is written accordingly. A GREEN
  * is authoritative wherever it was observed — the suite ran on this immutable tree and passed —
@@ -284,9 +283,10 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
   return seen.length < 2 && !seen.includes(wt);
 }
 
-/** Record a green baseline verdict for `sha` WITHOUT running anything. The caller is the merge
- * path (src/merge/merge-to-main.ts's mergeToMain), called only after its fast-forward SUCCEEDED,
- * with the exact SHA that just became main.
+/** Record a green baseline verdict for `sha` WITHOUT running anything. Its last src caller was
+ * the merge path (src/merge/merge-to-main.ts's mergeToMain), after its fast-forward SUCCEEDED and
+ * an in-lock check or no-op gate pre-check had observed the exact SHA that just became main; that
+ * path went with parts 4l/3 and 4m/3, so no live src caller remains.
  * Seeding
  * here means that once the merge completes — main now points at this very SHA — the next fresh
  * run's checkMainBaseline is a cache hit instead of re-running the full suite on an
@@ -414,9 +414,10 @@ export function cachedBaselineVerdict(sha: string): "green" | "red" | undefined 
 
 /** The main watch's newest verdict for `sha` (default: `wt`'s HEAD) or its nearest first-parent
  * ancestor the cache holds one for — looking at most INHERIT_WALK_MAX commits down — WITHOUT
- * running anything; null when there is none. With `check.mergeCommand` set no merge seeds the
- * cache, so every verdict in it is a full check the watch (main-watch.ts) or another consumer
- * ran, or a doc-only inheritance of one, and the red-main reads (main-red.ts) answer from here
+ * running anything; null when there is none. No merge seeds the cache since parts 4l/3 and 4m/3
+ * removed the in-lock and batch checks, so every verdict in it is a full check the watch
+ * (main-watch.ts) or another consumer ran, or a doc-only inheritance of one, and the red-main
+ * reads (main-red.ts) answer from here
  * rather than start a full check. Never throws: a git failure reads as no verdict. */
 export async function watchedBaseline(wt: string, sha?: string): Promise<MainBaseline | null> {
   const tip = sha ?? (await refSha(wt, "HEAD"));
@@ -436,8 +437,8 @@ export async function watchedBaseline(wt: string, sha?: string): Promise<MainBas
  * declared check and a `check.mergeCommand` (or its gate-command fallback) in effect. In this
  * mode the redeployer reads the watch's verdicts and starts no full check of its own
  * (redeployTarget's `watched`). False when the project declares no check, or when a blank
- * `check.mergeCommand` keeps the full check in the merge lock. Never throws: detection resolves
- * to null, which is also false. */
+ * `check.mergeCommand` makes `mergeCommandOf` undefined and leaves the redeployer to run its own
+ * full check. Never throws: detection resolves to null, which is also false. */
 export function watchVerifiesMain(root: string, config?: CheckConfigSlice): boolean {
   return detectBuildCheck(root, config) !== null && mergeCommandOf(config) !== undefined;
 }
@@ -656,10 +657,9 @@ async function runBaselineOnce(
   return { baseline };
 }
 
-/** Is main green at the mirror worktree's HEAD? The merge path seeds a green verdict for every
- * merged code SHA (noteGreenBaseline — the stack lander's scope-`batch` check on the merged tip,
- * or a no-op gate pre-check, so the common case is a cache hit. A head that only added doc
- * commits on top of such a SHA inherits its green (checkMainBaseline's inheritedGreen). The
+/** Is main green at the mirror worktree's HEAD? checkMainBaseline caches a verdict for every SHA
+ * it runs on, so the common case is a cache hit. A head that only added doc commits on top of such
+ * a SHA inherits its green (checkMainBaseline's inheritedGreen). The
  * redeployer's cooldown pre-warm asks this for every new head, and those doc heads were most of the
  * harness's baseline runs (247 of 319 over 2026-10-02..12). Otherwise the project's declared check
  * runs once in the mirror. No declared check or an environmental skip reads as green — the gates'

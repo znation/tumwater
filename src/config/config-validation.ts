@@ -279,7 +279,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       // the FULL check at the gate — the stronger check, never a silently weaker one.
       checkString(o, "check.", "gateCommand");
       // mergeCommand likewise: an absent key falls back to the gate command (Fast merge
-      // "Defaults"), and a blank string means off, which runs the full check in the merge lock.
+      // "Defaults"), and a blank string makes the legacy merge-command reading undefined. No
+      // in-lock build check runs since parts 4l/3 and 4m/3.
       checkString(o, "check.", "mergeCommand");
       // rerunCommand likewise: blank is off, and its callers fall back to the full check.
       checkString(o, "check.", "rerunCommand");

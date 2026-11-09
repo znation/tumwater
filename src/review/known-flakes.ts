@@ -1,14 +1,13 @@
-/** The review gate's memory of its own flake warnings — split out of review-precheck.ts so the
- * "has this exact failure already passed on a re-run?" question lives on its own and can be
- * unit-tested over synthetic events. The gate re-runs a failed check once (BUGS.md 2026-09-23) and
- * logs `gate check failed then passed on retry — flaky: <headline>` when it passes (the in-lock
- * merge check's kept-pin retry logs the same with a `merge check` prefix); a later
- * repeat of that same headline is the flake firing again, not a verdict about whichever change
- * happened to hit it (BUGS.md 2026-10-06). The flake is matched by the shared failure-cluster
- * normalization so a duration, path, SHA, timestamp, or bare integer difference does not hide the
- * repeat. Only the gate's positive flake record is trusted: a check-failure rejection is not
- * evidence of flakiness — it is exactly the attribution this memory exists to avoid making
- * twice. */
+/** The review gate's memory of its own flake warnings — split out of review-precheck.ts so the "has
+ * this exact failure already passed on a re-run?" question lives on its own and can be unit-tested
+ * over synthetic events. The gate re-runs a failed check once (BUGS.md 2026-09-23) and logs `gate
+ * check failed then passed on retry — flaky: <headline>` when it passes; the in-lock merge check
+ * logged the same with a `merge check` prefix until parts 4l/3 and 4m/3 removed it. A later repeat
+ * of that same headline is the flake firing again, not a verdict about whichever change happened to
+ * hit it (BUGS.md 2026-10-06). The flake is matched by the shared failure-cluster normalization so
+ * a duration, path, SHA, timestamp, or bare integer difference does not hide the repeat. Only the
+ * gate's positive flake record is trusted: a check-failure rejection is not evidence of flakiness —
+ * it is exactly the attribution this memory exists to avoid making twice. */
 
 import { DAY_MS } from "../text/datetime.js";
 import { TUMWATER_SOURCE, tryOrWarn, warnEventBestEffort, type HarnessEvent } from "../events/events.js";

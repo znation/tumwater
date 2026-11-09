@@ -47,8 +47,8 @@
  * `finishedDuplicateFindings`, `strayPlaceholderFinding`) live in stage-backlog-checks.ts, which
  * also holds the claim-move findings run-stage.ts uses.
  *
- * `planDependencyFinding` is staging-only: it is not part of the review gate or the in-lock
- * merge re-check, because `tumwater doctor`'s plan-dependency warning is the backstop for
+ * `planDependencyFinding` is staging-only: it is not part of the review gate or the main watch's
+ * diff rules, because `tumwater doctor`'s plan-dependency warning is the backstop for
  * anything that gets past the fix-up turn.
  * Like `planDependencyFinding`, `finishedDuplicateFindings` runs only at staging. The gate does
  * not run it, because the sweep that creates the second copy runs after it.

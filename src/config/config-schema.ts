@@ -198,17 +198,15 @@ export interface CheckConfig {
   command: string;
   /** Optional cheaper command for the review gate's per-change pre-check (PLANS.md
    * Land-queue speed 3e) — e.g. just the tests a diff touches. Unset or blank = off: the gate
-   * runs the full check. When set and no `mergeCommand` is declared, the batch and merge
-   * scopes fall back to it (mergeCommandOf's fallback, Fast merge "Defaults") instead of the
-   * full check; a blank `mergeCommand` (`""`) restores the full check there. Shares `cwd`
-   * and `timeoutSeconds`. */
+   * runs the full check. `mergeCommandOf` also falls back to it for the legacy merge command
+   * when no `mergeCommand` is declared (Fast merge "Defaults"). Shares `cwd` and
+   * `timeoutSeconds`. */
   gateCommand?: string;
-  /** Optional cheaper command for the check inside the merge lock (PLANS.md "Fast merge" part
-   * 6/14) — e.g. lint, compile and the change's affected tests. When set, the batch and merge
-   * scopes run it instead, a merge whose rebased head the gate verified runs nothing in the
-   * lock, and its green never seeds the baseline: the main watch's full check on the tip is
-   * main's verdict. An absent key falls back to `gateCommand` (Fast merge "Defaults"); a blank
-   * string ("") is off: every merge runs the full check. Shares `cwd` and `timeoutSeconds`. */
+  /** The legacy in-lock merge command (PLANS.md "Fast merge" part 6/14). Parts 4l/3 and 4m/3
+   * removed the in-lock and batch build checks that ran it, so it no longer names a check a
+   * merge runs; `mergeCommandOf` still reads it as the main watch/redeploy mode signal, and a
+   * blank string ("") makes that reading undefined. An absent key falls back to
+   * `gateCommand`. Shares `cwd` and `timeoutSeconds`. */
   mergeCommand?: string;
   /** Optional command that re-runs only some tests: the harness appends one shell-quoted
    * `<file>#<name>` argument per test (the failing test's title, and its file's base name without

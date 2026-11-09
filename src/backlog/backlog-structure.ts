@@ -428,8 +428,7 @@ function hiddenFixedRecordReason(
  * one more: a head that adds a copy of a `### ` heading the base archive already carries
  * (readdedHeadings) is pasting finished history back, rejected with the count and the first
  * heading. Detection is deterministic markdown reading — no pi — so
- * both the review gate (exempt and code diffs alike) and the in-lock merge re-check can afford it
- * on every merge (plans: "Backlog structure check", part 2/4). */
+ * the main watch can afford it on every new tip (plans: "Backlog structure check", part 2/4). */
 export async function backlogStructureReason(
   wt: string,
   mainBranch: string,

@@ -973,11 +973,11 @@ function checkWaitEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "build_check":
       // The deterministic check's cost, per run: scope names which gate paid (the pre-merge review
-      // gate, the red-main baseline check of main itself, or the merge lock's post-rebase re-check
-      // of the tree about to merge). script carries the npm script name for an npm check but the
-      // FULL configured command otherwise (checkScriptName in build/build-check.ts), so no "npm"
-      // prefix is asserted here — the bare name reads correctly for both kinds ("npm test" would
-      // misrender a cargo or make-based project's check).
+      // gate or the red-main baseline check of main itself; merge and batch were the removed
+      // in-lock/batch checks, parts 4l/3 and 4m/3). script carries the npm script name for an npm
+      // check but the FULL configured command otherwise (checkScriptName in build/build-check.ts),
+      // so no "npm" prefix is asserted here — the bare name reads correctly for both kinds ("npm
+      // test" would misrender a cargo or make-based project's check).
       return `check (${textOr(e.scope)}): ${textOr(e.script)} ${eventTypeLabel(outcomeText(e))}${elapsed(e.durationMs)}`;
     case "dep_install": {
       // The root checkout's install catching up with a merged lockfile change — routine on

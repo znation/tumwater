@@ -333,14 +333,14 @@ function clearedMainCheckStatus(cleared: MainCheckScan["cleared"]): MainCheckSta
   return undefined;
 }
 
-/** The main sha a check's verdict names: a baseline check runs ON main's tip, after the merge
- * that put it there (the watch's hourly pass, a redeploy green, a gate's main-tip verdict), so
- * its covered head is the newest merge at or before its run's spawn (its log stamp when the
- * event carries no spawn) — never a merge that landed while the run was in flight or
- * afterwards. The after-first pairing still serves a pre-merge merge/batch check, whose
- * verified head is the merge it precedes. Without the baseline branch an hour-old green is
- * shown "at" the newest head the interval has not covered yet, which is the implication part
- * 4/4 exists to remove. ("what head does a check cover?") */
+/** The main sha a check's verdict names: a baseline check runs ON main's tip, after the merge that
+ * put it there (the watch's hourly pass, a redeploy green, a gate's main-tip verdict), so its
+ * covered head is the newest merge at or before its run's spawn (its log stamp when the event
+ * carries no spawn) — never a merge that landed while the run was in flight or afterwards. The
+ * after-first pairing still serves a historical pre-merge merge/batch check, whose verified head is
+ * the merge it precedes. Without the baseline branch an hour-old green is shown "at" the newest
+ * head the interval has not covered yet, which is the implication part 4/4 exists to remove. ("what
+ * head does a check cover?") */
 function mainCheckCoveredSha(scan: MainCheckScan, check: HarnessEvent, cfg: TumwaterConfig, root: string): string | undefined {
   const branch = targetBranch(cfg.baseBranch, currentBranchFromHeadFile(root));
   return check.scope === "baseline"
