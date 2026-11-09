@@ -86,6 +86,18 @@ export const HISTORY_WINDOWS: ReadonlyArray<[number | null, string]> = [
   ...SESSION_WINDOW_TAIL,
 ];
 
+/** The Activity pane's trailing event window cycle, Ctrl+Y: the default newest-200 tail (a
+ * `null` slot, which is an unfiltered tail read rather than an empty window), then the last
+ * hour, 6 hours, and day. Reuses `SESSION_WINDOW_TAIL`'s first three slots and deliberately
+ * omits the 7d slot, matching the dashboard Activity card's Window picker (Last hour / 6
+ * hours / day) — the terminal twin of `tumwater logs --since` and that picker. `null` is the
+ * newest-200 tail, not an empty filter: the feed still paints the log's newest 200 events.
+ * Kept single-homed beside HISTORY_WINDOWS so the two window cycles cannot drift. */
+export const ACTIVITY_WINDOWS: ReadonlyArray<[number | null, string]> = [
+  [null, "all"],
+  ...SESSION_WINDOW_TAIL.slice(0, 3),
+];
+
 /** The Ctrl+G scope cycle: team-wide (null), then each unique base role the roster names, in
  * roster order. An instance id (`feature-2`) folds into its base role because the scoped
  * collectors aggregate by base role — the report's scope helper (report-fold.ts's scopeBases)

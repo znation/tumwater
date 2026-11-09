@@ -2475,25 +2475,54 @@ test("Ctrl+Y is inert while budget mode holds the prompt line", () => {
   keys.handleKey(undefined, { name: "escape" });
 });
 
-test("Ctrl+Y no longer opens a reserve editor and the History Summary cycle runs on every view but the Backlog", () => {
+test("Ctrl+Y no longer opens a reserve editor; on Activity it cycles the feed window, and the History Summary cycle still runs on History", () => {
   const root = makeRoot();
   writeEvents(root, [{ ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }]); // retired-name-ok: legacy event field in a fixture
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, []);
 
-  // The claude-reserve editor is gone, so Ctrl+Y no longer holds the Activity line: the
-  // History Summary cycle (History's arm) now consumes it, as on every non-transcript view
-  // but the Backlog, whose own arm retires the selected plan.
+  // On Activity (view 0), Ctrl+Y cycles the feed's trailing event window — all → 1h → 6h →
+  // 1d → all — and no longer falls through to the History Summary cycle or an editor.
+  assert.equal(keys.state().activityWindow, null, "the Activity window starts on the newest-200 tail");
   keys.handleKey(undefined, { ctrl: true, name: "y" });
   assert.equal(keys.state().budgetMode, false, "no editor holds the line after Ctrl+Y on Activity");
-  assert.equal(keys.state().historySummary, "role", "Ctrl+Y on Activity runs the History Summary cycle");
+  assert.equal(keys.state().activityWindow, 3_600_000, "one Ctrl+Y moves the Activity window to 1h");
+  assert.equal(keys.state().historySummary, null, "Ctrl+Y on Activity no longer touches the History Summary");
 
-  // On History (view 4), Ctrl+Y advances the Summary table to per-model, then off.
+  // On History (view 4, empty roster), Ctrl+Y still advances the Summary table.
   for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
   keys.handleKey(undefined, { ctrl: true, name: "y" });
-  assert.equal(keys.state().historySummary, "model", "on History Ctrl+Y cycles the Summary table");
+  assert.equal(keys.state().historySummary, "role", "on History Ctrl+Y cycles the Summary table");
   keys.handleKey(undefined, { ctrl: true, name: "y" });
-  assert.equal(keys.state().historySummary, null, "a second Ctrl+Y clears the Summary table");
+  assert.equal(keys.state().historySummary, "model", "a second Ctrl+Y on History moves to the model table");
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.equal(keys.state().historySummary, null, "a third Ctrl+Y on History clears the Summary");
+});
+
+test("Ctrl+Y on Activity cycles all → 1h → 6h → 1d → all and resets the feed scroll to the live tail", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  // Cycle the window through every stop and back to the all-events tail.
+  const expect: Array<[number | null, string]> = [[3_600_000, "1h"], [6 * 3_600_000, "6h"], [24 * 3_600_000, "1d"], [null, "all"]];
+  for (const [ms, label] of expect) {
+    keys.handleKey(undefined, { ctrl: true, name: "y" });
+    assert.equal(keys.state().activityWindow, ms, `the window reaches ${label}`);
+    assert.equal(keys.state().activitySince, label, `the window's label is ${label}`);
+    assert.equal(keys.state().activityScroll, null, `a window change returns the feed to the live tail`);
+  }
+});
+
+test("Ctrl+Y is inert on Activity while a prompt-line editor holds the line", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  // Ctrl+B opens the daily-cap editor, which holds the prompt line; the window must not move.
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().budgetMode, true);
+  const before = keys.state().activityWindow;
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.equal(keys.state().activityWindow, before, "the window stays put while an editor holds the line");
 });
 
 test("Ctrl+Y's summary folds the History pane's exact-role scope, not the team read", () => {

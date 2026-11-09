@@ -1,8 +1,9 @@
-import { activityEvents } from "./tui-pane.js";
+import { activityEvents, activityRead } from "./tui-pane.js";
 import { stepEntryScroll } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
+import { ACTIVITY_WINDOWS, cycleLabel, nextInCycle } from "./tui-pane-session.js";
 import { distinctOrdered } from "../../collections.js";
 
 /** The Activity pane (view 0) of the TUI (src/ui/tui/tui.tsx): the session live-tail scope
@@ -37,6 +38,11 @@ export function createActivityPane(
   // isNotableEvent). Cycled with activityType in the same Ctrl+O press so a press never leaves
   // an impossible pair, and session-only like the type and scope.
   let activityNotable = false;
+  // The Activity pane's trailing event window (Ctrl+Y), a window length in ms from
+  // ACTIVITY_WINDOWS or null for the default newest-200 tail. Passed into the read (the
+  // activityRead/activityEvents windowed arg) and named in the hint line (cycleLabel's
+  // string). Reset to the live tail (null) with a view cycle like the scroll, scope, and search.
+  let activityWindow: number | null = null;
 
   const applySearch = (pattern: string | null): void => {
     // Apply a finished Activity search on the pane: set the grep and reset the scroll to the
@@ -66,7 +72,7 @@ export function createActivityPane(
    * the old filtered list. */
   const activityTypeCycle = (ctx: TuiPaneCtx): boolean => {
     if (!promptLineFree(ctx.es)) return false;
-    const present = distinctOrdered(activityEvents(session.root, activityRole, activityGrep, null).map((e) => e.type)).sort();
+    const present = distinctOrdered(activityEvents(session.root, activityRole, activityGrep, null, false, activityWindow).map((e) => e.type)).sort();
     const slots: Array<{ notable: boolean; type: string | null }> = [
       { notable: false, type: null },
       { notable: true, type: null },
@@ -76,6 +82,19 @@ export function createActivityPane(
     const next = slots[(idx + 1) % slots.length] ?? slots[0]!;
     activityNotable = next.notable;
     activityType = next.type;
+    activityScroll = null;
+    session.requestRender();
+    return true;
+  };
+
+  /** Ctrl+Y arm: cycle the Activity feed's trailing event window (mnemonic: the window is the
+   * feed's **since**). All views reach it through the aggregator's routeCtrlY, so the
+   * Activity view's `session.view === 0` guard is implicit — the arm runs only here. Guarded
+   * out of a held prompt line like the scope and type arms beside it. The scroll resets to
+   * the live tail because its offset indexed the old (narrower) window. */
+  const activityWindowCycle = (ctx: TuiPaneCtx): boolean => {
+    if (!promptLineFree(ctx.es)) return false;
+    activityWindow = nextInCycle(ACTIVITY_WINDOWS, activityWindow);
     activityScroll = null;
     session.requestRender();
     return true;
@@ -92,7 +111,8 @@ export function createActivityPane(
    * filter), so it hits readEvents' stat cache rather than rescanning the log. */
   const activityTailPage = (page: "up" | "down"): boolean => {
     if (session.view !== 0) return false;
-    const total = activityEvents(session.root, activityRole, activityGrep, activityType, activityNotable).length;
+    const { events } = activityRead(session.root, activityRole, activityGrep, activityType, activityNotable, activityWindow);
+    const total = events.length;
     const rows = total === 0 ? session.eventBudget : Math.max(1, session.eventBudget - 1);
     const maxStart = Math.max(0, total - rows);
     const current = activityScroll ?? maxStart;
@@ -108,6 +128,7 @@ export function createActivityPane(
   ): boolean => {
     if (key.ctrl && key.name === "g") return activityScopeCycle(ctx);
     if (key.ctrl && key.name === "o") return activityTypeCycle(ctx);
+    if (key.ctrl && key.name === "y") return activityWindowCycle(ctx);
     const page = pageDir(key.name);
     if (page !== null) return activityTailPage(page);
     return false;
@@ -117,6 +138,7 @@ export function createActivityPane(
     handleKey,
     reset() {
       activityScroll = null;
+      activityWindow = null;
     },
     dropScopes(roles) {
       // The same drop for the Activity feed's exact-role scope: a retired or renamed role must
@@ -129,7 +151,7 @@ export function createActivityPane(
     },
     applySearch,
     state() {
-      return { activityScroll, activityRole, activityGrep, activityType, activityNotable };
+      return { activityScroll, activityRole, activityGrep, activityType, activityNotable, activityWindow, activitySince: cycleLabel(ACTIVITY_WINDOWS, activityWindow) };
     },
   } satisfies TuiPaneModule & { applySearch(pattern: string | null): void };
 }

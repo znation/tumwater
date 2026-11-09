@@ -9,6 +9,7 @@
 import type { StatusLine } from "../status-render.js";
 import { readTranscript } from "../transcript.js";
 import { eventRole, readEvents } from "../../events/event-read.js";
+import { SPARSE_WINDOW_NOTE, readEventsSince } from "../../events/event-window.js";
 import { eventMatchesGrep, eventResult, formatEvent } from "../../events/event-format.js";
 import { eventTypeLabel } from "../../events/event-labels.js";
 import { eventTypeTally } from "../../events/event-tally.js";
@@ -71,22 +72,46 @@ interface TuiPaneState {
 const ACTIVITY_EVENTS = 200;
 
 /** The Activity pane's loaded event tail, narrowed by its role, text, and type filters: the one
- * read the pane body and the PgUp/PgDn total share, so their filtered lists cannot drift. All
+ * read the pane body and the PgUp/PgDn total share, so their filtered lists cannot drift. A thin
+ * `.events` wrapper over `activityRead`, whose `sinceMs` is null here (the fixed newest-200
+ * tail) so the callers keep today's read. All
  * three match rules are the CLI's and dashboard's own: `eventRole` for the exact-role scope
  * (`null` = the team's full tail), `eventMatchesGrep` over the type-prefixed rendered line for
  * the case-insensitive search (`null` = no search), and the exact `e.type === type` match for
  * the event-type filter (`null` = every type) — `tumwater logs --grep`, `logs --type`, and
  * `GET /api/logs` call the same ones, so the surfaces cannot disagree about what a filter
  * matches. */
-export function activityEvents(root: string, role: string | null, grep: string | null, type: string | null, notable = false): HarnessEvent[] {
+export function activityEvents(root: string, role: string | null, grep: string | null, type: string | null, notable = false, sinceMs: number | null = null): HarnessEvent[] {
+  return activityRead(root, role, grep, type, notable, sinceMs).events;
+}
+
+/** The Activity pane's one windowed read behind its body: the raw events the pane paints
+ * (the newest-200 tail when `sinceMs` is null, the trailing `sinceMs` window otherwise) and
+ * whether that window is fully covered — the read the pane body consumes, so a windowed body
+ * uses one `readEventsSince` and knows whether the log reaches back to the cutoff (the
+ * sparse-window note turns on only when a window is active and `covered` is false).
+ * `activityEvents` remains the thin `.events` wrapper for the cycle/page callers that only
+ * need the rows. */
+export function activityRead(
+  root: string,
+  role: string | null,
+  grep: string | null,
+  type: string | null,
+  notable: boolean,
+  sinceMs: number | null,
+): { events: HarnessEvent[]; covered: boolean } {
   const needle = grep === null ? null : grep.toLowerCase();
-  return readEvents(root, ACTIVITY_EVENTS).filter(
-    (e) =>
-      (role === null || eventRole(e) === role) &&
-      (needle === null || eventMatchesGrep(e, needle)) &&
-      (type === null || e.type === type) &&
-      (!notable || isNotableEvent(e.type, eventResult(e))),
-  );
+  const read = sinceMs === null ? { events: readEvents(root, ACTIVITY_EVENTS), covered: true } : readEventsSince(root, sinceMs);
+  return {
+    events: read.events.filter(
+      (e) =>
+        (role === null || eventRole(e) === role) &&
+        (needle === null || eventMatchesGrep(e, needle)) &&
+        (type === null || e.type === type) &&
+        (!notable || isNotableEvent(e.type, eventResult(e))),
+    ),
+    covered: read.covered,
+  };
 }
 
 /** One role's notes and next run prompt, rendered as the same Markdown the TUI's notes
@@ -373,15 +398,27 @@ function reportBody(_pane: Extract<TuiView, { kind: "usage" | "failures" }>, opt
 
 function activityBody(pane: Extract<TuiView, { kind: "activity" }>, opts: PaneBodyOpts): TuiPaneBody {
   const { root, width, eventBudget, state } = opts;
-  // The Activity pane loads a fixed tail once per read, narrows it by the active role scope
-  // and text search, and windows it: null follows the live tail (the newest eventBudget
-  // events), a stored offset pages back through the loaded events. Both clamp to
-  // [0, events.length - rows]. An active filter that matched nothing names the filter
-  // instead of claiming the log is empty. One dim tally line above the feed, built from the
-  // type-unfiltered rows, counts every type the Ctrl+O cycle offers (so none is hidden while
-  // a type is selected); it takes one line of the body budget, so the feed then fills the rest.
-  const preType = activityEvents(root, pane.role, pane.grep, null, pane.notable);
-  const events = pane.type === null ? preType : activityEvents(root, pane.role, pane.grep, pane.type, pane.notable);
+  // The Activity pane windows its read by the active trailing event window (Ctrl+Y,
+  // `pane.since`): null loads the fixed newest-200 tail, a window loads every retained event
+  // inside it (the trailing `readEventsSince` the `tumwater logs --since` read uses). The rows
+  // are then narrowed by the active role scope and text search, and windowed: null follows the
+  // live tail (the newest eventBudget events), a stored offset pages back through the window.
+  // Both clamp to [0, events.length - rows]. An active filter that matched nothing names the
+  // filter instead of claiming the log is empty. One dim tally line above the feed, built from
+  // the type-unfiltered rows, counts every type the Ctrl+O cycle offers (so none is hidden
+  // while a type is selected); it takes one line of the body budget, so the feed fills the
+  // rest. When an active window's read cannot prove it reached its cutoff (retention cut the
+  // window), one dim sparse-window note below the tally says so — the same note every
+  // windowed render prints (SPARSE_WINDOW_NOTE); it takes one body line, so the feed then
+  // fills the rest after the tally and the note. The window's coverage and the sparse line
+  // count against the body budget before the feed is sliced.
+  const { events: preType, covered } = activityRead(root, pane.role, pane.grep, null, pane.notable ?? false, pane.since ?? null);
+  const events = pane.type === null ? preType : preType.filter((e) => e.type === pane.type);
+  const windowed = pane.since !== null && pane.since !== undefined;
+  const sparseLine =
+    windowed && !covered
+      ? [toneLine(SPARSE_WINDOW_NOTE, width, "dim")]
+      : [];
   const tallyLine =
     events.length === 0
       ? []
@@ -394,13 +431,13 @@ function activityBody(pane: Extract<TuiView, { kind: "activity" }>, opts: PaneBo
             "dim",
           ),
         ];
-  const rows = Math.max(1, eventBudget - tallyLine.length);
+  const rows = Math.max(1, eventBudget - tallyLine.length - sparseLine.length);
   const maxStart = Math.max(0, events.length - rows);
   const start = state.activityScroll === null ? maxStart : Math.min(state.activityScroll, maxStart);
   return {
-    body: [...tallyLine, ...events.slice(start, start + rows).map((e) => toneLine(formatEvent(e), width, eventTone(e)))],
+    body: [...tallyLine, ...sparseLine, ...events.slice(start, start + rows).map((e) => toneLine(formatEvent(e), width, eventTone(e)))],
     emptyNote:
-      pane.role === null && pane.grep === null && pane.type === null && !pane.notable
+      pane.role === null && pane.grep === null && pane.type === null && !(pane.notable ?? false) && !windowed
         ? "(no events yet)"
         : "(no events match this filter)",
   };

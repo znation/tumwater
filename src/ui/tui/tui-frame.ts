@@ -34,7 +34,7 @@ export function sanitizeFrameLines(lines: readonly StatusLine[]): StatusLine[] {
  * report, the failure digest, the completed-run history, the pending-change roster, or the
  * queued prompts — the dashboard's views, in the order Ctrl+T cycles them. */
 export type TuiView =
-  | { kind: "activity"; role: string | null; grep: string | null; type: string | null; notable?: boolean }
+  | { kind: "activity"; role: string | null; grep: string | null; type: string | null; notable?: boolean; since?: number | null; window?: string | null }
   | { kind: "transcript"; role: string; index: number; count: number; note: boolean; change: boolean; changeStat?: boolean; grep?: string | null }
   | { kind: "backlog" }
   | { kind: "usage"; scope: string | null; window: string | null }
@@ -247,9 +247,11 @@ function queuedKeyHints(view: Extract<TuiView, { kind: "queued" }>): Array<[stri
 function activityKeyHints(view: TuiView): Array<[string, string]> {
   // notable/type exist only on the activity view, so each access is narrowed by kind before
   // use — the array is built eagerly for the table's last (always-matching) row, but the
-  // default activity arm is the only caller that reads these fields.
+  // default activity arm is the only caller that reads these fields. The window label is
+  // narrowed the same way: "all" (the newest-200 tail) or the active stop's label.
+  const windowLabel = view.kind === "activity" ? view.window ?? "all" : null;
   const activity = view.kind === "activity";
-  return [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+E", "notify hook"], ["Ctrl+A", "model"], ["Ctrl+N", "run cap"], ["Ctrl+K", "check cap"], ["Ctrl+U", "declared check"], ["Ctrl+S", "quiet hours"], ["Ctrl+W", "worktree slots"], ["Ctrl+O", activity && view.notable ? "notable only" : activity && view.type ? `type: ${eventTypeLabel(view.type)}` : "type: all"], ["Ctrl+G", activity && view.role ? `scope: ${view.role}` : "scope: team"], ["/", activity && view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+X", "agent backends"], ["Ctrl+T", "next view"], ["Ctrl+L", "fallback"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+R", "restart"], ["Ctrl+D", "quit"]];
+  return [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+E", "notify hook"], ["Ctrl+A", "model"], ["Ctrl+N", "run cap"], ["Ctrl+K", "check cap"], ["Ctrl+U", "declared check"], ["Ctrl+S", "quiet hours"], ["Ctrl+W", "worktree slots"], ["Ctrl+Y", activity ? `window: ${windowLabel}` : ""], ["Ctrl+O", activity && view.notable ? "notable only" : activity && view.type ? `type: ${eventTypeLabel(view.type)}` : "type: all"], ["Ctrl+G", activity && view.role ? `scope: ${view.role}` : "scope: team"], ["/", activity && view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+X", "agent backends"], ["Ctrl+T", "next view"], ["Ctrl+L", "fallback"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+R", "restart"], ["Ctrl+D", "quit"]];
 }
 
 /** The brand-tone label pair that names the prompting target on the prompt line, with the

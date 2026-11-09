@@ -284,9 +284,12 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
   ): boolean => {
-    // On the Backlog view (roleIds.length + 1) the pane's own Ctrl+Y arm consumes the key
+    // On the Activity view (0) the pane's own Ctrl+Y arm cycles the feed's trailing event
+    // window (all → 1h → 6h → 1d → all, replacing the old History Summary fallthrough). On
+    // the Backlog view (roleIds.length + 1) the pane's own Ctrl+Y arm consumes the key
     // (the plan retire); every other view keeps the Transcript change-step diffstat toggle
     // (routed first, falling through off it, so History keeps its Summary cycle).
+    if (session.view === 0) return activity.handleKey?.(key, ctx) ?? false;
     if (session.view === session.roleIds.length + 1) return backlog.handleKey?.(key, ctx) ?? false;
     if (transcript.handleKey?.(key, ctx)) return true;
     return history.handleKey?.(key, ctx) ?? false;
@@ -477,6 +480,8 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       activityGrep: act.activityGrep,
       activityType: act.activityType,
       activityNotable: act.activityNotable,
+      activityWindow: act.activityWindow,
+      activitySince: act.activitySince,
       noteMode: tra.noteMode,
       noteCache: tra.noteCache,
       changeMode: tra.changeMode,
