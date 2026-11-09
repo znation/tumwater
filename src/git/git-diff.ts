@@ -106,7 +106,7 @@ export async function changedFiles(wt: string): Promise<string[]> {
  * everything a merge of this branch would bring in (the three-dot range diffs against the
  * merge-base, so commits main gained during the run are not included). A failed `git diff`
  * throws: an empty list is vacuously review-exempt (isExemptDiff), so the gate skipped its
- * reviewer and the in-lock re-check its build check. A view catches it itself. */
+ * reviewer and its build pre-check. A view catches it itself. */
 export async function aheadOfMainFiles(wt: string, mainBranch: string): Promise<string[]> {
   const out = await git(wt, "diff", "--name-only", `${mainBranch}...HEAD`);
   // Decode git's C-quoted names (same convention as `git status --porcelain`): every caller

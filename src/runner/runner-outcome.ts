@@ -47,7 +47,7 @@ async function pendingForStageCheck(ctx: RunnerRunContext, wt: string): Promise<
  * reviewed changes merge through the merge pipeline's leased verification slot instead; md-only
  * notes are review-exempt by construction, so they keep this branch path (plans/merge-queue.md
  * 2/5). The refusal path waits MERGE_LOCK_WAIT_MS for merge.lock, not withLock's default: a
- * merge holds it through its in-lock check, which outlasts the default. */
+ * merge holds it for its in-lock rebase and fast-forward, which outlasts the default. */
 async function mergePhase(ctx: RunnerRunContext, wt: string, summary: string): Promise<RunResult> {
   return mergeToMain(
     {

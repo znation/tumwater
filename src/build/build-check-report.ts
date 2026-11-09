@@ -193,7 +193,7 @@ export function redCheckHeadline(check: BuildCheck, tail: readonly string[] | un
  * headline is failureHeadline's — the first line that is not a stack frame — not outputTail[0]: a
  * suite that dies on an unhandled rejection opens mid-stack, and naming the frame tells the author
  * where it broke, never what (BUGS.md 2026-09-19). One definition for every red that rejects a
- * change: the gate's pre-check, a batch's single-change red, and a single merge's in-lock check.
+ * change: the gate's pre-check (the batch and single-merge in-lock checks that shared it are gone).
  * In the verified branch, tail lines the headline already carries are dropped: the headline
  * itself, the test-name or marker line (duration removed) it opens with, and the message line it
  * ends with. */

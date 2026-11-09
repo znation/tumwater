@@ -221,8 +221,8 @@ async function reviewAttempt(
   // break the build): a deterministic rejection never shows as reviewing on the dashboards.
   // Both gate callers (the run path and runner-leftover.ts's recoverLeftover) get it for free.
   // Its run, flake re-run, and attribution live in review-precheck.ts (the check run itself
-  // lives in runScopedBuildCheck, shared with the merge path's in-lock re-check); a resolved
-  // result here is returned verbatim and a pass hands the verified head to the merge path below.
+  // lives in runScopedBuildCheck at the gate scope); a resolved result here is returned verbatim
+  // and a pass hands the verified head to the merge path below.
   // The pre-check always runs in the change's own slot. A retried attempt keeps the first
   // attempt's passing pre-check (a green, or a red naming only main's known failures): the
   // tree is the same head.

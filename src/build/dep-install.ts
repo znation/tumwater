@@ -117,7 +117,8 @@ export async function syncInstall(
  * 2026-10-01). Every team worktree, the redeploy compile, and the running harness resolve through
  * `root/node_modules`, so a merged dependency the root never installed would leave each of them
  * resolving against the old tree. Called under the merge lock right after the ff, so the next
- * merge's in-lock check already sees it. A `dep_install` event prices a run; a failure also warns,
+ * build that resolves through root/node_modules (a gate pre-check, the main watch) already sees it.
+ * A `dep_install` event prices a run; a failure also warns,
  * and is retried by the next merge's call (the drift is still there) — meanwhile each check
  * installs into its own tree, so nothing is rejected for it. No drift (the common case — the merge
  * did not touch dependencies) spawns nothing and logs nothing. */

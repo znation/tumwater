@@ -515,9 +515,9 @@ export function legacyLandQueueDir(root: string): string {
   return path.join(tumwaterDir(root), "land-queue"); // vocabulary-ok: legacy path read from old layouts
 }
 
-/** How long a merge-lock taker outside the merge queue waits for the lock: a merge holds it through
- * its in-lock check, which can run several minutes. A dead holder is still broken early by
- * `tryBreakStale`. */
+/** How long a merge-lock taker outside the merge queue waits for the lock: a merge holds it for
+ * its in-lock rebase and fast-forward, which can run long on a large rebase. A dead holder is still
+ * broken early by `tryBreakStale`. */
 export const MERGE_LOCK_WAIT_MS = 15 * 60_000;
 
 /** The lock dir serializing merges to main (merge-to-main.ts; doctor checks it). */
