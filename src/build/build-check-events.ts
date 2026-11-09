@@ -114,11 +114,11 @@ export const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: s
   batch: { label: "batch check", proceeding: "proceeding to merge" },
 };
 
-/** Scopes whose outcome gates a merge to main: runScopedBuildCheck remaps a timeout or an external
- * signal kill at these scopes to a deterministic "failed" — the tree is unverified, and these are
- * the last checks before main. The gate scope's pre-check stays fail-open because the model
- * reviewer and the merge path's own check still stand behind it (BUGS.md: a merge build check that
- * times out must not merge unverified). */
+/** Scopes whose outcome used to gate a merge to main: runScopedBuildCheck still remaps a timeout
+ * or an external signal kill at these scopes to a deterministic "failed", though parts 4l/3 and
+ * 4m/3 removed their live callers. The gate scope's pre-check stays fail-open because the model
+ * reviewer still stands behind it (BUGS.md: a build check that times out must not be read as a
+ * pass). */
 export const MERGE_SCOPES: ReadonlySet<BuildCheckScope> = new Set(["merge", "batch"]);
 
 /** The proceeding reason a merge-scope check that made no verdict about the tree carries: the

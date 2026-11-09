@@ -332,9 +332,9 @@ export function noteInheritedGreen(sha: string, from: string): void {
 
 /** How far down main's first-parent history inheritedGreen looks for a verdict to carry over. main
  * gains about two dozen commits an hour under a full team, and the walk stops at the first cached
- * verdict anyway (every code merge seeds one), so this bound only caps the rev-list on a cold
- * cache. The main watch's red-opener walk (main-watch.ts) reuses it: a red spell is recent, so
- * the nearest non-exempt ancestor sits well within the bound. */
+ * verdict anyway (the watch caches a verdict for each new tip it checks), so this bound only caps
+ * the rev-list on a cold cache. The main watch's red-opener walk (main-watch.ts) reuses it: a red
+ * spell is recent, so the nearest non-exempt ancestor sits well within the bound. */
 export const INHERIT_WALK_MAX = 64;
 
 /** The body of a `git rev-list --first-parent --max-count=<max> <ref>` read — the walk the

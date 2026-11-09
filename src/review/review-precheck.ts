@@ -165,8 +165,8 @@ function unverifiedSleepResult(
 /** A failed check the gate itself already knows is not the change's: one naming only tests main
  * already fails goes on to review as a known main failure (no fresh run on main), and a headline
  * the gate recorded as flaky within the window keeps the merge. The excuse is not a failure of
- * the gate — no verifiedHead is carried, so the merge path's own check still judges the tree —
- * so the change goes on to the model review instead of ending the merge attempt as review_error
+ * the gate — no verifiedHead is carried, so nothing records a green for the tree — so the change
+ * goes on to the model review instead of ending the merge attempt as review_error
  * and paying a requeue (BUGS.md 2026-10-06). Null when neither arm fires. */
 function knownFailureResult(
   root: string,
@@ -176,8 +176,8 @@ function knownFailureResult(
 ): GatePrecheckResult | null {
   const flaky = redCheckHeadline(check, outcome.outputTail);
   // A failure that names only tests main already fails is main's, not this change's: it goes
-  // on to review with no fresh run on main. No verifiedHead — the tree did not pass, so the
-  // merge path must not seed a green for it — and the merge check judges it by the same rule.
+  // on to review with no fresh run on main. No verifiedHead — the tree did not pass, so nothing
+  // records a green for it.
   const known = onlyKnownMainFailures(root, outcome.failingTests);
   if (known) {
     warnEventBestEffort(root, role, `gate check fails only main's known failures: ${known.join(", ")}`);
@@ -279,8 +279,8 @@ async function namedFailureResult(
   if (main.status === "green" || main.status === "red") {
     const stale = await staleBaseFailures(wt, mainBranch, head, main.sha, own);
     if (stale) {
-      // Same hand-off as the known-failure branch: no verifiedHead, so the merge check on the
-      // rebased tree still judges it.
+      // Same hand-off as the known-failure branch: no verifiedHead, so nothing records a green
+      // for the rebased tree.
       warnEventBestEffort(
         root,
         role,
@@ -375,10 +375,9 @@ export async function gateBuildPrecheck(
   if (sleep) return sleep;
   if (settled.status === "passed") {
     // Passed: this exact tree just went green under the project's own declared check. Hand
-    // the verdict to the merge path via verifiedHead — it seeds the red-main baseline with
-    // the SHA that actually becomes main (the rebased head, which may differ from `head`),
-    // so every role's next fresh run is a cache hit instead of one redundant full-suite
-    // re-run on an already-verified tree.
+    // the verdict to the merge path via verifiedHead — it pins the merge to the SHA that
+    // actually becomes main (the rebased head, which may differ from `head`), so the change
+    // merges the tree the gate judged.
     return { verifiedHead: head };
   }
   // A check the harness skipped for a reason other than the verify's abort (a killed run) is

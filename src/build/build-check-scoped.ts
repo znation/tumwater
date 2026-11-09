@@ -166,8 +166,7 @@ function unverifiedSkipFor(scope: BuildCheckScope, raw: BuildCheckOutcome, sleep
   // late has already had its retry above: the lateness is the harness's own evidence the host
   // slept, so a second verdict-less attempt is recorded as unverified rather than read again as
   // weather (BUGS.md 2026-09-28). no-npm and a broken toolchain still say nothing about the tree,
-  // and the gate scope still proceeds to the model reviewer, which the merge path's own check backs
-  // up.
+  // and the gate scope still proceeds to the model reviewer, which remains the backstop.
   // A failed dependency install is the same at a merge scope: nothing ran against the tree as its
   // lockfile pins it, so it must not merge (BUGS.md 2026-10-01).
   return (

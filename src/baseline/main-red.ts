@@ -325,12 +325,12 @@ let gateMainQueue: Promise<unknown> = Promise.resolve();
 /** Main's baseline verdict at its current tip, for attributing a gate check that failed twice
  * (src/review/review.ts): gateMainWorktreePath is re-pointed at `mainBranch`'s tip and asked
  * through checkMainBaseline — the same per-SHA, team-wide cache the healer's red-main hand-off
- * (`mainRedHealNote`) and the main watch read, which every
- * merge seeds green for the SHA it moved main to, so the common case is a cache hit. A miss (or a
- * provisional red from another worktree, or a green that was only inherited across doc commits)
- * runs the declared check once here, bounded by its timeout. A red is warned team-wide once per
- * SHA, exactly as the red-main hand-off does. Never throws: an unreadable main, a checkout that
- * fails, no declared check on main, or a skipped run all read as `unavailable`.
+ * (`mainRedHealNote`) and the main watch read, filled by a full check on each tip the watch
+ * checks, so a recently checked tip is a cache hit. A miss (or a provisional red from another
+ * worktree, or a green that was only inherited across doc commits) runs the declared check once
+ * here, bounded by its timeout. A red is warned team-wide once per SHA, exactly as the red-main
+ * hand-off does. Never throws: an unreadable main, a checkout that fails, no declared check on
+ * main, or a skipped run all read as `unavailable`.
  *
  * `forceFresh` bypasses that per-SHA cache and runs main's declared check now, even over a cached
  * green (checkMainBaseline's forceFresh): the review gate needs it to re-attribute a repeated gate

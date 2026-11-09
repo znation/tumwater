@@ -57,8 +57,8 @@ export interface MergeRequest {
    * Prior-review trailer stamps it. */
   priorReview?: PriorReview;
   /** The head the one-step merge's gate pre-check ran green on, when it ran one on exactly
-   * `sha` (GateResult.verifiedHead) — so a merge whose in-lock rebase is a no-op seeds the
-   * red-main baseline with the SHA that becomes main. */
+   * `sha` (GateResult.verifiedHead) — historically the SHA that seeded the red-main baseline
+   * when the in-lock rebase was a no-op; parts 4l/3 and 4m/3 removed that seeding. */
   verifiedHead?: string;
   /** The backlog entry the authoring run was assigned (MergeEntry.claim): the one-step merge's
    * pre-gate check and its in-lock check drop the change as `withdrawn` once main no longer
