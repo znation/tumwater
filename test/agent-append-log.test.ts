@@ -187,7 +187,7 @@ test("a next open leaves an already-newline-terminated log untouched (the repair
   await waitFor(() => second.stream.closed, "the stream to close");
 });
 
-test("a destroyed or ended append log reports finished, so a later write or end is skipped", async () => {
+test("a destroyed or ended append log reports finished", async () => {
   const dir = tmpdir();
   const file = path.join(dir, "finished.pi.jsonl");
   const killed = openAppendLog(file, 16 * 1024 * 1024);

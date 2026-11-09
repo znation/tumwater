@@ -18,14 +18,17 @@ import {
   type AgentStream,
 } from "../src/agent/agent-stream.js";
 
-/** A minimal fs.WriteStream-shaped fake: `write` returns true, `end(cb)` fires its callback
- * synchronously (so a not-broken log settles the run's promise without a real fd; a real
- * stream fires it asynchronously on 'finish'), and `on`/`emit` carry the error listener
- * finish() registers. */
-function fakeWriteStream() {
+/** A minimal fs.WriteStream-shaped fake: `write` records the text and returns true, `end(cb)`
+ * records the call and fires its callback synchronously (so a not-broken log settles the run's
+ * promise without a real fd; a real stream fires it asynchronously on 'finish'), and `on`/`emit`
+ * carry the error listener finish() registers. */
+function fakeWriteStream(writes: string[] = [], ends = { count: 0 }) {
   const listeners = new Map<string, () => void>();
   const stream = {
-    write: (_text: string) => true,
+    write: (text: string) => {
+      writes.push(text);
+      return true;
+    },
     on: (name: string, cb: () => void) => {
       listeners.set(name, cb);
       return stream;
@@ -34,6 +37,7 @@ function fakeWriteStream() {
       listeners.get(name)?.();
     },
     end: (cb?: () => void) => {
+      ends.count += 1;
       cb?.();
       stream.emit("finish");
     },
@@ -46,6 +50,10 @@ interface Built {
   fed: string[];
   resolved: PiRunResult[];
   warnings: string[];
+  rawWrites: string[];
+  nativeWrites: string[];
+  rawEnds: { count: number };
+  nativeEnds: { count: number };
 }
 
 /** Build a pipeline wired to fakes that record what the module does, so each test asserts the
@@ -55,6 +63,8 @@ function build(over: {
   backend?: AgentBackend;
   preSpawnSessionId?: string;
   stderrMatch?: (chunk: string, tail: string) => string | undefined;
+  rawFinished?: boolean;
+  nativeFinished?: boolean;
 } = {}): Built {
   const fed: string[] = [];
   const resolved: PiRunResult[] = [];
@@ -73,8 +83,20 @@ function build(over: {
     matchStderrWarning: over.stderrMatch,
   } as AgentBackend);
 
-  const rawLog = { stream: fakeWriteStream(), broken: false } as AppendLog;
-  const nativeLog = { stream: fakeWriteStream(), broken: false } as AppendLog;
+  const rawWrites: string[] = [];
+  const nativeWrites: string[] = [];
+  const rawEnds = { count: 0 };
+  const nativeEnds = { count: 0 };
+  const rawLog = {
+    stream: fakeWriteStream(rawWrites, rawEnds),
+    broken: false,
+    finished: over.rawFinished ?? false,
+  } as AppendLog;
+  const nativeLog = {
+    stream: fakeWriteStream(nativeWrites, nativeEnds),
+    broken: false,
+    finished: over.nativeFinished ?? false,
+  } as AppendLog;
 
   const opts = {
     cwd: "/tmp",
@@ -110,7 +132,7 @@ function build(over: {
     resolve: (r: PiRunResult) => resolved.push(r),
   });
 
-  return { stream, fed, resolved, warnings };
+  return { stream, fed, resolved, warnings, rawWrites, nativeWrites, rawEnds, nativeEnds };
 }
 
 test("an over-long native line without a newline is discarded and the stream resyncs on the next real line", () => {
@@ -160,4 +182,23 @@ test("finish settles once and resolves only the first result", () => {
   assert.equal(stream.settled(), true, "the run is settled after the first finish");
   assert.equal(resolved.length, 1, "the run's promise resolves exactly once");
   assert.equal(resolved[0], first, "the first finish's result wins, the second is ignored");
+});
+
+test("a finished append log is neither written nor ended again at settle", () => {
+  const { stream, rawWrites, nativeWrites, rawEnds, nativeEnds, resolved } = build({
+    rawFinished: true,
+    nativeFinished: true,
+  });
+  // The flags openAppendLog sets once a stream ends (openAppendLog's 'finish'/'close'
+  // listeners): a later data event or the settle flush must not touch the dead streams — a
+  // write fails on a destroyed stream and a write to a closed one throws.
+  stream.feedCanonical("line one\nline two\n");
+  assert.deepEqual(rawWrites, [], "a finished raw log gets no record");
+  assert.deepEqual(nativeWrites, [], "a finished native log gets no line");
+
+  const result = { ok: true } as PiRunResult;
+  stream.finish(result);
+  assert.equal(rawEnds.count, 0, "a finished raw log is not ended again");
+  assert.equal(nativeEnds.count, 0, "a finished native log is not ended again");
+  assert.deepEqual(resolved, [result], "the run settles without waiting on a dead stream's finish");
 });

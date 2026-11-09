@@ -41,10 +41,10 @@ export interface AppendLog {
   stream: fs.WriteStream;
   broken: boolean;
   /** True once the stream ended by ANY path (normal end, destroy, or a write failure's
-   * implicit close). From then on writes are skipped and end() is a no-op — the end handlers
-   * (finish's flush wait, openAppendLog's held count) have all fired once, so this is the one
-   * flag that means "this stream is closed" as opposed to `broken`, which is the 'error'
-   * subset of it. */
+   * implicit close). From then on the agent-stream writes are skipped and its settle flush
+   * skips end() — the end handlers (finish's flush wait, openAppendLog's held count) have all
+   * fired once, so this is the one flag that means "this stream is closed" as opposed to
+   * `broken`, which is the 'error' subset of it. */
   finished: boolean;
 }
 

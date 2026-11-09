@@ -321,8 +321,10 @@ run left, so no reader glues two records into one" (the next open appends the mi
 the two records each parse on their own line), "a held live writer's file is not torn-tail-repaired
 by another open of the same path" (a held open leaves the file byte-identical), "a next open leaves
 an already-newline-terminated log untouched (the repair is a no-op)", and "a destroyed or ended
-append log reports finished, so a later write or end is skipped" (a dead stream is not written to
-again).
+append log reports finished" (openAppendLog sets the flag on both a destroy and a normal end), and
+`test/agent-stream.test.ts` — "a finished append log is
+neither written nor ended again at settle" (the raw and native writes are skipped and the settle
+flush does not end a dead stream twice).
 
 ## Sibling result shapes a classifier treats alike
 
