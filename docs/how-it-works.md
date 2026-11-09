@@ -38,9 +38,10 @@ team for that long and then stops it.
    trusted hook) refuse a path inside the project but outside the run's workspace, and name the
    same file inside the workspace instead. Shell writes stay unchecked on every backend; a run
    that leaves new changes in your checkout gets a `wrote outside the worktree` warning.
-3. If pi changed files, commit and put the change in the merge queue, where the merge pipeline
-   reviews it and fast-forwards main. A rejection resets the branch and passes the reasons to the
-   author's next run. Right before the commit, a plan or bug the run pasted under PLANS.md's
+3. If pi changed files, commit and pin the commit by the run's merge ref, then end queued —
+   the pin and the commit's trailers are the change's waiting state, and no queue file is
+   written; the poll's drain merges it. A rejection resets the branch and passes the reasons to
+   the author's next run. Right before the commit, a plan or bug the run pasted under PLANS.md's
    `## Done` or BUGS.md's `## Fixed` moves to the top of PLANS-DONE.md or BUGS-FIXED.md.
    Every run commit's trailer carries `Model: <model> · backend <id>` for the model and backend
    the run started on.
@@ -81,9 +82,12 @@ and `plan|bug --release` cover that set.
 
 ## The merge pipeline
 
-A run ends as soon as its commit is in the merge queue. Each queued change is gated in the
-merge worktree and then merged under the merge lock — one queue head at a time — so other roles
-keep running while a change is in the pipeline.
+A run ends as soon as its commit is pinned: a changed run pins its commit by its merge ref,
+logs `merge_queued`, and is done — the pin plus the commit's trailers are its waiting state, and
+no queue file is written. The poll's drain then gates and merges the pin in the merge worktree
+under the merge lock — one at a time — so other roles keep running while a change is in the
+pipeline. (A queue file an older build left, or a leftover recovery's, is legacy input the same
+drain merges until it is gone.)
 
 - **Rebase.** The change is rebased onto current main first, so the pipeline checks what will
   actually merge.

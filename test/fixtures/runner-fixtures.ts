@@ -18,6 +18,7 @@ import { ensureParentDir } from "../../src/files/files.js";
 import { readSlotsState, updateSlotsState } from "../../src/git/slots-state.js";
 import { mergeRefName, worktreePath } from "../../src/paths.js";
 import { headMerge, queueDepth } from "../../src/merge/merge-queue.js";
+import { refSha } from "../../src/git/git.js";
 import { enqueuePrompt, inboxSize } from "../../src/inbox/inbox.js";
 import { mergeHead } from "./orchestrator-fixtures.js";
 import { declareCheck, parkUntil } from "./merger-fixtures.js";
@@ -82,7 +83,7 @@ export async function runAbortedDirectorMerge(repo: string): Promise<void> {
         const outcome = await runner.run();
         assert.equal(outcome.result, "queued", "the run ends at the pin; the gate is the merge's");
         const head = headMerge(repo);
-        assert.ok(head, "the merge is queued");
+        assert.ok(head || (await refSha(repo, mergeRefName("director"))), "the merge is queued or pinned");
         const merge = mergeHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
         // Abort only once the merge's gate check is parked: an earlier abort hits nothing.
         await waitForFile(started);

@@ -15,8 +15,8 @@ import { readRemoteCi } from "../src/observer/remote-ci.js";
 import { readFeedbackFilings } from "../src/observer/feedback-filings.js";
 import { qaCoveragePath, feedbackFilingsPath, remoteCiPath } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
-import { queueDepth, queuedMerges, enqueueMerge } from "../src/merge/merge-queue.js";
-import { claimOf, priorReviewOf } from "../src/git/commit-message.js";
+import { queueDepth, enqueueMerge } from "../src/merge/merge-queue.js";
+import { claimOf, priorReviewOf, revisionRoundOf } from "../src/git/commit-message.js";
 import { setRef, refSha } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
 import type { RunOutcome } from "../src/run/run-outcome.js";
@@ -453,22 +453,18 @@ test("a run with a SUMMARY commits, pins, and enqueues the merge", async () => {
   assert.equal(calls.pins[0]!.wt, wt);
   assert.equal(calls.pins[0]!.sha, outcome.commit);
 
-  // Exactly one merge sits in the queue, pointing at the pinned commit.
-  assert.equal(queueDepth(root), 1);
-  const queued = queuedMerges(root);
-  assert.equal(queued.length, 1);
-  assert.equal(queued[0]!.role, "improve");
-  assert.equal(queued[0]!.sha, outcome.commit);
-  assert.equal(queued[0]!.run, 3);
-  assert.equal(queued[0]!.summary, "add the feature");
-  assert.equal(queued[0]!.highFriction, undefined);
-  assert.equal(queued[0]!.priorReview, undefined, "a fresh run carries no prior review");
+  // A changed fresh run writes no queue file: the merge ref pin IS the waiting state (part 3e/7),
+  // and the poll's drain merges it. The fake pinAndReset records the pin; a real one points the
+  // ref at the commit the run pinned.
+  assert.equal(queueDepth(root), 0, "a changed fresh run writes no queue file");
+  assert.equal(calls.pins.length, 1, "the commit is pinned as the waiting state");
+  assert.equal(calls.pins[0]!.sha, outcome.commit);
 });
 
-test("a run with a SUMMARY still enqueues its merge when the events feed is unwritable", async () => {
+test("a run with a SUMMARY still pins its merge when the events feed is unwritable", async () => {
   const { root, wt } = await setup();
   const state: RunnerState = { ...freshRunnerState("improve"), runs: 3 };
-  const { ctx } = makeCtx(root, wt, state, {
+  const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "Work done.\nSUMMARY: add the feature\nWHY: it was missing\nVERIFIED: npm test\n",
   });
   // Put a directory where the append-only events log belongs: the merge_queued event throws
@@ -478,8 +474,8 @@ test("a run with a SUMMARY still enqueues its merge when the events feed is unwr
   const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
-  assert.equal(queueDepth(root), 1, "the merge is durably queued despite the unwritable feed");
-  assert.equal(queuedMerges(root)[0]!.sha, outcome.commit);
+  assert.equal(calls.pins.length, 1, "the merge is pinned despite the unwritable feed");
+  assert.equal(calls.pins[0]!.sha, outcome.commit);
 });
 
 test("a revision run's queued merge carries the prior review's objections", async () => {
@@ -498,9 +494,9 @@ test("a revision run's queued merge carries the prior review's objections", asyn
   const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
-  const queued = queuedMerges(root);
-  assert.equal(queued[0]!.revisionRound, 1);
-  assert.deepEqual(queued[0]!.priorReview, { sha: rejected, reasons: ["fix the bug", "add a test"] });
+  // The revision rides the commit's trailers (a pin-only merge reads them back off the commit),
+  // not a queue entry: its round and prior review survive the wait.
+  assert.equal(revisionRoundOf(sh(wt, "git", "log", "-1", "--format=%B")), 1);
   // The revision's commit carries the same prior review as a whole Prior-review trailer line
   // (a pin-only merge reads it back off the commit).
   assert.deepEqual(priorReviewOf(sh(wt, "git", "log", "-1", "--format=%B")), {
@@ -525,7 +521,7 @@ test("a queued merge records the claim its run worked, so the merge can drop it 
     key: "alpha",
     title: claim.title,
   });
-  assert.deepEqual(queuedMerges(worked.root)[0]!.claim, { file: "PLANS.md", key: "alpha", title: claim.title });
+  assert.equal(queueDepth(worked.root), 0, "a changed fresh run writes no queue file");
 
   // A run executing a user request keeps its claim for a later run and works something else:
   // its commit stamps no Claim line.
@@ -538,7 +534,7 @@ test("a queued merge records the claim its run worked, so the merge can drop it 
   });
   assert.equal((await stageRunMerge(requestCtx)).result, "queued");
   assert.equal(claimOf(sh(request.wt, "git", "log", "-1", "--format=%B")), undefined);
-  assert.equal(queuedMerges(request.root)[0]!.claim, undefined);
+  assert.equal(queueDepth(request.root), 0, "a changed fresh run writes no queue file");
 });
 
 test("a missing SUMMARY is recovered with one follow-up turn", async () => {
@@ -556,7 +552,7 @@ test("a missing SUMMARY is recovered with one follow-up turn", async () => {
   assert.equal(calls.summaryRequests.length, 1);
   assert.equal(calls.summaryRequests[0], wt, "the follow-up runs in the run's worktree");
   assert.match(calls.warnings[0]!, /recovered it with a follow-up turn/);
-  assert.equal(queuedMerges(root)[0]!.summary, "recovered summary");
+  assert.equal(sh(wt, "git", "log", "-1", "--format=%s"), "tumwater(improve): recovered summary");
 });
 
 test("an over-long SUMMARY is shortened with one follow-up turn", async () => {
@@ -571,7 +567,7 @@ test("an over-long SUMMARY is shortened with one follow-up turn", async () => {
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.summary, "short form");
   assert.deepEqual(calls.summaryOverLengths, [140]);
-  assert.equal(queuedMerges(root)[0]!.summary, "short form");
+  assert.equal(sh(wt, "git", "log", "-1", "--format=%s"), "tumwater(improve): short form");
   assert.ok(calls.warnings.some((w) => w.includes("shortened with a follow-up turn")));
 });
 
@@ -691,7 +687,7 @@ test("a run past both friction thresholds is flagged, warned, and marked in the 
   assert.match(outcome.summary!, /\(high friction: 5 turns \/ \d+m\)/);
   assert.match(calls.warnings[0]!, /high-friction run: 5 turns in \d+ min/);
   assert.match(sh(wt, "git", "log", "-1", "--format=%b"), /^Friction: high \(5 turns \/ \d+m\)$/m);
-  assert.equal(queuedMerges(root)[0]!.highFriction, true);
+  assert.equal(queueDepth(root), 0, "a changed fresh run writes no queue file");
 });
 
 test("burning turns alone is not friction — the wall clock must pass too", async () => {
@@ -712,7 +708,7 @@ test("burning turns alone is not friction — the wall clock must pass too", asy
   assert.equal(outcome.highFriction, false, "a fast high-turn run is ordinary work");
   assert.deepEqual(calls.warnings, []);
   assert.doesNotMatch(sh(wt, "git", "log", "-1", "--format=%b"), /Friction:/);
-  assert.equal(queuedMerges(root)[0]!.highFriction, undefined, "the merge is not marked");
+  assert.equal(queueDepth(root), 0, "a changed fresh run writes no queue file");
 });
 
 test("a failed pin reports an error, records lastError, and queues nothing", async () => {
@@ -869,7 +865,7 @@ test("a failed qa coverage write warns and the run still ends queued", async () 
   }
 
   assert.equal(outcome.result, "queued");
-  assert.equal(queueDepth(root), 1);
+  assert.equal(queueDepth(root), 0, "a changed fresh run writes no queue file");
   assert.deepEqual(readQaCoverage(root), {});
   assert.equal(calls.warnings.length, 1);
   assert.match(calls.warnings[0]!, /qa flow "unit tests" not recorded: EACCES fake/);
@@ -904,7 +900,8 @@ test("a self-check finding triggers one follow-up and queues with the fixed warn
   assert.equal(outcomes[0]!.source, "improve");
   assert.deepEqual(outcomes[0]!.findings, ["md-only BUGS.md edit moves X to Fixed, but none of its symbols exist"]);
   assert.equal("open" in outcomes[0]!, false);
-  assert.equal(queuedMerges(root)[0]!.summary, "add the feature");
+  assert.equal(queueDepth(root), 0, "a changed fresh run writes no queue file");
+  assert.equal(sh(wt, "git", "log", "-1", "--format=%s"), "tumwater(improve): add the feature");
 });
 
 test("a self-check fix-up reply never becomes the change's summary; its RISK/VERIFIED are appended", async () => {
@@ -939,11 +936,8 @@ test("a self-check fix-up reply never becomes the change's summary; its RISK/VER
     "VERIFIED: original verified (self-check: read the cited lines)";
   const body = sh(wt, "git", "log", "-1", "--format=%b");
   assert.ok(body.startsWith(`${expectedBody}\n`), body);
-  // The queue entry carries what the reviewer checks against the diff; the event, what the
-  // feed shows.
-  const queued = queuedMerges(root)[0]!;
-  assert.equal(queued.summary, "add the feature");
-  assert.equal(queued.body, expectedBody);
+  // The commit body carries what the reviewer checks against the diff; the event, what the
+  // feed shows. No queue file is written — the commit (and its body) IS the waiting state.
   const event = readEvents(root, 50).find((e) => e.type === "merge_queued");
   assert.equal(event?.summary, "add the feature");
 });
@@ -962,8 +956,9 @@ test("a fix-up SUMMARY replaces only a subject derived from the changed paths", 
 
   assert.equal(outcome.result, "queued");
   assert.deepEqual(calls.stageFixRequests[0]!.change, { summary: null, body: "WHY: original why" });
-  assert.equal(queuedMerges(root)[0]!.summary, "add the feature flag");
-  assert.equal(queuedMerges(root)[0]!.body, "WHY: original why\nRISK: self-check: fixed the link");
+  assert.equal(sh(wt, "git", "log", "-1", "--format=%s"), "tumwater(improve): add the feature flag");
+  const body = sh(wt, "git", "log", "-1", "--format=%b");
+  assert.ok(body.startsWith("WHY: original why\nRISK: self-check: fixed the link\n"), body);
 });
 
 test("a finding the follow-up leaves unfixed still queues, with the still-open warning", async () => {
@@ -986,7 +981,7 @@ test("a finding the follow-up leaves unfixed still queues, with the still-open w
   assert.equal(outcomes[0]!.message, "stage self-check: 1 finding; 1 still open, queued for the gate");
   assert.deepEqual(outcomes[0]!.findings, ["a finding"]);
   assert.deepEqual(outcomes[0]!.open, ["a finding"]);
-  assert.equal(queueDepth(root), 1, "the change queues regardless");
+  assert.equal(queueDepth(root), 0, "the change is pinned, not queued");
 });
 
 test("the self-check outcome warning caps the logged findings and their length", async () => {
@@ -1292,7 +1287,7 @@ test("with an unmerged pin and no queue entry, stageRunMerge holds the new commi
   assert.equal(sh(wt, "git", "log", "-1", "--format=%s"), "tumwater(improve): add the feature");
 });
 
-test("with neither a queue entry nor a pin, stageRunMerge pins and enqueues exactly as before", async () => {
+test("a run with no waiting change pins its commit as the waiting state and writes no queue entry", async () => {
   const { root, wt } = await setup();
   const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, { finalText: "SUMMARY: add the feature\n" });
@@ -1302,6 +1297,6 @@ test("with neither a queue entry nor a pin, stageRunMerge pins and enqueues exac
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.heldOnBranch, undefined);
   assert.equal(calls.pins.length, 1, "the run pins and resets as before");
-  assert.equal(queueDepth(root), 1, "the change is queued as before");
-  assert.equal(queuedMerges(root)[0]!.sha, outcome.commit);
+  assert.equal(calls.pins[0]!.sha, outcome.commit);
+  assert.equal(queueDepth(root), 0, "a changed fresh run writes no queue file");
 });

@@ -11,14 +11,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
-import { piLogPath, rejectedRefName, sessionDir } from "../src/paths.js";
+import { piLogPath, rejectedRefName, sessionDir, mergeRefName } from "../src/paths.js";
 import { recordSession } from "../src/agent/session-ledger.js";
 import { setRef } from "../src/git/git.js";
-import { queuedMerges } from "../src/merge/merge-queue.js";
+import { revisionRoundOf } from "../src/git/commit-message.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeRoleRunner, roleWt } from "./fixtures/runner-fixtures.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
-import { initializedRepo, mainSha, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
+import { initializedRepo, mainSha, pinOffMain, tmpdir, sh } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo, logPromptsTo, readRunBlocks, withPi } from "./fakes/fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
@@ -271,7 +271,11 @@ test("a cross-agent handoff over an interrupted revision keeps its edits and car
     const run = readRunBlocks(argsFile).join("\n");
     assert.match(run, /is revision 1\b/, "the fresh handoff is told it is revising the rejected change");
     assert.match(run, /fix it/, "the fresh handoff receives the review objections");
-    assert.equal(queuedMerges(repo)[0]?.revisionRound, 1, "the handoff still owns the revision");
+    assert.equal(
+      revisionRoundOf(sh(repo, "git", "log", "-1", "--format=%B", sh(repo, "git", "rev-parse", mergeRefName("improve")))),
+      1,
+      "the handoff's commit carries the round a pin-only merge reads back",
+    );
     assert.equal(await mergeHead(repo, resumed, defaultConfig(), "improve"), "changed");
     assert.ok(
       fs.existsSync(path.join(repo, "partial.txt")),
@@ -408,7 +412,11 @@ test("a cross-agent handoff over an applied revision conflict carries both notes
     assert.match(run, /is revision 1\b/, "the fresh handoff is told it is revising");
     assert.match(run, /<conflict-handback>/, "the fresh handoff is told about the markers too");
     assert.match(run, /no longer applies cleanly/, "the note names the revision hand-back");
-    assert.equal(queuedMerges(repo)[0]?.revisionRound, 1, "the handoff still owns the revision");
+    assert.equal(
+      revisionRoundOf(sh(repo, "git", "log", "-1", "--format=%B", sh(repo, "git", "rev-parse", mergeRefName("improve")))),
+      1,
+      "the handoff's commit carries the round a pin-only merge reads back",
+    );
   } finally {
     restore();
   }

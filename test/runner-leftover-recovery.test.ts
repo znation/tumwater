@@ -15,7 +15,7 @@ import { MERGE_CONFLICT_LIMIT } from "../src/runner/runner-leftover.js";
 import { defaultConfig } from "../src/config/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
-import { setRef } from "../src/git/git.js";
+import { setRef, refSha } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { enqueueMerge, headMerge, queueDepth } from "../src/merge/merge-queue.js";
@@ -142,7 +142,7 @@ test("a pin at the merge-conflict cap is handed back and the run resolves it in 
       assert.equal(runner.state.mergeConflicts, undefined, "the streak ended with the hand-back");
       const queued = eventsOfType(repo, "merge_queued").map((e) => e.commit);
       assert.deepEqual(queued, [outcome.commit], "the resolved change was queued");
-      assert.equal(headMerge(repo)?.entry.sha, outcome.commit);
+      assert.equal(await refSha(repo, mergeRefName("improve")), outcome.commit);
       assert.deepEqual(
         eventsOfType(repo, "conflict_handback").map((e) => e.action),
         ["queued", "applied"],
@@ -185,7 +185,7 @@ test("a pin at the cap whose lineage already used its hand-back is discarded and
       assert.equal(runner.state.mergeConflicts, undefined, "the conflict streak is cleared");
       assert.equal(runner.state.conflictHandback, undefined, "the stale hand-back is cleared");
       assert.equal(runner.state.conflictDiscard, undefined, "the delivered note is cleared once the author commits");
-      assert.equal(headMerge(repo)?.entry.sha, outcome.commit, "the queue holds only the fresh change");
+      assert.equal(await refSha(repo, mergeRefName("improve")), outcome.commit, "the queue holds only the fresh change");
       assert.deepEqual(eventsOfType(repo, "merge_queued").map((e) => e.commit), [outcome.commit]);
       assert.ok(
         eventsOfType(repo, "warning").some((e) => String(e.message).includes('discarding leftover')),
@@ -222,7 +222,7 @@ test("a hand-back whose diff no longer applies is dropped and the author starts 
         [["failed", missing]],
         "the failure is logged with the hand-back's sha",
       );
-      assert.equal(headMerge(repo)?.entry.sha, outcome.commit, "only the fresh change is queued");
+      assert.equal(await refSha(repo, mergeRefName("improve")), outcome.commit, "only the fresh change is queued");
     },
   );
 });

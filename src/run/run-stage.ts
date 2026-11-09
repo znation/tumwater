@@ -11,13 +11,13 @@ import {
   extractSummary,
   summaryOverCap,
   fallbackSummary,
-  formatCommitBody,
   appendSelfCheckNotes,
+  formatCommitBody,
   stampedSubject,
 } from "../git/commit-message.js";
 import type { StagedDescription } from "../prompt/gate-prompts.js";
 import { logEventBestEffort } from "../events/events.js";
-import { enqueueMerge, entryRevisionFields, queuedMerges } from "../merge/merge-queue.js";
+import { queuedMerges } from "../merge/merge-queue.js";
 import type { PriorReview } from "../merge/merge-queue.js";
 import type { MergeClaim } from "../merge/merge-withdrawn.js";
 import { hasUnmergedPin } from "../runner/runner-leftover.js";
@@ -451,19 +451,16 @@ function stagedCommitMessage(
   );
 }
 
-/** Pin the commit by the role's merge ref and enqueue the merge, or hold it on the branch when
- * the role already has a queued change or an unmerged pin (interlock relief). Returns
+/** Pin the commit by the role's merge ref and end the run `queued`, or hold the commit on the
+ * branch when the role already holds a waiting change (interlock relief). The pin alone is the
+ * waiting state — the poll's merge drain (merge-drain.ts) gates and merges it, and its commit
+ * trailers (run-stage's commitTrailer, part 3j/7) carry the claim and prior review a pin-only
+ * merge reads back — so a changed fresh run writes no queue file; a queue file an older build
+ * left (or leftover recovery enqueues, part 3i/7) is legacy input the same drain merges. Returns
  * `{ heldOnBranch }` when the run may finish queued; an error outcome when the pin fails. */
 async function pinAndEnqueueChange(
   ctx: RunStageContext,
-  change: {
-    commit: string;
-    summary: string;
-    body: StagedBody;
-    highFriction: boolean;
-    revisionRound: number | undefined;
-    priorReview: PriorReview | undefined;
-  },
+  change: { commit: string; summary: string; revisionRound: number | undefined },
 ): Promise<{ heldOnBranch: boolean } | RunOutcome> {
   const s = ctx.state;
   // Interlock relief (plans/interlock-relief.md "The decision"): a role the scheduler admitted
@@ -480,49 +477,24 @@ async function pinAndEnqueueChange(
     (await hasUnmergedPin(ctx.root, ctx.role));
 
   if (!heldOnBranch) {
-    // Pin the commit by its merge ref BEFORE freeing the worktree (invariant 4), then hand it
-    // to the merge queue: from here on the review gate and the rebase run in a verification's
-    // leased pool slot, never in this worktree (plans/merge-queue.md 2/5). A failed pin defers
-    // to next-run recovery — merge without a pin would lose the ref lifecycle this whole flow
-    // depends on. The reviewer checks the author's claimed WHY/VERIFIED against the actual diff;
-    // no diff reaches main unreviewed.
+    // Pin the commit by its merge ref BEFORE freeing the worktree (invariant 4): the pin is the
+    // change's whole waiting state, and a failed pin defers to next-run recovery — merge without
+    // a pin would lose the ref lifecycle this whole flow depends on. The commit's trailers
+    // (the claim and prior review, part 3j/7) are all the poll's drain needs to merge it.
     if (!(await ctx.pinAndReset(ctx.wt, change.commit))) {
       s.lastError = "failed to pin the merge ref; left for the next run's recovery";
       return { result: "error", summary: s.lastError };
     }
 
-    // The commit is pinned and the worktree is free: enqueue the merge and END the run — the
-    // orchestrator drains the queue on its single merge slot, outside the author semaphore, so
-    // this slot is free the moment the work is committed (plans/merge-queue.md 3/5). The merge
-    // runs the same gate + merge flow through runMergePi/foldMergeUsage on this same state
-    // object — recording the commit count, the outcome, and the reviewer spend into it — and
-    // logs merge_done/merge_failed; a non-terminal outcome keeps the pin for next-run leftover
-    // recovery. `commits` was NOT incremented above: it counts merged changes only.
-    enqueueMerge(ctx.root, {
-      role: ctx.role,
-      sha: change.commit,
-      run: s.runs,
-      summary: change.summary,
-      body: change.body ? formatCommitBody(change.body) : undefined,
-      highFriction: change.highFriction || undefined,
-      ...entryRevisionFields({ revisionRound: change.revisionRound, priorReview: change.priorReview }),
-      // The entry this run worked (a run executing a user request keeps its claim for a later
-      // run and works something else): the poll may release the claim while the change waits,
-      // so the merge checks this copy against main (merge-withdrawn.ts).
-      ...(s.claim !== undefined && ctx.userPrompt === null
-        ? { claim: { file: s.claim.file, key: s.claim.key, title: s.claim.title } }
-        : {}),
-      enqueuedAt: Date.now(),
-    });
-    // The revision is now in flight: the rejected ref's lifecycle continues in the merger
-    // (merge-core.ts), which deletes it when this merge merges and repoints it on a rejection.
-    // The round is also stamped on the commit's Revision trailer above, so leftover recovery can
-    // rebuild a retriable revision's merge entry with its round when the queue marker is lost.
+    // The revision this run applied is now in flight: its round and prior review ride the
+    // commit's trailers (part 3j/7), and the rejected ref's lifecycle continues in the merger
+    // (merge-core.ts). A user-request run that left a pending revision for a later run does not
+    // apply one here (revisionRound undefined) and keeps it untouched.
     if (change.revisionRound !== undefined) {
       s.revision = undefined;
     }
-    // The merge sits in the durable queue above and the commit is pinned; the event is
-    // observability, so an unwritable feed must not reject a run whose work is already queued.
+    // The commit is pinned and the pin is the waiting state; the event is observability, so an
+    // unwritable feed must not reject a run whose work is already queued.
     logEventBestEffort(ctx.root, {
       source: ctx.role,
       type: "merge_queued",
@@ -706,10 +678,7 @@ export async function stageRunMerge(ctx: RunStageContext): Promise<RunOutcome> {
   const queued = await pinAndEnqueueChange(ctx, {
     commit,
     summary: desc.summary,
-    body: desc.body,
-    highFriction: friction.highFriction,
     revisionRound,
-    priorReview,
   });
   if ("result" in queued) return queued;
   const finalSummary = recordStageRecords(ctx, desc.summary, friction);

@@ -23,7 +23,7 @@ import { stageRunMerge } from "../src/run/run-stage.js";
 import { queuedMerges } from "../src/merge/merge-queue.js";
 import { settleMergeOutcome } from "../src/merge/merge-pipeline.js";
 import { recoverLeftover } from "../src/runner/runner-leftover.js";
-import { buildCommitMessage, commitTrailer, stampedSubject } from "../src/git/commit-message.js";
+import { buildCommitMessage, commitTrailer, stampedSubject, revisionRoundOf } from "../src/git/commit-message.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { readmeTemplate } from "../src/brief/brief.js";
@@ -530,7 +530,7 @@ test("stageRunMerge carries the revision round onto the entry and clears state.r
 
   assert.equal(outcome.result, "queued");
   assert.equal(state.revision, undefined, "staging consumes the revision");
-  assert.equal(queuedMerges(root)[0]?.revisionRound, 1, "the round rides the queued merge");
+  assert.equal(revisionRoundOf(sh(wt, "git", "log", "-1", "--format=%B")), 1, "the round rides the commit's trailer");
 });
 
 test("a user-request run that leaves a pending revision stages no round and keeps the revision", async () => {
@@ -547,7 +547,7 @@ test("a user-request run that leaves a pending revision stages no round and keep
   const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
-  assert.equal(queuedMerges(root)[0]?.revisionRound, undefined, "a user change is not a revision");
+  assert.equal(revisionRoundOf(sh(wt, "git", "log", "-1", "--format=%B")), undefined, "a user change is not a revision");
   assert.deepEqual(state.revision, revision, "the pending revision is left untouched");
 });
 
@@ -771,7 +771,7 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
       assert.equal(runner.state.revision, undefined, "the revision is consumed by staging");
       assert.equal(runner.state.conflictHandback?.reason, "revision");
       assert.equal(runner.state.conflictHandback?.applied, true);
-      assert.equal(queuedMerges(repo)[0]?.revisionRound, 1, "it still rides as revision round 1");
+      assert.equal(revisionRoundOf(sh(repo, "git", "log", "-1", "--format=%B", outcome.commit!)), 1, "it still rides as revision round 1");
       assert.deepEqual(eventsOfType(repo, "conflict_handback").map((e) => e.reason), ["revision"]);
     },
   );

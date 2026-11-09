@@ -7,8 +7,9 @@ import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { runOrchestrator } from "../../src/orchestrator/orchestrator.js";
 import { drainMergeQueue } from "../../src/merge/merge-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../../src/merge/merge-pipeline.js";
-import { dropMerge, headMerge, queuedMergeFiles } from "../../src/merge/merge-queue.js";
+import { dropMerge, headMerge, queueDepth, queuedMergeFiles } from "../../src/merge/merge-queue.js";
 import { mergeRefName } from "../../src/paths.js";
+import { refSha } from "../../src/git/git.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
 import { loadRunnerState } from "../../src/runner/runner-state-load.js";
 import { logEvent } from "../../src/events/events.js";
@@ -333,14 +334,20 @@ export async function awaitSettledRun(
   );
 }
 
-/** Merge the head of the durable merge queue through the orchestrator's own merge pipeline
- * (merge-drain.ts). Runner-level tests call `runner.run()` directly — no poll loop — so the
- * entry a changed run enqueues needs a driver: this runs the drain's one gate-then-merge task
- * for the head (drainMergeQueue, on a one-permit semaphore), leaving every other queued entry
- * untouched — a test that runs a second role meanwhile merges that one with its own call.
- * `signal` stands in for harness shutdown (the orchestrator's stop signal). Returns the
- * merge's outcome as folded into `runner`'s state; the entry is dropped after every outcome,
- * exactly as the pipeline does. */
+/** Merge the head of the durable merge queue — or the expected role's pin, when the queue
+ * holds no head — through the orchestrator's own merge pipeline (merge-drain.ts). Runner-level
+ * tests call `runner.run()` directly (no poll loop), so the waiting state a changed run leaves
+ * behind needs a driver: when the queue holds the expected role's entry this runs the drain's
+ * one gate-then-merge task for that head (drainMergeQueue, on a one-permit semaphore), leaving
+ * every other queued entry untouched; when the queue holds no head — a changed fresh run now
+ * writes only its merge pin (part 3e/7), and leftover recovery a pin the same way until part
+ * 3i/7 stops it — this resolves the role's pin by its merge ref and drives it through the same
+ * drain, which builds the pin-only entry from the commit's trailers. After the task settles,
+ * a queue file that existed before the call must be gone, and the pin is left to the outcome
+ * (a `changed` merge deletes it; a retriable outcome keeps it) for the tests to assert. The
+ * legacy queue path is unchanged. `signal` stands in for harness shutdown (the
+ * orchestrator's stop signal). Returns the merge's outcome as folded into `runner`'s state;
+ * a queue file is dropped after every outcome, exactly as the pipeline does. */
 export async function mergeHead(
   repo: string,
   runner: RoleRunner,
@@ -349,10 +356,19 @@ export async function mergeHead(
   branch = "main",
   signal: AbortSignal = new AbortController().signal,
 ): Promise<RunResult> {
-  const head = headMerge(repo);
-  if (!head) throw new Error("expected a queued merge");
-  assert.equal(head.entry.role, role, "the queue head belongs to the expected role");
   assert.equal(runner.role, role, "the merge folds into its own role's runner");
+  const head = headMerge(repo);
+  if (head) {
+    // The queue path (legacy entries an older build left, and leftover recovery until part
+    // 3i/7): the drain starts one gate-then-merge task for the head; it must belong to the
+    // expected role.
+    assert.equal(head.entry.role, role, "the queue head belongs to the expected role");
+  } else {
+    // A pin-only writer left no queue file (a changed fresh run, part 3e/7): the role's merge
+    // ref is the waiting state; the drain's pin scan starts the same one task for it.
+    const sha = await refSha(repo, mergeRefName(role));
+    if (!sha) throw new Error(`expected a queued or pinned merge for ${role}`);
+  }
   const ctx: MergePipelineContext = {
     root: repo,
     mainBranch: branch,
@@ -365,17 +381,21 @@ export async function mergeHead(
     startHeld: () => false,
   };
   const pipeline = newMergePipeline();
-  // The drain starts the head's one gate-then-merge task; awaiting the slot settles it.
+  // The drain starts the expected role's one gate-then-merge task (its queue head or its pin);
+  // awaiting the slot settles it. It must have started exactly one.
   await drainMergeQueue(ctx, pipeline);
   const merge = pipeline.merge;
-  if (merge) await merge.promise;
-  if (fs.existsSync(head.file)) throw new Error(`the merge of ${role} ended without an outcome`);
+  if (!merge) throw new Error(`the drain started no merge for ${role}`);
+  await merge.promise;
   // The pipeline re-queues a kept change itself (requeueKeptChange). This driver models the
   // author-side backstop — leftover recovery at the next run — so it drops that re-queue;
   // a test of the re-queue itself drives the serial drain directly.
   for (const { entry, file } of queuedMergeFiles(repo)) {
     if (entry.role === role && entry.retry !== undefined) dropMerge(file);
   }
+  // The settled task must have dropped every queue file; a pin-only merge writes none, so any
+  // file left here is one the merge failed to settle.
+  if (queueDepth(repo) > 0) throw new Error(`the merge of ${role} left a queue file`);
   const result = runner.state.lastResult;
   if (result === undefined) throw new Error(`the merge of ${role} recorded no result`);
   return result;
