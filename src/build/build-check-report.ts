@@ -63,9 +63,17 @@ export function parseFailingTests(output: string): string[] {
   return [...titles];
 }
 
+/** node:test's spec reporter's trailing duration: the ` (12.3ms)` / ` (2s)` stamp a failed
+ * test line ends with. The single home of the strip, shared by resultTitle (the title
+ * parseFailingTests keeps), failureHeadline (whose name part drops it so one flake's
+ * identical failures cluster as one) and headlineCarries (the tail line a headline
+ * already carries, read back with it removed), so the duration shape cannot drift per
+ * consumer. */
+const FAILED_TEST_DURATION = / \([\d.]+m?s\)$/;
+
 /** A failed test's line title: the `✖ ` mark and the trailing duration stripped. */
 function resultTitle(line: string): string {
-  return line.slice(2).replace(/ \([\d.]+m?s\)$/, "").trim();
+  return line.slice(2).replace(FAILED_TEST_DURATION, "").trim();
 }
 
 /** A failure's location line in node:test's `✖ failing tests:` section, printed right above the
@@ -163,7 +171,7 @@ const FILE_LEVEL_MARKER = /^⚠ \S+ \(\S+:1:1\)$/;
 export function failureHeadline(tail: readonly string[] | undefined): string | undefined {
   if (!tail?.length) return undefined;
   const marker = tail.findLast((line) => FILE_LEVEL_MARKER.test(line));
-  const name = tail.findLast((line) => FAILED_TEST_LINE.test(line))?.replace(/ \([\d.]+m?s\)$/, "") ?? marker;
+  const name = tail.findLast((line) => FAILED_TEST_LINE.test(line))?.replace(FAILED_TEST_DURATION, "") ?? marker;
   const what = tail.find(
     (line) => !FRAMING_LINE.test(line) && !FAILED_TEST_LINE.test(line) && !FILE_LEVEL_MARKER.test(line),
   );
@@ -218,6 +226,6 @@ export function checkFailureReasons(check: BuildCheck, outcome: BuildCheckOutcom
  * removed), or the message after its ` — `. */
 function headlineCarries(headline: string, l: string): boolean {
   if (l === headline || headline.endsWith(` — ${l}`)) return true;
-  const bare = l.replace(/ \([\d.]+m?s\)$/, "");
+  const bare = l.replace(FAILED_TEST_DURATION, "");
   return bare === headline || headline.startsWith(`${bare} — `);
 }
