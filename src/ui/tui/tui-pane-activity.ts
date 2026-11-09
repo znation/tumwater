@@ -104,16 +104,18 @@ export function createActivityPane(
    * pages back through the loaded event tail, PgDn returns toward it and re-enables follow once
    * the window reaches the tail. Both directions clamp to [0, total - rows], and a log with
    * rows or fewer events stays on the tail. `rows` is the feed's window height — one body
-   * line short of eventBudget while the tally line is drawn (its paneBody twin, the
-   * `rows = Math.max(1, eventBudget - tallyLine.length)` in tui-pane.ts) — so each page
-   * advances exactly as far as the feed displays and no event is skipped or unreachable
-   * while paging. The read is the pane's own fixed tail term (and active role/text
-   * filter), so it hits readEvents' stat cache rather than rescanning the log. */
+   * line short of eventBudget while the tally line is drawn and a second short while a
+   * windowed read's sparse note is drawn (its paneBody twin, the
+   * `rows = Math.max(1, eventBudget - tallyLine.length - sparseLine.length)` in tui-pane.ts) —
+   * so each page advances exactly as far as the feed displays and no event is skipped or
+   * unreachable while paging. The read is the pane's own fixed tail term (and active
+   * role/text filter), so it hits readEvents' stat cache rather than rescanning the log. */
   const activityTailPage = (page: "up" | "down"): boolean => {
     if (session.view !== 0) return false;
-    const { events } = activityRead(session.root, activityRole, activityGrep, activityType, activityNotable, activityWindow);
+    const { events, covered } = activityRead(session.root, activityRole, activityGrep, activityType, activityNotable, activityWindow);
     const total = events.length;
-    const rows = total === 0 ? session.eventBudget : Math.max(1, session.eventBudget - 1);
+    const sparse = activityWindow !== null && !covered;
+    const rows = total === 0 ? session.eventBudget : Math.max(1, session.eventBudget - 1 - (sparse ? 1 : 0));
     const maxStart = Math.max(0, total - rows);
     const current = activityScroll ?? maxStart;
     const next = stepEntryScroll(current, total, rows, page);

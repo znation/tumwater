@@ -1008,6 +1008,24 @@ test("PgUp/PgDn page the Activity feed and return to the live tail", () => {
   assert.equal(keys.state().activityScroll, null, "re-entering Activity follows the live tail");
 });
 
+test("PgUp pages a windowed Activity feed by the rows its tally and sparse note leave", () => {
+  const root = makeRoot();
+  const now = Date.now();
+  // Twenty recent events inside a 1h window: the log starts after the cutoff, so the sparse
+  // note rides below the tally and the feed shows eventBudget - 2 = 3 rows per page.
+  writeEvents(
+    root,
+    Array.from({ length: 20 }, (_, i) => ({ ts: now - (20 - i) * 60_000, type: "run_start", run: i + 1 })),
+  );
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.setLineBudgets(5, 4);
+  keys.handleKey(undefined, { ctrl: true, name: "y" }); // → 1h
+  assert.equal(keys.state().activityWindow, 3_600_000);
+  keys.handleKey(undefined, { name: "pageup" });
+  assert.equal(keys.state().activityScroll, 14, "the page steps by the three rows under the tally and sparse note");
+});
+
 test("the Activity feed pages nowhere when the log fits the pane", () => {
   const root = makeRoot();
   writeEvents(

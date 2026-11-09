@@ -254,7 +254,7 @@ interface TuiKeysState {
    * length in ms or null for the default newest-200 tail. */
   activityWindow: number | null;
   /** The Activity pane's active trailing event window label ("all" / "1h" / "6h" / "1d"), the
-   * string the hint line and the Activity view name; null when no window is active. */
+   * string the hint line and the Activity view name; "all" names the newest-200 tail. */
   activitySince: string | null;
   /** The History pane's active trailing window label (Ctrl+S), or null for the default
    * newest-N read; named in the hint line. */
