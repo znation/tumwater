@@ -116,6 +116,15 @@ export interface GateResult {
   retryable?: boolean;
 }
 
+/** The one verdict a gate path returns when its signal has aborted: fail closed, leave the
+ * commit, and let the run report aborted (resume re-reviews via the combined diff). The
+ * reviewer retry loop (below) and the pre-check's four abort guards (review-precheck.ts) all
+ * settle a consumed abort on this same shape, so a stopped change never slips through an
+ * approving path and a late kill never waits a parked check out. */
+export function abortedGateResult(): GateResult {
+  return { decision: "failed", aborted: true };
+}
+
 /** In-place retries of a failed reviewer run within one verify, after the first run. */
 const REVIEW_RETRIES = 2;
 /** The pause before each retry (ReviewContext.retryDelayMs overrides it in tests). */
@@ -271,7 +280,7 @@ export async function reviewAheadOfMain(
       await sleepInterruptible(delayMs, ctx.signal);
       while (ctx.reviewHeld?.() && !ctx.signal?.aborted) await sleepInterruptible(Math.min(delayMs, 5000), ctx.signal);
     }, ctx.signal);
-    if (ctx.signal?.aborted) return { decision: "failed", aborted: true };
+    if (ctx.signal?.aborted) return abortedGateResult();
     if (!held) retry.retriesLeft -= 1;
     retry.attempt += 1;
   }

@@ -6,6 +6,7 @@
  * rejection never shows as "reviewing" on the dashboards and consumes no reviewer budget. */
 
 import type { ReviewContext, GateResult } from "./review.js";
+import { abortedGateResult } from "./review.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
@@ -353,7 +354,7 @@ export async function gateBuildPrecheck(
   // verdict, caught by the abort check after its retry below, so the pre-existing shutdown case
   // keeps its two attempts.
   if (preCheck.outcome.skipReason === "aborted") {
-    return { resolved: { decision: "failed", aborted: true } };
+    return { resolved: abortedGateResult() };
   }
   const { check, outcome } = preCheck;
   const settled = await retriedGateOutcome(root, role, check, outcome, runGateCheck);
@@ -366,7 +367,7 @@ export async function gateBuildPrecheck(
   // the gate, but this verdict is the seam the late kill slips through; fail closed so a
   // consumed abort always stops the change before any approving path reads the outcome.
   if (ctx.signal?.aborted) {
-    return { resolved: { decision: "failed", aborted: true } };
+    return { resolved: abortedGateResult() };
   }
   // A failed run that spanned a host sleep past the tolerance leaves the tree unverified: the
   // gate attributes nothing and keeps the commit for a re-merge.
@@ -394,11 +395,11 @@ export async function gateBuildPrecheck(
   // question is whose failure it is, and main's own verdict at its tip answers it at once,
   // never by waiting on the main watch. A shutdown already under way skips the question and
   // fails closed like any abort.
-  if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
+  if (ctx.signal?.aborted) return { resolved: abortedGateResult() };
   const failed = { tests: namedFailures(settled), files: settled.failingTestFiles };
   const main = await mainVerdictForFailure(ctx, failed);
   // A check killed by that shutdown reads as a skip, never as evidence against the author.
-  if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
+  if (ctx.signal?.aborted) return { resolved: abortedGateResult() };
   // The nameless failure is the gate command's verdict at main's tip; the named one is judged
   // against main's own failures there.
   if (failed.tests.length === 0) {
