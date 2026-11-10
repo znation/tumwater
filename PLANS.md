@@ -70,6 +70,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Run test/merge-pipeline.test.ts, then the project's gate.
 
+**Needs review 2026-11-09 by feature: plan defect — the goal and its absolute acceptance criterion contradict the approach.** The goal says "never from a queue file" and the first acceptance criterion is the absolute `grep … queueChanges … prints nothing`, but the approach says "Keep … the throwaway author, rewritten to observe the pin." The throwaway-author case (`makePipeline(root, [])` — no live runners) cannot be rewritten to pin-only while still asserting its old outcome that the change lands: the drain's pin-scan (`drainMerge`) iterates `ctx.runners`, so a pin for a runner-less role is never discovered and never merges — only a queue file reaches `resolveAuthor`'s throwaway fallback. Verified this run: a pin-only seed for `alpha` with no live runners leaves the pin unmerged after 8s (`merged=false`, pin still resolves), while a queue-file seed for the same case merges (`merged=true`, queue depth 0). Re-scope the goal and the grep criterion to allow the one queue-file seed for a runner-less role, or drop the case and cover `resolveAuthor`'s fallback elsewhere, before this part is re-attempted.
+
 ### Subtract pin queue, part 1h/5: The queue-seeding fixture helper goes (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large part 1a/3 after feature held it; requires Subtract pin queue parts 1e/5, 1f/5 and 1g/5 landed; touches test/fixtures/merge-fixtures.ts test/fixtures/orchestrator-fixtures.ts)
 
 **Goal.** No merge test in the drain, pipeline or orchestrator suites seeds a queue file; the fixture helper that did is gone.
