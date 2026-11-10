@@ -110,6 +110,22 @@ test("notify --test --json without a configured hook prints the existing refusal
   assert.equal(r.stdout, "");
 });
 
+test("notify --test --json reports a hook killed at the timeout as failed with a null exit code", async () => {
+  const repo = await initializedRepo();
+  assert.ok(setConfigKey(repo, "notify", "sleep 60").ok);
+  const r = await cli(repo, "notify", "--test", "--json");
+  assert.equal(r.code, 1);
+  assert.deepEqual(JSON.parse(r.stdout), { command: "notify", status: "failed", exitCode: null, timedOut: true });
+});
+
+test("notify --json without --test still names the --test usage and prints no JSON", async () => {
+  const repo = await initializedRepo();
+  const r = await cli(repo, "notify", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /usage: tumwater notify --test/);
+  assert.equal(r.stdout, "");
+});
+
 test("runNotifyHook resolves a never-ending hook at the injected timeout", async () => {
   const r = await runNotifyHook("sleep 30", {}, 150);
   assert.deepEqual(r, { timedOut: true });
