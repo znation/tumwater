@@ -341,11 +341,12 @@ export async function awaitSettledRun(
  * absent (there is nothing to drive), and runs the drain's one gate-then-merge task for it on a
  * one-permit semaphore. The task builds the pin-only entry from the commit's trailers. After the
  * task settles the driver checks the pin against the outcome — a retriable outcome (the engine's
- * RETRIABLE_MERGE_RESULTS) leaves the pin, a terminal one does not — so a test's own pin
- * assertions are honest against it. An `aborted` merge is a shutdown, not a verdict, and the
- * pin can survive it either way, so the driver skips the check and the test asserts the pin
- * directly. `signal` stands in for harness shutdown (the orchestrator's stop signal). Returns the
- * merge's outcome as folded into `runner`'s state. */
+ * RETRIABLE_MERGE_RESULTS) leaves the pin, a terminal one does not, except a review_error,
+ * whose strike cap can turn it terminal and delete the pin — so a test's own pin assertions are
+ * honest against it. An `aborted` merge is a shutdown, not a verdict, and the pin can survive it
+ * either way, so the driver skips the check and the test asserts the pin directly. `signal`
+ * stands in for harness shutdown (the orchestrator's stop signal). Returns the merge's outcome
+ * as folded into `runner`'s state. */
 export async function mergeHead(
   repo: string,
   runner: RoleRunner,
@@ -377,16 +378,18 @@ export async function mergeHead(
   const merge = pipeline.merge;
   if (!merge) throw new Error(`the drain started no merge for ${role}`);
   await merge.promise;
-  // The settled task left the pin exactly as the outcome says: a retriable outcome (the engine's
-  // RETRIABLE_MERGE_RESULTS) keeps it for the next attempt, and every terminal outcome — changed,
-  // rejected, withdrawn, a strike-capped review error — deletes it. An `aborted` merge is a
-  // shutdown, not a verdict about the change, so its pin survives for next-start recovery either
-  // way and the test asserts it directly; the driver does not check it.
+  // The settled task left the pin as the outcome says: merge_conflict and merge_blocked keep it
+  // for the next attempt; changed, rejected and withdrawn delete it. A review_error keeps it
+  // under the strike cap, while a strike-capped one is as final as a rejection and deletes it,
+  // so either state is valid for that outcome. An `aborted` merge is a shutdown, not a verdict
+  // about the change, so its pin survives for next-start recovery either way and the test
+  // asserts it directly; the driver does not check it.
   const result = runner.state.lastResult;
   if (result === undefined) throw new Error(`the merge of ${role} recorded no result`);
   if (result !== "aborted") {
     const pinLeft = (await refSha(repo, mergeRefName(role)).catch(() => null)) !== null;
-    if (RETRIABLE_MERGE_RESULTS.has(result) ? !pinLeft : pinLeft)
+    const pinMayVanish = result === "review_error";
+    if (!pinMayVanish && (RETRIABLE_MERGE_RESULTS.has(result) ? !pinLeft : pinLeft))
       throw new Error(`the merge of ${role} left its pin ${pinLeft ? "present" : "gone"}`);
   }
   return result;
