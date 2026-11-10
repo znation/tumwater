@@ -182,17 +182,28 @@ function admissionHolds(scope: SchedulingScope, runner: RoleRunner): boolean {
   return false;
 }
 
-/** The maintenance deferral episode: a due scheduled or main-moved run whose last run did
- * nothing defers while the backlog is open or no new work has merged; a run that is not in
- * that shape ends any open episode. Returns true when the run deferred (the caller skips). */
-async function deferMaintenance(
+/** The deferral verdict: whether this due run enters the deferral episode, returned as its
+ * clause (DeferReason) or null when it runs. A scheduled or main-moved run consults the
+ * backlog and the work-merged probe to decide; a run in no other shape ends any open episode
+ * and returns null. It owns the episode transition — the deferredDue compare/update and the
+ * one `run_deferred` event — so the caller can settle the run on the returned clause.
+ *
+ * Need-based deferral: a due maintenance run (scheduled or main-moved wake) whose last
+ * run did nothing stays deferred while the feature/bugfix backlog is open or no new
+ * work has merged to react to — nextRunAt is left untouched, so it re-checks every poll
+ * until the backlog drains and qualifying work merges. Resume wakes precede this check in
+ * isEligible, the director's "inbox" reason skips it, work roles are not in
+ * DEFERRABLE_ROLES (bugfix is the exception while its backlog is empty — deferRun), and
+ * a fresh operator wake overrides it (deferRun's woken check — an explicit "try again
+ * now" is a demand, not idle maintenance). Sitting before reasons.set also keeps a
+ * deferred role out of the wake-event pass below. */
+async function maintenanceDeferral(
   scope: SchedulingScope,
   runner: RoleRunner,
   reason: string | undefined,
-): Promise<boolean> {
+): Promise<DeferReason | null> {
   const {
     root,
-    once,
     now,
     mainHead,
     openBugsNow,
@@ -201,15 +212,6 @@ async function deferMaintenance(
     deferredDue,
     workMergedSince,
   } = scope;
-  // Need-based deferral: a due maintenance run (scheduled or main-moved wake) whose last
-  // run did nothing stays deferred while the feature/bugfix backlog is open or no new
-  // work has merged to react to — nextRunAt is left untouched, so it re-checks every poll
-  // until the backlog drains and qualifying work merges. Resume wakes precede this check in
-  // isEligible, the director's "inbox" reason skips it, work roles are not in
-  // DEFERRABLE_ROLES (bugfix is the exception while its backlog is empty — deferRun), and
-  // a fresh operator wake overrides it (deferRun's woken check — an explicit "try again
-  // now" is a demand, not idle maintenance). Sitting before reasons.set also keeps a
-  // deferred role out of the wake-event pass below.
   if (reason === "scheduled" || reason === "main moved") {
     const s = runner.state;
     // The git range is only consulted when the other conditions already hold — a
@@ -237,25 +239,44 @@ async function deferMaintenance(
         logEventBestEffort(root, { source: runner.role, type: "run_deferred", reason: deferral });
       deferredDue.set(runner.role, deferredNow);
     }
-    if (deferredNow) {
-      // Once mode: a maintenance run that deferred itself — its once-round
-      // answer, so it settles instead of holding the round open for DEFER_MAX_MS.
-      if (once.active) once.settle(runner.role, "deferred");
-      noteSkip(
-        root,
-        runner,
-        deferral === "backlog"
-          ? "deferred-backlog"
-          : deferral === "plans-full"
-            ? "deferred-plans-full"
-            : "deferred-no-work",
-      );
-      return true;
-    }
-  } else if (deferredDue.get(runner.role)) {
+    return deferral;
+  }
+  if (deferredDue.get(runner.role)) {
     deferredDue.set(runner.role, false); // an inbox/resume run ends the episode
   }
-  return false;
+  return null;
+}
+
+/** The deferred run's settlement: the once-mode answer and the skip-reason note that carry
+ * the deferral's clause into the run's own bookkeeping. */
+function settleDeferredMaintenance(scope: SchedulingScope, runner: RoleRunner, deferral: DeferReason): void {
+  const { root, once } = scope;
+  // Once mode: a maintenance run that deferred itself — its once-round
+  // answer, so it settles instead of holding the round open for DEFER_MAX_MS.
+  if (once.active) once.settle(runner.role, "deferred");
+  noteSkip(
+    root,
+    runner,
+    deferral === "backlog"
+      ? "deferred-backlog"
+      : deferral === "plans-full"
+        ? "deferred-plans-full"
+        : "deferred-no-work",
+  );
+}
+
+/** The maintenance deferral episode: a due scheduled or main-moved run whose last run did
+ * nothing defers while the backlog is open or no new work has merged; a run that is not in
+ * that shape ends any open episode. Returns true when the run deferred (the caller skips). */
+async function deferMaintenance(
+  scope: SchedulingScope,
+  runner: RoleRunner,
+  reason: string | undefined,
+): Promise<boolean> {
+  const deferral = await maintenanceDeferral(scope, runner, reason);
+  if (deferral === null) return false;
+  settleDeferredMaintenance(scope, runner, deferral);
+  return true;
 }
 
 /** The allowance's in-flight admission: a due maintenance run without demand spends one of the
