@@ -2,18 +2,22 @@
  * Split out of cli/cli-start.ts, whose name is for start alone: every command it dispatches
  * delegates to its own module (cli-config-commands.ts, cli-log-commands.ts, doctor.ts, …), and init
  * is no exception. cli.ts stays the pure dispatcher. */
-import { say } from "./cli-output.js";
+import { say, sayJson } from "./cli-output.js";
 import { parseInitArgs } from "./cli-command-args.js";
 import { initProject } from "../init/init.js";
 import { templateCatalog } from "../init/init-templates.js";
 
 /** `tumwater init`: seed a project directory from the operator's brief (src/init/init.ts does the
  * work; this prints the report). --dry-run prints the would-be actions without writing
- * anything; an already-initialized repo is reported as a no-op, never an error. */
+ * anything; an already-initialized repo is reported as a no-op, never an error. --json prints
+ * one acknowledgement object instead of the prose (the dry run and the no-op re-run carry the
+ * same shape, `dryRun` and `status` carrying the mode); `--list-templates --json` prints the
+ * catalog as one object in place of the id/description lines. */
 export async function cmdInit(root: string, args: string[]): Promise<void> {
-  const { prompt, branch, template, listTemplates, adopt, dryRun } = parseInitArgs(args);
+  const { prompt, branch, template, listTemplates, adopt, dryRun, json } = parseInitArgs(args);
   if (listTemplates) {
-    printTemplateCatalog();
+    if (json) sayJson({ command: "init", status: "templates", templates: templateCatalog() });
+    else printTemplateCatalog();
     return;
   }
   const result = await initProject(root, prompt, branch ?? undefined, {
@@ -21,6 +25,10 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
     dryRun,
     template: template ?? undefined,
   });
+  if (json) {
+    sayJson(initJson(result));
+    return;
+  }
   printInitIntro(result);
   if (result.dryRun) {
     printDryRun(result);
@@ -32,6 +40,31 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
 /** Print the `tumwater init --list-templates` catalog: one line per template. */
 function printTemplateCatalog(): void {
   for (const { id, description } of templateCatalog()) say(`${id} — ${description}`);
+}
+
+/** The `--json` acknowledgement object: `initProject`'s InitResult fields as one data document,
+ * in place of the prose intro/dry-run/report lines. `status` is `initialized` when this run
+ * created anything and `already_initialized` for the no-op re-run (the prose's "already
+ * initialized; nothing to do" case); a dry run keeps `initialized` — its `dryRun` field carries
+ * the would-do mode, and the created/leftAlone lists hold what would happen. `branch` is null
+ * when no repo was seeded (an existing repo's checked-out branch is the team's business, not
+ * init's). */
+function initJson(result: Awaited<ReturnType<typeof initProject>>): Record<string, unknown> {
+  return {
+    command: "init",
+    status: result.created.length === 0 ? "already_initialized" : "initialized",
+    dryRun: result.dryRun,
+    template: result.template,
+    adopted: result.adopted,
+    readmeExists: result.readmeExists,
+    wasRepo: result.wasRepo,
+    repoInitialized: result.repoInitialized,
+    branch: result.branch ?? null,
+    created: result.created,
+    leftAlone: result.leftAlone,
+    committed: result.committed,
+    bootstrap: result.bootstrap,
+  };
 }
 
 /** Print the `template:`/adopt intro lines shared by the dry-run and completed paths. */

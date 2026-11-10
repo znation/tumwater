@@ -141,6 +141,166 @@ test("init --branch with a name git rejects fails before creating anything", asy
   assert.ok(!fs.existsSync(path.join(dir, "README.md")));
 });
 
+// init's --json: the acknowledgement object the prose report is replaced by. The spawned CLI
+// runs under the suite's hermetic git environment, so git init seeds branch main and the
+// identity the commit authors with is the suite's, not the host's global config.
+
+interface InitJson {
+  command: string;
+  status: string;
+  dryRun: boolean;
+  template: string;
+  adopted: boolean;
+  readmeExists: boolean;
+  wasRepo: boolean;
+  repoInitialized: boolean;
+  branch: string | null;
+  created: string[];
+  leftAlone: string[];
+  committed: boolean;
+  bootstrap: number | null;
+}
+
+function initJsonDoc(r: { code: number; stdout: string; stderr: string }): InitJson {
+  assert.equal(r.code, 0, `expected exit 0, got ${r.code}: ${r.stderr}`);
+  // The whole stdout is the one JSON document: no prose line anywhere in it.
+  return JSON.parse(r.stdout) as InitJson;
+}
+
+test("init --json prints the acknowledgement object instead of the prose report", async () => {
+  const dir = tmpdir();
+  const r = await cli(dir, "init", "Build a thing.", "--json");
+  const doc = initJsonDoc(r);
+  assert.equal(doc.command, "init");
+  assert.equal(doc.status, "initialized");
+  assert.equal(doc.dryRun, false);
+  assert.equal(doc.template, "blank");
+  assert.equal(doc.repoInitialized, true);
+  assert.equal(doc.branch, "main");
+  assert.equal(doc.adopted, false);
+  assert.equal(doc.readmeExists, false);
+  assert.equal(doc.wasRepo, false);
+  assert.equal(doc.committed, true);
+  assert.equal(doc.bootstrap, 5);
+  // created names the seeded set in seed order; every entry exists, the config among them
+  // (created, but left out of the commit pathspec).
+  assert.deepEqual(doc.created, [
+    "README.md",
+    "PLANS.md",
+    "BUGS.md",
+    "QUESTIONS.md",
+    "PRINCIPLES.md",
+    "tumwater.json",
+    ".gitignore",
+  ]);
+  for (const f of doc.created) {
+    assert.ok(fs.existsSync(path.join(dir, f)), `${f} exists`);
+  }
+  // The prose lines are gone: the whole stdout is the JSON document.
+  assert.doesNotMatch(r.stdout, /created README/);
+  assert.doesNotMatch(r.stdout, /next: `tumwater start`/);
+  assert.doesNotMatch(r.stdout, /initialized a new git repository/);
+  assert.equal(r.stderr, "");
+  // Second run on the seeded repo: the no-op re-run's object.
+  const again = await cli(dir, "init", "Build a thing.", "--json");
+  const noop = initJsonDoc(again);
+  assert.equal(noop.status, "already_initialized");
+  assert.deepEqual(noop.created, []);
+  assert.equal(noop.committed, false);
+  // The no-op leaves nothing: every seeded file is read, so all land in leftAlone in seed order.
+  assert.deepEqual(noop.leftAlone, [
+    "README.md",
+    "PLANS.md",
+    "BUGS.md",
+    "QUESTIONS.md",
+    "PRINCIPLES.md",
+    "tumwater.json",
+    ".gitignore",
+  ]);
+});
+
+test("init --dry-run --json previews the would-be fields and writes nothing", async () => {
+  const dir = tmpdir();
+  const r = await cli(dir, "init", "Build a thing.", "--dry-run", "--json");
+  const doc = initJsonDoc(r);
+  assert.equal(doc.status, "initialized"); // the dry run carries the mode in dryRun, not status
+  assert.equal(doc.dryRun, true);
+  assert.equal(doc.template, "blank");
+  assert.equal(doc.repoInitialized, true);
+  assert.equal(doc.branch, "main");
+  assert.equal(doc.wasRepo, false);
+  assert.equal(doc.committed, false);
+  assert.equal(doc.bootstrap, 5);
+  assert.deepEqual(doc.created, [
+    "README.md",
+    "PLANS.md",
+    "BUGS.md",
+    "QUESTIONS.md",
+    "PRINCIPLES.md",
+    "tumwater.json",
+    ".gitignore",
+  ]);
+  // Rehearsal only: the directory is still empty afterwards.
+  assert.equal(fs.readdirSync(dir).length, 0);
+});
+
+test("init --adopt --json reports the adoption and leaves the README untouched", async () => {
+  const repo = makeRepo();
+  const readme = path.join(repo, "README.md");
+  fs.writeFileSync(readme, "# My project\n\nAn unrelated README.\n");
+  const before = fs.readFileSync(readme, "utf8");
+  const r = await cli(repo, "init", "Adopt me.", "--adopt", "--json");
+  const doc = initJsonDoc(r);
+  assert.equal(doc.status, "initialized");
+  assert.equal(doc.adopted, true);
+  assert.equal(doc.readmeExists, true);
+  assert.equal(doc.wasRepo, true);
+  assert.equal(doc.repoInitialized, false);
+  assert.equal(doc.branch, null);
+  // The brief went to TUMWATER.md (a created entry); README.md was claimed left alone.
+  assert.ok(doc.created.includes("TUMWATER.md"), `created: ${doc.created}`);
+  assert.ok(doc.leftAlone.includes("README.md"), `leftAlone: ${doc.leftAlone}`);
+  assert.ok(!doc.created.includes("README.md"), "the README is not re-created");
+  assert.equal(fs.readFileSync(readme, "utf8"), before, "README.md is byte-identical");
+  assert.ok(fs.readFileSync(path.join(repo, "TUMWATER.md"), "utf8").includes("Adopt me."));
+  // The repo seeded from the existing repo's commit history is not fresh: no bootstrap seed.
+  assert.equal(doc.bootstrap, null);
+});
+
+test("init --json composes with --template and --branch, and validation refusals stay prose", async () => {
+  const dir = tmpdir();
+  const r = await cli(dir, "init", "Build a thing.", "--template", "python-cli", "--branch", "trunk", "--json");
+  const doc = initJsonDoc(r);
+  assert.equal(doc.template, "python-cli");
+  assert.equal(doc.branch, "trunk");
+  assert.equal(doc.status, "initialized");
+  // The python-cli template seeds its starter directories as created entries too.
+  assert.ok(doc.created.includes("src") && doc.created.includes("tests"), `created: ${doc.created}`);
+  assert.equal(sh(dir, "git", "symbolic-ref", "--short", "HEAD"), "trunk");
+
+  // An unknown template and an invalid branch still exit 1 with the existing stderr wording
+  // and an empty stdout — the refusals precede initProject and its JSON output.
+  const badTemplate = await cli(dir, "init", "Build a thing.", "--template", "nope", "--json");
+  assert.equal(badTemplate.code, 1);
+  assert.match(badTemplate.stderr, /unknown template "nope"/);
+  assert.equal(badTemplate.stdout, "");
+  // A fresh directory: the invalid name is caught by git's own rule before any seeding
+  // (--branch on the already-seeded `dir` above would instead hit the existing-repo refusal).
+  const badBranch = await cli(tmpdir(), "init", "Build a thing.", "--branch", "bad name", "--json");
+  assert.equal(badBranch.code, 1);
+  assert.match(badBranch.stderr, /not a valid git branch name/);
+  assert.equal(badBranch.stdout, "");
+
+  // A doubled --json is refused by name; --list-templates takes no prompt beside --json.
+  const dir2 = tmpdir();
+  const doubled = await cli(dir2, "init", "Build a thing.", "--json", "--json");
+  assert.equal(doubled.code, 1);
+  assert.match(doubled.stderr, /--json may only be given once/);
+  const listWithPrompt = await cli(dir2, "init", "--list-templates", "--json", "Build a thing.");
+  assert.equal(listWithPrompt.code, 1);
+  assert.match(listWithPrompt.stderr, /--list-templates takes no prompt/);
+});
+
 test("TUMWATER_DEBUG echoes the stack of a thrown CLI error", async () => {
   const dir = tmpdir();
   // The invalid branch name makes initProject throw past its own fail-free checks, so the

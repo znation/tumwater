@@ -155,6 +155,21 @@ test("cmdInit --list-templates prints the catalog and exits 0 without touching t
   }
   // Nothing was written: the listing is read-only.
   assert.equal(fs.readdirSync(repo).length, 0);
+
+  // --json prints the catalog as one object instead of the id/description lines: the whole
+  // stdout parses, the ids and descriptions match the catalog order, and nothing is written.
+  const jsonOut = attempt(() => cmdInit(repo, ["--list-templates", "--json"]));
+  assert.ok(!jsonOut.exited, `--list-templates --json must succeed: ${jsonOut.exited ? jsonOut.stderr : ""}`);
+  const doc = JSON.parse(jsonOut.stdout) as { command: string; status: string; templates: { id: string; description: string }[] };
+  assert.equal(doc.command, "init");
+  assert.equal(doc.status, "templates");
+  assert.deepEqual(doc.templates.map((t) => t.id), INIT_TEMPLATES.map((t) => t.id));
+  for (let i = 0; i < doc.templates.length; i++) {
+    const desc = doc.templates[i]?.description;
+    assert.equal(desc, INIT_TEMPLATES[i]!.description);
+    assert.ok(desc.length > 0, `${doc.templates[i]?.id} has a description`);
+  }
+  assert.equal(fs.readdirSync(repo).length, 0, "the JSON listing writes nothing either");
 });
 
 test("parseInitArgs rejects an unknown --template id with the catalog listed", () => {

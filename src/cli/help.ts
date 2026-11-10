@@ -14,10 +14,16 @@ const SUMMARY_JSON_KEYS = "{ roles, total }";
 export const HELP = `tumwater — an autonomous development team running on pi, Claude Code, OpenCode or Codex
 
 Usage:
-  tumwater init <prompt...>        Initialize this repo (--file <prompt.md>, --adopt: brief in
+  tumwater init <prompt...> [--json]   Initialize this repo (--file <prompt.md>, --adopt: brief in
                                    TUMWATER.md, --branch <name> seeds a new repo only,
                                    --template <id> seeds a starter brief+backlog (--list-templates
-                                   lists them), --dry-run: write nothing)
+                                   lists them), --dry-run: write nothing;
+                                   --json prints one acknowledgement object — command, status
+                                   (initialized or already_initialized), dryRun, template,
+                                   adopted, readmeExists, wasRepo, repoInitialized, branch,
+                                   created, leftAlone, committed, bootstrap — in place of the
+                                   prose report, and --list-templates --json prints the
+                                   template catalog as a templates array)
   tumwater start [--branch <name>] [--once] [--json] [--for <duration>] [--role <id>[,<id>...]] [--gui [--port <n>]] [--tui]
                                    Start the team: every enabled role runs in turn (headless;
                                    Ctrl+C finishes current work, then stops);
@@ -913,7 +919,7 @@ export function searchHelp(text: string, help: string = HELP): string[] {
  * `--cancel`, `--retire`, `--reason`, `--edit`, `--file`, `--release` and `--top`. */
 const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
   prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach", "--top", "--show", "--grep"],
-  init: ["--branch", "--template", "--file"],
+  init: ["--branch", "--template", "--file"], // --json is valueless: the flag token alone is a help request, like prompt/bug
   bug: ["--cancel", "--retire", "--reason", "--edit", "--file", "--release", "--top"],
   plan: ["--cancel", "--retire", "--reason", "--edit", "--file", "--release", "--top"],
 };

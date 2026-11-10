@@ -96,8 +96,8 @@ function pairClaim(flagIndex: number): number[] {
 }
 
 /** init's flag vocabulary (plans/portability.md §7/7, correction 1): --file and --branch take
- * a value; --adopt and --dry-run are valueless and are never prompt content. One definition,
- * shared by the unknown-flag loop and the `--flag=value` refusal inside it. */
+ * a value; --adopt, --dry-run and --json are valueless and are never prompt content. One
+ * definition, shared by the unknown-flag loop and the `--flag=value` refusal inside it. */
 const INIT_FLAG_SPECS: readonly FlagSpec[] = [
   { names: ["--file"], value: true, valueName: "<path>" },
   { names: ["--branch"], value: true, valueName: "<name>" },
@@ -105,6 +105,7 @@ const INIT_FLAG_SPECS: readonly FlagSpec[] = [
   { names: ["--adopt"] },
   { names: ["--dry-run"] },
   { names: ["--list-templates"] },
+  JSON_FLAG,
 ];
 /** init's valueless flags, derived from the vocabulary so the two lists cannot drift. */
 const INIT_BOOLEAN_FLAGS: readonly string[] = INIT_FLAG_SPECS.filter((s) => !s.value).flatMap((s) => s.names);
@@ -132,6 +133,7 @@ interface InitArgs {
   listTemplates: boolean;
   adopt: boolean;
   dryRun: boolean;
+  json: boolean;
 }
 
 /** The flag-vocabulary gate for `tumwater init`: every double-dash token must be a known
@@ -226,7 +228,8 @@ export function parseInitArgs(args: string[]): InitArgs {
   const dryRun = args.includes("--dry-run");
   const listTemplates = args.includes("--list-templates");
   const template = resolveInitTemplate(args, listTemplates);
-  const base = { branch, template, listTemplates, adopt, dryRun };
+  const json = args.includes("--json");
+  const base = { branch, template, listTemplates, adopt, dryRun, json };
   const fromFile = resolveInitFileArg(args, base);
   if (fromFile !== null) return fromFile;
   const prompt = joinInitPrompt(args);

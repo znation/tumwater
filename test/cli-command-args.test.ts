@@ -23,6 +23,7 @@ test("parseInitArgs joins positionals (single-dash tokens are content, not flags
     template: null,
     listTemplates: false,
     dryRun: false,
+    json: false,
   });
   // Bullets and other single-dash tokens stay prompt content.
   assert.deepEqual(expectOk(() => parseInitArgs(["- Build A", "- Build B"])), {
@@ -32,7 +33,38 @@ test("parseInitArgs joins positionals (single-dash tokens are content, not flags
     template: null,
     listTemplates: false,
     dryRun: false,
+    json: false,
   });
+});
+
+test("parseInitArgs --json is valueless, never prompt content, and refused when doubled", () => {
+  assert.deepEqual(expectOk(() => parseInitArgs(["Build a thing.", "--json"])), {
+    prompt: "Build a thing.",
+    branch: null,
+    adopt: false,
+    template: null,
+    listTemplates: false,
+    dryRun: false,
+    json: true,
+  });
+  // With --file, --json is claimed alongside it, like the other valueless flags.
+  const dir = tmpdir();
+  const file = path.join(dir, "prompt.md");
+  fs.writeFileSync(file, "From a file.");
+  assert.deepEqual(expectOk(() => parseInitArgs(["--json", "--file", file])), {
+    prompt: "From a file.",
+    branch: null,
+    adopt: false,
+    template: null,
+    listTemplates: false,
+    dryRun: false,
+    json: true,
+  });
+  // A doubled --json is the same "may only be given once" refusal every init flag takes.
+  assert.match(
+    expectFail(() => parseInitArgs(["Build a thing.", "--json", "--json"])).stderr,
+    /--json may only be given once/,
+  );
 });
 
 test("parseInitArgs --file reads the exact file contents", () => {
@@ -46,6 +78,7 @@ test("parseInitArgs --file reads the exact file contents", () => {
     template: null,
     listTemplates: false,
     dryRun: false,
+    json: false,
   });
 });
 
@@ -111,6 +144,7 @@ test("parseInitArgs --branch: never prompt content, combined with --file, duplic
     template: null,
     listTemplates: false,
     dryRun: false,
+    json: false,
   });
 
   // Both flags at once: the file is the prompt, the branch the initial branch.
@@ -124,6 +158,7 @@ test("parseInitArgs --branch: never prompt content, combined with --file, duplic
     template: null,
     listTemplates: false,
     dryRun: false,
+    json: false,
   });
 
   // A doubled --branch is a mistake, not a name collision.
@@ -145,6 +180,7 @@ test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine 
     template: null,
     listTemplates: false,
     dryRun: true,
+    json: false,
   });
   // A boolean is valueless: the token after it stays prompt text, even beside --branch.
   assert.deepEqual(expectOk(() => parseInitArgs(["--dry-run", "--branch", "trunk", "Go."])), {
@@ -154,6 +190,7 @@ test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine 
     template: null,
     listTemplates: false,
     dryRun: true,
+    json: false,
   });
 
   // With --file, the booleans are claimed alongside it — only a truly stray token fails.
@@ -162,7 +199,7 @@ test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine 
   fs.writeFileSync(file, "From a file.");
   assert.deepEqual(
     expectOk(() => parseInitArgs(["--adopt", "--file", file, "--dry-run", "--branch", "trunk"])),
-    { prompt: "From a file.", branch: "trunk", adopt: true, template: null, listTemplates: false, dryRun: true },
+    { prompt: "From a file.", branch: "trunk", adopt: true, template: null, listTemplates: false, dryRun: true, json: false },
   );
   const stray = expectFail(() => parseInitArgs(["--file", file, "--adopt", "extra"]));
   assert.match(stray.stderr, /unexpected argument "extra"/);
@@ -180,7 +217,7 @@ test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine 
   // The unknown-flag message lists every valid flag.
   assert.match(
     expectFail(() => parseInitArgs(["--adpot", "x"])).stderr,
-    /valid flags for tumwater init: --file <path>, --branch <name>, --template <id>, --adopt, --dry-run, --list-templates/,
+    /valid flags for tumwater init: --file <path>, --branch <name>, --template <id>, --adopt, --dry-run, --list-templates, --json/,
   );
 });
 
@@ -511,6 +548,7 @@ test("parseInitArgs --template: never prompt content, validated against the cata
     listTemplates: false,
     adopt: false,
     dryRun: false,
+    json: false,
   });
 
   // An unknown id names the valid ones.
@@ -537,6 +575,7 @@ test("parseInitArgs --template: never prompt content, validated against the cata
     listTemplates: false,
     adopt: false,
     dryRun: false,
+    json: false,
   });
 
   // A duplicated pair is a mistake, like a doubled --branch.
@@ -551,6 +590,7 @@ test("parseInitArgs --list-templates: alone with no prompt; refuses a prompt, --
     listTemplates: true,
     adopt: false,
     dryRun: false,
+    json: false,
   });
 
   assert.match(expectFail(() => parseInitArgs(["--list-templates", "Build a thing."])).stderr, /--list-templates takes no prompt/);
