@@ -186,10 +186,6 @@ interface LogsFeed {
   filter: (e: HarnessEvent) => boolean;
 }
 
-/** Scan the one-shot flag vocabulary (`--grep`, `--type`, `--role`, `--notable`, `--json`,
- * `--count`, `-f`) and compose it into the single `filter` rule plus the locals every feed view
- * shares. One scan (and one home for each rival check), so no flag rule lives in a view and a
- * `--since`/`--count`/`-f` rule is found here by name. */
 /** The `--grep`/`--type`/`--role` filter parse from the raw args: the
  * `--grep`/`--type` value scans, the `--role` scope, their rival checks, the empty-list refusal
  * and the role's empty-match prose. Returns the filter halves of `LogsFeed` (no `filter`;
@@ -290,6 +286,10 @@ function composeLogsFilter(grepLower: string | null, typePieces: string[], roles
     (!notable || isNotableEvent(e.type, eventResult(e)));
 }
 
+/** Scan the one-shot flag vocabulary (`--grep`, `--type`, `--role`, `--notable`, `--json`,
+ * `--count`, `-f`) and compose it into the single `filter` rule plus the locals every feed view
+ * shares. One scan (and one home for each rival check), so no flag rule lives in a view and a
+ * `--since`/`--count`/`-f` rule is found here by name. */
 function parseLogsFeed(root: string, args: string[]): LogsFeed {
   const filters = parseLogsFilters(root, args);
   const modes = parseLogsOutputModes(filters.rest, filters.type);
