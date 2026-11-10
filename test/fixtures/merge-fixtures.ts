@@ -193,7 +193,7 @@ export function busySlot(): InFlightMerge {
  * any merge. `restore` must run in the caller's finally, after its tasks settle. */
 export async function busyMergePipeline() {
   const root = makeRepo();
-  await queueChanges(root, ["alpha", "beta"]);
+  await pinChanges(root, ["alpha", "beta"]);
   const mainBefore = mainSha(root);
   const config = { ...defaultConfig(), check: { command: "true" } };
   const restore = fakePi(APPROVE());

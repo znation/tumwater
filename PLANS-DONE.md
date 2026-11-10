@@ -5,6 +5,30 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract pin queue, part 1e/5: The merge pipeline test seeds pins (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large part 1a/3 after feature held it; requires Subtract pin queue part 1d/5 landed; sibling to parts 1f/5 and 1g/5, which require part 1d/5; touches test/merge-pipeline.test.ts) — done 2026-11-09 by the feature role
+
+**Goal.** test/merge-pipeline.test.ts drives every merge from a role's pin and never from a queue file, and keeps `resolveAuthor`'s throwaway-author fallback covered directly rather than through a queue seed.
+
+**Approach.** Test edits only.
+- Replace `queueChanges` with `pinChanges` and `drained(root, pipeline)` with `pinDrained(root, pipeline, roles)` (pass the roles the case drives).
+- Remove the `enqueueMerge`, `queueDepth`, `queuedMergeFiles`, `entry`, `mergeQueueDir` and `dropMerge` imports and uses that existed only to seed or inspect queue files; assert a pin that survives through `refSha(root, mergeRefName(role))` and one that merged is `null`.
+- Delete "a torn head is dropped with a warning and the healthy entry behind it merges"; its subject is the queue reader part 1b/3 removes.
+- Delete the queue-seeded "a merge whose role has no live runner verifies and merges through a throwaway author" case. It cannot become pin-only: `drainMerge`'s kept-pin scan walks `ctx.runners`, so a pin for a runner-less role is never discovered, and only the queue file reached `resolveAuthor`'s fallback. Do not keep it by seeding a queue file.
+- Keep the fallback covered directly in this file instead: import `resolveAuthor` from src/merge/merge-author.ts and add a case over `makePipeline(root, [])` asserting `resolveAuthor(ctx, "alpha")` returns a `RoleRunner` for `alpha`, and over `makePipeline(root, runnersFor(root, ["alpha"]))` asserting it returns that live runner instance. No merge runs and no queue file is written.
+- Keep the cases about pin gating, batching, batch write-back, head ordering and rejection, rewritten to observe the pin.
+
+**Files touched.** test/merge-pipeline.test.ts test/fixtures/merge-fixtures.ts
+
+**As landed.** The shared `busyMergePipeline` fixture in test/fixtures/merge-fixtures.ts (used by this file only — merge-pipeline-2.test.ts seeds its own pins via `pinChanges`) seeds `queueChanges`; it is now `pinChanges`, so this file — and it — no longer imports a queue-seed helper. That is the only reason the fixture is in scope here. One observation the plan did not anticipate: a sequential multi-change merge rebases each change onto main's moving tip, so after the second change lands the first change's original pinned sha is rewritten and is no longer an ancestor of main; the three-way serial case therefore asserts main's content per role rather than `isMergedInto` of the original shas (a single change, or the second of two that share a base, still contains the first's original sha, which is why the single- and two-change cases keep theirs).
+
+**Acceptance criteria.**
+- `grep -nE 'enqueueMerge|queueDepth|queuedMergeFiles|queueChanges|mergeQueueDir' test/merge-pipeline.test.ts` prints nothing.
+- The torn-head case and the queue-seeded runner-less merge case are gone; no case in the file seeds a queue file, and every remaining merge case observes its old outcome through main, the merge ref, the in-flight marker or events.
+- With an empty `ctx.runners`, `resolveAuthor(ctx, role)` returns a runner for that role; with that role's live runner present it returns the same instance.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/merge-pipeline.test.ts, then the project's gate.
+
 ### `tumwater wake --json` acknowledges an immediate or scheduled wake and a bare or positional `--cancel` as data, so a script can schedule and drop wakes without parsing prose (planned 2026-11-09 by the plan role; `cmdWake` in src/operator/operator-commands.ts accepts `--json` only with `--list` and refuses every mutating form, while the marker cores it calls — `requestWake`, `cancelWakes` and `cancelWakeAt` in src/operator/operator-intent.ts — return only prose; PLANS-DONE.md's wake headings add `--list --json` with `position`, the positional `--cancel <n>`, the comma `--role` list and the disabled-role note, but `grep -nE '^### .*wake.*(--json|JSON)' PLANS-DONE.md` matches no mutating acknowledgement, and `grep -n 'wake --json' PLANS.md BUGS.md` prints nothing before this entry; the in-flight control-commands plan edits `cmdPause`/`cmdResume`/`cmdAbort`/`cmdStop`/`cmdRestart` in the same file plus their help/docs stanzas and the `valid flags` assertions, never `cmdWake`, the wake cores or `test/operator-intent.test.ts`; the pending part 1e/5 edit touches only the pin-queue plan; this shares src/cli/help.ts and docs/cli.md with that in-flight plan in the wake stanza/row, a rebase; touches src/operator/operator-intent.ts src/operator/operator-commands.ts src/cli/help.ts docs/cli.md test/cli-operators.test.ts test/operator-commands.test.ts test/operator-intent.test.ts) — done 2026-11-09 by the feature role
 
 **Goal.** `tumwater wake`'s three mutating forms — immediate, `--in <duration>`, and `--cancel [<n>]` — each take `--json` and print one acknowledgement object instead of their prose line: what was requested or scheduled, or what was dropped. `wake --list --json`, every text reply, and every refusal keep their current output; a refused command exits 1 with its existing stderr wording and prints no JSON.
