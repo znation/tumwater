@@ -46,12 +46,12 @@ export async function runMarkerCommand(root: string, command: MarkerCommand, arg
   // `--cancel [<n>]` (drop the pending scheduled wakes, or just the Nth as `--list` numbers
   // it), `--list` (show them), and `--json` (one acknowledgement object on every form,
   // or the wake rows with --list); `reclaim` alone accepts
-  // `--dry-run` (and `--json` with it); `abort` and `restart` accept `--json` alone (one
-  // acknowledgement object each); the other
-  // marker commands keep the plain --role vocabulary, so a stray --for, --reason, --in,
-  // --cancel, or --dry-run fails fast instead of being silently ignored.
+  // `--dry-run` (and `--json` with it); `abort`, `restart`, and `reset-counters` accept
+  // `--json` alone (one acknowledgement object each, reset-counters adding `--role`);
+  // the other marker commands keep the plain --role vocabulary, so a stray --for, --reason,
+  // --in, --cancel, or --dry-run fails fast instead of being silently ignored.
   const perCommandFlags: Record<MarkerCommand, FlagSpec[]> = {
-    "reset-counters": [ROLE_FLAG],
+    "reset-counters": [ROLE_FLAG, JSON_FLAG],
     wake: [ROLE_FLAG, WAKE_IN_FLAG, WAKE_CANCEL_FLAG, WAKE_LIST_FLAG, JSON_FLAG],
     abort: [ROLE_FLAG, ABORT_ALL_FLAG, JSON_FLAG],
     pause: [

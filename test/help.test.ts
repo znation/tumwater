@@ -117,6 +117,9 @@ test("reset-counters help says what is zeroed and that today's budget spend is k
   assert.match(topic, /today's budget spend is kept/);
   // The old overpromise must not come back.
   assert.doesNotMatch(topic, /Zero runs\/commits\/tokens\/cost/);
+  // The --json form is documented in the synopsis and its acknowledgement object.
+  assert.match(topic, /tumwater reset-counters \[--role <id>\[,<id>\.\.\.\]\] \[--json\]/);
+  assert.match(topic, /status:"reset"/);
 });
 
 test("helpTopicForArgs answers a --help flag-only invocation with the command's topic", () => {

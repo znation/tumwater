@@ -127,11 +127,22 @@ function targetRoles(root: string, args: string[]): string[] {
   return namedRoleList(root, args) ?? Object.keys(loadConfig(root).roles);
 }
 
-/** `tumwater reset-counters [--role <id>[,<id>...]]`: zero the per-role counters shown in the
- * dashboards so a fresh observation window can begin. Scheduling fields and pi session
- * continuity are untouched: roles keep sleeping/waking exactly as before. */
+/** `tumwater reset-counters [--role <id>[,<id>...]] [--json]`: zero the per-role counters
+ * shown in the dashboards so a fresh observation window can begin. Scheduling fields and pi
+ * session continuity are untouched: roles keep sleeping/waking exactly as before. `--json`
+ * prints one acknowledgement object (`{ command: "reset-counters", roles, status: "reset" }`
+ * — `roles` the resolved target list, every role when no `--role` is given) instead of the
+ * prose confirmation; resolution happens before the marker write, so an unknown `--role` fails
+ * with the existing wording and prints no JSON, the same no-partial-ack rule as
+ * `cmdAbort`/`cmdPause`. */
 export async function cmdResetCounters(root: string, args: string[]): Promise<void> {
-  say(requestResetCounters(root, targetRoles(root, args)));
+  // Resolve once, before any marker or state write: an unknown --role fails here (via
+  // namedRoleList) so a bad id writes nothing. requestResetCounters runs in BOTH modes (the
+  // zeroing and the marker write); only the output branches.
+  const roles = targetRoles(root, args);
+  const message = requestResetCounters(root, roles);
+  if (args.includes("--json")) sayJson({ command: "reset-counters", roles, status: "reset" });
+  else say(message);
 }
 
 /** `tumwater wake [--role <id>[,<id>...]] [--in <duration> | --cancel [<n>] | --list] [--json]`:

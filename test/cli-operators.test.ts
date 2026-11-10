@@ -23,7 +23,7 @@ import { loadConfig } from "../src/config/config.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import { baseRoleOf } from "../src/roles/runner-ids.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";
-import { reclaimRequestPath, worktreeUsePath, abortRequestPath, orchestratorStatePath, restartRequestPath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
+import { reclaimRequestPath, worktreeUsePath, abortRequestPath, orchestratorStatePath, restartRequestPath, pausedPath, pausedRolesPath, wakeRequestPath, resetRequestPath } from "../src/paths.js";
 import { worktreeAt, makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
@@ -686,6 +686,19 @@ test("wake --in is capped at 90d like pause --for", async () => {
   assert.equal(r.code, 1);
   assert.match(r.stderr, /wake --in is capped at 90d \(got 91d\)/);
   assert.ok(!fs.existsSync(wakeRequestPath(repo)), "no marker on a refused --in");
+});
+
+// --- reset-counters --json: the flag registered end to end ---
+
+test("reset-counters --json prints one acknowledgement object and writes the marker", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli reset counters json");
+  const r = await cli(repo, "reset-counters", "--role", "clean", "--json");
+  assert.equal(r.code, 0);
+  // The whole stdout parses to exactly the acknowledgement object.
+  assert.deepEqual(JSON.parse(r.stdout), { command: "reset-counters", roles: ["clean"], status: "reset" });
+  assert.ok(fs.existsSync(resetRequestPath(repo)), "the marker the running team consumes");
+  assert.deepEqual(readJson<{ roles: string[] }>(resetRequestPath(repo)).roles, ["clean"]);
 });
 
 // --- reclaim --dry-run --json: the candidate list as data ---

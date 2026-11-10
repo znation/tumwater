@@ -39,7 +39,7 @@ import { makeRepo, sh, tmpdir, worktreeAt, writeMalformedJson } from "./fixtures
 import { errnoError } from "./helpers/fs-faults.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
-import { expectFailAsync, expectOkAsync as expectOk } from "./helpers/exit-capture.js";
+import { attemptAsync, expectFailAsync, expectOkAsync as expectOk } from "./helpers/exit-capture.js";
 import { spawnLiveChild, stopChild } from "./helpers/child-process.js";
 
 /** Producer-side tests for the operator-intent protocol (src/operator/operator-intent.ts, with the
@@ -881,10 +881,49 @@ test("cmdReclaim --dry-run reports plural paths, pending resumes and fresh workt
   assert.equal(fs.existsSync(path.join(fresh, "build")), true, "dry run deletes nothing");
 });
 
-// --- --json acknowledgements: pause / resume / abort / restart / stop ---
+// --- --json acknowledgements: pause / resume / abort / restart / stop / reset-counters ---
 // Each control command prints exactly one JSON acknowledgement object in --json mode and the
 // unchanged prose otherwise; every refusal (no live harness, a bad flag value, a current
-// build) still exits 1 with the existing stderr wording and prints no JSON.
+// build, an unknown role) still exits 1 with the existing stderr wording and prints no JSON.
+
+test("cmdResetCounters --json prints one acknowledgement naming the resolved roles", async () => {
+  const root = tmpdir();
+  saveRunnerState(root, { ...freshRunnerState("clean"), runs: 4, commits: 2, backoffSeconds: 30, nextRunAt: 777 });
+  const { stdout } = await expectOk(() => cmdResetCounters(root, ["--role", "clean", "--json"]));
+  assert.deepEqual(JSON.parse(stdout), { command: "reset-counters", roles: ["clean"], status: "reset" });
+  // The counters are zeroed and the marker carries the same role list the acknowledgement names.
+  const after = loadRunnerState(root, "clean");
+  assert.equal(after.runs, 0);
+  assert.equal(after.commits, 0);
+  assert.equal(after.backoffSeconds, 30, "the scheduling field is untouched");
+  const marker = readJson<Record<string, unknown>>(resetRequestPath(root));
+  assert.deepEqual(marker["roles"], ["clean"]);
+});
+
+test("bare cmdResetCounters --json names every configured role", async () => {
+  const root = tmpdir();
+  // A fresh tmpdir has no tumwater.json, so loadConfig resolves the defaults — every
+  // configured role, the same list targetRoles yields.
+  const keys = Object.keys(defaultConfig().roles);
+  const { stdout } = await expectOk(() => cmdResetCounters(root, ["--json"]));
+  const ack = JSON.parse(stdout) as { command: string; roles: string[]; status: string };
+  assert.equal(ack.command, "reset-counters");
+  assert.equal(ack.status, "reset");
+  // The bare form resolves every role in the config — the same list targetRoles yields.
+  assert.deepEqual(ack.roles, keys);
+  assert.deepEqual(readJson<Record<string, unknown>>(resetRequestPath(root))["roles"], keys);
+});
+
+test("cmdResetCounters --json with an unknown role fails and prints no JSON", async () => {
+  const root = tmpdir();
+  const out = await attemptAsync(() => cmdResetCounters(root, ["--role", "clean,ghost", "--json"]));
+  const failed = out as { exited: boolean; code: number; stdout: string; stderr: string };
+  assert.equal(failed.exited, true, "the unknown role fails before any marker write");
+  assert.equal(failed.code, 1);
+  assert.match(failed.stderr, /unknown role: ghost/);
+  assert.equal(failed.stdout, "", "no partial acknowledgement on refusal");
+  assert.ok(!fs.existsSync(resetRequestPath(root)), "no marker on a refused role");
+});
 
 test("cmdPause --json prints one acknowledgement naming the resolved state", async () => {
   const root = tmpdir();

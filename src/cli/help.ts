@@ -716,10 +716,13 @@ Usage:
                                    prints one { position, role, status } acknowledgement
                                    object (status \`edited\` (with the saved preview),
                                    \`noChange\` — the unchanged-buffer no-op — or \`gone\`)
-  tumwater reset-counters [--role <id>[,<id>...]]
+  tumwater reset-counters [--role <id>[,<id>...]] [--json]
                                    Zero lifetime runs/commits/tokens/cost (fresh
                                    observation window; today's budget spend is kept — the
-                                   daily cap cannot be reset past)
+                                   daily cap cannot be reset past); --json prints one
+                                   { command, roles, status:"reset" } acknowledgement
+                                   object (roles the resolved targets) instead of the
+                                   prose line
   tumwater wake [--role <id>[,<id>...]] [--in <dur> [--json] | --cancel [<n>] [--json] | --list [--json]]
                                    Wake sleeping roles — the named roles (or all) run
                                    within one poll; --in schedules the wake for later;
