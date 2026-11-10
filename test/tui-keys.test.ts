@@ -6002,6 +6002,15 @@ test("Ctrl+G on a role's Transcript edits that role's parallel-runner count; an 
   assert.equal(keys.state().activityRole, null, "the instances editor does not touch Activity's scope");
   assert.equal(keys.state().historyRole, null, "...nor History's scope");
   assert.match(keys.state().flash!, /edit feature's parallel-runner count/);
+
+  // The transcript Ctrl+N cycle reads the held-editor registry: the instances editor was absent
+  // from the old hand-copied flag list, so this arm used to cycle to the notes view over the
+  // open editor. The registry keeps Ctrl+N inert while the instances line is held.
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().instancesMode, true, "Ctrl+N does not close the instances editor");
+  assert.equal(keys.state().noteMode, false, "Ctrl+N does not cycle to notes while the instances editor holds the line");
+  assert.equal(keys.state().input, "", "the instances editor keeps the prompt line");
+
   keys.handleKey(undefined, { name: "escape" });
   assert.equal(keys.state().instancesMode, false);
   assert.equal(keys.state().input, "pending draft", "Esc restores the saved draft");
