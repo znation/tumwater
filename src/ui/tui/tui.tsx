@@ -294,13 +294,21 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   // `tui` command never writes to, since it refuses a non-TTY stdout above). Ink renders into
   // this stream and subscribes to no "error" event of its own, so with nothing else watching
   // the failure is thrown from the event loop as an uncaught exception and takes the process
-  // down — and under `run --tui`, the hosted team with it. The EPIPE guard in cli.ts cannot
-  // help: it re-throws EIO on purpose. Since runTui requires a TTY, an EIO here can only mean
-  // the terminal is gone, so there is nothing left to render to — take the same quit teardown
-  // a keypress does instead of crashing. The first write only fails on a later render tick.
-  stdout.on?.("error", (err: unknown) => {
-    if (errCode(err) === "EIO") exit.quit();
-  });
+  // down — and under `run --tui`, the hosted team with it. The EPIPE guard in cli.ts runs
+  // first and re-throws anything but EPIPE, so cli.ts defers an EIO to this listener when one
+  // is attached; without that deferral its throw would preempt this handler and the crash
+  // would remain. Since runTui requires a TTY, an EIO here can only
+  // mean the terminal is gone, so there is nothing left to render to — take the same quit
+  // teardown a keypress does instead of crashing. The first write only fails on a later
+  // render tick. Any other error is re-thrown so a real I/O failure still surfaces.
+  let terminalGone = false;
+  const onStdoutError = (err: unknown): void => {
+    if (errCode(err) === "EIO") {
+      terminalGone = true;
+      exit.quit();
+    } else throw err;
+  };
+  stdout.on?.("error", onStdoutError);
 
   // The framework-free keypress handler (src/ui/tui/tui-keys.ts, extracted from runTui): it owns
   // every mutable local the dispatch used to keep in this closure; render syncs snapshot
@@ -352,6 +360,10 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   clearInterval(timer);
   inkApp.unmount(); // restore the cursor and raw mode; the newline below closes it
   stdout.write("\n");
+  // A finished run leaves no listener behind on the shared process.stdout. A dead terminal is
+  // the exception: later writes to it may fail asynchronously after this teardown, so the
+  // guard stays attached to absorb their EIO (a hosted supervisor can outlive the TUI).
+  if (!terminalGone) stdout.off?.("error", onStdoutError);
   exit.stop();
   if (exit.shouldReexec()) (seams.watch?.reexec ?? reexecSelf)();
 }

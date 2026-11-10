@@ -5154,9 +5154,12 @@ its stdout. Without the listener Node throws that failure from the event loop as
 exception: a stack trace and a crash exit where the reader deliberately stopped reading, and on
 `tumwater start` a crash that takes the whole team process down. Any other write error (ENOSPC,
 EIO) still throws through the normal uncaught-exception path, so a real failure is never turned
-silent.
+silent — except an EIO while a second listener owns the stream: the TUI installs its own `error`
+listener (`runTui`) and takes its quit teardown when the terminal dies, so the guard defers to
+that listener instead of throwing first.
 
-**Binds.** `src/cli.ts` (`main`), `src/errno.ts` (`errCode`).
+**Binds.** `src/cli.ts` (`main`), `src/errno.ts` (`errCode`), `src/ui/tui/tui.tsx` (`runTui`).
 
 **Pinned by.** `test/cli-epipe.test.ts` — "a follow view whose stdout pipe closes exits 0
-quietly, not with an EPIPE crash".
+quietly, not with an EPIPE crash"; `test/tui-dead-terminal.test.ts` — "a runTui whose terminal
+dies (EIO on a stream write) quits instead of crashing on an uncaught exception".

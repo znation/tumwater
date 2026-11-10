@@ -578,10 +578,14 @@ async function main(): Promise<void> {
   // the command's contract with the operator, and once the reader is gone there is nothing left
   // to say, so exit 0 quietly: the output up to the close was delivered. Any other write error
   // (ENOSPC on a full disk, EIO on a closed TTY) still surfaces through the normal
-  // uncaught-exception path, so a real failure is never turned silent.
+  // uncaught-exception path, so a real failure is never turned silent — except an EIO while a
+  // second listener owns the stream: the TUI installs its own 'error' listener to take its
+  // quit teardown when the terminal dies. Defer to that listener, or this guard's throw would
+  // preempt it (listeners run in registration order) and the TUI would still crash on EIO.
   for (const stream of [process.stdout, process.stderr]) {
     stream.on("error", (err: unknown) => {
       if (errCode(err) === "EPIPE") process.exit(0);
+      if (errCode(err) === "EIO" && stream.listenerCount("error") > 1) return;
       throw err;
     });
   }

@@ -12,7 +12,7 @@ import { sleep, within } from "./helpers/wait.js";
  * into a clean quit. */
 function deadTerminalStreams(): {
   stdin: TuiStdin;
-  stdout: TuiStdout & { failEIO(): void };
+  stdout: TuiStdout & { failEIO(): void; fail(code: string): void };
 } {
   const stdin = Object.assign(new EventEmitter(), {
     isTTY: true,
@@ -28,11 +28,12 @@ function deadTerminalStreams(): {
     columns: 120,
     write: () => true,
   });
-  const stdout = stream as unknown as TuiStdout & { failEIO(): void };
-  stdout.failEIO = () => {
-    const err = Object.assign(new Error("write EIO"), { code: "EIO" });
+  const stdout = stream as unknown as TuiStdout & { failEIO(): void; fail(code: string): void };
+  stdout.fail = (code: string) => {
+    const err = Object.assign(new Error(`write ${code}`), { code });
     stream.emit("error", err);
   };
+  stdout.failEIO = () => stdout.fail("EIO");
   return { stdin, stdout };
 }
 
@@ -59,5 +60,23 @@ test("a runTui whose terminal dies (EIO on a stream write) quits instead of cras
     );
   } finally {
     process.off("uncaughtException", onUncaught);
+  }
+});
+
+test("a non-EIO stdout error still propagates instead of being swallowed by the dead-terminal guard", async () => {
+  const repo = await makeTuiRepo();
+  const { stdin, stdout } = deadTerminalStreams();
+  const controller = new AbortController();
+  const done = runTui(repo, { stdin, stdout, abortSignal: controller.signal });
+  try {
+    await sleep(50);
+    assert.throws(
+      () => stdout.fail("ENOSPC"),
+      (err: unknown) => (err as { code?: string }).code === "ENOSPC",
+      "a real I/O failure must escape the listener, not be treated as a dead terminal",
+    );
+  } finally {
+    controller.abort();
+    assert.equal(await within(done, 5_000), true, "the abort still ends the run cleanly");
   }
 });
