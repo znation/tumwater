@@ -132,6 +132,26 @@ test("reclaim help shows [--dry-run] [--json] and the three acknowledgement stat
   assert.match(topic, /"nothing_to_reclaim"/);
 });
 
+// The retire synopsis must name every flag the command accepts, not only --role, and its body
+// must name the two payload shapes a script reads (--json on a dry run and on a real removal).
+test("retire help shows the full synopsis and the --json payload shapes", () => {
+  const topic = helpTopic("retire")!;
+  const firstLine = topic.split("\n")[0] ?? "";
+  assert.equal(firstLine.trim(), "tumwater retire --role <id> [--force] [--dry-run] [--json]");
+  assert.match(topic, /wouldRemove/);
+  assert.match(topic, /removed/);
+});
+
+test("reviews help names the --accept --json payload", () => {
+  const topic = helpTopic("reviews")!;
+  assert.match(topic, /accepted: \{role, commit,\s*summary\}/);
+});
+
+test("quarantine help names the --release --json payload", () => {
+  const topic = helpTopic("quarantine")!;
+  assert.match(topic, /released: \{position, test\}/);
+});
+
 // The notes, instructions and enable/disable role writes take --json (the hold writes did so
 // in the first part), so their usage lines carry the flag and the acknowledgement it prints.
 test("role help shows [--json] on the notes, instructions and enable/disable write lines", () => {

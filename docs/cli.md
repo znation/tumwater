@@ -67,6 +67,20 @@ whole network behind the token gate, so the one-command start can serve the LAN 
 `tumwater completion bash|zsh|fish` prints a shell completion script derived from that help (completing role ids after `--role` and `logs --transcript`, and as the first argument of `role`, `history` and `revert`, and keys after `config get|set|unset`, the value `config set <key> <value>` writes for a discrete-valued key (true/false after `.enabled`, tier names after `.model`, backend ids after `.backend`, thinking levels after `.thinking`; a `.provider` field is a free-form pi provider name and completes nothing), file paths after `--file`/`--attach`/`--notes-file`/`--instructions-file`, template ids after `--template`, result classes after `--result`, event-type codes after `--type`, review states after `reviews --status`, summary groups after `--by`, tier names after `role <id> --model`, backend ids after `role <id> --backend`, the model selectors recent runs started on after `history --model`, and check names after `doctor`; a comma-list value (`--role`, `--result`, `--type`, `--status`, `history --model`) completes its last item, keeping the items before it and skipping those already listed); `tumwater completion --roles`, `tumwater completion --config-keys`, `tumwater completion --config-value <key>` and `tumwater completion --models` print the role ids, config keys, config-set values and model selectors that script completes. Install
 it with `eval "$(tumwater completion zsh)"` in your shell rc, or for fish write `tumwater completion fish > ~/.config/fish/completions/tumwater.fish`. `tumwater version` prints the version.
 
+## Scripting the writes
+
+Each write above takes `--json`, which prints one acknowledgement object in place of its prose line so a script can read the result as data instead of parsing the text. A refusal still fails with its prose and prints no JSON, so no partial acknowledgement is ever emitted. One entry per write form, and the fields it prints (the same fields `tumwater help` names):
+
+- `tumwater plan "<title>" [body...] --json` and `tumwater plan --file <path> --json` file a plan into PLANS.md and print `{ file, title, stamp }` — `file` the backlog file (`PLANS.md`), `title` the entry's first line, `stamp` its filing stamp; `tumwater bug` files into BUGS.md the same way.
+- `--release <n> --json` lifts the `Refused` or `Needs review` note from the Nth open entry and wakes its role, printing `{ file, title, lifted }` — `lifted` the note it lifted — plus `hold` when the entry is still held by another note and wakes no one.
+- `--top <n> --json` moves the Nth entry to the head of its section and prints `{ file, title }`, plus `hold` when the entry is still held.
+- `--cancel <n> --json` removes the Nth entry and prints `{ file, title }`, plus `workingOn` when a role is working on it, and `released` when cancelling a plan frees its waiting dependant parts.
+- `--edit <n> ... --json` rewrites the Nth entry in place (or `--edit <n> --file <path>`) and prints `{ file, title }`, plus `hold` when it is still held; an unchanged buffer writes nothing and prints `{ file, title, changed: false }`.
+- `--retire <n> [--reason <text>] --json` moves the Nth open entry to the kind's finished section as retired — `## Fixed` for a bug, `## Done` for a plan — and prints `{ file, title, retiredOn }`, plus `reason` when one was given.
+- `tumwater retire --role <id> [--force] [--dry-run] --json` removes a disabled role's workspace, branch, and per-role state; on a dry run it prints `{ role, dryRun: true, wouldRemove, skipped, objections }`, and without `--dry-run` it prints `{ role, removed, skipped }`.
+- `tumwater reviews --accept <n> --json` removes the Nth queued post-merge review as deliberately accepted unreviewed, logging a warning, and prints `{ accepted: { role, commit, summary } }`.
+- `tumwater quarantine --release <n> --json` releases the Nth quarantined flaky test, logging a warning, and prints `{ released: { position, test } }`.
+
 ## TUI keys
 
 The hint line at the bottom of the TUI names the keys the current view takes.

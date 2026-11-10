@@ -298,8 +298,10 @@ Usage:
                                    removes the Nth queued entry (the position \`tumwater reviews\`
                                    prints) as deliberately accepted unreviewed, logging a warning;
                                    it refuses an entry whose repair already merged (\`fixed\`);
-                                   no ready-repo gate for the read, a missing or torn file degrades
-                                   to the empty or well-formed list
+                                   --accept <n> --json prints {accepted: {role, commit,
+                                   summary}} in place of that prose; no ready-repo gate for
+                                   the read, a missing or torn file degrades to the empty or
+                                   well-formed list
   tumwater reviews --show <n> [--json]
                                    Print the Nth entry as \`tumwater reviews\` numbers it, in
                                    full — the whole summary, the whole commit body, every
@@ -354,8 +356,10 @@ Usage:
                                    path, first-seen and last-seen ages, flake count, the whole
                                    filed bug (or "not filed"), a recurred flag and, when one is
                                    stored, the kept failing output verbatim — read-only, needing
-                                   no ready repo, like the list; --show <n> --json prints that
-                                   entry's object
+                                   no ready repo, like the list; --release <n> --json prints
+                                   {released: {position, test}} in place of the prose
+                                   acknowledgement; --show <n> --json prints that entry's
+                                   object
   tumwater salvage [-f/--follow] [--grep <text>] [--show <n>] [--drop <n>] [--apply <n>] [--json]
                                    List the workspace patches kept for you under
                                    .tumwater/salvage/ — a settled run's discarded edits or a
@@ -835,9 +839,12 @@ Usage:
                                    stillPaused for a team resume listing the roles still
                                    individually paused, or one {role, status} per named
                                    role})
-  tumwater retire --role <id>      Remove a disabled role's workspace, branch, and per-role
+  tumwater retire --role <id> [--force] [--dry-run] [--json]
+                                   Remove a disabled role's workspace, branch, and per-role
                                    state (merge ref, pause marker); --force overrides the
-                                   safety rails; --json prints what was removed;
+                                   safety rails; --json prints what was removed, and on a
+                                   dry run {role, dryRun: true, wouldRemove, skipped,
+                                   objections}, otherwise {role, removed, skipped};
                                    --dry-run lists what would be removed and any objections,
                                    changing nothing; an id no longer configured (feature-4
                                    after lowering instances, a removed custom role) is
