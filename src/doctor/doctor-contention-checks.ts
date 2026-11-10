@@ -370,19 +370,52 @@ function liveWaitContention(waits: readonly LiveWait[]): WaitContention | null {
  * A counterpoint to checkWorktreePool's slot-wait half; read-only, like every doctor check.
  * `now` is a test seam for the window. */
 export function checkProviderContention(root: string, config: TumwaterConfig | undefined, now = Date.now()): CheckOutcome {
-  const live = liveProviderWaits(root);
-  const liveVerdict = liveWaitContention(live);
-  let eventVerdict: WaitContention | null = null;
-  try {
-    const waits = eventsSince(root, PROVIDER_WAIT_CHECK_WINDOW_MS, now, (ev) => ev.type === "provider_wait");
-    if (waits.length > 0) eventVerdict = providerWaitContention(waits, config);
-  } catch (err) {
+  const liveVerdict = liveWaitContention(liveProviderWaits(root));
+  const event = eventProviderWaitContention(root, config, now);
+  if (event.readError !== null) {
     // A read error leaves the level ok, saying so rather than crying wolf — but a live wait is
     // still worth naming, so it rides along with the read error instead of being lost.
-    const base = `could not read the event log for provider waits: ${errorMessage(err)}`;
-    if (liveVerdict === null) return okOutcome(base);
-    return (liveVerdict.warn ? warnOutcome : okOutcome)(`${base} — ${liveVerdict.detail}`);
+    return providerContentionReadErrorOutcome(
+      `could not read the event log for provider waits: ${event.readError}`,
+      liveVerdict,
+    );
   }
+  return providerContentionOutcome(liveVerdict, event.verdict);
+}
+
+/** The event half of checkProviderContention: read the last 24 h of `provider_wait` events and
+ * fold them into the row's rule. Returns the `providerWaitContention` verdict when waits exist,
+ * `{ verdict: null, readError: null }` when the window is empty, and `{ verdict: null,
+ * readError: <message> }` when the event log cannot be read — the row turns that readError into
+ * its own arm instead of crying wolf. */
+function eventProviderWaitContention(
+  root: string,
+  config: TumwaterConfig | undefined,
+  now: number,
+): { verdict: WaitContention | null; readError: string | null } {
+  let verdict: WaitContention | null = null;
+  try {
+    const waits = eventsSince(root, PROVIDER_WAIT_CHECK_WINDOW_MS, now, (ev) => ev.type === "provider_wait");
+    if (waits.length > 0) verdict = providerWaitContention(waits, config);
+  } catch (err) {
+    // A read error leaves the level ok, saying so rather than crying wolf.
+    return { verdict: null, readError: errorMessage(err) };
+  }
+  return { verdict, readError: null };
+}
+
+/** The row's level and detail when the event log read failed: the read error is the base
+ * clause, and a live wait still rides along after it so it is not lost — the level follows the
+ * live wait's warn when there is one, otherwise it stays ok. */
+function providerContentionReadErrorOutcome(base: string, liveVerdict: WaitContention | null): CheckOutcome {
+  if (liveVerdict === null) return okOutcome(base);
+  return (liveVerdict.warn ? warnOutcome : okOutcome)(`${base} — ${liveVerdict.detail}`);
+}
+
+/** The row's level and detail when the event read succeeded: "no provider waits" when neither
+ * half reported anything, otherwise the non-null details joined (event before live) and a warn
+ * when either half warned. */
+function providerContentionOutcome(liveVerdict: WaitContention | null, eventVerdict: WaitContention | null): CheckOutcome {
   if (eventVerdict === null && liveVerdict === null) return okOutcome("no provider waits");
   const parts = [eventVerdict?.detail, liveVerdict?.detail].filter((d): d is string => d !== undefined);
   const warn = (eventVerdict?.warn ?? false) || (liveVerdict?.warn ?? false);
