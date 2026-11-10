@@ -19,6 +19,7 @@ import {
   renderInputView,
   tuiTerminalError,
 } from "./tui-input.js";
+import { errCode } from "../../errno.js";
 import { createTuiKeys, type TuiKeys } from "./tui-keys.js";
 import { paneBody } from "./tui-pane.js";
 import {
@@ -54,10 +55,11 @@ export interface TuiStdout {
   rows?: number;
   columns?: number;
   write(s: string): unknown;
-  /** The stream surface the ink renderer needs: it subscribes to `resize` on the stdout
-   * it renders into (and unsubscribes on teardown). Process.stdout carries both. */
-  on?(event: string, listener: () => void): unknown;
-  off?(event: string, listener: () => void): unknown;
+  /** The stream surface ink and runTui subscribe to on the stdout: ink claims `resize` (a
+   * no-arg handler), and runTui claims `error` (a one-arg handler for the dead-terminal EIO)
+   * — so the listener is variadic, fitting either. Process.stdout carries both. */
+  on?(event: string, listener: (...args: unknown[]) => void): unknown;
+  off?(event: string, listener: (...args: unknown[]) => void): unknown;
 }
 /** Injectable seams for runTui: a terminal stand-in plus the self-reload watch's seams
  * (self-reload.ts's injectables) and the re-exec itself — the same treatment startGui got —
@@ -286,6 +288,19 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   // The three end-of-run triggers — the self-reload watch, the reload supervisor's gone
   // watch, and a hosted run's abort — wired into one quit/teardown (startTuiExitControl).
   const exit = startTuiExitControl(root, seams);
+
+  // The terminal dies mid-run — the operator quits it, or an SSH session drops — and the next
+  // frame write to it fails EIO (a dead *terminal*; a dead *pipe* fails EPIPE, which the
+  // `tui` command never writes to, since it refuses a non-TTY stdout above). Ink renders into
+  // this stream and subscribes to no "error" event of its own, so with nothing else watching
+  // the failure is thrown from the event loop as an uncaught exception and takes the process
+  // down — and under `run --tui`, the hosted team with it. The EPIPE guard in cli.ts cannot
+  // help: it re-throws EIO on purpose. Since runTui requires a TTY, an EIO here can only mean
+  // the terminal is gone, so there is nothing left to render to — take the same quit teardown
+  // a keypress does instead of crashing. The first write only fails on a later render tick.
+  stdout.on?.("error", (err: unknown) => {
+    if (errCode(err) === "EIO") exit.quit();
+  });
 
   // The framework-free keypress handler (src/ui/tui/tui-keys.ts, extracted from runTui): it owns
   // every mutable local the dispatch used to keep in this closure; render syncs snapshot
