@@ -649,20 +649,25 @@ Usage:
                                    written to roles.<id>.instances for the base id
   tumwater role <id> --clear-instances
                                    Clear that role's instance count (back to 1)
-  tumwater prompt <text...>        Send a message to the director's inbox
-  tumwater prompt --file <path>    Send a message read from a file ("-" reads stdin)
-  tumwater prompt --role <id> <text...>
+  tumwater prompt <text...> [--json]     Send a message to the director's inbox
+  tumwater prompt --file <path> [--json] Send a message read from a file ("-" reads stdin)
+  tumwater prompt --role <id> <text...> [--json]
                                    Send a message to that role's inbox for its next run (wakes it)
-  tumwater prompt --at <duration> <text...>
+  tumwater prompt --at <duration> <text...> [--json]
                                    Send a message that stays hidden until the duration has
                                    passed (45s, 90m, 1h30m, 1d; capped at 90d — listed and
                                    cancellable while it waits, delivered to the run only
                                    once due)
-  tumwater prompt --attach <path> <text...>
+  tumwater prompt --attach <path> <text...> [--json]
                                    Send a message with an image attached (repeat up to 4
                                    images: png, jpg, jpeg, gif, webp, bmp; each at most 5
                                    MiB — saved beside the inbox file for the role's next
                                    run)
+                                   [--json] on any submit form prints one
+                                   { command:"prompt", role, status:"queued" } acknowledgement
+                                   object (adding notBefore, the delivery time, on the
+                                   --at form) instead of the prose lines; a role the model
+                                   cannot read images with still rides stderr
   tumwater prompt --list [-f/--follow] [--role <id>[,<id>...]] [--grep <text>] [--json]
                                    Show inbox messages, numbered, grouped by role;
                                    --role keeps only the listed roles' sections;

@@ -831,3 +831,58 @@ test("prompt --attach refuses an image the target role cannot read, and names wh
     restoreAgentDir();
   }
 });
+
+// The enqueue forms accept --json: one acknowledgement object naming the target role, status
+// "queued", and (for --at) the delivery time, in place of the two prose lines.
+test("prompt <text> --json prints one acknowledgement object with role and status", async () => {
+  const root = makeRoot();
+
+  // Bare enqueue: director is the target, no notBefore in the payload.
+  const { stdout } = await expectOk(() => cmdPrompt(root, ["hello", "world", "--json"]));
+  const payload = JSON.parse(stdout) as Record<string, unknown>;
+  assert.equal(payload.command, "prompt");
+  assert.equal(payload.role, "director");
+  assert.equal(payload.status, "queued");
+  assert.equal(payload.notBefore, undefined);
+  assert.deepEqual(queuedRolePrompts(root, "director"), ["hello world"]);
+
+  // Scoped by --role: the named role is the target.
+  const { stdout: s2 } = await expectOk(() => cmdPrompt(root, ["--role", "qa", "check the flow", "--json"]));
+  const p2 = JSON.parse(s2) as Record<string, unknown>;
+  assert.equal(p2.role, "qa");
+  assert.equal(p2.status, "queued");
+  assert.deepEqual(queuedRolePrompts(root, "qa"), ["check the flow"]);
+
+  // --at carries the delivery time as notBefore.
+  const before = Date.now();
+  const { stdout: s3 } = await expectOk(() => cmdPrompt(root, ["--at", "5m", "later", "--json"]));
+  const p3 = JSON.parse(s3) as Record<string, unknown>;
+  assert.equal(p3.role, "director");
+  assert.equal(p3.status, "queued");
+  assert.ok(typeof p3.notBefore === "number" && p3.notBefore >= before && p3.notBefore <= Date.now() + 5 * 60_000 + 5_000);
+});
+
+test("prompt --json with a vision-reroute advisory rides stderr, not stdout", async () => {
+  const root = makeRoot();
+  const modelsDir = tmpdir("cli-image-json-");
+  writeModelsFile(
+    modelsDir,
+    JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
+  );
+  const imgDir = tmpdir("cli-attach-json-");
+  const img = path.join(imgDir, "shot.png");
+  fs.writeFileSync(img, Buffer.from("not-a-real-png"));
+  const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", modelsDir);
+  try {
+    writeJsonFile(configPath(root), { ...defaultConfig(), model: { default: "local/text", strong: "local/vision" } });
+    const result = await expectOk(() => cmdPrompt(root, ["--role", "feature", "--attach", img, "look", "--json"]));
+    // stdout is the JSON ack; the advisory rides stderr.
+    const payload = JSON.parse(result.stdout) as Record<string, unknown>;
+    assert.equal(payload.role, "feature");
+    assert.equal(payload.status, "queued");
+    assert.match(result.stderr, /feature's model can't read images/);
+    assert.equal(queuedRolePrompts(root, "feature").length, 1);
+  } finally {
+    restoreAgentDir();
+  }
+});

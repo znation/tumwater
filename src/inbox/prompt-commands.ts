@@ -403,8 +403,10 @@ function runPromptTop(root: string, position: number, role: string | null, json:
 
 /** The default (enqueue) mode — the steering-prompt submit form: the `--at` due time, the
  * `--attach` read and image-input gate, then submitRolePromptAndWake and the confirmation.
- * One helper so the submit form's rules are found by name. */
-function runPromptSubmit(root: string, text: string, atDelayMs: number | null, attachPaths: string[], role: string | null): void {
+ * One helper so the submit form's rules are found by name. With `json` the confirmation is
+ * one acknowledgement object in place of the two prose lines, and any image advisory rides
+ * stderr so stdout stays parseable. */
+function runPromptSubmit(root: string, text: string, atDelayMs: number | null, attachPaths: string[], role: string | null, json: boolean): void {
   const target = role ?? DIRECTOR_ROLE;
   // `--at <duration>` is a delay, not an epoch: the marker's not-before time is now + the
   // parsed duration, computed at submit so the deferral starts when the operator queued it.
@@ -415,9 +417,15 @@ function runPromptSubmit(root: string, text: string, atDelayMs: number | null, a
   // with the fix before anything is written or queued.
   const images = attachPaths.length > 0 ? readPromptImages(attachPaths) : undefined;
   if (images && images.length > 0) {
-    runPromptImageGate(root, target);
+    runPromptImageGate(root, target, json);
   }
   const wake = submitRolePromptAndWake(root, target, text, images, dueMs);
+  if (json) {
+    const payload: Record<string, unknown> = { command: "prompt", role: target, status: "queued" };
+    if (dueMs !== undefined) payload.notBefore = dueMs;
+    sayJson(payload);
+    return;
+  }
   const attached = images !== undefined ? ` with ${plural(images.length, "image")}` : "";
   const owner = target === DIRECTOR_ROLE ? "the director's" : `${roleLabel(target)}'s`;
   if (atDelayMs !== null) {
@@ -488,5 +496,5 @@ export async function cmdPrompt(root: string, args: string[], seams: FollowViewS
     runPromptShow(root, parsed.position, role, parsed.json);
     return;
   }
-  runPromptSubmit(root, parsed.text, parsed.atDelayMs, parsed.attachPaths, role);
+  runPromptSubmit(root, parsed.text, parsed.atDelayMs, parsed.attachPaths, role, parsed.json);
 }

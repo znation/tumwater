@@ -99,12 +99,14 @@ test("prompt --top refuses the other modes, the queue-only flags, and stray text
   assert.equal(stray.code, 1);
   assert.match(stray.stderr, /with --top there is no prompt text/);
 
-  // In the enqueue forms --json is refused by name, never prompt text.
+  // In the enqueue forms --json is now accepted as an acknowledgement flag: the prompt is
+  // enqueued and the acknowledgement object is printed. The queue holds "hello" (the --json
+  // token is claimed, never prompt text).
   const enqueue = await cli(repo, "prompt", "hello", "--json");
-  assert.equal(enqueue.code, 1);
-  assert.match(enqueue.stderr, /--json only applies to --list, --show, --cancel, --edit or --top/);
+  assert.equal(enqueue.code, 0, enqueue.stderr);
+  assert.match(enqueue.stdout, /"status":\s*"queued"/);
 
-  assert.equal(inboxSize(repo), 0, "nothing enqueued on failure");
+  assert.equal(inboxSize(repo), 1, "the --json enqueue form queues the prompt");
 });
 
 // --show's strictness surface, mirroring --cancel's: it is a read-only position mode, so it

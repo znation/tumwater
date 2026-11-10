@@ -188,15 +188,15 @@ test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine 
 
 test("parsePromptArgs enqueues free-form text (trimmed; single-dash tokens are content)", () => {
   const r = expectOk(() => parsePromptArgs(["add", "dark mode"]));
-  assert.deepEqual(r, { mode: "enqueue", role: null, text: "add dark mode", atDelayMs: null, attachPaths: [] });
+  assert.deepEqual(r, { mode: "enqueue", role: null, text: "add dark mode", atDelayMs: null, attachPaths: [], json: false });
 
   // Surrounding whitespace is trimmed so a queued prompt never starts/ends with padding.
   const padded = expectOk(() => parsePromptArgs(["  hello  "]));
-  assert.deepEqual(padded, { mode: "enqueue", role: null, text: "hello", atDelayMs: null, attachPaths: [] });
+  assert.deepEqual(padded, { mode: "enqueue", role: null, text: "hello", atDelayMs: null, attachPaths: [], json: false });
 
   // Only double-dash tokens are flags; a leading single dash is free-form content.
   const dash = expectOk(() => parsePromptArgs(["-x"]));
-  assert.deepEqual(dash, { mode: "enqueue", role: null, text: "-x", atDelayMs: null, attachPaths: [] });
+  assert.deepEqual(dash, { mode: "enqueue", role: null, text: "-x", atDelayMs: null, attachPaths: [], json: false });
 });
 
 test("parsePromptArgs rejects empty and whitespace-only text", () => {
@@ -301,12 +301,12 @@ test("parsePromptArgs --role: accepted in every mode, never prompt content", () 
   // this parser has no config to read.
   assert.deepEqual(
     expectOk(() => parsePromptArgs(["--role", "qa", "check", "the flow"])),
-    { mode: "enqueue", role: "qa", text: "check the flow", atDelayMs: null, attachPaths: [] },
+    { mode: "enqueue", role: "qa", text: "check the flow", atDelayMs: null, attachPaths: [], json: false },
   );
   // The flag pair is never prompt content — before or after the text.
   assert.deepEqual(
     expectOk(() => parsePromptArgs(["hello", "--role", "qa", "world"])),
-    { mode: "enqueue", role: "qa", text: "hello world", atDelayMs: null, attachPaths: [] },
+    { mode: "enqueue", role: "qa", text: "hello world", atDelayMs: null, attachPaths: [], json: false },
   );
   assert.deepEqual(expectOk(() => parsePromptArgs(["--role", "qa", "--list"])), { mode: "list", role: "qa", json: false, grep: null, follow: false });
   assert.deepEqual(expectOk(() => parsePromptArgs(["--cancel", "2", "--role", "qa"])), {
@@ -353,7 +353,7 @@ test("parseInitArgs and parsePromptArgs apply the same equals-form refusal to th
   assert.match(json.stderr, /--json takes no value/);
 });
 
-test("parsePromptArgs --json: applies to the views and the mutations, never the enqueue forms, at most once", () => {
+test("parsePromptArgs --json: applies to every mode, at most once", () => {
   // Valid with --list, alone or scoped by --role; the flag is claimed, not text.
   assert.deepEqual(expectOk(() => parsePromptArgs(["--list", "--json"])), { mode: "list", role: null, json: true, grep: null, follow: false });
   assert.deepEqual(expectOk(() => parsePromptArgs(["--json", "--role", "qa", "--list"])), {
@@ -397,9 +397,24 @@ test("parsePromptArgs --json: applies to the views and the mutations, never the 
     json: true,
   });
 
-  // In the enqueue forms it is refused by the modes it applies to, never baked into text.
-  const alone = expectFail(() => parsePromptArgs(["hello", "--json"]));
-  assert.match(alone.stderr, /--json only applies to --list, --show, --cancel, --edit or --top/);
+  // In the enqueue forms the flag is claimed — it is never prompt text — and the result
+  // carries it: the script receives one acknowledgement object in place of prose.
+  assert.deepEqual(expectOk(() => parsePromptArgs(["hello", "--json"])), {
+    mode: "enqueue",
+    role: null,
+    text: "hello",
+    atDelayMs: null,
+    attachPaths: [],
+    json: true,
+  });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--json", "hello"])), {
+    mode: "enqueue",
+    role: null,
+    text: "hello",
+    atDelayMs: null,
+    attachPaths: [],
+    json: true,
+  });
 
   // A duplicate fails like --list/--cancel do (the shared once-check).
   const dup = expectFail(() => parsePromptArgs(["--list", "--json", "--json"]));
@@ -420,6 +435,7 @@ test("parsePromptArgs --file: reads the file as the prompt, composes with --role
     text: "Refactor the parser.\nWith care.\n",
     atDelayMs: null,
     attachPaths: [],
+    json: false,
   });
 
   // Composes with --role; the role pair is a scope, not file content.
@@ -429,6 +445,7 @@ test("parsePromptArgs --file: reads the file as the prompt, composes with --role
     text: "Refactor the parser.\nWith care.\n",
     atDelayMs: null,
     attachPaths: [],
+    json: false,
   });
 
   // A missing value fails by name, like init's.
@@ -638,8 +655,7 @@ test("parsePromptArgs --edit refuses the sibling modes and --at", () => {
   assert.match(expectFail(() => parsePromptArgs(["--list", "--edit", "1", "x"])).stderr, /--list and --edit are mutually exclusive/);
   assert.match(expectFail(() => parsePromptArgs(["--cancel", "1", "--edit", "1", "x"])).stderr, /--cancel and --edit are mutually exclusive/);
   assert.match(expectFail(() => parsePromptArgs(["--edit", "1", "x", "--at", "5m"])).stderr, /--at only queues a prompt/);
-  // --json is claimed by --edit (never replacement text), so it is accepted here; it is
-  // refused only in the enqueue forms.
+  // --json is claimed by --edit (never replacement text), so it is accepted here.
   assert.deepEqual(expectOk(() => parsePromptArgs(["--edit", "1", "x", "--json"])), {
     mode: "edit",
     role: null,
@@ -659,6 +675,7 @@ test("parsePromptArgs --at: parses a composite deferral and caps it at the 90-da
     text: "later",
     atDelayMs: 90 * 60_000,
     attachPaths: [],
+    json: false,
   });
   // Over the cap the flag names both bounds, matching pause --for and wake --in; before the
   // cap was enforced a value past Date's range made notBeforeMarker's toISOString throw a raw
@@ -676,20 +693,20 @@ test("parsePromptArgs --attach: repeatable pairs ride out of the prompt text in 
   // Before, between, and after the text: each pair claims the flag and its value.
   assert.deepEqual(
     attach(["--attach", "a.png", "fix", "the layout"]),
-    { mode: "enqueue", role: null, text: "fix the layout", atDelayMs: null, attachPaths: ["a.png"] },
+    { mode: "enqueue", role: null, text: "fix the layout", atDelayMs: null, attachPaths: ["a.png"], json: false },
   );
   assert.deepEqual(
     attach(["fix", "--attach", "a.png", "the layout"]),
-    { mode: "enqueue", role: null, text: "fix the layout", atDelayMs: null, attachPaths: ["a.png"] },
+    { mode: "enqueue", role: null, text: "fix the layout", atDelayMs: null, attachPaths: ["a.png"], json: false },
   );
   assert.deepEqual(
     attach(["fix", "the", "--attach", "b.jpg", "layout", "--attach", "a.png"]),
-    { mode: "enqueue", role: null, text: "fix the layout", atDelayMs: null, attachPaths: ["b.jpg", "a.png"] },
+    { mode: "enqueue", role: null, text: "fix the layout", atDelayMs: null, attachPaths: ["b.jpg", "a.png"], json: false },
   );
   // Composes with --role and --at; every claimed pair stays out of the text.
   assert.deepEqual(
     attach(["--role", "qa", "--at", "5m", "--attach", "a.png", "check"]),
-    { mode: "enqueue", role: "qa", text: "check", atDelayMs: 5 * 60_000, attachPaths: ["a.png"] },
+    { mode: "enqueue", role: "qa", text: "check", atDelayMs: 5 * 60_000, attachPaths: ["a.png"], json: false },
   );
 });
 

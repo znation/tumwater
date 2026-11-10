@@ -575,21 +575,27 @@ test("prompt --list --json prints one JSON document matching the rendered list",
   assert.equal(r.code, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout), { prompts: [] });
 
-  // --json applies to the views and the mutations, never the enqueue forms: in enqueue mode
-  // it is refused by name, never prompt text, and nothing reaches the queues. It applies to
+  // --json applies to every mode, including the enqueue forms: the flag is claimed, never
+  // prompt text, and the acknowledgement object is printed. It also applies to
   // --cancel (and --edit/--top) as an acknowledgement, so it is accepted there.
   r = await cli(repo, "prompt", "hello", "--json");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json only applies to --list, --show, --cancel, --edit or --top/);
-  assert.deepEqual(queuedPrompts(repo), ["director task"]);
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { command: "prompt", role: "director", status: "queued" });
+  assert.deepEqual(queuedPrompts(repo), ["director task", "hello"]);
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one", "qa task two"]);
+
+  // --role --json: the named role is the target, and the queued text holds.
+  r = await cli(repo, "prompt", "--role", "qa", "check", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { command: "prompt", role: "qa", status: "queued" });
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one", "qa task two", "check"]);
 
   r = await cli(repo, "prompt", "--cancel", "1", "--json");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /position 1 is in more than one role's inbox/);
   assert.match(r.stderr, /name one with --role <id>/);
-  assert.deepEqual(queuedPrompts(repo), ["director task"]);
-  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one", "qa task two"]);
+  assert.deepEqual(queuedPrompts(repo), ["director task", "hello"]);
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one", "qa task two", "check"]);
 
   // A duplicate fails like --list does (the shared once-check).
   r = await cli(repo, "prompt", "--list", "--json", "--json");
@@ -601,7 +607,7 @@ test("prompt --list --json prints one JSON document matching the rendered list",
   r = await cli(repo, "prompt", "--json=true");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--json takes no value/);
-  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one", "qa task two"]);
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one", "qa task two", "check"]);
 });
 
 // --- the queue filename's enqueue stamp, surfaced: prose lines carry ` (queued <age> ago)`

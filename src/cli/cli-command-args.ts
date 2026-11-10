@@ -238,12 +238,11 @@ export function parseInitArgs(args: string[]): InitArgs {
  * cancel one entry by its 1-based position, edit one entry's text in place by that same
  * position, or move one entry to the head of its role's queue (`--top <n>`). `role` is the raw
  * `--role <id>` value (null when absent) — cli.ts validates it
- * against the live config, since this parser has no config to read. `json` is list, show,
- * cancel, edit or top: the machine-readable render of the same view — for the three
- * queue-mutating modes, one acknowledgement object the command prints in place of its prose
- * reply. */
+ * against the live config, since this parser has no config to read. `json` is every mode:
+ * the machine-readable render of the same view — for the three queue-mutating modes and the
+ * enqueue forms, one acknowledgement object the command prints in place of its prose reply. */
 type PromptArgs =
-  | { mode: "enqueue"; role: string | null; text: string; atDelayMs: number | null; attachPaths: string[] }
+  | { mode: "enqueue"; role: string | null; text: string; atDelayMs: number | null; attachPaths: string[]; json: boolean }
   | { mode: "list"; role: string | null; json: boolean; grep: string | null; follow: boolean }
   | { mode: "cancel"; role: string | null; position: number; json: boolean }
   | { mode: "edit"; role: string | null; position: number; text: string | null; attachPaths: string[]; json: boolean }
@@ -398,23 +397,6 @@ function parsePromptRole(args: string[], roleFlag: number): { role: string | nul
   return { role, roleClaim };
 }
 
-/** The `--json` refusal: the flag applies to the `--list`, `--show`, `--cancel`, `--edit`
- * and `--top` modes — never to the enqueue forms, where it must not silently ride along as
- * prompt text. */
-function assertPromptJsonListOrMutation(scan: PromptScan): void {
-  // --json is a view or an acknowledgement of one: it applies to the read-only views
-  // (--list, --show) and the three queue mutations (--cancel, --edit, --top), and in the
-  // enqueue forms it must never silently ride along as prompt text, so it is refused by the
-  // modes it applies to before either branch runs.
-  const applies =
-    scan.listFlag >= 0 ||
-    scan.showFlag >= 0 ||
-    scan.cancelFlag >= 0 ||
-    scan.editFlag >= 0 ||
-    scan.topFlag >= 0;
-  if (scan.jsonFlags.length > 0 && !applies) fail("--json only applies to --list, --show, --cancel, --edit or --top");
-}
-
 /** The missing-or-empty `--grep` wording parseGrepFlag's own fail uses (parsePromptFlags
  * peels --grep with it, like every sibling filtering view). */
 const PROMPT_GREP_VALUE_ERROR = "--grep needs text (usage: tumwater prompt --list --grep <text>)";
@@ -508,11 +490,11 @@ function parsePromptDeferral(args: string[], atFlag: number): { atDelayMs: numbe
 
 /** `tumwater prompt`'s flag scan and the checks it owns — everything shared by two or more
  * modes, so a new mode or queue-only flag is added here: the unknown-double-dash gate, the
- * index collection, the once-check, the ten mutual exclusions, the --role pair, the
- * --json mode refusal, --grep list-only refusals, the queue-only-flag refusals,
+ * index collection, the once-check, the ten mutual exclusions, the --role pair,
+ * --grep list-only refusals, the queue-only-flag refusals,
  * the --attach pairs and the
  * --at parse and cap. Each job lives in one helper — scanPromptFlags, assertPromptModesDisjoint,
- * parsePromptRole, assertPromptJsonListOrMutation, parsePromptGrep, assertPromptQueueOnlyFlags,
+ * parsePromptRole, parsePromptGrep, assertPromptQueueOnlyFlags,
  * parsePromptAttachments and parsePromptDeferral — so a check is found by name. Returns a
  * struct the mode branches read. */
 function parsePromptFlags(args: string[]): PromptFlags {
@@ -528,7 +510,6 @@ function parsePromptFlags(args: string[]): PromptFlags {
   const scan = scanPromptFlags(args, consumed);
   assertPromptModesDisjoint(scan);
   const { role, roleClaim } = parsePromptRole(args, scan.roleFlag);
-  assertPromptJsonListOrMutation(scan);
   const { grepRaw, grepClaim } = parsePromptGrep(grepPattern, scan.listFlag, grepFlag);
   const { followClaim } = parsePromptFollow(args, scan);
   assertPromptQueueOnlyFlags(scan);
@@ -641,25 +622,25 @@ function filePromptArgs(args: string[], f: PromptFlags): PromptArgs {
   // drained pipe would see an empty prompt (readFileSync(0) fails with EAGAIN on a TTY's
   // stdin; errorMessage names it, and the operator passes a real pipe instead).
   const file = promptFileValue(args[f.fileFlag + 1]);
-  failStrayArg(args, "with --file the prompt comes from the file", f.fileFlag, f.fileFlag + 1, ...f.roleClaim, ...f.atClaim, ...f.attachClaims);
+  failStrayArg(args, "with --file the prompt comes from the file", f.fileFlag, f.fileFlag + 1, ...f.roleClaim, ...f.atClaim, ...f.attachClaims, ...f.jsonFlags);
   const contents = readPromptFileArg(file);
-  return { mode: "enqueue", role: f.role, text: contents, atDelayMs: f.atDelayMs, attachPaths: f.attachPaths };
+  return { mode: "enqueue", role: f.role, text: contents, atDelayMs: f.atDelayMs, attachPaths: f.attachPaths, json: f.jsonFlags.length > 0 };
 }
 
-/** The default mode: free-form text (minus the claimed --role/--at/--attach tokens) is joined
- * and enqueued. */
+/** The default mode: free-form text (minus the claimed --role/--at/--attach/--json tokens)
+ * is joined and enqueued. */
 function enqueuePromptArgs(args: string[], f: PromptFlags): PromptArgs {
-  // Everything except the --role pair and the --at pair is prompt text; the join keeps
-  // multi-word requests as one string exactly like the pre-1/2 behavior.
+  // Everything except the --role, --at, --attach and --json tokens is prompt text; the join
+  // keeps multi-word requests as one string exactly like the pre-1/2 behavior.
   const text = args
-    .filter((_, i) => !f.roleClaim.includes(i) && !f.atClaim.includes(i) && !f.attachClaims.includes(i))
+    .filter((_, i) => !f.roleClaim.includes(i) && !f.atClaim.includes(i) && !f.attachClaims.includes(i) && !f.jsonFlags.includes(i))
     .join(" ")
     .trim();
   // Name the fix, like the sibling operator commands' usage errors (bug/plan carry their
   // BUG_USAGE/PLAN_USAGE lines): "prompt text required" alone never said what to type.
   if (!text)
     fail('prompt text required — usage: tumwater prompt "<text>" (add --role <id> to aim it at one role)');
-  return { mode: "enqueue", role: f.role, text, atDelayMs: f.atDelayMs, attachPaths: f.attachPaths };
+  return { mode: "enqueue", role: f.role, text, atDelayMs: f.atDelayMs, attachPaths: f.attachPaths, json: f.jsonFlags.length > 0 };
 }
 
 /** `tumwater prompt` argument handling, following parseInitArgs' pattern. Like init's,
