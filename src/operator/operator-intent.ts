@@ -449,15 +449,55 @@ export function roleResumeMessage(root: string, role: string, changed: boolean):
  * every surface shares, so no new `--for` consumer can outgrow it unnoticed. */
 export const PAUSE_FOR_MAX_MS = 90 * DAY_MS;
 
-/** One manual reclaim, shared by `tumwater reclaim` and the dashboard's POST /api/reclaim: with
- * a live team the pass is requested through the marker the orchestrator consumes (so in-use
- * worktrees are respected); with none running it runs in-process, since nothing is in use.
- * Returns the confirmation its caller prints verbatim and never fails, so a server can call it. */
-export async function runManualReclaim(root: string): Promise<string> {
-  if (markerApplyNote(root).live) return requestReclaim(root);
+/** The one `tumwater reclaim --json` acknowledgement object, named by what the pass did: with a
+ * live team it says the pass was requested (the running team does the cleaning); with none
+ * running it says which worktrees it reclaimed and what that freed, or that nothing was
+ * reclaimable. The CLI prints it instead of the prose line; the prose itself stays the message
+ * in the outcome, so the surfaces that show prose are unchanged. */
+type ReclaimAck =
+  | { command: "reclaim"; status: "requested" }
+  | { command: "reclaim"; status: "nothing_to_reclaim" }
+  | {
+      command: "reclaim";
+      status: "reclaimed";
+      worktrees: string[];
+      freedGB: number;
+      freeGB: number;
+      durationMs: number;
+    };
+
+/** One manual reclaim, shared by `tumwater reclaim`, the dashboard's POST /api/reclaim and the
+ * TUI's Health Ctrl+E: with a live team the pass is requested through the marker the
+ * orchestrator consumes (so in-use worktrees are respected); with none running it runs
+ * in-process, since nothing is in use. Returns the prose confirmation and its `--json`
+ * acknowledgement together, never failing, so a server or TUI can show the prose and a CLI can
+ * print the data from one call. */
+export async function runManualReclaimOutcome(root: string): Promise<{ message: string; payload: ReclaimAck }> {
+  if (markerApplyNote(root).live) {
+    return { message: requestReclaim(root), payload: { command: "reclaim", status: "requested" } };
+  }
   const result = await reclaimPass(root, "manual", { reclaimGB: 0 });
-  if (!result) return "nothing to reclaim";
-  return `reclaimed ${result.worktrees.join(", ")} — freed ${formatGB(result.freedGB)}`;
+  if (!result) {
+    return { message: "nothing to reclaim", payload: { command: "reclaim", status: "nothing_to_reclaim" } };
+  }
+  return {
+    message: `reclaimed ${result.worktrees.join(", ")} — freed ${formatGB(result.freedGB)}`,
+    payload: {
+      command: "reclaim",
+      status: "reclaimed",
+      worktrees: result.worktrees,
+      freedGB: result.freedGB,
+      freeGB: result.freeGB,
+      durationMs: result.durationMs,
+    },
+  };
+}
+
+/** The prose confirmation of a manual reclaim (runManualReclaimOutcome's message): the line
+ * `tumwater reclaim`'s text form, the dashboard's POST /api/reclaim and the TUI's Health Ctrl+E
+ * all print verbatim. Kept as a one-line wrapper so those callers are unchanged. */
+export async function runManualReclaim(root: string): Promise<string> {
+  return (await runManualReclaimOutcome(root)).message;
 }
 
 /** Wake the role named in an answered question's `(asked by <role> …)` clause, so it reads the

@@ -4886,6 +4886,9 @@ test("Ctrl+E on the Health view runs an in-process reclaim with no live team", a
   keys.syncSnapshot(0, false, []);
   for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
   keys.handleKey(undefined, { ctrl: true, name: "e" });
+  // runManualReclaim is now a thin wrapper over runManualReclaimOutcome; the added hop takes
+  // one extra microtask turn for the flash to land, so settle one more turn than the live case.
+  await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
   assert.match(keys.state().flash!, /nothing to reclaim/);

@@ -748,10 +748,14 @@ Usage:
                                    {command:"wake", status:"cancelled", position, wakeRoles,
                                    atMs, pending, roles?} / {… status:"not_found", position,
                                    pending, roles?} for --cancel <n>
-  tumwater reclaim [--dry-run [--json]]
+  tumwater reclaim [--dry-run] [--json]
                                    Reclaim gitignored build outputs from every
                                    workspace; --dry-run lists each candidate with its idle age
-                                   and ignored-path count and cleans nothing (--json for scripts)
+                                   and ignored-path count and cleans nothing; --json prints one
+                                   {command:"reclaim", status:...} acknowledgement instead of the
+                                   prose: "requested" (a live team does the cleaning),
+                                   "reclaimed" (worktrees, freedGB, freeGB, durationMs), or
+                                   "nothing_to_reclaim"
   tumwater revert <sha>|<role> <n>|<role> --last [--dry-run] [--json]
                                    Undo one merged change on main, committing the inverse
                                    under the primary-worktree lock; refuses off the base

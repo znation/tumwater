@@ -881,6 +881,27 @@ test("cmdReclaim --dry-run reports plural paths, pending resumes and fresh workt
   assert.equal(fs.existsSync(path.join(fresh, "build")), true, "dry run deletes nothing");
 });
 
+// --- reclaim --json: the real pass as one acknowledgement object ---
+
+// The real pass (not the dry run) answers --json with the outcome object. The no-worktrees and
+// live-team arms spawn no subprocess inside the capture window, so they assert the exact JSON;
+// the reclaimed arm (which cleans via `git clean`) is pinned end-to-end in test/cli-operators.
+test("cmdReclaim --json with no worktrees reports nothing_to_reclaim as exactly two fields", async () => {
+  const root = makeRepo();
+  const { stdout } = await expectOk(() => cmdReclaim(root, ["--json"]));
+  assert.deepEqual(JSON.parse(stdout), { command: "reclaim", status: "nothing_to_reclaim" });
+});
+
+test("cmdReclaim --json with a live team requests the marker and leaves the worktree for the team", async () => {
+  const root = makeRepo();
+  const wt = seedReclaimWorktree(root);
+  markLive(root);
+  const { stdout } = await expectOk(() => cmdReclaim(root, ["--json"]));
+  assert.deepEqual(JSON.parse(stdout), { command: "reclaim", status: "requested" });
+  assert.ok(fs.existsSync(reclaimRequestPath(root)), "the running team consumes the marker");
+  assert.equal(fs.existsSync(path.join(wt, "build")), true, "the running team does the cleaning");
+});
+
 // --- --json acknowledgements: pause / resume / abort / restart / stop / reset-counters ---
 // Each control command prints exactly one JSON acknowledgement object in --json mode and the
 // unchanged prose otherwise; every refusal (no live harness, a bad flag value, a current

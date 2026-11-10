@@ -122,6 +122,16 @@ test("reset-counters help says what is zeroed and that today's budget spend is k
   assert.match(topic, /status:"reset"/);
 });
 
+// reclaim's --json works on the real pass too, so the synopsis takes the flag and names the
+// three statuses a script can branch on, not only the dry-run candidate list.
+test("reclaim help shows [--dry-run] [--json] and the three acknowledgement statuses", () => {
+  const topic = helpTopic("reclaim")!;
+  assert.match(topic, /tumwater reclaim \[--dry-run\] \[--json\]/);
+  assert.match(topic, /"requested"/);
+  assert.match(topic, /"reclaimed"/);
+  assert.match(topic, /"nothing_to_reclaim"/);
+});
+
 test("helpTopicForArgs answers a --help flag-only invocation with the command's topic", () => {
   assert.equal(helpTopicForArgs("status", ["--help"]), helpTopic("status"));
   assert.equal(helpTopicForArgs("status", ["-h"]), helpTopic("status"));

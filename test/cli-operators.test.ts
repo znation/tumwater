@@ -24,7 +24,7 @@ import { allRoleIds } from "../src/roles/roles.js";
 import { baseRoleOf } from "../src/roles/runner-ids.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";
 import { reclaimRequestPath, worktreeUsePath, abortRequestPath, orchestratorStatePath, restartRequestPath, pausedPath, pausedRolesPath, wakeRequestPath, resetRequestPath } from "../src/paths.js";
-import { worktreeAt, makeRepo } from "./fixtures/repo-fixtures.js";
+import { worktreeAt, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
@@ -743,12 +743,65 @@ test("reclaim --dry-run --json with no workspaces prints an empty list", async (
   assert.doesNotMatch(r.stdout, /nothing to reclaim/);
 });
 
-test("reclaim --json without --dry-run is refused before any pass", async () => {
+test("reclaim --json cleans the idle worktree and reports the reclaimed shape", async () => {
   const repo = makeRepo();
-  await initProject(repo, "cli reclaim json refused");
+  await initProject(repo, "cli reclaim json reclaimed");
+  const wt = worktreeAt(repo, "feature");
+  // Committed .gitignore so the worktree's build output is ignored and removed by the pass;
+  // registered as long-idle so it is a reclaim candidate.
+  fs.writeFileSync(path.join(wt, ".gitignore"), "build/\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "ignore build output");
+  fs.mkdirSync(path.join(wt, "build"), { recursive: true });
+  fs.writeFileSync(path.join(wt, "build", "out.bin"), "x");
+  writeJsonAtomic(worktreeUsePath(repo), { feature: { lastUsedAt: Date.now() - 25 * 3_600_000 } });
+
   const r = await cli(repo, "reclaim", "--json");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /reclaim --json requires --dry-run/);
-  assert.equal(r.stdout, "");
-  assert.equal(fs.existsSync(reclaimRequestPath(repo)), false);
+  assert.equal(r.code, 0);
+  const out = JSON.parse(r.stdout) as {
+    command: string;
+    status: string;
+    worktrees: string[];
+    freedGB: number;
+    freeGB: number;
+    durationMs: number;
+  };
+  // freed/free/duration are real measurements of the pass: pin the shape, not the values.
+  assert.equal(out.command, "reclaim");
+  assert.equal(out.status, "reclaimed");
+  assert.deepEqual(out.worktrees, ["feature"]);
+  assert.equal(typeof out.freedGB, "number");
+  assert.equal(typeof out.freeGB, "number");
+  assert.equal(typeof out.durationMs, "number");
+  assert.equal(fs.existsSync(path.join(wt, "build")), false, "the ignored build output is gone");
+});
+
+test("reclaim --json with no worktrees reports nothing_to_reclaim as exactly two fields", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli reclaim json empty real");
+  const r = await cli(repo, "reclaim", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { command: "reclaim", status: "nothing_to_reclaim" });
+  assert.equal(fs.existsSync(reclaimRequestPath(repo)), false, "no marker — the pass ran in-process");
+});
+
+test("reclaim --json with a live team requests the marker and leaves the worktree for the team", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli reclaim json requested");
+  // Record this process as the running orchestrator (it is alive), then seed a reclaimable
+  // worktree: the real pass is requested through the marker instead of running in-process.
+  writeOrchestratorMarker(repo, ["feature"]);
+  const wt = worktreeAt(repo, "feature");
+  fs.writeFileSync(path.join(wt, ".gitignore"), "build/\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "ignore build output");
+  fs.mkdirSync(path.join(wt, "build"), { recursive: true });
+  fs.writeFileSync(path.join(wt, "build", "out.bin"), "x");
+  writeJsonAtomic(worktreeUsePath(repo), { feature: { lastUsedAt: Date.now() - 25 * 3_600_000 } });
+
+  const r = await cli(repo, "reclaim", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { command: "reclaim", status: "requested" });
+  assert.ok(fs.existsSync(reclaimRequestPath(repo)), "the running team consumes the marker");
+  assert.equal(fs.existsSync(path.join(wt, "build")), true, "the running team does the cleaning");
 });
