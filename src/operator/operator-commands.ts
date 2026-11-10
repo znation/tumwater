@@ -31,8 +31,8 @@ import {
   NO_HARNESS_ERROR,
   PAUSE_FOR_MAX_MS,
   cancelScheduledStopMessage,
-  cancelWakeAt,
-  cancelWakes,
+  cancelWakeAtOutcome,
+  cancelWakesOutcome,
   listWakes,
   renderWakeList,
   requestAbort,
@@ -40,7 +40,7 @@ import {
   requestResetCounters,
   requestRestart,
   requestScheduledStop,
-  requestWake,
+  requestWakeOutcome,
   rolePauseMessage,
   roleResumeMessage,
   runManualReclaim,
@@ -134,15 +134,19 @@ export async function cmdResetCounters(root: string, args: string[]): Promise<vo
   say(requestResetCounters(root, targetRoles(root, args)));
 }
 
-/** `tumwater wake [--role <id>[,<id>...]] [--in <duration> | --cancel | --list [--json]]`: tell the
- * team "whatever the roles were failing on is fixed — try again", so the named roles run
- * within one poll instead of
+/** `tumwater wake [--role <id>[,<id>...]] [--in <duration> | --cancel [<n>] | --list] [--json]`:
+ * tell the team "whatever the roles were failing on is fixed — try again", so the named roles
+ * run within one poll instead of
  * sleeping until their backoff expires. With `--in`, the wake is scheduled: the marker is
  * written now but consumed no earlier than now + duration, the same shape `pause --for`'s
  * auto-resume takes — the wake applies at the deadline, not at submit. With `--cancel`, the
  * pending scheduled wakes (or the named roles' share) are dropped instead; no wake is
  * written. With `--list`, every pending scheduled wake (or the named roles')
- * is printed, earliest first — `--json` as an array of {position, roles, atMs}; read-only. */
+ * is printed, earliest first — `--json` as an array of {position, roles, atMs}; read-only.
+ * `--json` takes every form: each of the three mutating forms prints one acknowledgement
+ * object (the outcome core's payload) instead of its prose line; every refusal keeps its
+ * existing stderr wording and exit 1 and prints no JSON, and every text form prints exactly
+ * what it prints today. */
 export async function cmdWake(root: string, args: string[]): Promise<void> {
   // `--in <duration>` (the scheduled wake): the command's own gate (runMarkerCommand's
   // rejectUnknownArgs, not cli.ts — the marker dispatch moved out from under main()'s switch)
@@ -159,7 +163,6 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
     say(args.includes("--json") ? JSON.stringify(wakes) : renderWakeList(wakes, now, roles));
     return;
   }
-  if (args.includes("--json")) fail("wake --json requires --list");
   if (args.includes("--cancel")) {
     if (inRaw !== null) fail("wake --cancel and --in cannot be combined");
     // `wake --cancel <n>` drops ONE pending wake by the number `wake --list` prints under the
@@ -168,18 +171,24 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
     // so the two cannot disagree about whether a value token was claimed.
     const positionRaw = optionalFlagValue(args, "--cancel");
     if (positionRaw !== null) {
-      say(cancelWakeAt(root, parsePositionFlag("--cancel", positionRaw, "wake --cancel 2"), namedRoleList(root, args) ?? undefined));
+      const o = cancelWakeAtOutcome(root, parsePositionFlag("--cancel", positionRaw, "wake --cancel 2"), namedRoleList(root, args) ?? undefined);
+      if (args.includes("--json")) sayJson(o.payload);
+      else say(o.message);
       return;
     }
-    say(cancelWakes(root, namedRoleList(root, args) ?? undefined));
+    const o = cancelWakesOutcome(root, namedRoleList(root, args) ?? undefined);
+    if (args.includes("--json")) sayJson(o.payload);
+    else say(o.message);
     return;
   }
   const inMs = inRaw !== null ? parseDurationFlag("wake --in", inRaw) : undefined;
   if (inMs !== undefined) failOverDurationCap("wake --in", inMs, PAUSE_FOR_MAX_MS);
-  // requestWake takes the duration, not a deadline: it reads the clock once for both the
+  // requestWakeOutcome takes the duration, not a deadline: it reads the clock once for both the
   // marker's deadline and its "wakes in" phrase, so no clock advance between two reads can reword
   // "45m" as "2699999ms".
-  say(requestWake(root, targetRoles(root, args), inMs));
+  const o = requestWakeOutcome(root, targetRoles(root, args), inMs);
+  if (args.includes("--json")) sayJson(o.payload);
+  else say(o.message);
 }
 
 /** `tumwater reclaim [--dry-run [--json]]`: run one manual reclaim pass over every harness

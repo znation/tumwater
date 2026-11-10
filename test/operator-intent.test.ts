@@ -6,13 +6,16 @@ import {
   NO_HARNESS_ERROR,
   PAUSE_FOR_MAX_MS,
   cancelWakeAt,
+  cancelWakeAtOutcome,
   cancelWakes,
+  cancelWakesOutcome,
   listWakes,
   renderWakeList,
   markerApplyNote,
   requestAbort,
   requestResetCounters,
   requestWake,
+  requestWakeOutcome,
   rolePauseMessage,
   roleResumeMessage,
   submitRolePromptAndWake,
@@ -224,6 +227,83 @@ test("requestWake leaves a live team's state file to the orchestrator (no racing
   assert.equal(stateOf(root, "fix").backoffSeconds, 300, "the schedule is left for the orchestrator to clear");
   assert.deepEqual(readJsonFile<{ roles: string[] }>(path.join(root, STATE_DIR, "wake.json"))?.roles, ["fix"]);
   assert.match(msg, /the running team applies it/);
+});
+
+test("requestWakeOutcome carries the acknowledgement and the marker in one clock read", () => {
+  const root = deadRoot();
+  const t0 = Date.now();
+  const o = requestWakeOutcome(root, ["fix"], 45 * 60_000);
+  const t1 = Date.now();
+  // Immediate payload.
+  const imm = requestWakeOutcome(root, ["fix"]);
+  const marker = readJsonFile<{ at: number; roles: string[]; notBeforeMs?: number }>(path.join(root, STATE_DIR, "wake.json"));
+  assert.equal(imm.payload.status, "requested");
+  assert.equal(imm.payload.command, "wake");
+  assert.deepEqual(imm.payload.roles, ["fix"]);
+  assert.equal(imm.payload.live, false);
+  assert.deepEqual(imm.payload.disabled, []);
+  assert.equal(marker?.notBeforeMs, undefined);
+  // Scheduled payload: inMs is the call's duration and atMs the marker's deadline, one read.
+  assert.equal(o.payload.status, "scheduled");
+  assert.deepEqual(o.payload.roles, ["fix"]);
+  assert.equal(o.payload.inMs, 45 * 60_000);
+  const scheduled = readScheduledWakes(root)[0];
+  assert.ok(scheduled, "the scheduled marker is written");
+  assert.equal(o.payload.atMs, scheduled.notBeforeMs);
+  assert.ok((o.payload.atMs as number) >= t0 + 45 * 60_000 && (o.payload.atMs as number) <= t1 + 45 * 60_000);
+  // message and the core cannot drift.
+  // The prose the CLI and GUI print is unchanged by the acknowledgement split.
+  assert.match(o.message, /^wake scheduled for fix — wakes in 45m — /);
+  assert.match(imm.message, /^wake requested for fix — takes effect on the next /);
+});
+
+test("cancelWakesOutcome and cancelWakeAtOutcome carry the payload the CLI prints as --json", () => {
+  const root = tmpdir();
+  // No pendings: the no-op arm.
+  let o = cancelWakesOutcome(root);
+  assert.equal(o.payload.status, "no_scheduled_wake");
+  assert.equal(o.payload.count, 0);
+  assert.equal(o.message, "no scheduled wake pending");
+  o = cancelWakesOutcome(root, ["qa"]);
+  assert.equal(o.payload.status, "no_scheduled_wake");
+  assert.equal(o.payload.count, 0);
+  assert.deepEqual(o.payload.roles, ["qa"]);
+  assert.equal(o.message, "no scheduled wake pending for qa");
+  // One pending: the team-wide cancel reports the count; the scoped one keeps the roles list.
+  requestWake(root, ["feature"], 60_000);
+  requestWake(root, ["qa", "docs"], 90_000);
+  o = cancelWakesOutcome(root, ["qa"]);
+  assert.equal(o.payload.status, "cancelled");
+  assert.equal(o.payload.count, 1);
+  assert.deepEqual(o.payload.roles, ["qa"]);
+  assert.equal(o.message, "cancelled 1 scheduled wake for qa");
+  // The scoped cancel strips qa from the shared wake (qa,docs -> docs); one wake plus the
+  // feature wake remain, so the team-wide cancel reports both.
+  assert.deepEqual(readScheduledWakes(root).map((w) => w.roles).sort(), [["docs"], ["feature"]]);
+  o = cancelWakesOutcome(root);
+  assert.equal(o.payload.status, "cancelled");
+  assert.equal(o.payload.count, 2);
+  assert.equal(o.message, "cancelled 2 scheduled wakes");
+  assert.deepEqual(readScheduledWakes(root), []);
+  // Positional: a hit names the removed wake, a miss names only the position and the rest.
+  requestWake(root, ["qa"], 45 * 60_000);
+  requestWake(root, ["clean"], 3 * 3_600_000);
+  const hit = cancelWakeAtOutcome(root, 1);
+  assert.equal(hit.payload.status, "cancelled");
+  assert.equal(hit.payload.position, 1);
+  assert.deepEqual(hit.payload.wakeRoles, ["qa"]);
+  assert.equal(hit.payload.pending, 1);
+  assert.equal(hit.message, `cancelled scheduled wake 1 (in 45m — qa)`);
+  const miss = cancelWakeAtOutcome(root, 3);
+  assert.equal(miss.payload.status, "not_found");
+  assert.equal(miss.payload.position, 3);
+  assert.equal(miss.payload.pending, 1);
+  assert.equal(("wakeRoles" in miss.payload) || ("atMs" in miss.payload), false, "a miss names no removed wake");
+  const scopedMiss = cancelWakeAtOutcome(root, 2, ["qa"]);
+  assert.equal(scopedMiss.payload.status, "not_found");
+  assert.equal(scopedMiss.payload.pending, 0);
+  assert.deepEqual(scopedMiss.payload.roles, ["qa"]);
+  assert.equal(scopedMiss.message, "no scheduled wake at position 2 for qa (0 scheduled wakes pending)");
 });
 
 test("submitRolePromptAndWake queues the prompt and wakes only that role", () => {

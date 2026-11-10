@@ -19,6 +19,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
+import { loadConfig } from "../src/config/config.js";
+import { allRoleIds } from "../src/roles/roles.js";
+import { baseRoleOf } from "../src/roles/runner-ids.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";
 import { reclaimRequestPath, worktreeUsePath, abortRequestPath, orchestratorStatePath, restartRequestPath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { worktreeAt, makeRepo } from "./fixtures/repo-fixtures.js";
@@ -488,7 +491,7 @@ test("wake --cancel <n> drops one scheduled wake by the wake --list number", asy
   assert.deepEqual(readScheduledWakes(repo).map((w) => w.roles), [["clean"]]);
 
   // A position past the pending list prints the miss and removes nothing; malformed positions
-  // and --json fail before any marker work.
+  // fail before any marker work.
   r = await cli(repo, "wake", "--cancel", "5");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /^no scheduled wake at position 5 \(1 scheduled wake pending\)$/m);
@@ -497,12 +500,84 @@ test("wake --cancel <n> drops one scheduled wake by the wake --list number", asy
     assert.equal(r.code, 1);
     assert.match(r.stderr, /--cancel needs a positive integer/);
   }
-  r = await cli(repo, "wake", "--cancel", "--json");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /wake --json requires --list/);
-  assert.deepEqual(readScheduledWakes(repo).map((w) => w.roles), [["clean"]], "the refusals remove nothing");
+  assert.deepEqual(readScheduledWakes(repo).map((w) => w.roles), [["clean"]]);
 
-  // Bare --cancel keeps today's wording (with the --role scope too).
+  // Clear the text block's leftover, then re-seed the three wakes so the --json forms address
+  // the same numbering as the prose ones just covered: 1 = qa (45m), 2 = feature,qa (2h),
+  // 3 = clean (3h).
+  await cli(repo, "wake", "--cancel");
+  await cli(repo, "wake", "--role", "qa", "--in", "45m");
+  await cli(repo, "wake", "--role", "feature,qa", "--in", "2h");
+  await cli(repo, "wake", "--role", "clean", "--in", "3h");
+  // The positional --json hit names the removed wake whole (position, its roles, deadline)
+  // and reports the pendings left.
+  r = await cli(repo, "wake", "--cancel", "2", "--json");
+  assert.equal(r.code, 0);
+  const hit = JSON.parse(r.stdout) as { status: string; position: number; wakeRoles: string[]; atMs: number; pending: number; roles?: string[] };
+  assert.equal(hit.status, "cancelled");
+  assert.equal(hit.position, 2);
+  assert.deepEqual(hit.wakeRoles, ["feature", "qa"], "the removed wake's own roles");
+  assert.equal(hit.pending, 2, "the two pendings left");
+  const left = readScheduledWakes(repo);
+  assert.equal(left.length, 2);
+  assert.ok(hit.atMs > Math.min(...left.map((w) => w.notBeforeMs)), "the removed wake's deadline is later than a remaining one");
+  assert.ok(!("roles" in hit), "a team-wide cancel carries no roles scope");
+  assert.deepEqual(left.map((w) => w.roles).sort(), [["clean"], ["qa"]], "one whole wake removed");
+  // A role-scoped positional cancel addresses the position under the --role scope.
+  r = await cli(repo, "wake", "--cancel", "1", "--role", "qa", "--json");
+  assert.equal(r.code, 0);
+  const scoped = JSON.parse(r.stdout) as { status: string; position: number; wakeRoles: string[]; pending: number; roles: string[] };
+  assert.equal(scoped.status, "cancelled");
+  assert.equal(scoped.position, 1, "the position under the --role scope");
+  assert.deepEqual(scoped.wakeRoles, ["qa"], "the removed wake is the scoped one");
+  assert.deepEqual(scoped.roles, ["qa"], "the call's target scope");
+  assert.equal(scoped.pending, 0, "the qa-only wake was the scoped wake; clean is out of scope");
+  // Reset to a known single wake so the miss and bare-cancel sections have an unambiguous state.
+  r = await cli(repo, "wake", "--cancel", "--json");
+  assert.equal(r.code, 0);
+  assert.equal(JSON.parse(r.stdout)["count"], 1, "the one out-of-scope wake remains");
+  assert.deepEqual(readScheduledWakes(repo), []);
+  await cli(repo, "wake", "--role", "qa", "--in", "45m");
+  // A --json miss prints the not_found object and removes nothing.
+  r = await cli(repo, "wake", "--cancel", "5", "--json");
+  assert.equal(r.code, 0);
+  const miss = JSON.parse(r.stdout) as Record<string, unknown>;
+  assert.equal(miss["status"], "not_found");
+  assert.equal(miss["position"], 5);
+  assert.equal(miss["pending"], 1);
+  assert.ok(!("wakeRoles" in miss) && !("atMs" in miss), "a miss names no removed wake");
+  assert.deepEqual(readScheduledWakes(repo).map((w) => w.roles), [["qa"]], "the miss removes nothing");
+  // A bare --cancel drops the one pending wake; the repeat and the role-scoped repeat report
+  // the empty state, and no immediate wake marker is ever written.
+  r = await cli(repo, "wake", "--cancel", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { command: "wake", status: "cancelled", count: 1 });
+  assert.deepEqual(readScheduledWakes(repo), []);
+  r = await cli(repo, "wake", "--cancel", "--json");
+  assert.deepEqual(JSON.parse(r.stdout), { command: "wake", status: "no_scheduled_wake", count: 0 });
+  r = await cli(repo, "wake", "--role", "qa", "--cancel", "--json");
+  assert.deepEqual(JSON.parse(r.stdout), { command: "wake", status: "no_scheduled_wake", count: 0, roles: ["qa"] });
+  assert.ok(!fs.existsSync(wakeRequestPath(repo)), "a --json cancel never writes a wake marker");
+  // The refusals exit 1 with their existing wording and print no JSON, writing no marker.
+  for (const [args, err] of [
+    [["--list", "--in", "5m"], /wake --list cannot be combined/],
+    [["--list", "--cancel"], /wake --list cannot be combined/],
+    [["--cancel", "--in", "5m"], /wake --cancel and --in cannot be combined/],
+    [["--in", "xyz"], /--in needs a duration/],
+    [["--cancel", "0"], /--cancel needs a positive integer/],
+    [["--cancel", "x"], /--cancel needs a positive integer/],
+    [["--role", "nope"], /unknown role/],
+  ] as const) {
+    r = await cli(repo, "wake", ...args, "--json");
+    assert.equal(r.code, 1, `wake ${args.join(" ")} --json is refused`);
+    assert.match(r.stderr, err);
+    assert.equal(r.stdout, "", "a refused wake prints no JSON");
+  }
+  assert.deepEqual(readScheduledWakes(repo), [], "the refusals remove nothing");
+
+  // Bare --cancel keeps today's wording. A 1h wake is still pending at this point in the test,
+  // so the cancel reports it rather than the empty state.
+  await cli(repo, "wake", "--role", "qa", "--in", "1h");
   r = await cli(repo, "wake", "--cancel");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /^cancelled 1 scheduled wake$/m);
@@ -552,12 +627,56 @@ test("wake --list shows pending scheduled wakes read-only", async () => {
     assert.equal(r.code, 1);
     assert.match(r.stderr, /wake --list cannot be combined with --in or --cancel/);
   }
+  // No --role: the target is every role, so the disabled list is the config's disabled ids.
   r = await cli(repo, "wake", "--json");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /wake --json requires --list/);
+  assert.equal(r.code, 0);
+  const all = JSON.parse(r.stdout) as { command: string; status: string; live: boolean; disabled: string[] };
+  assert.equal(all.command, "wake");
+  assert.equal(all.status, "requested");
+  assert.equal(all.live, false);
+  const expectedDisabled = allRoleIds()
+    .filter((id) => loadConfig(repo).roles[baseRoleOf(id)]?.enabled === false)
+    .sort();
+  assert.deepEqual(all.disabled.sort(), expectedDisabled, "the config's disabled ids");
+  r = await cli(repo, "wake", "--role", "qa", "--json");
+  assert.equal(r.code, 0);
+  const qa = JSON.parse(r.stdout) as { disabled: string[] };
+  assert.deepEqual(qa.disabled, [], "qa is enabled, so no disabled entry");
   r = await cli(repo, "reset-counters", "--list");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --list/);
+});
+
+test("wake --json acknowledges the immediate and scheduled forms as one object", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli wake json");
+  // qa is enabled in the example config, so the named target carries no disabled entry.
+  // Immediate: one object, and the marker keeps its bare { at, roles } shape (no notBeforeMs).
+  let r = await cli(repo, "wake", "--role", "qa", "--json");
+  assert.equal(r.code, 0);
+  const requested = JSON.parse(r.stdout) as { command: string; status: string; roles: string[]; live: boolean; disabled: string[] };
+  assert.equal(requested.command, "wake");
+  assert.equal(requested.status, "requested");
+  assert.deepEqual(requested.roles, ["qa"]);
+  assert.equal(requested.live, false);
+  assert.deepEqual(requested.disabled, [], "qa is enabled, so no disabled entry");
+  const immediate = readJson(wakeRequestPath(repo)) as { at: number; roles: string[]; notBeforeMs?: number };
+  assert.deepEqual(immediate.roles, ["qa"]);
+  assert.equal(immediate.notBeforeMs, undefined, "the immediate marker carries no deadline");
+
+  // Scheduled: inMs is the call's own duration and atMs is the marker's notBeforeMs.
+  r = await cli(repo, "wake", "--role", "feature,qa", "--in", "45m", "--json");
+  assert.equal(r.code, 0);
+  const ack = JSON.parse(r.stdout) as { status: string; roles: string[]; inMs: number; atMs: number; live: boolean; disabled: string[] };
+  assert.equal(ack.status, "scheduled");
+  assert.deepEqual(ack.roles, ["feature", "qa"]);
+  assert.equal(ack.inMs, 45 * 60_000);
+  assert.equal(ack.live, false);
+  assert.deepEqual(ack.disabled, [], "feature and qa are both enabled");
+  const markers = readScheduledWakes(repo);
+  assert.equal(markers.length, 1);
+  assert.equal(ack.atMs, markers[0]!.notBeforeMs, "the acknowledgement's atMs is the marker's deadline");
+  assert.ok(ack.atMs > Date.now() + 44 * 60_000, "the deadline is at least 44 minutes ahead");
 });
 
 test("wake --in is capped at 90d like pause --for", async () => {

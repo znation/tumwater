@@ -131,6 +131,52 @@ test("cmdWake --in echoes the operator's duration even when the clock advances b
   assert.equal(marker.notBeforeMs - marker.at, 45 * 60_000, "the deadline is one clock read plus the duration");
 });
 
+// The --json acknowledgement: cmdWake prints one object instead of its prose line for each
+// mutating form, derived from the outcome core, and every refusal keeps its exit-1 wording.
+test("cmdWake --json prints the acknowledgement object for each mutating form", async () => {
+  const root = tmpdir();
+  // Immediate: one object and the immediate marker (no notBeforeMs).
+  let { stdout } = await expectOk(() => cmdWake(root, ["--role", "clean", "--json"]));
+  const requested = JSON.parse(stdout) as Record<string, unknown>;
+  assert.equal(requested["command"], "wake");
+  assert.equal(requested["status"], "requested");
+  assert.deepEqual(requested["roles"], ["clean"]);
+  assert.equal(requested["live"], false);
+  assert.equal((readJson(wakeRequestPath(root)) as { notBeforeMs?: number })["notBeforeMs"], undefined);
+  // Scheduled: inMs is the call's duration and atMs the marker's notBeforeMs.
+  ({ stdout } = await expectOk(() => cmdWake(root, ["--role", "clean", "--in", "45m", "--json"])));
+  const scheduled = JSON.parse(stdout) as { status: string; inMs: number; atMs: number };
+  assert.equal(scheduled.status, "scheduled");
+  assert.equal(scheduled.inMs, 45 * 60_000);
+  const [marker] = readScheduledWakes(root);
+  assert.ok(marker, "the scheduled marker is written");
+  assert.equal(scheduled.atMs, marker.notBeforeMs);
+  // Bare --cancel drops every pending wake; the repeat reports the empty state.
+  ({ stdout } = await expectOk(() => cmdWake(root, ["--cancel", "--json"])));
+  const cancelled = JSON.parse(stdout) as Record<string, unknown>;
+  assert.equal(cancelled["status"], "cancelled");
+  assert.equal(cancelled["count"], 1);
+  assert.deepEqual(readScheduledWakes(root), []);
+  ({ stdout } = await expectOk(() => cmdWake(root, ["--cancel", "--json"])));
+  assert.deepEqual(JSON.parse(stdout), { command: "wake", status: "no_scheduled_wake", count: 0 });
+  // Positional --json hit and miss.
+  await expectOk(() => cmdWake(root, ["--role", "clean", "--in", "1h"]));
+  ({ stdout } = await expectOk(() => cmdWake(root, ["--cancel", "1", "--json"])));
+  const hit = JSON.parse(stdout) as Record<string, unknown>;
+  assert.equal(hit["status"], "cancelled");
+  assert.equal(hit["position"], 1);
+  assert.deepEqual(hit["wakeRoles"], ["clean"]);
+  assert.equal(hit["pending"], 0);
+  ({ stdout } = await expectOk(() => cmdWake(root, ["--cancel", "3", "--json"])));
+  const miss = JSON.parse(stdout) as Record<string, unknown>;
+  assert.equal(miss["status"], "not_found");
+  assert.equal(miss["position"], 3);
+  assert.ok(!("wakeRoles" in miss) && !("atMs" in miss));
+  // A refused --json keeps its exit-1 wording.
+  const err = await expectFailAsync(() => cmdWake(root, ["--cancel", "--in", "5m", "--json"]));
+  assert.match(err, /wake --cancel and --in cannot be combined/);
+});
+
 // A malformed tumwater.json must not block an operator marker aimed at a built-in role:
 // the team itself keeps running on its last-known-good config (the live reload), so wake,
 // reset-counters, and abort --role <builtin> resolve the id from the static catalog instead

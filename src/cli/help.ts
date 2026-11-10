@@ -720,14 +720,22 @@ Usage:
                                    Zero lifetime runs/commits/tokens/cost (fresh
                                    observation window; today's budget spend is kept — the
                                    daily cap cannot be reset past)
-  tumwater wake [--role <id>[,<id>...]] [--in <dur> | --cancel [<n>] | --list [--json]]
+  tumwater wake [--role <id>[,<id>...]] [--in <dur> [--json] | --cancel [<n>] [--json] | --list [--json]]
                                    Wake sleeping roles — the named roles (or all) run
                                    within one poll; --in schedules the wake for later;
                                    --cancel drops pending scheduled wakes (the named roles' share),
                                    or --cancel <n> drops just the NTH whole wake as wake --list
                                    numbers it under that --role scope; --list shows every pending
                                    scheduled wake, earliest first (--json prints {position, roles,
-                                   atMs})
+                                   atMs}); --json on the immediate, --in, or --cancel forms
+                                   prints the one acknowledgement object instead of the prose
+                                   line: {command:"wake", status:"requested" | "scheduled",
+                                   roles, live, disabled} — the scheduled form adds inMs and
+                                   atMs — or {command:"wake", status:"cancelled" |
+                                   "no_scheduled_wake", count, roles?} for a bare --cancel, and
+                                   {command:"wake", status:"cancelled", position, wakeRoles,
+                                   atMs, pending, roles?} / {… status:"not_found", position,
+                                   pending, roles?} for --cancel <n>
   tumwater reclaim [--dry-run [--json]]
                                    Reclaim gitignored build outputs from every
                                    workspace; --dry-run lists each candidate with its idle age

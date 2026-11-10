@@ -103,9 +103,21 @@ function noWakePending(roles?: string[]): string {
  * every pending wake, or only the named roles' share of them. Returns the confirmation the CLI
  * prints verbatim and the GUI flashes, so the surfaces cannot drift on wording. */
 export function cancelWakes(root: string, roles?: string[]): string {
+  return cancelWakesOutcome(root, roles).message;
+}
+
+/** `tumwater wake --cancel [--json]`'s data: the same walk as `cancelWakes` plus a one-object
+ * acknowledgement for scripts. `status` is `cancelled` when at least one pending wake was
+ * dropped, `no_scheduled_wake` when none was pending; `count` is the number of wake files
+ * removed or rewritten; `roles` is present only when the call was role-scoped. The `message`
+ * is the text `cancelWakes` prints today, so every surface's wording is one read. */
+export function cancelWakesOutcome(root: string, roles?: string[]): { message: string; payload: Record<string, unknown> } {
   const n = cancelScheduledWakes(root, roles);
   const forRole = roles ? ` for ${roles.join(", ")}` : "";
-  return n > 0 ? `cancelled ${plural(n, "scheduled wake")}${forRole}` : noWakePending(roles);
+  const message = n > 0 ? `cancelled ${plural(n, "scheduled wake")}${forRole}` : noWakePending(roles);
+  const payload: Record<string, unknown> = { command: "wake", status: n > 0 ? "cancelled" : "no_scheduled_wake", count: n };
+  if (roles) payload.roles = roles;
+  return { message, payload };
 }
 
 /** Drop ONE pending scheduled wake by its 1-based position in the pending list (`wake --cancel
@@ -114,10 +126,33 @@ export function cancelWakes(root: string, roles?: string[]): string {
  * `in <duration> — <roles>` fragment `renderWakeList` lines show, so the number always means
  * what `wake --list` shows. Returns the confirmation the CLI prints verbatim. */
 export function cancelWakeAt(root: string, position: number, roles?: string[], now = Date.now()): string {
+  return cancelWakeAtOutcome(root, position, roles, now).message;
+}
+
+/** `tumwater wake --cancel <n> [--json]`'s data: the same removal as `cancelWakeAt` plus a
+ * one-object acknowledgement. A hit carries `status: "cancelled"` with `position`, the
+ * removed wake's own role list (`wakeRoles` — distinct from the call's target scope `roles`,
+ * which a scoped call also carries) and deadline, and `pending`, the pendings left after the
+ * removal. A miss (a position past the (scoped) list) carries `status: "not_found"` with
+ * `position` and `pending` and nothing else — no `wakeRoles` and no `atMs`. `message` is the
+ * text `cancelWakeAt` prints today. */
+export function cancelWakeAtOutcome(
+  root: string,
+  position: number,
+  roles?: string[],
+  now = Date.now(),
+): { message: string; payload: Record<string, unknown> } {
   const { wake, pending } = cancelScheduledWakeAt(root, position, now, roles);
-  if (!wake)
-    return `no scheduled wake at position ${position}${roles ? ` for ${roles.join(", ")}` : ""} (${plural(pending, "scheduled wake")} pending)`;
-  return `cancelled scheduled wake ${position} (in ${humanUntil(wake.atMs, now)} — ${wake.roles.join(", ")})`;
+  if (!wake) {
+    return {
+      message: `no scheduled wake at position ${position}${roles ? ` for ${roles.join(", ")}` : ""} (${plural(pending, "scheduled wake")} pending)`,
+      payload: { command: "wake", status: "not_found", position, pending, ...(roles ? { roles } : {}) },
+    };
+  }
+  return {
+    message: `cancelled scheduled wake ${position} (in ${humanUntil(wake.atMs, now)} — ${wake.roles.join(", ")})`,
+    payload: { command: "wake", status: "cancelled", position, wakeRoles: wake.roles, atMs: wake.atMs, pending, ...(roles ? { roles } : {}) },
+  };
 }
 
 /** The pending scheduled wakes (`tumwater wake --list`), earliest first; with `roles`, only the
@@ -141,54 +176,59 @@ export function renderWakeList(wakes: { roles: string[]; atMs: number }[], now: 
   );
 }
 
-/** The marker-writing core of `wake [--in <duration>]`, shared with the GUI's POST /api/wake:
- * clear the named roles' backoff and pull nextRunAt to now (touching ONLY the schedule —
- * counters, wake tracking, and session continuity are untouched), and drop the marker a
- * running team consumes within one poll. With a positive `inMs` (`wake --in`'s parsed
- * duration) the wake is SCHEDULED: only the marker is written, its deadline this call's one
- * clock read plus inMs — the state change belongs to the deadline, not to the submit, so a
- * team stopped at submit (or restarted before the deadline) does not wake early;
- * consumeWakeRequest clears the schedules when it consumes the marker at or after the
- * deadline. The "wakes in" phrase is inMs itself, not the deadline minus a second clock read
- * (the rule timedPauseBits follows): a caller-computed deadline let a millisecond of clock
- * time between the two reads print "wakes in 2699999ms" for `--in 45m`. Returns the
- * confirmation the CLI prints verbatim and the GUI flashes. */
+/** The string-returning confirmation of `wake [--in <duration>]`, kept for the surfaces that
+ * print prose: the dashboard's POST /api/wake flash, the TUI's wake editor, and the backlog
+ * role-wake. It is a thin wrapper over `requestWakeOutcome` (the marker-writing core beside
+ * it) that returns only the message, so every surface's wording is one read and the `--json`
+ * acknowledgement cannot drift from it. */
 export function requestWake(root: string, roles: string[], inMs?: number): string {
+  return requestWakeOutcome(root, roles, inMs).message;
+}
+
+/** The marker-writing core of `wake [--in <duration>]`, shared with the GUI's POST /api/wake
+ * and the TUI through `requestWake`: clear the named roles' backoff and pull nextRunAt to now
+ * (touching ONLY the schedule — counters, wake tracking, and session continuity are
+ * untouched), and drop the marker a running team consumes within one poll. With a positive
+ * `inMs` (`wake --in`'s parsed duration) the wake is SCHEDULED: only the marker is written,
+ * its deadline this call's one clock read plus inMs — the state change belongs to the
+ * deadline, not to the submit, so a team stopped at submit (or restarted before the deadline)
+ * does not wake early; consumeWakeRequest clears the schedules when it consumes the marker at
+ * or after the deadline. The "wakes in" phrase is inMs itself, not the deadline minus a
+ * second clock read (the rule timedPauseBits follows): a caller-computed deadline let a
+ * millisecond of clock time between the two reads print "wakes in 2699999ms" for `--in 45m`.
+ * Returns the confirmation the surfaces print verbatim (`message`) plus the `--json`
+ * acknowledgement: `status` `requested` (immediate) or `scheduled` (`inMs` positive, adding
+ * `inMs` — the call's own duration, never a recomputed deadline delta — and `atMs`, the
+ * scheduled marker's `notBeforeMs`), `roles`, `live`, and the disabled targets `disabled`.
+ * The single-writer rule and atomicity notes `requestResetCounters` carries apply here too:
+ * with a live team only the marker is written; a scheduled wake gets its own file so a later
+ * wake request cannot overwrite it. */
+export function requestWakeOutcome(root: string, roles: string[], inMs?: number): { message: string; payload: Record<string, unknown> } {
   const now = Date.now();
-  // Deferred only for a genuinely positive delay: zero or less reads as immediate, so the
-  // immediate and scheduled paths share one consumer contract.
   const deferred = inMs !== undefined && inMs > 0;
-  // Same single-writer rule as requestResetCounters: with a live team consumeWakeRequest
-  // clears the affected runners' in-memory schedules and the runners save them, and writes the
-  // file for a requested role that has no runner (a disabled role), so a direct state rewrite
-  // here would race those whole-file saves and lose one side's update. Without a team there is
-  // no concurrent writer, and the file write is what carries the wake to the next run. A
-  // scheduled wake already skips the direct write — see the docstring.
   const { live, when } = markerApplyNote(root);
-  if (!deferred && !live)
-    for (const r of roles) saveRunnerState(root, clearBackoff(loadRunnerState(root, r), now));
-  // Atomic — see requestResetCounters: a torn wake marker reads as corrupt and wakes every
-  // runner immediately, dropping a scheduled wake's notBeforeMs on the floor. A scheduled wake
-  // gets its own file so a later wake request, immediate or scheduled, cannot overwrite it.
+  const disabled = disabledOf(root, roles);
+  const disabledNote = disabled.length === 0 ? "" : disabledWakeNote(root, roles);
   if (deferred) {
     ensureDir(scheduledWakeDir(root));
+    const atMs = now + inMs;
     writeJsonAtomic(
       path.join(scheduledWakeDir(root), `${now}-${process.pid}-${crypto.randomBytes(4).toString("hex")}.json`),
-      { at: now, roles, notBeforeMs: now + inMs },
+      { at: now, roles, notBeforeMs: atMs },
     );
-  } else writeJsonAtomic(wakeRequestPath(root), { at: now, roles });
-  // Same liveness contract as reset-counters and pause/resume: only a live team consumes the
-  // marker, so say so instead of promising a poll that will not happen.
-  const disabledNote = disabledWakeNote(root, roles);
-  if (deferred)
-    return (
+    const message =
       `wake scheduled for ${roles.join(", ")} — wakes in ${durationLabel(inMs)} — ` +
       (live
         ? "the running team applies it within one poll after the deadline"
         : "tumwater is not running — the next `tumwater start` applies it after the deadline") +
-      disabledNote
-    );
-  return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}${disabledNote}`;
+      disabledNote;
+    return { message, payload: { command: "wake", status: "scheduled", roles, inMs, atMs, live, disabled } };
+  }
+  if (!live)
+    for (const r of roles) saveRunnerState(root, clearBackoff(loadRunnerState(root, r), now));
+  writeJsonAtomic(wakeRequestPath(root), { at: now, roles });
+  const message = `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}${disabledNote}`;
+  return { message, payload: { command: "wake", status: "requested", roles, live, disabled } };
 }
 
 /** The ids among `roles` whose config entry is `enabled: false`; empty when the config
