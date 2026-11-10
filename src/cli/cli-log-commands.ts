@@ -1,7 +1,7 @@
-import { fail, say, sayJsonLine } from "./cli-output.js";
+import { fail, say, sayJson, sayJsonLine } from "./cli-output.js";
 import { hasFollowFlag, LOGS_TRANSCRIPT_VALUE_ERROR } from "./cli-flag-specs.js";
 import { betweenWindow, durationLabel } from "../text/duration.js";
-import { failFollowSinceRival, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";
+import { failFollowJsonRival, failFollowSinceRival, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,
@@ -138,7 +138,8 @@ const LOGS_MAX_EVENTS = 100_000;
  * [--grep <text>]`: follow or dump the harness event log, with `--since` a bounded
  * past window of it and `--role` keeping only the listed roles' events (a base role id takes its
  * instances too),
- * or with `--transcript` one role's agent transcript (see cmdLogsTranscript). `-f` follows until
+ * or with `--transcript` one role's agent transcript (see cmdLogsTranscript), which also accepts
+ * `--json` for one document of its rendered lines. `-f` follows until
  * Ctrl+C or until its parent process exits. */
 export async function cmdLogs(root: string, args: string[], seams: FollowSeams = {}): Promise<void> {
   const feed = parseLogsFeed(root, args);
@@ -163,7 +164,7 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   const showPrompts = feed.rest.includes("--prompt");
   if (showPrompts && role === null) fail("logs --prompt needs --transcript <id>");
   if (role !== null) {
-    await cmdLogsTranscript(root, role, limit, feed.follow, showPrompts, feed.grepLower, feed.grepPattern, seams);
+    await cmdLogsTranscript(root, role, limit, feed.follow, showPrompts, feed.grepLower, feed.grepPattern, feed.json, seams);
     return;
   }
   await sayLogsTail(root, feed, limit, seams);
@@ -248,11 +249,10 @@ function parseLogsFeed(root: string, args: string[]): LogsFeed {
   // the raw HarnessEvent objects exactly as stored in the log — so scripts read the canonical
   // schema instead of parsing a rendering that changes shape whenever the formatter evolves.
   // It composes with -n, --grep, --since and -f (the grep filter applies before serialization,
-  // the follow streams JSON lines as events land), but not with --transcript: that view is a pi
-  // transcript of human-oriented prose, not the event log (--prompt requires --transcript, so it is
-  // excluded with it).
+  // the follow streams JSON lines as events land). With --transcript it is the transcript
+  // document rather than the event log: cmdLogsTranscript prints { "transcript": [...] } (--prompt
+  // requires --transcript, so it composes there too).
   const json = rest.includes("--json");
-  rejectTranscriptViewRival(rest, "--json", json);
   // `--count` tallies the window's present event types instead of printing the rows. Rival
   // shapes stay exclusive: counting implies a bounded window (so -f/--follow is rejected)
   // and the --transcript view is the role's agent transcript rather than the event log.
@@ -401,7 +401,12 @@ function sayLogsTailNoMatch(feed: LogsFeed): void {
  * each run's exact prompt text. Read-only; the raw log is pi's streaming event stream, so only
  * complete renderable events are shown. With `--grep`, only entries with a rendered line
  * containing the text (case-insensitively) print, each under its run's separator; `-n` still
- * bounds the entries scanned, not printed. */
+ * bounds the entries scanned, not printed. With `--json` (refusing `-f/--follow` — a live
+ * follow is a stream, `--json` is one document — and composing with `-n`, `--prompt` and
+ * `--grep`) it prints one `{ "transcript": [...] }` document of the same rendered lines the
+ * text view prints, oldest first — an empty or missing transcript is an empty array, and a
+ * `--grep` miss is one too — instead of prose, the live twin of `history <role> <n>
+ * --transcript --json`. */
 async function cmdLogsTranscript(
   root: string,
   role: string,
@@ -410,22 +415,30 @@ async function cmdLogsTranscript(
   showPrompts: boolean,
   needle: string | null,
   pattern: string | null,
+  json: boolean,
   seams: FollowSeams,
 ): Promise<void> {
+  if (follow && json) failFollowJsonRival("logs --transcript --json");
   const file = piLogPath(root, role);
   const opts = { includePrompts: showPrompts };
 
   const filter = needle === null ? null : createTranscriptFilter(needle);
   let matched = 0;
+  const jsonLines: string[] = [];
   const printEntry = (lines: string[]) => {
     if (lines.length === 0) return;
-    if (filter === null) {
-      say(lines.join("\n"));
+    // The --grep filter applies in both renderings; only the output differs — text says the
+    // lines, --json collects them — so the two views cannot drift on what a matched entry holds.
+    let out: string[] | null = lines;
+    if (filter !== null) {
+      out = filter(lines);
+      if (out === null) return;
+      matched++;
+    }
+    if (json) {
+      jsonLines.push(...out);
       return;
     }
-    const out = filter(lines);
-    if (out === null) return;
-    matched++;
     say(out.join("\n"));
   };
 
@@ -435,12 +448,19 @@ async function cmdLogsTranscript(
   // it completes instead of lost.
   let offset = 0;
   const tail = readTranscriptTail(file, limit, opts); // null when there's no log yet (or it's empty).
+  if (json) {
+    // The machine-readable twin of the text view: one document of the rendered lines, never
+    // prose — a missing or empty transcript is an empty array, and a --grep miss is one.
+    if (tail) for (const entry of tail.entries) printEntry(entry);
+    sayJson({ transcript: jsonLines });
+    return;
+  }
   if (!tail) {
     say(`no transcript yet for ${role}`);
   } else {
     for (const entry of tail.entries) printEntry(entry);
-    offset = tail.end;
     if (needle !== null && matched === 0) say(`no transcript entries matching "${pattern ?? ""}" for ${role}`);
+    offset = tail.end;
   }
   if (!follow) return;
 

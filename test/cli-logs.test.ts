@@ -199,6 +199,11 @@ test("logs --transcript validates the role id and reports a missing transcript",
   r = await cli(repo, "logs", "--transcript", "clean");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /no transcript yet for clean/);
+
+  // --json answers the missing transcript with an empty document, exit 0, not prose.
+  r = await cli(repo, "logs", "--transcript", "clean", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { transcript: [] });
 });
 
 test("logs --role rejects an unknown id and the --transcript view", async () => {
@@ -263,6 +268,45 @@ test("logs --transcript prints the rendered pi transcript and -n limits entries"
   assert.equal(r.code, 0);
   assert.ok(!r.stdout.includes("Reading PLANS.md."), r.stdout);
   assert.ok(r.stdout.includes("  second run done"), r.stdout);
+});
+
+test("logs --transcript --json prints the rendered lines as one document", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "transcript json test");
+  const TS1 = 1787222691956;
+  const TS2 = TS1 + 3_600_000;
+  const file = piLogPath(repo, "clean");
+  writeLogLines(file, [
+      JSON.stringify({ type: "session", version: 3, id: "x" }),
+      JSON.stringify({ type: "agent_start" }),
+      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "run prompt one" }], timestamp: TS1 } }),
+      JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "turn one" }], stopReason: "stop" } }),
+      JSON.stringify({ type: "agent_start" }),
+      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "run prompt two" }], timestamp: TS2 } }),
+      JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "turn two" }], stopReason: "stop" } }),
+    ]);
+  const sep1 = `── run @ ${expectedTimestamp(TS1)} ──`;
+  const sep2 = `── run @ ${expectedTimestamp(TS2)} ──`;
+
+  // The whole transcript: one document whose array equals the text view's lines, oldest first.
+  let r = await cli(repo, "logs", "--transcript", "clean", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { transcript: [sep1, "  turn one", sep2, "  turn two"] });
+
+  // -n 1: only the newest entry's lines.
+  r = await cli(repo, "logs", "--transcript", "clean", "--json", "-n", "1");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { transcript: [sep2, "  turn two"] });
+
+  // --prompt adds each run's prompt lines under its separator, before that run's turn.
+  r = await cli(repo, "logs", "--transcript", "clean", "--json", "--prompt");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { transcript: [sep1, "run prompt one", "  turn one", sep2, "run prompt two", "  turn two"] });
+
+  // --grep matching only the older turn keeps just that turn, under its run separator.
+  r = await cli(repo, "logs", "--transcript", "clean", "--json", "--grep", "turn one");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { transcript: [sep1, "  turn one"] });
 });
 
 test("logs --transcript --prompt shows each run's exact prompt and -n limits to the newest", async () => {

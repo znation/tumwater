@@ -2,10 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { initProject } from "../src/init/init.js";
-import { eventsLogPath } from "../src/paths.js";
+import { eventsLogPath, piLogPath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli, spawnCli } from "./helpers/cli-harness.js";
 import { COMMIT_A, COMMIT_B, seedMixedLog, writeLogLines } from "./fixtures/log-fixtures.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 
 // The `logs` command's window-and-filter CLI tests — --since, --grep, --json and --until, and
 // their docs pins — split from cli-logs.test.ts so node --test runs them in parallel processes.
@@ -376,18 +377,36 @@ test("logs --since --json over an empty window prints nothing", async () => {
   assert.equal(r.stdout, "", r.stdout); // No "no events in 5m" prose.
 });
 
-test("logs --transcript --json fails, naming both flags", async () => {
+test("logs --transcript --json answers a grep miss and a follow with the right error", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli logs json role");
+  const TS1 = 1787222691956;
+  const file = piLogPath(repo, "clean");
+  writeLogLines(file, [
+      JSON.stringify({ type: "session", version: 3, id: "x" }),
+      JSON.stringify({ type: "agent_start" }),
+      JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "run one" }], timestamp: TS1 } }),
+      assistantLine("needle word here"),
+      JSON.stringify({ type: "agent_start" }),
+      assistantLine("other turn text"),
+    ]);
 
-  let r = await cli(repo, "logs", "--transcript", "clean", "--json");
+  // A --grep matching nothing prints the empty document, exit 0, not the prose miss line.
+  let r = await cli(repo, "logs", "--transcript", "clean", "--json", "--grep", "nosuchthing");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { transcript: [] });
+  assert.ok(!r.stdout.includes("no transcript entries"), r.stdout);
+
+  // --json with -f/--follow is refused naming both, before anything is printed.
+  r = await cli(repo, "logs", "--transcript", "clean", "--json", "-f");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json .*--transcript/);
+  assert.match(r.stderr, /--json/);
+  assert.match(r.stderr, /-f\/--follow/);
 
-  // --prompt requires --transcript, so it is excluded with it.
+  // --prompt without --transcript keeps its existing failure.
   r = await cli(repo, "logs", "--json", "--prompt");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json .*--prompt/);
+  assert.match(r.stderr, /logs --prompt needs --transcript/);
 });
 
 test("tumwater help logs documents --json", async () => {
