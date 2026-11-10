@@ -63,6 +63,21 @@ test("brief --file on a head off the base branch rolls the edit back and reports
   assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), before);
 });
 
+test("brief --file --json refuses the slipped flag instead of reading it as a path", async () => {
+  const repo = await initializedRepo();
+  const before = fs.readFileSync(path.join(repo, "README.md"), "utf8");
+  const head = sh(repo, "git", "rev-parse", "HEAD");
+  // A -- token in the --file value slot is a slipped flag (the operator meant --json, not a
+  // file named --json): refuse it with the shared flag-shaped-value wording, not a deep
+  // "cannot read prompt file "--json"", matching every other --file-taking command. The
+  // brief file must stay untouched either way.
+  const r = await cli(repo, "brief", "--file", "--json");
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /--file needs a value \(the next token "--json" is a flag, not a value\)/);
+  assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), before);
+  assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
+});
+
 test("brief --file refuses empty, over-long, and marker-bearing text without touching the brief", async () => {
   const repo = await initializedRepo();
   const before = fs.readFileSync(path.join(repo, "README.md"), "utf8");
