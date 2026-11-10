@@ -332,7 +332,7 @@ export function withStateLock<T>(lock: string, fn: () => T, timeoutMs = 10_000):
  * writer and an async one on the same path exclude each other; ensureParentDir runs first for the
  * same reason. The default timeout is withStateLock's, not withLock's longer merge-lock budget:
  * these sections are one file read-modify-write or one fast-forward. */
-export async function withStateLockAsync<T>(lock: string, fn: () => Promise<T>, timeoutMs = 10_000): Promise<T> {
+async function withStateLockAsync<T>(lock: string, fn: () => Promise<T>, timeoutMs = 10_000): Promise<T> {
   ensureParentDir(lock);
   return withLock(lock, fn, timeoutMs);
 }

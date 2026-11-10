@@ -93,7 +93,7 @@ const defaultFetch: CatalogFetch = async (url, timeoutMs) => {
 /** GET models.dev's catalog, bounded at 30 s. Returns the parsed JSON body, or the injected
  * (or default) fetch throws on a failure. So a spare `opencode` binary is never needed just to
  * cable this up; the version check that forces a refresh lives in refreshOpencodeCatalog. */
-export async function fetchOpencodeCatalog(fetchFn: CatalogFetch = defaultFetch): Promise<unknown> {
+async function fetchOpencodeCatalog(fetchFn: CatalogFetch = defaultFetch): Promise<unknown> {
   return fetchFn(CATALOG_URL, CATALOG_FETCH_TIMEOUT_MS);
 }
 

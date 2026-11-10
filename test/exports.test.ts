@@ -22,7 +22,7 @@ const ALLOWED = new Set<string>([]);
 // `// export const x` and other comment lines are not declarations. Block-comment lines
 // (`* ...`, `/* ...`) are skipped the same way.
 const DECLARATION =
-  /^\s*export\s+(?:function|const|let|class|interface|type|enum)\s+([A-Za-z0-9_$]+)/;
+  /^\s*export\s+(?:async\s+function|function|const|let|class|interface|type|enum)\s+([A-Za-z0-9_$]+)/;
 
 function tsFiles(dir: string): string[] {
   const out: string[] = [];

@@ -348,7 +348,7 @@ export function isCommitRef(span: string): boolean {
  * ever spells a commit id, so the haystack could never back one: a Fix paragraph citing the
  * commit it reviewed or landed in read as a phantom fix. An id that names no commit stays
  * missing, so an invented one is still rejected. */
-export async function withoutKnownCommits(wt: string, missing: string[]): Promise<string[]> {
+async function withoutKnownCommits(wt: string, missing: string[]): Promise<string[]> {
   const out: string[] = [];
   for (const name of missing) {
     const sha = COMMIT_REF_RE.exec(name)?.[1];

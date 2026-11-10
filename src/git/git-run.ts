@@ -16,7 +16,7 @@ const COMMIT_AUTHOR = "tumwater <tumwater@localhost>";
  * process-global cache: identity is resolved per call against the command's `cwd`, so a
  * repo (or a test) with its own local identity reads correctly and no cross-repo bleed is
  * possible. */
-export async function committerIdent(
+async function committerIdent(
   cwd: string,
 ): Promise<{ name: string; email: string }> {
   const name = (await gitTry(cwd, "config", "user.name"))?.trim() ?? "";

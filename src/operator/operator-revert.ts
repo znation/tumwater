@@ -20,7 +20,7 @@ import { runMergedSha } from "../history/run-detail-data.js";
  * inverse as `message`. `wt` must have a clean tracked tree (so `--abort` after a conflict has
  * nothing to discard). Never throws; a conflict or a failed commit aborts the revert and comes
  * back as `{ ok: false, error }` with `wt` as it was. */
-export async function revertCommitIn(
+async function revertCommitIn(
   wt: string,
   sha: string,
   message: string,
