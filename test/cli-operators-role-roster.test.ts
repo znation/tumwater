@@ -272,6 +272,10 @@ test("role --enable and --disable write the role's enabled state", async () => {
     assert.equal(r.code, 1);
     assert.match(r.stderr, /unknown role: bogus/);
   }
+  r = await cli(repo, "role", "bogus", "--enable", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus/);
+  assert.equal(r.stdout, "");
   assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), beforeBogus, "file unchanged on unknown id");
 
   // --enable/--disable now take --json (the same acknowledgement the hold writes print): a
@@ -342,13 +346,16 @@ test("role --enable and --disable write the role's enabled state", async () => {
   assert.equal(r.code, 1);
   assert.match(r.stderr, /the director cannot be disabled/);
   assert.equal(r.stdout, "");
-  assert.equal(r.stdout, "");
 
   // --enable --disable and combining either with another role write are refused, name the kinds.
   const beforeCombos = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
   r = await cli(repo, "role", "feature", "--enable", "--disable");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /enable and disable writes cannot share one invocation/);
+  r = await cli(repo, "role", "feature", "--enable", "--disable", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /enable and disable writes cannot share one invocation/);
+  assert.equal(r.stdout, "");
   r = await cli(repo, "role", "feature", "--disable", "--clear-notes");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /notes and disable writes cannot share one invocation/);

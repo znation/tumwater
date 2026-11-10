@@ -626,7 +626,8 @@ Usage:
   tumwater role <id> --clear-instructions [--json]
                                    Clear that role's instructions override; [--json] prints
                                    one { command:"role", action:"clear", role, key,
-                                   status (cleared or not_set), oldValue } object
+                                   status (cleared or not_set; oldValue only when
+                                   cleared) } object
   tumwater role <id> --instructions-file <path> [--json]
                                    Replace that role's instructions override from a file
                                    ("-" reads stdin; 4 KB cap), written to roles.<id>.instructions;
