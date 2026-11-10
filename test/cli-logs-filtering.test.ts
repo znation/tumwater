@@ -403,10 +403,10 @@ test("logs --transcript --json answers a grep miss and a follow with the right e
   assert.match(r.stderr, /--json/);
   assert.match(r.stderr, /-f\/--follow/);
 
-  // --prompt without --transcript keeps its existing failure.
+  // --prompt without --transcript keeps its existing failure and wording.
   r = await cli(repo, "logs", "--json", "--prompt");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /logs --prompt needs --transcript/);
+  assert.match(r.stderr, /--json .*--prompt/);
 });
 
 test("tumwater help logs documents --json", async () => {

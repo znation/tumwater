@@ -253,6 +253,10 @@ function parseLogsFeed(root: string, args: string[]): LogsFeed {
   // document rather than the event log: cmdLogsTranscript prints { "transcript": [...] } (--prompt
   // requires --transcript, so it composes there too).
   const json = rest.includes("--json");
+  // `--json` is no longer a rival of the transcript view, but `--prompt` still needs that view:
+  // keep the existing --json/--prompt failure (and its wording) when no --transcript is given.
+  if (json && rest.includes("--prompt") && !rest.includes("--transcript"))
+    rejectTranscriptViewRival(rest, "--json", true);
   // `--count` tallies the window's present event types instead of printing the rows. Rival
   // shapes stay exclusive: counting implies a bounded window (so -f/--follow is rejected)
   // and the --transcript view is the role's agent transcript rather than the event log.
