@@ -171,27 +171,11 @@ async function collectRoleChangeAt(
   // usability probe still answers the final question.
   const wt = await roleWorktreeDir(root, role);
   if (wt === null || !(await isUsableWorktree(wt))) return { ...empty, state: "absent" };
-  const ahead = await aheadOfMain(wt, mainBranch);
-  const behind = await countCommitsInRange(wt, `HEAD..${mainBranch}`);
   // Under opts.path every git call below is limited to that path through a literal pathspec.
   const spec = opts.path === undefined ? [] : ["--", `:(literal)${opts.path}`];
-  const commits = parseOnelineLog(await gitTry(wt, "log", "--oneline", `${mainBranch}..HEAD`, ...spec));
-  // Under opts.stat both halves hold the uncapped `git diff --stat` summary (one line per file).
-  // A view: a diff git fails to produce shows empty, as it always did.
-  const diff =
-    commits.length === 0
-      ? ""
-      : opts.stat
-        ? ((await gitTry(wt, "diff", "--stat", `${mainBranch}...HEAD`, ...spec)) ?? "")
-        : await aheadOfMainDiff(wt, mainBranch, DIFF_MAX_BYTES, spec).catch(() => "");
-  // A view: a git that fails to answer shows no uncommitted edits, as it always did.
-  const dirtyFiles = (await changedFiles(wt).catch(() => [])).filter((f) => inPath(f, opts.path));
-  const uncommittedDiff =
-    dirtyFiles.length === 0
-      ? ""
-      : opts.stat
-        ? ((await gitTry(wt, "diff", "--stat", "HEAD", ...spec)) ?? "")
-        : await cappedWorkingDiff(wt, spec);
+  const { ahead, behind, commits } = await roleChangeCommitState(wt, mainBranch, spec);
+  const diff = await roleChangeDiff(wt, mainBranch, commits.length, opts.stat, spec);
+  const { dirtyFiles, uncommittedDiff } = await roleChangeUncommitted(wt, opts.stat, opts.path, spec);
   return {
     ...empty,
     state: "ready",
@@ -203,6 +187,57 @@ async function collectRoleChangeAt(
     uncommittedDiff,
     ...(opts.path === undefined ? {} : { path: opts.path }),
   };
+}
+
+/** The commit half of a role's change view: how far the branch is ahead and behind the main
+ * branch, and the commits it holds ahead of it. Each read degrades to empty when git cannot
+ * answer, as `collectRoleChangeAt` always did. */
+async function roleChangeCommitState(
+  wt: string,
+  mainBranch: string,
+  spec: string[],
+): Promise<Pick<RoleChangeView, "ahead" | "behind" | "commits">> {
+  const ahead = await aheadOfMain(wt, mainBranch);
+  const behind = await countCommitsInRange(wt, `HEAD..${mainBranch}`);
+  const commits = parseOnelineLog(await gitTry(wt, "log", "--oneline", `${mainBranch}..HEAD`, ...spec));
+  return { ahead, behind, commits };
+}
+
+/** The committed half of a role's change view: the patch of the commits ahead of the main
+ * branch — empty when there are none, the uncapped `git diff --stat` summary under `--stat`,
+ * otherwise the ahead-of-main patch bounded to DIFF_MAX_BYTES. A diff git fails to produce
+ * shows empty, as it always did. */
+async function roleChangeDiff(
+  wt: string,
+  mainBranch: string,
+  commitCount: number,
+  stat = false,
+  spec: string[],
+): Promise<string> {
+  return commitCount === 0
+    ? ""
+    : stat
+      ? ((await gitTry(wt, "diff", "--stat", `${mainBranch}...HEAD`, ...spec)) ?? "")
+      : aheadOfMainDiff(wt, mainBranch, DIFF_MAX_BYTES, spec).catch(() => "");
+}
+
+/** The uncommitted half of a role's change view: the dirty files and the working diff (the
+ * `git diff --stat` summary under `--stat`, otherwise the patch capped at DIFF_MAX_BYTES).
+ * A git that fails to answer shows no uncommitted edits, as it always did. */
+async function roleChangeUncommitted(
+  wt: string,
+  stat = false,
+  path: string | undefined,
+  spec: string[],
+): Promise<Pick<RoleChangeView, "dirtyFiles" | "uncommittedDiff">> {
+  const dirtyFiles = (await changedFiles(wt).catch(() => [])).filter((f) => inPath(f, path));
+  const uncommittedDiff =
+    dirtyFiles.length === 0
+      ? ""
+      : stat
+        ? ((await gitTry(wt, "diff", "--stat", "HEAD", ...spec)) ?? "")
+        : await cappedWorkingDiff(wt, spec);
+  return { dirtyFiles, uncommittedDiff };
 }
 
 /** Parse `git log --oneline` output into {sha, subject} pairs — sha up to the first space,
