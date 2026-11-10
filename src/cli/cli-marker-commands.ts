@@ -44,7 +44,8 @@ export async function runMarkerCommand(root: string, command: MarkerCommand, arg
   // operator pause's why), and `--json` (one acknowledgement object instead of the prose
   // confirmation); `wake` alone accepts `--in <duration>` (the scheduled wake) and
   // `--cancel [<n>]` (drop the pending scheduled wakes, or just the Nth as `--list` numbers
-  // it), `--list` (show them), and `--json` (with --list); `reclaim` alone accepts
+  // it), `--list` (show them), and `--json` (one acknowledgement object on every form,
+  // or the wake rows with --list); `reclaim` alone accepts
   // `--dry-run` (and `--json` with it); `abort` and `restart` accept `--json` alone (one
   // acknowledgement object each); the other
   // marker commands keep the plain --role vocabulary, so a stray --for, --reason, --in,
