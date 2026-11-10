@@ -115,18 +115,109 @@ test("role --provider/--model/--thinking (and --clear-*) write the role's model 
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role: bogus/);
 
-  // --json is refused with any of the three writes.
+  // --json prints one acknowledgement object in place of the prose line.
   r = await cli(repo, "role", "feature", "--model", "gpt-5", "--json");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json does not apply to a model write/);
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.model",
+    status: "set",
+    value: "gpt-5",
+  });
+
+  // Repeating the same set prints unchanged and leaves the file byte-identical.
+  const beforeModelSame = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "feature", "--model", "gpt-5", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.model",
+    status: "unchanged",
+    value: "gpt-5",
+  });
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), beforeModelSame, "an unchanged write leaves the file byte-identical");
+
+  // A clear prints cleared with oldValue; a second clear prints not_set with no oldValue.
+  r = await cli(repo, "role", "feature", "--clear-model", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "clear",
+    role: "feature",
+    key: "roles.feature.model",
+    status: "cleared",
+    oldValue: "gpt-5",
+  });
+  r = await cli(repo, "role", "feature", "--clear-model", "--json");
+  assert.equal(r.code, 0);
+  const modelNotSet = JSON.parse(r.stdout) as { command: string; action: string; role: string; key: string; status: string; oldValue?: unknown };
+  assert.deepEqual(modelNotSet, {
+    command: "role",
+    action: "clear",
+    role: "feature",
+    key: "roles.feature.model",
+    status: "not_set",
+  });
+  assert.equal("oldValue" in modelNotSet, false, "not_set carries no oldValue");
+
+  // An instance id names the base role and the base key.
+  const instConfig = readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
+  instConfig.roles = { ...instConfig.roles, feature: { ...instConfig.roles.feature, instances: 2 } };
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(instConfig, null, 2));
+  r = await cli(repo, "role", "feature-2", "--model", "strong", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.model",
+    status: "set",
+    value: "strong",
+  });
+
+  // The other three model-override fields each print their own key with the typed string.
   r = await cli(repo, "role", "feature", "--provider", "openai", "--json");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json does not apply to a provider write/);
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.provider",
+    status: "set",
+    value: "openai",
+  });
   r = await cli(repo, "role", "feature", "--thinking", "high", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.thinking",
+    status: "set",
+    value: "high",
+  });
+
+  // A bad thinking level with --json exits 1, writes the existing validation wording to
+  // stderr, prints nothing on stdout, and leaves tumwater.json unchanged.
+  const beforeBadThinkingJson = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "feature", "--thinking", "bogus", "--json");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json does not apply to a thinking write/);
+  assert.match(r.stderr, /roles\.feature\.thinking must be one of off, minimal, low, medium, high, xhigh, max \(got "bogus"\)/);
+  assert.equal(r.stdout, "", "a refusal prints nothing on stdout");
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), beforeBadThinkingJson, "a refused write leaves the file unchanged");
+
+  // An unknown role id with --json is refused the same way.
+  r = await cli(repo, "role", "bogus", "--model", "gpt-5", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus/);
+  assert.equal(r.stdout, "", "an unknown id prints nothing on stdout");
 
   // --clear-X alongside --X is refused.
+  const beforeRefusals = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
   r = await cli(repo, "role", "feature", "--clear-model", "--model", "gpt-5");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /give --clear-model or --model, not both/);
@@ -140,8 +231,8 @@ test("role --provider/--model/--thinking (and --clear-*) write the role's model 
   r = await cli(repo, "role", "feature", "--model", "gpt-5", "--cap", "5");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /cap and model writes cannot share one invocation/);
-  // All the refusals above left the file unchanged (it still holds the cleared state).
-  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, "file unchanged after all refusals");
+  // All the refusals above left the file unchanged (it still holds the JSON block's state).
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), beforeRefusals, "file unchanged after all refusals");
 
   // The director's model-triple writes are accepted (configForRole resolves roles.director.*).
   r = await cli(repo, "role", "director", "--model", "opus-4");
@@ -192,13 +283,22 @@ test("role --backend writes and clears the backend override", async () => {
   assert.match(r.stderr, /roles\.qa\.backend must name a backend \(pi, claude, opencode, codex; got "claud"\)/);
   assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), beforeBad, "file unchanged on a bad backend id");
 
-  // --backend with --clear-backend, or with --json, is refused.
+  // --backend with --clear-backend is refused.
   r = await cli(repo, "role", "qa", "--clear-backend", "--backend", "codex");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /give --clear-backend or --backend, not both/);
+
+  // --backend --json prints one acknowledgement object with the backend's key.
   r = await cli(repo, "role", "qa", "--backend", "codex", "--json");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json does not apply to a backend write/);
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "qa",
+    key: "roles.qa.backend",
+    status: "set",
+    value: "codex",
+  });
 
   // A clear removes the key; clearing an unset key writes nothing.
   r = await cli(repo, "role", "qa", "--clear-backend");

@@ -126,10 +126,10 @@ function requireKnownRole(root: string, id: string): void {
  * `clearFlag` are the exact spellings the refusal names (the clear twin is not always
  * `--clear` + the set flag — `--notes-file`'s twin is `--clear-notes`). The --json refusal
  * no longer lives here: the per-role hold writes (quiet hours, daily cap, min run interval,
- * instances) honor --json and print their own acknowledgement, while the prose-only writes
- * (notes, instructions, the model-override fields, enable/disable) each refuse it with
- * their own noun. Every set/clear write branch opens with the same two-line prelude, so
- * this keeps the set/clear-rival check in one place. */
+ * instances) and the model-override writes (provider, model, thinking, backend) honor --json
+ * and print their own acknowledgement, while the prose-only writes (notes, instructions,
+ * enable/disable) each refuse it with their own noun. Every set/clear write branch opens with
+ * the same two-line prelude, so this keeps the set/clear-rival check in one place. */
 function rejectSetAndClear(rest: string[], setFlag: string, clearFlag: string): void {
   if (rest.includes(setFlag) && rest.includes(clearFlag))
     fail(`give ${clearFlag} or ${setFlag}, not both`);
@@ -498,13 +498,12 @@ function writeInstances(root: string, id: string, rest: string[], clearInstances
  * role's key. Every branch calls writeRoleConfigKey with the same JSON-encode/identity
  * shaping, differing only in the flag spellings, the key field and the noun the confirmation
  * line names — one table, one body. */
-function writeModelField(root: string, id: string, rest: string[], field: string, clear: boolean, flag: string, clearFlag: string, noun: string): void {
+function writeModelField(root: string, id: string, rest: string[], field: string, clear: boolean, flag: string, clearFlag: string, noun: string, json: boolean): void {
   rejectSetAndClear(rest, flag, clearFlag);
-  if (rest.includes("--json")) fail(`--json does not apply to a ${noun} write`);
   requireKnownRole(root, id);
   const base = baseRoleOf(id);
   const value = flagValue(rest, flag) ?? "";
-  writeRoleConfigKey(root, base, clear, value, `roles.${base}.${field}`, noun, (v) => JSON.stringify(v), (v) => v, false);
+  writeRoleConfigKey(root, base, clear, value, `roles.${base}.${field}`, noun, (v) => JSON.stringify(v), (v) => v, json);
 }
 
 /** `tumwater role <id>`'s enable/disable write: the scoped write for the enabled state
@@ -600,10 +599,10 @@ export async function cmdRole(root: string, args: string[], seams: FollowViewSea
     cap: () => writeDailyCap(root, id, rest, f.clearCap, rest.includes("--json")),
     "min-run-interval": () => writeMinRunInterval(root, id, rest, f.clearInterval, rest.includes("--json")),
     instances: () => writeInstances(root, id, rest, f.clearInstances, rest.includes("--json")),
-    provider: () => writeModelField(root, id, rest, "provider", f.clearProvider, "--provider", "--clear-provider", "provider"),
-    model: () => writeModelField(root, id, rest, "model", f.clearModel, "--model", "--clear-model", "model"),
-    thinking: () => writeModelField(root, id, rest, "thinking", f.clearThinking, "--thinking", "--clear-thinking", "thinking"),
-    backend: () => writeModelField(root, id, rest, "backend", f.clearBackend, "--backend", "--clear-backend", "backend"),
+    provider: () => writeModelField(root, id, rest, "provider", f.clearProvider, "--provider", "--clear-provider", "provider", rest.includes("--json")),
+    model: () => writeModelField(root, id, rest, "model", f.clearModel, "--model", "--clear-model", "model", rest.includes("--json")),
+    thinking: () => writeModelField(root, id, rest, "thinking", f.clearThinking, "--thinking", "--clear-thinking", "thinking", rest.includes("--json")),
+    backend: () => writeModelField(root, id, rest, "backend", f.clearBackend, "--backend", "--clear-backend", "backend", rest.includes("--json")),
     enable: () => writeEnableDisable(root, id, rest, true, false),
     disable: () => writeEnableDisable(root, id, rest, false, true),
   };

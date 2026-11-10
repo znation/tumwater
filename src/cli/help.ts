@@ -601,8 +601,11 @@ Usage:
                                    status (set or unchanged), value } and a clear is { command:"role",
                                    action:"clear", role, key, status (cleared or not_set), oldValue } — where
                                    key is the config key written (e.g. quietHoursPerRole.<base>) and role is the
-                                   base role, so a script can hold or release a role without parsing the prose;
-                                   the notes/instructions and the model-override writes still take no --json
+                                   base role, so a script can hold or release a role without parsing the prose; the
+                                   four model-override writes (--provider, --model, --thinking, --backend and their
+                                   clears) take [--json] the same way, naming the roles.<base>.<field> key they write
+                                   (e.g. roles.<base>.model); the notes/instructions and enable/disable writes still take
+                                   no --json
   tumwater role <id> --clear-notes Clear that role's notes
   tumwater role <id> --notes-file <path>
                                    Replace that role's notes from a file ("-" reads stdin;
@@ -629,28 +632,28 @@ Usage:
                                    for the base id; clearing falls back to the team-wide interval
   tumwater role <id> --clear-min-run-interval [--json]
                                    Clear that role's own minimum-run interval
-  tumwater role <id> --provider <id>
+  tumwater role <id> --provider <id> [--json]
                                    Set that role's model provider (e.g. openai), written to
                                    roles.<id>.provider for the base id
-  tumwater role <id> --clear-provider
+  tumwater role <id> --clear-provider [--json]
                                    Clear that role's model provider
-  tumwater role <id> --model <id>  Set that role's model (a model id or a tier name like
+  tumwater role <id> --model <id> [--json]  Set that role's model (a model id or a tier name like
                                    strong), written to roles.<id>.model for the base id
-  tumwater role <id> --clear-model
+  tumwater role <id> --clear-model [--json]
                                    Clear that role's model
-  tumwater role <id> --thinking <level>
+  tumwater role <id> --thinking <level> [--json]
                                    Set that role's pi thinking level (off|minimal|low|
                                    medium|high|xhigh|max), written to roles.<id>.thinking
                                    for the base id
-  tumwater role <id> --clear-thinking
+  tumwater role <id> --clear-thinking [--json]
                                    Clear that role's thinking level
-  tumwater role <id> --backend <id>
+  tumwater role <id> --backend <id> [--json]
                                    Set that role's backend (pi|claude|opencode|codex — the
                                    agent that runs the model); a model that cannot pair with
                                    the backend is refused (e.g. a claude backend with a
                                    provider/model id, or a pi backend with a bare model id),
                                    written to roles.<id>.backend for the base id
-  tumwater role <id> --clear-backend
+  tumwater role <id> --clear-backend [--json]
                                    Clear that role's backend (back to the team/tier
                                    default backend)
   tumwater role <id> --enable      Enable the role, written to roles.<id>.enabled
