@@ -22,6 +22,7 @@ import { numberedList } from "../text/markdown.js";
 import { cancelScheduledWakeAt, cancelScheduledWakes, pendingScheduledWakes } from "./operator-requests.js";
 import {
   abortRequestPath,
+  modelCheckRequestPath,
   reclaimRequestPath,
   resetRequestPath,
   restartRequestPath,
@@ -295,6 +296,21 @@ export function requestRestart(root: string): RequestResult {
     `restart requested — ${applyClause(live, when, "applies it")}` +
     (live ? " (the restart cooldown is waived; a blocked restart still blocks)" : "");
   return { ok: true, message };
+}
+
+/** The marker-writing core of the model-check re-check, shared with the GUI's POST
+ * /api/model-check (part 2/2 of the re-check plan): drop the one-shot marker a running team
+ * consumes within one poll — a consumed marker clears every failed pair's back-off, so a fixed
+ * server is noticed on the next poll instead of up to 30 minutes out. The check exists only in
+ * a long-running team (the orchestrator holds the per-pair state in memory), and the next
+ * `tumwater start` re-probes every pair anyway, so with no live team nothing is written and the
+ * refusal is returned instead of a marker no one would consume. */
+export function requestModelCheck(root: string): RequestResult {
+  if (!markerApplyNote(root).live) {
+    return { ok: false, error: NO_HARNESS_ERROR };
+  }
+  writeJsonAtomic(modelCheckRequestPath(root), { at: Date.now() });
+  return { ok: true, message: "model check requested — the running team probes every failed pair within ~2s" };
 }
 
 /** The marker-writing core of `tumwater reclaim` (plans/disk-floor.md, part 3/4): drop the

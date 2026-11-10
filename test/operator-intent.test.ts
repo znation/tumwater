@@ -13,6 +13,7 @@ import {
   renderWakeList,
   markerApplyNote,
   requestAbort,
+  requestModelCheck,
   requestResetCounters,
   requestWake,
   requestWakeOutcome,
@@ -24,7 +25,7 @@ import {
 import { saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { readScheduledWakes } from "./helpers/json-read.js";
-import { orchestratorStatePath, pausedPath, scheduledWakeDir, STATE_DIR, wakeRequestPath } from "../src/paths.js";
+import { modelCheckRequestPath, orchestratorStatePath, pausedPath, scheduledWakeDir, STATE_DIR, wakeRequestPath } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readJsonFile } from "../src/files/json-files.js";
 import { writeMarker } from "./fixtures/log-fixtures.js";
@@ -325,6 +326,23 @@ test("requestAbort refuses with NO_HARNESS_ERROR when nothing is running", () =>
   const root = deadRoot();
   const r = requestAbort(root, "fix");
   assert.deepEqual(r, { ok: false, error: NO_HARNESS_ERROR });
+});
+
+test("requestModelCheck refuses with NO_HARNESS_ERROR and writes no marker when nothing is running", () => {
+  const root = deadRoot();
+  const r = requestModelCheck(root);
+  assert.deepEqual(r, { ok: false, error: NO_HARNESS_ERROR });
+  assert.equal(fs.existsSync(modelCheckRequestPath(root)), false, "no request file is written for a dead team");
+});
+
+test("requestModelCheck writes the marker and confirms for a live team", () => {
+  const root = liveRoot();
+  const r = requestModelCheck(root);
+  assert.equal(r.ok, true);
+  if (!r.ok) throw new Error("unreachable");
+  assert.equal(r.message, "model check requested — the running team probes every failed pair within ~2s");
+  const at = readJsonFile<{ at?: unknown }>(modelCheckRequestPath(root))?.at;
+  assert.equal(typeof at, "number", "the marker's body is { at } in epoch ms");
 });
 
 test("requestAbort drops a per-role marker for a live team and notes the director's discard", () => {

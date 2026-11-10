@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   consumeAbortRequests,
+  consumeModelCheckRequest,
   consumeReclaimRequest,
   consumeResetRequest,
   cancelScheduledWakeAt,
@@ -17,6 +18,7 @@ import { readEvents } from "../src/events/event-read.js";
 import {
   abortRequestPath,
   eventsLogPath,
+  modelCheckRequestPath,
   reclaimRequestPath,
   resetRequestPath,
   scheduledWakeDir,
@@ -465,6 +467,31 @@ test("consumeReclaimRequest with no controller still removes the marker", () => 
   writeMarker(marker, { at: 1 });
   assert.doesNotThrow(() => consumeReclaimRequest(root, null));
   assert.equal(fs.existsSync(marker), false, "the marker is consumed");
+});
+
+test("consumeModelCheckRequest asks the gate to re-check and removes the marker", () => {
+  const root = tmpdir();
+  const marker = modelCheckRequestPath(root);
+  writeMarker(marker, { at: 1 });
+  let rechecks = 0;
+  consumeModelCheckRequest(root, { recheckNow() { rechecks++; } });
+  assert.equal(rechecks, 1, "the gate is asked to re-check once");
+  assert.equal(fs.existsSync(marker), false, "the marker is consumed");
+});
+
+test("consumeModelCheckRequest with no marker changes nothing", () => {
+  const root = tmpdir();
+  let rechecks = 0;
+  consumeModelCheckRequest(root, { recheckNow() { rechecks++; } });
+  assert.equal(rechecks, 0, "nothing to re-check without a marker");
+});
+
+test("consumeModelCheckRequest with no gate still removes the marker", () => {
+  const root = tmpdir();
+  const marker = modelCheckRequestPath(root);
+  writeMarker(marker, { at: 1 });
+  assert.doesNotThrow(() => consumeModelCheckRequest(root, null));
+  assert.equal(fs.existsSync(marker), false, "the marker is consumed even with no gate");
 });
 
 function scheduledWake(root: string, name: string, roles: string[], notBeforeMs: number): string {

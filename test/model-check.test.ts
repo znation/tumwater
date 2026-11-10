@@ -17,6 +17,7 @@ import {
   dueModelChecks,
   modelCheckFailed,
   modelCheckHolds,
+  recheckModelChecks,
   recordModelCheck,
   rekeyModelChecks,
   startModelCheck,
@@ -131,6 +132,24 @@ test("the state machine: new pairs are due, verdicts verify or back off, suspici
   map = rekeyModelChecks(map, ["a/x"], 800_000);
   assert.deepEqual(Object.keys(map), ["a/x"]);
   assert.equal(rekeyModelChecks(map, ["a/x", "b/y"], 900_000)["b/y"]?.status, "checking");
+});
+
+test("recheckModelChecks clears every failed pair's back-off and leaves everything else as it was", () => {
+  const verified = { pair: "v/x", status: "verified" as const, failures: 0, probeAt: null, retryMs: 0, probing: false, checkedAt: 1000 };
+  const checking = { pair: "c/x", status: "checking" as const, failures: 0, probeAt: 1_000_000, retryMs: 0, probing: false };
+  const failedBackedOff = { pair: "f/x", status: "failed" as const, failures: 2, probeAt: 9_000_000, retryMs: 120_000, probing: false, checkedAt: 8_000_000, reason: "wrong answer" as const, reply: "salad" };
+  const failedInFlight = { pair: "p/x", status: "failed" as const, failures: 1, probeAt: 9_000_000, retryMs: 60_000, probing: true, checkedAt: 8_000_000, reason: "no reply" as const, reply: "" };
+  const map = { "v/x": verified, "c/x": checking, "f/x": failedBackedOff, "p/x": failedInFlight };
+  const rechecked = recheckModelChecks(map, 5_000_000);
+  // The failed, not-in-flight pair probes on the next poll.
+  assert.deepEqual([rechecked["f/x"]?.status, rechecked["f/x"]?.probeAt, rechecked["f/x"]?.failures, rechecked["f/x"]?.retryMs], ["failed", 5_000_000, 2, 120_000], "the failed pair's back-off is cleared; its failure count and retry base are kept");
+  assert.deepEqual(dueModelChecks(rechecked, 5_000_000), ["c/x", "f/x"], "the forced pair is due at once");
+  // The other three shapes are returned as their own entries, untouched.
+  assert.equal(rechecked["v/x"], verified, "a verified pair is unchanged");
+  assert.equal(rechecked["c/x"], checking, "a checking pair is unchanged");
+  assert.equal(rechecked["p/x"], failedInFlight, "a failed pair whose probe is in flight is unchanged");
+  // The input map is not mutated: the failed pair's probeAt is still its old value there.
+  assert.equal(map["f/x"]?.probeAt, 9_000_000);
 });
 
 /** A runner as the gate reads it: id, config, state, the config its next run uses, and the
@@ -280,6 +299,44 @@ test("the gate re-checks a suspected pair, follows a config edit, and aborts its
   assert.equal(signals.at(-1)?.aborted, true);
   answer("omlx/qwen", { ok: null });
   await closed;
+});
+
+test("the gate re-checks now: a re-check request re-probes a failed pair before its back-off comes due", async () => {
+  const root = makeRepo();
+  const config = teamConfig();
+  const runners = ["feature", "plan"].map((r) => runner(r, config));
+  const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: [] };
+  let now = 8_000_000;
+  const { prober, asked, answer } = manualProber();
+  const gate = new ModelCheckGate(root, prober, new AbortController().signal, POLICY, () => now);
+  const poll = () => gate.poll({ runners, liveConfig: config, roleConfig: config, info });
+  poll();
+  answer("hf/deepseek", { ok: true });
+  answer("flintrunner/flint", { ok: false, reason: "no reply", reply: "" });
+  await gate.settled();
+  assert.equal(asked.length, 2);
+  // The failed default pair is now on its back-off: its probeAt is in the future, so the next
+  // poll before that instant re-probes nothing.
+  now += 1000;
+  poll();
+  assert.equal(asked.length, 2, "the failed pair waits out its back-off");
+  // The operator asks for a re-check: the next poll probes the failed pair immediately, even
+  // though the clock has not reached its old probeAt.
+  gate.recheckNow();
+  poll();
+  assert.deepEqual(asked.slice(2), ["flintrunner/flint"], "the failed pair re-probes on the next poll");
+  // The forced probe fails again: the back-off continues (doubles) rather than restarting.
+  answer("flintrunner/flint", { ok: false, reason: "no reply", reply: "" });
+  await gate.settled();
+  assert.equal(gate.checks["flintrunner/flint"]?.retryMs, 2 * POLICY.retryMs, "the back-off doubles on the second failure");
+  // Requested again after that failure, the pair probes once more — and once it answers the
+  // roles run again.
+  gate.recheckNow();
+  poll();
+  assert.deepEqual(asked.slice(3), ["flintrunner/flint"], "a failed pair probes again on request");
+  answer("flintrunner/flint", { ok: true });
+  await gate.settled();
+  assert.deepEqual([...poll()], [], "the role runs again once the pair answers");
 });
 
 test("a run waiting on an unanswered request re-checks its pair at the suspicion rate and is handed back once it fails", async () => {

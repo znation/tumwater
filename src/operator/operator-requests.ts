@@ -13,6 +13,7 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import {
   abortRequestPath,
+  modelCheckRequestPath,
   reclaimRequestPath,
   resetRequestPath,
   restartRequestPath,
@@ -347,6 +348,15 @@ export function consumeRestartRequest(root: string, redeployer: { forceRestart()
  * controller (a team that predates the feature) the marker is still cleaned up. */
 export function consumeReclaimRequest(root: string, reclaim: { requestManual(): void } | null | undefined): void {
   consumeMarkerRequest(reclaimRequestPath(root), () => reclaim?.requestManual());
+}
+
+/** Consume a pending model-check re-check request from the dashboard's `Re-check now` button
+ * (POST /api/model-check, part 1/2 of the re-check plan), if any: ask the model-check gate to
+ * clear every failed pair's back-off (recheckNow) and remove the marker. With no gate (a team
+ * that predates the check) the marker is still cleaned up, so a stale marker can never re-fire
+ * a re-check on a later upgrade. */
+export function consumeModelCheckRequest(root: string, gate: { recheckNow(): void } | null | undefined): void {
+  consumeMarkerRequest(modelCheckRequestPath(root), () => gate?.recheckNow());
 }
 
 /** Consume per-role abort requests from `tumwater abort --role <id>`: one marker file per role (no

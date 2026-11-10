@@ -33,6 +33,7 @@ import {
   modelCheckFault,
   modelCheckHolds,
   modelCheckVerified,
+  recheckModelChecks,
   recordModelCheck,
   rekeyModelChecks,
   startModelCheck,
@@ -152,6 +153,16 @@ export class ModelCheckGate {
    * poll starts the probe. */
   suspect(pair: string): void {
     this.checks = suspectModelCheck(this.checks, pair, this.now(), this.policy);
+  }
+
+  /** An operator asked for the check to run now (the dashboard's `Re-check now` button part 1/2
+   * of the re-check plan): clear every failed pair's back-off (its probeAt moves to now) so the
+   * next poll probes it immediately, instead of waiting out the doubling back-off. It only
+   * schedules — the next `poll()` is what starts the probes through `launch`, so a probe already
+   * in flight is left alone, and a probe still `checking` (never reported) stays due at its own
+   * time. The marker that triggered it is consumed by the orchestrator, not here. */
+  recheckNow(): void {
+    this.checks = recheckModelChecks(this.checks, this.now());
   }
 
   /** The runs in flight whose model request has waited toolCallStallSeconds unanswered: each

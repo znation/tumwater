@@ -294,6 +294,16 @@ export function reclaimRequestPath(root: string): string {
   return path.join(tumwaterDir(root), "reclaim.json");
 }
 
+/** One-shot marker for a model-check re-check request (part 1/2 of the re-check plan): the
+ * dashboard's `Re-check now` button drops it, and the running team's orchestrator consumes it
+ * within one poll — a consumed marker clears every failed pair's back-off so the next poll
+ * probes it now. Presence is the request; the body is just `{ at }`, like the restart marker.
+ * It lives beside the `.tumwater/model-check/` probe work directory (modelCheckWorkDir), not
+ * inside it — the work dir is a scratch dir the probe prunes, the marker is operator intent. */
+export function modelCheckRequestPath(root: string): string {
+  return path.join(tumwaterDir(root), "model-check-request.json");
+}
+
 /** Per-role marker file `tumwater abort --role <id>` drops for a running team to consume:
  * kill that role's in-flight run. One file per role (presence = pending request; content is
  * just `{ at }`) keeps consumption race-free and needs no parsing — unlike the single shared

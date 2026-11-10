@@ -22,6 +22,7 @@ import type { OnceRound } from "../scheduling/once-round.js";
 import type { newNotifier } from "../events/event-notify.js";
 import {
   consumeAbortRequests,
+  consumeModelCheckRequest,
   consumeReclaimRequest,
   consumeRestartRequest,
   consumeResetRequest,
@@ -189,11 +190,13 @@ export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): 
   void ctx.launchServicesWatch?.poll();
 
   // Consume CLI request markers: a reset-counters request, a wake request, a forced-restart
-  // request, and per-role abort requests.
+  // request, a model-check re-check request (before pollGates runs the model-check poll, so a
+  // requested re-check takes effect on the same poll), and per-role abort requests.
   consumeResetRequest(root, runners);
   consumeWakeRequest(root, runners);
   consumeRestartRequest(root, ctx.redeploy);
   consumeReclaimRequest(root, ctx.reclaim);
+  consumeModelCheckRequest(root, ctx.modelCheck);
   consumeAbortRequests(root, runners, abortableMerges(ctx.merges));
 
   // branchHead reads the ref files first (microsecond-scale; this runs every poll) and

@@ -136,6 +136,21 @@ export function suspectModelCheck(
   );
 }
 
+/** The map once an operator has asked for the check to run now (the dashboard's `Re-check
+ * now`, part 1/2 of the re-check plan): every failed pair whose probe is not already in
+ * flight probes again on the next poll (probeAt set to `now`), and every other entry — a
+ * verified pair, a checking pair, a failed pair whose probe is in flight — is returned
+ * byte-for-byte as it was. `failures` and `retryMs` are left untouched, so if the forced
+ * probe fails again the next automatic wait continues the existing back-off (the doubling
+ * keeps going) rather than restarting it from the first wait. */
+export function recheckModelChecks(map: ModelCheckMap, now: number): ModelCheckMap {
+  const next: ModelCheckMap = {};
+  for (const [pair, e] of Object.entries(map)) {
+    next[pair] = e.status === "failed" && !e.probing ? { ...e, probeAt: now } : e;
+  }
+  return next;
+}
+
 /** Whether the pair's roles wait: everything but a verified pair holds them. A pair with no
  * entry holds nothing (the check is off, or the pair was never in use). */
 export function modelCheckHolds(e: ModelCheckEntry | undefined): boolean {
