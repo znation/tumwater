@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { backlogPayload } from "../src/backlog/backlog.js";
-import { readyBacklog, heldBacklog, grepBacklog, renderBacklogMarkdown } from "../src/backlog/backlog-render.js";
+import { readyBacklog, heldBacklog, grepBacklog, positionBacklog, renderBacklogMarkdown, type BacklogView } from "../src/backlog/backlog-render.js";
 import { saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -126,21 +126,23 @@ test("tumwater backlog --json prints the three entry arrays the Markdown view re
   const ok = await runCli(root, "backlog", "--json");
   assert.equal(ok.code, 0);
   const payload = JSON.parse(ok.out) as {
-    plans: Array<{ title: string; body: string }>;
-    bugs: Array<{ title: string; body: string }>;
-    questions: Array<{ title: string; body: string }>;
+    plans: Array<{ position: number; title: string; body: string }>;
+    bugs: Array<{ position: number; title: string; body: string }>;
+    questions: Array<{ position: number; title: string; body: string }>;
   };
   // Same order and verbatim text as the Markdown render of these fixtures (the render test
-  // above pins the titles it lists, so the two forms cannot drift apart).
+  // above pins the titles it lists, so the two forms cannot drift apart), each row carrying
+  // its 1-based position in its section's file order beside the existing title and body.
   assert.deepEqual(payload.plans, [
     {
+      position: 1,
       title: "Show open bugs in the TUI (planned 2026-09-25)",
       body: "**Goal.** The dashboard surfaces project status.\n\n**Approach.**\n- read PLANS.md\n- render it",
     },
-    { title: "Timestamp of last result (planned 2026-09-24)", body: "" },
+    { position: 2, title: "Timestamp of last result (planned 2026-09-24)", body: "" },
   ]);
   assert.deepEqual(payload.bugs, [
-    { title: "Logs rotate too often (reported 2026-09-25)", body: "**Symptom.** The log file shrinks every minute." },
+    { position: 1, title: "Logs rotate too often (reported 2026-09-25)", body: "**Symptom.** The log file shrinks every minute." },
   ]);
   // The questions fixture's Open section holds only the _None yet._ placeholder — no entries.
   assert.deepEqual(payload.questions, []);
@@ -236,12 +238,12 @@ test("tumwater backlog marks holds in Markdown and shapes holds arrays in --json
   };
   assert.deepEqual(payload.holds.plans, [null, { blockedBy: ["Prereq 1/2"] }, "refused", null]);
   assert.deepEqual(payload.holds.bugs, ["refused", null]);
-  // Holds are parallel to the entry arrays, which keep their fields untouched.
+  // Holds are parallel to the entry arrays, which carry position beside their unchanged fields.
   assert.equal(payload.holds.plans.length, payload.plans.length);
   assert.equal(payload.holds.bugs.length, payload.bugs.length);
   assert.equal(payload.plans.length, 4);
   assert.equal(payload.bugs.length, 2);
-  assert.deepEqual(Object.keys(payload.plans[0]!), ["title", "body"]);
+  assert.deepEqual(Object.keys(payload.plans[0]!), ["position", "title", "body"]);
 });
 
 test("tumwater help lists the backlog command", async () => {
@@ -351,6 +353,38 @@ test("grepBacklog keeps only entries matching the pattern, with parallel arrays"
   assert.deepEqual(grepBacklog(bare, "No match"), bare);
 });
 
+test("positionBacklog numbers each section 1-based and the filters keep the kept objects' positions", () => {
+  const e = (title: string) => ({ title, body: "b" });
+  // Three open plans, the first held; each title is distinct so the grep below is
+  // discriminating. Works the expected positions from the fixture order and each filter,
+  // not from any command output.
+  const view: BacklogView = {
+    plans: [e("One"), e("Two widget"), e("Three")],
+    bugs: [e("X"), e("Y")],
+    questions: [e("Q one"), e("Q two widget")],
+    holds: { plans: ["refused", null, null], bugs: [null, null] },
+    inProgress: { plans: [null, null, null], bugs: [null, null] },
+  };
+  const numbered = positionBacklog(view);
+  assert.deepEqual(numbered.plans.map((p) => p.position), [1, 2, 3]);
+  assert.deepEqual(numbered.bugs.map((b) => b.position), [1, 2]);
+  assert.deepEqual(numbered.questions.map((q) => q.position), [1, 2]);
+  // --ready drops the held first plan; the survivors keep their unfiltered positions.
+  const ready = readyBacklog(numbered);
+  assert.deepEqual(ready.plans.map((p) => p.title), ["Two widget", "Three"]);
+  assert.deepEqual(ready.plans.map((p) => p.position), [2, 3]);
+  assert.deepEqual(ready.holds?.plans, [null, null]);
+  // --held keeps only the held first plan, at its own position.
+  const held = heldBacklog(numbered);
+  assert.deepEqual(held.plans.map((p) => p.position), [1]);
+  assert.deepEqual(held.holds?.plans, ["refused"]);
+  // --grep keeps a match's unfiltered position: only the second plan, second question match.
+  const grepped = grepBacklog(numbered, "widget");
+  assert.deepEqual(grepped.plans.map((p) => p.position), [2]);
+  assert.deepEqual(grepped.bugs.map((b) => b.position), []);
+  assert.deepEqual(grepped.questions.map((q) => q.position), [2]);
+});
+
 test("tumwater backlog --ready hides held entries and counts them", async () => {
   const root = makeRepo();
   fs.writeFileSync(path.join(root, "PLANS.md"), [
@@ -370,8 +404,13 @@ test("tumwater backlog --ready hides held entries and counts them", async () => 
   assert.ok(ok.out.trimEnd().endsWith("_(1 held entries hidden; run `tumwater backlog` to see them)_"));
   const json = JSON.parse((await runCli(root, "backlog", "--ready", "--json")).out);
   assert.equal(json.plans.length, 1);
+  // The kept ready plan keeps its unfiltered position (the held first plan took 1); a payload
+  // that renumbered the filtered array would hand it 1.
+  assert.equal(json.plans[0]!.position, 2);
+  assert.equal(json.plans[0]!.title, "Ready plan (planned 2026-10-04)");
   assert.deepEqual(json.holds.plans, [null]);
   assert.equal(json.bugs.length, 1);
+  assert.equal(json.bugs[0]!.position, 1);
   fs.writeFileSync(path.join(root, "PLANS.md"), "# Plans\n## Planned\n### Ready plan (planned 2026-10-04)\nbody\n## Done\n_None._\n");
   const none = await runCli(root, "backlog", "--ready");
   assert.doesNotMatch(none.out, /hidden/);
@@ -404,11 +443,15 @@ test("tumwater backlog --grep keeps only matching entries and composes with --re
   assert.doesNotMatch(md.out, /Refused plan/);
   assert.doesNotMatch(md.out, /Real bug/);
   const doc = JSON.parse((await runCli(root, "backlog", "--grep", "widget", "--json")).out) as {
-    plans: { title: string }[]; bugs: { title: string }[]; questions: { title: string }[];
+    plans: { position: number; title: string }[]; bugs: { position: number; title: string }[]; questions: { position: number; title: string }[];
   };
   assert.deepEqual(doc.plans.map((p) => p.title), ["Ready plan with widget (planned 2026-10-04)"]);
+  // The surviving second plan keeps its unfiltered position (a renumbering payload gives it 1).
+  assert.deepEqual(doc.plans.map((p) => p.position), [2]);
   assert.deepEqual(doc.bugs.map((b) => b.title), ["Widget bug (reported 2026-10-03)"]);
+  assert.deepEqual(doc.bugs.map((b) => b.position), [2]);
   assert.deepEqual(doc.questions.map((q) => q.title), ["Widget question (planned 2026-10-05)"]);
+  assert.deepEqual(doc.questions.map((q) => q.position), [1]);
   // --grep composes with --ready: only the unheld match stays, and the hidden count counts it.
   fs.writeFileSync(path.join(root, "PLANS.md"), [
     "# Plans", "## Planned",

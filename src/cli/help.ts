@@ -297,17 +297,20 @@ Usage:
   tumwater backlog [--ready] [--held] [--grep <text>] [-f/--follow] [--json]
                                    Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable
-                                   backlog data — the three entry arrays as {title, body}, the
-                                   same data the Markdown view renders; a series with two or more
+                                   backlog data — the three entry arrays, each row carrying
+                                   position, title and body; position is the 1-based number the
+                                   entry's own list prints and plan|bug --show/--cancel <n> or
+                                   questions answer <n> take; a series with two or more
                                    blocked parts prints as one heading (--json still lists every
                                    entry); an entry a role is
                                    working on carries \`[working on it: feature #2]\` (--json:
                                    an \`inProgress\` key parallel to the arrays); --ready keeps only the
                                    planned plans and open bugs no hold keeps from being
                                    picked (entries a role is working on stay), and --held its
-                                   inverse, only the ones a hold keeps from being picked, each
-                                   under its unfiltered numbers (mutually exclusive); --grep keeps the
+                                   inverse, only the ones a hold keeps from being picked (mutually
+                                   exclusive); --grep keeps the
                                    entries whose heading or body contains the text, case-insensitively;
+                                   the --json filters keep each kept row's unfiltered position;
                                    -f/--follow repaints the backlog every couple of seconds until
                                    Ctrl+C or the process that started it exits, so a backgrounded
                                    follow does not outlive its parent; it refuses --json

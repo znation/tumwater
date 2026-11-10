@@ -1,5 +1,5 @@
 import type { BacklogEntry } from "./backlog-md.js";
-import { type BacklogPayload, entryMatches } from "./backlog.js";
+import { entryMatches } from "./backlog.js";
 import { groupBlockedSeries, partsLabel } from "./backlog-index-data.js";
 import { holdMark, inProgressMark, type EntryHold } from "./backlog-eligibility.js";
 
@@ -28,15 +28,30 @@ interface BacklogHolds {
 /** The renderer's view: the payload it always consumed, plus optional holds parallel to
  * `plans` and `bugs`. A missing `holds`, or an array shorter than its entries, leaves a
  * heading byte-identically to today. */
-type BacklogView = BacklogPayload & {
+/** A backlog entry with its 1-based section position (positionBacklog) — the number the
+ * entry's own list command prints and `--show/--cancel <n>`/`questions answer <n>` take, so a
+ * filtered --json row stays addressable without recounting the unfiltered arrays. */
+export type PositionedEntry = BacklogEntry & { position: number };
+
+/** The renderer's view: the three entry arrays (the same data backlogPayload collects —
+ * the entry readers' file order, placeholder skipping, and Done/Fixed exclusion), plus
+ * optional `holds` and `inProgress` parallel to `plans` and `bugs`. A missing `holds`, or an
+ * array shorter than its entries, leaves a heading byte-identically to today. Generic over
+ * the entry type so positionBacklog's positioned entries flow through the filters and the
+ * Markdown render (which ignores the extra field) unchanged. Structurally assignable from
+ * `BacklogPayload` (which has only the three `BacklogEntry` arrays). */
+export interface BacklogView<E extends { title: string; body: string } = BacklogEntry> {
+  plans: E[];
+  bugs: E[];
+  questions: E[];
   holds?: BacklogHolds;
   /** Runner ids working on each entry (backlogInProgress), parallel to `plans` and `bugs`. */
   inProgress?: { plans: (string | null)[]; bugs: (string | null)[] };
-};
+}
 
 /** One `## ` section: its entries verbatim, or the single `_(none)_` placeholder line. When
  * `holds` is given, entry `i`'s hold mark rides on its `### ` heading. */
-function renderSection(title: string, entries: BacklogEntry[], holds?: readonly EntryHold[],
+function renderSection<E extends { title: string; body: string }>(title: string, entries: E[], holds?: readonly EntryHold[],
   inProgress?: readonly (string | null)[],
 ): string[] {
   const lines: string[] = [`## ${title}`, ""];
@@ -49,7 +64,7 @@ function renderSection(title: string, entries: BacklogEntry[], holds?: readonly 
 }
 
 /** One entry: its heading with hold and in-progress marks, then its body indented two spaces. */
-function renderEntry(entry: BacklogEntry, hold: EntryHold, runner: string | null): string[] {
+function renderEntry(entry: { title: string; body: string }, hold: EntryHold, runner: string | null): string[] {
   const lines: string[] = [`### ${entry.title}${holdMark(hold)}${inProgressMark(runner)}`, ""];
   // The body is already trimmed by parseEntryDetails; only the indent is added here.
   for (const line of entry.body.split("\n")) lines.push(line === "" ? "" : `  ${line}`);
@@ -60,7 +75,9 @@ function renderEntry(entry: BacklogEntry, hold: EntryHold, runner: string | null
 /** The Planned section. With holds, each series with two or more blocked parts prints as one
  * body-less heading at its first part's place (the grouping `plan --list` uses); every other
  * entry prints as renderSection would. Without holds it is renderSection itself. */
-function renderPlannedSection(entries: BacklogEntry[], holds?: readonly EntryHold[],
+function renderPlannedSection<E extends { title: string; body: string }>(
+  entries: E[],
+  holds?: readonly EntryHold[],
   inProgress?: readonly (string | null)[],
 ): string[] {
   if (!holds || entries.length === 0) return renderSection("Planned features", entries, holds, inProgress);
@@ -137,7 +154,7 @@ function filterInProgress(
  * same indexes so the arrays stay parallel. An entry a role is working on has no hold, so it
  * stays with its in-progress mark. Questions carry no holds and pass through; a view without
  * `holds` is returned unchanged. */
-export function readyBacklog(view: BacklogView): BacklogView {
+export function readyBacklog<E extends { title: string; body: string }>(view: BacklogView<E>): BacklogView<E> {
   const holds = view.holds;
   if (!holds) return view;
   const plan = keptIndexes(view.plans.length, (i) => (holds.plans[i] ?? null) === null);
@@ -156,7 +173,7 @@ export function readyBacklog(view: BacklogView): BacklogView {
  * `holds` and `inProgress` are filtered by the same indexes so the arrays stay parallel. An
  * entry a role is working on has no hold, so it drops with the rest of the unheld. Questions
  * carry no holds and pass through; a view without `holds` is returned unchanged. */
-export function heldBacklog(view: BacklogView): BacklogView {
+export function heldBacklog<E extends { title: string; body: string }>(view: BacklogView<E>): BacklogView<E> {
   const holds = view.holds;
   if (!holds) return view;
   const plan = keptIndexes(view.plans.length, (i) => (holds.plans[i] ?? null) !== null);
@@ -178,7 +195,7 @@ export function heldBacklog(view: BacklogView): BacklogView {
  * aligned (the same pickByIndex/filterHolds/filterInProgress trio readyBacklog uses). Questions
  * carry no holds and filter by entryMatches alone. A view without `holds`/`inProgress` only
  * filters the entry arrays. */
-export function grepBacklog(view: BacklogView, pattern: string): BacklogView {
+export function grepBacklog<E extends { title: string; body: string }>(view: BacklogView<E>, pattern: string): BacklogView<E> {
   const plan = keptIndexes(view.plans.length, (i) => entryMatches(view.plans[i]!, pattern));
   const bug = keptIndexes(view.bugs.length, (i) => entryMatches(view.bugs[i]!, pattern));
   const question = keptIndexes(view.questions.length, (i) => entryMatches(view.questions[i]!, pattern));
@@ -189,5 +206,23 @@ export function grepBacklog(view: BacklogView, pattern: string): BacklogView {
     questions: pickByIndex(view.questions, question),
     ...filterHolds(view.holds, plan, bug),
     ...filterInProgress(view.inProgress, plan, bug),
+  };
+}
+
+/** The view with each of its `plans`, `bugs` and `questions` entries carrying its 1-based
+ * position in its section's file order — the number the entry's own list command (`plan
+ * --list`, `bug --list`, `questions`) prints and `plan|bug --show/--cancel <n>` or
+ * `questions answer <n>` take. cmdBacklog applies it once, before its `--grep` and
+ * `--ready`/`--held` filters, so a kept row keeps its unfiltered position through them and
+ * `backlog --json` is addressable from a filtered row. `holds`/`inProgress` pass through
+ * untouched (the filters above re-pick them), and the Markdown renderer ignores the extra
+ * field, so only the --json document's rows change. backlogPayload itself stays {title,
+ * body}: the GUI's /api/backlog payload and the shared shape are untouched. */
+export function positionBacklog(view: BacklogView): BacklogView<PositionedEntry> {
+  return {
+    ...view,
+    plans: view.plans.map((e, i) => ({ position: i + 1, ...e })),
+    bugs: view.bugs.map((e, i) => ({ position: i + 1, ...e })),
+    questions: view.questions.map((e, i) => ({ position: i + 1, ...e })),
   };
 }

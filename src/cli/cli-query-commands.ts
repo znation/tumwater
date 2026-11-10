@@ -15,7 +15,7 @@ import { renderStatus } from "../ui/status-render.js";
 import { gotSuffix } from "../text/text.js";
 import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
-import { readyBacklog, heldBacklog, grepBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
+import { readyBacklog, heldBacklog, grepBacklog, positionBacklog, renderBacklogMarkdown, type BacklogView, type PositionedEntry } from "../backlog/backlog-render.js";
 import { loadQuarantine, releaseQuarantinedTest } from "../review/known-flakes.js";
 import { grepQuarantineRows, quarantineEntryAt, quarantineRows, renderQuarantine, renderQuarantineDetail, type QuarantineRow } from "../review/quarantine-render.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, collectRoleChanges, normalizeDiffPath } from "../change/change-data.js";
@@ -166,15 +166,19 @@ export async function cmdBacklog(root: string, args: string[], seams: FollowView
   // inverse); the Markdown branch adds a count of the entries the filter hid (held for
   // --ready, unheld for --held). The --json/--ready/--held reads go over `rest` (the --grep
   // value token removed), so a flag-shaped pattern like `--grep --json` greps for "--json"
-  // rather than flipping this branch into JSON mode.
-  const readBacklog = (): { view: ReturnType<typeof backlogPayload>; hidden: number } => {
-    const view = { ...backlogPayload(root), holds: backlogHolds(root), inProgress: backlogInProgress(root) };
+  // rather than flipping this branch into JSON mode. positionBacklog numbers every row 1-based
+  // in its section's file order — the number `plan|bug --show/--cancel <n>` and `questions
+  // answer <n>` take — before the filters run, so a kept row keeps its unfiltered position in
+  // the --json document (the filters pick their survivors by index); the Markdown renderer
+  // ignores the extra field, so the text output is unchanged.
+  const readBacklog = (): { view: BacklogView<PositionedEntry>; hidden: number } => {
+    const view = positionBacklog({ ...backlogPayload(root), holds: backlogHolds(root), inProgress: backlogInProgress(root) });
     const filtered = pattern === null ? view : grepBacklog(view, pattern);
     if (!ready && !held) return { view: filtered, hidden: 0 };
     const kept = ready ? readyBacklog(filtered) : heldBacklog(filtered);
     return { view: kept, hidden: filtered.plans.length + filtered.bugs.length - kept.plans.length - kept.bugs.length };
   };
-  const renderBacklogText = (r: { view: ReturnType<typeof backlogPayload>; hidden: number }): string =>
+  const renderBacklogText = (r: { view: BacklogView<PositionedEntry>; hidden: number }): string =>
     renderBacklogMarkdown(r.view) + (r.hidden > 0
       ? `\n\n_(${r.hidden} ${held ? "unheld" : "held"} entries hidden; run \`tumwater backlog\` to see them)_` : "");
   if (follow) {
