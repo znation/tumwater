@@ -63,6 +63,19 @@ test("this scan reports each offender on a machine-readable policy-offender line
   assert.ok(line.endsWith("src/a.ts: unexported"), `contracted line: ${line}`);
 });
 
+test("declarations reads an async function declaration like a plain one", () => {
+  // Quoted sample lines (not bare declarations) so this scan does not read them as its own
+  // exports. Without the `async` alternative in DECLARATION the async line is dropped, so this
+  // test fails exactly when the gate goes blind to `export async function` again.
+  const sample = [
+    "export async function refreshThing(): Promise<void> {}",
+    "export function plainThing(): void {}",
+    "// export async function commentedOut(): Promise<void> {}",
+    "export const arrow = async () => {};",
+  ].join("\n");
+  assert.deepEqual(declarations(sample), ["refreshThing", "plainThing", "arrow"]);
+});
+
 test(POLICY_TITLE, () => {
   const files = SCAN_ROOTS.flatMap((root) => (fs.existsSync(root) ? tsFiles(root) : []));
   assert.ok(files.length > 0, "the scan found TypeScript files under src/, test/, scripts/");
