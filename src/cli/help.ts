@@ -737,24 +737,36 @@ Usage:
                                    forms revert the commit the run merged as, the sha
                                    'history <role> <n>' names;
                                    --json prints the preview or the new head as data
-  tumwater abort [--role <id>[,<id>...]] [--all]
-                                   Stop each named role's run in progress (work discarded; the
-                                   role keeps going); --all aborts every enabled role's
+  tumwater abort [--role <id>[,<id>...]] [--all] [--json]
+                                   Stop each named role's run in progress (work discarded;
+                                   the role keeps going); --all aborts every enabled role's
                                    in-flight run and any merge it owns in one request (one
                                    abort marker per role, applied by the next poll), for
                                    stopping all work now; bare abort still fails asking for
-                                   --role or --all
-  tumwater restart                Apply a pending self-redeploy now, waiving the restart
+                                   --role or --all; --json prints one acknowledgement object
+                                   ({command, scope, status:"requested"}, scope "roles" with
+                                   the resolved role list, or "all")
+  tumwater restart [--json]        Apply a pending self-redeploy now, waiving the restart
                                    cooldown (the dashboard's update-alert refresh button; a
                                    passing check on main, a successful compile, and in-flight
-                                   runs finishing still apply)
-  tumwater pause [--role <id>[,<id>...]] [--for <dur>] [--reason <text>]
+                                   runs finishing still apply); --json prints {command,
+                                   status:"requested"}
+  tumwater pause [--role <id>[,<id>...]] [--for <dur>] [--reason <text>] [--json]
                                    Stop roles (or just the named roles) starting new
                                    runs; --role takes a comma list, pausing each listed
                                    role; --reason states why the whole team is paused (no
-                                   per-role reason); --for auto-resumes (capped at 90d)
-  tumwater resume [--role <id>[,<id>...]]
-                                   Lift a team or per-role pause
+                                   per-role reason); --for auto-resumes (capped at 90d);
+                                   --json prints one acknowledgement object ({command,
+                                   scope:"team", status "paused"|"already_paused",
+                                   untilMs, reason} or, with --role, scope "roles" with
+                                   one {role, status} per named role plus the shared
+                                   untilMs)
+  tumwater resume [--role <id>[,<id>...]] [--json]
+                                   Lift a team or per-role pause; --json prints one
+                                   acknowledgement object ({command, scope, status, plus
+                                   stillPaused for a team resume listing the roles still
+                                   individually paused, or one {role, status} per named
+                                   role})
   tumwater retire --role <id>      Remove a disabled role's workspace, branch, and per-role
                                    state (merge ref, pause marker); --force overrides the
                                    safety rails; --json prints what was removed;
@@ -762,9 +774,12 @@ Usage:
                                    changing nothing; an id no longer configured (feature-4
                                    after lowering instances, a removed custom role) is
                                    accepted while its branch or merge ref remains
-  tumwater stop [--in <duration> | --cancel]
+  tumwater stop [--in <duration> | --cancel] [--json]
                                    Stop a running team (finishes current work, like Ctrl+C);
-                                   --in schedules the stop, --cancel drops it
+                                   --in schedules the stop, --cancel drops it; --json prints
+                                   one acknowledgement object ({command, status
+                                   "requested"|"not_running"|"scheduled"|"cancelled"|
+                                   "no_scheduled_stop", inMs for a scheduled stop})
   tumwater completion <bash|zsh|fish>   Print a shell completion script (eval "$(tumwater completion zsh)" in your rc; fish: tumwater completion fish | source)
   tumwater completion --roles      Print the role ids --role completes (this repo's; the catalog when tumwater.json is unreadable)
   tumwater completion --config-keys  Print the keys config get/set/unset complete (this repo's role keys; the catalog's when tumwater.json is unreadable)

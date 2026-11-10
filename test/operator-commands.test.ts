@@ -10,13 +10,14 @@ import {
   cmdPause,
   cmdReclaim,
   cmdResetCounters,
+  cmdRestart,
   cmdResume,
   cmdStop,
   cmdWake,
 } from "../src/operator/operator-commands.js";
 import { pidAlive, signalOrchestrator } from "../src/process/process.js";
 import { defaultConfig } from "../src/config/config.js";
-import { PAUSE_REASON_MAX } from "../src/team/team-state.js";
+import { PAUSE_REASON_MAX, scheduleStop } from "../src/team/team-state.js";
 import { writeJsonAtomic, writeJsonFile } from "../src/files/json-files.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { configPath } from "../src/paths.js";
@@ -29,6 +30,8 @@ import {
   pausedRolesPath,
   reclaimRequestPath,
   resetRequestPath,
+  restartRequestPath,
+  scheduledStopPath,
   wakeRequestPath,
   worktreeUsePath,
 } from "../src/paths.js";
@@ -830,4 +833,149 @@ test("cmdReclaim --dry-run reports plural paths, pending resumes and fresh workt
   assert.match(stdout, /clean: idle 0\.0h, 2 ignored paths, not idle-reclaimable/);
   assert.equal(fs.existsSync(path.join(pending, "build")), true, "dry run deletes nothing");
   assert.equal(fs.existsSync(path.join(fresh, "build")), true, "dry run deletes nothing");
+});
+
+// --- --json acknowledgements: pause / resume / abort / restart / stop ---
+// Each control command prints exactly one JSON acknowledgement object in --json mode and the
+// unchanged prose otherwise; every refusal (no live harness, a bad flag value, a current
+// build) still exits 1 with the existing stderr wording and prints no JSON.
+
+test("cmdPause --json prints one acknowledgement naming the resolved state", async () => {
+  const root = tmpdir();
+  const now = Date.now();
+  // A fresh team pause: the marker stands, so status is "paused" with no deadline or reason.
+  const first = await expectOk(() => cmdPause(root, ["--json"], now));
+  assert.deepEqual(JSON.parse(first.stdout), { command: "pause", scope: "team", status: "paused", untilMs: null, reason: null });
+  assert.ok(fs.existsSync(pausedPath(root)));
+  // A second pause hits the standing marker: idempotent no-op, no fresh confirmation.
+  const second = await expectOk(() => cmdPause(root, ["--json"], now));
+  assert.deepEqual(JSON.parse(second.stdout), { command: "pause", scope: "team", status: "already_paused", untilMs: null, reason: null });
+  // A timed pause with a reason: the deadline is the injected now plus the parsed duration,
+  // and the normalized reason rides the write — both read back from the command, not re-deriving
+  // the marker, so a dropped field or a swapped value would fail.
+  const third = await expectOk(() => cmdPause(root, ["--for", "30m", "--reason", "deploy freeze", "--json"], now));
+  assert.deepEqual(JSON.parse(third.stdout), { command: "pause", scope: "team", status: "paused", untilMs: now + 30 * 60_000, reason: "deploy freeze" });
+});
+
+test("cmdPause --role --json names each role's status; a repeat reports already_paused", async () => {
+  const root = tmpdir();
+  const first = await expectOk(() => cmdPause(root, ["--role", "clean,dedupe", "--json"]));
+  assert.deepEqual(
+    JSON.parse(first.stdout),
+    { command: "pause", scope: "roles", roles: [{ role: "clean", status: "paused" }, { role: "dedupe", status: "paused" }], untilMs: null },
+  );
+  // Both roles are already in the set: the same shape, both reporting the no-op.
+  const second = await expectOk(() => cmdPause(root, ["--role", "clean,dedupe", "--json"]));
+  assert.deepEqual(
+    JSON.parse(second.stdout),
+    { command: "pause", scope: "roles", roles: [{ role: "clean", status: "already_paused" }, { role: "dedupe", status: "already_paused" }], untilMs: null },
+  );
+});
+
+test("cmdResume --json prints the resolved status and the still-paused set", async () => {
+  const root = tmpdir();
+  // No team marker: the resume is a no-op; the still-paused set is empty.
+  const idle = await expectOk(() => cmdResume(root, ["--json"]));
+  assert.deepEqual(JSON.parse(idle.stdout), { command: "resume", scope: "team", status: "not_paused", stillPaused: [] });
+  // A team pause with one role still individually paused: the resume lifts the team marker
+  // and names the role the per-role marker keeps gated.
+  await expectOk(() => cmdPause(root));
+  await expectOk(() => cmdPause(root, ["--role", "qa"]));
+  const { stdout } = await expectOk(() => cmdResume(root, ["--json"]));
+  assert.deepEqual(JSON.parse(stdout), { command: "resume", scope: "team", status: "resumed", stillPaused: ["qa"] });
+  assert.equal(fs.existsSync(pausedPath(root)), false, "the team marker is lifted");
+});
+
+test("cmdResume --role --json names each role's resumed state", async () => {
+  const root = tmpdir();
+  await expectOk(() => cmdPause(root, ["--role", "clean"]));
+  const first = await expectOk(() => cmdResume(root, ["--role", "clean", "--json"]));
+  assert.deepEqual(JSON.parse(first.stdout), { command: "resume", scope: "roles", roles: [{ role: "clean", status: "resumed" }] });
+  // A second resume of the same role was never paused: the status flips to the no-op.
+  const second = await expectOk(() => cmdResume(root, ["--role", "clean", "--json"]));
+  assert.deepEqual(JSON.parse(second.stdout), { command: "resume", scope: "roles", roles: [{ role: "clean", status: "not_paused" }] });
+});
+
+test("cmdAbort --json prints one object after every request succeeds", async () => {
+  const root = tmpdir();
+  markLive(root);
+  const { stdout } = await expectOk(() => cmdAbort(root, ["--role", "feature,qa", "--json"]));
+  assert.deepEqual(JSON.parse(stdout), { command: "abort", scope: "roles", roles: ["feature", "qa"], status: "requested" });
+  // Both abort markers were written: the acknowledgement names the same targets it requested.
+  assert.ok(fs.existsSync(abortRequestPath(root, "feature")));
+  assert.ok(fs.existsSync(abortRequestPath(root, "qa")));
+  // --all resolves against the config's enabled roles, so one must be enabled for it to
+  // succeed; the acknowledgement reports the whole-team scope, not the per-role list.
+  const cfg = defaultConfig();
+  for (const id of Object.keys(cfg.roles)) if (id !== "feature") cfg.roles[id]!.enabled = false;
+  cfg.roles.feature = { enabled: true, instances: 1 };
+  writeJsonFile(configPath(root), cfg);
+  const all = await expectOk(() => cmdAbort(root, ["--all", "--json"]));
+  assert.deepEqual(JSON.parse(all.stdout), { command: "abort", scope: "all", status: "requested" });
+});
+
+test("cmdAbort --json with no live harness fails and prints no JSON", async () => {
+  const root = tmpdir();
+  const stderr = await expectFailAsync(() => cmdAbort(root, ["--role", "feature", "--json"]));
+  assert.match(stderr, /tumwater is not running/);
+  const all = await expectFailAsync(() => cmdAbort(root, ["--all", "--json"]));
+  assert.match(all, /tumwater is not running/);
+});
+
+test("cmdRestart --json prints the acknowledgement and writes the marker; a current build refuses", async () => {
+  const root = tmpdir();
+  markLive(root);
+  writeOrchestratorMarker(root, [], { build: { sha: "a".repeat(40), builtAt: 1, stale: true } });
+  const { stdout } = await expectOk(() => cmdRestart(root, ["--json"]));
+  assert.deepEqual(JSON.parse(stdout), { command: "restart", status: "requested" });
+  assert.ok(fs.existsSync(restartRequestPath(root)));
+  // A current build has nothing pending: the refusal is the existing wording, no JSON, no marker.
+  fs.rmSync(restartRequestPath(root), { force: true });
+  writeOrchestratorMarker(root, [], { build: { sha: "a".repeat(40), builtAt: 1, stale: false } });
+  const stderr = await expectFailAsync(() => cmdRestart(root, ["--json"]));
+  assert.match(stderr, /no update is waiting/);
+  assert.equal(fs.existsSync(restartRequestPath(root)), false);
+});
+
+test("cmdStop --json names the branch it took", async () => {
+  const root = tmpdir();
+  // --cancel/--in need only a live harness for --in; the cancel branches reach no process, so
+  // markLive's own pid stands in (a live child would be signalled only by the bare form below).
+  markLive(root);
+  // --cancel against no scheduled stop: the no-op status, exit 0.
+  const none = await expectOk(() => cmdStop(root, ["--cancel", "--json"]));
+  assert.deepEqual(JSON.parse(none.stdout), { command: "stop", status: "no_scheduled_stop" });
+  // A scheduled stop stands: --cancel removes it and reports the removal.
+  scheduleStop(root, Date.now() + 3_600_000);
+  const cancelled = await expectOk(() => cmdStop(root, ["--cancel", "--json"]));
+  assert.deepEqual(JSON.parse(cancelled.stdout), { command: "stop", status: "cancelled" });
+  assert.equal(fs.existsSync(scheduledStopPath(root)), false, "the marker is dropped");
+  // --in schedules the stop and reports the parsed duration.
+  const scheduled = await expectOk(() => cmdStop(root, ["--in", "2h", "--json"]));
+  assert.deepEqual(JSON.parse(scheduled.stdout), { command: "stop", status: "scheduled", inMs: 2 * 3_600_000 });
+  // A bare --json stop signals the recorded pid. A real sleeper plays the orchestrator so the
+  // SIGTERM reaches a disposable child, never the test process; it dies from the signal.
+  const live = spawnLiveChild();
+  const deadline = Date.now() + 5_000;
+  while (live.child.pid === undefined || !pidAlive(live.child.pid)) {
+    if (Date.now() > deadline) throw new Error("the stand-in orchestrator never became visible");
+    await sleep(10);
+  }
+  writeOrchestratorMarker(root, [], { pid: live.child.pid });
+  try {
+    const signalled = await expectOk(() => cmdStop(root, ["--json"]));
+    assert.deepEqual(JSON.parse(signalled.stdout), { command: "stop", status: "requested" });
+    const exit = await new Promise<{ code: number | null; signal: string | null }>((resolve) =>
+      live.child.once("exit", (code, signal) => resolve({ code, signal })),
+    );
+    assert.equal(exit.signal, "SIGTERM", "the recorded pid received SIGTERM, the same path as Ctrl+C");
+  } finally {
+    await stopChild(live);
+  }
+});
+
+test("cmdStop --json with no live harness fails and prints no JSON", async () => {
+  const root = tmpdir();
+  const stderr = await expectFailAsync(() => cmdStop(root, ["--json"]));
+  assert.match(stderr, /tumwater is not running/);
 });

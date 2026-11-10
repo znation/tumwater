@@ -15,6 +15,7 @@ import { shortSha } from "../text/format.js";
 import { INSTANCE_ROLES } from "../roles/runner-ids.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
 import {
+  cancelScheduledStop,
   normalizePauseReason,
   pauseTeam,
   pauseRole,
@@ -217,22 +218,27 @@ export async function cmdReclaim(root: string, args: string[]): Promise<void> {
   say(await runManualReclaim(root));
 }
 
-/** `tumwater abort [--role <id>[,<id>...]] [--all]`: kill the named roles' in-flight runs
- * right now (a comma list writes one marker per role), or with `--all` every enabled role's in
- * flight run in one request (one marker per enabled runner). The CLI cannot
+/** `tumwater abort [--role <id>[,<id>...]] [--all] [--json]`: kill the named roles' in-flight
+ * runs right now (a comma list writes one marker per role), or with `--all` every enabled
+ * role's in flight run in one request (one marker per enabled runner). The CLI cannot
  * reach into the orchestrator process, so the request rides on disk like reset-counters':
  * a per-role marker file a running team consumes within one poll cycle (the runner's
  * abortRun kills the pi child and resets the worktree to main). Requires a live harness —
  * with no team there is nothing to consume the marker. The roles stay enabled: they back
- * off normally and later runs proceed as usual. */
+ * off normally and later runs proceed as usual. `--json` prints one acknowledgement naming
+ * the resolved target(s) and status instead of the per-request prose lines; every refusal
+ * (no live harness, a bad flag value) still fails with its existing wording and prints no
+ * JSON, so no partial acknowledgement is ever emitted. */
 export async function cmdAbort(root: string, args: string[]): Promise<void> {
+  const json = args.includes("--json");
   if (args.includes("--all")) {
     if (flagValue(args, "--role") !== null) {
       fail("abort takes either --role <id>[,<id>...] or --all, not both");
     }
     const result = requestAbortAll(root);
     if (!result.ok) fail(result.error);
-    say(result.message);
+    if (json) sayJson({ command: "abort", scope: "all", status: "requested" });
+    else say(result.message);
     return;
   }
   // As in cmdLogs: the config exists only to validate the id against built-ins plus
@@ -241,19 +247,25 @@ export async function cmdAbort(root: string, args: string[]): Promise<void> {
   for (const role of roles) {
     const result = requestAbort(root, role);
     if (!result.ok) fail(result.error);
-    say(result.message);
+    // Text mode keeps one prose line per role request; --json defers to one object for the
+    // whole invocation, printed only after every request has succeeded (a fail() above
+    // exits first, so no partial JSON is ever emitted).
+    if (!json) say(result.message);
   }
+  if (json) sayJson({ command: "abort", scope: "roles", roles, status: "requested" });
 }
 
-/** `tumwater restart`: apply a pending self-redeploy now, waiving the restart cooldown —
- * the terminal twin of the dashboard update alert's refresh button (POST /api/restart,
- * handleRestart in src/gui/gui-operator-commands.ts). Both call the same marker-writing
- * core requestRestart, so the confirmation (or refusal) is byte-for-byte the GUI's. Takes
- * no flags. */
-export async function cmdRestart(root: string, _args: string[]): Promise<void> {
+/** `tumwater restart [--json]`: apply a pending self-redeploy now, waiving the restart
+ * cooldown — the terminal twin of the dashboard update alert's refresh button (POST
+ * /api/restart, handleRestart in src/gui/gui-operator-commands.ts). Both call the same
+ * marker-writing core requestRestart, so the confirmation (or refusal) is byte-for-byte the
+ * GUI's. Takes only `--json`, which prints one acknowledgement object; a refusal (a current
+ * build) still fails with the existing wording and prints no JSON. */
+export async function cmdRestart(root: string, args: string[]): Promise<void> {
   const result = requestRestart(root);
   if (!result.ok) fail(result.error);
-  say(result.message);
+  if (args.includes("--json")) sayJson({ command: "restart", status: "requested" });
+  else say(result.message);
 }
 
 /** Parse and validate the `--for`/`--reason` flags, failing fast on a bad value before any
@@ -303,7 +315,7 @@ function pauseTiming(forMs: number | undefined, now: number): { timed: { ms: num
 /** The per-role pause branch: rejects a reason aimed at a role pause (a per-role reason would
  * need a per-role map for no observed need), then pauses each named role through
  * `rolePauseMessage`/`pauseRole`. */
-function pauseRoleGroup(root: string, roles: string[], forMs: number | undefined, now: number, reason: string | undefined): void {
+function pauseRoleGroup(root: string, roles: string[], forMs: number | undefined, now: number, reason: string | undefined, json: boolean): void {
   const { timed, untilMs } = pauseTiming(forMs, now);
   // The plan keeps per-role pauses anonymous (a per-role reason would need a per-role map
   // for no observed need), so a reason aimed at a role pause fails fast here — accepting
@@ -318,7 +330,19 @@ function pauseRoleGroup(root: string, roles: string[], forMs: number | undefined
   // the CLI, TUI, and GUI cannot drift on format or idempotence; a false return means the
   // role was already in the set, which rolePauseMessage words — unless a `--for` stands,
   // which overwrites the deadline and reports the fresh confirmation.
-  for (const role of roles) say(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed, now));
+  const statuses: string[] = [];
+  for (const role of roles) {
+    const changed = pauseRole(root, role, untilMs);
+    statuses.push(changed ? "paused" : "already_paused");
+    if (!json) say(rolePauseMessage(root, role, changed, timed, now));
+  }
+  if (json)
+    sayJson({
+      command: "pause",
+      scope: "roles",
+      roles: roles.map((role, i) => ({ role, status: statuses[i] })),
+      untilMs: untilMs ?? null,
+    });
 }
 
 /** The team pause branch: writes the pause marker through pauseTeam (the single writer, the
@@ -326,7 +350,7 @@ function pauseRoleGroup(root: string, roles: string[], forMs: number | undefined
  * prints the confirmation template. The reason rides the fresh pause write (or a `--for`
  * overwrite): the same last-write-wins rule as the deadline, so an "already paused" no-op
  * keeps the standing note as-is. */
-function pauseTeamGroup(root: string, forMs: number | undefined, now: number, reason: string | undefined): void {
+function pauseTeamGroup(root: string, forMs: number | undefined, now: number, reason: string | undefined, json: boolean): void {
   const { timed, untilMs } = pauseTiming(forMs, now);
   // pauseTeam in src/team/team-state.ts is the single writer of the pause marker — the GUI's
   // /api/pause toggle calls it too, so the CLI and the dashboard cannot drift on format
@@ -335,15 +359,20 @@ function pauseTeamGroup(root: string, forMs: number | undefined, now: number, re
   // The reason rides the fresh pause write (or a `--for` overwrite): the same last-write-wins
   // rule as the deadline, so an "already paused" no-op keeps the standing note as-is.
   if (!pauseTeam(root, untilMs, reason)) {
-    say("already paused");
+    if (json) sayJson({ command: "pause", scope: "team", status: "already_paused", untilMs: untilMs ?? null, reason: reason ?? null });
+    else say("already paused");
     return;
   }
-  const { when, tail } = markerApplyNote(root);
-  const { forPhrase, note } = timedPauseBits(timed, now);
-  const why = pauseReasonSuffix(reason);
-  say(
-    `team paused${forPhrase}${why} — roles start no new runs${when} (current runs finish; the director keeps running your messages)${note}${tail}`,
-  );
+  if (json)
+    sayJson({ command: "pause", scope: "team", status: "paused", untilMs: untilMs ?? null, reason: reason ?? null });
+  else {
+    const { when, tail } = markerApplyNote(root);
+    const { forPhrase, note } = timedPauseBits(timed, now);
+    const why = pauseReasonSuffix(reason);
+    say(
+      `team paused${forPhrase}${why} — roles start no new runs${when} (current runs finish; the director keeps running your messages)${note}${tail}`,
+    );
+  }
 }
 
 /** `tumwater pause [--role <id>[,<id>...]] [--for <duration>]`: with roles (a comma list pauses
@@ -358,9 +387,10 @@ function pauseTeamGroup(root: string, forMs: number | undefined, now: number, re
  * Idempotent: a second pause reports the existing marker as-is. */
 export async function cmdPause(root: string, args: string[] = [], now: number = Date.now()): Promise<void> {
   const { forMs, reason } = pauseFlags(args);
+  const json = args.includes("--json");
   const roles = pauseTargetRoles(root, args);
-  if (roles) pauseRoleGroup(root, roles, forMs, now, reason);
-  else pauseTeamGroup(root, forMs, now, reason);
+  if (roles) pauseRoleGroup(root, roles, forMs, now, reason, json);
+  else pauseTeamGroup(root, forMs, now, reason, json);
 }
 
 /** `tumwater stop`: SIGTERM the running orchestrator, which drains its in-flight runs and
@@ -370,11 +400,23 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
  * above this reaches a real process, so a live harness is required. The pid-recycling risk
  * that `orchestratorAlive` already accepts everywhere (status, abort, pause) applies here
  * too: the info file is refreshed by the live orchestrator, so the window is small, and the
- * signal is the same one a human `kill <pid>` would send. */
+ * signal is the same one a human `kill <pid>` would send. `--json` prints one
+ * acknowledgement naming the branch taken (scheduled, cancelled, requested, or not_running)
+ * instead of the prose line; every refusal still exits 1 with its existing wording and
+ * prints no JSON. */
 export async function cmdStop(root: string, args: string[] = []): Promise<void> {
+  const json = args.includes("--json");
   const inRaw = flagValue(args, "--in");
   if (args.includes("--cancel")) {
     if (inRaw !== null) fail("stop --cancel and --in cannot be combined");
+    // The prose and the JSON read the same removed-marker fact: the text path renders
+    // cancelScheduledStopMessage (which performs the removal), so the JSON branch removes
+    // first and renders the removed fact through the same cancelScheduledStop.
+    if (json) {
+      const removed = cancelScheduledStop(root);
+      sayJson({ command: "stop", status: removed ? "cancelled" : "no_scheduled_stop" });
+      return;
+    }
     say(cancelScheduledStopMessage(root));
     return;
   }
@@ -384,7 +426,8 @@ export async function cmdStop(root: string, args: string[] = []): Promise<void> 
     failOverDurationCap("stop --in", ms, PAUSE_FOR_MAX_MS);
     const result = requestScheduledStop(root, ms);
     if (!result.ok) fail(result.error);
-    say(result.message);
+    if (json) sayJson({ command: "stop", status: "scheduled", inMs: ms });
+    else say(result.message);
     return;
   }
   // Deliberately the same liveness gate and wording `requestAbort` uses: an unreadable info
@@ -396,30 +439,50 @@ export async function cmdStop(root: string, args: string[] = []): Promise<void> 
   // A pid that dies between the liveness check and the signal (ESRCH) means the team is
   // already stopped — say so and exit clean rather than surfacing Node's raw kill error;
   // anything else (EPERM on a recycled pid, …) comes back as signalOrchestrator's message.
-  if (signalOrchestrator(info.pid) === "signalled")
-    say("stop requested — the team finishes current work, then stops (the same path as Ctrl+C)");
-  else
-    say("the orchestrator exited before the stop signal arrived — nothing is running");
+  if (signalOrchestrator(info.pid) === "signalled") {
+    if (json) sayJson({ command: "stop", status: "requested" });
+    else say("stop requested — the team finishes current work, then stops (the same path as Ctrl+C)");
+  } else {
+    if (json) sayJson({ command: "stop", status: "not_running" });
+    else say("the orchestrator exited before the stop signal arrived — nothing is running");
+  }
 }
 
 /** `tumwater resume [--role <id>[,<id>...]]`: with roles (a comma list lifts
  * each), lift that role's pause (removed from the per-role marker set); without one,
  * lift a team pause by removing its marker. Idempotent like pause: with no marker there
  * is nothing to do. No live harness required — resuming before startup just means the
- * next `tumwater run` starts unpaused. */
+ * next `tumwater run` starts unpaused. `--json` prints one acknowledgement naming the
+ * scope, the resolved status, and (for a team resume) the roles still individually paused;
+ * every refusal path is unchanged. */
 export async function cmdResume(root: string, args: string[] = []): Promise<void> {
+  const json = args.includes("--json");
   const roles = pauseTargetRoles(root, args);
   if (roles) {
     // resumeRole (src/team/team-state.ts) is the single remover of the per-role marker; a false
     // return means the role was never paused — the changed-state contract roleResumeMessage
     // words ("is already paused" vs "was not paused").
-    for (const role of roles) say(roleResumeMessage(root, role, resumeRole(root, role)));
+    const statuses: string[] = [];
+    for (const role of roles) {
+      const changed = resumeRole(root, role);
+      statuses.push(changed ? "resumed" : "not_paused");
+      if (!json) say(roleResumeMessage(root, role, changed));
+    }
+    if (json)
+      sayJson({
+        command: "resume",
+        scope: "roles",
+        roles: roles.map((role, i) => ({ role, status: statuses[i] })),
+      });
     return;
   }
   // resumeTeam (src/team/team-state.ts) is the single remover, shared with the GUI toggle;
   // a false return means there was no marker to lift.
   if (!resumeTeam(root)) {
-    say("not paused");
+    // Keep the payload shape stable across both team outcomes: the still-individually-paused
+    // set is read even when no team marker stood, so a script always sees the same keys.
+    if (json) sayJson({ command: "resume", scope: "team", status: "not_paused", stillPaused: pausedRoles(root) });
+    else say("not paused");
     return;
   }
   const { when, tail } = markerApplyNote(root);
@@ -427,10 +490,14 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
   // team's confirmation must name the roles still individually paused instead of claiming
   // "roles run again" for roles the scheduler keeps gated.
   const still = pausedRoles(root);
-  const roleNote = still.length > 0
-    ? ` (${still.join(", ")} ${agree(still.length, "is", "are")} still individually paused — \`tumwater resume --role <id>\` lifts each)`
-    : "";
-  say(`${teamResumePhrase()}${when}${roleNote}${tail}`);
+  if (json)
+    sayJson({ command: "resume", scope: "team", status: "resumed", stillPaused: still });
+  else {
+    const roleNote = still.length > 0
+      ? ` (${still.join(", ")} ${agree(still.length, "is", "are")} still individually paused — \`tumwater resume --role <id>\` lifts each)`
+      : "";
+    say(`${teamResumePhrase()}${when}${roleNote}${tail}`);
+  }
 }
 
 /** The role id retire targets: a built-in or configured id as for the other marker commands, or

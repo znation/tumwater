@@ -6,8 +6,8 @@ import { spawn } from "node:child_process";
 import { initProject } from "../src/init/init.js";
 import { loadConfig } from "../src/config/config.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
-import { orchestratorStatePath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
-import { signalOrchestrator } from "../src/process/process.js";
+import { pausedPath, pausedRolesPath, scheduledStopPath, orchestratorStatePath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
+import { signalOrchestrator, pidAlive } from "../src/process/process.js";
 import { seedCounters } from "./fixtures/runner-fixtures.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
@@ -331,11 +331,93 @@ test("stop takes only --in and --cancel and appears in the help table", async ()
 
   const r = await cli(repo, "stop", "--anything");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown argument: --anything \(valid flags for tumwater stop: --in <duration>, --cancel\)/);
+  assert.match(r.stderr, /unknown argument: --anything \(valid flags for tumwater stop: --in <duration>, --cancel, --json\)/);
 
   const help = await cli(repo, "help");
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /tumwater stop \[--in <duration> \| --cancel\]\s+Stop a running team/);
+  assert.match(help.stdout, /tumwater stop \[--in <duration> \| --cancel\] \[--json\]\s+Stop a running team/);
+});
+
+// --- --json on the five control commands, end-to-end through the real CLI ---
+// Each command's gate admits --json and the body prints exactly one acknowledgement object;
+// the prose paths are the existing wording. pause/resume need no live harness, so they are
+// exercised without one; abort/stop/restart require a live team, so a sleeper plays the
+// orchestrator. Every acknowledgement parses and carries a command, a resolved target,
+// and a status; a refusal (no live harness) still exits 1 with no JSON.
+
+test("pause and resume --json print one acknowledgement object each", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli pause resume json");
+
+  const p1 = await cli(repo, "pause", "--json");
+  assert.equal(p1.code, 0);
+  const p1o = JSON.parse(p1.stdout) as { command: string; scope: string; status: string; untilMs: number | null; reason: string | null };
+  assert.deepEqual(p1o, { command: "pause", scope: "team", status: "paused", untilMs: null, reason: null });
+  assert.ok(fs.existsSync(pausedPath(repo)), "the marker stands");
+
+  // A second pause is the idempotent no-op: the status flips, the prose path says the same.
+  const p2 = await cli(repo, "pause", "--json");
+  assert.equal(p2.code, 0);
+  assert.equal(JSON.parse(p2.stdout).status, "already_paused");
+
+  const prose = await cli(repo, "pause");
+  assert.match(prose.stdout, /already paused/);
+
+  // resume lifts the marker; --json names the still-paused set (empty here).
+  const r1 = await cli(repo, "resume", "--json");
+  assert.equal(r1.code, 0);
+  const r1o = JSON.parse(r1.stdout) as { command: string; scope: string; status: string; stillPaused: string[] };
+  assert.deepEqual(r1o, { command: "resume", scope: "team", status: "resumed", stillPaused: [] });
+  assert.equal(fs.existsSync(pausedPath(repo)), false);
+
+  // resume with no marker is the no-op in both forms.
+  const r2 = await cli(repo, "resume", "--json");
+  assert.equal(JSON.parse(r2.stdout).status, "not_paused");
+
+  fs.rmSync(pausedRolesPath(repo), { force: true });
+});
+
+test("abort, stop, and restart --json each print one acknowledgement with a live team", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli control json");
+  const live = spawnLiveChild();
+  const deadline = Date.now() + 5_000;
+  while (live.child.pid === undefined || !pidAlive(live.child.pid)) {
+    if (Date.now() > deadline) throw new Error("stand-in orchestrator never became visible");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  try {
+    writeOrchestratorMarker(repo, ["feature"], { pid: live.child.pid });
+
+    // abort: --json is one object naming the resolved role(s); the prose line stays for a human.
+    const a = await cli(repo, "abort", "--role", "feature", "--json");
+    assert.equal(a.code, 0);
+    const ao = JSON.parse(a.stdout) as { command: string; scope: string; roles: string[]; status: string };
+    assert.deepEqual(ao, { command: "abort", scope: "roles", roles: ["feature"], status: "requested" });
+
+    // stop --in schedules the deferred stop: the acknowledgement carries the parsed duration.
+    const s = await cli(repo, "stop", "--in", "2h", "--json");
+    assert.equal(s.code, 0);
+    const so = JSON.parse(s.stdout) as { command: string; status: string; inMs: number };
+    assert.deepEqual(so, { command: "stop", status: "scheduled", inMs: 2 * 3_600_000 });
+    assert.ok(fs.existsSync(scheduledStopPath(repo)), "the scheduled-stop marker stands");
+
+    // restart with a stale published build requests the redeploy: one object.
+    writeOrchestratorMarker(repo, ["feature"], { pid: live.child.pid, build: { sha: "a".repeat(40), builtAt: 1, stale: true } });
+    const rr = await cli(repo, "restart", "--json");
+    assert.equal(rr.code, 0);
+    assert.deepEqual(JSON.parse(rr.stdout), { command: "restart", status: "requested" });
+  } finally {
+    await stopChild(live);
+    fs.rmSync(orchestratorStatePath(repo), { force: true });
+  }
+
+  // With no live harness the marker commands refuse --json the same way they refuse prose:
+  // exit 1, the no-harness wording, and no JSON object on stdout.
+  const a2 = await cli(repo, "abort", "--role", "feature", "--json");
+  assert.equal(a2.code, 1);
+  assert.match(a2.stderr, /tumwater is not running/);
+  assert.equal(a2.stdout, "", "a refusal prints no JSON");
 });
 
 // --- config: print the effective merged config as JSON ---

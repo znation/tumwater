@@ -40,25 +40,28 @@ const markerCommandCores: Record<MarkerCommand, (root: string, args: string[]) =
  * as the marker commands' CLI layer, with cli.ts's main() dispatch casting to MarkerCommand
  * here. */
 export async function runMarkerCommand(root: string, command: MarkerCommand, args: string[]): Promise<void> {
-  // `pause` alone accepts `--for <duration>` (the timed pause) and `--reason <text>` (the
-  // operator pause's why); `wake` alone accepts `--in <duration>` (the scheduled wake) and
+  // `pause` alone accepts `--for <duration>` (the timed pause), `--reason <text>` (the
+  // operator pause's why), and `--json` (one acknowledgement object instead of the prose
+  // confirmation); `wake` alone accepts `--in <duration>` (the scheduled wake) and
   // `--cancel [<n>]` (drop the pending scheduled wakes, or just the Nth as `--list` numbers
   // it), `--list` (show them), and `--json` (with --list); `reclaim` alone accepts
-  // `--dry-run` (and `--json` with it); the other
+  // `--dry-run` (and `--json` with it); `abort` and `restart` accept `--json` alone (one
+  // acknowledgement object each); the other
   // marker commands keep the plain --role vocabulary, so a stray --for, --reason, --in,
   // --cancel, or --dry-run fails fast instead of being silently ignored.
   const perCommandFlags: Record<MarkerCommand, FlagSpec[]> = {
     "reset-counters": [ROLE_FLAG],
     wake: [ROLE_FLAG, WAKE_IN_FLAG, WAKE_CANCEL_FLAG, WAKE_LIST_FLAG, JSON_FLAG],
-    abort: [ROLE_FLAG, ABORT_ALL_FLAG],
+    abort: [ROLE_FLAG, ABORT_ALL_FLAG, JSON_FLAG],
     pause: [
       ROLE_FLAG,
       durationFlagSpec("pause --for", PAUSE_FOR_OVERFLOW_HINT),
       REASON_FLAG,
+      JSON_FLAG,
     ],
-    resume: [ROLE_FLAG],
+    resume: [ROLE_FLAG, JSON_FLAG],
     reclaim: [DRY_RUN_FLAG, JSON_FLAG],
-    restart: [],
+    restart: [JSON_FLAG],
   };
   rejectUnknownArgs(command, args, perCommandFlags[command] ?? [ROLE_FLAG]);
   await requireReadyRepo(root);

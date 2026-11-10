@@ -397,8 +397,9 @@ async function cmdRevertCase(root: string, args: string[]): Promise<void> {
 
 async function cmdStopCase(root: string, args: string[]): Promise<void> {
   // Bare stop signals the recorded orchestrator pid; `--in`/`--cancel` schedule or drop a
-  // deferred stop. Anything else is a mistake and fails before a signal is ever sent.
-  rejectUnknownArgs("stop", args, [STOP_IN_FLAG, STOP_CANCEL_FLAG]);
+  // deferred stop; `--json` prints the acknowledgement as one object. Anything else is a
+  // mistake and fails before a signal is ever sent.
+  rejectUnknownArgs("stop", args, [STOP_IN_FLAG, STOP_CANCEL_FLAG, JSON_FLAG]);
   await requireReadyRepo(root);
   await (await import("./operator/operator-commands.js")).cmdStop(root, args);
 }

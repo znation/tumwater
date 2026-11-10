@@ -209,7 +209,10 @@ test("restart rejects stray arguments and a --role before writing anything", asy
   for (const args of [["extra"], ["--role", "feature"]]) {
     const r = await cli(repo, "restart", ...args);
     assert.equal(r.code, 1, JSON.stringify(args));
-    assert.match(r.stderr, /takes no arguments/);
+    // restart now admits only --json, so a stray positional or a foreign --role names that
+    // single flag in the valid-flags list (the takes-no-arguments rule applies only to a
+    // flagless command, and --json changed that).
+    assert.match(r.stderr, /unknown argument: (extra|--role) \(valid flags for tumwater restart: --json\)/);
     assert.ok(!fs.existsSync(restartRequestPath(repo)), `no marker written for ${JSON.stringify(args)}`);
   }
 });
@@ -294,10 +297,10 @@ test("pause and resume reject stray arguments without touching the marker", asyn
   // deadline or note fails fast instead of being silently ignored.
   let r = await cli(repo, "pause", "--x");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown argument: --x \(valid flags for tumwater pause: --role <id>, --for <duration>, --reason <text>\)/);
+  assert.match(r.stderr, /unknown argument: --x \(valid flags for tumwater pause: --role <id>, --for <duration>, --reason <text>, --json\)/);
   r = await cli(repo, "resume", "extra");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown argument: extra \(valid flags for tumwater resume: --role <id>\)/);
+  assert.match(r.stderr, /unknown argument: extra \(valid flags for tumwater resume: --role <id>, --json\)/);
   r = await cli(repo, "resume", "--for", "5m");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --for/);
@@ -403,7 +406,7 @@ test("wake keeps the plain --role vocabulary and rejects --in everywhere else", 
   // The flag belongs to wake alone: pause/reset-counters reject it instead of ignoring it.
   r = await cli(repo, "pause", "--in", "5m");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown argument: --in \(valid flags for tumwater pause: --role <id>, --for <duration>, --reason <text>\)/);
+  assert.match(r.stderr, /unknown argument: --in \(valid flags for tumwater pause: --role <id>, --for <duration>, --reason <text>, --json\)/);
   r = await cli(repo, "reset-counters", "--in", "5m");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --in/);
