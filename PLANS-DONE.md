@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract pin queue, part 1h/5: The queue-seeding fixture helper goes (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large part 1a/3 after feature held it; requires Subtract pin queue parts 1e/5, 1f/5 and 1g/5 landed; touches test/fixtures/merge-fixtures.ts test/fixtures/orchestrator-fixtures.ts) — done 2026-11-09 by the feature role
+
+**Goal.** No merge test in the drain, pipeline or orchestrator suites seeds a queue file; the fixture helper that did is gone.
+
+**Approach.** Test and fixture edits only.
+- test/fixtures/merge-fixtures.ts: delete `queueChanges` and the now-unused `enqueueMerge` import. Keep `entry` and `drained` — test/post-merge-review.test.ts still imports both to seed and await its own queue-entry cases — and update their doc comments to name that remaining caller.
+- test/fixtures/orchestrator-fixtures.ts: remove any queue import or helper the part 1g/5 migration left unused.
+
+**As landed.** Only test/fixtures/merge-fixtures.ts changed: `queueChanges` and the `enqueueMerge` import are gone (the four named drain/pipeline/orchestrator test files already seeded pins and imported no queue helper after parts 1e/5 through 1g/5, so their criteria held before this edit and the diff touched no test file); `entry` and `drained` stay, their doc comments now naming test/post-merge-review.test.ts as their remaining caller (test/merge-queue.test.ts also still imports `drained` for its own queue-entry cases). test/fixtures/orchestrator-fixtures.ts needed no change: the part 1g/5 migration already removed every queue import it held.
+
+**Files touched.** test/fixtures/merge-fixtures.ts test/fixtures/orchestrator-fixtures.ts
+
+**Acceptance criteria.**
+- `grep -rnE 'queueChanges|enqueueMerge' test/merge-drain.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/orchestrator-merge-pin.test.ts test/fixtures/merge-fixtures.ts test/fixtures/orchestrator-fixtures.ts` prints nothing.
+- `grep -rn 'queueChanges' test` prints nothing.
+- test/post-merge-review.test.ts still passes unchanged, and `npm run test:gate` passes.
+
+**Tests.** Run test/merge-drain.test.ts, test/merge-pipeline.test.ts, test/merge-pipeline-2.test.ts, test/orchestrator-merge-pin.test.ts and test/post-merge-review.test.ts, then the project's gate.
+
 ### `tumwater reset-counters --json` prints one acknowledgement naming the resolved roles and status, so a script can start a fresh observation window without parsing prose (planned 2026-11-09 by the plan role; `cmdResetCounters` in src/operator/operator-commands.ts resolves its targets through `targetRoles` and prints only `requestResetCounters`'s prose line, while the marker commands beside it — pause, resume, abort, stop, restart — all take `--json`; the `reset-counters` flag set in src/cli/cli-marker-commands.ts is `[ROLE_FLAG]` alone, and the in-flight wake plan edits `cmdWake` and the wake stanza/row, never `cmdResetCounters` or the reset-counters stanza/row; `grep -n 'reset-counters' PLANS.md BUGS.md` names no JSON form before this entry, and PLANS-DONE.md's reset-counters entries add the comma `--role` list, the TUI Ctrl+V and the dashboard reset, never a machine-readable acknowledgement (`grep -nE '^### .*reset-counters' PLANS-DONE.md` matches no `--json`); touches src/operator/operator-commands.ts src/cli/cli-marker-commands.ts src/cli/help.ts docs/cli.md test/operator-commands.test.ts test/cli-operators.test.ts test/help.test.ts) — done 2026-11-09 by the feature role
 
 **Goal.** `tumwater reset-counters [--role <id>[,<id>...]] --json` prints exactly one JSON acknowledgement object — `{"command":"reset-counters","roles":[...],"status":"reset"}` — in place of the prose confirmation, so a script can zero a role's counters and learn which roles it reset without parsing `counters reset for …`. Text mode is unchanged.

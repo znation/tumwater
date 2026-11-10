@@ -10,7 +10,7 @@ import {
   type MergePipelineContext,
 } from "../../src/merge/merge-pipeline.js";
 import type { RoleRunner } from "../../src/runner/runner.js";
-import { enqueueMerge, queueDepth } from "../../src/merge/merge-queue.js";
+import { queueDepth } from "../../src/merge/merge-queue.js";
 import { mergeRefName } from "../../src/paths.js";
 import { refAbsentFromFiles, setRef } from "../../src/git/git.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
@@ -25,11 +25,12 @@ import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
 /** Shared fixtures for the merge-drain tests — merge-drain.test.ts, merge-pipeline.test.ts and
  * merge-pipeline-2.test.ts, which node --test runs as parallel processes (top-level tests
  * within one file run one after another). The pipeline context and poll loop the drain is
- * driven through, queue-shaped pinned commits, the per-role reviewer shim, a pipeline whose
- * merge slot is held busy, and the row the status observers render: until now the slices
- * carried byte-identical copies of all of it — they build on this module instead (pins with the
- * queue file still written, for the suites not yet migrated to pin-only seeding). The
- * merger*.test.ts family shares merger-fixtures.ts (a different wiring shape), not this. */
+ * driven through, pins and queue entries in the shape a changed run leaves, the per-role
+ * reviewer shim, a pipeline whose merge slot is held busy, and the row the status observers
+ * render: until now the slices carried byte-identical copies of all of it — they build on this
+ * module instead (the queue-entry cases in test/post-merge-review.test.ts seed their own queue
+ * file through `entry`; the drain and pipeline suites seed pins only). The merger*.test.ts
+ * family shares merger-fixtures.ts (a different wiring shape), not this. */
 
 export const APPROVE = (reply = "the work looks right") => reviewerPi(`VERDICT: approve\n${reply}`);
 
@@ -44,6 +45,9 @@ export function pinnedCommit(root: string, role: string): string {
   );
 }
 
+/** A merge queue entry the caller enqueues and the drain reads back from the queue file;
+ * run 7 is arbitrary — the drain does not act on it. test/post-merge-review.test.ts is the
+ * only remaining caller of this helper: it seeds its own queue-entry cases with it. */
 export function entry(role: string, sha: string, enqueuedAt = Date.now()): MergeEntry {
   return { role, sha, run: 7, summary: "the work", enqueuedAt };
 }
@@ -114,22 +118,12 @@ export function pump(ctx: MergePipelineContext, p: MergePipeline): { stop: () =>
   };
 }
 
-/** The queue is empty and no verification or merge is running. */
+/** The queue is empty and no verification or merge is running — the settle condition the
+ * queue-entry cases await (test/post-merge-review.test.ts, test/merge-queue.test.ts). */
 export const drained = (root: string, p: MergePipeline) => () => queueDepth(root) === 0 && mergeTasks(p).length === 0;
 
-/** Pin and enqueue one change per role, every pin before any enqueue (a pin's `git add -A`
- * would sweep an already-written queue file into the next pin). */
-export async function queueChanges(root: string, roles: string[]): Promise<Record<string, string>> {
-  const shas = Object.fromEntries(roles.map((role) => [role, pinnedCommit(root, role)]));
-  for (const role of roles) {
-    await setRef(root, mergeRefName(role), shas[role]!);
-    enqueueMerge(root, entry(role, shas[role]!));
-  }
-  return shas;
-}
-
-/** Pin one change per role and enqueue nothing — the pin-only counterpart of queueChanges for
- * the suites migrated off the queue file: the drain's kept-pin path merges each ref. */
+/** Pin one change per role and enqueue nothing — the pin-only seed for the drain and pipeline
+ * suites migrated off the queue file: the drain's kept-pin path merges each ref. */
 export async function pinChanges(root: string, roles: string[]): Promise<Record<string, string>> {
   const shas = Object.fromEntries(roles.map((role) => [role, pinnedCommit(root, role)]));
   for (const role of roles) {
