@@ -2,6 +2,7 @@ import test from "node:test";
 import { readJson } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { spawn } from "node:child_process";
 import { initProject } from "../src/init/init.js";
 import { loadConfig } from "../src/config/config.js";
@@ -448,6 +449,37 @@ test("config prints the effective merged config as JSON, deep-equal to loadConfi
   assert.ok(printed.roles.feature, "built-in role defaults are printed");
 });
 
+test("config set/unset --json print one parseable ack object end-to-end and move the file", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli config json");
+
+  const set = await cli(repo, "config", "set", "maxConcurrent", "5", "--json");
+  assert.equal(set.code, 0);
+  assert.deepEqual(JSON.parse(set.stdout), {
+    command: "config",
+    action: "set",
+    key: "maxConcurrent",
+    value: 5,
+    status: "set",
+  });
+  assert.equal((readJson(path.join(repo, "tumwater.json")) as { maxConcurrent?: number }).maxConcurrent, 5);
+
+  const unset = await cli(repo, "config", "unset", "maxConcurrent", "--json");
+  assert.equal(unset.code, 0);
+  assert.deepEqual(JSON.parse(unset.stdout), {
+    command: "config",
+    action: "unset",
+    key: "maxConcurrent",
+    status: "removed",
+    oldValue: 5,
+    resolved: 6,
+  });
+  assert.ok(
+    !("maxConcurrent" in (readJson(path.join(repo, "tumwater.json")) as Record<string, unknown>)),
+    "the key is gone from the file after the unset",
+  );
+});
+
 test("config fails with validateConfig's message and prints no JSON for an invalid file", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli config invalid");
@@ -467,7 +499,7 @@ test("config get/set arg shapes, repo gating, and the help table", async () => {
   // Anything that is not get/set/unset/--diff fails with the usage, whatever the arity.
   let r = await cli(repo, "config", "--anything");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /usage: tumwater config \[get <key> \| set <key> <value> \| unset <key> \| --diff\]/);
+  assert.match(r.stderr, /usage: tumwater config \[get <key> \| set <key> <value> \[--json\] \| unset <key> \[--json\] \| --diff\]/);
   r = await cli(repo, "config", "show");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /usage: tumwater config/);
@@ -502,7 +534,7 @@ test("config get/set arg shapes, repo gating, and the help table", async () => {
 
   const help = await cli(repo, "help");
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /tumwater config \[get <key> \| set <key> <value> \| unset <key> \| --diff\]\s+Show the effective config/);
+  assert.match(help.stdout, /tumwater config \[get <key> \| set <key> <value> \[--json\] \| unset <key> \[--json\] \| --diff\]\s+Show the effective config/);
 
   // Outside an initialized repo the ready-repo gate fires before any config is read.
   const bare = makeRepo();
@@ -523,7 +555,7 @@ test("config --diff prints only the non-default settings and refuses an extra to
   // An extra token after --diff is refused with CONFIG_USAGE and writes no JSON.
   const extra = await cli(repo, "config", "--diff", "extra");
   assert.equal(extra.code, 1);
-  assert.match(extra.stderr, /usage: tumwater config \[get <key> \| set <key> <value> \| unset <key> \| --diff\]/);
+  assert.match(extra.stderr, /usage: tumwater config \[get <key> \| set <key> <value> \[--json\] \| unset <key> \[--json\] \| --diff\]/);
   assert.equal(extra.stdout, "", "a refused invocation writes no JSON");
 
   // Outside an initialized repo the ready-repo gate fires, exactly as for bare config.

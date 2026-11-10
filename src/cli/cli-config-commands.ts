@@ -39,7 +39,25 @@ import { unknownRoleMessage } from "../roles/roles.js";
  * argument the gate somehow missed. One constant so the synopsis cannot drift between the two
  * sites (mirrors run-detail.ts's RUN_DETAIL_USAGE). */
 export const CONFIG_USAGE =
-  "usage: tumwater config [get <key> | set <key> <value> | unset <key> | --diff] (bare config prints the whole resolved config; --diff prints only the non-default settings)";
+  "usage: tumwater config [get <key> | set <key> <value> [--json] | unset <key> [--json] | --diff] (bare config prints the whole resolved config; --diff prints only the non-default settings)";
+
+/** Removes one trailing `--json` from a `set` or `unset` invocation so the arity gate in
+ * cli.ts and the verb dispatch here see the shaped args (`config set <key> <value> --json` →
+ * `set <key> <value>` + the flag), while every other shape — a `get`, a bare config, `--diff`,
+ * or a `set`/`unset` with no trailing flag — is returned untouched. The `set model --json`
+ * case is the rule's whole reason: a `set` with exactly three tokens carries no real value
+ * after the key, so its lone trailing token is the flag-looking *value* the verb already
+ * refuses, not a `--json` to peel; a `set` needs more than three and an `unset` more than two
+ * before a `--json` is a real flag rather than the key or value. cli.ts's arity gate calls it
+ * before its count checks, and `cmdConfig` calls it once more on the original args before
+ * dispatching, so both see identical shaped args. */
+export function peelConfigJson(args: string[]): { args: string[]; json: boolean } {
+  const verb = args[0];
+  const needs = verb === "set" ? 3 : verb === "unset" ? 2 : -1;
+  if (needs >= 0 && args.length > needs && args[args.length - 1] === "--json")
+    return { args: args.slice(0, -1), json: true };
+  return { args, json: false };
+}
 
 /** The key screens `config get` and `config unset` run before resolving or removing a value:
  * the shape parser's own error; the shared unknown-top-level-key message; then, for a dotted
@@ -109,7 +127,7 @@ async function configGet(root: string, key: string | undefined): Promise<void> {
 
 /** The `config unset` verb: screen the key, remove it, and confirm what, if anything, was
  * removed (or what the key now resolves to). */
-async function configUnset(root: string, key: string | undefined): Promise<void> {
+async function configUnset(root: string, key: string | undefined, json = false): Promise<void> {
   // cli.ts's arity gate requires exactly two args (`unset <key>`) before cmdConfig runs;
   // this is the defensive tail for a direct caller, matching the bare-config tail below.
   if (key === undefined) fail(CONFIG_USAGE);
@@ -125,14 +143,42 @@ async function configUnset(root: string, key: string | undefined): Promise<void>
   const now = reloaded === undefined ? undefined : resolvedConfigValue(reloaded, parsed, k);
   const resolves = now === undefined ? "" : JSON.stringify(now);
   if (result.oldValue === undefined) {
+    if (json) {
+      const ack: Record<string, unknown> = {
+        command: "config",
+        action: "unset",
+        key: k,
+        status: "not_set",
+      };
+      if (now !== undefined) ack.resolved = now;
+      sayJsonLine(ack);
+      return;
+    }
     say(
       `${k} is not set in tumwater.json, so nothing was removed` +
         (now === undefined ? "" : ` (it resolves to ${resolves})`),
     );
-  } else {
-    const was = JSON.stringify(result.oldValue);
-    say(`unset ${k} (was ${was}${now === undefined ? "" : `; now resolves to ${resolves}`})`);
+    return;
   }
+  if (json) {
+    // The script-facing twin of the prose below: one compact acknowledgement object whose
+    // status names what happened, with `oldValue` when the file held the key and `resolved`
+    // when it still resolves after removal. sayJsonLine, not sayJson: the contract is the
+    // whole stdout as one line, so a script can JSON.parse stdout directly (sayJson's
+    // two-space pretty print would span many lines).
+    const ack: Record<string, unknown> = {
+      command: "config",
+      action: "unset",
+      key: k,
+      status: "removed",
+      oldValue: result.oldValue,
+    };
+    if (now !== undefined) ack.resolved = now;
+    sayJsonLine(ack);
+    return;
+  }
+  const was = JSON.stringify(result.oldValue);
+  say(`unset ${k} (was ${was}${now === undefined ? "" : `; now resolves to ${resolves}`})`);
 }
 
 /** The `config --diff` verb: print only the resolved settings that differ from the built-in
@@ -150,7 +196,12 @@ async function configDiff(root: string, extra: string | undefined): Promise<void
 
 /** The `config set` verb: write one value through setConfigKey (refusing a flag-looking
  * value first) and confirm the write or that it was already that value. */
-async function configSet(root: string, key: string | undefined, rest: string[]): Promise<void> {
+async function configSet(
+  root: string,
+  key: string | undefined,
+  rest: string[],
+  json = false,
+): Promise<void> {
   // A flag-looking value is a dropped `--` in disguise: `config set model --json` would
   // otherwise take the literal string "--json" as the value (the JSON-parse fallback
   // swallows any token) and validateConfig's string keys accept it silently — the same
@@ -165,11 +216,35 @@ async function configSet(root: string, key: string | undefined, rest: string[]):
     );
   const result = setConfigKey(root, key ?? "", raw);
   if (!result.ok) fail(result.error);
-  if ((result as { unchanged?: true }).unchanged) {
-    say(`${canonicalConfigKey(key ?? "")} is already ${JSON.stringify((result as { value: unknown }).value)}, so tumwater.json was not written`);
+  const rk = canonicalConfigKey(key ?? "");
+  const value = (result as { value: unknown }).value;
+  const unchanged = Boolean((result as { unchanged?: true }).unchanged);
+  // The script-facing twin of the prose confirmation: one compact acknowledgement object
+  // whose status names the outcome — `set` when the file changed, `unchanged` when it
+  // already resolved to that value. sayJsonLine, not sayJson: the whole stdout must be one
+  // line so a script can JSON.parse it (sayJson's two-space pretty print spans many lines).
+  // A `--json` write carries no prose: with-json prints only the object.
+  if (json) {
+    const ack: Record<string, unknown> = {
+      command: "config",
+      action: "set",
+      key: rk,
+      value,
+      status: unchanged ? "unchanged" : "set",
+    };
+    const note = (result as { note?: string }).note;
+    if (note) ack.note = note;
+    else if (key === "roles")
+      ack.note =
+        "the built-in role catalog still merges per entry — disable a role with `tumwater config set roles.<id>.enabled false`, not by omitting it";
+    sayJsonLine(ack);
     return;
   }
-  say(`set ${canonicalConfigKey(key ?? "")} to ${JSON.stringify((result as { value: unknown }).value)}`);
+  if (unchanged) {
+    say(`${rk} is already ${JSON.stringify(value)}, so tumwater.json was not written`);
+    return;
+  }
+  say(`set ${rk} to ${JSON.stringify(value)}`);
   const note = (result as { note?: string }).note;
   if (note) say(`note: ${note}`);
   // A bare `roles` set replaces the FILE's section, but the built-in catalog always merges
@@ -198,10 +273,14 @@ async function configDump(root: string, sub: string | undefined): Promise<void> 
  * named helper — configGet, configUnset, configSet, configDump, configDiff — that this
  * dispatcher delegates to. */
 export async function cmdConfig(root: string, args: string[] = []): Promise<void> {
-  const [sub, key, ...rest] = args;
+  // Peel once before dispatch, mirroring cli.ts's arity gate, so `set <key> <value> --json`
+  // reaches configSet shaped and flagged (a `set` carrying exactly one trailing token is the
+  // flag-looking *value* peelConfigJson leaves for the verb's own refusal).
+  const { args: shaped, json } = peelConfigJson(args);
+  const [sub, key, ...rest] = shaped;
   if (sub === "--diff") return configDiff(root, key);
   if (sub === "get") return configGet(root, key);
-  if (sub === "unset") return configUnset(root, key);
-  if (sub === "set") return configSet(root, key, rest);
+  if (sub === "unset") return configUnset(root, key, json);
+  if (sub === "set") return configSet(root, key, rest, json);
   return configDump(root, sub);
 }

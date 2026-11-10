@@ -118,7 +118,7 @@ Usage:
                                    --list-checks prints every check name in report order without running a check,
                                    for choosing a \`tumwater doctor <check>...\` target (with --json, the names as
                                    a \`checks\` array)
-  tumwater config [get <key> | set <key> <value> | unset <key> | --diff]
+  tumwater config [get <key> | set <key> <value> [--json] | unset <key> [--json] | --diff]
                                    Show the effective config (defaults + tumwater.json) as
                                    JSON; get one key's resolved value as JSON; set one
                                    top-level key — quietHours ("23:00-07:00" or ""),
@@ -135,7 +135,11 @@ Usage:
                                    map or role entry; bare keys replace the whole value.
                                    roles still merges the built-in catalog per entry, so
                                    disable a role with roles.<id>.enabled false, not by
-                                   omitting it
+                                   omitting it. With [--json], set and unset print one
+                                   acknowledgement object instead of the confirmation prose
+                                   — status set or unchanged (set carries value; unset
+                                   carries oldValue and, when the key still resolves after
+                                   removal, resolved)
   tumwater logs [-f/--follow] [-n N] [--since <duration>] [--until <duration>] [--role <id>[,<id>...]] [--grep <text>] [--type <event type>[,<event type>...]] [--count] [--notable] [--json]
                                    Show (and follow) tumwater events; --since shows the
                                    events of the past window (capped at 7d); --until ends that

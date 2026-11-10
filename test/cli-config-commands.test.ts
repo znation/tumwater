@@ -555,3 +555,118 @@ test("set of the value a key already resolves to says already and writes nothing
   assert.equal(changed.stdout, 'set model to "m2"\n');
   assert.equal((readJson(file) as { model?: string }).model, "m2");
 });
+
+// --- `set` / `unset` with `--json`: one compact acknowledgement object, whole stdout ---
+
+test("set --json prints one set ack as the whole stdout and writes the file", async () => {
+  const root = makeRepo();
+  writeConfig(root, {});
+  const out = await attemptAsync(() => cmdConfig(root, ["set", "maxDailyCostUsd", "12", "--json"]));
+  assert.ok(!out.exited);
+  assert.equal(
+    out.stdout,
+    '{"command":"config","action":"set","key":"maxDailyCostUsd","value":12,"status":"set"}\n',
+  );
+  const onDisk = readJson(path.join(root, "tumwater.json")) as { maxDailyCostUsd?: number };
+  assert.equal(onDisk.maxDailyCostUsd, 12, "the write reached tumwater.json");
+});
+
+test("set --json of a dotted role field prints a boolean ack with the canonical key", async () => {
+  const root = makeRepo();
+  writeConfig(root, {});
+  const out = await attemptAsync(() => cmdConfig(root, ["set", "roles.qa.enabled", "false", "--json"]));
+  assert.ok(!out.exited);
+  assert.equal(
+    out.stdout,
+    '{"command":"config","action":"set","key":"roles.qa.enabled","value":false,"status":"set"}\n',
+  );
+  const raw = readJson(path.join(root, "tumwater.json")) as {
+    roles: Record<string, { enabled?: boolean }>;
+  };
+  assert.equal(raw.roles.qa?.enabled, false, "the file holds the disabled role");
+});
+
+test("repeating a set --json with the same value prints status unchanged and leaves the file byte-identical", async () => {
+  const root = makeRepo();
+  const file = path.join(root, "tumwater.json");
+  writeConfig(root, { model: "gpt-5" });
+  const before = fs.readFileSync(file, "utf8");
+  const out = await attemptAsync(() => cmdConfig(root, ["set", "model", "gpt-5", "--json"]));
+  assert.ok(!out.exited);
+  assert.equal(
+    out.stdout,
+    '{"command":"config","action":"set","key":"model","value":"gpt-5","status":"unchanged"}\n',
+  );
+  assert.equal(fs.readFileSync(file, "utf8"), before, "an unchanged write rewrites no bytes");
+});
+
+test("unset --json of a removed key prints status removed with oldValue, and the key is gone", async () => {
+  const root = makeRepo();
+  writeConfig(root, { model: "gpt-5" });
+  const out = await attemptAsync(() => cmdConfig(root, ["unset", "model", "--json"]));
+  assert.ok(!out.exited);
+  assert.equal(
+    out.stdout,
+    '{"command":"config","action":"unset","key":"model","status":"removed","oldValue":"gpt-5"}\n',
+  );
+  assert.ok(
+    !("model" in (readJson(path.join(root, "tumwater.json")) as Record<string, unknown>)),
+    "the key is gone from the file",
+  );
+});
+
+test("unset --json of a default-carrying key carries resolved, equal to a separate config get", async () => {
+  const root = makeRepo();
+  writeConfig(root, { maxConcurrent: 5 });
+  const out = await attemptAsync(() => cmdConfig(root, ["unset", "maxConcurrent", "--json"]));
+  assert.ok(!out.exited);
+  assert.equal(
+    out.stdout,
+    '{"command":"config","action":"unset","key":"maxConcurrent","status":"removed","oldValue":5,"resolved":6}\n',
+  );
+  const get = await attemptAsync(() => cmdConfig(root, ["get", "maxConcurrent"]));
+  assert.ok(!get.exited);
+  assert.equal(get.stdout, "6\n", "the ack's resolved matches a separately read config get");
+});
+
+test("unset --json of a key the file never set prints status not_set, no oldValue, and leaves the file byte-identical", async () => {
+  const root = makeRepo();
+  const file = path.join(root, "tumwater.json");
+  writeConfig(root, {});
+  const before = fs.readFileSync(file, "utf8");
+  const out = await attemptAsync(() => cmdConfig(root, ["unset", "provider", "--json"]));
+  assert.ok(!out.exited);
+  assert.equal(
+    out.stdout,
+    '{"command":"config","action":"unset","key":"provider","status":"not_set"}\n',
+  );
+  assert.equal(fs.readFileSync(file, "utf8"), before, "a no-op unset rewrites no bytes");
+});
+
+test("unknown key with --json exits 1 with the shared wording and prints nothing on stdout", async () => {
+  const root = makeRepo();
+  const file = path.join(root, "tumwater.json");
+  writeConfig(root, {});
+  const before = fs.readFileSync(file, "utf8");
+  const s = await attemptAsync(() => cmdConfig(root, ["set", "modle", "x", "--json"]));
+  assert.ok(s.exited && s.code === 1, "an unknown top-level key fails the set");
+  assert.equal(s.stdout, "", "a failed --json set prints no JSON on stdout");
+  assert.match(s.stderr, /modle/);
+  const u = await attemptAsync(() => cmdConfig(root, ["unset", "modle", "--json"]));
+  assert.ok(u.exited && u.code === 1, "an unknown top-level key fails the unset too");
+  assert.equal(u.stdout, "", "a failed --json unset prints no JSON on stdout");
+  assert.match(u.stderr, /modle/);
+  assert.equal(fs.readFileSync(file, "utf8"), before, "neither a failed set nor unset rewrites the file");
+});
+
+test("a bare set with a --json value is not peeled and fails as the flag-looking value", async () => {
+  const root = makeRepo();
+  const file = path.join(root, "tumwater.json");
+  writeConfig(root, {});
+  const before = fs.readFileSync(file, "utf8");
+  const out = await attemptAsync(() => cmdConfig(root, ["set", "model", "--json"]));
+  assert.ok(out.exited && out.code === 1);
+  assert.equal(out.stdout, "", "the flag-looking value is refused before any write");
+  assert.match(out.stderr, /flag-looking value "--json"/);
+  assert.equal(fs.readFileSync(file, "utf8"), before);
+});
