@@ -25,9 +25,6 @@ interface BacklogHolds {
   bugs: EntryHold[];
 }
 
-/** The renderer's view: the payload it always consumed, plus optional holds parallel to
- * `plans` and `bugs`. A missing `holds`, or an array shorter than its entries, leaves a
- * heading byte-identically to today. */
 /** A backlog entry with its 1-based section position (positionBacklog) — the number the
  * entry's own list command prints and `--show/--cancel <n>`/`questions answer <n>` take, so a
  * filtered --json row stays addressable without recounting the unfiltered arrays. */
