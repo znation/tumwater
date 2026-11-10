@@ -356,7 +356,7 @@ Usage:
                                    stored, the kept failing output verbatim — read-only, needing
                                    no ready repo, like the list; --show <n> --json prints that
                                    entry's object
-  tumwater salvage [-f/--follow] [--grep <text>] [--show <n>] [--drop <n>] [--json]
+  tumwater salvage [-f/--follow] [--grep <text>] [--show <n>] [--drop <n>] [--apply <n>] [--json]
                                    List the workspace patches kept for you under
                                    .tumwater/salvage/ — a settled run's discarded edits or a
                                    verification's scratch output — as the doctor's "salvage
@@ -388,7 +388,12 @@ Usage:
                                    Nth patch as the list numbers it, leaving every other kept
                                    patch and pending/<role>/ alone, printing "dropped
                                    salvaged workspace patch <n>: <file>" (or that object
-                                   with --json)
+                                   with --json); --apply <n> applies the Nth patch to the
+                                   current checkout as unstaged edits — it needs a git
+                                   checkout, refuses when the patch does not apply cleanly
+                                   (changing no files), and never commits or deletes the
+                                   patch, printing "applied salvaged workspace patch <n>:
+                                   <file>" (or { applied: { position, file } } with --json)
   tumwater archive [--dry-run] [--json]
                                    Move the finished entries still under PLANS.md ## Done and
                                    BUGS.md ## Fixed to the top of PLANS-DONE.md and BUGS-FIXED.md

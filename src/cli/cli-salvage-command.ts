@@ -13,7 +13,8 @@ import { failFollowJsonRival, parseGrepFlag, scanPositionArgs } from "./cli-args
 import { FOLLOW_FLAG, JSON_FLAG, grepFlagSpec, hasFollowFlag, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
-import { salvagePatchStat } from "../git/slot-salvage.js";
+import { salvagePatchStat, applySalvagePatchForOperator } from "../git/slot-salvage.js";
+import { isGitRepo } from "../git/git.js";
 import {
   collectSalvagePatches,
   dropSalvagePatch,
@@ -23,7 +24,8 @@ import {
 import { formatAge } from "../text/datetime.js";
 import { formatBytes } from "../text/format.js";
 
-/** `tumwater salvage [-f/--follow] [--grep <text>] [--show <n>] [--drop <n>] [--json]`:
+/** `tumwater salvage [-f/--follow] [--grep <text>] [--show <n>] [--drop <n>]
+ * [--apply <n>] [--json]`:
  * list the kept workspace
  * patches under `.tumwater/salvage/` oldest first, as the doctor's `salvage patches` row
  * counts them, each naming its file, how long ago it was saved and its size — so an operator
@@ -36,10 +38,13 @@ import { formatBytes } from "../text/format.js";
  * `--show <n>` prints the Nth patch as the list numbers it, in
  * full (the exact patch text), the read-only detail twin of `quarantine --show` and
  * `reviews --show`; `--drop <n>` deletes the Nth patch the list numbers, the destructive
- * twin whose text and `--json` say what it removed. Read-only in every branch but `--drop`
- * and needing no ready repo: refuseTeamWorkspace is the whole gate, so the list degrades
- * to the empty line in a plain directory and no run ever writes a patch except, at the
- * operator's request, the unlink a `--drop` makes. */
+ * twin whose text and `--json` say what it removed; `--apply <n>` applies the Nth patch to
+ * the current checkout as unstaged edits — the one branch that also writes the checkout, and
+ * the only one that needs a git checkout there: it never commits, never deletes the patch, and
+ * applies nothing when the patch does not fit the tree. Read-only in every branch but
+ * `--drop` and `--apply`, and needing no ready repo: refuseTeamWorkspace is the whole gate,
+ * so the list degrades to the empty line in a plain directory and no run ever writes a patch
+ * except, at the operator's request, the unlink a `--drop` makes. */
 export async function cmdSalvage(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   // `--show <n>` is the command's read-only detail branch: route it before the list gate,
   // exactly as cmdQuarantine routes its `--show` first, so its own flag gate owns a token
@@ -55,6 +60,10 @@ export async function cmdSalvage(root: string, args: string[], seams: FollowView
   }
   if (modeNamed("--drop")) {
     await cmdSalvageDrop(root, args);
+    return;
+  }
+  if (modeNamed("--apply")) {
+    await cmdSalvageApply(root, args);
     return;
   }
   // --grep filters the positioned patches to the ones whose file name or patch text contains
@@ -167,5 +176,36 @@ async function cmdSalvageDrop(root: string, args: string[]): Promise<void> {
     sayJson({ dropped: { position, file: patch.file } });
   } else {
     say(`dropped salvaged workspace patch ${position}: ${patch.file}`);
+  }
+}
+
+/** The `tumwater salvage --apply <n>` branch: apply the Nth patch `tumwater salvage` lists
+ * to the current checkout as unstaged edits — the apply twin of the read-only `--show` and
+ * the destructive `--drop`. Parsed the way both parse, sharing scanPositionArgs, its rival-flag
+ * gate and the out-of-range wording. Where `--show` and `--drop` need no repo, apply needs a
+ * git checkout: it fails outside one, and it applies against `root` itself, never committing
+ * and never deleting the patch (a patch the tree rejects applies nothing). `--json` serves
+ * `{ applied: { position, file } }` in place of the prose line. */
+async function cmdSalvageApply(root: string, args: string[]): Promise<void> {
+  const { json, position, rest } = scanPositionArgs(args, "--apply", "--apply 2");
+  rejectUnknownArgs("salvage", rest, [JSON_FLAG]);
+  if (position === null) fail("--apply needs a position (usage: tumwater salvage --apply <n>)");
+  refuseTeamWorkspace(root);
+  if (!(await isGitRepo(root))) fail("salvage --apply needs a git checkout (run it from the checkout the patch should apply to)");
+  const patches = collectSalvagePatches(root);
+  if (position < 1 || position > patches.length) {
+    fail(`no salvaged workspace patch at position ${position} (salvage holds ${patches.length} patches)`);
+  }
+  const patch = patches[position - 1]!;
+  const applied = await applySalvagePatchForOperator(root, patch.file);
+  if (!applied) {
+    fail(
+      `salvaged workspace patch ${patch.file} does not apply cleanly to this checkout — no files were changed (run tumwater salvage --show ${position} to print it for a manual apply)`,
+    );
+  }
+  if (json) {
+    sayJson({ applied: { position, file: patch.file } });
+  } else {
+    say(`applied salvaged workspace patch ${position}: ${patch.file}`);
   }
 }

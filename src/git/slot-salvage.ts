@@ -32,7 +32,7 @@ import { salvageDir, salvagePendingDir } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { formatDate, pad2 } from "../text/datetime.js";
 import { plural } from "../text/phrases.js";
-import { git, gitCouldNotStart, gitTry, runGit, runGitRaw } from "./git-run.js";
+import { git, gitCouldNotStart, gitTry, gitTryStarted, runGit, runGitRaw } from "./git-run.js";
 import { isUsableWorktree } from "./worktree.js";
 
 /** The patch file's name: a sortable local timestamp, the slot's directory name and the role that
@@ -276,6 +276,20 @@ async function applySalvage(dir: string, patch: string): Promise<Omit<RestoredWo
 export async function salvagePatchStat(root: string, file: string): Promise<string | null> {
   const stat = await gitTry(root, "apply", "--stat", path.join(salvageDir(root), file));
   return stat === null || stat === "" ? null : stat;
+}
+
+/** Apply a kept patch the operator asks for (`tumwater salvage --apply <n>`,
+ * cli-salvage-command.ts) into `root`'s working tree, unstaged: no `--index`, no commit, no
+ * deletion of the patch. `git apply --check` runs first, so the tree is written only when the
+ * whole patch places cleanly; a patch whose context no longer fits leaves every file untouched
+ * and this returns false, with the patch kept for the operator to inspect or drop. The caller
+ * is the checkout's own command, so a git that cannot start is an error that propagates
+ * (gitTryStarted) rather than a clean refusal. */
+export async function applySalvagePatchForOperator(root: string, file: string): Promise<boolean> {
+  const patchPath = path.join(salvageDir(root), file);
+  const check = await gitTryStarted(root, "apply", "--check", patchPath);
+  if (check === null) return false;
+  return (await gitTryStarted(root, "apply", patchPath)) !== null;
 }
 
 /** The paths one file's section of a patch touches (`git apply --numstat -z`: a rename names its

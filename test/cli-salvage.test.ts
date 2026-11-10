@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { salvageDir, salvagePendingDir } from "../src/paths.js";
-import { makeRepo, teamWorkspace } from "./fixtures/repo-fixtures.js";
+import { makeRepo, sh, teamWorkspace, headSha, tmpdir } from "./fixtures/repo-fixtures.js";
 import { teamWorkspaceMessage } from "../src/gates/readiness-gates.js";
 import { cli } from "./helpers/cli-harness.js";
 
@@ -338,3 +338,129 @@ test("salvage --grep --drop treats --drop as the pattern text, not the drop mode
   assert.equal(r.stdout.trim(), `no salvaged workspace patches match "--drop"`);
   assert.deepEqual(bytesOf(older, newer), before, "the filter mode deletes nothing");
 });
+
+// --apply: the apply twin of --show/--drop, driving the CLI as a child process against a real
+// git checkout. OLDER_TEXT is a valid unified diff against a committed file, so a patch holding
+// it applies exactly to the tree the repo template left — content, unstaged status, head and
+// patch bytes are all worked from the patch the test writes, not from a run's output.
+
+/** A one-commit repo whose file `f` holds the content OLDER_TEXT expects ("old"), the patch
+ * seeded into its salvage dir, and the patch's bytes. The patch's `--- a/f`/`+++ b/f` header
+ * names `f`, so the committed file is `f`, not the repo's seed.txt. */
+function applyFixture(): { repo: string; patch: string; patchBytes: string } {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "f"), "old\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "old");
+  const patch = path.join(salvageDir(repo), "a.patch");
+  fs.mkdirSync(salvageDir(repo), { recursive: true });
+  fs.writeFileSync(patch, OLDER_TEXT);
+  return { repo, patch, patchBytes: OLDER_TEXT };
+}
+
+test("salvage --apply <n> applies the patch as unstaged edits, committing nothing and keeping it", async () => {
+  const { repo, patch, patchBytes } = applyFixture();
+  const headBefore = headSha(repo);
+  const r = await cli(repo, "salvage", "--apply", "1");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "applied salvaged workspace patch 1: a.patch");
+  assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), "new\n", "the patch's content is in the tree");
+  const status = sh(repo, "git", "status", "--porcelain").split("\n");
+  assert.ok(status.includes(" M f"), "the edit is modified and unstaged");
+  assert.equal(sh(repo, "git", "diff", "--cached"), "", "the index is untouched");
+  assert.equal(headSha(repo), headBefore, "no commit was made");
+  assert.equal(fs.readFileSync(patch, "utf8"), patchBytes, "the patch file is kept");
+});
+
+test("salvage --apply <n> --json prints only the applied object", async () => {
+  const { repo } = applyFixture();
+  const r = await cli(repo, "salvage", "--apply", "1", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { applied: { position: 1, file: "a.patch" } });
+  assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), "new\n");
+});
+
+test("salvage --apply of a patch whose context no longer fits changes nothing and keeps the patch", async () => {
+  const { repo, patch, patchBytes } = applyFixture();
+  // The branch moved under the patch: f now holds text the patch's context does not,
+  // so `git apply --check` refuses it.
+  fs.writeFileSync(path.join(repo, "f"), "moved\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "move");
+  const r = await cli(repo, "salvage", "--apply", "1");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("a.patch does not apply cleanly"), "the refusal names the patch file");
+  assert.ok(r.stderr.includes("no files were changed"), "the refusal says the tree is untouched");
+  assert.ok(r.stderr.includes("tumwater salvage --show 1"), "the refusal points at --show for a manual apply");
+  assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), "moved\n", "the working tree is byte-identical");
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "", "nothing was staged or modified");
+  assert.equal(fs.readFileSync(patch, "utf8"), patchBytes, "the patch is still kept");
+});
+
+test("salvage --apply with a missing position fails with the --apply 2 usage", async () => {
+  const { repo, patch, patchBytes } = applyFixture();
+  const r = await cli(repo, "salvage", "--apply");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("--apply needs a position"));
+  assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), "old\n", "a refused apply writes nothing");
+  assert.equal(fs.readFileSync(patch, "utf8"), patchBytes);
+});
+
+test("salvage --apply past the list fails with the shared out-of-range wording", async () => {
+  const { repo, patch, patchBytes } = applyFixture();
+  const r = await cli(repo, "salvage", "--apply", "9");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("no salvaged workspace patch at position 9 (salvage holds 1 patches)"));
+  assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), "old\n", "an out-of-range apply writes nothing");
+  assert.equal(fs.readFileSync(patch, "utf8"), patchBytes);
+});
+
+test("salvage --apply outside a git checkout fails with the git-checkout refusal and writes nothing", async () => {
+  const plain = tmpdir("tumwater-salvage-plain-");
+  try {
+    const r = await cli(plain, "salvage", "--apply", "1");
+    assert.equal(r.code, 1);
+    assert.ok(r.stderr.includes("salvage --apply needs a git checkout"));
+    assert.equal(fs.existsSync(path.join(plain, ".tumwater")), false, "the refusal creates nothing");
+  } finally {
+    fs.rmSync(plain, { recursive: true, force: true });
+  }
+});
+
+test("salvage --apply in a team workspace is refused like the list and --show", async () => {
+  const { root, slot } = teamWorkspace();
+  const r = await cli(slot, "salvage", "--apply", "1");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes(teamWorkspaceMessage(root)), "the refusal names the owning team root");
+});
+
+test("salvage --apply refuses --show, --drop, -f and an unknown flag, leaving the tree and the patch", async () => {
+  const { repo, patch, patchBytes } = applyFixture();
+  const cases: { args: string[]; named: string }[] = [
+    // `--show`'s guard runs before `--apply`'s, so a command carrying both routes to `--show`
+    // and refuses `--apply` through its own rejectUnknownArgs (the same quirk the `--drop`
+    // test documents): the message names `--apply`.
+    { args: ["--apply", "1", "--show", "2"], named: "--apply" },
+    // `--drop`'s guard runs before `--apply`'s, so this routes to `--drop` and refuses `--apply`.
+    { args: ["--apply", "1", "--drop", "2"], named: "--apply" },
+    { args: ["--apply", "1", "-f"], named: "-f" },
+    { args: ["--apply", "1", "--bogus"], named: "--bogus" },
+  ];
+  for (const { args, named } of cases) {
+    const r = await cli(repo, "salvage", ...args);
+    assert.equal(r.code, 1, named);
+    assert.ok(r.stderr.includes(named), `the refusal names ${named}`);
+  }
+  assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), "old\n", "a refused apply leaves the tree untouched");
+  assert.equal(fs.readFileSync(patch, "utf8"), patchBytes, "a refused apply keeps the patch");
+});
+
+test("salvage --grep --apply treats --apply as the pattern text, not the apply mode", async () => {
+  const { repo, patch, patchBytes } = applyFixture();
+  const r = await cli(repo, "salvage", "--grep", "--apply");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), `no salvaged workspace patches match "--apply"`);
+  assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), "old\n", "the filter mode applies nothing");
+  assert.equal(fs.readFileSync(patch, "utf8"), patchBytes);
+});
+
