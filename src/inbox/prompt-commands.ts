@@ -33,7 +33,7 @@ import { durationLabel } from "../text/duration.js";
 import { failFollowJsonRival, parseRoleListFlag } from "../cli/cli-args.js";
 import { followView, type FollowViewSeams } from "../cli/follow-view.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
-import { errorMessage } from "../text/text.js";
+import { errorMessage, stripTerminalControls } from "../text/text.js";
 import { plural } from "../text/phrases.js";
 import { readPromptImageFiles, type PromptImageInput } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
@@ -235,17 +235,22 @@ function runPromptCancel(root: string, position: number, role: string | null, js
 /** Run the CLI's image-input gate for one `prompt` surface. Shared by the submit and
  * --edit forms so the refusal promise holds across every CLI attach surface: an image no
  * configured model can read is refused (fail) before a byte is written, and a role that
- * reroutes a blind read is told (say) where the prompt will run. */
-function runPromptImageGate(root: string, target: string): void {
+ * reroutes a blind read is told where the prompt will run. With `json` the advisory rides
+ * stderr, so stdout stays the one acknowledgement object the caller parses. */
+function runPromptImageGate(root: string, target: string, json = false): void {
   const guidance = imagePromptGuidance(root, target);
   if (guidance.refusal) fail(guidance.refusal);
-  if (guidance.notice) say(guidance.notice);
+  if (guidance.notice === undefined) return;
+  // say() sanitizes terminal controls; the notice carries config-written role/model ids, so
+  // the stderr twin keeps the same boundary rather than writing them raw.
+  if (json) process.stderr.write(`${stripTerminalControls(guidance.notice)}\n`);
+  else say(guidance.notice);
 }
 
 /** The `--edit` attachment phase: read the `--attach` image list (undefined when there is
  * none) and run the image-input gate under the role the edit targets — the position's
  * resolved role when no `--role` narrows it. */
-function readEditAttachments(root: string, position: number, attachPaths: string[], role: string | null): PromptImageInput[] | undefined {
+function readEditAttachments(root: string, position: number, attachPaths: string[], role: string | null, json: boolean): PromptImageInput[] | undefined {
   // The same broken-config policy and list-wide resolution as cancel, one verb over: the
   // file's new content rides the same queue file (position, enqueue stamp, and a pending
   // --at deferral untouched), and a concurrent dequeue reports gone and exits clean. An
@@ -261,7 +266,7 @@ function readEditAttachments(root: string, position: number, attachPaths: string
   // name it.
   if (images !== undefined && images.length > 0) {
     const targetRole = role ?? resolveListedRole(root, position);
-    runPromptImageGate(root, targetRole);
+    runPromptImageGate(root, targetRole, json);
   }
   return images;
 }
@@ -324,7 +329,7 @@ function editTypedQueuedPrompt(root: string, position: number, text: string, rol
  * list-wide or `--role`-scoped. The three phases live in `readEditAttachments`,
  * `editBareQueuedPrompt` and `editTypedQueuedPrompt`, so each `--edit` job is found by name. */
 function runPromptEdit(root: string, position: number, text: string | null, attachPaths: string[], role: string | null, json: boolean): void {
-  const images = readEditAttachments(root, position, attachPaths, role);
+  const images = readEditAttachments(root, position, attachPaths, role, json);
   if (text === null) {
     editBareQueuedPrompt(root, position, role, images, json);
     return;
