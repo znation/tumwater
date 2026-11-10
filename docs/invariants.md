@@ -5162,4 +5162,5 @@ that listener instead of throwing first.
 
 **Pinned by.** `test/cli-epipe.test.ts` — "a follow view whose stdout pipe closes exits 0
 quietly, not with an EPIPE crash"; `test/tui-dead-terminal.test.ts` — "a runTui whose terminal
-dies (EIO on a stream write) quits instead of crashing on an uncaught exception".
+dies (EIO on a stream write) quits instead of crashing on an uncaught exception" and "a real
+CLI-hosted TUI exits 0 when its terminal dies: the guard defers EIO to the TUI quit".
