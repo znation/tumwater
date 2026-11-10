@@ -139,7 +139,7 @@ test("retire help shows the full synopsis and the --json payload shapes", () => 
   const firstLine = topic.split("\n")[0] ?? "";
   assert.equal(firstLine.trim(), "tumwater retire --role <id> [--force] [--dry-run] [--json]");
   assert.match(topic, /wouldRemove/);
-  assert.match(topic, /removed/);
+  assert.match(topic, /\{role, removed, skipped\}/);
 });
 
 test("reviews help names the --accept --json payload", () => {
