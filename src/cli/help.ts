@@ -137,9 +137,10 @@ Usage:
                                    disable a role with roles.<id>.enabled false, not by
                                    omitting it. With [--json], set and unset print one
                                    acknowledgement object instead of the confirmation prose
-                                   — status set or unchanged (set carries value; unset
-                                   carries oldValue and, when the key still resolves after
-                                   removal, resolved)
+                                   — set with status set or unchanged (carrying value) and
+                                   unset with status removed or not_set (carrying oldValue
+                                   when the file held the key, and resolved when the key
+                                   still resolves after removal)
   tumwater logs [-f/--follow] [-n N] [--since <duration>] [--until <duration>] [--role <id>[,<id>...]] [--grep <text>] [--type <event type>[,<event type>...]] [--count] [--notable] [--json]
                                    Show (and follow) tumwater events; --since shows the
                                    events of the past window (capped at 7d); --until ends that

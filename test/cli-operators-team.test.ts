@@ -525,12 +525,20 @@ test("config get/set arg shapes, repo gating, and the help table", async () => {
   r = await cli(repo, "config", "set", "model", "gpt-5", "extra");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /usage: tumwater config set <key> <value>/);
+  r = await cli(repo, "config", "set", "model", "gpt-5", "extra", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /usage: tumwater config set <key> <value>/);
+  assert.equal(r.stdout, "", "a surplus token with --json is refused before any ack");
   r = await cli(repo, "config", "unset");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /usage: tumwater config unset <key>/);
   r = await cli(repo, "config", "unset", "model", "extra");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /usage: tumwater config unset <key>/);
+  r = await cli(repo, "config", "unset", "model", "extra", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /usage: tumwater config unset <key>/);
+  assert.equal(r.stdout, "", "a surplus token with --json is refused before any ack");
 
   const help = await cli(repo, "help");
   assert.equal(help.code, 0);
