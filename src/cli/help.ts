@@ -605,7 +605,8 @@ Usage:
                                    [--json], which prints one acknowledgement object in place of the prose
                                    confirmation — a set is { command:"role", action:"set", role, key,
                                    status (set or unchanged), value } and a clear is { command:"role",
-                                   action:"clear", role, key, status (cleared or not_set), oldValue } — where
+                                   action:"clear", role, key, status (cleared or not_set; oldValue only
+                                   when cleared) } — where
                                    key is the config key written (e.g. quietHoursPerRole.<base>) and role is the
                                    base role, so a script can hold or release a role without parsing the prose; the
                                    four model-override writes (--provider, --model, --thinking, --backend and their
