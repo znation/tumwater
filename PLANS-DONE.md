@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract pin queue, part 1g/5: The orchestrator merge driver resolves pins only (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large part 1a/3 after feature held it; requires Subtract pin queue part 1d/5 landed; sibling to parts 1e/5 and 1f/5, which require part 1d/5; touches test/fixtures/orchestrator-fixtures.ts test/orchestrator-merge-pin.test.ts) — done 2026-11-09 by the feature role
+
+**Goal.** The orchestrator fixture's `mergeHead` driver and its pin test reach a merge through the role's merge ref only; no queue head participates.
+
+**Approach.** Test and fixture edits only.
+- test/fixtures/orchestrator-fixtures.ts: in `mergeHead`, remove the `headMerge` branch, the `queuedMergeFiles` retry-drop loop and the queue-file leftover check; resolve the expected role's pin with `refSha(repo, mergeRefName(role))` and throw when absent; after the merge, require the pin is either gone (merged) or still present (retriable), as the outcome says. Remove the now-unused `dropMerge`, `headMerge`, `queueDepth`, `queuedMergeFiles` and `fs` imports; update the doc comment.
+- test/orchestrator-merge-pin.test.ts: use `pinDrained`; delete the "a queued entry drains before a pin that has no queue file" case and its `enqueueMerge`/`entry` seeding; keep `queueDepth(root) === 0` only where it asserts no queue file was written. Remove imports the deleted case leaves unused.
+
+**As landed.** The pin postcondition is driven by the engine's own `RETRIABLE_MERGE_RESULTS` set — a retriable outcome (`review_error` under the strike cap, `merge_conflict`, `merge_blocked`) leaves the pin, every terminal outcome (changed, rejected, withdrawn, a strike-capped `review_error`) deletes it, checked with `refSha` — and a user `aborted` merge is a shutdown, not a verdict about the change, so the driver skips the check and lets the test assert the pin itself (the fail-closed shutdown test in test/runner-leftover-recovery.test.ts asserts it survives). The `fs` import stays: only `mergeHead`'s queue leftover check was a second `fs` site in the file, and `readSamples` (imported by the live-orchestrator e2e tier) is the other, so the whole `fs` import is still used.
+
+**Files touched.** test/fixtures/orchestrator-fixtures.ts test/orchestrator-merge-pin.test.ts
+
+**Acceptance criteria.**
+- `grep -nE 'enqueueMerge|headMerge|queuedMergeFiles|dropMerge' test/orchestrator-merge-pin.test.ts test/fixtures/orchestrator-fixtures.ts` prints nothing.
+- The queue-priority case is gone; a pin is still gated and merged, a stale pin deleted, a conflict-capped pin left, and a withdrawn claim's pin left.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/orchestrator-merge-pin.test.ts, test/agent-commit-fold.test.ts, test/merge-slot.test.ts, test/runner-2.test.ts, test/runner-3.test.ts and test/runner-4.test.ts, then the project's gate.
+
 ### `tumwater reviews --json`'s `pending` rows carry the whole-queue `position` the list prints and `reviews --show <n>`/`--accept <n>` address, so a script can read an entry and act on it without counting the array itself (planned 2026-11-09 by the plan role; `cmdReviews` in src/cli/cli-review-commands.ts hands `sayJsonOrRender` the raw `{ pending: entries }` while `renderPostReviews` numbers the same entries with `scope ? scope.positions[i] : i + 1`, and `cmdReviewsShow` prints the raw entry object, so a filtered `--json` read keeps only the kept entries but gives a script no way to learn each one's whole-queue number; before this entry `grep -n 'reviews --json' PLANS.md` prints nothing and `grep -nE 'position.*review|review.*position' PLANS.md` prints nothing, while PLANS-DONE.md's `--grep` and `--show` entries add positions only to the rendered text and leave the JSON `{ pending: [...] }` raw, and test/cli-reviews.test.ts's show-json test pins `reviews --show <n> --json` deep-equal to a `pending` row; independent in files of every `## Planned` entry — the pin-queue parts touch test fixtures, merge/status pin reads and the orchestrator, and the in-flight salvage plans touch src/status, src/git, src/cli/cli-salvage-command.ts and the salvage stanza of src/cli/help.ts and docs/cli.md, never src/cli/cli-review-commands.ts or the reviews stanza; touches src/cli/cli-review-commands.ts src/cli/help.ts docs/cli.md test/cli-reviews.test.ts) — done 2026-11-09 by the feature role
 
 **Goal.** `tumwater reviews --json` is the scriptable twin of the list, but its `pending` rows omit the number every operator-facing view prints: the text list numbers each entry by its whole-queue position, and `reviews --show <n>`/`--accept <n>` act on that number. Give each `--json` row the same `position`, including rows kept by `--role`, `--status` or `--grep`, and give `reviews --show <n> --json` the same field so the two JSON objects stay the same shape.

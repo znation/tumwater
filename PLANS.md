@@ -88,23 +88,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Run test/merge-pipeline-2.test.ts, then the project's gate.
 
-### Subtract pin queue, part 1g/5: The orchestrator merge driver resolves pins only (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large part 1a/3 after feature held it; requires Subtract pin queue part 1d/5 landed; sibling to parts 1e/5 and 1f/5, which require part 1d/5; touches test/fixtures/orchestrator-fixtures.ts test/orchestrator-merge-pin.test.ts)
-
-**Goal.** The orchestrator fixture's `mergeHead` driver and its pin test reach a merge through the role's merge ref only; no queue head participates.
-
-**Approach.** Test and fixture edits only.
-- test/fixtures/orchestrator-fixtures.ts: in `mergeHead`, remove the `headMerge` branch, the `queuedMergeFiles` retry-drop loop and the queue-file leftover check; resolve the expected role's pin with `refSha(repo, mergeRefName(role))` and throw when absent; after the merge, require the pin is either gone (merged) or still present (retriable), as the outcome says. Remove the now-unused `dropMerge`, `headMerge`, `queueDepth`, `queuedMergeFiles` and `fs` imports; update the doc comment.
-- test/orchestrator-merge-pin.test.ts: use `pinDrained`; delete the "a queued entry drains before a pin that has no queue file" case and its `enqueueMerge`/`entry` seeding; keep `queueDepth(root) === 0` only where it asserts no queue file was written. Remove imports the deleted case leaves unused.
-
-**Files touched.** test/fixtures/orchestrator-fixtures.ts test/orchestrator-merge-pin.test.ts
-
-**Acceptance criteria.**
-- `grep -nE 'enqueueMerge|headMerge|queuedMergeFiles|dropMerge' test/orchestrator-merge-pin.test.ts test/fixtures/orchestrator-fixtures.ts` prints nothing.
-- The queue-priority case is gone; a pin is still gated and merged, a stale pin deleted, a conflict-capped pin left, and a withdrawn claim's pin left.
-- `npm run test:gate` passes.
-
-**Tests.** Run test/orchestrator-merge-pin.test.ts, test/agent-commit-fold.test.ts, test/merge-slot.test.ts, test/runner-2.test.ts, test/runner-3.test.ts and test/runner-4.test.ts, then the project's gate.
-
 ### Subtract pin queue, part 1h/5: The queue-seeding fixture helper goes (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large part 1a/3 after feature held it; requires Subtract pin queue parts 1e/5, 1f/5 and 1g/5 landed; touches test/fixtures/merge-fixtures.ts test/fixtures/orchestrator-fixtures.ts)
 
 **Goal.** No merge test in the drain, pipeline or orchestrator suites seeds a queue file; the fixture helper that did is gone.
