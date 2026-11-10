@@ -126,10 +126,10 @@ function requireKnownRole(root: string, id: string): void {
  * `clearFlag` are the exact spellings the refusal names (the clear twin is not always
  * `--clear` + the set flag — `--notes-file`'s twin is `--clear-notes`). The --json refusal
  * no longer lives here: the per-role hold writes (quiet hours, daily cap, min run interval,
- * instances) and the model-override writes (provider, model, thinking, backend) honor --json
- * and print their own acknowledgement, while the prose-only writes (notes, instructions,
- * enable/disable) each refuse it with their own noun. Every set/clear write branch opens with
- * the same two-line prelude, so this keeps the set/clear-rival check in one place. */
+ * instances), the model-override writes (provider, model, thinking, backend) and the text and
+ * enable/disable writes (notes, instructions, enable/disable) all honor --json and print their
+ * own acknowledgement. Every set/clear write branch opens with the same two-line prelude, so
+ * this keeps the set/clear-rival check in one place. */
 function rejectSetAndClear(rest: string[], setFlag: string, clearFlag: string): void {
   if (rest.includes(setFlag) && rest.includes(clearFlag))
     fail(`give ${clearFlag} or ${setFlag}, not both`);
@@ -340,15 +340,26 @@ function parseWriteFlags(rest: string[]) {
 
 /** `tumwater role <id>`'s notes write: clear the note or replace it from --notes-file. The
  * director has no notes, so its id is refused before the known-role check; every other write
- * resolves the role, reads the file (or clears) and saves the note through saveRoleNote. */
-function writeNotes(root: string, id: string, rest: string[], clear: boolean, notesFile: string): void {
+ * resolves the role, reads the file (or clears) and saves the note through saveRoleNote.
+ * saveRoleNote returns only its prose confirmation, so with --json the branch prints the
+ * same acknowledgement object the hold writes print (a set carries the note text as `value`;
+ * `key` is the literal `notes`, since the note has no config key). */
+function writeNotes(root: string, id: string, rest: string[], clear: boolean, notesFile: string, json: boolean): void {
   rejectSetAndClear(rest, "--notes-file", "--clear-notes");
-  if (rest.includes("--json")) fail("--json does not apply to a notes write");
   if (id === DIRECTOR_ROLE) fail("the director has no notes");
   requireKnownRole(root, id);
   const text = clear ? "" : readPromptFileArg(notesFile || fail("--notes-file needs a path"));
   try {
-    say(`${id}: ${saveRoleNote(roleNotesPath(root, id), text)}`);
+    const prose = saveRoleNote(roleNotesPath(root, id), text);
+    if (json) {
+      sayJson(
+        clear
+          ? { command: "role", action: "clear", role: id, key: "notes", status: "cleared" }
+          : { command: "role", action: "set", role: id, key: "notes", status: "set", value: text },
+      );
+    } else {
+      say(`${id}: ${prose}`);
+    }
   } catch (err) {
     fail(errorMessage(err));
   }
@@ -359,21 +370,34 @@ function writeNotes(root: string, id: string, rest: string[], clear: boolean, no
  * config.roles[base]) through the same setConfigKey/unsetConfigKey core `config
  * set`/`config unset` use, so validateConfig enforces the 4096-char cap and the write is
  * atomic. The director is allowed here (its override reaches its own runs), unlike the notes
- * branch's director refusal. */
-function writeInstructions(root: string, id: string, rest: string[], clearInst: boolean, instFile: string): void {
+ * branch's director refusal. With --json the set/clear print the same acknowledgement object
+ * the hold writes print (the clear names `oldValue` only when the file held the key). */
+function writeInstructions(root: string, id: string, rest: string[], clearInst: boolean, instFile: string, json: boolean): void {
   rejectSetAndClear(rest, "--instructions-file", "--clear-instructions");
-  if (rest.includes("--json")) fail("--json does not apply to an instructions write");
   requireKnownRole(root, id);
   const base = baseRoleOf(id);
+  const key = `roles.${base}.instructions`;
   if (clearInst) {
-    const result = unsetConfigKey(root, `roles.${base}.instructions`);
+    const result = unsetConfigKey(root, key);
     if (!result.ok) fail(result.error);
-    say(`${base}: instructions cleared`);
+    if (json) {
+      sayJson(
+        result.oldValue === undefined
+          ? { command: "role", action: "clear", role: base, key, status: "not_set" }
+          : { command: "role", action: "clear", role: base, key, status: "cleared", oldValue: result.oldValue },
+      );
+    } else {
+      say(`${base}: instructions cleared`);
+    }
   } else {
     const text = readPromptFileArg(instFile || fail("--instructions-file needs a path"));
-    const result = setConfigKey(root, `roles.${base}.instructions`, JSON.stringify(text));
+    const result = setConfigKey(root, key, JSON.stringify(text));
     if (!result.ok) fail(result.error);
-    say(`${base}: instructions saved (${text.length} chars)`);
+    if (json) {
+      sayJson({ command: "role", action: "set", role: base, key, status: result.unchanged ? "unchanged" : "set", value: result.value });
+    } else {
+      say(`${base}: instructions saved (${text.length} chars)`);
+    }
   }
 }
 
@@ -515,20 +539,30 @@ function writeModelField(root: string, id: string, rest: string[], field: string
  * so that refusal is explicit (enabling stays allowed). knownRoleIds holds every catalog and
  * custom role whether or not it is enabled, so a currently-disabled id resolves; an instance
  * id writes its base role's key. A role already in the asked-for state is reported as such
- * and the file is left alone. */
-function writeEnableDisable(root: string, id: string, rest: string[], enable: boolean, disable: boolean): void {
-  if (rest.includes("--json")) fail("--json does not apply to an enable/disable write");
+ * and the file is left alone. With --json the two answers print the same acknowledgement
+ * object the hold writes print (the no-op as `unchanged`, the write as `set`), so a script can
+ * flip a role's enabled state without parsing the prose. */
+function writeEnableDisable(root: string, id: string, enable: boolean, disable: boolean, json: boolean): void {
   requireKnownRole(root, id);
   if (disable && id === DIRECTOR_ROLE) fail("the director cannot be disabled");
   const base = baseRoleOf(id);
   const state = enable ? "enabled" : "disabled";
+  const key = `roles.${base}.enabled`;
   if (loadConfigSafe(root).config?.roles[base]?.enabled === enable) {
-    say(`${base}: already ${state}`);
+    if (json) {
+      sayJson({ command: "role", action: "set", role: base, key, status: "unchanged", value: enable });
+    } else {
+      say(`${base}: already ${state}`);
+    }
     return;
   }
-  const result = setConfigKey(root, `roles.${base}.enabled`, enable ? "true" : "false");
+  const result = setConfigKey(root, key, enable ? "true" : "false");
   if (!result.ok) fail(result.error);
-  say(`${base}: ${state}`);
+  if (json) {
+    sayJson({ command: "role", action: "set", role: base, key, status: "set", value: result.value });
+  } else {
+    say(`${base}: ${state}`);
+  }
 }
 
 /** `tumwater role <id>`: one role's standing prompt and next run's assembled prompt, with
@@ -593,8 +627,8 @@ export async function cmdRole(root: string, args: string[], seams: FollowViewSea
   // Exactly one write kind is active (refused above if more), so dispatch on it by name. The
   // per-write logic lives in the named helpers below; these closures only wire the args.
   const dispatch: Record<string, () => void> = {
-    notes: () => writeNotes(root, id, rest, f.clear, f.notesFile ?? ""),
-    instructions: () => writeInstructions(root, id, rest, f.clearInst, f.instFile ?? ""),
+    notes: () => writeNotes(root, id, rest, f.clear, f.notesFile ?? "", rest.includes("--json")),
+    instructions: () => writeInstructions(root, id, rest, f.clearInst, f.instFile ?? "", rest.includes("--json")),
     "quiet-hours": () => writeQuietHours(root, id, rest, f.clearQuiet, rest.includes("--json")),
     cap: () => writeDailyCap(root, id, rest, f.clearCap, rest.includes("--json")),
     "min-run-interval": () => writeMinRunInterval(root, id, rest, f.clearInterval, rest.includes("--json")),
@@ -603,8 +637,8 @@ export async function cmdRole(root: string, args: string[], seams: FollowViewSea
     model: () => writeModelField(root, id, rest, "model", f.clearModel, "--model", "--clear-model", "model", rest.includes("--json")),
     thinking: () => writeModelField(root, id, rest, "thinking", f.clearThinking, "--thinking", "--clear-thinking", "thinking", rest.includes("--json")),
     backend: () => writeModelField(root, id, rest, "backend", f.clearBackend, "--backend", "--clear-backend", "backend", rest.includes("--json")),
-    enable: () => writeEnableDisable(root, id, rest, true, false),
-    disable: () => writeEnableDisable(root, id, rest, false, true),
+    enable: () => writeEnableDisable(root, id, true, false, rest.includes("--json")),
+    disable: () => writeEnableDisable(root, id, false, true, rest.includes("--json")),
   };
   const first = f.writes[0]!;
   dispatch[first]!();

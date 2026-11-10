@@ -79,22 +79,61 @@ test("role --clear-notes and --notes-file write the role's notes", async () => {
   assert.match(r.stderr, /shorten it to at most 4096 bytes/);
   assert.equal(fs.readFileSync(notes, "utf8"), "use team.ts");
 
+  // --json on a notes set prints the role write acknowledgement with the note text as value,
+  // in place of the prose confirmation: the whole stdout is one object.
+  r = await cli(repo, "role", "feature", "--notes-file", file, "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "notes",
+    status: "set",
+    value: "use team.ts",
+  });
+  assert.equal(fs.readFileSync(notes, "utf8"), "use team.ts");
+
+  // The 4 KB cap still fires with --json: exit 1, the stderr wording, empty stdout, and the
+  // old note left in place.
+  r = await cli(repo, "role", "feature", "--notes-file", big, "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /shorten it to at most 4096 bytes/);
+  assert.equal(r.stdout, "");
+  assert.equal(fs.readFileSync(notes, "utf8"), "use team.ts");
+
+  // The prose clear path is unchanged.
   r = await cli(repo, "role", "feature", "--clear-notes");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /feature: notes cleared/);
   assert.equal(fs.readFileSync(notes, "utf8"), "");
+
+  // A notes clear with --json prints the clear acknowledgement (no value) instead.
+  fs.writeFileSync(notes, "old");
+  r = await cli(repo, "role", "feature", "--clear-notes", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "clear",
+    role: "feature",
+    key: "notes",
+    status: "cleared",
+  });
+  assert.equal(fs.readFileSync(notes, "utf8"), "");
+
+  // The read form's --json still prints the collector's pretty document, so a cleared note
+  // reads back as null.
   r = await cli(repo, "role", "feature", "--json");
   assert.equal((JSON.parse(r.stdout) as { notes: string | null }).notes, null);
 
   for (const [args, msg] of [
     [["feature", "--clear-notes", "--notes-file", "x"], /not both/],
-    [["feature", "--clear-notes", "--json"], /--json does not apply/],
-    [["director", "--clear-notes"], /director has no notes/],
+    [["director", "--clear-notes", "--json"], /director has no notes/],
     [["bogus", "--clear-notes"], /unknown role: bogus/],
   ] as const) {
     r = await cli(repo, "role", ...args);
     assert.equal(r.code, 1, args.join(" "));
     assert.match(r.stderr, msg);
+    assert.equal(r.stdout, "", `${args.join(" ")} prints nothing to stdout`);
   }
 });
 
@@ -144,31 +183,108 @@ test("role --clear-instructions and --instructions-file write the role's instruc
   assert.equal(r.code, 0);
   assert.equal(config().roles.feature.instructions, "for base");
 
+  // An instance id with --json reports the base role and its base key in the acknowledgement
+  // (not the instance id): re-writing "for base" is an unchanged no-op, but the object names
+  // feature and roles.feature.instructions.
+  r = await cli(repo, "role", "feature-2", "--instructions-file", base, "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.instructions",
+    status: "unchanged",
+    value: "for base",
+  });
+  assert.equal(config().roles.feature.instructions, "for base");
+
+  // --json on a set that changes the value prints the set acknowledgement with the stored
+  // value as value (here the instance write left "for base", so a new value is a set).
+  const jfile = path.join(repo, "jinst.md");
+  fs.writeFileSync(jfile, "via json");
+  r = await cli(repo, "role", "feature", "--instructions-file", jfile, "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.instructions",
+    status: "set",
+    value: "via json",
+  });
+  assert.equal(config().roles.feature.instructions, "via json");
+
+  // The 4096-char cap still fires with --json: exit 1, the stderr wording, empty stdout, and
+  // the stored value unchanged.
+  r = await cli(repo, "role", "feature", "--instructions-file", big, "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /at most 4096/);
+  assert.equal(r.stdout, "");
+  assert.equal(config().roles.feature.instructions, "via json");
+
   // Clearing removes the key (undefined, not an empty string).
   r = await cli(repo, "role", "feature", "--clear-instructions");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /feature: instructions cleared/);
   assert.equal(config().roles.feature.instructions, undefined);
+
+  // A clear with --json prints the clear acknowledgement naming the removed value as
+  // oldValue; a second --json clear (no key left) reports not_set with no oldValue.
+  const setBack = readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
+  setBack.roles = { ...setBack.roles, feature: { ...setBack.roles.feature, instructions: "for base" } };
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(setBack, null, 2));
+  r = await cli(repo, "role", "feature", "--clear-instructions", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "clear",
+    role: "feature",
+    key: "roles.feature.instructions",
+    status: "cleared",
+    oldValue: "for base",
+  });
+  assert.equal(config().roles.feature.instructions, undefined);
+  r = await cli(repo, "role", "feature", "--clear-instructions", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "clear",
+    role: "feature",
+    key: "roles.feature.instructions",
+    status: "not_set",
+  });
+
+  // The read form's --json still prints the collector's pretty document, so a cleared
+  // override reads back as null.
   r = await cli(repo, "role", "feature", "--json");
   assert.equal(JSON.parse(r.stdout).instructions, null);
 
   // Refusals.
   for (const [args, msg] of [
     [["feature", "--clear-instructions", "--instructions-file", "x"], /not both/],
-    [["feature", "--clear-instructions", "--json"], /--json does not apply/],
     [["feature", "--clear-notes", "--instructions-file", "x"], /notes and instructions writes/],
     [["bogus", "--clear-instructions"], /unknown role: bogus/],
   ] as const) {
     r = await cli(repo, "role", ...args);
     assert.equal(r.code, 1, args.join(" "));
     assert.match(r.stderr, msg);
+    assert.equal(r.stdout, "", `${args.join(" ")} prints nothing to stdout`);
   }
 
   // The director is allowed for instructions (its override reaches its own runs), unlike
-  // the notes branch's director refusal.
+  // the notes branch's director refusal; it never held a key, so a --json clear is not_set.
   r = await cli(repo, "role", "director", "--clear-instructions");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /director: instructions cleared/);
+  r = await cli(repo, "role", "director", "--clear-instructions", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "clear",
+    role: "director",
+    key: "roles.director.instructions",
+    status: "not_set",
+  });
 });
 
 test("role writes report a broken tumwater.json instead of crashing on it", async () => {

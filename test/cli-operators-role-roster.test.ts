@@ -274,13 +274,81 @@ test("role --enable and --disable write the role's enabled state", async () => {
   }
   assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), beforeBogus, "file unchanged on unknown id");
 
+  // --enable/--disable now take --json (the same acknowledgement the hold writes print): a
+  // no-op answers `unchanged`, the write answers `set`, each with the stored boolean as value.
+  // feature is still disabled from the feature-2 line above.
+  r = await cli(repo, "role", "feature", "--enable", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.enabled",
+    status: "set",
+    value: true,
+  });
+  assert.equal(config().roles.feature.enabled, true);
+  r = await cli(repo, "role", "feature", "--disable", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.enabled",
+    status: "set",
+    value: false,
+  });
+  assert.equal(config().roles.feature.enabled, false);
+  // A repeated disable is the no-op: `unchanged`, and tumwater.json byte-identical.
+  const disabledBytes = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "feature", "--disable", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.enabled",
+    status: "unchanged",
+    value: false,
+  });
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), disabledBytes, "a repeated disable writes nothing");
+  // An instance id with --json reports the base role in `role` and its base key in `key`:
+  // re-enable feature (so feature-2 resolves), then feature-2 disables it.
+  r = await cli(repo, "role", "feature", "--enable", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.enabled",
+    status: "set",
+    value: true,
+  });
+  r = await cli(repo, "role", "feature-2", "--disable", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.enabled",
+    status: "set",
+    value: false,
+  });
+  assert.equal(config().roles.feature.enabled, false);
+
+  // The director-disable refusal still fires with --json: exit 1, the existing wording, and
+  // empty stdout.
+  r = await cli(repo, "role", "director", "--disable", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /the director cannot be disabled/);
+  assert.equal(r.stdout, "");
+  assert.equal(r.stdout, "");
+
   // --enable --disable and combining either with another role write are refused, name the kinds.
+  const beforeCombos = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
   r = await cli(repo, "role", "feature", "--enable", "--disable");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /enable and disable writes cannot share one invocation/);
-  r = await cli(repo, "role", "feature", "--disable", "--json");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json does not apply to an enable\/disable write/);
   r = await cli(repo, "role", "feature", "--disable", "--clear-notes");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /notes and disable writes cannot share one invocation/);
@@ -290,6 +358,7 @@ test("role --enable and --disable write the role's enabled state", async () => {
   r = await cli(repo, "role", "feature", "--enable", "--instructions-file", "y");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /instructions and enable writes cannot share one invocation/);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), beforeCombos, "the refused combinations leave the file alone");
 });
 
 test("role --review-after-merge and --clear-review-after-merge are unknown", async () => {

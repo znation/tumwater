@@ -610,18 +610,28 @@ Usage:
                                    base role, so a script can hold or release a role without parsing the prose; the
                                    four model-override writes (--provider, --model, --thinking, --backend and their
                                    clears) take [--json] the same way, naming the roles.<base>.<field> key they write
-                                   (e.g. roles.<base>.model); the notes/instructions and enable/disable writes still take
-                                   no --json
-  tumwater role <id> --clear-notes Clear that role's notes
-  tumwater role <id> --notes-file <path>
+                                   (e.g. roles.<base>.model); the notes, instructions and enable/disable writes
+                                   each take [--json] too (their own key — notes, the instructions key,
+                                   roles.<base>.enabled — and their own statuses)
+  tumwater role <id> --clear-notes [--json]
+                                   Clear that role's notes; [--json] prints one
+                                   { command:"role", action:"clear", role, key:"notes",
+                                   status:"cleared" } object in place of the prose line
+  tumwater role <id> --notes-file <path> [--json]
                                    Replace that role's notes from a file ("-" reads stdin;
                                    4 KB cap); a run in progress at that moment may still
-                                   overwrite it through its own tumwater-notes call
-  tumwater role <id> --clear-instructions
-                                   Clear that role's instructions override
-  tumwater role <id> --instructions-file <path>
+                                   overwrite it through its own tumwater-notes call;
+                                   [--json] prints { command:"role", action:"set", role,
+                                   key:"notes", status:"set", value } with the note text
+  tumwater role <id> --clear-instructions [--json]
+                                   Clear that role's instructions override; [--json] prints
+                                   one { command:"role", action:"clear", role, key,
+                                   status (cleared or not_set), oldValue } object
+  tumwater role <id> --instructions-file <path> [--json]
                                    Replace that role's instructions override from a file
-                                   ("-" reads stdin; 4 KB cap), written to roles.<id>.instructions
+                                   ("-" reads stdin; 4 KB cap), written to roles.<id>.instructions;
+                                   [--json] prints { command:"role", action:"set", role,
+                                   key, status:"set", value } with the file's text
   tumwater role <id> --clear-quiet-hours [--json]
                                    Clear that role's own quiet-hours window
   tumwater role <id> --quiet-hours <window> [--json]
@@ -663,9 +673,12 @@ Usage:
                                    Clear that role's backend (back to the team/tier
                                    default backend)
   tumwater role <id> --enable      Enable the role, written to roles.<id>.enabled
-                                   (the base id for an instance)
+                                   (the base id for an instance) [--json]
   tumwater role <id> --disable     Disable it (refused for the director); clean up
-                                   leftovers with tumwater retire --role <id>
+                                   leftovers with tumwater retire --role <id> [--json]
+                                   Both print one { command:"role", action:"set", role,
+                                   key:"roles.<base>.enabled", status (set or
+                                   unchanged), value } object in place of the prose line
   tumwater role <id> --instances <n> [--json]
                                    Set how many parallel runners this role may have
                                    (an integer from 1 to 8; only feature and bugfix split),

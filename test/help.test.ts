@@ -132,6 +132,22 @@ test("reclaim help shows [--dry-run] [--json] and the three acknowledgement stat
   assert.match(topic, /"nothing_to_reclaim"/);
 });
 
+// The notes, instructions and enable/disable role writes take --json (the hold writes did so
+// in the first part), so their usage lines carry the flag and the acknowledgement it prints.
+test("role help shows [--json] on the notes, instructions and enable/disable write lines", () => {
+  const topic = helpTopic("role")!;
+  assert.match(topic, /--clear-notes \[--json\]/);
+  assert.match(topic, /--notes-file <path> \[--json\]/);
+  assert.match(topic, /--clear-instructions \[--json\]/);
+  assert.match(topic, /--instructions-file <path> \[--json\]/);
+  assert.match(topic, /--enable      Enable the role, written to roles\.<id>\.enabled\n\s*\(the base id for an instance\) \[--json\]/);
+  assert.match(topic, /--disable     Disable it \(refused for the director\)/);
+  assert.match(topic, /leftovers with tumwater retire --role <id> \[--json\]/);
+  // The acknowledgement the enable/disable write prints, and the notes write's note-text value.
+  assert.match(topic, /key:"roles\.<base>\.enabled", status \(set or\n\s*unchanged\), value } object/);
+  assert.match(topic, /key:"notes", status:"set", value/);
+});
+
 test("helpTopicForArgs answers a --help flag-only invocation with the command's topic", () => {
   assert.equal(helpTopicForArgs("status", ["--help"]), helpTopic("status"));
   assert.equal(helpTopicForArgs("status", ["-h"]), helpTopic("status"));
