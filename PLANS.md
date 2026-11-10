@@ -54,23 +54,25 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Subtract pin queue, part 1e/5: The merge pipeline test seeds pins (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large part 1a/3 after feature held it; requires Subtract pin queue part 1d/5 landed; sibling to parts 1f/5 and 1g/5, which require part 1d/5; touches test/merge-pipeline.test.ts)
 
-**Goal.** test/merge-pipeline.test.ts drives every merge from a role's pin and never from a queue file.
+**Goal.** test/merge-pipeline.test.ts drives every merge from a role's pin and never from a queue file, and keeps `resolveAuthor`'s throwaway-author fallback covered directly rather than through a queue seed.
 
 **Approach.** Test edits only.
 - Replace `queueChanges` with `pinChanges` and `drained(root, pipeline)` with `pinDrained(root, pipeline, roles)` (pass the roles the case drives).
 - Remove the `enqueueMerge`, `queueDepth`, `queuedMergeFiles`, `entry`, `mergeQueueDir` and `dropMerge` imports and uses that existed only to seed or inspect queue files; assert a pin that survives through `refSha(root, mergeRefName(role))` and one that merged is `null`.
-- Delete "a torn head is dropped with a warning and the healthy entry behind it merges"; its subject is the queue reader part 1b/3 removes. Keep the cases about pin gating, batching, batch write-back, head ordering, rejection and the throwaway author, rewritten to observe the pin.
+- Delete "a torn head is dropped with a warning and the healthy entry behind it merges"; its subject is the queue reader part 1b/3 removes.
+- Delete the queue-seeded "a merge whose role has no live runner verifies and merges through a throwaway author" case. It cannot become pin-only: `drainMerge`'s kept-pin scan walks `ctx.runners`, so a pin for a runner-less role is never discovered, and only the queue file reached `resolveAuthor`'s fallback. Do not keep it by seeding a queue file.
+- Keep the fallback covered directly in this file instead: import `resolveAuthor` from src/merge/merge-author.ts and add a case over `makePipeline(root, [])` asserting `resolveAuthor(ctx, "alpha")` returns a `RoleRunner` for `alpha`, and over `makePipeline(root, runnersFor(root, ["alpha"]))` asserting it returns that live runner instance. No merge runs and no queue file is written.
+- Keep the cases about pin gating, batching, batch write-back, head ordering and rejection, rewritten to observe the pin.
 
 **Files touched.** test/merge-pipeline.test.ts
 
 **Acceptance criteria.**
 - `grep -nE 'enqueueMerge|queueDepth|queuedMergeFiles|queueChanges|mergeQueueDir' test/merge-pipeline.test.ts` prints nothing.
-- The torn-head case is gone; every remaining test still observes its old outcome through main, the merge ref, the in-flight marker or events.
+- The torn-head case and the queue-seeded runner-less merge case are gone; no case in the file seeds a queue file, and every remaining merge case observes its old outcome through main, the merge ref, the in-flight marker or events.
+- With an empty `ctx.runners`, `resolveAuthor(ctx, role)` returns a runner for that role; with that role's live runner present it returns the same instance.
 - `npm run test:gate` passes.
 
 **Tests.** Run test/merge-pipeline.test.ts, then the project's gate.
-
-**Needs review 2026-11-09 by feature: plan defect — the goal and its absolute acceptance criterion contradict the approach.** The goal says "never from a queue file" and the first acceptance criterion is the absolute `grep … queueChanges … prints nothing`, but the approach says "Keep … the throwaway author, rewritten to observe the pin." The throwaway-author case (`makePipeline(root, [])` — no live runners) cannot be rewritten to pin-only while still asserting its old outcome that the change lands: the drain's pin-scan (`drainMerge`) iterates `ctx.runners`, so a pin for a runner-less role is never discovered and never merges — only a queue file reaches `resolveAuthor`'s throwaway fallback. Verified this run: a pin-only seed for `alpha` with no live runners leaves the pin unmerged after 8s (`merged=false`, pin still resolves), while a queue-file seed for the same case merges (`merged=true`, queue depth 0). Re-scope the goal and the grep criterion to allow the one queue-file seed for a runner-less role, or drop the case and cover `resolveAuthor`'s fallback elsewhere, before this part is re-attempted.
 
 ### Subtract pin queue, part 1h/5: The queue-seeding fixture helper goes (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large part 1a/3 after feature held it; requires Subtract pin queue parts 1e/5, 1f/5 and 1g/5 landed; touches test/fixtures/merge-fixtures.ts test/fixtures/orchestrator-fixtures.ts)
 
