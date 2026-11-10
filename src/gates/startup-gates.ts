@@ -11,6 +11,7 @@ import {
   NOT_A_REPO_MESSAGE,
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
+  INVALID_BRANCH_NAME_RULES,
   teamWorkspaceMessage,
 } from "./readiness-gates.js";
 import { owningTeamRoot } from "../paths.js";
@@ -305,9 +306,7 @@ async function resolveMainBranch(
           : `baseBranch ${JSON.stringify(explicit)}`;
       return {
         problem:
-          `${namedBy} is not a valid git branch name — pick a name like main, trunk, or ` +
-          `release/2.0 (git's rules: no spaces, colons, or ~^?*[ characters; no ` +
-          `leading/trailing slash or double slash; not a dotted or .lock-suffixed component)`,
+          `${namedBy} ${INVALID_BRANCH_NAME_RULES}`,
       };
     }
     if (!(await branchExists(root, explicit))) {

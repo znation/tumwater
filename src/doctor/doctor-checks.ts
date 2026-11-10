@@ -27,6 +27,7 @@ import {
   NOT_A_REPO_MESSAGE,
   NOT_INITIALIZED_MESSAGE,
   teamWorkspaceMessage,
+  INVALID_BRANCH_NAME_RULES,
   NO_COMMITS_MESSAGE,
 } from "../gates/readiness-gates.js";
 import { backendBinSourceLabelFor, backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
@@ -147,7 +148,7 @@ export async function checkRepo(root: string, config?: TumwaterConfig): Promise<
   if (configured !== undefined) {
     if ((await gitTry(root, "check-ref-format", "--branch", configured)) === null) {
       return failOutcome(
-        `repo at ${toplevel} — baseBranch ${JSON.stringify(configured)} is not a valid git branch name — pick a name like main, trunk, or release/2.0 (git's rules: no spaces, colons, or ~^?*[ characters; no leading/trailing slash or double slash; not a dotted or .lock-suffixed component)`,
+        `repo at ${toplevel} — baseBranch ${JSON.stringify(configured)} ${INVALID_BRANCH_NAME_RULES}`,
       );
     }
     if (!(await branchExists(root, configured))) {

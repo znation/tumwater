@@ -14,7 +14,7 @@ import {
   readBriefText,
   readmeTemplate,
 } from "../brief/brief.js";
-import { teamWorkspaceMessage } from "../gates/readiness-gates.js";
+import { INVALID_BRANCH_NAME_RULES, teamWorkspaceMessage } from "../gates/readiness-gates.js";
 import { CONFIG_BASENAME, STATE_DIR, configPath, owningTeamRoot } from "../paths.js";
 import { projectName } from "../project-name.js";
 import { tooLongMessage } from "../text/text.js";
@@ -316,7 +316,7 @@ async function resolveInitPreferredBranch(
           ? `--branch ${JSON.stringify(preferred)}`
           : `git config init.defaultBranch ${JSON.stringify(preferred)}`;
       throw new Error(
-        `${namedBy} is not a valid git branch name — pick a name like main, trunk, or release/2.0 (git's rules: no spaces, colons, or ~^?*[ characters; no leading/trailing slash or double slash; not a dotted or .lock-suffixed component)`,
+        `${namedBy} ${INVALID_BRANCH_NAME_RULES}`,
       );
     }
     preferredBranch = preferred;

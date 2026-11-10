@@ -18,3 +18,11 @@ export const NOT_INITIALIZED_MESSAGE =
 export function teamWorkspaceMessage(teamRoot: string): string {
   return `this is a tumwater workspace of the team at ${teamRoot}, not a project — run tumwater from ${teamRoot} (\`cd ${teamRoot}\`)`;
 }
+
+/** The git branch-name rules sentence the three entry points that validate a branch name
+ * share (init's --branch preflight, the start gate's baseBranch/`--branch` preflight, and
+ * doctor's repo check): each runs `git check-ref-format --branch` and, on refusal, prefixes its own
+ * context (`--branch "…"` / `baseBranch "…"` / `repo at … — baseBranch "…"`) to this same rules
+ * text, so the sentence lives here once and cannot drift between them. */
+export const INVALID_BRANCH_NAME_RULES =
+  "is not a valid git branch name — pick a name like main, trunk, or release/2.0 (git's rules: no spaces, colons, or ~^?*[ characters; no leading/trailing slash or double slash; not a dotted or .lock-suffixed component)";
