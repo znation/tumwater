@@ -544,8 +544,8 @@ export async function cmdRole(root: string, args: string[], seams: FollowViewSea
   // A value-taking write flag immediately followed by a `--`-flag means the operator forgot its
   // value: `role qa --model --json` (or `--model --provider pi`, `--model --thinking high`)
   // would otherwise take the next flag as the model id and fail later (or in
-  // rejectUnknownArgs) with a confusing message ("--json does not apply to a model write",
-  // "unknown argument: y") instead of naming the actual slip. Refuse up front with the flag's
+  // rejectUnknownArgs) with a confusing invalid-value or shared-write message instead of
+  // naming the actual slip. Refuse up front with the flag's
   // own needs-a-value wording — the same spirit as `config set`'s flag-looking-value guard.
   // Only a `--` (double-dash) token reads as a flag: a single-dash token like `-1` is a
   // negative-number value that must reach the setters' own bound checks, and a single-dash
