@@ -107,20 +107,23 @@ test("role --instances/--clear-instances write the role's parallel-runner count"
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role: bogus/);
 
-  // Mutually exclusive or inapplicable flags are refused and write nothing.
+  // A mutually exclusive set/clear pair is refused and writes nothing.
   r = await cli(repo, "role", "feature", "--clear-instances", "--instances", "2");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /give --clear-instances or --instances, not both/);
+  // --json is honored by the instances write (the ack shape itself is covered in
+  // cli-operators-role-holds). The key is unset here, so a set then a clear nets out to the
+  // same file; only a same-invocation cap rival still refuses.
   r = await cli(repo, "role", "feature", "--instances", "2", "--json");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json does not apply to an instances write/);
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /"key": "roles\.feature\.instances"/);
   r = await cli(repo, "role", "feature", "--clear-instances", "--json");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json does not apply to an instances write/);
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /"status": "cleared"/);
   r = await cli(repo, "role", "feature", "--instances", "2", "--cap", "5");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /instances and cap writes cannot share one invocation/);
-  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, "no write from the refused invocations");
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, "no net write from the refused invocations");
 });
 
 test("role --enable and --disable write the role's enabled state", async () => {

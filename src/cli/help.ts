@@ -594,7 +594,15 @@ Usage:
                                    and is NOT consumed — one is dequeued per run); --json prints the collector's payload
                                    as machine-readable data; -f/--follow repaints the same view every couple of
                                    seconds until Ctrl+C or the parent exits, and refuses --json and every write
-                                   flag because the live form is read-only
+                                   flag because the live form is read-only. The four hold writes
+                                   (--quiet-hours, --cap, --min-run-interval, --instances) each take
+                                   [--json], which prints one acknowledgement object in place of the prose
+                                   confirmation — a set is { command:"role", action:"set", role, key,
+                                   status (set or unchanged), value } and a clear is { command:"role",
+                                   action:"clear", role, key, status (cleared or not_set), oldValue } — where
+                                   key is the config key written (e.g. quietHoursPerRole.<base>) and role is the
+                                   base role, so a script can hold or release a role without parsing the prose;
+                                   the notes/instructions and the model-override writes still take no --json
   tumwater role <id> --clear-notes Clear that role's notes
   tumwater role <id> --notes-file <path>
                                    Replace that role's notes from a file ("-" reads stdin;
@@ -605,20 +613,21 @@ Usage:
   tumwater role <id> --instructions-file <path>
                                    Replace that role's instructions override from a file
                                    ("-" reads stdin; 4 KB cap), written to roles.<id>.instructions
-  tumwater role <id> --clear-quiet-hours
+  tumwater role <id> --clear-quiet-hours [--json]
                                    Clear that role's own quiet-hours window
-  tumwater role <id> --quiet-hours <window>
+  tumwater role <id> --quiet-hours <window> [--json]
                                    Set that role's own daily local-time quiet-hours
                                    window (e.g. "23:00-07:00"; empty clears it),
                                    written to quietHoursPerRole.<id> for the base id
-  tumwater role <id> --cap <usd>  Set that role's daily cap in USD (0 disables it),
-                                   written to maxDailyCostUsdPerRole.<id> for the base id
-  tumwater role <id> --clear-cap  Clear that role's daily cap
-  tumwater role <id> --min-run-interval <seconds>
+  tumwater role <id> --cap <usd> [--json]  Set that role's daily cap in USD (0
+                                   disables it), written to
+                                   maxDailyCostUsdPerRole.<id> for the base id
+  tumwater role <id> --clear-cap [--json]  Clear that role's daily cap
+  tumwater role <id> --min-run-interval <seconds> [--json]
                                    Set that role's own minimum-run interval (0 allows
                                    back-to-back runs), written to roles.<id>.minRunIntervalSeconds
                                    for the base id; clearing falls back to the team-wide interval
-  tumwater role <id> --clear-min-run-interval
+  tumwater role <id> --clear-min-run-interval [--json]
                                    Clear that role's own minimum-run interval
   tumwater role <id> --provider <id>
                                    Set that role's model provider (e.g. openai), written to
@@ -648,11 +657,11 @@ Usage:
                                    (the base id for an instance)
   tumwater role <id> --disable     Disable it (refused for the director); clean up
                                    leftovers with tumwater retire --role <id>
-  tumwater role <id> --instances <n>
+  tumwater role <id> --instances <n> [--json]
                                    Set how many parallel runners this role may have
                                    (an integer from 1 to 8; only feature and bugfix split),
                                    written to roles.<id>.instances for the base id
-  tumwater role <id> --clear-instances
+  tumwater role <id> --clear-instances [--json]
                                    Clear that role's instance count (back to 1)
   tumwater prompt <text...> [--json]     Send a message to the director's inbox
   tumwater prompt --file <path> [--json] Send a message read from a file ("-" reads stdin)

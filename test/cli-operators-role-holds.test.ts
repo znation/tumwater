@@ -76,9 +76,12 @@ test("role --quiet-hours and --clear-quiet-hours write the role's quiet hours", 
   r = await cli(repo, "role", "feature", "--clear-quiet-hours", "--quiet-hours", "x");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /give --clear-quiet-hours or --quiet-hours, not both/);
+  // A bad window fails checkQuietHours before any output, --json or not: exit 1, the key
+  // named, and no JSON on stdout.
   r = await cli(repo, "role", "feature", "--quiet-hours", "x", "--json");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json does not apply to a quiet-hours write/);
+  assert.match(r.stderr, /quietHoursPerRole\.feature/);
+  assert.equal(r.stdout, "");
   r = await cli(repo, "role", "feature", "--quiet-hours", "x", "--clear-notes");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /notes and quiet-hours writes cannot share one invocation/);
@@ -234,12 +237,16 @@ test("role --cap/--clear-cap and --min-run-interval/--clear-min-run-interval wri
   r = await cli(repo, "role", "feature", "--clear-min-run-interval", "--min-run-interval", "60");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /give --clear-min-run-interval or --min-run-interval, not both/);
-  r = await cli(repo, "role", "feature", "--cap", "5", "--json");
+  // An exponent cap and interval fail their shape checks before any output, --json or not:
+  // exit 1, the key named, and no JSON on stdout.
+  r = await cli(repo, "role", "feature", "--cap", "1e2", "--json");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json does not apply to a cap write/);
-  r = await cli(repo, "role", "feature", "--min-run-interval", "60", "--json");
+  assert.match(r.stderr, /maxDailyCostUsdPerRole\.feature/);
+  assert.equal(r.stdout, "");
+  r = await cli(repo, "role", "feature", "--min-run-interval", "1e2", "--json");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json does not apply to a min-run-interval write/);
+  assert.match(r.stderr, /roles\.feature\.minRunIntervalSeconds/);
+  assert.equal(r.stdout, "");
   r = await cli(repo, "role", "feature", "--cap", "5", "--min-run-interval", "60");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /cap and min-run-interval writes cannot share one invocation/);
@@ -248,4 +255,195 @@ test("role --cap/--clear-cap and --min-run-interval/--clear-min-run-interval wri
   assert.match(r.stderr, /notes and cap writes cannot share one invocation/);
   const afterRefusals = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
   assert.equal(JSON.parse(afterRefusals).maxDailyCostUsdPerRole, undefined, "no cap write from the refused invocations");
+});
+
+test("role --quiet-hours --json acknowledges the write as one JSON object", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role quiet hours json");
+  const configPath = path.join(repo, "tumwater.json");
+  const readBytes = () => fs.readFileSync(configPath, "utf8");
+
+  // A set prints exactly the acknowledgement object, one document on stdout.
+  let r = await cli(repo, "role", "feature", "--quiet-hours", "23:00-07:00", "--json");
+  assert.equal(r.code, 0);
+  assert.equal(r.stderr, "");
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "quietHoursPerRole.feature",
+    status: "set",
+    value: "23:00-07:00",
+  });
+  const setBytes = readBytes();
+  assert.equal(JSON.parse(setBytes).quietHoursPerRole.feature, "23:00-07:00", "the window is written");
+
+  // A repeat is a no-op: status `unchanged`, the same value, and the file is byte-identical.
+  r = await cli(repo, "role", "feature", "--quiet-hours", "23:00-07:00", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "quietHoursPerRole.feature",
+    status: "unchanged",
+    value: "23:00-07:00",
+  });
+  assert.equal(readBytes(), setBytes, "a no-op set writes nothing");
+
+  // A clear prints `cleared` with the removed window; the key is gone.
+  r = await cli(repo, "role", "feature", "--clear-quiet-hours", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "clear",
+    role: "feature",
+    key: "quietHoursPerRole.feature",
+    status: "cleared",
+    oldValue: "23:00-07:00",
+  });
+  const clearedBytes = readBytes();
+  assert.equal(JSON.parse(clearedBytes).quietHoursPerRole, undefined, "the window is removed");
+
+  // A second clear is a no-op: `not_set`, no oldValue, and the file is byte-identical.
+  r = await cli(repo, "role", "feature", "--clear-quiet-hours", "--json");
+  assert.equal(r.code, 0);
+  const again = JSON.parse(r.stdout) as { command: string; action: string; role: string; key: string; status: string; oldValue?: unknown };
+  assert.equal(again.status, "not_set");
+  assert.equal(again.oldValue, undefined, "not_set carries no oldValue");
+  assert.equal(readBytes(), clearedBytes, "clearing an unset key writes nothing");
+});
+
+test("role --cap/--min-run-interval --json acknowledge the write as one JSON object", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role cap interval json");
+  // A second instance makes `feature-2` a valid id for the base-role assertion below.
+  await cli(repo, "role", "feature", "--instances", "2");
+  const configPath = path.join(repo, "tumwater.json");
+  const config = () => JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const readBytes = () => fs.readFileSync(configPath, "utf8");
+
+  // --cap 25 writes maxDailyCostUsdPerRole.feature with a numeric value.
+  let r = await cli(repo, "role", "feature", "--cap", "25", "--json");
+  assert.equal(r.code, 0);
+  assert.equal(r.stderr, "");
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "maxDailyCostUsdPerRole.feature",
+    status: "set",
+    value: 25,
+  });
+  const capBytes = readBytes();
+  assert.equal(config().maxDailyCostUsdPerRole.feature, 25, "the cap is written");
+
+  // A repeat is a no-op: status `unchanged`, the same value, byte-identical file.
+  r = await cli(repo, "role", "feature", "--cap", "25", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "maxDailyCostUsdPerRole.feature",
+    status: "unchanged",
+    value: 25,
+  });
+  assert.equal(readBytes(), capBytes, "a no-op set writes nothing");
+
+  // An instance id names the base role and the same base key.
+  r = await cli(repo, "role", "feature-2", "--cap", "10", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "maxDailyCostUsdPerRole.feature",
+    status: "set",
+    value: 10,
+  });
+  assert.equal(config().maxDailyCostUsdPerRole.feature, 10);
+
+  // --cap 10 is already the value: `unchanged`, byte-identical.
+  r = await cli(repo, "role", "feature", "--cap", "10", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "maxDailyCostUsdPerRole.feature",
+    status: "unchanged",
+    value: 10,
+  });
+
+  // A clear prints `cleared` with the removed cap; the key is gone.
+  r = await cli(repo, "role", "feature", "--clear-cap", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "clear",
+    role: "feature",
+    key: "maxDailyCostUsdPerRole.feature",
+    status: "cleared",
+    oldValue: 10,
+  });
+  const capClearedBytes = readBytes();
+  assert.equal(config().maxDailyCostUsdPerRole, undefined, "the cap is removed");
+
+  // A second clear is a no-op: `not_set`, no oldValue, byte-identical file.
+  r = await cli(repo, "role", "feature", "--clear-cap", "--json");
+  assert.equal(r.code, 0);
+  const capAgain = JSON.parse(r.stdout) as { status: string; oldValue?: unknown };
+  assert.equal(capAgain.status, "not_set");
+  assert.equal(capAgain.oldValue, undefined, "not_set carries no oldValue");
+  assert.equal(readBytes(), capClearedBytes, "clearing an unset key writes nothing");
+
+  // --min-run-interval 300 writes roles.feature.minRunIntervalSeconds with a numeric value.
+  r = await cli(repo, "role", "feature", "--min-run-interval", "300", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.minRunIntervalSeconds",
+    status: "set",
+    value: 300,
+  });
+  const intervalBytes = readBytes();
+  assert.equal(config().roles.feature.minRunIntervalSeconds, 300, "the interval is written");
+
+  // A repeat is a no-op: `unchanged`, the same value, byte-identical file.
+  r = await cli(repo, "role", "feature", "--min-run-interval", "300", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.minRunIntervalSeconds",
+    status: "unchanged",
+    value: 300,
+  });
+  assert.equal(readBytes(), intervalBytes, "a no-op set writes nothing");
+
+  // A clear prints `cleared` with the removed count; the key is gone.
+  r = await cli(repo, "role", "feature", "--clear-min-run-interval", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "clear",
+    role: "feature",
+    key: "roles.feature.minRunIntervalSeconds",
+    status: "cleared",
+    oldValue: 300,
+  });
+  const intervalClearedBytes = readBytes();
+  assert.equal(config().roles.feature.minRunIntervalSeconds, undefined, "the interval is removed");
+
+  // A second clear is a no-op: `not_set`, no oldValue, byte-identical file.
+  r = await cli(repo, "role", "feature", "--clear-min-run-interval", "--json");
+  assert.equal(r.code, 0);
+  const intervalAgain = JSON.parse(r.stdout) as { status: string; oldValue?: unknown };
+  assert.equal(intervalAgain.status, "not_set");
+  assert.equal(intervalAgain.oldValue, undefined, "not_set carries no oldValue");
+  assert.equal(readBytes(), intervalClearedBytes, "clearing an unset key writes nothing");
 });
