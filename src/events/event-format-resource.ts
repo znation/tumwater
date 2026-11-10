@@ -5,6 +5,8 @@ import { isJsonObject, stringList } from "../files/json-object.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 import { gigabytes, windowResetPhrase, windowSuffix, providerAt, providerScope, backendLabel, subscriptionWindowPhrase } from "./event-format-fragments.js";
 
+/** A model_check_passed event's failed-probe count, as a suffix: none for a torn or zero
+ * count, else " after N failed checks". */
 function modelCheckFailuresSuffix(failures: unknown): string {
   return typeof failures === "number" && failures > 0
     ? ` after ${failures} failed ${failures === 1 ? "check" : "checks"}`

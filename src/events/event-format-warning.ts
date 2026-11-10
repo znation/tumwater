@@ -8,6 +8,3 @@ export function warningEventMessage(e: HarnessEvent): string {
     default: return textOr(e.type);
   }
 }
-
-/** One family's line builder: an event's message from the event, the way <family>EventMessage
- * builds it. The family table's values are all of these; the table is the dispatch. */

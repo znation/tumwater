@@ -175,11 +175,3 @@ export function deferredReasonText(e: HarnessEvent): string {
   if (e.reason === "plans-full") return "plan backlog at its target";
   return e.reason === "backlog" ? "feature/bugfix backlog open" : "nothing merged since the last run";
 }
-
-/** Human one-liner for an event, shared by `logs`, `run` output, and the TUI activity pane:
- * the local `YYYY-MM-DD HH:MM:SS` stamp (formatTimestamp — the same zero-padded, locale-
- * independent phrasing the history table and transcript run separators print, not
- * toLocaleTimeString's locale-dependent "3:05:12 PM"), the role padded to a column, then the
- * event's message (eventMessage).
- * Presentation only: depends on the event shape (events.ts's HarnessEvent), not on its log
- * I/O — so display surfaces never import formatting from the logging module. */

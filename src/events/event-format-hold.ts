@@ -3,6 +3,10 @@ import { budgetPhrase, teamPausePhrase, teamResumePhrase, rolePausePhrase, roleR
 import { isNonBlankString, squash, textOr } from "../text/text.js";
 import { pauseSuffix } from "./event-format-fragments.js";
 
+/** The team-and-role pause/resume lines: team_paused and team_resumed, then the
+ * per-role pair. A pause names its until/reason suffix and who keeps running;
+ * a resumed line appends the expired-pause suffix when the pause timed out. */
+
 function pauseResumeEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "team_paused":
@@ -104,5 +108,3 @@ export function holdEventMessage(e: HarnessEvent): string {
     default: return textOr(e.type);
   }
 }
-/** A model_check_passed event's failed-probe count, as a suffix: none for a torn or zero
- * count, else " after N failed checks". */

@@ -6,6 +6,11 @@ import { finiteNumber, isJsonObject } from "../files/json-object.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 import { mostByPhrase, providerModelPair } from "./event-format-fragments.js";
 
+/** The daily-cap line builders: budget_warning (the early page beside budget_paused),
+ * budget_paused (the spent-cap pause and its demoted/refused fallback suffix) and
+ * budget_resumed (its lift). Each names the spend against the cap and, for the
+ * pause, the lift paths: a raised or removed cap, or the local day rolling over. */
+
 function budgetCapEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "budget_warning":
@@ -116,6 +121,3 @@ export function budgetEventMessage(e: HarnessEvent): string {
     default: return textOr(e.type);
   }
 }
-/** The team-and-role pause/resume lines: team_paused and team_resumed, then the
- * per-role pair. A pause names its until/reason suffix and who keeps running;
- * a resumed line appends the expired-pause suffix when the pause timed out. */

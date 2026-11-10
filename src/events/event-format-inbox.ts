@@ -77,7 +77,3 @@ function remoteCiFailedMessage(e: HarnessEvent): string {
   const repo = typeof e.repo === "string" ? e.repo : "";
   return `GitHub CI failed at ${sha ? shortSha(sha) : "?"} on ${repo || "?"}; the ci role reproduces it and fixes or files it${sha && repo ? ` — https://github.com/${repo}/commit/${sha}` : ""}`;
 }
-/** The daily-cap line builders: budget_warning (the early page beside budget_paused),
- * budget_paused (the spent-cap pause and its demoted/refused fallback suffix) and
- * budget_resumed (its lift). Each names the spend against the cap and, for the
- * pause, the lift paths: a raised or removed cap, or the local day rolling over. */

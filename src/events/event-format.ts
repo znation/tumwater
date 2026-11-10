@@ -30,6 +30,13 @@ import { checkWaitEventMessage } from "./event-format-check-wait.js";
 import { warningEventMessage } from "./event-format-warning.js";
 export { usageText, gigabytes, untilClockSuffix, windowSuffix, windowResetPhrase, backendLabel, eventResult, outcomeText, deferredReasonText };
 
+/** Human one-liner for an event, shared by `logs`, `run` output, and the TUI activity pane:
+ * the local `YYYY-MM-DD HH:MM:SS` stamp (formatTimestamp — the same zero-padded, locale-
+ * independent phrasing the history table and transcript run separators print, not
+ * toLocaleTimeString's locale-dependent "3:05:12 PM"), the role padded to a column, then the
+ * event's message (eventMessage).
+ * Presentation only: depends on the event shape (events.ts's HarnessEvent), not on its log
+ * I/O — so display surfaces never import formatting from the logging module. */
 export function formatEvent(e: HarnessEvent): string {
   const time = formatTimestamp(e.ts);
   // Padded in terminal display columns (padToWidth), not String#padEnd's UTF-16 code units:
@@ -63,7 +70,8 @@ export function eventMatchesGrep(e: HarnessEvent, patternLower: string): boolean
   return `${e.type} ${formatEvent(e)}`.toLowerCase().includes(patternLower);
 }
 
-
+/** One family's line builder: an event's message from the event, the way <family>EventMessage
+ * builds it. The family table's values are all of these; the table is the dispatch. */
 type EventMessageFamily = (e: HarnessEvent) => string;
 
 /** The event-to-family dispatch, typed by the union so a newly added event type is a compile

@@ -5,6 +5,7 @@ import { textOr } from "../text/text.js";
 import { stringList } from "../files/json-object.js";
 import { elapsed } from "./event-format-fragments.js";
 
+/** " after merge" when the review is a post-merge review, else "". */
 function afterMergeSuffix(e: HarnessEvent): string {
   return e.afterMerge === true ? " after merge" : "";
 }

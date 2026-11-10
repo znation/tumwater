@@ -81,4 +81,3 @@ export function mergeEventMessage(e: HarnessEvent): string {
     default: return textOr(e.type);
   }
 }
-/** " after merge" when the review is a post-merge review, else "". */
