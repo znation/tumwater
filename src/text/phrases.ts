@@ -166,8 +166,8 @@ export function teamPausePhrase(): string {
 }
 
 /** The base line for lifting the team pause — `team resumed — roles run again` —
- * shared by the event feed (event-format.ts), the failure digest's Team state changes lines
- * (src/failure/failure-state-change.ts), and `tumwater resume`'s confirmation
+ * shared by the event feed (event-format-hold.ts), the failure digest's Team state changes
+ * lines (src/failure/failure-state-change.ts), and `tumwater resume`'s confirmation
  * (operator/operator-commands.ts, which appends its `--for` and still-paused-role spans), so the
  * three cannot drift. */
 export function teamResumePhrase(): string {
@@ -175,8 +175,8 @@ export function teamResumePhrase(): string {
 }
 
 /** Appended to a resume line whose `expired: true` event says the pause's deadline lifted it
- * rather than `tumwater resume` — read by the event feed (event-format.ts) and the failure
- * digest (src/failure/failure-state-change.ts). */
+ * rather than `tumwater resume` — read by the event feed (event-format-hold.ts) and the
+ * failure digest (src/failure/failure-state-change.ts). */
 export const PAUSE_EXPIRED_SUFFIX = " (its timed pause ran out)";
 
 /** The base line for a per-role pause — `role <id> paused — it starts no new runs` —
@@ -190,19 +190,21 @@ export function rolePausePhrase(role: unknown): string {
 }
 
 /** The base line for a per-role resume — `role <id> resumed — it runs again` — shared by the
- * event feed (event-format.ts) and the failure digest's Team state changes lines
+ * event feed (event-format-hold.ts) and the failure digest's Team state changes lines
  * (src/failure/failure-state-change.ts), so the two cannot drift. The role is coerced, like
  * rolePausePhrase. */
 export function roleResumePhrase(role: unknown): string {
   return `role ${String(role)} resumed — it runs again`;
 }
 
-/** The line for an orchestrator shutdown — the event feed (event-format.ts) and the failure
- * digest's Team state changes lines (src/failure/failure-state-change.ts) both render it. */
+/** The line for an orchestrator shutdown — the event feed (event-format-config.ts) and the
+ * failure digest's Team state changes lines (src/failure/failure-state-change.ts) both render
+ * it. */
 const ORCHESTRATOR_STOPPED = "tumwater stopped";
 
 /** The orchestrator shutdown line with its `cause` (restart, once, signal, error): the event feed
- * (event-format.ts) and the failure digest (src/failure/failure-state-change.ts) both render it.
+ * (event-format-config.ts) and the failure digest (src/failure/failure-state-change.ts) both
+ * render it.
  * A missing or unknown cause — every event logged before the field existed — renders the bare
  * ORCHESTRATOR_STOPPED. */
 export function orchestratorStopPhrase(cause: unknown): string {
@@ -258,12 +260,12 @@ export function trailingDayMedianPhrase(
 }
 
 /** The `$<spent> of $<cap>` fragment every budget-transition event renders — the one home of that
- * phrasing, shared by the event feed (event-format.ts) and the failure digest's Team state changes
- * lines (src/failure/failure-state-change.ts), so a budget transition reads the same on both
- * surfaces. Both fields arrive loosely typed on HarnessEvent, so each is coerced through
- * finiteNumber (a non-number or non-finite value reads as 0, exactly as event-read.ts's eventUsage
- * reads a corrupt usage field) before the cents-pinned money format (usd) renders it — a string
- * or NaN must never reach usd, which would print "$NaN". */
+ * phrasing, shared by the event feed (event-format-budget.ts and event-format-hold.ts) and the
+ * failure digest's Team state changes lines (src/failure/failure-state-change.ts), so a budget
+ * transition reads the same on both surfaces. Both fields arrive loosely typed on HarnessEvent,
+ * so each is coerced through finiteNumber (a non-number or non-finite value reads as 0, exactly
+ * as event-read.ts's eventUsage reads a corrupt usage field) before the cents-pinned money format
+ * (usd) renders it — a string or NaN must never reach usd, which would print "$NaN". */
 export function budgetPhrase(spentUsd: unknown, capUsd: unknown): string {
   return `${usd(finiteNumber(spentUsd, 0))} of ${usd(finiteNumber(capUsd, 0))}`;
 }
@@ -279,11 +281,12 @@ export function shortSpanPhrase(ms: number): string {
 }
 
 /** The `for <duration>[ (relapse N)]` fragment the rate_limit_hold event renders — the one home
- * of that phrasing, shared by the event feed (event-format.ts) and the failure digest's Team state
- * changes lines (src/failure/failure-state-change.ts), like budgetPhrase. The duration is
- * shortSpanPhrase (seconds under two minutes, so the one-minute base hold reads `60s`); the relapse
- * count is named only when the storm resumed right after an earlier hold, the one fact that says
- * the hold doubled. Both fields arrive loosely typed on HarnessEvent, so each is coerced here. */
+ * of that phrasing, shared by the event feed (event-format-resource.ts) and the failure digest's
+ * Team state changes lines (src/failure/failure-state-change.ts), like budgetPhrase. The
+ * duration is shortSpanPhrase (seconds under two minutes, so the one-minute base hold reads
+ * `60s`); the relapse count is named only when the storm resumed right after an earlier hold,
+ * the one fact that says the hold doubled. Both fields arrive loosely typed on HarnessEvent, so
+ * each is coerced here. */
 export function holdPhrase(holdMs: unknown, escalation: unknown): string {
   const ms = Math.max(0, Number(holdMs ?? 0)) || 0;
   const span = shortSpanPhrase(ms);
@@ -292,7 +295,7 @@ export function holdPhrase(holdMs: unknown, escalation: unknown): string {
 }
 
 /** The human phrase for a team hold's backend-failure kind — the one home of that phrasing,
- * shared by the event feed (event-format.ts) and the failure digest's Team state changes
+ * shared by the event feed (event-format-resource.ts) and the failure digest's Team state changes
  * lines (src/failure/failure-state-change.ts), like holdPhrase above. A "rate-limit" hold (or a
  * hold with no readable kind — a torn line) never renders through this: those keep the 429
  * wording, which is the shape every historical event already has. */

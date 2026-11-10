@@ -36,9 +36,9 @@ export function stringList(value: unknown): string[] {
  * fallback each passes: event-read.ts's eventRun (run → 0), eventUsage (tokens, costUsd →
  * 0), eventDayKey (ts → null), runStartMap and runSpanMs (both ts → null);
  * event-format-fragments.ts's elapsed (ms → null), gigabytes (v → 0), minutes (ms → 0), and
- * the event-format family modules' build_stale, slot_wait, restart, and permit_reserve
- * renderers (aheadCommits, waitedMs, abortedRuns, reserve → 0); phrases.ts's budgetPhrase
- * (spentUsd, capUsd → 0); redeploy.ts's
+ * waitedSpan (waitedMs → 0); phrases.ts's commitsBehindPhrase (aheadCommits → 0) and
+ * budgetPhrase (spentUsd, capUsd → 0); event-format-image-restart.ts's restart (abortedRuns →
+ * 0) and event-format-run.ts's permit_reserve (reserve → 0); redeploy.ts's
  * autoRestartRecord (lastAt → null); build/build-info.ts's readBuildInfo (builtAt → 0);
  * failure/failure-state-change.ts's build_stale renderer (aheadCommits → 0);
  * gates/maintenance-quota-gates.ts's foldLine and seed (ev.ts → null);
