@@ -160,8 +160,13 @@ Usage:
                                    (--prompt also shows each run's exact prompt text)
                                    (--grep keeps only the entries containing the text, under their run's separator)
                                    (--json prints one { "transcript": [...] } document of the rendered lines, an empty transcript an empty array; it refuses -f/--follow and composes with -n, --prompt and --grep)
-  tumwater notify --test          Run the configured notify hook once with a synthetic event
+  tumwater notify --test [--json]     Run the configured notify hook once with a synthetic event
                                    so the command can be checked before a real page
+                                   (--json answers one { "command", "status", "exitCode", "timedOut" }
+                                   object instead of prose — status passed or failed, exitCode the
+                                   hook's own code (null on a timeout, which sets timedOut) — and
+                                   ignores the hook's own output; a missing notify setting still
+                                   fails with the same wording and no JSON)
   tumwater history [--role <id>[,<id>...]] [-n N] [-f/--follow] [--since <duration>]
                    [--until <duration>] [--grep <text>]
                    [--result <merged|none|refused|problems>[,...]] [--model <selector>[,...]]

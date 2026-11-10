@@ -81,7 +81,7 @@ test("multi-form commands yield every usage form in their topic", () => {
   const logs = helpTopic("logs")!;
   assert.match(logs, /logs \[-f\/--follow\]/);
   assert.match(logs, /logs --transcript <id> \[-f\/--follow\]/);
-  assert.match(helpTopic("notify")!, /^  tumwater notify --test/);
+  assert.match(helpTopic("notify")!, /^  tumwater notify --test \[--json\]/);
 });
 
 test("helpTopic returns null for an unknown command", () => {

@@ -78,6 +78,38 @@ test("a hook that never exits is killed at the timeout and reported, not awaited
   assert.match(r.stdout, new RegExp(`did not finish within ${NOTIFY_TEST_TIMEOUT_MS / 1000}s and was killed`));
 });
 
+test("notify --test --json answers the recorder hook's pass as one object, recording the same event", async () => {
+  const repo = await initializedRepo();
+  const out = path.join(repo, "notify-out.txt");
+  assert.ok(setConfigKey(repo, "notify", recorderCommand(out)).ok);
+  const r = await cli(repo, "notify", "--test", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { command: "notify", status: "passed", exitCode: 0, timedOut: false });
+  // The recorder appends in a spawned grandchild; the CLI's close event can settle before the
+  // write lands on a loaded host, so poll for it rather than asserting on the raw file.
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  assert.deepEqual(recordedLines(out), ["merge_failed|tumwater|tumwater notify --test"]);
+});
+
+test("notify --test --json answers a failing, chatty hook as one object without its output or prose", async () => {
+  const repo = await initializedRepo();
+  assert.ok(setConfigKey(repo, "notify", "echo noisy; exit 3").ok);
+  const r = await cli(repo, "notify", "--test", "--json");
+  assert.equal(r.code, 1);
+  const doc = JSON.parse(r.stdout);
+  assert.deepEqual(doc, { command: "notify", status: "failed", exitCode: 3, timedOut: false });
+  assert.doesNotMatch(r.stdout, /noisy/);
+  assert.doesNotMatch(r.stdout, /running the notify hook/);
+});
+
+test("notify --test --json without a configured hook prints the existing refusal and no JSON", async () => {
+  const repo = await initializedRepo();
+  const r = await cli(repo, "notify", "--test", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /notify is not configured \(set `notify` in tumwater\.json\)/);
+  assert.equal(r.stdout, "");
+});
+
 test("runNotifyHook resolves a never-ending hook at the injected timeout", async () => {
   const r = await runNotifyHook("sleep 30", {}, 150);
   assert.deepEqual(r, { timedOut: true });
@@ -87,12 +119,8 @@ test("testNotifyHook runs the saved hook once and reports the outcome line", asy
   const repo = await initializedRepo();
   assert.deepEqual(await testNotifyHook(repo, "ignore"), { status: "not_configured" });
   const out = path.join(repo, "notify-out.txt");
-  assert.ok(setConfigKey(repo, "notify", recorderCommand(out)).ok);
-  assert.deepEqual(await testNotifyHook(repo, "ignore"), { status: "ran", passed: true, message: "notify hook exited 0" });
-  assert.deepEqual(recordedLines(out), ["merge_failed|tumwater|tumwater notify --test"]);
   assert.ok(setConfigKey(repo, "notify", "exit 3").ok);
-  const failed = await testNotifyHook(repo, "ignore");
-  assert.equal(failed.status, "ran");
-  assert.equal(failed.status === "ran" && failed.passed, false);
-  assert.match(failed.status === "ran" ? failed.message : "", /exited with code 3/);
+  assert.deepEqual(await testNotifyHook(repo, "ignore"), { status: "ran", passed: false, message: "notify hook exited with code 3", exitCode: 3, timedOut: false });
+  assert.ok(setConfigKey(repo, "notify", recorderCommand(out)).ok);
+  assert.deepEqual(await testNotifyHook(repo, "ignore"), { status: "ran", passed: true, message: "notify hook exited 0", exitCode: 0, timedOut: false });
 });

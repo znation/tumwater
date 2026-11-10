@@ -9,7 +9,7 @@
  * domain with the notifier, not in the CLI layer, so those surfaces import a core module
  * instead of reaching up into it. */
 import { spawn } from "node:child_process";
-import { fail, say } from "../cli/cli-output.js";
+import { fail, say, sayJson } from "../cli/cli-output.js";
 import { loadConfig } from "../config/config.js";
 import { TUMWATER_SOURCE } from "./events.js";
 import { notifyCommandEnv, notifyExitGloss } from "./event-notify.js";
@@ -67,8 +67,13 @@ export function runNotifyHook(
 }
 
 /** What one notify test run came to: no hook configured, or the hook ran and `message` is the
- * outcome line the CLI prints (`passed` only on exit 0). */
-type NotifyTestOutcome = { status: "not_configured" } | { status: "ran"; passed: boolean; message: string };
+ * outcome line the CLI prints (`passed` only on exit 0). `exitCode` is the hook's own code —
+ * `null` when the timeout killed it, in which case `timedOut` is true — so the CLI's `--json`
+ * acknowledgement can name the hook's exit machine-readably. The dashboard and the TUI read
+ * only `status`, `passed` and `message`. */
+type NotifyTestOutcome =
+  | { status: "not_configured" }
+  | { status: "ran"; passed: boolean; message: string; exitCode: number | null; timedOut: boolean };
 
 /** Run the saved notify hook once with the synthetic test event, under the NOTIFY_TEST_TIMEOUT_MS
  * bound. Shared by `tumwater notify --test` (inherited stdio) and the dashboard's "Send test"
@@ -83,26 +88,47 @@ export async function testNotifyHook(root: string, stdio: "inherit" | "ignore" =
     stdio,
   );
   if ("timedOut" in result)
-    return { status: "ran", passed: false, message: `notify hook did not finish within ${NOTIFY_TEST_TIMEOUT_MS / 1000}s and was killed` };
-  if (result.code === 0) return { status: "ran", passed: true, message: "notify hook exited 0" };
+    return {
+      status: "ran",
+      passed: false,
+      message: `notify hook did not finish within ${NOTIFY_TEST_TIMEOUT_MS / 1000}s and was killed`,
+      exitCode: null,
+      timedOut: true,
+    };
+  if (result.code === 0) return { status: "ran", passed: true, message: "notify hook exited 0", exitCode: 0, timedOut: false };
   // The sh launch-failure gloss (same wording the real notifier warns with) names the fix
   // for a hook that could not start: a typo'd `notify` command reads as a bare `code 127`
   // without it.
-  return { status: "ran", passed: false, message: `notify hook exited with code ${result.code}${notifyExitGloss(result.code)}` };
+  return {
+    status: "ran",
+    passed: false,
+    message: `notify hook exited with code ${result.code}${notifyExitGloss(result.code)}`,
+    exitCode: result.code,
+    timedOut: false,
+  };
 }
 
 /** `tumwater notify --test`: run the configured notify hook once with a synthetic event so an
  * operator can check the push channel before a real page. Read-only toward harness state — no
- * event is logged — and the exit code reflects the hook's own (0 passes, anything else fails). */
+ * event is logged — and the exit code reflects the hook's own (0 passes, anything else fails).
+ * With `--json` the hook runs with its stdio ignored (a chatty hook cannot corrupt the
+ * document) and the run answers as one `{command, status, exitCode, timedOut}` object instead
+ * of prose; `status` is `passed`/`failed`, `exitCode` is the hook's own code (`null` when the
+ * timeout killed it, naming `timedOut: true`), and the command exits 1 on `failed`. A missing
+ * `notify` setting fails with the same stderr wording in both forms. */
 export async function cmdNotify(root: string, args: string[]): Promise<void> {
   if (!args.includes("--test")) fail("usage: tumwater notify --test");
+  const json = args.includes("--json");
   const command = loadConfig(root).notify;
   if (typeof command !== "string" || command === "")
     fail("notify is not configured (set `notify` in tumwater.json)");
-  say(`running the notify hook (TUMWATER_EVENT_TYPE=${NOTIFY_TEST_TYPE}) …`);
-  const outcome = await testNotifyHook(root);
+  if (!json) say(`running the notify hook (TUMWATER_EVENT_TYPE=${NOTIFY_TEST_TYPE}) …`);
+  const outcome = await testNotifyHook(root, json ? "ignore" : undefined);
   if (outcome.status === "not_configured") fail("notify is not configured (set `notify` in tumwater.json)");
-  else {
+  else if (json) {
+    sayJson({ command: "notify", status: outcome.passed ? "passed" : "failed", exitCode: outcome.exitCode, timedOut: outcome.timedOut });
+    if (!outcome.passed) process.exitCode = 1;
+  } else {
     say(outcome.message);
     if (!outcome.passed) process.exitCode = 1;
   }
