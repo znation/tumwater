@@ -26,7 +26,7 @@ import {
 } from "../src/paths.js";
 import { enqueueMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { drainMergeQueue } from "../src/merge/merge-drain.js";
-import { setRef } from "../src/git/git.js";
+import { refAbsentFromFiles, setRef } from "../src/git/git.js";
 import { makePipeline } from "./fixtures/merge-fixtures.js";
 import {
   fastConfig,
@@ -57,8 +57,9 @@ function runQueued(repo: string, role: string): boolean {
  * one real commit ahead of main — a child of main's head carrying the parent's full tree plus
  * one new `file` (a one-entry mktree would delete every other file, and the ff-merge would
  * rightly refuse to overwrite the operator's checkout) — pinned by `clean`'s merge ref, with
- * its queue entry enqueued under `label`. The restart-drain and torn-head drain tests both
- * construct this survivor; only the file and its label differ. Returns the pinned sha. */
+ * its queue entry enqueued under `label`. Only the torn-head drain test constructs this
+ * survivor (the restart-drain test uses the pin-only `seedSurvivorPin`). Returns the pinned
+ * sha. */
 function seedSurvivorCommit(repo: string, file: string, label: string): string {
   const gitIn = (args: string[], input: string) =>
     execFileSync("git", args, { cwd: repo, encoding: "utf8", input }).trim();
@@ -72,6 +73,26 @@ function seedSurvivorCommit(repo: string, file: string, label: string): string {
   sh(repo, "git", "update-ref", `refs/heads/${branchName("clean")}`, sha);
   sh(repo, "git", "update-ref", mergeRefName("clean"), sha);
   enqueueMerge(repo, { role: "clean", sha, run: 1, summary: label, enqueuedAt: Date.now() });
+  return sha;
+}
+
+/** The pin-only form of `seedSurvivorCommit`: the same single survivor commit (a child of main's
+ * head carrying its parent's full tree plus one new `file`), pinned by `clean`'s merge ref with
+ * no queue entry — exactly what a crash between a run's commitAll and its pin write leaves
+ * behind. The next start's drain merges the pin through the gate. Keeps `seedSurvivorCommit`
+ * untouched for the torn-head case (part 1b/3 deletes both). Returns the pinned sha. */
+function seedSurvivorPin(repo: string, file: string, label: string): string {
+  const gitIn = (args: string[], input: string) =>
+    execFileSync("git", args, { cwd: repo, encoding: "utf8", input }).trim();
+  const blob = gitIn(["hash-object", "-w", "--stdin"], `${label}\n`);
+  const parentTree = sh(repo, "git", "ls-tree", "HEAD");
+  const tree = gitIn(["mktree"], `${parentTree}\n100644 blob ${blob}\t${file}\n`);
+  const sha = gitIn(
+    ["commit-tree", tree, "-p", headSha(repo), "-m", `tumwater(feature): ${label}`],
+    "",
+  );
+  sh(repo, "git", "update-ref", `refs/heads/${branchName("clean")}`, sha);
+  sh(repo, "git", "update-ref", mergeRefName("clean"), sha);
   return sha;
 }
 
@@ -186,7 +207,7 @@ test("a role with a queued or in-flight merge keeps running: the queue is not a 
   }
 });
 
-test("a queue entry surviving a restart drains through the gate on next start", async () => {
+test("a pin surviving a restart drains through the gate on next start", async () => {
   const repo = await makeFastRepo("restart drain e2e test", ["clean"]);
   // Review run approves; the role's own runs find nothing to do.
   const restore = fakePi(
@@ -195,17 +216,17 @@ test("a queue entry surviving a restart drains through the gate on next start", 
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
   );
-  // Seed exactly what a crash between commitAll and the merge's entry drop leaves behind:
-  // one commit pinned by the merge ref, with its queue entry. The next start's drain
-  // must merge it through the gate.
-  seedSurvivorCommit(repo, "crash.txt", "crash survivor");
+  // Seed exactly what a crash between commitAll and the pin write leaves behind: one commit
+  // pinned by the merge ref, no queue entry. The next start's drain must merge the pin
+  // through the gate.
+  seedSurvivorPin(repo, "crash.txt", "crash survivor");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
-      () => queueDepth(repo) === 0 && fs.existsSync(path.join(repo, "crash.txt")),
-      "the surviving entry to drain onto main",
+      () => refAbsentFromFiles(repo, mergeRefName("clean")) && fs.existsSync(path.join(repo, "crash.txt")),
+      "the surviving pin to drain onto main",
     );
-    assert.equal(queueDepth(repo), 0, "the entry was consumed");
+    assert.ok(refAbsentFromFiles(repo, mergeRefName("clean")), "the pin was consumed");
     assert.equal(
       eventsOfType(repo, "merge_done").length,
       1,
@@ -253,10 +274,13 @@ test("an entry whose sha main already holds is dropped at the drain without a me
       () => fs.existsSync(path.join(repo, "hello.txt")),
       "the change to merge on main",
     );
-    // …and the crash-between-ff-and-drop residue is simulated: the same sha re-enqueued.
-    const sha = headSha(repo);
-    enqueueMerge(repo, { role: "clean", sha, run: 1, summary: "stale duplicate", enqueuedAt: Date.now() });
-    await waitFor(() => queueDepth(repo) === 0, "the stale entry to be dropped");
+    // …and the crash-between-ff-and-drop residue is simulated the pin way: the pin repointed
+    // at main's head (a sha main already holds), which the drain drops stale without a merge.
+    await setRef(repo, mergeRefName("clean"), headSha(repo));
+    await waitFor(
+      () => refAbsentFromFiles(repo, mergeRefName("clean")),
+      "the stale pin to be dropped",
+    );
     assert.equal(
       eventsOfType(repo, "merge_done").length,
       1,
@@ -452,11 +476,11 @@ test("an abort request kills an in-flight run, consumes its marker, and logs one
 
 // ── The merge pipeline over a seeded queue (merge queue 5/5, merge-queue speed 2c) ────────
 
-/** Seed the merge queue with one pinned single-commit entry per role (queue order = argument
- * order), built the way pinAndReset leaves them: a commit off main under the merge ref.
- * Pre-seeding — instead of letting the roles run the entries in — makes the pipeline's start
- * deterministic: it verifies EVERY entry from its first poll, before any run can race it. */
-async function seedMergeQueue(repo: string, ...roles: string[]): Promise<void> {
+/** Seed one pinned single-commit change per role (argument order), built the way pinAndReset
+ * leaves them: a commit off main under the merge ref, no queue entry. Pre-seeding — instead of
+ * letting the roles run the changes in — makes the pipeline's start deterministic: it verifies
+ * EVERY change from its first poll, before any run can race it. */
+async function seedMergePins(repo: string, ...roles: string[]): Promise<void> {
   // The seed commits must not swallow the live config: initProject's initial commit tracks
   // tumwater.json, and any `reset --hard main` in the seed loop below resurrects the committed
   // copy over a live user edit. Untrack it on main (commit the deletion) and ignore it, the
@@ -487,7 +511,6 @@ async function seedMergeQueue(repo: string, ...roles: string[]): Promise<void> {
       { reset: true },
     );
     await setRef(repo, mergeRefName(role), sha);
-    enqueueMerge(repo, { role, sha, run: 1, summary: `${role} work`, enqueuedAt: Date.now() });
   }
 }
 
@@ -513,7 +536,7 @@ test("an abort for the verifying role discards its pin and the next queued chang
       `exit 0`,
   };
   saveConfig(repo, cfg);
-  await seedMergeQueue(repo, "clean", "dedupe");
+  await seedMergePins(repo, "clean", "dedupe");
   // The 300 s min-gap only throttles runs AFTER the first: a never-run role has
   // lastRunEndedAt 0, so it is startup-eligible on poll one and — under load — can finish a
   // no-op run before the asserts below read `runs`. Seed both roles as freshly ran so NO
@@ -542,7 +565,7 @@ test("an abort for the verifying role discards its pin and the next queued chang
     );
     assert.ok(!fs.existsSync(markerFile), "the abort marker was consumed");
     assert.ok(mergeRefExists(repo, "dedupe"), "dedupe's pin is untouched");
-    assert.equal(queueDepth(repo), 1, "only clean's entry was dropped");
+    assert.ok(refAbsentFromFiles(repo, mergeRefName("clean")), "clean's aborted pin was discarded");
     assert.deepEqual(
       readEvents(repo)
         .filter((e) => e.type === "merge_failed")
@@ -578,7 +601,24 @@ test("a role rejected in its verify runs again while another queued change is st
   // (the queue head) fails on its tree and rejects; dedupe then starts and its gate check parks
   // until released, so the test watches the rejected role's fix run while that verify is in flight.
   const repo = await makeFastRepo("verify early drop e2e test", ["clean", "dedupe"]); // minRunInterval 0: due on every poll
-  await seedMergeQueue(repo, "clean", "dedupe");
+  // This case alone seeds pin+queue (the pre-1i/5 helper pinned every role and enqueued a
+  // queue entry), not the pin-only seedMergePins: it parks a verify until released (a
+  // persistent in-flight pin) while the rejected role must run its fix run. Pin-only
+  // seeding would let both roles' leftover recovery re-pin their persistent pins every
+  // poll — a re-queue/merge loop (no queue file to gate it) — that starves the very
+  // fix run the test asserts. The queue entries gate that loop, so this case stays on
+  // the queue path; part 1b/3 should revisit it together with the drain's pin path.
+  // Seed each role's pin plus its queue entry from the detached commit pinOffMain makes.
+  for (const role of ["clean", "dedupe"]) {
+    const sha = pinOffMain(
+      repo,
+      (d) => fs.writeFileSync(path.join(d, `${role}.txt`), `${role}\n`),
+      `${role} work`,
+      { reset: true },
+    );
+    await setRef(repo, mergeRefName(role), sha);
+    enqueueMerge(repo, { role, sha, run: 1, summary: `${role} work`, enqueuedAt: Date.now() });
+  }
   const dir = tmpdir("early-drop-");
   const held = path.join(dir, "dedupe-reviewing");
   const release = path.join(dir, "release");
@@ -608,14 +648,14 @@ test("a role rejected in its verify runs again while another queued change is st
     // queue entry no longer holds its runs, so clean may already have run; the fix run after the
     // verdict is the one asserted.
     await waitFor(
-      () => readEvents(repo).some((e) => e.type === "merge_failed" && e.source === "clean") && queueDepth(repo) === 1,
-      "clean's verdict to drop its entry while dedupe's stays queued",
+      () => readEvents(repo).some((e) => e.type === "merge_failed" && e.source === "clean") && mergeRefExists(repo, "dedupe"),
+      "clean's verdict to drop its pin while dedupe's stays pinned",
       30_000,
     );
     const atVerdict = loadRunnerState(repo, "clean").runs;
     await waitFor(() => loadRunnerState(repo, "clean").runs > atVerdict, "the rejected role's fix run to start mid-merge", 30_000);
     assert.ok(!fs.existsSync(release), "dedupe's merge is still in flight: its gate check never returned");
-    assert.equal(queueDepth(repo), 1, "only dedupe's entry is still queued");
+    assert.ok(mergeRefExists(repo, "dedupe"), "only dedupe's pin is still standing");
     assert.deepEqual(
       readEvents(repo)
         .filter((e) => e.type === "merge_failed")
@@ -669,7 +709,7 @@ test("maxConcurrent 4 verifies three queued changes one at a time on the live or
       `sleep 3; rm -f "$f"; exit 0; fi; done; exit 0`,
   };
   saveConfig(repo, cfg);
-  await seedMergeQueue(repo, ...roles);
+  await seedMergePins(repo, ...roles);
   // A never-run role is startup-eligible on poll one despite the 300 s gap, and its queued
   // change no longer holds it (Subtract part 3a/7): seed each as just ran.
   for (const role of roles) {
@@ -686,8 +726,10 @@ test("maxConcurrent 4 verifies three queued changes one at a time on the live or
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
-      () => eventsOfType(repo, "merge_done").length >= 3 && queueDepth(repo) === 0,
-      "all three to merge",
+      () =>
+        eventsOfType(repo, "merge_done").length >= 3 &&
+        roles.every((role) => refAbsentFromFiles(repo, mergeRefName(role))),
+      "all three to merge and their pins consumed",
       60_000,
     );
     const samples = fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
@@ -713,7 +755,7 @@ test("a restart's hand-off aborts the verification that outlives its deadline in
   // them, Subtract part 3a/7), so no role run ever starts: the drain has nothing to wait for and
   // the restart takes effect mid-build-check — the incident's shape. The drain serializes
   // verifications, so only clean (the queue head) is in flight; dedupe stays queued behind it.
-  await seedMergeQueue(repo, "clean", "dedupe");
+  await seedMergePins(repo, "clean", "dedupe");
   for (const role of ["clean", "dedupe"]) {
     const s = loadRunnerState(repo, role);
     s.lastRunEndedAt = Date.now();
@@ -762,7 +804,7 @@ test("a restart's hand-off aborts the verification that outlives its deadline in
     const failed = events.filter((e) => e.type === "merge_failed").map((e) => `${e.source}:${String(e.result)}`);
     assert.deepEqual(failed, ["clean:aborted"]);
     assert.ok(mergeRefExists(repo, "clean") && mergeRefExists(repo, "dedupe"), "both pins survive for the next generation");
-    assert.equal(queueDepth(repo), 1, "the queued change behind the verify stays queued for the next generation");
+    assert.ok(mergeRefExists(repo, "dedupe"), "the change behind the verify stays pinned for the next generation");
     assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "nothing merged");
     assert.equal(readMergeMarker(repo), null, "no stale in-flight marker is left for the next generation");
   } finally {
@@ -779,7 +821,7 @@ test("a restart's drain aborts only its permit-holding role runs — the in-flig
   // aborted`, the review thrown away. And the role the drain DOES cut off here is one enabled
   // mid-run (config-live's runner creation), the second wiring the role-only stop must reach.
   const repo = await makeFastRepo("drain role-stop test", ["dedupe"]);
-  await seedMergeQueue(repo, "dedupe"); // dedupe's merge runs; its own run never starts (below)
+  await seedMergePins(repo, "dedupe"); // dedupe's merge runs; its own run never starts (below)
   const reviewing = path.join(tmpdir(), "rolestop-reviewing");
   const authoring = path.join(tmpdir(), "rolestop-authoring");
   // dedupe's gate check parks in its verify's build pre-check (touches the marker and sleeps

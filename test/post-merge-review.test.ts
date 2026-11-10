@@ -19,8 +19,7 @@ import { gateFixture, reviewGate } from "./fixtures/gate-fixtures.js";
 import { headSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { piRanMarker, piRunResult, withPi, withReviewerStub } from "./fakes/fake-pi.js";
-import { APPROVE, drained, entry, makePipeline, pinnedCommit, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
-import { enqueueMerge } from "../src/merge/merge-queue.js";
+import { APPROVE, makePipeline, pinDrained, pinnedCommit, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
 import { mergeRefName } from "../src/paths.js";
 import { isMergedInto, setRef } from "../src/git/git.js";
 import { sleep } from "./helpers/wait.js";
@@ -177,13 +176,12 @@ test("a listed role's change merges with no review before it, then is queued and
   const root = makeRepo();
   const sha = pinnedCommit(root, "improve");
   await setRef(root, mergeRefName("improve"), sha);
-  enqueueMerge(root, entry("improve", sha));
   await withPi(APPROVE(), async () => {
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
     await pumpUntil(
       ctx,
       pipeline,
-      () => drained(root, pipeline)() && pipeline.postReview === null && eventsOfType(root, "review_verdict").length > 0,
+      () => pinDrained(root, pipeline, ["improve"])() && pipeline.postReview === null && eventsOfType(root, "review_verdict").length > 0,
       "the merge and its post-merge review",
     );
     assert.equal(eventsOfType(root, "merged").length, 1);
@@ -202,12 +200,11 @@ async function mergeListed(file: string, review: { enabled: boolean }): Promise<
   const root = makeRepo();
   const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, file), "work\n"), "work by improve", { reset: true });
   await setRef(root, mergeRefName("improve"), sha);
-  enqueueMerge(root, entry("improve", sha));
   const base = defaultConfig();
   const config = { ...base, review: { ...base.review, ...review } };
   await withPi(APPROVE(), async () => {
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"], undefined, config), { config });
-    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the merge");
+    await pumpUntil(ctx, pipeline, pinDrained(root, pipeline, ["improve"]), "the merge");
   });
   return root;
 }

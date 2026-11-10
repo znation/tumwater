@@ -16,7 +16,6 @@ import { refAbsentFromFiles, setRef } from "../../src/git/git.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
 import { defaultConfig } from "../../src/config/config.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
-import type { MergeEntry } from "../../src/merge/merge-queue.js";
 import { makeRoleRunner } from "./runner-fixtures.js";
 import { mainSha, makeRepo, pinOffMain } from "./repo-fixtures.js";
 import { fakePi } from "../fakes/fake-pi.js";
@@ -28,8 +27,8 @@ import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
  * driven through, pins and queue entries in the shape a changed run leaves, the per-role
  * reviewer shim, a pipeline whose merge slot is held busy, and the row the status observers
  * render: until now the slices carried byte-identical copies of all of it — they build on this
- * module instead (the queue-entry cases in test/post-merge-review.test.ts seed their own queue
- * file through `entry`; the drain and pipeline suites seed pins only). The merger*.test.ts
+ * module instead (test/post-merge-review.test.ts and the drain and pipeline suites seed pins
+ * only). The merger*.test.ts
  * family shares merger-fixtures.ts (a different wiring shape), not this. */
 
 export const APPROVE = (reply = "the work looks right") => reviewerPi(`VERDICT: approve\n${reply}`);
@@ -43,13 +42,6 @@ export function pinnedCommit(root: string, role: string): string {
     `work by ${role}`,
     { reset: true },
   );
-}
-
-/** A merge queue entry the caller enqueues and the drain reads back from the queue file;
- * run 7 is arbitrary — the drain does not act on it. test/post-merge-review.test.ts is the
- * only remaining caller of this helper: it seeds its own queue-entry cases with it. */
-export function entry(role: string, sha: string, enqueuedAt = Date.now()): MergeEntry {
-  return { role, sha, run: 7, summary: "the work", enqueuedAt };
 }
 
 /** A runner per role — a real RoleRunner (cheap constructor: state loaded from disk, no
@@ -119,7 +111,7 @@ export function pump(ctx: MergePipelineContext, p: MergePipeline): { stop: () =>
 }
 
 /** The queue is empty and no verification or merge is running — the settle condition the
- * queue-entry cases await (test/post-merge-review.test.ts, test/merge-queue.test.ts). */
+ * queue-entry cases await (test/merge-queue.test.ts). */
 export const drained = (root: string, p: MergePipeline) => () => queueDepth(root) === 0 && mergeTasks(p).length === 0;
 
 /** Pin one change per role and enqueue nothing — the pin-only seed for the drain and pipeline
