@@ -70,24 +70,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Run test/merge-pipeline.test.ts, then the project's gate.
 
-### Subtract pin queue, part 1f/5: The second merge pipeline test seeds pins (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large part 1a/3 after feature held it; requires Subtract pin queue part 1d/5 landed; sibling to parts 1e/5 and 1g/5, which require part 1d/5; touches test/merge-pipeline-2.test.ts)
-
-**Goal.** test/merge-pipeline-2.test.ts starts every merge from a pin and keeps each case's abort, held-gate, conflict and settle outcome.
-
-**Approach.** Test edits only.
-- Replace every `queueChanges` with `pinChanges` and `drained` with `pinDrained(root, pipeline, roles)`.
-- Replace `queueDepth(root) === N` and `queuedMergeFiles(root)` reads with the role pins: a waiting change's pin still resolves at `mergeRefName(role)`; a consumed pin is gone; the in-flight marker carries a started merge. Where a case writes an abort request or reads state paths, keep that mechanism unchanged.
-- Delete only the queue-file manipulation that has no pin meaning (the queue-file loop that drops a role's files after a settle). Keep the abort, held-gate, retriable-outcome, plumbing-throw, state-write and slot-freeing cases.
-
-**Files touched.** test/merge-pipeline-2.test.ts
-
-**Acceptance criteria.**
-- `grep -nE 'enqueueMerge|queueDepth|queuedMergeFiles|queueChanges' test/merge-pipeline-2.test.ts` prints nothing.
-- Every case keeps its old observable outcome through main, the merge ref, the in-flight marker, the abort request or events; a change reported as staying queued instead reports its pin resolving.
-- `npm run test:gate` passes.
-
-**Tests.** Run test/merge-pipeline-2.test.ts, then the project's gate.
-
 ### Subtract pin queue, part 1h/5: The queue-seeding fixture helper goes (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large part 1a/3 after feature held it; requires Subtract pin queue parts 1e/5, 1f/5 and 1g/5 landed; touches test/fixtures/merge-fixtures.ts test/fixtures/orchestrator-fixtures.ts)
 
 **Goal.** No merge test in the drain, pipeline or orchestrator suites seeds a queue file; the fixture helper that did is gone.

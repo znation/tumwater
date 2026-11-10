@@ -10,8 +10,7 @@ import {
 } from "../src/merge/merge-pipeline.js";
 import { mergeStartHeld } from "../src/orchestrator/orchestrator-poll.js";
 import { consumeAbortRequests } from "../src/operator/operator-requests.js";
-import { queueDepth, queuedMergeFiles } from "../src/merge/merge-queue.js";
-import { abortRequestPath, mergeQueueDir, mergeRefName, mergeStatePath, statePath } from "../src/paths.js";
+import { abortRequestPath, mergeRefName, mergeStatePath, statePath } from "../src/paths.js";
 import { deleteRef, refSha } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { logEvent, subscribeEvents } from "../src/events/events.js";
@@ -23,11 +22,11 @@ import {
   APPROVE,
   allTasks,
   busySlot,
-  drained,
   makePipeline,
+  pinChanges,
+  pinDrained,
   pump,
   pumpUntil,
-  queueChanges,
   runnersFor,
 } from "./fixtures/merge-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -54,7 +53,7 @@ test("abort --role settles an in-flight gate-then-merge task whose pinned ref is
   const root = makeRepo();
   // beta first: its one gate-then-merge task settles first, and the change the abort stops is
   // alpha's — the one task then in flight.
-  await queueChanges(root, ["beta", "alpha"]);
+  await pinChanges(root, ["beta", "alpha"]);
   const flags = tmpdir("abort-pin-gone-");
   const config = {
     ...defaultConfig(),
@@ -101,7 +100,6 @@ test("abort --role settles an in-flight gate-then-merge task whose pinned ref is
       "the stopped change's outcome was still written and reported",
     );
     assert.equal(loadRunnerState(root, "alpha").lastResult, "aborted", "the abort folded into the stopped change's state");
-    assert.equal(queueDepth(root), 0, "both queue entries were dropped");
     assert.equal(await refSha(root, mergeRefName("alpha")), null, "the aborted change's pin is gone");
     assert.equal(await refSha(root, mergeRefName("beta")), null, "the merged change's pin was consumed by its merge");
   } finally {
@@ -112,11 +110,11 @@ test("abort --role settles an in-flight gate-then-merge task whose pinned ref is
   }
 });
 
-test("an aborted merge settles despite an unwritable state file: no throw, entry dropped, pin discarded", async () => {
+test("an aborted merge settles despite an unwritable state file: no throw, slot freed, pin discarded", async () => {
   const root = makeRepo();
   // beta first: its one gate-then-merge task settles first, and the change the abort stops is
-  // alpha's — the one task then in flight, whose state file and queue file are unwritable.
-  await queueChanges(root, ["beta", "alpha"]);
+  // alpha's — the one task then in flight, whose state file is unwritable.
+  await pinChanges(root, ["beta", "alpha"]);
   const flags = tmpdir("abort-unwritable-");
   const config = {
     ...defaultConfig(),
@@ -146,18 +144,14 @@ test("an aborted merge settles despite an unwritable state file: no throw, entry
 
     // The stopped change's outcome write hits an unwritable state file: the state path becomes
     // a non-empty directory, so writeJsonAtomic's rename fails (EISDIR) — the shape an ENOSPC
-    // or an immutable state path takes. The queue file is broken the same way, so the settle's
-    // dropMerge (fs.rmSync, not recursive) fails too. The task's settle runs behind
-    // guardMergeTask, so a throw anywhere here must surface as a warning, never a rejection out
-    // of the task, and the operator's abort must still discard the pin rather than leave the
-    // change to be re-verified and merged next poll.
+    // or an immutable state path takes. The settle's state save is best-effort (it warns rather
+    // than throwing), and a pin-only change has no queue file to drop, so the settle runs to
+    // completion and the operator's abort discards the pin rather than leave the change to be
+    // re-verified and merged next poll.
     const stateFile = statePath(root, "alpha");
     fs.rmSync(stateFile, { recursive: true, force: true });
     fs.mkdirSync(stateFile, { recursive: true });
     fs.writeFileSync(path.join(stateFile, "keep"), "");
-    const queueFile = queuedMergeFiles(root).find((q) => q.entry.role === "alpha")!.file;
-    fs.rmSync(queueFile);
-    fs.mkdirSync(queueFile);
 
     // Flag the user abort synchronously while the gate's check is blocked, so the change the
     // task is gating settles aborted.
@@ -180,36 +174,22 @@ test("an aborted merge settles despite an unwritable state file: no throw, entry
       ),
       "the failed state write is warned about, not swallowed",
     );
-    assert.ok(
-      readEvents(root).some(
-        (e) => e.type === "warning" && String(e.message).includes("merge task for alpha"),
-      ),
-      "the settle-path failure is warned about through the task's guard, not thrown",
-    );
   } finally {
     fs.writeFileSync(path.join(flags, "alpha-release"), "");
-    // The planted directory queue file would break the settled tasks' cleanup; restore a
-    // usable queue directory before they run it.
-    const dir = mergeQueueDir(root);
-    fs.rmSync(dir, { recursive: true, force: true });
-    fs.mkdirSync(dir, { recursive: true });
     await bg.stop();
     await Promise.allSettled(allTasks(pipeline));
     restore();
   }
 });
 
-test("a user-aborted verification discards its pin even when its settle's queue drop fails", async () => {
+test("a user-aborted verification discards its pin and frees the merge slot", async () => {
   const root = makeRepo();
-  await queueChanges(root, ["alpha"]);
+  await pinChanges(root, ["alpha"]);
   const flags = tmpdir("abort-verify-unwritable-");
-  // The check starts by signaling its marker and then holding the verification in flight, so
-  // the abort lands on the verification (never reaching the merge): its settle then hits the
-  // planted directory queue file and throws. A user abort mid-check settles the verification
-  // "aborted" (review-precheck's aborted skip), and the settle must still discard the pin — or
-  // the stopped change's pin survives to be re-gated and merged next poll, against the
-  // operator's abort. The merge task's finally discards outside the throwing settle, so this
-  // test pins that path to the same rule.
+  // The check signals its marker and then holds the verification in flight, so the abort lands
+  // on the verification (never reaching the merge). A user abort settles the change "aborted",
+  // discards its pin, and frees the merge slot — or the stopped change's pin survives to be
+  // re-gated and merged next poll, against the operator's abort.
   const config = {
     ...defaultConfig(),
     check: { command: `touch '${path.join(flags, "alpha-checking")}'; sleep 1` },
@@ -225,12 +205,6 @@ test("a user-aborted verification discards its pin even when its settle's queue 
       "the verification's check to start",
       30_000,
     );
-    // The settle's drop fails: the queue file becomes a non-empty directory, so dropMerge's
-    // fs.rmSync (not recursive) throws EISDIR — the shape an ENOSPC or immutable queue file
-    // takes on disk.
-    const queueFile = queuedMergeFiles(root).find((q) => q.entry.role === "alpha")!.file;
-    fs.rmSync(queueFile);
-    fs.mkdirSync(queueFile);
     // Flag the user abort while the verification is mid-check.
     writeJsonFile(abortRequestPath(root, "alpha"), { at: Date.now() });
     consumeAbortRequests(root, [], abortableMerges(pipeline));
@@ -245,20 +219,15 @@ test("a user-aborted verification discards its pin even when its settle's queue 
     assert.equal(
       await refSha(root, mergeRefName("alpha")),
       null,
-      "the aborted verification's pin was discarded despite the failed settle drop",
+      "the aborted verification's pin was discarded",
     );
-    assert.ok(
-      readEvents(root).some(
-        (e) => e.type === "warning" && String(e.message).includes("merge task for alpha"),
-      ),
-      "the settle-path failure is warned about through the task's guard, not thrown",
+    assert.equal(pipeline.merge, null, "the merge slot freed for the next poll");
+    assert.equal(
+      loadRunnerState(root, "alpha").lastResult,
+      "aborted",
+      "the stopped change settled its own aborted outcome",
     );
   } finally {
-    // The planted directory queue file would break the settled task's cleanup; restore a
-    // usable queue directory before it runs.
-    const dir = mergeQueueDir(root);
-    fs.rmSync(dir, { recursive: true, force: true });
-    fs.mkdirSync(dir, { recursive: true });
     await bg.stop();
     await Promise.allSettled(allTasks(pipeline));
     restore();
@@ -291,17 +260,22 @@ test("mergeStartHeld holds only the no-role drain under a reviewer hold", () => 
 test("approved entries merge while the reviewer's provider is held", async () => {
   const root = makeRepo();
   const roles = ["feature", "dedupe"];
-  await queueChanges(root, roles);
+  await pinChanges(root, roles);
   const config = defaultConfig();
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { config });
   try {
-    // Open gate, merge slot held busy. The wait is on the queue, not the approved map (part
-    // 2/4) — both queued means the slot can free, and the merged events are the durable
+    // Open gate, merge slot held busy. The wait is on the pins, not the approved map (part
+    // 2/4) — both pinned means the slot can free, and the merged events are the durable
     // signal that both landed once it frees.
     pipeline.merge = busySlot();
-    await pumpUntil(ctx, pipeline, () => queueDepth(root) === 2, "both changes to be queued");
-    assert.equal(queueDepth(root), 2, "no merge has run yet");
+    await pumpUntil(
+      ctx,
+      pipeline,
+      () => refSha(root, mergeRefName("feature")) !== null && refSha(root, mergeRefName("dedupe")) !== null,
+      "both changes to be pinned",
+    );
+    assert.equal(pinDrained(root, pipeline, roles)(), false, "no merge has run yet — both pins still resolve");
 
     // Free the slot and close the reviewer hold with the production predicate: no role's merge
     // is held by the reviewer, so both approved entries drain.
@@ -310,10 +284,10 @@ test("approved entries merge while the reviewer's provider is held", async () =>
     await pumpUntil(
       ctx,
       pipeline,
-      () => eventsOfType(root, "merged").length === 2 && drained(root, pipeline)(),
+      () => eventsOfType(root, "merged").length === 2 && pinDrained(root, pipeline, roles)(),
       "both changes to merge while the reviewer is held",
     );
-    assert.equal(queueDepth(root), 0, "the approved entries merged despite the reviewer hold");
+    assert.equal(pinDrained(root, pipeline, roles)(), true, "the approved entries merged despite the reviewer hold");
     // Each change merges as its own commit (rebased onto main's tip), so the original pinned shas
     // are rewritten and are not main ancestors — assert main holds each change's content instead.
     assert.equal(sh(root, "git", "show", "main:feature.txt").trim(), "work by feature", "the approved feature change merged while the reviewer's provider was held");
@@ -327,14 +301,14 @@ test("approved entries merge while the reviewer's provider is held", async () =>
 test("a fresh entry verifies and merges while the reviewer's provider is held — no role is parked", async () => {
   const root = makeRepo();
   const roles = ["feature", "dedupe"];
-  await queueChanges(root, roles);
+  await pinChanges(root, roles);
   const config = defaultConfig();
   const held = (role?: string) => mergeStartHeld(false, true, role);
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { config, held });
   try {
-    await pumpUntil(ctx, pipeline, drained(root, pipeline), "both fresh entries to verify and merge while the reviewer is held", 30_000);
-    assert.equal(queueDepth(root), 0, "the reviewer hold parks no role — both entries drained");
+    await pumpUntil(ctx, pipeline, pinDrained(root, pipeline, roles), "both fresh entries to verify and merge while the reviewer is held", 30_000);
+    assert.equal(pinDrained(root, pipeline, roles)(), true, "the reviewer hold parks no role — both entries drained");
     assert.equal(ctx.startHeld(), true, "the no-role startHeld (what drainPostReviews reads) is true under the reviewer hold");
     // Both fresh changes merge as their own commits (each rebased onto main's tip), so assert
     // main holds each change's content rather than the pinned shas (rewritten, not ancestors).
@@ -348,7 +322,7 @@ test("a fresh entry verifies and merges while the reviewer's provider is held �
 
 test("a start gate that closes while a merge gate waits for its permit defers it without recording a failure", async () => {
   const root = makeRepo();
-  await queueChanges(root, ["alpha"]);
+  await pinChanges(root, ["alpha"]);
   let held = false;
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"]), { cap: 1, held: () => held });
@@ -362,14 +336,14 @@ test("a start gate that closes while a merge gate waits for its permit defers it
     const [settled] = await Promise.allSettled([merge.promise]);
     assert.equal(settled?.status, "fulfilled", "the deferral is control flow, not a failed task");
     assert.equal(pipeline.merge, null, "the merge slot frees for the next poll");
-    assert.equal(queueDepth(root), 1, "the deferred entry stays queued");
+    assert.equal(await refSha(root, mergeRefName("alpha")) !== null, true, "the deferred change's pin survives the hold");
     assert.equal(readMergeMarker(root), null, "the marker is cleared, as a parked verification's would be");
     assert.equal(eventsOfType(root, "merged").length, 0, "the gate did not start under the closed hold");
     assert.equal(loadRunnerState(root, "alpha").lastError ?? undefined, undefined, "a deferral is not a failure");
     assert.equal(ctx.semaphore.canLeaseAtOnce(0), true, "the unused permit was handed back");
     held = false;
-    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the next open gate to merge the deferred entry");
-    assert.equal(queueDepth(root), 0, "the entry drains once the hold lifts");
+    await pumpUntil(ctx, pipeline, pinDrained(root, pipeline, ["alpha"]), "the next open gate to merge the deferred entry");
+    assert.equal(await refSha(root, mergeRefName("alpha")), null, "the entry's pin drains once the hold lifts");
     assert.equal(eventsOfType(root, "merged").length, 1, "the change merged after the hold lifted");
   } finally {
     held = false;
@@ -380,7 +354,7 @@ test("a start gate that closes while a merge gate waits for its permit defers it
 
 test("a user abort consumed after the fast-forward does not rewrite the landed change as aborted", async () => {
   const root = makeRepo();
-  await queueChanges(root, ["alpha"]);
+  await pinChanges(root, ["alpha"]);
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"]));
   let consumedLate = false;
@@ -404,7 +378,7 @@ test("a user abort consumed after the fast-forward does not rewrite the landed c
       [["merge_done", "changed"]],
       "the finished merge is not rewritten as an aborted failure",
     );
-    assert.equal(queueDepth(root), 0, "the landed entry stays settled");
+    assert.equal(pinDrained(root, pipeline, ["alpha"])(), true, "the landed entry stays settled");
     assert.equal(await refSha(root, mergeRefName("alpha")), null, "the landed change's pin is gone");
   } finally {
     unsubscribe();
@@ -415,7 +389,7 @@ test("a user abort consumed after the fast-forward does not rewrite the landed c
 
 test("a user abort after a retriable merge outcome settles aborted instead of re-queuing the discarded pin", async () => {
   const root = makeRepo();
-  await queueChanges(root, ["alpha"]);
+  await pinChanges(root, ["alpha"]);
   // An untracked file in the primary checkout that alpha's pin adds: the fast-forward refuses
   // to overwrite it, so the merge ends `merge_blocked` — a retriable outcome that keeps the pin.
   fs.writeFileSync(path.join(root, "alpha.txt"), "local alpha\n");
@@ -443,7 +417,7 @@ test("a user abort after a retriable merge outcome settles aborted instead of re
       [["merge_failed", "aborted"]],
       "the stopped change is reported aborted, not as its retriable failure",
     );
-    assert.equal(queueDepth(root), 0, "the aborted change is not re-queued against the pin the abort discards");
+    assert.equal(pinDrained(root, pipeline, ["alpha"])(), true, "the aborted change is not re-queued against the pin the abort discards");
     assert.equal(await refSha(root, mergeRefName("alpha")), null, "the stopped change's pin is gone");
   } finally {
     unsubscribe();
@@ -454,7 +428,7 @@ test("a user abort after a retriable merge outcome settles aborted instead of re
 
 test("another merge for the same role does not stand in for this change's own landing", async () => {
   const root = makeRepo();
-  await queueChanges(root, ["alpha"]);
+  await pinChanges(root, ["alpha"]);
   // A local file alpha's pin would overwrite: this change's own merge ends `merge_blocked` and
   // never touches main.
   fs.writeFileSync(path.join(root, "alpha.txt"), "local alpha\n");
@@ -484,7 +458,7 @@ test("another merge for the same role does not stand in for this change's own la
       [["merge_failed", "aborted"]],
       "the unrelated merge's event does not rewrite this change as landed",
     );
-    assert.equal(queueDepth(root), 0, "the stopped change is not re-queued");
+    assert.equal(pinDrained(root, pipeline, ["alpha"])(), true, "the stopped change is not re-queued");
     assert.equal(await refSha(root, mergeRefName("alpha")), null, "the stopped change's pin is discarded");
   } finally {
     unsubscribe();
@@ -508,7 +482,7 @@ for (const headVerdict of ["reject", "approve"] as const) {
   test(`a head ${headVerdict === "reject" ? "rejected" : "approved"} by the gate leaves build-check when its gate returns`, async () => {
     const root = makeRepo();
     const roles = ["alpha", "beta"];
-    await queueChanges(root, roles);
+    await pinChanges(root, roles);
     const rec = path.join(tmpdir(), "stages");
     // Every record as `role=status/stage`, read from the live marker by whichever run records it.
     const script = path.join(tmpdir(), "stages.mjs");
@@ -543,7 +517,7 @@ for (const headVerdict of ["reject", "approve"] as const) {
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { cap: 1, config });
     try {
       await pumpUntil(ctx, pipeline, () => fs.existsSync(path.join(flags, "beta-checking")), "beta to be gated", 30_000);
-      await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to drain");
+      await pumpUntil(ctx, pipeline, pinDrained(root, pipeline, roles), "the queue to drain");
 
       const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
       // The head's own gate: its pre-check, with beta still queued and showing nothing. Then
@@ -586,9 +560,10 @@ for (const headVerdict of ["reject", "approve"] as const) {
 test("a plumbing throw in the merge keeps every entry queued and unapproved, records the error, and recovers on the next poll", async () => {
   const root = makeRepo();
   const mainBefore = mainSha(root);
-  await queueChanges(root, ["alpha", "beta"]);
+  const roles = ["alpha", "beta"];
+  await pinChanges(root, roles);
   const restore = fakePi(APPROVE());
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"]));
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles));
   // The sabotage target, repaired in the finally even when an assert throws first.
   const worktreesHome = path.join(root, ".git", "worktrees");
   try {
@@ -605,7 +580,10 @@ test("a plumbing throw in the merge keeps every entry queued and unapproved, rec
     await merge.promise; // resolves, never rejects — the drain caught the throw
 
     assert.equal(pipeline.merge, null, "the merge slot freed for the next attempt");
-    assert.equal(queueDepth(root), 2, "every entry stays queued");
+    assert.ok(
+      refSha(root, mergeRefName("alpha")) !== null && refSha(root, mergeRefName("beta")) !== null,
+      "every entry stays queued — both pins survive the throw",
+    );
     assert.equal(readMergeMarker(root), null, "the marker is gone — no approved marker remains: each change is re-run from its pin next poll");
     assert.ok(loadRunnerState(root, "alpha").lastError, "the head author's persisted state names the failure");
     assert.equal(eventsOfType(root, "merged").length, 0, "nothing was reported merged");
@@ -616,7 +594,7 @@ test("a plumbing throw in the merge keeps every entry queued and unapproved, rec
     // preserve. Git may have recreated the directory during the failed attempt, so remove
     // whatever stands there.
     fs.rmSync(worktreesHome, { recursive: true, force: true });
-    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to drain after the repair");
+    await pumpUntil(ctx, pipeline, pinDrained(root, pipeline, roles), "the queue to drain after the repair");
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "both changes merged after the retry");
     for (const role of ["alpha", "beta"]) {
       assert.ok(sh(root, "git", "show", `main:${role}.txt`).includes(`work by ${role}`), `${role}'s work is on main`);
@@ -631,9 +609,10 @@ test("a plumbing throw in the merge keeps every entry queued and unapproved, rec
 
 test("a failing state write in the merge's error path still frees the merge slot and warns", async () => {
   const root = makeRepo();
-  await queueChanges(root, ["alpha", "beta"]);
+  const roles = ["alpha", "beta"];
+  await pinChanges(root, roles);
   const restore = fakePi(APPROVE());
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"]));
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles));
   const worktreesHome = path.join(root, ".git", "worktrees");
   try {
     // Break the merge's plumbing so the head's gate-then-merge task throws, then break the head
@@ -654,7 +633,10 @@ test("a failing state write in the merge's error path still frees the merge slot
     const [settled] = await Promise.allSettled([merge.promise]);
     assert.equal(settled?.status, "fulfilled", "the task promise settles rather than rejecting");
     assert.equal(pipeline.merge, null, "the merge slot freed despite the failed state write");
-    assert.equal(queueDepth(root), 2, "every entry stays queued and unapproved");
+    assert.ok(
+      refSha(root, mergeRefName("alpha")) !== null && refSha(root, mergeRefName("beta")) !== null,
+      "every entry stays queued and unapproved — both pins survive the throw",
+    );
     assert.ok(
       readEvents(root).some(
         (e) => e.type === "warning" && String(e.message).includes('the merge error for alpha could not be saved'),
@@ -668,14 +650,13 @@ test("a failing state write in the merge's error path still frees the merge slot
   }
 });
 
-test("a throw settling an aborted merge still frees the merge slot", async () => {
+test("an aborted in-flight merge discards its pin and frees the merge slot", async () => {
   // The settle runs inside the merge task's try whose finally is the only place the slot is
-  // freed (p.merge = null) and shutdown is detached. The task settles the aborted change through
-  // settleOne → settleMergeOutcome → dropMerge — and dropMerge rethrows a non-ENOENT fs error
-  // (removeQueueFile). A throw there must not skip the finally, or p.merge stays set forever
-  // and every later merge on the team is wedged behind it.
+  // freed (p.merge = null) and shutdown is detached. A user abort of the in-flight gate settles
+  // the change "aborted", discards its pin, and the finally frees the slot — or p.merge stays
+  // set forever and every later merge on the team is wedged behind it.
   const root = makeRepo();
-  await queueChanges(root, ["beta", "alpha"]);
+  await pinChanges(root, ["beta", "alpha"]);
   const flags = tmpdir("abort-settle-throw-");
   const config = {
     ...defaultConfig(),
@@ -695,37 +676,22 @@ test("a throw settling an aborted merge still frees the merge slot", async () =>
     const merge = pipeline.merge as InFlightMerge | null;
     assert.ok(merge, "the merge started");
 
-    // Plant the settle path's fault, then flag the user abort, both synchronously while the
-    // gate's check is still blocked: the change's queue file becomes a directory, so the
-    // aborted settle's dropMerge (fs.rmSync without recursive) throws EISDIR the moment it
-    // settles the unmerged role — the shape an ENOSPC or immutable queue file takes on disk.
-    for (const { file } of queuedMergeFiles(root)) {
-      fs.rmSync(file);
-      fs.mkdirSync(file);
-    }
+    // Flag the user abort synchronously while the gate's check is still blocked, so the change
+    // the task is gating settles aborted.
     writeJsonFile(abortRequestPath(root, "alpha"), { at: Date.now() });
     consumeAbortRequests(root, [], abortableMerges(pipeline));
 
     const [settled] = await Promise.allSettled([merge.promise]);
     assert.equal(settled?.status, "fulfilled", "the task promise settles rather than rejecting");
-    assert.equal(pipeline.merge, null, "the merge slot freed despite the settle-path throw");
+    assert.equal(pipeline.merge, null, "the merge slot freed by the settle's finally");
+    assert.equal(await refSha(root, mergeRefName("alpha")), null, "the aborted change's pin was discarded");
     assert.deepEqual(
       readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha").map((e) => e.result),
       ["aborted"],
-      "the aborted outcome was still written before the drop threw",
-    );
-    assert.ok(
-      readEvents(root).some(
-        (e) => e.type === "warning" && String(e.message).includes("merge task"),
-      ),
-      "the settle-path failure is warned about, not swallowed",
+      "the aborted outcome was still written",
     );
   } finally {
     fs.writeFileSync(path.join(flags, "alpha-release"), "");
-    // Restore a usable queue directory so the settled tasks' cleanup does not fight the plant.
-    const dir = mergeQueueDir(root);
-    fs.rmSync(dir, { recursive: true, force: true });
-    fs.mkdirSync(dir, { recursive: true });
     await bg.stop();
     await Promise.allSettled(allTasks(pipeline));
     restore();
@@ -744,7 +710,7 @@ test("a git failure inside the gate's reject path is a plumbing throw: entry sta
   // gate on each poll.)
   const root = makeRepo();
   const role = "improve";
-  const shas = await queueChanges(root, [role]);
+  const shas = await pinChanges(root, [role]);
   const config = {
     ...defaultConfig(),
     check: { command: `if [ -f improve.txt ]; then gd=$(sed 's/^gitdir: //' "$PWD/.git"); touch "$gd/index.lock"; printf '%s\n' "planted failure: the change is red"; exit 1; fi` },
@@ -760,9 +726,8 @@ test("a git failure inside the gate's reject path is a plumbing throw: entry sta
     assert.equal(pipeline.merge, null, "the merge slot freed");
     const state = loadRunnerState(root, role);
     assert.match(state.lastError ?? "", /index\.lock/, "the persisted state names the git failure that threw");
-    assert.equal(queuedMergeFiles(root).length, 1, "the entry stays queued for the next poll");
     assert.equal(eventsOfType(root, "merged").length, 0, "nothing was reported merged");
-    assert.equal(await refSha(root, mergeRefName(role)), shas[role], "the pin survives the plumbing throw for the next re-merge");
+    assert.equal(await refSha(root, mergeRefName(role)), shas[role], "the pin survives the plumbing throw — the change stays queued for the next re-merge");
   } finally {
     await Promise.allSettled(allTasks(pipeline));
     restore();
@@ -772,7 +737,7 @@ test("a git failure inside the gate's reject path is a plumbing throw: entry sta
 test("an unwritable state file on a settling merge warns instead of rejecting the task promise", async () => {
   const root = makeRepo();
   const role = "improve";
-  await queueChanges(root, [role]);
+  await pinChanges(root, [role]);
   const stateFile = statePath(root, role);
   fs.mkdirSync(stateFile, { recursive: true });
   fs.writeFileSync(path.join(stateFile, "keep"), "");
