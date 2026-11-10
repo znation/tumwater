@@ -111,9 +111,9 @@ test("role --instances/--clear-instances write the role's parallel-runner count"
   r = await cli(repo, "role", "feature", "--clear-instances", "--instances", "2");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /give --clear-instances or --instances, not both/);
-  // --json is honored by the instances write (the ack shape itself is covered in
-  // cli-operators-role-holds). The key is unset here, so a set then a clear nets out to the
-  // same file; only a same-invocation cap rival still refuses.
+  // --json is honored by the instances write (the ack shape is covered in the dedicated
+  // --json test below). The key is unset here, so a set then a clear nets out to the same
+  // file; only a same-invocation cap rival still refuses.
   r = await cli(repo, "role", "feature", "--instances", "2", "--json");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /"key": "roles\.feature\.instances"/);
@@ -124,6 +124,90 @@ test("role --instances/--clear-instances write the role's parallel-runner count"
   assert.equal(r.code, 1);
   assert.match(r.stderr, /instances and cap writes cannot share one invocation/);
   assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, "no net write from the refused invocations");
+});
+
+test("role --instances --json acknowledges the write as one JSON object", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role instances json");
+  const configPath = path.join(repo, "tumwater.json");
+  const readBytes = () => fs.readFileSync(configPath, "utf8");
+  const config = () => readJson<TeamConfigFile>(configPath);
+
+  // A set prints exactly the acknowledgement object and writes the count.
+  let r = await cli(repo, "role", "feature", "--instances", "2", "--json");
+  assert.equal(r.code, 0);
+  assert.equal(r.stderr, "");
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.instances",
+    status: "set",
+    value: 2,
+  });
+  const setBytes = readBytes();
+  assert.equal(config().roles.feature.instances, 2, "the count is written");
+
+  // A repeat is a no-op: status unchanged, the same value, byte-identical file.
+  r = await cli(repo, "role", "feature", "--instances", "2", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.instances",
+    status: "unchanged",
+    value: 2,
+  });
+  assert.equal(readBytes(), setBytes, "a no-op set writes nothing");
+
+  // An instance id names the base role and its base key.
+  r = await cli(repo, "role", "feature-2", "--instances", "3", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.instances",
+    status: "set",
+    value: 3,
+  });
+
+  // A clear prints cleared with the removed count; the key is gone.
+  r = await cli(repo, "role", "feature", "--clear-instances", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "clear",
+    role: "feature",
+    key: "roles.feature.instances",
+    status: "cleared",
+    oldValue: 3,
+  });
+  const clearedBytes = readBytes();
+  assert.equal(config().roles.feature.instances, undefined, "the count is removed");
+
+  // On an unset key, --instances 1 is the no-op shortcut in writeInstances itself: unchanged
+  // with value 1, and a byte-identical file.
+  r = await cli(repo, "role", "feature", "--instances", "1", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    command: "role",
+    action: "set",
+    role: "feature",
+    key: "roles.feature.instances",
+    status: "unchanged",
+    value: 1,
+  });
+  assert.equal(readBytes(), clearedBytes, "instances 1 on an unset key writes nothing");
+
+  // A second clear is a no-op: not_set, no oldValue, byte-identical file.
+  r = await cli(repo, "role", "feature", "--clear-instances", "--json");
+  assert.equal(r.code, 0);
+  const again = JSON.parse(r.stdout) as { status: string; oldValue?: unknown };
+  assert.equal(again.status, "not_set");
+  assert.equal(again.oldValue, undefined, "not_set carries no oldValue");
+  assert.equal(readBytes(), clearedBytes, "clearing an unset key writes nothing");
 });
 
 test("role --enable and --disable write the role's enabled state", async () => {
