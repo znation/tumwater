@@ -76,9 +76,9 @@ function isQueueMiss(listed: { status: string }): listed is ListedQueueMiss {
  * queue, the highest position numbering any role can hold), else render the resolved outcome
  * through sayPromptOutcome. One helper so the
  * two verbs' handling of the miss shapes cannot drift. */
-function sayListedOutcome(listed: ListedCancelOutcome | ListedEditOutcome, position: number): void {
+function sayListedOutcome(listed: ListedCancelOutcome | ListedEditOutcome, position: number, json: boolean): void {
   const found = failQueueMiss(listed, position);
-  sayPromptOutcome(position, found.role, found.outcome, true);
+  sayPromptOutcome(position, found.role, found.outcome, true, json);
 }
 
 /** Run one role-targeted queue verb (cancelRolePrompt/editRolePrompt) for a `--role`-scoped
@@ -104,14 +104,26 @@ function runRolePromptCommand<O extends CancelOutcome | EditOutcome>(
  * removed (a cancel's `text`) or wrote (an edit's `newText`). When `labelRole` the line names
  * the role — the no-`--role` command resolves across every role, so its output must say where
  * the prompt went — while a `--role`-scoped command already names it in the user's own
- * command. One helper so the cancel and edit wordings cannot drift. */
-function sayPromptOutcome(position: number, role: string, outcome: CancelOutcome | EditOutcome, labelRole: boolean): void {
+ * command. `json` prints one acknowledgement object in place of the prose line instead: the
+ * resolved role, the addressed position, the status (`cancelled`/`edited`/`topped`,
+ * `noChange` for a bare edit whose buffer was unchanged, `gone` for a concurrent dequeue) and
+ * the same preview the prose line shows (absent for `gone`/`noChange`), so a script can steer
+ * a list-wide position without parsing prose. One helper so the cancel and edit wordings
+ * cannot drift. */
+function sayPromptOutcome(position: number, role: string, outcome: CancelOutcome | EditOutcome, labelRole: boolean, json: boolean): void {
   if (outcome.status === "gone") {
-    sayPromptGone(position, role);
+    if (json) sayJson({ position, role, status: "gone" });
+    else sayPromptGone(position, role);
     return;
   }
   // A resolved cancel carries the removed text; a resolved edit carries what it wrote.
   const text = outcome.status === "cancelled" ? outcome.text : outcome.newText;
+  if (json) {
+    // The acknowledgement object: the resolved role, the addressed position, the outcome's
+    // status and exactly the preview the prose line prints.
+    sayJson({ position, role, status: outcome.status, preview: promptPreview(text) });
+    return;
+  }
   say(labelRole ? `${outcome.status} (${role}): ${promptPreview(text)}` : `${outcome.status}: ${promptPreview(text)}`);
 }
 
@@ -127,10 +139,17 @@ function sayPromptGone(position: number, role: string): void {
  * is reported and exited clean; a resolved one previews the moved prompt. When `labelRole` the
  * line names the role — the no-`--role` command resolves across every role, so its output must
  * say where the prompt moved — while a `--role`-scoped command already names it in the user's
- * own command. The `sayPromptOutcome` contract, so the verbs cannot drift. */
-function sayTopOutcome(position: number, role: string, outcome: TopOutcome, labelRole: boolean): void {
+ * own command. `json` prints the same acknowledgement object sayPromptOutcome prints (the
+ * TopOutcome's own preview, which is exactly what the prose line shows). The
+ * `sayPromptOutcome` contract, so the verbs cannot drift. */
+function sayTopOutcome(position: number, role: string, outcome: TopOutcome, labelRole: boolean, json: boolean): void {
   if (outcome.status === "gone") {
-    sayPromptGone(position, role);
+    if (json) sayJson({ position, role, status: "gone" });
+    else sayPromptGone(position, role);
+    return;
+  }
+  if (json) {
+    sayJson({ position, role, status: "topped", preview: outcome.preview });
     return;
   }
   say(labelRole ? `topped (${role}): ${outcome.preview}` : `topped: ${outcome.preview}`);
@@ -199,18 +218,18 @@ function runPromptList(root: string, args: string[], json: boolean, grep: string
 
 /** `--cancel <n>` mode — remove a queued prompt by position, list-wide or `--role`-scoped. One
  * helper so `--cancel`'s rules are found by name. */
-function runPromptCancel(root: string, position: number, role: string | null): void {
+function runPromptCancel(root: string, position: number, role: string | null, json: boolean): void {
   if (role === null) {
     // No --role: the position addresses what --list shows — its per-role sections, each
     // numbered from 1 (the director first, then the roles in catalog order). Resolve across
     // that scope: one role holding the position cancels there, several are ambiguous (the
     // list itself shows two "N." lines), none is a miss. The output names the role, since
     // the caller scoped nothing.
-    sayListedOutcome(cancelListedPrompt(root, listWideScope(root), position), position);
+    sayListedOutcome(cancelListedPrompt(root, listWideScope(root), position), position, json);
     return;
   }
   const target = role ?? DIRECTOR_ROLE;
-  sayPromptOutcome(position, target, runRolePromptCommand(root, target, position, cancelRolePrompt), false);
+  sayPromptOutcome(position, target, runRolePromptCommand(root, target, position, cancelRolePrompt), false, json);
 }
 
 /** Run the CLI's image-input gate for one `prompt` surface. Shared by the submit and
@@ -250,7 +269,7 @@ function readEditAttachments(root: string, position: number, attachPaths: string
 /** The bare `--edit <n>` arm: resolve the role, read the queued body by file name (so a
  * concurrent dequeue reports gone), open it in the editor and write the result back —
  * unchanged, emptied or edited — with the carried `images`. */
-function editBareQueuedPrompt(root: string, position: number, role: string | null, images: PromptImageInput[] | undefined): void {
+function editBareQueuedPrompt(root: string, position: number, role: string | null, images: PromptImageInput[] | undefined, json: boolean): void {
   // Bare `--edit <n>`: open the prompt's body in the editor. The role is resolved first
   // and the write goes by file name, so a dequeue while the editor is open reports gone
   // instead of editing the neighbour that shifted into the position.
@@ -264,7 +283,7 @@ function editBareQueuedPrompt(root: string, position: number, role: string | nul
     return fail(errorMessage(err));
   }
   if (body === null) {
-    sayPromptOutcome(position, targetRole, { status: "gone" }, role === null);
+    sayPromptOutcome(position, targetRole, { status: "gone" }, role === null, json);
     return;
   }
   const after = editInEditor(body, "prompt.md");
@@ -272,11 +291,12 @@ function editBareQueuedPrompt(root: string, position: number, role: string | nul
   // prompt with no text, which the enqueue forms refuse.
   if (after.trim() === "" && body.trim() !== "") fail("the edited prompt is empty; nothing changed (use --cancel <n> to drop it)");
   if (after.trim() === body.trim() && images === undefined) {
-    say(`prompt ${position} unchanged`);
+    if (json) sayJson({ position, role: targetRole, status: "noChange" });
+    else say(`prompt ${position} unchanged`);
     return;
   }
   try {
-    sayPromptOutcome(position, targetRole, editQueuedFile(root, targetRole, name, after, images), role === null);
+    sayPromptOutcome(position, targetRole, editQueuedFile(root, targetRole, name, after, images), role === null, json);
   } catch (err) {
     fail(errorMessage(err));
   }
@@ -284,9 +304,9 @@ function editBareQueuedPrompt(root: string, position: number, role: string | nul
 
 /** The typed `--edit <n> <text>` / `--file` arm: the list-wide `editListedPrompt` path when
  * no `--role`, else the role-scoped `editRolePrompt` command, with the carried `images`. */
-function editTypedQueuedPrompt(root: string, position: number, text: string, role: string | null, images: PromptImageInput[] | undefined): void {
+function editTypedQueuedPrompt(root: string, position: number, text: string, role: string | null, images: PromptImageInput[] | undefined, json: boolean): void {
   if (role === null) {
-    sayListedOutcome(editListedPrompt(root, listWideScope(root), position, text, images), position);
+    sayListedOutcome(editListedPrompt(root, listWideScope(root), position, text, images), position, json);
     return;
   }
   const target = role ?? DIRECTOR_ROLE;
@@ -295,6 +315,7 @@ function editTypedQueuedPrompt(root: string, position: number, text: string, rol
     target,
     runRolePromptCommand(root, target, position, (r, role, position) => editRolePrompt(r, role, position, text, images)),
     false,
+    json,
   );
 }
 
@@ -302,13 +323,13 @@ function editTypedQueuedPrompt(root: string, position: number, text: string, rol
  * list through the gate, then the editor for a bare position or the typed/`--file` text,
  * list-wide or `--role`-scoped. The three phases live in `readEditAttachments`,
  * `editBareQueuedPrompt` and `editTypedQueuedPrompt`, so each `--edit` job is found by name. */
-function runPromptEdit(root: string, position: number, text: string | null, attachPaths: string[], role: string | null): void {
+function runPromptEdit(root: string, position: number, text: string | null, attachPaths: string[], role: string | null, json: boolean): void {
   const images = readEditAttachments(root, position, attachPaths, role);
   if (text === null) {
-    editBareQueuedPrompt(root, position, role, images);
+    editBareQueuedPrompt(root, position, role, images, json);
     return;
   }
-  editTypedQueuedPrompt(root, position, text, role, images);
+  editTypedQueuedPrompt(root, position, text, role, images, json);
 }
 
 /** `--show <n>` mode — print the Nth queued prompt in full, read-only, list-wide or
@@ -349,7 +370,7 @@ function runPromptShow(root: string, position: number, role: string | null, json
 
 /** `--top <n>` mode — move a queued prompt to the head of its queue by position, list-wide or
  * `--role`-scoped. One helper so `--top`'s rules are found by name. */
-function runPromptTop(root: string, position: number, role: string | null): void {
+function runPromptTop(root: string, position: number, role: string | null, json: boolean): void {
   // The same list-wide resolution the cancel branch uses, one verb on: no --role resolves the
   // position across `--list`'s per-role sections and moves it in the resolved role's queue;
   // with --role it is the role-scoped call. A concurrent dequeue reports gone and exits
@@ -362,7 +383,7 @@ function runPromptTop(root: string, position: number, role: string | null): void
     } catch (err) {
       return fail(errorMessage(err));
     }
-    sayTopOutcome(position, targetRole, outcome, true);
+    sayTopOutcome(position, targetRole, outcome, true, json);
     return;
   }
   const target = role ?? DIRECTOR_ROLE;
@@ -372,7 +393,7 @@ function runPromptTop(root: string, position: number, role: string | null): void
   } catch (err) {
     return fail(errorMessage(err));
   }
-  sayTopOutcome(position, target, outcome, false);
+  sayTopOutcome(position, target, outcome, false, json);
 }
 
 /** The default (enqueue) mode — the steering-prompt submit form: the `--at` due time, the
@@ -447,15 +468,15 @@ export async function cmdPrompt(root: string, args: string[], seams: FollowViewS
     return;
   }
   if (parsed.mode === "cancel") {
-    runPromptCancel(root, parsed.position, role);
+    runPromptCancel(root, parsed.position, role, parsed.json);
     return;
   }
   if (parsed.mode === "edit") {
-    runPromptEdit(root, parsed.position, parsed.text, parsed.attachPaths, role);
+    runPromptEdit(root, parsed.position, parsed.text, parsed.attachPaths, role, parsed.json);
     return;
   }
   if (parsed.mode === "top") {
-    runPromptTop(root, parsed.position, role);
+    runPromptTop(root, parsed.position, role, parsed.json);
     return;
   }
   if (parsed.mode === "show") {

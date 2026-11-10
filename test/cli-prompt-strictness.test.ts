@@ -86,10 +86,23 @@ test("prompt --top refuses the other modes, the queue-only flags, and stray text
     assert.match(r.stderr, new RegExp(`${flag} only queues a prompt`));
   }
 
-  // A stray positional is prompt text this mode has none of.
-  const r = await cli(repo, "prompt", "--top", "1", "extra");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /with --top there is no prompt text/);
+  // --json is a view/mutation flag: it applies to --top (an acknowledgement), so it is
+  // accepted — the miss it then hits is the prose error, unchanged by the flag.
+  const withJson = await cli(repo, "prompt", "--top", "1", "--json");
+  assert.equal(withJson.code, 1);
+  assert.match(withJson.stderr, /no prompt at position 1/);
+  // It is still at-most-once, and it is not prompt text: a stray token is refused as before.
+  const dupJson = await cli(repo, "prompt", "--top", "1", "--json", "--json");
+  assert.equal(dupJson.code, 1);
+  assert.match(dupJson.stderr, /--json may only be given once/);
+  const stray = await cli(repo, "prompt", "--top", "1", "--json", "extra");
+  assert.equal(stray.code, 1);
+  assert.match(stray.stderr, /with --top there is no prompt text/);
+
+  // In the enqueue forms --json is refused by name, never prompt text.
+  const enqueue = await cli(repo, "prompt", "hello", "--json");
+  assert.equal(enqueue.code, 1);
+  assert.match(enqueue.stderr, /--json only applies to --list, --show, --cancel, --edit or --top/);
 
   assert.equal(inboxSize(repo), 0, "nothing enqueued on failure");
 });

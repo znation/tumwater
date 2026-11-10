@@ -262,7 +262,7 @@ test("parsePromptArgs --list: -f in --grep's value slot is the pattern, not the 
 });
 
 test("parsePromptArgs --cancel: position validation and exclusivity", () => {
-  assert.deepEqual(expectOk(() => parsePromptArgs(["--cancel", "2"])), { mode: "cancel", role: null, position: 2 });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--cancel", "2"])), { mode: "cancel", role: null, position: 2, json: false });
 
   // A missing value is its own error (distinct from a bad number).
   const bare = expectFail(() => parsePromptArgs(["--cancel"]));
@@ -313,6 +313,7 @@ test("parsePromptArgs --role: accepted in every mode, never prompt content", () 
     mode: "cancel",
     role: "qa",
     position: 2,
+    json: false,
   });
 
   // A missing or flag-like value is its own error, not prompt content.
@@ -352,7 +353,7 @@ test("parseInitArgs and parsePromptArgs apply the same equals-form refusal to th
   assert.match(json.stderr, /--json takes no value/);
 });
 
-test("parsePromptArgs --json: list-only, at most once, never prompt content", () => {
+test("parsePromptArgs --json: applies to the views and the mutations, never the enqueue forms, at most once", () => {
   // Valid with --list, alone or scoped by --role; the flag is claimed, not text.
   assert.deepEqual(expectOk(() => parsePromptArgs(["--list", "--json"])), { mode: "list", role: null, json: true, grep: null, follow: false });
   assert.deepEqual(expectOk(() => parsePromptArgs(["--json", "--role", "qa", "--list"])), {
@@ -363,13 +364,44 @@ test("parsePromptArgs --json: list-only, at most once, never prompt content", ()
     follow: false,
   });
 
-  // Alone (enqueue mode) or beside --cancel it is refused by name, never baked into text.
-  const alone = expectFail(() => parsePromptArgs(["hello", "--json"]));
-  assert.match(alone.stderr, /--json only applies to --list/);
-  const cancel = expectFail(() => parsePromptArgs(["--cancel", "1", "--json"]));
-  assert.match(cancel.stderr, /--json only applies to --list/);
+  // --json applies to the three queue mutations too: the flag is claimed — a stray claim
+  // beside --cancel/--top and replacement text beside --edit — and the result carries it.
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--cancel", "1", "--json"])), {
+    mode: "cancel",
+    role: null,
+    position: 1,
+    json: true,
+  });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--top", "2", "--json"])), {
+    mode: "top",
+    role: null,
+    position: 2,
+    json: true,
+  });
+  // In --edit the flag is a claimed token wherever it sits, never replacement text: typed
+  // text joins without it, and a flag-only tail is the editor form, not a literal "--json".
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--edit", "1", "new", "--json"])), {
+    mode: "edit",
+    role: null,
+    position: 1,
+    text: "new",
+    attachPaths: [],
+    json: true,
+  });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--edit", "1", "--json"])), {
+    mode: "edit",
+    role: null,
+    position: 1,
+    text: null,
+    attachPaths: [],
+    json: true,
+  });
 
-  // A duplicate fails like --list/--cancel do.
+  // In the enqueue forms it is refused by the modes it applies to, never baked into text.
+  const alone = expectFail(() => parsePromptArgs(["hello", "--json"]));
+  assert.match(alone.stderr, /--json only applies to --list, --show, --cancel, --edit or --top/);
+
+  // A duplicate fails like --list/--cancel do (the shared once-check).
   const dup = expectFail(() => parsePromptArgs(["--list", "--json", "--json"]));
   assert.match(dup.stderr, /--json may only be given once/);
 });
@@ -522,6 +554,7 @@ test("parsePromptArgs --edit: position plus replacement text, --role optional", 
     position: 2,
     text: "new text",
     attachPaths: [],
+    json: false,
   });
 
   // The --role pair is a scope wherever it sits, never replacement text.
@@ -531,6 +564,7 @@ test("parsePromptArgs --edit: position plus replacement text, --role optional", 
     position: 1,
     text: "fix it",
     attachPaths: [],
+    json: false,
   });
   assert.deepEqual(expectOk(() => parsePromptArgs(["--role", "bugfix", "--edit", "1", "fix it"])), {
     mode: "edit",
@@ -538,6 +572,7 @@ test("parsePromptArgs --edit: position plus replacement text, --role optional", 
     position: 1,
     text: "fix it",
     attachPaths: [],
+    json: false,
   });
 
   // Multi-word text joins like the enqueue mode; single-dash tokens stay content.
@@ -547,6 +582,7 @@ test("parsePromptArgs --edit: position plus replacement text, --role optional", 
     position: 1,
     text: "-x y",
     attachPaths: [],
+    json: false,
   });
 });
 
@@ -554,10 +590,12 @@ test("parsePromptArgs --edit --file takes the replacement from a file, line for 
   const f = path.join(tmpdir(), "edit.md");
   fs.writeFileSync(f, "line one\n\nline two\n");
   const text = "line one\n\nline two\n";
-  assert.deepEqual(parsePromptArgs(["--edit", "2", "--file", f]), { mode: "edit", role: null, position: 2, text, attachPaths: [] });
+  assert.deepEqual(parsePromptArgs(["--edit", "2", "--file", f]), { mode: "edit", role: null, position: 2, text, attachPaths: [], json: false });
+  assert.deepEqual(parsePromptArgs(["--edit", "2", "--json"]), { mode: "edit", role: null, position: 2, text: null, attachPaths: [], json: true });
   assert.equal((parsePromptArgs(["--role", "bugfix", "--edit", "2", "--file", f]) as { role: string }).role, "bugfix");
   assert.equal((parsePromptArgs(["--edit", "2", "--file", f, "--role", "bugfix"]) as { role: string }).role, "bugfix");
   assert.deepEqual((parsePromptArgs(["--edit", "2", "--file", f, "--attach", "a.png"]) as { attachPaths: string[] }).attachPaths, ["a.png"]);
+  assert.equal((parsePromptArgs(["--edit", "2", "--file", f, "--json"]) as { json: boolean }).json, true);
 
   assert.match(expectFail(() => parsePromptArgs(["--edit", "2", "--file", f, "extra"])).stderr, /unexpected argument "extra"/);
   assert.match(expectFail(() => parsePromptArgs(["--edit", "2", "extra", "--file", f])).stderr, /unexpected argument "extra"/);
@@ -591,7 +629,8 @@ test("parsePromptArgs --edit: missing or non-numeric position, bare form opens t
   assert.match(nonNumeric.stderr, /--edit needs a positive integer/);
 
   // No text and no --file is the editor form.
-  assert.deepEqual(parsePromptArgs(["--edit", "1"]), { mode: "edit", role: null, position: 1, text: null, attachPaths: [] });
+  assert.deepEqual(parsePromptArgs(["--edit", "1"]), { mode: "edit", role: null, position: 1, text: null, attachPaths: [], json: false });
+  assert.deepEqual(parsePromptArgs(["--edit", "1", "--attach", "a.png"]), { mode: "edit", role: null, position: 1, text: null, attachPaths: ["a.png"], json: false });
   assert.match(expectFail(() => parsePromptArgs(["x", "--edit", "1"])).stderr, /unexpected argument "x"/);
 });
 
@@ -599,7 +638,16 @@ test("parsePromptArgs --edit refuses the sibling modes and --at", () => {
   assert.match(expectFail(() => parsePromptArgs(["--list", "--edit", "1", "x"])).stderr, /--list and --edit are mutually exclusive/);
   assert.match(expectFail(() => parsePromptArgs(["--cancel", "1", "--edit", "1", "x"])).stderr, /--cancel and --edit are mutually exclusive/);
   assert.match(expectFail(() => parsePromptArgs(["--edit", "1", "x", "--at", "5m"])).stderr, /--at only queues a prompt/);
-  assert.match(expectFail(() => parsePromptArgs(["--edit", "1", "x", "--json"])).stderr, /--json only applies to --list/);
+  // --json is claimed by --edit (never replacement text), so it is accepted here; it is
+  // refused only in the enqueue forms.
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--edit", "1", "x", "--json"])), {
+    mode: "edit",
+    role: null,
+    position: 1,
+    text: "x",
+    attachPaths: [],
+    json: true,
+  });
 });
 
 // --- parsePromptArgs --at ---
@@ -662,6 +710,7 @@ test("parsePromptArgs --attach is refused in the read-only modes and composes wi
     position: 1,
     text: "new",
     attachPaths: ["a.png"],
+    json: false,
   });
   assert.deepEqual(expectOk(() => parsePromptArgs(["--attach", "a.png", "--edit", "1", "new"])), {
     mode: "edit",
@@ -669,6 +718,7 @@ test("parsePromptArgs --attach is refused in the read-only modes and composes wi
     position: 1,
     text: "new",
     attachPaths: ["a.png"],
+    json: false,
   });
   assert.deepEqual(expectOk(() => parsePromptArgs(["--edit", "1", "--attach", "a.png", "new"])), {
     mode: "edit",
@@ -676,6 +726,7 @@ test("parsePromptArgs --attach is refused in the read-only modes and composes wi
     position: 1,
     text: "new",
     attachPaths: ["a.png"],
+    json: false,
   });
   // A stray token beside --list is still the stray-argument error; the guard only covers
   // the pair itself.

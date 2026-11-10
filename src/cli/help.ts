@@ -673,27 +673,43 @@ Usage:
                                    --json prints the message as data, with its role,
                                    position, queue file, queued time and not-before
                                    deferral
-  tumwater prompt --cancel <n>     Remove the Nth inbox message as --list shows them; when
-                                   several roles show that N, name one with --role <id>
-  tumwater prompt --top <n>        Move the Nth inbox message as --list shows them to the
+  tumwater prompt --cancel <n> [--json]     Remove the Nth inbox message as --list shows them; when
+                                   several roles show that N, name one with --role <id>;
+                                   --json prints one { position, role, status, preview }
+                                   acknowledgement object instead of the prose reply (status
+                                   \`cancelled\` or \`gone\` — a concurrent dequeue; preview is
+                                   what the text reply shows, absent for \`gone\`; a list-wide
+                                   ambiguity or miss still fails without JSON, as the prose
+                                   line)
+  tumwater prompt --top <n> [--json]        Move the Nth inbox message as --list shows them to the
                                    head of its role's inbox, so it dequeues next; a pending
                                    --at deferral still holds until its time; --role <id>
-                                   disambiguates like --cancel
-  tumwater prompt --edit <n> <text...> [--attach <path>]
+                                   disambiguates like --cancel; --json prints one { position,
+                                   role, status, preview } acknowledgement object (status
+                                   \`topped\` or \`gone\`; preview is what the text reply shows)
+  tumwater prompt --edit <n> <text...> [--attach <path>] [--json]
                                    Replace the Nth inbox message's text in place (position,
                                    age in the inbox, and a pending --at deferral are kept; as
                                    shown by --list); --attach (repeat up to 4) appends images
                                    after any the prompt already carries; when several roles
-                                   show that N, name one with --role <id>
-  tumwater prompt --edit <n> --file <path> [--attach <path>]
+                                   show that N, name one with --role <id>; --json prints one
+                                   { position, role, status, preview } acknowledgement object
+                                   (status \`edited\` or \`gone\`; preview is what the text reply
+                                   shows)
+  tumwater prompt --edit <n> --file <path> [--attach <path>] [--json]
                                    Replace the Nth inbox message's text with the file's
                                    contents ("-" reads stdin), kept line for line; position,
                                    age, and a pending --at deferral are kept, and --role <id>
-                                   disambiguates like --edit
-  tumwater prompt --edit <n> [--attach <path>]
+                                   disambiguates like --edit; --json prints one { position,
+                                   role, status, preview } acknowledgement object (status
+                                   \`edited\` or \`gone\`)
+  tumwater prompt --edit <n> [--attach <path>] [--json]
                                    Open the Nth inbox message in $VISUAL/$EDITOR and save it
                                    as the text form would; an unchanged buffer writes
-                                   nothing; --role <id> disambiguates like --edit
+                                   nothing; --role <id> disambiguates like --edit; --json
+                                   prints one { position, role, status } acknowledgement
+                                   object (status \`edited\` (with the saved preview),
+                                   \`noChange\` — the unchanged-buffer no-op — or \`gone\`)
   tumwater reset-counters [--role <id>[,<id>...]]
                                    Zero lifetime runs/commits/tokens/cost (fresh
                                    observation window; today's budget spend is kept — the

@@ -238,14 +238,16 @@ export function parseInitArgs(args: string[]): InitArgs {
  * cancel one entry by its 1-based position, edit one entry's text in place by that same
  * position, or move one entry to the head of its role's queue (`--top <n>`). `role` is the raw
  * `--role <id>` value (null when absent) — cli.ts validates it
- * against the live config, since this parser has no config to read. `json` is list-or-show: the
- * machine-readable render of the same view. */
+ * against the live config, since this parser has no config to read. `json` is list, show,
+ * cancel, edit or top: the machine-readable render of the same view — for the three
+ * queue-mutating modes, one acknowledgement object the command prints in place of its prose
+ * reply. */
 type PromptArgs =
   | { mode: "enqueue"; role: string | null; text: string; atDelayMs: number | null; attachPaths: string[] }
   | { mode: "list"; role: string | null; json: boolean; grep: string | null; follow: boolean }
-  | { mode: "cancel"; role: string | null; position: number }
-  | { mode: "edit"; role: string | null; position: number; text: string | null; attachPaths: string[] }
-  | { mode: "top"; role: string | null; position: number }
+  | { mode: "cancel"; role: string | null; position: number; json: boolean }
+  | { mode: "edit"; role: string | null; position: number; text: string | null; attachPaths: string[]; json: boolean }
+  | { mode: "top"; role: string | null; position: number; json: boolean }
   | { mode: "show"; role: string | null; position: number; json: boolean };
 
 /** prompt's flag vocabulary, one definition shared by the unknown-flag loop and the
@@ -396,13 +398,21 @@ function parsePromptRole(args: string[], roleFlag: number): { role: string | nul
   return { role, roleClaim };
 }
 
-/** The `--json` list-or-show refusal: in enqueue or cancel mode it must never silently ride
- * along as prompt text (or beside a state change). */
-function assertPromptJsonListOnly(scan: PromptScan): void {
-  // --json is list-or-show: only those two read-only views may carry it, and in enqueue or
-  // cancel mode it must never silently ride along as prompt text (or beside a state
-  // change), so it is refused before either branch runs.
-  if (scan.jsonFlags.length > 0 && scan.listFlag < 0 && scan.showFlag < 0) fail("--json only applies to --list");
+/** The `--json` refusal: the flag applies to the `--list`, `--show`, `--cancel`, `--edit`
+ * and `--top` modes — never to the enqueue forms, where it must not silently ride along as
+ * prompt text. */
+function assertPromptJsonListOrMutation(scan: PromptScan): void {
+  // --json is a view or an acknowledgement of one: it applies to the read-only views
+  // (--list, --show) and the three queue mutations (--cancel, --edit, --top), and in the
+  // enqueue forms it must never silently ride along as prompt text, so it is refused by the
+  // modes it applies to before either branch runs.
+  const applies =
+    scan.listFlag >= 0 ||
+    scan.showFlag >= 0 ||
+    scan.cancelFlag >= 0 ||
+    scan.editFlag >= 0 ||
+    scan.topFlag >= 0;
+  if (scan.jsonFlags.length > 0 && !applies) fail("--json only applies to --list, --show, --cancel, --edit or --top");
 }
 
 /** The missing-or-empty `--grep` wording parseGrepFlag's own fail uses (parsePromptFlags
@@ -499,10 +509,10 @@ function parsePromptDeferral(args: string[], atFlag: number): { atDelayMs: numbe
 /** `tumwater prompt`'s flag scan and the checks it owns — everything shared by two or more
  * modes, so a new mode or queue-only flag is added here: the unknown-double-dash gate, the
  * index collection, the once-check, the ten mutual exclusions, the --role pair, the
- * --json list-or-show and --grep list-only refusals, the queue-only-flag refusals, the
- * --attach pairs and the
+ * --json mode refusal, --grep list-only refusals, the queue-only-flag refusals,
+ * the --attach pairs and the
  * --at parse and cap. Each job lives in one helper — scanPromptFlags, assertPromptModesDisjoint,
- * parsePromptRole, assertPromptJsonListOnly, parsePromptGrep, assertPromptQueueOnlyFlags,
+ * parsePromptRole, assertPromptJsonListOrMutation, parsePromptGrep, assertPromptQueueOnlyFlags,
  * parsePromptAttachments and parsePromptDeferral — so a check is found by name. Returns a
  * struct the mode branches read. */
 function parsePromptFlags(args: string[]): PromptFlags {
@@ -518,7 +528,7 @@ function parsePromptFlags(args: string[]): PromptFlags {
   const scan = scanPromptFlags(args, consumed);
   assertPromptModesDisjoint(scan);
   const { role, roleClaim } = parsePromptRole(args, scan.roleFlag);
-  assertPromptJsonListOnly(scan);
+  assertPromptJsonListOrMutation(scan);
   const { grepRaw, grepClaim } = parsePromptGrep(grepPattern, scan.listFlag, grepFlag);
   const { followClaim } = parsePromptFollow(args, scan);
   assertPromptQueueOnlyFlags(scan);
@@ -563,10 +573,10 @@ function positionOnlyPromptArgs<M extends "cancel" | "top">(
   flagIndex: number,
 ): PromptArgs {
   const n = parsePositionFlag(flag, args[flagIndex + 1], `${flag} 2`);
-  // The position is the only token this mode may carry; anything else alongside it would be
-  // prompt text, and this mode has none.
-  failStrayArg(args, `with ${flag} there is no prompt text`, flagIndex, flagIndex + 1, ...f.roleClaim);
-  return { mode, role: f.role, position: n };
+  // The position, the --role pair and any --json tokens are the only tokens this mode may
+  // carry; anything else alongside them would be prompt text, and this mode has none.
+  failStrayArg(args, `with ${flag} there is no prompt text`, flagIndex, flagIndex + 1, ...f.roleClaim, ...f.jsonFlags);
+  return { mode, role: f.role, position: n, json: f.jsonFlags.length > 0 };
 }
 
 /** `--cancel <n>`: remove one entry by its 1-based queue position. */
@@ -578,31 +588,33 @@ function cancelPromptArgs(args: string[], f: PromptFlags): PromptArgs {
  * the tokens after the position, or (with neither) an editor open in the caller. */
 function editPromptArgs(args: string[], f: PromptFlags): PromptArgs {
   const n = parsePositionFlag("--edit", args[f.editFlag + 1], '--edit 2 "new text"');
-  // The --edit pair, the --role pair, and any --attach pairs are the only flags this mode
-  // claims. Tokens preceding --edit (other than a claimed flag) would be silently dropped —
-  // a mistyped command would edit prompt N with only the trailing fragment — so they are
-  // refused here by the same stray-argument wording the sibling modes use; tokens after the
-  // position are the replacement text, minus any claimed attach pair (none: edit in $EDITOR).
+  // The --edit pair, the --role pair, any --attach pairs and any --json tokens are the only
+  // flags this mode claims. Tokens preceding --edit (other than a claimed flag) would be
+  // silently dropped — a mistyped command would edit prompt N with only the trailing fragment
+  // — so they are refused here by the same stray-argument wording the sibling modes use;
+  // tokens after the position are the replacement text, minus any claimed flag pair (none:
+  // edit in $EDITOR). --json is a claimed flag there too, never replacement text.
   const fileClaim = pairClaim(f.fileFlag);
   for (let i = 0; i < f.editFlag; i++) {
-    if (f.roleClaim.includes(i) || f.attachClaims.includes(i) || fileClaim.includes(i)) continue;
+    if (f.roleClaim.includes(i) || f.attachClaims.includes(i) || f.jsonFlags.includes(i) || fileClaim.includes(i)) continue;
     fail(`unexpected argument ${JSON.stringify(args[i])} — with --edit the replacement text comes after the position`);
   }
+  const json = f.jsonFlags.length > 0;
   if (f.fileFlag >= 0) {
     // The replacement comes from the file (`-` reads stdin), kept line for line; editPromptAtFile
     // trims it. Typed text beside it would be ambiguous, so it is refused.
     const file = promptFileValue(args[f.fileFlag + 1]);
-    failStrayArg(args, "with --file the replacement text comes from the file", f.editFlag, f.editFlag + 1, ...fileClaim, ...f.roleClaim, ...f.attachClaims);
-    return { mode: "edit", role: f.role, position: n, text: readPromptFileArg(file), attachPaths: f.attachPaths };
+    failStrayArg(args, "with --file the replacement text comes from the file", f.editFlag, f.editFlag + 1, ...fileClaim, ...f.roleClaim, ...f.attachClaims, ...f.jsonFlags);
+    return { mode: "edit", role: f.role, position: n, text: readPromptFileArg(file), attachPaths: f.attachPaths, json };
   }
   const textTokens: string[] = [];
   for (let i = f.editFlag + 2; i < args.length; i++) {
-    if (f.roleClaim.includes(i) || f.attachClaims.includes(i)) continue;
+    if (f.roleClaim.includes(i) || f.attachClaims.includes(i) || f.jsonFlags.includes(i)) continue;
     textTokens.push(args[i] as string);
   }
   const text = textTokens.join(" ").trim();
   // No text and no --file: the caller opens the prompt's current body in the editor.
-  return { mode: "edit", role: f.role, position: n, text: text === "" ? null : text, attachPaths: f.attachPaths };
+  return { mode: "edit", role: f.role, position: n, text: text === "" ? null : text, attachPaths: f.attachPaths, json };
 }
 
 /** `--top <n>`: move one entry to the head of its role's queue. */

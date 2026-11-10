@@ -8,8 +8,8 @@ import { submitPrompt, submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
 import { truncate } from "../src/text/text.js";
 import { inboxDir, roleInboxDir } from "../src/paths.js";
-import { makeRepo, writeMalformedJson } from "./fixtures/repo-fixtures.js";
-import { cli, CLI } from "./helpers/cli-harness.js";
+import { makeRepo, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { cli, cliWithEnv, CLI } from "./helpers/cli-harness.js";
 import { spawnSync } from "node:child_process";
 
 // The prompt queue's child-process tests — enqueue/list/cancel basics first, then
@@ -575,14 +575,23 @@ test("prompt --list --json prints one JSON document matching the rendered list",
   assert.equal(r.code, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout), { prompts: [] });
 
-  // --json is list-only: in enqueue or cancel mode it is refused by name, never prompt text
-  // or a silent rider on a state change, and nothing reaches the queues.
+  // --json applies to the views and the mutations, never the enqueue forms: in enqueue mode
+  // it is refused by name, never prompt text, and nothing reaches the queues. It applies to
+  // --cancel (and --edit/--top) as an acknowledgement, so it is accepted there.
   r = await cli(repo, "prompt", "hello", "--json");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json only applies to --list/);
+  assert.match(r.stderr, /--json only applies to --list, --show, --cancel, --edit or --top/);
+  assert.deepEqual(queuedPrompts(repo), ["director task"]);
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one", "qa task two"]);
+
   r = await cli(repo, "prompt", "--cancel", "1", "--json");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json only applies to --list/);
+  assert.match(r.stderr, /position 1 is in more than one role's inbox/);
+  assert.match(r.stderr, /name one with --role <id>/);
+  assert.deepEqual(queuedPrompts(repo), ["director task"]);
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one", "qa task two"]);
+
+  // A duplicate fails like --list does (the shared once-check).
   r = await cli(repo, "prompt", "--list", "--json", "--json");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--json may only be given once/);
@@ -592,7 +601,6 @@ test("prompt --list --json prints one JSON document matching the rendered list",
   r = await cli(repo, "prompt", "--json=true");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--json takes no value/);
-  assert.deepEqual(queuedPrompts(repo), ["director task"]);
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one", "qa task two"]);
 });
 
@@ -600,6 +608,146 @@ test("prompt --list --json prints one JSON document matching the rendered list",
 // and --json carries the absolute stamp (PLANS.md "prompt --list shows how long each prompt
 // has waited" 1/2). A hand-placed file — a name queueFileName would never write — degrades
 // to no age rather than a guessed one, and still cancels by position exactly as before.
+// --- prompt --cancel/--top/--edit --json: the mutation acknowledgements (PLANS.md "prompt
+// --cancel <n>, --top <n> and --edit <n> accept --json") — one { position, role, status,
+// preview } object per resolved mutation, in place of the prose reply, so a script can steer
+// a list-wide position without parsing prose; a no-op or a failed mutation behaves exactly
+// as its prose form does (exit clean with JSON for a concurrent dequeue; fail with the prose
+// error, unchanged, for an ambiguity, a miss, or a validation error).
+test("prompt --cancel --json prints the acknowledgement object; list-wide failures stay prose errors", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt cancel json");
+
+  submitRolePrompt(repo, "qa", "qa one");
+  submitRolePrompt(repo, "qa", "qa two");
+
+  // List-wide: the object names the role that resolved, the addressed position, the status
+  // and the exact preview the prose line prints.
+  let r = await cli(repo, "prompt", "--cancel", "2", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { position: 2, role: "qa", status: "cancelled", preview: "qa two" });
+
+  // Scoped by --role: the same shape; the position is the per-role one.
+  r = await cli(repo, "prompt", "--cancel", "1", "--role", "qa", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { position: 1, role: "qa", status: "cancelled", preview: "qa one" });
+
+  // An ambiguity resolves to no mutation at all: the error is the prose one, unchanged.
+  // Position 1 is now held by both readme and qa (qa's prompt re-queued), so the list-wide
+  // resolve is an ambiguity: the prose error names the roles and the --role escape hatch, and
+  // no queue is touched.
+  submitRolePrompt(repo, "readme", "docs one");
+  submitRolePrompt(repo, "qa", "qa one");
+  r = await cli(repo, "prompt", "--cancel", "1", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /position 1 is in more than one role's inbox/);
+  assert.match(r.stderr, /name one with --role <id>/);
+
+  // A miss is the prose error, unchanged; a bad position fails before any file is touched.
+  r = await cli(repo, "prompt", "--cancel", "9", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no prompt at position 9/);
+  r = await cli(repo, "prompt", "--cancel", "0", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--cancel needs a positive integer/);
+});
+
+test("prompt --top --json prints the acknowledgement object; a concurrent dequeue is a JSON gone", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt top json");
+
+  submitPrompt(repo, "first");
+  submitPrompt(repo, "second");
+
+  let r = await cli(repo, "prompt", "--top", "2", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { position: 2, role: "director", status: "topped", preview: "second" });
+
+  // The move itself happened: "second" is now head of the director queue.
+  r = await cli(repo, "prompt", "--list");
+  assert.match(r.stdout, /^1\. second \(queued \d+[smh] ago\)$/m);
+
+  // The same dangling-symlink stand-in as the top race test: readdir lists it (so position 2
+  // resolves to it), the read hits ENOENT — a concurrent dequeue, a normal race: exit clean,
+  // status `gone`, no preview, and the object still names the role and the addressed position.
+  submitRolePrompt(repo, "qa", "qa task one");
+  const raced = path.join(roleInboxDir(repo, "qa"), `9999999999999-000001-${process.pid}.md`);
+  fs.symlinkSync(path.join(repo, "no-such-prompt.md"), raced);
+  r = await cli(repo, "prompt", "--top", "2", "--role", "qa", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { position: 2, role: "qa", status: "gone" });
+});
+
+test("prompt --edit --json prints the acknowledgement object for text and file forms; a concurrent dequeue is a JSON gone", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt edit json");
+
+  submitRolePrompt(repo, "qa", "old text");
+  const file = path.join(repo, "new.md");
+  fs.writeFileSync(file, "file text\n");
+
+  // Typed text: the object carries the status and the preview of what was written.
+  let r = await cli(repo, "prompt", "--edit", "1", "new text", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { position: 1, role: "qa", status: "edited", preview: "new text" });
+
+  // The file form acknowledges the file's contents (trimmed, like the prose line).
+  submitRolePrompt(repo, "qa", "another");
+  r = await cli(repo, "prompt", "--edit", "2", "--file", file, "--role", "qa", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { position: 2, role: "qa", status: "edited", preview: "file text" });
+
+  // The same dangling-symlink stand-in as the top/cancel race tests: the read hits ENOENT —
+  // a concurrent dequeue between resolution and write is a normal race: exit clean,
+  // status `gone`, no preview.
+  const raced = path.join(roleInboxDir(repo, "qa"), `9999999999999-000001-${process.pid}.md`);
+  fs.symlinkSync(path.join(repo, "no-such-prompt.md"), raced);
+  r = await cli(repo, "prompt", "--edit", "3", "gone", "--role", "qa", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { position: 3, role: "qa", status: "gone" });
+
+  // An ambiguity is the prose error, unchanged: a script sees the failure and can add --role.
+  submitRolePrompt(repo, "readme", "docs one");
+  r = await cli(repo, "prompt", "--edit", "1", "new text", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /position 1 is in more than one role's inbox/);
+  assert.match(r.stderr, /name one with --role <id>/);
+});
+
+// The bare `--edit <n>` opens $VISUAL/$EDITOR; with --json an unchanged buffer (a no-op) prints
+// the noChange acknowledgement object in place of its prose line, so a scripted editor round-trip
+// is parseable rather than a human prose read. The editor stub records the buffer and writes it
+// back verbatim (an unchanged buffer), so the no-op path is the one taken.
+test("prompt --edit <n> --json prints the noChange acknowledgement object for an unchanged buffer", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt edit json noop");
+  submitRolePrompt(repo, "qa", "old text");
+
+  // The editor stub reads the buffer it is handed and writes it back verbatim — an unchanged
+  // buffer. VISUAL is unset so the EDITOR stub is the one launched.
+  const dir = tmpdir("tumwater-stub-");
+  const script = path.join(dir, "editor.cjs");
+  fs.writeFileSync(
+    script,
+    `const fs = require("fs"); const file = process.argv[2]; const text = fs.readFileSync(file, "utf8");\n` +
+      `fs.writeFileSync(file, text);\n`,
+  );
+  const env = { VISUAL: undefined, EDITOR: `"${process.execPath}" "${script}"` };
+  // cliWithEnv deletes unset keys, so VISUAL is stripped and only the EDITOR stub runs.
+  const saved = { VISUAL: process.env.VISUAL, EDITOR: process.env.EDITOR };
+  delete process.env.VISUAL;
+  const r = await cliWithEnv(repo, { EDITOR: env.EDITOR }, ["prompt", "--edit", "1", "--role", "qa", "--json"]);
+  if (saved.VISUAL === undefined) delete process.env.VISUAL;
+  else process.env.VISUAL = saved.VISUAL;
+  if (saved.EDITOR === undefined) delete process.env.EDITOR;
+  else process.env.EDITOR = saved.EDITOR;
+
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { position: 1, role: "qa", status: "noChange" });
+  // The prompt is untouched: an unchanged buffer writes nothing.
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["old text"]);
+});
+
 test("prompt --list shows each prompt's age; a hand-placed file shows none", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli prompt list age");
