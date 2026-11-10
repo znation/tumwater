@@ -69,7 +69,7 @@ export function createReportPane(session: TuiPaneSession) {
   };
 
   /** Ctrl+E arm: advances the Usage and Failures panes' trailing report window (mnemonic:
-   * **E**lapsed). Guarded out of the budget and role-prompt editors like the other
+   * **E**lapsed). Guarded out of any held editor through the shared registry, like the other
    * mode-sensitive keys. (The Queued-edit and backlog title-edit Ctrl+E arms live in
    * tui-editors, which handled them above and returned before this branch when they
    * matched.) The window is session state: advancing it off either report pane
@@ -77,32 +77,21 @@ export function createReportPane(session: TuiPaneSession) {
    * report pane this handler recomputes the cached Markdown from the newly windowed
    * collector and re-enters the body at its head. True when consumed. */
   const reportWindowCycle = (ctx: TuiPaneCtx): boolean => {
-    if (
-      !ctx.es.budgetMode && !ctx.es.rolePromptFor && !ctx.es.pauseEditMode &&
-      !ctx.es.queuedEditFor && !ctx.es.answerFor && !ctx.es.entryEditFor &&
-      !ctx.es.retireMode && promptLineFree(ctx.es)
-    ) {
-      reportStep = 0;
-      reportWindow = nextInCycle(REPORT_WINDOWS, reportWindow);
-      recompute();
-      session.requestRender();
-      return true;
-    }
-    return false;
+    if (!promptLineFree(ctx.es)) return false;
+    reportStep = 0;
+    reportWindow = nextInCycle(REPORT_WINDOWS, reportWindow);
+    recompute();
+    session.requestRender();
+    return true;
   };
 
   /** Ctrl+P arm: steps the chosen trailing window back one window length (the `report --since
    * --until` window), wrapping to the trailing window once the next window's start would
    * pass the 7-day cap. */
   const reportStepBack = (ctx: TuiPaneCtx): boolean => {
-    if (
-      (session.view !== session.roleIds.length + 2 && session.view !== session.roleIds.length + 3) ||
-      ctx.es.budgetMode || ctx.es.rolePromptFor || ctx.es.pauseEditMode ||
-      ctx.es.queuedEditFor || ctx.es.answerFor || ctx.es.entryEditFor ||
-      ctx.es.retireMode || !promptLineFree(ctx.es)
-    ) {
-      return false;
-    }
+    const onReportPane =
+      session.view === session.roleIds.length + 2 || session.view === session.roleIds.length + 3;
+    if (!onReportPane || !promptLineFree(ctx.es)) return false;
     if (reportWindow === null) {
       session.flashMessage("pick a window with Ctrl+E to step back through earlier windows");
       return true;

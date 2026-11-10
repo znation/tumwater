@@ -407,16 +407,18 @@ export function createTuiPanes(deps: TuiPanesDeps) {
   };
 
   /** Run the pane arms of the key dispatch; true when one consumed the key. `es` is the
-   * editors' state, so the exclusion guards read the flags the editors hold. Each pane module
-   * checks its own view/guard and returns true only when it consumed the key; this router keeps
+   * editors' state, so the exclusion guards read the held-editor registry the editors hold. Each
+   * pane module checks its own view/guard and returns true only when it consumed the key; this
+   * router keeps
    * the keys that multiple panes serve in today's priority order. */
   const handleKey = (
     key: { ctrl?: boolean; name?: string },
     es: TuiPaneEditorState,
   ): boolean => {
-    // The editor flags below are all false here — the editors consume every key that reads or
-    // writes the line and return true whenever one is open — but each module restates its
-    // mutual-exclusion guard so it reads on its own instead of leaning on the routing order.
+    // The held-editor registry read below is false here — the editors consume every key that
+    // reads or writes the line and return true whenever one is open — but each module asks
+    // `promptLineFree` so its mutual-exclusion guard reads on its own instead of leaning on
+    // the routing order.
     const ctx: TuiPaneCtx = { es };
     const ctrl = ctrlRoute(key, ctx);
     if (ctrl !== null) return ctrl;

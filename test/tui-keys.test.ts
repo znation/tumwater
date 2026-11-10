@@ -5466,37 +5466,19 @@ test("Ctrl+X retire on the Health view: an empty id stays and Esc restores the d
 });
 
 test("promptLineFree is false while retire-edit mode holds the line, so the Health pane's own arms stay off it", () => {
-  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, releaseMode: false, roleEnabledMode: false, quietMode: false, intervalMode: false, roleModelMode: false, instructionsEditFor: null, anyEditorHeld: true };
+  const es: TuiPaneEditorState = { queuedEditFor: null, answerFor: null, entryEditFor: null, anyEditorHeld: true };
   // Ctrl+E (reclaim), Ctrl+R (doctor re-run) and Ctrl+O (problems toggle) are the Health
   // pane's own arms; while the retire editor holds the line they must see it busy, the same
   // exclusion every other mode enforces, or they would run over the retire modal. The guard
   // reads the shared anyEditorHeld registry, so a held mode raises it and the line frees only
-  // once the mode leaves; the per-mode flags below stay set to document which editor holds it.
+  // once the mode leaves.
   assert.equal(promptLineFree(es), false, "the retire editor blocks the Health pane's own arms");
-  es.retireMode = false;
-  es.releaseMode = true;
-  assert.equal(promptLineFree(es), false, "the release editor blocks the Failures pane's own arms");
-  es.releaseMode = false;
-  es.roleEnabledMode = true;
-  assert.equal(promptLineFree(es), false, "the role-enabled editor blocks the Health pane's own arms");
-  es.roleEnabledMode = false;
   es.anyEditorHeld = false;
-  assert.equal(promptLineFree(es), true, "the line frees once retire-edit mode leaves");
-  es.quietMode = true;
+  assert.equal(promptLineFree(es), true, "the line frees once the held editor leaves");
   es.anyEditorHeld = true;
-  assert.equal(promptLineFree(es), false, "the quiet editor blocks the Transcript pane's own arms");
-  es.quietMode = false;
-  es.intervalMode = true;
-  assert.equal(promptLineFree(es), false, "the interval editor blocks the Transcript pane's own arms");
-  es.intervalMode = false;
-  es.roleModelMode = true;
-  assert.equal(promptLineFree(es), false, "the role-model editor blocks the pane arms while it holds the line");
-  es.roleModelMode = false;
-  es.instructionsEditFor = "clean";
-  assert.equal(promptLineFree(es), false, "the instructions editor blocks the pane arms while it holds the line");
-  es.instructionsEditFor = null;
+  assert.equal(promptLineFree(es), false, "the line is held again once an editor raises the registry");
   es.anyEditorHeld = false;
-  assert.equal(promptLineFree(es), true, "the line frees once the instructions editor leaves");
+  assert.equal(promptLineFree(es), true, "the line frees again once the registry clears");
 });
 
 // The registry read covers an editor the old flat guard never named: the Activity view's

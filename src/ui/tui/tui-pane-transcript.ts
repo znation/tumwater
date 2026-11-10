@@ -76,18 +76,13 @@ export function createTranscriptPane(session: TuiPaneSession) {
     // The change step renders the same
     // collectRoleChange/renderRoleChange view the CLI's `tumwater diff --role <id>` and the
     // dashboard drawer use (no queued merges prepended since `tumwater queue` left).
-    // Guarded to a transcript view and out of budget-edit and
-    // role-prompt modes, the same way the per-role controls below are; the History view's
-    // trail arm is handled by the history module ahead of this one in the routing order.
-    // The editor flags below (budget/role/pause/queued/answer/entry/search) are all
-    // false here — the editors consume every key that reads or writes the line — but the
-    // guard restates them so the arm keeps its mutual-exclusion contract explicit. (The
-    // `search` flag is absent from this guard exactly as before: the shared `/` search
-    // editor consumes the key first, so the pane arm is never reached while it is open.)
-    if (
-      ctx.es.budgetMode || ctx.es.rolePromptFor || ctx.es.pauseEditMode ||
-      ctx.es.queuedEditFor || ctx.es.answerFor || ctx.es.entryEditFor || ctx.es.notesEditFor ||
-      ctx.es.quietMode || ctx.es.roleModelMode || ctx.es.instructionsEditFor ||
+    // Guarded to a transcript view and out of any held editor, the same way the per-role
+    // controls below are: the arm asks the shared held-editor registry (`promptLineFree`)
+    // whether any prompt-line editor holds the line, rather than restating each mode. (The
+    // History view's trail arm is handled by the history module ahead of this one in the
+    // routing order; the registry covers every prompt-line editor, so a newly added one
+    // holds the line here too.)
+    if (!promptLineFree(ctx.es) ||
       session.roleIds.length === 0 || session.view < 1 || session.view > session.roleIds.length
     ) {
       session.requestRender();

@@ -1,36 +1,17 @@
 
-/** The editor-mode flags the pane arms' exclusion guards read (es.*) — the same flags the
- * prompt-line editors consume every line-key on. Each pane arm restates its guard so its
- * mutual-exclusion contract reads on its own instead of leaning on the routing order. */
+/** The prompt-line editor state the pane arms read (es.*). The mutual-exclusion guard reads
+ * the shared held-editor registry (`anyEditorHeld`) rather than restating each per-editor
+ * mode, so a newly added editor holds the line in every arm without touching them; the
+ * remaining fields are the ones a pane arm still reads directly. */
 export interface TuiPaneEditorState {
-  budgetMode: boolean;
-  rolePromptFor: string | null;
-  searchMode: boolean;
-  pauseEditMode: boolean;
+  /** The Queued pane's in-place editor (Ctrl+E): the role and queue-file basename of the entry
+   * the prompt line is editing, or null when no edit is open. */
   queuedEditFor: { role: string; file: string } | null;
+  /** The backlog pane's answer editor (Ctrl+A on a selected open question). */
   answerFor: { position: number; title: string } | null;
+  /** The backlog pane's title editor (Ctrl+E on a selected plan or bug), a null position being
+   * the new-entry form (Ctrl+N). */
   entryEditFor: { kind: "plan" | "bug"; position: number | null; title: string } | null;
-  /** The notes view's Ctrl+E replace-notes mode holds the prompt line: the role whose notes
-   * the prompt line is replacing from a typed file path, or null when closed. */
-  notesEditFor: string | null;
-  /** The Brief view's Ctrl+E replace-the-brief mode holds the prompt line, editing one typed
-   * file path that becomes the whole brief through editBriefText. */
-  briefEditMode: boolean;
-  /** The Health view's Ctrl+X retire mode holds the prompt line, editing a role id. */
-  retireMode: boolean;
-  /** The Failures view's Ctrl+X release mode holds the prompt line, editing a quarantined
-   * test path. */
-  releaseMode: boolean;
-  /** The Health view's Ctrl+V enable/disable mode holds the prompt line, editing a role id. */
-  roleEnabledMode: boolean;
-  /** The Transcript view's Ctrl+O quiet-hours mode holds the prompt line. */
-  quietMode: boolean;
-  /** The Transcript view's Ctrl+S min-run-interval mode holds the prompt line. */
-  intervalMode: boolean;
-  /** The Transcript view's Ctrl+X role-model mode holds the prompt line. */
-  roleModelMode: boolean;
-  /** The Transcript view's Ctrl+L replace-standing-instructions mode holds the prompt line. */
-  instructionsEditFor: string | null;
   /** The shared held-editor registry read (`TuiEditorSession.anyEditorHeld`): true while any
    * prompt-line editor holds the line. `promptLineFree` reads this one flag instead of
    * restating each per-editor mode, so a newly added editor holds the line here without
@@ -40,21 +21,21 @@ export interface TuiPaneEditorState {
   input?: string;
 }
 
-/** The per-keypress read `createTuiKeys` passes to every pane arm — the editor flags the
- * arms' mutual-exclusion guards restate — the analog of the per-module `ctx` argument in
- * `TuiEditorModule.handleKey`. The view-index and roster live on the shared session, so the
- * per-key read carries only what the editors own. */
+/** The per-keypress read `createTuiKeys` passes to every pane arm — the held-editor registry
+ * plus the editor fields a pane arm still reads directly — the analog of the per-module `ctx`
+ * argument in `TuiEditorModule.handleKey`. The view-index and roster live on the shared
+ * session, so the per-key read carries only what the editors own. */
 export interface TuiPaneCtx {
   es: TuiPaneEditorState;
 }
 
 /** Whether no editor currently holds the prompt line — the mutual-exclusion contract the pane
- * arms below restate when they open their own one-line editors. It reads the shared
- * held-editor registry (`anyEditorHeld`), the one flag `TuiEditorSession.anyEditorHeld`
- * maintains over every prompt-line editor, so a newly added editor holds the line here without
- * touching this check. The editors consume every key that reads or writes the line and return
- * true while one is open, so by the time the pane fallback runs no editor holds the line; the
- * explicit read keeps each arm's exclusion legible instead of leaning on the routing order. */
+ * arms ask before running their own one-line editors. It reads the shared held-editor registry
+ * (`anyEditorHeld`), the one flag `TuiEditorSession.anyEditorHeld` maintains over every
+ * prompt-line editor, so a newly added editor holds the line here without touching this check.
+ * The editors consume every key that reads or writes the line and return true while one is open,
+ * so by the time the pane fallback runs no editor holds the line; the explicit read keeps each
+ * arm's exclusion legible instead of leaning on the routing order. */
 export function promptLineFree(es: TuiPaneEditorState): boolean {
   return !es.anyEditorHeld;
 }
