@@ -15,8 +15,9 @@ export function isJsonObject(value: unknown): value is Record<string, unknown> {
 
 /** Read an untrusted JSON field that should be a string list, returning its string entries
  * when it is an array and [] otherwise — the one home of the "an event/record field is the
- * list or it is nothing" read every formatter applies (event-format.ts's review_rejected
- * reasons, dep_install packages, config_changed keys; src/failure/failure-state-change.ts's
+ * list or it is nothing" read every formatter applies (event-format-review.ts's review_rejected
+ * reasons, event-format-check-wait.ts's dep_install packages, event-format-config.ts's
+ * config_changed keys; src/failure/failure-state-change.ts's
  * config_changed keys; failure-time-spend.ts's review-rejection reasons; team-state.ts's
  * paused-roles list). A torn or hand-edited line
  * never throws and never renders a placeholder: the field reads as absent, and the caller's
@@ -34,9 +35,10 @@ export function stringList(value: unknown): string[] {
  * home of the "the field is the number or it is nothing" read. The call sites, by the
  * fallback each passes: event-read.ts's eventRun (run → 0), eventUsage (tokens, costUsd →
  * 0), eventDayKey (ts → null), runStartMap and runSpanMs (both ts → null);
- * event-format.ts's elapsed (ms → null), gigabytes (v → 0), minutes (ms → 0), and the
- * build_stale, slot_wait, restart, and permit_reserve renderers (aheadCommits, waitedMs,
- * abortedRuns, reserve → 0); phrases.ts's budgetPhrase (spentUsd, capUsd → 0); redeploy.ts's
+ * event-format-fragments.ts's elapsed (ms → null), gigabytes (v → 0), minutes (ms → 0), and
+ * the event-format family modules' build_stale, slot_wait, restart, and permit_reserve
+ * renderers (aheadCommits, waitedMs, abortedRuns, reserve → 0); phrases.ts's budgetPhrase
+ * (spentUsd, capUsd → 0); redeploy.ts's
  * autoRestartRecord (lastAt → null); build/build-info.ts's readBuildInfo (builtAt → 0);
  * failure/failure-state-change.ts's build_stale renderer (aheadCommits → 0);
  * gates/maintenance-quota-gates.ts's foldLine and seed (ev.ts → null);

@@ -27,8 +27,9 @@ export const PREFILL_REASON = "it rides into every run's prefill";
 /** The reason a review rejection leads with — its first listed reason, or `no reasons given`
  * when the list is empty or its first entry is not a string. One home so the fallback cannot
  * drift across the four surfaces that show just that first reason: the review gate's returned
- * detail (review.ts), the event feed's one-line reject (event-format.ts), the failure digest's
- * rejection clusters (failure-data.ts), and the error a role's next run records (run-apply.ts).
+ * detail (review.ts), the event feed's one-line reject (event-format-review.ts), the failure
+ * digest's rejection clusters (failure-data.ts), and the error a role's next run records
+ * (run-apply.ts).
  * Sites that render the whole reason list, or intentionally omit the fallback
  * (failure-time-spend.ts's first-reason example, review.ts's rejection event `reason`), keep
  * their own handling. */
@@ -42,9 +43,10 @@ export function firstReason(reasons: readonly unknown[] | undefined): string {
  * day window's day label
  * (datetime.ts), the failure digest's loss-cause lines (src/failure/failure-render.ts), and the
  * team alerts' banner titles (ui/team-alerts.ts, whose local copy this replaces), and the
- * build_stale lines' "N commit(s) ahead" (event-format.ts, src/failure/failure-state-change.ts —
- * the singular/plural wording their tests pin, once "N commit(s)" with the old literal, now "N
- * commits"/"1 commit"), and the stage self-check and dropped-attachment notes
+ * build_stale lines' "N commit(s) ahead" (event-format-image-restart.ts,
+ * src/failure/failure-state-change.ts — the singular/plural wording their tests pin, once
+ * "N commit(s)" with the old literal, now "N commits"/"1 commit"), and the stage self-check
+ * and dropped-attachment notes
  * (src/run/run-stage.ts, inbox/inbox-attachments.ts) all rendered inline before. `many` accepts a
  * whole replacement form (`plural(n, "role is", "roles are")`) so verb-agreement titles share the
  * helper; the plural-by-`s` default covers regular nouns. (The GUI keeps its own JS copy in
@@ -70,8 +72,9 @@ export function agree(n: number, one: string, many: string): string {
 
 /** The "N commit(s) behind" tail every update-available surface renders after its "update
  * available" head: the status header's build badge (badges.ts), the event feed's build_stale
- * line (event-format.ts), and the failure digest's build_stale line (failure-state-change.ts)
- * each spelled the count-then-pluralize by hand — event-format and failure-state-change
+ * line (event-format-image-restart.ts), and the failure digest's build_stale line
+ * (failure-state-change.ts) each spelled the count-then-pluralize by hand — event-format and
+ * failure-state-change
  * coercing the torn `aheadCommits` through finiteNumber to 0, badges through `?? 0` — so the
  * plural/wording has one home and cannot drift. The count is coerced to 0 here when unusable
  * (a non-finite or negative value reads zero, the same corrupt-field rule the other update
@@ -152,7 +155,7 @@ export function consecutiveFailuresWarning(count: number, reason: string): strin
 }
 
 /** The base line for an operator team pause — `team paused — roles stop starting new
- * runs` — built here so the event feed (event-format.ts, which appends its own `(director
+ * runs` — built here so the event feed (event-format-hold.ts, which appends its own `(director
  * keeps running)` consequence) and the failure digest's Team state changes lines
  * (src/failure/failure-state-change.ts, which keeps the short form) cannot drift on the base
  * wording. `tumwater pause`'s confirmation (operator/operator-commands.ts) interleaves its
@@ -177,8 +180,9 @@ export function teamResumePhrase(): string {
 export const PAUSE_EXPIRED_SUFFIX = " (its timed pause ran out)";
 
 /** The base line for a per-role pause — `role <id> paused — it starts no new runs` —
- * shared by the event feed (event-format.ts, which appends `(the rest of the team keeps running)`)
- * and the failure digest's Team state changes lines (src/failure/failure-state-change.ts, which
+ * shared by the event feed (event-format-hold.ts, which appends
+ * `(the rest of the team keeps running)`) and the failure digest's Team state changes lines
+ * (src/failure/failure-state-change.ts, which
  * deliberately keeps the short form), so the two cannot drift on the base wording. The role is
  * coerced, so the digest's byte-sliced `field()` output and the feed's raw field both render. */
 export function rolePausePhrase(role: unknown): string {
@@ -217,8 +221,9 @@ export function orchestratorStopPhrase(cause: unknown): string {
 }
 
 /** A HarnessEvent's loosely typed `roles` list as a `A, B, C` phrase — the single home of the
- * array coercion and join, shared by the event feed (event-format.ts: counters_reset's scope,
- * budget_handback's handed-back list, the rate_limit_hold line) and the failure digest's state-
+ * array coercion and join, shared by the event feed (event-format-run.ts's counters_reset
+ * scope, event-format-budget.ts's budget_handback list, and event-format-resource.ts's
+ * rate_limit_hold line) and the failure digest's state-
  * change lines (src/failure/failure-state-change.ts, whose hold lines cap the list and slice each
  * role), so the two surfaces cannot disagree on how an absent or malformed roles field renders. A
  * non-array falls back to `fallback`, and a foreign entry inside the array is dropped the same way
@@ -312,8 +317,9 @@ export function backendKindPhrase(kind: unknown): string {
  * rate-limit (or an unreadable, torn-line kind). The one home of the "not a 429"
  * discriminator: an absent, blank, or `"rate-limit"` kind keeps the 429 wording every
  * historical event already has, and only a real non-empty backend kind names itself
- * (through backendKindPhrase). Shared by the event feed (event-format.ts's
- * rate_limit_hold/recovered lines) and the failure digest's Team state-change lines
+ * (through backendKindPhrase). Shared by the event feed
+ * (event-format-resource.ts's rate_limit_hold/recovered lines) and the failure digest's Team
+ * state-change lines
  * (src/failure/failure-state-change.ts's rate_limit_hold/resumed), so the two cannot
  * disagree. Not to be confused with isBackendFailureKind in pi-failure.ts, which is a
  * strict enum-membership guard for the 5 BACKEND_FAILURE_KINDS: this predicate instead
@@ -367,7 +373,7 @@ export function describeToolCall(toolName: string, args: unknown): string {
  * phrasings keep their own wording: the failure digest's bare `+N more` role list and its `_+N
  * more …_` lines (failure/failure-render.ts), doctor's `and N more` (doctor/doctor-orphans.ts),
  * the TUI alert pointer (ui/tui/tui-frame.ts), and the review-reject reasons, whose extra clause
- * sits inside the parentheses (events/event-format.ts). */
+ * sits inside the parentheses (events/event-format-review.ts). */
 export function moreSuffix(count: number): string {
   return count > 0 ? ` (+${count} more)` : "";
 }

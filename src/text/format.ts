@@ -83,8 +83,9 @@ export function shortSha(sha: unknown): string {
 }
 
 /** A USD amount with its dollar sign and exactly two decimals ($12.34) — the single home of
- * the cents-pinned money format shared by the event feed's budget/usage lines (event-format.ts),
- * the status table's cost/today cells plus totals row (status-render.ts), and the usage
+ * the cents-pinned money format shared by the event feed's budget/usage lines
+ * (event-format-budget.ts and event-format-fragments.ts), the status table's cost/today cells
+ * plus totals row (status-render.ts), and the usage
  * report's totals line plus per-day cost column (report-render.ts), so the decimal width cannot
  * drift per consumer. The cap variant that drops whole-dollar `.00` is a different
  * format (`usdCap` below); the GUI's row cells still format money from their own inline JS (a
@@ -105,12 +106,13 @@ export function usdCap(n: number): string {
 }
 
 /** A disk size in GB for display: one decimal and the unit (`12.3 GB`) — the single home of
- * the disk-size format shared by the event feed's disk lines (event-format.ts), the status
- * header's disk badge (badges.ts's `diskBadge`), the team's low-disk alert (team-alert-status.ts),
+ * the disk-size format shared by the event feed's disk lines (event-format-resource.ts),
+ * the status header's disk badge (badges.ts's `diskBadge`), the team's low-disk alert
+ * (team-alert-status.ts),
  * the doctor's disk check detail (doctor-project-checks.ts), and `tumwater reclaim`'s
  * freed-size line (operator-commands.ts), so the decimal width and unit cannot drift per
  * consumer. A caller
- * reading the value from an untrusted event field applies event-format.ts's `gigabytes`
+ * reading the value from an untrusted event field applies event-format-fragments.ts's `gigabytes`
  * wrapper (finiteNumber's corrupt-field rule) over this. */
 export function formatGB(n: number): string {
   return `${n.toFixed(1)} GB`;

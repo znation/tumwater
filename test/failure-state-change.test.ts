@@ -232,7 +232,7 @@ test("build_stale and the restart quartet render shas and the refusal reason", (
     "update available (3 commits behind) — restart waits; work continues",
   );
   // A torn or hand-edited log can carry a non-numeric aheadCommits; the digest must not render
-  // "NaN commits" (event-format.ts's build_stale line has the same guard).
+  // "NaN commits" (event-format-image-restart.ts's build_stale line has the same guard).
   const corrupt = describeStateChange(ev({ type: "build_stale", build: "abcdef1234567890", head: "1234567890abcdef", aheadCommits: "twelve" }));
   assert.equal(corrupt, "update available (0 commits behind) — restart waits; work continues");
   assert.doesNotMatch(corrupt, /NaN/);
