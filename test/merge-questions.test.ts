@@ -11,8 +11,8 @@
  * bug they would catch: number the new headings 1..k instead of their real 1-based place in the
  * (combined) list. `open` is `titles.length` (the list after the merge, the number the answer
  * command reads against), and `position` is `index + 1` of the same list — the event-format
- * reader (src/events/event-format.ts) renders `question N in \`tumwater questions\`` from them,
- * and a wrong `position` points an operator at the wrong entry.
+ * reader (src/events/event-format-inbox.ts) renders `question N in \`tumwater questions\``
+ * from them, and a wrong `position` points an operator at the wrong entry.
  *
  * Each case seeds a temp project root (a distinct inode per test, so the stat-keyed caches in
  * openQuestions and readEvents read the freshly written file) and calls logNewQuestions in

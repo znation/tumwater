@@ -86,7 +86,7 @@ export function formatTime(d: Date): string {
 
 /** Epoch ms as a local `HH:MM:SS` wall-clock string — the epoch-ms form of formatTime, the
  * dayKey-to-formatDate sibling. It shares the clock-instant rendering every event renderer's
- * pause/reset/resume suffix needs (event-format.ts's pauseSuffix and windowResetPhrase,
+ * pause/reset/resume suffix needs (event-format-fragments.ts's pauseSuffix and windowResetPhrase,
  * failure-state-change.ts's team/role pause untils, doctor-model-checks.ts's probe time), so no
  * site re-derives `formatTime(new Date(ms))`. A non-finite or absent `ms` renders the same NaN
  * clock formatTime's Date would — callers guard with finiteNumber first, exactly as they did

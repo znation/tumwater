@@ -422,7 +422,7 @@ line) and a failed ledger write record nothing and warn at most.
 **Binds.** `src/verdict/reply-contract.ts` (`extractFiled`), `src/observer/feedback-filings.ts`
 (`readFeedbackFilings`, `recordFiled`), `src/run/run-verdict.ts` (the
 `ctx.filed && !diagnosis.cutOff` guard), `src/run/run-stage.ts` (the changed-branch `ctx.filed`
-recording), `src/events/event-format.ts` (the `issue_filed` line).
+recording), `src/events/event-format-inbox.ts` (the `issue_filed` line).
 
 **Pinned by.** `test/reply-contract.test.ts` — "extractFiled requires the number and a non-empty
 title" and "extractFiled returns null when absent, empty, or only mid-sentence";
@@ -720,7 +720,7 @@ to the target at model choice when the role's model reads no images (`image_rero
 **Binds.** `src/run/run-verdict.ts` (the reroute arm), `src/runner/runner-run.ts` (model choice
 + attachment preflight), `src/runner/runner.ts` (`runConfig`), `src/run/run-resume.ts` (the
 image-reroute handoff), `src/prompt/prompt-followup.ts` (`buildHandoffPrompt`'s image-reroute
-note), `src/events/event-format.ts` (the `image_reroute` and image-reroute resume lines).
+note), `src/events/event-format-image-restart.ts` (the `image_reroute` and image-reroute resume lines).
 
 **Pinned by.** `test/run-verdict.test.ts` — the reroute verdict tests (target + one-hop);
 `test/runner-2.test.ts` — "a blind read on a text-only role reroutes to the vision target, then
