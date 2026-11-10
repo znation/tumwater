@@ -2202,6 +2202,19 @@ no skip for an empty note, so the separator lives in one place.
 **Pinned by.** `test/format.test.ts` — "appendPromptNote joins a note to the prompt with one blank
 line, even an empty note".
 
+### INV-AA6: a token count in a window label is thousands-separated and carries its unit
+
+**Guarantee.** `tokenWindowLabel` renders a token count with `toLocaleString("en-US")` grouping
+(`128000` reads `128,000`, `999` stays bare) and appends `-token window`, so a window that reads
+without its separator or with a drifted unit cannot slip into the doctor's model checks, which
+print a cataloged model's window as `<model> — <label>` through it.
+
+**Binds.** `src/text/format.ts` (`tokenWindowLabel`), `src/doctor/doctor-codex-checks.ts`,
+`src/doctor/doctor-opencode-checks.ts`.
+
+**Pinned by.** `test/format.test.ts` — "tokenWindowLabel thousands-separates a token count and
+appends the unit".
+
 ## Text shaping: a bounded line never overflows or splits a character, and a count is plain decimal
 
 `src/text/text.ts` is the single home of these one-line text rules, so a display surface, a prompt

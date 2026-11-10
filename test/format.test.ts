@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appendPromptNote, compactTokens, contextShareLabel, formatBytes, formatGB, shortSha, usd, usdCap } from "../src/text/format.js";
+import { appendPromptNote, compactTokens, contextShareLabel, formatBytes, formatGB, shortSha, tokenWindowLabel, usd, usdCap } from "../src/text/format.js";
 
 // format.ts is the single home of the number, money, and hash formats every display surface
 // (status table, event feed, usage report, commit trailers) renders through. These tests pin
@@ -84,6 +84,17 @@ test("usd always keeps two decimals; usdCap drops a whole-dollar .00", () => {
   assert.equal(usdCap(50), "$50"); // whole dollars stay bare
   assert.equal(usdCap(12.34), "$12.34"); // fractional keeps its cents
   assert.equal(usdCap(25), "$25"); // the TUI's `budget set to $25` flash
+});
+
+// tokenWindowLabel is the single home of the context-window label the doctor's codex and
+// opencode model checks render beside each cataloged model (`<model> — <label>`). Its
+// thousands separator and the "-token window" suffix are the contract those surfaces print,
+// so a window that reads without a separator or with a drifted unit would surface there.
+test("tokenWindowLabel thousands-separates a token count and appends the unit", () => {
+  assert.equal(tokenWindowLabel(128_000), "128,000-token window"); // the doc comment's example
+  assert.equal(tokenWindowLabel(272_000), "272,000-token window");
+  assert.equal(tokenWindowLabel(1_000_000), "1,000,000-token window");
+  assert.equal(tokenWindowLabel(999), "999-token window"); // below 1,000: no separator
 });
 
 test("appendPromptNote joins a note to the prompt with one blank line, even an empty note", () => {
