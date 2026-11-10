@@ -190,44 +190,54 @@ interface LogsFeed {
  * `--count`, `-f`) and compose it into the single `filter` rule plus the locals every feed view
  * shares. One scan (and one home for each rival check), so no flag rule lives in a view and a
  * `--since`/`--count`/`-f` rule is found here by name. */
-function parseLogsFeed(root: string, args: string[]): LogsFeed {
-  // `--grep <text>` filters the event feed (the -n view and its follow) and, with --transcript,
-  // the transcript's entries (see cmdLogsTranscript): case-insensitive
-  // substring against `${e.type} ${formatEvent(e)}` — the rendered line is what the operator
-  // would otherwise read (WYSIWYG), and prefixing the raw type id lets stable ids
-  // (review_rejected, merge_failed) be filtered even where the rendering paraphrases them.
-  // --grep filters the --since window like --type and --role do. The flag scan itself
-  // (the value lookup, the `rest` construction that keeps a flag-shaped pattern from
-  // impersonating a rival flag, and the empty-value fail) is cli/cli-args.ts's parseGrepFlag,
-  // the one home shared with history's identical preamble.
+/** The `--grep`/`--type`/`--role` filter parse from the raw args: the
+ * `--grep`/`--type` value scans, the `--role` scope, their rival checks, the empty-list refusal
+ * and the role's empty-match prose. Returns the filter halves of `LogsFeed` (no `filter`;
+ * that is composed in `composeLogsFilter`), leaving `notable`/`json`/`count`/`follow` to
+ * `parseLogsOutputModes`.
+ *
+ * `--grep <text>` filters the event feed (the -n view and its follow) and, with --transcript,
+ * the transcript's entries (see cmdLogsTranscript): case-insensitive
+ * substring against `${e.type} ${formatEvent(e)}` — the rendered line is what the operator
+ * would otherwise read (WYSIWYG), and prefixing the raw type id lets stable ids
+ * (review_rejected, merge_failed) be filtered even where the rendering paraphrases them.
+ * --grep filters the --since window like --type and --role do. The flag scan itself
+ * (the value lookup, the `rest` construction that keeps a flag-shaped pattern from
+ * impersonating a rival flag, and the empty-value fail) is cli/cli-args.ts's parseGrepFlag,
+ * the one home shared with history's identical preamble.
+ * `--type <eventType>` filters the event feed by EXACT event type (e.type === value):
+ * deterministic where --grep substrings — a merge_failed whose rendered line quotes
+ * "merge_failed" matches --grep but not --type. It composes with --since
+ * (the window it filters) as well as -n, -f, --json, and --grep; like --json
+ * it is a rival only of the --transcript/--prompt transcript view. A comma list matches any
+ * of its types. The value scan (keeping a
+ * flag-shaped value like --since as text, the empty-value fail) mirrors parseGrepFlag via
+ * parseTypeFlag, so the two cannot drift; `rest` here has both flags' value tokens removed.
+ * `--role <id>[,<id>...]` joins the composed rule: an event passes when the role it was
+ * filed under, or that role's base id (so `--role feature` takes `feature-2` too), is listed.
+ * It composes with --since. The value scan reads `rest`, which holds no --grep/--type value
+ * tokens.
+ */
+function parseLogsFilters(root: string, args: string[]): Pick<LogsFeed, "rest" | "grepPattern" | "grepLower" | "type" | "typePieces" | "roles" | "roleEmpty" | "filtersGrepOrType"> {
   const { rest: grepped, pattern: grepPattern } = parseGrepFlag(args, GREP_VALUE_ERROR);
-  // `--type <eventType>` filters the event feed by EXACT event type (e.type === value):
-  // deterministic where --grep substrings — a merge_failed whose rendered line quotes
-  // "merge_failed" matches --grep but not --type. It composes with --since
-  // (the window it filters) as well as -n, -f, --json, and --grep; like --json
-  // it is a rival only of the --transcript/--prompt transcript view. A comma list matches any
-  // of its types. The value scan (keeping a
-  // flag-shaped value like --since as text, the empty-value fail) mirrors parseGrepFlag via
-  // parseTypeFlag, so the two cannot drift; `rest` here has both flags' value tokens removed.
   const { rest, type } = parseTypeFlag(grepped, TYPE_VALUE_ERROR);
   const grepLower = grepPattern === null ? null : grepPattern.toLowerCase();
   // An older event name matches its current one; the empty-match prose still names what was typed.
   const typePieces = type === null ? [] : splitCommaList(type);
   if (type !== null && typePieces.length === 0) fail(TYPE_VALUE_ERROR);
-  const wantedTypes = new Set(typePieces.map(canonicalEventType));
-  const typeFilter = type === null ? null : (e: HarnessEvent) => wantedTypes.has(e.type);
-  // The composed feed rule every emit site threads through: an event passes when it is
-  // absent-or-matches the --grep substring AND absent-or-equals the --type id AND (for --role)
-  // is filed under a listed role AND (for --notable) is not routine, held in one place so the
-  // --since window, the -n tally, and the follow cannot drift on what an event must satisfy.
-  // `--role <id>[,<id>...]` joins them: an event passes when the role it was filed under, or
-  // that role's base id (so `--role feature` takes `feature-2` too), is listed. It
-  // composes with --since. The value scan reads `rest`, which holds no --grep/--type value tokens.
   const roles = parseRoleListScope(root, rest);
-  const roleFilter = roles === null
-    ? null
-    : (e: HarnessEvent) => roleInScope(eventRole(e), roles);
   if (roles !== null) rejectTranscriptViewRival(rest, "--role", true);
+  // Empty-match prose: grep/type keep their wording when given; a role-only filter names the roles.
+  const roleEmpty = roles === null ? "" : `no events from ${roles.join(", ")}`;
+  const filtersGrepOrType = grepPattern !== null || type !== null;
+  return { rest, grepPattern, grepLower, type, typePieces, roles, roleEmpty, filtersGrepOrType };
+}
+
+/** The `--notable`/`--json`/`--count`/`-f` output-mode parse, with each mode's rival-shape
+ * checks in today's order. `follow` is read before the `--count` check, which refuses `-f`.
+ * `type` (from `parseLogsFilters`) feeds the `--type` transcript-view refusal; the `--role` rival
+ * check already ran in `parseLogsFilters`. */
+function parseLogsOutputModes(rest: string[], type: string | null): Pick<LogsFeed, "notable" | "json" | "count" | "follow"> {
   // `--notable` culls routine bookkeeping events the way the dashboard Activity feed's Notable
   // choice does (src/ui/tone.ts eventKind): only non-routine rows pass the feed. One harness-side
   // rule (isNotableEvent) shared with the TUI Activity pane, so the CLI feed and the pane cannot
@@ -236,14 +246,6 @@ function parseLogsFeed(root: string, args: string[]): LogsFeed {
   // --transcript transcript view.
   const notable = rest.includes("--notable");
   rejectTranscriptViewRival(rest, "--notable", notable);
-  const filter = (e: HarnessEvent) =>
-    (grepLower === null || eventMatchesGrep(e, grepLower)) &&
-    (typeFilter === null || typeFilter(e)) &&
-    (roleFilter === null || roleFilter(e)) &&
-    (!notable || isNotableEvent(e.type, eventResult(e)));
-  // Empty-match prose: grep/type keep their wording when given; a role-only filter names the roles.
-  const roleEmpty = roles === null ? "" : `no events from ${roles.join(", ")}`;
-  const filtersGrepOrType = grepPattern !== null || type !== null;
   const follow = hasFollowFlag(rest);
   // `--json` switches the feed from formatEvent rendering to one JSON.stringify(e) per line —
   // the raw HarnessEvent objects exactly as stored in the log — so scripts read the canonical
@@ -265,7 +267,34 @@ function parseLogsFeed(root: string, args: string[]): LogsFeed {
   if (count && follow)
     failRivalShapes("logs --count", "-f/--follow", "counting implies a bounded window; -f follows from now on");
   if (type !== null) rejectTranscriptViewRival(rest, "--type", true);
-  return { rest, grepPattern, grepLower, type, typePieces, roles, roleEmpty, notable, json, count, follow, filtersGrepOrType, filter };
+  return { notable, json, count, follow };
+}
+
+/** The single composed feed rule every emit site threads through: an event passes when it is
+ * absent-or-matches the --grep substring AND absent-or-equals the --type id AND (for --role)
+ * is filed under a listed role AND (for --notable) is not routine, held in one place so the
+ * --since window, the -n tally, and the follow cannot drift on what an event must satisfy.
+ * `roles` is the parsed `--role` list (null when absent); `typePieces` is the `--type`
+ * comma list (empty when absent) with each piece canonicalised onto its current name, so an
+ * older event name matches its current one. */
+function composeLogsFilter(grepLower: string | null, typePieces: string[], roles: string[] | null, notable: boolean): (e: HarnessEvent) => boolean {
+  const wantedTypes = new Set(typePieces.map(canonicalEventType));
+  const typeFilter = typePieces.length === 0 ? null : (e: HarnessEvent) => wantedTypes.has(e.type);
+  const roleFilter = roles === null
+    ? null
+    : (e: HarnessEvent) => roleInScope(eventRole(e), roles);
+  return (e: HarnessEvent) =>
+    (grepLower === null || eventMatchesGrep(e, grepLower)) &&
+    (typeFilter === null || typeFilter(e)) &&
+    (roleFilter === null || roleFilter(e)) &&
+    (!notable || isNotableEvent(e.type, eventResult(e)));
+}
+
+function parseLogsFeed(root: string, args: string[]): LogsFeed {
+  const filters = parseLogsFilters(root, args);
+  const modes = parseLogsOutputModes(filters.rest, filters.type);
+  const filter = composeLogsFilter(filters.grepLower, filters.typePieces, filters.roles, modes.notable);
+  return { ...filters, ...modes, filter };
 }
 
 /** The `--since`/`--until` bounded-window view: its three rival checks (`-f`, `-n`,
