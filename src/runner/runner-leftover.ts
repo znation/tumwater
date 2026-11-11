@@ -282,8 +282,7 @@ export async function setAsideWithdrawnWork(
  * trailers — or an empty object when the commit predates the contract or the message cannot be
  * read. Recovery merges through the same gate as a fresh run, so it must present those fields the
  * same way — otherwise a flagged change is silently reviewed as routine (BUGS.md 2026-09-19), and
- * the merged event names the recovery but not the work (BUGS.md 2026-09-21). The merge drain's
- * torn-head step (dropTornHead) reads it too, so a change it re-queues keeps exactly this shape. */
+ * the merged event names the recovery but not the work (BUGS.md 2026-09-21). */
 export async function recoveredMetadata(root: string, sha: string): Promise<CommitMetadata> {
   const message = await commitMessage(root, sha);
   return message ? parseCommitMetadata(message) : {};
@@ -293,14 +292,11 @@ export async function recoveredMetadata(root: string, sha: string): Promise<Comm
  * summary, body, and high-friction flag read back from its commit message, the revision round
  * from its Revision trailer, and — when the commit stamps them — the Claim and Prior-review
  * trailers, so a recovered pin carries the two merge-only fields a queue entry used to hold
- * (the backlog entry the run worked and the review a revision answers). Also the exact shape the
- * merge drain's torn-head step (dropTornHead, merge-head.ts) re-queues through — so a torn file
- * whose change is re-queued keeps the flag/round/claim/review its authoring run stamped and is
- * never silently reviewed as routine (BUGS.md 2026-09-19). A recovery never re-derives
+ * (the backlog entry the run worked and the review a revision answers). A recovery never re-derives
  * `priorReview` from the run's state (run-stage fills it only from RunnerState.lastReview on a
  * run that held the rejected diff; a recovery's author is gone) — it reads it back only if the
  * commit's own Prior-review trailer names it. */
-export function recoveredMergeEntry(role: string, sha: string, meta: CommitMetadata, run: number): MergeEntry {
+function recoveredMergeEntry(role: string, sha: string, meta: CommitMetadata, run: number): MergeEntry {
   return {
     role,
     sha,
@@ -327,17 +323,17 @@ export function recoveredMergeEntry(role: string, sha: string, meta: CommitMetad
   };
 }
 
-/** The queue entry the merge drain builds for a kept pin with no queue file (merge-drain.ts's
- * pin scan, and dropTornHead's re-queue in merge-head.ts): the pin's sha plus the summary,
+/** The queue entry the merge drain builds for a kept pin (merge-drain.ts's pin scan): the
+ * pin's sha plus the summary,
  * body, and high-friction flag read back from its commit message (recoveredMetadata) and the
  * authoring run from its `Run:` trailer — the drain has no run number of its own, so session
  * naming keeps the authoring run; a hand-made commit with no trailer falls back to the zero
- * slot. The one pin-to-entry builder, so the drain and the torn-head re-queue cannot drift.
+ * slot. The one pin-to-entry builder, so the drain and recovery cannot drift.
  * A changed fresh run is a pin-only writer now (part 3e/7), not a recovery: the drain passes
  * the runner's current run number, so a pin its commit's Run trailer attributes to that run
  * keeps its own subject as the summary instead of being labelled recovered leftover work.
- * A pin from an earlier run (a leftover recovery re-pin) keeps the recovered label, as does a
- * torn-head re-queue that passes no current run, and a hand-made commit with no `Run:` trailer
+ * A pin from an earlier run (a leftover recovery re-pin) keeps the recovered label, and a
+ * hand-made commit with no `Run:` trailer
  * (its run reads 0, never a real current run). */
 export async function pinnedMergeEntry(
   root: string,
@@ -352,7 +348,8 @@ export async function pinnedMergeEntry(
   // A fresh pin is the caller's own current run's change (part 3e/7): merge it under its own
   // subject, not labelled recovered leftover work. A pin the commit's Run trailer attributes to
   // an earlier run — leftover recovery re-pinning what the prior run left behind (part 3i/7) —
-  // keeps the recovered label, as does a torn-head re-queue that passes no currentRun. A
+  // keeps the recovered label, and a pin the commit's Run trailer attributes to an earlier
+  // run does the same. A
   // hand-made commit with no Run trailer reads run 0, which no real run number uses, so it is
   // never fresh even before the role's first run. Same run-vs-current comparison the drain's
   // pin-claim withdrawal already relies on.

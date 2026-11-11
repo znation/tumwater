@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { drainMergeQueue, mergeTaskStarts, resetMergeTaskStarts } from "../src/merge/merge-drain.js";
 import { mergeTasks, settleMergeOutcome } from "../src/merge/merge-pipeline.js";
-import { queueDepth } from "../src/merge/merge-queue.js";
+import { enqueueMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readPostReviews } from "../src/review/post-merge-review.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
@@ -13,7 +13,7 @@ import { refSha, setRef } from "../src/git/git.js";
 import { APPROVE, allTasks, makePipeline, pinChanges, pinDrained, pump, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { defaultConfig } from "../src/config/config.js";
-import { makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
+import { mainSha, makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // pinChanges seeds every role's merge pin without a queue file — the drain's kept-pin path —
 // and pinDrained (the ref files plus the tasks) stands in for the queue depth it replaces. A
@@ -196,4 +196,23 @@ test("two overlapping drains of one pipeline start one merge task, not two", asy
   const runs = fs.readFileSync(counter, "utf8").split("\n").filter((line) => line !== "").length;
   assert.equal(await refSha(root, mergeRefName("alpha")), null, "the merged change's pin was consumed");
   assert.equal(runs, 1, `the one pinned change's check ran exactly once (one task); observed ${runs}`);
+});
+
+test("a queue file with no live merge ref starts no merge at the drain", async () => {
+  // Part 1b/3: a queue file an older build left starts no merge — the drain reads only the
+  // live merge pins. A queue file with no resolvable ref for its role must start no task and
+  // log no merge outcome: the queue file alone is not waiting state the drain merges.
+  const root = makeRepo();
+  const sha = mainSha(root);
+  // A queue file for the role, but no merge ref: the drain has nothing to merge.
+  enqueueMerge(root, { role: "clean", sha, run: 1, summary: "stale", enqueuedAt: Date.now() });
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["clean"]));
+  await drainMergeQueue(ctx, pipeline);
+  assert.equal(mergeTasks(pipeline).length, 0, "a queue file with no live ref starts no task");
+  assert.equal(
+    readEvents(root).some((e) => e.type === "merge_done" || e.type === "merge_failed"),
+    false,
+    "a queue file with no live ref logs no merge outcome",
+  );
+  assert.equal(await refSha(root, mergeRefName("clean")), null, "the queue file left no pin");
 });

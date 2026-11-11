@@ -10,7 +10,6 @@ import {
   type MergePipelineContext,
 } from "../../src/merge/merge-pipeline.js";
 import type { RoleRunner } from "../../src/runner/runner.js";
-import { queueDepth } from "../../src/merge/merge-queue.js";
 import { mergeRefName } from "../../src/paths.js";
 import { refAbsentFromFiles, setRef } from "../../src/git/git.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
@@ -109,10 +108,6 @@ export function pump(ctx: MergePipelineContext, p: MergePipeline): { stop: () =>
     },
   };
 }
-
-/** The queue is empty and no verification or merge is running — the settle condition the
- * queue-entry cases await (test/merge-queue.test.ts). */
-export const drained = (root: string, p: MergePipeline) => () => queueDepth(root) === 0 && mergeTasks(p).length === 0;
 
 /** Pin one change per role and enqueue nothing — the pin-only seed for the drain and pipeline
  * suites migrated off the queue file: the drain's kept-pin path merges each ref. */

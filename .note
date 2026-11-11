@@ -1,0 +1,21 @@
+Subtract pin queue, part 1b/3 — The merge drain merges pins, not queue files; the torn-head queue write goes.
+
+What landed:
+- src/merge/merge-drain.ts: the drain now begins at the kept-pin scan. Removed the torn-head repair call, the `queuedMergeFiles` loop (its `notBefore`/already-merged dedupe + `dropMerge` warning), and the `queuedMergeRoles` skip. The only `startMerge` call passes `null` for the queue file. In the pin loop, when a present ref yields null from `pinnedRetrySha` (stale/dangling pin just dropped, or a pin at the conflict limit), call `removeMergeChange` first so a dropped waiting change leaves no `merging` marker. A queue file an older build left starts nothing.
+- Deleted the torn-head repair module (its torn-head-drop and merged-into-main helpers lose their last callers).
+- src/runner/runner-leftover.ts + src/git/commit-message.ts: doc comments that named the torn-head re-queue path (its module and drop helper) updated (no behaviour change).
+- docs/invariants.md: INV-AG5 deleted. docs/how-it-works.md: the two queue-head / legacy-queue-merges sentences reworded to say a queue file an older build left starts no merge.
+
+Gate (exports.test) required two follow-ups the plan's file list did not anticipate — deleting the torn-head repair module orphaned symbols whose only external user was it:
+- src/merge/merge-queue.ts: deleted the torn-head role helper (its only caller was the deleted module; the plan deferred it to part 3/3, but the gate forbids an unused export — pulled that one symbol forward).
+- src/runner/runner-leftover.ts: dropped the `export` on `recoveredMergeEntry` (still called internally by recovery at lines ~223/~347; its only external reference was a comment in the deleted module). `staleHeadFile` keeps its export (still read by test/merge-queue.test.ts).
+
+Tests:
+- test/merge-queue.test.ts: deleted the three torn-head cases + the merged-into-main cache case + the torn-head import.
+- test/merge-drain.test.ts: added the pin-only case "a queue file with no live merge ref starts no merge at the drain" (no task, no outcome event, no pin left).
+- test/merge-slot.test.ts: deleted "an unexpected throw inside the gate-then-merge task keeps the entry queued and frees the slot" (queue-only seed; the pin throw semantics live in merge-pipeline-2).
+- test/merge-requeue.test.ts: deleted "drainMergeQueue reports, not throws, when a deduped entry's file cannot be dropped" (it pinned the dedupe-branch drop I removed, and referenced the torn-head drop).
+- test/orchestrator-3.e2e.test.ts: deleted the torn-head + lost-pin cases; retargeted the stale-marker case to a stale pin (setRef to main's head + writeMergeMarker, wait for ref + marker gone, no merge_done); removed the now-dead queue-seeding survivor helper (kept the pin-only seedSurvivorPin). The "rejected runs again while another queued change is in review" case is untouched — the plan does not list it, and it deliberately seeds a queue file the interlock (scope.ts) still reads for scheduling; it now drives the pin path.
+- test/fixtures/merge-fixtures.ts: removed the now-unused `drained`/`queueDepth` exports.
+
+Verification: tsc clean; the plan's listed tests (merge-drain, merge-queue, merge-slot, merge-requeue, merge-pipeline, merge-pipeline-2, runner-leftover, invariants-doc, orchestrator-director, orchestrator-merge-pin, orchestrator-3) all pass; every acceptance grep is satisfied (the torn-head-drop and merged-into-main helpers gone, their module gone, no reference to it in src/docs, no queuedMergeFiles/Roles in merge-drain, no INV-AG5, how-it-works makes no queue-drain claim); `npm run test:gate` exits 0 (302 tests, 0 fail, lint clean).

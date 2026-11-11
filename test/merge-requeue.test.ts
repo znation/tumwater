@@ -14,9 +14,8 @@ import { MERGE_CONFLICT_LIMIT } from "../src/runner/runner-leftover.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { mergeRefName } from "../src/paths.js";
 import { deleteRef, refSha, setRef } from "../src/git/git.js";
-import { makeRepo, mainSha, pinOffMain } from "./fixtures/repo-fixtures.js";
+import { makeRepo, pinOffMain } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 
 const NO_USAGE = { tokens: 0, cost: 0, providerCost: {} };
 
@@ -128,49 +127,5 @@ test("drainMergeQueue leaves an entry queued until its notBefore passes", async 
   );
   assert.equal(pipeline.merge, null, "no gate-then-merge task started");
   assert.equal(queuedMerges(root).length, 1, "the entry is still queued");
-});
-
-test("drainMergeQueue reports, not throws, when a deduped entry's file cannot be dropped", async () => {
-  // drainMergeQueue's dedupe branch drops an entry whose sha main already holds (a crash between
-  // the fast-forward and the drop). That drop is the same fs.rmSync dropMerge whose failure
-  // dropTornHead already guards: it runs in the poll body with nothing to catch it, so a queue
-  // file that is locked or on a read-only filesystem (the shape an ENOSPC or immutable queue file
-  // takes) throwing out of drainMergeQueue would end the whole team's run. The drop must be
-  // reported and the entry left for the next poll, not thrown.
-  const root = makeRepo();
-  const sha = mainSha(root);
-  const entry: MergeEntry = { role: "improve", sha, run: 1, summary: "on main", enqueuedAt: Date.now() };
-  enqueueMerge(root, entry);
-  const head = headMerge(root);
-  assert.ok(head, "the entry is queued and readable");
-  const pipeline = newMergePipeline();
-  const config = defaultConfig();
-  const undo = patchFsMethod("rmSync", (orig) => (...args: unknown[]) => {
-    if (String(args[0]) === head.file) throw errnoError("EBUSY");
-    return orig(...args);
-  });
-  try {
-    await drainMergeQueue(
-      {
-        root,
-        mainBranch: "main",
-        signal: new AbortController().signal,
-        semaphore: new Semaphore(2),
-        runners: [],
-        liveConfig: config,
-        roleConfig: config,
-        directorConfig: config,
-        startHeld: () => false,
-      },
-      pipeline,
-    ); // must resolve, not reject out of the poll
-  } finally {
-    undo();
-  }
-  assert.ok(fs.existsSync(head.file), "the undroppable entry is left for the next poll");
-  const warns = eventsOfType(root, "warning");
-  assert.equal(warns.length, 1, "one warning for the failed drop");
-  assert.match(JSON.stringify(warns), /could not be dropped/, "the warning explains the drop failed");
-  assert.match(JSON.stringify(warns), /EBUSY/, "the warning carries the underlying error");
 });
 

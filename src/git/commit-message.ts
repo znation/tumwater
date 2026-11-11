@@ -205,10 +205,10 @@ export function revisionRoundOf(message: string): number | undefined {
 }
 
 /** The run number a harness-stamped commit's Run trailer records (`Run: <role> #N · turns …`,
- * see commitTrailer), or undefined for a hand-made commit that carries no such line. The merge
- * drain's torn-head step (dropTornHead) reads it back so a change it re-queues keeps its
- * authoring run for the unique per-run session names — the one recoverable run when no runner
- * is live to supply the current one. */
+ * see commitTrailer), or undefined for a hand-made commit that carries no such line. The
+ * drain's pin-scan entry builder reads it back so a kept pin keeps its authoring run for the
+ * unique per-run session names — the one recoverable run when no runner is live to supply the
+ * current one. */
 const RUN_TRAILER = /^Run: .+ #(\d+) · turns /m;
 
 /** The authoring run number a commit message's Run trailer records, or undefined for a

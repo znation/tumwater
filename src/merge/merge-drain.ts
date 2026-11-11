@@ -1,10 +1,8 @@
-import fs from "node:fs";
-import path from "node:path";
 import { mergeApprovedChange, RETRIABLE_MERGE_RESULTS, type MergerContext } from "./merge-core.js";
 import { addMergeChange, mergeUsage, removeMergeChange, resolveWaitStage, setMergeChangeStatus } from "./merge-slot.js";
 import { withRunPermit } from "../concurrency/run-permit.js";
-import { dropMerge, entryRevisionFields, queuedMergeFiles, queuedMergeRoles, type MergeEntry } from "./merge-queue.js";
-import { branchHead, refAbsentFromFiles } from "../git/git.js";
+import { entryRevisionFields, type MergeEntry } from "./merge-queue.js";
+import { refAbsentFromFiles } from "../git/git.js";
 import { mergeRefName } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -26,7 +24,6 @@ import {
   type MergePipeline,
   type MergePipelineContext,
 } from "./merge-pipeline.js";
-import { dropTornHead, mergedIntoMain } from "./merge-head.js";
 import { withdrawnEntries } from "./merge-withdrawn.js";
 import { pinnedMergeEntry, pinnedRetrySha } from "../runner/runner-leftover.js";
 import { MERGE_TIER, VERIFY_TIER, resolveAuthor } from "./merge-author.js";
@@ -58,9 +55,9 @@ async function postReviewDue(config: TumwaterConfig, root: string, commit: strin
  * or a disk hold is pending — a reviewer-provider hold does not stop the whole drain: it parks
  * only the post-merge review drain, whose no-role startHeld reads it, never a merge entry, so
  * no verify or landing waits on the reviewer): the no-role post-merge review drain, then the
- * merge drain's one serial gate-then-merge task per queue head — a queued change is gated and
+ * merge drain's one serial gate-then-merge task per kept pin — a pinned change is gated and
  * merged by the one task (drainMerge, below), and the verify stage no longer runs at all. A
- * queued merge is COMMITTED work awaiting completion, not a new run, so the budget and
+ * pinned merge is COMMITTED work awaiting completion, not a new run, so the budget and
  * user-pause gates deliberately do not hold it (pausing it would leave main behind while the
  * interlock blocks that role's next run forever). Starts tasks and returns; never awaits them
  * — authors keep running behind them, which is the entire point. */
@@ -69,77 +66,33 @@ export async function drainMergeQueue(ctx: MergePipelineContext, p: MergePipelin
   await drainMerge(ctx, p);
 }
 
-/** The merge drain — the queue's one whole stage: drop the torn head, dedupe every
- * already-merged entry against main, then start ONE gate-then-merge task for the first eligible
- * queue head in queue order — or, when no queue entry is eligible, for a kept pin that has no
- * queue file (a crash between a run's commit and its queue write, or a pin-only writer). The
- * checks the verify stage used to own — torn-head recovery, the
- * already-merged dedupe, `notBefore` and `startHeld` — run here in the serial drain, so a
- * queued change is gated and merged by the one task (startMerge) and no verification starts at
- * all. An entry whose gate/merge the pipeline does not reach stays queued for the next poll;
- * the merge slot frees when its task settles, so the next poll starts the next head. The drain
- * is single-flight (INV-G6): it checks the slot before its first await and re-checks it right
+/** The merge drain — the queue's one whole stage: start ONE gate-then-merge task for the first
+ * eligible kept pin in runner order. A queue file in `.tumwater/merge-queue/` an older build
+ * left starts nothing: the drain reads only the live merge pins. The checks the verify stage
+ * used to own — the stale/dangling-pin drops and `startHeld` — run here in the serial drain, so
+ * a pinned change is gated and merged by the one task (startMerge) and no verification starts
+ * at all. A pin whose gate/merge the pipeline does not reach is left for the next poll; the
+ * merge slot frees when its task settles, so the next poll starts the next pin. The drain is
+ * single-flight (INV-G6): it checks the slot before its first await and re-checks it right
  * before each startMerge, so overlapping drains (a test that runs a background pump and a
- * pumpUntil) never start a duplicate task for the same head. */
+ * pumpUntil) never start a duplicate task for the same pin. */
 export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): Promise<void> {
   // First gate (INV-G6): a merge already in flight means this poll starts nothing. Because this
   // runs before the drain's first await, a concurrent drain that begins while one is in flight
   // sees the slot taken and returns here; the re-checks right before each startMerge below cover
   // the overlap that passes this gate in the drain's async gaps.
   if (p.merge !== null) return;
-  await dropTornHead(ctx.root);
   // The reads below await git, so a drain that entered with the slot free can find it taken by a
   // concurrent drain that started first. Each start re-checks just before the assignment (single
   // flight: one gate-then-merge task at a time, BUGS.md 2026-11-09).
   if (p.merge !== null) return;
-  const queued = queuedMergeFiles(ctx.root);
-  // One main-head read per poll with a non-empty queue (branchHead's ref-file fast path — no
-  // spawn), serving every entry's cached dedupe verdict below.
-  const mainHead = queued.length === 0 ? "" : ((await branchHead(ctx.root, ctx.mainBranch)) ?? "");
-  for (const { entry, file } of queued) {
-    if (p.merge !== null) return; // one task at a time: the rest wait in the queue
-    // A re-queued review_error waits out its delay; the entry stays queued and holds its author.
-    if (entry.notBefore !== undefined && Date.now() < entry.notBefore) continue;
-    if (await mergedIntoMain(ctx.root, entry.sha, ctx.mainBranch, mainHead)) {
-      // An entry whose sha main already holds (a crash between the fast-forward and the
-      // entry drop) is dropped without a run, with its marker record. The drop can throw (a
-      // queue file that is a directory or locked fails fs.rmSync, the shape an ENOSPC or
-      // immutable queue file takes); this runs in the poll body with nothing to guard it —
-      // report it and leave the entry for the next poll, as dropTornHead guards its own drop.
-      try {
-        dropMerge(file);
-      } catch (err) {
-        warnEventBestEffort(ctx.root, TUMWATER_SOURCE, `merge queue entry ${path.basename(file)} could not be dropped: ${errorMessage(err)}`);
-      }
-      removeMergeChange(ctx.root, entry.role);
-      continue;
-    }
-    // The dedupe awaited git: a task that settled meanwhile may have dropped this very entry
-    // while the dedupe was in flight. Start nothing for it.
-    if (!fs.existsSync(file)) continue;
-    // A reviewer hold parks no named entry — every entry keeps draining (no verify, start or
-    // landing waits on the reviewer); only a restart or disk hold (the start gate's other legs)
-    // parks it here. The start gate decides.
-    if (ctx.startHeld(entry.role)) continue;
-    // The dedupe awaited git: a concurrent drain that passed the reservation before that await
-    // may have assigned the slot in the meantime. Re-check synchronously, in the same block
-    // as the assignment, so the single-flight invariant holds regardless of how the overlap
-    // interleaved (INV-G6).
-    if (p.merge !== null) return;
-    p.merge = startMerge(ctx, p, entry, file);
-    return;
-  }
-  // A kept pin with no queue file — a crash between the run's commit and its queue write, or
-  // the pin-only writers of parts 3e/7 and 3i/7 — merges through the same serial task: after
-  // the queue path starts nothing, scan the live runners and start the one task for the first
-  // role whose pin pinnedRetrySha allows. A role with a queued entry is skipped (the queue
-  // path owns it and drains it first); pinnedRetrySha deletes a dangling or stale pin and
+  // Scan the live runners and start the one task for the first kept pin whose sha the drain may
+  // retry itself (pinnedRetrySha allows). A queue file an older build left starts nothing: the
+  // drain reads only the live merge pins. pinnedRetrySha deletes a dangling or stale pin and
   // refuses a pin at MERGE_CONFLICT_LIMIT, which the drain leaves untouched for its author's
-  // hand-back, exactly as recovery does. One task per poll, as the queue path does.
-  const queuedRoles = queuedMergeRoles(ctx.root);
+  // hand-back, exactly as recovery does. One task per poll.
   for (const runner of ctx.runners) {
     if (p.merge !== null) return; // one task at a time: the next pin waits in its ref
-    if (queuedRoles.has(runner.role)) continue;
     // A withdrawn claim's pin is not merged here: its role's next run sets the work aside
     // before leftover recovery (runner-leftover.ts setAsideWithdrawnWork), because such a pin
     // carries no claim the merge's own withdrawn check can read. The scheduling pass that
@@ -152,7 +105,13 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
     // pinnedRetrySha, which resolves it through git.
     if (refAbsentFromFiles(ctx.root, mergeRefName(runner.role))) continue;
     const sha = await pinnedRetrySha(ctx.root, runner.role, ctx.mainBranch, runner.state);
-    if (sha === null) continue;
+    if (sha === null) {
+      // pinnedRetrySha dropped a stale or dangling pin, or found one at the conflict limit:
+      // clear the in-flight marker it read, so neither leaves an observer reading a merge no
+      // process is running.
+      removeMergeChange(ctx.root, runner.role);
+      continue;
+    }
     const entry = await pinnedMergeEntry(ctx.root, runner.role, sha, { currentRun: runner.state.runs });
     if (await pinClaimWithdrawn(ctx, runner, entry.run)) continue;
     if (ctx.startHeld(runner.role)) continue;

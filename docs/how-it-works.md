@@ -86,8 +86,8 @@ A run ends as soon as its commit is pinned: a changed run pins its commit by its
 logs `merge_queued`, and is done — the pin plus the commit's trailers are its waiting state, and
 no queue file is written. The poll's drain then gates and merges the pin in the merge worktree
 under the merge lock — one at a time — so other roles keep running while a change is in the
-pipeline. (A queue file an older build left is legacy input the same drain merges until it is
-gone.)
+pipeline. (A file an older build left in the merge-queue directory starts no merge: the drain
+reads only the live merge pins.)
 
 - **Rebase.** The change is rebased onto current main first, so the pipeline checks what will
   actually merge.
@@ -142,12 +142,12 @@ gone.)
   re-review) run in one dedicated `_merge` workspace, reserved outside the pool so a gate
   waiting for a workspace can never deadlock behind the merge lock.
 - **Gate then merge.** The drain runs one gate-then-merge task at a time — the first eligible
-  queue head in queue order — so nothing parks a queued change between its gate and its merge.
-  When no queue entry is eligible, a kept merge pin that has no queue file — a crash between a
-  run's commit and its queue write, or a pin-only writer — is gated and merged by the same one
-  task on the next poll, with no queue file written and the pin kept on a retriable outcome
-  for the next poll; queue files remain the legacy input. A pin whose claim is withdrawn is
-  left for its role's next run to set aside, never merged.
+  kept pin in runner order — so nothing parks a pinned change between its gate and its merge.
+  A kept merge pin — a crash between a run's commit and its pin, or a pin-only writer — is
+  gated and merged by the same one task on the next poll, with the pin kept on a retriable
+  outcome for the next poll; a file an older build left in the merge-queue directory starts no
+  merge. A pin whose claim is withdrawn is left for its role's next run to set aside, never
+  merged.
   The task's gate counts as active work: it holds one of the `maxConcurrent` permits role runs
   use (`VERIFY_TIER`, ahead of any waiting run) for the gate's whole length, and the conflict
   resolver holds another (`MERGE_TIER`) for its run, so merges never add streams to the

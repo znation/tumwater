@@ -20,14 +20,11 @@ import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import {
   abortRequestPath,
   branchName,
-  mergeQueueDir,
   mergeRefName,
   mergeStatePath,
 } from "../src/paths.js";
 import { enqueueMerge, queueDepth } from "../src/merge/merge-queue.js";
-import { drainMergeQueue } from "../src/merge/merge-drain.js";
 import { refAbsentFromFiles, setRef } from "../src/git/git.js";
-import { makePipeline } from "./fixtures/merge-fixtures.js";
 import {
   fastConfig,
   mergeRefExists,
@@ -37,7 +34,7 @@ import {
   startLiveOrchestrator,
   stopOrchestrator,
 } from "./fixtures/orchestrator-fixtures.js";
-import { makeRoleRunner, roleWt } from "./fixtures/runner-fixtures.js";
+import { roleWt } from "./fixtures/runner-fixtures.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import { headSha, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
@@ -53,34 +50,11 @@ function runQueued(repo: string, role: string): boolean {
   return readEvents(repo).some((e) => e.type === "run_end" && e.source === role && e.result === "queued");
 }
 
-/** Seed what a crash between the role's commit and the merge's entry drop leaves behind:
- * one real commit ahead of main — a child of main's head carrying the parent's full tree plus
- * one new `file` (a one-entry mktree would delete every other file, and the ff-merge would
- * rightly refuse to overwrite the operator's checkout) — pinned by `clean`'s merge ref, with
- * its queue entry enqueued under `label`. Only the torn-head drain test constructs this
- * survivor (the restart-drain test uses the pin-only `seedSurvivorPin`). Returns the pinned
- * sha. */
-function seedSurvivorCommit(repo: string, file: string, label: string): string {
-  const gitIn = (args: string[], input: string) =>
-    execFileSync("git", args, { cwd: repo, encoding: "utf8", input }).trim();
-  const blob = gitIn(["hash-object", "-w", "--stdin"], `${label}\n`);
-  const parentTree = sh(repo, "git", "ls-tree", "HEAD");
-  const tree = gitIn(["mktree"], `${parentTree}\n100644 blob ${blob}\t${file}\n`);
-  const sha = gitIn(
-    ["commit-tree", tree, "-p", headSha(repo), "-m", `tumwater(feature): ${label}`],
-    "",
-  );
-  sh(repo, "git", "update-ref", `refs/heads/${branchName("clean")}`, sha);
-  sh(repo, "git", "update-ref", mergeRefName("clean"), sha);
-  enqueueMerge(repo, { role: "clean", sha, run: 1, summary: label, enqueuedAt: Date.now() });
-  return sha;
-}
-
-/** The pin-only form of `seedSurvivorCommit`: the same single survivor commit (a child of main's
- * head carrying its parent's full tree plus one new `file`), pinned by `clean`'s merge ref with
- * no queue entry — exactly what a crash between a run's commitAll and its pin write leaves
- * behind. The next start's drain merges the pin through the gate. Keeps `seedSurvivorCommit`
- * untouched for the torn-head case (part 1b/3 deletes both). Returns the pinned sha. */
+/** Seed what a crash between a run's commitAll and its pin write leaves behind: one real commit
+ * ahead of main — a child of main's head carrying the parent's full tree plus one new `file`
+ * (a one-entry mktree would delete every other file, and the ff-merge would rightly refuse to
+ * overwrite the operator's checkout) — pinned by `clean`'s merge ref with no queue entry. The
+ * next start's drain merges the pin through the gate. Returns the pinned sha. */
 function seedSurvivorPin(repo: string, file: string, label: string): string {
   const gitIn = (args: string[], input: string) =>
     execFileSync("git", args, { cwd: repo, encoding: "utf8", input }).trim();
@@ -296,106 +270,53 @@ test("an entry whose sha main already holds is dropped at the drain without a me
   }
 });
 
-test("a stale marker beside an already-merged queue head is cleared so an idle team reads clean", async () => {
-  // The other crash ordering's residue: a merge wrote its 4/5 marker and the ff-merge made
-  // main hold the entry's sha, but the process died before the write-back dropped the entry.
-  // The dedup arm drops the entry; the marker must go with it, or a liveness-cross-checking
-  // observer (status/TUI/GUI) keeps reading an in-flight merge that no process is running.
-  const repo = await makeFastRepo("stale marker drain e2e test", ["clean"]);
-  // Nothing-to-do runs: the drain must drop the entry without any author or reviewer run.
-  const restore = fakePi(["printf '%s\\n' '" + assistantLine("TUMWATER_NOTHING_TO_DO") + "'"].join("\n"));
-  const sha = headSha(repo);
-  enqueueMerge(repo, { role: "clean", sha, run: 1, summary: "already merged", enqueuedAt: Date.now() });
-  writeMergeMarker(repo, { role: "clean", sha, summary: "already merged", startedAt: Date.now(), stage: "merging" });
-  assert.ok(fs.existsSync(mergeStatePath(repo)), "fixture sanity: the stale marker exists");
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
-  try {
-    await waitFor(() => queueDepth(repo) === 0, "the already-merged entry to be dropped");
-    assert.ok(
-      !fs.existsSync(mergeStatePath(repo)),
-      "the stale marker naming the dropped head is cleared",
-    );
-    assert.equal(
-      eventsOfType(repo, "merge_done").length,
-      0,
-      "the deduped entry ran no merge",
-    );
-  } finally {
-    await stopOrchestrator(orch, restore);
-  }
-});
-
-test("a torn queue-head file is dropped at the drain so the queue drains", async () => {
-  // Seeds exactly what a hard crash mid-enqueueMerge leaves behind: a truncated queue
-  // file that sorts before a live entry. headMerge reads null for the torn head and
-  // nothing else drops it, so before the fix the live entry behind it never merged and
-  // its role's interlock (a non-empty merge queue) held the role's runs forever.
-  const repo = await makeFastRepo("torn head drain e2e test", ["clean"]);
-  // The review run approves; the role's own runs find nothing to do.
+test("a stale marker beside a stale pin is dropped at the drain without a merge run", async () => {
+  const repo = await makeFastRepo("crash-drain e2e test", ["clean"]);
+  const did = path.join(tmpdir(), "crash-drain-did");
+  // One real change merges end to end (guarded so a second run settles nothing-to-do rather
+  // than merge a spurious change and inflate merge_done — the same guard the dedup case above
+  // uses for the identical flake).
   const restore = fakePi(
     [
       APPROVE_PI,
-      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `if [ -f '${did}' ]; then printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'; else touch '${did}'; echo hello > hello.txt; printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'; fi`,
     ].join("\n"),
   );
-  // One real commit ahead of main, pinned and queued — the same construction the
-  // restart-drain test uses.
-  seedSurvivorCommit(repo, "torn.txt", "torn survivor");
-  // The torn file sorts BEFORE the live entry: an interrupted write of the same shape.
-  fs.writeFileSync(path.join(mergeQueueDir(repo), "0000000000-000000-1.json"), '{"role": "clean", "sha": "abc');
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
-      () => queueDepth(repo) === 0 && fs.existsSync(path.join(repo, "torn.txt")),
-      "the live entry to drain behind the torn head",
+      () => fs.existsSync(path.join(repo, "hello.txt")),
+      "the change to merge on main",
+    );
+    // …and the crash residue is the pin way: the pin repointed at main's head (a sha main
+    // already holds — a pin that resolves nowhere new) with a stale in-flight marker left
+    // behind by a drain that crashed. The drain must drop both in the same pass: the pin
+    // is dropped stale and the marker that named that change is removed (the pin-only drain
+    // no longer reads queue files).
+    const mainHead = headSha(repo);
+    await setRef(repo, mergeRefName("clean"), mainHead);
+    writeMergeMarker(
+      repo,
+      { role: "clean", sha: mainHead, summary: "stale", startedAt: Date.now(), stage: "merging" },
+    );
+    await waitFor(
+      () => refAbsentFromFiles(repo, mergeRefName("clean")) && !fs.existsSync(mergeStatePath(repo)),
+      "the stale pin to be dropped and its marker cleared",
+      60_000,
     );
     assert.equal(
       eventsOfType(repo, "merge_done").length,
       1,
-      "the live change merged through the gate",
+      "no second merge_done event: the stale pin was dropped, not re-merged",
     );
     assert.equal(
       eventsOfType(repo, "merge_failed").length,
       0,
-      "no failed merge",
-    );
-    assert.equal(
-      readEvents(repo).filter((e) => e.type === "warning" && String(e.message).includes('merge queue')).length,
-      1,
-      "one harness warning for the torn head drop",
+      "the dedup drop logs no failure",
     );
   } finally {
     await stopOrchestrator(orch, restore);
   }
-});
-
-test("a merge whose pinned sha no longer exists keeps its entry queued, not a throw", async () => {
-  // The queue entry can outlive its commit: the pin ref is dropped or the dangling commit
-  // gc'd while the entry waits (a crash between pin and drop, manual gc). The task's checkout
-  // throws on the uncheckable sha. Since the drain collapse (part 3/4) this is the drain's
-  // plumbing-throw path: the entry stays queued, the slot frees, and the next poll re-runs the
-  // change's one gate-then-merge from the missing pin — the verify stage's one-time "error"
-  // outcome this case used to pin is gone with the stage's catch (the gate-then-merge task's
-  // plumbing-throw semantics are pinned in merge-pipeline-2.test.ts and merge-slot.test.ts).
-  const repo = makeRepo();
-  const sha = "0".repeat(40); // a commit git cannot check out
-  enqueueMerge(repo, { role: "clean", sha, run: 1, summary: "lost pin", enqueuedAt: Date.now() });
-  const config = fastConfig(["clean"]);
-  const author = makeRoleRunner(repo, "clean", config);
-
-  const { ctx, pipeline } = makePipeline(repo, [author]);
-  await drainMergeQueue(ctx, pipeline);
-  const merge = pipeline.merge;
-  assert.ok(merge, "the gate-then-merge task started");
-  await merge.promise; // resolves, never rejects — the drain caught the throw
-  assert.equal(pipeline.merge, null, "the merge slot freed");
-  // The git failure is recorded where the next run's prompt reads it.
-  assert.match(author.state.lastError ?? "", /invalid reference/);
-  // The 4/5 in-flight marker is cleared and the entry stays queued for the next poll's re-run.
-  assert.ok(!fs.existsSync(mergeStatePath(repo)), "the merge marker is cleared when the task settles");
-  assert.equal(queueDepth(repo), 1, "the entry is not dropped: no verdict was reached");
-  assert.equal(eventsOfType(repo, "merge_failed").length, 0, "a throw is not a verdict: no outcome event");
-  assert.equal(eventsOfType(repo, "merge_done").length, 0);
 });
 
 // --- abort requests: the marker-file plumbing that reaches RoleRunner's
