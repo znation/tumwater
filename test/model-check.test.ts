@@ -754,6 +754,7 @@ test("a failed pair raises one red alert naming it and its reply; a checking pai
     alerts[0]?.detail,
     'flintrunner/flint (feature, bugfix) replied "the of and" instead of the probe\'s one-word answer; checking again at 03:15:00',
   );
+  assert.deepEqual(alerts[0]?.actions, [{ label: "Re-check now", act: "model-check" }]);
 });
 
 test("a role the check holds reads `waiting: model check` in its row", () => {

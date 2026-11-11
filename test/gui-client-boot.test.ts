@@ -800,3 +800,42 @@ test("entry-edit-save words an edited, unchanged and gone reply", () => {
     "Edited “B” in PLANS.md — still held [blocked: refused]: no role takes it until that clears",
   ]);
 });
+
+// The failed-model-check banner's `Re-check now` button (part 2/2 of the re-check plan):
+// one POST to /api/model-check with an empty body, flashing the server's confirmation on
+// success and its error text on the 409 no-live-team path.
+test("model-check posts one re-check request and flashes the server's message, or its error on 409", () => {
+  const posts: unknown[] = [];
+  const flashes: string[] = [];
+  let reply: { message?: string; error?: string } = {
+    message: "model check requested — the running team probes every failed pair within ~2s",
+  };
+  let notLive = false;
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      showFlash: (m: string) => flashes.push(m),
+      // Mirrors the core postAction's two flash branches: the derived message on success,
+      // "error: <reason>" on a failed POST (postJson rejects on any non-2xx).
+      postAction: (path: string, body: unknown, done: (d: unknown) => string) => {
+        posts.push([path, body]);
+        if (notLive) {
+          flashes.push("error: /api/model-check failed: HTTP 409 — tumwater is not running — start it with `tumwater start` first");
+          return;
+        }
+        flashes.push(done(reply));
+      },
+    },
+  );
+  scope.runAct("model-check", "");
+  assert.deepEqual(posts, [["/api/model-check", {}]]);
+  assert.deepEqual(flashes, ["model check requested — the running team probes every failed pair within ~2s"]);
+  // The 409 path flashes the server's error instead of a success message.
+  notLive = true;
+  scope.runAct("model-check", "");
+  assert.equal(posts.length, 2);
+  assert.equal(
+    flashes[1],
+    "error: /api/model-check failed: HTTP 409 — tumwater is not running — start it with `tumwater start` first",
+  );
+});

@@ -9,7 +9,7 @@
  * its own `res`.
  */
 import { resyncRootInstall, rootInstallResyncLines, type RootInstallResync } from "../build/dep-install.js";
-import { cancelScheduledStopMessage, requestAbort, requestAbortAll, requestResetCounters, requestRestart, requestScheduledStop, runManualReclaim } from "../operator/operator-intent.js";
+import { cancelScheduledStopMessage, requestAbort, requestAbortAll, requestModelCheck, requestResetCounters, requestRestart, requestScheduledStop, runManualReclaim } from "../operator/operator-intent.js";
 import { killOrphans, orphanKillLines, type OrphanKillReport } from "../doctor/doctor-orphans.js";
 import { dropBrokenPins, brokenPinDropLines, type BrokenPinDrop, retireLeftovers, leftoverRetireLines, type LeftoverRetireReport } from "../doctor/doctor-contention-checks.js";
 import { commitUncommittedBacklog, backlogCommitMessage, type BacklogCommitReport } from "../doctor/doctor-backlog.js";
@@ -108,6 +108,17 @@ export async function handleReclaim(req: http.IncomingMessage, res: http.ServerR
   const body = await readPostBody(req, res, "{}");
   if (!body) return;
   sendJson(res, 200, { ok: true, message: await runManualReclaim(root) });
+}
+
+/** Handle POST /api/model-check: the dashboard's failed-model-check banner's `Re-check now`
+ * button — the same requestModelCheck the `tumwater model-check` core drops, so the dashboard
+ * and the CLI cannot drift. Same body discipline as /api/restart (the body is ignored — there
+ * are no options to force); with no live team the request is refused 409 with
+ * NO_HARNESS_ERROR and nothing is written. */
+export async function handleModelCheck(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, "{}");
+  if (!body) return;
+  sendRequestResult(res, requestModelCheck(root));
 }
 
 /** Handle POST /api/kill-orphans: the dashboard Health card's Kill orphans button — the same

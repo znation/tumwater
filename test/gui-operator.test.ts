@@ -8,7 +8,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { MAX_BODY_BYTES } from "../src/gui/gui-http-body.js";
 import { initProject } from "../src/init/init.js";
 import { PAUSE_REASON_MAX } from "../src/team/team-state.js";
-import { mergeStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath, scheduledWakeDir } from "../src/paths.js";
+import { mergeStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath, scheduledWakeDir, modelCheckRequestPath } from "../src/paths.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { todayStamp } from "../src/budget/budget.js";
@@ -562,6 +562,47 @@ test("POST /api/abort writes the marker for a live team, answers 409 when not, 4
   const malformed = await fetch(base + "/api/abort", { method: "POST", body: "not json" });
   assert.equal(malformed.status, 400);
   assert.match(((await malformed.json()) as { error: string }).error, /JSON object/);
+  });
+});
+
+// POST /api/model-check — the dashboard's failed-model-check banner's `Re-check now` button
+// (part 2/2 of the re-check plan): the same requestModelCheck `tumwater model-check` drops,
+// so the two surfaces cannot drift. No live team: a 409 with the CLI's refusal and no marker;
+// a live team: the one-shot marker and the core's confirmation verbatim.
+test("POST /api/model-check writes the marker for a live team, answers 409 when not, 400/413 for bad bodies", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui model-check test");
+  await withGui(repo, async ({ base }) => {
+  // No harness running: the request is valid but nothing would consume the marker — a
+  // conflict, not a client error — so it is refused 409 and nothing is written.
+  let res = await postJson(base, "/api/model-check", {});
+  assert.equal(res.status, 409);
+  assert.deepEqual(await res.json(), { error: "tumwater is not running — start it with `tumwater start` first" });
+  assert.ok(!fs.existsSync(modelCheckRequestPath(repo)), "not-live writes no marker");
+
+  // Record this test process as the running orchestrator (it is alive): now the request
+  // drops the one-shot marker and answers with the core's confirmation verbatim.
+  writeOrchestratorMarker(repo, ["feature"]);
+  res = await postJson(base, "/api/model-check", {});
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), {
+    ok: true,
+    message: "model check requested — the running team probes every failed pair within ~2s",
+  });
+  const marker = readJson(modelCheckRequestPath(repo)) as { at: number };
+  assert.ok(marker.at > 0);
+
+  // The body is ignored (there are no options to force a re-check): any JSON object answers
+  // identically, and malformed / non-object / oversized bodies keep the shared 400/413 reply
+  // while the marker survives untouched.
+  res = await postJson(base, "/api/model-check", { whatever: true });
+  assert.equal(res.status, 200);
+  fs.rmSync(modelCheckRequestPath(repo));
+  for (const body of ["not json", "null", "[true]", JSON.stringify({ pad: "x".repeat(MAX_BODY_BYTES) })]) {
+    const bad = await fetch(base + "/api/model-check", { method: "POST", body });
+    assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
+  }
+  assert.equal(fs.existsSync(modelCheckRequestPath(repo)), false, "rejected bodies write nothing");
   });
 });
 

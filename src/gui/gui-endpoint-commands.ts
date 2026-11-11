@@ -18,6 +18,6 @@ export { handlePrompt, handlePromptRole, handlePromptCancel, handlePromptEdit, h
 export { handleQuestionAnswer, handleBacklogFile, handleBacklogCancel, handleBacklogRetire, handleBacklogRelease, handleBacklogTop, handleBacklogEdit } from "./gui-backlog-commands.js";
 export { handleConfigSet, handleConfigUnset, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleNotifyTest } from "./gui-config-commands.js";
 export { handlePause, handlePauseRole, handleWake, handleWakeCancel } from "./gui-team-commands.js";
-export { handleResetCounters, handleRestart, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleArchiveBacklog, handleAbort, handleAbortAll, handleStopSchedule, handleRoleNotes, handleRetire, handleRevert, handlePostReviewAccept, handleBriefEdit } from "./gui-operator-commands.js";
+export { handleResetCounters, handleRestart, handleReclaim, handleModelCheck, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleArchiveBacklog, handleAbort, handleAbortAll, handleStopSchedule, handleRoleNotes, handleRetire, handleRevert, handlePostReviewAccept, handleBriefEdit } from "./gui-operator-commands.js";
 export { handleQuarantineRelease } from "./gui-quarantine-commands.js";
 export { handleSalvageList, handleSalvageApply, handleSalvageDrop } from "./gui-salvage-commands.js";

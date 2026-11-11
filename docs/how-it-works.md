@@ -448,7 +448,9 @@ the watch's confirming re-run each add the failing tests that passed on the re-r
   "serving not verified". At the cap, a fallback step that failed is skipped like a demoted one.
   The pair is checked again after 1 minute, then at doubling intervals up to 30 minutes. Once it
   answers, its roles run again on their own (`model_check_passed` in the feed). The check runs
-  for `tumwater start`, not for a `--once` round.
+  for `tumwater start`, not for a `--once` round. The failed pair's dashboard banner offers a
+  `Re-check now` button, which asks the running team to probe the failed pairs immediately
+  instead of waiting out the back-off.
 - Model failure fallback is separate from the budget gate above, triggered by health rather
   than spend: when one role's runs fail with provider-class errors (429s, and connection,
   timeout, server, model-load, and stream-severed backend failures) three times in a row, its

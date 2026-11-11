@@ -183,6 +183,11 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     else if (act === "reclaim")
       postAction("/api/reclaim", {}, (d) =>
         d && typeof d.message === "string" ? d.message : "Reclaim requested");
+    else if (act === "model-check")
+      postAction("/api/model-check", {}, (d) =>
+        d && typeof d.message === "string"
+          ? d.message
+          : "model check requested");
     else if (act === "questions" || act === "queued" || act === "backlog") {
       if (activeView !== "team") location.hash = "team";
       if (act === "questions" || act === "queued") setBacklogTab(act);

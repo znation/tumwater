@@ -98,7 +98,8 @@ function pushModelCheckAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]):
           return `${c.pair}${on} ${modelCheckFault(c)}${next}`;
         })
         .join(" · "),
-      actions: [],
+      // One action no matter how many pairs failed — the request re-checks every failed pair.
+      actions: [{ label: "Re-check now", act: "model-check" }],
     });
   }
 }
