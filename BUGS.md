@@ -67,6 +67,30 @@ Result in the originating project: both planned entries stayed `ready`, the feat
 
 **Required behavior.** Surface staleness: when `mainCheck.sha` is not the current tip (or when `mainCheck.nextDueAt` has passed while the verdict is green), mark the badge so a stale green is not mistaken for a verified tip — e.g. a `check due`/`tip advanced` suffix, or dropping the verdict word once the checked sha is no longer HEAD.
 
+- A director run with a queued user prompt ends on the `pinned` recovery arm, starving the prompt indefinitely while its pin cannot merge (filed 2026-11-11 from a live stuck instance).
+
+**Symptom.** The director held an unmerged pin (`refs/tumwater/merge/director` at `d524a78e`) while the merge slot's one gate-then-merge task waited on a `VERIFY_TIER` permit (all 4 held by long pi runs). Each of the director's two queued operator prompts dequeued (`prompt_taken`), then `recoverLeftoversForRun` → `recoverLeftover` found the pin and `handleRecoveredLeftover` (src/runner/runner-run.ts) ended the run through `ctx.finishRecoveryRun` **before authoring** — the only arm that falls through to authoring is `already_queued`, which requires a queue file, and pin-only writers (parts 3e/7, 3i/7) never write one. `finishRecoveryRunPhase` re-queued the dequeued prompt ("a run's dequeued user prompt goes back to its queue, since nothing ran it"), so the operator's request never ran and never will until the pin clears on its own.
+
+**Required behavior.** A run that dequeued a user prompt (`plan.userPrompt !== null`) must not end on the `pinned`/`relief_wait` recovery arms: either run the recovery first and then author the request, or decline to dequeue while a pin recovery is pending (admit the run only when it can actually serve the prompt). The operator's request must always reach an authoring run.
+
+**Suspected cause.** `handleRecoveredLeftover` treats every recovery arm except `already_queued` as terminal, and the director's `recoveryOnly` gate (src/runner/runner-run.ts `runOncePhase`) is computed with `ctx.pending.get() === null` before the dequeue in `runPrompt` — so a prompt-carrying run enters the recovery path and loses its prompt.
+
+- A re-queued director prompt re-wakes through the inbox gate with no interval, turning an unfulfillable state into a 2-second hot loop (filed 2026-11-11 from a live stuck instance).
+
+**Symptom.** With the conditions of the previous bug in place, the loop ran ~780 recovery runs in ~50 minutes: `directorGate` (src/scheduling.ts:68) returns `{ run: true, reason: "inbox" }` on `inboxCount > 0` **before any interval, backoff, or deferral check**, so the re-queued prompt woke the director instantly after every `run_end queued`, bypassing `minRunIntervalSeconds: 20`. Log volume: `merge_queued` for the same unchanged sha re-logged once per cycle. Cost stayed at zero (recovery runs call no model), but the log, run counter, and event stream churned continuously.
+
+**Required behavior.** The inbox fast path must not apply to a prompt the role just re-queued itself (or to a run that just ended in recovery): rate the re-wake — at minimum `minRunIntervalSeconds`, better an escalating backoff while the same unfulfillable state repeats (same pin re-logged, same prompt re-queued). A fresh operator submission may keep the immediate wake.
+
+**Suspected cause.** The inbox wake was designed for a human submission arriving between polls; PendingPrompt's re-queue reuses it, so a self-inflicted inbox entry loops without any throttle.
+
+- `recoverLeftover` re-logs `merge_queued` on every recovery cycle even when the pin is unchanged, spamming the event log (filed 2026-11-11 from a live stuck instance).
+
+**Symptom.** 775 identical `merge_queued` events for sha `d524a78e` in ~50 minutes: every recovery run that re-pins the same sha logs the event again (src/runner/runner-leftover.ts, the `pinned` arm's `logEventBestEffort`), though the ref's sha and summary did not change. The history row join (history-queued.ts) and any operator reading `logs` see hundreds of duplicate pins.
+
+**Required behavior.** Log `merge_queued` only when the pin actually changes (a new sha, or a ref that did not exist before). A recovery that re-pins a pin it (or the previous cycle) already logged and that still holds the same sha should skip the event — the pin's continued existence is the waiting state.
+
+**Suspected cause.** The `merge_queued`-exactly-once rule is stated per-recovery ("logged exactly once, for the drain to merge") but enforced per-run, so every run in a repeating recovery cycle logs it again.
+
 ## Fixed
 
 ## Verified
