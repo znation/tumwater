@@ -4687,6 +4687,96 @@ test("Ctrl+O on the Health tab toggles the problems-only view; History keeps its
   assert.equal(keys.state().paneCache, renderDoctor(report));
 });
 
+test("the Health view lists every kept salvage patch below the doctor report, oldest-first, in the CLI's wording", async () => {
+  const root = makeRepo();
+  const now = 1_763_000_000_000;
+  // Two kept patches directly under the salvage dir, the older one 25 minutes before the fixed
+  // clock and the newer one 24; a third under the pending subdir waits for a role's next run
+  // and is deliberately out of the operator's list.
+  const salvage = path.join(root, ".tumwater", "salvage");
+  fs.mkdirSync(salvage, { recursive: true });
+  const older = path.join(salvage, "older.patch");
+  const newer = path.join(salvage, "newer.patch");
+  fs.writeFileSync(older, "x".repeat(50)); // 50 bytes -> 50 B
+  fs.writeFileSync(newer, "y".repeat(1536)); // 1536 bytes -> 1.5 KB
+  fs.mkdirSync(path.join(salvage, "pending", "feature"), { recursive: true });
+  fs.writeFileSync(path.join(salvage, "pending", "feature", "wip.patch"), "w");
+  // Pin the mtimes 25 minutes and 24 minutes before the fixed clock: formatAge floors to
+  // whole minutes, so the rows read 25m and 24m.
+  fs.utimesSync(older, (now - 25 * 60_000) / 1000, (now - 25 * 60_000) / 1000);
+  fs.utimesSync(newer, (now - 24 * 60_000) / 1000, (now - 24 * 60_000) / 1000);
+  const report: DoctorReport = {
+    header: "doctor",
+    checks: [{ level: "ok", name: "node", detail: "fine" }],
+    routing: [],
+    verdict: "healthy",
+  } as DoctorReport;
+  const olderRow = /^1\. older\.patch — saved 25m ago, 50 B$/m;
+  const newerRow = /^2\. newer\.patch — saved 24m ago, 1\.5 KB$/m;
+  let resolveDoctor!: (r: DoctorReport) => void;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => now,
+    runDoctor: () => new Promise<DoctorReport>((resolve) => (resolveDoctor = resolve)),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  assert.equal(keys.state().view, 7);
+  resolveDoctor(report);
+  await Promise.resolve();
+  await Promise.resolve();
+  const cache = keys.state().paneCache ?? "";
+  assert.ok(cache.startsWith(renderDoctor(report)), "the doctor report's own rows still render above the new section");
+  assert.match(cache, /^Salvaged patches:$/m);
+  assert.match(cache, olderRow, "first kept patch, oldest-first, CLI wording");
+  assert.match(cache, newerRow, "second kept patch, oldest-first, CLI wording");
+  assert.ok(
+    cache.indexOf("1. older.patch") < cache.indexOf("2. newer.patch"),
+    "the rows keep oldest-first order",
+  );
+  assert.doesNotMatch(cache, /wip\.patch/, "a pending patch waits for its role's run and is not listed");
+  // Toggling problems-only re-paints the same list below the problems-only doctor (Ctrl+O).
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().healthProblems, true);
+  const problemsCache = keys.state().paneCache ?? "";
+  assert.ok(problemsCache.startsWith(renderDoctorProblems(report)), "the problems-only doctor renders above the list");
+  assert.match(problemsCache, /^Salvaged patches:$/m);
+  assert.match(problemsCache, olderRow);
+  assert.match(problemsCache, newerRow);
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().healthProblems, false);
+  assert.match(keys.state().paneCache ?? "", olderRow, "toggling back restores the same list");
+});
+
+test("the Health view paints no Salvaged patches section when no patch is kept", async () => {
+  const root = makeRepo();
+  const report: DoctorReport = {
+    header: "doctor",
+    checks: [{ level: "ok", name: "node", detail: "fine" }],
+    routing: [],
+    verdict: "healthy",
+  } as DoctorReport;
+  let resolveDoctor!: (r: DoctorReport) => void;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => new Promise<DoctorReport>((resolve) => (resolveDoctor = resolve)),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  assert.equal(keys.state().view, 7);
+  resolveDoctor(report);
+  await Promise.resolve();
+  await Promise.resolve();
+  // No kept patch: the pane renders byte-for-byte what it rendered before the list existed.
+  assert.equal(keys.state().paneCache, renderDoctor(report));
+  assert.doesNotMatch(keys.state().paneCache ?? "", /Salvaged patches:/);
+});
+
 test("the Health pane re-runs the doctor checks in place with Ctrl+R, honoring the problems-only toggle", async () => {
   const root = makeRoot();
   const reportA: DoctorReport = {

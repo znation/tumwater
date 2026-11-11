@@ -7,7 +7,9 @@ import { testNotifyHook } from "../../events/notify-test.js";
 import { resyncRootInstall, rootInstallResyncLines } from "../../build/dep-install.js";
 import { brokenPinDropLines, leftoverRetireLines } from "../../doctor/doctor-contention-checks.js";
 import { describeArchivedFile } from "../../backlog/backlog-archive.js";
-import { joinOr, shortSha } from "../../text/format.js";
+import { collectSalvagePatches } from "../../status/status-salvage.js";
+import { formatAge } from "../../text/datetime.js";
+import { formatBytes, joinOr, shortSha } from "../../text/format.js";
 import { ctrlRouteFor, promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import { paneAtHead, type TuiPaneSession } from "./tui-pane-session.js";
 import { staleReject } from "./tui-guard.js";
@@ -30,6 +32,28 @@ export function createHealthPane(session: TuiPaneSession) {
   // is up).
   let lastDoctorReport: DoctorReport | null = null;
 
+  // The read-only list of every kept salvage patch painted below the doctor report on the
+  // Health view: `collectSalvagePatches` (src/status/status-salvage.ts) returns every patch
+  // kept for the operator under `.tumwater/salvage/` oldest-first with its 1-based
+  // `position`/`file`/`savedAt`/`bytes` — exactly the fields the CLI `salvage` list renders —
+  // so the terminal list cannot drift from the CLI. Each row uses the CLI's exact wording
+  // (`${position}. ${file} — saved <age> ago, <size>`, its formatAge/formatBytes home). Returns
+  // [] when no patch is kept, so a repo with nothing salvaged paints the doctor report byte
+  // for byte; otherwise a blank line, the `Salvaged patches:` heading, one row per patch, and
+  // a trailing blank line. Read-only: part 2 adds the apply key, part 3 the drop key.
+  const salvageLines = (now: number): string[] => {
+    const patches = collectSalvagePatches(session.root);
+    if (patches.length === 0) return [];
+    return [
+      "",
+      "Salvaged patches:",
+      ...patches.map(
+        (p) => `${p.position}. ${p.file} — saved ${formatAge(now - p.savedAt)} ago, ${formatBytes(p.bytes)}`,
+      ),
+      "",
+    ];
+  };
+
   // Rerun `tumwater doctor`'s checks and cache the rendered report; the loading note shows
   // until they resolve. Same stale-resolution guard as Pending: only paint while Health is
   // current. Extracted so both the enter half of the Ctrl+T cycle and the Ctrl+R in-place
@@ -46,7 +70,9 @@ export function createHealthPane(session: TuiPaneSession) {
       (report) => {
         if (gen !== runGen || session.view !== session.roleIds.length + 7) return;
         lastDoctorReport = report;
-        session.paneCache = (healthProblems ? renderDoctorProblems : renderDoctor)(report);
+        const doctor = (healthProblems ? renderDoctorProblems : renderDoctor)(report);
+        const extra = salvageLines(session.now());
+        session.paneCache = extra.length === 0 ? doctor : [doctor, ...extra].join("\n");
         session.requestRender();
       },
       staleReject(session, () => gen !== runGen || session.view !== session.roleIds.length + 7),
@@ -313,8 +339,11 @@ export function createHealthPane(session: TuiPaneSession) {
     // head so the changed body starts at the top. Every other view keeps the History
     // Ctrl+O outcome cycle.
     healthProblems = !healthProblems;
-    if (lastDoctorReport !== null)
-      session.paneCache = (healthProblems ? renderDoctorProblems : renderDoctor)(lastDoctorReport);
+    if (lastDoctorReport !== null) {
+      const doctor = (healthProblems ? renderDoctorProblems : renderDoctor)(lastDoctorReport);
+      const extra = salvageLines(session.now());
+      session.paneCache = extra.length === 0 ? doctor : [doctor, ...extra].join("\n");
+    }
     paneAtHead(session);
     return true;
   };
