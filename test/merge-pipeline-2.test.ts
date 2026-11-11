@@ -6,17 +6,21 @@ import { drainMergeQueue } from "../src/merge/merge-drain.js";
 import {
   abortableMerges,
   mergeTasks,
+  settleMergeOutcome,
   type InFlightMerge,
 } from "../src/merge/merge-pipeline.js";
 import { mergeStartHeld } from "../src/orchestrator/orchestrator-poll.js";
 import { consumeAbortRequests } from "../src/operator/operator-requests.js";
 import { abortRequestPath, mergeRefName, mergeStatePath, statePath } from "../src/paths.js";
-import { deleteRef, refSha } from "../src/git/git.js";
+import { deleteRef, refSha, setRef } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { logEvent, subscribeEvents } from "../src/events/events.js";
 import { readMergeMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig } from "../src/config/config.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
+import { pinnedMergeEntry } from "../src/runner/runner-leftover.js";
+import { queueDepth } from "../src/merge/merge-queue.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import {
   APPROVE,
@@ -30,7 +34,7 @@ import {
   runnersFor,
 } from "./fixtures/merge-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { mainSha, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 /** Third slice of the merge-drain suite (see merge-pipeline.test.ts for the split): an abort
  * whose pin is already gone, an approved change waiting while a later entry still verifies, the
@@ -397,8 +401,8 @@ test("a user abort after a retriable merge outcome settles aborted instead of re
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"]));
   let consumed = false;
   // The abort lands after the merge decided `merge_blocked` (the blocking warning) but before
-  // the task settles: the operator's stop must win over the retriable outcome, or the re-queue
-  // would point at a pin the finally then discards.
+  // the task settles: the operator's stop must win over the retriable outcome, or the settled
+  // state would record a result the operator explicitly stopped.
   const unsubscribe = subscribeEvents((e) => {
     if (e.type !== "warning" || e.source !== "alpha" || consumed || !String(e.message).startsWith("merge blocked:")) return;
     writeJsonFile(abortRequestPath(root, "alpha"), { at: Date.now() });
@@ -417,8 +421,13 @@ test("a user abort after a retriable merge outcome settles aborted instead of re
       [["merge_failed", "aborted"]],
       "the stopped change is reported aborted, not as its retriable failure",
     );
-    assert.equal(pinDrained(root, pipeline, ["alpha"])(), true, "the aborted change is not re-queued against the pin the abort discards");
+    assert.equal(pinDrained(root, pipeline, ["alpha"])(), true, "the aborted change's pin is gone and no task holds it");
     assert.equal(await refSha(root, mergeRefName("alpha")), null, "the stopped change's pin is gone");
+    assert.equal(
+      eventsOfType(root, "merge_queued").length,
+      0,
+      "no retry merge_queued — the author's next run is the retry",
+    );
   } finally {
     unsubscribe();
     await Promise.allSettled(allTasks(pipeline));
@@ -458,8 +467,13 @@ test("another merge for the same role does not stand in for this change's own la
       [["merge_failed", "aborted"]],
       "the unrelated merge's event does not rewrite this change as landed",
     );
-    assert.equal(pinDrained(root, pipeline, ["alpha"])(), true, "the stopped change is not re-queued");
+    assert.equal(pinDrained(root, pipeline, ["alpha"])(), true, "the stopped change's pin is gone and no task holds it");
     assert.equal(await refSha(root, mergeRefName("alpha")), null, "the stopped change's pin is discarded");
+    assert.equal(
+      eventsOfType(root, "merge_queued").length,
+      0,
+      "no retry merge_queued — the author's next run is the retry",
+    );
   } finally {
     unsubscribe();
     await Promise.allSettled(allTasks(pipeline));
@@ -467,9 +481,53 @@ test("another merge for the same role does not stand in for this change's own la
   }
 });
 
+// ── A settled kept change is not re-queued (pin queue 1c/3) ─────────────────────────────
+// The drain passes a null queue file to settleMergeOutcome, so a retriable outcome drops
+// nothing and logs no retry `merge_queued` — the pin is the waiting state and the author's
+// next run (leftover recovery) is the retry. A direct settle of a pin-built entry pins the
+// same at the settle boundary: the state, the merge outcome and the pin all survive, and
+// nothing is enqueued.
 
-// The merge cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23) through the pipeline: each
-// change's own record carries its stage, so a change's stage must leave the gate stage the moment
+test("a retriable settle of a pin-built entry keeps the pin, records the outcome and logs no retry merge_queued", async () => {
+  const root = makeRepo();
+  const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, "a.txt"), "a\n"), "add a");
+  await setRef(root, mergeRefName("improve"), sha);
+  const state = freshRunnerState("improve");
+  const entry = await pinnedMergeEntry(root, "improve", sha, {});
+  const before = eventsOfType(root, "merge_queued").length;
+
+  await settleMergeOutcome(root, entry, state, "merge_blocked", 5, { tokens: 0, cost: 0, providerCost: {} }, null);
+
+  assert.equal(state.lastResult, "merge_blocked", "the rejection is recorded in the author's state");
+  assert.ok(
+    readEvents(root).some((e) => e.type === "merge_failed" && e.result === "merge_blocked"),
+    "merge_failed fired with the result",
+  );
+  assert.equal(await refSha(root, mergeRefName("improve")), sha, "the pin survives for the role's next run");
+  assert.equal(queueDepth(root), 0, "no retry entry was enqueued");
+  assert.equal(eventsOfType(root, "merge_queued").length, before, "no retry merge_queued was logged");
+});
+
+test("a gate rejection of a kept change ends the change without a retry merge_queued", async () => {
+  // A gate rejection keeps the pin for a revision, but the revision rides the author's next
+  // RUN, not the pipeline: settle the change `rejected` through the settle boundary and the
+  // pin stays with no retry queued or logged.
+  const root = makeRepo();
+  const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, "a.txt"), "a\n"), "add a");
+  await setRef(root, mergeRefName("improve"), sha);
+  const state = freshRunnerState("improve");
+  const entry = await pinnedMergeEntry(root, "improve", sha, {});
+
+  await settleMergeOutcome(root, entry, state, "rejected", 5, { tokens: 0, cost: 0, providerCost: {} }, null);
+
+  assert.equal(state.lastResult, "rejected", "the rejection is recorded in the author's state");
+  assert.equal(await refSha(root, mergeRefName("improve")), sha, "the pin survives for the revision run");
+  assert.equal(queueDepth(root), 0, "nothing was enqueued");
+  assert.equal(eventsOfType(root, "merge_queued").length, 0, "no retry merge_queued was logged");
+});
+
+// The merge cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23) through the pipeline:
+// a change's own record carries its stage, so a change's stage must leave the gate stage the moment
 // its gate returns — otherwise its finished gate's last turns sit in the cell, accruing a false
 // `no pi output` flag — and one change's gate+merge must advance only its own record. Part 3s/3
 // re-points the observation to the deterministic gate (the pre-check): a change leaves

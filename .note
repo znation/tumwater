@@ -14,7 +14,7 @@ Tests:
 - test/merge-queue.test.ts: deleted the three torn-head cases + the merged-into-main cache case + the torn-head import.
 - test/merge-drain.test.ts: added the pin-only case "a queue file with no live merge ref starts no merge at the drain" (no task, no outcome event, no pin left).
 - test/merge-slot.test.ts: deleted "an unexpected throw inside the gate-then-merge task keeps the entry queued and frees the slot" (queue-only seed; the pin throw semantics live in merge-pipeline-2).
-- test/merge-requeue.test.ts: deleted "drainMergeQueue reports, not throws, when a deduped entry's file cannot be dropped" (it pinned the dedupe-branch drop I removed, and referenced the torn-head drop).
+- test/merge-requeue.test.ts: deleted "drainMergeQueue reports, not throws, when a deduped entry's file cannot be dropped" (it pinned the dedupe-branch drop I removed, and referenced the torn-head drop). The whole file was later deleted by part 1c/3, which removed the requeue module that was its only subject.
 - test/orchestrator-3.e2e.test.ts: deleted the torn-head + lost-pin cases; retargeted the stale-marker case to a stale pin (setRef to main's head + writeMergeMarker, wait for ref + marker gone, no merge_done); removed the now-dead queue-seeding survivor helper (kept the pin-only seedSurvivorPin). The "rejected runs again while another queued change is in review" case is untouched — the plan does not list it, and it deliberately seeds a queue file the interlock (scope.ts) still reads for scheduling; it now drives the pin path.
 - test/fixtures/merge-fixtures.ts: removed the now-unused `drained`/`queueDepth` exports.
 

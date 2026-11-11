@@ -7,7 +7,6 @@ import { errorMessage } from "../text/text.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { deleteRef } from "../git/git.js";
 import { removeMergeChange, writeMergeOutcome, type MergeUsage } from "./merge-slot.js";
-import { requeueKeptChange } from "./merge-requeue.js";
 import { mergeRefName, rejectedRefName } from "../paths.js";
 import type { AbortableMerge } from "../operator/operator-requests.js";
 import type { MergeEntry } from "./merge-queue.js";
@@ -170,9 +169,8 @@ export async function discardPinnedRefs(root: string, roles: string[]): Promise<
  * every outcome the merge task settles, so no settled entry can keep a stale marker or lose its
  * outcome write. The pinned-ref discard stays with the callers: only a user abort throws work
  * away, and a user abort of the merge discards the pins of every change it had not merged. A
- * null `file` (a pin-only merge with no queue entry) writes no queue file and skips the retry
- * re-queue: the pin itself is the waiting state, and the next poll merges it again under
- * MERGE_CONFLICT_LIMIT. */
+ * null `file` (a pin-only merge with no queue entry) drops no queue file: the pin itself is
+ * the waiting state, and the next poll merges it again under MERGE_CONFLICT_LIMIT. */
 export async function settleMergeOutcome(
   root: string,
   entry: MergeEntry,
@@ -181,7 +179,6 @@ export async function settleMergeOutcome(
   durationMs: number,
   usage: MergeUsage,
   file: string | null,
-  mainBranch?: string,
 ): Promise<void> {
   writeMergeOutcome(root, entry, state, result, durationMs, usage, file);
   // A revision that merges ends the rejected change's life: drop the rejected ref (plans/revise-
@@ -194,15 +191,4 @@ export async function settleMergeOutcome(
     await deleteRef(root, rejectedRefName(entry.role));
   }
   removeMergeChange(root, entry.role);
-  // A kept change goes straight back on the queue (the callers pass the main branch; a
-  // direct caller without one leaves the retry to the author's leftover recovery). A pin-only
-  // merge (file null) skips it too — the pin is the waiting state. The write-back above
-  // already happened, so a failure here must not lose the settled outcome.
-  if (file !== null && mainBranch !== undefined) {
-    try {
-      await requeueKeptChange(root, mainBranch, entry, state, result);
-    } catch (err) {
-      warnEventBestEffort(root, entry.role, `could not re-queue the kept change: ${errorMessage(err)}`);
-    }
-  }
 }

@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract pin queue, part 1c/3: A kept change is not re-queued; the requeue module and `entryRevisionFields` go — done 2026-11-11 by the feature role (planned 2026-11-09 by the plan role, splitting the 2026-11-09 too-large re-plan of the 2026-10-31 part 3f/7 after feature held it; requires Subtract pin queue part 1b/3 landed, so no drain caller passes a queue file; touches src/merge/merge-pipeline.ts src/merge/merge-drain.ts src/merge/merge-requeue.ts src/merge/merge-queue.ts test/merge-drain.test.ts test/merge-pipeline-2.test.ts test/merge-requeue.test.ts test/runner-revision.test.ts)
+
+**Goal.** A change that fails its gate is an ordinary rejection owned by its author: the pipeline writes the outcome, drops the marker and leaves the pin for the role's next run, and no retry `merge_queued` event is logged. The requeue module and the pipeline's requeue branch go; `writeMergeOutcome`'s `file` parameter stays for part 3/3.
+
+**Approach.**
+- src/merge/merge-pipeline.ts: remove the `requeueKeptChange` import and the `file !== null && mainBranch !== undefined` requeue block; drop `mainBranch` from `settleMergeOutcome`'s signature and its doc comment. Keep the `file` parameter and every caller's null pass-through.
+- src/merge/merge-drain.ts: drop the `mainBranch` argument from its `settleMergeOutcome` call; replace `...entryRevisionFields(entry)` in the merge request with the two explicit conditional spreads for `revisionRound` and `priorReview`, so the request keeps both fields.
+- Delete src/merge/merge-requeue.ts; delete `entryRevisionFields` from src/merge/merge-queue.ts (its only production caller was the drain). Leave the rest of `merge-queue.ts` for part 2/3.
+- Delete test/merge-requeue.test.ts. In test/merge-pipeline-2.test.ts retarget the retry/re-queue cases to the pin: a rejected or aborted kept change leaves its pin and logs no retry `merge_queued` event. Update the direct `settleMergeOutcome` callers in test/merge-drain.test.ts and test/runner-revision.test.ts to the shorter signature.
+
+**Files touched.** src/merge/merge-pipeline.ts src/merge/merge-drain.ts src/merge/merge-requeue.ts src/merge/merge-queue.ts test/merge-drain.test.ts test/merge-pipeline-2.test.ts test/merge-requeue.test.ts test/runner-revision.test.ts
+
+**Acceptance criteria.**
+- `grep -rn 'requeueKeptChange\|merge-requeue\|entryRevisionFields' src/ test/` prints nothing and `src/merge/merge-requeue.ts` is gone.
+- A gate rejection of a kept change leaves the role's pin in place, records the rejection in the author's state, and logs no retry `merge_queued` event; the author's next run is the retry.
+- `settleMergeOutcome` has no `mainBranch` parameter and every caller compiles; a revision request still carries `revisionRound` and `priorReview` (test/runner-revision.test.ts passes).
+- `npm run test:gate` passes.
+
+**Tests.** Run test/merge-drain.test.ts, test/merge-pipeline.test.ts, test/merge-pipeline-2.test.ts, test/runner-revision.test.ts and test/merge-queue.test.ts, then the project's gate.
+
 ### The TUI Health view lists every kept salvage patch and applies or drops one by typed position, part 1/3: the read-only list below the doctor report (planned 2026-11-11 by the plan role; the doctor `salvage patches` row in src/doctor/doctor-salvage.ts names only the first three kept patches (oldest + "and N more") and points at `tumwater salvage --show`/`--drop`, and `grep -rn 'salvage' src/ui/tui test/tui*.test.ts` prints nothing, so the Health view shows no patch list at all — this part adds the list, read-only, with no key; `collectSalvagePatches` in src/status/status-salvage.ts already returns every kept patch oldest-first with its `position`/`file`/`savedAt`/`bytes`, exactly the fields the CLI `salvage` list row renders, so the list cannot drift from the CLI; the doctor row's wording (`${p.position}. ${p.file} — saved ${formatAge(now - p.savedAt)} ago, ${formatBytes(p.bytes)}`) and the CLI's `formatAge`/`formatBytes` are the single home this renders; independent of parts 2 and 3 — it touches only the Health pane paint and its tests, while part 2 adds the salvage editor and part 3 the drop arm; no dependency on any other waiting entry — the pin-queue parts take src/merge/src/runner/src/status, the config edit takes src/config/src/cli, the scripting plan takes docs/cli.md's command table and help.ts, and the dashboard salvage plan takes src/gui, none of which touches the Health pane paint; docs/invariants.md binds the salvage directory's age-out and hand-back, not an operator surface, so it is unchanged; touches src/ui/tui/tui-pane-health.ts test/tui-keys.test.ts) — done 2026-11-11 by the feature role
 
 **Goal.** An operator watching the TUI sees every patch kept for them under `.tumwater/salvage/` on the Health view, as a numbered list below the doctor report, instead of only the first three patch names the doctor row names. This part is read-only: it adds the list and does not add any key (the apply key lands in part 2, the drop key in part 3). The list uses the same `collectSalvagePatches` and wording the CLI `salvage` list uses, so the positions and rows cannot drift between the terminal and the CLI.

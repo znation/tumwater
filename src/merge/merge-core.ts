@@ -29,8 +29,9 @@ import { dropWithdrawnPin, withdrawnPinReason, type MergeClaim } from "./merge-w
  * shared `_merge` checkout (plans/worktree-pool.md) and runs it through the review gate here
  * (reviewPinnedChange) and the merge (mergeApprovedChange) — so no diff reaches main unreviewed
  * (invariant 1) and nothing is rebased inside a role worktree any more. Leftover recovery
- * re-queues its pin onto that same pipeline. This is harness code, never a role: the only
- * model runs it starts are the reviewer and merge-to-main.ts's conflict resolver. */
+ * re-pins its pin, which the drain's kept-pin scan merges onto that same pipeline. This is
+ * harness code, never a role: the only model runs it starts are the reviewer and
+ * merge-to-main.ts's conflict resolver. */
 
 /** One merge request: a pinned commit plus everything its gate and events need. `role` names
  * the owning runner (events, session naming, the merge worktree) — the merger itself is not a

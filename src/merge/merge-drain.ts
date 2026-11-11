@@ -1,7 +1,7 @@
 import { mergeApprovedChange, RETRIABLE_MERGE_RESULTS, type MergerContext } from "./merge-core.js";
 import { addMergeChange, mergeUsage, removeMergeChange, resolveWaitStage, setMergeChangeStatus } from "./merge-slot.js";
 import { withRunPermit } from "../concurrency/run-permit.js";
-import { entryRevisionFields, type MergeEntry } from "./merge-queue.js";
+import type { MergeEntry } from "./merge-queue.js";
 import { refAbsentFromFiles } from "../git/git.js";
 import { mergeRefName } from "../paths.js";
 import { errorMessage } from "../text/text.js";
@@ -178,9 +178,10 @@ export function resetMergeTaskStarts(): void {
  * (mergerCtxOf's gatePermit, released by merge-core before `mergeToMain`) before the merge, so
  * a queued diff never merges unreviewed and never pays a second gate. Each defined result is
  * written back and its entry dropped; a merge that leaves the change non-terminal (a resolver
- * conflict, a loss to main) keeps entry + ref for the next merge, or is re-queued by
- * settleMergeOutcome. A plumbing throw keeps the entry queued, but unapproved: its one
- * gate-then-merge is re-run from its pin next poll. A user abort of the task's role stops the
+ * conflict, a loss to main) keeps entry + ref for the next merge: the pin is the waiting
+ * state, and the next poll re-merges it under MERGE_CONFLICT_LIMIT. A plumbing throw keeps the
+ * entry queued, but unapproved: its one gate-then-merge is re-run from its pin next poll. A
+ * user abort of the task's role stops the
  * merge, and the change ends "aborted" with its pin discarded; a shutdown keeps the pins. The
  * task takes no permit of its own — its only model runs are the gate's reviewer, under the
  * gatePermit VERIFY_TIER lease the gate's call holds, and merge-to-main.ts's conflict
@@ -290,7 +291,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
       if (r === "changed" && mergedCommit !== undefined && (await postReviewDue(ctx.liveConfig, root, mergedCommit))) {
         addPostReview(root, { commit: mergedCommit, role, summary: entry.summary, ...(entry.body !== undefined ? { body: entry.body } : {}) });
       }
-      await settleMergeOutcome(root, entry, author.state, r, Date.now() - v.startedAt, usage, file, mainBranch);
+      await settleMergeOutcome(root, entry, author.state, r, Date.now() - v.startedAt, usage, file);
     };
     try {
       if (merge.userAborted) {
@@ -312,7 +313,8 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
               ...(entry.claim !== undefined ? { claim: entry.claim } : {}),
               body: entry.body,
               highFriction: entry.highFriction,
-              ...entryRevisionFields(entry),
+              ...(entry.revisionRound !== undefined ? { revisionRound: entry.revisionRound } : {}),
+              ...(entry.priorReview !== undefined ? { priorReview: entry.priorReview } : {}),
             },
           );
         } catch (err) {

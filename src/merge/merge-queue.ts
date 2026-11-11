@@ -69,24 +69,27 @@ export interface MergeEntry {
    * Prior-review trailer stamps it. */
   priorReview?: PriorReview;
   /** Earliest time (epoch ms) the gate-then-merge task may start, absent for an entry that is
-   * ready at once. Set on the pipeline's own re-queue of a `review_error` change, so a flaky
-   * reviewer is not hit again within 60 s. The drain no longer reads the queue (parts 1b/3
-   * onward), so the field now rides until the requeue path that set it goes (part 1c/3); the
-   * display readers still show the deferral. */
+   * ready at once. No production writer stamps one since the drain no longer re-queues a
+   * settled entry (the pin is the waiting state); a legacy queue file an older build left may
+   * carry one; the display readers still show the deferral. */
   notBefore?: number;
-  /** The retriable result (`merge_blocked`, `review_error`, `merge_conflict`) whose
-   * attempt this entry re-queues, absent for an author's or a recovery's entry. Logged on the
-   * re-queue's `merge_queued` event only. */
+  /** The retriable result (`merge_blocked`, `review_error`, `merge_conflict`) whose attempt
+   * this entry re-queues, absent for an author's or a recovery's entry. No production writer
+   * stamps one since the drain no longer re-queues a settled entry; a legacy queue file an
+   * older build left may carry one, logged on the re-queue's `merge_queued` event. */
   retry?: string;
   /** How many times the pipeline has re-queued this change, absent for a fresh entry and a
-   * recovery's entry; informational, not an ordering key — the filename still orders the queue
-   * by the current attempt's `enqueuedAt`. */
+   * recovery's entry. No production writer stamps one since the drain no longer re-queues a
+   * settled entry; a legacy queue file an older build left may carry one. Informational, not
+   * an ordering key — the filename still orders the queue by the current attempt's
+   * `enqueuedAt`. */
   retryCount?: number;
   /** The backlog entry the authoring run was assigned, recorded at enqueue (run-stage.ts) only
    * for a run that worked its claim, not a queued user request. The poll releases the claim
    * while the change waits, so this copy is what the merge checks: a change whose claimed
-   * entry main no longer lists is dropped as `withdrawn` (merge-withdrawn.ts). Carried by
-   * re-queues; a recovery carries it only when the pinned commit's Claim trailer stamps it. */
+   * entry main no longer lists is dropped as `withdrawn` (merge-withdrawn.ts). No production
+   * writer stamps the field since the drain no longer re-queues a settled entry; a recovery
+   * carries it only when the pinned commit's Claim trailer stamps it. */
   claim?: MergeClaim;
 }
 
@@ -102,17 +105,6 @@ export function enqueueMerge(root: string, entry: MergeEntry): void {
   const dir = mergeQueueDir(root);
   const name = queueFileName(entry.enqueuedAt, seq++, ".json");
   writeJsonAtomic(path.join(dir, name), entry);
-}
-
-/** The revision fields of a queue entry, serialized only when present — the shape merge
- * surfaces (drain, merge) and the run-stage enqueue re-emit when they build their own
- * entry/request objects, so the `revisionRound`/`priorReview` names live in one place and
- * cannot drift. */
-export function entryRevisionFields(e: { revisionRound?: number; priorReview?: PriorReview }): { revisionRound?: number; priorReview?: PriorReview } {
-  return {
-    ...(e.revisionRound !== undefined ? { revisionRound: e.revisionRound } : {}),
-    ...(e.priorReview !== undefined ? { priorReview: e.priorReview } : {}),
-  };
 }
 
 /** Every queue file in execution order (oldest first) — the same filename sort queuedMerges,

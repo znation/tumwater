@@ -137,7 +137,7 @@ test("every merged role queues a post-landing review, whatever its role", async 
   assert.equal(readPostReviews(exempt).length, 0, "an exempt-only diff queues no post-merge review");
 });
 
-test("a null-file settle writes the outcome, drops no file and queues no retry entry", async () => {
+test("a null-file settle writes the outcome, drops no file and keeps the pin", async () => {
   // A pin-only merge (part 3h/7) settles with file null: the outcome must still be written
   // (merge_failed + the role's state), nothing is dropped (there is no queue file), and the
   // retriable result must NOT re-queue — the pin is the waiting state and the next poll
@@ -148,7 +148,7 @@ test("a null-file settle writes the outcome, drops no file and queues no retry e
   const state = freshRunnerState("improve");
   const noFile = { role: "improve", sha, run: 7, summary: "the work", enqueuedAt: Date.now() };
 
-  await settleMergeOutcome(root, noFile, state, "merge_blocked", 5, { tokens: 0, cost: 0, providerCost: {} }, null, "main");
+  await settleMergeOutcome(root, noFile, state, "merge_blocked", 5, { tokens: 0, cost: 0, providerCost: {} }, null);
 
   assert.equal(state.lastResult, "merge_blocked", "the outcome was written to the role's state");
   assert.ok(

@@ -85,9 +85,10 @@ export async function withdrawnPinReason(
   return entries.length === 0 ? null : withdrawnReason(req.role, entries);
 }
 
-/** Drop a pinned change found withdrawn: delete its merge ref, so neither the pipeline's re-queue
- * nor leftover recovery can bring it back, record the reason as the role's lastError (the
- * merge_failed event's reason) and warn with it. The caller settles the change `withdrawn`. */
+/** Drop a pinned change found withdrawn: delete its merge ref, so neither the drain's
+ * kept-pin scan nor leftover recovery can bring it back, record the reason as the role's
+ * lastError (the merge_failed event's reason) and warn with it. The caller settles the
+ * change `withdrawn`. */
 export async function dropWithdrawnPin(
   root: string,
   role: string,
