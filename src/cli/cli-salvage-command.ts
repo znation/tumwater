@@ -10,10 +10,10 @@
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { failFollowJsonRival, parseGrepFlag, scanPositionArgs } from "./cli-args.js";
-import { FOLLOW_FLAG, JSON_FLAG, grepFlagSpec, hasFollowFlag, rejectUnknownArgs } from "./cli-flag-specs.js";
+import { DRY_RUN_FLAG, FOLLOW_FLAG, JSON_FLAG, grepFlagSpec, hasFollowFlag, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
-import { salvagePatchStat, applySalvagePatchForOperator } from "../git/slot-salvage.js";
+import { salvagePatchStat, applySalvagePatchForOperator, checkSalvagePatchForOperator } from "../git/slot-salvage.js";
 import { isGitRepo } from "../git/git.js";
 import {
   collectSalvagePatches,
@@ -41,16 +41,17 @@ import { formatBytes } from "../text/format.js";
  * twin whose text and `--json` say what it removed; `--apply <n>` applies the Nth patch to
  * the current checkout as unstaged edits — the one branch that also writes the checkout, and
  * the only one that needs a git checkout there: it never commits, never deletes the patch, and
- * applies nothing when the patch does not fit the tree. Read-only in every branch but
+ * applies nothing when the patch does not fit the tree. `--apply <n> --dry-run` asks the
+ * apply's `git apply --check` question alone and writes nothing — the read-only preview twin
+ * of `revert --dry-run`, `archive --dry-run` and `reclaim --dry-run`, the read-only preview
+ * every other mutating operator command already has. Read-only in every branch but
  * `--drop` and `--apply`, and needing no ready repo: refuseTeamWorkspace is the whole gate,
  * so the list degrades to the empty line in a plain directory and no run ever writes a patch
- * except, at the operator's request, the unlink a `--drop` makes. */
+ * except, at the operator's request, the unlink a `--drop` makes. `--dry-run` is accepted
+ * only on `--apply` (the read-only preview); on the list, `--show` and `--drop` each run
+ * their own flag gate, which refuses a `--dry-run` token as an unknown flag before any patch
+ * or checkout is touched, so a stray `--dry-run` never changes what the command does. */
 export async function cmdSalvage(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
-  // `--show <n>` is the command's read-only detail branch: route it before the list gate,
-  // exactly as cmdQuarantine routes its `--show` first, so its own flag gate owns a token
-  // the list would otherwise refuse. A `--show` token sitting in `--grep`'s value slot is the
-  // pattern, not the mode: the scan skips it, so `salvage --grep --show` greps for the text
-  // "--show" instead of opening the detail view (the same quirk cmdQuarantine guards).
   const grepAt = args.indexOf("--grep");
   const grepValueIndex = grepAt >= 0 ? grepAt + 1 : -1;
   const modeNamed = (flag: string): boolean => args.some((arg, i) => arg === flag && i !== grepValueIndex);
@@ -181,13 +182,25 @@ async function cmdSalvageDrop(root: string, args: string[]): Promise<void> {
 
 /** The `tumwater salvage --apply <n>` branch: apply the Nth patch `tumwater salvage` lists
  * to the current checkout as unstaged edits — the apply twin of the read-only `--show` and
- * the destructive `--drop`. Parsed the way both parse, sharing scanPositionArgs, its rival-flag
- * gate and the out-of-range wording. Where `--show` and `--drop` need no repo, apply needs a
- * git checkout: it fails outside one, and it applies against `root` itself, never committing
- * and never deleting the patch (a patch the tree rejects applies nothing). `--json` serves
- * `{ applied: { position, file } }` in place of the prose line. */
+ * the destructive `--drop`. Parsed the way both parse, sharing scanPositionArgs (which also
+ * reads the `--dry-run` boolean through its extra-boolean slot), its rival-flag gate and the
+ * out-of-range wording. Where `--show` and `--drop` need no repo, apply needs a git checkout:
+ * it fails outside one, and it applies against `root` itself, never committing and never
+ * deleting the patch (a patch the tree rejects applies nothing). `--json` serves
+ * `{ applied: { position, file } }` in place of the prose line.
+ *
+ * With `--dry-run` the branch asks `checkSalvagePatchForOperator` — the same `git apply
+ * --check` read the real apply runs first — and writes nothing: a patch that fits prints
+ * `would apply …` and exits 0; one that no longer fits fails with the apply's existing
+ * `does not apply cleanly …` wording (which already says `no files were changed`) and exits
+ * 1, and `--json` serves `{ dryRun: true, position, file, applies }` on either outcome,
+ * exiting 1 when `applies` is false (the `revert --dry-run --json` shape, with the apply's
+ * `applies` key). The preview reuses the apply's position, git-checkout, team-workspace and
+ * out-of-range gates in the same order, so it fails where the apply would fail and previews
+ * only where the apply could run. */
 async function cmdSalvageApply(root: string, args: string[]): Promise<void> {
-  const { json, position, rest } = scanPositionArgs(args, "--apply", "--apply 2");
+  const { json, flags, position, rest } = scanPositionArgs(args, "--apply", "--apply 2", [DRY_RUN_FLAG.names[0]!]);
+  const dryRun = flags[DRY_RUN_FLAG.names[0]!] === true;
   rejectUnknownArgs("salvage", rest, [JSON_FLAG]);
   if (position === null) fail("--apply needs a position (usage: tumwater salvage --apply <n>)");
   refuseTeamWorkspace(root);
@@ -197,6 +210,21 @@ async function cmdSalvageApply(root: string, args: string[]): Promise<void> {
     fail(`no salvaged workspace patch at position ${position} (salvage holds ${patches.length} patches)`);
   }
   const patch = patches[position - 1]!;
+  if (dryRun) {
+    const applies = await checkSalvagePatchForOperator(root, patch.file);
+    if (json) {
+      if (!applies) process.exitCode = 1;
+      sayJson({ dryRun: true, position, file: patch.file, applies });
+      return;
+    }
+    if (!applies) {
+      fail(
+        `salvaged workspace patch ${patch.file} does not apply cleanly to this checkout — no files were changed (run tumwater salvage --show ${position} to print it for a manual apply)`,
+      );
+    }
+    say(`would apply salvaged workspace patch ${position}: ${patch.file} — applies cleanly to this checkout; nothing was written`);
+    return;
+  }
   const applied = await applySalvagePatchForOperator(root, patch.file);
   if (!applied) {
     fail(

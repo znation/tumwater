@@ -464,3 +464,95 @@ test("salvage --grep --apply treats --apply as the pattern text, not the apply m
   assert.equal(fs.readFileSync(patch, "utf8"), patchBytes);
 });
 
+// --apply --dry-run: the read-only preview of the apply — the same `git apply --check` read
+// the real apply runs first, with nothing written. The fixture leaves a clean tree whose f
+// holds the content the patch expects, so a plain preview fits; moving the branch under the
+// patch makes the same preview refuse.
+
+test("salvage --apply 1 --dry-run on a fitting patch prints the would-apply line, writing nothing", async () => {
+  const { repo, patch, patchBytes } = applyFixture();
+  const headBefore = headSha(repo);
+  const treeBefore = sh(repo, "git", "status", "--porcelain");
+  const indexBefore = sh(repo, "git", "diff", "--cached");
+  const fBefore = fs.readFileSync(path.join(repo, "f"), "utf8");
+  const r = await cli(repo, "salvage", "--apply", "1", "--dry-run");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "would apply salvaged workspace patch 1: a.patch — applies cleanly to this checkout; nothing was written");
+  assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), fBefore, "the preview leaves the tracked file byte-identical");
+  assert.equal(sh(repo, "git", "status", "--porcelain"), treeBefore, "the preview leaves the working tree untouched");
+  assert.equal(sh(repo, "git", "diff", "--cached"), indexBefore, "the index is untouched");
+  assert.equal(headSha(repo), headBefore, "no commit was made");
+  assert.equal(fs.readFileSync(patch, "utf8"), patchBytes, "the patch is kept");
+});
+
+test("salvage --apply 1 --dry-run on a patch whose context no longer fits fails, naming the patch, and writes nothing", async () => {
+  const { repo, patch, patchBytes } = applyFixture();
+  // Move the branch under the patch so its context no longer fits.
+  fs.writeFileSync(path.join(repo, "f"), "moved\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "move");
+  const headBefore = headSha(repo);
+  const treeBefore = sh(repo, "git", "status", "--porcelain");
+  const indexBefore = sh(repo, "git", "diff", "--cached");
+  const r = await cli(repo, "salvage", "--apply", "1", "--dry-run");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("a.patch does not apply cleanly"), "the refusal names the patch file");
+  assert.ok(r.stderr.includes("no files were changed"), "the refusal says the tree is untouched");
+  assert.ok(r.stderr.includes("tumwater salvage --show 1"), "the refusal points at --show");
+  assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), "moved\n", "the preview leaves the tracked file byte-identical");
+  assert.equal(sh(repo, "git", "status", "--porcelain"), treeBefore, "the preview leaves the working tree untouched");
+  assert.equal(sh(repo, "git", "diff", "--cached"), indexBefore, "the index is untouched");
+  assert.equal(headSha(repo), headBefore, "no commit was made");
+  assert.equal(fs.readFileSync(patch, "utf8"), patchBytes, "the patch is kept");
+});
+
+test("salvage --apply 1 --dry-run --json prints the preview object on either outcome", async () => {
+  let { repo, patch } = applyFixture();
+  let r = await cli(repo, "salvage", "--apply", "1", "--dry-run", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { dryRun: true, position: 1, file: "a.patch", applies: true });
+  assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), "old\n", "the clean preview writes nothing");
+  assert.equal(fs.readFileSync(patch, "utf8"), OLDER_TEXT, "the patch is kept");
+
+  // The same command on a moved tree reports applies: false and exits 1.
+  fs.writeFileSync(path.join(repo, "f"), "moved\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "move");
+  r = await cli(repo, "salvage", "--apply", "1", "--dry-run", "--json");
+  assert.equal(r.code, 1);
+  assert.deepEqual(JSON.parse(r.stdout), { dryRun: true, position: 1, file: "a.patch", applies: false });
+  assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), "moved\n", "the unclean preview writes nothing");
+  assert.equal(fs.readFileSync(patch, "utf8"), OLDER_TEXT, "the patch is kept");
+});
+
+test("a real apply after a dry-run preview still applies, so the preview is a safe dry preview", async () => {
+  const { repo, patch, patchBytes } = applyFixture();
+  const headBefore = headSha(repo);
+  // The preview changes nothing, so the real apply that follows fits and lands.
+  const preview = await cli(repo, "salvage", "--apply", "1", "--dry-run");
+  assert.equal(preview.code, 0);
+  const r = await cli(repo, "salvage", "--apply", "1");
+  assert.equal(r.code, 0);
+  assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), "new\n", "the real apply wrote the patch");
+  assert.ok(sh(repo, "git", "status", "--porcelain").includes(" M f"), "the edit is unstaged");
+  assert.equal(headSha(repo), headBefore, "no commit was made");
+  assert.equal(fs.readFileSync(patch, "utf8"), patchBytes, "the patch is kept");
+});
+
+test("salvage --dry-run, --show 1 --dry-run and --drop 1 --dry-run are refused, changing nothing", async () => {
+  const repo = makeRepo();
+  const { older, newer } = seedSalvage(repo);
+  const before = bytesOf(older, newer);
+  const cases = [
+    { args: ["--dry-run"], named: "--dry-run" },
+    { args: ["--show", "1", "--dry-run"], named: "--dry-run" },
+    { args: ["--drop", "1", "--dry-run"], named: "--dry-run" },
+  ];
+  for (const { args, named } of cases) {
+    const r = await cli(repo, "salvage", ...args);
+    assert.equal(r.code, 1, args.join(" "));
+    assert.ok(r.stderr.includes(named), `the refusal names ${named}`);
+  }
+  assert.deepEqual(bytesOf(older, newer), before, "a refused preview deletes and writes no patch");
+});
+

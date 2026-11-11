@@ -278,18 +278,28 @@ export async function salvagePatchStat(root: string, file: string): Promise<stri
   return stat === null || stat === "" ? null : stat;
 }
 
+/** Whether a kept patch would apply to `root`'s current working tree, read without writing
+ * anything: `git apply --check` parses the whole patch against the tree and places every hunk
+ * in memory, reporting success or failure without touching any file. This is the read-only
+ * step behind `tumwater salvage --apply <n>` (cli-salvage-command.ts): the real apply calls it
+ * and applies only on success, and the `--dry-run` preview asks this same question alone, so
+ * the two paths cannot disagree about whether the patch fits. A patch whose context no longer
+ * fits yields false. The caller is the checkout's own command, so a git that cannot start is
+ * an error that propagates (gitTryStarted) rather than a clean refusal. */
+export async function checkSalvagePatchForOperator(root: string, file: string): Promise<boolean> {
+  return (await gitTryStarted(root, "apply", "--check", path.join(salvageDir(root), file))) !== null;
+}
+
 /** Apply a kept patch the operator asks for (`tumwater salvage --apply <n>`,
  * cli-salvage-command.ts) into `root`'s working tree, unstaged: no `--index`, no commit, no
- * deletion of the patch. `git apply --check` runs first, so the tree is written only when the
- * whole patch places cleanly; a patch whose context no longer fits leaves every file untouched
- * and this returns false, with the patch kept for the operator to inspect or drop. The caller
- * is the checkout's own command, so a git that cannot start is an error that propagates
- * (gitTryStarted) rather than a clean refusal. */
+ * deletion of the patch. `checkSalvagePatchForOperator` runs `git apply --check` first, so the
+ * tree is written only when the whole patch places cleanly; a patch whose context no longer
+ * fits leaves every file untouched and this returns false, with the patch kept for the
+ * operator to inspect or drop. The caller is the checkout's own command, so a git that cannot
+ * start is an error that propagates (gitTryStarted) rather than a clean refusal. */
 export async function applySalvagePatchForOperator(root: string, file: string): Promise<boolean> {
-  const patchPath = path.join(salvageDir(root), file);
-  const check = await gitTryStarted(root, "apply", "--check", patchPath);
-  if (check === null) return false;
-  return (await gitTryStarted(root, "apply", patchPath)) !== null;
+  if (!(await checkSalvagePatchForOperator(root, file))) return false;
+  return (await gitTryStarted(root, "apply", path.join(salvageDir(root), file))) !== null;
 }
 
 /** The paths one file's section of a patch touches (`git apply --numstat -z`: a rename names its

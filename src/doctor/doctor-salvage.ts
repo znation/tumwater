@@ -33,6 +33,6 @@ export function checkSalvagePatches(root: string, now: number = Date.now()): Che
       ? ` and ${patches.length - SALVAGE_NAMED_CAP} more`
       : "";
   return warnOutcome(
-    `${plural(patches.length, "salvaged workspace patch", "salvaged workspace patches")} kept for you (oldest ${formatAge(now - oldest.savedAt)}, ${oldest.file}): ${named}${more} — apply one by hand, or read one with \`tumwater salvage --show <n>\` or delete one with \`tumwater salvage --drop <n>\` before session retention prunes them`,
+    `${plural(patches.length, "salvaged workspace patch", "salvaged workspace patches")} kept for you (oldest ${formatAge(now - oldest.savedAt)}, ${oldest.file}): ${named}${more} — apply one with \`tumwater salvage --apply <n>\`, or read one with \`tumwater salvage --show <n>\` or delete one with \`tumwater salvage --drop <n>\` before session retention prunes them`,
   );
 }

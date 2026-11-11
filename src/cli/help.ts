@@ -360,7 +360,7 @@ Usage:
                                    {released: {position, test}} in place of the prose
                                    acknowledgement; --show <n> --json prints that entry's
                                    object
-  tumwater salvage [-f/--follow] [--grep <text>] [--show <n>] [--drop <n>] [--apply <n>] [--json]
+  tumwater salvage [-f/--follow] [--grep <text>] [--show <n>] [--drop <n>] [--apply <n> [--dry-run]] [--json]
                                    List the workspace patches kept for you under
                                    .tumwater/salvage/ — a settled run's discarded edits or a
                                    verification's scratch output — as the doctor's "salvage
@@ -397,7 +397,15 @@ Usage:
                                    checkout, refuses when the patch does not apply cleanly
                                    (changing no files), and never commits or deletes the
                                    patch, printing "applied salvaged workspace patch <n>:
-                                   <file>" (or { applied: { position, file } } with --json)
+                                   <file>" (or { applied: { position, file } } with --json);
+                                   --apply <n> --dry-run asks the apply's git apply --check
+                                   question alone and writes nothing — it needs a git checkout,
+                                   prints "would apply …" and exits 0 when the patch fits
+                                   ("nothing was written"), and fails (exit 1) with the apply's
+                                   refusal when it no longer does ("no files were changed");
+                                   --json prints { dryRun: true, position, file, applies },
+                                   exit 1 when applies is false; --dry-run is an unknown flag
+                                   on the list, --show and --drop
   tumwater archive [--dry-run] [--json]
                                    Move the finished entries still under PLANS.md ## Done and
                                    BUGS.md ## Fixed to the top of PLANS-DONE.md and BUGS-FIXED.md

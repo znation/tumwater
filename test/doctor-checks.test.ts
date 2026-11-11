@@ -659,8 +659,10 @@ test("checkSalvagePatches ok with no direct patch, warn naming count and age for
   assert.match(out.detail, /1 salvaged workspace patch kept for you/);
   assert.match(out.detail, /oldest 1h/);
   assert.match(out.detail, /1\. a\.patch/);
+  assert.match(out.detail, /tumwater salvage --apply/);
   assert.match(out.detail, /tumwater salvage --show/);
   assert.match(out.detail, /tumwater salvage --drop/);
+  assert.doesNotMatch(out.detail, /apply one by hand/, "the remedy names --apply, not a hand git apply");
 
   // Two patches name each under its oldest-first position, so a printed name is directly
   // addressable by the `--show <n>` / `--drop <n>` the remedy names.
