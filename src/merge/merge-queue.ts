@@ -11,17 +11,15 @@ import { mergeQueueDir, legacyLandQueueDir } from "../paths.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import type { MergeClaim } from "./merge-withdrawn.js";
 
-/** The durable merge queue (plans/merge-queue.md 3/5): a changed run commits, pins its sha by
- * `refs/tumwater/landing/<role>`, and enqueues one entry here — then the run ENDS, holding no
- * author slot through review or the build check. The orchestrator drains the queue through its
- * merge pipeline (merge-drain.ts): it verifies every queued entry, merges the approved ones in
- * queue order on one merge slot, and drops each entry after EVERY outcome (a non-terminal one
- * keeps the merge ref, so the retry rides next-run leftover recovery at normal cadence — the
- * queue never retries). Timestamped filenames order the queue across processes; a crash between
- * enqueue and drop loses nothing — the next start drains the survivors, deduping shas main
- * already holds. Same reasons the director's inbox is a directory of files (inbox.ts). The
- * entry's shape (MergeEntry) lives here beside the queue's reader/writer — moved out of the
- * types.ts grab-bag. */
+/** The durable merge queue (plans/merge-queue.md 3/5): one file per entry under
+ * `.tumwater/merge-queue/` — the shape a changed run of an older build left when it committed,
+ * pinned its sha by `refs/tumwater/landing/<role>` and enqueued an entry. Current builds write
+ * no queue file: the pin is the waiting state and the merge drain reads only the live merge
+ * pins, so a queue file an older build left starts no merge (parts 1b/3 onward subtract the
+ * queue — readers move to the pin and the module goes with part 3/3). Timestamped filenames
+ * order the queue across processes. Same reasons the director's inbox is a directory of files
+ * (inbox.ts). The entry's shape (MergeEntry) lives here beside the queue's reader/writer —
+ * moved out of the types.ts grab-bag. */
 
 /** The review that rejected the change a revision is revising (plans/revise-rejected.md part
  * 2/2): the rejected head and the numbered objections the reviewer named. It rides the queued
@@ -72,7 +70,9 @@ export interface MergeEntry {
   priorReview?: PriorReview;
   /** Earliest time (epoch ms) the gate-then-merge task may start, absent for an entry that is
    * ready at once. Set on the pipeline's own re-queue of a `review_error` change, so a flaky
-   * reviewer is not hit again within 60 s; the serial drain skips the entry until then. */
+   * reviewer is not hit again within 60 s. The drain no longer reads the queue (parts 1b/3
+   * onward), so the field now rides until the requeue path that set it goes (part 1c/3); the
+   * display readers still show the deferral. */
   notBefore?: number;
   /** The retriable result (`merge_blocked`, `review_error`, `merge_conflict`) whose
    * attempt this entry re-queues, absent for an author's or a recovery's entry. Logged on the
@@ -97,8 +97,7 @@ let seq = 0;
  * counter and pid break ties within one process. Written atomically (tmp + rename): the
  * enqueue runs while the process can be hard-killed mid-write (the run deadline's
  * process-group kill, a shutdown), and a torn entry the crash left behind is not always
- * recoverable — the drain repairs only an unreadable HEAD (staleHeadFile), so a torn file
- * that sorts after a healthy entry would sit in the queue dir unread forever. */
+ * recoverable: it sits in the queue dir unread forever. */
 export function enqueueMerge(root: string, entry: MergeEntry): void {
   const dir = mergeQueueDir(root);
   const name = queueFileName(entry.enqueuedAt, seq++, ".json");
@@ -247,10 +246,9 @@ function readEntry(file: string): MergeEntry | null {
   }, (e) => ({ ...e }));
 }
 
-/** Every queued merge in execution order (oldest first) paired with the file to drop on
- * completion. The batch drain (merge queue 5/5) reads this slice because `dropMerge` needs
- * the file, which the bare-entry readers never return. A missing queue directory reads as an
- * empty queue. */
+/** Every queued merge in execution order (oldest first) paired with its file — `dropMerge`
+ * needs the file, which the bare-entry readers never return. A missing queue directory reads
+ * as an empty queue. */
 export function queuedMergeFiles(root: string): { entry: MergeEntry; file: string }[] {
   const out: { entry: MergeEntry; file: string }[] = [];
   for (const file of queueFiles(root)) {
@@ -301,9 +299,10 @@ export function readMergeQueue(root: string): MergeQueueView {
 
 /** The full path of every queue file `readMergeQueue` skips — torn, foreign, or vanished
  * mid-listing — in filename order. This names what `readMergeQueue.unreadable` counts, through
- * the same skip policy, so the count and the list cannot drift: nothing else ages a skipped
- * file (the drain repairs only an unreadable head), so each here is a stranded entry the
- * queue reader silently passes over. A missing queue directory reads as an empty list. */
+ * the same skip policy, so the count and the list cannot drift. The drain no longer reads the
+ * queue (parts 1b/3 onward), so a skipped file stays in the queue dir until the operator
+ * removes it; each here is a stranded file the queue reader silently passes over. A missing
+ * queue directory reads as an empty list. */
 export function unreadableMergeQueueFiles(root: string): string[] {
   const out: string[] = [];
   for (const file of queueFiles(root)) {
@@ -324,11 +323,9 @@ export function headMerge(root: string): { entry: MergeEntry; file: string } | n
 /** The oldest queue file when the queue is non-empty but its head is unreadable — torn or
  * foreign (a partial write an older build left, a hand-placed file) — i.e. when headMerge
  * reads null while the queue holds files; null when the queue is empty or its head is healthy.
- * The drain drops this file with a warning so the queue can drain: headMerge reads null for
- * it forever and nothing else will remove it, stranding every live entry behind it (each
- * author's interlock, the per-poll queued-roles set, pins its runs along with them). The
- * crashed entry's commit, if any, still lives in its merge ref — next-run leftover recovery
- * re-merges it — so the drop loses nothing recoverable from the file (BUGS.md 2026-09-16). */
+ * The drain no longer reads the queue (parts 1b/3 onward), so this is the test-only name of
+ * the oldest unreadable head; the crashed entry's commit, if any, still lives in its merge
+ * ref — next-run leftover recovery re-merges it (BUGS.md 2026-09-16). */
 export function staleHeadFile(root: string): string | null {
   const file = queueFiles(root)[0];
   if (!file) return null;

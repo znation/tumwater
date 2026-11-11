@@ -91,9 +91,8 @@ test("a torn or foreign file is skipped, never thrown on", () => {
   assert.equal(entries.length, 1, "unparseable files never surface");
   assert.equal(entries[0]!.role, "improve");
   // The torn file at the head holds the slot (the inbox.ts idiom): the head reads null, not
-  // an error, until it is cleared — the orchestrator's drain does that clearing (one warning
-  // per torn file), which merges the real entry (pinned in the orchestrator's drain e2e);
-  // here the test clears it by hand. Then the real entry surfaces.
+  // an error, until it is cleared. The drain no longer reads the queue (parts 1b/3 onward),
+  // so no poll clears it — here the test does, by hand. Then the real entry surfaces.
   assert.equal(headMerge(repo), null, "a torn head holds the slot without throwing");
   fs.rmSync(path.join(dir, "0000000000-000000-1.json"));
   const head = headMerge(repo);
@@ -111,13 +110,12 @@ test("an entry missing a required field is skipped like a torn one", () => {
   // and enqueuedAt are not: casting it as a MergeEntry handed the drain `undefined` for
   // each, which surfaced as a `tumwater-feature-undefined-review` session and an undefined
   // summary in the reviewer's prompt. It must read as no entry instead: the head is held (not
-  // merged), the drain is told to drop it as an unreadable head, and the real entry behind it
-  // still surfaces.
+  // merged), the unreadable head is named, and the real entry behind it still surfaces.
   const partial = path.join(dir, "0000000000-000000-1.json");
   fs.writeFileSync(partial, JSON.stringify({ role: "feature", sha: "b".repeat(40) }));
   assert.equal(queueDepth(repo), 2, "depth counts files, not parseable entries");
   assert.equal(headMerge(repo), null, "the partial head holds the slot without throwing");
-  assert.equal(staleHeadFile(repo), partial, "the drain is told to drop it");
+  assert.equal(staleHeadFile(repo), partial, "the unreadable head is named");
   assert.deepEqual(
     queuedMerges(repo).map((e) => e.role),
     ["improve"],
@@ -140,7 +138,7 @@ test("a required numeric field that is not finite is skipped like a torn one", (
   );
   assert.equal(queueDepth(repo), 2, "depth counts files, not parseable entries");
   assert.equal(headMerge(repo), null, "the non-finite head holds the slot without throwing");
-  assert.equal(staleHeadFile(repo), partial, "the drain is told to drop it");
+  assert.equal(staleHeadFile(repo), partial, "the unreadable head is named");
   assert.deepEqual(
     queuedMerges(repo).map((e) => e.role),
     ["improve"],
@@ -148,13 +146,13 @@ test("a required numeric field that is not finite is skipped like a torn one", (
   );
 });
 
-test("staleHeadFile names the unreadable head for the drain to drop, null otherwise", () => {
+test("staleHeadFile names the unreadable head, null otherwise", () => {
   const repo = makeRepo();
   assert.equal(staleHeadFile(repo), null, "an empty queue has no stale head");
   enqueueMerge(repo, entry("improve", "a".repeat(40)));
   assert.equal(staleHeadFile(repo), null, "a healthy head is not stale");
-  // A torn file that sorts BEFORE the real entry (an interrupted write of the same shape):
-  // the drain's repair target is its path, so it can drop it and move on.
+  // A torn file that sorts BEFORE the real entry (an interrupted write of the same shape)
+  // is the oldest unreadable file — the path the reader skips over forever.
   const dir = mergeQueueDir(repo);
   const torn = path.join(dir, "0000000000-000000-1.json");
   fs.writeFileSync(torn, '{"role": "improve", "sha": "');
@@ -180,8 +178,8 @@ test("the stat-keyed cache serves repeated reads and re-reads a changed file", (
   assert.equal(headMerge(repo)!.entry.summary, "rewritten");
 });
 
-test("queuedMergeFiles pairs each entry with its file in queue order — the batch drain's reader", () => {
-  // Merge queue 5/5: the batch slot reads this slice because dropMerge needs the file,
+test("queuedMergeFiles pairs each entry with its file in queue order — the paired-file reader", () => {
+  // Merge queue 5/5: this slice pairs each entry with the file dropMerge needs,
   // which the bare-entry readers never return.
   const repo = makeRepo();
   enqueueMerge(repo, entry("improve", "a".repeat(40)));
@@ -203,9 +201,8 @@ test("queuedMergeFiles pairs each entry with its file in queue order — the bat
 
 test("a failed enqueue write never leaves a torn queue entry behind", () => {
   const repo = makeRepo();
-  // Seed one healthy entry so a torn write of the NEXT entry sorts LAST in the queue — the
-  // position the drain's head-only repair (staleHeadFile) never reaches, where it would
-  // persist in the queue dir forever.
+  // Seed one healthy entry so a torn write of the NEXT entry sorts LAST in the queue, where
+  // the reader would skip it and it would persist in the queue dir forever.
   enqueueMerge(repo, entry("improve", "a".repeat(40)));
   // Model a process killed mid-write: the writer merges a partial prefix of the JSON, then
   // throws — the shape a SIGKILL between write and close leaves, and the one ENOSPC/EIO
@@ -219,9 +216,8 @@ test("a failed enqueue write never leaves a torn queue entry behind", () => {
   } finally {
     restore();
   }
-  // The seed is untouched and the partial never became a queue file. A non-head torn entry
-  // would be skipped by the content readers (queuedMerges) while the drain's head-only
-  // repair never removed it.
+  // The seed is untouched and the partial never became a queue file. A torn entry that
+  // survives an atomic write would be skipped by the content readers (queuedMerges).
   assert.deepEqual(queuedMerges(repo).map((e) => e.role), ["improve"]);
   assert.equal(queueDepth(repo), 1, "the failed enqueue left no file behind");
 });
