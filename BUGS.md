@@ -24,6 +24,49 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 **Suspected cause.** Classification and drop policy treat every no-verdict run as a content failure; there is no plain-text quota recognition anywhere in the chain, so a provider quota wall cascades through retry → drain → drop → BUGS.md filing.
 
+- A `Needs review …` hold note is recognized only in its exact `**…**` bold form; any other spelling is silently invisible (filed 2026-11-11 from ~/Desktop/tumwater-no-progress-bugs.md).
+
+**Symptom.** The feature role appended two plan-defect notes to PLANS.md (commit `9ca46d654`, 2026-11-11 00:38) without the bold span — lines starting `Needs review <date> by feature: plan defect — …`. The required template (`PLAN_DEFECT_NOTE`, src/roles/role-guidance.ts) is `**Needs review <YYYY-MM-DD> by feature: plan defect — <objection>**`; `NEEDS_REVIEW_PREFIX` is `"**Needs review "` and every matcher is a literal `trimmed.startsWith(NEEDS_REVIEW_PREFIX)`. Reproduced on current main (`dist/`):
+
+```
+entryHold({title, body:'Needs review 2026-11-11 by feature: plan defect — x'})  // → null (no hold)
+entryHold({…body:'**Needs review …**'})                                          // → "needs-review"
+```
+
+Result in the originating project: both planned entries stayed `ready`, the feature role read the notes and skipped both, and `planBacklogFull()` counted them eligible (target 2, eligible 2, full true), so the plan role — the only role chartered to retire a `plan defect` entry — deferred `plans-full` before its prompt was built. 20+ no-change runs over ~50 min; the wedge was bounded only by `DEFER_MAX_MS` (3 h).
+
+**Required behavior.** Match the note semantically, at one source of truth: accept the optional bold span (`**Needs review ` **and** `Needs review `) in `hasNoteLine`/`noteText`/`withoutNeedsReviewNotes` and every consumer derived from them (the eligibility index, `planBacklogFull`, `isPlanStalled`, `--release`). Validate at stage time: when a role's staged diff adds a line matching `/^\*{0,2}Needs review\b/` that does not match the exact template, warn (or refuse) in that run instead of silently mis-holding. Add a `doctor` stalled-entries near-miss row: a line starting `Needs review ` (no `**`) under `## Planned`/`## Open` is currently invisible to every reader — `checkStalledEntries` (src/doctor/doctor-backlog-plans.ts) classifies via `entryHold`/`isPlanStalled` and inherits this bug, so `tumwater doctor` reported `ok` while two holds were unreadable.
+
+**Suspected cause.** The hold grammar was defined as one literal prefix constant and the matchers never widened; nothing checks a written note against the template it must match to be seen.
+
+- `plan|bug --release` shares the same literal matcher, so the operator escape hatch fails on exactly the malformed notes it must lift (filed 2026-11-11 from ~/Desktop/tumwater-no-progress-bugs.md).
+
+**Symptom.** `backlog-release.ts` lifts a hold through `withoutNeedsReviewNotes`, whose guard is `raw.trimStart().startsWith(NEEDS_REVIEW_PREFIX)` — the same bold-only literal as the eligibility matchers. On a bare `Needs review …` line, `tumwater plan --release 1` fails with `plan #1 "…" carries no Refused or Needs review note`, leaving the operator no documented way to lift the hold that bug 1 made invisible.
+
+**Required behavior.** One semantic "this line is a hold" predicate shared by eligibility, release, the index and doctor (bug 1's fix); `--release` lifts a hold written without the bold span.
+
+- Non-node test runners produce "nameless" gate failures: `parseFailingTests` matches only node:test output (filed 2026-11-11 from ~/Desktop/tumwater-no-progress-bugs.md).
+
+**Symptom.** `FAILED_TEST_LINE` (src/build/build-check-report.ts) is `/^✖ (?!failing tests:)/`. A project whose declared check is `make check` running Python `unittest` prints `ERROR: test_x (module.Class)`, `FAIL: test_y (module)`, `FAILED (errors=5)` — none parsed. Reproduced on current main: `parseFailingTests('ERROR: test_x (m.C.test_x)\nFAILED (errors=1)')` → `[]`. Observed consequence: a red `make check` on main named no failing test, the `build_check` event carried no `failingTests`, and `namelessFailureResult` (src/review/review-precheck.ts) ran the gate at main's tip, found it red, and merged over a red main; the role's next-run note could not say what broke.
+
+**Required behavior.** Teach the parser the runner's formats — or make the patterns configurable (e.g. `check.testLinePatterns` or a small `check.runner` adapter) — so a Python (or other-runner) project names its failing tests. Persist the parsed names on the `build_check` event so a role's next-run note names what failed.
+
+**Suspected cause.** The parser hardcodes one runner's output format while the declared check (`check.command`, any `make …`) accepts arbitrary runners.
+
+- The bugfix "with the director" skip is re-derived from prose every run; no machine hold exists (filed 2026-11-11 from ~/Desktop/tumwater-no-progress-bugs.md).
+
+**Symptom.** The bugfix charter (src/roles/role-catalog.ts, bugfix `find` step 2, lines ~119–127) tells the model to skip an entry "whose newest Progress note names a director handoff" and that carries no `**Needs review … by director: …**` note. Nothing in the backlog index marks that state, so every run re-derives it from prose. One model (`codex/gpt-6-luna`) misread repeatedly: 25 consecutive `no_change` runs (00:00–01:05) while the director had already answered, `yieldMultiplier: 8`; the bug was fixed only when a later run on another model took the entry.
+
+**Required behavior.** A machine hold at handoff time: write a hold line (e.g. `**Director handoff <date>**`) beside the request file, have the index mark the entry `[blocked: with the director]`, and clear it when the director resolves — the request-file lifecycle (src/inbox/director-request.ts) already knows when the director ran (the request file's deletion marks that event), so the index can derive the hold from that state instead of asking the model to interpret the newest Progress note.
+
+**Suspected cause.** The handoff state exists only in prose; the entry stays eligible, so a model that misreads the note idles instead of being held.
+
+- `mainCheck` reports a verdict for a stale SHA, so a stale green reads as a verified tip (filed 2026-11-11 from ~/Desktop/tumwater-no-progress-bugs.md).
+
+**Symptom.** `tumwater status` showed `· full check green at b2281a6b, 59m ago · next in 37s` while main had advanced ~10 commits, including a red interval (`20d60750`/`fb169f9f`). The periodic full check is intended design; the badge (src/ui/badges.ts `mainCheckBadge`) already carries sha, age and next-due, but it does not say whether the named sha is still main's tip — a stale green reads as a statement about current main.
+
+**Required behavior.** Surface staleness: when `mainCheck.sha` is not the current tip (or when `mainCheck.nextDueAt` has passed while the verdict is green), mark the badge so a stale green is not mistaken for a verified tip — e.g. a `check due`/`tip advanced` suffix, or dropping the verdict word once the checked sha is no longer HEAD.
+
 ## Fixed
 
 ## Verified
