@@ -36,7 +36,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (v === "usage") fetchReport();
     if (v === "failures") fetchFailures();
     if (v === "pending") fetchPending();
-    if (v === "settings") { fetchSettings(); fetchDoctor(); fetchRetirable(); fetchBrief(); }
+    if (v === "settings") { fetchSettings(); fetchDoctor(); fetchSalvage(); fetchRetirable(); fetchBrief(); }
     // The band's "Open Health check" control asks for #doctorcard scrolled into view once the
     // Settings pane paints; buildSettingsView ran synchronously inside fetchSettings above, so
     // the card exists now. Only that control sets the flag, so a normal Settings tab never moves.
@@ -104,6 +104,10 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (retire) { ev.preventDefault(); confirmRetire(retire.dataset.role); }
     const enable = clickClosest(ev, "button[data-action='enable']");
     if (enable) { ev.preventDefault(); enableRole(enable.dataset.role); }
+    const salApply = clickClosest(ev, "button[data-action='salvage-apply']");
+    if (salApply) { ev.preventDefault(); salvageApplyClick(salApply.dataset.position); }
+    const salDrop = clickClosest(ev, "button[data-action='salvage-drop']");
+    if (salDrop) { ev.preventDefault(); salvageDropClick(salDrop.dataset.position); }
   });
   // The Health card's Problems only checkbox: repaint the cached report with only its warn
   // and fail rows (toggleDoctorProblems, gui-client-settings), without rerunning the checks.

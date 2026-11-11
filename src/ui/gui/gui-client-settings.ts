@@ -14,7 +14,12 @@
  * Commit backlog button POSTs /api/doctor-commit-backlog instead, the same commitUncommittedBacklog
  * `tumwater doctor --commit-backlog` runs; its Archive backlog button POSTs
  * /api/doctor-archive-backlog instead, the same archiveFinishedOnMain `tumwater archive` runs); a
- * third, "Disabled roles", lists every disabled role (GET /api/retire), each with an Enable
+ * third, "Salvaged patches", lists every workspace patch kept for the operator under
+ * `.tumwater/salvage/` (GET /api/salvage, the same collectSalvagePatches the CLI's list prints),
+ * each with a two-click Apply (POST /api/salvage-apply, the same operation as
+ * `tumwater salvage --apply <n>`) and Drop (POST /api/salvage-drop, the same operation as
+ * `tumwater salvage --drop <n>`); a
+ * fourth, "Disabled roles", lists every disabled role (GET /api/retire), each with an Enable
  * button (POST /api/role-enable) and — for a role that still keeps worktree/branch leftovers — a
  * two-click Retire button (POST /api/retire). */
 export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
@@ -82,6 +87,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<button type='button' class='btn btn-sm' data-action='doctor-retire-leftovers' title=\"Retire every disabled role's leftover worktree, branch and merge ref in one pass, like tumwater doctor --retire-leftovers (or tumwater retire --role <id> per role)\">Retire leftovers</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-archive-backlog' title=\"Move the finished entries under PLANS.md ## Done and BUGS.md ## Fixed into the archive files and commit them on main, like tumwater archive\">Archive backlog</button></div>" +
       "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>" +
+      "<div class='card' id='salvagecard'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='retirecard'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='briefcard'><div class='empty'>Loading…</div></div>");
   }
@@ -123,6 +129,64 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     doctorProblems = checked;
     const body = $("doctorbody");
     if (lastDoctor !== null) body.innerHTML = renderDoctorReport(lastDoctor, doctorProblems);
+  }
+  // The Salvaged patches card: every workspace patch kept for the operator under
+  // .tumwater/salvage/ (GET /api/salvage, the same collectSalvagePatches the CLI list prints)
+  // as a settings-row each with a two-click Apply (POST /api/salvage-apply) and Drop (POST
+  // /api/salvage-drop) — the same operations as tumwater salvage --apply <n> / --drop <n>, so
+  // an operator watching the dashboard can act on a patch without a shell. The single slot is
+  // keyed "apply:<n>"/"drop:<n>" per row, so one row's arm never fires another row's button.
+  let lastSalvage = null;
+  const salvageSlot = confirmSlot(paintSalvage);
+  function renderSalvage(d, armed) {
+    const rows = (d.patches || []).map((p) => {
+      const applyArmed = armed("apply:" + p.position);
+      const dropArmed = armed("drop:" + p.position);
+      return "<div class='settings-row'>" +
+        "<strong>" + p.position + ". " + esc(p.file) + "</strong>" +
+        "<span>saved " + fmtAgo(p.savedAt) + ", " + esc(p.size) + "</span>" +
+        "<button type='button' class='btn btn-sm' data-action='salvage-apply' data-position='" + p.position + "'>" +
+        (applyArmed ? "Confirm apply" : "Apply") + "</button>" +
+        "<button type='button' class='btn btn-sm' data-action='salvage-drop' data-position='" + p.position + "'>" +
+        (dropArmed ? "Confirm drop" : "Drop") + "</button></div>";
+    }).join("");
+    return "<div class='settings-row'><strong>Salvaged patches</strong><span>Workspace patches kept for you under <code>.tumwater/salvage/</code> — apply or drop the same way <code>tumwater salvage</code> does; applying never commits and never deletes the patch.</span></div>" +
+      (rows || "<div class='empty'>no salvaged workspace patches are kept for you</div>");
+  }
+  function paintSalvage() {
+    if (lastSalvage) $("salvagecard").innerHTML = renderSalvage(lastSalvage, salvageSlot.armed);
+  }
+  async function fetchSalvage() {
+    buildSettingsView();
+    try {
+      lastSalvage = await getJson("/api/salvage");
+      paintSalvage();
+    } catch (err) {
+      $("salvagecard").innerHTML = errorPanel("Salvaged patches could not load", err, "empty");
+    }
+  }
+  // The row's Apply button: the first click arms the row's slot (the card repaints the
+  // button as "Confirm apply") and nothing is applied; a second click within the confirm
+  // window posts { position } to /api/salvage-apply, flashes the server's message, and
+  // refetches the card.
+  async function salvageApplyClick(position) {
+    const key = "apply:" + position;
+    if (!salvageSlot.armed(key)) {
+      salvageSlot.arm(key);
+      return;
+    }
+    salvageSlot.disarm();
+    await postSetting("/api/salvage-apply", { position: Number(position) }, fetchSalvage, (d) => d.message);
+  }
+  // The row's Drop button: the same two-click shape against /api/salvage-drop.
+  async function salvageDropClick(position) {
+    const key = "drop:" + position;
+    if (!salvageSlot.armed(key)) {
+      salvageSlot.arm(key);
+      return;
+    }
+    salvageSlot.disarm();
+    await postSetting("/api/salvage-drop", { position: Number(position) }, fetchSalvage, (d) => d.message);
   }
   // The Disabled roles card: every role set to enabled: false (GET /api/retire), each with an
   // Enable button (POST /api/role-enable) and — for a role that still keeps a worktree, branch,

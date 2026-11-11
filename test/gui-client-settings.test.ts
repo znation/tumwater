@@ -25,6 +25,11 @@ interface SettingsFns {
   testNotify(): Promise<void>;
   fetchBrief(): Promise<void>;
   saveBrief(form: { querySelector(sel: string): { value: string } }): Promise<void>;
+  renderSalvage(d: unknown, armed: (key: string) => boolean): string;
+  fetchSalvage(): Promise<void>;
+  salvageApplyClick(position: string): Promise<void>;
+  salvageDropClick(position: string): Promise<void>;
+  paintSalvage(): void;
   renderRetirable(d: unknown, armed: (role: string) => boolean): string;
   fetchRetirable(): Promise<void>;
   enableRole(role: string): Promise<void>;
@@ -44,7 +49,7 @@ interface SettingsFns {
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "err-message", "settings-view", "format"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderSalvage", "fetchSalvage", "salvageApplyClick", "salvageDropClick", "paintSalvage", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -290,8 +295,11 @@ test("the settings region is spliced into the served script, and the boot routes
   assert.equal(GUI_CLIENT_JS.includes(clientRegion("settings-view")), true);
   // …and the boot's view table and switchView must fetch it.
   assert.match(GUI_CLIENT_BOOT_JS, /settings: "settings-view"/);
-  assert.match(GUI_CLIENT_BOOT_JS, /if \(v === "settings"\) \{ fetchSettings\(\); fetchDoctor\(\); fetchRetirable\(\); fetchBrief\(\); \}/);
+  assert.match(GUI_CLIENT_BOOT_JS, /if \(v === "settings"\) \{ fetchSettings\(\); fetchDoctor\(\); fetchSalvage\(\); fetchRetirable\(\); fetchBrief\(\); \}/);
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='retire'\]/);
+  // The salvage card's per-patch buttons are delegated like the retire ones.
+  assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='salvage-apply'\]/);
+  assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='salvage-drop'\]/);
   assert.match(GUI_CLIENT_BOOT_JS, /data-action='doctor-rerun'/);
   // …and the boot carries the Clear click selector beside the Save submit wiring.
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='unset'\]/);
@@ -427,6 +435,127 @@ test("a submit on form.brief-form routes to saveBrief, and the settings listener
   assert.match(GUI_CLIENT_BOOT_JS, /clickClosest\(ev, "form\.brief-form"\)[\s\S]*?saveBrief\(form\)/);
   assert.match(GUI_CLIENT_BOOT_JS, /clickClosest\(ev, "form\.settings-row"\)[\s\S]*?saveSetting\(form\)/);
   assert.doesNotMatch(clientRegion("settings-view").slice(clientRegion("settings-view").indexOf("async function fetchBrief")), /settings-row/);
+});
+
+test("renderSalvage renders one row per patch with Apply and Drop, the empty sentence, and the confirm labels", () => {
+  const { renderSalvage } = settingsScope();
+  // An empty list is the CLI's empty sentence, no rows.
+  assert.match(renderSalvage({ patches: [] }, () => false), /no salvaged workspace patches are kept for you/);
+  assert.doesNotMatch(renderSalvage({ patches: [] }, () => false), /data-action='salvage-apply'/);
+  // Two patches: each row carries its position, file, saved-ago, size and both buttons.
+  const now = Date.now();
+  const d = { patches: [
+    { position: 1, file: "a.patch", savedAt: now - 3 * 3600_000, bytes: 38, size: "38 B" },
+    { position: 2, file: "b.patch", savedAt: now - 1000, bytes: 17, size: "17 B" },
+  ] };
+  const html = renderSalvage(d, () => false);
+  assert.match(html, /<strong>1\. a\.patch<\/strong>/);
+  assert.match(html, /saved 3h ago, 38 B/);
+  assert.match(html, /data-action='salvage-apply' data-position='1'>Apply<\/button>/);
+  assert.match(html, /data-action='salvage-drop' data-position='1'>Drop<\/button>/);
+  assert.match(html, /data-action='salvage-apply' data-position='2'>Apply<\/button>/);
+  // A file with HTML is esc'd.
+  const bad = renderSalvage({ patches: [{ position: 1, file: "<x>.patch", savedAt: now, bytes: 5, size: "5 B" }] }, () => false);
+  assert.match(bad, /&lt;x&gt;\.patch/);
+  // The armed apply key repaints only its own Apply button as a confirm; the same position's
+  // Drop button stays un-armed.
+  assert.match(renderSalvage(d, (k) => k === "apply:1"), /data-action='salvage-apply' data-position='1'>Confirm apply<\/button>/);
+  assert.doesNotMatch(renderSalvage(d, (k) => k === "apply:1"), /data-position='1'>Confirm drop<\/button>/);
+  assert.match(renderSalvage(d, (k) => k === "drop:2"), /data-action='salvage-drop' data-position='2'>Confirm drop<\/button>/);
+});
+
+test("fetchSalvage loads GET /api/salvage and paints the card; a failure renders the error panel", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard", "retirecard", "briefcard", "doctorcard"]) els[id] = { innerHTML: "", dataset: {} };
+  const { fetchSalvage } = settingsScope({
+    $: (id: string) => els[id],
+    getJson: async (path: string) => {
+      assert.equal(path, "/api/salvage");
+      return { patches: [{ position: 1, file: "a.patch", savedAt: Date.now(), bytes: 38, size: "38 B" }] };
+    },
+  });
+  await fetchSalvage();
+  assert.match(els["salvagecard"]!.innerHTML, /<strong>1\. a\.patch<\/strong>/);
+  assert.match(els["salvagecard"]!.innerHTML, /data-action='salvage-apply' data-position='1'>Apply<\/button>/);
+  // A GET that fails renders the card's error panel, not a crash.
+  const els2: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard"]) els2[id] = { innerHTML: "", dataset: {} };
+  const { fetchSalvage: fetchFail } = settingsScope({
+    $: (id: string) => els2[id],
+    getJson: async () => { throw { message: "salvage read failed" }; },
+    errorPanel: () => "<div class='empty'>salvage error panel</div>",
+  });
+  await fetchFail();
+  assert.equal(els2["salvagecard"]!.innerHTML, "<div class='empty'>salvage error panel</div>");
+});
+
+test("salvageApplyClick arms on the first click and posts { position } to /api/salvage-apply on the second", async () => {
+  const flashes: string[] = [];
+  const posts: Array<{ path: string; body: unknown }> = [];
+  let refetched = 0;
+  let armedKey: string | null = null;
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard", "retirecard", "briefcard"]) els[id] = { innerHTML: "", dataset: {} };
+  const { salvageApplyClick, salvageDropClick } = settingsScope({
+    confirmSlot: () => ({
+      armed: (k: string) => armedKey === k,
+      arm: (k: string) => { armedKey = k; },
+      disarm: () => { armedKey = null; },
+    }),
+    $: (id: string) => els[id],
+    getJson: async () => { refetched++; return { patches: [] }; },
+    postJson: async (path: string, body: unknown) => {
+      posts.push({ path, body });
+      const position = (body as { position: number }).position;
+      return path === "/api/salvage-drop"
+        ? { ok: true, message: `dropped salvaged workspace patch ${position}: a.patch` }
+        : { ok: true, message: `applied salvaged workspace patch ${position}: a.patch` };
+    },
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await salvageApplyClick("1");
+  assert.deepEqual(posts, [], "the first click only arms");
+  assert.equal(armedKey, "apply:1");
+  await salvageApplyClick("1");
+  assert.deepEqual(posts, [{ path: "/api/salvage-apply", body: { position: 1 } }]);
+  assert.deepEqual(flashes, ["applied salvaged workspace patch 1: a.patch"]);
+  assert.equal(refetched, 1, "the card refetches after the apply");
+  // A different position posts its own position, not the first's.
+  posts.length = 0;
+  await salvageApplyClick("2");
+  await salvageApplyClick("2");
+  assert.deepEqual(posts, [{ path: "/api/salvage-apply", body: { position: 2 } }]);
+  // Drop posts to the drop endpoint with the same two-click shape.
+  posts.length = 0;
+  flashes.length = 0;
+  await salvageDropClick("1");
+  assert.deepEqual(posts, [], "the first drop click only arms");
+  await salvageDropClick("1");
+  assert.deepEqual(posts, [{ path: "/api/salvage-drop", body: { position: 1 } }]);
+  assert.deepEqual(flashes, ["dropped salvaged workspace patch 1: a.patch"]);
+});
+
+test("salvageApplyClick flashes the server's error and still refetches when the post rejects", async () => {
+  const flashes: string[] = [];
+  let refetched = 0;
+  let armedKey: string | null = null;
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard", "retirecard", "briefcard"]) els[id] = { innerHTML: "", dataset: {} };
+  const { salvageApplyClick } = settingsScope({
+    confirmSlot: () => ({
+      armed: (k: string) => armedKey === k,
+      arm: (k: string) => { armedKey = k; },
+      disarm: () => { armedKey = null; },
+    }),
+    $: (id: string) => els[id],
+    getJson: async () => { refetched++; return { patches: [] }; },
+    postJson: async () => { throw { message: "salvage --apply needs a git checkout" }; },
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await salvageApplyClick("1");
+  await salvageApplyClick("1");
+  assert.equal(flashes[flashes.length - 1]!, "error: salvage --apply needs a git checkout");
+  assert.equal(refetched, 1, "a failed apply still refetches the card");
 });
 
 test("renderRetirable renders an Enable button for every row, a Retire button only for the leftover row, and esc's ids", () => {
