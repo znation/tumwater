@@ -499,7 +499,7 @@ test("config get/set arg shapes, repo gating, and the help table", async () => {
   // Anything that is not get/set/unset/--diff fails with the usage, whatever the arity.
   let r = await cli(repo, "config", "--anything");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /usage: tumwater config \[get <key> \| set <key> <value> \[--json\] \| unset <key> \[--json\] \| --diff\]/);
+  assert.match(r.stderr, /usage: tumwater config \[get <key> \| set <key> <value> \[--json\] \| unset <key> \[--json\] \| edit \[--file <path>\] \[--json\] \| --diff\]/);
   r = await cli(repo, "config", "show");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /usage: tumwater config/);
@@ -542,7 +542,7 @@ test("config get/set arg shapes, repo gating, and the help table", async () => {
 
   const help = await cli(repo, "help");
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /tumwater config \[get <key> \| set <key> <value> \[--json\] \| unset <key> \[--json\] \| --diff\]\s+Show the effective config/);
+  assert.match(help.stdout, /tumwater config \[get <key> \| set <key> <value> \[--json\] \| unset <key> \[--json\] \| edit \[--file <path>\] \[--json\] \| --diff\]\s+Show the effective config/);
 
   // Outside an initialized repo the ready-repo gate fires before any config is read.
   const bare = makeRepo();
@@ -563,7 +563,7 @@ test("config --diff prints only the non-default settings and refuses an extra to
   // An extra token after --diff is refused with CONFIG_USAGE and writes no JSON.
   const extra = await cli(repo, "config", "--diff", "extra");
   assert.equal(extra.code, 1);
-  assert.match(extra.stderr, /usage: tumwater config \[get <key> \| set <key> <value> \[--json\] \| unset <key> \[--json\] \| --diff\]/);
+  assert.match(extra.stderr, /usage: tumwater config \[get <key> \| set <key> <value> \[--json\] \| unset <key> \[--json\] \| edit \[--file <path>\] \[--json\] \| --diff\]/);
   assert.equal(extra.stdout, "", "a refused invocation writes no JSON");
 
   // Outside an initialized repo the ready-repo gate fires, exactly as for bare config.

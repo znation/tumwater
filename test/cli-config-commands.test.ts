@@ -5,7 +5,7 @@ import path from "node:path";
 import { cmdConfig, CONFIG_USAGE } from "../src/cli/cli-config-commands.js";
 import { attemptAsync } from "./helpers/exit-capture.js";
 import { readJson } from "./helpers/json-read.js";
-import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
+import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 
 // cmdConfig is the `tumwater config` command's CLI shell around loadConfigSafe and
 // setConfigKey. cli.test.ts drives it end-to-end through the CLI child; these tests pin the
@@ -669,4 +669,111 @@ test("a bare set with a --json value is not peeled and fails as the flag-looking
   assert.equal(out.stdout, "", "the flag-looking value is refused before any write");
   assert.match(out.stderr, /flag-looking value "--json"/);
   assert.equal(fs.readFileSync(file, "utf8"), before);
+});
+
+// config edit — the whole-file replacement behind `tumwater config edit --file`. The --file
+// path reads a file and locks the config (no child process), so the in-process capture is safe
+// (exit-capture.ts's scope note); the editor form (which spawns $EDITOR) is covered
+// child-level in cli.test.ts.
+function replacementFile(obj: unknown): string {
+  const p = path.join(tmpdir(), "replacement.json");
+  fs.writeFileSync(p, JSON.stringify(obj, null, 2) + "\n");
+  return p;
+}
+
+test("config edit --file replaces the whole config, prints updated, and get reads each new value", async () => {
+  const root = makeRepo();
+  writeConfig(root, { maxConcurrent: 3 });
+  const file = path.join(root, "tumwater.json");
+  const rep = replacementFile({ maxConcurrent: 7, model: "gpt-5" });
+  const out = await attemptAsync(() => cmdConfig(root, ["edit", "--file", rep]));
+  assert.ok(!out.exited, "a valid replacement succeeds");
+  assert.equal(out.stdout, `config updated in tumwater.json\n`);
+  assert.equal(fs.readFileSync(file, "utf8"), JSON.stringify({ maxConcurrent: 7, model: "gpt-5" }, null, 2) + "\n", "the file is the serialized replacement");
+  const m = await attemptAsync(() => cmdConfig(root, ["get", "model"]));
+  assert.equal(m.stdout, '"gpt-5"\n');
+  const c = await attemptAsync(() => cmdConfig(root, ["get", "maxConcurrent"]));
+  assert.equal(c.stdout, "7\n");
+});
+
+test("config edit --file --json prints one acknowledgement object with no prose", async () => {
+  const root = makeRepo();
+  writeConfig(root, { maxConcurrent: 3 });
+  const file = path.join(root, "tumwater.json");
+  const rep = replacementFile({ maxConcurrent: 5, model: "gpt-5" });
+  const out = await attemptAsync(() => cmdConfig(root, ["edit", "--file", rep, "--json"]));
+  assert.ok(!out.exited);
+  assert.equal(
+    out.stdout,
+    '{"command":"config","action":"edit","file":"tumwater.json","status":"set"}\n',
+    "the ack object is the whole stdout",
+  );
+  assert.equal(fs.readFileSync(file, "utf8"), JSON.stringify({ maxConcurrent: 5, model: "gpt-5" }, null, 2) + "\n");
+  // Re-running the identical replacement is unchanged and leaves the file byte-identical.
+  const before = fs.readFileSync(file, "utf8");
+  const again = await attemptAsync(() => cmdConfig(root, ["edit", "--file", rep, "--json"]));
+  assert.ok(!again.exited);
+  assert.equal(again.stdout, '{"command":"config","action":"edit","file":"tumwater.json","status":"unchanged"}\n');
+  assert.equal(fs.readFileSync(file, "utf8"), before, "the file stays byte-identical on a no-op re-run");
+});
+
+test("config edit --file of an unreadable path fails naming it, leaving the file byte-identical", async () => {
+  const root = makeRepo();
+  writeConfig(root, { maxConcurrent: 3 });
+  const file = path.join(root, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+  const missing = path.join(tmpdir(), "does-not-exist.json");
+  const out = await attemptAsync(() => cmdConfig(root, ["edit", "--file", missing]));
+  assert.ok(out.exited && out.code === 1);
+  assert.match(out.stderr, /cannot read config file/);
+  assert.match(out.stderr, new RegExp(missing.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.equal(out.stdout, "", "a failed edit prints no JSON or prose");
+  assert.equal(fs.readFileSync(file, "utf8"), before);
+});
+
+test("config edit --file of an invalid replacement fails with the validation problem, leaving the file byte-identical", async () => {
+  const root = makeRepo();
+  writeConfig(root, { maxConcurrent: 3 });
+  const file = path.join(root, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+  const bad = replacementFile({ maxConcurrent: 0 });
+  const out = await attemptAsync(() => cmdConfig(root, ["edit", "--file", bad, "--json"]));
+  assert.ok(out.exited && out.code === 1);
+  assert.match(out.stderr, /maxConcurrent/);
+  assert.equal(out.stdout, "", "a failed edit prints no JSON");
+  assert.equal(fs.readFileSync(file, "utf8"), before, "the file stays byte-identical");
+});
+
+test("config edit --file refuses a flag-looking path", async () => {
+  const root = makeRepo();
+  const out = await attemptAsync(() => cmdConfig(root, ["edit", "--file", "--bogus"]));
+  assert.ok(out.exited && out.code === 1);
+  assert.match(out.stderr, /--file needs a value/);
+  assert.match(out.stderr, /--bogus/);
+});
+// The no-`--file` (editor) form is covered end-to-end through the CLI child in cli.test.ts
+// (with a controlled $EDITOR); it must not run in-process, because editInEditor spawns the
+// real editor with stdio inherited, which a $EDITOR set in the host environment would turn into
+// an interactive TTY under this runner (exit-capture.ts's scope limit).
+
+// Re-assert the no-`--file` guard at the unit level with a fake $EDITOR set to a program that
+// exits cleanly without a TTY, so the no-editor path is pinned without launching a real editor.
+test("config edit with no --file and no editor fails with the no-editor hint", async () => {
+  const root = makeRepo();
+  writeConfig(root, { maxConcurrent: 3 });
+  const file = path.join(root, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+  const savedVisual = process.env.VISUAL;
+  const savedEditor = process.env.EDITOR;
+  delete process.env.VISUAL;
+  delete process.env.EDITOR;
+  try {
+    const out = await attemptAsync(() => cmdConfig(root, ["edit"]));
+    assert.ok(out.exited && out.code === 1);
+    assert.match(out.stderr, /no editor: set \$VISUAL or \$EDITOR, or pass --file <path>/);
+    assert.equal(fs.readFileSync(file, "utf8"), before);
+  } finally {
+    if (savedVisual !== undefined) process.env.VISUAL = savedVisual;
+    if (savedEditor !== undefined) process.env.EDITOR = savedEditor;
+  }
 });

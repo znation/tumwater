@@ -174,15 +174,19 @@ the file had none); the director's config request (`applyConfigRequest`, in `con
 stripping the entries of custom roles it removes. A dotted `roles.<id>.<field>` write updates
 only that field and leaves the file's other role entries untouched. No such edit re-expands the
 built-in catalog into tumwater.json; `roles` still merges per entry at load, so omission never
-disables a role and the dotted `roles.<id>.enabled false` is the disable verb.
+disables a role and the dotted `roles.<id>.enabled false` is the disable verb. The whole-file
+writer behind `config edit` (`replaceConfigText`) writes exactly the object the editor (or `--file`)
+supplied, so a `roles` section in the saved buffer is written verbatim — no such write re-expands
+the built-in catalog either, because it never merges the catalog into what it lands.
 
-**Binds.** `src/config/config-write.ts` (`setConfigKey`, `unsetConfigKey`, `setDailyBudgetUsd`),
-`src/config/config-write-core.ts` (`preserveFileRoles`) and `src/config/config-request.ts`
-(`applyConfigRequest`).
+**Binds.** `src/config/config-write.ts` (`setConfigKey`, `unsetConfigKey`, `setDailyBudgetUsd`,
+`replaceConfigText`), `src/config/config-write-core.ts` (`preserveFileRoles`) and
+`src/config/config-request.ts` (`applyConfigRequest`).
 
 **Pinned by.** `test/config-write.test.ts` — "a whole-config write preserves the file's own
-roles section", "a whole-config write does not add a roles section the file never had", and
-"dotted writes preserve the file's own roles section" — and `test/config-request.test.ts` —
+roles section", "a whole-config write does not add a roles section the file never had",
+"dotted writes preserve the file's own roles section", and "a whole-config replaceConfigText
+keeps the file's own roles section verbatim" — and `test/config-request.test.ts` —
 "applyConfigRequest preserves the file's own roles section".
 
 ### INV-B4: an unreadable event feed is named, not rendered as idle

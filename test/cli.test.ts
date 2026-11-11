@@ -6,7 +6,7 @@ import { initProject } from "../src/init/init.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { readBriefText } from "../src/brief/brief.js";
 import { defaultConfig } from "../src/config/config.js";
-import { assertClean, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
+import { assertClean, initializedRepo, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
 import { cli, cliWithEnv } from "./helpers/cli-harness.js";
 import { seedCounters } from "./fixtures/runner-fixtures.js";
@@ -589,4 +589,90 @@ test("status --json prints the /api/status payload; bare status keeps the table"
   r = await cli(repo, "status", "--jsonn");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --jsonn/);
+});
+
+// `config edit` (editor form) and its arity gate, driven end-to-end through the CLI child. The
+// editor form spawns $EDITOR, so it is captured at the child level (the in-process
+// --file/--json shapes live in cli-config-commands.test.ts, where no child is spawned).
+/** An editor stub: a node script recording the buffer it received, then running `body`. */
+function editorStub(name: string, body: string): { env: NodeJS.ProcessEnv; received: string } {
+  const dir = tmpdir("tumwater-stub-");
+  const received = path.join(dir, `${name}.received`);
+  const script = path.join(dir, `${name}.cjs`);
+  fs.writeFileSync(
+    script,
+    `const fs = require("fs"); const file = process.argv[2];\n` +
+      `fs.writeFileSync(${JSON.stringify(received)}, fs.readFileSync(file, "utf8"));\n${body}\n`,
+  );
+  return { env: { EDITOR: `"${process.execPath}" "${script}"` }, received };
+}
+
+test("config edit (editor form) saves a changed buffer, prints updated, and get reads each value", async () => {
+  const repo = await initializedRepo();
+  writeConfig(repo, { maxConcurrent: 3 });
+  const file = path.join(repo, "tumwater.json");
+  const initial = fs.readFileSync(file, "utf8"); // snapshot before the stub rewrites the file
+  const s = editorStub(
+    "cfg-changed",
+    `fs.writeFileSync(file, JSON.stringify({ maxConcurrent: 9, model: "gpt-5" }, null, 2) + "\\n");`,
+  );
+  const r = await cliWithEnv(repo, s.env, ["config", "edit"]);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /config updated in tumwater\.json/);
+  // editInEditor hands the editor the current file with a trailing newline appended.
+  assert.equal(fs.readFileSync(s.received, "utf8"), initial + "\n", "the editor received the current file");
+  const m = await cli(repo, "config", "get", "model");
+  assert.equal(m.stdout, '"gpt-5"\n');
+  const c = await cli(repo, "config", "get", "maxConcurrent");
+  assert.equal(c.stdout, "9\n");
+  assert.equal(fs.readFileSync(file, "utf8"), JSON.stringify({ maxConcurrent: 9, model: "gpt-5" }, null, 2) + "\n", "the file is the saved buffer");
+});
+
+test("config edit (editor form) of an unmodified buffer prints unchanged and leaves the bytes identical", async () => {
+  const repo = await initializedRepo();
+  writeConfig(repo, { maxConcurrent: 3 });
+  const file = path.join(repo, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+  const s = editorStub("cfg-same", ""); // records the buffer, leaves it untouched
+  const r = await cliWithEnv(repo, s.env, ["config", "edit"]);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /config unchanged/);
+  assert.equal(fs.readFileSync(file, "utf8"), before, "the file stays byte-identical");
+});
+
+test("config edit (editor form) of an invalid buffer exits 1 and leaves the bytes identical", async () => {
+  const repo = await initializedRepo();
+  writeConfig(repo, { maxConcurrent: 3 });
+  const file = path.join(repo, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+  const s = editorStub("cfg-bad", `fs.writeFileSync(file, JSON.stringify({ maxConcurrent: 0 }) + "\\n");`);
+  const r = await cliWithEnv(repo, s.env, ["config", "edit"]);
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /maxConcurrent/);
+  assert.equal(fs.readFileSync(file, "utf8"), before, "the file stays byte-identical on an invalid buffer");
+});
+
+test("config edit with no editor exits 1 with the hint and leaves the bytes identical", async () => {
+  const repo = await initializedRepo();
+  writeConfig(repo, { maxConcurrent: 3 });
+  const file = path.join(repo, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+  const r = await cliWithEnv(repo, { VISUAL: "", EDITOR: "" }, ["config", "edit"]);
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /no editor: set \$VISUAL or \$EDITOR, or pass --file <path>/);
+  assert.equal(fs.readFileSync(file, "utf8"), before);
+});
+
+test("config edit arity: a missing --file path and a surplus token fail with the config usage, and a typo suggests edit", async () => {
+  const repo = await initializedRepo();
+  writeConfig(repo, { maxConcurrent: 3 });
+  let r = await cli(repo, "config", "edti");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /did you mean `edit`/);
+  r = await cli(repo, "config", "edit", "--file");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /usage: tumwater config/);
+  r = await cli(repo, "config", "edit", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /usage: tumwater config/);
 });

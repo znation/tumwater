@@ -13,7 +13,7 @@ import path from "node:path";
 import { readJson } from "./helpers/json-read.js";
 import { spawnLockHolder, stopChild } from "./helpers/child-process.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { setConfigKey, unsetConfigKey, setDailyBudgetUsd, setRoleModelFields } from "../src/config/config-write.js";
+import { setConfigKey, unsetConfigKey, setDailyBudgetUsd, setRoleModelFields, replaceConfigText } from "../src/config/config-write.js";
 import { parseConfigKey } from "../src/config/config-keys.js";
 import { helpTopic } from "../src/cli/help.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
@@ -793,4 +793,76 @@ test("an unrelated-key write leaves an absent check.mergeCommand absent", () => 
   assert.ok(setConfigKey(dir, "minRunIntervalSeconds", "45").ok);
   const raw = readJson(file) as Record<string, { mergeCommand?: unknown }>;
   assert.ok(!("mergeCommand" in (raw.check ?? {})), "mergeCommand stays absent from the file");
+});
+
+// replaceConfigText — the whole-file writer behind `config edit`: parse, validate, and
+// atomically replace the whole tumwater.json, so a multi-key change goes through the same lock
+// and validation as the per-key verbs instead of a hand edit. It writes exactly the object
+// supplied, so a partial `roles` section is preserved verbatim (INV-B3) rather than
+// re-expanded, and a write is byte-exact (two-space JSON + trailing newline) or a no-op.
+const canonical = (value: unknown) => JSON.stringify(value, null, 2) + "\n";
+
+test("replaceConfigText writes canonical two-space JSON with a trailing newline and reports changed", () => {
+  const dir = tmpdir();
+  saveConfig(dir, defaultConfig());
+  const file = path.join(dir, "tumwater.json");
+  const replacement = { maxConcurrent: 7, model: "gpt-5" };
+  const r = replaceConfigText(dir, canonical(replacement));
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.equal((r as { changed: boolean }).changed, true);
+  assert.equal(fs.readFileSync(file, "utf8"), canonical(replacement), "the file is the serialized replacement");
+  const back = readJson(file) as Record<string, unknown>;
+  assert.equal(back.maxConcurrent, 7);
+  assert.equal(back.model, "gpt-5");
+});
+
+test("re-supplying replaceConfigText the same content (whitespace-only apart) reports unchanged and leaves the bytes identical", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "tumwater.json");
+  // Seed the file as the canonical (two-space) serialization of a small object — known bytes.
+  fs.writeFileSync(file, JSON.stringify({ maxConcurrent: 3 }, null, 2) + "\n");
+  const before = fs.readFileSync(file, "utf8");
+  // Re-serialize the SAME object with different whitespace (a hand-edited file) — it is
+  // byte-different from `before` but canonical-equal, so the accepted serialization matches.
+  const resupplied = JSON.stringify({ maxConcurrent: 3 }, null, 4) + "\n";
+  const r = replaceConfigText(dir, resupplied);
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.equal((r as { changed: boolean }).changed, false, "a whitespace-only difference folds away");
+  assert.equal(fs.readFileSync(file, "utf8"), before, "the file stays byte-identical");
+});
+
+test("replaceConfigText refuses malformed JSON, a non-object, and an invalid value, each leaving the bytes identical", () => {
+  const dir = tmpdir();
+  saveConfig(dir, { ...defaultConfig(), maxConcurrent: 3 });
+  const file = path.join(dir, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+  const cases: Array<[string, RegExp]> = [
+    ["{ not json", /is not valid JSON/],
+    ["42", /must hold a JSON object/],
+    ["[1, 2]", /must hold a JSON object/],
+    [canonical({ maxConcurrent: 0 }), /maxConcurrent/],
+  ];
+  for (const [text, pattern] of cases) {
+    const r = replaceConfigText(dir, text);
+    assert.equal(r.ok, false, `expected a failure for ${text}`);
+    if (!r.ok) assert.match(r.error, pattern, `the error for ${text} names the problem`);
+    assert.equal(fs.readFileSync(file, "utf8"), before, `the file stays byte-identical after ${text}`);
+  }
+});
+
+test("a whole-config replaceConfigText keeps the file's own roles section verbatim", () => {
+  const dir = tmpdir();
+  saveConfig(dir, { ...defaultConfig(), maxConcurrent: 3, roles: { qa: { enabled: false, minRunIntervalSeconds: 3600 } } });
+  const file = path.join(dir, "tumwater.json");
+  // A multi-key replacement that keeps the file's partial roles section (a custom id the file
+  // holds) and adds a new key: the writer writes exactly the object supplied, so the partial
+  // roles section is preserved verbatim (INV-B3) instead of re-expanded from the catalog.
+  const replacement = {
+    maxConcurrent: 5,
+    roles: { qa: { enabled: false, minRunIntervalSeconds: 3600 }, selfcheck: { enabled: true } },
+  };
+  const r = replaceConfigText(dir, canonical(replacement));
+  assert.ok(r.ok, JSON.stringify(r));
+  const back = readJson(file) as { roles?: Record<string, Record<string, unknown>> };
+  assert.deepEqual(back.roles, replacement.roles, "the file's roles section round-trips verbatim");
 });

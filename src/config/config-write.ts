@@ -10,16 +10,22 @@
  * config-views.ts, and the config KEY language — how keys are parsed, addressed and given
  * per-key value screeners — lives in config-keys.ts (both the write verbs here and the read
  * side / doctor share it). */
+import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { modelTierMap, type TumwaterConfig } from "./config-schema.js";
 import { isJsonObject, objectOrEmpty } from "../files/json-object.js";
-import { isExponentSpelling } from "../text/text.js";
+import { isExponentSpelling, errorMessage } from "../text/text.js";
 import { show } from "./config-field-checks.js";
 import { canonicalConfigKey } from "./config-aliases.js";
 import { unknownRoleMessage } from "../roles/roles.js";
+import { configPath, CONFIG_BASENAME } from "../paths.js";
+import { writeJsonAtomic } from "../files/json-files.js";
+import { validateConfig } from "./config-validation.js";
 import {
   loadConfig,
   collapseBackendAliases,
+  overlayDefaults,
+  defaultConfig,
   knownRoleIdsCached,
 } from "./config.js";
 import {
@@ -32,6 +38,7 @@ import {
 } from "./config-keys.js";
 import {
   writeConfigMutation,
+  withConfigLock,
   fail,
   rawConfigObject,
   without,
@@ -702,4 +709,72 @@ export function unsetConfigKey(
   });
   if (!result.ok) return result;
   return { ok: true, oldValue };
+}
+
+/** Replace the whole tumwater.json from its replacement `text` (the raw bytes an editor or a
+ * `--file` supplied), the bulk twin of the per-key `config set`/`unset` verbs: `edit` is the
+ * command that takes the whole file, so a multi-key change goes through this same lock,
+ * validation and atomic write instead of a hand edit that is not validated until the next ~2 s
+ * poll. The write is all-or-nothing and byte-exact when it lands: the `text` must parse as JSON
+ * and be an object (a scalar or array is refused), then it passes the same two-pass validation a
+ * load runs (the raw file first, so its own errors keep their precise messages, then the merged
+ * candidate, so cross-field defaults still apply); the accepted object is serialized as
+ * two-space JSON with a trailing newline and written atomically under the config lock, or not
+ * written at all when that serialization is already byte-identical to the current file. A whole
+ * write like this cannot re-expand the file's roles section — it writes exactly the object the
+ * caller supplied — so INV-B3 stays true: a partial `roles` section is preserved verbatim
+ * because it is the file's own bytes. The writer writes exactly the supplied file text and never
+ * commits (the config is untracked); every failure returns `{ ok: false, error }` and leaves the
+ * file byte-identical, the same contract as `writeConfigMutation`.
+ *
+ * `changed` reports whether the file's bytes changed on disk: `false` when the accepted
+ * serialization equals the current file (including a whitespace-only difference, which the
+ * two-space re-serialization folds away), `true` after a real write. A missing file is the bare
+ * defaults, so its `current` reads as empty and any accepted object writes as `changed: true`.
+ */
+export function replaceConfigText(
+  root: string,
+  text: string,
+): { ok: true; changed: boolean } | { ok: false; error: string } {
+  const file = configPath(root);
+  try {
+    return withConfigLock(root, (): { ok: true; changed: boolean } | { ok: false; error: string } => {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(text);
+      } catch (err) {
+        return fail(`${CONFIG_BASENAME} is not valid JSON: ${errorMessage(err)}`);
+      }
+      if (!isJsonObject(raw)) return fail(`${CONFIG_BASENAME} must hold a JSON object`);
+      // Collapse legacy/new pi spellings so an editor that wrote both forms never lands them;
+      // the collapse is idempotent, so it cannot alter a file that held one spelling.
+      const collapsed = collapseBackendAliases(raw as unknown as TumwaterConfig);
+      try {
+        validateConfig(collapsed, CONFIG_BASENAME, true); // raw pass — the file's own message wins
+      } catch (err) {
+        return fail(errorMessage(err));
+      }
+      try {
+        validateConfig(overlayDefaults(defaultConfig(), collapsed)); // merged pass — cross-field defaults
+      } catch (err) {
+        return fail(errorMessage(err));
+      }
+      const candidate = JSON.stringify(collapsed, null, 2) + "\n";
+      let current = "";
+      try {
+        current = fs.readFileSync(file, "utf8");
+      } catch {
+        current = ""; // absent file — the bare defaults; a write always changes something
+      }
+      if (candidate === current) return { ok: true, changed: false };
+      try {
+        writeJsonAtomic(file, collapsed, true); // writes exactly `candidate` (2-space + newline)
+      } catch (err) {
+        return fail(errorMessage(err));
+      }
+      return { ok: true, changed: true };
+    });
+  } catch (err) {
+    return fail(errorMessage(err)); // lock acquire timeout/failure — nothing written
+  }
 }

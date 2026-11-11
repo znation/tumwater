@@ -124,7 +124,7 @@ Usage:
                                    --list-checks prints every check name in report order without running a check,
                                    for choosing a \`tumwater doctor <check>...\` target (with --json, the names as
                                    a \`checks\` array)
-  tumwater config [get <key> | set <key> <value> [--json] | unset <key> [--json] | --diff]
+  tumwater config [get <key> | set <key> <value> [--json] | unset <key> [--json] | edit [--file <path>] [--json] | --diff]
                                    Show the effective config (defaults + tumwater.json) as
                                    JSON; get one key's resolved value as JSON; set one
                                    top-level key — quietHours ("23:00-07:00" or ""),
@@ -133,7 +133,8 @@ Usage:
                                    (JSON-parsed when parseable, else a literal string) —
                                    and confirm it; unset one key, removing its value so it
                                    reverts to its default or disappears from its map or
-                                   section; --diff prints only the resolved settings that
+                                   section; edit replaces the whole file, opening tumwater.json in $VISUAL/$EDITOR or taking its replacement from --file, then validating it the way a load does and writing it atomically (it leaves the file byte-identical when the saved text is unchanged, and refuses malformed JSON, a non-object, or an invalid value); --diff
+                                   prints only the resolved settings that
                                    differ from the built-in defaults, naming a changed
                                    role as roles.<id>. Dotted keys
                                    (maxDailyCostUsdPerRole.feature

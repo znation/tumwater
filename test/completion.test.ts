@@ -42,7 +42,7 @@ test("completionSpec over the real help", () => {
   const spec = completionSpec();
   assert.deepEqual(spec.commands, [...new Set(helpStanzas(HELP).map((s) => s.command))]);
   assert.ok(spec.commands.includes("completion"));
-  assert.deepEqual(spec.subcommands.config, ["get", "set", "unset"]);
+  assert.deepEqual(spec.subcommands.config, ["get", "set", "unset", "edit"]);
   assert.deepEqual(spec.subcommands.questions, ["answer"]);
   assert.deepEqual(spec.subcommands.completion, ["bash", "zsh", "fish"]);
   for (const f of ["--failures", "--since", "--role", "--json"]) assert.ok(spec.flags.report?.includes(f), f);

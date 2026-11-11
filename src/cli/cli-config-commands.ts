@@ -1,13 +1,19 @@
+import fs from "node:fs";
+import { configPath, CONFIG_BASENAME } from "../paths.js";
+import { errorMessage } from "../text/text.js";
 import { loadConfigSafe, knownRoleIds, nonDefaultConfigEntries } from "../config/config.js";
 import { fail, say, sayJson, sayJsonLine } from "./cli-output.js";
 import {
   setConfigKey,
   unsetConfigKey,
+  replaceConfigText,
 } from "../config/config-write.js";
 import { canonicalConfigKey } from "../config/config-aliases.js";
 import { parseConfigKey, unknownConfigKeyError, unknownRoleFieldError } from "../config/config-keys.js";
 import { modelTierMap } from "../config/config-schema.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
+import { rejectFlagLookingValue } from "./cli-args.js";
+import { editInEditor } from "./cli-editor.js";
 import { unknownRoleMessage } from "../roles/roles.js";
 
 /** The `tumwater config` command's CLI layer (split out of operator/operator-commands.ts, which
@@ -39,7 +45,7 @@ import { unknownRoleMessage } from "../roles/roles.js";
  * argument the gate somehow missed. One constant so the synopsis cannot drift between the two
  * sites (mirrors run-detail.ts's RUN_DETAIL_USAGE). */
 export const CONFIG_USAGE =
-  "usage: tumwater config [get <key> | set <key> <value> [--json] | unset <key> [--json] | --diff] (bare config prints the whole resolved config; --diff prints only the non-default settings)";
+  "usage: tumwater config [get <key> | set <key> <value> [--json] | unset <key> [--json] | edit [--file <path>] [--json] | --diff] (bare config prints the whole resolved config; --diff prints only the non-default settings; edit opens the whole file in $VISUAL/$EDITOR or takes its replacement from --file, validating and writing it atomically)";
 
 /** Removes one trailing `--json` from a `set` or `unset` invocation so the arity gate in
  * cli.ts and the verb dispatch here see the shaped args (`config set <key> <value> --json` →
@@ -53,7 +59,7 @@ export const CONFIG_USAGE =
  * dispatching, so both see identical shaped args. */
 export function peelConfigJson(args: string[]): { args: string[]; json: boolean } {
   const verb = args[0];
-  const needs = verb === "set" ? 3 : verb === "unset" ? 2 : -1;
+  const needs = verb === "set" ? 3 : verb === "unset" ? 2 : verb === "edit" ? 1 : -1;
   if (needs >= 0 && args.length > needs && args[args.length - 1] === "--json")
     return { args: args.slice(0, -1), json: true };
   return { args, json: false };
@@ -267,11 +273,60 @@ async function configDump(root: string, sub: string | undefined): Promise<void> 
   sayJson(config);
 }
 
+/** The `config edit` verb: replace the whole tumwater.json through the validated whole-file
+ * writer (`replaceConfigText`), so a multi-key change goes through the same lock, validation and
+ * atomic write as `set`/`unset` instead of a hand edit. With `--file <path>`, the replacement
+ * text is read from that path (a flag-looking path is refused first; an unreadable path fails
+ * naming it). With no `--file`, the current tumwater.json is opened in `$VISUAL`/`$EDITOR`
+ * (`{}` when the file is absent) and the saved buffer is the replacement; a buffer that trims to
+ * the current file's text is reported `config unchanged` without calling the writer. On success
+ * the file is printed updated or unchanged; with `--json` the acknowledgement object is the
+ * whole stdout and no prose is printed. A malformed buffer, a non-object, or an invalid setting
+ * fails with the writer's message and leaves the file byte-identical, and prints no JSON.
+ */
+async function configEdit(root: string, args: string[], json: boolean): Promise<void> {
+  // `args` is the verb's full argument list (shaped after the `edit` subcommand): the arity
+  // gate has made it either [] (editor form) or ["--file", <path>]. A flag-looking path is
+  // refused before any read, and a duplicate or surplus --file fails the config usage.
+  let text: string;
+  if (args[0] === "--file") {
+    const p = args[1];
+    if (!p || args.length !== 2 || args.filter((t) => t === "--file").length > 1) fail(CONFIG_USAGE);
+    rejectFlagLookingValue("--file", p);
+    try {
+      text = fs.readFileSync(p, "utf8");
+    } catch (err) {
+      fail(`cannot read config file ${p}: ${errorMessage(err)}`);
+    }
+  } else {
+    let current = "{}";
+    try {
+      current = fs.readFileSync(configPath(root), "utf8");
+    } catch {
+      current = "{}"; // absent file — the bare defaults, so the editor starts from an empty object
+    }
+    text = editInEditor(current, CONFIG_BASENAME, "pass --file <path>");
+    if (text.trim() === current.trim()) {
+      if (json) sayJsonLine({ command: "config", action: "edit", file: CONFIG_BASENAME, status: "unchanged" });
+      else say("config unchanged");
+      return;
+    }
+  }
+  const result = replaceConfigText(root, text);
+  if (!result.ok) fail(result.error);
+  if (json) {
+    sayJsonLine({ command: "config", action: "edit", file: CONFIG_BASENAME, status: result.changed ? "set" : "unchanged" });
+    return;
+  }
+  say(result.changed ? `config updated in ${CONFIG_BASENAME}` : "config unchanged");
+}
+
 /** The `tumwater config` command body: bare prints the resolved config; `--diff` prints only
  * the non-default subset; `get` and `unset` screen their key through screenOperableKey, while
- * `set` writes through setConfigKey. Each verb's guards and confirmation wording live in one
- * named helper — configGet, configUnset, configSet, configDump, configDiff — that this
- * dispatcher delegates to. */
+ * `set` writes through setConfigKey and `edit` writes the whole file through replaceConfigText.
+ * Each verb's guards and confirmation wording live in one named helper — configGet,
+ * configUnset, configSet, configEdit, configDump, configDiff — that this dispatcher delegates to.
+ */
 export async function cmdConfig(root: string, args: string[] = []): Promise<void> {
   // Peel once before dispatch, mirroring cli.ts's arity gate, so `set <key> <value> --json`
   // reaches configSet shaped and flagged (a `set` carrying exactly one trailing token is the
@@ -282,5 +337,6 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
   if (sub === "get") return configGet(root, key);
   if (sub === "unset") return configUnset(root, key, json);
   if (sub === "set") return configSet(root, key, rest, json);
+  if (sub === "edit") return configEdit(root, shaped.slice(1), json);
   return configDump(root, sub);
 }
