@@ -320,7 +320,10 @@ export function pollGatesAndHolds(
     ...gates,
     teamHeldProviders,
     teamHeldNow,
-    reviewHeldNow: () => liveConfig.review.enabled && teamHeldNow().has(reviewSeamKey),
+    // `modelCheck.poll` ran above in this same poll, so its verdict is this poll's: the
+    // failed-or-checking reviewer pair parks the drain beside the reviewer's provider hold.
+    reviewHeldNow: () =>
+      liveConfig.review.enabled && (teamHeldNow().has(reviewSeamKey) || (modelCheck?.reviewHeld() ?? false)),
     roleProviders: new Map(runners.map((r) => [r.role, r.runProvider()])),
     modelCheckHeld,
   };

@@ -92,9 +92,9 @@ export interface SchedulingPassCtx {
   deferredDue: Map<string, boolean>;
   workMergedSince: WorkMergedCache;
   /** The roles the model check holds (src/model-check/model-check-gate.ts): a due role whose
-   * next run's pair is not verified — or, with review on, any role but the director while the
-   * reviewer's pair is not — waits with the `model-check` skip reason. Absent while the check
-   * is off. */
+   * next run's pair is not verified waits with the `model-check` skip reason. The reviewer's
+   * verdict is not here — it parks only the no-role post-merge review drain. Absent while the
+   * check is off. */
   modelCheckHeld?: ReadonlySet<string>;
 }
 

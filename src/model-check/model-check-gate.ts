@@ -20,7 +20,6 @@ import {
 import { tierChainSteps } from "../config/config-fallbacks.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { runnerEnabled } from "../roles/runner-ids.js";
-import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { publishInfoFields, type ModelCheckInfo, type OrchestratorInfo } from "../team/team-orchestrator-info.js";
 import { humanSeconds } from "../text/datetime.js";
@@ -97,6 +96,7 @@ export class ModelCheckGate {
   checks: ModelCheckMap = {};
   held: ReadonlySet<string> = new Set();
   private uses = new Map<string, PairUse>();
+  private reviewPair: string | null = null;
   private readonly inFlight = new Set<Promise<void>>();
   private readonly stop = new AbortController();
   private readonly signal: AbortSignal;
@@ -113,10 +113,12 @@ export class ModelCheckGate {
 
   /** One poll: re-key the map to the pairs in use, act on the runs waiting on an unanswered
    * model request (unansweredRuns), start every due probe, and return (and keep for the start
-   * gate) the roles that wait — each runner whose next run's pair is not verified, and every
-   * role but the director while the reviewer's pair is not (no change can merge without a
-   * review, and the director's prompt outranks the wait as it outranks every autonomous gate).
-   * Publishes the `modelChecks` block when it changed. */
+   * gate) the roles that wait — exactly the runners whose next run's pair is not verified
+   * (no exemption: a role runs on its own pair, so a failed pair holds only the roles on it).
+   * The reviewer's verdict parks the no-role post-merge review drain, not roles: review is
+   * post-merge ("Every commit is verified on main"), so no role start, verify or landing waits
+   * on it — the drain reads it through `reviewHeld()`. Publishes the `modelChecks` block when
+   * it changed. */
   poll(input: ModelCheckPollInput): ReadonlySet<string> {
     const now = this.now();
     const runSeams = new Map<RoleRunner, ResolvedModelConfig>();
@@ -125,15 +127,23 @@ export class ModelCheckGate {
     this.checks = rekeyModelChecks(this.checks, [...this.uses.keys()], now);
     this.unansweredRuns(input.runners);
     if (!this.signal.aborted) for (const pair of dueModelChecks(this.checks, now)) this.launch(pair);
-    const reviewPair = input.liveConfig.review.enabled ? seamPairName(reviewConfig(input.roleConfig)) : null;
-    const reviewHolds = reviewPair !== null && modelCheckHolds(this.checks[reviewPair]);
+    this.reviewPair = input.liveConfig.review.enabled ? seamPairName(reviewConfig(input.roleConfig)) : null;
     const held = new Set<string>();
     for (const [r, seam] of runSeams) {
-      if (modelCheckHolds(this.checks[seamPairName(seam)]) || (reviewHolds && r.role !== DIRECTOR_ROLE)) held.add(r.role);
+      if (modelCheckHolds(this.checks[seamPairName(seam)])) held.add(r.role);
     }
     this.held = held;
     this.publish(input.info);
     return held;
+  }
+
+  /** Whether the reviewer's pair has not answered its last check — the orchestrator ORs this
+   * into the post-merge review drain's hold (with the reviewer's provider hold), so a failed
+   * or still-checking reviewer pair parks only the drain, never a role start, verify or
+   * landing (review runs after the merge; docs/how-it-works.md's review section). False while
+   * review is off. */
+  reviewHeld(): boolean {
+    return this.reviewPair !== null && modelCheckHolds(this.checks[this.reviewPair]);
   }
 
   /** Whether the pair failed its last probe — the budget gate's chain steps past it. */

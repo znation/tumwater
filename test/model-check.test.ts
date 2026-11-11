@@ -214,8 +214,9 @@ test("the gate holds a pair's roles until it answers, warns once on failure, and
   const gate = new ModelCheckGate(root, prober, new AbortController().signal, POLICY, () => now);
   const poll = () => gate.poll({ runners, liveConfig: config, roleConfig: config, info });
 
-  // Startup: both pairs are probed at once, and every role waits for its pair's verdict (the
-  // reviewer's pair, strong, also holds every role but the director).
+  // Startup: both pairs are probed at once, and every role waits for its own pair's verdict
+  // (the reviewer's strong pair is not verified yet, but review is post-merge, so it holds no
+  // role — only the post-merge review drain reads it).
   assert.deepEqual([...poll()].sort(), ["director", "feature", "plan"]);
   assert.deepEqual(asked.sort(), ["flintrunner/flint", "hf/deepseek"]);
   assert.deepEqual([...poll()].sort(), ["director", "feature", "plan"], "no second probe while one is in flight");
@@ -260,6 +261,58 @@ test("the gate holds a pair's roles until it answers, warns once on failure, and
   assert.deepEqual([...poll()], []);
   const passed = eventsOfType(root, "model_check_passed");
   assert.deepEqual(passed.map((e) => [e.pair, e.failures]), [["flintrunner/flint", 2]]);
+});
+
+test("a failed reviewer pair parks only the post-merge review drain, never the roles on verified pairs", async () => {
+  const root = makeRepo();
+  const config = teamConfig();
+  const runners = ["feature", "plan", "director"].map((r) => runner(r, config));
+  const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: runners.map((r) => r.role) };
+  writeOrchestratorInfo(root, info);
+  let now = 1_000_000;
+  const { prober, answer } = manualProber();
+  const gate = new ModelCheckGate(root, prober, new AbortController().signal, POLICY, () => now);
+  const poll = () => gate.poll({ runners, liveConfig: config, roleConfig: config, info });
+
+  // Startup: every pair is still checking, so every role waits on its own pair (the reviewer
+  // pair, deepseek, is among them but contributes nothing to the held set — review is
+  // post-merge, so it parks only the post-merge review drain).
+  poll();
+  assert.deepEqual([...poll()].sort(), ["director", "feature", "plan"], "every still-checking role waits on its own pair");
+
+  // flint answers verified, deepseek answers with a failure. feature runs on flint and is
+  // released; plan and director run on deepseek and stay held on it. Under the old reviewer
+  // hold feature would also be held here (every role but the director while the reviewer's
+  // pair is not verified) — it is not now.
+  answer("hf/deepseek", { ok: false, reason: "no reply", reply: "", detail: "connect ECONNREFUSED" });
+  answer("flintrunner/flint", { ok: true });
+  await gate.settled();
+  assert.deepEqual([...poll()].sort(), ["director", "plan"], "only the roles on the failed strong pair are held; feature on the verified default pair runs");
+  assert.equal(gate.held.has("feature"), false, "a failed reviewer pair no longer holds a role on another verified pair");
+  assert.equal(gate.reviewHeld(), true, "the post-merge review drain waits while the reviewer's pair has not answered");
+
+  // deepseek answers verified on its re-check: its roles run again and the drain runs too.
+  now += 2 * POLICY.retryMs;
+  poll();
+  answer("hf/deepseek", { ok: true });
+  await gate.settled();
+  assert.deepEqual([...poll()], [], "every pair verified: nothing is held");
+  assert.equal(gate.reviewHeld(), false);
+
+  // With review off the reviewer pair is absent: a failed strong pair holds only the roles on
+  // it (plan and director) and the drain is never held.
+  const off = { ...config, review: { ...config.review, enabled: false } };
+  const runnersOff = ["feature", "plan", "director"].map((r) => runner(r, off));
+  const infoOff: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: runnersOff.map((r) => r.role) };
+  const probersOff = manualProber();
+  const gateOff = new ModelCheckGate(root, probersOff.prober, new AbortController().signal, POLICY, () => now);
+  const pollOff = () => gateOff.poll({ runners: runnersOff, liveConfig: off, roleConfig: off, info: infoOff });
+  pollOff();
+  probersOff.answer("flintrunner/flint", { ok: true });
+  probersOff.answer("hf/deepseek", { ok: false, reason: "no reply", reply: "", detail: "connect ECONNREFUSED" });
+  await gateOff.settled();
+  assert.deepEqual([...pollOff()].sort(), ["director", "plan"], "review off: a failed strong pair holds only the roles on it");
+  assert.equal(gateOff.reviewHeld(), false, "review off: there is no reviewer pair, so the drain is never held");
 });
 
 test("the gate re-checks a suspected pair, follows a config edit, and aborts its probes on close", async () => {

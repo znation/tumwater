@@ -60,11 +60,13 @@ each of them in seconds.
     checked again while it lasts. The runner never sees the gate. Merge and review runs, which
     the merge slot runs outside any role run, do not report a wait.
 - **Holds**: a due role waits (skip reason `model-check`, shown as `waiting: model check`) while
-  its next run's pair is not verified. With review on, every role but the director also waits
-  while the reviewer's pair is not verified, because no change can merge without a review. The
-  start gate reads the latest verdict, so a run parked for a permit does not start on a pair
-  that failed meanwhile. In-flight runs finish, except a run that is waiting on an unanswered
-  request (see In-flight runs).
+  its next run's pair is not verified, and only then — a failed or still-checking reviewer pair
+  parks only the no-role post-merge review drain (the gate's `reviewHeld()`, which the
+  orchestrator ORs into the drain's hold), never a role start, verify or landing: review runs
+  after the merge, so nothing a role does waits on the reviewer. The start gate reads the
+  latest verdict, so a run parked for a permit does not start on a pair that failed meanwhile.
+  In-flight runs finish, except a run that is waiting on an unanswered request (see In-flight
+  runs).
 - **In-flight runs** (decided 2026-10-30): when a pair fails its check, a run on it that is
   waiting on an unanswered request (`unansweredRunPair` names the pair) is handed back
   resumably. `RoleRunner.handBackRun("model-check")` keeps its session and worktree edits, and

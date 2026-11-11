@@ -442,7 +442,9 @@ the watch's confirming re-run each add the failing tests that passed on the re-r
   one-word answer, sent through the same backend the runs use. The probe also runs again when a
   run on the pair ends without changes and without declaring nothing-to-do. A pair that gives no
   reply or the wrong one holds its roles, shown as `waiting: model check` on their rows. With
-  review on, a failed reviewer pair holds every role but the director. The failure logs one
+  review on, a failed or still-checking reviewer pair parks only the post-merge review drain —
+  no role start, verify or landing waits on the reviewer, so every role on another pair keeps
+  running. The failure logs one
   warning quoting the reply, raises a red alert on the dashboard and TUI, and shows on doctor's
   `model check` row; the `over-cap model` row then says whether the fallback answered instead of
   "serving not verified". At the cap, a fallback step that failed is skipped like a demoted one.
