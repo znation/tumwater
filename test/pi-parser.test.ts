@@ -347,6 +347,19 @@ test("parser flags a provider 429 rate-limit rejection as transient, with its Re
   assert.equal(parser.transientServerTimeout, false, "a rate limit is its own class, not a stream timeout");
 });
 
+test("parser flags a plain-text quota wall (no 429, no 'rate limit' prose) as a transient rate limit (regression, BUGS.md 2026-11-09)", () => {
+  const parser = new PiStreamParser();
+  parser.feed(errorLine("You’ve hit your usage limit. Upgrade to Pro or try again at 9:09 AM.") + "\n");
+  assert.equal(parser.transientRateLimit, true, "a usage-limit refusal is the transient rate limit it is");
+  assert.equal(parser.configError, false, "it is not a config error");
+  assert.equal(parser.transientBackend, false, "it is not a backend failure");
+  // The existing prose arms are unchanged: a text that is neither a 429 nor a quota wall still
+  // reads as whatever it always read as.
+  const other = new PiStreamParser();
+  other.feed(errorLine("gateway retry after 30s") + "\n");
+  assert.equal(other.transientRateLimit, false, "a Retry-After outside a quota/limit is not one");
+});
+
 test("parser captures a Retry-After delay from the rate-limit error text and ignores it on other errors", () => {
   const parser = new PiStreamParser();
   parser.feed(errorLine("Too Many Requests — retry after 30s") + "\n");

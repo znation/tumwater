@@ -11,6 +11,7 @@ import {
   codexCaptures,
   codexContextWindow400,
   codexItem,
+  codexQuotaWall,
   codexRateLimitNamed,
   codexRefreshToken,
   codexServerError,
@@ -169,6 +170,26 @@ test("a used-up usage window classifies as transientRateLimit with a rejected fi
     (parser.retryAfterSeconds ?? 0) > 590 && (parser.retryAfterSeconds ?? 0) <= 600,
     "retryAfterSeconds is derived from resets_at",
   );
+});
+
+test("the plain-text Codex quota wall (no inner JSON) classifies as a transient rate limit", () => {
+  // The 2026-11-09 incident: a subscription quota refusal whose turn.failed message is prose
+  // with no inner JSON. It must read as the transient rate limit it is — the world saying
+  // "later" — so the run is retried/parked, never a config error and never a content failure.
+  const [errorLine, failedLine] = codexQuotaWall();
+  const { parser, canonical } = fold([errorLine, failedLine]);
+  assert.equal(parser.transientRateLimit, true, "the plain-text usage limit is a transient rate limit");
+  assert.equal(parser.configError, false, "a quota wall is never a config error");
+  assert.equal(parser.transientBackend, false, "it is not a backend/server failure");
+  // The held top-level error text rides the message_end as the error, so an operator sees the
+  // real cause in the run's errorMessage rather than a bare "no verdict".
+  const end = parsed(canonical).find((e) => e.type === "message_end")!;
+  assert.equal((end.message as Record<string, unknown>).stopReason, "error");
+  assert.equal(
+    (end.message as Record<string, unknown>).errorMessage,
+    "You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or try again at 9:09 AM.",
+  );
+  assert.equal(end.tumwaterKind, "transientRateLimit", "the message_end carries the transient classification");
 });
 
 test("usage_not_included is a permanent config error, never a transient retry", () => {

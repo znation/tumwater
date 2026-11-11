@@ -6,23 +6,7 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-- A Codex subscription quota wall becomes hundreds of fake product bugs (filed 2026-11-09 from ~/Desktop/tumwater-no-verdict-spam.md; full evidence, captured event sequence, and required behavior live in that report).
-
-**Symptom.** On 2026-11-09 the Codex backend hit its subscription usage limit. Every post-merge review run ended with a native `{"type": "error", …}` + plain-text `{"type": "turn.failed", …}` pair (`You've hit your usage limit … try again at 9:09 AM.` — no `code`, no `status`, no inner JSON). Result in the originating project: 2,763 identical failure warnings in `events.jsonl`, 821 reviews dropped at `POST_REVIEW_FAILURE_LIMIT`, 821 `tumwater(operator): File an unreviewed post-merge commit in BUGS.md` commits, 715 `### post-merge review of <sha> never reached a verdict` entries filling the product's entire `BUGS.md ## Open` (zero real product bugs) and 105 more already settled into `BUGS-FIXED.md` — one transient provider quota converted into ~820 backlog entries and 715 mandated manual re-reviews.
-
-**Root cause chain.** (1) `src/agent/codex/codex-stream.ts` `handleTurnFailed`: a plain-text `turn.failed` message is never classified (`parseJsonObject(raw)` fails → `classifyTurnFailed` never runs → no `tumwaterKind`). (2) Same file, `rateLimitReading`: recognizes only `usage_limit_reached` / `rate_limit_exceeded` / `status === 429`; plain-text "usage limit" matches none. (3) `src/pi/pi-stream.ts` `TRANSIENT_RATE_LIMIT = /\b429\b|too many requests|rate limit/i` and `src/agent/opencode/opencode-stream.ts` `rateLimitClassification` have the same text gap, so the run stays a generic failure. (4) `src/runner/runner-pi.ts` `transientRetryAdmits`: no transient flag → no retry, no `lastRateLimit` stamp in `RunUsage.foldEpisodes`, so the team-wide hold never sees the quota wall. (5) `src/orchestrator/orchestrator-poll.ts`: hold absent → `reviewHeldNow()` false → `drainPostReviews` never parks; the drain retries on every poll inside the same multi-hour window. (6) `src/review/post-merge-review.ts` `reviewMergedCommit` returns `kind: "failed"` for any no-verdict run; `src/merge/merge-post-review-drain.ts` increments `PostReview.failures` and at `POST_REVIEW_FAILURE_LIMIT = 3` calls `fileDroppedReview`, appending a `## Open` BUGS.md entry via `fileBugsOnMain`. ~900 merged commits × 3 attempts → the 821 filings.
-
-**Required behavior.** A subscription/quota refusal is "later", not a review failure and not a product bug:
-- Classify the plain-text quota failure (`You've hit your usage limit`, `usage limit`, `try again at <time>`, obvious equivalents) on the Codex path and the shared pi/opencode text classifiers, routing to the existing subscription-window / transient-rate-limit condition (or a dedicated quota kind feeding the same hold). Not `configError`, not a content failure.
-- Hold the reviewer drain: park `drainPostReviews` for the reset/retry window exactly as a 429 does; do not retry a multi-hour subscription window inside the run (`subscriptionWindowRejected` already encodes that rule).
-- Do not count quota/backend failures toward the drop limit: no `PostReview.failures` increment, no `fileDroppedReview`, no BUGS.md write. Keep the entry queued with a deferred/`notBefore` state and an operator-visible event.
-- Keep unreviewed work discoverable: a review dropped for a content reason leaves a clear queue/ledger state or operator-visible event; never silently lost, never a symptom-less product bug.
-- Preserve intentional behavior: verdicts/fixes work as today; decide explicitly (pinned by a test) whether a failed reviewer-fix merge files a product bug or uses the same deferred/ledger path.
-- Do not mass-file: an infrastructure failure must never generate one product-backlog entry per commit.
-
-**Reproduce / tests that must fail on current main** (existing suites: `test/codex-stream.test.ts`, `test/agent-settle.test.ts`, `test/post-merge-review.test.ts`, `test/cli-reviews.test.ts`, doctor post-review at-risk row tests): (1) Codex translator on the exact captured `error` + plain-text `turn.failed` lines asserts the quota/transient classification, `subscriptionWindowRejected(run)` true when the account window is rejected, and `transientRetryAdmits` not retrying the multi-hour window; structured `usage_limit_reached` case as control. (2) Shared parser: plain-text quota sets the transient/quota flag; existing `429` / `rate limit` / `too many requests` cases unchanged. (3) Drain: quota/transient outcome does not increment `failures`, does not invoke the bug filer, leaves the entry queued/deferred (injected clock pins the hold/`notBefore`); later success clears it. (4) Drop path: three *content* no-verdict failures pin the new behavior (no BUGS.md write; explicit queue/ledger state or event); if `PostReview` shape/queue state changes, update `tumwater reviews` rendering and the doctor at-risk row/tests, keeping existing queue files readable. (5) Regression: a normal verdict still approves/rejects with existing events; the reviewer's content checks are not weakened.
-
-**Suspected cause.** Classification and drop policy treat every no-verdict run as a content failure; there is no plain-text quota recognition anywhere in the chain, so a provider quota wall cascades through retry → drain → drop → BUGS.md filing.
+_None yet._
 
 - A `Needs review …` hold note is recognized only in its exact `**…**` bold form; any other spelling is silently invisible (filed 2026-11-11 from ~/Desktop/tumwater-no-progress-bugs.md).
 
@@ -92,6 +76,10 @@ Result in the originating project: both planned entries stayed `ready`, the feat
 **Suspected cause.** The `merge_queued`-exactly-once rule is stated per-recovery ("logged exactly once, for the drain to merge") but enforced per-run, so every run in a repeating recovery cycle logs it again.
 
 ## Fixed
+
+- A Codex subscription quota wall becomes hundreds of fake product bugs (filed 2026-11-09 from ~/Desktop/tumwater-no-verdict-spam.md; full evidence, captured event sequence, and required behavior live in that report) — fixed 2026-11-10 by the bugfix role
+
+**Fix.** (A) All three classifier homes (codex-stream, pi-stream, opencode-stream) now recognize the shared `QUOTA_LIMIT_TEXT` regex in `backend-traits.ts` (`usage limit`, `hit your … limit`, `try again at`, `quota exhausted|reached`) as a transient rate limit alongside the existing 429/rate-limit patterns. Codex's `handleTurnFailed` additionally synthesizes a `classifyTurnFailed({ message: raw })` call for plain-text messages with no inner JSON, so the quota wall reaches the quota arm. (B) `reviewMergedCommit` flags the `failed` outcome with `infrastructure: true` when the run ended on a transient provider failure; `startPostReview` in `merge-post-review-drain.ts` keeps the entry queued without counting it toward `POST_REVIEW_FAILURE_LIMIT` and without filing a product bug — a multi-hour quota wall no longer generates one fake `BUGS.md` entry per commit (INV-BT5).
 
 ## Verified
 

@@ -4584,6 +4584,23 @@ so neither accept variant can throw out of its command.
 
 **Pinned by.** `test/post-merge-review-accept.test.ts`, `test/gui-post-review-accept.test.ts`.
 
+### INV-BT5: a post-merge review that ended on a transient provider failure is never counted, dropped, or filed
+
+**Guarantee.** A review run that ended on a transient provider failure (`transientRateLimit`,
+`transientBackend`, `transientServerTimeout`, `transientPiCrash`) carries the
+`infrastructure` flag in its `failed` outcome. The drain keeps the entry queued — without
+incrementing its `failures` count, without dropping it at `POST_REVIEW_FAILURE_LIMIT`, and without
+filing a `BUGS.md` entry — so a multi-hour provider quota wall never generates one fake product
+bug per merged commit (BUGS.md 2026-11-09: 821 entries over 20 minutes). The entry stays in the
+post-review queue where a later successful review settles it.
+
+**Binds.** `src/review/post-merge-review.ts` (`reviewMergedCommit`, the `infrastructure` flag
+on the `failed` outcome) and `src/merge/merge-post-review-drain.ts` (`startPostReview`, the
+`infrastructure` branch).
+
+**Pinned by.** `test/post-merge-review.test.ts` — "a post-merge review that ended on a transient
+provider failure keeps its entry without counting or filing (regression, BUGS.md 2026-11-09)".
+
 ## Observer run ledgers: a failed ledger write never fails a run
 
 ### INV-BW1: a failed qa-coverage.json write warns and the run keeps its outcome

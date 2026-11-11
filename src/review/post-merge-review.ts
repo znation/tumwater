@@ -181,7 +181,11 @@ type PostReviewOutcome =
   | { kind: "approve"; reasons: string[] }
   | { kind: "reject"; reasons: string[] }
   | { kind: "fixed"; fix: string; reasons: string[] }
-  | { kind: "failed"; detail: string }
+  /** The run ended on a transient provider failure (a 429 or quota wall, a backend/server
+   * failure) rather than a content failure: the drain keeps the commit queued, never counts
+   * it toward POST_REVIEW_FAILURE_LIMIT, and never files a product bug (BUGS.md: a Codex
+   * quota wall converted ~820 merged commits into fake entries). */
+  | { kind: "failed"; detail: string; infrastructure?: boolean }
   /** A self-fix chain reached REVISION_BACKSTOP: the reviewer stops fixing, records the
    * surviving findings and clears the entry (Forward never back 2/6). The answered plan needs
    * no hold — it was archived to PLANS-DONE.md when its implementation landed. */
@@ -335,7 +339,20 @@ export async function reviewMergedCommit(
       const verdict = reply.verdict;
       if (!verdict) {
         await deleteRef(root, fixRef);
-        return { kind: "failed", detail: pi.errorMessage ?? "no parseable VERDICT line in the reviewer's reply" };
+        // A run that ended on a transient provider failure (a 429/quota wall, a backend
+        // failure) is a world failure, not a review content failure: the drain keeps the
+        // entry queued without counting it toward the drop limit or filing a product bug
+        // (BUGS.md: a multi-hour Codex quota wall mass-filed one fake entry per commit).
+        const infrastructure =
+          pi.transientRateLimit ||
+          pi.transientBackend ||
+          pi.transientServerTimeout ||
+          pi.transientPiCrash;
+        return {
+          kind: "failed",
+          detail: pi.errorMessage ?? "no parseable VERDICT line in the reviewer's reply",
+          ...(infrastructure ? { infrastructure: true } : {}),
+        };
       }
       const durationMs = Date.now() - startedAt;
       logReviewVerdict(root, role, commit, verdict, durationMs);

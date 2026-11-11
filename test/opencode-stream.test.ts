@@ -192,6 +192,16 @@ test("the synthetic 429 folds to transientRateLimit with the echoed Retry-After 
   assert.equal(parser.retryAfterSeconds, 30);
 });
 
+test("a plain-text quota wall (no 429) folds to transientRateLimit (regression, BUGS.md 2026-11-09)", () => {
+  // The subscription quota refusal names a usage limit and a retry time, not a 429: the shared
+  // quota vocabulary must read it as the transient rate limit it is, never a config error.
+  const { parser } = fold([
+    opencodeRateLimit("You’ve hit your usage limit. Upgrade to Pro or try again at 9:09 AM.", 403),
+  ]);
+  assert.equal(parser.transientRateLimit, true, "a usage-limit refusal is a transient rate limit");
+  assert.equal(parser.configError, false, "it is not a config error");
+});
+
 test("synthetic 5xx folds to transientBackend/server and context overflow to contextExceeded", () => {
   const server = fold([opencodeServerError()]);
   assert.equal(server.parser.transientBackend, true);

@@ -63,8 +63,11 @@ export const opencodeCaptures = {
 /** A synthetic error line folding to `transientRateLimit`: the probe never produced a 429, so
  * this is hand-built in the captured `{type: "error", error: {type, message, status?}}` shape.
  * The translator echoes a Retry-After hint the message spells out. */
-export function opencodeRateLimit(message = "Rate limit exceeded (status 429). retry after 30 seconds"): string {
-  return JSON.stringify({ type: "error", error: { type: "error", message, status: 429 } });
+export function opencodeRateLimit(
+  message = "Rate limit exceeded (status 429). retry after 30 seconds",
+  status = 429,
+): string {
+  return JSON.stringify({ type: "error", error: { type: "error", message, status } });
 }
 
 /** A synthetic 5xx error line folding to `transientBackend` / `server` — the probe never

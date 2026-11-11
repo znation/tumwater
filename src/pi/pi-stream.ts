@@ -12,6 +12,7 @@ import {
 import { describeToolCall } from "../text/phrases.js";
 import { objectOrEmpty, nonNegativeNumber, parseJsonObject, isJsonObject } from "../files/json-object.js";
 import { backendKind, isBackendFailureKind, isPermanentConfigError, TRANSIENT_BACKEND, type BackendFailureKind } from "./pi-failure.js";
+import { QUOTA_LIMIT_TEXT } from "../agent/backend-traits.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
  * file I/O. Split out of pi.ts, whose child-process integration (runPi, hasResumableSession,
@@ -189,6 +190,14 @@ const TRANSIENT_SERVER_TIMEOUT = /predict stream timed out/i;
  * "Too Many Requests"). Retry-After, when the provider echoes it into the error text, is
  * captured in retryAfterSeconds. Module-private: only PiStreamParser.feedLine matches it. */
 const TRANSIENT_RATE_LIMIT = /\b429\b|too many requests|rate limit/i;
+
+/** A provider quota/usage-limit refusal read from error prose (the subscription `You've hit
+ * your usage limit` wall and its `try again at <time>` reset hint, plus the generic spellings):
+ * the world saying "later", the same transient rate limit a 429 is. The one shared quota
+ * vocabulary (src/agent/backend-traits.ts QUOTA_LIMIT_TEXT) is matched here in the same `else`
+ * branch as TRANSIENT_RATE_LIMIT above, so a quota wall is the transient the storm groups and
+ * the hold answers (BUGS.md: a Codex plain-text quota wall matched neither the 429 nor the
+ * `rate limit` prose and cascaded into hundreds of fake product bugs). */
 
 /** The provider's Retry-After hint inside a rate-limit error text — seconds to wait before
  * retrying. Tolerates the spellings error text actually uses ("Retry-After: 30",
@@ -530,7 +539,7 @@ export class PiStreamParser {
         // Kept narrow on purpose: a false positive would mask real repeated failures from
         // the session-poisoning heuristic and trigger needless retries.
         if (TRANSIENT_SERVER_TIMEOUT.test(text)) this.transientServerTimeout = true;
-        if (TRANSIENT_RATE_LIMIT.test(text)) {
+        if (TRANSIENT_RATE_LIMIT.test(text) || QUOTA_LIMIT_TEXT.test(text)) {
           this.transientRateLimit = true;
           const hint = RETRY_AFTER.exec(text);
           if (hint) this.setRetryAfterSeconds(Number(hint[1]));

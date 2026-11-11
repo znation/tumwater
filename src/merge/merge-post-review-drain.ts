@@ -92,6 +92,16 @@ function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: Pos
         // A self-fix chain at the backstop: reviewMergedCommit has already recorded the surviving
         // findings; the entry is cleared so nothing re-reviews it (Forward never back 2/6).
         settlePostReview(root, entry.commit, null);
+      } else if (outcome.kind === "failed" && outcome.infrastructure) {
+        // The run ended on a transient provider failure (a 429 or quota wall, a backend
+        // failure): a world failure, not a review content failure. Keep the entry queued
+        // WITHOUT counting it toward POST_REVIEW_FAILURE_LIMIT and without filing a product
+        // bug — a multi-hour provider quota wall must not generate one "never reached a
+        // verdict" BUGS.md entry per commit (BUGS.md 2026-11-09). The entry stays in the
+        // post-review queue, where a later successful review settles it; a content failure
+        // (below) is still counted and filed as today. One operator-visible warning names the
+        // cause so the wall is discoverable from the feed.
+        warnEventBestEffort(root, entry.role, `the post-merge review of ${shortSha(entry.commit)} failed on a transient provider failure (${outcome.detail}); keeping it queued — not counted, not filed`);
       } else {
         const failures = (entry.failures ?? 0) + 1;
         warnEventBestEffort(root, entry.role, `the post-merge review of ${shortSha(entry.commit)} failed (${outcome.detail})`);

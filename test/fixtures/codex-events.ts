@@ -155,6 +155,21 @@ export function codexUnclassified(status = 418): string {
   return codexTurnFailed({ status, errorType: "server_error", errorMessage: "unexpected permanent hiccup" });
 }
 
+/** The 2026-11-09 Codex subscription quota wall, captured verbatim: a top-level `error` line
+ * and a `turn.failed` whose `error.message` is PLAIN TEXT (no inner JSON, no `code`, no
+ * `status`, no `resets_at`). The classifier must read it as the transient rate limit it is —
+ * the world saying "later" — so the run is retried/parked, not a content failure. */
+const CODEX_QUOTA_TEXT =
+  "You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or try again at 9:09 AM.";
+
+/** The captured quota-wall pair as the two native lines, for feeding the whole translator. */
+export function codexQuotaWall(): [string, string] {
+  return [
+    JSON.stringify({ type: "error", message: CODEX_QUOTA_TEXT }),
+    JSON.stringify({ type: "turn.failed", error: { message: CODEX_QUOTA_TEXT } }),
+  ];
+}
+
 /** A single rollout `turn_context` record naming the model that actually ran — for a synthetic
  * rollout that switches models mid-thread (finding 24). */
 export function codexTurnContext(model: string): string {

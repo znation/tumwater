@@ -17,7 +17,7 @@
  * never passed, so no `reasoning` event appears; the mapping below still recognizes one so a
  * future `--thinking` run degrades gracefully. */
 
-import { recordWarningOnce, transientProseKind } from "../backend-traits.js";
+import { recordWarningOnce, transientProseKind, QUOTA_LIMIT_TEXT } from "../backend-traits.js";
 import { canonicalUsageBlock, isJsonObject, nonNegativeNumber, objectOrEmpty, parseJsonObject } from "../../files/json-object.js";
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
@@ -69,10 +69,12 @@ function freeTierClassification(type: string, status: unknown, message: string):
   return undefined;
 }
 
-/** Is this a rate limit (429 or rate-limit text) — the world saying "later", inherently
- * retryable? Carry the echoed Retry-After hint when the message spells it. */
+/** Is this a rate limit (429, rate-limit text, or a quota/usage-limit refusal) — the world
+ * saying "later", inherently retryable? Carry the echoed Retry-After hint when the message
+ * spells it. The QUOTA_LIMIT_TEXT arm (shared with pi and codex) covers a subscription quota
+ * wall whose prose names `usage limit` / `try again at` rather than a 429 (BUGS.md 2026-11-09). */
 function rateLimitClassification(status: unknown, message: string): OpencodeErrorClassification | undefined {
-  if (status === 429 || /\b429\b|rate limit|too many requests/i.test(message)) {
+  if (status === 429 || /\b429\b|rate limit|too many requests/i.test(message) || QUOTA_LIMIT_TEXT.test(message)) {
     const retry = RETRY_AFTER.exec(message);
     return { kind: "transientRateLimit", ...(retry ? { retryAfterSeconds: Number(retry[1]) } : {}) };
   }

@@ -20,7 +20,7 @@ import { secondsUntilUnixStamp } from "../../text/datetime.js";
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
-import { SERVER_TRANSIENT_STATUS, recordWarningOnce } from "../backend-traits.js";
+import { SERVER_TRANSIENT_STATUS, QUOTA_LIMIT_TEXT, recordWarningOnce } from "../backend-traits.js";
 
 type Json = Record<string, unknown>;
 
@@ -121,10 +121,14 @@ function isContextExceeded({ code, errType, message, status }: TurnFailedFields)
   return code === "context_window_exceeded" || (status === 400 && errType === "invalid_request_error" && namesContextWindow(message));
 }
 
-/** Owns the transient rate-limit arm: a `usage_limit_reached` / `rate_limit_exceeded` code or a
- * 429 returns the rejected reading naming the used-up window, else undefined. */
-function rateLimitReading(parsed: Json, { code, status }: TurnFailedFields): Json | undefined {
-  if (code === "usage_limit_reached" || code === "rate_limit_exceeded" || status === 429) {
+/** Owns the transient rate-limit arm: a `usage_limit_reached` / `rate_limit_exceeded` code, a
+ * 429, or a plain-text quota refusal returns the rejected reading naming the used-up window,
+ * else undefined. The plain-text arm covers a Codex subscription wall whose `turn.failed`
+ * message is prose with no inner JSON (no `code`, no `status`) — the 2026-11-09 incident where
+ * `You've hit your usage limit` matched none of the structured arms and cascaded into hundreds
+ * of fake product bugs. */
+function rateLimitReading(parsed: Json, { code, status, message }: TurnFailedFields): Json | undefined {
+  if (code === "usage_limit_reached" || code === "rate_limit_exceeded" || status === 429 || QUOTA_LIMIT_TEXT.test(message ?? "")) {
     // Which window the account hit, from the error's own `rate_limit_reached_type` (else the
     // five-hour window, the one Plus exhausts first). The rejected reading's wait comes from
     // `resets_at`.
@@ -313,7 +317,12 @@ export function codexTranslator(opts: { contextWindow?: unknown; cwd?: string } 
       ? (event.error as Json).message
       : undefined;
     const inner = typeof raw === "string" ? (parseJsonObject(raw) as Json | undefined) : undefined;
-    const cls = inner ? classifyTurnFailed(inner) : {};
+    // A plain-text `turn.failed` message (no inner JSON — the 2026-11-09 Codex quota wall)
+    // still reaches the classifier: synthesize a `parsed` from the raw text so
+    // `classifyTurnFailed`'s quota arm can read it. The raw is its `message`, the one field
+    // `rateLimitReading`'s plain-text arm tests; `code` and `status` stay undefined, so only
+    // the quota text can match and the run ends on the rate-limit transient it is.
+    const cls = inner ? classifyTurnFailed(inner) : typeof raw === "string" ? classifyTurnFailed({ message: raw }) : {};
     const errorMessage = cls.errorMessage ?? (typeof raw === "string" ? raw : pendingFailureText);
     const closes = abandonOpenCalls();
     const message: Json = { role: "assistant", content: [], stopReason: "error" };

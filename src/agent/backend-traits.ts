@@ -119,6 +119,17 @@ export function transientProseKind(
   return undefined;
 }
 
+/** A provider quota/limit refusal, read from error prose when the wire carries no structured
+ * signal (no `code`, no `status`, no inner JSON): the subscription `You've hit your usage
+ * limit` wall and its `try again at <time>` reset hint, plus the generic `usage limit` / quota
+ * spellings. One home for the quota vocabulary the pi, codex and opencode text classifiers
+ * share, so a spelling added for one cannot go missing from the others (BUGS.md: a Codex
+ * plain-text quota wall matched none of them, so it cascaded into hundreds of fake product
+ * bugs). The world saying "later" (a transient rate limit), never a config error: it is kept
+ * apart from `usage_not_included` (a permanent API-key error that names no `usage limit`). */
+export const QUOTA_LIMIT_TEXT =
+  /\busage limit\b|hit your (?:[a-z]+ )?limit|\btry again at\b|quota (?:exhausted|reached)/i;
+
 /** Add `kind` to a run's warning set once — first-seen order, no repeats. The one home of
  * the "record it once" guard the native stream translators keep per run (claude's and
  * opencode's `record`, codex's `recordEvent`/`recordItem`): an unmapped native type or a

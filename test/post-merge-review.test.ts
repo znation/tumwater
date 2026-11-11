@@ -379,6 +379,36 @@ test("a post-merge review git could not start keeps its entry without counting a
   assert.deepEqual(readPostReviews(root), [entry], "kept as it was, for the next poll");
 });
 
+test("a post-merge review that ended on a transient provider failure keeps its entry without counting or filing (regression, BUGS.md 2026-11-09)", async () => {
+  // The 2026-11-09 cascade: a Codex subscription quota wall made every review verdict-less and
+  // the drain counted each run as a failure, dropping entries at the limit and filing one fake
+  // BUGS.md entry per commit. A transient provider failure is a world failure, not a review
+  // content failure: the entry stays queued, uncounted, unfiled.
+  const { root, commit, ctx, runner } = setup("VERDICT: approve\n1. fine");
+  // The reviewer's run ends on a transient rate limit with no verdict (no assistant text).
+  // Install the stub first, then the counter, so the counter wraps it.
+  (runner as { runGatePi: RoleRunner["runGatePi"] }).runGatePi = async () =>
+    piRunResult({ ok: true, transientRateLimit: true });
+  const reviews = countReviews(runner);
+  fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: [{ commit, role: "improve", summary: "add x" }] }));
+  // Drain repeatedly, past the old failure limit: a transient failure must never count, so the
+  // entry stays queued every time (the old bug dropped it at the limit and filed a product bug).
+  for (let i = 0; i < POST_REVIEW_FAILURE_LIMIT + 2; i++) {
+    const p = newMergePipeline();
+    drainPostReviews(ctx, p);
+    await p.postReview!.promise;
+  }
+  const after = readPostReviews(root);
+  assert.equal(after.length, 1, "the entry stays queued — a transient failure is never dropped");
+  assert.equal(after[0]?.failures ?? 0, 0, "a transient provider failure is never counted toward the drop limit");
+  assert.ok(reviews.count > 0, "the reviewer did run; it was the transient outcome that was not counted");
+  const bugs = fs.existsSync(path.join(root, "BUGS.md")) ? fs.readFileSync(path.join(root, "BUGS.md"), "utf8") : "";
+  if (bugs) {
+    const openSection = bugs.split("## Open")[1]?.split("## Fixed")[0] ?? "";
+    assert.equal(/###\s/.test(openSection), false, "a transient failure never files a product bug");
+  }
+});
+
 test("a torn post-review.json entry is dropped and the well-formed one is still reviewed", async () => {
   const { root, commit, ctx } = setup("VERDICT: approve\n1. fine");
   const torn = [
