@@ -169,7 +169,8 @@ async function cmdReviewsAccept(root: string, args: string[]): Promise<void> {
   await requireReadyRepo(root);
   const outcome: AcceptPostReviewOutcome = acceptPostReview(root, position);
   if (outcome.status === "out-of-range") {
-    fail(`no post-merge review at position ${position} (post-merge review queue holds ${outcome.depth})`);
+    const range = outcome.depth > 0 ? ` — valid: 1-${outcome.depth}` : "";
+    fail(`no post-merge review at position ${position} (post-merge review queue holds ${outcome.depth})${range}`);
   }
 
   if (outcome.status === "settled") {
@@ -204,7 +205,8 @@ async function cmdReviewsShow(root: string, args: string[]): Promise<void> {
   refuseTeamWorkspace(root);
   const entries = readPostReviews(root);
   if (position > entries.length) {
-    fail(`no post-merge review at position ${position} (post-merge review queue holds ${entries.length})`);
+    const range = entries.length > 0 ? ` — valid: 1-${entries.length}` : "";
+    fail(`no post-merge review at position ${position} (post-merge review queue holds ${entries.length})${range}`);
   }
   const entry = entries[position - 1]!;
   if (json) {

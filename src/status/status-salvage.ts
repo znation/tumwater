@@ -103,7 +103,11 @@ export function salvagePatchAt(
   position: number,
 ): { patch: SalvagePatch; message?: never } | { patch?: never; message: string } {
   if (position < 1 || position > patches.length) {
-    return { message: `no salvaged workspace patch at position ${position} (salvage holds ${patches.length} patches)` };
+    // Name the valid range when patches exist, so the operator sees the fix in the same
+    // line instead of deriving `1..N` from the count — the sibling position rejections
+    // (backlog, inbox, questions) each append the same ` — valid: 1-N` range.
+    const range = patches.length > 0 ? ` — valid: 1-${patches.length}` : "";
+    return { message: `no salvaged workspace patch at position ${position} (salvage holds ${patches.length} patches)${range}` };
   }
   return { patch: patches[position - 1]! };
 }

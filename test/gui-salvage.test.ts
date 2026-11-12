@@ -118,7 +118,7 @@ test("POST /api/salvage-apply with an out-of-range position answers ok:false and
   assert.equal(captured.status, 200);
   const d = data as { ok: boolean; message: string };
   assert.equal(d.ok, false);
-  assert.equal(d.message, "no salvaged workspace patch at position 9 (salvage holds 1 patches)");
+  assert.equal(d.message, "no salvaged workspace patch at position 9 (salvage holds 1 patches) — valid: 1-1");
   assert.equal(fs.readFileSync(path.join(salvageDir(repo), "a.patch"), "utf8"), OLDER_TEXT, "an out-of-range apply writes nothing");
 });
 
@@ -172,7 +172,7 @@ test("POST /api/salvage-drop with an out-of-range position answers ok:false and 
   assert.equal(captured.status, 200);
   const d = data as { ok: boolean; message: string };
   assert.equal(d.ok, false);
-  assert.equal(d.message, "no salvaged workspace patch at position 9 (salvage holds 2 patches)");
+  assert.equal(d.message, "no salvaged workspace patch at position 9 (salvage holds 2 patches) — valid: 1-2");
   assert.equal(fs.existsSync(older), true, "an out-of-range drop deletes nothing");
   assert.equal(fs.existsSync(newer), true);
 });

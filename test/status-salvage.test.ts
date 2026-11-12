@@ -30,7 +30,7 @@ test("salvagePatchAt refuses a below-1 or past-the-list position with the shared
   for (const bad of [0, 3]) {
     const out = salvagePatchAt(patches, bad);
     assert.ok("message" in out);
-    assert.equal(out.message, `no salvaged workspace patch at position ${bad} (salvage holds 2 patches)`);
+    assert.equal(out.message, `no salvaged workspace patch at position ${bad} (salvage holds 2 patches) — valid: 1-2`);
   }
   // An empty list refuses every position, naming that it holds none.
   const empty = salvagePatchAt([], 1);

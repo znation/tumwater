@@ -275,7 +275,8 @@ async function cmdQuarantineShow(root: string, args: string[]): Promise<void> {
   const entries = loadQuarantine(root);
   const entry = quarantineEntryAt(entries, position);
   if (entry === null) {
-    fail(`no quarantined test at position ${position} (flake quarantine holds ${entries.length} tests)`);
+    const range = entries.length > 0 ? ` — valid: 1-${entries.length}` : "";
+    fail(`no quarantined test at position ${position} (flake quarantine holds ${entries.length} tests)${range}`);
   }
   if (json) {
     sayJson({
@@ -306,7 +307,8 @@ async function cmdQuarantineRelease(root: string, args: string[]): Promise<void>
   await requireReadyRepo(root);
   const rows = quarantineRows(loadQuarantine(root));
   if (position < 1 || position > rows.length) {
-    fail(`no quarantined test at position ${position} (flake quarantine holds ${rows.length} tests)`);
+    const range = rows.length > 0 ? ` — valid: 1-${rows.length}` : "";
+    fail(`no quarantined test at position ${position} (flake quarantine holds ${rows.length} tests)${range}`);
   }
   const test = rows[position - 1]!.test;
   if (!releaseQuarantinedTest(root, test)) {
