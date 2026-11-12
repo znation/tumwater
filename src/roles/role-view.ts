@@ -616,7 +616,7 @@ function previewRun(
       state,
       preview: true,
     })?.prompt ?? null;
-  
+
   return {
     state,
     nextPrompt,

@@ -29,7 +29,7 @@ own ignore rules decide what is regenerable.
   - 102 GB in total;
   - 2,357 rlibs for 482 distinct crates, about 5× the live set;
   - 13 copies of `libduckdb-sys`'s build output at 3 GB each.
-  
+
   A fleet's role worktrees churn dependencies much faster than a human checkout does.
 - **Nothing watches today.**
   - No code calls `statfs`.
@@ -74,13 +74,13 @@ own ignore rules decide what is regenerable.
   (src/scheduling/quiet-hours.ts):
   - `disk_low` carries `freeGB` and `holdGB`;
   - `disk_ok` carries `freeGB`.
-  
+
   `disk_low` joins the notify hook's notable events and the UI's problem events.
 - `tumwater doctor` gets `checkDiskSpace`:
   - **ok** at or above the reclaim threshold, or above the hold floor before part 2/4 lands;
   - **warn** between the two thresholds;
   - **fail** below the hold floor.
-  
+
   Its detail names the volume, the free GB and both thresholds.
 
 ### Reclaiming build outputs (parts 2/4 and 3/4)
@@ -105,7 +105,7 @@ own ignore rules decide what is regenerable.
   - the path resolves inside `worktreesDir(root)`;
   - `git rev-parse --git-dir` differs from `git rev-parse --git-common-dir`, which proves it is
     a linked worktree and not the primary checkout.
-  
+
   The primary checkout's `.gitignore` lists `.tumwater/`, so a `clean -X` there would delete
   the fleet's entire state. A test pins this guard.
 
@@ -127,7 +127,7 @@ own ignore rules decide what is regenerable.
   - a merge, `landApprovedChange` (src/landing/landing-core.ts);
   - a stack, `landStack` (src/landing/landing-stack.ts);
   - the `_gate-main` baseline in src/baseline/main-red.ts.
-  
+
   [worktree-pool.md](worktree-pool.md) later builds slot leases on this registry rather than
   beside it.
 
