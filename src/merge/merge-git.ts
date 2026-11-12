@@ -4,7 +4,7 @@ import { GitError, committerIdentArgs, git, gitCouldNotStart, gitTry, runGit } f
 import { readTextOrNull, writeBytesAtomic } from "../files/files.js";
 import { currentBranch, gitLines, headOf } from "../git/git.js";
 import { treeDiffFiles, unquotePorcelainPath } from "../git/git-diff.js";
-import { errCode } from "../errno.js";
+import { errCode, isErrAbsent } from "../errno.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
 import { withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
@@ -146,16 +146,14 @@ function markerState(wt: string, f: string): "clean" | "marked" | "unreadable" {
   try {
     st = fs.lstatSync(path.join(wt, f));
   } catch (err) {
-    const code = errCode(err);
-    return code === "ENOENT" || code === "ENOTDIR" ? "clean" : "unreadable";
+    return isErrAbsent(err) ? "clean" : "unreadable";
   }
   if (!st.isFile()) return "clean";
   let text: string;
   try {
     text = fs.readFileSync(path.join(wt, f), "utf8");
   } catch (err) {
-    const code = errCode(err);
-    return code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR" ? "clean" : "unreadable";
+    return isErrAbsent(err) || errCode(err) === "EISDIR" ? "clean" : "unreadable";
   }
   return MARKER_EDGE.test(text) ? "marked" : "clean";
 }

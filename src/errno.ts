@@ -13,3 +13,13 @@ export function errCode(err: unknown): string | undefined {
     ? (err as NodeJS.ErrnoException).code
     : undefined;
 }
+
+/** True when `err`'s errno code says the path itself holds no file: a deleted path (`ENOENT`) or
+ * one whose parent component is a regular file (`ENOTDIR`). The "already absent" classification
+ * every consumer that must tell a missing path from a genuinely unreadable one (a read whose
+ * EACCES must surface rather than read as empty) used to inline as the code pair, in three
+ * modules; it lives here so they cannot drift. Depends only on `errCode`. */
+export function isErrAbsent(err: unknown): boolean {
+  const code = errCode(err);
+  return code === "ENOENT" || code === "ENOTDIR";
+}

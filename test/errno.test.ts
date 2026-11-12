@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-import { errCode } from "../src/errno.js";
+import { errCode, isErrAbsent } from "../src/errno.js";
 import { errnoError } from "./helpers/fs-faults.js";
 import { tmpdir as makeTmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -56,4 +56,13 @@ test("a non-string code reads as undefined", () => {
 
 test("a synthetic errnoError from the fault-injection helpers reads back through errCode", () => {
   assert.equal(errCode(errnoError("EACCES", "permission denied")), "EACCES");
+});
+
+test("isErrAbsent classifies the path-absent errno codes and nothing else", () => {
+  assert.equal(isErrAbsent(errnoError("ENOENT", "no such file")), true);
+  assert.equal(isErrAbsent(errnoError("ENOTDIR", "not a directory")), true);
+  assert.equal(isErrAbsent(errnoError("EACCES", "permission denied")), false);
+  assert.equal(isErrAbsent(errnoError("EISDIR", "is a directory")), false);
+  assert.equal(isErrAbsent(new Error("boom")), false);
+  assert.equal(isErrAbsent("boom"), false);
 });

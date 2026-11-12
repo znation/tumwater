@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { errCode } from "../errno.js";
+import { errCode, isErrAbsent } from "../errno.js";
 import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile } from "../files/json-files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
@@ -98,12 +98,6 @@ export function knownSecrets(
   return all.filter((s, i) => all.findIndex((o) => o.value === s.value) === i);
 }
 
-/** Whether `err` says the path holds no file (deleted, or a parent replaced). */
-function noFile(err: unknown): boolean {
-  const code = errCode(err);
-  return code === "ENOENT" || code === "ENOTDIR";
-}
-
 /** The finding for a changed file the gate could not read. */
 function unreadable(file: string, err: unknown): string {
   return `\`${file}\` could not be read to check for leaked secrets (${errCode(err) ?? "error"})`;
@@ -112,7 +106,7 @@ function unreadable(file: string, err: unknown): string {
 /** The text of one changed file read for the scan: the file text when the path is a regular
  * file under the size cap; `undefined` when the path is a missing/deleted file, a non-file
  * (directory, symlink, gitlink), or larger than `MAX_SCAN_BYTES`; or `{ finding }` (the
- * unreadable finding) when stat or read fails for a reason `noFile` does not classify. */
+ * unreadable finding) when stat or read fails for a reason `isErrAbsent` does not classify. */
 function readFileForScan(wt: string, file: string): string | { finding: string } | undefined {
   const full = path.join(wt, file);
   let stat: fs.Stats | null;
@@ -125,7 +119,7 @@ function readFileForScan(wt: string, file: string): string | { finding: string }
     // file's contents as this change's leak.
     stat = fs.lstatSync(full);
   } catch (err) {
-    if (!noFile(err)) return { finding: unreadable(file, err) };
+    if (!isErrAbsent(err)) return { finding: unreadable(file, err) };
     return undefined;
   }
   if (!stat.isFile() || stat.size > MAX_SCAN_BYTES) return undefined;
@@ -133,7 +127,7 @@ function readFileForScan(wt: string, file: string): string | { finding: string }
   try {
     head = fs.readFileSync(full, "utf8");
   } catch (err) {
-    if (!noFile(err)) return { finding: unreadable(file, err) };
+    if (!isErrAbsent(err)) return { finding: unreadable(file, err) };
     return undefined;
   }
   return head;

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { errCode } from "../errno.js";
+import { errCode, isErrAbsent } from "../errno.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 
 /** The directory-of-timestamped-files queue convention shared by the director's prompt inbox
@@ -37,8 +37,7 @@ export function listQueueFiles(dir: string, ext: string): string[] {
           // read the same empty list a missing directory does, per the contract. Any other
           // error (EACCES: a real but unreadable directory) is a genuine failure the caller
           // must see, never a silently empty queue that would hide queued work.
-          const code = errCode(err);
-          if (code !== "ENOENT" && code !== "ENOTDIR") throw err;
+          if (!isErrAbsent(err)) throw err;
           return [];
         }
         return entries
