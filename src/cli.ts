@@ -400,7 +400,7 @@ async function cmdRevertCase(root: string, args: string[]): Promise<void> {
   // Acts immediately on the primary checkout under the primary-worktree lock; the
   // positionals (a sha, or a run) are validated inside cmdRevert.
   await requireReadyRepo(root);
-  await (await import("./cli/cli-operator-commands.js")).cmdRevert(root, args);
+  await (await import("./cli/cli-revert-command.js")).cmdRevert(root, args);
 }
 
 async function cmdStopCase(root: string, args: string[]): Promise<void> {
