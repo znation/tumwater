@@ -4856,6 +4856,15 @@ for (const ch of "x")
 keys.handleKey(undefined, { name: "return" });
 assert.match(keys.state().flash!, /salvage position must be a whole number/);
 assert.equal(keys.state().salvageMode, true, "a non-integer stays open in the editor");
+// Exponent spelling: refused as not a plain whole number (Number() would read "1e2" as 100),
+// the same conversion guard the sibling TUI editors apply — stays open, nothing changes.
+keys.handleKey(undefined, { name: "escape" });
+keys.handleKey(undefined, { ctrl: true, name: "g" });
+for (const ch of "1e2")
+    keys.handleKey(ch, { name: ch });
+keys.handleKey(undefined, { name: "return" });
+assert.match(keys.state().flash!, /salvage position must be a whole number/);
+assert.equal(keys.state().salvageMode, true, "an exponent spelling stays open in the editor");
 // Past the list: the CLI's out-of-range flash, stays open, nothing changes.
 keys.handleKey(undefined, { name: "escape" });
 keys.handleKey(undefined, { ctrl: true, name: "g" });

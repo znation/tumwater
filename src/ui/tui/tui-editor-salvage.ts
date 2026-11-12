@@ -1,6 +1,7 @@
 import { applySalvagePatchForOperator } from "../../git/slot-salvage.js";
 import { isGitRepo } from "../../git/git.js";
 import { collectSalvagePatches, dropSalvagePatch, salvagePatchAt } from "../../status/status-salvage.js";
+import { parsePositiveInt } from "../../text/text.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import { openBlankPromptLine, savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
@@ -97,8 +98,13 @@ export function createSalvageEditor(session: TuiEditorSession): TuiEditorModule 
       session.flashMessage("a salvaged patch position is required");
       return true;
     }
-    const position = Number(text);
-    if (!Number.isInteger(position)) {
+    // Plain decimal digits only, via the shared parsePositiveInt the CLI's --show/--apply/--drop
+    // use — bare Number() would silently read an exponent spelling ("1e2" → 100) as a position,
+    // while the sibling TUI editors (interval, instances, budget) all enforce the same
+    // plain-decimal rule. A non-plain-decimal shape flashes the same whole-number wording and
+    // STAYS in the editor.
+    const position = parsePositiveInt(text);
+    if (position === null) {
       session.flashMessage("salvage position must be a whole number");
       return true;
     }
@@ -146,8 +152,13 @@ export function createSalvageEditor(session: TuiEditorSession): TuiEditorModule 
       session.flashMessage("a salvaged patch position is required");
       return true;
     }
-    const position = Number(text);
-    if (!Number.isInteger(position)) {
+    // Plain decimal digits only, via the shared parsePositiveInt the CLI's --show/--apply/--drop
+    // use — bare Number() would silently read an exponent spelling ("1e2" → 100) as a position,
+    // while the sibling TUI editors (interval, instances, budget) all enforce the same
+    // plain-decimal rule. A non-plain-decimal shape flashes the same whole-number wording and
+    // STAYS in the editor.
+    const position = parsePositiveInt(text);
+    if (position === null) {
       session.flashMessage("salvage position must be a whole number");
       return true;
     }
