@@ -27,7 +27,7 @@ import {
 import {
   newQuietHoursGateState,
   pollQuietHoursGate,
-  roleQuietHold,
+  roleQuietHeldRoles,
   type QuietHoursGateState,
 } from "../scheduling/quiet-hours.js";
 import {
@@ -43,8 +43,7 @@ import { standingHolds, type TeamHold } from "../team/team-hold.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "../team/team-error-storm.js";
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../team/team-failure-spread.js";
 import type { RoleRunner } from "../runner/runner.js";
-import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { baseRoleOf, instancePauseKey, runnerEnabled } from "../roles/runner-ids.js";
+import { instancePauseKey, runnerEnabled } from "../roles/runner-ids.js";
 import { publishInfoFields, type OrchestratorInfo } from "../team/team-orchestrator-info.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
 
@@ -369,12 +368,7 @@ function pollHoldGates(states: TeamGateStates, ctx: TeamGatePollCtx) {
 function pollQuietAndDiskGates(states: TeamGateStates, ctx: TeamGatePollCtx) {
   const { root, runners, liveConfig, now, info } = ctx;
 
-  const roleQuietHeld = new Set<string>();
-  for (const r of runners) {
-    if (r.role === DIRECTOR_ROLE) continue;
-    if (roleQuietHold(liveConfig.quietHoursPerRole, baseRoleOf(r.role), new Date(now)))
-      roleQuietHeld.add(r.role);
-  }
+  const roleQuietHeld = new Set(roleQuietHeldRoles(liveConfig.quietHoursPerRole, runners.map((r) => r.role), new Date(now)));
 
   // Quiet hours (src/scheduling/quiet-hours.ts): the config-driven daily local-time window during
   // which roles start no new runs — the operator pause's semantics on a schedule.

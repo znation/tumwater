@@ -20,8 +20,7 @@ import {
   type RemoteCiStatus,
   type MainCheckStatus,
 } from "./status-polls.js";
-import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
-import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { quietHoursStatus, roleQuietHeldRoles } from "../scheduling/quiet-hours.js";
 import { scheduledStopAt, scheduledWakes, standingRolePause, standingTeamPause } from "../team/team-state.js";
 import {
   orchestratorAlive,
@@ -542,6 +541,7 @@ function snapshotPauseFields(
   root: string,
   wakes: ReturnType<typeof scheduledWakes>,
   quiet: ReturnType<typeof quietHoursStatus>,
+  now: number,
 ): Partial<StatusSnapshot> {
   return {
     paused: teamPause !== null,
@@ -565,11 +565,12 @@ function snapshotPauseFields(
     // window, so the dashboards can render the same `quiet until <end>` wording the team
     // badge uses, scoped to the role's own schedule. The window string comes back out of
     // the same config the hold was decided from, so the label cannot name a window that is
-    // not holding (roleQuietHold true implies a parseable, non-empty string there).
+    // not holding (roleQuietHold true implies a parseable, non-empty string there). The held
+    // set is the shared roleQuietHeldRoles pass (the same one the scheduler's gate runs), so the
+    // surfaces cannot disagree about who the per-role windows hold.
     roleQuietPaused: Object.fromEntries(
-      roleRows
-        .filter((l) => l.role !== DIRECTOR_ROLE && roleQuietHold(cfg.quietHoursPerRole, baseRoleOf(l.role), new Date()))
-        .map((l) => [l.role, cfg.quietHoursPerRole?.[baseRoleOf(l.role)] ?? ""]),
+      roleQuietHeldRoles(cfg.quietHoursPerRole, roleRows.map((l) => l.role), new Date(now))
+        .map((l) => [l, cfg.quietHoursPerRole?.[baseRoleOf(l)] ?? ""]),
     ),
     pausedUntil: teamPause?.until,
     pausedRolesUntil: markerRolesUntil,
@@ -785,6 +786,7 @@ export function snapshotForStatus(root: string, modelsPath = piModelsPath(), now
       root,
       wakes,
       quiet,
+      now,
     ),
     ...snapshotHealthFields(root, cfg, mergeQueue, roleNotesOverCap, problem),
     ...snapshotResourceFields(root, running, info, rootDrift),

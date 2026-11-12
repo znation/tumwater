@@ -14,6 +14,7 @@ import {
   parseQuietHours,
   pollQuietHoursGate,
   quietHoursStatus,
+  roleQuietHeldRoles,
   roleQuietHold,
 } from "../src/scheduling/quiet-hours.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -205,4 +206,26 @@ test("roleQuietHold: the per-role window holds the role it names and no other", 
   assert.equal(roleQuietHold({ feature: "nonsense" }, "feature", localDate(23, 30)), false);
   // A non-string value is off, likewise.
   assert.equal(roleQuietHold({ feature: 5 } as unknown as Record<string, string>, "feature", localDate(23, 30)), false);
+});
+
+// The shared membership pass (roleQuietHeldRoles): the director is always exempt, and an
+// instance of a held base role is held under its own instance id — the same pass the
+// scheduler's gate, the status snapshot's roleQuietPaused and doctor's quiet row run, so the
+// surfaces cannot disagree about who the per-role windows hold.
+test("roleQuietHeldRoles: holds the named role and its instances, exempts the director", () => {
+  const perRole = { feature: "23:00-07:00" };
+  // Inside the wrapping window: feature-2 inherits its base role's window.
+  assert.deepEqual(roleQuietHeldRoles(perRole, ["feature", "feature-2", "qa"], localDate(23, 30)), [
+    "feature",
+    "feature-2",
+  ]);
+  // Outside the window: nothing holds.
+  assert.deepEqual(roleQuietHeldRoles(perRole, ["feature", "feature-2", "qa"], localDate(7, 0)), []);
+  // The director is exempt even when a director window is set.
+  assert.deepEqual(
+    roleQuietHeldRoles({ feature: "23:00-07:00", director: "00:00-23:59" }, ["director", "feature"], localDate(6, 30)),
+    ["feature"],
+  );
+  // No config: nothing holds.
+  assert.deepEqual(roleQuietHeldRoles(undefined, ["feature"], localDate(23, 30)), []);
 });

@@ -10,6 +10,8 @@
 
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { gotSuffix, isNonBlankString } from "../text/text.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 
 /** A parsed window: minutes since local midnight for each end. `startMin > endMin` is a
  * window that wraps midnight (23:00-07:00 spans 23:00 → 00:00 → 07:00). */
@@ -142,6 +144,26 @@ export function roleQuietHold(
   if (!isNonBlankString(value)) return false;
   const parsed = parseQuietHours(value);
   return parsed.ok && parsed.window !== null && inQuietHours(parsed.window, now);
+}
+
+/** The role ids (the director excluded) whose own `quietHoursPerRole` window holds at `now` —
+ * one shared membership pass over a candidate role list, so the scheduler's gate and the status
+ * snapshot's `roleQuietPaused` cannot name different held sets. A runner's own id is what the
+ * gate holds, so an instance of a held base role is held under its instance id: each id is
+ * matched through baseRoleOf to the configured window. Stateless, recomputed per poll exactly
+ * like the predicate it folds. (doctor's quiet row folds its own sorted set over the configured
+ * keys — a different shape — and deliberately does not share this pass.) */
+export function roleQuietHeldRoles(
+  perRole: Record<string, string> | undefined,
+  roleIds: readonly string[],
+  now: Date,
+): string[] {
+  const held: string[] = [];
+  for (const id of roleIds) {
+    if (id === DIRECTOR_ROLE) continue;
+    if (roleQuietHold(perRole, baseRoleOf(id), now)) held.push(id);
+  }
+  return held;
 }
 
 /** The window's end time exactly as the operator wrote it — the text after the dash, trimmed —
