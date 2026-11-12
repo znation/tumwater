@@ -6,15 +6,11 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-- The bugfix "with the director" skip is re-derived from prose every run; no machine hold exists (filed 2026-11-11 from ~/Desktop/tumwater-no-progress-bugs.md).
+_None yet._
 
-**Symptom.** The bugfix charter (src/roles/role-catalog.ts, bugfix `find` step 2, lines ~119–127) tells the model to skip an entry "whose newest Progress note names a director handoff" and that carries no `**Needs review … by director: …**` note. Nothing in the backlog index marks that state, so every run re-derives it from prose. One model (`codex/gpt-6-luna`) misread repeatedly: 25 consecutive `no_change` runs (00:00–01:05) while the director had already answered, `yieldMultiplier: 8`; the bug was fixed only when a later run on another model took the entry.
+## Fixed
 
-**Required behavior.** A machine hold at handoff time: write a hold line (e.g. `**Director handoff <date>**`) beside the request file, have the index mark the entry `[blocked: with the director]`, and clear it when the director resolves — the request-file lifecycle (src/inbox/director-request.ts) already knows when the director ran (the request file's deletion marks that event), so the index can derive the hold from that state instead of asking the model to interpret the newest Progress note.
-
-**Suspected cause.** The handoff state exists only in prose; the entry stays eligible, so a model that misreads the note idles instead of being held.
-
-- The steward's `## Done` epitaph shape for a superseded plan is invisible to the stranded-plan detector, keeping main's self-referential backlog-structure guardrail red for over a day (found by the selfcheck role 2026-11-12 from the digest's Fast-merge-guardrails line: "main has had no passing full check for more than 24 h", "this repo's current PLANS.md and PLANS-DONE.md yield nothing").
+- The steward's `## Done` epitaph shape for a superseded plan is invisible to the stranded-plan detector, keeping main's self-referential backlog-structure guardrail red for over a day (found by the selfcheck role 2026-11-12 from the digest's Fast-merge-guardrails line: "main has had no passing full check for more than 24 h", "this repo's current PLANS.md and PLANS-DONE.md yield nothing"). — fixed 2026-11-12 by the bugfix role
 
 **Symptom.** The guardrail test `test/backlog-structure.test.ts` "this repo's current PLANS.md and PLANS-DONE.md yield nothing" fails on main: `strandedPlanEntries` reports the two `## Done` entries steward moved in `d15db595` (subtract pin queue part 2/3 and part 3/3, PLANS.md lines 116 and 140) as stranded. Each carries `(planned 2026-11-09 …)` and no `done` date, and each was closed with a `— superseded 2026-11-12 by the steward role: …` epitaph line under `## Done`. The detector's completion stamps are only `DONE_DATE` (`done YYYY-MM-DD`) and `RETIRED_STAMP` (`retired YYYY-MM-DD`) — `src/backlog/backlog-structure.ts` lines 110 and 123 — and `headingMetadata` joins heading continuation lines only for an unbalanced parenthetical (`headingIsWrapped`), so the `superseded` epitaph on the line after each heading is neither a recognized stamp nor joined into the heading text. Both entries remain under `## Done` with `(planned …)` and no completion stamp, so the whole-document stranding check keeps failing and main stays red past the 30-minute G1 threshold; even the `ci` `d031c080` fix touched no PLANS.md and left the guardrail red. The same failure recurred from the same cause as the archived 2026-11-11 fix (BUGS-FIXED.md: the operator/team-start bulk archive shipped stranded entries to PLANS-DONE.md).
 
@@ -22,7 +18,21 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 **Suspected cause.** The steward's d15db595 used a `— superseded …` epitaph as the body when moving the two entries under `## Done`, following the role catalog's "one-line epitaph as its body" wording (line 713) but not its `retired` heading-stamp rule for a plan closed without being built; the harness's stranded-plan detector has no `superseded` completion stamp.
 
-## Fixed
+**Fixed.** A data fix, not a detector change: the ci role landed the `retired YYYY-MM-DD` heading stamp the Required behavior prescribed on the two `## Done` entries (`a2acae98a` — Add retired stamps to two superseded PLANS.md Done headings), which `RETIRED_STAMP` reads as a completion. `strandedPlanEntries` now returns 0 for both PLANS.md and PLANS-DONE.md at the live tip, so the self-referential guardrail `test/backlog-structure.test.ts` (the repo's current PLANS.md and PLANS-DONE.md yield nothing) passes and main's fast-merge guardrail is green. The detector needed no code change.
+
+**Validation gap:** none — the existing guardrail test is the reproduction itself: it fails with 2 stranded entries on the pre-fix `## Done` tree (the bare `— superseded` epitaph, no completion stamp) and passes with 0 once the `retired 2026-11-12` stamps are present, so nothing was missing to confirm it.
+
+- The bugfix "with the director" skip is re-derived from prose every run; no machine hold exists (filed 2026-11-11 from ~/Desktop/tumwater-no-progress-bugs.md). — fixed 2026-11-12 by the bugfix role
+
+**Symptom.** The bugfix charter (src/roles/role-catalog.ts, bugfix `find` step 2, lines ~119–127) tells the model to skip an entry "whose newest Progress note names a director handoff" and that carries no `**Needs review … by director: …**` note. Nothing in the backlog index marks that state, so every run re-derives it from prose. One model (`codex/gpt-6-luna`) misread repeatedly: 25 consecutive `no_change` runs (00:00–01:05) while the director had already answered, `yieldMultiplier: 8`; the bug was fixed only when a later run on another model took the entry.
+
+**Required behavior.** A machine hold at handoff time: write a hold line (e.g. `**Director handoff <date>**`) beside the request file, have the index mark the entry `[blocked: with the director]`, and clear it when the director resolves — the request-file lifecycle (src/inbox/director-request.ts) already knows when the director ran (the request file's deletion marks that event), so the index can derive the hold from that state instead of asking the model to interpret the newest Progress note.
+
+**Suspected cause.** The handoff state exists only in prose; the entry stays eligible, so a model that misreads the note idles instead of being held.
+
+**Fixed.** The required machine hold is in place and regression-tested: at handoff the bugfix charter (src/roles/role-catalog.ts, bugfix `find` step 2) tells the model to write a `**Director handoff <YYYY-MM-DD>**` line beside the request file, and that marker is what the index now reads. `withDirectorHold` (src/roles/role-guidance.ts) holds an entry that carries the marker with no `**Progress …**` or `**Needs review … by director: …**` line; `entryHoldAgainst` (src/backlog/backlog-eligibility.ts) maps that to the `with-director` hold and the backlog index marks the entry `[blocked: with the director]`, so a model that would misread the prose Progress note no longer keeps an answered entry eligible — the 25-run `no_change` idle it describes is gone. The hold releases the moment the director appends its resolution note. Covered by test/role-guidance.test.ts (`withDirectorHold` holds/releases) and test/backlog-eligibility.test.ts (`entryHold` → `with-director`).
+
+**Validation gap:** no-repro — the 25-consecutive-`no_change`-runs symptom was a one-time live model misread, not reproducible on demand; the fix's hold mechanism (marker → `with-director` → `[blocked: with the director]`, releasing on a director resolution note) is unit-confirmed by those regression tests instead.
 
 - The live-orchestrator e2e `a stale marker beside a stale pin is dropped at the drain without a merge run` (test/orchestrator-3.e2e.test.ts:273) flakes under load — it timed out waiting for the stale pin to be dropped and its marker cleared, and CI on the GitHub runner failed on it (found by the ci role 2026-11-11). — fixed 2026-11-12 by the bugfix role
 
