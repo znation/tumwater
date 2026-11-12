@@ -3,11 +3,10 @@ import { fail, say, sayJson } from "./cli-output.js";
 import { failOverDurationCap, flagValue, optionalFlagValue, parseDurationFlag, parsePositionFlag, parseRoleFlag, rejectFlagLookingValue } from "./cli-args.js";
 import { errorMessage, splitCommaList } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "./cli-flag-specs.js";
-import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "../operator/operator-retire.js";
 import { distinctOrdered } from "../collections.js";
 import { agree, plural, teamResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { INSTANCE_ROLES } from "../roles/runner-ids.js";
-import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
+import { allRoleIds } from "../roles/roles.js";
 import {
   cancelScheduledStop,
   normalizePauseReason,
@@ -42,9 +41,11 @@ import {
 } from "../operator/operator-intent.js";
 
 /** The CLI layer of the operator commands: the `reset-counters`, `wake`, `reclaim`, `abort`,
- * `pause`, `resume`, `stop`, and `retire` commands, split out of cli.ts so the command bodies
- * live beside their shared `--role` resolution. The marker-writing cores and shared
- * confirmations they print live in src/operator/operator-intent.ts (shared with the
+ * `pause`, `resume`, and `stop` commands, split out of cli.ts so the command bodies
+ * live beside their shared `--role` resolution. The `retire` command acts immediately, not
+ * via a request marker, so it lives beside them in src/cli/cli-retire-command.ts. The
+ * marker-writing cores and shared confirmations they print live in
+ * src/operator/operator-intent.ts (shared with the
  * dashboard and TUI); the team-side consumer half is src/operator/operator-requests.ts;
  * the `prompt` command, which drives the durable per-role queues rather than the marker
  * protocol, lives beside them in src/inbox/prompt-commands.ts, and the `config` command,
@@ -102,16 +103,6 @@ function pauseTargetRoles(root: string, args: string[]): string[] | null {
     [...INSTANCE_ROLES].some((base) => piece === `${base}-1`) ? piece : namedRole(root, ["--role", piece])!,
   );
   return distinctOrdered(roles);
-}
-
-/** The `--role <id>` value a marker command requires: namedRole's resolution plus the
- * command-specific "requires --role" failure. retire needs a target (unlike
- * reset-counters/resume/wake, which default to every role), so the guard lives here once and
- * names the calling command in the error. */
-function requiredNamedRole(root: string, args: string[], command: string): string {
-  const role = namedRole(root, args);
-  if (!role) fail(`${command} requires --role <id> (e.g. \`--role feature\`)`);
-  return role;
 }
 
 /** The role(s) a marker command targets: the `--role <id>[,<id>...]` value when given,
@@ -516,69 +507,5 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
       : "";
     say(`${teamResumePhrase()}${when}${roleNote}${tail}`);
   }
-}
-
-/** The role id retire targets: a built-in or configured id as for the other marker commands, or
- * else any well-formed id that still has a branch or merge ref (a role no config names). */
-async function retireTargetRole(root: string, args: string[]): Promise<string> {
-  const role = flagValue(args, "--role");
-  if (role === null) return requiredNamedRole(root, args, "retire");
-  if (!role) fail(ROLE_VALUE_ERROR);
-  if (allRoleIds().includes(role)) return role;
-  let ids: string[];
-  try {
-    ids = knownRoleIds(loadConfig(root));
-  } catch (err) {
-    fail(errorMessage(err));
-  }
-  if (ids.includes(role) || (await hasRetirableLeftovers(root, role))) return role;
-  fail(unknownRoleMessage(role, ids));
-}
-
-/** Render one line per artifact an inventory holds and one per skipped artifact — the same
- * wording both the `--dry-run` preview and the committed run go through, so the two cannot
- * drift on the removed / `nothing to remove` phrasing. `verb` distinguishes the preview's
- * `would remove` from the committed `removed`. The `nothing to remove for role` no-ops line
- * stays in the caller (only the committed run carries it). */
-function sayRemoveInventory(removed: readonly string[], skipped: readonly string[], verb: string, role: string): void {
-  for (const name of removed) say(`${verb} ${artifactPhrase(name, role)}`);
-  for (const name of skipped) say(`nothing to remove: ${artifactPhrase(name, role)}`);
-}
-
-/** `tumwater retire --role <id> [--force] [--json]`: remove a disabled role's leftover worktree,
- * branch, merge ref, and paused-state marker. The collection, safety rails, and removal live in
- * src/operator/operator-retire.ts; this is the render layer — one line per removed
- * artifact, the skip lines that make a second run idempotent, or the `--json` payload. */
-export async function cmdRetire(root: string, args: string[]): Promise<void> {
-  // The config exists only to validate the id against built-ins plus user-defined roles, with
-  // the leftover-branch gate for ids no config names; a missing --role fails before it is needed.
-  const role = await retireTargetRole(root, args);
-  const force = args.includes("--force");
-  if (args.includes("--dry-run")) {
-    const preview = await previewRetire(root, role);
-    if (args.includes("--json")) {
-      sayJson({
-        role,
-        dryRun: true,
-        wouldRemove: preview.wouldRemove,
-        skipped: preview.skipped,
-        objections: preview.objections,
-      });
-      return;
-    }
-    sayRemoveInventory(preview.wouldRemove, preview.skipped, "would remove", role);
-    for (const reason of preview.objections)
-      say(force ? `--force overrides: ${reason}` : `would refuse: ${reason}`);
-    say("dry run — nothing removed");
-    return;
-  }
-  const result = await retireRole(root, role, { force });
-  if (args.includes("--json")) {
-    sayJson({ role, removed: result.removed, skipped: result.skipped });
-    return;
-  }
-  sayRemoveInventory(result.removed, result.skipped, "removed", role);
-  if (result.removed.length === 0 && result.skipped.length === 0)
-    say(`nothing to remove for role ${role}`);
 }
 

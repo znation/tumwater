@@ -393,7 +393,7 @@ async function cmdRetireCase(root: string, args: string[]): Promise<void> {
   // marker commands' gate shape: unknown-args rejection, then the ready-repo gate.
   rejectUnknownArgs("retire", args, [ROLE_FLAG, FORCE_FLAG, DRY_RUN_FLAG, JSON_FLAG]);
   await requireReadyRepo(root);
-  await (await import("./cli/cli-operator-commands.js")).cmdRetire(root, args);
+  await (await import("./cli/cli-retire-command.js")).cmdRetire(root, args);
 }
 
 async function cmdRevertCase(root: string, args: string[]): Promise<void> {
