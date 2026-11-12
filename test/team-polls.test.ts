@@ -290,3 +290,35 @@ test("a lifted provider's hold stays in the map with its relapse memory but stop
   assert.deepEqual([...heldProviders(holds)], ["P"]);
 });
 
+
+test("a model-load stamp's pair rides the observation, so the hold scopes off the provider", () => {
+  // PLANS.md "One unavailable model pair stops only the roles on that pair", part 2/2:
+  // the wiring half — the HoldInputs→observations mapper keeps the pair a backend-failure
+  // stamp carries, team-hold.ts names it on the resulting hold, and heldProviders() then
+  // skips the provider so a role on another model at the same provider keeps running.
+  const root = tmpdir("tumwater-team-polls-");
+  const holds = pollTeamHold(root, new Map(), [
+    runner("clean", { provider: "omlx", lastBackendFailure: { at: T0, kind: "model-load", pair: "omlx/tiny" } }),
+    runner("coverage", { provider: "omlx", lastBackendFailure: { at: T0 + 1_000, kind: "model-load", pair: "omlx/tiny" } }),
+  ], T0 + 1_000);
+  const omlx = holds.get("omlx")!;
+  assert.notEqual(omlx.until, null, "two roles failing to load the same model trip the hold");
+  assert.equal(omlx.kind, "model-load");
+  assert.deepEqual(omlx.pairs, ["omlx/tiny"], "the observation's pair rides onto the hold");
+  assert.deepEqual([...heldProviders(holds)], [], "the provider is NOT held — another model at it keeps running");
+});
+
+test("a model-load storm with a different pair per role names every failed pair", () => {
+  // The acceptance case: two roles on the same provider fail to load DIFFERENT models —
+  // the hold names both, and still holds no provider.
+  const root = tmpdir("tumwater-team-polls-");
+  const holds = pollTeamHold(root, new Map(), [
+    runner("clean", { provider: "omlx", lastBackendFailure: { at: T0, kind: "model-load", pair: "omlx/a" } }),
+    runner("coverage", { provider: "omlx", lastBackendFailure: { at: T0 + 1_000, kind: "model-load", pair: "omlx/b" } }),
+  ], T0 + 1_000);
+  const omlx = holds.get("omlx")!;
+  assert.notEqual(omlx.until, null);
+  assert.equal(omlx.kind, "model-load");
+  assert.deepEqual(omlx.pairs, ["omlx/a", "omlx/b"], "both failed models are named, sorted");
+  assert.deepEqual([...heldProviders(holds)], [], "the provider is NOT held even with two models");
+});

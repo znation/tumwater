@@ -22,10 +22,11 @@ import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-co
  * hands off to the fallback seam (plans/agent-backends.md §7, part 7a/7), or the newest author
  * session belongs to another agent (plans/agent-backends.md "Sessions") — a handoff runs a
  * fresh session over the interrupted run's uncommitted worktree. */
-export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed" | "handoff" | "rate-limit" | "budget-capped" | "image-reroute" | "salvaged" | "model-check";
+export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "stalled-tool" | "timeout" | "budget-resumed" | "handoff" | "rate-limit" | "budget-capped" | "image-reroute" | "salvaged" | "model-check";
 
-/** The shared closing paragraph of the five resume bridges that hand the same task back
- * unchanged (restart, hung-tool, budget-resumed, rate-limit, model-check): finish or redo what
+/** The shared closing paragraph of the resume bridges that hand the same task back
+ * unchanged (restart, hung-tool, stalled-tool, budget-resumed, rate-limit,
+ * model-check): finish or redo what
  * you started rather than picking a new one. Kept in one place so the wording cannot drift
  * between causes — the cut-off and timeout bridges deliberately phrase their own finish
  * instructions instead. */
@@ -53,7 +54,11 @@ leave the project working, and stop.`
         ? `Tumwater killed your previous run as the "${roleId}" role because it made no progress long enough to trip its hang watchdog — almost always one tool call that hung (a command waiting on input, or a scan far wider than intended). That tool call is dead: do not re-run it unchanged. Your worktree is exactly as you left it, and this session carries everything you did so far — verify the effect of anything the killed call was supposed to produce before relying on it, and bound any long-running command (a time limit, a scoped path).
 
 ${CONTINUE_TASK_BRIDGE}`
-        : cause === "timeout"
+        : cause === "stalled-tool"
+          ? `Tumwater killed your previous run as the "${roleId}" role because one tool call it had open hung — no activity long enough to trip the stall-kill watchdog — even though the run itself was still making progress. That one tool call is dead; the rest of the run is intact: do not re-run that call unchanged. Verify its effect before relying on it (it may have completed, or left nothing behind), and bound any long-running command you retry (a time limit, a scoped path).
+
+${CONTINUE_TASK_BRIDGE}`
+          : cause === "timeout"
           ? `Your previous run as the "${roleId}" role reached tumwater's run time limit while
 it was still making progress — a slow run, not a failed one — so tumwater preserved your
 worktree and this session and is continuing them now. Finish the SAME task, but budget against

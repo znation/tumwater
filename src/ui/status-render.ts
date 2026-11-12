@@ -19,7 +19,7 @@ import { configForStatus } from "../status/status-polls.js";
 import type { TeamAlert } from "./team-alerts.js";
 import { openQuestions } from "../backlog/backlog.js";
 import { refusedEntries } from "../backlog/backlog-eligibility.js";
-import { getOrphanAlert } from "./alert-feeds.js";
+import { getOrphanAlert, orphanAlertVisible } from "./alert-feeds.js";
 
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by
  * `tumwater status` and the TUI. The labels, badges, and metrics it draws come from the shared
@@ -622,7 +622,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     roles,
     Date.now(),
     refusedEntries(root),
-    getOrphanAlert(root),
+    orphanAlertVisible(root, getOrphanAlert(root), Date.now()),
     { snap, config: configForStatus(root), root },
   ).filter((a) => a.key !== "stopped");
   const banner = alertLines(alerts, maxWidth ?? Number.MAX_SAFE_INTEGER, alerts.length).map(plainText);

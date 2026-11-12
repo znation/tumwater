@@ -3,7 +3,8 @@
  * setup checks — the node/git/exec binaries, the repo/init/config/brief/bootstrap setup, the
  * agent backends' CLI versions and the operator pi-extension/funes coordination). This module
  * holds the checks that look at the project itself: a writable .tumwater (checkStateDir), a
- * readable event feed (checkEventLog), enough free disk (checkDiskSpace), a declared project
+ * readable event feed (checkEventLog), a root free of leaked zero-byte files
+ * (checkEmptyRootFiles), enough free disk (checkDiskSpace), a declared project
  * check (checkBuildCheck), the review gate's flake memory (checkFlakyChecks) and build
  * provenance (checkBuild). Read-only like every doctor check; the private helpers each cluster
  * uses (sweepStaleProbes, eventLogHistoryPhrase, firstEventLine, diskReclaimPhrase,
@@ -11,12 +12,15 @@
  * the composition layer that calls each check in fixed order. */
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import type { CheckConfigSlice, TumwaterConfig } from "../config/config-schema.js";
 import { detectBuildCheck, mergeCommandOf } from "../build/build-check-detect.js";
 import { isPassingFullCheck } from "../build/build-check-events.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
 import { dirEntryNames, statOrNull } from "../files/files.js";
 import { refSha } from "../git/git.js";
+import { resolvedGitBin } from "../git/git-run.js";
+import { errCode } from "../errno.js";
 import { STATE_DIR, eventsArchivePath, eventsLogPath } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gates.js";
 import { DAY_MS, dayKey, humanAgo, humanSince } from "../text/datetime.js";
@@ -100,6 +104,56 @@ export function checkEventLog(root: string): CheckOutcome {
   return okOutcome(history ? `readable: ${eventsLogPath(root)} — ${history}` : `readable: ${eventsLogPath(root)}`);
 }
 
+/** Wall-clock bound on the probe: the listing is local and cheap (ms); a git that takes this
+ * long is wedged and would otherwise freeze the sync call with nothing able to interrupt it. A
+ * doctor is a diagnostic the operator runs by hand — it must return, not hang the terminal. */
+const EMPTY_ROOT_FILES_TIMEOUT_MS = 10_000;
+/** The doctor's `empty files` row. A tracked repo-root file with no content is a leaked shell
+ * artifact, never intentional: one `clean` run word-split unquoted command prose and redirected
+ * each word to an empty path, and the harness's `git add -A` swept the 37 into main (BUGS.md
+ * 2026-11-11, commit a0d6b4713). `git ls-files -z` lists the tracked paths, the slashless ones
+ * are the root, and each is stat'ed for size. Root-scoped only — an empty file in a
+ * subdirectory (a `.gitkeep`, an intentionally-empty marker) is legitimate, so those are
+ * ignored. A directory that is not a git checkout holds no tracked files, so it reads ok (the
+ * `repo` row already fails a non-repo; this row must not double-count it). A git checkout whose
+ * file listing cannot be read fails naming the read error, matching checkEventLog's unreadable
+ * branch. The `git ls-files -z` probe is a synchronous spawnSync, so a wedged git (an unmounted
+ * volume, a locked index) blocks the whole event loop — no timer or watchdog can run until it
+ * returns (the same hazard git-run's xcrun probe, session-ledger's session delete, and the
+ * `pi list` probe all bound); the wall-clock bound kills the child with SIGKILL and the row
+ * then fails loudly naming the deadline. Read-only. */
+export function checkEmptyRootFiles(root: string, seams: { timeoutMs?: number; gitBin?: () => string } = {}): CheckOutcome {
+  if (!fs.existsSync(path.join(root, ".git")))
+    return okOutcome("not a git checkout — no tracked root files to scan");
+  const timeoutMs = seams.timeoutMs ?? EMPTY_ROOT_FILES_TIMEOUT_MS;
+  const gitBin = seams.gitBin ? seams.gitBin() : resolvedGitBin();
+  const res = spawnSync(gitBin, ["ls-files", "-z"], {
+    cwd: root,
+    encoding: "buffer",
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
+  });
+  if (res.status !== 0) {
+    // res.error carries the spawn's failure: an unkillable child on the timeout (ETIMEDOUT),
+    // a binary that could not be started (ENOENT), or the child's own nonzero exit stderr.
+    const err = res.error ?? (res.stderr?.toString("utf8") || `exit ${res.status}`);
+    const detail =
+      errCode(res.error) === "ETIMEDOUT"
+        ? `git ls-files did not finish within ${timeoutMs / 1000} s`
+        : err;
+    return failOutcome(`could not read the tracked root file list: ${detail}`);
+  }
+  // -z lists NUL-separated, unquoted paths: a non-ASCII name (the ay—andp fragment) is raw
+  // bytes, so split on NUL — newline-splitting would glue two names together.
+  const paths = (res.stdout?.toString("utf8") ?? "").split("\u0000").filter((p) => p !== "");
+  const empty = paths.filter((p) => !p.includes("/") && statOrNull(path.join(root, p))?.size === 0);
+  if (empty.length === 0) return okOutcome("no empty tracked root file");
+  const listed = empty.slice(0, 8);
+  const more = empty.length - listed.length;
+  return failOutcome(`${plural(empty.length, "empty tracked root file")}: ${listed.join(", ")}` +
+    (more > 0 ? ` (and ${more} more)` : "") +
+    " — leaked shell artifacts (a redirected word, not real content); remove them with `git rm <path>`");
+}
 /** The `history from <date>, <n> files` phrase for checkEventLog's ok detail (G4): the first
  * complete line of the oldest event-log generation present names how far back the kept history
  * reaches, and the count is how many generations (live file plus archives) exist. Undefined
@@ -119,6 +173,7 @@ function eventLogHistoryPhrase(root: string): string | undefined {
   const noun = plural(present.length, "file", "files");
   return `history from ${dayKey(ev.ts)}, ${noun}`;
 }
+
 
 /** Parse the first complete line of an append-only JSONL `file`, or null when it is unreadable
  * or does not parse. Reads only the first chunk — the event log is up to 16 MB a generation,

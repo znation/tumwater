@@ -307,7 +307,7 @@ function writePausedRoles(path: string, roles: string[], until: number | undefin
  * state (false when the role was already paused — idempotent like pauseTeam, so the CLI and
  * a dashboard toggle can report "already paused"). Custom-role ids are stored verbatim: the
  * marker must survive config edits, which is why callers resolve built-in ids without
- * touching tumwater.json (namedRole in src/operator/operator-commands.ts). */
+ * touching tumwater.json (namedRole in src/cli/cli-operator-commands.ts). */
 export function pauseRole(root: string, role: string, untilMs?: number): boolean {
   return withPausedRolesLock(root, () => {
     const path = pausedRolesPath(root);

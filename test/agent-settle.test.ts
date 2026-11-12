@@ -166,6 +166,37 @@ test("settleClose reports a quiet-killed run as failed with the husk message", (
   assert.equal(r.errorMessage, "killed as hung: no agent progress for over 1800s");
 });
 
+test("settleClose reports a stalled-tool-call run as failed with the named call and resumes it", () => {
+  const wd = {
+    timedOut: false,
+    timedOutProgressing: false,
+    quietKilled: false,
+    stallKilled: true,
+    stallKilledLabel: "sleep 999",
+    timeoutBudgetMs: 30000,
+    noteByte: () => {},
+    noteStderr: () => {},
+    stop: () => {},
+    sawOutput: true,
+  } as unknown as RunSettleState["wd"];
+  const { state, results } = makeState({
+    wd,
+    config: { quietTimeoutSeconds: 1800 },
+    wasKilled: () => true,
+  });
+  settleClose(state, 0);
+  const r = single(results);
+  assert.equal(r.ok, false, "a killed run fails");
+  assert.equal(r.stallKilled, true, "the stall-kill flag carries through");
+  assert.equal(r.quietKilled, false, "it is distinct from the quiet kill");
+  assert.equal(r.stallKilledLabel, "sleep 999");
+  // The message names the hung call and the two-window bound (2 x quietTimeoutSeconds), and
+  // never the quiet kill's "killed as hung" wording.
+  assert.match(r.errorMessage ?? "", /killed as stalled tool call sleep 999/);
+  assert.match(r.errorMessage ?? "", /no activity for over 3600s/);
+  assert.doesNotMatch(r.errorMessage ?? "", /killed as hung/);
+});
+
 test("settleClose reports a timed-out-but-progressing run with the preserve-for-resume caveat", () => {
   const wd = {
     timedOut: true,

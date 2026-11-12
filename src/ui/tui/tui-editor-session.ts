@@ -82,6 +82,10 @@ interface TuiHeld {
   checks: boolean;
   /** The Activity view's Ctrl+U declared-check (`check`) editor holds the prompt line. */
   check: boolean;
+  /** The Health view's Ctrl+G salvage-apply editor holds the prompt line. */
+  salvage: boolean;
+  /** The Health view's Ctrl+Y salvage-drop editor holds the prompt line. */
+  salvageDrop: boolean;
 }
 
 /** The prompt-line editor keys: the `entering` argument of the shared hold-guard helpers.
@@ -96,6 +100,7 @@ type EditorEnterKey =
   | "retire"
   | "release"
   | "roleEnabled"
+  | "salvage"
   | "quiet"
   | "interval"
   | "instructions"
@@ -159,6 +164,7 @@ const HOLDER_SUBJECTS: ReadonlyArray<readonly [Exclude<NonNullable<Parameters<Tu
   ["retire", "retire role"],
   ["release", "release test"],
   ["roleEnabled", "role state"],
+  ["salvage", "salvage patch"],
   ["quiet", "quiet hours"],
   ["model", "model edit"],
   ["interval", "min run interval"],
@@ -200,6 +206,8 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       retire: false,
       release: false,
       roleEnabled: false,
+      salvage: false,
+      salvageDrop: false,
       quiet: false,
       quietTeam: false,
       interval: false,
@@ -222,6 +230,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
     refreshNotes: deps.refreshNotes,
     refreshBrief: deps.refreshBrief,
     refreshReport: deps.refreshReport,
+    refreshHealth: deps.refreshHealth,
     clearBacklogSelection: deps.clearBacklogSelection,
     applyHistorySearch: deps.applyHistorySearch,
     applyActivitySearch: deps.applyActivitySearch,
@@ -331,7 +340,7 @@ export function savedPromptDraft(
 export function openBlankPromptLine(
   session: Pick<TuiEditorSession, "held" | "input" | "cursor" | "flashMessage">,
   draft: ReturnType<typeof savedPromptDraft>,
-  heldKey: "brief" | "retire" | "release" | "roleEnabled" | "attach",
+  heldKey: "brief" | "retire" | "release" | "roleEnabled" | "attach" | "salvage",
   message: string,
 ): void {
   draft.save();

@@ -14,10 +14,10 @@ import { HOUR_MS } from "../text/datetime.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota-gates.js";
 import { INSTANCE_ROLES, baseRoleOf, runnerEnabled, runnerPaused } from "../roles/runner-ids.js";
 import { hasOutstandingWork, saveRunnerStateBestEffort, type SkipReason } from "../runner/runner-state.js";
-import { hasUnmergedPin } from "../runner/runner-leftover.js";
+import { MERGE_CONFLICT_LIMIT } from "../runner/runner-leftover.js";
 import { queuedMerges } from "../merge/merge-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
-import { commitMessage, refSha } from "../git/git.js";
+import { commitExists, commitMessage, isMergedInto, refSha } from "../git/git.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { mergeRefName } from "../paths.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
@@ -77,6 +77,11 @@ export interface SchedulingPassCtx {
   /** Each runner's run model provider (configForRole at poll time): the key the
    * heldProviders check reads for that role. */
   roleProviders: ReadonlyMap<string, string | undefined>;
+  /** The pairs currently under a model-load hold (team-hold.ts heldPairs) and each runner's
+   * run pair (the runner's state pair): the pair-scoped keys the skip guard's heldStarts reads
+   * so a model-load hold stops only the roles on the failed pair, not the provider. */
+  heldPairs: ReadonlySet<string>;
+  rolePairs: ReadonlyMap<string, string>;
   /** BUGS.md `## Open` non-empty (backlog.ts's openBugs), read once per poll by the poll body. */
   openBugsNow: boolean;
   /** A pending self-redeploy hold: nothing new starts, on any role. */
@@ -128,6 +133,8 @@ export interface SchedulingScope {
   heldProviders: ReadonlySet<string | undefined>;
   windowHeldProviders: ReadonlySet<string | undefined>;
   roleProviders: ReadonlyMap<string, string | undefined>;
+  heldPairs: ReadonlySet<string>;
+  rolePairs: ReadonlyMap<string, string>;
   openBugsNow: boolean;
   workBacklogOpen: boolean;
   planBacklogFull: boolean;
@@ -388,30 +395,48 @@ function orderForAdmission(
   ];
 }
 
-/** Whether the director is owed a leftover run over its kept merge pin.
+/** Whether the director is owed a leftover run over its merge pin — a read-only classification
+ * of the pin's sha against the pass's main branch and the director's own conflict streak.
  *
- * The pin alone (hasUnmergedPin) used to be the whole answer, and that was the bug: when the
- * pinned change is already on the merge queue, the queue drain is the thing that will settle
- * it, so the director owes no authoring run until that entry drains. But the old read set
- * `pinnedDirector` for the queued pin too, and the pass's `leftover` reason then admitted a
- * run on every poll; each run's leftover recovery found the queued entry and ended `skipped`
- * (runner-leftover.ts: `relief_wait` with a second commit held on the branch, `already_queued`
- * without one) — the queue waited on a run the queue itself would have answered, hundreds of
- * wasted runs on a 1–2 h queue wait (BUGS.md 2026-11-04, "The director re-runs every poll
- * while a second commit of its waits on the branch"; 2026-11-09, the same spin with no second
- * commit, ~3 skipped runs a minute for the whole queue wait).
+ * The pin alone (hasUnmergedPin) used to be the whole answer, and that was the bug: a run now
+ * leaves only its pin (part 3e/7 writes no queue file), so a FRESH run's live pin read as
+ * "pinned" and the pass's `leftover` reason admitted a run on every poll; each run's leftover
+ * recovery re-pinned the same sha and ended `skipped` — the queue waited on a run the queue
+ * itself would have answered, hundreds of wasted runs on a 1–2 h queue wait (BUGS.md
+ * 2026-11-04 and 2026-11-09, the same spin with and without a second commit). The 2026-11-04
+ * fix keyed the suppression off the merge queue's directory — a source a fresh run no longer
+ * writes — so in production the queued check was a dead read and the spin returned.
  *
- * The 2026-11-04 fix suppressed only the `relief_wait` shape (queued pin + branch ahead) and
- * kept waking the plain queued pin on the theory the run re-queues it — but neither queued-pin
- * arm re-queues anything: `already_queued` falls through to authoring, which an empty inbox
- * skips, and `relief_wait` ends the run outright. So a queued pin NEVER owes an authoring run:
- * the branch-ahead check inside the queued case guarded nothing, and the predicate is now just
- * "an unmerged pin whose change is not queued" — the KEPT pin (a non-terminal merge failure
- * that left no queued entry) and the crash-between-commit-and-queue-write shape, both of which
- * only a run can re-pin. The drain deletes the pin when it merges (or a queued entry's drain
- * does), which clears leftoverPending on its own. */
-async function directorPinOwedRun(root: string): Promise<boolean> {
-  return (await hasUnmergedPin(root, DIRECTOR_ROLE)) && !queuedMergeRoles(root).has(DIRECTOR_ROLE);
+ * The fix classifies the pin the way the DRAIN settles it, but read-only. The drain's own
+ * decision (pinnedRetrySha) retries a pin only when it is present, not stale, and under
+ * MERGE_CONFLICT_LIMIT — it settles that pin on its own and leaves everything else to the
+ * author. This predicate mirrors that decision without its side effects: it must NOT call
+ * pinnedRetrySha, whose ref-drop of a stale or dangling pin would corrupt a schedule-only pass
+ * (the real poll runs the drain first, but the tests drive the pass in isolation), and it must
+ * NOT read readMergePins, which lists every live pin and cannot tell a draining one from a kept
+ * one. The three classes:
+ *   - stale — main already holds the sha (a crash skipped the un-pin after the merge): OWES a
+ *     run; recovery deletes it and continues, so the classification leaves it present;
+ *   - draining — live ahead of main and under the cap (a fresh run's change, or one the drain
+ *     is mid-retrying): the drain settles it, so the director OWES NO run. This is the spin, gone;
+ *   - kept — live at the cap: the drain refuses it (the author's conflict hand-back), so it
+ *     OWES a run, which the pass's skip.ts guard then admits or suppresses by hand-back.
+ * `pinnedDirector` is true for the stale and kept cases (a present pin that is not draining).
+ *
+ * The claim-reading `queuedMergeClaimKeys` is a separate reader and is deliberately NOT part of
+ * this change: it sources instance-role claims from the pin's Claim trailer (its pin loop) and
+ * the legacy queue file, and converting it to readMergePins would drop the `claim` field it
+ * exists to serve. Its legacy queue-file loop is trimmed by part 6/6 (the deletion). */
+async function directorPinOwedRun(ctx: SchedulingPassCtx): Promise<boolean> {
+  const { root, runners, mainBranch } = ctx;
+  const sha = await refSha(root, mergeRefName(DIRECTOR_ROLE)).catch(() => null);
+  if (sha === null) return false; // no pin at all: the director owes no run
+  const streak = runners.find((r) => r.role === DIRECTOR_ROLE)?.state.mergeConflicts;
+  const attempts = streak?.sha === sha ? streak.count : 0;
+  const present = await commitExists(root, sha).catch(() => false);
+  const stale = present && (await isMergedInto(root, sha, mainBranch));
+  const draining = present && !stale && attempts < MERGE_CONFLICT_LIMIT;
+  return !draining;
 }
 
 /** Compute the once-per-poll precompute the scheduling pass's per-runner loop reads. Has the
@@ -437,6 +462,8 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     heldProviders,
     windowHeldProviders,
     roleProviders,
+    heldPairs,
+    rolePairs,
     openBugsNow,
     workBacklogOpen,
     planBacklogFull,
@@ -445,9 +472,11 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     deferredDue,
     workMergedSince,
   } = ctx;
-  // The director's kept merge pin: owed a leftover run only while the change is NOT on the
-  // merge queue (the drain settles a queued pin on its own) — see directorPinOwedRun.
-  const pinnedDirector = await directorPinOwedRun(root);
+  // The director's merge pin, classified as stale / draining / kept (see directorPinOwedRun):
+  // a live pin under the conflict cap is DRAINING (the drain settles it, owes no run) — the
+  // 2026-11-04/11-09 spin, gone; a stale pin or a kept pin at the cap owes the run, which the
+  // pass's skip guard then splits by hand-back.
+  const pinnedDirector = await directorPinOwedRun(ctx);
   const queuedMergeClaims = await queuedMergeClaimKeys(root, runners);
   const claimGroups = await collectClaimGroups(root, runners, pausedRoles, now, queuedMergeClaims);
   // The team gates' block predicate (the director exempt — an explicit human prompt
@@ -507,6 +536,8 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     heldProviders,
     windowHeldProviders,
     roleProviders,
+    heldPairs,
+    rolePairs,
     openBugsNow,
     workBacklogOpen,
     planBacklogFull,

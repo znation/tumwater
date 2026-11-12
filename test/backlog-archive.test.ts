@@ -18,7 +18,7 @@ import { donePlanEntries, donePlans, fixedBugEntries } from "../src/backlog/back
 import { conflictedFiles, rebaseOntoMainLeaveConflicts } from "../src/merge/merge-git.js";
 import { resolveBacklogInsertConflicts, resolveInsertOnlyText } from "../src/merge/merge-backlog-conflicts.js";
 import { falseFixReason } from "../src/verdict/fix-claim.js";
-import { backlogStructureReason } from "../src/backlog/backlog-structure.js";
+import { backlogStructureReason, strandedPlanEntries } from "../src/backlog/backlog-structure.js";
 import { checkLiveFinished } from "../src/doctor/doctor-backlog-plans.js";
 import { makeRepo, seedCommit, sh, initializedRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
@@ -229,6 +229,31 @@ test("the commit-time sweep leaves a Done plan with no done date in PLANS.md ins
     (await backlogStructureReason(root, "main", ["PLANS.md", "PLANS-DONE.md"])) ?? "",
     /^PLANS\.md files "Brand new \(planned 2026-10-18\)"/,
   );
+});
+
+test("a stranded Done plan the sweep parked is left in PLANS.md, never shipped stranded to the archive by the bulk archive", async () => {
+  // The commit-time sweep (archiveNewFinishedEntries) parks a Done plan without a done stamp in
+  // the live PLANS.md — its archived form is rejected by the merge gate's part 4/4 rule, and the
+  // author may not edit PLANS-DONE.md. The bulk archive (archiveFinishedOnMain, at team start
+  // and from `tumwater archive`) must apply the SAME park rule: before the fix it moved the whole
+  // Done section by `keep` count with no guard, shipping the parked, un-stamped entry stranded
+  // into PLANS-DONE.md — where the self-referential guardrail trips and Planned readers see
+  // nothing. Reproduce the park by seeding the un-stamped entry committed, then archive.
+  const root = makeRepo();
+  seedCommit(root, "PLANS.md", plans("### Stamped (planned 2026-10-01, done 2026-10-02)\n\nS.\n\n### Parked (planned 2026-10-05)\n\nP.\n"), "seed plans");
+  ignoreInRepo(root, ".tumwater/");
+  // The un-stamped entry is stranded exactly as the commit-time sweep parks it.
+  assert.deepEqual(strandedPlanEntries(fs.readFileSync(path.join(root, "PLANS.md"), "utf8")).map((s) => s.title), ["Parked (planned 2026-10-05)"]);
+  const done = await archiveFinishedOnMain(root);
+  assert.equal(done.status, "archived");
+  // The archived form the guardrail reads is left clean: no un-stamped copy shipped.
+  assert.deepEqual(strandedPlanEntries(fs.readFileSync(path.join(root, "PLANS-DONE.md"), "utf8")), []);
+  // The parked entry stays in the live section where the author and the doctor can fix its stamp,
+  // and the stamped one moved.
+  assert.match(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), /### Parked \(planned 2026-10-05\)/);
+  assert.doesNotMatch(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), /### Stamped/);
+  assert.match(fs.readFileSync(path.join(root, "PLANS-DONE.md"), "utf8"), /### Stamped[^]*S\./);
+  assert.doesNotMatch(fs.readFileSync(path.join(root, "PLANS-DONE.md"), "utf8"), /### Parked/);
 });
 
 test("readers list the live section's finished entries first, then the archive's", () => {

@@ -56,6 +56,10 @@ interface PiWatchdogs {
   readonly timedOutProgressing: boolean;
   /** The quiet watchdog killed the run as hung. */
   readonly quietKilled: boolean;
+  /** The per-call stall-kill fired on a tool call that stayed silent past its bound. */
+  readonly stallKilled: boolean;
+  /** The label of the call the stall-kill fired on. */
+  readonly stallKilledLabel?: string;
   /** Any byte arrived (stdout or stderr): the run has demonstrably begun. */
   readonly sawOutput: boolean;
   /** A stdout byte: ends the zero-byte starting phase without touching progress. */
@@ -77,6 +81,9 @@ interface WatchdogState {
   timedOut: boolean;
   timedOutProgressing: boolean;
   quietKilled: boolean;
+  stallKilled: boolean;
+  /** The label of the tool call the per-call stall-kill fired on, when it did. */
+  stallKilledLabel?: string;
   timeoutBudgetMs: number;
   /** The start (PendingReply.since) of the unanswered stretch the warning last named, until
    * that stretch ends; undefined when none is open. */
@@ -214,11 +221,50 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
   const zeroByteSilenceMs = Math.max(deps.quietMs * 2, 30 * 60_000);
   const allowedSilenceMs = () =>
     deps.progressCount() > 0 ? deps.quietMs : state.sawOutput ? deps.quietMs * 2 : zeroByteSilenceMs;
+  // The stall-kill bound, derived from the same quiet window (0 follows quietMs, so "0
+  // disables" holds for both kills): an open tool call with no content-bearing activity
+  // for two quiet windows kills the run, even while the run as a whole keeps making
+  // progress and the total-silence quiet kill would not fire. Two quiet windows, never
+  // less: a call's age is measured from its last content-bearing update (INV-A8), and the
+  // bound must never sit below the silence a run that made exactly one progress event is
+  // allowed — it would false-kill the very runs the quiet window's scale protects.
+  const stallKillMs = deps.quietMs > 0 ? deps.quietMs * 2 : 0;
   // The stall warning's threshold (distinct from the kill above): one hung tool call is
   // surfaced by name even while sibling calls keep streaming, so total silence is not
   // required. One warning per stalled call — the interval keeps firing until the kill or
   // the call ends.
   const warnedStalledCalls = new Set<string>();
+  // The per-call stall-kill: the kill half of the stall measurement (the warnings below are
+  // the warn half). A single hung call that holds its process tree alive while the rest of
+  // the run keeps trickling progress would otherwise hold the "looks stuck" banner until the
+  // run deadline (PLANS.md 2026-11-11, the user's Option A — a stalled tool self-resolves).
+  // The two kills are mutually exclusive on the state flags: the total-silence quiet kill
+  // reports "killed as hung", and only when it has not fired does the per-call stall-kill
+  // fire — in a fully silent run the quiet window is always shorter than the stall-kill
+  // bound (one vs two quiet windows from the same last activity), so it always wins there.
+  // A call still receiving content-bearing updates refreshes `lastActivityAt` and never
+  // reaches the bound (INV-A8). Gated on quietMs, not stallMs: "0 disables" on
+  // quietTimeoutSeconds must disable the kill even when stall warnings stay on. Also gated
+  // on `state.sawOutput`: the kill engages only once the run has begun (emitted a byte), so
+  // the zero-byte startup grace (BUGS.md 2026-09-29's finite 30-minute bound) stays the sole
+  // reaper of a run that never speaks — a hung tool call exists only after the model emitted
+  // `tool_execution_start`, itself a byte. The interval checks the total-silence quiet kill
+  // first, and in a run that stopped progressing at all its window (quietMs with progress,
+  // or the phase-scaled bound without) fires at the same or a shorter threshold than this
+  // two-window bound, so it owns that kill; only a run that keeps trickling progress reaches
+  // here.
+  const killStalledCallCheck = () => {
+    if (stallKillMs <= 0 || !state.sawOutput || state.quietKilled || state.stallKilled) return;
+    for (const call of deps.openToolCalls()) {
+      const ageMs = Date.now() - call.lastActivityAt;
+      if (ageMs >= stallKillMs) {
+        state.stallKilled = true;
+        state.stallKilledLabel = call.label;
+        deps.kill();
+        return;
+      }
+    }
+  };
   // Warn once per call that has been open past its threshold.
   const warnStalledToolCalls = () => {
     for (const call of deps.openToolCalls()) {
@@ -290,9 +336,16 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
             if (deps.progressCount() > state.lastProgressCount) {
               state.lastProgressCount = deps.progressCount();
               state.lastProgressAt = Date.now();
-            } else if (deps.quietMs > 0 && Date.now() - state.lastProgressAt > allowedSilenceMs()) {
+            } else if (
+              deps.quietMs > 0 &&
+              !state.stallKilled &&
+              Date.now() - state.lastProgressAt > allowedSilenceMs()
+            ) {
               state.quietKilled = true;
               deps.kill();
+            }
+            if (deps.quietMs > 0) {
+              killStalledCallCheck();
             }
             if (deps.stallMs > 0) {
               warnStalledToolCalls();
@@ -317,6 +370,7 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
     timedOut: false,
     timedOutProgressing: false,
     quietKilled: false,
+    stallKilled: false,
     timeoutBudgetMs: deps.runTimeoutMs,
   };
 
@@ -337,6 +391,12 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
     },
     get quietKilled() {
       return state.quietKilled;
+    },
+    get stallKilled() {
+      return state.stallKilled;
+    },
+    get stallKilledLabel() {
+      return state.stallKilledLabel;
     },
     get sawOutput() {
       return state.sawOutput;

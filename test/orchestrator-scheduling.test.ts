@@ -4,11 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { pollRunnerReasons } from "../src/orchestrator/orchestrator-scheduling.js";
+import type { SchedulingPassCtx } from "../src/scheduling/scope.js";
 import { mergeStartHeld } from "../src/orchestrator/orchestrator-poll.js";
 import { newMaintenanceQuotaGateState, pollMaintenanceQuotaGate } from "../src/gates/maintenance-quota-gates.js";
 import { OnceRound } from "../src/scheduling/once-round.js";
 import { pollTeamHold } from "../src/team/team-polls.js";
-import { TEAM_OPEN, heldProviders, windowHeldProviders, type TeamHold } from "../src/team/team-hold.js";
+import { TEAM_OPEN, heldProviders, windowHeldProviders, heldPairs, type TeamHold } from "../src/team/team-hold.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { WorkMergedCache } from "../src/scheduling/work-merged-cache.js";
@@ -60,7 +61,7 @@ function fakeRunner(role: string, config: TumwaterConfig): RoleRunner {
   } as unknown as RoleRunner;
 }
 
-function schedulingCtx(root: string, runners: readonly RoleRunner[], roleProviders: Map<string, string | undefined>) {
+function schedulingCtx(root: string, runners: readonly RoleRunner[], roleProviders: Map<string, string | undefined>): SchedulingPassCtx {
   return {
     root,
     mainBranch: "main",
@@ -80,6 +81,8 @@ function schedulingCtx(root: string, runners: readonly RoleRunner[], roleProvide
     heldProviders: new Set<string | undefined>() as ReadonlySet<string | undefined>,
     windowHeldProviders: new Set<string | undefined>() as ReadonlySet<string | undefined>,
     roleProviders,
+    heldPairs: new Set<string>(),
+    rolePairs: new Map<string, string>(),
     openBugsNow: false,
     workBacklogOpen: false,
     planBacklogFull: false,
@@ -158,70 +161,105 @@ test("a subscription-window hold stops the director too, while a 429-storm hold 
   assert.equal((await pollRunnerReasons(storm)).has(runners[0]!), true, "429 hold: director keeps running");
 });
 
-test("a director holding a kept merge pin with an empty inbox is due as leftover, but a queued pin is not", async () => {
+test("a model-load hold names its pairs and holds only the roles on them through scheduling", async () => {
+  // PLANS.md "One unavailable model pair stops only the roles on that pair", part 2/2: the
+  // scheduling pass reads the hold's PAIR scope (heldPairs/rolePairs), not just its
+  // provider (heldProviders/roleProviders): a role on another model at the same provider
+  // keeps running while a role on the failed model is held.
+  const root = tmpdir("tumwater-scheduling-pair-hold-");
+  const config = { ...defaultConfig(), review: { ...defaultConfig().review, model: "Q/reviewer" } };
+  const runners = [fakeRunner("feature", config), fakeRunner("perf", config), fakeRunner("dedupe", config)];
+  const roleProviders = new Map<string, string | undefined>([["feature", "P"], ["perf", "P"], ["dedupe", "Q"]]);
+  const rolePairs = new Map<string, string>([["feature", "P/m1"], ["perf", "P/m2"], ["dedupe", "Q/m1"]]);
+  // The acceptance case: feature's and a sibling's runs fail to load P/m1, so the hold
+  // names that pair; perf resolves to a DIFFERENT model at the same provider (P/m2), and
+  // dedupe to a different provider. Only feature (on the failed model) is held.
+  const holds = pollTeamHold(root, new Map<string, TeamHold>(), [
+    { role: "feature", provider: "P", lastBackendFailure: { at: T0, kind: "model-load", pair: "P/m1" } },
+    { role: "plan", provider: "P", lastBackendFailure: { at: T0 + 1_000, kind: "model-load", pair: "P/m1" } },
+    { role: "dedupe", provider: "Q" },
+  ], T0 + 1_000);
+  const held = heldProviders(holds);
+  assert.deepEqual([...held], [], "a pair-scoped model-load hold holds no provider");
+  const heldPairsNow = heldPairs(holds);
+  assert.deepEqual([...heldPairsNow], ["P/m1"], "the hold names the failed pair");
+  const ctx = schedulingCtx(root, runners, roleProviders);
+  ctx.heldProviders = held;
+  ctx.heldPairs = heldPairsNow;
+  ctx.rolePairs = rolePairs;
+  const reasons = await pollRunnerReasons(ctx);
+  assert.equal(reasons.has(runners[0]!), false, "feature is on the failed model — held");
+  assert.equal(reasons.has(runners[1]!), true, "perf is on another model at the same provider — it runs");
+  assert.equal(reasons.has(runners[2]!), true, "dedupe is on another provider — it runs");
+  // The lift: the hold re-opens at its deadline, and the subsequent poll admits the
+  // previously held role — a lifted hold never keeps blocking.
+  const liftedHolds = pollTeamHold(root, holds, [], holds.get("P")!.until!);
+  assert.equal(heldProviders(liftedHolds).size, 0, "the lift holds no provider");
+  assert.equal(heldPairs(liftedHolds).size, 0, "a re-opened model-load hold holds no pair");
+  const liftedCtx = schedulingCtx(root, runners, roleProviders);
+  liftedCtx.heldProviders = heldProviders(liftedHolds);
+  liftedCtx.heldPairs = heldPairs(liftedHolds);
+  liftedCtx.rolePairs = rolePairs;
+  const reasonsLifted = await pollRunnerReasons(liftedCtx);
+  assert.equal(reasonsLifted.has(runners[0]!), true, "the previously held role is admitted again");
+});
+
+test("a director with a stale merge pin is due as leftover, but a live draining pin is not", async () => {
   const repo = await initializedRepo();
   const runners = [fakeRunner("director", defaultConfig())];
   const roleProviders = new Map<string, string | undefined>();
   assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(runners[0]!), false, "no pin, no prompt: idle");
-
-  const sha = mainSha(repo);
-  await setRef(repo, mergeRefName("director"), sha);
+  // A stale pin (its sha already in main — a crash skipped the un-pin after the merge) is
+  // owed the run: leftover recovery deletes it and the pass offers the leftover run.
+  const stale = mainSha(repo);
+  await setRef(repo, mergeRefName("director"), stale);
   const due = await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders));
   assert.equal(due.get(runners[0]!), "leftover");
-
-  // A queued pin is owed NO authoring run: the queue drain settles it, and every run the
-  // poll would admit only spins leftover recovery's `already_queued`/`relief_wait` arms into
-  // a `skipped` end — the director idles until the entry drains (BUGS.md 2026-11-04 and
-  // 2026-11-09). A KEPT pin (no queued entry) still owes the run, as the `leftover` above.
-  enqueueMerge(repo, { role: "director", sha, run: 1, summary: "kept", enqueuedAt: Date.now() });
-  assert.equal(
-    (await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(runners[0]!),
-    false,
-    "a queued pin is not owed the authoring run",
-  );
+  // A live pin ahead of main under the cap (a fresh run's change) is DRAINING: the drain
+  // settles it on its own, so the director owes no authoring run — the 2026-11-04/11-09
+  // spin, gone. (BUGS.md 2026-11-04 and 2026-11-09.)
+  const live = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "d.txt"), "d\n"), "one");
+  await setRef(repo, mergeRefName("director"), live);
+  assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(runners[0]!), false, "a live draining pin is not owed the authoring run");
 });
 
-test("a director whose queued change is still in the queue and a second commit waits on its branch is not offered leftover", async () => {
+test("a director with a live draining pin and a second commit on its branch is not offered leftover", async () => {
   const repo = await initializedRepo();
   const runners = [fakeRunner("director", defaultConfig())];
   const roleProviders = new Map<string, string | undefined>();
-  // The director's FIRST change is pinned and on the merge queue; its SECOND commit (the
-  // interlock-relief hold, run-stage's `heldOnBranch`) still sits on the role's branch ahead
-  // of main. A queued pin owes no leftover run — `relief_wait` (with the held commit) and
-  // `already_queued` (without one) both end `skipped` and re-queue nothing — so the held
-  // commit stays on the branch; once the drain deletes the pin, the director's next run (any
-  // reason, e.g. a new inbox prompt) takes leftover recovery's no-pin branch and re-queues
-  // it. (BUGS.md 2026-11-04, "The director re-runs every poll while a second commit of its
-  // waits on the branch"; 2026-11-09 for the no-second-commit spin.)
+  // The director's change is live ahead of main and under the cap (a fresh run's change): the
+  // drain settles it, so no leftover run is owed. The shape the 2026-11-04 spin worried about
+  // — a held second commit on the branch — changes nothing: the classification keys off the
+  // pin alone, and the pin is draining either way. (BUGS.md 2026-11-04, "The director re-runs
+  // every poll while a second commit of its waits on the branch"; 2026-11-09 for the
+  // no-second-commit spin.)
   const first = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "one.txt"), "one\n"), "one");
   sh(repo, "git", "checkout", "-b", "tumwater/director", "main");
   fs.writeFileSync(path.join(repo, "two.txt"), "two\n");
   commitIn(repo, "two");
   sh(repo, "git", "checkout", "main");
   await setRef(repo, mergeRefName("director"), first);
-  enqueueMerge(repo, { role: "director", sha: first, run: 1, summary: "one", enqueuedAt: Date.now() });
   const due = await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders));
-  assert.equal(due.has(runners[0]!), false, "queued pin + held second commit: not owed a leftover run");
-
-  // The same pin with NO second commit on the branch (the branch at main) is owed the run
-  // no more than the relief-wait shape: both queued-pin arms of leftover recovery end
-  // `skipped` and re-queue nothing, so the branch-ahead distinction guarded nothing.
+  assert.equal(due.has(runners[0]!), false, "live draining pin + held second commit: not owed a leftover run");
+  // The same live pin with NO second commit on the branch (the branch at main) is not owed the
+  // run either — the classification does not read the branch, so the held-commit distinction
+  // is a no-op for the drain-settles decision.
   sh(repo, "git", "checkout", "-B", "tumwater/director", "main");
-  assert.equal(
-    (await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(runners[0]!),
-    false,
-    "a queued pin whose branch holds nothing extra is not owed the authoring run either",
-  );
+  assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(runners[0]!), false, "a live draining pin whose branch holds nothing extra is not owed the run either");
 });
 
-test("a director whose pin sits at the conflict cap awaiting hand-back is not offered leftover", async () => {
+test("a director whose kept pin sits at the conflict cap awaiting hand-back is not offered leftover until the hand-back", async () => {
   const repo = await initializedRepo();
   const runners = [fakeRunner("director", defaultConfig())];
-  const sha = mainSha(repo);
+  // A live pin ahead of main (a real change) whose merges have hit the conflict cap: KEPT —
+  // the drain refuses it and leaves it to the author, so it OWES the run (pinnedDirector true).
+  const sha = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "conflict.txt"), "c\n"), "conflict");
   await setRef(repo, mergeRefName("director"), sha);
   runners[0]!.state.mergeConflicts = { sha, count: 2 };
   const roleProviders = new Map<string, string | undefined>();
-  assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(runners[0]!), false, "only a prompt owes the hand-back");
+  // The pin is at the conflict cap, but the lineage is not yet handed back, so only a prompt
+  // makes it due: the pin alone is not owed a run (the skip.ts guard suppresses it).
+  assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(runners[0]!), false, "a kept at-cap pin without a hand-back is not owed a run");
   runners[0]!.state.conflictHandback = { sha, at: Date.now(), reason: "merge", applied: false };
   assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).get(runners[0]!), "leftover", "a handed-back lineage at the cap is discarded promptlessly");
 });

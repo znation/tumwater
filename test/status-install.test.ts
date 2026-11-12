@@ -49,9 +49,9 @@ test("snapshot carries rootInstallDrift only while the install drifts", async ()
   resetRootInstallCache();
   const dir = fixture("0.9.0");
   await initProject(dir, "install drift");
-  assert.deepEqual(snapshot(dir).rootInstallDrift, ["widget"]);
+  assert.deepEqual((await snapshot(dir)).rootInstallDrift, ["widget"]);
   setInstalled(dir, "1.0.0");
   resetRootInstallCache();
-  assert.equal(snapshot(dir).rootInstallDrift, undefined);
+  assert.equal((await snapshot(dir)).rootInstallDrift, undefined);
   resetRootInstallCache();
 });

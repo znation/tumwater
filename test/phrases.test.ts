@@ -11,7 +11,7 @@ import {
   firstReason,
   holdPhrase,
   mainRedNotMine,
-  mainRedPhrase,
+  mainRedNotTheseFailures, mainRedPhrase,
   moreSuffix,
   orchestratorStopPhrase,
   pauseReasonSuffix,
@@ -173,6 +173,24 @@ test("mainRedNotMine appends the not-this-change's-failure consequence", () => {
     mainRedNotMine("0123456789abcdef"),
     "main 01234567 is red — not this change's failure",
   );
+});
+
+// mainRedNotTheseFailures is the gate rejection reason a change carries when main is red too but
+// the change fails more than main does: main's red does not excuse the change's own failures.
+// The two arms are chosen by whether the change's failures include one main does not share:
+// non-empty own lists the change's own tests, empty own reads the failure as the change's own
+// outside main's named ones. The review pre-check's test pins only the named arm's regex, so
+// the empty arm and the sha's short-sha degradation are pinned here at the phrase's one home.
+test("mainRedNotTheseFailures with named tests reads the gate's own tests after the shared spine", () => {
+  assert.equal(mainRedNotTheseFailures("0123456789abcdef", ["Y"]), "main 01234567 is red too, but these failures are this change's own: Y");
+  // A second failing test joins in listed order, one comma-separated list, not a second clause.
+  assert.equal(mainRedNotTheseFailures("0123456789abcdef", ["Y", "Z"]), "main 01234567 is red too, but these failures are this change's own: Y, Z");
+});
+
+test("mainRedNotTheseFailures with no named test blames the failure as the change's own, and degrades an unreadable sha", () => {
+  assert.equal(mainRedNotTheseFailures("0123456789abcdef", []), "main 01234567 is red too, but this check failed outside the tests main fails, so the failure is this change's own");
+  // An unreadable sha degrades through shortSha's textOr to "?", the same rule mainRedPhrase pins.
+  assert.equal(mainRedNotTheseFailures(undefined, ["Y"]), "main ? is red too, but these failures are this change's own: Y");
 });
 
 // --- pauseReasonSuffix (the quoted reason on a pause line) ---

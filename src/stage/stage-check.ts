@@ -83,6 +83,7 @@ import {
   ungroundedRefusalFinding,
 } from "./stage-backlog-checks.js";
 import { gitLevelFindings } from "./stage-path-checks.js";
+import { malformedNeedsReviewFinding } from "../backlog/backlog-structure.js";
 
 /** Where finished plans are archived (plans/backlog-archive.md). */
 const PLANS_ARCHIVE = finishedArchiveOf("PLANS.md").archive;
@@ -134,6 +135,7 @@ async function plansFindings(wt: string, mainBranch: string, pending: readonly P
   const findings = [
     planDependencyFinding(head, base, archived),
     ungroundedRefusalFinding("PLANS.md", head, base),
+    malformedNeedsReviewFinding("PLANS.md", head, base),
     duplicatePlanFinding(head, base, pending, mainPlans),
     await retireEvidenceFinding(wt, mainBranch, head, base).catch(() => undefined),
   ];
@@ -180,11 +182,15 @@ async function archiveFindings(wt: string, mainBranch: string, files: string[]):
   return findings;
 }
 
-/** The BUGS.md record finding: an ungrounded refusal that cites another bug. */
+/** The BUGS.md record findings: an ungrounded refusal that cites another bug, and a malformed
+ * `Needs review` hold note the change adds. */
 async function bugsFindings(wt: string, mainBranch: string): Promise<string[]> {
   const { head, base } = await headAndBase(wt, mainBranch, "BUGS.md");
-  const refusal = base === undefined ? undefined : ungroundedRefusalFinding("BUGS.md", head, base);
-  return refusal === undefined ? [] : [refusal];
+  const findings = [
+    base === undefined ? undefined : ungroundedRefusalFinding("BUGS.md", head, base),
+    malformedNeedsReviewFinding("BUGS.md", head, base ?? ""),
+  ];
+  return findings.filter((f): f is string => f !== undefined);
 }
 
 /** The stray-placeholder findings: a `_None yet._` line a changed record still leaves in a

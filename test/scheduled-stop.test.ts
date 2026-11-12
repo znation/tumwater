@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { cmdStop } from "../src/operator/operator-commands.js";
+import { cmdStop } from "../src/cli/cli-operator-commands.js";
 import { armScheduledStopWatch } from "../src/cli/cli-start.js";
 import { cancelScheduledStop, scheduleStop, scheduledStopAt } from "../src/team/team-state.js";
 import { scheduledStopPath } from "../src/paths.js";
@@ -68,13 +68,13 @@ test("status runStopsAt is the earlier of the run --for deadline and a scheduled
   const write = (extra: object) =>
     writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: now, roles: [], ...extra });
   write({});
-  assert.equal(snapshot(repo).runStopsAt, undefined);
+  assert.equal((await snapshot(repo)).runStopsAt, undefined);
   scheduleStop(repo, now + 30 * 60_000);
-  assert.equal(snapshot(repo).runStopsAt, now + 30 * 60_000);
+  assert.equal((await snapshot(repo)).runStopsAt, now + 30 * 60_000);
   write({ stopsAt: now + 3600_000 });
-  assert.equal(snapshot(repo).runStopsAt, now + 30 * 60_000);
+  assert.equal((await snapshot(repo)).runStopsAt, now + 30 * 60_000);
   write({ stopsAt: now + 600_000 });
-  assert.equal(snapshot(repo).runStopsAt, now + 600_000);
+  assert.equal((await snapshot(repo)).runStopsAt, now + 600_000);
   fs.rmSync(orchestratorStatePath(repo));
-  assert.equal(snapshot(repo).runStopsAt, undefined);
+  assert.equal((await snapshot(repo)).runStopsAt, undefined);
 });

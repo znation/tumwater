@@ -167,7 +167,7 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
     );
     assert.deepEqual(
       servedRest,
-      JSON.parse(JSON.stringify(statusPayload(repo))),
+      JSON.parse(JSON.stringify(await statusPayload(repo))),
       "served payload is the CLI's plus serverBuildSha",
     );
 

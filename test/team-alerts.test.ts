@@ -35,7 +35,7 @@ test("a red doctor orphan scan raises the standing amber orphans alert naming th
   // The alert-feed half (refreshOrphanAlert) supplies the doctor-row sentence; here we pin that
   // teamAlerts renders it as a standing amber banner, so a red `orphans` row is never silent on
   // the dashboard or TUI again (BUGS.md 2026-10-28).
-  const orphan = { count: 2, detail: "2 orphaned processes (PPID 1): pid 11 (age 01:00, cpu 0:41.20) node run.js — nothing reaps these; `tumwater doctor --kill-orphans` kills each with its descendants" };
+  const orphan = { count: 2, pids: [11, 12], firstSeenAt: Date.now() - 2 * 3_600_000, detail: "2 orphaned processes (PPID 1): pid 11 (age 01:00, cpu 0:41.20) node run.js — nothing reaps these; `tumwater doctor --kill-orphans` kills each with its descendants" };
   const alerts = teamAlerts(base, [], [], Date.now(), undefined, orphan);
   const o = alerts.find((a) => a.key === "orphans");
   assert.ok(o, "a red orphan scan must raise the standing orphans alert");

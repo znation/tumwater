@@ -25,7 +25,7 @@ export interface HoldInputs {
   role: string;
   provider?: string;
   lastRateLimit?: { at: number; retryAfterSeconds?: number; provider?: string };
-  lastBackendFailure?: { at: number; kind: BackendFailureKind; provider?: string };
+  lastBackendFailure?: { at: number; kind: BackendFailureKind; provider?: string; pair?: string };
 }
 
 /** The HoldObservation list both team-wide failure polls step their reducer with, gathered
@@ -44,7 +44,7 @@ function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
       ? [{ role: r.role, provider: r.lastRateLimit.provider ?? r.provider, kind: "rate-limit" as const, at: r.lastRateLimit.at, retryAfterSeconds: r.lastRateLimit.retryAfterSeconds }]
       : []),
     ...(r.lastBackendFailure
-      ? [{ role: r.role, provider: r.lastBackendFailure.provider ?? r.provider, kind: r.lastBackendFailure.kind, at: r.lastBackendFailure.at }]
+      ? [{ role: r.role, provider: r.lastBackendFailure.provider ?? r.provider, kind: r.lastBackendFailure.kind, at: r.lastBackendFailure.at, ...(r.lastBackendFailure.pair !== undefined ? { pair: r.lastBackendFailure.pair } : {}) }]
       : []),
   ]);
 }
@@ -62,7 +62,11 @@ function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
  * Each provider's hold observations come only from its runners (holdObservations): the
  * per-backend subscription-account observations and their subscription-window crossing
  * events were removed with their last reader (Subtract parts 5u/6, 5w/6 and 5x/6), so the
- * hold poll logs only the rate-limit/backend-failure hold events. Returns the new map for
+ * hold poll logs only the rate-limit/backend-failure hold events. A `model-load` storm
+ * whose observations all carry a pair names those pairs on the hold (team-hold.ts
+ * `pairs`): it holds exactly the roles on those pairs, and `heldProviders` then skips the
+ * provider, so the roles on another model at the same provider keep running; every other
+ * kind (and a pair-less model-load storm) keeps the provider-wide scope. Returns the new map for
  * the caller to keep.
  * Exported as a unit-test seam, like its sibling polls below. */
 export function pollTeamHold(

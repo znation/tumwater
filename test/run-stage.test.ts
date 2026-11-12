@@ -5,7 +5,7 @@ import path from "node:path";
 import { stageRunMerge } from "../src/run/run-stage.js";
 import { stageCheckFindings } from "../src/stage/stage-check.js";
 import { assembleRunPrompt } from "../src/run/run-prompt.js";
-import { commitIn, initializedRepo, initializedWorktree, sh, twoPlansDoc } from "./fixtures/repo-fixtures.js";
+import { commitIn, initializedRepo, initializedWorktree, pinOffMain, sh, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
@@ -15,7 +15,7 @@ import { readRemoteCi } from "../src/observer/remote-ci.js";
 import { readFeedbackFilings } from "../src/observer/feedback-filings.js";
 import { qaCoveragePath, feedbackFilingsPath, remoteCiPath } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
-import { queueDepth, enqueueMerge } from "../src/merge/merge-queue.js";
+import { queueDepth } from "../src/merge/merge-queue.js";
 import { claimOf, priorReviewOf, revisionRoundOf } from "../src/git/commit-message.js";
 import { setRef, refSha } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
@@ -1246,16 +1246,13 @@ test("a staged commit carries the Model line the run started on", async () => {
 // cap must hold, and a second pin would fight the first for the same merge ref. The run still
 // ends "queued" and marks heldOnBranch so its run_end never joins the earlier change's verdict.
 
-test("with a queued entry already present, stageRunMerge holds the new commit on the branch", async () => {
+test("with a live unmerged pin already present, stageRunMerge holds the new commit on the branch", async () => {
   const { root, wt } = await setup();
   const state: RunnerState = freshRunnerState("improve");
-  enqueueMerge(root, {
-    role: "improve",
-    sha: "0123456789abcdef0123456789abcdef01234567",
-    run: 1,
-    summary: "the first change",
-    enqueuedAt: Date.now(),
-  });
+  // A prior change the role already left unmerged: a real commit ahead of main, pinned.
+  // The interlock now reads the pin (a run writes no queue file), so a live pin is the signal.
+  const pinSha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, "prior.ts"), "export const prior = true;\n"), "prior");
+  await setRef(root, mergeRefName("improve"), pinSha);
   const { ctx, calls } = makeCtx(root, wt, state, { finalText: "SUMMARY: add the feature\n" });
 
   const outcome = await stageRunMerge(ctx);
@@ -1264,7 +1261,8 @@ test("with a queued entry already present, stageRunMerge holds the new commit on
   assert.equal(outcome.heldOnBranch, true);
   assert.equal(outcome.summary, "add the feature");
   assert.equal(calls.pins.length, 0, "nothing was pinned or reset");
-  assert.equal(queueDepth(root), 1, "no second entry was queued");
+  assert.equal(queueDepth(root), 0, "a changed fresh run writes no queue file");
+  assert.equal(await refSha(root, mergeRefName("improve")), pinSha, "the prior live pin is untouched");
   // The commit stays on the branch, ahead of main.
   assert.equal(sh(wt, "git", "log", "-1", "--format=%s"), "tumwater(improve): add the feature");
   assert.equal(sh(wt, "git", "rev-parse", "HEAD"), outcome.commit);

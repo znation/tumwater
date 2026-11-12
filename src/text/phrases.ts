@@ -8,7 +8,7 @@ import { shortSha, usd } from "./format.js";
  * of $y", main's red-tip naming, a tool call's one-line label, the plural helper) shared by the
  * event feed (event-format.ts), the failure digest (src/failure/failure-render.ts and
  * src/failure/failure-state-change.ts), the status surfaces (ui/), and the CLI messages
- * (operator/operator-commands.ts, cli/cli-start-summary.ts), so their phrasing
+ * (cli-operator-commands.ts, cli/cli-start-summary.ts), so their phrasing
  * cannot drift per consumer.
  * Pure presentation: every phrase composes the shared formats format.ts pins (shortSha, usd,
  * squash) into words. Pure value formats — the token a number or hash renders as (compactTokens,
@@ -60,7 +60,7 @@ export function plural(n: number, one: string, many = `${one}s`): string {
  * plural's count-plus-noun shape cannot fill: a subject or noun whose count is printed elsewhere in
  * the sentence (a subject phrase such as listRoles's role list, a count named earlier) still needs
  * the right number form. The team alerts' banner titles (ui/team-alerts.ts), the resume
- * confirmation's still-paused note (operator/operator-commands.ts), the dropped-attachment note
+ * confirmation's still-paused note (cli-operator-commands.ts), the dropped-attachment note
  * (inbox-attachments.ts), the failure digest's loss-cause and cluster remainders
  * (failure/failure-render.ts), the doctor's oh-my-pi and model notes
  * (doctor/doctor-model-checks.ts), and `tumwater role`'s queued-prompt remainder
@@ -135,7 +135,7 @@ export function mainRedNotTheseFailures(sha: unknown, own: readonly string[]): s
 }
 
 /** The ` — "<reason>"` suffix the operator's pause reason (`pause --reason <text>`) rides on —
- * one home so the CLI's confirmation line (operator/operator-commands.ts), the status header's
+ * one home so the CLI's confirmation line (cli-operator-commands.ts), the status header's
  * pause badge (ui/badges.ts), and the paused alert's title (ui/team-alert-tail.ts) cannot
  * drift on the quoting. No reason, no suffix: every caller's reasonless phrasing keeps
  * today's byte-exact form.
@@ -158,7 +158,7 @@ export function consecutiveFailuresWarning(count: number, reason: string): strin
  * runs` — built here so the event feed (event-format-hold.ts, which appends its own `(director
  * keeps running)` consequence) and the failure digest's Team state changes lines
  * (src/failure/failure-state-change.ts, which keeps the short form) cannot drift on the base
- * wording. `tumwater pause`'s confirmation (operator/operator-commands.ts) interleaves its
+ * wording. `tumwater pause`'s confirmation (cli-operator-commands.ts) interleaves its
  * `--for`/`--reason` spans before the dash, so it composes its own line and keeps that wording
  * inline. */
 export function teamPausePhrase(): string {
@@ -168,7 +168,7 @@ export function teamPausePhrase(): string {
 /** The base line for lifting the team pause — `team resumed — roles run again` —
  * shared by the event feed (event-format-hold.ts), the failure digest's Team state changes
  * lines (src/failure/failure-state-change.ts), and `tumwater resume`'s confirmation
- * (operator/operator-commands.ts, which appends its `--for` and still-paused-role spans), so the
+ * (cli-operator-commands.ts, which appends its `--for` and still-paused-role spans), so the
  * three cannot drift. */
 export function teamResumePhrase(): string {
   return "team resumed — roles run again";

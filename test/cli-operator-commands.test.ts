@@ -14,7 +14,7 @@ import {
   cmdResume,
   cmdStop,
   cmdWake,
-} from "../src/operator/operator-commands.js";
+} from "../src/cli/cli-operator-commands.js";
 import { pidAlive, signalOrchestrator } from "../src/process/process.js";
 import { defaultConfig } from "../src/config/config.js";
 import { PAUSE_REASON_MAX, scheduleStop } from "../src/team/team-state.js";
@@ -43,7 +43,7 @@ import { attemptAsync, expectFailAsync, expectOkAsync as expectOk } from "./help
 import { spawnLiveChild, stopChild } from "./helpers/child-process.js";
 
 /** Producer-side tests for the operator-intent protocol (src/operator/operator-intent.ts, with the
- * CLI command layer in src/operator/operator-commands.ts). Its
+ * CLI command layer in src/cli/cli-operator-commands.ts). Its
  * consumer half is pinned in operator-requests.test.ts; until now these five CLI commands
  * were only exercised by spawning the real binary (test/cli.test.ts), which cannot assert
  * the marker contents or the untouched scheduling fields in-process. */

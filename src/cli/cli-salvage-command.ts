@@ -20,6 +20,7 @@ import {
   dropSalvagePatch,
   grepSalvagePatches,
   readSalvagePatch,
+  salvagePatchAt,
 } from "../status/status-salvage.js";
 import { formatAge } from "../text/datetime.js";
 import { formatBytes } from "../text/format.js";
@@ -124,9 +125,10 @@ export async function cmdSalvage(root: string, args: string[], seams: FollowView
  * read-only and in full — a header naming the position and file, the saved-ago and size line,
  * git's per-file diffstat (`git apply --stat`) when the patch is a valid diff, then the patch
  * text verbatim — so an operator can see which files a kept patch touches before reading every
- * hunk. Parsed the way cmdQuarantineShow parses `--show`, sharing its
- * scanPositionArgs and out-of-range wording, and staying on the read's refuseTeamWorkspace
- * (no requireReadyRepo) so it never needs a ready tree. `--json` serves the position, file,
+ * hunk. Parsed the way cmdQuarantineShow parses `--show` — the same `scanPositionArgs`, and
+ * like it the read's `refuseTeamWorkspace` with no `requireReadyRepo`, so it never needs a
+ * ready tree; the out-of-range wording is salvage's own (`salvagePatchAt`, shared with
+ * `--drop` and `--apply`), not quarantine's. `--json` serves the position, file,
  * savedAt, bytes, the diffstat as `stat` (null when it is not a valid diff) and the exact
  * patch text. */
 async function cmdSalvageShow(root: string, args: string[]): Promise<void> {
@@ -134,11 +136,10 @@ async function cmdSalvageShow(root: string, args: string[]): Promise<void> {
   rejectUnknownArgs("salvage", rest, []);
   if (position === null) fail("--show needs a position (usage: tumwater salvage --show <n>)");
   refuseTeamWorkspace(root);
-  const patches = collectSalvagePatches(root);
-  if (position < 1 || position > patches.length) {
-    fail(`no salvaged workspace patch at position ${position} (salvage holds ${patches.length} patches)`);
-  }
-  const patch = patches[position - 1]!;
+  const at = salvagePatchAt(collectSalvagePatches(root), position);
+  if ("message" in at)
+    fail(at.message!);
+  const patch = at.patch!;
   const text = readSalvagePatch(root, patch.file);
   if (text === null) fail(`could not read salvaged patch ${patch.file}`);
   // `git apply --stat` reads the patch without applying it, so the summary is safe to compute
@@ -167,11 +168,10 @@ async function cmdSalvageDrop(root: string, args: string[]): Promise<void> {
   rejectUnknownArgs("salvage", rest, []);
   if (position === null) fail("--drop needs a position (usage: tumwater salvage --drop <n>)");
   refuseTeamWorkspace(root);
-  const patches = collectSalvagePatches(root);
-  if (position < 1 || position > patches.length) {
-    fail(`no salvaged workspace patch at position ${position} (salvage holds ${patches.length} patches)`);
-  }
-  const patch = patches[position - 1]!;
+  const at = salvagePatchAt(collectSalvagePatches(root), position);
+  if ("message" in at)
+    fail(at.message!);
+  const patch = at.patch!;
   if (!dropSalvagePatch(root, patch.file)) fail(`could not drop salvaged patch ${patch.file}`);
   if (json) {
     sayJson({ dropped: { position, file: patch.file } });
@@ -205,11 +205,10 @@ async function cmdSalvageApply(root: string, args: string[]): Promise<void> {
   if (position === null) fail("--apply needs a position (usage: tumwater salvage --apply <n>)");
   refuseTeamWorkspace(root);
   if (!(await isGitRepo(root))) fail("salvage --apply needs a git checkout (run it from the checkout the patch should apply to)");
-  const patches = collectSalvagePatches(root);
-  if (position < 1 || position > patches.length) {
-    fail(`no salvaged workspace patch at position ${position} (salvage holds ${patches.length} patches)`);
-  }
-  const patch = patches[position - 1]!;
+  const at = salvagePatchAt(collectSalvagePatches(root), position);
+  if ("message" in at)
+    fail(at.message!);
+  const patch = at.patch!;
   if (dryRun) {
     const applies = await checkSalvagePatchForOperator(root, patch.file);
     if (json) {

@@ -56,6 +56,26 @@ export function collectSalvagePatches(root: string): SalvagePatch[] {
   return patches;
 }
 
+/** Resolve a 1-based `position` into a kept-patch list (collectSalvagePatches's output): the
+ * patch at that position when it is in range, or the standard out-of-range refusal sentence
+ * when it is below 1 or past the list. The single home of the position rule every salvage
+ * surface applies — `tumwater salvage --show/--drop/--apply`, the TUI Health Ctrl+G apply and
+ * Ctrl+Y drop arms, and the dashboard's /api/salvage-apply and /api/salvage-drop — so the
+ * out-of-range wording and the 1-based indexing cannot drift between them. `patch` and
+ * `message` are mutually exclusive: a caller tests `"message" in` the result, and a branch that
+ * ends in a `never`-returning fail or a plain return narrows it to `patch`. The message names
+ * the position typed and how many patches the list holds, exactly as those surfaces did when
+ * each spelled the range check by hand. */
+export function salvagePatchAt(
+  patches: readonly SalvagePatch[],
+  position: number,
+): { patch: SalvagePatch; message?: never } | { patch?: never; message: string } {
+  if (position < 1 || position > patches.length) {
+    return { message: `no salvaged workspace patch at position ${position} (salvage holds ${patches.length} patches)` };
+  }
+  return { patch: patches[position - 1]! };
+}
+
 /** Read one kept patch's text verbatim, or null when it cannot be read — the reader half of
  * `tumwater salvage --show <n>` (src/cli/cli-salvage-command.ts). Reads only a file name
  * `collectSalvagePatches` already returned, so the name always lands directly under the
@@ -70,6 +90,7 @@ export function readSalvagePatch(root: string, file: string): string | null {
     return null;
   }
 }
+
 
 /** Delete one kept patch, returning whether it was removed — the destructive twin of
  * readSalvagePatch, backing `tumwater salvage --drop <n>` (src/cli/cli-salvage-command.ts)
@@ -87,6 +108,7 @@ export function dropSalvagePatch(root: string, file: string): boolean {
     return false;
   }
 }
+
 
 /** The kept patches with only the ones whose file name or patch text contains `pattern`
  * (case-insensitively), each kept row carrying the patch's own `position` from the

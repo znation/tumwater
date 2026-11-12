@@ -157,27 +157,23 @@ export function vanishOnReadFile(file: string): () => void {
   });
 }
 
-/** Swap fs.readFileSync for a pass-through that counts matching reads for the duration of
- * `body`, then restore the original — the idiom behind the stat-keyed-cache tests, which
- * assert that a warm cache costs zero reads and a miss exactly one. `match` filters what
- * counts (default: every read); snapshot tests use it to count one state file's reads while
- * the reader touches many. `body` may call the live `readSoFar` getter to assert mid-body —
- * an assertion placed after `body` would also count the reads its own calls trigger.
- * Returns the final matching-read count. */
 export function withCountedReads(
-  body: (readSoFar: () => number) => void,
+  body: (readSoFar: () => number) => void | Promise<void>,
   match: (file: unknown) => boolean = () => true,
-): number {
+): number | Promise<number> {
   let reads = 0;
   const originalReadFileSync = fs.readFileSync.bind(fs);
-  try {
-    (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
-      if (match(args[0])) reads += 1;
-      return (originalReadFileSync as (...a: unknown[]) => string)(...args);
-    };
-    body(() => reads);
-  } finally {
+  (fs as unknown as { readFileSync: unknown }).readFileSync = (...args: unknown[]) => {
+    if (match(args[0])) reads += 1;
+    return (originalReadFileSync as (...a: unknown[]) => string)(...args);
+  };
+  const restore = () => {
     (fs as unknown as { readFileSync: unknown }).readFileSync = originalReadFileSync;
+  };
+  const result = body(() => reads);
+  if (result instanceof Promise) {
+    return result.finally(restore).then(() => reads);
   }
+  restore();
   return reads;
 }

@@ -320,22 +320,32 @@ test("a main move and a queued prompt each log exactly one wake event with their
   }
 });
 
-test("a director holding a kept merge pin wakes on its own clock (reason: leftover), re-queues it, and runs no pi", async () => {
+test("a director with a live draining merge pin never spins a leftover run — the drain settles it", async () => {
   const repo = await makeFastRepo("director leftover", ["director"]);
-  const sha = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "kept.txt"), "kept\n"), "kept director change");
+  // A live pin ahead of main with no conflict streak is DRAINING (scope.ts directorPinOwedRun,
+  // INV-DA1): it owes no leftover run — the merge drain settles it on its own (gate, then merge
+  // or reject-and-discard). The pin's change fails the declared check only where it is checked
+  // out (kept.txt on the change's tree, absent on main, so main stays green), so the drain
+  // rejects it deterministically — the live-orchestrator twin of the once-round unit test that
+  // pins the same classification. The classification is read-only, so the live orchestrator
+  // must never wake the director with reason `leftover` for a draining pin — the redundant
+  // recovery-run spin (BUGS.md 2026-11-04 / 2026-11-09) this pins the live path against. With
+  // no prompt and a draining (not kept) pin, the director runs no pi at all.
+  const cfg = loadConfig(repo);
+  saveConfig(repo, { ...cfg, check: { command: "test ! -f kept.txt" } });
+  const sha = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "kept.txt"), "kept\n"), "draining director change");
   await setRef(repo, mergeRefName("director"), sha);
   const argsFile = path.join(tmpdir(), "pi-args.txt");
   const restore = recordingFakePi(argsFile);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await waitFor(
-      () => readEvents(repo).some((e) => e.type === "wake" && e.source === "director" && e.reason === "leftover"),
-      "a leftover wake for the director",
-    );
-    await waitFor(
-      () => eventsOfType(repo, "merge_queued").some((e) => e.source === "director" && e.commit === sha),
-      "the director's pin re-queued",
-    );
+    // Give several poll cycles for a leftover wake to appear if the old (pre-classification)
+    // premise — any unmerged pin owes a leftover run — were still live. A draining pin must
+    // never produce one, and the director must run nothing: the wake, the run count, and the
+    // pi invocation are the director-side facts that hold whatever the drain does to the pin.
+    await sleep(FAST_POLL_MS * 8);
+    assert.equal(readEvents(repo).some((e) => e.type === "wake" && e.source === "director" && e.reason === "leftover"), false, "a draining pin owes no leftover run, so no leftover wake fired");
+    assert.equal(loadRunnerState(repo, "director").runs, 0, "no leftover recovery run spun for a draining pin");
     assert.equal(eventsOfType(repo, "prompt_taken").length, 0, "no prompt was taken");
     assert.equal(fs.existsSync(argsFile), false, "the fake pi was never invoked");
   } finally {

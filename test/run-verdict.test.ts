@@ -549,3 +549,29 @@ test("a blind read onto a built-in vision tier that pi lists as reading images a
   assert.equal(listed.state.imageReroute?.tier, "strong");
   assert.equal(listed.state.imageReroute?.model, "vision-x");
 });
+// The two kill flags the quiet watchdog sets (src/pi/pi-watchdogs.ts), read back from the run
+// result, both end `quiet_killed` so applyRunOutcome resumes the intact session and worktree
+// edits promptly. The per-call stall-kill names its cause ("stalled-tool") because that run
+// WAS making progress (PLANS.md 2026-11-11); the total-silence quiet kill leaves the cause
+// unset, so the runner falls back to its "hung-tool" default.
+test("a stalled-tool-call run ends quiet_killed carrying the stalled-tool cause", async () => {
+  const { root, wt } = await initializedWorktree("improve");
+  const pi = piRunResult({
+    ok: false,
+    stallKilled: true,
+    stallKilledLabel: "sleep 999",
+    errorMessage: "killed as stalled tool call sleep 999: no activity for over 3600s",
+  });
+  const { ctx } = makeCtx(root, wt, "improve", { pi });
+  const outcome = await resolveRunVerdict(ctx);
+  assert.equal(outcome?.result, "quiet_killed");
+  assert.equal(outcome?.resumeCause, "stalled-tool", "the progressing run names its own cause");
+});
+test("a total-silence quiet-killed run ends quiet_killed with no cause (the hung-tool default)", async () => {
+  const { root, wt } = await initializedWorktree("improve");
+  const pi = piRunResult({ ok: false, quietKilled: true });
+  const { ctx } = makeCtx(root, wt, "improve", { pi });
+  const outcome = await resolveRunVerdict(ctx);
+  assert.equal(outcome?.result, "quiet_killed");
+  assert.equal(outcome?.resumeCause, undefined, "no named cause: the runner uses its hung-tool default");
+});

@@ -98,7 +98,7 @@ export class RunUsage {
    * the same rule and for the same consumer as lastRateLimit above: the team-wide hold
    * (src/team/team-hold.ts) reads it every poll. In memory only, like lastRateLimit.
    * Undefined until the first such run. */
-  lastBackendFailure?: { at: number; kind: BackendFailureKind; provider?: string };
+  lastBackendFailure?: { at: number; kind: BackendFailureKind; provider?: string; pair?: string };
 
   /** Clear the per-run windows (turns, costUsd, the prompt-token counters) at run start.
    * lastRateLimit and lastBackendFailure are NOT cleared: they are episodic observations the
@@ -128,7 +128,7 @@ export class RunUsage {
     this.foldAccount(run);
     this.foldPromptTokens(run, authoring);
     this.turns += run.turns;
-    this.foldEpisodes(run, provider);
+    this.foldEpisodes(run, provider, pair);
     if (authoring) this.endedUnanswered = endedBeforeAnyReply(run);
   }
 
@@ -188,7 +188,7 @@ export class RunUsage {
    * inside pi's own auto-retry and then finished would stamp a false observation, possibly hours
    * late. The backend kind travels with its stamp (src/pi/pi-failure.ts classified the text at
    * parse time); a 429 never ends up here — pi-stream checks rate-limit first. */
-  private foldEpisodes(run: PiRunResult, provider?: string): void {
+  private foldEpisodes(run: PiRunResult, provider?: string, pair?: string): void {
     // The team-wide hold's rate-limit input (lastRateLimit above), from the same
     // once-per-run choke point. Only a run that ENDED on the 429 counts: pi exits on the error,
     // so "now" is when the provider refused — a run that merely logged one inside pi's own
@@ -200,7 +200,7 @@ export class RunUsage {
     // failure counts, and the kind travels with it (src/pi/pi-failure.ts backendKind classified
     // the text at parse time). A 429 never ends up here — pi-stream checks rate-limit first.
     if (run.transientBackend && !run.ok && run.backendKind)
-      this.lastBackendFailure = { at: Date.now(), kind: run.backendKind, provider };
+      this.lastBackendFailure = { at: Date.now(), kind: run.backendKind, provider, pair };
   }
 
   /** Add `amount` to one field of the run's per-provider spend ledger, initializing the

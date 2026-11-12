@@ -37,6 +37,7 @@ import {
   checkCiParity,
   checkDiskSpace,
   checkDroppedPostMergeReviews,
+  checkEmptyRootFiles,
   checkEventLog,
   checkFlakyChecks,
   checkMainDiffRules,
@@ -73,7 +74,7 @@ import { backendQualifiedSelector } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkPlanDependencies, checkStalledEntries, checkStrandedPlans, checkValidationGaps } from "./doctor-backlog-plans.js";
 import { checkHeldBugs, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions } from "./doctor-backlog-bugs.js";
-import { checkMergeQueueFiles, checkPostReviews, checkStaleQueuedMerges, checkStalePrompts, checkUncommittedBacklog } from "./doctor-backlog.js";
+import { checkPostReviews, checkStaleQueuedMerges, checkStalePrompts, checkUncommittedBacklog } from "./doctor-backlog.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
  * scattered across fail-fast checks that each command re-runs on its own (requireReadyRepo in
@@ -214,6 +215,7 @@ function doctorSteps(
     { name: "funes", run: () => checkFunes(config, pathEnv) },
     { name: "state dir", run: () => checkStateDir(root) },
     { name: "event log", run: () => checkEventLog(root) },
+    { name: "empty files", run: () => checkEmptyRootFiles(root) },
     { name: "notify", run: () => checkNotify(root, config) },
     { name: "merge lock", run: () => checkMergeLock(root) },
     { name: "workspaces", run: () => checkWorktreePool(root) },
@@ -253,7 +255,6 @@ function doctorSteps(
     { name: "held bugs", run: () => checkHeldBugs(root) },
     { name: "regressed fixes", run: () => checkRegressedFixes(root) },
     { name: "stale merge-queue entries", run: () => checkStaleQueuedMerges(root, Date.now()) },
-    { name: "merge-queue files", run: () => checkMergeQueueFiles(root) },
     { name: "post-merge reviews", run: () => checkPostReviews(root) },
     { name: "main diff rules", run: () => checkMainDiffRules(root) },
     { name: "dropped post-merge reviews", run: () => checkDroppedPostMergeReviews(root) },

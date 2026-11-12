@@ -576,7 +576,8 @@ test("status --json prints the /api/status payload; bare status keeps the table"
   // state as JSON (status-payload.statusPayload) feeds both surfaces, so they cannot drift.
   // Both sides go through a JSON round-trip: that is exactly what the endpoint and the flag
   // emit.
-  assert.deepEqual(doc, JSON.parse(JSON.stringify(statusPayload(repo))));
+  const doc2 = JSON.parse(JSON.stringify(await statusPayload(repo)));
+    assert.deepEqual(doc, doc2);
 
   // Bare status still renders the table — same command, human surface unchanged.
   r = await cli(repo, "status");

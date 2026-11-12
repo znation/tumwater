@@ -1429,6 +1429,11 @@ test("the alerts band keeps its count and adds one Doctor control opening the Se
   assert.ok(doctor, "the band gains a doctor-band control when alerts exist");
   assert.match(doctor.innerHTML, /data-act='view'\s+data-arg='settings'/, "the control routes through the existing view/hash path");
   assert.match(doctor.innerHTML, /Open Health check/, "the control names the Health check card");
+  assert.match(doctor.innerHTML, /Health check/, "the band's title names the Health check");
+  assert.match(doctor.innerHTML, /tumwater doctor/, "the band's detail names the setup audit");
+  assert.ok(!doctor.innerHTML.includes("Details in Doctor"), "the retired jargon title is gone");
+  assert.ok(!doctor.innerHTML.includes("keeps each alert"), "the false detail claim is gone");
+  assert.match(doctor.innerHTML, /title='Open the Health check card in Settings'/, "the button tooltip explains where it opens");
   assert.equal(box.children.length, 2, "the alert row plus the doctor-band control");
   assert.equal(badge.hidden, false, "the navbadge count stays visible");
   assert.equal(badge.textContent, "1", "the existing badge count is unchanged");

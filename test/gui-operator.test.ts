@@ -48,8 +48,8 @@ test("status payload carries the daily budget while enabled and null when disabl
   // projects past midnight, so the badge stays fragment-free, deterministically.
   const now = new Date();
   now.setHours(12, 0, 0, 0);
-  const atNoon = () => statusPayload(repo, now.getTime()) as typeof payload;
-  let payload = atNoon() as { budget: { spentUsd: number; capUsd: number; capHitAt: number | null; free: boolean; fallback: { provider?: string; model?: string } | null } | null; budgetBadge: string };
+  const atNoon = async () => (await statusPayload(repo, now.getTime())) as typeof payload;
+  let payload = (await atNoon()) as { budget: { spentUsd: number; capUsd: number; capHitAt: number | null; free: boolean; fallback: { provider?: string; model?: string } | null } | null; budgetBadge: string };
   // No provider/model configured (pi's own default) — the team cannot be verified as free.
   assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, capHitAt: null, free: false, fallback: null, tiers: null }, "enabled by default with no spend yet");
   assert.equal(payload.budgetBadge, " · budget: $0.00/$50 today", "the preformatted badge matches the TUI header string");
@@ -59,7 +59,7 @@ test("status payload carries the daily budget while enabled and null when disabl
   s.dayStamp = todayStamp(now.getTime());
   s.dayCostUsd = 12.34;
   saveRunnerState(repo, s);
-  payload = atNoon() as typeof payload;
+  payload = (await atNoon()) as typeof payload;
   assert.equal(payload.budget?.spentUsd, 12.34, "today's spend shows in the badge data");
   assert.equal(payload.budgetBadge, " · budget: $12.34/$50 today", "today's spend shows in the badge text");
 
@@ -69,7 +69,7 @@ test("status payload carries the daily budget while enabled and null when disabl
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 0;
   saveConfig(repo, cfg);
-  payload = atNoon() as typeof payload;
+  payload = (await atNoon()) as typeof payload;
   assert.deepEqual(payload.budget, { spentUsd: 12.34, capUsd: 0, capHitAt: null, free: false, fallback: null, tiers: null }, "cap 0 disables the gate but keeps the data");
   assert.equal(payload.budgetBadge, " · budget: $12.34 today · no cap", "disabled: standing badge with spend and no cap");
 });
@@ -80,7 +80,7 @@ test("status payload carries the daily budget while enabled and null when disabl
 test("status payload carries the merge queue depth and the in-flight merge", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui merge queue test");
-  const payload = statusPayload(repo) as {
+  const payload = (await statusPayload(repo)) as {
     mergeQueue: { depth: number; inFlight?: { role: string; sha: string; summary: string; startedAt: number; stage?: string } };
     mergeBadge: string;
     roles: Array<{ role: string; phase: string; inFlight: boolean }>;
@@ -92,7 +92,7 @@ test("status payload carries the merge queue depth and the in-flight merge", asy
 
   // One queued entry lifts the depth — but a merely queued merge is not in flight.
   enqueueMerge(repo, { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: Date.now() });
-  let p = statusPayload(repo) as typeof payload;
+  let p = (await statusPayload(repo)) as typeof payload;
   assert.equal(p.mergeQueue.depth, 1);
   assert.equal(p.mergeBadge, " · merge queue: 1");
   assert.equal(p.mergeQueue.inFlight, undefined, "queued, not merge: no inFlight yet");
@@ -106,7 +106,7 @@ test("status payload carries the merge queue depth and the in-flight merge", asy
     mergeStatePath(repo),
     JSON.stringify({ role: "clean", sha: "abc1234", summary: "tidy something", startedAt, stage: "build-check" }),
   );
-  p = statusPayload(repo) as typeof payload;
+  p = (await statusPayload(repo)) as typeof payload;
   assert.equal(p.mergeQueue.inFlight?.role, "clean");
   assert.equal(p.mergeQueue.inFlight?.sha, "abc1234");
   assert.match(
@@ -141,7 +141,7 @@ test("a disabled cap never pauses the team in the phase payload", async () => {
   s.dayCostUsd = 500; // would be "reached" against any positive cap
   saveRunnerState(repo, s);
 
-  const payload = statusPayload(repo) as {
+  const payload = (await statusPayload(repo)) as {
     budget: { spentUsd: number; capUsd: number; free: boolean };
     budgetBadge: string;
     roles: Array<{ role: string; phase: string }>;
@@ -185,7 +185,7 @@ test("a paused team's idle roles read waiting: budget spent in the phase payload
   s.dayCostUsd = 12.5; // >= cap → paused
   saveRunnerState(repo, s);
 
-  let payload = statusPayload(repo) as { roles: Array<{ role: string; phase: string }> };
+  let payload = (await statusPayload(repo)) as { roles: Array<{ role: string; phase: string }> };
   assert.equal(payload.roles.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
   // The director is exempt from the cap — its phase keeps its own label.
   assert.equal(payload.roles.find((l) => l.role === "director")?.phase, "ready for messages");
@@ -195,7 +195,7 @@ test("a paused team's idle roles read waiting: budget spent in the phase payload
   under.dayStamp = todayStamp();
   under.dayCostUsd = 1;
   saveRunnerState(repo, under);
-  payload = statusPayload(repo) as typeof payload;
+  payload = (await statusPayload(repo)) as typeof payload;
   assert.notEqual(payload.roles.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
 });
 
@@ -380,7 +380,7 @@ test("POST /api/pause with forSeconds writes a timed pause and rejects bad durat
   const marker = readJson(pausedPath(repo)) as { until: number };
   assert.equal(marker.until, answer.until, "the answer names the deadline the marker holds");
   assert.ok(marker.until >= before + 1_800_000 && marker.until <= Date.now() + 1_800_000, "30 minutes from now");
-  assert.equal((statusPayload(repo) as { pausedUntil?: number }).pausedUntil, marker.until, "the payload's countdown reads it");
+  assert.equal(((await statusPayload(repo)) as { pausedUntil?: number }).pausedUntil, marker.until, "the payload's countdown reads it");
 
   // A deadline only makes sense when pausing; a non-positive, non-numeric, or over-cap one is a
   // client error that leaves the marker alone.
@@ -806,7 +806,7 @@ test("the status payload carries per-role queue counts (roleInbox)", async () =>
   enqueueRolePrompt(repo, "feature", "one");
   enqueueRolePrompt(repo, "bugfix", "two");
   enqueueRolePrompt(repo, "bugfix", "three");
-  const payload = statusPayload(repo) as { roleInbox: Record<string, number>; inbox: number };
+  const payload = (await statusPayload(repo)) as { roleInbox: Record<string, number>; inbox: number };
   assert.equal(payload.roleInbox.feature, 1);
   assert.equal(payload.roleInbox.bugfix, 2);
   assert.ok(!("director" in payload.roleInbox), "the director's queue is the shared inbox, not roleInbox");

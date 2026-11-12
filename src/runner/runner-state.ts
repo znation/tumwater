@@ -85,7 +85,7 @@ export interface RunnerState {
    * model request once its pair failed a re-check (plans/model-check.md), so the bridge says
    * the model stopped answering. Cleared with resumePending at run start; absent for
    * restart/cut-off resumes, whose causes are derived. */
-  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped" | "image-reroute" | "model-check";
+  resumeCause?: "hung-tool" | "stalled-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped" | "image-reroute" | "model-check";
   /** Queue file holding the user prompt a resume-owning run re-queued: the interrupted pi
    * session still owns that request in its context, so the resume must reclaim exactly this
    * file as its own user prompt — the resume's fulfillment consumes it, and only its failure

@@ -281,3 +281,100 @@ test("a deadline whose checkpoint read the same drained count resumes a run that
     "a run that proved progress in the grace is resumed, not discarded",
   );
 });
+
+// The per-call stall-kill (PLANS.md 2026-11-11, the user's Option A): a single tool call
+// that hangs past two quiet windows kills the run and resumes it on the same model, so a
+// hung tool self-resolves instead of holding a "looks stuck" banner until the run deadline.
+// These pin the kill's timing and its discrimination from the total-silence quiet kill on
+// logical time, directly against the watchdog's deps — the parser and spawn wiring that an
+// end-to-end fake-pi run would also exercise stay in test/pi.test.ts. The one thing the
+// quiet kill cannot see: a run that keeps trickling progress (refreshing its window) while
+// ONE open call sits hung. `killStalledCallCheck` reads each open call's own activity clock,
+// so it kills on the call even though the run as a whole is not silent.
+function stalledCallDeps(quietMs: number, stallMs: number, staleCall: () => { id: string; label: string; lastActivityAt: number }): { wd: ReturnType<typeof startPiWatchdogs>; kill: () => boolean; stop: () => void } {
+  let killed = false;
+  const wd = startPiWatchdogs({
+    // A run that keeps trickling progress: count rises with the (mocked) clock, so the
+    // total-silence quiet kill's window is refreshed at every tick and never fires. This is
+    // the case the per-call stall-kill exists for — the quiet kill would not see it.
+    progressCount: () => Math.floor(Date.now() / 250),
+    openToolCalls: () => [staleCall()],
+    runTimeoutMs: 3_600_000, // far out: the deadline is not the reaper here
+    quietMs,
+    stallMs,
+    kill: () => {
+      killed = true;
+    },
+  });
+  wd.noteByte(); // the run has begun: the stall-kill's `sawOutput` gate is satisfied
+  return { wd, kill: () => killed, stop: () => wd.stop() };
+}
+test("a stalled tool call kills the run at two quiet windows while the run keeps progressing", (t) => {
+  const clock = watchdogClock(t);
+  // `now` is the real time captured at enable; pin the call's last activity to it so its age
+  // is exactly the clock's advance. quietMs 2000 -> stall-kill bound 4000, quiet window 2000.
+  const t0 = Date.now();
+  const stale = () => ({ id: "c1", label: "sleep 999", lastActivityAt: t0 });
+  const { wd, kill, stop } = stalledCallDeps(2000, 0, stale); // stallMs 0: no warning, kill only
+  clock.advance(3_500); // just under the 4000 bound (one quiet window = 2000, bound = 4000)
+  assert.equal(wd.stallKilled, false, "a call under the two-window bound is not killed");
+  assert.equal(wd.quietKilled, false, "a progressing run is not quiet-killed");
+  assert.equal(kill(), false, "no kill yet");
+  clock.advance(1_000); // cross the 4000 bound
+  assert.equal(wd.stallKilled, true, "the hung call is killed at two quiet windows");
+  assert.equal(wd.quietKilled, false, "a progressing run is never quiet-killed");
+  assert.equal(kill(), true, "the stall-kill stops the run");
+  assert.equal(wd.stallKilledLabel, "sleep 999", "the kill names the hung call");
+  stop();
+});
+test("a still-updating tool call is never stall-killed", (t) => {
+  const clock = watchdogClock(t);
+  // A call whose lastActivityAt tracks the clock receives content-bearing updates, so its age
+  // stays ~0 and it never reaches the bound — INV-A8. This is the false-kill the two-window
+  // scale (never below one quiet window) and the shared activity clock guard against.
+  const alive = () => ({ id: "c1", label: "tail -f log", lastActivityAt: Date.now() });
+  const { wd, kill, stop } = stalledCallDeps(2000, 0, alive);
+  clock.advance(30_000); // far past any bound
+  assert.equal(wd.stallKilled, false, "a call that keeps updating is not killed");
+  assert.equal(wd.quietKilled, false, "and the still-progressing run is not quiet-killed");
+  assert.equal(kill(), false);
+  stop();
+});
+test("the stall-kill never fires when the quiet watchdog is disabled (quietMs 0)", (t) => {
+  const clock = watchdogClock(t);
+  const t0 = Date.now();
+  const stale = () => ({ id: "c1", label: "sleep 999", lastActivityAt: t0 });
+  // quietMs 0 disables the kill (the bound is derived from it); stallMs 1000 keeps the
+  // interval ticking (so the code path runs) but only warnings may fire.
+  const { wd, kill, stop } = stalledCallDeps(0, 1000, stale);
+  clock.advance(60_000);
+  assert.equal(wd.stallKilled, false, "0 disables the stall-kill, as it disables the quiet kill");
+  assert.equal(wd.quietKilled, false);
+  assert.equal(kill(), false);
+  stop();
+});
+test("the total-silence quiet kill fires first and the stall-kill does not override it", (t) => {
+  const clock = watchdogClock(t);
+  const t0 = Date.now(); // the mock start; pin the call's age to it (a fixed, not moving, time)
+  let killed = false;
+  const wd = startPiWatchdogs({
+    // Flat progress (count 1, never rises) and a stale open call: once the run stops
+    // refreshing its window, the quiet window (2000, progress>0) fires — and on a later
+    // tick, once the call is far past the 4000 stall bound, the `quietKilled` guard keeps
+    // the stall-kill from firing too. The two kills are mutually exclusive on the state.
+    progressCount: () => 1,
+    openToolCalls: () => [{ id: "c1", label: "sleep 999", lastActivityAt: t0 }],
+    runTimeoutMs: 3_600_000,
+    quietMs: 2000,
+    stallMs: 0,
+    kill: () => {
+      killed = true;
+    },
+  });
+  wd.noteByte();
+  clock.advance(5_000); // the quiet window fires first; the call is now well past the stall bound
+  assert.equal(wd.quietKilled, true, "a run that stops progressing is quiet-killed");
+  assert.equal(wd.stallKilled, false, "the quiet kill wins; the stall-kill never overrides it");
+  assert.equal(killed, true);
+  wd.stop();
+});

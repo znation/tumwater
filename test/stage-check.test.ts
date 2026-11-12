@@ -66,6 +66,43 @@ test("an md-only false-fix edit no longer yields a staging finding", async () =>
   // watch on main's tip, so the stage self-check no longer spends the run's fix-up turn on it.
   assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
 });
+const NEEDS_REVIEW_PLANS_BASE = `# Plans\n\n## Planned\n\n### A plan (planned 2026-09-30 by plan)\n\n`;
+test("a staged PLANS.md edit adding a span-less plan-defect note is a finding", async () => {
+  const { wt } = await repoWith({ "PLANS.md": NEEDS_REVIEW_PLANS_BASE });
+  fs.writeFileSync(path.join(wt, "PLANS.md"), NEEDS_REVIEW_PLANS_BASE + "Needs review 2026-11-11 by feature: plan defect — the criteria contradict.\n");
+  const findings = await stageCheckFindings(wt, "main", "feature");
+  assert.ok(findings.length === 1, `expected one finding, got ${JSON.stringify(findings)}`);
+  const finding = findings[0]!;
+  assert.match(finding, /PLANS.md/);
+  assert.match(finding, /Needs review/);
+});
+// A BUGS.md whose Open entry has no hold note; the worktree edit appends one to the entry body.
+const NEEDS_REVIEW_BUGS_BASE = `# Bugs
+
+## Open
+
+### A bug: details (found by qa 2026-09-30)
+
+**Symptom:** it broke.
+
+## Fixed
+
+## Verified
+`;
+test("a staged BUGS.md edit adding a span-less Needs-review note is a finding", async () => {
+  const { wt } = await repoWith({ "BUGS.md": NEEDS_REVIEW_BUGS_BASE });
+  fs.writeFileSync(path.join(wt, "BUGS.md"), NEEDS_REVIEW_BUGS_BASE.replace("**Symptom:** it broke.", "**Symptom:** it broke.\nNeeds review 2026-11-11 by feature: too large for one run"));
+  const findings = await stageCheckFindings(wt, "main", "feature");
+  assert.ok(findings.length === 1, `expected one finding, got ${JSON.stringify(findings)}`);
+  const finding = findings[0]!;
+  assert.match(finding, /BUGS.md/);
+  assert.match(finding, /Needs review/);
+});
+test("a staged BUGS.md edit adding a correctly bolded Needs-review note is no finding", async () => {
+  const { wt } = await repoWith({ "BUGS.md": NEEDS_REVIEW_BUGS_BASE });
+  fs.writeFileSync(path.join(wt, "BUGS.md"), NEEDS_REVIEW_BUGS_BASE.replace("**Symptom:** it broke.", "**Symptom:** it broke.\n**Needs review 2026-11-11 by feature: too large for one run**"));
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
+});
 
 test("the same edit naming a symbol that exists on the tree yields no finding", async () => {
   const { wt } = await repoWith({ "BUGS.md": BUGS_BASE });

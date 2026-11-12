@@ -1,4 +1,4 @@
-import { HOUR_MS, DAY_MS } from "./datetime.js";
+import { HOUR_MS, DAY_MS, boundedWindowLine, sinceWindowLine } from "./datetime.js";
 
 /** Millis per unit, the multiplier parseDurationMs's regex group is applied to. The
  * hour and day multipliers are HOUR_MS / DAY_MS (text/datetime.ts's shared units, the
@@ -75,4 +75,22 @@ export function durationLabel(ms: number): string {
  * always echoes a form the parser accepts. Lives beside durationLabel for that reason. */
 export function betweenWindow(older: number, newer: number): string {
   return `between ${durationLabel(older)} and ${durationLabel(newer)} ago`;
+}
+
+/** The trailing-window header line — `window: last <duration> (since …)`, or
+ * `window: <older> to <newer> ago (since …, until …)` when the window ends before now — that the
+ * usage report's `--since` render and the failure digest's since shape each print as their window
+ * line. Both built it from the raw `untilMs`/`toIso` fields with the same bounded-or-since split
+ * (a window is bounded when both `untilMs` and `toIso` are present, `sinceMs` being always
+ * present at either site), so the two surfaces' window wording cannot drift: the bounded branch
+ * runs both bounds through durationLabel, the since branch its length, and the day-shape window
+ * line is a different unit and stays with the day renderer. The since/bounded line builders in
+ * datetime.ts take already-phrased duration strings, so this helper does the durationLabel step
+ * (and passes the raw `fromIso`/`toIso` ISO strings through) — callers hand it the raw window
+ * fields as the collectors produce them. Lives beside betweenWindow — the one other home of the
+ * bounded-window phrase. */
+export function trailingWindowLine(sinceMs: number, fromIso: string, untilMs?: number, toIso?: string): string {
+  return untilMs !== undefined && toIso !== undefined
+    ? boundedWindowLine(durationLabel(sinceMs), durationLabel(untilMs), fromIso, toIso)
+    : sinceWindowLine(durationLabel(sinceMs), fromIso);
 }

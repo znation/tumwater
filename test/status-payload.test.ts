@@ -10,9 +10,10 @@ import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-index-data.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { refreshOrphanAlert, orphanAlertFromScan } from "../src/ui/alert-feeds.js";
+import { getOrphanAlert, resetOrphanAlertForTest, refreshOrphanAlert, orphanAlertFromScan } from "../src/ui/alert-feeds.js";
 import { PROMPT_END, PROMPT_START, BRIEF_TEXT_MAX_CHARS } from "../src/brief/brief.js";
 import { checkOrphans, findOrphans } from "../src/doctor/doctor-orphans.js";
+import { writeOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { initProject } from "../src/init/init.js";
 import { dequeuePrompt } from "../src/inbox/inbox.js";
@@ -52,7 +53,7 @@ test("status payload carries the pooled worktree slot a role holds or is pinned 
       },
     ],
   });
-  let payload = statusPayload(repo) as { roles: Array<{ role: string; slot?: string; slotPinned?: boolean }> };
+  let payload = (await statusPayload(repo)) as { roles: Array<{ role: string; slot?: string; slotPinned?: boolean }> };
   const held = payload.roles.find((l) => l.role === "feature");
   assert.equal(held?.slot, "_slot-1");
   assert.equal(held?.slotPinned, false);
@@ -70,7 +71,7 @@ test("status payload carries the pooled worktree slot a role holds or is pinned 
       },
     ],
   });
-  payload = statusPayload(repo) as typeof payload;
+  payload = (await statusPayload(repo)) as typeof payload;
   const pinned = payload.roles.find((l) => l.role === "feature");
   assert.equal(pinned?.slot, "_slot-2");
   assert.equal(pinned?.slotPinned, true);
@@ -89,7 +90,7 @@ test("status payload carries an instance's claim title and base role", async () 
     ...freshRunnerState("feature-2"),
     claim: { file: "PLANS.md", key: "plan a", title: "Plan A", at: Date.now(), source: "assigned" },
   });
-  const payload = statusPayload(repo) as {
+  const payload = (await statusPayload(repo)) as {
     roles: Array<{ role: string; claim?: string; instanceOf?: string }>;
   };
   const inst = payload.roles.find((l) => l.role === "feature-2");
@@ -107,7 +108,7 @@ test("status payload carries an instance's claim title and base role", async () 
     ...freshRunnerState("feature-3"),
     claim: { file: "PLANS.md", key: "plan b", title: "Plan B", at: Date.now(), source: "assigned" },
   });
-  const later = statusPayload(repo) as typeof payload;
+  const later = (await statusPayload(repo)) as typeof payload;
   assert.equal(later.roles.some((l) => l.role === "feature-3"), true, "a surplus runner with a claim shows");
   assert.equal(later.roles.some((l) => l.role === "feature-4"), false);
 });
@@ -119,7 +120,7 @@ test("status payload marks user-defined roles with the custom flag", async () =>
   cfg.customRoles.push({ name: "nightly", task: "do the nightly thing" });
   saveConfig(repo, cfg);
   // The payload's structural fixture type tolerates the extra field — assert on it directly.
-  const payload = statusPayload(repo) as { roles: Array<{ role: string; custom?: boolean }> };
+  const payload = (await statusPayload(repo)) as { roles: Array<{ role: string; custom?: boolean }> };
   assert.ok(payload.roles.some((l) => l.role === "nightly" && l.custom === true), "listed custom is marked");
   assert.equal(
     payload.roles.filter((l) => l.custom).length,
@@ -140,7 +141,7 @@ test("status payload combines persisted + live token metrics for running roles o
   // …and the in-flight run's log tail (800 output so far, peak context 12k).
   const file = piLogPath(repo, "feature");
   writeLogLines(file, [SESSION, assistantLine("turn one", { tokens: 8_000, output: 300 }), assistantLine("turn two", { tokens: 12_000, output: 500 })]);
-  const payload = statusPayload(repo) as {
+  const payload = (await statusPayload(repo)) as {
     roles: Array<{ role: string; generated: number; peakCtx: number }>;
   };
   const feature = payload.roles.find((l) => l.role === "feature");
@@ -164,7 +165,7 @@ test("a role with a declared window carries peakCtxLabel", async () => {
   s.peakContextTokens = 110_000;
   s.generatedTokens = 1_000;
   saveRunnerState(repo, s);
-  const payload = statusPayload(repo, Date.now(), null, modelsFile) as {
+  const payload = (await statusPayload(repo, Date.now(), null, modelsFile)) as {
     roles: Array<{ role: string; peakCtx: number; peakCtxLabel?: string }>;
   };
   const feature = payload.roles.find((l) => l.role === "feature");
@@ -174,7 +175,7 @@ test("a role with a declared window carries peakCtxLabel", async () => {
   // A role whose seam resolves no window carries no label, leaving the payload shape unchanged.
   const repo2 = makeRepo();
   await initProject(repo2, "gui peakCtxLabel bare test");
-  const barePayload = statusPayload(repo2, Date.now(), null, modelsFile) as {
+  const barePayload = (await statusPayload(repo2, Date.now(), null, modelsFile)) as {
     roles: Array<{ role: string; peakCtx: number; peakCtxLabel?: string }>;
   };
   const bareFeature = barePayload.roles.find((l) => l.role === "feature");
@@ -196,7 +197,7 @@ test("status payload carries the current work item for running roles only", asyn
   const file2 = piLogPath(repo, "clean");
   writeLogLines(file2, [SESSION, assistantLine("old finished work")]);
 
-  const payload = statusPayload(repo) as {
+  const payload = (await statusPayload(repo)) as {
     roles: Array<{ role: string; currentWork: string | null }>;
   };
   assert.equal(
@@ -226,13 +227,13 @@ test("status payload carries todayUsd per role from its daily window", async () 
   stale.dayCostUsd = 5.67;
   saveRunnerState(repo, stale);
 
-  let payload = statusPayload(repo) as { roles: Array<{ role: string; todayUsd: number }> };
+  let payload = (await statusPayload(repo)) as { roles: Array<{ role: string; todayUsd: number }> };
   assert.equal(payload.roles.find((l) => l.role === "clean")?.todayUsd, 12.34, "fresh window rides the payload");
   assert.equal(payload.roles.find((l) => l.role === "dedupe")?.todayUsd, 0, "stale stamp reads zero");
 
   // A role that never ran (default state file) also carries an explicit zero field.
   saveRunnerState(repo, freshRunnerState("organize"));
-  payload = statusPayload(repo) as typeof payload;
+  payload = (await statusPayload(repo)) as typeof payload;
   assert.equal(payload.roles.find((l) => l.role === "organize")?.todayUsd, 0, "missing window reads zero");
 });
 
@@ -247,7 +248,7 @@ test("status payload carries the consecutive no-change streak per role", async (
   // A role that never ran (absent field) reads as an explicit zero.
   saveRunnerState(repo, freshRunnerState("organize"));
 
-  let payload = statusPayload(repo) as { roles: Array<{ role: string; noChangeStreak: number; cutOffStreak: number }> };
+  let payload = (await statusPayload(repo)) as { roles: Array<{ role: string; noChangeStreak: number; cutOffStreak: number }> };
   assert.equal(payload.roles.find((l) => l.role === "clean")?.noChangeStreak, 4, "a persisted streak rides the payload");
   assert.equal(payload.roles.find((l) => l.role === "clean")?.cutOffStreak, 3, "a persisted cut-off streak rides the payload");
   assert.equal(payload.roles.find((l) => l.role === "organize")?.noChangeStreak, 0, "an absent field reads zero");
@@ -259,7 +260,7 @@ test("status payload carries the consecutive no-change streak per role", async (
 test("status payload carries planned plans and open bugs, fresh per poll", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui backlog test"); // seeds placeholder files with no entries
-  let payload = statusPayload(repo) as { plans: string[]; bugs: string[] };
+  let payload = (await statusPayload(repo)) as { plans: string[]; bugs: string[] };
   assert.deepEqual(payload.plans, [], "seeded _None yet._ placeholders are not entries");
   assert.deepEqual(payload.bugs, []);
 
@@ -279,7 +280,7 @@ test("status payload carries planned plans and open bugs, fresh per poll", async
     },
     { heading: "## Fixed" },
   ]);
-  payload = statusPayload(repo) as { plans: string[]; bugs: string[] };
+  payload = (await statusPayload(repo)) as { plans: string[]; bugs: string[] };
   assert.deepEqual(payload.plans, ["Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)"]);
   assert.deepEqual(payload.bugs, ["A routine merge conflict logs a warning (reported 2026-08-25)"]);
 });
@@ -321,7 +322,7 @@ test("status payload carries planHolds and bugHolds parallel to plans and bugs",
     },
     { heading: "## Fixed" },
   ]);
-  const payload = statusPayload(repo) as { plans: string[]; bugs: string[]; planHolds: string[]; bugHolds: string[]; planBlocked: boolean[]; bugBlocked: boolean[] };
+  const payload = (await statusPayload(repo)) as { plans: string[]; bugs: string[]; planHolds: string[]; bugHolds: string[]; planBlocked: boolean[]; bugBlocked: boolean[] };
   assert.deepEqual(payload.plans, [
     "Worktree pool, part 2/5: first step (planned 2026-10-01)",
     "Worktree pool, part 3/5: second step (planned 2026-10-01; requires part 2/5 landed)",
@@ -340,11 +341,11 @@ test("status payload carries planHolds and bugHolds parallel to plans and bugs",
   assert.deepEqual(payload.bugHolds, ["", " [blocked: refused]"]);
   assert.deepEqual(payload.planBlocked, [false, true, true, false]);
   assert.deepEqual(payload.bugBlocked, [false, true]);
-  const alerts = (statusPayload(repo) as { alerts: Array<{ key: string; title: string }> }).alerts;
+  const alerts = ((await statusPayload(repo)) as { alerts: Array<{ key: string; title: string }> }).alerts;
   assert.equal(alerts.find((a) => a.key === "refused")?.title, "2 refused entries wait on your decision");
 });
 
-test("status payload's planHolds carries the working-on-it mark for a claimed plan", () => {
+test("status payload's planHolds carries the working-on-it mark for a claimed plan", async () => {
   const repo = makeRepo();
   writeBacklogFile(repo, "PLANS.md", [
     { heading: "## Planned", body: "### Volume slider (planned 2026-10-01)\n\nBody." },
@@ -354,7 +355,7 @@ test("status payload's planHolds carries the working-on-it mark for a claimed pl
     ...loadRunnerState(repo, "feature-2"),
     claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" },
   });
-  const payload = statusPayload(repo) as { planHolds: string[]; planBlocked: boolean[] };
+  const payload = (await statusPayload(repo)) as { planHolds: string[]; planBlocked: boolean[] };
   assert.deepEqual(payload.planHolds, [" [working on it: feature #2]"]);
   assert.deepEqual(payload.planBlocked, [false]);
 });
@@ -365,7 +366,7 @@ test("status payload's planHolds carries the working-on-it mark for a claimed pl
 test("status payload carries open questions, fresh per poll", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui questions test"); // seeds a placeholder QUESTIONS.md with no entries
-  let payload = statusPayload(repo) as { questions: string[] };
+  let payload = (await statusPayload(repo)) as { questions: string[] };
   assert.deepEqual(payload.questions, [], "seeded _None yet._ placeholders are not entries");
 
   // A question posted under ## Open shows on the next poll; an entry in ## Answered must
@@ -377,7 +378,7 @@ test("status payload carries open questions, fresh per poll", async () => {
     },
     { heading: "## Answered", body: "### Q0: earlier question (answered 2026-08-27)" },
   ]);
-  payload = statusPayload(repo) as { questions: string[] };
+  payload = (await statusPayload(repo)) as { questions: string[] };
   assert.deepEqual(payload.questions, ["Q1: which database?"], "only the Open section counts");
 
   // Answering it (moving the entry to ## Answered) drops it on the next poll — a stale
@@ -389,7 +390,7 @@ test("status payload carries open questions, fresh per poll", async () => {
       body: "### Q1: which database? (answered 2026-08-29)\n\n**Decision:** SQLite.",
     },
   ]);
-  payload = statusPayload(repo) as { questions: string[] };
+  payload = (await statusPayload(repo)) as { questions: string[] };
   assert.deepEqual(payload.questions, [], "an answered question is no longer open");
 });
 
@@ -399,13 +400,13 @@ test("status payload carries open questions, fresh per poll", async () => {
 test("status payload carries queued prompt previews, fresh per poll", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui inbox test"); // no inbox dir yet
-  let payload = statusPayload(repo) as { inbox: number; inboxPrompts: string[] };
+  let payload = (await statusPayload(repo)) as { inbox: number; inboxPrompts: string[] };
   assert.equal(payload.inbox, 0);
   assert.deepEqual(payload.inboxPrompts, []);
 
   submitPrompt(repo, "fix the login bug");
   submitPrompt(repo, "y".repeat(120)); // overlong → truncated preview in the payload
-  payload = statusPayload(repo) as { inbox: number; inboxPrompts: string[] };
+  payload = (await statusPayload(repo)) as { inbox: number; inboxPrompts: string[] };
   assert.equal(payload.inbox, 2);
   assert.deepEqual(payload.inboxPrompts[0], "fix the login bug");
   const preview = payload.inboxPrompts[1]!;
@@ -413,7 +414,7 @@ test("status payload carries queued prompt previews, fresh per poll", async () =
 
   // Fresh per poll: the director consuming one drops it from the next payload.
   dequeuePrompt(repo);
-  payload = statusPayload(repo) as { inbox: number; inboxPrompts: string[] };
+  payload = (await statusPayload(repo)) as { inbox: number; inboxPrompts: string[] };
   assert.equal(payload.inbox, 1);
   assert.deepEqual(payload.inboxPrompts, [preview]);
 });
@@ -426,7 +427,7 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
   const repo = makeRepo();
   await initProject(repo, "gui build badge test");
   // No harness running: no stamp, empty badge (the page renders nothing for it).
-  let payload = statusPayload(repo) as { build: unknown; buildBadge: string };
+  let payload = (await statusPayload(repo)) as { build: unknown; buildBadge: string };
   assert.equal(payload.build, null);
   assert.equal(payload.buildBadge, "", "no running harness: empty badge");
 
@@ -438,7 +439,7 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
     checkedHead: "b".repeat(40), restartBlocked: "main cccccccc is red",
   };
   writeOrchestratorMarker(repo, ["clean"], { build: stamp });
-  payload = statusPayload(repo) as typeof payload;
+  payload = (await statusPayload(repo)) as typeof payload;
   assert.equal(payload.buildBadge, buildBadge(stamp), "one home for the badge text");
   assert.match(payload.buildBadge, /build aaaaaaaa — update available \(7 commits behind\); restart blocked: main cccccccc is red$/);
   assert.equal((payload as { restartHoldBadge?: unknown }).restartHoldBadge, null, "no hold: no hold row");
@@ -450,7 +451,7 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
     restartPending: true, restartHold: { stage: "checking", since: Date.now() },
   };
   writeOrchestratorMarker(repo, ["clean"], { build: held });
-  const heldPayload = statusPayload(repo) as { buildBadge: string; restartHoldBadge: string | null };
+  const heldPayload = (await statusPayload(repo)) as { buildBadge: string; restartHoldBadge: string | null };
   assert.equal(heldPayload.restartHoldBadge, "holding new runs: checking main bbbbbbbb before restarting (0s)");
   assert.ok(heldPayload.buildBadge.endsWith(` — ${heldPayload.restartHoldBadge}`), "the badge and the row say the same thing");
 });
@@ -466,7 +467,7 @@ test("the status payload carries the operator pause flag; its phase outranks wai
   writeOrchestratorMarker(repo, ["clean"]);
 
   // No marker: not paused.
-  let payload = statusPayload(repo) as {
+  let payload = (await statusPayload(repo)) as {
     paused: boolean;
     roles: Array<{ role: string; phase: string }>;
   };
@@ -485,7 +486,7 @@ test("the status payload carries the operator pause flag; its phase outranks wai
   const marker = pausedPath(repo);
   writeMarker(marker, { at: Date.now() });
 
-  payload = statusPayload(repo) as typeof payload;
+  payload = (await statusPayload(repo)) as typeof payload;
   assert.equal(payload.paused, true, "the flag rides the payload top level");
   assert.equal(
     payload.roles.find((l) => l.role === "clean")?.phase,
@@ -498,7 +499,7 @@ test("the status payload carries the operator pause flag; its phase outranks wai
   // Removing the marker (what `tumwater resume` does) reverts both: flag false, and with the
   // spend still at the cap the role falls back to waiting: budget spent.
   fs.rmSync(marker);
-  payload = statusPayload(repo) as typeof payload;
+  payload = (await statusPayload(repo)) as typeof payload;
   assert.equal(payload.paused, false);
   assert.equal(payload.roles.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
 
@@ -513,7 +514,7 @@ test("the status payload names the project and carries the recent events as data
   logEvent(repo, { source: "qa", type: "run_end", run: 3, result: "error", error: "429 Rate limit exceeded" });
   logEvent(repo, { source: "bugfix", type: "merged", commit: "a".repeat(40), summary: "Escape backlog bodies" });
   logEvent(repo, { source: "bugfix", type: "build_check", scope: "merge", script: "test", status: "failed" });
-  const payload = statusPayload(repo) as {
+  const payload = (await statusPayload(repo)) as {
     project: string;
     events: string[];
     eventItems: Array<{ ts: number; source: string; type: string; result?: string; message: string }>;
@@ -537,7 +538,7 @@ test("the status payload renders a corrupt event's role as ? like the reports", 
   // no role reaches eventItem; String(undefined) shipped the literal "undefined" as the feed's
   // role chip. eventRole's "?" is the rule the usage report and failure digest apply.
   writeEvents(repo, [{ ts: 123, type: "wake", reason: "main moved" }]);
-  const payload = statusPayload(repo) as { eventItems: Array<{ source: string }> };
+  const payload = (await statusPayload(repo)) as { eventItems: Array<{ source: string }> };
   assert.equal(payload.eventItems.at(-1)?.source, "?");
 });
 
@@ -549,7 +550,7 @@ test("the status payload carries each role's last error for the rows that failed
   s.lastError = "429 Rate limit exceeded";
   saveRunnerState(repo, s);
   saveRunnerState(repo, freshRunnerState("clean"));
-  const payload = statusPayload(repo) as { roles: Array<{ role: string; lastError: string | null }> };
+  const payload = (await statusPayload(repo)) as { roles: Array<{ role: string; lastError: string | null }> };
   assert.equal(payload.roles.find((l) => l.role === "qa")?.lastError, "429 Rate limit exceeded");
   assert.equal(payload.roles.find((l) => l.role === "clean")?.lastError, null);
 });
@@ -561,7 +562,7 @@ test("the status payload carries each role's last-merged epoch ms, null until it
   s.lastMergedAt = 123_456_789;
   saveRunnerState(repo, s);
   saveRunnerState(repo, freshRunnerState("clean"));
-  const payload = statusPayload(repo) as { roles: Array<{ role: string; lastMergedAt: number | null }> };
+  const payload = (await statusPayload(repo)) as { roles: Array<{ role: string; lastMergedAt: number | null }> };
   assert.equal(payload.roles.find((l) => l.role === "qa")?.lastMergedAt, 123_456_789);
   assert.equal(payload.roles.find((l) => l.role === "clean")?.lastMergedAt, null);
 });
@@ -574,7 +575,7 @@ test("statusPayload exposes each role's nextRunAt and backoffSeconds", async () 
   state.backoffSeconds = 90;
   saveRunnerState(repo, state);
 
-  const payload = statusPayload(repo) as { roles: Array<{ role: string; nextRunAt: number; backoffSeconds: number }> };
+  const payload = (await statusPayload(repo)) as { roles: Array<{ role: string; nextRunAt: number; backoffSeconds: number }> };
   const clean = payload.roles.find((l) => l.role === "clean");
   assert.ok(clean, "the role has a payload row");
   assert.equal(clean.nextRunAt, 1_758_800_000_000, "raw epoch ms, formatted client-side");
@@ -598,7 +599,7 @@ test("the status payload carries capPaused; a held idle role's phase reads waiti
   s.dayCostUsd = 1.25; // >= cap → held
   saveRunnerState(repo, s);
 
-  let payload = statusPayload(repo) as {
+  let payload = (await statusPayload(repo)) as {
     capPaused: string[];
     pausedRoles: string[];
     roles: Array<{ role: string; phase: string }>;
@@ -616,7 +617,7 @@ test("the status payload carries capPaused; a held idle role's phase reads waiti
   // No caps configured: the field is present and empty, and the phase reverts to idle.
   cfg.maxDailyCostUsdPerRole = {};
   saveConfig(repo, cfg);
-  payload = statusPayload(repo) as typeof payload;
+  payload = (await statusPayload(repo)) as typeof payload;
   assert.deepEqual(payload.capPaused, []);
   assert.notEqual(payload.roles.find((l) => l.role === "clean")?.phase, "waiting: daily cap spent");
 
@@ -636,7 +637,7 @@ test("status payload ships the disk block and its preformatted badge", async () 
     roles: [],
     disk: { freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true, lastReclaim: { at, mode: "pressure", freedGB: 3.24 } },
   });
-  const payload = statusPayload(repo, at + 300_000) as { disk?: object; diskBadge: string };
+  const payload = (await statusPayload(repo, at + 300_000)) as { disk?: object; diskBadge: string };
   assert.deepEqual(payload.disk, {
     freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true,
     lastReclaim: { at, mode: "pressure", freedGB: 3.24 },
@@ -652,19 +653,19 @@ test("status payload ships the remote-CI badge beside the ci parity badge, absen
   const repo = makeRepo();
   await initProject(repo, "remote ci payload test");
   const now = Date.now();
-  let payload = statusPayload(repo, now) as { remoteCiBadge: string; remoteCiTone?: string };
+  let payload = (await statusPayload(repo, now)) as { remoteCiBadge: string; remoteCiTone?: string };
   assert.equal(payload.remoteCiBadge, "", "no record: empty badge");
   assert.equal(payload.remoteCiTone, undefined, "no record: no tone");
 
   const sha = "3e450b0c4d9e8f7a6b";
   writeJsonFile(remoteCiPath(repo), { record: { repo: "znation/tumwater", sha, result: "failed", checkedAt: now - 60_000 } });
-  payload = statusPayload(repo, now) as typeof payload;
+  payload = (await statusPayload(repo, now)) as typeof payload;
   assert.equal(payload.remoteCiBadge, " · github: failed at 3e450b0 1m ago");
   assert.equal(payload.remoteCiTone, "red");
 
   // An unavailable record renders no badge — the panel stays byte-identical.
   writeJsonFile(remoteCiPath(repo), { record: { repo: "znation/tumwater", result: "unavailable", reason: "gh: logged out", checkedAt: now - 60_000 } });
-  payload = statusPayload(repo, now) as typeof payload;
+  payload = (await statusPayload(repo, now)) as typeof payload;
   assert.equal(payload.remoteCiBadge, "", "unavailable: empty badge");
   assert.equal(payload.remoteCiTone, undefined, "unavailable: no tone, like no record");
 });
@@ -675,18 +676,18 @@ test("status payload ships the remote-CI badge beside the ci parity badge, absen
 test("status payload and header show a pending scheduled wake only while one stands", async () => {
   const repo = makeRepo();
   await initProject(repo, "scheduled wake test");
-  let payload = statusPayload(repo) as { scheduledWake?: { roles: string[]; atMs: number }; scheduledWakes?: { roles: string[] }[] };
+  let payload = (await statusPayload(repo)) as { scheduledWake?: { roles: string[]; atMs: number }; scheduledWakes?: { roles: string[] }[] };
   assert.equal(payload.scheduledWake, undefined, "no marker, no scheduledWake");
   assert.equal(payload.scheduledWakes, undefined, "no marker, no scheduledWakes");
-  assert.doesNotMatch(renderStatus(repo, snapshot(repo)), /wake scheduled in/);
+  assert.doesNotMatch(renderStatus(repo, await snapshot(repo)), /wake scheduled in/);
   requestWake(repo, ["feature"], 3_600_000);
-  payload = statusPayload(repo) as typeof payload;
+  payload = (await statusPayload(repo)) as typeof payload;
   assert.deepEqual(payload.scheduledWake?.roles, ["feature"]);
   requestWake(repo, ["plan"], 7_200_000);
-  payload = statusPayload(repo) as typeof payload;
+  payload = (await statusPayload(repo)) as typeof payload;
   assert.deepEqual(payload.scheduledWakes?.map((w) => w.roles), [["feature"], ["plan"]]);
   assert.deepEqual(payload.scheduledWake?.roles, ["feature"]);
-  assert.match(renderStatus(repo, snapshot(repo)), /wake scheduled in/);
+  assert.match(renderStatus(repo, await snapshot(repo)), /wake scheduled in/);
 });
 
 test("status payload carries the run --for deadline and its badge only when windowed", async () => {
@@ -696,11 +697,11 @@ test("status payload carries the run --for deadline and its badge only when wind
   const write = (extra: object) =>
     writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: now, roles: [], ...extra });
   write({ stopsAt: now + 2 * 3600_000 });
-  let payload = statusPayload(repo, now) as { runStopsAt?: number; runWindowBadge: string };
+  let payload = (await statusPayload(repo, now)) as { runStopsAt?: number; runWindowBadge: string };
   assert.equal(payload.runStopsAt, now + 2 * 3600_000);
   assert.equal(payload.runWindowBadge, " · stops in 2h");
   write({});
-  payload = statusPayload(repo, now) as typeof payload;
+  payload = (await statusPayload(repo, now)) as typeof payload;
   assert.equal(payload.runStopsAt, undefined);
   assert.equal(payload.runWindowBadge, "");
 });
@@ -710,14 +711,14 @@ test("status payload carries scheduledStopAt only while running with a stop mark
   await initProject(repo, "payload scheduled stop test");
   const now = Date.now();
   scheduleStop(repo, now + 3600_000);
-  let payload = statusPayload(repo, now) as { scheduledStopAt?: number };
+  let payload = (await statusPayload(repo, now)) as { scheduledStopAt?: number };
   assert.equal(payload.scheduledStopAt, undefined, "a stopped team omits it");
   writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: now, roles: [] });
-  payload = statusPayload(repo, now) as typeof payload;
+  payload = (await statusPayload(repo, now)) as typeof payload;
   assert.equal(payload.scheduledStopAt, now + 3600_000);
 });
 
-test("status payload's planSeries folds a series' blocked parts into one slot", () => {
+test("status payload's planSeries folds a series' blocked parts into one slot", async () => {
   const repo = makeRepo();
   writeBacklogFile(repo, "PLANS.md", [
     {
@@ -732,7 +733,7 @@ test("status payload's planSeries folds a series' blocked parts into one slot", 
     },
     { heading: "## Done" },
   ]);
-  const payload = statusPayload(repo) as { plans: string[]; planSeries: ({ name: string; label: string } | null)[] };
+  const payload = (await statusPayload(repo)) as { plans: string[]; planSeries: ({ name: string; label: string } | null)[] };
   const rows = payload.plans.map((title) => ({ title, hold: { blockedBy: [] } as never, claimer: undefined }));
   const series = groupBlockedSeries(rows.slice(2, 4)).find((g) => g.kind === "series");
   assert.equal(series?.kind, "series");
@@ -748,7 +749,7 @@ test("status payload lists the five newest answered questions beside the open on
   let text = "# Questions\n\n## Open\n\n### Still open\n\nbody\n\n## Answered\n\n";
   for (let k = 1; k <= 6; k++) text += `### Q${k}\n\n**Answered 2026-10-0${k} by operator:** d${k}\n\n`;
   fs.writeFileSync(path.join(repo, "QUESTIONS.md"), text);
-  const payload = statusPayload(repo) as { questions: string[]; answeredQuestions: { title: string; decision: string }[] };
+  const payload = (await statusPayload(repo)) as { questions: string[]; answeredQuestions: { title: string; decision: string }[] };
   assert.equal(payload.questions.length, 1);
   assert.deepEqual(payload.answeredQuestions.map((a) => a.title), ["Q6", "Q5", "Q4", "Q3", "Q2"]);
   assert.match(payload.answeredQuestions[0]?.decision ?? "", /d6$/);
@@ -761,7 +762,7 @@ test("status payload lists the newest done plans and fixed bugs beside the open 
   for (let k = 6; k >= 1; k--) plans += `### D${k} (planned 2026-09-30 by plan) — done 2026-10-0${k}\n\nbody\n\n`;
   fs.writeFileSync(path.join(repo, "PLANS.md"), plans);
   fs.writeFileSync(path.join(repo, "BUGS.md"), "# Bugs\n\n## Open\n\n## Fixed\n\n### B2 (found by bugfix 2026-10-01; fixed 2026-10-03 by bugfix loop)\n\nx\n\n### B1 with no stamp\n\nx\n");
-  const payload = statusPayload(repo) as { plans: string[]; donePlans: { title: string; completedOn: string | null }[]; fixedBugs: unknown[] };
+  const payload = (await statusPayload(repo)) as { plans: string[]; donePlans: { title: string; completedOn: string | null }[]; fixedBugs: unknown[] };
   assert.equal(payload.plans.length, 1);
   assert.deepEqual(payload.donePlans.map((d) => d.title), ["D6", "D5", "D4", "D3", "D2"]);
   assert.equal(payload.donePlans[0]?.completedOn, "2026-10-06");
@@ -775,7 +776,7 @@ test("the status payload carries no retired script key anywhere in its tree", as
   enqueueMerge(repo, { role: "qa", sha: "abc1234", run: 3, summary: "queued", enqueuedAt: Date.now() });
   enqueueMerge(repo, { role: "feature", sha: "def5678", run: 9, summary: "churny", enqueuedAt: Date.now(), highFriction: true });
   writeEvents(repo, [{ ts: 123, loop: "qa", type: "wake", reason: "main moved" }]); // retired-name-ok: legacy event field in a fixture
-  const payload = statusPayload(repo) as {
+  const payload = (await statusPayload(repo)) as {
     roles: Array<Record<string, unknown>>;
     mergeQueue: { entries: Array<Record<string, unknown>> };
     budget: Record<string, unknown>;
@@ -808,14 +809,14 @@ test("status payload scoped to a role lists only that role and keeps the team bu
   await initProject(repo, "payload role scope");
   for (const role of ["clean", "dedupe"]) saveRunnerState(repo, freshRunnerState(role));
   const now = Date.now();
-  const all = statusPayload(repo, now) as { roles: { role: string }[]; budget: unknown };
-  const scoped = statusPayload(repo, now, ["clean"]) as typeof all;
+  const all = (await statusPayload(repo, now)) as { roles: { role: string }[]; budget: unknown };
+  const scoped = (await statusPayload(repo, now, ["clean"])) as typeof all;
   assert.ok(all.roles.some((r) => r.role === "dedupe"));
   assert.deepEqual(scoped.roles.map((r) => r.role), ["clean"]);
   assert.deepEqual(scoped.budget, all.budget);
 });
 
-test("statusPayload carries the post-merge review queue without each verdict body", () => {
+test("statusPayload carries the post-merge review queue without each verdict body", async () => {
   // The payload backs the 1-second /api/status poll, which only ever renders the entry's
   // remaining fields; the reviewer's verdict `body` is the entry's bulk and must not ride it.
   const carried = {
@@ -825,104 +826,104 @@ test("statusPayload carries the post-merge review queue without each verdict bod
   const entry = { ...carried, body: "### Verdict\n\nlong reviewer prose that must not be polled" };
   const repo = makeRepo();
   writeJsonFile(postReviewPath(repo), { pending: [entry] });
-  assert.deepEqual((statusPayload(repo) as { postReviews: unknown[] }).postReviews, [carried]);
+  assert.deepEqual(((await statusPayload(repo)) as { postReviews: unknown[] }).postReviews, [carried]);
   const empty = makeRepo();
-  assert.deepEqual((statusPayload(empty) as { postReviews: unknown[] }).postReviews, []);
+  assert.deepEqual(((await statusPayload(empty)) as { postReviews: unknown[] }).postReviews, []);
   // A torn entry is dropped exactly as readPostReviews drops it today.
   writeJsonFile(postReviewPath(empty), { pending: [{ commit: "n" }] });
-  assert.deepEqual((statusPayload(empty) as { postReviews: unknown[] }).postReviews, []);
+  assert.deepEqual(((await statusPayload(empty)) as { postReviews: unknown[] }).postReviews, []);
 });
 
-test("the payload's noDeclaredCheck follows detectBuildCheck", () => {
+test("the payload's noDeclaredCheck follows detectBuildCheck", async () => {
   const now = Date.now();
   // A fresh makeRepo's fixture declares no build check (no check.command and no qualifying
   // package.json + node_modules on the walked-up root) — the same state the doctor `check`
   // row warns on.
   const root = makeRepo();
-  assert.equal(snapshot(root, undefined, now).noDeclaredCheck, true, "no declared check is surfaced on the snapshot");
-  const payload = statusPayload(root, now) as { noDeclaredCheck?: boolean; alerts: Array<{ key: string; tone: string }> };
+  assert.equal((await snapshot(root, undefined, now)).noDeclaredCheck, true, "no declared check is surfaced on the snapshot");
+  const payload = (await statusPayload(root, now)) as { noDeclaredCheck?: boolean; alerts: Array<{ key: string; tone: string }> };
   assert.equal(payload.noDeclaredCheck, true, "the machine-readable payload field is present");
 
   // Declaring check.command for the same repo turns the field off.
   const cfg = loadConfig(root);
   cfg.check = { command: "npm test" };
   saveConfig(root, cfg);
-  assert.equal(snapshot(root, undefined, now).noDeclaredCheck, undefined);
-  const payload2 = statusPayload(root, now) as { noDeclaredCheck?: boolean; alerts: Array<{ key: string }> };
+  assert.equal((await snapshot(root, undefined, now)).noDeclaredCheck, undefined);
+  const payload2 = (await statusPayload(root, now)) as { noDeclaredCheck?: boolean; alerts: Array<{ key: string }> };
   assert.equal(payload2.noDeclaredCheck, undefined, "no noDeclaredCheck key with a declared check");
   assert.equal(payload2.alerts.find((a) => a.key === "no-check"), undefined);
 });
 
-test("the payload's noBrief follows briefBlockMissing and clears when the brief resolves", () => {
+test("the payload's noBrief follows briefBlockMissing and clears when the brief resolves", async () => {
   const now = Date.now();
   const root = makeRepo();
-  assert.equal(snapshot(root, undefined, now).noBrief, undefined, "no candidate stays absent (pre-init state)");
-  let payload = statusPayload(root, now) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal((await snapshot(root, undefined, now)).noBrief, undefined, "no candidate stays absent (pre-init state)");
+  let payload = (await statusPayload(root, now)) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.noBrief, undefined, "no noBrief key with no brief candidate");
   assert.equal(payload.alerts.find((a) => a.key === "no-brief"), undefined, "no no-brief alert with no brief candidate");
 
   // A marker-less README.md (a hand edit that strips the block) is the silent state doctor
   // warns on; the snapshot, payload and alert should all surface it.
   fs.writeFileSync(path.join(root, "README.md"), "# p\n\nNo prompt block here.\n");
-  assert.equal(snapshot(root, undefined, now).noBrief, true, "marker-less brief is surfaced on the snapshot");
-  payload = statusPayload(root, now) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal((await snapshot(root, undefined, now)).noBrief, true, "marker-less brief is surfaced on the snapshot");
+  payload = (await statusPayload(root, now)) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.noBrief, true, "the machine-readable payload field is present");
 
   // A marked block with no text between its markers is the same silent state: a hand edit
   // that leaves the two markers with nothing between them also means no project prompt.
   fs.writeFileSync(path.join(root, "README.md"), `# p\n\n${PROMPT_START}${PROMPT_END}\n`);
-  assert.equal(snapshot(root, undefined, now).noBrief, true, "an empty marked block is surfaced on the snapshot");
-  payload = statusPayload(root, now) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal((await snapshot(root, undefined, now)).noBrief, true, "an empty marked block is surfaced on the snapshot");
+  payload = (await statusPayload(root, now)) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.noBrief, true, "the machine-readable payload field is present for an empty block");
 
   // Restoring the block turns the field and the alert back off.
   fs.writeFileSync(path.join(root, "README.md"), `# p\n\n${PROMPT_START}\nBuild a thing.\n${PROMPT_END}\n`);
-  assert.equal(snapshot(root, undefined, now).noBrief, undefined, "resolved brief clears the snapshot field");
-  payload = statusPayload(root, now) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal((await snapshot(root, undefined, now)).noBrief, undefined, "resolved brief clears the snapshot field");
+  payload = (await statusPayload(root, now)) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.noBrief, undefined, "no noBrief key with a resolved brief");
   assert.equal(payload.alerts.find((a) => a.key === "no-brief"), undefined, "no no-brief alert with a resolved brief");
 });
 
-test("the payload's briefTruncated follows briefBlockOverCap and clears under the cap", () => {
+test("the payload's briefTruncated follows briefBlockOverCap and clears under the cap", async () => {
   const now = Date.now();
   const root = makeRepo();
-  assert.equal(snapshot(root, undefined, now).briefTruncated, undefined, "no candidate stays absent");
-  let payload = statusPayload(root, now) as { briefTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal((await snapshot(root, undefined, now)).briefTruncated, undefined, "no candidate stays absent");
+  let payload = (await statusPayload(root, now)) as { briefTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.briefTruncated, undefined, "no briefTruncated key with no brief candidate");
   assert.equal(payload.alerts.find((a) => a.key === "brief-truncated"), undefined, "no brief-truncated alert with no brief candidate");
 
   // A block past the read cap is the silent degraded state doctor warns on; the snapshot,
   // payload and alert should all surface it as the over-cap twin of `no-brief`.
   fs.writeFileSync(path.join(root, "README.md"), `# p\n\n${PROMPT_START}\n${("x").repeat(BRIEF_TEXT_MAX_CHARS + 1)}\n${PROMPT_END}\n`);
-  assert.equal(snapshot(root, undefined, now).briefTruncated, true, "over-cap brief is surfaced on the snapshot");
-  payload = statusPayload(root, now) as { briefTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal((await snapshot(root, undefined, now)).briefTruncated, true, "over-cap brief is surfaced on the snapshot");
+  payload = (await statusPayload(root, now)) as { briefTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.briefTruncated, true, "the machine-readable payload field is present");
 
   // Trimming the block to exactly the cap turns the field and the alert back off.
   fs.writeFileSync(path.join(root, "README.md"), `# p\n\n${PROMPT_START}\n${("x").repeat(BRIEF_TEXT_MAX_CHARS)}\n${PROMPT_END}\n`);
-  assert.equal(snapshot(root, undefined, now).briefTruncated, undefined, "at-cap brief clears the snapshot field");
-  payload = statusPayload(root, now) as { briefTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal((await snapshot(root, undefined, now)).briefTruncated, undefined, "at-cap brief clears the snapshot field");
+  payload = (await statusPayload(root, now)) as { briefTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.briefTruncated, undefined, "no briefTruncated key at the cap");
   assert.equal(payload.alerts.find((a) => a.key === "brief-truncated"), undefined, "no brief-truncated alert at the cap");
 });
 
-test("the payload's roleNotesOverCap follows the notes read bound and clears under it", () => {
+test("the payload's roleNotesOverCap follows the notes read bound and clears under it", async () => {
   const now = Date.now();
   const root = makeRepo();
   interface Payload { roleNotesOverCap?: Array<{ role: string; chars: number }>; alerts: Array<{ key: string; tone: string; title: string; detail: string }> };
-  const payload = () => statusPayload(root, now) as Payload;
+  const payload = async () => (await statusPayload(root, now)) as Payload;
   // No notes dir (nothing recorded yet) is the doctor's pass: no field, no key, no alert.
-  assert.equal(snapshot(root, undefined, now).roleNotesOverCap, undefined, "no notes dir leaves the field absent");
-  assert.equal(payload().roleNotesOverCap, undefined, "no roleNotesOverCap key with no notes dir");
-  assert.equal(payload().alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no role-notes-truncated alert with no notes dir");
+  assert.equal((await snapshot(root, undefined, now)).roleNotesOverCap, undefined, "no notes dir leaves the field absent");
+  assert.equal((await payload()).roleNotesOverCap, undefined, "no roleNotesOverCap key with no notes dir");
+  assert.equal((await payload()).alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no role-notes-truncated alert with no notes dir");
 
   const notesDir = path.dirname(roleNotesPath(root, "clean"));
   fs.mkdirSync(notesDir, { recursive: true });
   // A note at exactly the read bound is not over it: still absent everywhere.
   fs.writeFileSync(roleNotesPath(root, "clean"), "x".repeat(ROLE_NOTES_MAX_BYTES));
-  assert.equal(snapshot(root, undefined, now).roleNotesOverCap, undefined, "a note at exactly the cap stays absent");
-  assert.equal(payload().roleNotesOverCap, undefined, "no key at the cap");
-  assert.equal(payload().alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no alert at the cap");
+  assert.equal((await snapshot(root, undefined, now)).roleNotesOverCap, undefined, "a note at exactly the cap stays absent");
+  assert.equal((await payload()).roleNotesOverCap, undefined, "no key at the cap");
+  assert.equal((await payload()).alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no alert at the cap");
 
   // A note over the byte bound but not the character bound proves the predicate is characters
   // (text.length, truncateWithNote's unit) — matching checkRoleNotes: each emoji is 2 UTF-16
@@ -930,9 +931,9 @@ test("the payload's roleNotesOverCap follows the notes read bound and clears und
   // exactly the character bound, so it is NOT flagged.
   const multibyte = "\u{1F600}".repeat(ROLE_NOTES_MAX_BYTES / 2); // 4096 chars, 8192 bytes
   fs.writeFileSync(roleNotesPath(root, "feature"), multibyte);
-  assert.equal(snapshot(root, undefined, now).roleNotesOverCap, undefined, "a bytes-over/char-at-bound multibyte note stays absent");
-  assert.equal(payload().roleNotesOverCap, undefined, "no key for the bytes-over/char-at-bound multibyte note");
-  assert.equal(payload().alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no alert for the bytes-over/char-at-bound multibyte note");
+  assert.equal((await snapshot(root, undefined, now)).roleNotesOverCap, undefined, "a bytes-over/char-at-bound multibyte note stays absent");
+  assert.equal((await payload()).roleNotesOverCap, undefined, "no key for the bytes-over/char-at-bound multibyte note");
+  assert.equal((await payload()).alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no alert for the bytes-over/char-at-bound multibyte note");
 
   // Two over-cap notes surface the sorted array, the key, and the alert naming both roles.
   fs.writeFileSync(roleNotesPath(root, "clean"), "x".repeat(ROLE_NOTES_MAX_BYTES + 1));
@@ -941,37 +942,37 @@ test("the payload's roleNotesOverCap follows the notes read bound and clears und
     { role: "feature", chars: ROLE_NOTES_MAX_BYTES + 500 },
     { role: "clean", chars: ROLE_NOTES_MAX_BYTES + 1 },
   ];
-  assert.deepEqual(snapshot(root, undefined, now).roleNotesOverCap, expected, "two over-cap notes sort newest-char-count first");
-  assert.deepEqual(payload().roleNotesOverCap, expected, "the payload carries the same array");
+  assert.deepEqual((await snapshot(root, undefined, now)).roleNotesOverCap, expected, "two over-cap notes sort newest-char-count first");
+  assert.deepEqual((await payload()).roleNotesOverCap, expected, "the payload carries the same array");
 
   // A non-.md file with an over-bound length is ignored (matching checkRoleNotes).
   fs.writeFileSync(path.join(notesDir, "stray.txt"), "z".repeat(ROLE_NOTES_MAX_BYTES + 100));
-  assert.deepEqual(snapshot(root, undefined, now).roleNotesOverCap, expected, "a non-.md file is ignored");
+  assert.deepEqual((await snapshot(root, undefined, now)).roleNotesOverCap, expected, "a non-.md file is ignored");
 
   // Rewriting both notes to exactly the cap clears the array, the key and the alert.
   fs.writeFileSync(roleNotesPath(root, "clean"), "x".repeat(ROLE_NOTES_MAX_BYTES));
   fs.writeFileSync(roleNotesPath(root, "feature"), "y".repeat(ROLE_NOTES_MAX_BYTES));
-  assert.equal(snapshot(root, undefined, now).roleNotesOverCap, undefined, "rewriting both to the cap clears the snapshot field");
-  assert.equal(payload().roleNotesOverCap, undefined, "no key once both notes are at the cap");
-  assert.equal(payload().alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no alert once both notes are at the cap");
+  assert.equal((await snapshot(root, undefined, now)).roleNotesOverCap, undefined, "rewriting both to the cap clears the snapshot field");
+  assert.equal((await payload()).roleNotesOverCap, undefined, "no key once both notes are at the cap");
+  assert.equal((await payload()).alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no alert once both notes are at the cap");
 });
 
-test("the payload's salvagePatches follows the direct kept patches and clears without them", () => {
+test("the payload's salvagePatches follows the direct kept patches and clears without them", async () => {
   const now = Date.now();
   const root = makeRepo();
   interface Payload { salvagePatches?: Array<{ position: number; file: string; savedAt: number; bytes: number }>; alerts: Array<{ key: string; title: string }> };
-  const payload = () => statusPayload(root, now) as Payload;
+  const payload = async () => (await statusPayload(root, now)) as Payload;
   // No salvage dir (nothing kept): no field, no key, no alert.
-  assert.equal(snapshot(root, undefined, now).salvagePatches, undefined, "no salvage dir leaves the field absent");
-  assert.equal(payload().salvagePatches, undefined, "no salvagePatches key with no salvage dir");
-  assert.equal(payload().alerts.find((a) => a.key === "salvage-patches"), undefined, "no alert with no salvage dir");
+  assert.equal((await snapshot(root, undefined, now)).salvagePatches, undefined, "no salvage dir leaves the field absent");
+  assert.equal((await payload()).salvagePatches, undefined, "no salvagePatches key with no salvage dir");
+  assert.equal((await payload()).alerts.find((a) => a.key === "salvage-patches"), undefined, "no alert with no salvage dir");
 
   // A patch waiting for a role's next run under pending/ is out of scope: still absent.
   fs.mkdirSync(salvagePendingDir(root, "feature"), { recursive: true });
   fs.writeFileSync(path.join(salvagePendingDir(root, "feature"), "a.patch"), "pending");
-  assert.equal(snapshot(root, undefined, now).salvagePatches, undefined, "a pending-only patch stays absent");
-  assert.equal(payload().salvagePatches, undefined, "no key for a pending-only patch");
-  assert.equal(payload().alerts.find((a) => a.key === "salvage-patches"), undefined, "no alert for a pending-only patch");
+  assert.equal((await snapshot(root, undefined, now)).salvagePatches, undefined, "a pending-only patch stays absent");
+  assert.equal((await payload()).salvagePatches, undefined, "no key for a pending-only patch");
+  assert.equal((await payload()).alerts.find((a) => a.key === "salvage-patches"), undefined, "no alert for a pending-only patch");
 
   // Two direct kept patches surface the sorted array, the key, and the alert.
   fs.mkdirSync(salvageDir(root), { recursive: true });
@@ -985,28 +986,28 @@ test("the payload's salvagePatches follows the direct kept patches and clears wi
     { position: 1, file: "a.patch", savedAt: now - 60_000, bytes: 3 },
     { position: 2, file: "b.patch", savedAt: now, bytes: 5 },
   ];
-  assert.deepEqual(snapshot(root, undefined, now).salvagePatches, expected, "two direct patches surface oldest first with sizes");
-  assert.deepEqual(payload().salvagePatches, expected, "the payload carries the same array");
-  assert.ok(payload().alerts.find((a) => a.key === "salvage-patches"), "a kept patch raises the standing alert");
+  assert.deepEqual((await snapshot(root, undefined, now)).salvagePatches, expected, "two direct patches surface oldest first with sizes");
+  assert.deepEqual((await payload()).salvagePatches, expected, "the payload carries the same array");
+  assert.ok((await payload()).alerts.find((a) => a.key === "salvage-patches"), "a kept patch raises the standing alert");
 
   // A non-.patch file directly under the salvage dir is not a kept patch.
   fs.writeFileSync(path.join(salvageDir(root), "scratch.txt"), "zzz");
-  assert.deepEqual(snapshot(root, undefined, now).salvagePatches, expected, "a non-.patch file is ignored");
+  assert.deepEqual((await snapshot(root, undefined, now)).salvagePatches, expected, "a non-.patch file is ignored");
 
   // Removing the patches clears the array, the key, and the alert.
   fs.rmSync(path.join(salvageDir(root), "a.patch"));
   fs.rmSync(path.join(salvageDir(root), "b.patch"));
-  assert.equal(snapshot(root, undefined, now).salvagePatches, undefined, "removing the patches clears the snapshot field");
-  assert.equal(payload().salvagePatches, undefined, "no key once the patches are gone");
-  assert.equal(payload().alerts.find((a) => a.key === "salvage-patches"), undefined, "no alert once the patches are gone");
+  assert.equal((await snapshot(root, undefined, now)).salvagePatches, undefined, "removing the patches clears the snapshot field");
+  assert.equal((await payload()).salvagePatches, undefined, "no key once the patches are gone");
+  assert.equal((await payload()).alerts.find((a) => a.key === "salvage-patches"), undefined, "no alert once the patches are gone");
 });
 
 
-test("the payload's principlesTruncated follows principlesBlockOverCap and clears under the cap", () => {
+test("the payload's principlesTruncated follows principlesBlockOverCap and clears under the cap", async () => {
   const now = Date.now();
   const root = makeRepo();
-  assert.equal(snapshot(root, undefined, now).principlesTruncated, undefined, "no PRINCIPLES.md stays absent");
-  let payload = statusPayload(root, now) as { principlesTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal((await snapshot(root, undefined, now)).principlesTruncated, undefined, "no PRINCIPLES.md stays absent");
+  let payload = (await statusPayload(root, now)) as { principlesTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.principlesTruncated, undefined, "no principlesTruncated key with no PRINCIPLES.md");
   assert.equal(payload.alerts.find((a) => a.key === "principles-truncated"), undefined, "no principles-truncated alert with no PRINCIPLES.md");
 
@@ -1014,33 +1015,33 @@ test("the payload's principlesTruncated follows principlesBlockOverCap and clear
   // machine-readable key surface it, but it now raises no standing alert (the orchestrator
   // queues the director a consolidation prompt instead — see INV-T6).
   fs.writeFileSync(path.join(root, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS + 1));
-  assert.equal(snapshot(root, undefined, now).principlesTruncated, true, "over-cap PRINCIPLES.md is surfaced on the snapshot");
-  payload = statusPayload(root, now) as { principlesTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal((await snapshot(root, undefined, now)).principlesTruncated, true, "over-cap PRINCIPLES.md is surfaced on the snapshot");
+  payload = (await statusPayload(root, now)) as { principlesTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.principlesTruncated, true, "the machine-readable payload field is present");
   assert.equal(payload.alerts.find((a) => a.key === "principles-truncated"), undefined, "no principles-truncated alert accompanies the over-cap key");
 
   // Rewriting the file to exactly the cap clears the field and the alert.
   fs.writeFileSync(path.join(root, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS));
-  assert.equal(snapshot(root, undefined, now).principlesTruncated, undefined, "at-cap clears the snapshot field");
-  payload = statusPayload(root, now) as { principlesTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal((await snapshot(root, undefined, now)).principlesTruncated, undefined, "at-cap clears the snapshot field");
+  payload = (await statusPayload(root, now)) as { principlesTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.principlesTruncated, undefined, "no principlesTruncated key under the cap");
   assert.equal(payload.alerts.find((a) => a.key === "principles-truncated"), undefined, "no principles-truncated alert under the cap");
 });
 
-test("the payload's configProblem follows the live tumwater.json and clears when it is fixed", () => {
+test("the payload's configProblem follows the live tumwater.json and clears when it is fixed", async () => {
   const now = Date.now();
   const root = makeRepo();
   // A valid config: no configProblem key and no config-problem alert.
   const cfg = loadConfig(root);
   cfg.maxConcurrent = 4;
   saveConfig(root, cfg);
-  let payload = statusPayload(root, now) as { configProblem?: string; alerts: Array<{ key: string; tone: string; title: string; detail: string }> };
+  let payload = (await statusPayload(root, now)) as { configProblem?: string; alerts: Array<{ key: string; tone: string; title: string; detail: string }> };
   assert.equal(payload.configProblem, undefined, "no configProblem key with a valid config");
   assert.equal(payload.alerts.find((a) => a.key === "config-problem"), undefined, "no config-problem alert with a valid config");
 
   // The file breaks: the payload carries the error and one amber alert naming the error.
   fs.writeFileSync(configPath(root), "{ not json");
-  payload = statusPayload(root, now) as typeof payload;
+  payload = (await statusPayload(root, now)) as typeof payload;
   assert.match(payload.configProblem ?? "", /is not valid JSON/, "the parse error rides the payload");
   const broken = payload.alerts.filter((a) => a.key === "config-problem");
   assert.equal(broken.length, 1, "exactly one config-problem alert stands");
@@ -1050,12 +1051,12 @@ test("the payload's configProblem follows the live tumwater.json and clears when
 
   // The file is deleted after a valid load: the missing-file sentence stands instead.
   fs.rmSync(configPath(root));
-  payload = statusPayload(root, now) as typeof payload;
+  payload = (await statusPayload(root, now)) as typeof payload;
   assert.match(payload.configProblem ?? "", /tumwater\.json is missing — the team is running on its last known-good config \([^)]+\)/);
 
   // Restoring a valid file clears the field and the alert.
   saveConfig(root, cfg);
-  payload = statusPayload(root, now) as typeof payload;
+  payload = (await statusPayload(root, now)) as typeof payload;
   assert.equal(payload.configProblem, undefined, "a repaired config drops the payload key");
   assert.equal(payload.alerts.find((a) => a.key === "config-problem"), undefined, "a repaired config raises no alert");
 });
@@ -1074,18 +1075,110 @@ test("refreshOrphanAlert mirrors the doctor's orphans row on a staged orphan sca
   );
   const doctor = await checkOrphans(root, probe);
   const alert = await refreshOrphanAlert(root, probe);
-  // The standing alert carries the exact doctor-row sentence and count, so the alert and the
-  // `orphans` row cannot drift on the count, the per-orphan cpu or the remediation.
-  assert.equal(alert?.count, 1);
+  // The standing alert carries the doctor row's own sentence (orphanFailDetail), so the alert
+  // and the `orphans` row cannot drift on the count, the per-orphan cpu, or the remediation.
   assert.equal(alert?.detail, doctor.detail);
-  // The pure feed agrees with the probe-driven refresh — the same staged scan, the same message.
-  const staged = orphanAlertFromScan(await findOrphans(root, probe), root);
-  assert.deepEqual(staged, alert);
+  // The pure feed agrees with the probe-driven refresh — the same staged scan, the same
+  // message, the same listed pids.
+  const staged = orphanAlertFromScan(await findOrphans(root, probe), root, Date.now());
+  assert.equal(staged?.count, alert?.count);
+  assert.equal(staged?.detail, alert?.detail);
+  assert.deepEqual(staged?.pids, alert?.pids, "the feed and the refresh list the same orphans");
 });
 
 test("refreshOrphanAlert raises none on a clean host", async () => {
   const root = makeRepo();
   const { probe } = fakeProbe([]);
   assert.equal(await refreshOrphanAlert(root, probe), null);
-  assert.equal(orphanAlertFromScan({ rows: [], orphans: [], marks: new Map<number, string[]>(), cwdProblem: null, liveOwned: [] }), null);
+  assert.equal(orphanAlertFromScan({ rows: [], orphans: [], marks: new Map<number, string[]>(), cwdProblem: null, liveOwned: [] }, "", 1), null);
+});
+test("getOrphanAlert keeps a still-listed leak's firstSeenAt and re-stamps new or a cleared set", async () => {
+  // The fake table's rows are mutable, so one injected probe answers whatever the test stages
+  // next — the refresh's scan is the staged scan, never the host's real table. Each stage
+  // resets the cache to at=0 so the next read (real time) always kicks a new refresh; the
+  // continuation rule is tested on firstSeenAt, which the refresh stamps from Date.now().
+  const rows: Array<{ pid: number; ppid: number; uid: number; etime: string; time: string; command: string }> = [];
+  const probe = {
+    list: async () => rows,
+    cwds: async () => new Map(),
+    runMarkers: async () => new Map(),
+    launchServicesPorts: async () => null,
+  };
+  const uid = process.getuid?.() ?? 0;
+  const leak = (pid: number, wt: string, command = `node ${wt}/leak.js`) => ({ pid, ppid: 1, uid, etime: "01:00", time: "0:00.10", command });
+  const root = makeRepo();
+  const wt = path.join(root, ".tumwater", "worktrees", "qa");
+  fs.mkdirSync(wt, { recursive: true });
+  const wait = async (cond: () => boolean, ms = 5000) => {
+    for (let i = 0; i < ms / 10; i++) {
+      if (cond()) return;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.ok(cond(), "the refresh did not settle in time");
+  };
+  const read = () => getOrphanAlert(root, probe, Date.now());
+  // Stage 1: a null cache refreshes to list pid 501; firstSeenAt stamps the scan's real time.
+  resetOrphanAlertForTest();
+  rows.length = 0;
+  rows.push(leak(501, wt));
+  getOrphanAlert(root, probe, Date.now()); // kicks the refresh
+  await wait(() => read()?.pids?.[0] === 501);
+  const first = read();
+  assert.equal(first!.count, 1);
+  assert.deepEqual(first!.pids, [501]);
+  assert.ok(Math.abs(Date.now() - first!.firstSeenAt) < 30_000, "firstSeenAt stamps the scan's real time");
+  // Stage 2: the continuation rule — reset the cache to a stale copy with an older
+  // firstSeenAt; the refresh (still listing 501) must inherit that older stamp.
+  const olderFirstSeen = first!.firstSeenAt - 123_000;
+  resetOrphanAlertForTest({ ...first!, firstSeenAt: olderFirstSeen }, 0);
+  const staleRead = read();
+  assert.equal(staleRead?.firstSeenAt, olderFirstSeen, "a stale cache reads its own value while it refreshes");
+  await wait(() => read()?.firstSeenAt === olderFirstSeen);
+  // Stage 3: a wholly new set (502) re-stamps — firstSeenAt moves forward.
+  rows.length = 0;
+  rows.push(leak(502, wt, `node ${wt}/other.js`));
+  resetOrphanAlertForTest({ ...first!, firstSeenAt: olderFirstSeen }, 0); // force a new refresh
+  await wait(() => read()?.pids?.[0] === 502);
+  const second = read();
+  assert.deepEqual(second!.pids, [502]);
+  assert.ok(second!.firstSeenAt > olderFirstSeen, "a new set starts at its own scan time");
+  // Stage 4: a cleared scan (no orphans) stays null.
+  rows.length = 0;
+  resetOrphanAlertForTest();
+  getOrphanAlert(root, probe, Date.now()); // kicks a refresh that finds nothing
+  await wait(() => read() === null);
+});
+test("statusPayload's orphans alert obeys the running-team gate", async () => {
+  const root = makeRepo();
+  const now = Date.now();
+  const stale = now - 2 * 15 * 60_000 - 1; // past ORPHAN_ALERT_MAX_AGE_MS at the pinned clock
+  const fresh = now - 5 * 60_000; // well within the bound
+  const staleAlert = { count: 1, pids: [41], firstSeenAt: stale, detail: "1 orphaned process (PPID 1): pid 41 (age 01:00, cpu 0:00.10) node /repo/leak.js — the team's own sweep reaps each with its descendants while the team runs; a stopped team does not, so kill them now" };
+  const freshAlert = { count: 1, pids: [41], firstSeenAt: fresh, detail: staleAlert.detail };
+  const orphanAlertsOf = (p: { alerts: Array<{ key: string; tone?: string }> }) => p.alerts.filter((a) => a.key === "orphans");
+  try {
+    // No info file (no team ever ran here): nothing polls, so the alert shows at any age.
+    resetOrphanAlertForTest(staleAlert, now);
+    const noTeam = await statusPayload(root, now);
+    assert.equal(orphanAlertsOf(noTeam as { alerts: Array<{ key: string; tone?: string }> }).length, 1, "a missing info file shows the alert at any age");
+    const noTeamOrphans = orphanAlertsOf(noTeam as { alerts: Array<{ key: string; tone?: string }> });
+    assert.equal(noTeamOrphans[0]!.tone, "amber");
+    // Running team (this test process is alive): a just-seen leak is the
+    // sweep's case, not the user's.
+    writeOrchestratorInfo(root, { pid: process.pid, startedAt: 1, roles: ["feature"] });
+    resetOrphanAlertForTest(freshAlert, now);
+    const runningFresh = await statusPayload(root, now);
+    assert.equal(orphanAlertsOf(runningFresh as { alerts: Array<{ key: string; tone?: string }> }).length, 0, "a just-seen leak on a running team is the sweep's case");
+    // Running team + stale (two full sweeps without clearance): the reaper itself is stuck.
+    resetOrphanAlertForTest(staleAlert, now);
+    const runningStale = await statusPayload(root, now);
+    assert.equal(orphanAlertsOf(runningStale as { alerts: Array<{ key: string; tone?: string }> }).length, 1, "two full sweeps without clearance shows the alert");
+    // Dead-pid info file (stopped team): a fresh alert shows too, because nothing reaps.
+    writeOrchestratorInfo(root, { pid: 2 ** 22 + 9, startedAt: 1, roles: ["feature"] });
+    resetOrphanAlertForTest(freshAlert, now);
+    const stoppedFresh = await statusPayload(root, now);
+    assert.equal(orphanAlertsOf(stoppedFresh as { alerts: Array<{ key: string; tone?: string }> }).length, 1, "a dead-pid info file reads as a stopped team");
+  } finally {
+    resetOrphanAlertForTest();
+  }
 });

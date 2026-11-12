@@ -29,7 +29,10 @@ function pushOrphansAlert(out: TeamAlert[], orphans: OrphanAlert | null): void {
   // touches no state file, so nothing else on the always-on surfaces names it until an operator
   // runs `tumwater doctor`, and it then burns CPU for days unnoticed. alert-feeds.ts's
   // getOrphanAlert feeds it the doctor's own orphanFailDetail sentence and count, so the alert
-  // and the row cannot drift on the trigger, the cpu, or the remediation.
+  // and the row cannot drift on the trigger, the cpu, or the remediation. The caller passes the
+  // GATED value (alert-feeds.ts's orphanAlertVisible), so this banner shows only for leaks the
+  // team's own sweep has not cleared — a stopped team, or a listed set older than two sweeps —
+  // never for a leak the running team is on the case for.
   if (orphans) {
     out.push({
       key: "orphans",

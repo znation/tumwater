@@ -402,7 +402,7 @@ test("a free fallback whose runs keep failing is demoted to a pause, then probed
     assert.equal(paused[0]?.fallbackRejected, undefined);
     // Published for observers, so the dashboards stop advertising the dead fallback.
     assert.equal(readOrchestratorInfo(repo)?.fallbackDemoted?.pair, "local/local-free");
-    assert.equal(snapshot(repo, models).budget.fallback, null, "the dashboards read budget paused");
+    assert.equal((await snapshot(repo, models)).budget.fallback, null, "the dashboards read budget paused");
 
     // Paused means paused: a main move during the cool-down starts no role run.
     mergeWork(repo);
@@ -419,7 +419,7 @@ test("a free fallback whose runs keep failing is demoted to a pause, then probed
     assert.equal(clean().runs, 4, "one probe run restored it");
     assert.match(runFor(4), /model=local-free/, "the probe runs on the free pair, never the spent one");
     assert.equal(readOrchestratorInfo(repo)?.fallbackDemoted, undefined, "the demotion is withdrawn");
-    assert.deepEqual(snapshot(repo, models).budget.fallback, { provider: "local", model: "local-free" });
+    assert.deepEqual((await snapshot(repo, models)).budget.fallback, { provider: "local", model: "local-free" });
   } finally {
     restore();
     controller.abort();

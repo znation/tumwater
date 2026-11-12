@@ -4776,6 +4776,284 @@ test("the Health view paints no Salvaged patches section when no patch is kept",
   assert.equal(keys.state().paneCache, renderDoctor(report));
   assert.doesNotMatch(keys.state().paneCache ?? "", /Salvaged patches:/);
 });
+// Ctrl+G on the Health view opens the salvage-apply editor — the terminal twin of
+// `tumwater salvage --apply <n>` and the dashboard Settings card's Apply button, all through
+// the same `applySalvagePatchForOperator` core (src/git/slot-salvage.ts). A good number applies
+// that patch to the checkout as unstaged edits and keeps the patch file (the CLI keeps it for
+// re-apply); a bad number, a non-git root, or a patch that does not apply flashes and changes
+// nothing. Every other view keeps Ctrl+G for its own arm (Activity scope, Report scope,
+// Transcript instances).
+/** A git root with one tracked seed file and one kept salvage patch that `git apply --check`
+ * accepts against the clean tree, the base the salvage-apply tests stage on. Returns the root,
+ * the patch file path, and the patch's original target bytes. */
+function salvageApplyRoot(): { root: string; seed: string; original: string; file: string } {
+const root = makeRepo();
+const seed = path.join(root, "seed.txt");
+const original = fs.readFileSync(seed, "utf8");
+// Author the patch directly rather than with `git diff`: the suite runs against a fake git on
+// PATH, so the generated diff text is not guaranteed to apply. The hunk matches the template's
+// seed bytes exactly, so the apply has a clean checkout to place it in.
+const salvage = path.join(root, ".tumwater", "salvage");
+fs.mkdirSync(salvage, { recursive: true });
+const file = path.join(salvage, "edit.patch");
+fs.writeFileSync(file, "diff --git a/seed.txt b/seed.txt\n--- a/seed.txt\n+++ b/seed.txt\n@@ -1 +1,2 @@\n seed\n+modified\n");
+return { root, seed, original, file };
+}
+test("Ctrl+G on the Health view applies a kept salvage patch, keeps the patch file, and repaints the list", async () => {
+const { root, seed, original, file } = salvageApplyRoot();
+const report: DoctorReport = {
+    header: "doctor",
+    checks: [{ level: "ok", name: "node", detail: "fine" }],
+    routing: [],
+    verdict: "healthy",
+};
+let doctorCalls = 0;
+const keys = createTuiKeys({
+    root,
+    quit: () => { },
+    requestRender: () => { },
+    now: () => 0,
+    runDoctor: () => {
+        doctorCalls += 1;
+        return Promise.resolve(report);
+    },
+});
+keys.syncSnapshot(0, false, [], false);
+for (let i = 0; i < 7; i++)
+    keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+assert.equal(keys.state().view, 7, "Health is roleIds.length + 7");
+const callsBefore = doctorCalls;
+keys.handleKey(undefined, { ctrl: true, name: "g" });
+assert.equal(keys.state().salvageMode, true, "Ctrl+G opens the salvage-apply editor");
+assert.equal(keys.state().input, "", "the editor blanks the prompt line");
+for (const ch of "1")
+    keys.handleKey(ch, { name: ch });
+keys.handleKey(undefined, { name: "return" });
+await untilFlash(() => keys.state().flash ?? "", /applied salvaged workspace patch 1: edit\.patch/);
+assert.equal(fs.readFileSync(seed, "utf8"), original + "modified\n", "the patch applied as an unstaged edit");
+assert.ok(fs.existsSync(file), "the patch file stays in place after a successful apply");
+assert.equal(keys.state().salvageMode, false, "success leaves the editor");
+assert.equal(doctorCalls, callsBefore + 1, "a successful apply re-runs the doctor to repaint the list");
+});
+test("Ctrl+G salvage-apply: an empty, non-integer, or past-the-list number flashes and changes nothing", () => {
+const { root, seed, original, file } = salvageApplyRoot();
+const { keys } = makeKeys(root, () => 0);
+keys.syncSnapshot(0, false, [], false);
+for (let i = 0; i < 7; i++)
+    keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+assert.equal(keys.state().view, 7);
+const patchBefore = fs.readFileSync(file, "utf8");
+// Empty line: required-wording flash, stays open, nothing changes.
+keys.handleKey(undefined, { ctrl: true, name: "g" });
+keys.handleKey(undefined, { name: "return" });
+assert.match(keys.state().flash!, /a salvaged patch position is required/);
+assert.equal(keys.state().salvageMode, true, "an empty line stays open in the editor");
+// Non-integer: whole-number flash, stays open, nothing changes.
+keys.handleKey(undefined, { name: "escape" });
+keys.handleKey(undefined, { ctrl: true, name: "g" });
+for (const ch of "x")
+    keys.handleKey(ch, { name: ch });
+keys.handleKey(undefined, { name: "return" });
+assert.match(keys.state().flash!, /salvage position must be a whole number/);
+assert.equal(keys.state().salvageMode, true, "a non-integer stays open in the editor");
+// Past the list: the CLI's out-of-range flash, stays open, nothing changes.
+keys.handleKey(undefined, { name: "escape" });
+keys.handleKey(undefined, { ctrl: true, name: "g" });
+for (const ch of "99")
+    keys.handleKey(ch, { name: ch });
+keys.handleKey(undefined, { name: "return" });
+assert.match(keys.state().flash!, /no salvaged workspace patch at position 99 \(salvage holds 1 patches\)/);
+assert.equal(keys.state().salvageMode, true, "a number past the list stays open in the editor");
+keys.handleKey(undefined, { name: "escape" });
+assert.equal(keys.state().salvageMode, false, "Esc leaves the editor");
+assert.equal(fs.readFileSync(seed, "utf8"), original, "the checkout is unchanged");
+assert.equal(fs.readFileSync(file, "utf8"), patchBefore, "the patch file is unchanged");
+});
+test("Ctrl+G salvage-apply on a non-git root flashes the git-checkout refusal and changes nothing", async () => {
+const root = makeRoot();
+const salvage = path.join(root, ".tumwater", "salvage");
+fs.mkdirSync(salvage, { recursive: true });
+const file = path.join(salvage, "edit.patch");
+fs.writeFileSync(file, "x");
+const { keys } = makeKeys(root, () => 0);
+keys.syncSnapshot(0, false, [], false);
+for (let i = 0; i < 7; i++)
+    keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+assert.equal(keys.state().view, 7);
+const patchBefore = fs.readFileSync(file, "utf8");
+keys.handleKey(undefined, { ctrl: true, name: "g" });
+for (const ch of "1")
+    keys.handleKey(ch, { name: ch });
+keys.handleKey(undefined, { name: "return" });
+await untilFlash(() => keys.state().flash ?? "", /salvage --apply needs a git checkout/);
+assert.equal(keys.state().salvageMode, true, "a non-git root keeps the editor open");
+keys.handleKey(undefined, { name: "escape" });
+assert.equal(fs.readFileSync(file, "utf8"), patchBefore, "a non-git root changes nothing");
+});
+test("Ctrl+G off Health (the Activity scope arm) does not open the salvage-apply editor", () => {
+const root = makeRoot();
+const { keys } = makeKeys(root, () => 0);
+keys.syncSnapshot(0, false, [], false); // no roles: view 0 is Activity
+assert.equal(keys.state().view, 0);
+keys.handleKey(undefined, { ctrl: true, name: "g" }); // Activity scope arm
+assert.equal(keys.state().salvageMode, false, "Ctrl+G off Health keeps the scope arm, not the salvage editor");
+});
+test("Ctrl+G salvage-apply: Esc restores the saved prompt draft", () => {
+const { root } = salvageApplyRoot();
+const { keys } = makeKeys(root, () => 0);
+keys.syncSnapshot(0, false, [], false);
+for (let i = 0; i < 7; i++)
+    keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+for (const ch of "draft")
+    keys.handleKey(ch, { name: ch }); // a prompt draft
+assert.equal(keys.state().input, "draft", "a prompt draft sits on the line");
+keys.handleKey(undefined, { ctrl: true, name: "g" });
+assert.equal(keys.state().input, "", "opening salvage-apply blanks the prompt line");
+keys.handleKey(undefined, { name: "escape" });
+assert.equal(keys.state().salvageMode, false, "Esc leaves the editor");
+assert.equal(keys.state().input, "draft", "Esc restores the saved prompt draft");
+});
+// Ctrl+Y on the Health view opens the salvage-drop editor — the terminal twin of
+// `tumwater salvage --drop <n>`, through the same `dropSalvagePatch` core
+// (src/status/status-salvage.ts) the CLI's `--drop` uses, so the terminal drop cannot drift
+// from it. A good number deletes the patch file and repaints the list with the patch gone;
+// a bad number, or a file that cannot be deleted, flashes and changes nothing. Every other
+// view keeps Ctrl+Y for its own arm (Activity window, History tables, Transcript diffstat).
+/** A git root with two kept salvage patches, the base the salvage-drop tests stage on. Returns
+ * the root and the two patch file paths (the first is the oldest, position 1). */
+function salvageDropRoot(): { root: string; a: string; b: string } {
+const root = makeRepo();
+const salvage = path.join(root, ".tumwater", "salvage");
+fs.mkdirSync(salvage, { recursive: true });
+const a = path.join(salvage, "a.patch");
+const b = path.join(salvage, "b.patch");
+fs.writeFileSync(a, "x");
+fs.writeFileSync(b, "y");
+return { root, a, b };
+}
+test("Ctrl+Y on the Health view drops a kept salvage patch and repaints the list with it gone", async () => {
+const { root, a, b } = salvageDropRoot();
+const report: DoctorReport = {
+    header: "doctor",
+    checks: [{ level: "ok", name: "node", detail: "fine" }],
+    routing: [],
+    verdict: "healthy",
+};
+let doctorCalls = 0;
+const keys = createTuiKeys({
+    root,
+    quit: () => { },
+    requestRender: () => { },
+    now: () => 0,
+    runDoctor: () => {
+        doctorCalls += 1;
+        return Promise.resolve(report);
+    },
+});
+keys.syncSnapshot(0, false, [], false);
+for (let i = 0; i < 7; i++)
+    keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+assert.equal(keys.state().view, 7, "Health is roleIds.length + 7");
+const callsBefore = doctorCalls;
+keys.handleKey(undefined, { ctrl: true, name: "y" });
+assert.equal(keys.state().salvageMode, true, "Ctrl+Y opens the salvage-drop editor");
+assert.equal(keys.state().salvageDropMode, true, "the prompt prefix names the drop arm");
+assert.equal(keys.state().input, "", "opening salvage-drop blanks the prompt line");
+for (const ch of "1")
+    keys.handleKey(ch, { name: ch });
+keys.handleKey(undefined, { name: "return" });
+await untilFlash(() => keys.state().flash ?? "", /dropped salvaged workspace patch 1: a\.patch/);
+assert.equal(fs.existsSync(a), false, "the first patch file is deleted");
+assert.equal(fs.existsSync(b), true, "the other patch file is unchanged");
+assert.equal(keys.state().salvageMode, false, "success leaves the editor");
+assert.equal(doctorCalls, callsBefore + 1, "a successful drop re-runs the doctor to repaint the list");
+await Promise.resolve();
+await Promise.resolve();
+const cache = keys.state().paneCache ?? "";
+assert.doesNotMatch(cache, /a\.patch/, "the dropped patch is gone from the list");
+assert.match(cache, /b\.patch/, "the remaining patch still renders, renumbered to 1");
+});
+test("Ctrl+Y salvage-drop: an empty, non-integer, or past-the-list number flashes and deletes nothing", () => {
+const { root, a, b } = salvageDropRoot();
+const { keys } = makeKeys(root, () => 0);
+keys.syncSnapshot(0, false, [], false);
+for (let i = 0; i < 7; i++)
+    keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+assert.equal(keys.state().view, 7);
+// Empty line: required-wording flash, stays open, nothing is deleted.
+keys.handleKey(undefined, { ctrl: true, name: "y" });
+keys.handleKey(undefined, { name: "return" });
+assert.match(keys.state().flash!, /a salvaged patch position is required/);
+assert.equal(keys.state().salvageMode, true, "an empty line stays open in the editor");
+// Non-integer: whole-number flash, stays open, nothing is deleted.
+keys.handleKey(undefined, { name: "escape" });
+keys.handleKey(undefined, { ctrl: true, name: "y" });
+for (const ch of "x")
+    keys.handleKey(ch, { name: ch });
+keys.handleKey(undefined, { name: "return" });
+assert.match(keys.state().flash!, /salvage position must be a whole number/);
+assert.equal(keys.state().salvageMode, true, "a non-integer stays open in the editor");
+// Past the list: the CLI's out-of-range flash, stays open, nothing is deleted.
+keys.handleKey(undefined, { name: "escape" });
+keys.handleKey(undefined, { ctrl: true, name: "y" });
+for (const ch of "99")
+    keys.handleKey(ch, { name: ch });
+keys.handleKey(undefined, { name: "return" });
+assert.match(keys.state().flash!, /no salvaged workspace patch at position 99 \(salvage holds 2 patches\)/);
+assert.equal(keys.state().salvageMode, true, "a number past the list stays open in the editor");
+keys.handleKey(undefined, { name: "escape" });
+assert.equal(keys.state().salvageMode, false, "Esc leaves the editor");
+assert.equal(fs.existsSync(a), true, "no patch was deleted");
+assert.equal(fs.existsSync(b), true, "no patch was deleted");
+});
+test("Ctrl+Y salvage-drop: a file that cannot be deleted flashes and stays, deleting nothing", async () => {
+const { root, a } = salvageDropRoot();
+const { keys } = makeKeys(root, () => 0);
+keys.syncSnapshot(0, false, [], false);
+for (let i = 0; i < 7; i++)
+    keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+const undo = patchFsMethod("unlinkSync", () => (() => {
+    throw errnoError("EPERM");
+}));
+try {
+    keys.handleKey(undefined, { ctrl: true, name: "y" });
+    for (const ch of "1")
+        keys.handleKey(ch, { name: ch });
+    keys.handleKey(undefined, { name: "return" });
+    await untilFlash(() => keys.state().flash ?? "", /could not drop salvaged patch/);
+    assert.equal(keys.state().salvageMode, true, "a delete that could not remove the file stays open");
+    keys.handleKey(undefined, { name: "escape" });
+    assert.equal(fs.existsSync(a), true, "the file that could not be deleted is still present");
+}
+finally {
+    undo();
+}
+});
+test("Ctrl+Y salvage-drop: Esc restores the saved prompt draft", () => {
+const { root } = salvageDropRoot();
+const { keys } = makeKeys(root, () => 0);
+keys.syncSnapshot(0, false, [], false);
+for (let i = 0; i < 7; i++)
+    keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+for (const ch of "draft")
+    keys.handleKey(ch, { name: ch }); // a prompt draft
+assert.equal(keys.state().input, "draft", "a prompt draft sits on the line");
+keys.handleKey(undefined, { ctrl: true, name: "y" });
+assert.equal(keys.state().input, "", "opening salvage-drop blanks the prompt line");
+keys.handleKey(undefined, { name: "escape" });
+assert.equal(keys.state().salvageMode, false, "Esc leaves the editor");
+assert.equal(keys.state().input, "draft", "Esc restores the saved prompt draft");
+});
+test("Ctrl+Y off Health (the Activity window arm) does not open the salvage-drop editor", () => {
+const { root } = salvageDropRoot();
+const { keys } = makeKeys(root, () => 0);
+keys.syncSnapshot(0, false, [], false); // no roles: view 0 is Activity
+assert.equal(keys.state().view, 0);
+keys.handleKey(undefined, { ctrl: true, name: "y" }); // Activity window arm
+assert.equal(keys.state().salvageMode, false, "Ctrl+Y off Health keeps the window arm, not the salvage editor");
+assert.equal(keys.state().activityWindow, 3_600_000, "the window arm cycled (the newest-200 tail moves to 1h)");
+});
+
 
 test("the Health pane re-runs the doctor checks in place with Ctrl+R, honoring the problems-only toggle", async () => {
   const root = makeRoot();

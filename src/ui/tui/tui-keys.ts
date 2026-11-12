@@ -250,6 +250,11 @@ interface TuiKeysState {
    * isNotableEvent, the same rule `tumwater logs --notable` applies). Cycled with activityType
    * in the same Ctrl+O press, and named in the hint line. */
   activityNotable: boolean;
+  /** The Health view's Ctrl+G salvage-apply editor is open (mirrored from the editors state,
+   * read the same way every other mode flag is). */
+  salvageMode: boolean;
+  /** The Health view's Ctrl+Y salvage-drop editor is open (the prompt prefix names the arm). */
+  salvageDropMode: boolean;
   /** The Activity pane's active trailing event window (Ctrl+Y, ACTIVITY_WINDOWS): a window
    * length in ms or null for the default newest-200 tail. */
   activityWindow: number | null;
@@ -410,6 +415,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     refreshNotes: panes.refreshNotes,
     refreshBrief: panes.refreshBrief,
     refreshReport: panes.refreshReport,
+    refreshHealth: panes.refreshHealth,
     clearBacklogSelection: panes.clearBacklogSelection,
     applyHistorySearch: panes.applyHistorySearch,
     applyActivitySearch: panes.applyActivitySearch,

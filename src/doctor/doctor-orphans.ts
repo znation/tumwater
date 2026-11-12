@@ -350,7 +350,9 @@ export async function findOrphans(root: string, probe: ProcessProbe): Promise<Or
 /** The orphan-problem sentence for the standing alert feed, shared with checkOrphans so the
  * alert and the doctor row cannot drift on the wording: the count, each listed orphan's pid,
  * age, cpu and command (with its descendant count and the run mark that caught it), and the
- * nothing-reaps-these remediation. null when the scan errored or found no orphans. Public so
+ * remediation — true in every state the standing alert now shows in (PLANS.md 2026-11-11): the
+ * team's own sweep reaps while the team runs, and a stopped team is where the operator's own
+ * kill is the only lever. null when the scan errored or found no orphans. Public so
  * the feed (src/ui/alert-feeds.ts) can stage a scan and get exactly the row's message. */
 export function orphanFailDetail(root: string, scan: OrphanScan): string | null {
   if ("error" in scan) return null;
@@ -379,7 +381,7 @@ export function orphanFailDetail(root: string, scan: OrphanScan): string | null 
       ? ""
       : `; ${plural(liveOwned.length, "parentless tree", "parentless trees")} left alone (a live run's own command: ${liveListed.join("; ")}${liveMore > 0 ? `; and ${liveMore} more` : ""})`;
   return `${count}: ${listed.join("; ")}${more > 0 ? `; and ${more} more` : ""}${live}` +
-      " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice) kills each with its descendants" +
+      " — the team's own sweep reaps each with its descendants while the team runs; a stopped team does not, so kill them now with `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice)" +
       (cwdProblem !== null ? ` (process cwds unreadable — ${cwdProblem}; argv matched only)` : "");
 }
 
@@ -548,6 +550,20 @@ export async function reapPreviousTeamOrphans(
  * and ten minutes is far longer than any such attribution would hold. The operator's
  * `--kill-orphans`/dashboard/TUI click bypasses this — doctors judge with their eyes. */
 const ORPHAN_REAP_MIN_AGE_MS = 10 * 60_000;
+/** How often the orchestrator's poll loop stands down the orphan reap — a once-per-interval
+ * throttle so a slow process-table scan never runs on the busy per-poll hot path. The reap's
+ * policy lives beside ORPHAN_REAP_MIN_AGE_MS; the standing orphan alert's max-age bound
+ * (src/ui/alert-feeds.ts) and the orchestrator's poll block (src/orchestrator/orchestrator-poll.ts,
+ * which re-exports it) read it from here. */
+export const ORPHAN_REAP_INTERVAL_MS = 15 * 60_000;
+/** Whether the orphan reap is due now, given the last poll it ran: true at and after
+ * `now >= last + intervalMs`. Purely a clock comparison so tests pin it from literal
+ * numbers. A fresh state's `last` of 0 is always due against a real `now`. Lived in
+ * orchestrator-poll.ts beside the poll's reap block; the policy belongs beside the interval
+ * and the age gate, and that module re-exports both (PLANS.md 2026-11-11). */
+export function dueForOrphanReap(last: number, now: number, intervalMs = ORPHAN_REAP_INTERVAL_MS): boolean {
+  return now - last >= intervalMs;
+}
 
 /** The orchestrator's once-per-interval sweep of the orphans `checkOrphans` already reports:
  * kill the same set the operator's `--kill-orphans` kills, once each is old enough that no

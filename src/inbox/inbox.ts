@@ -137,6 +137,19 @@ function deliverablePromptCount(root: string, role: string): number {
   return queuedFiles(root, role).filter(deliverablePredicate(Date.now())).length;
 }
 
+/** The enqueue-time millisecond stamps (queueFileStamp) of the prompts in the role's queue that
+ * are deliverable now — the same deliverable subset that counts toward a run. The director gate
+ * uses this to tell a self-requeued prompt (re-enqueued at the end of the run that just ended,
+ * so its stamp is at or before lastRunEndedAt) from a fresh one an operator submitted since.
+ * Hand-placed names with no parseable stamp are omitted. */
+export function deliverablePromptStamps(root: string, role: string, now: number): number[] {
+  const deliverable = deliverablePredicate(now);
+  return queuedFiles(root, role)
+    .filter((file) => deliverable(file))
+    .map((file) => queueFileStamp(path.basename(file)))
+    .filter((stamp) => stamp !== null);
+}
+
 // Per-poll prompt-content cache (stat-cache.cachedByStat): both dashboards poll snapshot() every
 // second and read every queued prompt in full — to show an 80-char preview — but each file is
 // written once by enqueuePrompt and only deleted on dequeue/cancel, never rewritten. Serve an

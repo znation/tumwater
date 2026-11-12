@@ -223,6 +223,52 @@ test("a red verdict carries checkedAt but no interval nextDueAt (a red is rechec
   assert.equal(result?.nextDueAt, undefined, "a red has no interval due: the watch rechecks it on the next head");
 });
 
+// BUGS.md 2026-11-11: a green verdict taken on a head main has since moved past flagged the
+// staleness, so the badge drops the "green" word (src/ui/badges.ts) instead of reading as a
+// verified tip. The mark is set on a green whose covered sha is behind main's current tip, and
+// only there — a red is already flagged by color and a covered-tip green is current.
+test("mainCheckForPoll marks a green whose covered head is no longer main's tip, and no other", () => {
+  const root = makeRepo();
+  // The head a full green was taken on, then two more commits move main past it.
+  const covered = mainSha(root);
+  fs.writeFileSync(path.join(root, "doc.md"), "advance 1\n");
+  commitIn(root, "advance 1");
+  fs.writeFileSync(path.join(root, "doc.md"), "advance 2\n");
+  commitIn(root, "advance 2");
+  const tip = mainSha(root);
+  assert.notEqual(tip, covered);
+  const checkedAt = Date.now() - 59 * 60_000; // the entry's 59-minute-old green
+  writeEvents(root, [
+      { source: "merge", type: "build_check", scope: "merge", status: "passed", script: "npm test", ts: checkedAt },
+      { source: "lander", type: "merge_done", commit: covered, ts: checkedAt + 1 },
+  ]);
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.status, "passed");
+  assert.equal(result?.sha, covered, "the covered sha is the head the green ran on");
+  assert.equal(result?.tipAdvanced, true, "a green whose covered head is behind the tip is flagged");
+  // A green whose covered sha IS the tip is current — no staleness mark.
+  const root2 = makeRepo();
+  const tip2 = mainSha(root2);
+  const checkedAt2 = Date.now() - 3 * 60_000;
+  writeEvents(root2, [
+      { source: "merge", type: "build_check", scope: "merge", status: "passed", script: "npm test", ts: checkedAt2 },
+      { source: "lander", type: "merge_done", commit: tip2, ts: checkedAt2 + 1 },
+  ]);
+  assert.equal(mainCheckForPoll(root2, configForStatus(root2))?.tipAdvanced, undefined, "a covered-tip green is current, not stale");
+  // A red whose covered head is behind the tip is not flagged: a red is already flagged by
+  // color and the watch rechecks it on the next head, so the staleness there is expected.
+  const root3 = makeRepo();
+  const covered3 = mainSha(root3);
+  fs.writeFileSync(path.join(root3, "doc.md"), "advance\n");
+  commitIn(root3, "advance");
+  const checkedAt3 = Date.now() - 5 * 60_000;
+  writeEvents(root3, [
+      { source: "merge", type: "build_check", scope: "merge", status: "failed", script: "npm test", ts: checkedAt3 },
+      { source: "lander", type: "merge_done", commit: covered3, ts: checkedAt3 + 1 },
+  ]);
+  assert.equal(mainCheckForPoll(root3, configForStatus(root3))?.tipAdvanced, undefined, "a red behind the tip keeps the red verdict, not a staleness mark");
+});
+
 test("a baseline check names the head it covered, not a merge that landed after it (part 4/4)", () => {
   const root = makeRepo();
   const checkedHead = "a".repeat(40);

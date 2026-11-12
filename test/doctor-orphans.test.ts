@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkOrphans, findOrphans, killOrphans, markRootToken, orphanFailDetail, orphanKillLines, parseEtimeMs, reapAttributableOrphans, reapPreviousTeamOrphans, rootToken, type OrphanSignals } from "../src/doctor/doctor-orphans.js";
-import { dueForOrphanReap, newPollState, ORPHAN_REAP_INTERVAL_MS } from "../src/orchestrator/orchestrator-poll.js";
+import { checkOrphans, dueForOrphanReap, findOrphans, killOrphans, markRootToken, ORPHAN_REAP_INTERVAL_MS, orphanFailDetail, orphanKillLines, parseEtimeMs, reapAttributableOrphans, reapPreviousTeamOrphans, rootToken, type OrphanSignals } from "../src/doctor/doctor-orphans.js";
+import { orphanAlertVisible } from "../src/ui/alert-feeds.js";
+import { newPollState, pollOrphanReap } from "../src/orchestrator/orchestrator-poll.js";
+import { writeOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { runDoctor } from "../src/doctor/doctor.js";
 import type { ProcessProbe } from "../src/process/process-table.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -20,6 +22,7 @@ test("checkOrphans flags each leak shape by argv or cwd, naming pid, age, CPU, t
   const root = readyRepo();
   const real = fs.realpathSync(root); // What lsof and /proc report (macOS: /private/var/…).
   for (const wt of ["qa", "bugfix"]) fs.mkdirSync(path.join(root, ".tumwater", "worktrees", wt), { recursive: true });
+
   const { probe, asked } = fakeProbe(
     [
       // The stray orchestrator an orphaned suite started (2026-09-21): an absolute worktree argv.
@@ -46,7 +49,7 @@ test("checkOrphans flags each leak shape by argv or cwd, naming pid, age, CPU, t
       "pid 8198 (age 18:34:12, cpu 0:41.20) node .tumwater/worktrees/perf/dist/src/cli.js run; " +
       "pid 88052 (age 2-21:44:01, cpu 0:03.12, +2 descendants) node dist/test/test-runner.js; " +
       "pid 73241 (age 07:24:10, cpu 0:02.50) node .tumwater/worktrees/qa/dist/src/cli.js gui --port 41602 --all-interfaces" +
-      " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice) kills each with its descendants",
+      " — the team's own sweep reaps each with its descendants while the team runs; a stopped team does not, so kill them now with `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice)",
   });
   // One cwd lookup, over the parentless processes argv did not already settle — never the
   // workers (they have a parent) and never the absolute-argv match.
@@ -103,7 +106,7 @@ test("checkOrphans catches a marked leak outside the worktrees once its harness 
     detail:
       "1 orphaned process (PPID 1): " +
       `pid 3100 (age 11:22:33, cpu 1:02.30) node /tmp/twprobe/server.js (run ${dead}-deadbeef; tumwater ${dead} exited)` +
-      " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice) kills each with its descendants",
+      " — the team's own sweep reaps each with its descendants while the team runs; a stopped team does not, so kill them now with `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice)",
   });
 });
 
@@ -146,7 +149,6 @@ test("checkOrphans still reports a dead-marked scratch-dir orphan whose run mark
   assert.equal(r.level, "fail");
   assert.match(r.detail, /^1 orphaned process \(PPID 1\): pid 3600 /, "a dead mark token-matching this root is still reported");
 });
-
 
 test("checkOrphans leaves a marked straggler whose harness is alive — that run's sweep will reap it", async () => {
   const root = readyRepo();
@@ -210,7 +212,7 @@ test("checkOrphans asks cwds only of parentless processes this user can inspect"
     level: "fail",
     detail:
       "1 orphaned process (PPID 1): pid 10 (age 01:00, cpu 0:00.10, +1 descendant) node dist/test/test-runner.js" +
-      " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice) kills each with its descendants",
+      " — the team's own sweep reaps each with its descendants while the team runs; a stopped team does not, so kill them now with `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice)",
   });
   assert.deepEqual(asked, [[10]]);
 });
@@ -263,7 +265,7 @@ test("checkOrphans itemizes at most eight orphans and trims each command, keepin
   assert.equal(r.level, "fail");
   assert.match(r.detail, /^10 orphaned processes \(PPID 1\): /);
   assert.equal(r.detail.match(/pid \d+ \(age/g)?.length, 8);
-  assert.match(r.detail, /; and 2 more — nothing reaps these/);
+  assert.match(r.detail, /; and 2 more — the team's own sweep reaps/);
   // The root is cut first, then the command is trimmed to 80 characters with an ellipsis.
   const shown = `node .tumwater/worktrees/_slot-1/dist/src/cli.js run --note ${"a".repeat(100)}`.slice(0, 79);
   assert.ok(r.detail.includes(`) ${shown}…; pid 45356 `), r.detail);
@@ -603,6 +605,46 @@ test("a fresh PollState has no reap stamp, so the first poll reaps immediately",
   assert.equal(newPollState().lastOrphanReapAt, 0);
 });
 
+
+test("pollOrphanReap stamps and then reaps once, throttled to the interval after", async () => {
+  // The reap is stubbed, so no real process table is read and no real signal is sent; the test
+  // pins the stamp-then-reap call shape and the once-per-interval throttle it applies.
+  const root = readyRepo();
+  const calls: Array<{ root: string; probe: unknown; signals: unknown }> = [];
+  const reap = async (root: string, probe: unknown, signals: unknown) => {
+      calls.push({ root, probe, signals });
+      return 1;
+  };
+  const state = newPollState();
+  await pollOrphanReap(root, state, reap);
+  assert.equal(calls.length, 1, "a fresh stamp (0) reaps on the first poll");
+  assert.equal(calls[0]!.root, root, "the reap sees this repo's root");
+  assert.equal(state.lastOrphanReapAt > 0, true, "the stamp moves forward");
+  await pollOrphanReap(root, state, reap);
+  assert.equal(calls.length, 1, "a poll within the interval reaps nothing");
+  // A poll two intervals after the stamp is due again: the throttle, not the scan, is the gate.
+  state.lastOrphanReapAt -= 2 * ORPHAN_REAP_INTERVAL_MS;
+  await pollOrphanReap(root, state, reap);
+  assert.equal(calls.length, 2, "a stale stamp reaps again");
+});
+test("orphanAlertVisible gates the standing alert to states where no sweep reaches", () => {
+  const root = readyRepo();
+  const now = 1_000_000_000;
+  const fresh = { count: 1, pids: [41], firstSeenAt: now - 5 * 60_000, detail: "d" };
+  const old = { count: 1, pids: [41], firstSeenAt: now - 2 * ORPHAN_REAP_INTERVAL_MS, detail: "d" };
+  // No team ever ran here (no info file): the alert shows at any age.
+  assert.equal(orphanAlertVisible(root, fresh, now), fresh);
+  // A running team (this test process is alive) suppresses a leak its sweep has not yet been
+  // given two intervals to clear.
+  writeOrchestratorInfo(root, { pid: process.pid, startedAt: 1, roles: ["feature"] });
+  assert.equal(orphanAlertVisible(root, fresh, now), null, "a just-seen leak on a running team is the sweep's case");
+  assert.equal(orphanAlertVisible(root, old, now), old, "two full sweeps without clearance shows the alert");
+  // A crashed orchestrator's info file reads as a stopped team: the alert shows at any age.
+  writeOrchestratorInfo(root, { pid: 2 ** 22 + 9, startedAt: 1, roles: ["feature"] });
+  assert.equal(orphanAlertVisible(root, fresh, now), fresh, "a dead-pid info file is a stopped team");
+  // A null scan (no orphans) shows nothing in any state.
+  assert.equal(orphanAlertVisible(root, null, now), null);
+});
 test("checkOrphans still reports a parentless tree whose descendant marks are all dead, and reaps it", async () => {
   const root = readyRepo();
   fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
@@ -623,7 +665,6 @@ test("checkOrphans still reports a parentless tree whose descendant marks are al
   assert.equal(await reapAttributableOrphans(root, probe, signals), 1);
   assert.deepEqual(sent.filter(([, s]) => s === "SIGTERM").map(([p]) => p).sort((a, b) => a - b), [7700, 7701]);
 });
-
 test("reapAttributableOrphans never signals a parentless tree a live run's descendant marks as its own", async () => {
   const root = readyRepo();
   fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
@@ -642,4 +683,3 @@ test("reapAttributableOrphans never signals a parentless tree a live run's desce
   assert.equal(await reapAttributableOrphans(root, probe, signals), 0, "the reaper must not kill a live run's tree");
   assert.deepEqual(sent, [], "no signal at all for a live-owned tree");
 });
-

@@ -20,6 +20,7 @@ import { createAttachEditor } from "./tui-editor-attach.js";
 import { createNotesEditor } from "./tui-editor-notes.js";
 import { createBriefEditor } from "./tui-editor-brief.js";
 import { createRetireEditor } from "./tui-editor-retire.js";
+import { createSalvageEditor } from "./tui-editor-salvage.js";
 import { createQuarantineReleaseEditor } from "./tui-editor-release.js";
 import { createRoleEnabledEditor } from "./tui-editor-role-enabled.js";
 import { createPromptEditor } from "./tui-editor-prompt.js";
@@ -55,6 +56,9 @@ export interface TuiEditorsDeps {
   /** Repaint the Failures view's cached body after a release write while it is the current
    * view (the report pane's `enter`), a no-op off the Failures view. */
   refreshReport(): void;
+  /** Repaint the Health view's cached body after a salvage write while it is the current
+   * view. */
+  refreshHealth(): void;
   /** Clear the project-status pane's entry selection and its body scroll after a recorded
    * answer/edited entry leaves the list. */
   clearBacklogSelection(): void;
@@ -132,6 +136,10 @@ interface TuiEditorState {
   releaseMode: boolean;
   /** The Health view's Ctrl+V enable/disable mode holds the prompt line, editing a role id. */
   roleEnabledMode: boolean;
+  /** The Health view's Ctrl+G salvage-apply mode holds the prompt line. */
+  salvageMode: boolean;
+  /** The Health view's Ctrl+Y salvage-drop mode holds the prompt line. */
+  salvageDropMode: boolean;
   /** The Activity view's Ctrl+E notify-hook mode holds the prompt line. */
   notifyMode: boolean;
   /** Whether the prompt line is editing the team's fallback model `fallback` (Ctrl+L on
@@ -222,6 +230,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     createSearchEditor(session),
     createBriefEditor(session),
     createRetireEditor(session),
+    createSalvageEditor(session),
     createQuarantineReleaseEditor(session),
     createRoleEnabledEditor(session),
   ];
@@ -343,6 +352,8 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         retireMode: session.held.retire,
         releaseMode: session.held.release,
         roleEnabledMode: session.held.roleEnabled,
+        salvageMode: session.held.salvage,
+        salvageDropMode: session.held.salvageDrop,
         quietMode: session.held.quiet,
         quietTeam: session.held.quietTeam,
         notifyMode: session.held.notify,

@@ -115,6 +115,25 @@ test("a pinned commit not in main is re-pinned for the drain, not merged", async
   assert.equal(events.filter((e) => e.type === "merged").length, 0, "no in-run merge");
 });
 
+// The `pinned` arm re-pins the sha the previous cycle already logged (queuedSummary names it):
+// the pin's continued existence is the waiting state, so no second `merge_queued` is logged.
+// A pin whose sha changed is a fresh enqueue and logs exactly once (BUGS.md duplicate
+// merge_queued — a repeating recovery cycle used to log the event every run).
+test("a same-sha recovery re-pin logs no second merge_queued", async () => {
+  const { root, sha } = await pinnedFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  const summary = "recovered leftover work from improve: stranded work";
+  // Cycle 1: the pin is fresh (no queuedSummary) — recovery re-pins it and logs the enqueue.
+  await recoverLeftover(makeCtx(root, wt));
+  assert.equal(eventsOfType(root, "merge_queued").length, 1, "the fresh pin logs its enqueue");
+  // Cycle 2: the pin is UNCHANGED and the previous cycle's queuedSummary names THIS sha —
+  // recovery re-pins the same pin it (the previous cycle) already logged, so it logs nothing;
+  // the pin's continued existence is the waiting state, not a new enqueue.
+  await recoverLeftover({ ...makeCtx(root, wt), queuedSummary: { sha, summary } });
+  assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin stays for the merge slot");
+  assert.equal(eventsOfType(root, "merge_queued").length, 1, "a same-sha re-pin logs no second merge_queued");
+});
+
 test("a stale pin is dropped", async () => {
   const { root } = await pinnedFixture();
   sh(root, "git", "merge", "--ff-only", "stray");

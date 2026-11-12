@@ -203,6 +203,25 @@ test("finalizeRun writes the reporting backend's own account file, not claude's"
   assert.equal(fs.existsSync(accountPath(claudeRoot, "codex")), false, "no codex file for a claude run");
 });
 
+test("a model-load failure stamps its pair beside the provider, so the hold can scope to the model", () => {
+  // PLANS.md "One unavailable model pair stops only the roles on that pair", part 2/2:
+  // fold already receives the run's pair (the one the run resolved); stamping it on the
+  // backend-failure observation is what lets the team hold scope a model-load failure to
+  // the model that failed to load rather than the whole provider. A run that ended on a
+  // 429 stamps lastRateLimit, not lastBackendFailure, so the pair rides the backend stamp.
+  const usage = new RunUsage();
+  usage.fold(freshRunnerState("organize"), piRunResult({ ok: false, transientBackend: true, backendKind: "model-load" }), true, "omlx", "omlx/tiny");
+  const stamp = usage.lastBackendFailure!;
+  assert.equal(stamp.kind, "model-load");
+  assert.equal(stamp.provider, "omlx", "the provider the run resolved");
+  assert.equal(stamp.pair, "omlx/tiny", "the pair the run resolved — the model the hold scopes to");
+  // A run that resolved no pair stamps none, so the observation falls back to the
+  // conservative provider-wide scope.
+  const noPair = new RunUsage();
+  noPair.fold(freshRunnerState("organize"), piRunResult({ ok: false, transientBackend: true, backendKind: "model-load" }), true, "omlx");
+  assert.equal(noPair.lastBackendFailure!.pair, undefined, "no pair on a run that resolved none");
+});
+
 test("finalizeRun warns once at the error-streak crossing and re-arms after a healthy run", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");

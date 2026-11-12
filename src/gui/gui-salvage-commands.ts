@@ -17,6 +17,7 @@ import { applySalvagePatchForOperator } from "../git/slot-salvage.js";
 import {
   collectSalvagePatches,
   dropSalvagePatch,
+  salvagePatchAt,
 } from "../status/status-salvage.js";
 import { formatBytes } from "../text/format.js";
 import { readPostBody } from "./gui-endpoint-common.js";
@@ -74,15 +75,12 @@ export async function handleSalvageApply(
   if (!body) return;
   const position = requirePosition(res, body);
   if (position === null) return;
-  const patches = collectSalvagePatches(root);
-  if (position > patches.length) {
-    sendJson(res, 200, {
-      ok: false,
-      message: `no salvaged workspace patch at position ${position} (salvage holds ${patches.length} patches)`,
-    });
+  const at = salvagePatchAt(collectSalvagePatches(root), position);
+  if ("message" in at) {
+    sendJson(res, 200, { ok: false, message: at.message });
     return;
   }
-  const patch = patches[position - 1]!;
+  const patch = at.patch;
   if (!(await isGitRepo(root))) {
     sendJson(res, 409, {
       ok: false,
@@ -122,15 +120,12 @@ export async function handleSalvageDrop(
   if (!body) return;
   const position = requirePosition(res, body);
   if (position === null) return;
-  const patches = collectSalvagePatches(root);
-  if (position > patches.length) {
-    sendJson(res, 200, {
-      ok: false,
-      message: `no salvaged workspace patch at position ${position} (salvage holds ${patches.length} patches)`,
-    });
+  const at = salvagePatchAt(collectSalvagePatches(root), position);
+  if ("message" in at) {
+    sendJson(res, 200, { ok: false, message: at.message });
     return;
   }
-  const patch = patches[position - 1]!;
+  const patch = at.patch;
   if (!drop(root, patch.file)) {
     sendJson(res, 200, {
       ok: false,

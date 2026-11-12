@@ -7,12 +7,13 @@
 import type { RoleRunner } from "../runner/runner.js";
 import { logEventBestEffort } from "../events/events.js";
 import { baseRoleOf, configuredInstances, runnerPaused } from "../roles/runner-ids.js";
-import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
+import { BUGFIX_ROLE, commitTier } from "../roles/roles.js";
 import { deferRunReason, isEligible, type DeferReason } from "./scheduling.js";
-import { inboxSize } from "../inbox/inbox.js";
+import { inboxSize, deliverablePromptStamps } from "../inbox/inbox.js";
 import { freshlyWoken, type SkipReason } from "../runner/runner-state.js";
 import { MERGE_CONFLICT_LIMIT } from "../runner/runner-leftover.js";
 import { noteSkip, type SchedulingScope } from "./scope.js";
+import { heldStarts } from "../team/team-hold.js";
 
 /** A runner's skip verdict under the per-runner gates: `skip: true` when a gate declined the
  * run (its once/deferral/noteSkip bookkeeping already happened), or `skip: false` with the
@@ -58,6 +59,21 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
         (runner.state.mergeConflicts?.count ?? 0) >= MERGE_CONFLICT_LIMIT &&
         runner.state.conflictHandback === undefined
       ),
+    // The director re-queues its own unfulfilled prompt at the end of a recovery run; left
+    // ungated that re-queue re-fires the inbox arm back to back at the ~2 s poll cadence
+    // (BUGS.md hot loop). True when the inbox holds only work the director enqueued for itself
+    // — every deliverable prompt stamped at or before the run that just ended — so that inbox
+    // is due on the min-run-interval clock instead. A prompt an operator submitted since (stamped
+    // after lastRunEndedAt) reads false and runs immediately, as before. Cheap: no file reads,
+    // only the enqueue stamps already in the filenames. Reaches only the director arm.
+    inboxSelfRequeued:
+      baseRoleOf(runner.role) === "director" &&
+      inboxCount > 0 &&
+      (() => {
+        const t = runner.state.lastRunEndedAt;
+        if (!t) return false;
+        return deliverablePromptStamps(root, runner.role, Date.now()).every((stamp) => stamp <= t);
+      })(),
   });
   if (!run) return notDue(scope, runner, skip);
   if (admissionHolds(scope, runner)) return { skip: true };
@@ -94,18 +110,19 @@ function settleOncePaused(scope: SchedulingScope, runner: RoleRunner, demand: bo
 }
 
 /** The run of starting holds, in today's order — a restart or low disk, the per-role pause,
- * the role's cost cap, the maintenance-quota and bootstrap holds, the operator pause, and the
- * director-window and non-director provider-storm holds. Returns true when any holds, so the
- * caller skips before the due check. */
+ * the role's cost cap, the maintenance-quota and bootstrap holds, the operator pause, the
+ * director-window and non-director provider-storm holds, and the non-director model-load
+ * pair hold. Returns true when any holds, so the caller skips before the due check. */
 function heldFromStarting(scope: SchedulingScope, runner: RoleRunner, demand: boolean): boolean {
   const {
     holdForRestart,
     diskHeld,
     pausedRoles,
     capPaused,
-    windowHeldProviders,
     roleProviders,
     heldProviders,
+    heldPairs,
+    rolePairs,
     maintenanceQuotaOverLine,
     bootstrapHeldNow,
     operatorPauseBlocks,
@@ -129,14 +146,14 @@ function heldFromStarting(scope: SchedulingScope, runner: RoleRunner, demand: bo
   // met; a fresh wake or queued prompt admits one anyway (bootstrapHeldNow).
   if (bootstrapHeldNow(runner, demand)) return true;
   if (operatorPauseBlocks(runner.role)) return true; // no new role runs while either gate holds
-  // The director honors only the subscription-window hold: the per-run 429 retry that backs
-  // its other exemptions does not answer a window rejection, so its prompt would fail and
-  // re-queue every poll until the repeated-failure pause stops it.
-  if (runner.role === DIRECTOR_ROLE && windowHeldProviders.has(roleProviders.get(runner.role)))
-    return true;
-  if (runner.role !== DIRECTOR_ROLE && heldProviders.has(roleProviders.get(runner.role)))
-    return true; // nor while ITS provider's failure storm holds — the reviewer's hold parks only the post-merge review queue, never a role start
-  return false;
+  // The team-failure hold, as one shared rule (team-hold.ts heldStarts): the director honors
+  // only the subscription-window hold — the per-run 429 retry that backs the other kinds does
+  // not answer a window rejection, so its prompt would fail and re-queue every poll until the
+  // repeated-failure pause stops it; every other role is held by ITS provider's failure storm
+  // (heldProviders — the reviewer's hold parks only the post-merge review queue, never a role
+  // start) or, under a model-load hold that names its pairs, by ITS pair (heldPairs), so a
+  // role on another model at the same provider keeps running.
+  return heldStarts(runner.role, roleProviders.get(runner.role), rolePairs.get(runner.role) ?? "", scope.windowHeldProviders, heldProviders, heldPairs);
 }
 
 /** The not-due bookkeeping: the run was declined, so any deferral episode ends, the once-mode

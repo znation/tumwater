@@ -1,5 +1,5 @@
 /** The read-only query commands' bodies (status, diff, backlog, quarantine), split out of
- * cli.ts's dispatcher: main() routes to a cmd* here exactly as it routes to operator-commands's
+ * cli.ts's dispatcher: main() routes to a cmd* here exactly as it routes to cli-operator-commands's
  * cmdAbort or cli-config-commands's cmdConfig, and cli.ts keeps only routing and the help/version
  * surfaces. Each command owns its argument gate, ready-repo gating decision, and output shape,
  * with the wording and gating order moved verbatim from main()'s cases. */
@@ -9,7 +9,7 @@ import { followView, type FollowViewSeams } from "./follow-view.js";
 import { failFollowJsonRival, flagValue, parseGrepFlag, parseRoleListScope, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, HELD_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
-import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
+import { scopeSnapshotToRoles, snapshot, snapshotForStatus } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
 import { renderStatus } from "../ui/status-render.js";
 import { gotSuffix } from "../text/text.js";
@@ -40,17 +40,22 @@ export async function cmdStatus(root: string, args: string[], seams: FollowViewS
     // serving process's own `serverBuildSha`, printed with no server. A query, not a
     // health verdict: exit 0 on any successful read and let scripts interpret fields
     // themselves ("running": false is data, not failure).
-    sayJson(statusPayload(root, Date.now(), scope));
+    sayJson(await statusPayload(root, Date.now(), scope));
   } else {
-    const snap = snapshot(root);
+    const snap = await snapshot(root);
     say(renderStatus(root, scope ? scopeSnapshotToRoles(snap, scope) : snap, process.stdout.isTTY ? process.stdout.columns : undefined, scope !== null));
   }
 }
 
-/** `tumwater status -f`'s live loop: the team snapshot repainted until the parent exits. */
+/** `tumwater status -f`'s live loop: the team snapshot repainted until the parent exits. The
+ * frame read stays synchronous (snapshotForStatus): followView repaints on a fixed interval and
+ * the mock-clock follow tests depend on exactly one frame per tick, a shape only a same-turn
+ * read keeps (the first paint must land in the tick that scheduled it, not a later one). When
+ * the read becomes genuinely async (the pin re-point, next part) this moves to `await
+ * snapshot`, which followView already guards (its `painting` flag skips a tick mid-frame). */
 async function followStatus(root: string, scope: string[] | null, seams: FollowViewSeams): Promise<void> {
   const tty = seams.tty ?? process.stdout.isTTY;
-  await followView(() => renderStatus(root, scope ? scopeSnapshotToRoles(snapshot(root), scope) : snapshot(root), tty ? process.stdout.columns : undefined, scope !== null), seams);
+  await followView(() => renderStatus(root, scope ? scopeSnapshotToRoles(snapshotForStatus(root), scope) : snapshotForStatus(root), tty ? process.stdout.columns : undefined, scope !== null), seams);
 }
 
 /** `tumwater diff`: one line per role holding pending work, the files two or more roles touch

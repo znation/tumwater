@@ -8,13 +8,13 @@ import { publishInfoFields, type OrchestratorInfo } from "../team/team-orchestra
 import { runnerEnabled } from "../roles/runner-ids.js";
 import type { newLiveConfigReload } from "../config/config-live.js";
 import type { FallbackBreakerPolicy } from "../budget/fallback-breaker.js";
-import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { reviewHoldKey, pollDeferralInputs, pollRunnerReasons } from "./orchestrator-scheduling.js";
+import { reviewHoldKey, reviewPairKey, pollDeferralInputs, pollRunnerReasons } from "./orchestrator-scheduling.js";
+import { seamPairName } from "../config/config-views.js";
 import { refreshPendingPlans } from "../backlog/backlog-pending.js";
 import { launchDueRuns } from "./orchestrator-launch.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { branchHead, currentBranch } from "../git/git.js";
-import { queuedMergeFiles } from "../merge/merge-queue.js";
+import { readMergePins } from "../merge/merge-pins.js";
 import { drainMergeQueue } from "../merge/merge-drain.js";
 import { abortableMerges, mergeTasks, type MergePipeline } from "../merge/merge-pipeline.js";
 import { TUMWATER_SOURCE, type HarnessEventInput } from "../events/events.js";
@@ -40,10 +40,15 @@ import type { RetentionPruner } from "./retention.js";
 import type { newOpencodeCatalogRefresh } from "../gates/startup-gates.js";
 import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import { p75RunDurationMs } from "../run/run-timing.js";
-import { reapAttributableOrphans } from "../doctor/doctor-orphans.js";
+import { dueForOrphanReap, reapAttributableOrphans, type OrphanSignals } from "../doctor/doctor-orphans.js";
+import type { ProcessProbe } from "../process/process-table.js";
+// The reap's policy (its interval, and the due-check it throttles with) lives in
+// doctor-orphans.ts beside the age gate (PLANS.md 2026-11-11); re-exported from here
+// because test/doctor-orphans.test.ts imports them from this module.
+export { dueForOrphanReap, ORPHAN_REAP_INTERVAL_MS } from "../doctor/doctor-orphans.js";
 import { pollTeamGates, type TeamGateStates } from "../gates/gate-polls.js";
 import type { ReclaimController } from "../team/team-reclaim.js";
-import { heldProviders, windowHeldProviders } from "../team/team-hold.js";
+import { heldProviders, heldPairs, heldStarts, windowHeldProviders } from "../team/team-hold.js";
 import { workReserveCount } from "../scheduling/claims.js";
 import type { ModelCheckGate } from "../model-check/model-check-gate.js";
 import { requestPrinciplesConsolidation } from "../prompt/principles-consolidation.js";
@@ -116,17 +121,6 @@ export function newPollState(): PollState {
   return { restart: false, holdForRestart: false, diskHeld: false, warnedBranchDivergence: false, lastReserve: 0, lastOrphanReapAt: 0 };
 }
 
-/** How often the orchestrator's poll loop stands down the orphan reap — a once-per-interval
- * throttle so a slow process-table scan never runs on the busy per-poll hot path. */
-export const ORPHAN_REAP_INTERVAL_MS = 15 * 60_000;
-
-/** Whether the orphan reap is due now, given the last poll it ran: true at and after
- * `now >= last + intervalMs`. Purely a clock comparison so tests pin it from literal
- * numbers. A fresh state's `last` of 0 is always due against a real `now`. */
-export function dueForOrphanReap(last: number, now: number, intervalMs: number = ORPHAN_REAP_INTERVAL_MS): boolean {
-  return now - last >= intervalMs;
-}
-
 /** The start gate every reserved run passes the moment its permit is granted
  * (runTimedRoleRun's `held`): closed while a restart is pending, and after one is decided so
  * no waiter the shutdown hands a permit to starts on the build being replaced. One predicate,
@@ -143,6 +137,26 @@ function runStartHeld(state: PollState): boolean {
  * cannot drift. */
 export function mergeStartHeld(held: boolean, reviewHeld: boolean, role?: string): boolean {
   return held || (reviewHeld && role === undefined);
+}
+
+/** The team's standing self-heal sweep (PLANS.md 2026-11-11): at most once per interval, kill
+ * the orphans the doctor row already reports that are old enough that no live run can still own
+ * them — the automatic counterpart to the human click `doctor --kill-orphans`/dashboard/TUI
+ * makes. The time is stamped before the await, so a slow scan cannot overlap the next poll's
+ * reap (this is the running team's only caller). A stopped team never runs the sweep — nothing
+ * polls — so it never calls this; the dashboards and status read the standing alert's show-rule
+ * (alert-feeds.ts's orphanAlertVisible) instead, which is what shows for a stopped team. `reap`
+ * is injectable for tests, which stub
+ * the kill and pin the stamp-then-reap call shape without a real process table. */
+export async function pollOrphanReap(
+  root: string,
+  state: PollState,
+  reap: (root: string, probe?: ProcessProbe, signals?: OrphanSignals) => Promise<unknown> = reapAttributableOrphans,
+): Promise<void> {
+  if (dueForOrphanReap(state.lastOrphanReapAt, Date.now())) {
+    state.lastOrphanReapAt = Date.now();
+    await reap(root);
+  }
 }
 
 /** What the request-and-watch step hands the rest of the poll. */
@@ -171,15 +185,10 @@ export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): 
   // src/orchestrator/retention.ts. The live config (last-known-good while the file is broken or
   // missing) drives the check, like the budget gate.
   ctx.retentionPruner.poll(root, liveConfig.sessionRetentionDays);
-  // The orphan reap (src/doctor/doctor-orphans.ts): at most once per interval, kill the
-  // orphans the doctor row already reports that are old enough to be certain a live run no
-  // longer owns them — the automatic counterpart to the human click `doctor
-  // --kill-orphans`/dashboard/TUI makes. The time is stamped before the await, so a slow
-  // scan cannot overlap the next poll's reap (and this await anyway holds the poll step).
-  if (dueForOrphanReap(state.lastOrphanReapAt, Date.now())) {
-    state.lastOrphanReapAt = Date.now();
-    await reapAttributableOrphans(root);
-  }
+  // The orphan self-reap (doctor-orphans.ts): the throttled sweep pollOrphanReap owns — kill
+  // each listed orphan old enough that no live run can still own it, at most once per
+  // interval. This await holds the poll step, so a slow scan cannot overlap the next poll's.
+  await pollOrphanReap(root, state);
   // A missing or stale opencode catalog is refetched at most once an hour while opencode is routed.
   ctx.opencodeCatalogRefresh.poll(liveConfig);
 
@@ -237,11 +246,13 @@ export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): 
  * from them. */
 type PollGates = ReturnType<typeof pollTeamGates> & {
   teamHeldProviders: ReadonlySet<string | undefined>;
+  teamHeldPairs: ReadonlySet<string>;
   /** Fresh reads for the permit-time closures: they run after later polls have advanced
    * gateStates.teamHold, so they re-derive from the LATEST poll's map, not this snapshot. */
   teamHeldNow: () => ReadonlySet<string | undefined>;
   reviewHeldNow: () => boolean;
   roleProviders: Map<string, string | undefined>;
+  rolePairs: Map<string, string>;
   /** The roles the model check holds this poll (empty while the check is off). */
   modelCheckHeld: ReadonlySet<string>;
 };
@@ -250,9 +261,11 @@ type PollGates = ReturnType<typeof pollTeamGates> & {
  * budget gate — with its derived-state publish and the fallback handback to the primary — the
  * operator and per-role pause gates, quiet hours, the team-wide failure hold, and the two
  * observational storm alarms. The family's cross-poll memory lives in gateStates, advanced in
- * place. The failure hold is deliberately not among the returned verdicts — the start gate and
- * the merges' startHeld read the LATEST poll's verdict at permit time from gateStates.teamHold,
- * so a waiter granted its permit after later polls ran meets the hold as it stands then.
+ * place. The failure hold is deliberately not among the returned verdicts — its provider scope
+ * (teamHeldNow) re-derives from the LATEST gateStates.teamHold at permit time, so a waiter
+ * granted its permit after later polls ran meets the provider hold as it stands then; a
+ * model-load hold's PAIR scope (teamHeldPairs) is this poll's snapshot and does not re-derive —
+ * a waiter met after later polls still reads this poll's pair set.
  * Writes state.diskHeld. */
 export function pollGatesAndHolds(
   ctx: PollContext,
@@ -305,26 +318,41 @@ export function pollGatesAndHolds(
   ]);
 
   // The failure hold, keyed per provider (PLANS.md 2026-10-05): a role is held when ITS
-  // run model's provider stands under a hold. A hold on the reviewer's provider parks only
-  // the post-merge review drain, never a role start, verify or landing. Key presence in the
+  // run model's provider stands under a hold. A model-load hold that names its pairs is the
+  // exception (PLANS.md "One unavailable model pair stops only the roles on that pair",
+  // part 2/2): it holds exactly the roles on the pairs whose model failed to load, and a
+  // role on another model at the same provider keeps running — heldProviders skips that
+  // provider, and heldPairs is the pair scope the scheduling and start passes read. A hold
+  // on the reviewer's provider parks only the post-merge review drain, never a role start,
+  // verify or landing. Key presence in the
   // map is relapse memory, not a hold: heldProviders() reads only standing holds (`until`
   // non-null), so a lifted hold never keeps blocking.
   const teamHeldProviders = heldProviders(gateStates.teamHold);
   const teamHeldNow = () => heldProviders(gateStates.teamHold);
+  const teamHeldPairs = heldPairs(gateStates.teamHold);
   // The reviewer's seam is read from the config merges actually review under — the poll's
   // roleConfig, which a used-up claude window or the cap has already moved to a fallback —
   // so a reviewer that left claude no longer parks the post-merge review drain on the
-  // claude hold.
+  // claude hold. Its PAIR is the model-load scope: a standing model-load hold naming the
+  // reviewer's pair parks the drain, because the review run would fail to load the same
+  // model — exactly as the provider-wide kinds do via reviewHoldKey.
   const reviewSeamKey = reviewHoldKey(gates.roleConfig);
+  const reviewSeamPair = reviewPairKey(gates.roleConfig);
   return {
     ...gates,
     teamHeldProviders,
     teamHeldNow,
+    teamHeldPairs,
     // `modelCheck.poll` ran above in this same poll, so its verdict is this poll's: the
-    // failed-or-checking reviewer pair parks the drain beside the reviewer's provider hold.
+    // failed-or-checking reviewer pair parks the drain beside the reviewer's provider hold
+    // and its model-load pair hold.
     reviewHeldNow: () =>
-      liveConfig.review.enabled && (teamHeldNow().has(reviewSeamKey) || (modelCheck?.reviewHeld() ?? false)),
+      liveConfig.review.enabled &&
+      (teamHeldNow().has(reviewSeamKey) ||
+        teamHeldPairs.has(reviewSeamPair) ||
+        (modelCheck?.reviewHeld() ?? false)),
     roleProviders: new Map(runners.map((r) => [r.role, r.runProvider()])),
+    rolePairs: new Map(runners.map((r) => [r.role, seamPairName(r.runConfig())])),
     modelCheckHeld,
   };
 }
@@ -449,6 +477,8 @@ export async function pollSchedule(
     heldProviders: gates.teamHeldProviders,
     windowHeldProviders: windowHeldProviders(gateStates.teamHold),
     roleProviders: gates.roleProviders,
+    heldPairs: gates.teamHeldPairs,
+    rolePairs: gates.rolePairs,
     openBugsNow: inputs.openBugsNow,
     workBacklogOpen: inputs.workBacklogOpen,
     planBacklogFull: inputs.plansFull,
@@ -480,9 +510,12 @@ export async function pollSchedule(
       // The model check's LATEST verdict (the gate keeps the newest poll's held set), so a
       // waiter parked before its pair failed does not start on it.
       (modelCheck?.held.has(role) ?? false) ||
-      (role !== DIRECTOR_ROLE
-        ? gates.teamHeldNow().has(gates.roleProviders.get(role))
-        : windowHeldProviders(gateStates.teamHold).has(gates.roleProviders.get(role))),
+      // The team-failure hold, as the same shared rule the scheduling pass applies (team-hold.ts
+      // heldStarts — the director honors only the subscription-window hold; every other role is
+      // held by ITS provider's storm or, under a model-load hold that names its pairs, by ITS
+      // pair). Recomputed per waiter from the live teamHold, so a hold that lands mid-poll
+      // (a model-load failure) is honored by a waiter still in the queue.
+      heldStarts(role, gates.roleProviders.get(role), gates.rolePairs.get(role) ?? "", windowHeldProviders(gateStates.teamHold), gates.teamHeldNow(), gates.teamHeldPairs),
     // A run that ended without changes and without declaring nothing-to-do (2026-10-30 Flint),
     // or failed before its model replied (2026-10-29 deepinfra), is the shape a serving fault
     // takes: have the model check look at its pair again. A run still waiting on its reply
@@ -493,7 +526,7 @@ export async function pollSchedule(
 
 /** Priority headroom, then once mode's exit; returns whether the loop should stop. Writes
  * state.lastReserve and, in once mode, fires internalStop. */
-export function pollReserveAndExit(ctx: PollContext, state: PollState, { liveConfig }: PollInputs): boolean {
+export async function pollReserveAndExit(ctx: PollContext, state: PollState, { liveConfig }: PollInputs): Promise<boolean> {
   const { root, runners, semaphore } = ctx;
   // Priority headroom (plans/parallel-work-instances.md part 7/7): withhold a few permits
   // from maintenance while a work role has work to take, so a due work run never waits out
@@ -510,19 +543,26 @@ export function pollReserveAndExit(ctx: PollContext, state: PollState, { liveCon
   }
   state.lastReserve = reserve;
 
-  // Once mode's exit: every enabled role settled, no run in flight, and the merge queue
-  // empty with no merge in flight for one full poll cycle — then fire the internal
-  // stop, the same graceful shutdown the restart drain uses (the `finally` awaits
-  // in-flight merge tasks to the end). The one-poll-cycle requirement is the guard
-  // against dropping a queued-but-not-yet-started merge: a stop that arrives during the
-  // shutdown drain drops the queue entry, so the slot gets its poll to pick the entry up
-  // before the stop is trusted.
+  // Once mode's exit: every enabled role settled, no run in flight, and no live merge pin
+  // with no merge in flight for one full poll cycle — then fire the internal stop, the same
+  // graceful shutdown the restart drain uses (the `finally` awaits in-flight merge tasks to
+  // the end). The one-poll-cycle requirement is the guard against dropping a queued-but-
+  // not-yet-started merge: a stop that arrives during the shutdown drain drops the queue
+  // entry, so the slot gets its poll to pick the entry up before the stop is trusted.
+  // The waiting changes are the LIVE PINS (readMergePins), not the queue directory: a
+  // production run writes no queue file (part 3e/7), so the old count read 0 even while pins
+  // waited and a non-empty queue dir with no live pin never held the round. The count is the
+  // honest source of "every waiting change merged or cleared." Read it only in once mode: a
+  // daemon round (`once.active` false) makes exitReady return false regardless of the count, so
+  // the pin enumeration — a `for-each-ref` spawn the drain already did earlier this same poll —
+  // would cost a redundant read every poll for a value that is never used.
+  const livePins = ctx.once.active ? (await readMergePins(root)).entries.length : 0;
   if (
     ctx.once.exitReady({
       roleRuns: ctx.roleInFlight.size,
       directorRuns: ctx.directorInFlight.size,
       merges: mergeTasks(ctx.merges).length,
-      queuedMerges: queuedMergeFiles(root).length,
+      queuedMerges: livePins,
     })
   ) {
     ctx.internalStop.abort();

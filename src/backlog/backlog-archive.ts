@@ -238,7 +238,16 @@ export function archiveFinishedText(
   const archiveLines = archiveText.split("\n");
   const archiveSpan = sectionSpan(archiveLines, spec.section);
   if (archiveSpan === null) return null;
-  const fates = entryFates(lines, selected, archiveText, archiveSpan, spec.section);
+  const rawFates = entryFates(lines, selected, archiveText, archiveSpan, spec.section);
+  // A parked entry — one the archive must not take, a stranded Done plan without a done stamp
+  // whose archived form the gate rejects — is forced to `stay` so neither path ships it to the
+  // archive. The keep split keeps a staying entry in the live section, so the stranded entry
+  // stays put (last in the Done section) and the self-referential guardrail stays quiet instead
+  // of tripping on an un-stamped copy that reached the archive. The commit-time sweep's park
+  // already excludes such entries from `selected`; the bulk archive's are not, so the remap
+  // lands there (BUGS.md 2026-11-11).
+  const park = (select as { park?: ReadonlySet<string> }).park;
+  const fates = park ? rawFates.map((f, i) => (park.has(archiveKey(selected[i]!.title)) ? "stay" : f)) : rawFates;
   const withFate = (fate: EntryFate): ActionableEntryRange[] => selected.filter((_, i) => fates[i] === fate);
   // The 0-based live lines of the entries that leave the live section without moving.
   const droppedLine = new Set<number>();
@@ -324,13 +333,23 @@ export async function archiveNewFinishedEntries(wt: string, mainBranch: string):
 }
 
 /** The bulk moves for the checkout at `root`, computed in memory: each live finished section's
- * body past its newest `keep` entries. Nothing is written. */
+ * body past its newest `keep` entries, minus a stranded Done plan (no done stamp) that the
+ * commit-time sweep parked in the live section — the same park rule, so the bulk archive never
+ * ships what the sweep refused and the self-referential guardrail never trips on an un-stamped
+ * copy (BUGS.md 2026-11-11). Nothing is written. */
 function planArchiveAll(root: string, keep: number): { spec: FinishedArchive; move: ArchiveMove }[] {
   const plan: { spec: FinishedArchive; move: ArchiveMove }[] = [];
   for (const spec of FINISHED_ARCHIVES) {
     const live = readTextIfExists(path.join(root, spec.file));
     if (live === null) continue;
-    const move = archiveFinishedText(live, readTextIfExists(path.join(root, spec.archive)), spec, { keep });
+    // BUGS.md and its archive have no stranded-plan notion (their headings carry no (planned …));
+    // only PLANS.md's ## Done can hold one, so only it gets a park set.
+    const park = new Set(
+      (spec.file === "PLANS.md" ? strandedPlanEntries(live) : [])
+        .filter((s) => s.section === spec.section)
+        .map((s) => archiveKey(s.title)),
+    );
+    const move = archiveFinishedText(live, readTextIfExists(path.join(root, spec.archive)), spec, { keep, park });
     if (move !== null) plan.push({ spec, move });
   }
   return plan;

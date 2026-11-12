@@ -16,7 +16,7 @@ import { errorMessage } from "../text/text.js";
 import { mainRedPhrase, plural } from "../text/phrases.js";
 import { clipToWidth } from "../text/text-width.js";
 import { shortSha } from "../text/format.js";
-import { branchHead, headOf, isMergedInto } from "../git/git.js";
+import { branchExists, branchHead, branchesPhrase, headOf, isMergedInto } from "../git/git.js";
 import { fullMainWorktreePath, gateMainWorktreePath } from "../paths.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
@@ -354,10 +354,30 @@ function queueBehindMainGates<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/** The resolved tip of `mainBranch`, or a rejection naming the reason it could not be had. A tip
+ * is the shared precondition of every main-tip surface (mainTipVerdict's gate work, the main
+ * watch's rules pass, its full-check pass, and the gate's own tip verdict), so the
+ * missing-versus-unreadable rule lives here in one place instead of per caller: a branch whose
+ * ref is gone is named as missing, with the repo's existing branches for the fix (the same
+ * verdict the startup gate and doctor give for a wrong baseBranch), while a ref that exists but
+ * cannot be read stays `unreadable` — the two failures need different fixes, and `branchHead`
+ * returns null for both, so collapsing them into one reason sent the operator hunting for a
+ * permission problem where a branch name was the whole story. `branchesPhrase` is a spawn the
+ * missing arm takes only; the common readable path pays no extra git call. */
+async function mainTipOf(root: string, mainBranch: string): Promise<string> {
+  const tip = await branchHead(root, mainBranch);
+  if (tip) return tip;
+  const reason = (await branchExists(root, mainBranch))
+    ? `${mainBranch} is unreadable`
+    : `${mainBranch} does not exist (branches: ${await branchesPhrase(root)})`;
+  throw new Error(reason);
+}
+
 /** Run `fn` in the `_gate-main` mirror re-pointed at `mainBranch`'s tip, queued behind the gates
  * mainTipVerdict serves (gateMainQueue) and holding the mirror as they do. The main watch's way in
- * (main-watch.ts): it hands `fn` the checkout and the tip it holds. Rejects when main is
- * unreadable or the checkout fails — the caller is a background task that must catch. */
+ * (main-watch.ts): it hands `fn` the checkout and the tip it holds. Rejects when `mainBranch`
+ * is missing or unreadable (mainTipOf names which) or the checkout fails — the caller is a
+ * background task that must catch. */
 export function withMainTipWorktree<T>(
   root: string,
   mainBranch: string,
@@ -365,8 +385,7 @@ export function withMainTipWorktree<T>(
 ): Promise<T> {
   return queueBehindMainGates(() =>
     useWorktree(root, gateMainWorktreePath(root), async () => {
-      const tip = await branchHead(root, mainBranch);
-      if (!tip) throw new Error(`${mainBranch} is unreadable`);
+      const tip = await mainTipOf(root, mainBranch);
       return fn(await ensureDetachedWorktree(root, gateMainWorktreePath(root), tip));
     }),
   );
@@ -391,8 +410,8 @@ function queueBehindFullMain<T>(task: () => Promise<T>): Promise<T> {
  * queue: the main watch's full-check pass (main-watch.ts) runs its long full run here, so a
  * per-head diff-rules pass or a gate's main-tip verdict in `_gate-main` never waits behind it
  * (Hourly full check, part 2c/4). Shaped like withMainTipWorktree, minus the shared gate queue;
- * rejects when main is unreadable or the checkout fails — the caller is a background task that
- * must catch.
+ * rejects when `mainBranch` is missing or unreadable (mainTipOf names which) or the checkout
+ * fails — the caller is a background task that must catch.
  */
 export function withFullMainTipWorktree<T>(
   root: string,
@@ -401,8 +420,7 @@ export function withFullMainTipWorktree<T>(
 ): Promise<T> {
   return queueBehindFullMain(() =>
     useWorktree(root, fullMainWorktreePath(root), async () => {
-      const tip = await branchHead(root, mainBranch);
-      if (!tip) throw new Error(`${mainBranch} is unreadable`);
+      const tip = await mainTipOf(root, mainBranch);
       return fn(await ensureDetachedWorktree(root, fullMainWorktreePath(root), tip));
     }),
   );
@@ -430,8 +448,10 @@ async function verdictAtMainTipIn(
   forceFresh: boolean,
 ): Promise<MainTipVerdict> {
   try {
-    const tip = await branchHead(root, mainBranch);
-    if (!tip) return { status: "unavailable", why: `${mainBranch} is unreadable` };
+    // mainTipOf throws the missing-versus-unreadable reason when the tip cannot be had; the catch
+    // below turns that into the unavailable verdict's why (this surface never rejects the verify
+    // pipeline out), so the reason lives in mainTipOf, shared with the worktree seams above.
+    const tip = await mainTipOf(root, mainBranch);
     const wt = await ensureDetachedWorktree(root, gateMainWorktreePath(root), tip);
     // observedOnly: this verdict convicts or clears a change, so a green carried over doc commits
     // does not count (main-baseline.ts's inheritedGreen). A doc edit can break a test that reads

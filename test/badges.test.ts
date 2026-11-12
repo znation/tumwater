@@ -201,6 +201,23 @@ test("mainCheckBadge shows the covered sha, the verdict age and the next due", (
   assert.equal(mainCheckBadge(undefined), "", "no check: no badge");
 });
 
+// BUGS.md 2026-11-11: a green verdict taken on a head main has since moved past read as a
+// verified tip ("green at <sha>, 59m ago") while main had advanced ~10 commits, through a red
+// interval. The badge must say so — keep the (green) verdict word and covered sha, but append a
+// staleness mark — so a stale green is not mistaken for a statement about current main.
+test("mainCheckBadge appends a staleness mark for a green whose covered head is no longer main's tip", () => {
+  const now = 1_800_000_000_000;
+  const checkedAt = now - 59 * 60_000; // 59 min ago, as the entry observed
+  // The entry's exact shape: a 59-minute-old green whose covered sha main has moved past — the
+  // verdict word and covered sha stay, the staleness mark is appended, and the age/due read
+  // unchanged.
+  assert.equal(mainCheckBadge({ sha: "b2281a6b".padEnd(40, "0"), status: "passed", at: checkedAt, checkedAt, nextDueAt: now - 1, tipAdvanced: true }, now), " · full check green at b2281a6b, 59m ago · due now · tip advanced");
+  // A red never carries the mark: a red is already flagged by color and the watch rechecks it on
+  // the next head, so the staleness there is the expected state — the badge renders the red
+  // verdict with no appended staleness (this also pins the red path for a stray mark).
+  assert.equal(mainCheckBadge({ sha: "e".repeat(40), status: "failed", at: now - 5 * 60_000, checkedAt: now - 5 * 60_000, tipAdvanced: true }, now), " · full check red at eeeeeeee, 5m ago");
+});
+
 // The disk floor's header fragment (plans/disk-floor.md, part 4/4): the hold names itself,
 // below the reclaim threshold renders the bare reading, and every other state is empty so the
 // header stays byte-identical. A disk block absent (an older orchestrator, an unmeasurable

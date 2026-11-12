@@ -523,7 +523,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       }
       await pollMergeDrain(ctx, state, inputs, gates);
       await pollSchedule(ctx, state, inputs, gates);
-      if (pollReserveAndExit(ctx, state, inputs)) {
+      if (await pollReserveAndExit(ctx, state, inputs)) {
         stopCause = "once";
         break;
       }

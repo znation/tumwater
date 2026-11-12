@@ -274,7 +274,12 @@ function scheduleAbortedOutcome(s: RunnerState, role: string, outcome: RunOutcom
 
 /** Schedule a role the quiet watchdog killed — the "quiet_killed" arm: resume the intact
  * session within QUIET_KILL_RESUME_LIMIT, abandon it past the limit (fresh run on the idle
- * ladder), and never resume a director. */
+ * ladder), and never resume a director. The arm names the cause: "hung-tool" (the default) for
+ * a total-silence kill, "stalled-tool" for the per-call stall-kill that stopped one hung call
+ * while the run was otherwise progressing (PLANS.md 2026-11-11); the bridge prompt tells the
+ * resumed session which it was, so a repeatedly-re-hanging call is bounded by the same streak
+ * as any quiet kill — past the limit the session is abandoned to a fresh run rather than
+ * starving the slot again. */
 function scheduleQuietKilledOutcome(s: RunnerState, cfg: TumwaterConfig, role: string, outcome: RunOutcome): void {
   // A hung tool call, not an idle verdict or a shutdown: the kill left the pi session and
   // the worktree's uncommitted edits intact, so resume them promptly like an interruption.

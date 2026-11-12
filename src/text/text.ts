@@ -122,7 +122,7 @@ export function sameSha(a: string, b: string): boolean {
 
 /** Split a comma list into its trimmed, non-empty pieces, in order — the one spelling of the
  * split-trim-drop-blanks step shared by the `--role` list flags (cli-args.ts and
- * operator-commands.ts), `logs --type`, the history `--result` and `--model` filters, and the
+ * cli-operator-commands.ts), `logs --type`, the history `--result` and `--model` filters, and the
  * GUI's `role` and `model` query parameters. Deduplication and the no-piece-left error stay
  * with each caller. */
 export function splitCommaList(raw: string): string[] {

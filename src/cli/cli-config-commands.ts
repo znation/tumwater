@@ -16,7 +16,7 @@ import { rejectFlagLookingValue } from "./cli-args.js";
 import { editInEditor } from "./cli-editor.js";
 import { unknownRoleMessage } from "../roles/roles.js";
 
-/** The `tumwater config` command's CLI layer (split out of operator/operator-commands.ts, which
+/** The `tumwater config` command's CLI layer (split out of cli-operator-commands.ts, which
  * keeps the other operator-command bodies): with no arguments, print the effective merged
  * config — exactly what `loadConfig(root)` returns — as pretty JSON, so an operator
  * debugging scheduling or custom-role wiring sees what the team would actually load instead

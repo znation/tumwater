@@ -81,7 +81,7 @@ export async function awaitQuietHost(
  * proximate cause of merge rejections: the team runs this suite concurrently with its own
  * runs, and waits that complete in ~2s idle took past 20s loaded (BUGS.md). */
 export async function waitFor(
-  fn: () => boolean,
+  fn: () => boolean | Promise<boolean>,
   what: string,
   ms = 60_000,
   clock: WaitClock = liveWaitClock,
@@ -89,8 +89,11 @@ export async function waitFor(
   // The default clock reads performance.now(), not Date.now(): a test on watchdogClock has Date
   // frozen between its advances, and a deadline read off it would never expire. A test may pass
   // a `fakeClock` whose `sleep` advances `now`, making expiry instant and deterministic.
+  // The predicate may be async (snapshot/statusPayload are async now); `await` passes a sync
+  // boolean straight through, so existing sync callers poll exactly as before. (A bare Promise
+  // is truthy, so `await` is essential — dropping it would let an async predicate exit early.)
   const deadline = clock.now() + ms;
-  while (!fn()) {
+  while (!(await fn())) {
     if (clock.now() > deadline) throw new Error(`timed out waiting for ${what}`);
     await clock.sleep(100);
   }

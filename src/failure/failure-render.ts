@@ -8,8 +8,8 @@ import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-da
 import type { LossCause, SpendCell } from "./failure-time-spend.js";
 import { agree, plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
-import { HOUR_MS, boundedWindowLine, clockHm, dayKey, dayLabel, monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
-import { durationLabel } from "../text/duration.js";
+import { HOUR_MS, clockHm, dayKey, dayLabel, monthDay, reportWindow } from "../text/datetime.js";
+import { durationLabel, trailingWindowLine } from "../text/duration.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { markdownTable, type ColumnAlign } from "../text/markdown.js";
@@ -161,9 +161,9 @@ function pushDigestHeader(lines: string[], data: FailureReportData): void {
   const bounded = data.sinceMs !== undefined && data.untilMs !== undefined && data.toIso !== undefined;
   lines.push(
     bounded
-      ? `${boundedWindowLine(durationLabel(data.sinceMs!), durationLabel(data.untilMs!), data.fromIso!, data.toIso!)} · ${data.runs} runs`
+      ? `${trailingWindowLine(data.sinceMs!, data.fromIso!, data.untilMs, data.toIso)} · ${data.runs} runs`
       : data.sinceMs !== undefined
-        ? `${sinceWindowLine(durationLabel(data.sinceMs), data.fromIso!)} · ${data.runs} runs`
+        ? `${trailingWindowLine(data.sinceMs, data.fromIso!)} · ${data.runs} runs`
         : `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.runs} runs`,
   );
   if (data.role !== undefined) lines.push(`role: ${data.role}`);

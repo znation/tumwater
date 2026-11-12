@@ -324,16 +324,24 @@ test("a verification rejection drops its entry at once — its role may run next
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { cap: 2, config });
   const bg = pump(ctx, pipeline);
   try {
-    // One verification at a time: beta starts as soon as alpha's rejection clears the slot and
-    // its pin is released, seen through the pin itself rather than the queue file.
-    await waitFor(() => refAbsentFromFiles(root, mergeRefName("alpha")) && !refAbsentFromFiles(root, mergeRefName("beta")), "alpha's pin to clear at its verdict", 30_000);
-
-    assert.equal(loadRunnerState(root, "alpha").lastResult, "rejected", "the outcome is saved before the drop");
+    // One verification at a time: alpha's pin is gone (the gate rejected it) and beta's is
+    // still present, seen through the refs rather than the queue file. 60 s is the file's
+    // default for a gate cycle of subprocess and git round-trips.
+    await waitFor(() => refAbsentFromFiles(root, mergeRefName("alpha")) && !refAbsentFromFiles(root, mergeRefName("beta")), "alpha's pin to clear at its verdict", 60_000);
+    // Do NOT read the outcome here. The gate deletes the merge pin, and the drain's settle is
+    // a SEPARATE turn that then writes lastResult and the merge_failed event (merge-core.ts
+    // discardPin → merge-drain.ts settleMergeOutcome → writeMergeOutcome). Under host load (the
+    // full unit suite) the pin is gone for a real window before that settle's write lands, so
+    // a synchronous read right after the ref poll flaked in the 2026-11-11 quarantine entry in
+    // BUGS.md. The settle's state-write and event-log are one turn, so once the event is on
+    // disk the outcome is too: wait for it, then assert both.
+    await waitFor(() => readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha").length === 1, "alpha's rejection to settle to state and event", 60_000);
+    assert.equal(loadRunnerState(root, "alpha").lastResult, "rejected");
     assert.equal(readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha").length, 1);
 
     // The next queued entry starts on the next drain: one verification at a time, seen through
     // beta's own check flag (the durable check-start signal, part 3e/6).
-    await waitForFile(path.join(flags, "beta-checking"));
+    await waitForFile(path.join(flags, "beta-checking"), 60_000);
     const marker = readMergeMarker(root);
     assert.deepEqual(
       marker?.changes?.map((c) => [c.role, c.status, c.stage]),
@@ -344,7 +352,10 @@ test("a verification rejection drops its entry at once — its role may run next
     assert.equal(marker?.stage, "build-check", "at its own stage");
 
     fs.writeFileSync(path.join(flags, "beta-release"), "");
-    await waitFor(pinDrained(root, pipeline, roles), "beta to merge", 30_000);
+    // 60 s, not the 30 s this line carried: same file convention and same loaded-host
+    // stretch — beta's merge (check, reviewer, rebase, fast-forward, post-review) runs in the
+    // drain's 50 ms poll cycles, and pinDrained holds until every task has settled.
+    await waitFor(pinDrained(root, pipeline, roles), "beta to merge", 60_000);
     assert.ok(await isMergedInto(root, shas.beta!, "main"), "beta merged");
   } finally {
     fs.writeFileSync(path.join(flags, "beta-release"), "");

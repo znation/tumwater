@@ -31,12 +31,12 @@ import {
 } from "../paths.js";
 
 /** The marker-writing cores of the operator-intent protocol, shared by every surface that writes
- * one (the `cmd*` CLI commands in src/operator/operator-commands.ts, the dashboard's POST routes
+ * one (the `cmd*` CLI commands in src/cli/cli-operator-commands.ts, the dashboard's POST routes
  * in src/gui/gui-endpoint-commands.ts, and the TUI's key bindings in src/ui/tui/tui-keys.ts): each
  * core returns the confirmation its caller prints verbatim, so the surfaces cannot drift on marker
  * format, idempotence, or wording. The team-side consumer half is
  * src/operator/operator-requests.ts; this module holds the producer half's shared core, split out
- * of operator/operator-commands.ts so the UI layer never depends on the CLI's arg parsing. */
+ * of cli-operator-commands.ts so the UI layer never depends on the CLI's arg parsing. */
 
 /** The error every live-harness-only command reports (abort, stop): one literal so the two
  * surfaces cannot drift on the message an operator sees when nothing is running. */

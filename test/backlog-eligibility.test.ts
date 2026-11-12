@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { withoutNeedsReviewNotes, withoutRefusalNotes, backlogHolds, backlogInProgress, cancelledClaimNote, eligibleEntries, entryHold, holdMark, holdsBacklogReaders, inProgressMark, isPlanStalled, mergedPrerequisiteRanges, refusalNote, refusedEntries, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
+import { withoutNeedsReviewNotes, withoutRefusalNotes, backlogHolds, backlogInProgress, cancelledClaimNote, eligibleEntries, entryHold, holdMark, holdsBacklogReaders, inProgressMark, isPlanStalled, mergedPrerequisiteRanges, needsReviewNote, refusalNote, refusedEntries, waitingPartRanges, bugfixWaitDate, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
+import { isNeedsReviewNoteLine } from "../src/roles/role-guidance.js";
 import { entryKey, plannedPartKeys, prerequisitesMerged, planDependencyProblems, plansReleasedBy, plansWaitingOn, releasedPartsNote, requiredParts, seriesPart, type PartRef } from "../src/backlog/backlog-parts.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
@@ -213,6 +214,48 @@ test("a Needs-review note parks the entry as needs-review at any held count", ()
   assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: too large for one run**`), []), "needs-review");
   assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: too large for one run (held 3)**`), []), "needs-review");
   assert.equal(holdMark("needs-review"), " [blocked: needs review]");
+});
+// A model dropping the bold span still writes the note (BUGS.md 2026-11-11): the widened
+// predicate must hold the entry and lift the note on release, exactly as the bold template
+// does, so a span-less hold is never invisible to the eligibility/release readers.
+test("a span-less Needs-review note holds the entry and lifts on release", () => {
+  const bare = `Needs review 2026-11-11 by feature: plan defect — the approach is wrong`;
+  assert.equal(isNeedsReviewNoteLine(bare), true);
+  assert.equal(entryHold(entry("Plan", bare), []), "needs-review");
+  assert.equal(isPlanStalled(entry("Plan", bare)), true);
+  assert.equal(needsReviewNote(bare), bare);
+  assert.deepEqual(withoutNeedsReviewNotes(["### Plan", "", bare, "", "body"]), ["### Plan", "", "body"]);
+});
+// The span-less bugfix wait is a wait for the next failure (awaiting-recurrence), not a
+// plan-role hold — the widened BUGFIX_WAIT_RE must read its date off a span-less note so
+// tumwater lifts/closes it on schedule instead of stranding the entry as needs-review.
+test("a span-less bugfix wait note reads as awaiting-recurrence with its date", () => {
+  const bare = `Needs review 2026-11-11 by bugfix: the next failure's message`;
+  assert.equal(entryHold(entry("Bug", bare), []), "awaiting-recurrence");
+  assert.equal(bugfixWaitDate(bare), "2026-11-11");
+});
+// The director-handoff machine hold (BUGS.md 2026-11-11): a `**Director handoff <date>**`
+// marker in the entry body holds it for the director so a model that would misread the prose
+// does not keep it eligible; the director's Progress or Needs-review line clears it.
+test("a director handoff marker holds the entry until the director's note clears it", () => {
+  assert.equal(entryHold(entry("Bug", "**Director handoff 2026-11-11**"), []), "with-director");
+  // Resolved: a Progress line below the marker.
+  assert.equal(entryHold(entry("Bug", "**Director handoff 2026-11-11**\n**Progress 2026-11-12 by director: resolved**"), []), null);
+  // Parked: a by-director Needs-review note reads as needs-review (a different branch),
+  // not with-director.
+  assert.equal(entryHold(entry("Bug", "**Director handoff 2026-11-11**\n**Needs review 2026-11-12 by director: needs a call**"), []), "needs-review");
+  // A prose mention of the director is not a marker.
+  assert.equal(entryHold(entry("Bug", "handed off to the director yesterday"), []), null);
+  assert.equal(holdMark("with-director"), " [blocked: with the director]");
+});
+// A prose mention of "Needs review" with no stamp date is never a hold (the existing line-
+// prefix rule, now date-anchored): the charter's `…**Needs review …**` phrase and a quoted
+// template carry no date, so they must not hold an entry.
+test("a prose mention of Needs review with no date never holds", () => {
+  assert.equal(isNeedsReviewNoteLine("**Needs review <YYYY-MM-DD> by feature: plan defect — <objection>**"), false);
+  assert.equal(isNeedsReviewNoteLine("skip entries already carrying a **Needs review …** note"), false);
+  assert.equal(isNeedsReviewNoteLine("do not park it with a Needs review note"), false);
+  assert.equal(entryHold(entry("Plan", "do not park it with a Needs review note"), []), null);
 });
 
 test("eligibleEntries drops held entries, keeps file order, and attaches the index line ranges", () => {

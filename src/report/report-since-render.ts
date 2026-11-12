@@ -10,8 +10,7 @@
  * printed window matches the aggregated one). */
 import type { SinceReport } from "./report-types.js";
 import { compactTokens, usd } from "../text/format.js";
-import { durationLabel } from "../text/duration.js";
-import { boundedWindowLine, sinceWindowLine } from "../text/datetime.js";
+import { durationLabel, trailingWindowLine } from "../text/duration.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { foldBaseRoles } from "./report-fold.js";
 import {
@@ -49,11 +48,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
 function pushSinceWindowHeader(lines: string[], data: SinceReport): void {
   lines.push("# tumwater usage report");
   lines.push("");
-  lines.push(
-    data.untilMs !== undefined && data.toIso !== undefined
-      ? boundedWindowLine(durationLabel(data.sinceMs), durationLabel(data.untilMs), data.fromIso, data.toIso)
-      : sinceWindowLine(durationLabel(data.sinceMs), data.fromIso),
-  );
+  lines.push(trailingWindowLine(data.sinceMs, data.fromIso, data.untilMs, data.toIso));
   if (data.role !== undefined) lines.push(`role: ${data.role}`);
   lines.push("");
 }

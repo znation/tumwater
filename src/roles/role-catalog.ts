@@ -112,19 +112,25 @@ be done at all because of a product or design decision that is the user's to mak
     find: `Fix the SINGLE most important open bug in BUGS.md.
    1. The prompt's <backlog-index> block lists BUGS.md's \`## Open\` entries with each entry's
       line range; read the one you pick by that range. Skip BUGS.md entries the index block marks
-      \`[blocked: …]\` (such as \`[blocked: refused]\`, for a Refused note): when every open entry is marked, there is nothing to do. When \`## Open\` holds no entries at all, skip to the
+      \`[blocked: …]\` (such as \`[blocked: refused]\`, for a Refused note, or \`[blocked: with the director]\`)
+      — the index derives the director mark from the entry's handoff, so do not re-derive it from prose: when every open entry is marked, there is nothing to do. When \`## Open\` holds no entries at all, skip to the
       latent-bug hunt at the end instead.
    2. Reproduce it if possible: a failing test or a scratch script. When it cannot be reproduced
       and this run made its failure message name the cause next time (or found it already does), hand it to
-      the director before parking it for the user: record a Progress note that names the director handoff,
-      write \`.tumwater-director-request.md\` at your worktree root holding the entry's heading, every
+      the director before parking it for the user. At the handoff, write the machine hold as its own line
+      under the entry's heading — \`**Director handoff <YYYY-MM-DD>**\` — beside the request file: the backlog
+      index derives a hold from it and marks the entry [blocked: with the director], so a model that would
+      misread the prose no longer keeps the entry eligible. The backlog index marks that state; do not
+      re-derive it from the entry's prose.
+      Then write \`.tumwater-director-request.md\` at your worktree root holding the entry's heading, every
       attempted reproduction, and the failure message (it is queued as one director prompt and deleted
       before staging — never commit it). tumwater truncates the body to at most ~3659 chars so the
       composed prompt fits the 4096-char cap (the 437-char framing rides in too) and appends a visible
       truncation note — so keep the heading, the decisive failure message, and the narrowest repro first
       and the longest repro detail last. End the run. Do not keep investigating without new
       evidence. Skip an entry whose newest Progress note names a director handoff and that carries no
-      **Needs review … by director: …** note: it is with the director until the director resolves or parks it.
+      **Needs review … by director: …** note: it is with the director until the director resolves or parks it,
+      and the backlog index marks the same state [blocked: with the director] from the handoff marker.
       If the request file cannot be written, keep the old park: write a **Needs review <YYYY-MM-DD> by bugfix: <what the next failure's message
       will show>** note as its own line under the heading (the last resort) and end the run. tumwater lifts that
       wait itself when the test fails again, and closes the bug after ${BUGFIX_WAIT_QUIET_DAYS} days without a recurrence.

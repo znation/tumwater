@@ -58,6 +58,20 @@ test("buildResumePrompt names a quiet-kill so the session does not re-run the hu
 // progress (src/run/run-verdict.ts's quiet_killed with resumeCause "timeout"). Its bridge
 // differs from a restart's in the load-bearing way: the limit will bite again, so the resumed run
 // must budget against it rather than only verifying a cut-off tool call.
+test("buildResumePrompt names a stalled tool call (the run was still progressing)", () => {
+  const p = buildResumePrompt("bugfix", "stalled-tool");
+  assert.match(p, /"bugfix"/);
+  // The real cause is named: ONE tool call hung, while the run itself was still progressing.
+  // Unlike the quiet-kill bridge, it does not claim the whole run went silent.
+  assert.match(p, /one tool call/i);
+  assert.match(p, /still making progress/i);
+  assert.doesNotMatch(p, /made no progress/i, "the run WAS progressing — not a total silence");
+  // As with the quiet-kill bridge: the killed call must not be re-run unchanged.
+  assert.match(p, /do not re-run that call unchanged/);
+  assert.match(p, /Continue the SAME task/);
+  assert.ok(p.includes(NOTHING_TO_DO));
+});
+
 test("buildResumePrompt names a run timeout and asks for a finish that fits the limit", () => {
   const p = buildResumePrompt("coverage", "timeout");
   assert.match(p, /"coverage"/);

@@ -308,7 +308,7 @@ function buildCheckRunFields(outcome: BuildCheckOutcome): Record<string, number>
 export function buildCheckEvent(
   source: string,
   scope: BuildCheckScope | "baseline" | "rerun",
-  outcome: Pick<BuildCheckOutcome, "status" | "script" | "run" | "counts" | "install">,
+  outcome: Pick<BuildCheckOutcome, "status" | "script" | "run" | "counts" | "install" | "failingTests">,
   durationMs: number,
   /** True for a historical merge/batch run of check.mergeCommand: the event then carries `full:
    * false`. */
@@ -326,6 +326,10 @@ export function buildCheckEvent(
     // The harness's own attestation of the runner's summary (parseTestCounts), carried on
     // passed and failed outcomes when the check printed a summary block.
     ...(outcome.counts ? { counts: outcome.counts } : {}),
+    // The failing test titles (parseFailingTests) when a failure named them: the feed, the
+    // logs and the GUI read this event, so a red check names WHAT failed like its main_red_hold
+    // sibling (BUGS.md 2026-11-11: a red check that named nothing read as a bare failure).
+    ...(outcome.failingTests && outcome.failingTests.length > 0 ? { failingTests: outcome.failingTests } : {}),
     // The lockfile install the check ran first (dep-install.ts): which direct dependencies had
     // drifted, and what the install cost — priced apart from the check's own durationMs.
     ...(outcome.install

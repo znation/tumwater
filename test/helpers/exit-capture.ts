@@ -2,7 +2,7 @@
  * stderr around a call so a `fail()` branch (exit 1 + a stderr message) and a success return
  * are both assertable without killing the test process or polluting the runner's output. The
  * single home of that stub — it lived as four per-file copies (cli-args, cli-log-commands-views,
- * operator-commands, self-reload) whose shapes drifted independently. Every stub restores the
+ * cli-operator-commands, self-reload) whose shapes drifted independently. Every stub restores the
  * real globals in finally, and each saves the write function it replaces, so nests
  * (captureStdout around an attempt, or vice versa) unwind in LIFO order.
  *

@@ -29,6 +29,7 @@
  * trip costs one base hold; a missed storm costs the day. */
 import { getOrCreate } from "../collections.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import type { BackendFailureKind } from "../pi/pi-failure.js";
 
 const HOLD_STORM_ROLES = 2;
@@ -78,6 +79,12 @@ export interface HoldObservation {
    * reviewer's provider must not stop authors on a healthy one, so observations count
    * together only when both provider AND kind match. */
   provider?: string;
+  /** The provider:model pair the run ran on (the resolved config's pair; undefined when the
+   * failure cannot name one — a non-model failure, or a backend that reports no pair). A
+   * `model-load` storm whose every observation names its pair scopes the hold to those pairs
+   * (heldPairs), so the roles on another model at the same provider keep running; one
+   * pair-less observation keeps the conservative provider-wide scope. */
+  pair?: string;
   /** Which failure the run ended on — the field the storm test groups by. The
    * "subscription-window" kind is the account-level throttle beside the per-role storm: a
    * provider-wide hold `resetsAt` places regardless of how many roles have failed. */
@@ -116,6 +123,13 @@ export interface TeamHold {
   /** The distinct roles (sorted) whose failures tripped the current hold — empty while open.
    * The rate_limit_hold event's answer to "who saw it". */
   roles: string[];
+  /** A `model-load` hold's pair scope: the provider:model pairs whose failures tripped the
+   * storm, when every observation named its pair (the hold the roles on ANOTHER model at the
+   * same provider keep running through — heldPairs reads it, heldProviders skips that
+   * provider). Absent for every other kind and for a model-load storm one of whose
+   * observations could not name its pair: the failure is then not attributable to one model,
+   * so the hold keeps its conservative provider-wide scope (heldProviders still names it). */
+  pairs?: string[];
   /** Consecutive relapses behind the current (or last) hold: 0 for a fresh storm, +1 for each
    * hold that tripped within HOLD_RELAPSE_MS of the previous re-open with the same
    * kind. Doubles the base. */
@@ -147,12 +161,32 @@ export const TEAM_OPEN: TeamHold = {
  * non-null. A provider whose hold has re-opened stays in the holds map (its kind, relapse
  * count, and re-open time are the memory the next storm's relapse test needs), so key
  * presence alone must never read as "held": this is the one predicate every consumer —
- * the scheduling pass and both permit-time closures — goes through. */
+ * the scheduling pass and both permit-time closures — goes through. A standing
+ * `model-load` hold that names its pairs does NOT name its provider here: the model, not
+ * the provider, is what failed to load, and the roles on another model at the same
+ * provider keep running — they read the pair scope through heldPairs below.
+ * A model-load hold without a `pairs` list (a storm whose observations carried no pair)
+ * still names its provider, the conservative fallback. */
 export function heldProviders(
   holds: ReadonlyMap<string | undefined, TeamHold>,
 ): ReadonlySet<string | undefined> {
   const held = new Set<string | undefined>();
-  for (const [provider, hold] of holds) if (hold.until !== null) held.add(provider);
+  for (const [provider, hold] of holds)
+    if (hold.until !== null && !(hold.kind === "model-load" && hold.pairs?.length)) held.add(provider);
+  return held;
+}
+
+/** The pairs of every standing (`until` non-null) `model-load` hold that names its pairs:
+ * the pair scope of the model-load storm rule — a role whose next run uses one of these
+ * pairs starts no new run, while a role on another model at the same provider keeps
+ * running (heldProviders above skips that provider). Other kinds name no pairs: their
+ * failures say the provider, not one model, is unhealthy, and their provider-wide scope
+ * is read through heldProviders. */
+export function heldPairs(holds: ReadonlyMap<string | undefined, TeamHold>): ReadonlySet<string> {
+  const held = new Set<string>();
+  for (const hold of holds.values())
+    if (hold.until !== null && hold.kind === "model-load")
+      for (const pair of hold.pairs ?? []) held.add(pair);
   return held;
 }
 
@@ -324,6 +358,17 @@ export function teamHold(
   if (group === undefined) return reopened;
   const escalation = holdEscalation(reopened, group.provider, group.kind, now);
   const roles = sortedRoles(new Set(group.storm.map((o) => o.role)));
+  // The pair scope of a model-load storm (PLANS.md "One unavailable model pair stops only
+  // the roles on that pair", part 2/2): the hold names the pairs whose model-load failures
+  // tripped it, so the roles on another model at the same provider keep running — but ONLY
+  // when every observation in the storm carried a pair. One pair-less observation means
+  // the failure cannot be attributed to a model, and the hold keeps its conservative
+  // provider-wide scope instead (heldProviders then still names the provider). Other kinds
+  // carry no pairs at all: their failures say the provider, not one model, is unhealthy.
+  const pairs =
+    group.kind === "model-load" && group.storm.every((o) => o.pair !== undefined)
+      ? [...new Set(group.storm.map((o) => o.pair as string))].sort()
+      : undefined;
   return {
     provider: group.provider,
     until: now + holdDurationMs(escalation, group.storm, now),
@@ -331,6 +376,7 @@ export function teamHold(
     roles,
     escalation,
     reopenedAt: reopened.reopenedAt,
+    ...(pairs !== undefined ? { pairs } : {}),
   };
 }
 
@@ -346,4 +392,37 @@ export function windowHeldProviders(
   for (const [provider, hold] of holds)
     if (hold.until !== null && hold.kind === "subscription-window" && hold.reserve !== true) held.add(provider);
   return held;
+}
+
+/** The team-failure-hold half of the run-start gate, as one rule shared by the two surfaces
+ * that gate a ROLE run's start — the scheduling pass (src/scheduling/skip.ts heldFromStarting)
+ * and the launch pass (src/orchestrator/orchestrator-poll.ts startHeld). (The post-merge review
+ * drain is a separate surface: it applies no director branch and adds the model check's hold,
+ * so it keeps its own rule in src/orchestrator/orchestrator-poll.ts reviewHeldNow.) A role is
+ * held when ITS run model's provider or pair stands under the team
+ * failure hold, with the director the single exception: it honors ONLY the subscription-window
+ * hold (windowHeldProviders) — the per-run 429 retry that backs the other kinds does not answer
+ * a window rejection, so a director prompt started under a storm would fail and re-queue every
+ * poll. The director is exempt from every other kind, and every non-director role is held by its
+ * provider's storm (heldProviders) or by its pair under a model-load hold that names its pairs
+ * (heldPairs — a role on another model at the same provider keeps running). A role whose next
+ * run resolves no provider (no provider configured) passes the provider test as undefined and
+ * is held only by a scope that names nothing, i.e. it runs — matching the pre-change
+ * `heldProviders.has(undefined)` behavior exactly. The three sets are the team-hold selectors
+ * over the team's holds map (windowHeldProviders, heldProviders, heldPairs): the scheduling
+ * pass holds only the per-poll scope (not the map) and the launch pass recomputes the live set
+ * per waiter, but both read the same three selectors, so the sets mean the same thing at each
+ * call. Naming the rule once is what keeps the director-exempt + provider-storm + pair-scope
+ * logic (PLANS.md "One unavailable model pair stops only the roles on that pair", part 2/2)
+ * from drifting between the two surfaces. */
+export function heldStarts(
+  role: string,
+  provider: string | undefined,
+  pair: string | undefined,
+  windowHeld: ReadonlySet<string | undefined>,
+  held: ReadonlySet<string | undefined>,
+  pairs: ReadonlySet<string>,
+): boolean {
+  if (role === DIRECTOR_ROLE) return windowHeld.has(provider);
+  return held.has(provider) || pairs.has(pair!);
 }

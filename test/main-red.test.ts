@@ -197,7 +197,10 @@ test("mainTipVerdict reports unavailable when the named branch does not exist", 
   // dangling-ref test pins (an unresolvable ref is a caller or config bug, not a broken repo, but
   // neither may reject the verify pipeline with an exception).
   const verdict = await mainTipVerdict(root, ROLE, "no-such-branch", defaultConfig());
-  assert.deepEqual(verdict, { status: "unavailable", why: "no-such-branch is unreadable" });
+  // The branch never existed, so the why names it missing (with the repo's existing branches
+    // for the fix) rather than "unreadable" — the startup gate and doctor give the same verdict
+    // for a wrong baseBranch. This fixture repo holds one branch, main.
+    assert.deepEqual(verdict, { status: "unavailable", why: "no-such-branch does not exist (branches: main)" });
   assert.deepEqual(readEvents(root), [], "nothing ran, nothing to say");
 });
 

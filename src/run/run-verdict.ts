@@ -220,18 +220,28 @@ const EARLY_VERDICT_ARMS: readonly VerdictArm[] = [
  * A new changed verdict arm is one row here. */
 const CHANGED_VERDICT_ARMS: readonly ChangedVerdictArm[] = [failedRunArm, revisionDropArm, noChangeArm];
 
-/** The `pi.quietKilled` decision: a hung tool call keeps the session and the worktree's edits
- * so applyRunOutcome resumes them promptly (Director runs re-queue their prompt fresh). */
+/** The `pi.quietKilled || pi.stallKilled` decision: a hung tool call — or one that the
+ * per-call stall-kill stopped while the run was otherwise progressing — keeps the session and
+ * the worktree's edits, so applyRunOutcome resumes them promptly (Director runs re-queue
+ * their prompt fresh). The two kill flags are mutually exclusive, and the resume bridge must
+ * name the right cause: a total-silence kill reads as "hung-tool" (the runner's default when
+ * no cause is passed), the per-call one as "stalled-tool" — the run WAS making progress, so
+ * the bridge must not tell the resumed session its whole run went quiet. */
 function quietKillArm(ctx: RunVerdictContext): RunOutcome | undefined {
   const { pi, state: s } = ctx;
-  if (pi.quietKilled) {
+  if (pi.quietKilled || pi.stallKilled) {
     // A hung tool call, not a slow run: the session and the worktree's edits are intact.
     // Preserve both — applyRunOutcome resumes them promptly like an interruption instead of
     // leaving hours of work for the next run's reset to discard. Director runs never resume;
     // their prompt goes back to the inbox to run fresh, as on any other unfulfilled kill.
     s.lastError = pi.errorMessage ?? "killed as hung";
     ctx.pending.requeueForResume(s, ctx.userPrompt);
-    return { result: "quiet_killed" };
+    // A quiet kill with no named cause resumes with the default "hung-tool" bridge (the
+    // runner's fallback in scheduleQuietKilledOutcome); only the per-call stall-kill must
+    // name its own cause, because that run WAS making progress.
+    return pi.stallKilled
+      ? { result: "quiet_killed", resumeCause: "stalled-tool" }
+      : { result: "quiet_killed" };
   }
   return undefined;
 }

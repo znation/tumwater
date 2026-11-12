@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { snapshot } from "../src/status/status-data.js";
+import { snapshot, type StatusSnapshot } from "../src/status/status-data.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init/init.js";
 import { mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -22,42 +22,42 @@ import { writeFileDeep } from "./helpers/write-file-deep.js";
 test("pausedRolesUntil carries a timed role pause's shared deadline only while the set is non-empty", async () => {
   const repo = tmpdir();
   await initProject(repo, "paused roles until");
-  assert.equal(snapshot(repo).pausedRolesUntil, undefined);
+  assert.equal((await snapshot(repo)).pausedRolesUntil, undefined);
   pauseRole(repo, "clean");
-  assert.equal(snapshot(repo).pausedRolesUntil, undefined, "a standing role pause has no deadline");
+  assert.equal((await snapshot(repo)).pausedRolesUntil, undefined, "a standing role pause has no deadline");
   const until = Date.now() + 30 * 60_000;
   pauseRole(repo, "clean", until);
-  assert.equal(snapshot(repo).pausedRolesUntil, until);
-  assert.equal((statusPayload(repo) as { pausedRolesUntil?: number }).pausedRolesUntil, until);
+  assert.equal((await snapshot(repo)).pausedRolesUntil, until);
+  assert.equal(((await statusPayload(repo)) as { pausedRolesUntil?: number }).pausedRolesUntil, until);
   fs.writeFileSync(pausedRolesPath(repo), JSON.stringify({ roles: ["clean"], at: Date.now() - 60_000, until: Date.now() - 1 }));
-  assert.equal(snapshot(repo).pausedRolesUntil, undefined, "an expired deadline is absent");
+  assert.equal((await snapshot(repo)).pausedRolesUntil, undefined, "an expired deadline is absent");
   fs.writeFileSync(pausedRolesPath(repo), JSON.stringify({ roles: [], at: Date.now(), until }));
-  assert.equal(snapshot(repo).pausedRolesUntil, undefined, "an empty set advertises no deadline");
+  assert.equal((await snapshot(repo)).pausedRolesUntil, undefined, "an empty set advertises no deadline");
 });
 
 test("pausedUntil carries only a standing team timed-pause deadline", async () => {
   const repo = tmpdir();
   await initProject(repo, "paused until");
-  assert.equal(snapshot(repo).pausedUntil, undefined, "no marker: absent");
+  assert.equal((await snapshot(repo)).pausedUntil, undefined, "no marker: absent");
 
   pauseTeam(repo);
-  assert.equal(snapshot(repo).pausedUntil, undefined, "an indefinite team pause exposes no deadline");
-  assert.equal((statusPayload(repo) as { pausedUntil?: number }).pausedUntil, undefined);
+  assert.equal((await snapshot(repo)).pausedUntil, undefined, "an indefinite team pause exposes no deadline");
+  assert.equal(((await statusPayload(repo)) as { pausedUntil?: number }).pausedUntil, undefined);
 
   const until = Date.now() + 30 * 60_000;
   pauseTeam(repo, until);
-  assert.equal(snapshot(repo).pausedUntil, until);
-  assert.equal((statusPayload(repo) as { pausedUntil?: number }).pausedUntil, until);
+  assert.equal((await snapshot(repo)).pausedUntil, until);
+  assert.equal(((await statusPayload(repo)) as { pausedUntil?: number }).pausedUntil, until);
 
   // Role-only timed pauses are not team pauses: the team-scoped field stays absent.
   pauseRole(repo, "clean", until);
-  assert.equal(snapshot(repo).pausedUntil, until, "the team marker still stands beside a role pause");
+  assert.equal((await snapshot(repo)).pausedUntil, until, "the team marker still stands beside a role pause");
 
   fs.writeFileSync(pausedPath(repo), JSON.stringify({ at: Date.now() - 60_000, until: Date.now() - 30_000 }));
-  assert.equal(snapshot(repo).pausedUntil, undefined, "an expired deadline reads as unpaused");
+  assert.equal((await snapshot(repo)).pausedUntil, undefined, "an expired deadline reads as unpaused");
   // JSON.stringify drops the undefined field, so `status --json` carries it only while a
   // timed team pause stands.
-  assert.ok(!("pausedUntil" in JSON.parse(JSON.stringify(statusPayload(repo)))));
+  assert.ok(!("pausedUntil" in JSON.parse(JSON.stringify(await statusPayload(repo)))));
 });
 
 // --- pauseReason: the standing team pause's operator reason (`pause --reason <text>`) ---
@@ -65,34 +65,34 @@ test("pausedUntil carries only a standing team timed-pause deadline", async () =
 test("pauseReason carries only a standing team pause's operator reason", async () => {
   const repo = tmpdir();
   await initProject(repo, "pause reason");
-  assert.equal(snapshot(repo).pauseReason, undefined, "no marker: absent");
+  assert.equal((await snapshot(repo)).pauseReason, undefined, "no marker: absent");
 
   pauseTeam(repo);
-  assert.equal(snapshot(repo).pauseReason, undefined, "an anonymous pause exposes no reason");
-  assert.ok(!("pauseReason" in JSON.parse(JSON.stringify(statusPayload(repo)))), "the payload omits the key entirely");
+  assert.equal((await snapshot(repo)).pauseReason, undefined, "an anonymous pause exposes no reason");
+  assert.ok(!("pauseReason" in JSON.parse(JSON.stringify(await statusPayload(repo)))), "the payload omits the key entirely");
 
   // A reason applies only on a fresh pause write: resume the anonymous pause first.
   resumeTeam(repo);
   pauseTeam(repo, undefined, "deploying to prod");
-  assert.equal(snapshot(repo).pauseReason, "deploying to prod");
-  assert.equal((statusPayload(repo) as { pauseReason?: string }).pauseReason, "deploying to prod");
+  assert.equal((await snapshot(repo)).pauseReason, "deploying to prod");
+  assert.equal(((await statusPayload(repo)) as { pauseReason?: string }).pauseReason, "deploying to prod");
 
   // A role-only pause is not a team pause: no team marker, no team reason.
   fs.rmSync(pausedPath(repo));
   pauseRole(repo, "clean");
-  assert.equal(snapshot(repo).pauseReason, undefined);
+  assert.equal((await snapshot(repo)).pauseReason, undefined);
 
   // An expired marker reads as unpaused — the reason cannot outlive its pause.
   fs.writeFileSync(pausedPath(repo), JSON.stringify({ at: Date.now() - 60_000, until: Date.now() - 30_000, reason: "stale why" }));
-  assert.equal(snapshot(repo).pauseReason, undefined, "an expired pause's reason is absent");
+  assert.equal((await snapshot(repo)).pauseReason, undefined, "an expired pause's reason is absent");
 });
 
-test("snapshot carries mainCheck from the newest merge-scope build_check event", () => {
+test("snapshot carries mainCheck from the newest merge-scope build_check event", async () => {
   const repo = makeRepo();
   // Absent before any merge-scope check has run (and with no events at all) — the JSON
   // payload omits the key entirely (no null placeholder, matching pausedUntil's idiom).
-  assert.equal(snapshot(repo).mainCheck, undefined);
-  assert.equal("mainCheck" in (statusPayload(repo) as object), false);
+  assert.equal((await snapshot(repo)).mainCheck, undefined);
+  assert.equal("mainCheck" in ((await statusPayload(repo)) as object), false);
 
   const base = 1_700_000_000_000;
   // A merge check + the merged event after it: the check ran pre-merge, so the sha it
@@ -111,7 +111,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
     },
     { ts: base + 2000, loop: "lander", type: "merge_done", commit: "a".repeat(40) }, // retired-name-ok: legacy event field in a fixture
   ]);
-  const mergeDone = snapshot(repo).mainCheck;
+  const mergeDone = (await snapshot(repo)).mainCheck;
   assert.ok(mergeDone, "mainCheck present after a merge check");
   assert.equal(mergeDone!.sha, "a".repeat(40));
   assert.equal(mergeDone!.status, "passed");
@@ -119,7 +119,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   assert.equal(mergeDone!.at, base + 1000);
   // The JSON payload carries the raw block plus its preformatted badge (GUI parity with the
   // TUI header — the badge is built once in status-model, both surfaces render it).
-  const payload = statusPayload(repo) as { mainCheck: unknown; mainCheckBadge: string; mainCounts: string };
+  const payload = (await statusPayload(repo)) as { mainCheck: unknown; mainCheckBadge: string; mainCounts: string };
   assert.deepEqual(payload.mainCheck, mergeDone);
   assert.match(payload.mainCheckBadge, / · full check green at a{8}, .* ago · (next in|due now)/, "the badge carries the covered sha, the verdict age and the due");
   // The sidebar's counts fragment ships preformatted too (badges.ts's mainCountsFragment) —
@@ -136,7 +136,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
     { ts: base + 5000, loop: "bugfix", type: "build_check", scope: "baseline", status: "failed" }, // retired-name-ok: legacy event field in a fixture
     { ts: base + 6000, loop: "lander", type: "merge_done", commit: "d".repeat(40) }, // retired-name-ok: legacy event field in a fixture
   ]);
-  const baseline = snapshot(repo).mainCheck;
+  const baseline = (await snapshot(repo)).mainCheck;
   assert.ok(baseline, "mainCheck present after a baseline check");
   assert.equal(baseline!.sha, coveredHead, "the older full verdict still names the head it ran on, not the later merge");
   assert.equal(baseline!.status, "failed");
@@ -158,7 +158,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
       reason: "quiet run filler",
     })),
   ]);
-  const deep = snapshot(busy).mainCheck;
+  const deep = (await snapshot(busy)).mainCheck;
   assert.ok(deep, "mainCheck survives a tail deeper than the default 200");
   assert.equal(deep!.sha, "b".repeat(40));
   assert.equal(deep!.status, "passed");
@@ -176,21 +176,21 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
       reason: "over-cap filler",
     })),
   ]);
-  assert.equal(snapshot(capped).mainCheck, undefined, "past the scan cap the badge drops");
+  assert.equal((await snapshot(capped)).mainCheck, undefined, "past the scan cap the badge drops");
 });
 
 // The event log is loose-typed by design: a merge-scope check whose status is not one of the
 // three MainCheckStatus values (a hand-edited or future-format block) is malformed and reads
 // as no check — never a narrowed status that would leak a mystery word to the header badge
 // and GUI payload (mainCheckVerdict renders an unmatched status verbatim).
-test("a merge-scope check with a foreign status reads as no mainCheck", () => {
+test("a merge-scope check with a foreign status reads as no mainCheck", async () => {
   const repo = makeRepo();
   const base = Date.now();
   writeEvents(repo, [
     { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "running" }, // retired-name-ok: legacy event field in a fixture
   ]);
-  assert.equal(snapshot(repo).mainCheck, undefined, "a malformed status is dropped, not narrowed");
-  const payload = statusPayload(repo) as { mainCheckBadge: string };
+  assert.equal((await snapshot(repo)).mainCheck, undefined, "a malformed status is dropped, not narrowed");
+  const payload = (await statusPayload(repo)) as { mainCheckBadge: string };
   assert.equal(payload.mainCheckBadge, "", "no badge for a malformed check");
 });
 
@@ -201,10 +201,10 @@ test("snapshot carries the running orchestrator's published disk state", async (
   await initProject(repo, "published disk test");
   const disk = { freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true };
   writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: Date.now(), roles: [], disk });
-  assert.deepEqual(snapshot(repo).disk, disk);
+  assert.deepEqual((await snapshot(repo)).disk, disk);
   writeJsonFile(orchestratorStatePath(repo), { pid: 2_000_000_000, startedAt: Date.now(), roles: [], disk });
-  assert.equal(snapshot(repo).running, false, "a dead pid is not a running orchestrator");
-  assert.equal(snapshot(repo).disk, undefined);
+  assert.equal((await snapshot(repo)).running, false, "a dead pid is not a running orchestrator");
+  assert.equal((await snapshot(repo)).disk, undefined);
 });
 
 // The standing provider-failure hold rides the info file like disk: only while a live
@@ -214,14 +214,14 @@ test("snapshot carries the running orchestrator's published providerHolds", asyn
   await initProject(repo, "published provider holds test");
   const providerHolds = [{ provider: "deepinfra", until: Date.now() + 120_000, kind: "rate-limit" }];
   writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: Date.now(), roles: [], providerHolds });
-  assert.deepEqual(snapshot(repo).providerHolds, providerHolds);
+  assert.deepEqual((await snapshot(repo)).providerHolds, providerHolds);
   // An empty list is the same as none: absent from the snapshot.
   writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: Date.now(), roles: [], providerHolds: [] });
-  assert.equal(snapshot(repo).providerHolds, undefined);
+  assert.equal((await snapshot(repo)).providerHolds, undefined);
   // A stale block beside a dead pid speaks for no team.
   writeJsonFile(orchestratorStatePath(repo), { pid: 2_000_000_000, startedAt: Date.now(), roles: [], providerHolds });
-  assert.equal(snapshot(repo).running, false, "a dead pid is not a running orchestrator");
-  assert.equal(snapshot(repo).providerHolds, undefined);
+  assert.equal((await snapshot(repo)).running, false, "a dead pid is not a running orchestrator");
+  assert.equal((await snapshot(repo)).providerHolds, undefined);
 });
 
 // The orchestrator info file's nested fields sit behind a hand-editable boundary: a foreign
@@ -245,10 +245,13 @@ test("snapshot tolerates a foreign fallbackDemotions shape in orchestrator.json"
     roles: [],
     fallbackDemotions: "oops",
   });
-  let snap: ReturnType<typeof snapshot> | undefined;
-  assert.doesNotThrow(() => {
-    snap = snapshot(repo, modelsFile);
-  }, "a foreign fallbackDemotions must not crash the poll");
+  let snap: StatusSnapshot | undefined;
+  try {
+    snap = await snapshot(repo, modelsFile);
+  }
+  catch (err) {
+    assert.fail(`a foreign fallbackDemotions must not crash the poll, but it threw: ${err}`);
+  }
   assert.equal(snap!.running, true, "the running orchestrator still reads as running");
 });
 
@@ -259,10 +262,10 @@ test("pausedRunners holds the role ids the scheduler treats as paused by the mar
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 2 };
   saveConfig(repo, config);
   writeFileDeep(pausedRolesPath(repo), JSON.stringify({ roles: ["feature"], at: Date.now() }));
-  const whole = snapshot(repo).pausedRunners;
+  const whole = (await snapshot(repo)).pausedRunners;
   assert.ok(whole.includes("feature") && whole.includes("feature-2"), "a whole-role pause holds every instance");
   fs.writeFileSync(pausedRolesPath(repo), JSON.stringify({ roles: ["feature-1"], at: Date.now() }));
-  const snap = snapshot(repo);
+  const snap = await snapshot(repo);
   assert.deepEqual(snap.pausedRoles, ["feature-1"]);
   assert.deepEqual(snap.pausedRunners, ["feature"]);
 });

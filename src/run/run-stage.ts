@@ -17,7 +17,6 @@ import {
 } from "../git/commit-message.js";
 import type { StagedDescription } from "../prompt/gate-prompts.js";
 import { logEventBestEffort } from "../events/events.js";
-import { queuedMerges } from "../merge/merge-queue.js";
 import type { PriorReview } from "../merge/merge-queue.js";
 import type { MergeClaim } from "../merge/merge-withdrawn.js";
 import { hasUnmergedPin } from "../runner/runner-leftover.js";
@@ -464,17 +463,17 @@ async function pinAndEnqueueChange(
 ): Promise<{ heldOnBranch: boolean } | RunOutcome> {
   const s = ctx.state;
   // Interlock relief (plans/interlock-relief.md "The decision"): a role the scheduler admitted
-  // while it already has a queued change (parts 3/4) or an unmerged pin holds its new commit on
-  // the branch instead of queueing it — the queue's one-entry-per-role cap must hold, and a
-  // second pin would share (and fight over) the same merge ref. Pin nothing, enqueue nothing,
+  // while it already has a waiting change holds its new commit on the branch instead of
+  // queueing it — the queue's one-entry-per-role cap must hold, and a second pin would share
+  // (and fight over) the same merge ref. The waiting state IS the unmerged pin (part 3e/7
+  // writes no queue file), so the check reads the pin, not the queue directory: a legacy queue
+  // file an older build left is not the live signal. Pin nothing, enqueue nothing,
   // leave the commit on the branch. The run still ends `queued` — its span, streaks, and the
   // _run_end_ event all behave like any queued run's — but marks `heldOnBranch` so its run_end
   // never joins the earlier change's queued-row verdict (history-queued.ts's resolveQueuedResult
   // returns null on the flag). The commit message, flow/filed records, and friction are
   // unchanged; only the pin/enqueue block is skipped.
-  const heldOnBranch =
-    queuedMerges(ctx.root).some((e) => e.role === ctx.role) ||
-    (await hasUnmergedPin(ctx.root, ctx.role));
+  const heldOnBranch = (await hasUnmergedPin(ctx.root, ctx.role));
 
   if (!heldOnBranch) {
     // Pin the commit by its merge ref BEFORE freeing the worktree (invariant 4): the pin is the

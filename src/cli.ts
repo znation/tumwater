@@ -61,8 +61,8 @@ import { typoSuffix } from "./text/suggest.js";
 import { HELP, HELP_GREP_VALUE_ERROR, helpTopic, helpTopicForArgs, searchHelp, suggestCommand } from "./cli/help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
 
-// The CLI's help text and its per-command topic parser live in help.ts — importing cli.ts
-// would run main(), so tests pin the topics against help.ts directly.
+// The CLI's help text lives in help-text.ts and its per-command topic parser in help.ts —
+// importing cli.ts would run main(), so tests pin the topics against help.ts directly.
 
 /** One run's trail, shared by `history <role> <n>` and its hidden alias `tick` so the two cannot
  * drift. Positional-first: the <role> <n> tokens peel off and the remaining flags go through
@@ -393,14 +393,14 @@ async function cmdRetireCase(root: string, args: string[]): Promise<void> {
   // marker commands' gate shape: unknown-args rejection, then the ready-repo gate.
   rejectUnknownArgs("retire", args, [ROLE_FLAG, FORCE_FLAG, DRY_RUN_FLAG, JSON_FLAG]);
   await requireReadyRepo(root);
-  await (await import("./operator/operator-commands.js")).cmdRetire(root, args);
+  await (await import("./cli/cli-operator-commands.js")).cmdRetire(root, args);
 }
 
 async function cmdRevertCase(root: string, args: string[]): Promise<void> {
   // Acts immediately on the primary checkout under the primary-worktree lock; the
   // positionals (a sha, or a run) are validated inside cmdRevert.
   await requireReadyRepo(root);
-  await (await import("./operator/operator-commands.js")).cmdRevert(root, args);
+  await (await import("./cli/cli-operator-commands.js")).cmdRevert(root, args);
 }
 
 async function cmdStopCase(root: string, args: string[]): Promise<void> {
@@ -409,7 +409,7 @@ async function cmdStopCase(root: string, args: string[]): Promise<void> {
   // mistake and fails before a signal is ever sent.
   rejectUnknownArgs("stop", args, [STOP_IN_FLAG, STOP_CANCEL_FLAG, JSON_FLAG]);
   await requireReadyRepo(root);
-  await (await import("./operator/operator-commands.js")).cmdStop(root, args);
+  await (await import("./cli/cli-operator-commands.js")).cmdStop(root, args);
 }
 
 
@@ -482,7 +482,7 @@ const versionCaseRow: CommandHandler = (_root, _command, args) => cmdVersionCase
 const helpCaseRow: CommandHandler = (_root, _command, args) => cmdHelpCase(args);
 
 // The seven marker tokens share one guard+dispatch shape — unknown-args rejection against
-// the command's flag set, the ready-repo gate, then the operator-commands core — so this
+// the command's flag set, the ready-repo gate, then the cli-operator-commands core — so this
 // arrow holds it once instead of seven copies drifting. The table's marker keys are exactly
 // MarkerCommand's members, so the cast below is safe.
 const markerCommandCase: CommandHandler = async (root, command, args) => {
@@ -495,7 +495,7 @@ const markerCommandCase: CommandHandler = async (root, command, args) => {
 
 // The dispatch itself: one row per token main routes, in the order the switch listed them
 // before it became this table. Aliases are repeated keys; the marker tokens share one arrow.
-// A new command adds its row here and its usage stanza in help.ts.
+// A new command adds its row here and its usage stanza in help-text.ts.
 const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
   init: async (root, _command, args) => {
     // Imported lazily: cli/cli-start.ts pulls the whole team-booting subgraph (orchestrator,
@@ -574,7 +574,7 @@ const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
 /** The CLI's entry point: the shared prelude (Node-floor gate, the `--help` topic answer,
  * repo-root resolution) and then the COMMAND_HANDLERS table, which is the dispatch — one row
  * per token, aliases as repeated keys, the marker tokens sharing one arrow. A new command
- * adds its row to the table here and its usage stanza in help.ts. */
+ * adds its row to the table here and its usage stanza in help-text.ts. */
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
   // A reader that closes the pipe a command writes into — `status | head -1`, a follow view

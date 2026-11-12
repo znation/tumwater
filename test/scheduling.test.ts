@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
 import { DEFER_MAX_MS, deferRun, deferRunReason, fairOrder, isEligible, workMerged } from "../src/scheduling/scheduling.js";
+import { deliverablePromptStamps } from "../src/inbox/inbox.js";
 import { configForRole, scheduleConfigForRole } from "../src/config/config-views.js";
 import { applyRunOutcome } from "../src/run/run-apply.js";
 import { OBSERVER_ROLES, ROLES } from "../src/roles/roles.js";
@@ -9,7 +11,10 @@ import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { clearBackoff } from "../src/scheduling/backoff.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
-import { makeRepo } from "./fixtures/repo-fixtures.js";
+import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
+import { ensureParentDir, writeTextAtomic } from "../src/files/files.js";
+import { roleInboxDir } from "../src/paths.js";
+import { queueFileName } from "../src/files/file-queue.js";
 
 /** Unit tests for the pure run-scheduling policy in src/scheduling/scheduling.ts — eligibility,
  * fair
@@ -116,6 +121,7 @@ test("yield scaling: a wake and a queued prompt bypass the stretch; observers sc
   q.state.recentOutcomes = "n".repeat(20);
   assert.equal(isEligible(q, now, "abc", 0).run, false, "qa's stretched clock holds");
 });
+
 
 test("yield scaling never applies to feature, plan, or the director", () => {
   const now = Date.now();
@@ -347,6 +353,46 @@ test("the director ignores the min gap and backoff: queued prompts run back to b
   r.state.nextRunAt = now + 3600_000; // Even a (stale) backoff must not block prompts.
   assert.equal(isEligible(r, now, "abc", 1).run, true);
   assert.equal(isEligible(r, now, "abc", 0).run, false);
+});
+
+test("a director whose inbox holds only its own self-requeue is due on the min clock, not back to back", () => {
+  // Regression for the 2 s hot loop (BUGS.md): a recovery run re-queues its unfulfillable user
+  // prompt at the end of the run (requeueUnfulfilled), which sets inboxCount to 1. Left ungated,
+  // the inbox arm then fires on the next ~2 s poll and the run re-queues again — a persistent
+  // 2 s cycle. The discriminator (skipRunner) is the enqueue stamp: a prompt the director re-
+  // queued for itself was written at or before the run that just ended, so its file stamp is at
+  // or before lastRunEndedAt; a prompt an operator submitted since is stamped after it.
+  const r = runner("director");
+  const inboxRoot = tmpdir("tw-discriminator-");
+  const inboxDir = roleInboxDir(inboxRoot, "director");
+  {
+    const runEnd = Date.now();
+    // The self-requeued prompt is written mid-run, so its stamp precedes the run end. A control
+    // stamp gives a deterministic gap to the run end (wall-clock enqueue can land on the same
+    // millisecond, which would blur the very discriminator this regression guards).
+    ensureParentDir(path.join(inboxDir, "f"));
+    writeTextAtomic(path.join(inboxDir, queueFileName(runEnd - 1000, 0, ".md")), "unfulfillable request");
+    // The real discriminator skipRunner computes: every deliverable prompt stamped at or before
+    // lastRunEndedAt means the inbox is all self-requeue, not fresh demand.
+    r.state.lastRunEndedAt = runEnd;
+    const stamps = deliverablePromptStamps(inboxRoot, "director", Date.now());
+    const selfRequeued = stamps.every((stamp) => stamp <= runEnd);
+    assert.equal(selfRequeued, true, "a prompt re-queued mid-run stamps at or before the run end");
+    // A `queued` (recovery) run schedules the min-interval clock (director = 20 s).
+    r.state.nextRunAt = runEnd + 20_000;
+    const now = runEnd + 1_000; // the next poll, well before the min clock
+    // Before the fix this returned { run: true, reason: "inbox" } — the eager re-fire.
+    assert.deepEqual(isEligible(r, now, "abc", 1, { inboxSelfRequeued: selfRequeued }), { run: false });
+    // Once the min-interval clock turns, the pending prompt is finally attempted again.
+    assert.deepEqual(isEligible(r, runEnd + 21_000, "abc", 1, { inboxSelfRequeued: selfRequeued }), { run: true, reason: "inbox" });
+    // A fresh operator request stamped after the run end must still run immediately — the fix
+    // only cools the self-requeue, never real demand.
+    writeTextAtomic(path.join(inboxDir, queueFileName(runEnd + 5000, 1, ".md")), "a fresh operator request");
+    const laterStamps = deliverablePromptStamps(inboxRoot, "director", runEnd + 60_000);
+    const stillSelfRequeued = laterStamps.every((stamp) => stamp <= runEnd);
+    assert.equal(stillSelfRequeued, false, "a prompt submitted after the run reads as fresh");
+    assert.deepEqual(isEligible(r, runEnd + 1_000, "abc", 2, { inboxSelfRequeued: stillSelfRequeued }), { run: true, reason: "inbox" });
+  }
 });
 
 test("fairOrder puts the director first even when it ran most recently", () => {

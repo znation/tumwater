@@ -24,7 +24,7 @@ import { git } from "../git/git-run.js";
 
 /** `tumwater retire --role <id>`: remove a disabled role's persistent worktree and branch, plus the
  * per-role merge ref and paused-state marker that outlive it. The safety rails and the `--force`
- * override live here, so the CLI layer (operator/operator-commands.ts) stays a thin renderer. */
+ * override live here, so the CLI layer (cli-operator-commands.ts) stays a thin renderer. */
 
 /** The role's merge pin, falling back to the legacy-named one a not-yet-migrated repo holds. */
 async function mergeRefSha(root: string, role: string): Promise<string | null> {

@@ -89,6 +89,8 @@ interface TuiMode {
   images?: number;
   retireMode?: boolean;
   releaseMode?: boolean;
+  salvageMode?: boolean;
+  salvageDropMode?: boolean;
   roleEnabledMode?: boolean;
   quietMode?: boolean;
   quietTeam?: boolean;
@@ -146,6 +148,7 @@ function modeKeyHints(mode: TuiMode): Array<[string, string]> | undefined {
     [mode.retireMode, [["Enter", "retire role"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
     [mode.releaseMode, [["Enter", "release test"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
     [mode.roleEnabledMode, [["Enter", "enable/disable role"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.salvageMode, [["Enter", mode.salvageDropMode ? "drop patch" : "apply patch"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
     [mode.budget, [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
     [mode.concurrencyMode, [["Enter", "save the run cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
     [mode.checksMode, [["Enter", "save the check cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
@@ -229,7 +232,7 @@ function pendingKeyHints(): Array<[string, string]> {
 
 /** The health pane's keys: the checks, install, and backlog maintenance actions. */
 function healthKeyHints(view: Extract<TuiView, { kind: "health" }>): Array<[string, string]> {
-  return [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+O", view.problems ? "problems only" : "all checks"], ["Ctrl+R", "re-run checks"], ["Ctrl+A", "commit backlog"], ["Ctrl+U", "re-sync install"], ["Ctrl+E", "reclaim disk"], ["Ctrl+N", "test notify"], ["Ctrl+K", "kill orphans"], ["Ctrl+S", "drop broken pins"], ["Ctrl+X", "retire role"], ["Ctrl+L", "retire leftovers"], ["Ctrl+B", "archive backlog"], ["Ctrl+V", "enable/disable role"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  return [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+O", view.problems ? "problems only" : "all checks"], ["Ctrl+R", "re-run checks"], ["Ctrl+A", "commit backlog"], ["Ctrl+U", "re-sync install"], ["Ctrl+E", "reclaim disk"], ["Ctrl+N", "test notify"], ["Ctrl+K", "kill orphans"], ["Ctrl+S", "drop broken pins"], ["Ctrl+X", "retire role"], ["Ctrl+L", "retire leftovers"], ["Ctrl+B", "archive backlog"], ["Ctrl+V", "enable/disable role"], ["Ctrl+G", "apply patch"], ["Ctrl+Y", "drop patch"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
 }
 
 /** The brief pane's keys: the send affordance and the brief editor. */
@@ -292,6 +295,7 @@ function editorPromptPrefix(mode: TuiMode): StatusSpan[] | undefined {
     [mode.retireMode, labeledPrefix("retire")],
     [mode.releaseMode, labeledPrefix("release")],
     [mode.roleEnabledMode, labeledPrefix("role state")],
+    [mode.salvageMode, labeledPrefix(mode.salvageDropMode ? "drop salvaged patch" : "apply salvaged patch")],
     [mode.notesEditFor, labeledPrefix(`notes for ${mode.notesEditFor}`)],
     [entry, entry ? labeledPrefix(entry.position === null ? `new ${entry.kind}` : `edit ${entry.kind} #${entry.position}`) : []],
     [answer, answer ? labeledPrefix(`answer #${answer.position}`) : []],

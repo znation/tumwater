@@ -98,6 +98,10 @@ export interface LeftoverContext {
   /** The role's outstanding hand-back (RunnerState.conflictHandback): when one exists, a pin at
    * the cap means this lineage already used its one hand-back, so it is discarded. */
   conflictHandback?: RunnerState["conflictHandback"];
+  /** The queued entry this run's slot handed its slot state (RunnerState.queuedSummary): a pin
+   * whose sha is already queued reads as `already_queued` rather than `pinned` (the live-pin
+   * read below). */
+  queuedSummary?: RunnerState["queuedSummary"];
 }
 
 /** What recovery did with a leftover, for the run to end on:
@@ -122,7 +126,7 @@ export interface LeftoverContext {
  *   lineage has not been handed back yet — the ref stays, and the run re-applies the diff over
  *   current main with the markers in place so the author resolves them; the run logs a
  *   `conflict_handback` `queued` event. */
-type LeftoverRecovery =
+export type LeftoverRecovery =
   | { kind: "pinned"; entry: MergeEntry }
   | { kind: "already_queued"; entry: MergeEntry }
   | { kind: "relief_wait"; entry: MergeEntry }
@@ -160,7 +164,12 @@ export async function hasUnmergedPin(root: string, role: string): Promise<boolea
  * propagate. */
 export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRecovery | null> {
   // One merge ref per role, so at most one outstanding merge per role: a second entry beside
-  // one the slot has yet to finish would share — and fight over — the same ref.
+  // one the slot has yet to finish would share — and fight over — the same ref. This arm reads
+  // the queue directory, not the live pin: a role with a KEPT pin is the `pinned` arm's case
+  // (recover its unmerged work), so a pin read here would collapse `pinned` into `already_queued`
+  // and strand the pin. The `queued` arm and the `pinned` arm are mutually exclusive by
+  // construction — one is a queue file, the other a pin — and the shared pin-view reader
+  // (readMergePins) serves the observer surfaces, not this arm.
   const queued = queuedMerges(ctx.root).find((e) => e.role === ctx.role);
   if (queued) {
     // A role with a queued entry whose branch is still ahead of main holds a second commit
@@ -224,8 +233,14 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
   // The pin is the waiting state: recovery re-pins the recovered commit (or adopts the unpinned
   // tip into the pin, above) and writes no queue file — part 3e/7 made a fresh run's pin its
   // waiting state, and this recovery follows suit. `merge_queued` is logged exactly once, for
-  // the drain to merge; the role holds its one merge ref until the slot merges the pin.
-  logEventBestEffort(ctx.root, { source: ctx.role, type: "merge_queued", commit: sha, summary: entry.summary });
+  // the drain to merge; the role holds its one merge ref until the slot merges the pin. A
+  // recovery that re-pins the SAME sha the previous cycle already logged is the waiting state,
+  // not a new enqueue — the pin's continued existence is why it re-runs — so it logs nothing;
+  // otherwise the event log accumulates one identical `merge_queued` per recovery cycle
+  // (BUGS.md duplicate merge_queued spam).
+  if (ctx.queuedSummary?.sha !== sha) {
+    logEventBestEffort(ctx.root, { source: ctx.role, type: "merge_queued", commit: sha, summary: entry.summary });
+  }
   return { kind: "pinned", entry };
 }
 
@@ -254,6 +269,11 @@ export async function setAsideWithdrawnWork(
   };
   const pinRef = mergeRefName(ctx.role);
   const pin = await refSha(ctx.root, pinRef);
+  // Queue-file read, deliberately not a pin read: `!queued` here gates the keep-pin backup below,
+  // so a pin read (which is `pin !== null`) would collapse the condition to a dead `pin !== null
+  // && pin === null` and never back up an unmerged pin. No production queue-file writer exists
+  // since part 1c, so this serves only legacy queue files; it goes with the queue module in
+  // part 5/5.
   const queued = queuedMerges(ctx.root).some((e) => e.role === ctx.role);
   if (pin !== null && !queued && !(await isMergedInto(ctx.root, pin, ctx.mainBranch))) {
     await keep(pin);

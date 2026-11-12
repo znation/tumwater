@@ -1,5 +1,5 @@
 /** The main watch on each new head of main: one check per head, covering every commit since the
- * last; a doc-only head inheriting green; a held team starting none; an unreadable main warning
+ * last; a doc-only head inheriting green; a held team starting none; a deleted main warning
  * once; and the culprit a red tip names (itself, with its merging runner and failing tests) and
  * the heal prompt it queues for ci. Confirming a red, main's known failures and quarantine live
  * in main-watch-failures.test.ts, red spells in main-watch-spells.test.ts, and the diff rules on
@@ -92,26 +92,25 @@ test("a held team starts no watch run", async () => {
   assert.equal(runsOf(counter), 0);
 });
 
-test("a main whose branch is unreadable warns once through the poll catch and is not retried until the head moves", async () => {
+test("a main whose branch is deleted warns once through the poll catch and is not retried until the head moves", async () => {
   const { root } = baselineFixture("improve", "echo ok");
   const head = headSha(root); // capture before the ref is gone: HEAD no longer resolves once deleted
   const watch = createMainWatch(root, "main");
   // Knock out the branch ref the watch resolves its tip from, so branchHead("main") is null and
   // withMainTipWorktree rejects — the one path that records no verdict and warns per head.
+  // The fixture's `tumwater/improve` worktree branch still exists, so the reason names main
+  // missing (with the existing branch for the fix) rather than unreadable.
   sh(root, "git", "update-ref", "-d", "refs/heads/main");
   watch.poll(head, false, defaultConfig());
   await watch.idle();
   const warnings = warningMessages(root);
-  assert.ok(
-    warnings.some((m) => m.includes("main watch could not check main") && m.includes("main is unreadable")),
-    warnings.join("|"),
-  );
+  assert.ok(warnings.some((m) => m.includes("main watch could not check main") && m.includes("main does not exist (branches: tumwater/improve)")), warnings.join("|"));
   assert.equal(
     warnings.filter((m) => m.includes("main watch could not check main")).length,
     1,
     "the rules pass and the full pass warn once for the same head",
   );
-  assert.equal(eventsOfType(root, "main_check").length, 0, "an unreadable main records no verdict");
+  assert.equal(eventsOfType(root, "main_check").length, 0, "a main whose branch is gone records no verdict");
 });
 
 // The red tip's own attribution ("Every commit is verified on main, part 2/3"): the watch checks

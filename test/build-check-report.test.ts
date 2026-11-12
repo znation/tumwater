@@ -307,6 +307,46 @@ test("parseFailingTests lists each failed title once, durations stripped, in out
   assert.equal(parseFailingTests(many).length, 50);
 });
 
+test("parseFailingTests names Python unittest and pytest failures, and ignores the runner summary", () => {
+  // unittest: per-test `ERROR:`/`FAIL:` lines, deduped across the tree and the ==== section;
+  // the `FAILED (failures=N, errors=M)` summary is not a test and must not be named.
+  const unittest = [
+    "FAIL: test_y (m)",
+    "ERROR: test_x (m.C.test_x)",
+    "==",
+    "FAIL: test_y (m)",
+    "ERROR: test_x (m.C.test_x)",
+    "FAILED (failures=1, errors=1)",
+  ].join("\n");
+  assert.deepEqual(parseFailingTests(unittest), ["test_y (m)", "test_x (m.C.test_x)"]);
+  // The entry's exact repro: one ERROR line plus the run summary.
+  assert.deepEqual(parseFailingTests("ERROR: test_x (m.C.test_x)\nFAILED (errors=1)"), [
+    "test_x (m.C.test_x)",
+  ]);
+  // The summary alone names no test.
+  assert.deepEqual(parseFailingTests("FAILED (errors=1)"), []);
+  // unittest's own count line (`ERROR: 1 test`) is a count, not a test: it must not be named,
+  // and it must not displace or shadow a real per-test name that coexists with it.
+  assert.deepEqual(parseFailingTests("ERROR: 1 test\nFAILED (errors=1)"), []);
+  assert.deepEqual(parseFailingTests("ERROR: test_x (m.C.test_x)\nERROR: 1 test\nFAILED (errors=1)"), [
+    "test_x (m.C.test_x)",
+  ]);
+  // pytest: the short-test-summary lines carry the nodeid (plus reason); the count line does not.
+  const pytest = [
+    "= short test summary info =",
+    "FAILED testfile.py::test_name - AssertionError",
+    "= 1 failed, 1 passed in 1.0s =",
+  ].join("\n");
+  assert.deepEqual(parseFailingTests(pytest), ["testfile.py::test_name - AssertionError"]);
+});
+test("parseFailingTests keeps a node:test run on node parsing when it also logs a Python-shaped line", () => {
+  // A failing node:test run always prints a ✖ failure line; a Python run never does. So the
+  // presence of a ✖ line tells the runner is node:test, and an `ERROR:` line the test logged
+  // must not be read as a Python failing test (a phantom name the gate would attribute wrongly).
+  const output = ["✖ the check (2ms)", "ERROR: some logged line", "✖ failing tests:"].join("\n");
+  assert.deepEqual(parseFailingTests(output), ["the check"]);
+});
+
 test("clipBuildTail drops node:internal frames but keeps project and other built-in frames", () => {
   const output = [
     "AssertionError [ERR_ASSERTION]: boom",

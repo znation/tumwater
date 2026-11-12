@@ -4,20 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledEntries, checkStrandedPlans, checkValidationGaps, fixClaimProblems, planDependencyProblem } from "../src/doctor/doctor-backlog-plans.js";
 import { checkHeldBugs, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, failureMentions, quotedTestName } from "../src/doctor/doctor-backlog-bugs.js";
-import { checkMergeQueueFiles, checkPostReviews, atRiskPostReviews, atRiskPostReviewsPhrase, POST_REVIEW_AT_RISK_FAILURES, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, skippedMergeQueueFiles, backlogCommitLines, backlogCommitMessage } from "../src/doctor/doctor-backlog.js";
+import { checkPostReviews, atRiskPostReviews, atRiskPostReviewsPhrase, POST_REVIEW_AT_RISK_FAILURES, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, backlogCommitLines, backlogCommitMessage } from "../src/doctor/doctor-backlog.js";
 import type { DirtyBacklogFiles } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import type { HarnessEvent } from "../src/events/events.js";
-import { enqueueMerge, queuedMergeFiles, readMergeQueue, unreadableMergeQueueFiles } from "../src/merge/merge-queue.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
-import { mergeQueueDir, postReviewPath } from "../src/paths.js";
+import { postReviewPath } from "../src/paths.js";
+import { mergeRefName } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { POST_REVIEW_FAILURE_LIMIT } from "../src/review/post-merge-review.js";
 import { shortSpanPhrase } from "../src/text/phrases.js";
 import { stampedSubject } from "../src/git/commit-message.js";
-import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { makeRepo, seedCommit, sh, tmpdir, headSha } from "./fixtures/repo-fixtures.js";
+import { execFileSync } from "node:child_process";
 import { vanishOnReadFile } from "./helpers/fs-faults.js";
 
 // Unit coverage for the doctor's per-document backlog checks (split across
@@ -624,52 +625,63 @@ test("checkHeldBugs reads ok while any open bug is free, with none open, and wit
 // that is NOT in-flight and has waited past the 6-hour threshold; a marker showing the role
 // in-flight suppresses it, and an absent/unreadable marker or empty queue reads ok.
 
-function advice(role: string, summary: string): { role: string; summary: string; enqueuedAt: number; sha: string; run: number } {
-  return { role, summary, enqueuedAt: Date.now(), sha: "abc1234", run: 1 };
+/** A git root for a merge-wait scenario: a real repository with one seed commit, so a merge pin
+ * can resolve to a commit the doctor's pin view reads. */
+function gitRoot(): string {
+  return makeRepo();
 }
 
-function queueRoot(): string {
-  const root = tmpdir("doctor-stale-merge-");
-  fs.mkdirSync(mergeQueueDir(root), { recursive: true });
-  return root;
+/** Commit one file with the given subject and backdate it to `now - ageMs` (a fixed commit date
+ * is the pin's age source — the doctor ages a pinned change by its commit date, not by the ref's
+ * mtime), then pin the commit as the role's waiting merge. */
+function pinAged(root: string, role: string, file: string, ageMs: number, now: number, subject: string): void {
+  const iso = new Date(now - ageMs).toISOString();
+  seedCommit(root, file, `${file}\n`, subject);
+  execFileSync("git", ["commit", "--amend", "-m", subject], { cwd: root, env: { ...process.env, GIT_COMMITTER_DATE: iso, GIT_AUTHOR_DATE: iso } });
+  sh(root, "git", "update-ref", mergeRefName(role), headSha(root));
 }
 
-test("checkStaleQueuedMerges reads ok for an empty queue and one whose entries are all fresh", () => {
+test("checkStaleQueuedMerges reads ok for an empty queue and one whose entries are all fresh", async () => {
   const now = Date.now();
-  assert.equal(checkStaleQueuedMerges(queueRoot(), now).level, "ok");
-  const root = queueRoot();
-  enqueueMerge(root, advice("improve", "tidy parser"));
-  assert.equal(checkStaleQueuedMerges(root, now).level, "ok");
-  // An entry exactly at the threshold boundary (not strictly past it) is not stale yet.
-  enqueueMerge(root, { ...advice("clean", "split module"), enqueuedAt: now - 6 * 60 * 60 * 1000 });
-  assert.equal(checkStaleQueuedMerges(root, now).level, "ok");
+  assert.equal((await checkStaleQueuedMerges(gitRoot(), now)).level, "ok");
+  const root = gitRoot();
+  pinAged(root, "improve", "a.txt", 10 * 60 * 1000, now, "tidy parser");
+  assert.equal((await checkStaleQueuedMerges(root, now)).level, "ok");
+  // A pin well under the 6-hour threshold is not stale yet. (The commit date is second-granular,
+  // so the old queue-file "exactly at the threshold" boundary is not reproducible here.)
+  pinAged(root, "clean", "b.txt", 5 * 60 * 60 * 1000, now, "split module");
+  assert.equal((await checkStaleQueuedMerges(root, now)).level, "ok");
 });
 
-test("checkStaleQueuedMerges warns naming the oldest stale role, its summary, and its age", () => {
+test("checkStaleQueuedMerges warns naming the oldest stale role, its summary, and its age", async () => {
   const now = Date.now();
-  const root = queueRoot();
-  enqueueMerge(root, { ...advice("organize", "move the helpers"), enqueuedAt: now - 7 * 60 * 60 * 1000 });
-  const out = checkStaleQueuedMerges(root, now);
+  const root = gitRoot();
+  pinAged(root, "organize", "a.txt", 7 * 60 * 60 * 1000, now, "move the helpers");
+  const out = await checkStaleQueuedMerges(root, now);
   assert.equal(out.level, "warn");
   assert.match(out.detail, /organize/);
   assert.match(out.detail, /move the helpers/);
   assert.match(out.detail, /has waited 7h to start/);
 });
 
-test("checkStaleQueuedMerges warns once, resting via andMore, and never flags an in-flight role", () => {
+test("checkStaleQueuedMerges warns once, resting via andMore, and never flags an in-flight role", async () => {
   const now = Date.now();
-  const root = queueRoot();
-  enqueueMerge(root, { ...advice("clean", "split module"), enqueuedAt: now - 8 * 60 * 60 * 1000 });
-  enqueueMerge(root, { ...advice("organize", "move helpers"), enqueuedAt: now - 7 * 60 * 60 * 1000 });
-  // The freshest is the in-flight one: the marker shows `improve` being merged, so it must
-  // not be flagged even though it too is older than the threshold.
+  const root = gitRoot();
+  pinAged(root, "clean", "a.txt", 8 * 60 * 60 * 1000, now, "split module");
+  pinAged(root, "organize", "b.txt", 7 * 60 * 60 * 1000, now, "move helpers");
+  // The freshest is the in-flight one: the marker shows `improve` being merged, so its pinned
+  // change must not be flagged even though it too is older than the threshold.
+  const sha = headSha(root);
   writeMergeMarker(root, {
-    role: "improve", sha: "abc1234", summary: "tidy parser", startedAt: now - 1000, stage: "merging",
-    changes: [{ role: "improve", sha: "abc1234", summary: "tidy parser", status: "merging", startedAt: now - 1000 }],
+    role: "improve", sha, summary: "tidy parser", startedAt: now - 1000, stage: "merging",
+    changes: [{ role: "improve", sha, summary: "tidy parser", status: "merging", startedAt: now - 1000 }],
   });
-  enqueueMerge(root, { ...advice("improve", "tidy parser"), enqueuedAt: now - 5 * 60 * 60 * 1000 });
-  const out = checkStaleQueuedMerges(root, now);
+  sh(root, "git", "update-ref", mergeRefName("improve"), sha);
+  const out = await checkStaleQueuedMerges(root, now);
   assert.equal(out.level, "warn");
+  // clean is the oldest of the two (8 h, 7 h) and reads first (oldest first), so the row names
+  // the longest-waiting (most stalled) merge; organize rests in the "1 more"; improve is
+  // in-flight and not flagged.
   assert.match(out.detail, /clean/);
   assert.ok(!out.detail.includes("improve"), "the in-flight role is not flagged");
   assert.match(out.detail, /and 1 more: organize/);
@@ -1076,77 +1088,20 @@ test("mergeWaitPhrase reports the lower median and longest of merge_done waits",
   assert.equal(mergeWaitPhrase([{ ...done(60_000), type: "merge_failed" } as HarnessEvent, done(), done(0), { ...done(60_000), type: "warning" } as HarnessEvent]), undefined);
 });
 
-test("checkStaleQueuedMerges appends the last 24h merge wait to its detail", () => {
+test("checkStaleQueuedMerges appends the last 24h merge wait to its detail", async () => {
   const now = Date.now();
-  const root = queueRoot();
+  const root = gitRoot();
   logEvent(root, { source: "merge", type: "merge_done", queuedMs: 60_000 });
   logEvent(root, { source: "merge", type: "merge_done", queuedMs: 120_000 });
   logEvent(root, { source: "merge", type: "merge_done", queuedMs: 9_000_000, ts: now - 48 * 3600_000 });
-  const ok = checkStaleQueuedMerges(root, now);
+  const ok = await checkStaleQueuedMerges(root, now);
   assert.equal(ok.level, "ok");
   assert.match(ok.detail, / · merges in the last 24h waited .* \(2 merges\)$/);
-  enqueueMerge(root, { ...advice("organize", "move the helpers"), enqueuedAt: now - 7 * 60 * 60 * 1000 });
-  const warn = checkStaleQueuedMerges(root, now);
+  pinAged(root, "organize", "a.txt", 7 * 60 * 60 * 1000, now, "move the helpers");
+  const warn = await checkStaleQueuedMerges(root, now);
   assert.equal(warn.level, "warn");
   assert.match(warn.detail, / · merges in the last 24h waited .* \(2 merges\)$/);
-  assert.ok(!checkStaleQueuedMerges(queueRoot(), now).detail.includes(" · merges"));
-});
-
-// checkMergeQueueFiles — the queue files readMergeQueue skips (torn, foreign, vanished
-// mid-listing) are named so a stranded entry is visible to `tumwater doctor` instead of only a
-// count on `tumwater queue`. Warns, never fails, like the other document checks.
-
-test("checkMergeQueueFiles reads ok for an absent, an empty, and an all-readable queue", () => {
-  assert.equal(checkMergeQueueFiles(tmpdir("doctor-merge-queue-files-")).level, "ok");
-  assert.equal(checkMergeQueueFiles(queueRoot()).level, "ok");
-  const root = queueRoot();
-  enqueueMerge(root, advice("improve", "tidy parser"));
-  assert.equal(checkMergeQueueFiles(root).level, "ok");
-});
-
-test("checkMergeQueueFiles warns naming every file the reader skips", () => {
-  const root = queueRoot();
-  enqueueMerge(root, advice("improve", "tidy parser"));
-  fs.writeFileSync(path.join(mergeQueueDir(root), "000-torn.json"), '{"role":');
-  fs.writeFileSync(path.join(mergeQueueDir(root), "999-foreign.json"), '{"nope":true}');
-  const out = checkMergeQueueFiles(root);
-  assert.equal(out.level, "warn");
-  assert.match(out.detail, /000-torn\.json/);
-  assert.match(out.detail, /999-foreign\.json/);
-  assert.match(out.detail, /2 files/);
-  assert.match(out.detail, /and 1 more file:/, "two skips render the singular extra, not file(s)");
-  assert.ok(!out.detail.includes(path.basename(queuedMergeFiles(root)[0]!.file)), "the readable entry's own file is not named");
-});
-
-test("checkMergeQueueFiles names the extras via andMore", () => {
-  const root = queueRoot();
-  for (let i = 0; i < 4; i++) fs.writeFileSync(path.join(mergeQueueDir(root), `${i}.json`), '{"nope":true}');
-  const out = checkMergeQueueFiles(root);
-  assert.equal(out.level, "warn");
-  assert.match(out.detail, /0\.json/);
-  assert.match(out.detail, /and 3 more/);
-});
-
-test("unreadableMergeQueueFiles matches readMergeQueue's count", () => {
-  const root = queueRoot();
-  enqueueMerge(root, advice("improve", "tidy parser"));
-  fs.writeFileSync(path.join(mergeQueueDir(root), "000-torn.json"), '{"role":');
-  fs.writeFileSync(path.join(mergeQueueDir(root), "999-foreign.json"), '{"nope":true}');
-  const files = unreadableMergeQueueFiles(root);
-  assert.equal(files.length, readMergeQueue(root).unreadable);
-  for (const f of files) assert.ok(f.endsWith(".json"));
-});
-
-test("skippedMergeQueueFiles names checkout-relative paths for every skipped file and none for an all-readable queue", () => {
-  const root = queueRoot();
-  enqueueMerge(root, advice("improve", "tidy parser"));
-  fs.writeFileSync(path.join(mergeQueueDir(root), "000-torn.json"), '{"role":');
-  fs.writeFileSync(path.join(mergeQueueDir(root), "999-foreign.json"), '{"nope":true}');
-  const names = skippedMergeQueueFiles(root).map((f) => f.replace(/\\/g, "/"));
-  assert.deepEqual(names, [".tumwater/merge-queue/000-torn.json", ".tumwater/merge-queue/999-foreign.json"]);
-  const clean = queueRoot();
-  enqueueMerge(clean, advice("improve", "tidy parser"));
-  assert.deepEqual(skippedMergeQueueFiles(clean), []);
+  assert.ok(!(await checkStaleQueuedMerges(gitRoot(), now)).detail.includes(" · merges"));
 });
 
 test("checkPostReviews warns one failed run before the drop and reads ok below the bar", () => {

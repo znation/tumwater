@@ -132,12 +132,65 @@ export const VALIDATION_GAP_QUERY = `grep -snE '\\*\\*Validation gap:\\*\\* (${V
   (t) => t !== "none",
 ).join("|")})' BUGS.md BUGS-FIXED.md | head -20`;
 
-/** The literal prefix every Needs-review note starts with. Exported so a reader that only has
- * to recognize one (the backlog index's ` [blocked: needs review]` mark) can match on it instead of
- * parsing the date or the wording out of the full template. The rejected-final-round note the
- * feature role appends (gate-notes.ts) also begins with this prefix, so it reads as a Needs-review
- * note and is classified by entryHold accordingly. */
+/** The literal prefix every Needs-review note starts with — with its optional bold span.
+ * Exported so a reader that only recognizes the note (the backlog index's ` [blocked:
+ * needs review]` mark) can match the prefix instead of parsing the date or the wording
+ * out of the full template. The rejected-final-round note the feature role appends
+ * (gate-notes.ts) also
+ * begins with this prefix, so it reads as a Needs-review note and is classified by entryHold
+ * accordingly. The leading `*{0,2}` is not cosmetic: a role that writes the note without the bold
+ * span (a model dropping the `**` on `NEEDS_REVIEW_NOTE` / `PLAN_DEFECT_NOTE`) still writes a
+ * note this matches, so a missing span never makes a hold invisible to the readers that match
+ * on this prefix — the one home of the prefix is the one widened to accept both spellings. */
 export const NEEDS_REVIEW_PREFIX = `**Needs review `;
+
+/** True when the trimmed `line` is a Needs-review hold note: it starts with the optional bold
+ * span (the `*{0,2}` matches the template's `**Needs review …**` **and** the same note written
+ * without the span, `Needs review …`, which a model dropping the `**` writes) and the word after
+ * `Needs review` is the `<YYYY-MM-DD>` a real note stamps. The date requirement keeps a prose
+ * mention — a line whose word after `Needs review` is not a date (a template like
+ * `**Needs review <YYYY-MM-DD> …**`, a quoted note, a charter's `Needs review …` phrase) from
+ * holding an entry. The one home of the "this line is a Needs-review note" rule, so eligibility
+ * (entryHold / withoutNeedsReviewNotes / noteText) and the doctor's stalled-entries scan cannot
+ * drift on whether a span-less note is seen. */
+export function isNeedsReviewNoteLine(line: string): boolean {
+  const t = line.trimStart();
+  const m = /^\*{0,2}Needs review\s+(\S+)/.exec(t);
+  return m !== null && /^\d{4}-\d{2}-\d{2}$/.test(m[1]!);
+}
+
+/** True when the trimmed `line` is a director-handoff hold line: it starts with the optional
+ * bold span and the word after `Director handoff` is a date, the rule isNeedsReviewNoteLine
+ * applies to Needs-review notes (BUGS.md 2026-11-11). The closing bold span is optional and may
+ * sit against the date (`**Director handoff 2026-11-11**`), so 0-2 trailing asterisks are
+ * tolerated before the date check; a prose mention not shaped as a note never holds an entry. */
+export function isDirectorHandoffLine(line: string): boolean {
+  const t = line.trimStart();
+  const m = /^\*{0,2}Director handoff\s+(\S+)/.exec(t);
+  return m !== null && /^\d{4}-\d{2}-\d{2}\*{0,2}$/.test(m[1]!);
+}
+
+/** True when the trimmed `line` is a bugfix Progress note (the resolution reader, below, uses it
+ * to tell a resolved handoff from an outstanding one). Matched as a bold-span-optional prefix, the
+ * same convention as the other hold notes. */
+export function isProgressLine(line: string): boolean {
+  const t = line.trimStart();
+  return t.startsWith("**Progress ") || t.startsWith("Progress ");
+}
+
+/** Whether an entry is held for the director: it carries a `**Director handoff <date>**` marker
+ * line and no Progress or Needs-review line in its body. A `**Progress …**` note or a `**Needs
+ * review …**` note the director appends in response supersedes the marker, so the entry is no
+ * longer with the director and the index releases it. Placement is irrelevant — a resolution line
+ * anywhere in the body clears the hold — so the reader never needs the marker to sit in a
+ * particular spot. (BUGS.md 2026-11-11: the handoff used to be re-derived from the prose Progress
+ * note each run, and a model that misread it kept an answered entry eligible and idled; the marker
+ * makes the state a machine the index derives, and this reader is its one home.) */
+export function withDirectorHold(body: string): boolean {
+  const lines = body.split("\n").map((raw) => raw.trimStart());
+  if (!lines.some(isDirectorHandoffLine)) return false;
+  return !lines.some((t) => isProgressLine(t) || isNeedsReviewNoteLine(t));
+}
 
 /** How many days a bugfix wait (`**Needs review <date> by bugfix: …**`) may go without a
  * recurrence before tumwater closes its bug (backlog-bug-waits.ts). A week of hourly full checks

@@ -44,6 +44,12 @@ interface EligibilityOptions {
    * min-interval clock a `queued` outcome wrote), never earlier, so a persistently blocked
    * fast-forward cannot spin the merge queue. */
   leftoverPending?: boolean;
+  /** The director's queued prompts are all self-requeued (skip.ts computes it): every
+   * deliverable prompt in the inbox was stamped at or before the run that just ended, so
+   * honoring it immediately re-runs the same unfulfillable request back to back at the ~2 s
+   * poll cadence (BUGS.md hot loop). Such an inbox is due only on the min-run-interval clock,
+   * like the leftover-pinned arm. Reaches only the director arm. */
+  inboxSelfRequeued?: boolean;
 }
 
 /** The decision one gate returns: run now, or hold with an optional reason/skip, or — for
@@ -66,7 +72,16 @@ function blockedFromRunning(runner: RoleRunner, s: RunnerState): boolean {
 /** The director carries the user's own requests: no min-gap, no backoff — a queued prompt
  * runs as soon as the previous one finishes. Reaches either arm and always resolves. */
 function directorGate(s: RunnerState, now: number, inboxCount: number, opts: EligibilityOptions): Eligibility {
-  if (inboxCount > 0) return { run: true, reason: "inbox" };
+  if (inboxCount > 0) {
+    // A prompt the director re-queued for itself at the end of the run that just ended (every
+    // deliverable prompt stamped at or before lastRunEndedAt, inboxSelfRequeued) is not fresh
+    // demand: honoring it immediately re-runs the same unfulfillable request back to back at
+    // the ~2 s poll cadence (BUGS.md hot loop). Such an inbox is due only on the min-run-
+    // interval clock, like the leftover-pinned arm. A prompt an operator submitted since the
+    // run ended (inboxSelfRequeued false) runs immediately, as before.
+    if (opts.inboxSelfRequeued) return now >= s.nextRunAt ? { run: true, reason: "inbox" } : { run: false };
+    return { run: true, reason: "inbox" };
+  }
   if (opts.leftoverPending) return now >= s.nextRunAt ? { run: true, reason: "leftover" } : { run: false };
   return { run: false };
 }

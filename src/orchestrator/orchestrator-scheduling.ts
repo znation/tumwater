@@ -7,7 +7,7 @@
  * merge drain) and the launch call itself. */
 import { increment } from "../collections.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { reviewRunConfig, roleSeamTier, seamHoldKey } from "../config/config-views.js";
+import { reviewRunConfig, roleSeamTier, seamHoldKey, seamPairName } from "../config/config-views.js";
 import { openBugs } from "../backlog/backlog.js";
 import { fallbackProbeDuePair } from "../budget/fallback-breaker.js";
 import { modelPairName } from "../budget/budget.js";
@@ -63,6 +63,15 @@ export async function pollRunnerReasons(
  * hold — no named entry (start, verify or landing) waits on the reviewer. */
 export function reviewHoldKey(roleConfig: TumwaterConfig): string | undefined {
   return seamHoldKey(reviewRunConfig(roleConfig));
+}
+
+/** The pair (seamPairName) of the reviewer's seam, read from the same config `reviewHoldKey`
+ * reads: the pair scope of the reviewer's provider in the team hold. A standing `model-load`
+ * hold that names the reviewer's pair parks the no-role post-merge review drain (the review
+ * run would fail to load the same model), exactly as the provider-wide kinds do via
+ * `reviewHoldKey` — no role start, verify or landing waits on the reviewer either way. */
+export function reviewPairKey(roleConfig: TumwaterConfig): string {
+  return seamPairName(reviewRunConfig(roleConfig));
 }
 
 /** The deferral inputs one poll computes for pollRunnerReasons and the launch pass. */

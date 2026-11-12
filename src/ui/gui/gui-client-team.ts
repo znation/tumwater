@@ -224,10 +224,10 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       detail.hidden = !a.detail;
       if (box.children[i] !== el) box.insertBefore(el, box.children[i] || null);
     });
-    // The band's one link to where every alert's detail lives: the Settings view's Health check
-    // card (#doctorcard), which runs the same checks as tumwater doctor. It rides the existing
-    // view/hash routing (data-act='view' data-arg='settings' -> location.hash; gui-client-boot).
-    // It appears only while the band has alerts — an empty feed paints nothing, so there is no
+    // The band's standalone pointer to the Settings view's Health check card (#doctorcard), a
+    // discoverability shortcut while the feed has alerts — not a restatement of those alerts'
+    // detail. It rides the existing view/hash routing (data-act='view' data-arg='settings' ->
+    // location.hash; gui-client-boot). An empty feed paints nothing, so there is no
     // "0 alerts" copy.
     const doctorEl = box.querySelector("[data-key='doctor-band']");
     if (alerts.length > 0) {
@@ -236,10 +236,10 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
         band.dataset.key = "doctor-band";
         band.className = "alert t-blue";
         band.innerHTML = "<span class='alert-icon'>" + icon("settings") + "</span>" +
-          "<div class='alert-body'><div class='alert-title'>Details in Doctor</div>" +
-          "<div class='alert-detail'>The Settings view's Health check card keeps each alert's detail.</div></div>" +
+          "<div class='alert-body'><div class='alert-title'>Health check</div>" +
+          "<div class='alert-detail'>The Health check card in Settings runs the full setup audit — the same checks as tumwater doctor — and re-runs each time you open it.</div></div>" +
           "<div class='alert-actions'><button type='button' class='btn btn-sm' data-act='view' data-arg='settings' " +
-          "title='Open the Health check card'>Open Health check</button></div>";
+          "title='Open the Health check card in Settings'>Open Health check</button></div>";
         box.appendChild(band);
       }
     } else if (doctorEl) {

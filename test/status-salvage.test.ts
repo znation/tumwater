@@ -7,9 +7,36 @@ import {
   dropSalvagePatch,
   grepSalvagePatches,
   readSalvagePatch,
+  salvagePatchAt,
 } from "../src/status/status-salvage.js";
 import { salvageDir, salvagePendingDir } from "../src/paths.js";
 import { makeRepo, runningAsRoot } from "./fixtures/repo-fixtures.js";
+test("salvagePatchAt resolves an in-range position to its patch", () => {
+  const patches = [
+    { position: 1, file: "a.patch", savedAt: 1000, bytes: 3 },
+    { position: 2, file: "b.patch", savedAt: 2000, bytes: 5 },
+  ];
+  assert.deepEqual(salvagePatchAt(patches, 1), { patch: patches[0] });
+  assert.deepEqual(salvagePatchAt(patches, 2), { patch: patches[1] });
+});
+test("salvagePatchAt refuses a below-1 or past-the-list position with the shared sentence", () => {
+  const patches = [
+    { position: 1, file: "a.patch", savedAt: 1000, bytes: 3 },
+    { position: 2, file: "b.patch", savedAt: 2000, bytes: 5 },
+  ];
+  // The message is the wording every salvage surface (CLI --show/--drop/--apply, the TUI
+  // Health apply and drop arms, the dashboard apply/drop endpoints) shows for a bad number,
+  // so it is pinned exactly here.
+  for (const bad of [0, 3]) {
+    const out = salvagePatchAt(patches, bad);
+    assert.ok("message" in out);
+    assert.equal(out.message, `no salvaged workspace patch at position ${bad} (salvage holds 2 patches)`);
+  }
+  // An empty list refuses every position, naming that it holds none.
+  const empty = salvagePatchAt([], 1);
+  assert.ok("message" in empty);
+  assert.equal(empty.message, "no salvaged workspace patch at position 1 (salvage holds 0 patches)");
+});
 
 test("collectSalvagePatches returns [] for a missing salvage directory", () => {
   const root = makeRepo();

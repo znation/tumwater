@@ -4,6 +4,8 @@ import {
   TEAM_OPEN,
   teamHold,
   standingHolds,
+  heldProviders,
+  heldPairs,
   HOLD_BASE_MS,
   HOLD_CAP_MS,
   HOLD_RELAPSE_MS,
@@ -250,4 +252,80 @@ test("a standing reserve hold is re-evaluated: a rejected window replaces it, a 
   assert.equal(rejected.until, resetsAt);
   assert.equal(rejected.reserve, undefined, "a rejected window is no longer a reserve");
   assert.equal(teamHold(held, [], T0 + 1_000).until, null, "a removed reserve releases the hold");
+});
+test("a model-load storm whose runs resolved their pair names the pairs and scopes off the provider", () => {
+  // PLANS.md "One unavailable model pair stops only the roles on that pair", part 2/2:
+  // two roles whose `default` model fails to load hold exactly that pair — and the provider
+  // is NOT in heldProviders, so a role on another model at the same provider keeps running.
+  const held = teamHold(TEAM_OPEN, [
+    { role: "feature", provider: "omlx", kind: "model-load", at: T0, pair: "omlx/tiny" },
+    { role: "plan", provider: "omlx", kind: "model-load", at: T0 + 1_000, pair: "omlx/tiny" },
+  ], T0 + 1_000);
+  assert.notEqual(held.until, null);
+  assert.equal(held.kind, "model-load");
+  assert.deepEqual(held.pairs, ["omlx/tiny"], "the hold names the pair whose model failed");
+  const holds = new Map([["omlx", held]]);
+  assert.equal(heldProviders(holds).size, 0, "the provider is NOT held — another model at it keeps running");
+  assert.deepEqual([...heldPairs(holds)], ["omlx/tiny"], "heldPairs names the failed pair");
+});
+test("a model-load storm whose pair is distinct per role names every failed pair, sorted", () => {
+  // Two roles on the same provider but DIFFERENT models both fail: the hold names both.
+  const held = teamHold(TEAM_OPEN, [
+    { role: "feature", provider: "omlx", kind: "model-load", at: T0, pair: "omlx/tiny" },
+    { role: "organize", provider: "omlx", kind: "model-load", at: T0 + 1_000, pair: "omlx/gpt" },
+  ], T0 + 1_000);
+  assert.deepEqual(held.pairs, ["omlx/gpt", "omlx/tiny"], "sorted distinct pairs");
+  const holds = new Map([["omlx", held]]);
+  assert.deepEqual([...heldPairs(holds)], ["omlx/gpt", "omlx/tiny"], "heldPairs names every failed pair");
+});
+test("a model-load storm with even one pair-less observation keeps the provider-wide hold", () => {
+  // A run that resolved no pair cannot be attributed to a model: the conservative
+  // provider-wide scope stays, so the provider IS in heldProviders and heldPairs names
+  // nothing.
+  const held = teamHold(TEAM_OPEN, [
+    { role: "feature", provider: "omlx", kind: "model-load", at: T0, pair: "omlx/tiny" },
+    { role: "plan", provider: "omlx", kind: "model-load", at: T0 + 1_000 },
+  ], T0 + 1_000);
+  assert.notEqual(held.until, null);
+  assert.equal(held.pairs, undefined, "no pair scope when an observation carried no pair");
+  const holds = new Map([["omlx", held]]);
+  assert.deepEqual([...heldProviders(holds)], ["omlx"], "the provider stays held");
+  assert.equal(heldPairs(holds).size, 0, "and no pair scope exists to read");
+});
+test("a non-model-load kind names no pairs even when its observations carry them", () => {
+  // A connection failure says the provider is unhealthy, not one model: the provider-wide
+  // scope is the right one and heldPairs stays empty even though the pair is stamped.
+  const held = teamHold(TEAM_OPEN, [
+    { role: "feature", provider: "omlx", kind: "connection", at: T0, pair: "omlx/tiny" },
+    { role: "plan", provider: "omlx", kind: "connection", at: T0 + 1_000, pair: "omlx/tiny" },
+  ], T0 + 1_000);
+  assert.notEqual(held.until, null);
+  assert.equal(held.kind, "connection");
+  assert.equal(held.pairs, undefined, "the pair is not read for non-model-load kinds");
+  const holds = new Map([["omlx", held]]);
+  assert.deepEqual([...heldProviders(holds)], ["omlx"], "the provider is held");
+  assert.equal(heldPairs(holds).size, 0, "heldPairs names nothing for non-model-load");
+});
+test("a lifted pair-scoped model-load hold re-opens; a fresh storm re-derives the pair scope", () => {
+  // A paired model-load hold lifts at its deadline (holds nothing after); the kind it
+  // re-opened with is the relapse memory, and a fresh storm of the same pair re-derives
+  // the pair scope and escalates off that kind.
+  const mk = (role: string, at: number): HoldObservation => ({
+    role,
+    provider: "omlx",
+    kind: "model-load",
+    at,
+    pair: "omlx/tiny",
+  });
+  const held = teamHold(TEAM_OPEN, [mk("feature", T0), mk("plan", T0 + 1_000)], T0 + 1_000);
+  assert.deepEqual(held.pairs, ["omlx/tiny"]);
+  const opened = teamHold(held, [], held.until!);
+  assert.equal(opened.until, null);
+  assert.equal(opened.kind, "model-load");
+  const openedHolds = new Map([["omlx", opened]]);
+  assert.equal(heldProviders(openedHolds).size, 0, "a re-opened hold holds no provider");
+  assert.equal(heldPairs(openedHolds).size, 0, "a re-opened hold holds no pair");
+  const relapsed = teamHold(opened, [mk("feature", opened.reopenedAt! + 1_000), mk("plan", opened.reopenedAt! + 2_000)], opened.reopenedAt! + 2_000);
+  assert.equal(relapsed.escalation, 1, "the relapse doubles the hold off the re-opened kind");
+  assert.deepEqual(relapsed.pairs, ["omlx/tiny"], "the fresh storm re-derives its pair scope");
 });

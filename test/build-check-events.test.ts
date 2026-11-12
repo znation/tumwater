@@ -130,6 +130,15 @@ test("buildCheckEvent records the armed bound and lateness only when the deadlin
   assert.equal(event.deadlineLateMs, 412_000);
 });
 
+test("buildCheckEvent carries the failing test titles when a failure named them", () => {
+  const named = buildCheckEvent("ci", "baseline", { status: "failed", script: "make check", failingTests: ["test_x (m.C.test_x)"] }, 1_200);
+  assert.deepEqual(named.failingTests, ["test_x (m.C.test_x)"]);
+  // A red check that named nothing (a compile or lint error) carries no failingTests field, so
+  // the feed is not read as a nameless list.
+  const nameless = buildCheckEvent("ci", "baseline", { status: "failed", script: "npm test" }, 1_200);
+  assert.equal("failingTests" in nameless, false);
+});
+
 // --- SCOPE_WORDS / MERGE_SCOPES: the scope vocabulary the three callers share ---
 
 test("every scope has wording, and exactly the merge-gating scopes are listed", () => {

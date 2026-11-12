@@ -325,7 +325,7 @@ test("role writes report a broken tumwater.json instead of crashing on it", asyn
     ["feature", "--provider", "openai"], // provider branch's defaultConfig fallback
     ["feature", "--model", "gpt-5"], // model branch's defaultConfig fallback
     ["feature", "--thinking", "high"], // thinking branch's defaultConfig fallback
-  ] as const) {
+  ]) {
     const r = await cli(repo, "role", ...args);
     assert.equal(r.code, 1, args.join(" "));
     assert.match(r.stderr, /tumwater\.json is not valid JSON/, args.join(" "));
@@ -354,6 +354,15 @@ test("a valued role write flag followed by another flag refuses with its own nee
   r = await cli(repo, "role", "feature", "--provider", "openai");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /feature: provider set to openai/);
+  // The file-shaped flags refuse a slipped flag in their value slot with the same shared
+  // wording instead of reading the flag token as a path that fails deep with a misleading
+  // "cannot read prompt file": the guard the model writes get above covers them too.
+  r = await cli(repo, "role", "feature", "--notes-file", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--notes-file needs a value \(the next token "--json" is a flag, not a value\)/);
+  r = await cli(repo, "role", "feature", "--instructions-file", "--quiet-hours");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--instructions-file needs a value \(the next token "--quiet-hours" is a flag, not a value\)/);
 });
 
 test("role validates its arguments like every other command", async () => {

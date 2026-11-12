@@ -96,6 +96,12 @@ test("the Health view's hint and docs rows name the same Ctrl keys", () => {
     [...hinted].filter((k) => !documentedHealth.has(k) && !documentedAny.has(k)).sort(),
     [],
   );
+  // The new Ctrl+G Health row is documented for Health and names the salvage-apply action.
+  assert.ok(documentedHealth.has("G"), "the TUI keys table names a Ctrl+G row for Health");
+  assert.match(section, /`Ctrl\+G`\s*\|\s*Health\s*\|.*apply a kept salvage patch by typed number/);
+  // The new Ctrl+Y Health row is documented for Health and names the salvage-drop action.
+  assert.ok(documentedHealth.has("Y"), "the TUI keys table names a Ctrl+Y row for Health");
+  assert.match(section, /`Ctrl\+Y`\s*\|\s*Health\s*\|.*drop a kept salvage patch by typed number/);
   // No docs Health key is unhinted (catches a missing Ctrl+S hint entry); any-view keys stay out.
   assert.deepEqual([...documentedHealth].filter((k) => !hinted.has(k)).sort(), []);
 });

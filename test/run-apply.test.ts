@@ -616,6 +616,15 @@ test("applyRunOutcome: quiet kills resume the starved session until the streak l
   assert.equal(s.quietKillStreak, 4, "the streak keeps counting for the warning note");
 });
 
+test("applyRunOutcome: a stalled-tool quiet kill resumes with the stalled-tool cause preserved", () => {
+  const s = freshRunnerState("feature");
+  applyRunOutcome(s, testConfig(), "feature", { result: "quiet_killed", resumeCause: "stalled-tool" });
+  assert.equal(s.resumePending, true, "the intact session resumes");
+  assert.equal(s.resumeCause, "stalled-tool", "the named cause wins over the hung-tool default");
+  assert.equal(s.quietKillStreak, 1, "a repeatedly-re-hanging call is bounded by the same streak");
+  assert.ok(s.nextRunAt <= Date.now() + 1_000, "resumes promptly");
+});
+
 test("applyRunOutcome: a quiet-killed director never resumes and never backs off, at any streak", () => {
   const cfg = testConfig();
   // The director skips both role arms of the quiet-kill branch: its prompt was re-queued

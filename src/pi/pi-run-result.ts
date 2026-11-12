@@ -61,6 +61,14 @@ export interface PiRunResult {
    * and any worktree edits are intact, so the runner resumes them promptly instead of discarding.
    */
   quietKilled: boolean;
+  /** One open tool call hung past two quiet windows and the per-call stall-kill stopped the run
+   * while the rest of it kept making progress (pi-watchdogs.ts). Mutually exclusive with
+   * quietKilled: the session and worktree edits are intact and the runner resumes them the same
+   * way, but the resume bridge names the cause "stalled-tool" instead of "hung-tool". */
+  stallKilled: boolean;
+  /** The label of the call the stall-kill stopped (the hung command pi printed); undefined when
+   * the kill fired without a named call. */
+  stallKilledLabel?: string;
   /** The provider rejected the context as too large. With fresh-per-run sessions this is
    * purely diagnostic: the next run starts a new session regardless. */
   contextExceeded: boolean;

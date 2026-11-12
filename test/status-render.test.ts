@@ -525,7 +525,7 @@ test("snapshot and renderStatus cover all enabled roles", async () => {
   state.lastSummary = "tidy something";
   saveRunnerState(repo, state);
 
-  const snap = snapshot(repo);
+  const snap = await snapshot(repo);
   assert.equal(snap.running, false);
   assert.ok(snap.roles.some((l) => l.role === "clean" && l.runs === 3));
   const text = renderStatus(repo, snap);
@@ -568,7 +568,7 @@ test("a rendered team shows active rows equal to permit holders: parked waiters 
     parked.parkedSince = Date.now() - 5_000;
     saveRunnerState(repo, parked);
   }
-  const text = renderStatus(repo, snapshot(repo));
+  const text = renderStatus(repo, await snapshot(repo));
   // The waiters show their true state, not `working`.
   assert.equal(text.split("\n").filter((l) => l.includes("waiting to start")).length, 2);
   // Exactly one active working row: the only real permit holder.

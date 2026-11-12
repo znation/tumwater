@@ -374,7 +374,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
 
     let aborted = false;
     // A blind image read on an authoring run deliberately kills it, like the watchdogs do.
-    const wasKilled = (): boolean => aborted || wd.timedOut || wd.quietKilled || blindRead() !== undefined;
+    const wasKilled = (): boolean => aborted || wd.timedOut || wd.quietKilled || wd.stallKilled || blindRead() !== undefined;
     const onAbort = () => {
       aborted = true;
       terminateChild(child);

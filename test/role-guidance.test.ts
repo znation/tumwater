@@ -21,6 +21,9 @@ import {
   VALIDATION_GAP_TAGS,
   VALIDATION_GAP_TALLY,
   backlogMoveGuidance,
+  withDirectorHold,
+  isDirectorHandoffLine,
+  isProgressLine,
 } from "../src/roles/role-guidance.js";
 import { oneLine } from "./helpers/oracles.js";
 import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -286,3 +289,44 @@ test("the closing guidance names the kind's token and the heading-key rule", () 
   assert.match(oneLine(roleById("feature")!.find), /— done YYYY-MM-DD by the <role> role/);
   assert.match(oneLine(roleById("bugfix")!.find), /— fixed YYYY-MM-DD by the <role> role/);
 });
+// The director-handoff machine hold (BUGS.md 2026-11-11): a `**Director handoff <date>**` marker
+// in an entry's body holds it for the director; a Progress or Needs-review line the director
+// appends in response clears it. The backlog index derives the hold from these; the bugfix
+// charter writes the marker, and a model that would re-derive the state from the prose no longer
+// does. The reader is placement-independent (a resolution line anywhere clears the marker), so
+// the marker need not sit in a particular spot.
+test("isDirectorHandoffLine matches the marker line and ignores prose", () => {
+  assert.equal(isDirectorHandoffLine("**Director handoff 2026-11-11**"), true);
+  assert.equal(isDirectorHandoffLine("  **Director handoff 2026-11-11**"), true, "indented still matches");
+  assert.equal(isDirectorHandoffLine("Director handoff 2026-11-11"), true, "a plain line also matches");
+  assert.equal(isDirectorHandoffLine("The bug was handed off to the director."), false, "prose, not a marker");
+  assert.equal(isDirectorHandoffLine("**Director handoff tomorrow**"), false, "no date");
+  assert.equal(isDirectorHandoffLine("**Director handoff**"), false, "no token");
+});
+test("isProgressLine matches a Progress note, bold or not", () => {
+  assert.equal(isProgressLine("**Progress 2026-11-11 by director: resolved**"), true);
+  assert.equal(isProgressLine("Progress 2026-11-11 by bugfix: reproduced"), true);
+  assert.equal(isProgressLine("The progress was noted."), false);
+});
+test("withDirectorHold holds on the marker and releases on any Progress or Needs-review line", () => {
+  assert.equal(withDirectorHold("body\n**Director handoff 2026-11-11**"), true, "marker, no resolution");
+  // The canonical 25-idle case: the director answered the handoff below the marker.
+  assert.equal(withDirectorHold("**Director handoff 2026-11-11**\n**Progress 2026-11-12 by director: resolved**"), false);
+  // The director parked it for the user (a needs-review note also clears the hold; the entry then
+  // reads as needs-review in entryHoldAgainst, a different branch).
+  assert.equal(withDirectorHold("**Director handoff 2026-11-11**\n**Needs review 2026-11-12 by director: needs a call**"), false);
+  // Placement is irrelevant — a resolution line above the marker also clears it.
+  assert.equal(withDirectorHold("**Progress 2026-11-12 by director: resolved**\n**Director handoff 2026-11-11**"), false);
+  // No marker at all is never held for the director.
+  assert.equal(withDirectorHold("**Progress 2026-11-12 by bugfix: reproduced**"), false);
+  // A plain word in prose never holds.
+  assert.equal(withDirectorHold("handed off to the director yesterday"), false);
+});
+test("the bugfix charter tells the role to write the director-handoff marker and skip the machine hold", () => {
+  const find = roleById("bugfix")!.find;
+  assert.match(find, /\*\*Director handoff <YYYY-MM-DD>\*\*/);
+  assert.match(find, /\[blocked: with the director\]/);
+  // The pre-marker skip rule still holds so an older handoff without the marker is skipped too.
+  assert.match(find, /Skip an entry whose newest Progress note names a director handoff/);
+});
+

@@ -25,7 +25,7 @@ test("collectBudget aggregates the daily spend and drives the pause sets", async
   const modelsFile = writeModelsFile(tmpdir("status-budget-"), LOCAL_FREE_MODELS_JSON);
   const now = new Date(2026, 9, 1, 12, 0, 0).getTime();
   saveRunnerState(repo, spentRunnerState("clean", 1.25, now));
-  const snap = snapshot(repo, modelsFile, now);
+  const snap = await snapshot(repo, modelsFile, now);
   const got = collectBudget(
     repo,
     cfg,
@@ -53,7 +53,7 @@ test("collectBudget prices an opencode-free team free (part 6b/7)", async () => 
   const cfg = loadConfig(repo);
   const modelsFile = writeModelsFile(tmpdir("status-opencode-"), LOCAL_FREE_MODELS_JSON);
   const now = new Date(2026, 9, 1, 12, 0, 0).getTime();
-  const snap = snapshot(repo, modelsFile, now);
+  const snap = await snapshot(repo, modelsFile, now);
   const got = collectBudget(
     repo,
     cfg,
@@ -79,7 +79,7 @@ test("a foreign entry in the opencode catalog cache leaves collectBudget standin
   const cfg = loadConfig(repo);
   const modelsFile = writeModelsFile(tmpdir("status-opencode-"), LOCAL_FREE_MODELS_JSON);
   const now = new Date(2026, 9, 1, 12, 0, 0).getTime();
-  const snap = snapshot(repo, modelsFile, now);
+  const snap = await snapshot(repo, modelsFile, now);
   const got = collectBudget(
     repo,
     cfg,
@@ -120,7 +120,7 @@ test("collectBudget carries one subscription-window block per subscription backe
     observedAt: now,
     windows: { five_hour: { status: "allowed_warning", resetsAt, utilization: 0.64, observedAt: now } },
   });
-  const snap = snapshot(repo, modelsFile, now);
+  const snap = await snapshot(repo, modelsFile, now);
   const got = collectBudget(
     repo,
     cfg,
@@ -159,7 +159,7 @@ test("a codex-only subscription team reads every seam free and carries its windo
     observedAt: now,
     windows: { five_hour: { status: "allowed", resetsAt: now + 3_600_000, utilization: 0.2, observedAt: now } },
   });
-  const snap = snapshot(repo, modelsFile, now);
+  const snap = await snapshot(repo, modelsFile, now);
   assert.equal(snap.subscriptionOnly, true, "a subscription codex seam is free, so every seam is");
   assert.deepEqual(snap.subscriptionWindows?.map((b) => b.label), ["Codex"]);
 });
@@ -170,9 +170,9 @@ test("snapshot carries the orchestrator's chain block only while it is alive", a
   const modelsFile = writeModelsFile(tmpdir("status-chain-"), LOCAL_FREE_MODELS_JSON);
   const chain = { default: { pair: "local/small", step: 2, of: 2, reason: "window" as const } };
   writeOrchestratorInfo(repo, { pid: process.pid, startedAt: Date.now(), roles: ["feature"], chain });
-  assert.deepEqual(snapshot(repo, modelsFile).chain, chain);
+  assert.deepEqual((await snapshot(repo, modelsFile)).chain, chain);
   writeOrchestratorInfo(repo, { pid: process.pid, startedAt: Date.now(), roles: ["feature"] });
-  assert.equal("chain" in snapshot(repo, modelsFile), false, "no chain published, none shown");
+  assert.equal("chain" in await snapshot(repo, modelsFile), false, "no chain published, none shown");
   writeOrchestratorInfo(repo, { pid: 2 ** 22 + 7, startedAt: Date.now(), roles: ["feature"], chain });
-  assert.equal(snapshot(repo, modelsFile).chain, undefined, "a dead orchestrator's chain is stale");
+  assert.equal((await snapshot(repo, modelsFile)).chain, undefined, "a dead orchestrator's chain is stale");
 });

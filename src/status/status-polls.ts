@@ -55,8 +55,13 @@ export interface MainCheckStatus {
    * verdict is a red (the watch rechecks the next head rather than the interval), when the
    * operator set the interval to 0 (one full run per new head — nothing is due), or when
    * there is no checkedAt. */
-  nextDueAt?: number;
-  /** Present when a red cleared (part 3b/4) and its one confirming full run has not settled
+    nextDueAt?: number;
+  /** True when the covered head is no longer main's tip (a green taken on a head main has
+   * since moved past): the badge keeps the verdict word and covered sha but flags the
+   * staleness, so a stale green is not read as a statement about current main (BUGS.md
+   * 2026-11-11). A red never carries it — the red is already flagged by color and the watch
+   * rechecks it on the next head. */
+  tipAdvanced?: true; /** Present when a red cleared (part 3b/4) and its one confirming full run has not settled
    * yet: no full verdict covers the clearing head, so the surfaces show "cleared at <sha> ·
    * full check running" instead of a verdict. `sha` is the cleared head, `at` when it
    * cleared, and `status` reads "passed" because the open failures passed there — surfaces
@@ -418,6 +423,18 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
   const counts = asTestCounts(check.counts);
   const red = mainCheckRedDetail(check, sha, scan);
   const { checkedAt, hasVerdict, nextDueAt } = mainCheckCadence(check, cfg);
+  // A green verdict taken on an old head keeps the verdict word and reads as a statement
+  // about current main once main has moved on — the staleness the entry named (BUGS.md
+  // 2026-11-11). Read the branch's current tip (cheap: HEAD file / loose refs, like the
+  // covered-sha read above) and flag a green whose covered sha is behind it. A red is
+  // already flagged by color (the watch rechecks it on the next head) and a skipped check
+  // produced no verdict, so neither carries the staleness mark. `targetBranch`,
+  // `currentBranchFromHeadFile` and `readBranchHead` are the same imports the covered-sha
+  // read above uses, and `readBranchHead` returns null (not throws) when the repo or ref is
+  // unreadable, so a null tip leaves the verdict word intact.
+  const tipSha = sha && check.status === "passed"
+    ? readBranchHead(root, targetBranch(cfg.baseBranch, currentBranchFromHeadFile(root)))
+    : null;
   return {
     ...(sha ? { sha } : {}),
     status: check.status,
@@ -425,6 +442,7 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
     at: check.ts,
     ...(hasVerdict ? { checkedAt } : {}),
     ...(nextDueAt !== undefined ? { nextDueAt } : {}),
+    ...(tipSha && tipSha !== sha ? { tipAdvanced: true } : {}),
     ...(red ? { red } : {}),
   };
 }

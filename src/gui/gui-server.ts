@@ -354,8 +354,8 @@ export function startGui(
   const guiRoutes: Record<string, RouteHandler> = {
     "GET /": servePage,
     "GET /index.html": servePage,
-    "GET /api/status": (_req, res) => {
-      sendJson(res, 200, { ...statusPayload(root), serverBuildSha: startupBuild?.sha ?? null });
+    "GET /api/status": async (_req, res) => {
+      sendJson(res, 200, { ...(await statusPayload(root)), serverBuildSha: startupBuild?.sha ?? null });
     },
     "GET /api/report": (_req, res, target) => handleReport(target.searchParams, res, root),
     "GET /api/failures": (_req, res, target) => handleFailures(target.searchParams, res, root),

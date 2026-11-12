@@ -10,7 +10,11 @@
  * This module is the composition root: it imports the three per-domain builder modules
  * (team-alert-status, team-alert-backlog,
  * team-alert-tail) and runs them in emission order, and it re-exports the shared alert types
- * (defined in team-alert-shared.ts) so consumers keep importing them from this one path. */
+ * (defined in team-alert-shared.ts) so consumers keep importing them from this one path. The
+ * orphans alert the tail builder shows is the GATED value (alert-feeds.ts's
+ * orphanAlertVisible): it appears only for leaks the team's own sweep has not cleared — a
+ * stopped team, or a listed set the sweep has kept past two full sweeps — never for a leak a
+ * running team is on the case for, whose own poll sweep reaps it. */
 
 import type { StatusSnapshot } from "../status/status-data.js";
 import type { OrphanAlert } from "./status-payload.js";

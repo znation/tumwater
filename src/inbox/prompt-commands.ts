@@ -1,7 +1,7 @@
 /** The CLI layer of `tumwater prompt` — the steering-prompt command: submit a prompt to the
  * director (default) or one role's queue, `--list` what is queued with per-role position
  * numbering, or `--cancel <n>` a queued prompt by position. Split out of
- * operator/operator-commands.ts because this command is not a team-control marker: its
+ * cli-operator-commands.ts because this command is not a team-control marker: its
  * sibling commands there ride the operator-intent marker protocol, while this command drives
  * the durable per-role queues (src/inbox/inbox.ts) through the inbox-cancel, inbox-edit, and
  * operator-intent helpers, each with its own broken-config policy — so the command lives

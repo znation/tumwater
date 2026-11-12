@@ -1,6 +1,5 @@
 import { roleLabel } from "../roles/role-labels.js";
 import fs from "node:fs";
-import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
 import { joinOr, shortSha } from "../text/format.js";
 import { readPostReviews, POST_REVIEW_FAILURE_LIMIT } from "../review/post-merge-review.js";
@@ -9,8 +8,9 @@ import type { HarnessEvent } from "../events/events.js";
 import { eventsSince } from "../events/event-window.js";
 import { finiteNumber } from "../files/json-object.js";
 import { distinctOrdered, medianAndMax } from "../collections.js";
-import { agree, plural, trailingDayMedianPhrase } from "../text/phrases.js";
-import { queuedMerges, unreadableMergeQueueFiles } from "../merge/merge-queue.js";
+import path from "node:path";
+import { trailingDayMedianPhrase } from "../text/phrases.js";
+import { readMergePins } from "../merge/merge-pins.js";
 import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
 import { listWideScope, queuedListRows, type QueuedListRow } from "../inbox/inbox.js";
 import { deliverableAt } from "../inbox/prompt-not-before.js";
@@ -24,8 +24,8 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./doctor-outcome.js";
 
 /** The doctor's backlog modules' shared scaffolding and the check groups that do not read a
- * single backlog document: the merge-queue, post-merge-review and queued-prompt checks
- * (checkStaleQueuedMerges, checkMergeQueueFiles, checkPostReviews, checkStalePrompts and the
+ * single backlog document: the merge-pin, post-merge-review and queued-prompt checks
+ * (checkStaleQueuedMerges, checkPostReviews, checkStalePrompts and the
  * mergeWaitPhrase helper) and the uncommitted-
  * edits-in-the-primary-checkout check. This module also hosts the helpers and constants the
  * per-document checks import — readDoc and its checked wrapper readDocChecked, andMore, and the
@@ -113,31 +113,33 @@ export function readBacklogChecked(root: string, file: string): string | CheckOu
   return readDocChecked(path.join(root, file), file, `no ${file} — nothing to verify`);
 }
 
-/** How long a queued merge may wait without its change starting before the stale-queued-merge check
+/** How long a kept merge pin may wait without its change starting before the stale-merge check
  * warns: 6 hours, fixed. A verify plus a merge completes in minutes (plans/merge-queue.md), so a
  * full six-hour silence while the team is healthy — not on a hold, which doctor already reports
  * separately — is never a merely busy pipeline: it reads as a drain that has stalled. The one
  * opinionated default, like STALE_QUESTION_DAYS, so no knob (the dead-alert feed is gone; the
  * STALE_PROMPT_MS/STALE_BUG_DAYS precedent). */
 const MERGE_QUEUE_STALE_MS = 6 * HOUR_MS;
-/** The window of the merge-wait phrase on the stale merge-queue row. */
+/** The window of the merge-wait phrase on the stale-merge row. */
 const MERGE_WAIT_WINDOW_MS = DAY_MS;
 
-/** Stale queued merges — a change that has sat in the durable merge queue too long without starting
+/** Stale kept merges — a change that has sat behind its merge pin too long without starting
  * (plans/merge-queue.md). Every queued-change health fact is otherwise a hook into its own role or
  * stage: a verify under way reads in the team row, a team hold gets its own banner, and
- * team-alerts' STALL_RE catches a RUNNING stage frozen. But a change (or a batch behind the single
- * merge slot) that quietly never starts — neither verified nor flagged — reads as healthy: the
- * header's `merge queue: N` badge counts it and `tumwater queue` ages it, yet nothing calls it out
- * on its own. This names the single oldest queued merge that is NOT currently in-flight and has
- * waited past MERGE_QUEUE_STALE_MS, so an operator sees a stalled drain instead of only a growing
- * depth. The in-flight marker (readMergeMarker via mergeChanges) contributes the set of roles
+ * team-alerts' STALL_RE catches a RUNNING stage frozen. But a pinned change that quietly never
+ * starts — neither merged nor flagged — reads as healthy: the header's `merge queue: N` badge
+ * counts it, yet nothing calls it out on its own. This names the single oldest merge that is NOT
+ * currently in-flight and has waited past MERGE_QUEUE_STALE_MS, so an operator sees a stalled
+ * drain instead of only a growing depth. It reads the waiting changes as the shared pin view
+ * (readMergePins, src/merge/merge-pins.ts) and ages each by its commit's date — a pin has no
+ * queue-file mtime, so the commit is when the waiting work began — with no queue file in scope at
+ * all. The in-flight marker (readMergeMarker via mergeChanges) contributes the set of roles
  * holding a change being verified or merged right now — a slow review is not a stalled drain, and
  * an absent or never-throwing unreadable marker contributes the empty set. Reads the tree at `root`
  * with the already-exported readers, changing nothing in src/merge/. A warn, never a fail — the
  * checkStaleQuestions/checkStalledEntries precedent: a queued wait is legitimate while the team is
  * genuinely held, and those holds already warn separately. */
-export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome {
+export async function checkStaleQueuedMerges(root: string, now: number): Promise<CheckOutcome> {
   const withWait = (out: CheckOutcome): CheckOutcome => {
     let phrase: string | undefined;
     try {
@@ -147,52 +149,31 @@ export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome 
     }
     return phrase ? { ...out, detail: `${out.detail} · ${phrase}` } : out;
   };
-  const stale = staleQueuedMergeRows(root, now).map((e) => ({ ...e, age: humanSince(now - e.waitedMs, now) }));
+  const stale = await staleQueuedMergeRows(root, now);
   const [first, ...rest] = stale;
   if (!first)
-    return withWait(okOutcome(`no merge-queue entry has waited more than ${humanSeconds(MERGE_QUEUE_STALE_MS / 1000)} to start`));
+    return withWait(okOutcome(`no queued merge has waited more than ${humanSeconds(MERGE_QUEUE_STALE_MS / 1000)} to start`));
   const more = andMore(rest, (e) => `${e.role} — ${quoteHeading(e.summary)}`);
-  return withWait(warnOutcome(`merge-queue entry of ${roleLabel(first.role)} — ${quoteHeading(first.summary)} — has waited ` +
-      `${first.age} to start${more}; a queued change the pipeline neither approves nor flags reads as healthy, so the merge queue has stopped moving`));
+  return withWait(warnOutcome(`queued merge of ${roleLabel(first.role)} — ${quoteHeading(first.summary)} — has waited ` +
+      `${humanSince(now - first.waitedMs, now)} to start${more}; a queued change the pipeline neither approves nor flags reads as healthy, so the merge queue has stopped moving`));
 }
 
 /** The one traversal for the doctor's `stale merge-queue entries` row
- * (checkStaleQueuedMerges): every queued merge whose role is not in the in-flight
- * marker and whose wait strictly exceeds MERGE_QUEUE_STALE_MS (6 h), in queue-file order (oldest
- * first). The in-flight set comes from readMergeMarker via mergeChanges (an absent or
+ * (checkStaleQueuedMerges): every kept merge whose role is not in the in-flight marker and whose
+ * wait strictly exceeds MERGE_QUEUE_STALE_MS (6 h). It reads the waiting changes as the shared pin
+ * view (readMergePins, no queue file) and ages each by the commit's date — the row is ordered
+ * oldest first. The in-flight set comes from readMergeMarker via mergeChanges (an absent or
  * never-throwing unreadable marker contributes the empty set) — a slow review is not a stalled
- * drain. Each row carries { role, summary, waitedMs }, which the row renders with its age
- * phrase, so the rule and its threshold live in one place and cannot drift. */
-function staleQueuedMergeRows(root: string, now: number): Array<{ role: string; summary: string; waitedMs: number }> {
+ * drain. Each row carries { role, summary, waitedMs }, so the rule and its threshold live in one
+ * place and cannot drift. */
+async function staleQueuedMergeRows(root: string, now: number): Promise<Array<{ role: string; summary: string; waitedMs: number }>> {
   const marker = readMergeMarker(root);
   const inFlight = new Set(marker ? mergeChanges(marker).map((c) => c.role) : []);
-  return queuedMerges(root)
+  const { entries } = await readMergePins(root);
+  return entries
     .filter((e) => !inFlight.has(e.role) && now - e.enqueuedAt > MERGE_QUEUE_STALE_MS)
-    .map((e) => ({ role: e.role, summary: e.summary, waitedMs: now - e.enqueuedAt }));
-}
-
-/** The merge-queue files `readMergeQueue` skips — torn, foreign, or vanished mid-listing — as
- * checkout-relative paths. The one traversal behind the doctor's `checkMergeQueueFiles` row, so
- * the row names the same paths the reader actually skips and cannot drift. */
-export function skippedMergeQueueFiles(root: string): string[] {
-  return unreadableMergeQueueFiles(root).map((f) => path.relative(root, f));
-}
-
-/** The merge-queue files `readMergeQueue` skips — torn, foreign, or vanished mid-listing —
- * named so a stranded queue entry is a health signal instead of only a number on `tumwater
- * queue`'s output. It exists because `tumwater queue` counts the skips but does not name them,
- * and the drain drops only an unreadable head, so a non-head skip is otherwise silent: it sits
- * in `.tumwater/merge-queue/` forever, never drained, and neither the queue reader nor the
- * stale-queued-merges doctor row (which reads only readable entries) surfaces it. Warn, never
- * fail, like the module's other document checks: a foreign file is operator signal, not a
- * broken environment. */
-export function checkMergeQueueFiles(root: string): CheckOutcome {
-  const files = skippedMergeQueueFiles(root);
-  if (files.length === 0) return okOutcome("the queue reader skips no merge-queue file");
-  const [first, ...rest] = files;
-  const more = andMore(rest, (f) => f, agree(rest.length, "file", "files"));
-  return warnOutcome(`the merge queue holds ${plural(files.length, "file")} the reader skips — ${first!}${more}; ` +
-    `a torn or foreign file is never cleared, so nothing ages it or surfaces its merge — remove it (a crashed enqueue's merge ref still recovers on the next run)`);
+    .map((e) => ({ role: e.role, summary: e.summary, waitedMs: now - e.enqueuedAt }))
+    .sort((a, b) => b.waitedMs - a.waitedMs);
 }
 
 /** A post-merge review (src/review/post-merge-review.ts, POST_REVIEW_FAILURE_LIMIT) whose

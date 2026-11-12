@@ -12,7 +12,7 @@ import path from "node:path";
 import { statOrNull } from "../files/files.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
 import { firstTrimmedLineStartingWith } from "../text/text.js";
-import { NEEDS_REVIEW_PREFIX } from "../roles/role-guidance.js";
+import { isNeedsReviewNoteLine, withDirectorHold } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { roleLabel } from "../roles/role-labels.js";
 import type { BacklogEntry } from "./backlog-md.js";
@@ -26,7 +26,7 @@ import { finishedFiles, isRetiredTitle, openBugEntries, plannedPlanEntries } fro
  * the next failure (bugfixWaitDate): nothing is asked of a reviewer, and tumwater lifts the
  * wait itself when the test fails again or closes the bug when it stays quiet
  * (backlog-bug-waits.ts). */
-export type EntryHold = "refused" | "needs-review" | "awaiting-recurrence" | { blockedBy: string[] } | null;
+export type EntryHold = "refused" | "needs-review" | "awaiting-recurrence" | "with-director" | { blockedBy: string[] } | null;
 
 /** One entry the reader may take: `key` is the stamp-free identity a claim can match on
  * (entryKey), `title` the verbatim heading, and `start`/`end` the 1-based line range the role
@@ -41,9 +41,9 @@ export interface EligibleEntry {
   file?: string;
 }
 
-/** The `**Refused …` note prefix a refusing run writes. Every hold note — this one and the
- * imported Needs-review prefix — is matched as a line prefix (hasNoteLine)
- * so a mention in prose never holds an entry. */
+/** The `**Refused …` note prefix a refusing run writes. Matched as a line prefix (hasNoteLine)
+ * so a mention in prose never holds an entry. (The Needs-review note is matched by the widened
+ * `isNeedsReviewNoteLine` predicate, not this prefix. */
 const REFUSED_PREFIX = "**Refused ";
 
 /** The legacy marker the old increment rule left beside a Needs-review note's prior held count
@@ -58,9 +58,10 @@ function hasNoteLine(body: string, prefix: string): boolean {
   return body.split("\n").some((line) => line.trimStart().startsWith(prefix));
 }
 
-/** The text of `body`'s note for `prefix`: the first line (ignoring leading indentation) that
- * begins with it, trimmed, with the leading `**` and the first closing `**` removed. Null when
- * no line matches — the same line-prefix rule entryHold uses. */
+/** The text of `body`'s Refused note: the first line (ignoring leading indentation) that begins
+ * with the Refused prefix, trimmed, with the leading `**` and the first closing `**` removed.
+ * Null when no line matches — the same line-prefix rule entryHold uses. (The Needs-review note
+ * has its own widened reader, needsReviewNote.) */
 function noteText(body: string, prefix: string): string | null {
   const line = firstTrimmedLineStartingWith(body, prefix);
   return line === undefined ? null : line.replace(/^\*\*/, "").replace("**", "");
@@ -71,17 +72,24 @@ export function refusalNote(body: string): string | null {
   return noteText(body, REFUSED_PREFIX);
 }
 
-/** The text of `body`'s Needs-review note, or null when it has none (entryHold's
- * "needs-review" hold). A needs-review note parks the entry (an unreproducible bug, a plan
- * judged too large, a rejected plan), so the stale-bug checks skip it like a refused one. */
+/** The text of `body`'s first Needs-review note line, or null when it has none. The widened
+ * predicate (isNeedsReviewNoteLine) accepts the optional bold span, so a span-less note is found
+ * exactly as a bold one; the note is returned with the optional leading `**` and the first
+ * closing `**` removed. Null when `body` has no Needs-review note line. */
 export function needsReviewNote(body: string): string | null {
-  return noteText(body, NEEDS_REVIEW_PREFIX);
+  const line = body
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => isNeedsReviewNoteLine(l));
+  return line === undefined ? null : line.replace(/^\*\*/, "").replace("**", "");
 }
 
 /** The bugfix role's wait for the next failure: a Needs-review note line written by bugfix
- * (`**Needs review <YYYY-MM-DD> by bugfix: …`), with its date in group 1. Matched on the trimmed
- * line, the same line-prefix rule as every hold note. */
-const BUGFIX_WAIT_RE = /^\*\*Needs review (\d{4}-\d{2}-\d{2}) by bugfix\b/;
+ * (`**Needs review <YYYY-MM-DD> by bugfix: …`), with its date in group 1, the bold span optional
+ * (the `*{0,2}` matches a span-less note too, so a wait written without the `**` is recognized as
+ * a wait rather than a plan-role hold). Matched on the trimmed line, the same line-prefix rule as
+ * every hold note. */
+const BUGFIX_WAIT_RE = /^\*{0,2}Needs review (\d{4}-\d{2}-\d{2}) by bugfix\b/;
 
 /** True when the trimmed note line is a bugfix wait (BUGFIX_WAIT_RE). */
 function isBugfixWaitLine(trimmed: string): boolean {
@@ -171,10 +179,10 @@ export function withoutBugfixWaitNotes(lines: string[]): string[] {
 export function withoutNeedsReviewNotes(lines: string[]): string[] {
   // A lift only happens when the slice carries a Needs-review note; without one, the slice
   // (and any legacy prior-held marker on it) is left byte for byte.
-  if (!lines.some((raw) => raw.trimStart().startsWith(NEEDS_REVIEW_PREFIX))) return lines;
+  if (!lines.some((raw) => isNeedsReviewNoteLine(raw))) return lines;
   // Every Needs-review note goes, and so does each `**Previously held N**` marker the old
   // increment rule wrote with it.
-  return withoutNotes(lines, (trimmed) => trimmed.startsWith(NEEDS_REVIEW_PREFIX) || trimmed.startsWith(PRIOR_HELD_PREFIX));
+  return withoutNotes(lines, (trimmed) => isNeedsReviewNoteLine(trimmed) || trimmed.startsWith(PRIOR_HELD_PREFIX));
 }
 
 /** The Done entries of the parts `title` requires, in the order its requires clause names them:
@@ -250,8 +258,14 @@ export function entryHoldAgainst(
   // A Needs-review note — the feature role's too-large note or the convergence hold's — parks the
   // entry for the plan role to split or replan, at any count: nothing escalates to the operator.
   // One whose every Needs-review note is a bugfix wait waits for its test to fail again instead.
-  const notes = entry.body.split("\n").map((line) => line.trimStart()).filter((line) => line.startsWith(NEEDS_REVIEW_PREFIX));
+  const notes = entry.body.split("\n").map((line) => line.trimStart()).filter(isNeedsReviewNoteLine);
   if (notes.length > 0) return notes.every(isBugfixWaitLine) ? "awaiting-recurrence" : "needs-review";
+  // A director-handoff marker holds the entry for the director: the index marks it so a model
+  // that would misread the prose does not keep an answered handoff eligible (BUGS.md
+  // director-handoff re-derivation). A Progress or `by director` Needs-review line anywhere in the
+  // body clears it (the reader is placement-independent). Entries handed off before the marker
+  // existed are skipped by the prose rule in the charter, which the index cannot see.
+  if (withDirectorHold(entry.body)) return "with-director";
   const refs = requiredParts(entry.title);
   if (refs.length === 0) return null;
   const blocked = refs.filter((ref) => plannedParts.has(partKey(ref.series, ref.part)));
@@ -269,6 +283,7 @@ export function holdMark(hold: EntryHold): string {
   if (hold === "refused") return " [blocked: refused]";
   if (hold === "needs-review") return " [blocked: needs review]";
   if (hold === "awaiting-recurrence") return " [blocked: waiting for a recurrence]";
+  if (hold === "with-director") return " [blocked: with the director]";
   return ` [blocked: requires ${hold.blockedBy.join(", ")}]`;
 }
 

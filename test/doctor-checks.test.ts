@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import {
   checkBackendBinary,
   checkBootstrap,
@@ -25,6 +26,7 @@ import {
   checkDurationPhrase,
   checkDiskSpace,
   diskReclaimPhrase,
+  checkEmptyRootFiles,
   checkEventLog,
   checkFlakyChecks,
   checkDroppedPostMergeReviews,
@@ -80,6 +82,7 @@ import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { teamWorkspaceMessage } from "../src/gates/readiness-gates.js";
 import { headSha, teamWorkspace, makeRepo, runningAsRoot, sh, tmpdir, twoPlansDoc, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { resolvedGitBin } from "../src/git/git-run.js";
 import { writeScript } from "./fakes/fake-commands.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { TUMWATER_SOURCE, logEvent, type HarnessEvent } from "../src/events/events.js";
@@ -741,6 +744,75 @@ test("checkEventLog's ok detail names the oldest generation's first day and the 
   const out = checkEventLog(root);
   assert.equal(out.level, "ok");
   assert.match(out.detail, new RegExp(`history from ${dayKey(tsDaysAgo(7))}, 3 files`));
+});
+// checkEmptyRootFiles resolves git through the harness's own resolvedGitBin, so the fixtures
+// commit through the same resolution to stay honest about which binary the check will read.
+function commitVia(root: string, ...args: string[]): void {
+  spawnSync(resolvedGitBin(), ["-c", "user.name=t", "-c", "user.email=t@e.c", ...args], { cwd: root, stdio: "ignore" });
+}
+/** A makeRepo'd repo with a zero-byte file committed at the root (and, when given, in a dir). */
+function repoWithEmptyRootFile(root: string, name: string, inDir?: string): string {
+  const p = inDir ? path.join(root, inDir, name) : path.join(root, name);
+  if (inDir) fs.mkdirSync(path.join(root, inDir), { recursive: true });
+  fs.writeFileSync(p, "");
+  commitVia(root, "add", "-A");
+  commitVia(root, "commit", "-m", "empty");
+  return root;
+}
+test("checkEmptyRootFiles fails naming a tracked zero-byte root file", () => {
+  const root = repoWithEmptyRootFile(makeRepo(), "junk");
+  const out = checkEmptyRootFiles(root);
+  assert.equal(out.level, "fail");
+  assert.match(out.detail, /1 empty tracked root file: junk/);
+  assert.match(out.detail, /git rm/);
+});
+test("checkEmptyRootFiles passes a root with no empty tracked file, and ignores subdirectory empties", () => {
+  const clean = makeRepo();
+  assert.equal(checkEmptyRootFiles(clean).level, "ok");
+  // A zero-byte file below the root (a .gitkeep, an intentionally-empty marker) is legitimate.
+  const sub = repoWithEmptyRootFile(makeRepo(), "keep.txt", "notes");
+  assert.equal(checkEmptyRootFiles(sub).level, "ok");
+});
+test("checkEmptyRootFiles names every leaked root file and the extras count", () => {
+  const root = makeRepo();
+  for (const name of ["a", "b", "c", "d", "e", "f", "g", "h", "i"])
+    fs.writeFileSync(path.join(root, name), "");
+  commitVia(root, "add", "-A");
+  commitVia(root, "commit", "-m", "leak");
+  const out = checkEmptyRootFiles(root);
+  assert.equal(out.level, "fail");
+  assert.match(out.detail, /9 empty tracked root files/);
+  assert.match(out.detail, /a, b, c, d, e, f, g, h/);
+  assert.match(out.detail, /\(and 1 more\)/);
+});
+test("checkEmptyRootFiles reads ok for a directory that is not a git checkout", () => {
+  const out = checkEmptyRootFiles(tmpdir());
+  assert.deepEqual(out, { level: "ok", detail: "not a git checkout — no tracked root files to scan" });
+});
+// The check's `git ls-files -z` probe is a synchronous spawnSync, so a wedged git (an unmounted
+// volume, a locked index) would block the whole event loop with no timer or watchdog able to
+// run until it returned — hanging the doctor the operator ran. This pins the bound: a fake
+// git that never exits is abandoned at its timeout (SIGKILL) and the row fails loudly naming
+// the deadline. Before the fix the probe had no timeout, so the call waited out the fake.
+test("a wedged git cannot hang the empty-files row: the probe is bounded and the row fails", () => {
+  const root = makeRepo(); // a real checkout (its .git is what makes the probe run)
+  const scratch = tmpdir("tw-wedged-git-");
+  const bin = path.join(scratch, "bin");
+  fs.mkdirSync(bin);
+  const fake = path.join(bin, "git");
+  fs.writeFileSync(fake, "#!/bin/sh\nexec sleep 30\n");
+  fs.chmodSync(fake, 0o755);
+  try {
+    const started = Date.now();
+    const out = checkEmptyRootFiles(root, { gitBin: () => fake, timeoutMs: 500 });
+    const elapsed = Date.now() - started;
+    assert.equal(out.level, "fail");
+    assert.match(out.detail, /did not finish within 0\.5 s/);
+    assert.ok(elapsed < 5000, `the probe was not bounded: it took ${elapsed}ms`);
+  }
+  finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 });
 
 test("checkDiskSpace fails below the floor, warns in the reclaim band, passes above it, and warns when unmeasurable", () => {

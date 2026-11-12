@@ -42,7 +42,7 @@ const ARCHIVE_SWEEP_SENTENCE = (() => {
  * main commits that touched a conflicted file since the merge-base. One named shape so the
  * resolver prompt (conflictIntentBlocks) and the hand-back note cannot drift on what either
  * side meant. */
-interface ConflictIntent {
+export interface ConflictIntent {
   change: string;
   main: Array<{ sha: string; subject: string; body: string }>;
   mainOmitted?: number;

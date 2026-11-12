@@ -47,22 +47,6 @@ const NODE_INTERNAL_FRAME = /^at\s(?:.*\()?node:internal\//;
 /** How many failing test titles parseFailingTests keeps; a list that long may be cut short. */
 export const FAILING_TESTS_MAX = 50;
 
-/** The titles of the tests a check's COMPLETE output reports failed: every line FAILED_TEST_LINE
- * matches, its trailing duration stripped, deduplicated (node:test prints a failure in the tree and
- * again under `✖ failing tests:`), in output order, at most FAILING_TESTS_MAX. Read the full
- * output, before clipBuildTail cuts it. Empty for output from another runner. */
-export function parseFailingTests(output: string): string[] {
-  const titles = new Set<string>();
-  for (const raw of output.split("\n")) {
-    const line = raw.trim();
-    if (!FAILED_TEST_LINE.test(line)) continue;
-    const title = resultTitle(line);
-    if (title !== "") titles.add(title);
-    if (titles.size >= FAILING_TESTS_MAX) break;
-  }
-  return [...titles];
-}
-
 /** node:test's spec reporter's trailing duration: the ` (12.3ms)` / ` (2s)` stamp a failed
  * test line ends with. The single home of the strip, shared by resultTitle (the title
  * parseFailingTests keeps), failureHeadline (whose name part drops it so one flake's
@@ -74,6 +58,60 @@ const FAILED_TEST_DURATION = / \([\d.]+m?s\)$/;
 /** A failed test's line title: the `✖ ` mark and the trailing duration stripped. */
 function resultTitle(line: string): string {
   return line.slice(2).replace(FAILED_TEST_DURATION, "").trim();
+}
+
+/** A failing test's line in Python's unittest output (`ERROR:`/`FAIL:` per test, or
+ * `FAIL:`/`ERROR:` with the reason). The per-test name follows the marker and is a valid
+ * Python identifier, so it never opens a digit; the `ERROR: 1 test` / `FAIL: 1 test` count
+ * line (digit first) and the `FAILED (…)` run summary are not tests and do not match.
+ * node:test prints no such line, so this is the non-node half of failedTestLine's runner
+ * split. */
+const PY_FAILED_TEST_LINE = /^(?:ERROR|FAIL):\s+(?!\d+\s)\S+/;
+
+/** A failing test's line in pytest's short-test-summary (`FAILED <nodeid> - <reason>`). The
+ * `FAILED` must not open a paren — unittest's `FAILED (failures=…)` run summary is not a test
+ * (a pytest nodeid starts with a path character, never `(`). */
+const PYTEST_FAILED_TEST_LINE = /^FAILED\s+(?!\()/;
+
+/** A failing test's leading marker word (`FAIL:`, `ERROR:`, `FAILED `): stripped so the title
+ * is the test's own name, the form a re-run and an attribution compare on. */
+const PY_FAILED_TEST_PREFIX = /^(?:FAILED|ERROR|FAIL):?\s+/;
+
+/** Which runner's failing-test lines the COMPLETE output names: node:test (any `✖` line — a
+ * failing run always prints its failed test there) or Python/pytest (no `✖`, only
+ * `ERROR:`/`FAIL:`/`FAILED` lines). A failing node:test run cannot be mistaken for Python and
+ * vice versa, so this keeps a node check on node parsing (BUGS.md 2026-11-11: a Python run
+ * named nothing and a red main merged over it silently). */
+function isNodeTestOutput(output: string): boolean {
+  return output.includes("✖");
+}
+
+/** Whether a trimmed output line names a failing test under the output's runner — node:test
+ * (FAILED_TEST_LINE) or Python/pytest (PY_FAILED_TEST_LINE/PYTEST_FAILED_TEST_LINE). The single
+ * predicate parseFailingTests applies, so one check cannot mix runners' failure lines. */
+function failedTestLine(line: string, node: boolean): boolean {
+  if (node) return FAILED_TEST_LINE.test(line);
+  return PY_FAILED_TEST_LINE.test(line) || PYTEST_FAILED_TEST_LINE.test(line);
+}
+
+/** The titles of the tests a check's COMPLETE output reports failed: every line
+ * failedTestLine matches, its trailing duration stripped, deduplicated (a runner prints a
+ * failure in the tree and again under its summary), in output order, at most
+ * FAILING_TESTS_MAX. Read the full output, before clipBuildTail cuts it. Names nothing the
+ * output does not name — empty for output from another runner (a tsc/lint error). */
+export function parseFailingTests(output: string): string[] {
+  const node = isNodeTestOutput(output);
+  const titles = new Set<string>();
+  for (const raw of output.split("\n")) {
+    const line = raw.trim();
+    if (!failedTestLine(line, node)) continue;
+    const title = node
+      ? resultTitle(line)
+      : line.replace(PY_FAILED_TEST_PREFIX, "").replace(FAILED_TEST_DURATION, "").trim();
+    if (title !== "") titles.add(title);
+    if (titles.size >= FAILING_TESTS_MAX) break;
+  }
+  return [...titles];
 }
 
 /** A failure's location line in node:test's `✖ failing tests:` section, printed right above the

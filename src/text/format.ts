@@ -110,7 +110,7 @@ export function usdCap(n: number): string {
  * the status header's disk badge (badges.ts's `diskBadge`), the team's low-disk alert
  * (team-alert-status.ts),
  * the doctor's disk check detail (doctor-project-checks.ts), and `tumwater reclaim`'s
- * freed-size line (operator-commands.ts), so the decimal width and unit cannot drift per
+ * freed-size line (cli-operator-commands.ts), so the decimal width and unit cannot drift per
  * consumer. A caller
  * reading the value from an untrusted event field applies event-format-fragments.ts's `gigabytes`
  * wrapper (finiteNumber's corrupt-field rule) over this. */

@@ -127,6 +127,14 @@ export function mainCheckBadge(mainCheck: StatusSnapshot["mainCheck"], now = Dat
     const clearedSha = mainCheck.sha ? shortSha(mainCheck.sha) : "";
     return ` · cleared at ${clearedSha} · full check running`;
   }
+  // A green verdict taken on a head main has since moved past is no longer a statement about
+  // current main: keep the (green) verdict word — the verdict WAS green on that head, and the
+  // header tone keys off it — but append the staleness the entry named (BUGS.md 2026-11-11) so
+  // a stale green is not mistaken for a verified tip. The covered sha and age stay, so the
+  // operator sees exactly which commit it covered and how old. A suffix (not a word swap) keeps
+  // every surface that asserts the verdict word byte-compatible. A red never carries the mark
+  // (the poll sets it only for a passed verdict): a red is already flagged by color and the
+  // watch rechecks it on the next head, so the staleness there is the expected state.
   const verdict = mainCheckVerdict(mainCheck.status).word;
   const sha = mainCheck.sha ? ` at ${shortSha(mainCheck.sha)}` : "";
   const when = typeof mainCheck.checkedAt === "number" ? `, ${humanAgo(mainCheck.checkedAt, now)}` : "";
@@ -136,7 +144,14 @@ export function mainCheckBadge(mainCheck: StatusSnapshot["mainCheck"], now = Dat
         ? " · due now"
         : ` · next in ${humanUntil(mainCheck.nextDueAt, now)}`
       : "";
-  return ` · full check ${verdict}${sha}${when}${next}`;
+  // The staleness the entry named, last: a green whose covered head main has since moved past
+  // (the poll sets tipAdvanced only for a passed verdict — see MainCheckStatus). The verdict
+  // word and tone are unchanged; this suffix is what stops a stale green reading as a current
+  // one. A red never carries it (a red is already flagged by color and rechecked on each new
+  // head, so staleness there is the expected state — and red-surface assertions anchor at the
+  // end, so the mark stays out of the red path entirely).
+  const tipAdvanced = mainCheck.tipAdvanced && mainCheck.status === "passed" ? " · tip advanced" : "";
+  return ` · full check ${verdict}${sha}${when}${next}${tipAdvanced}`;
 }
 
 /** The team's current budget-gate state, derived from a snapshot's budget block — the header

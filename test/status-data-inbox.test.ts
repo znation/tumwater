@@ -24,11 +24,11 @@ import { withCountedReads } from "./helpers/fs-faults.js";
 test("snapshot carries queued director prompts as truncated previews, fresh per poll", async () => {
   const repo = makeRepo();
   await initProject(repo, "inbox snapshot test");
-  assert.deepEqual(snapshot(repo).inboxPrompts, []); // no inbox dir yet
+  assert.deepEqual((await snapshot(repo)).inboxPrompts, []); // no inbox dir yet
 
   submitPrompt(repo, "first prompt");
   submitPrompt(repo, "x".repeat(120)); // overlong: must come back as an ≤80-char preview
-  let snap = snapshot(repo);
+  let snap = await snapshot(repo);
   assert.equal(snap.inbox, 2);
   assert.deepEqual(snap.inboxPrompts[0], "first prompt");
   // The same inbox pass pairs each preview with its queue-file basename (the
@@ -50,9 +50,9 @@ test("snapshot carries queued director prompts as truncated previews, fresh per 
   // Fresh per poll like questions: a prompt enqueued between snapshots appears without a
   // restart, and the director consuming one drops it on the next.
   submitPrompt(repo, "third");
-  assert.equal(snapshot(repo).inboxPrompts.length, 3);
+  assert.equal((await snapshot(repo)).inboxPrompts.length, 3);
   dequeuePrompt(repo);
-  snap = snapshot(repo);
+  snap = await snapshot(repo);
   assert.deepEqual(snap.inboxPrompts, [preview, "third"]);
 });
 
@@ -67,7 +67,7 @@ test("snapshot reports the merge queue depth and the in-flight merge", async () 
   // Idle: depth 0, no inFlight, no entries (depth is unconditional, so JSON consumers see one
   // shape; the entries ride the same read pass and are absent when there is nothing to render —
   // the roleInboxPrompts discipline the merge queue drawer's plan names).
-  let snap = snapshot(repo);
+  let snap = await snapshot(repo);
   assert.equal(snap.mergeQueue.depth, 0);
   assert.equal(snap.mergeQueue.inFlight, undefined);
   assert.equal(snap.mergeQueue.entries, undefined);
@@ -81,7 +81,7 @@ test("snapshot reports the merge queue depth and the in-flight merge", async () 
     summary: "tidy something",
     enqueuedAt: Date.now(),
   });
-  snap = snapshot(repo);
+  snap = await snapshot(repo);
   assert.equal(snap.mergeQueue.depth, 1);
   assert.equal(snap.mergeQueue.inFlight, undefined, "queued, not merge: no inFlight yet");
   // The queued change is listed in execution order with the fields the drawer paints —
@@ -93,7 +93,7 @@ test("snapshot reports the merge queue depth and the in-flight merge", async () 
   // Two queued entries list oldest first, in the queue's filename order; the second carries a
   // re-queue's `retry` and (a review_error) `notBefore`, which the payload forwards.
   enqueueMerge(repo, { role: "feature", sha: "def5678", run: 2, summary: "add a thing", enqueuedAt: Date.now(), retry: "review_error", notBefore: Date.now() + 60_000, retryCount: 3 });
-  snap = snapshot(repo);
+  snap = await snapshot(repo);
   assert.equal(snap.mergeQueue.depth, 2);
   assert.deepEqual(snap.mergeQueue.entries!.map((e) => e.role), ["clean", "feature"]);
   assert.deepEqual(
@@ -127,14 +127,14 @@ test("snapshot reports the merge queue depth and the in-flight merge", async () 
     summary: "tidy something",
     startedAt,
   });
-  snap = snapshot(repo);
+  snap = await snapshot(repo);
   assert.equal(snap.running, true);
   assert.deepEqual(snap.mergeQueue.inFlight, { role: "clean", sha: "abc1234", summary: "tidy something", startedAt });
 
   // Crash orderings self-heal: a DEAD harness never displays in flight (the depth — queued
   // work that will drain on the next start — stays visible)…
   fs.rmSync(infoFile);
-  snap = snapshot(repo);
+  snap = await snapshot(repo);
   assert.equal(snap.running, false);
   assert.equal(snap.mergeQueue.depth, 1, "queued work is visible even while the team is down");
   assert.equal(snap.mergeQueue.inFlight, undefined, "a dead harness never shows a merge as in flight");
@@ -148,7 +148,7 @@ test("snapshot reports the merge queue depth and the in-flight merge", async () 
     summary: "stale marker",
     startedAt: Date.now(),
   });
-  snap = snapshot(repo);
+  snap = await snapshot(repo);
   assert.equal(snap.running, true);
   assert.equal(snap.mergeQueue.inFlight, undefined, "a marker with no matching queue entry never displays");
 
@@ -156,7 +156,7 @@ test("snapshot reports the merge queue depth and the in-flight merge", async () 
   // with the entries gone too.
   fs.rmSync(path.join(mergeQueueDir(repo), fs.readdirSync(mergeQueueDir(repo))[0]!));
   fs.rmSync(mergeStatePath(repo));
-  snap = snapshot(repo);
+  snap = await snapshot(repo);
   assert.equal(snap.mergeQueue.depth, 0);
   assert.equal(snap.mergeQueue.inFlight, undefined);
   assert.equal(snap.mergeQueue.entries, undefined);
@@ -189,7 +189,7 @@ test("the marker is cross-checked per change and each row reads its own change's
       { role: "plan", sha: "91a0000", summary: "plan work", status: "merging", startedAt: t0 },
     ],
   });
-  let snap = snapshot(repo);
+  let snap = await snapshot(repo);
   assert.deepEqual(
     snap.mergeQueue.inFlight?.changes?.map((c) => c.role),
     ["clean", "bugfix", "dedupe"],
@@ -208,7 +208,7 @@ test("the marker is cross-checked per change and each row reads its own change's
       fs.rmSync(path.join(mergeQueueDir(repo), f));
     }
   }
-  snap = snapshot(repo);
+  snap = await snapshot(repo);
   assert.equal(snap.mergeQueue.depth, 1);
   assert.equal(snap.mergeQueue.inFlight, undefined, "a marker whose live records are all done never displays");
   fs.rmSync(orchestratorStatePath(repo));
@@ -220,7 +220,7 @@ test("snapshot counts each role's own prompt queue and leaves the director to in
   const one = enqueueRolePrompt(repo, "clean", "one");
   const two = enqueueRolePrompt(repo, "dedupe", "two");
   const three = enqueueRolePrompt(repo, "dedupe", "three");
-  const snap = snapshot(repo);
+  const snap = await snapshot(repo);
   assert.equal(snap.roleInbox.clean, 1);
   assert.equal(snap.roleInbox.dedupe, 2);
   assert.ok(!("director" in snap.roleInbox), "the director's queue is the shared inbox, not roleInbox");
@@ -248,10 +248,10 @@ test("snapshot's roleInbox deliverability advances with its pinned clock", async
   const until = now + 30 * 60_000;
   enqueueRolePrompt(repo, "clean", "later", until);
   // Still deferred at the pinned instant: not deliverable, so not counted.
-  assert.equal(snapshot(repo, undefined, now).roleInbox.clean, 0);
+  assert.equal((await snapshot(repo, undefined, now)).roleInbox.clean, 0);
   // At the deferred time itself (deliverableAt is `at <= now`), it counts — a wall-clock read
   // would leave this at 0 and make deferred deliverability untestable through the seam.
-  assert.equal(snapshot(repo, undefined, until).roleInbox.clean, 1);
+  assert.equal((await snapshot(repo, undefined, until)).roleInbox.clean, 1);
 });
 
 test("snapshot's director inbox deliverability advances with its pinned clock", async () => {
@@ -264,11 +264,11 @@ test("snapshot's director inbox deliverability advances with its pinned clock", 
   // Still deferred at the pinned instant: not deliverable, so not counted — but still listed,
   // so the Queued tab can show and cancel it, exactly as a deferred role prompt rides
   // roleInboxPrompts.
-  const deferred = snapshot(repo, undefined, now);
+  const deferred = await snapshot(repo, undefined, now);
   assert.equal(deferred.inbox, 0);
   assert.equal(deferred.inboxPrompts.length, 1);
   // At the deferred time itself (deliverableAt is `at <= now`), it counts.
-  assert.equal(snapshot(repo, undefined, until).inbox, 1);
+  assert.equal((await snapshot(repo, undefined, until)).inbox, 1);
 });
 
 // The in-flight marker is stat-cached per poll (src/merge/merge-slot.ts): an unchanged marker
@@ -287,11 +287,11 @@ test("snapshot serves an unchanged in-flight merge marker from the stat-keyed ca
     summary: "tidy something",
     startedAt,
   });
-  assert.equal(snapshot(repo).mergeQueue.inFlight?.sha, "abc1234"); // first read populates the cache
+  assert.equal((await snapshot(repo)).mergeQueue.inFlight?.sha, "abc1234"); // first read populates the cache
 
-  withCountedReads(
-    (reads) => {
-      const snap = snapshot(repo);
+  await withCountedReads(
+    async (reads) => {
+      const snap = await snapshot(repo);
       assert.equal(snap.mergeQueue.inFlight?.role, "clean");
       assert.equal(reads(), 0); // unchanged marker — no re-read of the in-flight file at all
     },
@@ -306,7 +306,7 @@ test("snapshot serves an unchanged in-flight merge marker from the stat-keyed ca
     startedAt: Date.now(),
     stage: "merging",
   });
-  assert.equal(snapshot(repo).mergeQueue.inFlight?.stage, "merging");
+  assert.equal((await snapshot(repo)).mergeQueue.inFlight?.stage, "merging");
 });
 
 // --- pausedUntil: the team marker's standing timed-pause deadline (PLANS.md 2026-09-25) ---

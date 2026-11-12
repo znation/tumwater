@@ -527,6 +527,9 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     refreshReport: () => {
       report.enter?.();
     },
+    refreshHealth: () => {
+      void health.enter?.();
+    },
     clearBacklogSelection: backlog.clearBacklogSelection,
     applyHistorySearch: history.applySearch,
     applyActivitySearch: activity.applySearch,

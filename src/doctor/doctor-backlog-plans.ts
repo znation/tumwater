@@ -6,6 +6,7 @@ import path from "node:path";
 import { truncate } from "../text/text.js";
 import { donePlans, fixedBugEntries, isRetiredTitle, openBugEntries, plannedPlanEntries, type BacklogEntry } from "../backlog/backlog.js";
 import { entryHold, entryKindLabel, isPlanStalled } from "../backlog/backlog-eligibility.js";
+import { isNeedsReviewNoteLine } from "../roles/role-guidance.js";
 import { planDependencyProblems } from "../backlog/backlog-parts.js";
 import { BACKLOG_FILES, validationGapTag } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
@@ -316,7 +317,7 @@ export function checkStalledEntries(root: string): CheckOutcome {
   const kind = entryKindLabel(first.file); // "Bug" | "Plan"
   const head = `${first.file === "bugs" ? "BUGS.md" : "PLANS.md"} ${kind.toLowerCase()}`;
   const note = (first.entry.body.split(/\n/).find(
-    (line) => line.trimStart().startsWith("**Needs review "),
+    (line) => isNeedsReviewNoteLine(line),
   ) ?? "").replace(/^\s*\*\*/, "").replace("**", "");
   return warnOutcome(`${head} ${quoteHeading(first.entry.title)} is held by a Needs review note ` +
       `(${truncate(note, REFUSAL_NOTE_MAX)})${more} — the plan role resolves it by splitting or replanning`);

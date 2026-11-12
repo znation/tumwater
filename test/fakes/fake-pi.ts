@@ -269,6 +269,7 @@ export function piRunResult(over: Partial<PiRunResult> = {}): PiRunResult {
     timedOut: false,
     timedOutProgressing: false,
     quietKilled: false,
+    stallKilled: false,
     aborted: false,
     contextExceeded: false,
     transientServerTimeout: false,

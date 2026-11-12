@@ -60,6 +60,7 @@ export function setupFailureResult(agent: string, message: string): PiRunResult 
     timedOutProgressing: false,
     aborted: false,
     quietKilled: false,
+    stallKilled: false,
     contextExceeded: false,
     transientServerTimeout: false,
     transientPiCrash: false,
@@ -102,6 +103,7 @@ function resultFromParser(
     timedOut: false,
     timedOutProgressing: false,
     quietKilled: false,
+    stallKilled: false,
     aborted: state.aborted(),
     contextExceeded: parser.contextExceeded,
     transientServerTimeout: parser.transientServerTimeout,
@@ -167,7 +169,9 @@ export function settleExit(state: RunSettleState): void {
 /** Settle the run's `lastError` text in priority order: a failed blind image read names both
  * the file and the model (plans/image-input.md "Failing the run"), then the abort, quiet-kill
  * and timeout causes the watchdogs and signal path set, then the parser's own event-derived
- * error, else the raw stderr tail. Undefined for a run that simply ended with a message. */
+ * error, else the raw stderr tail. Undefined for a run that simply ended with a message.
+ * The two watchdog kills are mutually exclusive on the state flags, so the quiet-kill wording
+ * (total silence) and the stall-kill wording (one hung call, named) cannot both apply. */
 function settleErrorMessage(
   state: RunSettleState,
   blindRead: string | undefined,
@@ -181,6 +185,9 @@ function settleErrorMessage(
   if (state.aborted()) return "stopped by tumwater shutdown";
   if (state.wd.quietKilled) {
     return `killed as hung: no agent progress for over ${state.config.quietTimeoutSeconds}s`;
+  }
+  if (state.wd.stallKilled) {
+    return `killed as stalled tool call ${state.wd.stallKilledLabel ?? "a tool call"}: no activity for over ${state.config.quietTimeoutSeconds * 2}s`;
   }
   if (state.wd.timedOut) {
     return state.wd.timedOutProgressing
@@ -274,10 +281,13 @@ export function settleClose(state: RunSettleState, code: number | null): void {
       // Kept distinct on purpose: a hung tool call leaves its session and worktree edits
       // intact, so the runner resumes them (quiet_killed) instead of discarding them as an
       // unfulfilled timeout does. A deadline that fired on a run still making progress gets
-      // the same treatment (BUGS.md 2026-09-29).
+      // the same treatment (BUGS.md 2026-09-29), and so does the per-call stall-kill, which
+      // killed the run on one hung call while it was otherwise progressing.
       timedOut: state.wd.timedOut,
       timedOutProgressing: state.wd.timedOut && state.wd.timedOutProgressing,
       quietKilled: state.wd.quietKilled,
+      stallKilled: state.wd.stallKilled,
+      stallKilledLabel: state.wd.stallKilledLabel,
       imageBlind: state.parser.imageBlind,
       errorMessage,
     }),

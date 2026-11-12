@@ -1,10 +1,10 @@
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
-import { fail, say, sayJson } from "../cli/cli-output.js";
-import { failOverDurationCap, flagValue, optionalFlagValue, parseCountFlag, parseDurationFlag, parsePositionFlag, parseRoleFlag, rejectFlagLookingValue } from "../cli/cli-args.js";
+import { fail, say, sayJson } from "./cli-output.js";
+import { failOverDurationCap, flagValue, optionalFlagValue, parseCountFlag, parseDurationFlag, parsePositionFlag, parseRoleFlag, rejectFlagLookingValue } from "./cli-args.js";
 import { errorMessage, splitCommaList } from "../text/text.js";
-import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
-import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./operator-retire.js";
-import { previewRevert, revertFollowUp, revertMergedCommit, runRevertSha } from "./operator-revert.js";
+import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "./cli-flag-specs.js";
+import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "../operator/operator-retire.js";
+import { previewRevert, revertFollowUp, revertMergedCommit, runRevertSha } from "../operator/operator-revert.js";
 import { distinctOrdered } from "../collections.js";
 import { runNotFoundMessage } from "../history/run-detail.js";
 import { readRunDetail } from "../history/run-detail-data.js";
@@ -45,7 +45,7 @@ import {
   roleResumeMessage,
   runManualReclaimOutcome,
   timedPauseBits,
-} from "./operator-intent.js";
+} from "../operator/operator-intent.js";
 
 /** The CLI layer of the operator commands: the `reset-counters`, `wake`, `reclaim`, `abort`,
  * `pause`, `resume`, `stop`, and `retire` commands, split out of cli.ts so the command bodies

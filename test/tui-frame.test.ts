@@ -55,7 +55,7 @@ test("a status render's spans read exactly as the plain text, clipped to width",
   s.lastError = "boom";
   s.consecutiveErrors = 9;
   saveRunnerState(repo, s);
-  const snap = snapshot(repo);
+  const snap = await snapshot(repo);
   for (const width of [undefined, 160, 90, 40]) {
     const { lines } = renderStatusSpans(repo, snap, width);
     if (width !== undefined) for (const l of lines) assert.ok(displayWidth(plain(l)) <= width, "no line outgrows the terminal");
@@ -190,6 +190,8 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "health" }), /Ctrl\+K kill orphans/);
   assert.match(hint({ kind: "health" }), /Ctrl\+B archive backlog/);
   assert.match(hint({ kind: "health" }), /Ctrl\+X retire/);
+  assert.match(hint({ kind: "health" }), /Ctrl\+G apply patch/);
+  assert.match(hint({ kind: "health" }), /Ctrl\+Y drop patch/);
   assert.match(hint({ kind: "health", problems: false }), /Ctrl\+O all checks/);
   assert.match(hint({ kind: "health", problems: true }), /Ctrl\+O problems only/);
   assert.match(hint({ kind: "brief" }), /PgUp\/PgDn scroll/);
@@ -271,6 +273,28 @@ test("release-edit mode shows its own hint keys and prompt prefix", () => {
   assert.deepEqual(hintLine({ kind: "failures", scope: null, window: null }, base, 300).filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "Esc", "Ctrl+D"]);
   assert.equal(plain(promptPrefix(base)), "release › ");
   assert.match(plain(hintLine({ kind: "failures", scope: null, window: null }, base, 300)), /Enter release test/);
+});
+
+test("salvage-apply mode shows its own hint keys and prompt prefix", () => {
+  const base = { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null, salvageMode: true };
+  // While the Health Ctrl+G salvage-apply editor holds the line, the footer names the apply
+  // keys and the prompt prefix reads `apply salvaged patch › ` — the same mode indication
+  // every other modal editor shows.
+  assert.deepEqual(hintLine({ kind: "health" }, base, 300).filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "Esc", "Ctrl+D"]);
+  assert.equal(plain(promptPrefix(base)), "apply salvaged patch › ");
+  assert.match(plain(hintLine({ kind: "health" }, base, 300)), /Enter apply patch/);
+});
+
+test("salvage-drop mode shows its own hint keys and the drop prompt prefix", () => {
+  const base = { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null, salvageMode: true, salvageDropMode: true };
+  // While the Health Ctrl+Y salvage-drop editor holds the line, the footer names the same
+  // keys and the prompt prefix reads `drop salvaged patch › ` (not `apply salvaged patch › `),
+  // so the operator sees which destructive arm is open.
+  assert.deepEqual(hintLine({ kind: "health" }, base, 300).filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "Esc", "Ctrl+D"]);
+  // The footer names the destructive arm's action as `drop patch` (not `apply patch`), matching
+  // the `drop salvaged patch` prefix, so the operator does not trust an apply label for a delete.
+  assert.match(plain(hintLine({ kind: "health" }, base, 300)), /Enter drop patch/);
+  assert.equal(plain(promptPrefix(base)), "drop salvaged patch › ");
 });
 
 test("pause-edit mode shows its own hint keys and prompt prefix", () => {

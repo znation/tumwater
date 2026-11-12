@@ -46,7 +46,7 @@ test("snapshot carries the daily cost budget aggregated from persisted runner st
   dedupe.dayCostUsd = 9;
   saveRunnerState(repo, dedupe);
 
-  let snap = snapshot(repo, undefined, now.getTime());
+  let snap = await snapshot(repo, undefined, now.getTime());
   // No provider/model is configured (pi's own default), so the team cannot be verified as
   // free — the dollar badge stays.
   assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 50, capHitAt: null, free: false, fallback: null, tiers: null });
@@ -56,7 +56,7 @@ test("snapshot carries the daily cost budget aggregated from persisted runner st
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 0;
   saveConfig(repo, cfg);
-  snap = snapshot(repo, undefined, now.getTime());
+  snap = await snapshot(repo, undefined, now.getTime());
   assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 0, capHitAt: null, free: false, fallback: null, tiers: null });
 });
 
@@ -72,7 +72,7 @@ test("snapshot carries the cap-hit projection for the same spend the badge rende
   const clean = spentRunnerState("clean", 30, now);
   saveRunnerState(repo, clean);
 
-  const snap = snapshot(repo, undefined, now);
+  const snap = await snapshot(repo, undefined, now);
   const expected = projectCapHit({ spentUsd: 30, capUsd: 50 }, now);
   assert.equal(expected, new Date(2026, 9, 1, 20, 0, 0).getTime(), "hand-checked: $30 by noon hits $50 at 20:00");
   assert.equal(snap.budget.capHitAt, expected);
@@ -81,7 +81,7 @@ test("snapshot carries the cap-hit projection for the same spend the badge rende
   // No spend, no forecast — the field stays null and the JSON payload carries the null.
   const idle = freshRunnerState("clean");
   saveRunnerState(repo, idle);
-  assert.equal(snapshot(repo, undefined, now).budget.capHitAt, null);
+  assert.equal((await snapshot(repo, undefined, now)).budget.capHitAt, null);
 });
 
 test("snapshot prefers the running orchestrator's published budget over the persisted sum", async () => {
@@ -96,7 +96,7 @@ test("snapshot prefers the running orchestrator's published budget over the pers
 
   // Not running: no published figure exists (the exit removes the info file), so the
   // persisted sum is the only figure there is — a stopped team's files are final.
-  let snap = snapshot(repo);
+  let snap = await snapshot(repo);
   assert.equal(snap.budget.spentUsd, 1);
   assert.equal(snap.budget.capUsd, 50);
 
@@ -105,7 +105,7 @@ test("snapshot prefers the running orchestrator's published budget over the pers
   // block) while the per-role cell still reads its persisted copy — the lag the publish
   // exists to expose, visible instead of misleading.
   writeOrchestratorMarker(repo, ["clean"], { budget: { spentUsd: 60, capUsd: 50 } });
-  snap = snapshot(repo);
+  snap = await snapshot(repo);
   assert.equal(snap.budget.spentUsd, 60);
   assert.equal(snap.budget.capUsd, 50);
   const text = renderStatus(repo, snap);
@@ -119,8 +119,8 @@ test("snapshot prefers the running orchestrator's published budget over the pers
   // The publish rides the liveness check: a stale marker beside a dead pid must not speak
   // for the team.
   writeOrchestratorMarker(repo, ["clean"], { pid: 2_000_000_000, budget: { spentUsd: 60, capUsd: 50 } }); // beyond any pid space
-  assert.equal(snapshot(repo).running, false, "a dead pid is not a running orchestrator");
-  assert.equal(snapshot(repo).budget.spentUsd, 1);
+  assert.equal((await snapshot(repo)).running, false, "a dead pid is not a running orchestrator");
+  assert.equal((await snapshot(repo)).budget.spentUsd, 1);
 });
 
 // The free-team case (BUGS.md: budget badge on local LLM teams): when every model the
@@ -147,20 +147,20 @@ test("snapshot lists the roles held by their own per-role cap in capPaused", asy
   const director = spentRunnerState("director", 1);
   saveRunnerState(repo, director);
 
-  let snap = snapshot(repo);
+  let snap = await snapshot(repo);
   assert.deepEqual(snap.capPaused, ["clean"]);
 
   // A role with no cap entry is never held, however much it spent.
   const organize = spentRunnerState("organize", 99);
   saveRunnerState(repo, organize);
-  snap = snapshot(repo);
+  snap = await snapshot(repo);
   assert.deepEqual(snap.capPaused, ["clean"]);
 
   // No per-role caps configured at all: the field stays present and empty — the
   // pausedRoles shape, so consumers never test for the key.
   cfg.maxDailyCostUsdPerRole = {};
   saveConfig(repo, cfg);
-  snap = snapshot(repo);
+  snap = await snapshot(repo);
   assert.deepEqual(snap.capPaused, []);
 });
 
@@ -182,7 +182,7 @@ test("snapshot resolves a per-role cap through the base role and its summed inst
     saveRunnerState(repo, st);
   }
 
-  const snap = snapshot(repo);
+  const snap = await snapshot(repo);
   assert.deepEqual(snap.capPaused, ["feature", "feature-2"], "the summed base group holds both instances");
 });
 
@@ -212,7 +212,7 @@ test("snapshot lists the roles whose budget tier resolved to pause in budgetPaus
   const models = path.join(tmpdir("budget-paused-models-"), "models.json");
   writeFileDeep(models, MODELS_JSON);
 
-  const snap = snapshot(repo, models);
+  const snap = await snapshot(repo, models);
   assert.ok(snap.budgetPausedRoles.includes("plan"), "the strong-tier role is held");
   assert.ok(!snap.budgetPausedRoles.includes("clean"), "the default-tier role borrows small's pair");
   assert.ok(!snap.budgetPausedRoles.includes("director"), "the director is exempt");
@@ -220,13 +220,13 @@ test("snapshot lists the roles whose budget tier resolved to pause in budgetPaus
   // Under the cap nobody is held: the hold never stands under an open gate.
   cfg.maxDailyCostUsd = 100;
   saveConfig(repo, cfg);
-  assert.deepEqual(snapshot(repo, models).budgetPausedRoles, []);
+  assert.deepEqual((await snapshot(repo, models)).budgetPausedRoles, []);
 
   // No fallback configured at all with the cap reached: every role's tier resolves to pause.
   cfg.maxDailyCostUsd = 1;
   delete (cfg as { fallback?: unknown }).fallback;
   saveConfig(repo, cfg);
-  const snap2 = snapshot(repo, models);
+  const snap2 = await snapshot(repo, models);
   assert.ok(snap2.budgetPausedRoles.includes("plan"));
   assert.ok(snap2.budgetPausedRoles.includes("clean"));
 });
@@ -253,14 +253,14 @@ test("snapshot marks the budget free when every team model is unpriced", async (
   cfg.provider = "lm-studio"; // every role and the reviewer fall back to this pair
   cfg.model = "qwen3.8-27b";
   saveConfig(repo, cfg);
-  let snap = snapshot(repo, modelsFile);
+  let snap = await snapshot(repo, modelsFile);
   assert.equal(snap.budget?.free, true, "all-free team reads n/a");
 
   // One role on a paid model flips it back to the dollar badge.
   cfg.roles.clean!.provider = "paid";
   cfg.roles.clean!.model = "gpt-x";
   saveConfig(repo, cfg);
-  snap = snapshot(repo, modelsFile);
+  snap = await snapshot(repo, modelsFile);
   assert.equal(snap.budget?.free, false, "one paid model keeps the dollar figure");
 });
 
@@ -277,22 +277,22 @@ test("snapshot carries the fallback model only when pi prices it at zero", async
   cfg.provider = "paid";
   cfg.model = "gpt-x";
   saveConfig(repo, cfg);
-  assert.equal(snapshot(repo, modelsFile).budget.fallback, null, "none configured");
+  assert.equal((await snapshot(repo, modelsFile)).budget.fallback, null, "none configured");
 
   cfg.fallbackModel = { provider: "local", model: "local-free" };
   saveConfig(repo, cfg);
   assert.deepEqual(
-    snapshot(repo, modelsFile).budget.fallback,
+    (await snapshot(repo, modelsFile)).budget.fallback,
     { provider: "local", model: "local-free" },
     "a zero-priced fallback is what the gate would engage",
   );
   // The team itself is still priced: the fallback does not make the budget n/a, it only says
   // what happens when the cap is reached.
-  assert.equal(snapshot(repo, modelsFile).budget.free, false);
+  assert.equal((await snapshot(repo, modelsFile)).budget.free, false);
 
   cfg.fallbackModel = { provider: "paid", model: "gpt-x" };
   saveConfig(repo, cfg);
-  assert.equal(snapshot(repo, modelsFile).budget.fallback, null, "a priced fallback is refused");
+  assert.equal((await snapshot(repo, modelsFile)).budget.fallback, null, "a priced fallback is refused");
 
   // Free but not serving (BUGS.md 2026-09-20): while the running orchestrator's breaker holds
   // the pair demoted, the scheduler reads the gate as paused — so must the dashboards.
@@ -306,7 +306,7 @@ test("snapshot carries the fallback model only when pi prices it at zero", async
     roles: ["clean"],
     fallbackDemoted: demoted,
   });
-  assert.equal(snapshot(repo, modelsFile).budget.fallback, null, "a demoted fallback is not advertised");
+  assert.equal((await snapshot(repo, modelsFile)).budget.fallback, null, "a demoted fallback is not advertised");
   // A dead orchestrator's leftover file says nothing about what runs now: the price decides.
   // (A child that has exited and been reaped is a pid that is not alive — team-state.test.ts.)
   writeJsonFile(orchestratorStatePath(repo), {
@@ -315,5 +315,5 @@ test("snapshot carries the fallback model only when pi prices it at zero", async
     roles: ["clean"],
     fallbackDemoted: demoted,
   });
-  assert.deepEqual(snapshot(repo, modelsFile).budget.fallback, { provider: "local", model: "local-free" });
+  assert.deepEqual((await snapshot(repo, modelsFile)).budget.fallback, { provider: "local", model: "local-free" });
 });

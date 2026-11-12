@@ -138,12 +138,15 @@ test("director: a queued prompt runs without a permit even while the only slot i
   }
 });
 
-test("director: once recovers a kept merge pin and drains the queue before exit", async () => {
+test("director: once settles a draining merge pin by draining it, without a leftover run", async () => {
   const repo = await makeFastRepo("once director leftover", ["director"]);
-  // The recoverable pin's change fails the gate's declared check only where the change is
-  // checked out (kept.txt exists on the change's tree, not on main, so main stays green), and
-  // the gate rejects the change deterministically — the gate's own finding, no reviewer
-  // verdict — ending the merge rejected, re-queuing the pin and draining the queue.
+  // The pin's change fails the gate's declared check only where the change is checked out
+  // (kept.txt exists on the change's tree, not on main, so main stays green), and the gate
+  // rejects the change deterministically — the gate's own finding, no reviewer verdict — ending
+  // the merge rejected and discarding the pin. The pin is live and ahead of main with no
+  // conflict streak, so scope.ts `directorPinOwedRun` classifies it as DRAINING: it owes no
+  // leftover run (INV-DA1) — the drain settles it on its own, gating and discarding it, so no
+  // redundant recovery run spins and the queue drains to empty before the once pass exits.
   const cfg = loadConfig(repo);
   saveConfig(repo, { ...cfg, check: { command: "test ! -f kept.txt" } });
   const sha = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "kept.txt"), "kept\n"), "kept director change");
@@ -152,8 +155,10 @@ test("director: once recovers a kept merge pin and drains the queue before exit"
   try {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
-    assert.equal(exit.runsDone?.get("director"), 1, "the director got its recovery run");
-    assert.ok(eventsOfType(repo, "merge_queued").some((e) => e.commit === sha), "the pin was re-queued");
+    // The draining pin owes no leftover run: the director runs nothing, and the pin is gone —
+    // the drain gated it, the gate rejected, and the discarding of the pin left no ref behind.
+    assert.equal(exit.runsDone?.get("director"), 0, "a draining pin owed no leftover run");
+    assert.ok(refAbsentFromFiles(repo, mergeRefName("director")), "the drain discarded the rejected pin");
     assert.equal(queueDepth(repo), 0, "the merge queue drained before exit");
     assert.equal(eventsOfType(repo, "prompt_taken").length, 0);
   } finally {

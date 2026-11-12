@@ -2,8 +2,8 @@ import { render as inkRender } from "ink";
 import { TuiApp, type TuiAppView } from "./tui-app.js";
 import { openQuestions } from "../../backlog/backlog.js";
 import { refusedEntries } from "../../backlog/backlog-eligibility.js";
-import { getOrphanAlert } from "../alert-feeds.js";
-import { snapshot } from "../../status/status-data.js";
+import { getOrphanAlert, orphanAlertVisible } from "../alert-feeds.js";
+import { snapshotForStatus, type StatusSnapshot } from "../../status/status-data.js";
 import { renderStatusSpans, type StatusLine } from "../status-render.js";
 import { teamAlerts } from "../team-alerts.js";
 import { configForStatus } from "../../status/status-polls.js";
@@ -204,7 +204,7 @@ function startTuiExitControl(root: string, seams: TuiSeams): TuiExitControl {
  * read: which keys the footer offers and which target the prompt line names, in the literal's
  * original field order. */
 function promptLineMode(s: FrameState): Parameters<typeof hintLine>[1] {
-  return { budget: s.budgetMode, concurrencyMode: s.concurrencyMode, checksMode: s.checksMode, checkMode: s.checkMode, fallbackMode: s.fallbackMode, modelMode: s.modelMode, rolePromptFor: s.rolePromptFor, attachMode: s.attachMode, pauseEditMode: s.pauseEditMode, pauseEditRole: s.pauseEditRole, pauseEditWake: s.pauseEditWake, pauseEditStop: s.pauseEditStop, queuedEditFor: s.queuedEditFor, answerFor: s.answerFor, entryEditFor: s.entryEditFor, notesEditFor: s.notesEditFor, briefEditMode: s.briefEditMode, retireMode: s.retireMode, releaseMode: s.releaseMode, roleEnabledMode: s.roleEnabledMode, quietMode: s.quietMode, quietTeam: s.quietTeam, intervalMode: s.intervalMode, roleModelMode: s.roleModelMode, instructionsEditFor: s.instructionsEditFor, slotsMode: s.slotsMode, images: s.images, notifyMode: s.notifyMode, backendsMode: s.backendsMode, instancesMode: s.instancesMode };
+  return { budget: s.budgetMode, concurrencyMode: s.concurrencyMode, checksMode: s.checksMode, checkMode: s.checkMode, fallbackMode: s.fallbackMode, modelMode: s.modelMode, rolePromptFor: s.rolePromptFor, attachMode: s.attachMode, pauseEditMode: s.pauseEditMode, pauseEditRole: s.pauseEditRole, pauseEditWake: s.pauseEditWake, pauseEditStop: s.pauseEditStop, queuedEditFor: s.queuedEditFor, answerFor: s.answerFor, entryEditFor: s.entryEditFor, notesEditFor: s.notesEditFor, briefEditMode: s.briefEditMode, retireMode: s.retireMode, releaseMode: s.releaseMode, roleEnabledMode: s.roleEnabledMode, salvageMode: s.salvageMode, salvageDropMode: s.salvageDropMode, quietMode: s.quietMode, quietTeam: s.quietTeam, intervalMode: s.intervalMode, roleModelMode: s.roleModelMode, instructionsEditFor: s.instructionsEditFor, slotsMode: s.slotsMode, images: s.images, notifyMode: s.notifyMode, backendsMode: s.backendsMode, instancesMode: s.instancesMode };
 }
 
 /** Compose one frame from the snapshot, the key-handler state and the pane body: the
@@ -215,7 +215,7 @@ function composeTuiFrame(
   root: string,
   width: number,
   rows: number,
-  snap: ReturnType<typeof snapshot>,
+  snap: StatusSnapshot,
   status: ReturnType<typeof renderStatusSpans>,
   keys: TuiKeys,
 ): TuiAppView {
@@ -229,7 +229,7 @@ function composeTuiFrame(
   // What needs the operator — the dashboard's alert banners (team-alerts.ts's teamAlerts), as
   // attention lines under the header. Each consumes one line of the height budget.
   const attention = alertLines(
-    teamAlerts(snap, openQuestions(root), status.roles, Date.now(), refusedEntries(root), getOrphanAlert(root),
+    teamAlerts(snap, openQuestions(root), status.roles, Date.now(), refusedEntries(root), orphanAlertVisible(root, getOrphanAlert(root), Date.now()),
       { snap, config: configForStatus(root), root }),
     width,
   );
@@ -313,6 +313,12 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   // The framework-free keypress handler (src/ui/tui/tui-keys.ts, extracted from runTui): it owns
   // every mutable local the dispatch used to keep in this closure; render syncs snapshot
   // data and line budgets in and reads the resulting state out each frame.
+  // render stays synchronous: it reads snapshotForStatus directly, not the async snapshot.
+  // A keypress re-renders in the same turn (a fresh snapshot read + frame), which is the
+  // interactive contract the keypress tests assert on; an awaited read would defer the frame
+  // a microtask and the harness (stubs the 1s poller, reads frames synchronously) would see
+  // the pre-press frame. When the read becomes genuinely async (the pin re-point, next part),
+  // render moves to `await snapshot` and the harness gains the flush the deferred frame needs.
   const keys = createTuiKeys({ root, quit: () => exit.quit(), requestRender: () => render() });
 
   // Every rendered line is clipped to the terminal width (clipToWidth), so one logical
@@ -325,7 +331,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     // `??` would pass the reported 0 through as a real size and clip every line to empty.
     const rows = stdout.rows || 40;
     const width = stdout.columns || 120;
-    const snap = snapshot(root);
+    const snap = snapshotForStatus(root);
     const status = renderStatusSpans(root, snap, width);
     inkApp.rerender(<TuiApp view={composeTuiFrame(root, width, rows, snap, status, keys)} noColor={noColor} keys={keys} />);
   };

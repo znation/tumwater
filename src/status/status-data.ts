@@ -613,6 +613,17 @@ function snapshotHealthFields(
   };
 }
 
+/** The value of one running-only orchestrator-info field: present only while a live team
+ * publishes it — a stale info file beside a dead pid must not speak for a stopped team, so the
+ * field is absent (not a stale block) whenever the team is not running or the field itself is.
+ * `snapshotResourceFields`'s running-only info fields share this guard instead of spelling
+ * `running && info?.x ? info.x : undefined` per field, so the liveness rule lives in one place
+ * (the test `status-data-team.test.ts` "snapshot carries the running orchestrator's published
+ * disk state" pins the stale-block arm). */
+function liveInfoField<T>(running: boolean, field: T | undefined): T | undefined {
+  return running && field !== undefined ? field : undefined;
+}
+
 /** The running-only resource fields of the snapshot (disk floor, install drift, permits and
  * the run stop deadlines). */
 function snapshotResourceFields(
@@ -628,17 +639,16 @@ function snapshotResourceFields(
   const stopAt = running ? scheduledStopAt(root) : undefined;
   return {
     // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
-    // orchestrator runs — the exit removes the info file, so a stale file beside a dead pid
-    // must not speak for a stopped team — and only when the last poll could measure the
-    // volume. Absent otherwise, so the surfaces render exactly as before.
-    disk: running && info?.disk ? info.disk : undefined,
+    // orchestrator runs and only when the last poll could measure the volume (liveInfoField).
+    // Absent otherwise, so the surfaces render exactly as before.
+    disk: liveInfoField(running, info?.disk),
     // Independent of the team running: a stopped team's worktrees still borrow the root install.
     rootInstallDrift: rootDrift.length ? rootDrift : undefined,
-    // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
-    permits: running && info?.permits ? info.permits : undefined,
-    slotPool: running && info?.slotPool ? info.slotPool : undefined,
-    // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
-    checkPermits: running && info?.checkPermits ? info.checkPermits : undefined,
+    // Only while a live team publishes each (liveInfoField: a stale info file beside a dead pid
+    // must not speak for a stopped team).
+    permits: liveInfoField(running, info?.permits),
+    slotPool: liveInfoField(running, info?.slotPool),
+    checkPermits: liveInfoField(running, info?.checkPermits),
     // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
     runStopsAt: running ? earliestStop(info?.stopsAt, stopAt) : undefined,
     scheduledStopAt: running ? stopAt : undefined,
@@ -654,7 +664,7 @@ function snapshotResourceFields(
  * inbox, status-budget) each take the shared reads and the pinned `now` as parameters, so
  * every poll still reads a shared resource exactly once and the one `now` pins the whole
  * snapshot — the consistency property the per-collector comments call out. */
-export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.now()): StatusSnapshot {
+export function snapshotForStatus(root: string, modelsPath = piModelsPath(), now = Date.now()): StatusSnapshot {
   // The config and its live-load problem from ONE read, so the role rows and the standing
   // `config-problem` alert cannot drift on which poll each happened to read.
   const { config: cfg, problem } = configStateForStatus(root);
@@ -779,4 +789,17 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     ...snapshotHealthFields(root, cfg, mergeQueue, roleNotesOverCap, problem),
     ...snapshotResourceFields(root, running, info, rootDrift),
   } as StatusSnapshot;
+}
+
+/** The async form callers await: `snapshot` resolves to the same `StatusSnapshot` that
+ * {@link snapshotForStatus} returns. This part's body is still fully synchronous (the
+ * pin-sourced `mergeQueue` read that makes it genuinely async lands in the next part, where
+ * it becomes `await readMergePins(...)`), so the `async` here is the signature the surfaces
+ * convert to — the GUI's `/api/status` and the CLI `await` it. The TUI deliberately reads
+ * `snapshotForStatus` synchronously: a keypress must re-render in the same turn, which an
+ * awaited read cannot do, and the test harness (stubs the 1s poller) reads frames without
+ * flushing a microtask. When the read becomes genuinely async, the TUI moves to this form.
+ */
+export async function snapshot(root: string, modelsPath = piModelsPath(), now = Date.now()): Promise<StatusSnapshot> {
+  return snapshotForStatus(root, modelsPath, now);
 }

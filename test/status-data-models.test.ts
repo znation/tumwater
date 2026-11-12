@@ -21,18 +21,18 @@ test("snapshot role rows carry the resolved selector always and the seam tier on
 
   // A single string model: every row carries the resolved selector; the tier tag stays absent.
   writeConfig(repo, { model: "prov-a/model-a" });
-  const plain = snapshot(repo);
+  const plain = await snapshot(repo);
   assert.equal(plain.roles[0]?.modelTier, undefined);
   assert.equal(plain.roles[0]?.model, "prov-a/model-a");
 
   // The payload ships the same field per row — the GUI renders it beside the role name.
-  const plainPayload = statusPayload(repo) as { roles: Array<{ role: string; modelTier?: string; model?: string }> };
+  const plainPayload = (await statusPayload(repo)) as { roles: Array<{ role: string; modelTier?: string; model?: string }> };
   assert.equal(plainPayload.roles[0]?.model, "prov-a/model-a");
   assert.equal(plainPayload.roles[0]?.modelTier, undefined);
 
   // A tier map: each row carries its role's seam tier and that tier's resolved selector.
   writeConfig(repo, { model: { default: "prov-a/model-a", strong: "prov-s/model-s:high" } });
-  const mapped = snapshot(repo);
+  const mapped = await snapshot(repo);
   const plan = mapped.roles.find((l) => l.role === "plan");
   assert.equal(plan?.modelTier, "strong"); // the catalog assigns plan the strong tier
   assert.equal(plan?.model, "prov-s/model-s:high");
@@ -41,7 +41,7 @@ test("snapshot role rows carry the resolved selector always and the seam tier on
   assert.equal(readme?.model, "prov-a/model-a"); // an undeclared tier inherits default
 
   // The payload ships the same fields per row — the GUI renders them beside the role name.
-  const payload = statusPayload(repo) as { roles: Array<{ role: string; modelTier?: string; model?: string }> };
+  const payload = (await statusPayload(repo)) as { roles: Array<{ role: string; modelTier?: string; model?: string }> };
   const planRow = payload.roles.find((l) => l.role === "plan");
   assert.equal(planRow?.modelTier, "strong");
   assert.equal(planRow?.model, "prov-s/model-s:high");
@@ -57,7 +57,7 @@ test("snapshot carries the subscription windows and classifies paying seams", as
   const cfg = loadConfig(repo);
 
   // A pi-only team with no account reading: absent, so the surfaces render as before.
-  assert.equal(snapshot(repo, modelsFile).subscriptionWindows, undefined);
+  assert.equal((await snapshot(repo, modelsFile)).subscriptionWindows, undefined);
 
   // Every seam claude on subscription billing: the window block is present and `only`.
   cfg.backend = "claude";
@@ -68,13 +68,13 @@ test("snapshot carries the subscription windows and classifies paying seams", as
     observedAt: Date.now(),
     windows: { five_hour: { status: "allowed_warning", resetsAt, utilization: 0.64, observedAt: Date.now() } },
   });
-  const snap = snapshot(repo, modelsFile);
+  const snap = await snapshot(repo, modelsFile);
   assert.deepEqual(snap.subscriptionWindows!.map((b) => b.backend), ["claude"], "one claude block");
   assert.equal(snap.subscriptionWindows![0]!.label, "Claude");
   assert.equal(snap.subscriptionWindows![0]!.primary.utilization, 0.64);
   assert.equal(snap.subscriptionOnly, true, "every paying seam is subscription claude");
   // The payload carries the raw blocks and the preformatted badge folds the window in.
-  const payload = statusPayload(repo) as {
+  const payload = (await statusPayload(repo)) as {
     subscriptionWindows?: unknown;
     subscriptionOnly?: boolean;
     budgetBadge: string;
@@ -91,10 +91,10 @@ test("snapshot carries the subscription windows and classifies paying seams", as
   cfg.roles.clean!.backend = "pi";
   cfg.roles.clean!.model = "paid/gpt-x";
   saveConfig(repo, cfg);
-  const mixedSnap = snapshot(repo, modelsFile);
+  const mixedSnap = await snapshot(repo, modelsFile);
   assert.ok(mixedSnap.subscriptionWindows, "the mixed team still shows the window");
   assert.equal(mixedSnap.subscriptionOnly, false, "priced pi seams keep the daily spend");
-  const mixed = statusPayload(repo) as { budgetBadge: string };
+  const mixed = (await statusPayload(repo)) as { budgetBadge: string };
   assert.match(mixed.budgetBadge, /budget: /, "the daily-spend line stands");
   assert.match(mixed.budgetBadge, /Claude 5h/, "beside the window line");
 });
@@ -111,7 +111,7 @@ test("snapshot rows name pi's own saved default when the config resolves no mode
   const modelsPath = path.join(dir, "models.json");
 
   writeConfig(repo, {});
-  const snap = snapshot(repo, modelsPath);
+  const snap = await snapshot(repo, modelsPath);
   const row = snap.roles.find((l) => l.role === "feature")!;
   assert.equal(row.model, "prov/org/m:route:low");
   assert.equal(row.modelFromPi, true);
@@ -120,7 +120,7 @@ test("snapshot rows name pi's own saved default when the config resolves no mode
 
   // The config's thinking wins over the default's (tumwater passes it as --thinking).
   writeConfig(repo, { thinking: "high" });
-  const high = snapshot(repo, modelsPath).roles.find((l) => l.role === "feature")!;
+  const high = (await snapshot(repo, modelsPath)).roles.find((l) => l.role === "feature")!;
   assert.equal(high.model, "prov/org/m:route:high");
   assert.equal(high.modelFromPi, true);
 });
@@ -135,19 +135,19 @@ test("modelFromPi stays absent when a model, agent or provider resolves", async 
 
   // A configured model: the row keeps the configured selector.
   writeConfig(repo, { model: "prov-a/model-a" });
-  const configured = snapshot(repo, modelsPath).roles.find((l) => l.role === "feature")!;
+  const configured = (await snapshot(repo, modelsPath)).roles.find((l) => l.role === "feature")!;
   assert.equal(configured.model, "prov-a/model-a");
   assert.equal(configured.modelFromPi, undefined);
 
   // agent claude: the row keeps the claude/… tier default.
   writeConfig(repo, { backend: "claude" });
-  const claude = snapshot(repo, modelsPath).roles.find((l) => l.role === "feature")!;
+  const claude = (await snapshot(repo, modelsPath)).roles.find((l) => l.role === "feature")!;
   assert.equal(claude.modelFromPi, undefined);
   assert.match(claude.model ?? "", /^claude\//);
 
   // Config names only a provider: no model resolves, so the row has none and no flag.
   writeConfig(repo, { provider: "huggingface" });
-  const provOnly = snapshot(repo, modelsPath).roles.find((l) => l.role === "feature")!;
+  const provOnly = (await snapshot(repo, modelsPath)).roles.find((l) => l.role === "feature")!;
   assert.equal(provOnly.modelFromPi, undefined);
   assert.equal(provOnly.model, undefined);
 });
@@ -164,14 +164,14 @@ test("a role that resolves no provider or model names its backend default", asyn
   // backend's own default label — the same string `tumwater role <id>`'s Model line prints
   // (docs/invariants.md "Cross-surface agreement").
   writeConfig(repo, { roles: { clean: { backend: "opencode" } } });
-  const opencode = snapshot(repo, modelsPath).roles.find((l) => l.role === "clean")!;
+  const opencode = (await snapshot(repo, modelsPath)).roles.find((l) => l.role === "clean")!;
   assert.equal(opencode.model, "opencode default");
   assert.equal(opencode.modelFromPi, undefined);
 
   // A pi seam with no readable pi default likewise names `pi default`, not a formatted
   // selector, and no modelFromPi marker.
   writeConfig(repo, {});
-  const pi = snapshot(repo, modelsPath).roles.find((l) => l.role === "feature")!;
+  const pi = (await snapshot(repo, modelsPath)).roles.find((l) => l.role === "feature")!;
   assert.equal(pi.model, "pi default");
   assert.equal(pi.modelFromPi, undefined);
 });
@@ -186,7 +186,7 @@ test("statusPayload ships modelFromPi beside the model it names", async () => {
   // statusPayload reads the default models/settings path, so point it at the temp dir.
   const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", dir);
   try {
-    const payload = statusPayload(repo) as { roles: Array<{ role: string; model?: string; modelFromPi?: boolean }> };
+    const payload = (await statusPayload(repo)) as { roles: Array<{ role: string; model?: string; modelFromPi?: boolean }> };
     const row = payload.roles.find((l) => l.role === "feature")!;
     assert.equal(row.model, "prov/org/m:route:low");
     assert.equal(row.modelFromPi, true);
@@ -220,7 +220,7 @@ test("snapshot rows carry the image-input surface from the models catalog", asyn
   // plan rides the strong tier; feature rides default. Default is text-only, strong reads images,
   // so the default-tier role is text-only with a reroute target naming strong.
   writeConfig(repo, { model: { default: "local/text", strong: "local/vision" } });
-  const snap = snapshot(repo, models);
+  const snap = await snapshot(repo, models);
   const feature = snap.roles.find((l) => l.role === "feature")!;
   assert.equal(feature.imageInput, false);
   assert.equal(feature.imageRerouteLabel, "strong (local/vision)");
@@ -231,7 +231,7 @@ test("snapshot rows carry the image-input surface from the models catalog", asyn
   // statusPayload reads the default models path, so point it at the temp dir the snapshot used.
   const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", dir);
   try {
-    const payload = statusPayload(repo) as { roles: Array<{ role: string; imageInput?: boolean | null; imageReroute?: string | null }> };
+    const payload = (await statusPayload(repo)) as { roles: Array<{ role: string; imageInput?: boolean | null; imageReroute?: string | null }> };
     const featureRow = payload.roles.find((l) => l.role === "feature")!;
     assert.equal(featureRow.imageInput, false);
     assert.equal(featureRow.imageReroute, "strong (local/vision)");

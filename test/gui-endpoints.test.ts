@@ -526,7 +526,7 @@ test("handleLogs serves the matched tail oldest-first as feed items, composing g
   const tail = readEventsTailWithEnd(root, 500).events;
   assert.deepEqual(events, tail.filter((e) => eventMatchesGrep(e, "added")).map(eventFeedItem));
   assert.deepEqual(
-    (statusPayload(root, 4000) as { eventItems: unknown[] }).eventItems,
+    ((await statusPayload(root, 4000)) as { eventItems: unknown[] }).eventItems,
     tail.map(eventFeedItem),
     "statusPayload's eventItems come from the same eventFeedItem projection",
   );

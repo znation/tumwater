@@ -444,8 +444,8 @@ test("custom roles can be added, removed, and reordered mid-run without a restar
       return s.runs >= 1 && !s.running;
     };
     const messages = () => readEvents(repo).map((e) => (e.message as string | undefined) ?? "");
-    const roleOrder = () =>
-      (statusPayload(repo) as { roles: Array<{ role: string }> }).roles.map((l) => l.role);
+    const roleOrder = async () =>
+      ((await statusPayload(repo)) as { roles: Array<{ role: string }> }).roles.map((l) => l.role);
     await waitFor(() => finished("clean"), "the startup run to finish");
 
     // Adding a custom entry starts its runner within one poll cycle — the live-reload
@@ -503,20 +503,20 @@ test("custom roles can be added, removed, and reordered mid-run without a restar
     cfg.customRoles.push({ name: "perf-hunter", task: "Hunt perf wins." });
     saveConfig(repo, cfg);
     await waitFor(() => finished("perf-hunter"), "the second custom role to run");
-    assert.deepEqual(roleOrder().slice(-2), ["docs-auditor", "perf-hunter"], "customs after built-ins in array order");
+    assert.deepEqual((await roleOrder()).slice(-2), ["docs-auditor", "perf-hunter"], "customs after built-ins in array order");
 
     cfg = fastConfig(["clean"]);
     cfg.customRoles.push({ name: "perf-hunter", task: "Hunt perf wins." });
     cfg.customRoles.push({ name: "docs-auditor", task: "Keep the docs current." });
     saveConfig(repo, cfg);
     await waitFor(
-      () => {
-        const order = roleOrder();
+      async () => {
+        const order = (await roleOrder());
         return order.includes("perf-hunter") && order.indexOf("perf-hunter") < order.indexOf("docs-auditor");
       },
       "the reorder to show in the status table",
     );
-    const order = roleOrder();
+    const order = (await roleOrder());
     assert.deepEqual(order.slice(-2), ["perf-hunter", "docs-auditor"]);
     assert.ok(order.indexOf("clean") < order.indexOf("perf-hunter"), "built-ins keep their place ahead of customs");
   } finally {

@@ -22,7 +22,7 @@ export function groupBy<T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T
  * (postReviewRoles, overlapHolders in ui/tui/tui-pane-pending.ts), the
  * session pane's scope cycle (ui/tui/tui-pane-session.ts's scopeCycle), the report
  * scope fold (report/report-fold.ts's scopeBases), and the rest of the harness's
- * `[...new Set(...)]` dedupes (completion.ts's commands/config keys, operator-commands.ts's
+ * `[...new Set(...)]` dedupes (completion.ts's commands/config keys, cli-operator-commands.ts's
  * role lists, text.ts's splitCommaListUnique/pathTokens, startup-gates.ts's backendsInUse,
  * failure-data.ts's delta roles, doctor-backlog.ts's watched set, doctor-orphans.ts's pid
  * list, main-watch.ts's knownMainFailures, help.ts's suggestCommand candidates, and

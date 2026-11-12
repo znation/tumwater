@@ -436,7 +436,11 @@ function pollQuietAndDiskGates(states: TeamGateStates, ctx: TeamGatePollCtx) {
 // key, falling back to runProvider here for a stamp without one (PLANS.md "Mixed claude +
 // pi fleets, part 2/4"). The spreads below carry the stamps wholesale, provider included;
 // the provider is each runner's resolved seam key (runProvider), naming the budget fallback
-// pair when a cap episode is active — the pair the run actually uses.
+// pair when a cap episode is active — the pair the run actually uses. A backend-failure
+// stamp also carries the run's pair (run-usage.ts stamps it beside the provider) and the
+// hold's observation mapper keeps it: a `model-load` storm names its pairs, so the hold
+// scopes to the models that failed to load rather than the whole provider (PLANS.md "One
+// unavailable model pair stops only the roles on that pair", part 2/2).
 function pollTeamFailureAlarms(states: TeamGateStates, ctx: TeamGatePollCtx) {
   const { root, runners, now, info } = ctx;
 

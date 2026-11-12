@@ -10,14 +10,14 @@ import { dailyCost } from "../budget/budget.js";
 import { contextShareLabel } from "../text/format.js";
 import { queueEntryMergeLabel } from "../merge/merge-slot.js";
 import { piModelsPath } from "../pi/pi-models.js";
-import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
+import { scopeSnapshotToRoles, snapshot, type StatusSnapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, permitsBadge, checksBadge, quietBadge, restartHoldText, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { teamAlerts } from "./team-alerts.js";
 import { configForStatus } from "../status/status-polls.js";
 import { readPostReviews } from "../review/post-merge-review.js";
-import { getOrphanAlert } from "./alert-feeds.js";
+import { getOrphanAlert, orphanAlertVisible } from "./alert-feeds.js";
 
 // The alert feeds' result types live with their functions in alert-feeds.ts, but team-alerts.ts
 // and the tests keep importing them through this module — one import edge into alert-feeds.ts.
@@ -41,7 +41,7 @@ export function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title
 // The per-role row's field-group reads, shared by the role-field helpers below: `snap.roles`'
 // element type (the RunnerState & view-layer intersection snapshot computes) and `roleRowCells`'
 // live read, so each helper re-reads the same single-home sources roleRows does.
-type RoleState = ReturnType<typeof snapshot>["roles"][number];
+type RoleState = StatusSnapshot["roles"][number];
 type RoleLive = ReturnType<typeof roleRowCells>["live"];
 
 /** The row's identity and failure streak: the role name, its own failure-streak tell, and the
@@ -190,7 +190,7 @@ function roleScheduleFields(s: RoleState) {
 /** The per-role rows (status-payload.ts's field-group split): roleRows assembles each role's
  * fields from `snap.roles` — the same single-home roleRowCells/onErrorStreak/metrics reads the
  * TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot drift apart. */
-function roleRows(snap: ReturnType<typeof snapshot>, root: string) {
+function roleRows(snap: StatusSnapshot, root: string) {
   return snap.roles.map((s) => {
     // roleRowCells single-homes the per-role tail read + metrics + phase derivation the
     // TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot
@@ -228,7 +228,7 @@ function planSeriesSlots(
 /** The header row (status-payload.ts's field-group split): the project identity, the running
  * harness and its build/budget/disk/permit-pool/workspace badges, plus the `run --for`
  * deadline and its badge. */
-function headerFields(root: string, snap: ReturnType<typeof snapshot>, now: number) {
+function headerFields(root: string, snap: StatusSnapshot, now: number) {
   return {
     // The project's display name (project-name.ts) — the dashboards' title.
     project: projectName(root),
@@ -278,7 +278,7 @@ function headerFields(root: string, snap: ReturnType<typeof snapshot>, now: numb
  * the ci-parity badge/tone, the remote-CI badge/tone, and the raw twins of the
  * no-check/no-brief/brief-truncated/role-notes/salvage-patches and config-problem
  * alerts plus the `principlesTruncated` diagnostic key for `status --json` scripts. */
-function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, now: number) {
+function mergeAndCheckFields(root: string, snap: StatusSnapshot, now: number) {
   return {
     // The merge queue (plans/merge-queue.md 4/5): depth always (machine-readable for
     // `status --json`; 0 when idle) plus the in-flight merge's identity only while one is
@@ -372,9 +372,21 @@ function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, no
   };
 }
 
+
+/** The payload statusPayload serves: the spread of every field-group helper's return (the
+ * header, merge/check, inbox, budget/pause, feed, backlog and alert groups) plus the role rows.
+ * Declared from the same helpers the body spreads, so the type cannot drift from the fields. */
+export type StatusPayload = ReturnType<typeof headerFields> &
+  ReturnType<typeof mergeAndCheckFields> &
+  ReturnType<typeof inboxFields> &
+  ReturnType<typeof budgetAndPauseFields> &
+  { roles: ReturnType<typeof roleRows> } &
+  ReturnType<typeof feedFields> &
+  ReturnType<typeof backlogFields> &
+  ReturnType<typeof alertFields>;
 /** The inbox (status-payload.ts's field-group split): the queued director prompts and the
  * per-role queues, raw for the queued-prompts UI. */
-function inboxFields(snap: ReturnType<typeof snapshot>) {
+function inboxFields(snap: StatusSnapshot) {
   return {
     inbox: snap.inbox,
     // Previews of the queued director prompts in execution order (truncated server-side —
@@ -406,7 +418,7 @@ function inboxFields(snap: ReturnType<typeof snapshot>) {
 /** Budget and pause/scheduling state (status-payload.ts's field-group split): the daily
  * budget, its subscription windows, the fallback chain, operator/per-role pauses, the
  * cap/maintenance holds, scheduled wakes, quiet hours, and the quiet badge. */
-function budgetAndPauseFields(snap: ReturnType<typeof snapshot>) {
+function budgetAndPauseFields(snap: StatusSnapshot) {
   return {
     // The raw daily-cost-budget data, unconditionally (capUsd 0 = disabled; spend still
     // reported) — machine-readable for `status --json`; the display-ready header badge is
@@ -530,11 +542,11 @@ function backlogFields(
 
 /** What needs the operator (status-payload.ts's field-group split): team-alerts.ts's
  * teamAlerts, phrased once for the dashboard's alert banners and the TUI's attention lines. */
-function alertFields(root: string, snap: ReturnType<typeof snapshot>, questions: ReturnType<typeof openQuestions>, roles: ReturnType<typeof roleRows>, now: number) {
+function alertFields(root: string, snap: StatusSnapshot, questions: ReturnType<typeof openQuestions>, roles: ReturnType<typeof roleRows>, now: number) {
   return {
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), getOrphanAlert(root),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), orphanAlertVisible(root, getOrphanAlert(root), now),
       { snap, config: configForStatus(root), root }),
   };
 }
@@ -552,8 +564,8 @@ function alertFields(root: string, snap: ReturnType<typeof snapshot>, questions:
  * test's expected value cannot race the payload's own Date.now(). `modelsPath` mirrors
  * snapshot's seam of the same name, so a test can resolve a role's declared context window
  * against a fixture models catalog instead of the live ~/.pi one. */
-export function statusPayload(root: string, now = Date.now(), scope: readonly string[] | null = null, modelsPath = piModelsPath()): object {
-  const full = snapshot(root, modelsPath, now);
+export async function statusPayload(root: string, now = Date.now(), scope: readonly string[] | null = null, modelsPath = piModelsPath()): Promise<StatusPayload> {
+  const full = await snapshot(root, modelsPath, now);
   // `--role` scopes the role rows (and the alerts computed from them); budget stays team-wide.
   const snap = scope ? scopeSnapshotToRoles(full, scope) : full;
   // One event read feeds both feed shapes below, so `events[i]` and `eventItems[i]` always

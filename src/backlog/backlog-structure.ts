@@ -15,6 +15,7 @@ import {
 } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
+import { NEEDS_REVIEW_PREFIX } from "../roles/role-guidance.js";
 import { entryKey, partKey, seriesPart } from "./backlog-parts.js";
 import { plural } from "../text/phrases.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
@@ -617,3 +618,36 @@ ${listed}
 </backlog-structure>`;
 }
 
+/** The stage finding for a `Needs review` hold note written without the bold span its template
+ * requires. `head` and `base` are the staged file's text and its merge-base text; only a line
+ * this change adds is judged, so a note already on main (or carried by an entry move) never
+ * trips it. The writers' template (NEEDS_REVIEW_PREFIX) opens `**Needs review <date> …` — the
+ * bold span — and the 11-11 incident is a model dropping it: two span-less `plan defect` notes
+ * that no matcher read, so the planner idled 20+ runs. Run 23 widened the *readers* to tolerate
+ * the optional span, so that specific wedge no longer holds; this validator is the *write-time*
+ * half the Required behavior asked for — it names a span-less note the moment it is staged, so
+ * the role rewrites it to the template instead of shipping a spelling only the widened reader
+ * forgives. Only the backlog files with entry headings (PLANS.md, BUGS.md) are validated, and
+ * only a line whose word after `Needs review` is a real `YYYY-MM-DD` date and that opens without
+ * the `**` span (a template line like `**Needs review <YYYY-MM-DD> …**` or a prose mention carries
+ * no real date, so it is not a note and is not flagged). The walk is fence-aware, so a note
+ * quoted inside a fenced code block is not flagged. Returns undefined when the change adds none. */
+export function malformedNeedsReviewFinding(file: string, head: string, base: string): string | undefined {
+  if (file !== "PLANS.md" && file !== "BUGS.md") return undefined;
+  const baseSet = new Set(base.split("\n"));
+  const fence = fenceTracker();
+  const bad: string[] = [];
+  for (const line of head.split("\n")) {
+    if (fence.inside(line)) continue;
+    if (baseSet.has(line)) continue;
+    const t = line.trimStart();
+    if (t.startsWith(NEEDS_REVIEW_PREFIX)) continue; // the template's bold form: correct
+    const m = /^Needs review\s+(\S+)/.exec(t);
+    if (m === null) continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(m[1]!)) continue; // not a note: no real date
+    bad.push(line);
+  }
+  if (bad.length === 0) return undefined;
+  const shown = bad.length > 3 ? `${bad.slice(0, 3).join("; ")} (+${bad.length - 3} more)` : bad.join("; ");
+  return `${file} adds a "Needs review" hold note without the **bold span** its template requires — the note is written the one way a model can miss the reader. Write it as **Needs review <date> by <role>: <why>**. The note: ${shown}`;
+}
