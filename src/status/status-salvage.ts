@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { salvageDir } from "../paths.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 
 /** One operator-kept workspace patch: its position (1-based, oldest first — the number the
  * doctor `salvage patches` row and `tumwater salvage` print, which `salvage --show <n>` and
@@ -23,13 +24,24 @@ export interface SalvagePatch {
  * for that role's next run (restoreSalvagedWork) and is deliberately out of scope. A missing or
  * unreadable directory, or an unreadable entry, yields no entry rather than throwing — the same
  * best-effort rule the other title-row readers use. Never throws. */
-export function collectSalvagePatches(root: string): SalvagePatch[] {
-  const dir = salvageDir(root);
+// Per-root salvage-dir listing cache (stat-cache.cachedByStat): the status snapshot polls
+// collectSalvagePatches once per second (snapshotHealthFields) and doctor runs it per check,
+// but the kept patch set changes only when a settled run saves work or an operator drops one —
+// every write is atomic temp+rename (slot-salvage.writeSalvagePatch), or a rename/unlink, all
+// of which bump the directory's own stat — so an unchanged dir costs one stat per poll instead
+// of a re-readdir plus one stat per patch. A patch's content can never change in place (all
+// writes rename over the file), so serving the set from the dir's stat is sound. The same
+// stat-keyed listing contract status-role-notes.ts keeps for its notes dir; bounded inside
+// cachedByStat (many short-lived roots in tests cannot grow the map unbounded).
+const salvageDirCache = new Map<string, StatKeyedValue<SalvagePatch[]>>();
+
+/** The kept-patch walk, unbounded — the load half of collectSalvagePatches's stat cache. */
+function collectSalvagePatchesUncached(dir: string): SalvagePatch[] | null {
   let names: string[];
   try {
     names = fs.readdirSync(dir);
   } catch {
-    return [];
+    return null;
   }
   const patches: SalvagePatch[] = [];
   for (const name of names) {
@@ -54,6 +66,26 @@ export function collectSalvagePatches(root: string): SalvagePatch[] {
     p.position = i + 1;
   });
   return patches;
+}
+
+/** Every operator-kept workspace patch under `salvageDir(root)`, oldest first, served from the
+ * salvage-dir stat cache: an unchanged directory costs one stat per poll instead of re-reading
+ * the listing and stat'ing each patch every second. A missing or unreadable directory, or an
+ * unreadable entry, yields no entry rather than throwing — the same best-effort rule the other
+ * title-row readers use. Never throws. */
+export function collectSalvagePatches(root: string): SalvagePatch[] {
+  const dir = salvageDir(root);
+  return (
+    cachedByStat(
+      salvageDirCache,
+      dir,
+      dir,
+      () => collectSalvagePatchesUncached(dir),
+      // A copy: callers may treat the result as their own (the doctor row numbers and the
+      // snapshot payload both render from the returned array).
+      (patches) => patches.map((p) => ({ ...p })),
+    ) ?? []
+  );
 }
 
 /** Resolve a 1-based `position` into a kept-patch list (collectSalvagePatches's output): the

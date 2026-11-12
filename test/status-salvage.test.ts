@@ -54,6 +54,23 @@ test("collectSalvagePatches ignores a pending patch and a non-.patch file", () =
   assert.deepEqual(collectSalvagePatches(root), []);
 });
 
+test("collectSalvagePatches invalidates its stat cache when a new patch is saved", () => {
+  const root = makeRepo();
+  fs.mkdirSync(salvageDir(root), { recursive: true });
+  fs.writeFileSync(path.join(salvageDir(root), "a.patch"), "old");
+  // First poll seeds the cache.
+  assert.deepEqual(collectSalvagePatches(root).map((p) => p.file), ["a.patch"]);
+  // A settled run saves another patch (atomic temp+rename), which bumps the dir stat: the
+  // next poll must see it rather than serve a stale cached listing.
+  fs.writeFileSync(path.join(salvageDir(root), "b.patch"), "newer");
+  assert.deepEqual(collectSalvagePatches(root).map((p) => p.file), ["a.patch", "b.patch"]);
+  // A kept patch's content changing while it keeps the same name and the dir is unchanged is
+  // never the write path (all saves rename over a new name), but readSalvagePatch must still
+  // serve the new bytes, not a stale cache.
+  fs.writeFileSync(path.join(salvageDir(root), "b.patch"), "edited");
+  assert.equal(readSalvagePatch(root, "b.patch"), "edited");
+});
+
 test("collectSalvagePatches returns two direct patches oldest first with their sizes", () => {
   const root = makeRepo();
   fs.mkdirSync(salvageDir(root), { recursive: true });
