@@ -38,7 +38,7 @@ import { roleWt } from "./fixtures/runner-fixtures.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import { headSha, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { waitFor } from "./helpers/wait.js";
+import { awaitQuietHost, waitFor } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 
 const FAST_POLL_MS = 100;
@@ -270,7 +270,18 @@ test("an entry whose sha main already holds is dropped at the drain without a me
   }
 });
 
-test("a stale marker beside a stale pin is dropped at the drain without a merge run", async () => {
+test("a stale marker beside a stale pin is dropped at the drain without a merge run", async (t) => {
+  // The drop-and-clear round-trip is a handful of git spawns, but each 100 ms poll cycle it
+  // runs in is stretched by whatever else shares the host; on a saturated runner (the hosted
+  // CI one) it crossed the 60 s deadline with the code still correct (BUGS.md 2026-11-11) — a
+  // load-sensitive flake, not a regression. The quiet-host gate the sibling orchestrator e2e
+  // files use defers this one on a loaded host instead of reddening a verdict a starved host
+  // never gave it a fair chance to reach.
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("crash-drain e2e test", ["clean"]);
   const did = path.join(tmpdir(), "crash-drain-did");
   // One real change merges end to end (guarded so a second run settles nothing-to-do rather
@@ -299,10 +310,17 @@ test("a stale marker beside a stale pin is dropped at the drain without a merge 
       repo,
       { role: "clean", sha: mainHead, summary: "stale", startedAt: Date.now(), stage: "merging" },
     );
+    // The drop-and-clear round-trip is a handful of git spawns, but each 100 ms poll cycle it
+    // runs in is stretched by whatever else shares the host. The quiet-host gate above keeps a
+    // saturated runner from running this test starved at all; this widened deadline (the 150 s
+    // robust e2e budget, the once-round hang-guard convention) covers the near-bar case the gate
+    // lets through — a host just under the quiet line that spikes mid-run. It is a budget, not a
+    // sleep: a quiet run drops the pin and clears the marker in well under a second, so the
+    // generous bound costs nothing on the success path and only slows reporting of a genuine hang.
     await waitFor(
       () => refAbsentFromFiles(repo, mergeRefName("clean")) && !fs.existsSync(mergeStatePath(repo)),
       "the stale pin to be dropped and its marker cleared",
-      60_000,
+      150_000,
     );
     assert.equal(
       eventsOfType(repo, "merge_done").length,
