@@ -135,6 +135,7 @@ export function seamContextWindow(
   seam: { agent?: string; provider?: string; model?: string },
   projectRoot: string,
   modelsPath: string = piModelsPath(),
+  config?: TumwaterConfig,
 ): number | null {
   const backend = seamAgent(seam);
   switch (backend) {
@@ -143,7 +144,7 @@ export function seamContextWindow(
     case "opencode":
       return opencodeSeamContextWindow(seam, projectRoot);
     case "codex":
-      return codexSeamContextWindow(seam, projectRoot);
+      return codexSeamContextWindow(seam, projectRoot, config);
     default:
       return null;
   }
@@ -190,10 +191,15 @@ function opencodeSeamContextWindow(
 function codexSeamContextWindow(
   seam: { agent?: string; provider?: string; model?: string },
   projectRoot: string,
+  config?: TumwaterConfig,
 ): number | null {
   if (seam.model === undefined) return null;
-  const { config } = loadConfigSafe(projectRoot);
-  const home = codexHome(resolvedBackendConfig(config ?? {}, "codex"));
+  // A caller that already holds the loaded config (a status snapshot passes its stat-cached
+  // cfg) hands it in, so a codex-enabled role's window does not re-read and re-validate
+  // tumwater.json on every poll; a standalone caller with no config handle falls back to
+  // the uncached safe load, exactly as before.
+  const resolved = config ?? loadConfigSafe(projectRoot).config ?? {};
+  const home = codexHome(resolvedBackendConfig(resolved, "codex"));
   if (home === undefined) return null;
   return declaredWindow(readCodexCatalog(home).get(seam.model)?.contextWindow);
 }
@@ -210,7 +216,11 @@ export function seamContextWindowForRole(
   projectRoot: string,
   modelsPath: string = piModelsPath(),
 ): number | null {
-  return seamContextWindow(configForRole(cfg, role), projectRoot, modelsPath);
+  // Thread the already-loaded config through so a codex seam resolves its home from this
+  // config instead of re-reading + re-validating tumwater.json per poll (status-roles.ts
+  // calls this for every role on every snapshot; the config it holds is the same stat-cached
+  // one the whole snapshot reads).
+  return seamContextWindow(configForRole(cfg, role), projectRoot, modelsPath, cfg);
 }
 
 /** A provider's `baseUrl` from pi's models.json, or null when the file, the provider or the
