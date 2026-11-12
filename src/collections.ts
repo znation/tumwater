@@ -73,8 +73,11 @@ export function filterKeepPositions<T>(items: readonly T[], keep: (item: T) => b
  * (src/team/team-failure-spread.ts), the diff multiset's line tally (merge/merge-diff.ts), the
  * section-title tally (backlog/backlog-structure.ts), the logs' per-type tally
  * (cli/cli-log-commands.ts), the flaky-check tally
- * (doctor/doctor-project-checks.ts), and the multi-runner base tally
- * (orchestrator/orchestrator-scheduling.ts) — the exit-summary round's outcome tally
+ * (doctor/doctor-project-checks.ts), the multi-runner base tally
+ * (orchestrator/orchestrator-scheduling.ts), the running/idle per-base permit tallies
+ * (scheduling/claims.ts), the live-series first-word tally
+ * (prompt/notes-backlog.ts), and the post-merge review rejections' per-role tally
+ * (review/post-merge-review.ts) — the exit-summary round's outcome tally
  * (cli/cli-start-summary.ts) seeds its own copy of this step inline — so those sites cannot
  * drift on how a missing key is seeded. */
 export function increment<K>(map: Map<K, number>, key: K): void {

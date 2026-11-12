@@ -26,6 +26,7 @@ import { entryHoldAgainst, type EntryHold } from "../backlog/backlog-eligibility
 import type { BacklogEntry } from "../backlog/backlog-md.js";
 import { entryKey, partKey, plannedPartKeys, seriesPart } from "../backlog/backlog-parts.js";
 import { plural } from "../text/phrases.js";
+import { increment } from "../collections.js";
 import { collapseWhitespace, escapeRegExp } from "../text/text.js";
 
 /** The live backlog a note's claims are checked against: the planned entries in file order, the
@@ -157,7 +158,7 @@ function firstWordCountsOf(series: Map<string, SeriesInfo>): Map<string, number>
   const firstWordCounts = new Map<string, number>();
   for (const info of series.values()) {
     const w = firstWord(info.name);
-    firstWordCounts.set(w, (firstWordCounts.get(w) ?? 0) + 1);
+    increment(firstWordCounts, w);
   }
   return firstWordCounts;
 }

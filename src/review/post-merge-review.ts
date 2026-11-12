@@ -1,6 +1,6 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { compareCodeUnits } from "../collections.js";
+import { compareCodeUnits, increment } from "../collections.js";
 import { postReviewPath, postReviewWorktreePath, nativeLogPath, piLogPath, reviewRunSessionDir, reviewFixRef } from "../paths.js";
 import { reviewRunConfig } from "../config/config-views.js";
 import { sampleHostLoad } from "../build/host-sleep.js";
@@ -85,7 +85,7 @@ export function postMergeRejectionCounts(events: readonly HarnessEvent[]): PostM
   for (const ev of events) {
     if (ev.type === "review_rejected" && ev.afterMerge === true) {
       const role = baseRoleOf(eventRole(ev));
-      byRole.set(role, (byRole.get(role) ?? 0) + 1);
+      increment(byRole, role);
     }
   }
   return [...byRole.entries()]

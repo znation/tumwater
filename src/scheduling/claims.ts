@@ -19,6 +19,7 @@ import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { readTextOrNull } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";
+import { increment } from "../collections.js";
 
 /** How long a claim may sit while its runner is idle before the poll releases it as stale. A
  * day is far past any run, so the release only catches a claim whose runner stopped taking
@@ -268,7 +269,7 @@ function runningRunnersByBase(runners: readonly ClaimRunner[]): Map<string, numb
   for (const r of runners) {
     const base = baseRoleOf(r.role);
     if (INSTANCE_ROLES.has(base) && r.state.running) {
-      running.set(base, (running.get(base) ?? 0) + 1);
+      increment(running, base);
     }
   }
   return running;
@@ -292,7 +293,7 @@ function idleWorkRunnersByBase(
     const eligible = eligibleFor(base);
     const holdsClaim = r.state.claim !== undefined && eligible.has(r.state.claim.key);
     const hasFreeEntry = [...eligible].some((k) => !(heldByBase.get(base)?.has(k) ?? false));
-    if (holdsClaim || hasFreeEntry) idleByBase.set(base, (idleByBase.get(base) ?? 0) + 1);
+    if (holdsClaim || hasFreeEntry) increment(idleByBase, base);
   }
   return idleByBase;
 }
