@@ -14,14 +14,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 **Suspected cause.** The handoff state exists only in prose; the entry stays eligible, so a model that misreads the note idles instead of being held.
 
-- A director run with a queued user prompt ends on the `pinned` recovery arm, starving the prompt indefinitely while its pin cannot merge (filed 2026-11-11 from a live stuck instance).
-
-**Symptom.** The director held an unmerged pin (`refs/tumwater/merge/director` at `d524a78e`) while the merge slot's one gate-then-merge task waited on a `VERIFY_TIER` permit (all 4 held by long pi runs). Each of the director's two queued operator prompts dequeued (`prompt_taken`), then `recoverLeftoversForRun` → `recoverLeftover` found the pin and `handleRecoveredLeftover` (src/runner/runner-run.ts) ended the run through `ctx.finishRecoveryRun` **before authoring** — the only arm that falls through to authoring is `already_queued`, which requires a queue file, and pin-only writers (parts 3e/7, 3i/7) never write one. `finishRecoveryRunPhase` re-queued the dequeued prompt ("a run's dequeued user prompt goes back to its queue, since nothing ran it"), so the operator's request never ran and never will until the pin clears on its own.
-
-**Required behavior.** A run that dequeued a user prompt (`plan.userPrompt !== null`) must not end on the `pinned`/`relief_wait` recovery arms: either run the recovery first and then author the request, or decline to dequeue while a pin recovery is pending (admit the run only when it can actually serve the prompt). The operator's request must always reach an authoring run.
-
-**Suspected cause.** `handleRecoveredLeftover` treats every recovery arm except `already_queued` as terminal, and the director's `recoveryOnly` gate (src/runner/runner-run.ts `runOncePhase`) is computed with `ctx.pending.get() === null` before the dequeue in `runPrompt` — so a prompt-carrying run enters the recovery path and loses its prompt.
-
 - The live-orchestrator e2e `a stale marker beside a stale pin is dropped at the drain without a merge run` (test/orchestrator-3.e2e.test.ts:273) flakes under load — it timed out waiting for the stale pin to be dropped and its marker cleared, and CI on the GitHub runner failed on it (found by the ci role 2026-11-11).
 
 **Symptom.** On a slow/loaded runner the drain path that drops an orphaned stale merge pin and clears its marker does not settle within the test's ~60 s window: the GitHub run https://github.com/znation/tumwater/actions/runs/43015260315 (main tip `ec3a65e4a`) reported the test as `timed out`. The same test passes in isolation (~0.9 s) and in the full local e2e suite at the live tip (661 ms on 2026-11-11), so it is load-sensitive, not a regression.
@@ -39,3 +31,16 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 **Suspected cause.** The steward's d15db595 used a `— superseded …` epitaph as the body when moving the two entries under `## Done`, following the role catalog's "one-line epitaph as its body" wording (line 713) but not its `retired` heading-stamp rule for a plan closed without being built; the harness's stranded-plan detector has no `superseded` completion stamp.
 
 ## Fixed
+
+- A director run with a queued user prompt ends on the `pinned` recovery arm, starving the prompt indefinitely while its pin cannot merge (filed 2026-11-11 from a live stuck instance). — fixed 2026-11-12 by the bugfix role
+
+**Symptom.** The director held an unmerged pin (`refs/tumwater/merge/director` at `d524a78e`) while the merge slot's one gate-then-merge task waited on a `VERIFY_TIER` permit (all 4 held by long pi runs). Each of the director's two queued operator prompts dequeued (`prompt_taken`), then `recoverLeftoversForRun` → `recoverLeftover` found the pin and `handleRecoveredLeftover` (src/runner/runner-run.ts) ended the run through `ctx.finishRecoveryRun` **before authoring** — the only arm that falls through to authoring is `already_queued`, which requires a queue file, and pin-only writers (parts 3e/7, 3i/7) never write one. `finishRecoveryRunPhase` re-queued the dequeued prompt ("a run's dequeued user prompt goes back to its queue, since nothing ran it"), so the operator's request never ran and never will until the pin clears on its own.
+
+**Required behavior.** A run that dequeued a user prompt (`plan.userPrompt !== null`) must not end on the `pinned`/`relief_wait` recovery arms: either run the recovery first and then author the request, or decline to dequeue while a pin recovery is pending (admit the run only when it can actually serve the prompt). The operator's request must always reach an authoring run.
+
+**Suspected cause.** `handleRecoveredLeftover` treats every recovery arm except `already_queued` as terminal, and the director's `recoveryOnly` gate (src/runner/runner-run.ts `runOncePhase`) is computed with `ctx.pending.get() === null` before the dequeue in `runPrompt` — so a prompt-carrying run enters the recovery path and loses its prompt.
+
+**Fixed.** A director with a kept merge pin under the conflict cap — the pin leftover recovery will END on — now runs promptless (`recoveryOnly`), declining to dequeue any queued user prompt, so the prompt stays in the inbox until the pin's drain merges it and the next eligible run serves it. The `recoveryOnly` gate now uses `pinnedRetrySha` (a live-under-cap pin) rather than `hasUnmergedPin`, so a pin at the conflict cap — which recovery hands back or discards while AUTHORING with the run's prompt — still serves the prompt instead of holding it.
+
+**Validation gap:** no-repro — the failure needed a live stuck instance (a `VERIFY_TIER` permit wait with all four held); the offline suite had no path combining a kept pin with a queued director prompt to deterministically show the dequeue/requeue churn.
+

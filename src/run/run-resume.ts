@@ -100,8 +100,13 @@ interface RunStartOptions {
    * claude run's resume guard looks under the same dir its run writes transcripts to.
    * Absent for a pi team or one that sets no config dir. */
   claudeConfigDir?: string;
-  /** The role has no prompt but holds a kept merge pin: instead of the null plan (skip), return
-   * a promptless plan so the run's leftover recovery runs. Ignored when a prompt exists. */
+  /** The role holds a kept merge pin that leftover recovery will END on (the director's
+   * `pinned` arm — a live pin under the conflict cap): instead of the null plan (skip), return
+   * a promptless plan so the run's leftover recovery re-pins it for the drain — and never
+   * dequeue a queued user prompt, which the ending recovery would re-queue unrun in a
+   * starvation churn while the pin cannot clear (BUGS.md 2026-11-11). Absent (false) when the
+   * pin would instead be handed back or discarded (those author with the run's prompt), so a
+   * handback/cap run still takes its prompt. */
   recoveryOnly?: boolean;
 }
 
@@ -273,6 +278,13 @@ function buildRunStartPrompt(opts: RunStartOptions, d: RunStartDecision): string
   let prompt: string | null;
   if (d.resuming) {
     prompt = buildResumePrompt(opts.role, d.resumeCause, agent);
+  } else if (opts.recoveryOnly) {
+    // A promptless recovery run — the director holds a kept merge pin that leftover recovery
+    // will END on (the pinned arm) — must NOT dequeue a queued user prompt: the ending
+    // recovery would re-queue it unrun, starving the request in a dequeue/requeue churn
+    // while the pin cannot clear (BUGS.md 2026-11-11). Admit the run only to re-pin the pin;
+    // the prompt stays in the inbox until the pin merges, when the next run serves it.
+    prompt = null;
   } else {
     const assembled = opts.runPrompt(agent);
     // The image-reroute handoff note names the model the blind run was on and the image it

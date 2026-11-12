@@ -5138,6 +5138,14 @@ instead of skipping its re-review".
 
 **Pinned by.** `test/orchestrator-scheduling.test.ts` — "a director with a live draining pin and a second commit on its branch is not offered leftover" (the held-commit case, the first bug) and "a director with a stale merge pin is due as leftover, but a live draining pin is not" (the kept pin owed and the queued pin not, the second bug's rule).
 
+### INV-DA2: a director run with a queued prompt and an under-cap kept pin declines to dequeue the prompt
+
+**Guarantee.** When the director holds a kept merge pin that leftover recovery will END on (the `pinned` arm — a live pin under the conflict cap) while a user prompt is queued, the run admits itself promptless (`recoveryOnly`) and does not dequeue the prompt: the ending recovery would otherwise re-queue it unrun, starving the request in a dequeue/requeue churn while the pin cannot clear (BUGS.md 2026-11-11). The prompt stays in the inbox untouched until the pin's drain merges it, when the next eligible run serves it. A pin at the conflict cap is instead handed back or discarded — those recovery arms author WITH the run's prompt — so `recoveryOnly` stays false there and the prompt is served, never held.
+
+**Binds.** `src/runner/runner-run.ts` (`runOncePhase`'s `recoveryOnly` via `pinnedRetrySha`), `src/run/run-resume.ts` (`buildRunStartPrompt`, the decline branch).
+
+**Pinned by.** `test/runner-leftover-recovery.test.ts` — "a director run with queued prompt and an under-cap pin declines to dequeue it and re-pins the leftover" and `test/run-resume.test.ts` — "a recoveryOnly run with a queued prompt returns a promptless plan without invoking runPrompt".
+
 ## The gate's policy scans: a budgeted gate always runs the repo-wide scans, so a new offender fails its own merge
 
 ### INV-DB1: a budgeted gate always selects the repo-wide policy scans for any code change, even when the time budget would crowd them out

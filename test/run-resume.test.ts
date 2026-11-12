@@ -68,6 +68,7 @@ function plan(
     runPrompt?: (backend?: string, compact?: boolean) => string | null;
     pending?: PendingPrompt;
     agent?: string;
+    recoveryOnly?: boolean;
   } = {},
 ) {
   return planRunStart({
@@ -77,6 +78,7 @@ function plan(
     pending: opts.pending ?? new PendingPrompt(root, s.role),
     runPrompt: opts.runPrompt ?? (() => "assembled run prompt"),
     agent: opts.agent,
+    recoveryOnly: opts.recoveryOnly,
   });
 }
 
@@ -95,6 +97,27 @@ test("a fresh run takes the assembled prompt and derives the restart cause", () 
   assert.equal(s.resumePending, false);
   assert.equal(s.resumeCause, undefined);
   assert.equal(s.lastError, undefined);
+});
+
+test("a recoveryOnly run with a queued prompt returns a promptless plan without invoking runPrompt", () => {
+  // BUGS.md 2026-11-11: a director holding a kept merge pin that recovery will END on (the
+  // pinned arm) must not dequeue a queued user prompt — the ending recovery would re-queue it
+  // unrun in a starvation churn while the pin cannot clear. recoveryOnly admits the run but
+  // buildRunStartPrompt declines the dequeue, so runPrompt is never called.
+  const dir = tmpdir();
+  const s = state();
+  let assembled = false;
+  const p = plan(dir, s, {
+    recoveryOnly: true,
+    runPrompt: () => {
+      assembled = true;
+      return "assembled";
+    },
+  });
+  assert.ok(p);
+  assert.equal(p.prompt, null, "a recovery-only run carries no prompt");
+  assert.equal(p.userPrompt, null, "nothing was dequeued");
+  assert.equal(assembled, false, "runPrompt is never invoked when recoveryOnly holds");
 });
 
 test("a fresh run hands the effective agent to the prompt assembly", () => {

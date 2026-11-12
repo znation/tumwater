@@ -227,11 +227,13 @@ test("a hand-back whose diff no longer applies is dropped and the author starts 
   );
 });
 
-// A director run dequeues its user prompt before recovery runs; a run that ends on the
-// recovery never ran that prompt, so it must go back to the inbox — the same policy as every
-// other unfulfilled director outcome. (A user abort of the queued recovery merge is the
-// merge slot's to handle now: merge-drain.test.ts pins that it discards the pin.)
-test("a director run that ends on leftover recovery puts its user prompt back", async () => {
+// A director run with a queued prompt AND a kept merge pin that recovery will END on (the
+// `pinned` arm) must NOT dequeue the prompt: the ending recovery would re-queue it unrun,
+// starving the request in a dequeue/requeue churn while the pin cannot clear (BUGS.md
+// 2026-11-11). It admits a promptless recovery run instead — the prompt stays in the inbox,
+// untouched, until the pin merges. (A pin being handed back or discarded at the cap authors
+// WITH the run's prompt — see the hand-back tests below — so only the under-cap pin declines.)
+test("a director run with queued prompt and an under-cap pin declines to dequeue it and re-pins the leftover", async () => {
   const repo = await initializedRepo();
   const sha = await pinLeftover(repo, "crash.txt", "interrupted work\n", "interrupted director commit", "director");
   const ran = path.join(tmpdir(), "ran");
@@ -242,8 +244,12 @@ test("a director run that ends on leftover recovery puts its user prompt back", 
     assert.equal(outcome.result, "queued", "the director's leftover was pinned");
     assert.equal(await refSha(repo, mergeRefName("director")), sha, "the pin is the waiting state");
     assert.ok(!fs.existsSync(ran), "no pi run: the prompt was never executed");
-    assert.equal(inboxSize(repo), 1, "the prompt is back in the inbox");
-    assert.equal(dequeuePrompt(repo), "important request");
+    // The prompt is never dequeued: it stays in the inbox for the run after the pin merges,
+    // instead of a dequeue/requeue churn starving it while the pin cannot clear. The old code
+    // dequeued it (and logged a prompt_taken) before the ending recovery re-queued it.
+    assert.equal(eventsOfType(repo, "prompt_taken").length, 0, "the prompt is never dequeued");
+    assert.equal(inboxSize(repo), 1, "the queued prompt stays in the inbox");
+    assert.equal(dequeuePrompt(repo), "important request", "the prompt is untouched and still first");
   });
 });
 

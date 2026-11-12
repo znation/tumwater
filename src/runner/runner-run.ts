@@ -36,7 +36,7 @@ import { finalizeRun } from "../run/run-finalize.js";
 import { errorMessage } from "../text/text.js";
 
 import type { RunUsage } from "../run/run-usage.js";
-import { hasUnmergedPin, type FinishableRecovery } from "./runner-leftover.js";
+import { pinnedRetrySha, type FinishableRecovery } from "./runner-leftover.js";
 import { conflictedFileHunks } from "../merge/merge-git.js";
 import { changedFiles } from "../git/git-diff.js";
 import { handlePiResultPhase } from "./runner-outcome.js";
@@ -317,9 +317,17 @@ export async function runOncePhase(
     // The team's configured claude config dir, so planRunStart's claude resume guard looks
     // under the same dir the run's env writes its transcript to (note 4/4). Unset → undefined.
     claudeConfigDir: resolvedBackendConfig(cfg, "claude").configDir,
-    // A director with no prompt but a kept merge pin still goes through the run, for its recovery.
+    // A director with a kept merge pin that recovery will END on (the `pinned` arm — a live pin
+    // under the conflict cap, which `pinnedRetrySha` returns) still goes through the run, for its
+    // recovery. The run then declines to dequeue any queued user prompt (run-resume.ts
+    // `buildRunStartPrompt`), because the ending recovery would re-queue it unrun in a
+    // starvation churn while the pin cannot clear (BUGS.md 2026-11-11). A pin at the cap is
+    // instead handed back or discarded — those arms AUTHOR with the run's prompt — so
+    // `pinnedRetrySha` (null at the cap) keeps recoveryOnly false there and the prompt is served.
     recoveryOnly:
-      ctx.role === DIRECTOR_ROLE && ctx.pending.get() === null && (await hasUnmergedPin(ctx.root, ctx.role)),
+      ctx.role === DIRECTOR_ROLE &&
+      ctx.pending.get() === null &&
+      (await pinnedRetrySha(ctx.root, ctx.role, ctx.mainBranch, ctx.state)) !== null,
   });
   if (plan === null) return { result: "skipped" };
   if (ctx.role === DIRECTOR_ROLE) {
