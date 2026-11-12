@@ -466,11 +466,11 @@ test("the entry readers return title + body pairs in file order; missing file yi
   assert.deepEqual(openQuestionEntries(empty), []);
 });
 
-test("an unchanged file is served from the stat-keyed cache without re-reading", () => {
+test("an unchanged file is served from the stat-keyed cache without re-reading", async () => {
   const root = tmpdir();
   fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
   assert.equal(plannedPlans(root).length, 2); // populates the cache
-  withCountedReads((reads) => {
+  await withCountedReads((reads) => {
     assert.deepEqual(plannedPlans(root), [
       "Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)",
       "Timestamp of last result (planned 2026-08-21, refined 2026-08-25)",
@@ -483,14 +483,14 @@ test("an unchanged file is served from the stat-keyed cache without re-reading",
   });
 });
 
-test("repeated entry reads of an unchanged file re-parse nothing (stat-keyed cache hit)", () => {
+test("repeated entry reads of an unchanged file re-parse nothing (stat-keyed cache hit)", async () => {
   // The GUI's /api/backlog endpoint and the TUI's browse both go through these readers; while
   // a panel is open they are called every second, so an unchanged file must cost one stat per
   // call — never a re-read or re-parse of markdown that grows without bound.
   const root = tmpdir();
   fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
   assert.equal(plannedPlanEntries(root).length, 2); // populates the cache
-  withCountedReads((reads) => {
+  await withCountedReads((reads) => {
     assert.equal(plannedPlanEntries(root).length, 2);
     assert.equal(openBugEntries(root).length, 0); // a different file/section key misses once…
     fs.writeFileSync(path.join(root, "BUGS.md"), BUGS_MD); // …and the write invalidates it

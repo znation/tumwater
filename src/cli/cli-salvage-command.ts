@@ -139,7 +139,7 @@ async function cmdSalvageShow(root: string, args: string[]): Promise<void> {
   const at = salvagePatchAt(collectSalvagePatches(root), position);
   if ("message" in at)
     fail(at.message!);
-  const patch = at.patch!;
+  const patch = at.patch;
   const text = readSalvagePatch(root, patch.file);
   if (text === null) fail(`could not read salvaged patch ${patch.file}`);
   // `git apply --stat` reads the patch without applying it, so the summary is safe to compute
@@ -171,7 +171,7 @@ async function cmdSalvageDrop(root: string, args: string[]): Promise<void> {
   const at = salvagePatchAt(collectSalvagePatches(root), position);
   if ("message" in at)
     fail(at.message!);
-  const patch = at.patch!;
+  const patch = at.patch;
   if (!dropSalvagePatch(root, patch.file)) fail(`could not drop salvaged patch ${patch.file}`);
   if (json) {
     sayJson({ dropped: { position, file: patch.file } });
@@ -208,7 +208,7 @@ async function cmdSalvageApply(root: string, args: string[]): Promise<void> {
   const at = salvagePatchAt(collectSalvagePatches(root), position);
   if ("message" in at)
     fail(at.message!);
-  const patch = at.patch!;
+  const patch = at.patch;
   if (dryRun) {
     const applies = await checkSalvagePatchForOperator(root, patch.file);
     if (json) {

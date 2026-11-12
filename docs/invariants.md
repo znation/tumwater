@@ -5136,7 +5136,7 @@ instead of skipping its re-review".
 
 **Binds.** `src/scheduling/scope.ts` (`directorPinOwedRun`), `src/scheduling/skip.ts` (`leftoverPending`), `src/runner/runner-leftover.ts` (`relief_wait`, `already_queued`, the no-pin `aheadOfMain` re-pin).
 
-**Pinned by.** `test/orchestrator-scheduling.test.ts` — "a director whose queued change is still in the queue and a second commit waits on its branch is not offered leftover" (the held-commit case, the first bug) and "a director holding a kept merge pin with an empty inbox is due as leftover, but a queued pin is not" (the kept pin owed and the queued pin not, the second bug's rule).
+**Pinned by.** `test/orchestrator-scheduling.test.ts` — "a director with a live draining pin and a second commit on its branch is not offered leftover" (the held-commit case, the first bug) and "a director with a stale merge pin is due as leftover, but a live draining pin is not" (the kept pin owed and the queued pin not, the second bug's rule).
 
 ## The gate's policy scans: a budgeted gate always runs the repo-wide scans, so a new offender fails its own merge
 

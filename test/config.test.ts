@@ -254,11 +254,11 @@ test("saveConfig round-trips", () => {
 
 // --- loadConfigCached: the stat-keyed cache behind every poll's config reload ---
 
-test("an unchanged tumwater.json is served from the stat-keyed cache without re-reading", () => {
+test("an unchanged tumwater.json is served from the stat-keyed cache without re-reading", async () => {
   const dir = tmpdir();
   writeConfig(dir, { model: "sonnet" });
   assert.equal(loadConfigCached(dir).config?.model, "sonnet"); // populates the cache
-  withCountedReads((reads) => {
+  await withCountedReads((reads) => {
     assert.equal(loadConfigCached(dir).config?.model, "sonnet"); // unchanged — no file I/O at all
     assert.equal(reads(), 0);
     // Each call still gets its own config: mutating one result must not poison the cache.

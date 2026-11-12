@@ -376,7 +376,7 @@ function mergeAndCheckFields(root: string, snap: StatusSnapshot, now: number) {
 /** The payload statusPayload serves: the spread of every field-group helper's return (the
  * header, merge/check, inbox, budget/pause, feed, backlog and alert groups) plus the role rows.
  * Declared from the same helpers the body spreads, so the type cannot drift from the fields. */
-export type StatusPayload = ReturnType<typeof headerFields> &
+type StatusPayload = ReturnType<typeof headerFields> &
   ReturnType<typeof mergeAndCheckFields> &
   ReturnType<typeof inboxFields> &
   ReturnType<typeof budgetAndPauseFields> &
