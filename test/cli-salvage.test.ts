@@ -149,7 +149,7 @@ test("salvage --show past the list fails naming the position and the depth", asy
   seedSalvage(repo);
   const r = await cli(repo, "salvage", "--show", "3");
   assert.equal(r.code, 1);
-  assert.ok(r.stderr.includes("no salvaged workspace patch at position 3 (salvage holds 2 patches)"));
+  assert.ok(r.stderr.includes("no salvaged workspace patch at position 3 (salvage holds 2 patches) — valid: 1-2"));
 });
 
 test("salvage --show with a missing, zero or non-integer position fails with the --show 2 usage", async () => {
@@ -280,7 +280,7 @@ test("salvage --drop past the list fails naming the position and depth and delet
   const before = bytesOf(older, newer);
   const r = await cli(repo, "salvage", "--drop", "3");
   assert.equal(r.code, 1);
-  assert.ok(r.stderr.includes("no salvaged workspace patch at position 3 (salvage holds 2 patches)"));
+  assert.ok(r.stderr.includes("no salvaged workspace patch at position 3 (salvage holds 2 patches) — valid: 1-2"));
   assert.deepEqual(bytesOf(older, newer), before, "an out-of-range drop deletes nothing");
 });
 
@@ -305,6 +305,7 @@ test("salvage --drop with no salvage dir fails with 0 patches and creates nothin
   const r = await cli(repo, "salvage", "--drop", "1");
   assert.equal(r.code, 1);
   assert.ok(r.stderr.includes("salvage holds 0 patches"));
+  assert.ok(!r.stderr.includes("valid: 1-"), "an empty salvage names no range");
   assert.equal(fs.existsSync(salvageDir(repo)), false, "no salvage dir is created");
   assert.equal(fs.existsSync(path.join(repo, ".tumwater")), false, "no .tumwater is created");
 });
@@ -410,7 +411,7 @@ test("salvage --apply past the list fails with the shared out-of-range wording",
   const { repo, patch, patchBytes } = applyFixture();
   const r = await cli(repo, "salvage", "--apply", "9");
   assert.equal(r.code, 1);
-  assert.ok(r.stderr.includes("no salvaged workspace patch at position 9 (salvage holds 1 patches)"));
+  assert.ok(r.stderr.includes("no salvaged workspace patch at position 9 (salvage holds 1 patches) — valid: 1-1"));
   assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), "old\n", "an out-of-range apply writes nothing");
   assert.equal(fs.readFileSync(patch, "utf8"), patchBytes);
 });

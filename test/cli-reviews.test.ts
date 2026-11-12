@@ -457,7 +457,7 @@ test("reviews --accept failures leave the file unchanged", async () => {
 
   const outOfRange = await cli(repo, "reviews", "--accept", "9");
   assert.notEqual(outOfRange.code, 0);
-  assert.match(outOfRange.stderr, /no post-merge review at position 9 \(post-merge review queue holds 3\)/);
+  assert.match(outOfRange.stderr, /no post-merge review at position 9 \(post-merge review queue holds 3\) — valid: 1-3/);
   assert.deepEqual(readPostReviews(repo), before, "out-of-range changes no file");
 
   const bogus = await cli(repo, "reviews", "--accept", "1", "--bogus");
@@ -587,7 +587,7 @@ test("reviews --show failures leave the queue file's bytes unchanged", async () 
 
   const outOfRange = await cli(repo, "reviews", "--show", "9");
   assert.notEqual(outOfRange.code, 0);
-  assert.match(outOfRange.stderr, /no post-merge review at position 9 \(post-merge review queue holds 3\)/);
+  assert.match(outOfRange.stderr, /no post-merge review at position 9 \(post-merge review queue holds 3\) — valid: 1-3/);
   assert.deepEqual(fs.readFileSync(file), before, "an out-of-range position changes no bytes");
 
   const bogus = await cli(repo, "reviews", "--show", "1", "--bogus");
@@ -636,4 +636,5 @@ test("reviews --show on an empty queue reports position 1 with a depth of 0", as
   const r = await cli(repo, "reviews", "--show", "1");
   assert.notEqual(r.code, 0);
   assert.match(r.stderr, /no post-merge review at position 1 \(post-merge review queue holds 0\)/);
+  assert.doesNotMatch(r.stderr, /valid: 1-/, "an empty queue names no range");
 });

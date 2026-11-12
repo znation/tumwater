@@ -4871,7 +4871,7 @@ keys.handleKey(undefined, { ctrl: true, name: "g" });
 for (const ch of "99")
     keys.handleKey(ch, { name: ch });
 keys.handleKey(undefined, { name: "return" });
-assert.match(keys.state().flash!, /no salvaged workspace patch at position 99 \(salvage holds 1 patches\)/);
+assert.match(keys.state().flash!, /no salvaged workspace patch at position 99 \(salvage holds 1 patches\) — valid: 1-1/);
 assert.equal(keys.state().salvageMode, true, "a number past the list stays open in the editor");
 keys.handleKey(undefined, { name: "escape" });
 assert.equal(keys.state().salvageMode, false, "Esc leaves the editor");
@@ -5008,7 +5008,7 @@ keys.handleKey(undefined, { ctrl: true, name: "y" });
 for (const ch of "99")
     keys.handleKey(ch, { name: ch });
 keys.handleKey(undefined, { name: "return" });
-assert.match(keys.state().flash!, /no salvaged workspace patch at position 99 \(salvage holds 2 patches\)/);
+assert.match(keys.state().flash!, /no salvaged workspace patch at position 99 \(salvage holds 2 patches\) — valid: 1-2/);
 assert.equal(keys.state().salvageMode, true, "a number past the list stays open in the editor");
 keys.handleKey(undefined, { name: "escape" });
 assert.equal(keys.state().salvageMode, false, "Esc leaves the editor");
