@@ -1,6 +1,6 @@
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
 import { rawRoleField } from "../../roles/role-view.js";
-import { isExponentSpelling } from "../../text/text.js";
+import { gotSuffix, isExponentSpelling } from "../../text/text.js";
 import type { TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 import { createRoleKeyEditor } from "./tui-editor-role-key.js";
@@ -38,7 +38,7 @@ export function createInstancesEditor(session: TuiEditorSession): TuiEditorModul
       // the key and staying in edit mode. A non-exponent spelling falls through to
       // validateConfig, whose message names the key.
       if (isExponentSpelling(text)) {
-        return { ok: false, error: `${cfgKey} must be a plain integer from 1 to 8 — no exponent notation` };
+        return { ok: false, error: `${cfgKey} must be a plain integer from 1 to 8 — no exponent notation${gotSuffix(text)}` };
       }
       const r = setConfigKey(s.root, cfgKey, text);
       return r.ok && r.unchanged ? { ok: true, noop: true } : r;

@@ -216,7 +216,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     if (!/^\d*\.?\d+$/.test(t)) {
       return {
         ok: false,
-        error: "the cap must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation — leave it empty for no cap",
+        error: "the cap must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation — leave it empty for no cap (got \"" + t + "\")",
       };
     }
     if (!Number.isFinite(n) || n < 0 || n > Number.MAX_SAFE_INTEGER) {

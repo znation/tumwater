@@ -647,7 +647,7 @@ test("interval-edit opens the editor, interval-save posts the interval (empty in
   field.value = "1e2";
   scope.runAct("interval-save", "clean");
   assert.deepEqual(posts, [], "an exponent spelling is not posted");
-  assert.deepEqual(flashes, ["error: the interval must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation"]);
+  assert.deepEqual(flashes, ["error: the interval must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation (got \"1e2\")"]);
   // interval-discard closes the editor, posting nothing.
   events.length = 0;
   scope.runAct("interval-discard", "clean");
@@ -708,7 +708,7 @@ test("instances-edit opens the editor, instances-save posts the count (empty inp
   field.value = "2e0";
   scope.runAct("instances-save", "feature");
   assert.deepEqual(posts, [], "an exponent spelling is not posted");
-  assert.deepEqual(flashes, ["error: the instances must be a plain integer like 2 — no +/-, exponent, or hex notation — leave it empty for the default 1"]);
+  assert.deepEqual(flashes, ["error: the instances must be a plain integer like 2 — no +/-, exponent, or hex notation — leave it empty for the default 1 (got \"2e0\")"]);
   // instances-discard closes the editor, posting nothing.
   events.length = 0;
   scope.runAct("instances-discard", "feature");

@@ -180,7 +180,7 @@ test("saveSetting posts the row's key and value and flashes the outcome", async 
     showFlash: (msg: string) => void exponentFlashes.push(msg),
   });
   await saveExponent({ dataset: { key: "roles.feature.instances" }, querySelector: () => ({ value: "2e1" }) });
-  assert.deepEqual(exponentFlashes, ["error: roles.feature.instances must be a plain integer — no exponent notation"]);
+  assert.deepEqual(exponentFlashes, ["error: roles.feature.instances must be a plain integer — no exponent notation (got \"2e1\")"]);
   // An exponent spelling on the daily-cap row is refused in the browser with the dollar
   // wording: the browser's JSON.parse would turn "1e2" into the number 100 before it reaches
   // setConfigKey, whose exponent guard sees only the re-encoded "100" — so the refusal lives
@@ -195,7 +195,7 @@ test("saveSetting posts the row's key and value and flashes the outcome", async 
     showFlash: (msg: string) => void dollarFlashes.push(msg),
   });
   await saveDollar({ dataset: { key: "maxDailyCostUsd" }, querySelector: () => ({ value: "1e2" }) });
-  assert.deepEqual(dollarFlashes, ["error: maxDailyCostUsd must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation"]);
+  assert.deepEqual(dollarFlashes, ["error: maxDailyCostUsd must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation (got \"1e2\")"]);
   assert.deepEqual(dollarPosts, []);
   // A plain decimal on the cap row passes the browser screen and posts the parsed number.
   const dollarOkPosts: Array<{ path: string; body: unknown }> = [];

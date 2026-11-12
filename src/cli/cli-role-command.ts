@@ -19,7 +19,7 @@ import { renderRoleMarkdown } from "../roles/role-render.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { saveRoleNote } from "../roles/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
-import { errorMessage, isExponentSpelling, isPlainDecimal } from "../text/text.js";
+import { errorMessage, gotSuffix, isExponentSpelling, isPlainDecimal } from "../text/text.js";
 import { readPromptFileArg } from "./cli-prompt-file.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
@@ -441,7 +441,7 @@ function writeDailyCap(root: string, id: string, rest: string[], clearCap: boole
   // negative and non-numeric spellings fall through to the write path, whose
   // validateConfig message names the key.
   if (isExponentSpelling(cap.trim()))
-    fail(`${cfgKey} must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation`);
+    fail(`${cfgKey} must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation${gotSuffix(cap)}`);
   writeRoleConfigKey(root, base, clearCap, cap, cfgKey, "daily cap", (v) => plainDecimalToJson(v) ?? v, (v) => v, json);
 }
 
@@ -468,7 +468,7 @@ function writeMinRunInterval(root: string, id: string, rest: string[], clearInte
   // non-numeric spellings fall through to the write path, whose validateConfig message
   // names the key.
   if (isExponentSpelling(secs.trim()))
-    fail(`${cfgKey} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation`);
+    fail(`${cfgKey} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation${gotSuffix(secs)}`);
   writeRoleConfigKey(root, base, clearInterval, secs, cfgKey, "min run interval", (v) => plainDecimalToJson(v) ?? v, (v) => `${v}s`, json);
 }
 
@@ -497,7 +497,7 @@ function writeInstances(root: string, id: string, rest: string[], clearInstances
   // out-of-range integer spellings fall through to the write path, whose validateConfig
   // message names the key.
   if (isExponentSpelling(n.trim()))
-    fail(`${cfgKey} must be a plain integer from 1 to 8 — no exponent notation`);
+    fail(`${cfgKey} must be a plain integer from 1 to 8 — no exponent notation${gotSuffix(n)}`);
   // An absent count already means 1 (instanceCount's default), so asking for 1 is a no-op —
   // but only for a role that may split; any other role falls through to validateConfig's refusal.
   // A tumwater.json that fails to load is no basis for "already": fall through to the failure.

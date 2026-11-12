@@ -382,11 +382,11 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       !/^\d*\.?\d+$/.test(typed) &&
       /^\d+(\.\d+)?[eE][+-]?\d+$/.test(typed);
     if (isExponent && PLAIN_INTEGER_KEYS.includes(key)) {
-      showFlash("error: " + key + " must be a plain integer — no exponent notation");
+      showFlash("error: " + key + " must be a plain integer — no exponent notation (got \"" + typed + "\")");
       return;
     }
     if (isExponent && PLAIN_DOLLAR_KEYS.includes(key)) {
-      showFlash("error: " + key + " must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation");
+      showFlash("error: " + key + " must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation (got \"" + typed + "\")");
       return;
     }
     // JSON-or-literal, matching tumwater config set: a field holding 30 or an agents

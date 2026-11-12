@@ -150,7 +150,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   function typedNumberValue(input, badInputMsg, shapeMsg) {
     if (input.validity && input.validity.badInput) { showFlash("error: " + badInputMsg); return undefined; }
     const raw = input.value.trim();
-    if (raw !== "" && !/^\d*\.?\d+$/.test(raw)) { showFlash("error: " + shapeMsg); return undefined; }
+    if (raw !== "" && !/^\d*\.?\d+$/.test(raw)) { showFlash("error: " + shapeMsg + " (got \"" + raw + "\")"); return undefined; }
     return raw;
   }
   function runAct(act, arg) {

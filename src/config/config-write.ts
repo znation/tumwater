@@ -14,7 +14,7 @@ import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { modelTierMap, type TumwaterConfig } from "./config-schema.js";
 import { isJsonObject, objectOrEmpty } from "../files/json-object.js";
-import { isExponentSpelling, errorMessage } from "../text/text.js";
+import { isExponentSpelling, errorMessage, gotSuffix } from "../text/text.js";
 import { show } from "./config-field-checks.js";
 import { canonicalConfigKey } from "./config-aliases.js";
 import { unknownRoleMessage } from "../roles/roles.js";
@@ -184,11 +184,11 @@ function exponentRefusal(
 ): string | null {
   if (trimmed === "" || !isExponentSpelling(trimmed)) return null;
   if (isPlainIntegerKey(parsed, key))
-    return `${key} must be a plain integer — no exponent notation`;
+    return `${key} must be a plain integer — no exponent notation${gotSuffix(trimmed)}`;
   if (isPlainDurationKey(parsed))
-    return `${key} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation`;
+    return `${key} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation${gotSuffix(trimmed)}`;
   if (isPlainDollarKey(parsed))
-    return `${key} must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation`;
+    return `${key} must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation${gotSuffix(trimmed)}`;
   return null;
 }
 

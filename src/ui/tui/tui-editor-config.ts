@@ -1,5 +1,5 @@
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
-import { isExponentSpelling } from "../../text/text.js";
+import { gotSuffix, isExponentSpelling } from "../../text/text.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
@@ -129,7 +129,7 @@ export function createTeamConfigKeyEditor(
     // and silently write, so refuse it here and stay in edit mode (the twin of the per-role
     // instances/interval guards); a non-exponent invalid falls through to validateConfig.
     if (spec.plainIntegerKey && text !== "" && isExponentSpelling(text)) {
-      session.flashMessage(`${spec.configKey} must be a plain integer — no exponent notation`);
+      session.flashMessage(`${spec.configKey} must be a plain integer — no exponent notation${gotSuffix(text)}`);
       return true;
     }
     const result =
