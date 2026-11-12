@@ -566,8 +566,8 @@ function snapshotPauseFields(
     // badge uses, scoped to the role's own schedule. The window string comes back out of
     // the same config the hold was decided from, so the label cannot name a window that is
     // not holding (roleQuietHold true implies a parseable, non-empty string there). The held
-    // set is the shared roleQuietHeldRoles pass (the same one the scheduler's gate runs), so the
-    // surfaces cannot disagree about who the per-role windows hold.
+    // set is the shared roleQuietHeldRoles pass (the same one the scheduler's gate runs), so
+    // the surfaces cannot disagree about who the per-role windows hold.
     roleQuietPaused: Object.fromEntries(
       roleQuietHeldRoles(cfg.quietHoursPerRole, roleRows.map((l) => l.role), new Date(now))
         .map((l) => [l, cfg.quietHoursPerRole?.[baseRoleOf(l)] ?? ""]),

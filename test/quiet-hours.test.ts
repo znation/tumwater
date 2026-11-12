@@ -229,3 +229,18 @@ test("roleQuietHeldRoles: holds the named role and its instances, exempts the di
   // No config: nothing holds.
   assert.deepEqual(roleQuietHeldRoles(undefined, ["feature"], localDate(23, 30)), []);
 });
+
+test("roleQuietHeldRoles: held ids, per-instance id preserved, director and others excluded", () => {
+  const perRole = { feature: "23:00-07:00" };
+  const atNight = localDate(23, 30);
+  const byDay = localDate(12, 0);
+  // Inside the window: the bare role is held, and an instance of the held base role is held
+  // under its own instance id.
+  assert.deepEqual(roleQuietHeldRoles(perRole, ["feature", "feature-2", "qa", "director"], atNight), ["feature", "feature-2"]);
+  // Outside the window nothing is held; an absent key and undefined config hold nothing.
+  assert.deepEqual(roleQuietHeldRoles(perRole, ["feature", "feature-2"], byDay), []);
+  assert.deepEqual(roleQuietHeldRoles(undefined, ["feature"], atNight), []);
+  // Order of the input list is preserved, duplicates kept, and an unlisted director is never
+  // reported even if some other role names are absent.
+  assert.deepEqual(roleQuietHeldRoles(perRole, ["director", "feature", "feature"], atNight), ["feature", "feature"]);
+});
