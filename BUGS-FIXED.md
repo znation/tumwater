@@ -5,7 +5,19 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
-### A role's leftover recovery re-pins its own in-flight, already-queued merge and drops its queue file — `a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate` (test/orchestrator-3.e2e.test.ts) fails deterministically (found by the ci role 2026-11-09) — fixed 2026-11-09 by the bugfix role
+#
+### `a verification rejection drops its entry at once — its role may run next poll — and the next queued entry starts on the next drain` failed, then passed on the same tree (quarantined by tumwater 2026-11-11) — fixed 2026-11-11 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+a verification rejection drops its entry at once — its role may run next poll — and the next queued entry starts on the next drain
+~~~~
+
+**Fix.** A test bug, not a source bug. For a rejected pinned change the source ordering is deliberate and single-flight: the gate (merge-core.ts `reviewPinnedChange`) deletes the merge pin (`discardPin`) and returns `rejected`, and the drain's settle is a SEPARATE task turn that then persists the outcome — `settleMergeOutcome` → `writeMergeOutcome` (merge-slot.ts) writes `lastResult` to the role's state file *and* logs the `merge_failed` event. The test polled the pin on a 100 ms loop and, the instant it was gone, synchronously asserted `lastResult === "rejected"` and the `merge_failed` count (its own comment: "the outcome is saved before the drop" — the source does the opposite). In a quiet re-run that window is sub-millisecond (passes); in the full unit suite the pin is gone for a real window before the settle's write lands, so the synchronous read flaked. The fix (test/merge-pipeline.test.ts) observes the settle instead of inferring from the ref: it polls for the `merge_failed` event — the settle's state-save and event-log are one turn, so once the event is on disk the state is too (state is saved *before* the event is logged) — and only then asserts both. No source change: a production observer cannot hit this window, since the drain is single-flight (INV-G6) and frees its slot only after the settle.
+
+**Validation gap:** no-repro — the failure is load-timing (a read landing in the window between the gate's pin-delete and the settle's write, which only widens on a loaded host), so it cannot be reproduced deterministically offline; the fix closes the window by construction — the test now polls for the settle's event, which by write order (state saved before the event logged) implies the state is persisted, so no read can land in the race.
+## A role's leftover recovery re-pins its own in-flight, already-queued merge and drops its queue file — `a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate` (test/orchestrator-3.e2e.test.ts) fails deterministically (found by the ci role 2026-11-09) — fixed 2026-11-09 by the bugfix role
 
 The e2e test `a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate` failed deterministically at the tip: every isolated run of the single file failed (`node dist/test/test-runner.js orchestrator-3`), the e2e tier was 88 pass / 1 fail, and the same test was green at the last green tip. Filed by the ci role, which runs the whole e2e tier where the merge gate's affected-tests selection does not.
 
