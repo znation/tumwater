@@ -447,6 +447,31 @@ test("seamContextWindow reads a codex model's window from the team catalog (part
   }
 });
 
+test("seamContextWindow resolves a codex home from the passed-in config (not a re-read)", () => {
+  // A caller that already holds the loaded config (a status snapshot's stat-cached cfg) hands
+  // it in; the codex home must come from that config even when nothing is written at `root`.
+  // Point HOME at a catalog-free dir so the previous case's default-home fallback cannot mask
+  // a regression where the passed config is ignored.
+  const home = tmpdir("codex-window-threaded-home-");
+  fs.writeFileSync(
+    codexModelsPath(home),
+    JSON.stringify({ models: [{ slug: "gpt-6.1-sol", context_window: 100000, effective_context_window_percent: 100, input_modalities: ["text"] }] }),
+  );
+  const config = defaultConfig();
+  config.backends = { codex: { configDir: home } };
+  const realHome = process.env.HOME;
+  process.env.HOME = tmpdir("codex-window-threaded-empty-home-");
+  try {
+    assert.equal(
+      seamContextWindow({ agent: "codex", model: "gpt-6.1-sol" }, tmpdir("codex-window-threaded-root-"), undefined, config),
+      100_000,
+      "the passed config decides the home, no file at root",
+    );
+  } finally {
+    process.env.HOME = realHome;
+  }
+});
+
 // --- OpenCode free-ness (part 6b/7 of plans/opencode-backend.md) ---------------------------
 
 /** A catalog cache with a free gateway model, a priced sibling, a billed free model, and a
