@@ -151,12 +151,10 @@ export function createSalvageEditor(session: TuiEditorSession): TuiEditorModule 
 
   // Enter in drop mode deletes the typed patch number through `dropSalvagePatch` — the same
   // core the CLI's `tumwater salvage --drop <n>` uses, so the terminal drop cannot drift from
-  // it. The empty-line, non-whole-number, and past-the-list flashes are the apply arm's, so a
-  // bad number cannot delete anything. The empty-line, non-whole-number, and past-the-list
-  // flashes come from resolveSalvagePosition, so a bad number cannot delete anything. On a
-  // successful delete the editor exits and repaints the Health list with the patch gone; on a
-  // delete that could not remove the file it flashes the CLI's `could not drop` sentence and
-  // stays open.
+  // it. The empty-line, non-whole-number, and past-the-list flashes come from
+  // resolveSalvagePosition, so a bad number cannot delete anything. On a successful delete the
+  // editor exits and repaints the Health list with the patch gone; on a delete that could not
+  // remove the file it flashes the CLI's `could not drop` sentence and stays open.
   const submitSalvageDrop = (): boolean => {
     const resolved = resolveSalvagePosition();
     if (resolved === false) return true;
