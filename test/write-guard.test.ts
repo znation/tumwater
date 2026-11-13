@@ -60,6 +60,11 @@ test("tumwater's state and the primary's node_modules are refused with no twin p
   const note = strayWriteRefusal(path.join(root, ".tumwater", "state", "notes", "feature.md"), wt);
   assert.match(note ?? "", /is in tumwater's own state/);
   assert.match(note ?? "", /Save role notes with `tumwater-notes write` instead\.$/);
+  // The lessons file sits in a subdirectory of the same notes dir; the guard's notes-dir
+  // prefix match covers it too, with the same refusal and the same pointer.
+  const lesson = strayWriteRefusal(path.join(root, ".tumwater", "state", "notes", "lessons", "feature.md"), wt);
+  assert.match(lesson ?? "", /is in tumwater's own state/);
+  assert.match(lesson ?? "", /Save role notes with `tumwater-notes write` instead\.$/);
   const state = strayWriteRefusal(path.join(root, ".tumwater", "state", "feature.json"), wt);
   assert.match(state ?? "", /tumwater's own state.*Leave it alone and work only inside the worktree\.$/);
   const dep = strayWriteRefusal(path.join(root, "node_modules", "pkg", "index.js"), wt);

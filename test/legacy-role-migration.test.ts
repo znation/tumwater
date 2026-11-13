@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { refSha } from "../src/git/git.js";
-import { mergeRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleNotesPath, sessionDir, statePath } from "../src/paths.js";
+import { mergeRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleLessonsPath, roleNotesPath, sessionDir, statePath } from "../src/paths.js";
 import { readJsonFile, writeJsonFile } from "../src/files/json-files.js";
 import { migrateLegacyRoleIds } from "../src/roles/legacy-role-migration.js";
 import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
@@ -157,5 +157,19 @@ test("the state heal folds both id-named files into the newer copy under the new
   const healed = readJsonFile(statePath(root, "newy")) as { lastRunEndedAt: number };
   assert.equal(healed.lastRunEndedAt, 1000, "the newer (old-id) copy wins under the new name");
   assert.equal(fs.existsSync(statePath(root, "oldy")), false, "the stale old-id copy is dropped");
+  assert.deepEqual(notes.failed, []);
+});
+
+
+test("renaming a legacy role moves its lessons file along with its note", async () => {
+  const root = makeRepo();
+  const lesson = "<!-- next: L2 -->\n- L1 (2026-11-12): keep the test runner out of the repo root\n";
+  put(roleLessonsPath(root, "oldy"), lesson);
+  put(roleNotesPath(root, "oldy"), "notes");
+  const notes = await migrateLegacyRoleIds(root, MAP);
+  assert.ok(notes.moved.some((n) => n.includes(roleLessonsPath(root, "newy"))), `lessons file moved: ${notes.moved}`);
+  assert.equal(fs.existsSync(roleLessonsPath(root, "oldy")), false, "the old-id lessons file is gone");
+  assert.equal(fs.readFileSync(roleLessonsPath(root, "newy"), "utf8"), lesson, "the lessons file content is preserved");
+  assert.equal(fs.existsSync(roleNotesPath(root, "newy")), true, "the note moves too");
   assert.deepEqual(notes.failed, []);
 });

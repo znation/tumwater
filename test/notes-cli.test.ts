@@ -325,3 +325,141 @@ test("show on a note that cannot be read exits 1 naming the failure instead of p
   assert.ok(res.stderr.startsWith("could not read the note: "), res.stderr);
   assert.equal(res.stdout, "");
 });
+
+
+/** The `lesson` subcommands (plans/typed-role-notes.md part 1/3), run against a temp role
+ * notes file whose lessons sibling lives at <dirname>/lessons/<basename>. Expected file
+ * contents are written literally from the lessons format contract, not by calling the code. */
+
+/** A temp role notes path; its lessons file sits at the lessons/ sibling of the same basename. */
+function lessonNotesPath(): { notesPath: string; lessonsPath: string } {
+  const notesPath = path.join(tmpdir(), "feature.md");
+  const lessonsPath = path.join(path.dirname(notesPath), "lessons", path.basename(notesPath));
+  return { notesPath, lessonsPath };
+}
+
+function lessonsText(lessonsPath: string): string | undefined {
+  try {
+    return fs.readFileSync(lessonsPath, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+test("lesson add twice gives L1 then L2, writing the lessons file; the note file is left untouched", () => {
+  const { notesPath, lessonsPath } = lessonNotesPath();
+  const a1 = run(["lesson", "add"], notesPath, "first lesson\n");
+  assert.equal(a1.status, 0, a1.stderr);
+  assert.equal(a1.stdout, "L1\n", "add prints the new id");
+  const a2 = run(["lesson", "add"], notesPath, "second lesson\n");
+  assert.equal(a2.status, 0, a2.stderr);
+  assert.equal(a2.stdout, "L2\n");
+  // The stored file: the next-id marker, then the two lessons in file order.
+  const stored = lessonsText(lessonsPath)!;
+  assert.equal(stored.split("\n")[0], "<!-- next: L3 -->");
+  assert.match(stored, /- L1 \(\d{4}-\d{2}-\d{2}\): first lesson\n/, stored);
+  assert.match(stored, /- L2 \(\d{4}-\d{2}-\d{2}\): second lesson\n/, stored);
+  // add never writes the note file.
+  assert.equal(noteText(notesPath), undefined, "add does not create or change the note");
+});
+
+test("lesson retire L1 then add gives L3, not L1 (a retired id is never reused)", () => {
+  const { notesPath, lessonsPath } = lessonNotesPath();
+  run(["lesson", "add"], notesPath, "first\n"); // L1
+  run(["lesson", "add"], notesPath, "second\n"); // L2
+  const r = run(["lesson", "retire", "L1"], notesPath);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(lessonsText(lessonsPath)!.split("\n")[0], "<!-- next: L3 -->", "retire advances the next id past the retired one");
+  const a = run(["lesson", "add"], notesPath, "third\n");
+  assert.equal(a.stdout, "L3\n", "the new id is L3, not the retired L1");
+});
+
+test("lesson replace keeps the id and takes today's date; the file is rewritten", () => {
+  const { notesPath, lessonsPath } = lessonNotesPath();
+  run(["lesson", "add"], notesPath, "original\n"); // L1
+  const res = run(["lesson", "replace", "L1"], notesPath, "amended\n");
+  assert.equal(res.status, 0, res.stderr);
+  const text = lessonsText(lessonsPath)!;
+  assert.match(text, /- L1 \(\d{4}-\d{2}-\d{2}\): amended\n/, text);
+  assert.equal(text.split("\n")[0], "<!-- next: L2 -->", "replace does not advance the next id");
+});
+
+test("lesson list prints the stored lessons in order; an empty store prints nothing", () => {
+  const { notesPath } = lessonNotesPath();
+  assert.equal(run(["lesson", "list"], notesPath).stdout, "", "an empty store prints nothing");
+  run(["lesson", "add"], notesPath, "first\n");
+  run(["lesson", "add"], notesPath, "second\n");
+  const res = run(["lesson", "list"], notesPath);
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /- L1 /);
+  assert.match(res.stdout, /- L2 /);
+  assert.ok(res.stdout.indexOf("L1") < res.stdout.indexOf("L2"), "file order");
+});
+
+test("show prints the lessons then the note, separated by a blank line", () => {
+  const { notesPath, lessonsPath } = lessonNotesPath();
+  fs.mkdirSync(path.dirname(lessonsPath), { recursive: true });
+  fs.writeFileSync(lessonsPath, "<!-- next: L2 -->\n- L1 (2026-11-13): a lesson\n");
+  fs.writeFileSync(notesPath, "Note body.\n");
+  const res = run(["show"], notesPath);
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stdout, "- L1 (2026-11-13): a lesson\n\nNote body.\n");
+});
+
+test("a 13th lesson is refused with the count cap and the file is left unchanged", () => {
+  const { notesPath, lessonsPath } = lessonNotesPath();
+  for (let n = 0; n < 12; n++) run(["lesson", "add"], notesPath, `lesson ${n}\n`);
+  const before = lessonsText(lessonsPath)!;
+  const res = run(["lesson", "add"], notesPath, "one more\n");
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /lessons full \(12\/12\)/);
+  assert.match(res.stderr, /retire or replace one first/);
+  assert.equal(res.stdout, "");
+  assert.equal(lessonsText(lessonsPath), before, "the file is untouched");
+});
+
+test("a lesson over 300 bytes or containing a blank line is refused with exit 1, file unchanged", () => {
+  const { notesPath, lessonsPath } = lessonNotesPath();
+  const before = lessonsText(lessonsPath) ?? undefined;
+  let res = run(["lesson", "add"], notesPath, "a".repeat(301) + "\n");
+  assert.equal(res.status, 1, "over the per-lesson cap");
+  assert.match(res.stderr, /shorten it to at most 300 bytes/);
+  res = run(["lesson", "add"], notesPath, "line one\nline two\n");
+  assert.equal(res.status, 1, "a blank line is not a single paragraph");
+  assert.match(res.stderr, /single paragraph/);
+  assert.equal(lessonsText(lessonsPath), before);
+});
+
+test("a lesson that would push the file past 2 KB is refused with the byte cap, file unchanged", () => {
+  const { notesPath, lessonsPath } = lessonNotesPath();
+  for (let n = 0; n < 6; n++) run(["lesson", "add"], notesPath, "a".repeat(290) + "\n");
+  const before = lessonsText(lessonsPath)!;
+  assert.ok(Buffer.byteLength(before, "utf8") < 2048);
+  const res = run(["lesson", "add"], notesPath, "a".repeat(290) + "\n");
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /shorten it to at most 2048 bytes/);
+  assert.equal(lessonsText(lessonsPath), before);
+});
+
+test("an unknown id to replace or retire is refused with exit 1 and the file unchanged", () => {
+  const { notesPath, lessonsPath } = lessonNotesPath();
+  run(["lesson", "add"], notesPath, "only\n"); // L1
+  const before = lessonsText(lessonsPath)!;
+  let res = run(["lesson", "replace", "L9"], notesPath, "x\n");
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /no lesson L9 to replace/);
+  res = run(["lesson", "retire", "L9"], notesPath);
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /no lesson L9 to retire/);
+  assert.equal(lessonsText(lessonsPath), before);
+});
+
+test("write and clear leave the lessons file byte-identical", () => {
+  const { notesPath, lessonsPath } = lessonNotesPath();
+  run(["lesson", "add"], notesPath, "a lesson\n");
+  const before = lessonsText(lessonsPath)!;
+  assert.equal(run(["write"], notesPath, "the whole new note\n").status, 0);
+  assert.equal(lessonsText(lessonsPath), before, "write does not touch lessons");
+  assert.equal(run(["clear"], notesPath).status, 0);
+  assert.equal(lessonsText(lessonsPath), before, "clear does not touch lessons");
+});

@@ -6,31 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Typed role notes, part 1/3: A lessons store that tumwater keeps verbatim, with `tumwater-notes lesson` commands (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; touches src/paths.ts src/roles/role-notes-write.ts src/notes-cli.ts src/roles/legacy-role-migration.ts test/notes-cli.test.ts test/role-lessons.test.ts)
-
-**Goal.** Each role gets a second, durable store beside its note: a list of dated, numbered lessons that survive every `tumwater-notes write` unchanged and change only through explicit commands. Today every write replaces the whole note, and only 16% of a note's paragraphs carry verbatim into the next write (2026-11-12 measurement in plans/typed-role-notes.md "Why"). This part adds the store and commands only; no prompt mentions them yet.
-
-**Approach.**
-- src/paths.ts: `roleLessonsPath(root, role)` → `.tumwater/state/notes/lessons/<role>.md`.
-- src/roles/role-notes-write.ts: parse, validate and atomically write the lessons file. Lines are `- L<n> (<YYYY-MM-DD>): <text>`; ids increase and are never reused, even after a retire (keep the next id in the file, e.g. a first line `<!-- next: L<n> -->`). Caps: 12 lessons, each at most 300 bytes and one paragraph (no blank line), 2 KB in total. Refusals name the count and the fix, in the same style as `validateRoleNote`.
-- src/notes-cli.ts: `lesson add` (stdin, prints the new id), `lesson replace L<n>` (stdin, same id, today's date), `lesson retire L<n>`, `lesson list`. `show` prints lessons then the note. The path is `<dirname(TUMWATER_NOTES_PATH)>/lessons/<basename>`, never an argument. A full store refuses `add` with "lessons full (12/12): retire or replace one first", naming the commands. An unknown id refuses with exit 1. `write` and `clear` keep today's behavior and never touch lessons.
-- src/roles/legacy-role-migration.ts: move the lessons file with the note when a legacy role id is renamed.
-- Check that the notes-dir listing in src/status/status-role-notes.ts ignores the `lessons/` subdirectory (it must not read as a role), and that src/agent/write-guard.ts's notes-dir guard already covers it; add a test for each rather than changing code unless one fails.
-
-**Files touched.** src/paths.ts src/roles/role-notes-write.ts src/notes-cli.ts src/roles/legacy-role-migration.ts test/notes-cli.test.ts test/role-lessons.test.ts
-
-**Acceptance criteria.**
-- Through the real CLI (spawned with `TUMWATER_NOTES_PATH` in a temp dir), with expected file contents written out literally in the test: `add` twice gives L1 and L2; `retire L1` then `add` gives L3, not L1; `replace L2` keeps the id and sets today's date; `list` and `show` print what was stored.
-- `write` and `clear` leave the lessons file byte-identical.
-- A 13th lesson, a lesson over 300 bytes, one containing a blank line, or one pushing the file past 2 KB is refused with exit 1 and the file unchanged.
-- An unknown or malformed id is refused with exit 1.
-- A model agent cannot write the lessons file directly: the write guard refuses it, the same way it refuses the note file.
-- The status notes listing does not report `lessons` as a role.
-- Renaming a legacy role moves its lessons file.
-- `npm run test:gate` passes.
-
-**Tests.** test/role-lessons.test.ts covers parse/validate/write. test/notes-cli.test.ts covers the subcommands end to end, plus the guard and listing checks above. Then the project's gate.
-
 ### Typed role notes, part 2/3: Run prompts show the lessons and say what belongs in a lesson versus the note (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; requires Typed role notes part 1/3 and Since last run part 1/1 landed; both edit the same notes code; touches src/prompt/prompt.ts src/run/run-prompt.ts src/prompt/notes-backlog.ts test/prompt.test.ts test/run-prompt.test.ts test/notes-backlog.test.ts test/prompt-rules.test.ts)
 
 **Goal.** Every authoring run sees its role's lessons and knows when to add, replace or retire one, so durable knowledge stops depending on the model copying it forward on every note rewrite.

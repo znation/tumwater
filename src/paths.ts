@@ -202,6 +202,15 @@ export function roleNotesPath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "state", "notes", `${role}.md`);
 }
 
+/** A role's lessons (.tumwater/state/notes/lessons/<role>.md): the durable lessons the role's
+ * runs keep verbatim, the typed twin of the note (plans/typed-role-notes.md). It sits in the
+ * `lessons/` subdirectory of the notes dir, so the notes-dir listing (status-role-notes.ts) never
+ * mistakes it for a role file, and it sits under the notes directory the write guard already
+ * protects (src/agent/write-guard.ts). Runtime state, never committed, like the note. */
+export function roleLessonsPath(root: string, role: string): string {
+  return path.join(tumwaterDir(root), "state", "notes", "lessons", `${role}.md`);
+}
+
 /** The in-flight merge marker (merge queue 4/5): the orchestrator's drain task
  * writes it (merge-slot.ts, merge queue 4/5) and removes it after every outcome — the observers
  * (`status`, TUI, GUI) are separate processes that cannot see the drain's in-memory promise,

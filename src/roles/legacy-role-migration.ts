@@ -1,8 +1,9 @@
 import fs from "node:fs";
+import path from "node:path";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { deleteRefIfAt, refSha } from "../git/git.js";
 import { runGit } from "../git/git-run.js";
-import { branchName, mergeRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleNotesPath, sessionDir, statePath } from "../paths.js";
+import { branchName, mergeRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleLessonsPath, roleNotesPath, sessionDir, statePath } from "../paths.js";
 import type { MigrationNotes } from "../orchestrator/startup-migrations.js";
 import { errorMessage } from "../text/text.js";
 import { LEGACY_ROLE_IDS } from "./legacy-role-ids.js";
@@ -115,12 +116,15 @@ export async function migrateLegacyRoleIds(root: string, legacy: Readonly<Record
       return `healed ${from} and ${to}: kept ${from}, newer`;
     });
 
-    for (const pathFor of [roleNotesPath, roleInboxDir, sessionDir, reviewSessionDir]) {
+    for (const pathFor of [roleNotesPath, roleLessonsPath, roleInboxDir, sessionDir, reviewSessionDir]) {
       const from = pathFor(root, oldId);
       const to = pathFor(root, newId);
       await attempt(from, async () => {
         if (!fs.existsSync(from)) return null;
         if (fs.existsSync(to)) return `kept ${from} and ${to}: both exist`;
+        // The lessons file's parent (the lessons/ subdirectory) may not exist yet under the
+        // new id; rename does not create parents, so ensure the target dir first.
+        fs.mkdirSync(path.dirname(to), { recursive: true });
         fs.renameSync(from, to);
         return `moved ${from} to ${to}`;
       });
