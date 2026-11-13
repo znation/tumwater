@@ -180,10 +180,9 @@ function renderBlock(
     return `- ${c.sha} ${c.subject}${own}`;
   });
   const ranked = rankedFiles(commits);
-  // An assigned run (a claim with no queued request) is the one whose entry is most likely to
-  // have moved under the merge, so the entry's touched files lead; a staged/unassigned run's
-  // entry already moved or holds, so its touched files are not promoted and the list ranks by
-  // plain touch count.
+  // A run holding a claim is the one whose entry is most likely to have moved under the merge,
+  // so the entry's touched files lead the list; a run with no claim holds no entry, so its
+  // files rank by plain touch count.
   const entrySet = new Set(entryFiles);
   const allFiles =
     state.claim !== undefined
@@ -241,8 +240,9 @@ function render(header: string, lead: string, subjects: string[], files: string[
 }
 
 /** Build the since-last-run prompt block for one role run, or `undefined` when it must be
- * omitted: the anchor is empty (a first run), the anchor is not an ancestor of main, or the git
- * call fails. It reads the range with one git spawn and renders the header, the commit subjects
+ * omitted: the anchor is empty (a first run), or the git range read fails — a git that cannot
+ * resolve the range or read it answers `null` from gitOnce, so the block is dropped rather than
+ * trusted. It reads the range with one git spawn and renders the header, the commit subjects
  * and the changed files described in plans/since-last-run.md.
  *
  * Synchronous on purpose: the prompt assembly (run-prompt.ts `assembleRunPrompt`) is called from

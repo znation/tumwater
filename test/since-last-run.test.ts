@@ -74,10 +74,10 @@ test("an empty anchor (a first run) omits the block", () => {
   assert.equal(out, undefined);
 });
 
-test("an anchor that is not an ancestor of main omits the block", () => {
+test("an anchor that is not a commit of the repo omits the block (the git range read fails)", () => {
   const d = repo();
-  // A sha that is no commit of this repo: git's merge-base --is-ancestor exits nonzero, so the
-  // block is omitted.
+  // A sha that is no commit of this repo: `git log <sha>..main` cannot resolve the range, so the
+  // git read fails and the block is omitted.
   const out = collectSinceLastRun(d, "feature", defaultConfig(), state({ lastMainHead: "f".repeat(40) }), NOW);
   assert.equal(out, undefined);
 });
