@@ -105,10 +105,15 @@ export function sleptMsBetween(a: SleepSample, b: SleepSample): number | undefin
   return undefined;
 }
 
-/** The host's one-minute load average beside its core count — the starvation evidence an
- * on-time deadline kill needs to be read as the team's own weather rather than a slow change. */
+/** The host's load averages beside its core count — the starvation evidence an on-time deadline
+ * kill needs to be read as the team's own weather rather than a slow change. `load5` (the
+ * five-minute average) is optional: the 1-minute bar's readers (hostLoadStarved below) predate
+ * it, and only the quiet-host gate (test/helpers/wait.ts) needs the sustained reading — a
+ * near-bar host whose 1-minute value has dipped below the core count but whose 5-minute average
+ * is still elevated. */
 interface HostLoad {
   load1: number;
+  load5?: number;
   cpus: number;
 }
 
@@ -124,4 +129,4 @@ export function hostLoadStarved(load: HostLoad): boolean {
 
 export type LoadSampler = () => HostLoad;
 
-export const sampleHostLoad: LoadSampler = () => ({ load1: os.loadavg()[0] ?? 0, cpus: os.cpus().length });
+export const sampleHostLoad: LoadSampler = () => ({ load1: os.loadavg()[0] ?? 0, load5: os.loadavg()[1] ?? 0, cpus: os.cpus().length });

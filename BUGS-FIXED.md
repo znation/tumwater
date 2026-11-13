@@ -5,6 +5,49 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### The live-orchestrator e2e `a reached cap switches roles to the free fallback model instead of stopping them` (test/orchestrator-budget.e2e.test.ts:210) flakes on a near-bar host — it passed the quiet-host gate, then timed out at its 150 s role-run-spawn wait (found by the ci role 2026-11-12) — fixed 2026-11-12 by the bugfix role
+
+**Symptom.** At main tip `aa80aa1`, the first full e2e run (`npm run test:e2e`) failed this one test: `timed out waiting for a role run after the cap was reached` at 150406 ms — the `waitFor(..., 150_000)` at test/orchestrator-budget.e2e.test.ts:259. The test's own `awaitQuietHost` gate had passed — the 1-minute load was below the 18-core count, so the gate admitted it — while the host's 5/15-minute averages were still elevated (≈10–14): a near-bar host whose 1-minute value had dipped below the count was still saturated on the longer timescale, and the wall-clock spawn wait stretched past its budget. The single test passed in isolation (889 ms) and a full e2e re-run at the same tip was green (87/87, 0 skipped), so it is a load-sensitive flake, not a regression.
+
+**Required behavior.** The post-cap-switch role-run spawn settles within its wall-clock budget on a host whose 1-minute load is below the core count but whose sustained (5/15-minute) load is still high. The concrete seam: the gate (test/helpers/wait.ts `awaitQuietHost`) treats `load1 <= cpus` as quiet and `load1` is `os.loadavg()[0]` (the 1-minute average); a near-bar host whose 1-minute value dips below the count while its 5/15-minute average is still elevated is admitted and then starves the 150 s spawn wait. Either the gate should sample the longer average (or defer when it is still high), or this wait should be driven on the fake clock like the watchdog tests.
+
+**Fixed.** The quiet-host gate now reads the host's sustained five-minute average (`HostLoad.load5` in src/build/host-sleep.ts, filled from `os.loadavg()[1]`) beside the one-minute average, and admits a load-sensitive e2e test only when BOTH sit at or below the core count — so a near-bar host whose 1-minute value has dipped below the count but whose 5-minute average is still elevated is deferred (a skip naming the load) instead of admitted and then starving the 150 s spawn wait, the exact flake this entry records. Every load-sensitive e2e file gates on `awaitQuietHost`, so they all keep the stronger bar; a sampler that reports no 5-minute average (the doctor's and build check's load seams predate it) is judged on the 1-minute reading alone, so those callers keep today's bar. A regression in test/wait.test.ts pins the near-bar/5-minute-elevated case (a 1-minute value at/below the bar with an elevated 5-minute average must defer); it fails on the old 1-minute-only gate and passes on the fix. No production behavior changed — `HostLoad.load5` is a new optional field read only by the gate; `hostLoadStarved` and every other `LoadSampler` consumer read `load1`/`cpus` alone.
+
+**Validation gap:** no-repro — the flake reproduces only under sustained shared-host load (a 1-minute load dipping below the core count while the 5/15-minute average is still elevated), which a test cannot summon on demand; the offline regression `test/wait.test.ts` pins the gate's new bar deterministically with an injected sampler (fails on the old 1-minute-only gate, passes on the fix).
+
+- A stale or dangling merge pin that leftover recovery drops leaves its in-flight marker record
+  behind, so the status surfaces show a phantom `merging` row forever (the true root cause of the
+  "stale marker beside a stale pin" e2e flake, previously misdiagnosed as host load) — fixed
+  2026-11-12 by the operator (release cut).
+
+**Symptom.** `test/orchestrator-3.e2e.test.ts` "a stale marker beside a stale pin is dropped at
+the drain without a merge run" intermittently timed out (`timed out waiting for the stale pin to
+be dropped and its marker cleared`) even on a quiet host at the 150 s budget, and CI failed on
+it twice. A hand-run repro parsed the residue: the merge ref was absent (the pin WAS dropped) but
+the stale marker file still existed, so the wait (both absent) never held.
+
+**Suspected cause.** The pin-queue rework (68ca5115f) added marker clearing on the *drain's* drop
+of a stale/dangling pin but missed the *author's leftover recovery* drop (`recoverLeftover`),
+which shares `dropStalePin`/`dropDanglingPin`. When the author's run starts in the window between
+`merge_done` and the merge task's finally releasing the slot (postReviewDue awaits git there), its
+recovery drops the stale pin without clearing the marker; the drain's `refAbsentFromFiles`
+fast-path then skips the runner (no pin) and the marker is never cleared. The 2026-11-11 bugfix
+(23b74d9df) misread this as load: it added a quiet-host gate and widened the deadline, which the
+post-merge review of that very commit never reached a verdict for.
+
+**Fixed.** `recoverLeftover` now clears the role's marker record (`removeMergeChange`) when it
+drops a stale or dangling pin — the same drop-site clearing the drain does. A regression test in
+`test/runner-leftover.test.ts` pins the marker is cleared on both drops; the e2e test passes
+repeatedly with the fix and the marker-leak repro no longer holds.
+
+**Validation gap:** the e2e failure was timing-dependent (recovery-vs-drain race), so it could
+not be reproduced on demand; the deterministic unit tests cover the drop path directly, and a
+5× repeat of the e2e test is green with the fix.
+
+- The post-merge review of `23b74d9df` never reached a verdict; reviewed by hand on the release
+  cut and closed — the commit's only code change was the quiet-host gate + widened deadline for
+  the stale-pin e2e test, a misdiagnosis of the marker leak above (now fixed at the root).
+
 - The steward's `## Done` epitaph shape for a superseded plan is invisible to the stranded-plan detector, keeping main's self-referential backlog-structure guardrail red for over a day (found by the selfcheck role 2026-11-12 from the digest's Fast-merge-guardrails line: "main has had no passing full check for more than 24 h", "this repo's current PLANS.md and PLANS-DONE.md yield nothing"). — fixed 2026-11-12 by the bugfix role
 
 **Symptom.** The guardrail test `test/backlog-structure.test.ts` "this repo's current PLANS.md and PLANS-DONE.md yield nothing" fails on main: `strandedPlanEntries` reports the two `## Done` entries steward moved in `d15db595` (subtract pin queue part 2/3 and part 3/3, PLANS.md lines 116 and 140) as stranded. Each carries `(planned 2026-11-09 …)` and no `done` date, and each was closed with a `— superseded 2026-11-12 by the steward role: …` epitaph line under `## Done`. The detector's completion stamps are only `DONE_DATE` (`done YYYY-MM-DD`) and `RETIRED_STAMP` (`retired YYYY-MM-DD`) — `src/backlog/backlog-structure.ts` lines 110 and 123 — and `headingMetadata` joins heading continuation lines only for an unbalanced parenthetical (`headingIsWrapped`), so the `superseded` epitaph on the line after each heading is neither a recognized stamp nor joined into the heading text. Both entries remain under `## Done` with `(planned …)` and no completion stamp, so the whole-document stranding check keeps failing and main stays red past the 30-minute G1 threshold; even the `ci` `d031c080` fix touched no PLANS.md and left the guardrail red. The same failure recurred from the same cause as the archived 2026-11-11 fix (BUGS-FIXED.md: the operator/team-start bulk archive shipped stranded entries to PLANS-DONE.md).

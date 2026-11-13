@@ -45,6 +45,18 @@ test("awaitQuietHost defers after the bounded wait under a saturated injected sa
   assert.equal(result.cpus, 4);
 });
 
+test("awaitQuietHost defers a near-bar host whose 5-minute average is still elevated", async () => {
+  // The flake: the 1-minute load dipped below the core count (so the old `load1 <= cpus` gate
+  // admitted the test) while the sustained 5-minute average was still above it, so the admitted
+  // run then starved its 150 s spawn wait. With the fix the gate also reads load5 and defers.
+  const clock = fakeClock();
+  const result = await awaitQuietHost(100_000, () => ({ load1: 3, load5: 12, cpus: 4 }), clock);
+  assert.ok(!result.quiet, "a host at/below the bar on 1-minute but elevated on 5-minute must defer, never run starved");
+  assert.ok(clock.now() >= 100_000, `the bounded wait must elapse; saw ${clock.now()}`);
+  assert.equal(result.load1, 3);
+  assert.equal(result.load5, 12);
+});
+
 test("awaitQuietHost returns once the injected sampler crosses to quiet", async () => {
   const clock = fakeClock();
   let load = 8;

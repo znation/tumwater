@@ -51,26 +51,37 @@ export const liveWaitClock: WaitClock = { now: () => performance.now(), sleep };
  * verdict a starved host never gave it a fair chance to reach. */
 const QUIET_HOST_WAIT_MS = 300_000;
 
-/** The quiet-host gate a load-sensitive e2e file gates itself on: samples the host's
- * one-minute load average from `src/build/host-sleep.ts` (the same `sampleHostLoad` the
- * doctor's contention check and the build check read) and returns true at once when
- * `load1 <= cpus`. Under a higher load it polls every few seconds up to `waitMs`, then
- * returns false — the caller defers the file rather than run it starved. The sampler is
- * injectable (like the doctor's `load` seam) so a test can pin it offline; the wait is real
- * time by default, but a test may inject `test/fakes/time.ts`'s `fakeClock` to make the
- * bounded deferral deterministic. */
+/** The quiet-host gate a load-sensitive e2e file gates itself on: samples the host's load
+ * averages from `src/build/host-sleep.ts` (the same `sampleHostLoad` the doctor's contention
+ * check and the build check read) and returns true at once when BOTH the one-minute average
+ * and the sustained (five-minute) average are at or below the core count — a near-bar host whose
+ * 1-minute value has dipped below the count but whose 5-minute average is still elevated would
+ * otherwise be admitted and then starve the file's wall-clock spawn wait (BUGS.md 2026-11-12).
+ * Under a higher load it polls every few seconds up to `waitMs`, then returns false — the caller
+ * defers the file rather than run it starved. The sampler is injectable (like the doctor's `load`
+ * seam) so a test can pin it offline; the wait is real time by default, but a test may inject
+ * `test/fakes/time.ts`'s `fakeClock` to make the bounded deferral deterministic. A sampler that
+ * reports no 5-minute average (the doctor's and build check's seams predate it) is judged on the
+ * 1-minute reading alone, so those callers keep today's bar. */
 export async function awaitQuietHost(
   waitMs = QUIET_HOST_WAIT_MS,
   sample: LoadSampler = sampleHostLoad,
   clock: WaitClock = liveWaitClock,
-): Promise<{ quiet: boolean; load1: number; cpus: number }> {
+): Promise<{ quiet: boolean; load1: number; load5?: number; cpus: number }> {
+  // Both the short (1-minute) and sustained (5-minute) averages must sit at/below the core count
+  // for the host to be quiet: the 1-minute value alone dips below the bar on a host that is still
+  // saturated on the longer timescale, and it is that sustained load that starves a child run's
+  // spawn. `load5 ?? load1`: a sampler without a 5-minute reading falls back to the 1-minute
+  // average as its sustained reading, preserving the pre-fix bar for such samplers.
+  const quiet = (l: { load1: number; load5?: number; cpus: number }): boolean =>
+    l.load1 <= l.cpus && (l.load5 ?? l.load1) <= l.cpus;
   for (;;) {
-    const { load1, cpus } = sample();
-    if (load1 <= cpus) return { quiet: true, load1, cpus };
+    const { load1, load5, cpus } = sample();
+    if (quiet({ load1, load5, cpus })) return { quiet: true, load1, load5, cpus };
     // Sample again a few seconds out, bounded by waitMs: the caller would rather defer than
     // hold the host in view past its patience. A saturated host never quite crosses, so the
     // loop spends the whole wait and returns quiet:false.
-    if (clock.now() > waitMs) return { quiet: false, load1, cpus };
+    if (clock.now() > waitMs) return { quiet: false, load1, load5, cpus };
     await clock.sleep(5_000);
   }
 }
