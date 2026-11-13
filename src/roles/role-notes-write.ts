@@ -8,7 +8,9 @@
  * a valid note is or what a rejected write does.
  */
 
+import fs from "node:fs";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
+import { errCode } from "../errno.js";
 import { gotSuffix } from "../text/text.js";
 
 /** The cap on a role's note, in UTF-8 bytes. Small enough to cost little on every turn, large
@@ -185,8 +187,24 @@ export function writeRoleLessons(lessonsPath: string, nextId: number, lessons: R
 
 /** Read and parse a lessons file, or the empty store when it is missing. An unreadable or
  * malformed file throws, so a corrupted store is surfaced rather than read as empty: clearing
- * it from a mistaken read would lose every lesson. */
+ * it from a mistaken read would lose every lesson. A symlink at the path reads as the empty
+ * store (its target is never followed, INV-G3): a checkout file a run's Bash tool can place —
+ * the write guard allows in-checkout writes — is read into every later run's model prompt
+ * (readPromptNotes) and listed by the run's own `tumwater-notes lesson list`, so a link to an
+ * arbitrary host path would otherwise pull that host file's text into a model's prompt. The
+ * lstat distinguishes a non-regular file (symlink/dir/gitlink/FIFO → empty store) from an
+ * unreadable regular file (EACCES, which readTextIfExists rethrows, so a permission-denied
+ * store is surfaced, not read as empty and cleared from a mistaken read). */
 export function readRoleLessons(lessonsPath: string): { nextId: number; lessons: RoleLesson[] } {
+  const st = (() => {
+    try {
+      return fs.lstatSync(lessonsPath);
+    } catch (err) {
+      if (errCode(err) === "ENOENT") return null;
+      throw err;
+    }
+  })();
+  if (st !== null && !st.isFile()) return { nextId: 1, lessons: [] }; // not a regular file: never followed
   const text = readTextIfExists(lessonsPath);
   if (text === null) return { nextId: 1, lessons: [] };
   return parseRoleLessonsText(text);

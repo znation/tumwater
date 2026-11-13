@@ -576,12 +576,12 @@ unreadable path) is left to the pi resolver, never followed out of the worktree.
 structure heading gate (backlog-structure.ts) and the false-fix heading guard (fix-claim.ts) read
 a changed backlog file's head only when lstat shows it is a regular file, so a symlinked
 BUGS.md/PLANS.md/BUGS-FIXED.md cannot pull an outside file's headings into either verdict.
-The prompt readers for PRINCIPLES.md (prompt/principles.ts) and a role's notes
-(run/run-prompt.ts) hold the same line, and so do their operator readers
-(doctor/doctor-principles.ts, status/status-role-notes.ts, roles/role-view.ts): each reads
-only when lstat shows a regular file, so a symlink dropped at those paths cannot inject an
-arbitrary host file's text into a model's run prompt, and the operator surfaces cannot
-disagree with the prompt. The backlog markdown readers (stat-cache.ts's cachedTextByStat,
+The prompt readers for PRINCIPLES.md (prompt/principles.ts), a role's notes (run/run-
+prompt.ts), and a role's lessons (roles/role-notes-write.ts's readRoleLessons) hold the same
+line, and so do their operator readers (doctor/doctor-principles.ts, status/status-role-
+notes.ts, roles/role-view.ts): each reads only when lstat shows a regular file, so a symlink
+dropped at those paths cannot inject an arbitrary host file's text into a model's run prompt,
+and the operator surfaces cannot disagree with the prompt. The backlog markdown readers (stat-cache.ts's cachedTextByStat,
 serving backlog.ts, backlog-structure.ts, backlog-index-data.ts, and backlog-index.ts's
 renderBacklogIndexBlock) hold the same line through readRegularTextOrNull: a symlink dropped at
 BUGS.md/PLANS.md/QUESTIONS.md reads as absent, so a hostile entry cannot pull an outside file's
@@ -592,9 +592,9 @@ parseable headings into the backlog-index block every run prompt carries.
 `src/stage/stage-check.ts`,
 `src/baseline/main-watch.ts`, `src/merge/merge-to-main.ts`, `src/prompt/principles.ts`, `src/run/run-prompt.ts`,
 `src/doctor/doctor-principles.ts`, `src/status/status-role-notes.ts`,
-`src/roles/role-view.ts`, `src/files/stat-cache.ts`.
+`src/roles/role-view.ts`, `src/roles/role-notes-write.ts`, `src/files/stat-cache.ts`.
 
-**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — and `test/stage-check.test.ts` — "a changed file still holding a conflict marker yields the conflict finding" — `test/merge-backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree" — `test/backlog-structure.test.ts` — "backlogStructureReason never follows a symlinked backlog file out of the worktree" — `test/fix-claim.test.ts` — "falseFixReason never follows a symlinked BUGS.md out of the worktree" — `test/run-prompt.test.ts` — "a symlinked role notes file never injects the outside file's text into the run prompt" and "a symlinked PRINCIPLES.md never injects the outside file's text into the run prompt" — and `test/stat-cache.test.ts` — "cachedTextByStat reads a symlinked file as absent and never follows it out of the worktree".
+**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — and `test/stage-check.test.ts` — "a changed file still holding a conflict marker yields the conflict finding" — `test/merge-backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree" — `test/backlog-structure.test.ts` — "backlogStructureReason never follows a symlinked backlog file out of the worktree" — `test/fix-claim.test.ts` — "falseFixReason never follows a symlinked BUGS.md out of the worktree" — `test/run-prompt.test.ts` — "a symlinked role notes file never injects the outside file's text into the run prompt", "a symlinked role lessons file never injects the outside file's text into the run prompt", and "a symlinked PRINCIPLES.md never injects the outside file's text into the run prompt" — `test/role-lessons.test.ts` — "readRoleLessons never follows a symlink at the path (reads the empty store, INV-G3)" — and `test/stat-cache.test.ts` — "cachedTextByStat reads a symlinked file as absent and never follows it out of the worktree".
 
 ### INV-G4: a changed file that exists but cannot be read is a secret-leak finding; only a path with no file is skipped
 

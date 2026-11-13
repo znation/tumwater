@@ -196,3 +196,18 @@ test("clearRoleLessons of a corrupted store throws, like every read of it", () =
   fs.writeFileSync(file, "- L1 (2026-11-12): no marker\n");
   assert.throws(() => clearRoleLessons(file), /next-id marker/);
 });
+
+test("readRoleLessons never follows a symlink at the path (reads the empty store, INV-G3)", () => {
+  const file = lessonsFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const outside = path.join(path.dirname(file), "..", "outside-store.md");
+  fs.writeFileSync(outside, "<!-- next: L2 -->\n- L1 (2026-11-13): outside store lesson\n");
+  fs.symlinkSync(outside, file);
+
+  // The store rides into every run's model prompt, so a symlink to an outside file must read
+  // as the empty store — never the target's parsed lessons (which the model would act on).
+  assert.deepEqual(readRoleLessons(file), { nextId: 1, lessons: [] });
+  // And the store is left untouched: the symlink still names the outside file, which is intact.
+  assert.equal(fs.lstatSync(file).isSymbolicLink(), true, "the symlink is left in place");
+  assert.match(fs.readFileSync(outside, "utf8"), /outside store lesson/);
+});

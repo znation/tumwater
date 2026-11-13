@@ -1157,6 +1157,22 @@ test("a symlinked role notes file never injects the outside file's text into the
   assert.ok(!result.prompt.includes("<role-notes>"), "a symlinked note reads as absent: no notes block");
 });
 
+test("a symlinked role lessons file never injects the outside file's text into the run prompt", () => {
+  const dir = root();
+  const lessons = roleLessonsPath(dir, "coverage");
+  fs.mkdirSync(path.dirname(lessons), { recursive: true });
+  // A valid lessons store (marker line + one lesson) living at an outside host path: if the
+  // reader followed the symlink it would parse and ride verbatim into the model's prompt.
+  const outside = path.join(dir, "..", "host-lessons.md");
+  fs.writeFileSync(outside, "<!-- next: L2 -->\n- L1 (2026-11-13): PRIVATE HOST LESSEN CONTENT\n");
+  fs.symlinkSync(outside, lessons);
+
+  const result = promptFor(dir, "coverage");
+  assert.ok(result);
+  assert.ok(!result.prompt.includes("PRIVATE HOST LESSEN CONTENT"), "the outside file's text must not reach the prompt");
+  assert.ok(!result.prompt.includes("<role-lessons>"), "a symlinked lessons file reads as the empty store: no lessons block");
+});
+
 test("a symlinked PRINCIPLES.md never injects the outside file's text into the run prompt", () => {
   const dir = root();
   const outside = path.join(dir, "..", "host-key.txt");
