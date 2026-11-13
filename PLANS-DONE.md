@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Run checkpoints, part 1/2: A pi run keeps its prompt verbatim through every compaction (planned 2026-11-12 by the operator; design in plans/run-checkpoints.md; touches src/pi-extension/pin-prompt.ts src/pi/pi-args.ts test/pin-prompt.test.ts test/pi-args.test.ts) — done 2026-11-13 by the feature role
+
+**Goal.** A pi run's prompt, which carries every rule tumwater gives it, survives compaction word for word. Today tumwater sends the prompt as the first user message. pi's compaction summarizes that message like any other (pi docs, compaction.md), and LLM summaries keep about half of a rule set after one compaction (plans/run-checkpoints.md "Why"). After this part, a compacted run still sees the kill-by-PID, test-runner and write rules exactly as written.
+
+**Approach.**
+- New bundled extension src/pi-extension/pin-prompt.ts, loaded last in `bundledExtensionPaths` (src/pi/pi-args.ts) so it sees the messages after context-shake and strip-thinking.
+- On the first `context` event of a session, record the first user message verbatim.
+- On each later `context` event, if that exact message is not the first message, put it back at the front and leave everything else in order. If it is still first, return nothing, so the list is unchanged and the cache prefix is kept.
+- A resumed session (`--continue`, a new process) recovers the prompt from the first user message on the branch via `ctx.sessionManager`.
+- The extension never throws into pi. A missing hook or an unreadable session leaves the messages untouched and logs one line to stderr.
+- Keep the pure part (`pinPrompt(messages, prompt)` → messages or null) exported and unit-tested without pi, as context-budget does with `contextNote`.
+
+**Files touched.** src/pi-extension/pin-prompt.ts src/pi/pi-args.ts test/pin-prompt.test.ts test/pi-args.test.ts
+
+**Acceptance criteria.**
+- `pinPrompt` returns null for a list that already starts with the prompt. For a list that starts with a compaction summary, it returns `[prompt, …rest]`, with the rest in the same order, and the test writes that expected list out literally.
+- Re-inserting is idempotent: the prompt never appears twice.
+- The real-pi scratch-session smoke the original criteria named — set `reserveTokens` high enough that compaction triggers on the second turn, then confirm the request after the compaction starts with the original prompt bytes and, without the extension, it does not — is an operator step: it needs a reachable model and a live scratch session, which the offline test environment has no model for (tests run against the fake pi shim and never call a real model), so it is left to the operator after merge rather than asserted here.
+- `bundledExtensionPaths` lists pin-prompt.js last.
+- `npm run test:gate` passes.
+
+**Tests.** test/pin-prompt.test.ts covers the pure function and the resume recovery against a fake sessionManager. test/pi-args.test.ts covers load order. Then the project's gate.
+
 ### PRINCIPLES.md Budgets (module-size ceiling) is stale after the status-polls main-check extraction — the steward refreshes its own budget line (found by the organize role 2026-11-13; done 2026-11-13 by the steward role)
 
 The `## Budgets` section in PRINCIPLES.md is refreshed to the measured values (module-size ceiling 26 over 600 / 10 over 700 / 4 over 800, largest `src/baseline/main-watch.ts` at 952, code size 531 src / ~132,000 lines and 665 test / ~199,000 lines, split family 272 landed, `_Last measured 2026-11-13_`), closing the drift the status-polls main-check extraction opened (693→273 crossed under the 600 ceiling; the over-700/800 counts and the 952 largest are unchanged).
