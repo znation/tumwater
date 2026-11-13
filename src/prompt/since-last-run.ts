@@ -6,6 +6,7 @@ import { resolvedGitBin } from "../git/git-run.js";
 import { currentBranchFromHeadFile, targetBranch } from "../git/git.js";
 import { readTextOrNull } from "../files/files.js";
 import { entryKey } from "../backlog/backlog-parts.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { humanSince } from "../text/datetime.js";
 
 /** The block's hard size ceiling, in characters (plans/since-last-run.md "Size"): about 1k
@@ -17,9 +18,12 @@ const MAX_CHARS = 4000;
 const MAX_SUBJECTS = 30;
 /** How many changed files the block lists before its "+N more" line. */
 const MAX_FILES = 20;
-/** The one git spawn's wall-clock bound: a wedged git (a locked index, an unmounted volume)
- * must not hold the prompt assembly open — the doctor's own sync git probe binds the same way. */
-const GIT_TIMEOUT_MS = 15_000;
+/** The one git spawn's wall-clock bound. A single `log` of a wide range (a month of merges)
+ * is milliseconds on a quiet host, so the bound is generous; it exists to un-wedge a git that
+ * has — a locked index, an unmounted volume — which would otherwise hold the prompt assembly
+ * open for 15 s. Bounded like the doctor's own sync git probe, but tighter, because this spawn
+ * runs inside the prompt path on a quiet host, not a doctor diagnostic. */
+const GIT_TIMEOUT_MS = 3_000;
 
 /** One commit's parsed shape: its short id, its subject, and the files it changed. */
 interface ParsedCommit {
@@ -58,7 +62,7 @@ function parseLog(output: string): ParsedCommit[] {
       commits.push(current);
     } else if (current !== null) {
       const path = line.split("\t").filter((s) => s !== "").pop();
-      if (path) current.files.push(path);
+      if (path !== undefined) current.files.push(path);
     }
     // A path line before any header (git prints none) is dropped.
   }
@@ -75,7 +79,10 @@ function mainBranchOf(root: string, config: TumwaterConfig): string {
 
 /** Run git once and return its stdout, or `null` on any failure — a nonzero exit, a spawn error,
  * or the bound killing a wedged child. The block must never fail a run over a git that cannot
- * read the range; `null` from here reads as "omit the block". */
+ * read the range; `null` from here reads as "omit the block". One spawn per assembly: the range
+ * read is the only git call the block makes (BUGS.md: the earlier design added a second,
+ * merge-base, spawn to check the anchor was an ancestor of main — dropped, since on a rewritten
+ * history `anchor..main` still lists the commits main gained). */
 function gitOnce(root: string, args: string[]): string | null {
   const res = spawnSync(resolvedGitBin(), args, {
     cwd: root,
@@ -85,13 +92,6 @@ function gitOnce(root: string, args: string[]): string | null {
   });
   if (res.error !== undefined || res.status !== 0) return null;
   return res.stdout ?? "";
-}
-
-/** True when `ancestor` is an ancestor of `main` (or equal to it): the block's anchor must sit
- * on the path to main's head. A `null` from gitOnce is read as "not an ancestor" — a git that
- * cannot start answers nothing, so the block is omitted rather than trusted. */
-function isAncestor(root: string, ancestor: string, main: string): boolean {
-  return gitOnce(root, ["merge-base", "--is-ancestor", ancestor, main]) !== null;
 }
 
 /** The changed files a run's claimed entry names: the repo-relative path tokens its
@@ -137,10 +137,8 @@ function entryTouchedPaths(root: string, claim: RunnerState["claim"] | undefined
  * ties keep their first-seen order so the list is stable. */
 function rankedFiles(commits: ParsedCommit[]): string[] {
   const counts = new Map<string, number>();
-  const order: string[] = [];
   for (const c of commits)
     for (const f of c.files) {
-      if (!counts.has(f)) order.push(f);
       counts.set(f, (counts.get(f) ?? 0) + 1);
     }
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([f]) => f);
@@ -170,16 +168,27 @@ function renderBlock(
   now: number,
 ): string {
   if (commits.length === 0) {
-    return `Nothing has changed on main since your last run — every file you read last time is still the current one.`;
+    return `Nothing has changed on ${main} since your last run — every file you read last time is still the current one.`;
   }
-  const ownPrefix = `tumwater(${role}):`;
+  // Every instance of a base role commits as `tumwater(<base>):` (git/commit-message.ts
+  // stampedSubject), so a `feature-2` run marks a `tumwater(feature):` commit its own — all
+  // instances share the base-role prefix. baseRoleOf is the identity for a non-instance id, so
+  // a bare `feature` behaves as before.
+  const ownPrefix = `tumwater(${baseRoleOf(role)}):`;
   const allSubjects = commits.map((c) => {
-    const own = c.subject.startsWith(ownPrefix) ? " (your own merge)" : "";
+    const own = c.subject.startsWith(ownPrefix) ? " (merged by your role)" : "";
     return `- ${c.sha} ${c.subject}${own}`;
   });
   const ranked = rankedFiles(commits);
+  // An assigned run (a claim with no queued request) is the one whose entry is most likely to
+  // have moved under the merge, so the entry's touched files lead; a staged/unassigned run's
+  // entry already moved or holds, so its touched files are not promoted and the list ranks by
+  // plain touch count.
   const entrySet = new Set(entryFiles);
-  const allFiles = [...ranked.filter((f) => entrySet.has(f)), ...ranked.filter((f) => !entrySet.has(f))];
+  const allFiles =
+    state.claim !== undefined
+      ? [...ranked.filter((f) => entrySet.has(f)), ...ranked.filter((f) => !entrySet.has(f))]
+      : ranked;
 
   const header = headerLine(state, commits.length, main, now);
   const lead = `Generated by tumwater from git, current as of this run (unlike your role notes, which are a prior session's recollection). Use it to skip re-reading what you already know; re-read any file you plan to edit that appears below.`;
@@ -188,30 +197,47 @@ function renderBlock(
     const shown = list.slice(0, MAX_FILES);
     return list.length > MAX_FILES ? [...shown, `+${list.length - MAX_FILES} more`] : [...shown];
   };
-  const capSubjects = (list: string[]): string[] => {
-    const shown = list.slice(0, MAX_SUBJECTS);
-    return list.length > MAX_SUBJECTS ? [...shown, `+${list.length - MAX_SUBJECTS} older`] : [...shown];
-  };
 
-  let subjects = capSubjects(allSubjects);
   const files = capFiles(allFiles);
-  let text = render(header, lead, subjects, files, main);
-  // Cap the whole block by dropping whole subjects from the oldest end first.
-  while (text.length > MAX_CHARS && subjects.length > 1) {
-    subjects = subjects.slice(0, -1);
-    text = render(header, lead, subjects, files, main);
+  // The commit list is capped at MAX_SUBJECTS; the "+N older" marker is a separate, stable line
+  // (render's `older` argument, not a member of the trimmed list), so it states how many commits
+  // are unlisted no matter which pass — the subject cap or the file cap — does the trimming.
+  // Recomputing the count from what is actually shown (not a stale precomputed number) is what
+  // keeps the block from silently hiding the commits it dropped. The pre-fix list appended the
+  // marker as a subject, so a character trim that removed the tail also removed the marker.
+  let hidden = Math.max(0, allSubjects.length - MAX_SUBJECTS);
+  let shown = allSubjects.slice(0, MAX_SUBJECTS);
+  const renderWith = (f: string[]) => render(header, lead, shown, f, main, hidden);
+  let text = renderWith(files);
+  // Cap the whole block by dropping whole subjects from the oldest end first (the newest —
+  // most relevant — survive). Each drop is a commit the block stops listing, so the "+N older"
+  // marker grows to still state how many landed commits are unlisted.
+  while (text.length > MAX_CHARS) {
+    if (shown.length <= 1) break;
+    shown = shown.slice(0, -1);
+    hidden += 1;
+    text = renderWith(files);
   }
-  // A still-oversized block (a huge file list) drops whole files from its tail.
+  // A still-oversized block (a huge file list) drops whole files from its tail. The "+N older"
+  // marker rides separately, so it is preserved while the files yield the characters.
   if (text.length > MAX_CHARS && files.length > 0) {
     const f = [...files];
-    while (render(header, lead, subjects, f, main).length > MAX_CHARS && f.length > 1) f.pop();
-    return render(header, lead, subjects, f, main);
+    while (renderWith(f).length > MAX_CHARS && f.length > 1) f.pop();
+    return renderWith(f);
   }
   return text;
 }
 
-function render(header: string, lead: string, subjects: string[], files: string[], main: string): string {
-  return [header, lead, `Commits on ${main} since your last run, newest first:`, ...subjects, "Files changed, most-touched first:", ...files].join("\n");
+function render(header: string, lead: string, subjects: string[], files: string[], main: string, older: number): string {
+  return [
+    header,
+    lead,
+    `Commits on ${main} since your last run, newest first:`,
+    ...subjects.slice(0, MAX_SUBJECTS),
+    ...(older > 0 ? [`+${older} older`] : []),
+    "Files changed, most-touched first:",
+    ...files,
+  ].join("\n");
 }
 
 /** Build the since-last-run prompt block for one role run, or `undefined` when it must be
@@ -233,7 +259,6 @@ export function collectSinceLastRun(
   const anchor = state.lastMainHead;
   if (anchor === "") return undefined;
   const main = mainBranchOf(root, config);
-  if (!isAncestor(root, anchor, main)) return undefined;
   const out = gitOnce(root, ["log", "--no-merges", "--name-status", "--format=%H%x09%s", `${anchor}..${main}`]);
   if (out === null) return undefined;
   const commits = parseLog(out);

@@ -7,7 +7,8 @@ import { entryKey } from "../src/backlog/backlog-parts.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { gitFailingOn } from "./helpers/git-faults.js";
-import { makeRepo, sh, headSha } from "./fixtures/repo-fixtures.js";
+import { pathPrepend, writeScript } from "./fakes/fake-commands.js";
+import { makeRepo, sh, headSha, tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** A fresh checkout on main. `makeRepo`'s template ends with one "seed" commit and a clean
  * worktree, so every change a test wants committed must create or edit a file first. */
@@ -54,7 +55,7 @@ test("a commit authored by the role itself is marked as its own merge", () => {
   commit(d, "own.txt", "own\n", "tumwater(feature): Landed my thing");
   const out = collectSinceLastRun(d, "feature", defaultConfig(), state({ lastMainHead: anchor, lastRunEndedAt: NOW - 60_000 }), NOW);
   assert.ok(out);
-  assert.match(out!, /tumwater\(feature\): Landed my thing \(your own merge\)/);
+  assert.match(out!, /tumwater\(feature\): Landed my thing \(merged by your role\)/);
 });
 
 test("a foreign commit (another role's merge) is not marked as its own", () => {
@@ -150,4 +151,69 @@ test("the block is capped at 4000 characters, keeping the newest commits", () =>
   assert.match(out!, /commit 59/);
   assert.doesNotMatch(out!, /commit 0\b/);
   assert.match(out!, /\+\d+ older/);
+});
+
+test("an instance id marks the base role's own merges (all instances share the tumwater(feature): stamp)", () => {
+  const d = repo();
+  const anchor = headSha(d);
+  commit(d, "own2.txt", "own2\n", "tumwater(feature): Landed on main");
+  const out = collectSinceLastRun(
+    d,
+    "feature-2",
+    defaultConfig(),
+    state({ lastMainHead: anchor, lastRunEndedAt: NOW - 60_000 }),
+    NOW,
+  );
+  // Every feature instance commits as tumwater(feature):, so feature-2 must see its own base
+  // role's merge marked — even though the runner id itself is feature-2, never a commit prefix.
+  assert.ok(out);
+  assert.match(out!, /tumwater\(feature\): Landed on main \(merged by your role\)/);
+});
+
+test("the +N older line survives a character trim and names how many commits are unlisted", () => {
+  const d = repo();
+  const anchor = headSha(d);
+  // 60 commits with long subjects: the block exceeds the 4000-character cap, so the subject
+  // list must trim. However many whole subjects the trim removes, the block must still say
+  // exactly how many commits it is not listing (the "+N older" line, recomputed from the
+  // subjects actually shown), instead of silently hiding them.
+  const pad = "w".repeat(150);
+  for (let i = 0; i < 60; i++) commit(d, `g${i}.txt`, `${i}\n`, `commit ${i} ${pad}`);
+  const out = collectSinceLastRun(d, "feature", defaultConfig(), state({ lastMainHead: anchor }), NOW);
+  assert.ok(out);
+  assert.ok(out!.length <= 4000, `block is ${out!.length} chars`);
+  // The newest commit survives; the oldest is not shown as a subject line.
+  assert.match(out!, /commit 59/);
+  assert.doesNotMatch(out!, /commit 0 /);
+  // The marker is present, and its count equals the unlisted commits — not a precomputed stale
+  // number that the trim loop would have dropped with the last subject.
+  const lines = out!.split("\n");
+  const marker = lines.find((l) => /^\+\d+ older$/.test(l));
+  assert.ok(marker, `a "+N older" line is present (got: ${JSON.stringify(lines.slice(-3))})`);
+  const shown = lines.filter((l) => l.startsWith("- ")).length;
+  assert.equal(Number(marker!.slice(1, marker!.indexOf(" older"))), 60 - shown);
+});
+
+test("at most one git spawn per prompt assembly (no separate merge-base ancestor check)", () => {
+  const d = repo();
+  const anchor = headSha(d);
+  commit(d, "s.txt", "s\n", "change");
+  // A git shim at the front of PATH that logs each call's first argument and execs the real
+  // git. resolvedGitBin() resolves "git" through PATH, so this is the binary gitOnce spawns.
+  const dir = tmpdir("gitcount-");
+  const real = sh(d, "which", "git").trim();
+  writeScript(path.join(dir, "git"), `echo "$1" >> "${path.join(dir, "calls.log")}"
+exec "${real}" "$@"`);
+  const restore = pathPrepend(dir);
+  try {
+    collectSinceLastRun(d, "feature", defaultConfig(), state({ lastMainHead: anchor, lastRunEndedAt: NOW - 60_000 }), NOW);
+  } finally {
+    restore();
+  }
+  const calls = fs.readFileSync(path.join(dir, "calls.log"), "utf8").split("\n").filter((s) => s !== "");
+  // One spawn (the range read). The pre-fix second spawn — the merge-base --is-ancestor
+  // check — is gone, so nothing but a single `log` appears.
+  assert.equal(calls.length, 1, `expected exactly one git call, got ${JSON.stringify(calls)}`);
+  assert.equal(calls[0], "log");
+  assert.ok(!calls.some((c) => c === "merge-base"), "no merge-base ancestor check");
 });

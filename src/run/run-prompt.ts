@@ -165,8 +165,9 @@ function buildRoleRunPrompt(
   const duplicatePlans = collectDuplicatePlansBlock(root, base);
   const { notes, lessons, notesSavedDay, notesBacklog, lessonsSeeding } = readPromptNotes(root, role);
   // What landed on main since this role's last run, from git (since-last-run.ts): one bounded
-  // spawn, omitted for a first run, an off-main anchor, or a git failure. A run holding a claim
-  // with no queued request is the one that gets it — its entry is most likely to have moved.
+  // spawn, omitted for a first run, an off-main anchor, or a git failure. Every run gets the
+  // block; only the file ordering depends on the claim — a run holding one leads the file list
+  // with its entry's own touched files, the most likely to have moved under the merge.
   const sinceLastRun = collectSinceLastRun(root, role, config, state);
   const { planTargetNote, flakyChecks, noCheck } = collectRoleDirectives(root, config, base, check);
   const pendingPlans = collectPendingPlansBlock(root, base);
