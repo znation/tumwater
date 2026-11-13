@@ -377,6 +377,12 @@ interface RunPromptInput {
    * right after the notes block so the backlog cannot keep a hold the notes believe in and the
    * notes cannot keep a hold the backlog has lifted. Omitted: the notes name nothing live. */
   notesBacklog?: string;
+  /** The since-last-run block (since-last-run.ts): what landed on main since this role's last
+   * run, generated from git. Rendered in a `<since-last-run>` tag right after the role-notes
+   * block, contrasting its currency with the notes' unverified recollection. Omitted: a first
+   * run (no anchor), an anchor off main, a git failure, or the director — the prompt is then
+   * byte-identical to the pre-block prompt. */
+  sinceLastRun?: string;
   extraInstructions?: string;
   /** The plan charter's stop target, rendered right after the charter's task text. The catalog
    * text is config-free, so the concrete eligible-plan count (`planBacklogTarget`) is supplied
@@ -504,11 +510,13 @@ function runEvidenceBlocks(input: RunPromptInput): string[] {
   return parts;
 }
 
-/** The role-notes block (only when a note exists) and the live backlog state block. */
+/** The role-notes block (only when a note exists), the live backlog state block, and the
+ * since-last-run block, in that order. */
 function runNotesBlocks(input: RunPromptInput, day: string): string[] {
   const parts: string[] = [];
   if (input.notes && input.notes.trim() !== "")
     parts.push(roleNotesBlock(input.notes, Boolean(input.backlogIndex), input.notesSavedDay, day));
+  if (input.sinceLastRun) parts.push(`<since-last-run>\n${input.sinceLastRun.trim()}\n</since-last-run>`);
   if (input.notesBacklog) parts.push(input.notesBacklog);
   return parts;
 }

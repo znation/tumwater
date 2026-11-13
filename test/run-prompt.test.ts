@@ -305,7 +305,6 @@ test("a run whose notes name a planned part gets the live backlog block; the dir
   // A run whose notes name nothing from the backlog gets no block.
   fs.writeFileSync(notes, "where things live, what was ruled out\n");
   assert.ok(!promptFor(dir, "coverage")!.prompt.includes("What the backlog says now"));
-
   // The director never carries notes, so it never carries the block either.
   enqueuePrompt(dir, "what should we build next");
   const director = promptFor(dir, DIRECTOR_ROLE);
@@ -321,6 +320,33 @@ test("a director prompt carries the same <backlog-index> block", () => {
   assert.ok(result);
   assert.match(result.prompt, /<backlog-index>/);
   assert.match(result.prompt, /BUGS\.md ## Open\n- 3-4: Real bug/);
+});
+
+// The since-last-run block sits right after the role-notes block, and is omitted when the
+// role has no anchor to measure from — so a prompt built without it is byte-unchanged.
+test("a role run prompt renders the since-last-run block after the notes, and omits it when there is no anchor", () => {
+  const dir = makeRepo();
+  // A real git repo on main with one commit; anchor it, then move main so the range is non-empty.
+  const anchor = headSha(dir);
+  fs.writeFileSync(path.join(dir, "moved.txt"), "moved\n");
+  sh(dir, "git", "add", "-A");
+  sh(dir, "git", "commit", "-m", "a landed change");
+  const notes = roleNotesPath(dir, "coverage");
+  writeFileDeep(notes, "coverage runs through the oracle helpers\n");
+
+  const withAnchor = promptFor(dir, "coverage", { state: { lastMainHead: anchor } });
+  assert.ok(withAnchor);
+  const notesEnd = withAnchor.prompt.indexOf("</role-notes>");
+  const since = withAnchor.prompt.indexOf("<since-last-run>");
+  assert.ok(notesEnd >= 0 && since > notesEnd, "the block follows the role-notes block");
+  // One commit landed after the anchor, so the header names it.
+  assert.match(withAnchor.prompt, /Since your last run/);
+  assert.match(withAnchor.prompt, /a landed change/);
+
+  // A first run has no anchor, so the block is absent and the prompt has no since-last-run tag.
+  const noAnchor = promptFor(dir, "coverage");
+  assert.ok(noAnchor);
+  assert.ok(!noAnchor.prompt.includes("<since-last-run>"), "no anchor means no block");
 });
 
 // A claim held by an instance id (`bugfix-2`) must resolve its line range through the base

@@ -6,31 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Since last run, part 1/1: Each run's prompt says what changed on main since the role's last run (planned 2026-11-12 by the operator; design in plans/since-last-run.md; touches src/prompt/since-last-run.ts src/prompt/prompt.ts src/run/run-prompt.ts test/since-last-run.test.ts test/run-prompt.test.ts docs/how-it-works.md)
-
-**Goal.** An authoring run starts knowing, from git, what landed on main since its role's previous run: which commits, which files, and how that run ended. Runs stay fresh sessions. The block replaces part of the orientation that costs a median of 22 tool calls and 44k tokens before the first edit (2026-10-17 measurement). Why not a long-running conversation per role instead: plans/since-last-run.md "Why".
-
-**Approach.**
-- New src/prompt/since-last-run.ts exporting one collector that takes the project root, main branch, the runner's state, the role id and the claimed entry's touched paths (when assigned). It runs one `git log --no-merges --format=… --name-only <lastMainHead>..<main>` and renders the block described in plans/since-last-run.md "Design": a header line (time since `lastRunEndedAt`, `lastResult`, `lastSummary`, commit count), commit subjects newest first capped at 30 with `tumwater(<role>):` subjects marked as the role's own, changed files ranked by commit count capped at 20, and for an assigned run the changed files the claimed entry names listed first.
-- Hard cap 4,000 characters, truncating the file list before the subjects, with "+N older" / "+N more" lines.
-- Return undefined (no block) when `lastMainHead` is empty, is not an ancestor of main, or the git call fails; never fail or delay the run over it. When main has not moved, return a single line saying nothing changed since the last run.
-- src/run/run-prompt.ts: call the collector beside the other `collect*` calls and pass the result as a new optional `sinceLastRun` field on `RunPromptInput`. Skip it for the director.
-- src/prompt/prompt.ts: render it in `runNotesBlocks`, right after the role-notes block, in a `<since-last-run>` tag whose lead sentence says tumwater generated it from git and it is current (unlike the notes), and that the run should re-read any listed file it plans to edit rather than trust an earlier view. Omitted input leaves the prompt byte-unchanged.
-- One git spawn per run at most; no per-commit or per-file git calls, and no new config key.
-- docs/how-it-works.md: one sentence where the run prompt's blocks are described.
-
-**Files touched.** src/prompt/since-last-run.ts src/prompt/prompt.ts src/run/run-prompt.ts test/since-last-run.test.ts test/run-prompt.test.ts docs/how-it-works.md
-
-**Acceptance criteria.**
-- In a temp repo with known commits after `lastMainHead`, the block lists exactly those commits newest first, marks the role's own `tumwater(<role>):` commits, and ranks files by how many of those commits touched them; the expected lists come from the commits the test itself made, not from re-running the collector's own git command.
-- An assigned run's block lists the claimed entry's touched files that changed before other files.
-- Over 30 commits or 20 files, the block truncates with "+N older" / "+N more", and it never exceeds 4,000 characters.
-- No block when `lastMainHead` is empty, is not an ancestor of main, or git fails; one "nothing changed" line when main has not moved.
-- The director's prompt and a prompt built without `sinceLastRun` are byte-identical to before.
-- `npm run test:gate` passes.
-
-**Tests.** test/since-last-run.test.ts covers the collector against real git in a temp repo (test/helpers/git-faults.ts gives a git that cannot start). test/run-prompt.test.ts covers placement after the notes block and omission. Then the project's gate. Measuring whether it helped is an operator step after merge (plans/since-last-run.md "How we will know it worked"), not part of this entry.
-
 ### Typed role notes, part 1/3: A lessons store that tumwater keeps verbatim, with `tumwater-notes lesson` commands (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; touches src/paths.ts src/roles/role-notes-write.ts src/notes-cli.ts src/roles/legacy-role-migration.ts test/notes-cli.test.ts test/role-lessons.test.ts)
 
 **Goal.** Each role gets a second, durable store beside its note: a list of dated, numbered lessons that survive every `tumwater-notes write` unchanged and change only through explicit commands. Today every write replaces the whole note, and only 16% of a note's paragraphs carry verbatim into the next write (2026-11-12 measurement in plans/typed-role-notes.md "Why"). This part adds the store and commands only; no prompt mentions them yet.

@@ -608,6 +608,16 @@ the backlog, the run prompt also shows the current backlog state of each thing t
 (PLANS.md and BUGS.md as of that run), right after the note, so the live state wins where the two
 disagree — a note cannot keep telling a role to skip an entry the operator has since lifted.
 
+Right after the note, a run also sees a `<since-last-run>` block generated from git: what has
+merged to main since the role's last run. It reads the range once (a bounded `git log`), lists the
+commits newest first and the files they touched most-touched first, and notes how long ago the
+role's last run ended, its result, and its summary. It is meant to sit beside the unverified
+recollection of the note and make its currency explicit — the block is current, the note is a
+prior session's memory, so a role skips re-reading what already holds but re-reads any file it
+plans to edit that the block lists. An assigned run's entry names the files it will touch, and
+those lead the file list. The block is left out on a first run, when main has not moved since the
+anchor, or when git cannot read the range — its absence never fails a run.
+
 ## Configuration
 
 `tumwater.json` is untracked and seeded from the tracked `tumwater.example.json`; edit the example

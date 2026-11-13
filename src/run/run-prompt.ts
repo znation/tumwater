@@ -15,6 +15,7 @@ import { buildCutOffNote } from "../prompt/prompt-followup.js";
 import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildMergedPrerequisitesNote, buildNoCheckNote, buildRejectedReviewNote, buildWaitingPartsNote } from "../prompt/gate-notes.js";
 import { eligibleEntries, mergedPrerequisiteRanges, waitingPartRanges } from "../backlog/backlog-eligibility.js";
 import { notesBacklogBlock } from "../prompt/notes-backlog.js";
+import { collectSinceLastRun } from "../prompt/since-last-run.js";
 import { donePlans, openBugEntries, plannedPlanEntries, declarationPlanEntry } from "../backlog/backlog.js";
 import { detectBuildCheck, gateCommandOf, type BuildCheck } from "../build/build-check-detect.js";
 import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
@@ -163,6 +164,10 @@ function buildRoleRunPrompt(
   const backlogStructure = collectBacklogStructureBlock(root, base);
   const duplicatePlans = collectDuplicatePlansBlock(root, base);
   const { notes, notesSavedDay, notesBacklog } = readPromptNotes(root, role);
+  // What landed on main since this role's last run, from git (since-last-run.ts): one bounded
+  // spawn, omitted for a first run, an off-main anchor, or a git failure. A run holding a claim
+  // with no queued request is the one that gets it — its entry is most likely to have moved.
+  const sinceLastRun = collectSinceLastRun(root, role, config, state);
   const { planTargetNote, flakyChecks, noCheck } = collectRoleDirectives(root, config, base, check);
   const pendingPlans = collectPendingPlansBlock(root, base);
   // A run holding a claim with no queued request is assigned its one entry (the assignment
@@ -184,6 +189,7 @@ function buildRoleRunPrompt(
     notes,
     notesSavedDay,
     notesBacklog,
+    sinceLastRun,
     planTargetNote,
     flakyChecks,
     noCheck,
