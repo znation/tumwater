@@ -1,7 +1,7 @@
 /**
  * The dashboard's POST operator-lifecycle command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts): reset-counters,
- * restart, reclaim, abort, stop-schedule, role-notes, retire, revert, brief-edit,
+ * restart, reclaim, abort, stop-schedule, role-notes, role-lessons, retire, revert, brief-edit,
  * post-review-accept, commit-backlog, and archive-backlog — every POST handler
  * that is not prompt/backlog/config/team. Each handler
  * adapts HTTP onto the domain work
