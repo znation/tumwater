@@ -21,25 +21,12 @@
  * pi, the same pattern context-budget uses with `contextNote`.
  */
 
+import { messageText } from "./message-text.js";
+
 /** A minimal structural type for the message objects the pure function reads. */
 interface PinMessage {
   role?: string;
   content: unknown;
-}
-
-/** Extract the text content from a message's content (string or array of content blocks). */
-function messageText(msg: PinMessage): string {
-  if (typeof msg.content === "string") return msg.content;
-  if (Array.isArray(msg.content)) {
-    return (msg.content as Array<{ type?: string; text?: string }>)
-      .filter(
-        (part): part is { type: string; text: string } =>
-          typeof part === "object" && part !== null && part.type === "text" && typeof part.text === "string",
-      )
-      .map((part) => part.text)
-      .join("\n");
-  }
-  return "";
 }
 
 /**

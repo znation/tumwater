@@ -13,6 +13,7 @@ import { describeToolCall } from "../text/phrases.js";
 import { objectOrEmpty, nonNegativeNumber, parseJsonObject, isJsonObject } from "../files/json-object.js";
 import { backendKind, isBackendFailureKind, isPermanentConfigError, TRANSIENT_BACKEND, type BackendFailureKind } from "./pi-failure.js";
 import { QUOTA_LIMIT_TEXT } from "../agent/backend-traits.js";
+import { messageText } from "../pi-extension/message-text.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
  * file I/O. Split out of pi.ts, whose child-process integration (runPi, hasResumableSession,
@@ -154,20 +155,14 @@ function resultContent(result: unknown): ContentBlock[] {
 
 /** The content blocks of one pi message, normalized: a `content` that is not an array (torn
  * or foreign wire JSON) reads as no blocks, and a non-object entry reads as an empty block,
- * so the `.filter`/`.some` chains below never throw on a shape the message interface does not
- * promise — the same guard transcript.ts's contentBlocks and progress-data.ts's
- * workItemFromContent apply to the identical field. */
+ * so the `.some`/`.filter` chains that reach the non-`text` blocks below never throw on a shape
+ * the message interface does not promise. The string-extraction half of the same field is
+ * message-text.ts's `messageText` (which this no longer re-derives); transcript.ts's
+ * `contentBlocks` and progress-data.ts's `workItemFromContent` keep their own readers because
+ * they render or summarize rather than extract one string. */
 function messageContent(msg: PiMessage): ContentBlock[] {
   if (!Array.isArray(msg.content)) return [];
   return msg.content.map((raw) => (objectOrEmpty(raw)));
-}
-
-/** Extract the concatenated text blocks of a pi message. */
-function messageText(msg: PiMessage): string {
-  return messageContent(msg)
-    .filter((c) => c.type === "text" && typeof c.text === "string")
-    .map((c) => c.text)
-    .join("\n");
 }
 
 /** Context-overflow errors often surface only in retry events, not the final message,

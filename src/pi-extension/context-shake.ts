@@ -26,6 +26,7 @@ import { compactTokens } from "../text/format.js";
 import { writeFullOutput } from "./full-output.js";
 import { appendToolResultNote } from "./tool-result-content.js";
 import { readContextUsage } from "./context-usage.js";
+import { messageText } from "./message-text.js";
 import { compactionPercent, declaredWindow, windowScale } from "./context-window.js";
 
 /** The fill percentage at which the first shake pass runs, on the 128k window it was tuned on
@@ -259,11 +260,6 @@ export function shakeNote(elidedCount: number, reclaimedTokens: number): string 
 
 /** Minimal structural types for pi's extension API — pi itself loads this file, so the real
  * types are not needed at compile time and stay out of the dependency tree. */
-interface TextBlock {
-  type?: string;
-  text?: string;
-}
-
 interface ToolCallBlock {
   type?: string;
   id?: string;
@@ -355,7 +351,7 @@ function applyToolResultFields(message: ShakeMessage, msg: MessageLike, calls: M
 
 /** Assembles one message's fields (text, entry id, role, then its tool-result fields). */
 function buildShakeMessage(msg: MessageLike, entryId: string | undefined, calls: Map<string, ToolCallBlock>): ShakeMessage {
-  const message: ShakeMessage = { text: textOf(msg) };
+  const message: ShakeMessage = { text: messageText(msg) };
   if (entryId) message.entryId = entryId;
   if (msg.role) message.role = msg.role;
   applyToolResultFields(message, msg, calls);
@@ -377,15 +373,6 @@ export function shakeMessages(event: TurnEndLikeEvent): ShakeMessage[] {
     }
   }
   return out;
-}
-
-/** The plain text of a message's content array (or string). */
-function textOf(msg: MessageLike): string {
-  if (!Array.isArray(msg.content)) return "";
-  return (msg.content as Array<TextBlock | string>)
-    .filter((part): part is TextBlock => typeof part === "object" && part !== null && part.type === "text" && typeof part.text === "string")
-    .map((part) => part.text ?? "")
-    .join("\n");
 }
 
 /** The pi extension entry point: shake at 70% (and again at 85% when the first pass did not
