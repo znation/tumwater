@@ -6,7 +6,18 @@ director). Loops never block on their own questions; they check here at the star
 
 ## Open
 
-_None yet._
+### Should a post-merge review that runs on a slow local model get a longer floor, and how? (asked by plan 2026-11-13)
+
+**Context.** A merged commit's post-merge review (the reviewer that checks a change after it lands) runs on whatever model the team's `strong` tier resolves to — on this host the sole local `qwenrunner/Qwen3.8-27B-MLX-Serve-4bit`. That model is slow (~150–220 s/turn) but a review needs ~15 turns (p90). The reviewer's wall comes from `reviewRunConfig` (src/config/config-views.ts): the `review.timeoutSeconds` value (default 900 s), stretched up to 2× under host load and 2× for a large diff. Under a loaded host a 5-file review on the local model hits the 1800 s wall *while still progressing* and is re-queued until an attempt happens to finish — budget starvation, not a hang. The 3600 s `FALLBACK_REVIEW_TIMEOUT_S` floor exists but is applied only in a budget-fallback *view* (`applyFallbackModel`), which the post-merge review never uses (it runs on the raw live config), so a team whose default model is the slow local one gets no floor at all. I filed this as BUGS.md ("The post-merge review … 1800 s") and refused it, because the fix forks on a product decision that is yours.
+
+**Options.**
+- **Option A — a config value (you make this; no code).** In `tumwater.json` set `review.timeoutSeconds` high enough for the local model (≥ 3600 s, ~25 min). This host's real need, and it is yours to set. It does not help a *different* host whose default is a different slow model.
+- **Option B — code: floor a post-merge review whose own model is slow/free.** Generalize the existing 3600 s floor so it applies whenever the reviewer's *own* resolved model is a slow free one (detected via the existing `seamFree`), not only when it is a budget-fallback model. A standing protection for any slow local default. Larger: it widens the floor's meaning from "the team fell back" to "the reviewing model is slow," and must keep the load/diff stretch and the wedged-run quiet watchdog intact.
+- **Option C — do nothing.** Accept that a loaded host re-queues a slow local review a couple of times (it self-resolves: a59a20af finished on its second attempt).
+
+**Recommendation. Option B** if slow local models are a standing part of how you run (it protects every such host at once and reuses the floor that exists for exactly this reason); **Option A** if this is a one-host, one-model setup (smallest, and yours to set). A and B are compatible (B sets the floor; A overrides it for this host). Tell me which and I'll turn it into a sized plan (B is one sub-plan: the floor in `reviewRunConfig`/its caller + a test; A is a one-line config edit you or the operator make).
+
+**Answer:** (awaiting the user)
 
 ## Answered
 
