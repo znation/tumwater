@@ -1392,7 +1392,8 @@ predates the cutoff" and "a missing or empty log reads as no rows over a covered
 ## Status polls: an observer never throws, and shows only what is still true
 
 `tumwater status`, `tumwater doctor`, the TUI and the GUI read the cached readers
-in `src/status/status-polls.ts` every second, in a process separate from the orchestrator. Every
+in `src/status/status-polls.ts` (the main-check reader, `src/status/status-main-check.ts`, was
+split out of it) every second, in a process separate from the orchestrator. Every
 reader must therefore tolerate a torn, foreign or stale file, and show only what is still true.
 
 ### INV-T1: main's badge is the newest merge-scope check, and an unproven check shows nothing
@@ -1416,7 +1417,7 @@ full run has not settled — the newest `main_check` carrying `cleared: true`, n
 newest full build_check and followed by no settled `main_check` — reads as `cleared` (the
 clearing head at its clearing time), never as the older red verdict.
 
-**Binds.** `src/status/status-polls.ts` (`mainCheckForPoll`, `scanMainCheck`, `isMainCheckStatus`,
+**Binds.** `src/status/status-main-check.ts` (`mainCheckForPoll`, `scanMainCheck`, `isMainCheckStatus`,
 `MAIN_CHECK_SCAN_MAX_EVENTS`, `MainCheckStatus`), `src/build/build-check-events.ts`
 (`isFullCheckScope`).
 
@@ -3589,7 +3590,7 @@ red detail publish a blame whose commit is the spell's opener or its newest red 
 re-checked on a later tip keeps naming the opener instead of dropping or moving its blame.
 
 **Binds.** `src/baseline/main-watch.ts` (`settleOpener`, `redOpener`, `reportCulprit`), `src/baseline/main-red-spell.ts` (the `redSpellOpeners` map and its spell transitions),
-`src/baseline/main-guardrails.ts` (`redBlameClause`), `src/status/status-polls.ts`
+`src/baseline/main-guardrails.ts` (`redBlameClause`), `src/status/status-main-check.ts`
 (`scanMainCheck`'s `spellOpener`, `mainCheckForPoll`'s red detail).
 
 **Pinned by.** `test/main-watch-spells.test.ts` — "a doc-exempt tip that lands after a red

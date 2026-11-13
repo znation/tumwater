@@ -136,7 +136,7 @@ export function lockHashOf(root: string): string {
 }
 
 /** The current main tip and lock hash, resolved synchronously from the ref files and the
- * working tree (mirroring status-polls.ts's per-poll read: readBranchHead + targetBranch, no
+ * working tree (mirroring status-main-check.ts's per-poll read: readBranchHead + targetBranch, no
  * spawn). Either degrades to "" when it cannot be resolved, which the render treats as
  * "has definitely not matched", so a resolution failure can never declare a false current. */
 export function currentCiParityState(

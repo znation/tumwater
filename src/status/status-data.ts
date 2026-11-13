@@ -10,7 +10,6 @@ import {
   type configForStatus,
   configStateForStatus,
   queueInFlight,
-  mainCheckForPoll,
   maintenanceQuotaForPoll,
   ciParityForPoll,
   remoteCiForPoll,
@@ -18,8 +17,8 @@ import {
   slotsForPoll,
   type CiParityStatus,
   type RemoteCiStatus,
-  type MainCheckStatus,
 } from "./status-polls.js";
+import { mainCheckForPoll, type MainCheckStatus } from "./status-main-check.js";
 import { quietHoursStatus, roleQuietHeldRoles } from "../scheduling/quiet-hours.js";
 import { scheduledStopAt, scheduledWakes, standingRolePause, standingTeamPause } from "../team/team-state.js";
 import {
@@ -41,8 +40,10 @@ import { principlesBlockOverCap } from "../prompt/principles.js";
 
 /** Status data collection: one fresh snapshot of the team for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers
- * snapshot() reads through (main-check scan, last-known-good config, runner-state stat cache)
- * live in status/status-polls.ts. snapshot() composes the per-domain collectors in
+ * snapshot() reads through live in status/status-polls.ts and status/status-main-check.ts — the
+ * main-check scan, the last-known-good config, the runner-state stat cache, the pooled slots, the
+ * declared check, the ci and remote-CI ledgers, the merge-in-flight marker and the maintenance
+ * allowance. snapshot() composes the per-domain collectors in
  * status-roles.ts, status-inbox.ts and status-budget.ts and keeps the one-off fields here. */
 
 export interface StatusSnapshot {

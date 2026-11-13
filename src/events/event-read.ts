@@ -171,7 +171,7 @@ export function mergingRoleOf(root: string, commit: string): string | undefined 
 
 /** The event-tail size readEvents falls back to when a caller omits `limit` — a working
  * handful of a busy team's recent activity, small enough that the per-poll tail read stays
- * cheap. Exported so a caller that starts a scan at the default (status-polls.ts's
+ * cheap. Exported so a caller that starts a scan at the default (status-main-check.ts's
  * mainCheckForPoll ladder) grows from the same value instead of re-spelling the literal. */
 export const DEFAULT_EVENT_TAIL = 200;
 

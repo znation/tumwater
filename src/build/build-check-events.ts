@@ -22,8 +22,8 @@ export type BuildCheckScope = "gate" | "merge" | "batch";
 /** Does this build_check scope stand for a full-suite verdict — merge, batch, or the red-main
  * baseline? A gate check can run a subset of the tree, so a scope outside this set is never a
  * full-suite check. The one vocabulary the three predicates that recognize a full-suite check
- * select on — isPassingFullCheck, isRedFullCheck, and the status polls' newest-merge-check
- * scan (status-polls.ts) — so they cannot drift on which scopes count. The deadline-killed
+ * select on — isPassingFullCheck, isRedFullCheck, and the main-check reader's newest-merge-check
+ * scan (status-main-check.ts) — so they cannot drift on which scopes count. The deadline-killed
  * failure costing in failure-time-spend.ts is a narrower pair (merge/batch only, with a status
  * and a timeout required), so it keeps its own check. `full` is the event's `full` field: false
  * (a check.mergeCommand run) is never a full-suite check. */

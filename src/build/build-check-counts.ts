@@ -1,13 +1,13 @@
 /** Reading a node:test-style runner's summary counts out of check output — the harness's own
  * attestation of how a declared check fared (PLANS.md 2026-09-29), so no model has to restate
  * the numbers. Split out of build-check.ts: pure parsing, no process execution, with its own
- * importers (build-check.ts's parser and BuildCheckOutcome counts field, the status poll layer
- * in status/status-polls.ts, and the UI's main-count badge in ui/badges.ts). */
+ * importers (build-check.ts's parser and BuildCheckOutcome counts field, the main-check reader
+ * in status/status-main-check.ts, and the UI's main-count badge in ui/badges.ts). */
 
 /** What a node:test-style runner's summary block reports, as parseTestCounts read it. The
  * build_check event carries it verbatim (build-check-events.ts spreads the outcome's counts
- * through), so the event's reader — the status poll layer's MainCheckStatus
- * (src/status/status-polls.ts) — imports this shape instead of re-declaring it. */
+ * through), so the event's reader — the main-check reader's MainCheckStatus
+ * (src/status/status-main-check.ts) — imports this shape instead of re-declaring it. */
 export interface TestCounts {
   tests: number;
   pass: number;
@@ -26,7 +26,7 @@ function countField(v: unknown): number | undefined {
 
 /** The four summary counts when `v` carries all of them as counts, else undefined — the one
  * structural guard for a loose-typed source: parseTestCounts's own block assembly, and the
- * status snapshot's loose-typed event log (status/status-polls.ts). */
+ * main-check reader's loose-typed event log (status/status-main-check.ts). */
 export function asTestCounts(v: unknown): TestCounts | undefined {
   if (typeof v !== "object" || v === null) return undefined;
   const c = v as Record<string, unknown>;

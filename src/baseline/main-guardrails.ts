@@ -144,7 +144,7 @@ function redFailingTest(newest: HarnessEvent): string | undefined {
  * window names the spell's opener or its newest red. Owns the blame clause. */
 function redBlameClause(culprit: HarnessEvent | undefined, startEv: HarnessEvent, newest: HarnessEvent): string {
   // The blame names the merge the main watch blamed for the red — the same `main_culprit`
-  // commit-equals-tip rule the dashboard alert uses (status-polls only publishes a blame whose
+  // commit-equals-tip rule the dashboard alert uses (status-main-check only publishes a blame whose
   // commit is the derived tip sha), so a red the watch did not blame never borrows another
   // head's culprit. A culprit naming another commit, or none, leaves the phrase as today.
   // The watch names the commit that OPENED the red (its first red tip since the last green)

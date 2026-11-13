@@ -415,7 +415,7 @@ export function resolveGitDir(dir: string): string | undefined {
 /** The branch `dir`'s checkout has, read from its HEAD file without spawning git: undefined (not
  * null) when the files cannot answer and the `git symbolic-ref` fallback should decide. Exported
  * for synchronous poll loops that need the same resolution the async currentBranch gives
- * (src/status/status-polls.ts's mainCheckForPoll cannot await inside its per-second snapshot). A
+ * (src/status/status-main-check.ts's mainCheckForPoll cannot await in a per-second snapshot). A
  * `.git` directory (primary checkout) or a `gitdir: <path>` pointer file (a linked worktree — the
  * harness itself can run from one, as its own role worktrees do) both resolve. The HEAD line must
  * be `ref: refs/heads/<branch>`; a bare sha means detached HEAD — the same null the spawn
@@ -448,7 +448,7 @@ export async function currentBranch(root: string): Promise<string | null> {
 /** The branch a read-only surface treats as the team's main: a configured `baseBranch` wins (`run
  * --branch` is per-invocation and invisible to a later query), else whatever the primary checkout
  * has checked out, else the literal "main". change/change-data.ts's collectRoleChange (async, via
- * currentBranch) and status-polls's mainCheckForPoll (sync, via currentBranchFromHeadFile — a
+ * currentBranch) and status-main-check's mainCheckForPoll (sync, via currentBranchFromHeadFile — a
  * per-second snapshot cannot await) both render through this one precedence rule, so the dashboard
  * and the status table cannot disagree on what "main" is. doctor's checkRepo and the startup gate
  * restate the same precedence but validate the answer and fail instead of falling back, so they
