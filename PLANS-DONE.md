@@ -5,6 +5,10 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### PRINCIPLES.md Budgets (module-size ceiling) reads 28/11/4 but the code measures 27/10/4 — the steward refreshes its own budget line, and a 1-line organize edit is not the fix (objection 1 of 1, raised 2026-11-12 by the organize role; done 2026-11-12 by the steward role)
+
+The `## Budgets` section in PRINCIPLES.md is refreshed to the measured values (module-size ceiling 27/10/4, largest `src/baseline/main-watch.ts` at 952, code size 529 src / ~132,000 lines and 662 test / ~199,000 lines, split family 272 landed, `_Last measured 2026-11-12_`), closing the standing drift; no src/test comment cites this heading, so it archives cleanly.
+
 ### Since last run, part 1/1: Each run's prompt says what changed on main since the role's last run (planned 2026-11-12 by the operator; design in plans/since-last-run.md; touches src/prompt/since-last-run.ts src/prompt/prompt.ts src/run/run-prompt.ts test/since-last-run.test.ts test/run-prompt.test.ts docs/how-it-works.md) — done 2026-11-12 by the feature role
 
 **Goal.** An authoring run starts knowing, from git, what landed on main since its role's previous run: which commits, which files, and how that run ended. Runs stay fresh sessions. The block replaces part of the orientation that costs a median of 22 tool calls and 44k tokens before the first edit (2026-10-17 measurement). Why not a long-running conversation per role instead: plans/since-last-run.md "Why".
