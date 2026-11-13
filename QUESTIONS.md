@@ -6,7 +6,27 @@ director). Loops never block on their own questions; they check here at the star
 
 ## Open
 
-_None yet._
+### How should the dashboard distinguish "Working" from "Waiting"? (asked by director 2026-11-12)
+
+The user found the dashboard's (the browser GUI) **Working** and **Waiting** status pills look too similar — "the same color, and both with the blue dot" — and asked whether **Waiting** should be a different color than blue, or **Working** green instead. Two forks, both the user's call, so I am asking rather than guessing.
+
+**What the GUI actually renders today** (`src/ui/gui/gui-client-model.ts` `phaseInfo`, the browser twin of `src/ui/status-model.ts` `rolePhase`; the pill is drawn in `src/ui/gui/gui-client.ts` `pill` = a dot + a label, the dot pulsing only when `live`):
+
+- `working` / `director working` → **blue**, `live: true` → a **pulsing blue dot**.
+- `waiting: budget spent` / `daily cap` / `low disk` / `bootstrap` / `model check` / `maintenance allowance` → **amber**, `live: false` → a plain amber dot. (All of the "a role is held" states.)
+- `waiting: update — <step>` (the self-redeploy hold — the whole team stands still while an update is checked, compiled and swapped in) → **blue**, `live: false` → a **non-pulsing blue dot**. This is the one **non-live blue**, and it is the nearest collision with Working: same color as Working, differing only in that its dot does not pulse — which the comment in that branch deliberately chose ("blue, not amber — it ends on its own"). That is very likely the "both blue" the user saw.
+- `waiting to start <duration>` (a run already admitted, parked in the pipeline waiting for a permit) → **gray**, `live: false` → a gray dot.
+
+**Note:** the terminal TUI colors the *same* states by rank via `src/ui/tone.ts` `phaseTone` (rank ≤ 1 → blue), so there `working`, `reviewing` and `waiting to start` all read **blue** and the held states (`waiting:` / `paused`) read **yellow**. The GUI and the TUI deliberately diverge: the GUI keeps `waiting to start` **gray** (rank 1) while the TUI keeps it **blue**. Any decision that recolors a *live* state in the GUI will force the same change on the TUI's shared `phaseTone` to keep the two surfaces aligned, whereas recoloring only the self-redeploy hold is GUI-local.
+
+**Options.**
+
+- **Option A (recommended): keep Working blue, and recolor the self-redeploy hold (the one blue "Waiting") to amber.** This makes every "Waiting" amber in the GUI and Working the only blue — no collision, and it fixes the GUI's own inconsistency (today a *self-clearing* auto hold is blue while every *needs-attention* hold is amber, which is backwards). Contained: one tone in `phaseInfo` (plus its one test in `test/gui-client-roles.test.ts`, and the doc comment in `src/ui/gui/gui-styles.ts` that names the palette) — no TUI change, since no live state moves. Cost: the self-redeploy hold then reads the same amber as the holds that wait on the operator, so "ends on its own" is no longer signaled by color (it stays signaled by its text and by the sidebar's own row).
+- **Option B: make Working green and keep the self-redeploy hold blue.** The user's other suggestion. Green unambiguously means "actively running" and separates it from every blue and every amber, and it matches the sidebar's team **Running** row (green), so the team row and its own roles agree. Cost: it breaks the standing rule that **blue = in-progress work** (stated in `src/ui/tone.ts` and the `src/ui/gui/gui-styles.ts` comment: blue working, violet reviewing, orange merge, green merged, amber held, red broken, gray idle) and forces the TUI's shared `phaseTone` (rank 0 live → blue) to change too, to keep the two surfaces aligned — a bigger, cross-surface change. It also makes the *live* "Working" pill the same green as the *finished* "Merged" result tone (disambiguated only by the label wording).
+
+**Recommendation. Option A.** It resolves the collision with the smallest change (one GUI-local tone), restores the palette's semantic rule (blue = in-progress work), and makes the GUI's held states consistent — and it leaves the TUI and the shared `phaseTone`/`ROLE_RANK_RULES` machinery untouched. I will turn the chosen option into a sized plan (GUI `phaseInfo` + its tests, and the TUI `phaseTone` if the choice is B) as soon as it is answered. The answer also settles the one state I could not pin to the user's "blue dot" — if the "both blue" the user actually saw was a parked `waiting to start` (which the GUI renders **gray** today, so a blue dot there would itself be a bug worth confirming), I will record that too.
+
+**Answer:** (awaiting the user)
 
 ## Answered
 
