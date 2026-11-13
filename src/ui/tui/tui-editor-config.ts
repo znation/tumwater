@@ -4,8 +4,8 @@ import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The team-scope config-key editor arm (Ctrl+N run cap, Ctrl+W worktree slots, Ctrl+E
- * notify hook, Ctrl+L fallback,
- * Ctrl+A team model, Ctrl+U declared check) on the shared prompt line —
+ * notify hook, Ctrl+L fallback, Ctrl+A team model, Ctrl+K check cap,
+ * Ctrl+U declared check) on the shared prompt line —
  * the terminal twins of the dashboard Settings fields and their `tumwater config set <key>`
  * commands.
  * One factory serves the team-scope editors because they share the whole shape: a mode
@@ -25,16 +25,17 @@ interface TeamConfigKeySpec {
    * empty or whitespace-only line, otherwise `setConfigKey` recanonicalizes and
    * JSON-parses the line so validateConfig owns the value's truth. */
   configKey: string;
-  /** Set for the team keys whose value is a plain integer (maxConcurrent, worktreeSlots):
-   * an exponent spelling like "2e0" is itself a JSON number (2) that setConfigKey's
-   * JSON.parse would read past validateConfig's integer check and silently write — the
-   * same silent misread the per-role instances/interval/cap guards refuse — so this
-   * refuses it here, naming the key and staying in edit mode. A non-exponent spelling
-   * falls through to validateConfig, whose message names the key. */
+  /** Set for the team keys whose value is a plain integer (maxConcurrent, worktreeSlots,
+   * maxConcurrentChecks): an exponent spelling like "2e0" is itself a JSON number (2)
+   * that setConfigKey's JSON.parse would read past validateConfig's integer check and
+   * silently write — the same silent misread the per-role instances/interval guards
+   * refuse — so this refuses it here, naming the key and staying in edit mode. A
+   * non-exponent spelling falls through to validateConfig, whose message names the key. */
   plainIntegerKey?: boolean;
   /** Set for the team keys that must not disturb a typed prompt line: the editor opens only
-   * while the prompt line is empty, so the key falls through to applyKey's kill/edit when the
-   * operator has typed text. The Ctrl+K check-cap editor is the only team key that needs this. */
+   * while the prompt line is empty, so the key falls through to applyKey's kill/edit when
+   * the operator has typed text. The Ctrl+K check-cap and Ctrl+U declared-check editors are
+   * the only team keys that need this. */
   requireEmptyPrompt?: boolean;
   /** The line the editor opens pre-filled with — one fresh read per open is the smallest
    * honest source, and a broken config degrades to no pre-fill with the write reporting
@@ -79,11 +80,11 @@ export function createTeamConfigKeyEditor(
       return true;
     }
     if (ctx.view !== 0) return false;
-    // A check-cap editor with text on the line must fall through to applyKey's kill before the
-    // hold-guard runs: while another editor holds the (non-empty) line, Ctrl+K should still
-    // kill from the cursor to the line end rather than be consumed by the mutual-exclusion
-    // flash, and a typed draft must never be swallowed. Only Ctrl+K sets `requireEmptyPrompt`,
-    // so only it takes this fall-through.
+    // A requireEmptyPrompt editor with text on the line must fall through to applyKey's
+    // kill before the hold-guard runs: while another editor holds the (non-empty) line, the
+    // key should still perform its pane kill rather than be consumed by the mutual-exclusion
+    // flash, and a typed draft must never be swallowed. The Ctrl+K check-cap and Ctrl+U
+    // declared-check editors set `requireEmptyPrompt`, so only they take this fall-through.
     if (spec.requireEmptyPrompt && session.input !== "") return false;
     if (session.editorEntryDenied(spec.mode)) return true;
     const existing = spec.prefill(session);
