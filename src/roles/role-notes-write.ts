@@ -161,7 +161,7 @@ export function renderRoleLessons(nextId: number, lessons: RoleLesson[]): string
 export function validateRoleLesson(text: string): string | null {
   if (text.trim() === "") return `a lesson must not be empty — pass one lesson, or none`;
   if (text.includes("\n") || text.includes("\r")) {
-    return `a lesson must be a single paragraph (no blank line) — it contains a line break`;
+    return `a lesson must be a single paragraph (no line break) — it contains a line break`;
   }
   const lessonBytes = Buffer.byteLength(text, "utf8");
   if (lessonBytes > ROLE_LESSON_MAX_BYTES) {
