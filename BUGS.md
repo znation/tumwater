@@ -14,8 +14,37 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 **Validation gap:** no-repro — the flake reproduces only under sustained shared-host load; verified the tip green after the load subsided.
 
-### post-merge review of 23b74d9d never reached a verdict (found by the review role 2026-11-12)
-
-The post-merge review of commit `23b74d9df29ac480db05bbfda92eeb65f757ed2e` (Update BUGS.md, test/orchestrator-3.e2e.test.ts) never reached a verdict: timed out after 1800s while still making progress — session and worktree edits preserved for resume. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
-
 ## Fixed
+
+- A stale or dangling merge pin that leftover recovery drops leaves its in-flight marker record
+  behind, so the status surfaces show a phantom `merging` row forever (the true root cause of the
+  "stale marker beside a stale pin" e2e flake, previously misdiagnosed as host load) — fixed
+  2026-11-12 by the operator (release cut).
+
+**Symptom.** `test/orchestrator-3.e2e.test.ts` "a stale marker beside a stale pin is dropped at
+the drain without a merge run" intermittently timed out (`timed out waiting for the stale pin to
+be dropped and its marker cleared`) even on a quiet host at the 150 s budget, and CI failed on
+it twice. A hand-run repro parsed the residue: the merge ref was absent (the pin WAS dropped) but
+the stale marker file still existed, so the wait (both absent) never held.
+
+**Suspected cause.** The pin-queue rework (68ca5115f) added marker clearing on the *drain's* drop
+of a stale/dangling pin but missed the *author's leftover recovery* drop (`recoverLeftover`),
+which shares `dropStalePin`/`dropDanglingPin`. When the author's run starts in the window between
+`merge_done` and the merge task's finally releasing the slot (postReviewDue awaits git there), its
+recovery drops the stale pin without clearing the marker; the drain's `refAbsentFromFiles`
+fast-path then skips the runner (no pin) and the marker is never cleared. The 2026-11-11 bugfix
+(23b74d9df) misread this as load: it added a quiet-host gate and widened the deadline, which the
+post-merge review of that very commit never reached a verdict for.
+
+**Fixed.** `recoverLeftover` now clears the role's marker record (`removeMergeChange`) when it
+drops a stale or dangling pin — the same drop-site clearing the drain does. A regression test in
+`test/runner-leftover.test.ts` pins the marker is cleared on both drops; the e2e test passes
+repeatedly with the fix and the marker-leak repro no longer holds.
+
+**Validation gap:** the e2e failure was timing-dependent (recovery-vs-drain race), so it could
+not be reproduced on demand; the deterministic unit tests cover the drop path directly, and a
+5× repeat of the e2e test is green with the fix.
+
+- The post-merge review of `23b74d9df` never reached a verdict; reviewed by hand on the release
+  cut and closed — the commit's only code change was the quiet-host gate + widened deadline for
+  the stale-pin e2e test, a misdiagnosis of the marker leak above (now fixed at the root).

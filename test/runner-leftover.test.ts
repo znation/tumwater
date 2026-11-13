@@ -7,7 +7,8 @@ import { commitTrailer } from "../src/git/commit-message.js";
 import { readEvents } from "../src/events/event-read.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { enqueueMerge, queuedMerges } from "../src/merge/merge-queue.js";
-import { mergeRefName } from "../src/paths.js";
+import { mergeRefName, mergeStatePath } from "../src/paths.js";
+import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { shortSha } from "../src/text/format.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { eventsOfType, unwritableEvents, warningMessages } from "./fixtures/log-fixtures.js";
@@ -138,9 +139,14 @@ test("a stale pin is dropped", async () => {
   const { root } = await pinnedFixture();
   sh(root, "git", "merge", "--ff-only", "stray");
   const wt = await ensureWorktree(root, ROLE, "main");
+  // The crash residue the drop exists for: a stale in-flight marker beside the stale pin
+  // (the drain's own drop clears it; the recovery's drop must too, or the marker leaks a
+  // phantom merge the observers see forever — test/orchestrator-3.e2e.test.ts's flake).
+  writeMergeMarker(root, { role: ROLE, sha: headSha(root), summary: "stale", startedAt: Date.now(), stage: "merging" });
 
   assert.equal(await recoverLeftover(makeCtx(root, wt)), null);
   assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the stale pin was deleted");
+  assert.equal(fs.existsSync(mergeStatePath(root)), false, "the stale pin's marker record was cleared with the drop");
 });
 
 test("a pin whose merges hit the merge-conflict cap is handed back, not re-pinned", async () => {
@@ -331,11 +337,14 @@ function danglingPinFixture(): string {
 test("a pin whose commit is missing is dropped with a warning and nothing is queued", async () => {
   const root = danglingPinFixture();
   const wt = await ensureWorktree(root, ROLE, "main");
+  // A dangling pin's sibling marker is crash residue too — the recovery's drop clears it.
+  writeMergeMarker(root, { role: ROLE, sha: "1".repeat(40), summary: "dangling", startedAt: Date.now(), stage: "merging" });
 
   assert.equal(await recoverLeftover(makeCtx(root, wt)), null);
 
   assert.deepEqual(queuedMerges(root), []);
   assert.equal(await refSha(root, mergeRefName(ROLE)), null);
+  assert.equal(fs.existsSync(mergeStatePath(root)), false, "the dangling pin's marker record was cleared with the drop");
   const warnings = warningMessages(root).filter((m) => m.includes("dropped merge pin"));
   assert.equal(warnings.length, 1);
   assert.match(warnings[0]!, /dropped merge pin 1111111/);

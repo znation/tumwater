@@ -27,6 +27,9 @@
 - The Codex quota wall is classified as transient, so drained runs are excluded from the drop
   limit instead of counting against it.
 - `runTui` resolves on EIO, so a dead terminal quits instead of crashing.
+- A stale or dangling merge pin that leftover recovery drops now clears its in-flight marker
+  record, so a crash's residue no longer leaves a phantom `merging` row the status surfaces read
+  forever — the true root cause of the stale-pin e2e test previously blamed on host load.
 - The model-check reviewer-pair hold parks only the post-merge review drain, and the
   `lastApprovedHead` bypass is guarded against a consumed abort.
 - Out-of-range salvage/quarantine/reviews messages name the valid position range, and

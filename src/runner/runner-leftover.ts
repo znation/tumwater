@@ -2,6 +2,7 @@ import { aheadOfMain, commitExists, commitMessage, deleteRef, deleteRefIfAt, hea
 import { commitRunOf, parseCommitMetadata, type CommitMetadata } from "../git/commit-message.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { queuedMerges, type MergeEntry } from "../merge/merge-queue.js";
+import { removeMergeChange } from "../merge/merge-slot.js";
 import { mergeRefName, withdrawnRefName } from "../paths.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
@@ -184,8 +185,17 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
   const ref = mergeRefName(ctx.role);
   let sha = await refSha(ctx.root, ref).catch(() => null);
   if (sha) {
-    if (await dropDanglingPin(ctx.root, ctx.role, ref, sha)) return null;
-    if (await dropStalePin(ctx.root, ref, sha, ctx.mainBranch)) return null;
+    if (await dropDanglingPin(ctx.root, ctx.role, ref, sha)) {
+      // The pin's in-flight marker names a merge no process is running (the drain that left
+      // the residue is gone, or it never started): clear it here, as the drain does on its own
+      // drop, so the observer surfaces never show a phantom merge for a pin nobody will touch.
+      removeMergeChange(ctx.root, ctx.role);
+      return null;
+    }
+    if (await dropStalePin(ctx.root, ref, sha, ctx.mainBranch)) {
+      removeMergeChange(ctx.root, ctx.role);
+      return null;
+    }
   } else {
     // No pin: either nothing was left behind, or a crash hit the commit→pin window (or
     // the pin write failed) and the commit still sits on the branch ahead of main. Recover that
