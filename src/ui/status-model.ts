@@ -232,17 +232,20 @@ export function rolePhase(
   // The resting cell: the sleeping-vs-skipReason label and the consecutive-run cut-off/
   // no-change suffix that names what an idle role has been returning.
   function restingPhase(): string {
-    // The resting state cell (sleeping / idle / deferred / queued): it is the only label that
-    // names what a role has been RETURNING, so the consecutive no-change streak rides on it
-    // (run-apply.ts applyRunOutcome's noChangeStreak, persisted in RunnerState). A role that
-    // keeps waking and returning nothing to do reads " · no change ×N" instead of an ordinary
-    // idle — the harness premise's silent no-op failure mode, otherwise indistinguishable from a
-    // healthy idle role. Observational only: a legitimately idle maintenance role with an empty
-    // backlog can hold a long streak and that is expected, so it never warns (unlike
-    // consecutiveErrors/quietKillStreak). N=1 and an absent field read 0 and render the label
-    // byte-identically; the error/quiet-kill/merge/paused cells return earlier and never carry
-    // the suffix. `noChangeStreak` is on the state accumulator, so its type is on the full
-    // RunnerState.
+    return restingCell(s) + restingStreakSuffix(s);
+  }
+  // The resting state cell (sleeping / idle / deferred / queued): it is the only label that
+  // names what a role has been RETURNING, so the consecutive no-change streak rides on it
+  // (run-apply.ts applyRunOutcome's noChangeStreak, persisted in RunnerState). A role that
+  // keeps waking and returning nothing to do reads " · no change ×N" instead of an ordinary
+  // idle — the harness premise's silent no-op failure mode, otherwise indistinguishable from a
+  // healthy idle role. Observational only: a legitimately idle maintenance role with an empty
+  // backlog can hold a long streak and that is expected, so it never warns (unlike
+  // consecutiveErrors/quietKillStreak). N=1 and an absent field read 0 and render the label
+  // byte-identically; the error/quiet-kill/merge/paused cells return earlier and never carry
+  // the suffix. `noChangeStreak` is on the state accumulator, so its type is on the full
+  // RunnerState.
+  function restingCell(s: RunnerState): string {
     let cell: string;
     if (s.nextRunAt > Date.now()) {
       // The role is sleeping *now* until nextRunAt: show the remaining sleep duration
@@ -283,20 +286,21 @@ export function rolePhase(
           cell = "due";
       }
     }
-    // Two or more consecutive runs earn the suffix (N=1 is a single run — ordinary, not yet
-    // a pattern). A cut-off run is itself a `no_change`, so noChangeStreak counts a
-    // context-ceiling episode too — but the plain suffix would mislabel a window-burning
-    // episode as a benign idle one, so when the cut-off streak reads 2+ it wins: it names the
-    // costly cause (operator should split the task or raise the model's context window before
-    // the give-up). Observational only, like the no-change suffix — it never warns from here
-    // (the once-per-episode crossing warning comes from run-finalize.ts).
-    const cutOff = s.cutOffStreak ?? 0;
-    if (cutOff >= 2) cell += ` · cut off ×${cutOff}`;
-    else {
-      const streak = s.noChangeStreak ?? 0;
-      if (streak >= 2) cell += ` · no change ×${streak}`;
-    }
     return cell;
+  }
+  // Two or more consecutive runs earn the suffix (N=1 is a single run — ordinary, not yet
+  // a pattern). A cut-off run is itself a `no_change`, so noChangeStreak counts a
+  // context-ceiling episode too — but the plain suffix would mislabel a window-burning
+  // episode as a benign idle one, so when the cut-off streak reads 2+ it wins: it names the
+  // costly cause (operator should split the task or raise the model's context window before
+  // the give-up). Observational only, like the no-change suffix — it never warns from here
+  // (the once-per-episode crossing warning comes from run-finalize.ts).
+  function restingStreakSuffix(s: RunnerState): string {
+    const cutOff = s.cutOffStreak ?? 0;
+    if (cutOff >= 2) return ` · cut off ×${cutOff}`;
+    const streak = s.noChangeStreak ?? 0;
+    if (streak >= 2) return ` · no change ×${streak}`;
+    return "";
   }
   return mergePhase() ?? runningPhase() ?? heldPhase() ?? restingPhase();
 }
