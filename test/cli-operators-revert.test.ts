@@ -77,6 +77,27 @@ test("revert --dry-run previews without writing", async () => {
   assert.equal(sh(repo, "git", "status", "--porcelain"), "");
 });
 
+test("revert --dry-run with a dirty tracked worktree names the dirty checkout and exits 1, writing nothing", async () => {
+  // The dry-run renderer's `dirty` arm (cli-revert-command.ts sayRevertPreview): a preview
+  // whose checkout has staged or unstaged tracked changes is refused up front — it prints the
+  // refuse line instead of `applies cleanly` and ends exit 1, even when the revert would
+  // otherwise apply cleanly — and writes nothing.
+  const repo = makeRepo();
+  await initProject(repo, "cli revert dry dirty");
+  fs.writeFileSync(path.join(repo, "to-undo.txt"), "one\n");
+  commitIn(repo, "work to undo");
+  const clean = headSha(repo);
+  fs.writeFileSync(path.join(repo, "to-undo.txt"), "edited but uncommitted\n");
+
+  const r = await cli(repo, "revert", clean, "--dry-run");
+  assert.equal(r.code, 1);
+  assert.match(r.stdout, /^would revert /);
+  assert.match(r.stdout, /staged or unstaged changes, so tumwater revert would refuse until they are committed or stashed; nothing was written/);
+  assert.doesNotMatch(r.stdout, /applies cleanly/);
+  assert.equal(headSha(repo), clean, "no commit was written");
+  assert.equal(sh(repo, "git", "status", "--porcelain"), " M to-undo.txt", "the dirty edit is untouched");
+});
+
 test("revert --dry-run --json prints the preview as data and writes nothing", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli revert dry json");
