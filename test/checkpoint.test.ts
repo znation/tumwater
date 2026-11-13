@@ -61,11 +61,40 @@ test("buildCheckpointSummary carries the model's prose, the file ops, and the me
   assert.match(s!, /done:\nsplit the parser/);
   assert.match(s!, /state:\ntests pass/);
   assert.match(s!, /next:\nwire it up/);
-  assert.match(s!, /read: a\.ts, b\.ts/);
-  assert.match(s!, /modified: x\.ts, y\.ts/);
+  // The file lists are one path per line (read and modified dedupe and sort, so a.ts<b.ts,
+  // x.ts<y.ts): the read block leads its first path on the `read:` line, the rest one each.
+  assert.match(s!, /read: a\.ts\nb\.ts/);
+  assert.match(s!, /modified: x\.ts\ny\.ts/);
   assert.match(s!, /git status/);
   assert.match(s!, /git diff/);
   assert.match(s!, /\+42\/-3/);
+  // No "… more line(s) omitted" remainder at this small size (well under the files cap).
+  assert.ok(!s!.includes("more line(s) omitted"));
+});
+
+test("buildCheckpointSummary caps the files list so a many-file run cannot flood it", () => {
+  // 40 read paths: the files block is one line per path, so it overruns the line cap and the
+  // tail is dropped with a visible remainder rather than riding into the summary as one long
+  // unbounded line (the guard the module's doc comment promises). 40 paths is 40 lines
+  // (the first rides the `read:` line), so the last 10 beyond the 30-line cap are dropped.
+  const fo = {
+    read: new Set(Array.from({ length: 40 }, (_, i) => `p${i}.ts`)),
+    written: new Set<string>(),
+    edited: new Set<string>(),
+  };
+  const s = buildCheckpointSummary({ done: "touched many files" }, fo, null, null)!;
+  assert.match(s!, /read: p0\.ts/);
+  // The tail is dropped: the last path is gone, and a named remainder says how much was cut.
+  assert.ok(!s!.includes("p39.ts"), "the paths beyond the cap are dropped");
+  assert.match(s!, /… 10 more line\(s\) omitted/);
+});
+
+test("buildCheckpointSummary omits an empty file list rather than a bare label", () => {
+  // read empty, one written file: only the non-empty list renders — no `read:` line with no paths.
+  const fo = { read: new Set<string>(), written: new Set(["x.ts"]), edited: new Set<string>() };
+  const s = buildCheckpointSummary({ done: "d" }, fo, null, null)!;
+  assert.match(s!, /modified: x\.ts/);
+  assert.ok(!s!.includes("read:"), "an empty read list renders no line");
 });
 
 test("buildCheckpointSummary omits a measured line when its source is absent rather than guessing", () => {

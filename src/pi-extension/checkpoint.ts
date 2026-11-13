@@ -56,6 +56,11 @@ export const CHECKPOINT_MIN_TURNS = 6;
 // The git block is capped so a busy worktree cannot flood the summary; the whole block stays
 // at or under this many lines.
 const GIT_LINE_CAP = 40;
+// The files block lists one path per line, so a run that touched many files can still flood
+// it; each block is capped to this many lines, with block's "… N more line(s) omitted"
+// remainder naming the drop — the same flood guard the git block uses, sized for a step that
+// touched a handful of files rather than a worktree-wide status.
+const FILES_LINE_CAP = 30;
 
 /** The token floor below which a checkpoint is refused: the greater of `CHECKPOINT_MIN_TOKENS`
  * and `CHECKPOINT_WINDOW_FRACTION` of the window. An unknown window leaves the floor at the
@@ -103,8 +108,18 @@ function block(header: string, body: string, lineCap: number): string {
   return `${header}:\n${shown.join("\n")}${omitted > 0 ? `\n… ${omitted} more line(s) omitted` : ""}`;
 }
 
+/** The files block's one category as lines: a `label: <path>` on the first line, one path per
+ * line after, or the empty string for an empty list (which the caller drops, and block would
+ * render as no block). One path per line is what makes block's line cap bind the list, so a run
+ * that touched many files overruns the cap and block's remainder names the drop instead of one
+ * unbounded joined line. */
+function fileOpList(label: string, paths: string[]): string {
+  return paths.length > 0 ? `${label}: ${paths.join("\n")}` : "";
+}
+
 /** The compaction entry's summary: the model's three fields word for word, the read and
- * modified file lists from the file ops, and a capped `git status`/`git diff --shortstat` of the
+ * modified file lists (one path per line, each capped to a handful, a "… N more" remainder when
+ * it overruns) from the file ops, and a capped `git status`/`git diff --shortstat` of the
  * worktree. Every measured line is dropped rather than guessed when its source is absent, so
  * the summary never lies. */
 export function buildCheckpointSummary(
@@ -121,10 +136,12 @@ export function buildCheckpointSummary(
     const files = block(
       "files",
       [
-        `read: ${[...fileOps.read].sort().join(", ")}`,
-        `modified: ${[...new Set([...fileOps.written, ...fileOps.edited])].sort().join(", ")}`,
-      ].join("\n"),
-      12,
+        fileOpList("read", [...fileOps.read].sort()),
+        fileOpList("modified", [...new Set([...fileOps.written, ...fileOps.edited])].sort()),
+      ]
+        .filter((l) => l !== "")
+        .join("\n"),
+      FILES_LINE_CAP,
     );
     if (files) parts.push(files);
   }
