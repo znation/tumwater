@@ -418,14 +418,14 @@ test("a 13th lesson is refused with the count cap and the file is left unchanged
   assert.equal(lessonsText(lessonsPath), before, "the file is untouched");
 });
 
-test("a lesson over 300 bytes or containing a blank line is refused with exit 1, file unchanged", () => {
+test("a lesson over 300 bytes or containing a line break is refused with exit 1, file unchanged", () => {
   const { notesPath, lessonsPath } = lessonNotesPath();
   const before = lessonsText(lessonsPath) ?? undefined;
   let res = run(["lesson", "add"], notesPath, "a".repeat(301) + "\n");
   assert.equal(res.status, 1, "over the per-lesson cap");
   assert.match(res.stderr, /shorten it to at most 300 bytes/);
   res = run(["lesson", "add"], notesPath, "line one\nline two\n");
-  assert.equal(res.status, 1, "a blank line is not a single paragraph");
+  assert.equal(res.status, 1, "a line break is not a single paragraph");
   assert.match(res.stderr, /single paragraph/);
   assert.equal(lessonsText(lessonsPath), before);
 });
