@@ -223,11 +223,13 @@ export function runScriptGroup(
       if (abortKillTimer) clearTimeout(abortKillTimer);
       if (opts.signal) opts.signal.removeEventListener("abort", stopForAbort);
       const timedOut = deadline.fired();
-      if (timedOut) {
-        // Nothing more is read once the deadline has fired: release the handles so a pipe
-        // holder that escaped the group (a setsid'd daemon) cannot keep the harness alive.
-        releaseChildHandles(child);
-      }
+      // Every settle stops reading the child: release its handles so a pipe holder that escaped
+      // the group — a setsid'd daemon a build check spawned, or a SIGTERM-trapping grandchild an
+      // abort could not take down before the run settled — cannot keep the harness's event loop
+      // alive through the pipe it inherited. A healthy run's streams are already closed, so this
+      // is a no-op in the common case and cleans up only the escaped writer. The timeout, the
+      // abort, and the ordinary close all settle here, so the release is uniform across them.
+      releaseChildHandles(child);
       const run: BuildCheckRun = { spawnedAt, settledAt: Date.now(), timeoutMs: opts.timeoutMs };
       if (timedOut) run.deadlineLateMs = deadline.lateMs();
       resolve({ ...result, aborted, timedOut, stdout: captured.stdout, stderr: captured.stderr, run });

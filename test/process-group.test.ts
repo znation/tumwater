@@ -101,6 +101,76 @@ test("an abort signal stops the whole group like a timeout, and the result says 
   }
 });
 
+// The handle release is uniform across every settle path, not just the timeout: a descendant
+// that escapes the group and keeps a pipe — the setsid'd daemon the module's own contract
+// names ("a descendant that escaped the group cannot keep the harness's handles open") — must
+// not keep the harness's event loop alive through the inherited pipe. The timeout branch already
+// released the handles; the abort and the ordinary close must settle the same way, or an escaped
+// pipe-holder is what keeps the orchestrator alive after a shutdown that aborts a running check.
+//
+// The daemon sits in its OWN process group (detached, like a setsid'd daemon), so neither the
+// deadline's nor the abort's group-wide SIGTERM/SIGKILL can reach it — only an explicit release
+// of the harness's read-ends can let them close. The run is settled on an ABORT (a user stop),
+// the non-timeout path the timeout branch never covered. The daemon self-terminates a few seconds
+// later, so the test bounds itself and leaves no orphan whether or not the release landed.
+test("an aborted run releases its pipe handles, so an escaped separate-group daemon adds no harness handle", async () => {
+  const dir = fs.mkdtempSync(path.join(tmpdir(), "pg-escaped-daemon-"));
+  // A spawner that starts a daemon in its own process group, still holding the run's inherited
+  // stdout/stderr pipes: `detached: true` makes it a new group leader (the setsid shape), so the
+  // run's group signals cannot take it down. It self-exits after 3 s, bounding the test.
+  fs.writeFileSync(
+    path.join(dir, "spawner.js"),
+    [
+      "const cp=require('node:child_process');const fs=require('node:fs');",
+      "const d=cp.spawn('node',['-e','setInterval(()=>{},100);setTimeout(()=>process.exit(0),3000)'],{detached:true,stdio:[0,1,2]});",
+      "d.unref();fs.writeFileSync(process.argv[2],String(d.pid));",
+    ].join("\n"),
+  );
+  const daemon = path.join(dir, "daemon");
+  const handles = () =>
+    process.getActiveResourcesInfo().filter((r) => r === "PipeWrap" || r === "ProcessWrap").length;
+  const baseline = handles();
+  const controller = new AbortController();
+  try {
+    const pending = runScriptGroup(
+      "sh",
+      // The leader starts the daemon, then sleeps well past any deadline, so the run does not
+      // settle on its own — the abort below is what settles it, while the daemon (in its
+      // separate group) is still alive and holding the pipes.
+      ["-c", `node "${path.join(dir, "spawner.js")}" "${daemon}"; sleep 30; exit 0`],
+      { cwd: dir, timeoutMs: 30_000, killGraceMs: 1_000, maxBuffer: 1024, signal: controller.signal },
+    );
+    // The daemon is up (its pid recorded) before the abort settles the run on the group being
+    // gone — so at settle the daemon still holds the pipe write-ends.
+    await waitForFile(daemon);
+    controller.abort();
+    const r = await pending;
+    assert.equal(r.aborted, true, "the run settled on the harness's abort");
+    assert.equal(r.timedOut, false, "the abort settled it, not a deadline");
+    // The daemon still holds the pipe write-ends, but the settle released the harness's read-ends,
+    // which close asynchronously once destroyed. Allow that close to land, then the active-
+    // resource count must be back to the baseline: the escaped daemon is not what keeps the event
+    // loop alive. A settle that does not release the handles leaves them open, so the count stays
+    // above the baseline and this fails.
+    await new Promise((res) => setTimeout(res, 500));
+    assert.equal(
+      handles(),
+      baseline,
+      "the settle released its pipe handles; the escaped daemon adds no harness handle",
+    );
+    // The daemon is in a separate group the run's signals cannot reach, so take it down by pid.
+    // It self-terminates at 3 s regardless; the explicit kill only makes the red state bound
+    // itself rather than hold the suite open until then.
+    try {
+      process.kill(parseInt(fs.readFileSync(daemon, "utf8"), 10), "SIGKILL");
+    } catch {
+      // Already gone: nothing to clean up.
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 /** Poll until a pid no longer exists (or EPERM no longer reports it): a process in the same
  * group the abort SIGTERMed is killed and reaped, so a signal-0 probe eventually throws ESRCH. */
 async function waitForGone(pid: number): Promise<void> {
