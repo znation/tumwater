@@ -11,8 +11,6 @@ import {
   signalTree,
   withoutLaunchServicesCheckIn,
 } from "./process.js";
-
-export { KILL_GRACE_MS };
 import { errCode } from "../errno.js";
 
 /** The detached process-group runner: runScriptGroup starts a command in its own process
@@ -38,6 +36,7 @@ import { errCode } from "../errno.js";
  * Defined (and owned) in process.ts, where terminateChild's group kill and the run-marker
  * sweep's orphan kill share the same value; re-exported here so the build boundary names the
  * one it grants without importing a new module. */
+export { KILL_GRACE_MS };
 
 /** What one runScriptGroup attempt observed — enough for runBuildCheck to classify the
  * outcome exactly as execFile's rejection used to: how the process ended (exit code or
