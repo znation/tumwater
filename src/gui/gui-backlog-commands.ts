@@ -56,6 +56,25 @@ function checkedEntryPositionAndTitle(
   return { position, title };
 }
 
+/** Shared 400-validation for a backlog entry-drawer body — the `kind` (checked
+ * `checkedBacklogKind`) and the `position` + `title` pair (checked `checkedEntryPositionAndTitle`)
+ * the cancel/retire/release/top/edit endpoints all ask for in the same words, run in that
+ * order. The one home of the guard sequence those five handlers used to repeat inline: it sends
+ * the first failing 400 and returns null, else the validated `{ kind, position, title }` the
+ * drawer's domain call (tryCancelEntry, tryRetirePlan/Bug, tryReleaseEntry, tryMoveEntryToTop,
+ * tryEditEntry) takes. The file and question-answer handlers need only one of the two checks, so
+ * they call that validator directly instead. */
+function checkedEntryTarget(
+  res: http.ServerResponse,
+  body: Record<string, unknown>,
+): { kind: "bug" | "plan"; position: number; title: string } | null {
+  const kind = checkedBacklogKind(res, body);
+  if (kind === null) return null;
+  const pair = checkedEntryPositionAndTitle(res, body);
+  if (pair === null) return null;
+  return { kind, position: pair.position, title: pair.title };
+}
+
 /** Run a backlog/QUESTIONS domain call, mapping a thrown filesystem/validation error onto the
  * same 400 `{error}` reply the handlers' explicit validation arms send — so a thrown check and
  * an explicit one answer identically and the try/catch no longer opens at every call site, one
@@ -158,11 +177,9 @@ export async function handleBacklogFile(req: http.IncomingMessage, res: http.Ser
 export async function handleBacklogCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>"}');
   if (!body) return;
-  const kind = checkedBacklogKind(res, body);
-  if (!kind) return;
-  const pair = checkedEntryPositionAndTitle(res, body);
-  if (!pair) return;
-  const { position, title } = pair;
+  const target = checkedEntryTarget(res, body);
+  if (target === null) return;
+  const { kind, position, title } = target;
   const claims = allLiveClaims(root);
   const outcome = outcomeOrBadRequest<CancelEntryOutcome>(res, () => tryCancelEntry(root, kind, position, title));
   if (outcome === null) return;
@@ -193,11 +210,9 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
 export async function handleBacklogRetire(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug"|"plan", "position": 1, "title": "<heading>"}');
   if (!body) return;
-  const kind = checkedBacklogKind(res, body);
-  if (!kind) return;
-  const pair = checkedEntryPositionAndTitle(res, body);
-  if (!pair) return;
-  const { position, title } = pair;
+  const target = checkedEntryTarget(res, body);
+  if (target === null) return;
+  const { kind, position, title } = target;
   const retire = kind === "bug" ? tryRetireBug : tryRetirePlan;
   const outcome = outcomeOrBadRequest<RetireEntryOutcome>(res, () => retire(root, position, title));
   if (outcome === null) return;
@@ -249,11 +264,9 @@ async function respondBacklogWrite(
 export async function handleBacklogRelease(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>"}');
   if (!body) return;
-  const kind = checkedBacklogKind(res, body);
-  if (!kind) return;
-  const pair = checkedEntryPositionAndTitle(res, body);
-  if (!pair) return;
-  const { position, title } = pair;
+  const target = checkedEntryTarget(res, body);
+  if (target === null) return;
+  const { kind, position, title } = target;
   const outcome = outcomeOrBadRequest<ReleaseEntryOutcome>(res, () => tryReleaseEntry(root, kind, position, title));
   if (outcome === null) return;
   if (outcome.status === "released") {
@@ -274,11 +287,9 @@ export async function handleBacklogRelease(req: http.IncomingMessage, res: http.
 export async function handleBacklogTop(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 2, "title": "<heading>"}');
   if (!body) return;
-  const kind = checkedBacklogKind(res, body);
-  if (!kind) return;
-  const pair = checkedEntryPositionAndTitle(res, body);
-  if (!pair) return;
-  const { position, title } = pair;
+  const target = checkedEntryTarget(res, body);
+  if (target === null) return;
+  const { kind, position, title } = target;
   const outcome = outcomeOrBadRequest<MoveEntryOutcome>(res, () => tryMoveEntryToTop(root, kind, position, title));
   if (outcome === null) return;
   if (outcome.status === "moved_to_top") {
@@ -300,11 +311,9 @@ export async function handleBacklogTop(req: http.IncomingMessage, res: http.Serv
 export async function handleBacklogEdit(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>", "newTitle": "...", "newBody": "..."}');
   if (!body) return;
-  const kind = checkedBacklogKind(res, body);
-  if (!kind) return;
-  const pair = checkedEntryPositionAndTitle(res, body);
-  if (!pair) return;
-  const { position, title } = pair;
+  const target = checkedEntryTarget(res, body);
+  if (target === null) return;
+  const { kind, position, title } = target;
   const { newTitle, newBody } = body;
   if (typeof newTitle !== "string" || collapseWhitespace(newTitle) === "") {
     badRequest(res, "newTitle required");
