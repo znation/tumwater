@@ -22,6 +22,19 @@ import {
   releaseQuarantine,
 } from "../review/known-flakes.js";
 import { shortSha } from "../text/format.js";
+import {
+  type OpenRedSpell,
+  clearKnown,
+  clearSpell,
+  knownFailuresFor,
+  narrowStillFailing,
+  setKnownFailures,
+  setKnownOffenders,
+  setSpell,
+  spellFor,
+  spellOpen,
+  spellOpenTests,
+} from "./main-red-spell.js";
 import { treeDiffFiles } from "../git/git-diff.js";
 import { mergingRoleOf } from "../events/event-read.js";
 import { isExemptDiff } from "../review/exemptions.js";
@@ -131,62 +144,6 @@ interface MainWatch {
   idle(): Promise<void>;
 }
 
-/** The failing tests of each root's newest watch verdict, keyed by root. */
-const knownFailures = new Map<string, string[]>();
-
-/** The policy-scan offender lists of each root's newest watch verdict, keyed by root then by
- * failing test title (MainBaseline.failingOffenders, policy-offenders.ts). It keeps a restored
- * or inherited red intact (and the open red spell below narrows it with the tests); nothing
- * outside this plumbing reads it — the stale-base series closed through the scans'
- * offender-named subtests, not this map (BUGS-FIXED.md 2026-11-08). */
-const knownOffenders = new Map<string, Record<string, string[]>>();
-
-/** Each root's open red spell (Hourly full check, part 3b/4): the commit that OPENED the red —
- * the tip of the first red verdict since the last green — and the failing tests STILL open on
- * the newest red tip. The open set starts from the confirmed red's tests and narrows as a later
- * head's re-run shows tests passing, so a healed test leaves the set (and `knownMainFailures`)
- * before the whole set clears. The opener stays the named culprit while the spell is open: a
- * later tip re-checks only the open set and never re-attributes. A green verdict clears the
- * whole entry, so a red that opens after a green names its own opener. In-memory only: a
- * restart mid-red loses the spell's opener, and the next settled red tip then names itself as
- * culprit — the pre-fix behaviour, and a bounded one (one tip per restart, since a spell's
- * later tips inherit the red and settle without a re-run). */
-interface OpenRedSpell {
-  opener: string;
-  tests: string[];
-  /** The file each open test lives in, from the latest red baseline that named it — what a
-   * re-run of only those tests selects files by (build-check-rerun.ts). Red only; absent when
-   * the output named no file or a previous re-run dropped it. */
-  files?: Readonly<Record<string, string>>;
-  /** The policy-scan offender lists the red carried (MainBaseline.failingOffenders), narrowed as
-   * the spell's tests narrow. Red only; plumbing, no reader — the stale-base excuse closed
-   * via the scans' offender-named subtests (BUGS-FIXED.md 2026-11-08), not this map. */
-  offenders?: Readonly<Record<string, string[]>>;
-}
-const redSpellOpeners = new Map<string, OpenRedSpell>();
-
-/** The open failing tests of `root`'s red spell: empty when no spell is open (a green, or none
- * ever opened). A red's <main-known-red> note reads this so a test a later head showed passing
- * leaves the set while the spell is still open. */
-function openRedTests(root: string): string[] {
-  return redSpellOpeners.get(root)?.tests ?? [];
-}
-
-/** Drop an offender map's entries whose test title is no longer open, so a red that narrows to
- * still-failing tests keeps offenders only for them (undefined in → undefined out). */
-function narrowOffenders(
-  offenders: Readonly<Record<string, string[]>> | undefined,
-  stillOpen: readonly string[],
-): Record<string, string[]> | undefined {
-  if (offenders === undefined) return undefined;
-  const keep = new Set(stillOpen);
-  const out: Record<string, string[]> = {};
-  for (const [title, list] of Object.entries(offenders)) {
-    if (keep.has(title)) out[title] = [...list];
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
-}
-
 /** Main's known failures: while a red spell is open, the spell's remaining open failing tests —
  * narrowed on every new head by re-running only them, so a test a later head showed passing
  * stops being named before the whole red clears (part 3b/4). With no spell open, the failing
@@ -194,8 +151,8 @@ function narrowOffenders(
  * flaky test (review/known-flakes.ts). Empty when the verdict is green, red with no parsed test,
  * or none has been recorded yet in this process, and nothing is quarantined. */
 export function knownMainFailures(root: string): string[] {
-  const open = openRedTests(root);
-  const base = open.length > 0 ? open : (knownFailures.get(root) ?? []);
+  const open = spellOpenTests(root);
+  const base = open.length > 0 ? open : knownFailuresFor(root);
   return distinctOrdered([...base, ...quarantinedTests(root)]);
 }
 
@@ -272,8 +229,8 @@ async function recordMainCheck(
   // A red naming only quarantined tests counts as green: no redeploy hold.
   const quarantined = baseline.status === "red" ? onlyQuarantined(root, baseline.failingTests) : null;
   const red = baseline.status === "red" && !quarantined;
-  knownFailures.set(root, red ? (baseline.failingTests ?? []) : []);
-  knownOffenders.set(root, red ? (baseline.failingOffenders ?? {}) : {});
+  setKnownFailures(root, red ? (baseline.failingTests ?? []) : []);
+  setKnownOffenders(root, red ? (baseline.failingOffenders ?? {}) : {});
   const covered = await countCovered(wt, previous, baseline.sha);
   logEventBestEffort(
     root,
@@ -419,25 +376,21 @@ function reportCulprit(root: string, onCulprit: ((culprit: MainCulprit) => void)
   // change the suite, and a code tip does not open a SECOND spell until a green closed the
   // first) is not re-attributed — no new event, no new heal prompt (the heal dedup already
   // re-queues when the failing set returns after a green).
-  const open = redSpellOpeners.get(root);
+  const open = spellFor(root);
   if (open !== undefined) {
     // A full-check fallback on a later head re-settles the spell's open set from that check:
     // the head may have healed one failure and introduced another, and `knownMainFailures`
     // reads the open set while the spell is open. Keep the opener (no re-attribution).
-    redSpellOpeners.set(root, {
-      opener: open.opener,
-      tests: baseline.failingTests ?? [],
-      ...(baseline.failingTestFiles ? { files: baseline.failingTestFiles } : {}),
-      ...(baseline.failingOffenders ? { offenders: baseline.failingOffenders } : {}),
-    });
+    setSpell(
+      root,
+      open.opener,
+      baseline.failingTests ?? [],
+      baseline.failingTestFiles,
+      baseline.failingOffenders,
+    );
     return;
   }
-  redSpellOpeners.set(root, {
-    opener: culprit,
-    tests: baseline.failingTests ?? [],
-    ...(baseline.failingTestFiles ? { files: baseline.failingTestFiles } : {}),
-    ...(baseline.failingOffenders ? { offenders: baseline.failingOffenders } : {}),
-  });
+  setSpell(root, culprit, baseline.failingTests ?? [], baseline.failingTestFiles, baseline.failingOffenders);
   const runner = mergingRoleOf(root, culprit);
   logEventBestEffort(root, {
     source: TUMWATER_SOURCE,
@@ -689,7 +642,7 @@ export function createMainWatch(
       // re-run that reaches no verdict), `narrowOpenRed` returns false and the head falls through
       // to the normal full-check path below — the pre-part-3b/4 behaviour, so a project without
       // a re-run command still re-checks every red head in full.
-      const spell = redSpellOpeners.get(root);
+      const spell = spellFor(root);
       if (spell !== undefined && (await narrowOpenRed(wt, tip, spell, config))) {
         return;
       }
@@ -724,7 +677,7 @@ export function createMainWatch(
       // re-attributing: the opener guard below keeps the spell's own opener (INV-AZ4). A fresh
       // red (no spell open) names the breaker; the confirming run inside narrowOpenRed runs with
       // the spell already deleted, so it too names its own opener.
-      const opener = redSpellOpeners.has(root)
+      const opener = spellOpen(root)
         ? undefined
         : await settleOpener(root, mainBranch, wt, baseline.sha, coveredFrom, config, baseline.failingTests ?? [], baseline.failingTestFiles);
       const red = await recordMainCheck(root, wt, baseline, coveredFrom, ran, started, opener);
@@ -735,7 +688,7 @@ export function createMainWatch(
       if (!red) {
         clearHealKeyOnGreen();
         await dropHealPromptsCoveredBy(root, wt, baseline.sha);
-        redSpellOpeners.delete(root); // a green closes the red spell; the next red names its own opener
+        clearSpell(root); // a green closes the red spell; the next red names its own opener
         return;
       }
       // The spell's opener is blamed once: the first settled red tip since the last green names
@@ -779,23 +732,15 @@ export function createMainWatch(
 
   /** While `root`'s red spell is open (part 3b/4) and a re-run of the open failures still
    * fails: narrow the spell to the tests that failed again. A passing test has already left
-   * the open set in `stillFailing`; this rewrites `redSpellOpeners` to the still-failing set —
+   * the open set in `stillFailing`; this rewrites the spell to the still-failing set —
    * keeping the spell's own opener, its files, and the narrowed offenders — and the
    * known-failure maps, and logs the narrowed red `main_check` with the spell's opener: no
    * re-attribution, no new culprit. */
   function narrowStillFailingRed(tip: string, spell: OpenRedSpell, stillFailing: string[]): void {
     // The spell stays open, narrowed: a passing test leaves the open set and the read of main's
     // known failures. The failing tests obey the spell's own opener attribution — no
-    // re-attribution, no new culprit — and `redSpellOpeners` keeps the opener.
-    const narrowed = narrowOffenders(spell.offenders, stillFailing);
-    redSpellOpeners.set(root, {
-      opener: spell.opener,
-      tests: stillFailing,
-      ...(spell.files !== undefined ? { files: spell.files } : {}),
-      ...(narrowed !== undefined ? { offenders: narrowed } : {}),
-    });
-    knownFailures.set(root, stillFailing);
-    knownOffenders.set(root, narrowed ?? {});
+    // re-attribution, no new culprit — and `narrowStillFailing` keeps the opener.
+    narrowStillFailing(root, spell, stillFailing);
     logEventBestEffort(root, mainCheckEvent(
       { status: "red", sha: tip, failingTests: stillFailing },
       true, // red
@@ -827,9 +772,8 @@ export function createMainWatch(
     // the heal prompts still waiting for this red, delete the spell, and start one confirming
     // full run at once on this head.
     const covered = await countCovered(wt, before, tip);
-    knownFailures.set(root, []);
-    knownOffenders.set(root, {});
-    redSpellOpeners.delete(root);
+    clearKnown(root);
+    clearSpell(root);
     logEventBestEffort(root, mainCheckEvent({ status: "green", sha: tip }, false, null, covered, 0, undefined, true));
     clearHealKeyOnGreen();
     await dropHealPromptsCoveredBy(root, wt, tip);
@@ -866,7 +810,7 @@ export function createMainWatch(
       if (!confirmRed) {
         clearHealKeyOnGreen();
         await dropHealPromptsCoveredBy(root, wt, confirmBaseline.sha);
-        redSpellOpeners.delete(root);
+        clearSpell(root);
         return;
       }
       reportCulprit(root, onCulprit, confirmBaseline, confirmedOpener ?? confirmBaseline.sha);

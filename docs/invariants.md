@@ -3588,7 +3588,7 @@ to a full check instead, preserving the pre-narrowing behavior. The G1 clause an
 red detail publish a blame whose commit is the spell's opener or its newest red tip, so a red
 re-checked on a later tip keeps naming the opener instead of dropping or moving its blame.
 
-**Binds.** `src/baseline/main-watch.ts` (`settleOpener`, `redOpener`, `reportCulprit`, the `redSpellOpeners` map),
+**Binds.** `src/baseline/main-watch.ts` (`settleOpener`, `redOpener`, `reportCulprit`), `src/baseline/main-red-spell.ts` (the `redSpellOpeners` map and its spell transitions),
 `src/baseline/main-guardrails.ts` (`redBlameClause`), `src/status/status-polls.ts`
 (`scanMainCheck`'s `spellOpener`, `mainCheckForPoll`'s red detail).
 
