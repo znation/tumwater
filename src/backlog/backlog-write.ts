@@ -26,13 +26,20 @@ import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
  * stamps with the date it filed on. */
 const operatorStamp = () => `reported by the user ${formatDate(new Date())}`;
 
-/** The kind's open-section markdown file and its `## ` heading: bugs live in BUGS.md's `Open`
- * section, plan requests in PLANS.md's `Planned`. Every position-based writer (cancel, edit,
- * release, show) resolves the same pair. */
-export function backlogTarget(kind: "bug" | "plan"): { fileName: string; sectionTitle: string } {
+/** The kind's full backlog target: its open-section markdown file (`BUGS.md` for bugs,
+ * `PLANS.md` for plans), the `## ` section that open entries live under (`Open`/`Planned`),
+ * and the init template the file is seeded with when tumwater never created it (absent file,
+ * not a stale one — the append's read-then-write still refuses an unreadable file). Every
+ * kind-dispatching writer in this module (file, cancel, edit, release, show, retire) resolves
+ * this one triple, so no site re-spells the file, section, or template literals. */
+export function backlogTarget(kind: "bug" | "plan"): {
+  fileName: string;
+  sectionTitle: string;
+  template: string;
+} {
   return kind === "bug"
-    ? { fileName: "BUGS.md", sectionTitle: "Open" }
-    : { fileName: "PLANS.md", sectionTitle: "Planned" };
+    ? { fileName: "BUGS.md", sectionTitle: "Open", template: BUGS_TEMPLATE }
+    : { fileName: "PLANS.md", sectionTitle: "Planned", template: PLANS_TEMPLATE };
 }
 
 /** The section-append entry point: run the whole read-modify-write under the cross-process
@@ -453,9 +460,8 @@ function requireBodyStructurallySound(body: string, verb: "filed" | "written"): 
  * checked the title is non-empty and the body passes bodyStructureProblem. */
 export function fileEntryWithBody(root: string, kind: "bug" | "plan", title: string, body: string): FiledEntry {
   const t = collapseWhitespace(title);
-  return kind === "plan"
-    ? appendOperatorEntry(root, "PLANS.md", PLANS_TEMPLATE, "Planned", t, body)
-    : appendOperatorEntry(root, "BUGS.md", BUGS_TEMPLATE, "Open", t, body);
+  const target = backlogTarget(kind);
+  return appendOperatorEntry(root, target.fileName, target.template, target.sectionTitle, t, body);
 }
 
 /** The `--file` filing form shared by plan and bug: split the file's title and body, require a
@@ -521,7 +527,8 @@ function appendOperatorEntry(
 export function appendBugEntryLocked(root: string, title: string, body: string): string {
   const t = collapseWhitespace(title);
   requireBodyStructurallySound(body, "filed");
-  appendEntryLocked(root, "BUGS.md", BUGS_TEMPLATE, "Open", `### ${t}`, body);
+  const target = backlogTarget("bug");
+  appendEntryLocked(root, target.fileName, target.template, target.sectionTitle, `### ${t}`, body);
   return t;
 }
 
@@ -533,7 +540,8 @@ export function appendBugEntryLocked(root: string, title: string, body: string):
 export function fileBug(root: string, rawText: string, usage: string): FiledEntry {
   const symptom = collapseWhitespace(rawText);
   requireEntryTitle("bug", symptom, usage);
-  return appendOperatorEntry(root, "BUGS.md", BUGS_TEMPLATE, "Open", symptom, "");
+  const target = backlogTarget("bug");
+  return appendOperatorEntry(root, target.fileName, target.template, target.sectionTitle, symptom, "");
 }
 
 /** `tumwater plan "<title>" [body...]`: append one `### <title> (reported by the user
@@ -544,19 +552,22 @@ export function fileBug(root: string, rawText: string, usage: string): FiledEntr
 export function filePlan(root: string, rawTitle: string, rawBody: string, usage: string): FiledEntry {
   const title = collapseWhitespace(rawTitle);
   requireEntryTitle("plan", title, usage);
-  return appendOperatorEntry(root, "PLANS.md", PLANS_TEMPLATE, "Planned", title, collapseWhitespace(rawBody));
+  const target = backlogTarget("plan");
+  return appendOperatorEntry(root, target.fileName, target.template, target.sectionTitle, title, collapseWhitespace(rawBody));
 }
 
 /** `tumwater bug --cancel <n>`: remove the nth entry from BUGS.md's `## Open`, as
  * `tumwater backlog` lists it. The returned title is the removed `### ` heading's text. */
 export function cancelBug(root: string, n: number): { file: string; title: string } {
-  return removeEntry(root, "BUGS.md", "Open", n);
+  const { fileName, sectionTitle } = backlogTarget("bug");
+  return removeEntry(root, fileName, sectionTitle, n);
 }
 
 /** `tumwater plan --cancel <n>`: remove the nth entry from PLANS.md's `## Planned`, as
  * `tumwater backlog` lists it. The returned title is the removed `### ` heading's text. */
 export function cancelPlan(root: string, n: number): { file: string; title: string } {
-  return removeEntry(root, "PLANS.md", "Planned", n);
+  const { fileName, sectionTitle } = backlogTarget("plan");
+  return removeEntry(root, fileName, sectionTitle, n);
 }
 
 /** `tumwater plan --retire <n> [--reason <text>]`: move the nth `## Planned` entry to
@@ -567,7 +578,8 @@ export function cancelPlan(root: string, n: number): { file: string; title: stri
  * heading and `retiredOn` today's date. An out-of-range position fails with locateEntry's
  * existing wording and writes nothing. */
 export function retirePlan(root: string, n: number, reason?: string | null): { file: string; title: string; retiredOn: string } {
-  return withPrimaryWorktreeLock(root, () => retireEntryLocked(root, "PLANS.md", "Planned", "Done", n, reason));
+  const { fileName, sectionTitle } = backlogTarget("plan");
+  return withPrimaryWorktreeLock(root, () => retireEntryLocked(root, fileName, sectionTitle, "Done", n, reason));
 }
 
 /** `tumwater bug --retire <n> [--reason <text>]`: the bug twin of retirePlan — move the nth
@@ -576,7 +588,8 @@ export function retirePlan(root: string, n: number, reason?: string | null): { f
  * obsolete bug leaves the same record a finished bug leaves. Same contract and out-of-range
  * wording as retirePlan ("no open bug at position …"), transposed to BUGS.md's sections. */
 export function retireBug(root: string, n: number, reason?: string | null): { file: string; title: string; retiredOn: string } {
-  return withPrimaryWorktreeLock(root, () => retireEntryLocked(root, "BUGS.md", "Open", "Fixed", n, reason));
+  const { fileName, sectionTitle } = backlogTarget("bug");
+  return withPrimaryWorktreeLock(root, () => retireEntryLocked(root, fileName, sectionTitle, "Fixed", n, reason));
 }
 
 /** What a title-checked dashboard retire did, the CancelEntryOutcome shape: `retired` wrote
@@ -613,14 +626,16 @@ function tryRetireEntry(
 /** `tumwater plan --retire` and its dashboard/TUI twins, title-checked: tryRetireEntry over
  * PLANS.md's Planned→Done, so a shifted ## Planned answers gone/moved as data. */
 export function tryRetirePlan(root: string, n: number, expectedTitle: string): RetireEntryOutcome {
-  return tryRetireEntry(root, "PLANS.md", "Planned", "Done", n, expectedTitle);
+  const { fileName, sectionTitle } = backlogTarget("plan");
+  return tryRetireEntry(root, fileName, sectionTitle, "Done", n, expectedTitle);
 }
 
 /** The title-checked bug twin of tryRetirePlan: the same locked move over BUGS.md's Open→Fixed,
  * so the dashboard Bugs drawer and the TUI's Ctrl+Y retire an open bug with the same
  * gone/moved refusals and the same retired record `tumwater bug --retire` leaves. */
 export function tryRetireBug(root: string, n: number, expectedTitle: string): RetireEntryOutcome {
-  return tryRetireEntry(root, "BUGS.md", "Open", "Fixed", n, expectedTitle);
+  const { fileName, sectionTitle } = backlogTarget("bug");
+  return tryRetireEntry(root, fileName, sectionTitle, "Fixed", n, expectedTitle);
 }
 
 /** The locked retire move shared by plan and bug: remove the `n`th `<fromSection>` entry whole
@@ -738,7 +753,8 @@ export function editBugFromText(root: string, n: number, text: string, usage: st
 export function editBug(root: string, n: number, rawText: string, usage: string): { file: string; title: string; unchanged?: true } {
   const symptom = collapseWhitespace(rawText);
   requireEntryTitle("bug", symptom, usage);
-  return editEntry(root, "BUGS.md", "Open", n, symptom, "");
+  const { fileName, sectionTitle } = backlogTarget("bug");
+  return editEntry(root, fileName, sectionTitle, n, symptom, "");
 }
 
 /** `tumwater plan --edit <n> "<title>" [body...]`: replace the nth PLANS.md `## Planned`
@@ -755,7 +771,8 @@ export function editPlan(
   const title = collapseWhitespace(rawTitle);
   requireEntryTitle("plan", title, usage);
   const body = collapseWhitespace(rawBody);
-  return editEntry(root, "PLANS.md", "Planned", n, title, body);
+  const { fileName, sectionTitle } = backlogTarget("plan");
+  return editEntry(root, fileName, sectionTitle, n, title, body);
 }
 
 /** The nth entry as the markdown file `--edit <n> --file` reads back: the stamp-stripped title
