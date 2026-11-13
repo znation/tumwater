@@ -1,63 +1,56 @@
-# tumwater 0.6.0
+# tumwater 0.7.0
 
 ## Highlights
 
-- **Bug retirement, everywhere plans retire.** `tumwater bug --retire <n> [--reason]` closes a
-  bug that will never be built, retiring it into `## Fixed` in BUGS.md. The same works from the
-  TUI Backlog pane and the dashboard drawer, with the same two-press confirm plan retirement
-  uses (`Ctrl+Y` for plans; `/api/backlog-retire` on the dashboard).
-- **Salvage is now a first-class command.** `tumwater salvage` lists the kept patches a failed
-  run left behind (`--show`/`--json` for detail), `salvage -f/--follow` repaints the kept-patch
-  list live, and `salvage --drop <n>` deletes a listed kept patch. Kept patches stay whole —
-  the saved diff is no longer trimmed by trailing-whitespace handling.
-- **Red spells heal by bisecting.** When main goes red, the bisect walks merged batches, re-runs
-  only the still-failing tests for each candidate, and names the commit that broke the suite —
-  not just main's tip. Status surfaces show the main-check verdict's age, next due time and
-  cleared-red state.
-- **Filtering everywhere.** `--grep` filters on `reviews`, `quarantine`, and `plan|bug --list`,
-  and `--show <n>` opens a read-only full entry for reviews, quarantine and prompts. Flag-shaped
-  patterns (`--grep --show`) are treated as literal text instead of being misrouted as flags.
-- **Held backlog views.** `--held` is the inverse of `--ready` on `tumwater backlog`, `plan
-  --list` and `bug --list`; the TUI's Ctrl+O cycle gains a held-only stop, and the dashboard
-  Backlog card gets a Held-only toggle.
+- **Salvage is now recoverable, not just inspectable.** `tumwater salvage --apply <n>` applies
+  a kept patch as unstaged edits (`--dry-run` previews the change); the Health view and the
+  dashboard Settings card list every kept patch with per-patch Apply/Drop, and `salvage --show
+  <n>` prints the patch's git diffstat under its saved line.
+- **One-shot model-check re-probe.** The dashboard gains a "Re-check now" button (POSTs
+  `/api/model-check`) the orchestrator consumes to re-probe the failed pairs immediately
+  instead of waiting for the next poll.
+- **Every write is scriptable.** All write commands now print one machine-readable `--json`
+  acknowledgement object, and the JSON list rows carry their positional number (`backlog`,
+  `reviews`, `wake --list`, `status` salvage patches), so a pipeline reads the result as data
+  instead of parsing prose.
+- **`config edit` writes the whole file** (opening it in `$VISUAL`/`$EDITOR` or taking
+  `--file`), validating it the way a load does and writing it atomically.
+- **Live transcript JSON.** `logs --transcript <id> --json` is the live twin of the
+  completed-run transcript JSON, so a running role's stream is consumable as it ends.
 
 ## Fixes
 
-- The merge gate fails closed when an abort fires, even over a green pre-check. A green
-  pre-check that raced an abort no longer lets an unverified merge land.
-- A merge that lands while the user is aborting settles as changed, so it is not re-leased
-  to the next run.
-- A post-merge reviewer fix that conflicts with main re-reviews the resolved tree instead of
-  landing blind.
-- Free primary with no fallback no longer pauses the budget gate at the cap.
-- A semaphore age bound promotes a starved tier-1 waiter instead of parking it indefinitely.
-- Policy scans name each offender as its own failing test, and the check, baseline and watch
-  capture the offender list; a stale-base aggregate no longer hides a fresh violation.
-- The doctor's provider-contention row surfaces live semaphore slot waits.
-- The remote CI doctor row is omitted when the ci role is disabled.
-- CLI pipes: a run whose stdout/stderr pipe reader closes exits quietly instead of
-  retrying with EPIPE noise.
+- The merge drain is now single-flight and resolves pins only, and a kept change no longer
+  re-queues — overlapping polls can no longer start two drains for one head.
+- A torn pi-log tail is repaired on the next run's open, and writes are guarded against dead
+  streams.
+- The Codex quota wall is classified as transient, so drained runs are excluded from the drop
+  limit instead of counting against it.
+- `runTui` resolves on EIO, so a dead terminal quits instead of crashing.
+- The model-check reviewer-pair hold parks only the post-merge review drain, and the
+  `lastApprovedHead` bypass is guarded against a consumed abort.
+- Out-of-range salvage/quarantine/reviews messages name the valid position range, and
+  exponent-shape refusals append the offending value.
 
 ## CLI
 
-- `bug --retire <n> [--reason]` retires a bug into `## Fixed`.
-- `salvage`, `salvage --show <n>`, `--json`, `--drop <n>`, `-f/--follow`.
-- `reviews --grep <text>` and `reviews --show <n>`; `quarantine --grep <text>` and
-  `quarantine --show <n>`.
-- `plan --list --grep` / `bug --list --grep` filter literally; `--grep --show` filters for the
-  literal `--show` text.
-- `prompt --list --grep` treats a flag-shaped pattern as literal text.
-- `backlog`, `plan --list` and `bug --list` gain `--held` (the inverse of `--ready`).
-- `wake --cancel <n>` drops one scheduled wake, numbered as in `wake --list`.
-- `config --diff` prints only the non-default resolved settings.
+- `salvage --apply <n> [--dry-run]` applies the Nth kept patch as unstaged edits; the dashboard
+  Settings card lists salvage patches with per-patch Apply/Drop, and the Health view lists them
+  below the doctor report.
+- `--json` acknowledgements on `role` overrides and holds, `config set/unset/edit`, `wake`,
+  `notify --test`, `prompt` enqueue/cancel/top/edit, `reset-counters`, `reclaim`, and
+  `init`/`--list-templates`.
+- `backlog --json`, `reviews --json`/`--show --json`, `wake --list --json`, and
+  `status --json` salvagePatches rows carry the whole-queue position.
+- `config edit [--file <path>] [--json]` rewrites the whole `tumwater.json`, atomically and
+  validated.
+- `logs --transcript <id> --json` prints the live transcript as JSON.
 
 ## Build and tests
 
-- Internals: more than 20 large functions split into named module-private stage helpers,
-  duplicated GUI role-field readers and the rev-list tokenizer folded into shared helpers,
-  pipeline tests rewritten to observe durable queue/check/event signals, direct unit tests
-  added for merge-questions, history-queued, agent-stream and inbox edge branches, and the
-  removed `approved in-flight` status is gone from status, GUI and queue surfaces.
-- Each agent run gets its own global git config, so runs cannot leak config into each other.
-
-311 files changed, +16,132 / −6,548 over 280 commits since v0.5.0.
+- The merge driver resolves pins only, with pin-based fixture helpers; the merge-pipeline tests
+  were rewritten to pin seeding and cover the resolve-author path.
+- More than 20 large functions split into named module-private stage helpers; the rev-list
+  tokenizer, the plain-decimal position parsers, and the GUI role-field readers folded into
+  shared helpers; direct unit tests added for merge-questions, history-queued, agent-stream and
+  inbox edge branches.
