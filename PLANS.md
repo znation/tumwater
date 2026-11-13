@@ -102,6 +102,60 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** test/tui-notes.test.ts plus the existing role-view, CLI-doc and doctor tests for those modules, then the project's gate.
 
+### Run checkpoints, part 1/2: A pi run keeps its prompt verbatim through every compaction (planned 2026-11-12 by the operator; design in plans/run-checkpoints.md; touches src/pi-extension/pin-prompt.ts src/pi/pi-args.ts test/pin-prompt.test.ts test/pi-args.test.ts)
+
+**Goal.** A pi run's prompt, which carries every rule tumwater gives it, survives compaction word for word. Today tumwater sends the prompt as the first user message. pi's compaction summarizes that message like any other (pi 1.5.2 docs/compaction.md), and LLM summaries keep about half of a rule set after one compaction (plans/run-checkpoints.md "Why"). After this part, a compacted run still sees the kill-by-PID, test-runner and write rules exactly as written.
+
+**Approach.**
+- New bundled extension src/pi-extension/pin-prompt.ts, loaded last in `bundledExtensionPaths` (src/pi/pi-args.ts) so it sees the messages after context-shake and strip-thinking.
+- On the first `context` event of a session, record the first user message verbatim.
+- On each later `context` event, if that exact message is not the first message, put it back at the front and leave everything else in order. If it is still first, return nothing, so the list is unchanged and the cache prefix is kept.
+- A resumed session (`--continue`, a new process) recovers the prompt from the first user message on the branch via `ctx.sessionManager`.
+- The extension never throws into pi. A missing hook or an unreadable session leaves the messages untouched and logs one line to stderr.
+- Keep the pure part (`pinPrompt(messages, prompt)` → messages or null) exported and unit-tested without pi, as context-budget does with `contextNote`.
+
+**Files touched.** src/pi-extension/pin-prompt.ts src/pi/pi-args.ts test/pin-prompt.test.ts test/pi-args.test.ts
+
+**Acceptance criteria.**
+- `pinPrompt` returns null for a list that already starts with the prompt. For a list that starts with a compaction summary, it returns `[prompt, …rest]`, with the rest in the same order, and the test writes that expected list out literally.
+- Re-inserting is idempotent: the prompt never appears twice.
+- Smoke-verified in real pi (installed 1.5.2) with a scratch session, recorded in the Done entry: set `reserveTokens` high enough that compaction triggers on the second turn. The request after the compaction starts with the original prompt bytes, and without the extension it does not.
+- `bundledExtensionPaths` lists pin-prompt.js last.
+- `npm run test:gate` passes.
+
+**Tests.** test/pin-prompt.test.ts covers the pure function and the resume recovery against a fake sessionManager. test/pi-args.test.ts covers load order. Then the project's gate.
+
+### Run checkpoints, part 2/2: pi runs compact at step boundaries through a `checkpoint` tool and a when-to-call rubric (planned 2026-11-12 by the operator; design in plans/run-checkpoints.md; requires Run checkpoints part 1/2 landed; touches src/pi-extension/checkpoint.ts src/pi-extension/context-budget.ts src/pi/pi-args.ts src/prompt/dialect.ts test/checkpoint.test.ts test/context-budget.test.ts test/prompt-dialect.test.ts)
+
+**Goal.** A pi run can drop its spent exploration right after finishing a step, keeping a summary it wrote itself, instead of carrying everything to pi's threshold compaction near the window's end. Today peak context is p50 49k and p90 101k, and 37% of runs pass 64k (2026-11-12, plans/run-checkpoints.md "Why"). The design follows SelfCompact: a model-called compaction tool plus a rubric for when to call it and when not to.
+
+**Approach.**
+- New bundled extension src/pi-extension/checkpoint.ts, loaded before pin-prompt.js. It registers a `checkpoint` tool with fields `done`, `state` and `next`, each at most 1,500 characters. The tool description carries the rubric (below).
+- **Suppression.** Decline with a one-line reason in the tool result when context is under max(32k tokens, 25% of the window), or when fewer than 6 turns have passed since the last accepted checkpoint. Read the window through the existing context-usage helper.
+- **On accept,** compact at the next turn boundary: a `compaction` draft entry at `turn_end`, falling back to `ctx.compact()` if the draft is refused. A `session_before_compact` handler, active only for a checkpoint it requested, returns a custom compaction. Its summary is:
+  - the three fields verbatim;
+  - the read and modified files from `preparation.fileOps`;
+  - `git status --short` and `git diff --stat` of the run's cwd, capped at 40 lines in total, from at most two git spawns, with a failed git call simply omitted.
+
+  Keep `firstKeptEntryId` from `preparation`. Set `details` to `{ kind: "checkpoint", accepted, declined }`. Leave threshold and overflow compactions to pi.
+- **The rubric,** in the tool description and as one new `backendRules` line in pi's dialect (src/prompt/dialect.ts), so no other backend's prompt changes. Use the wording in plans/run-checkpoints.md "Part 2".
+- **src/pi-extension/context-budget.ts:** the 50% and 70% notes gain "if you just finished a step, call `checkpoint` first". The 85% note is unchanged.
+
+**Files touched.** src/pi-extension/checkpoint.ts src/pi-extension/context-budget.ts src/pi/pi-args.ts src/prompt/dialect.ts test/checkpoint.test.ts test/context-budget.test.ts test/prompt-dialect.test.ts
+
+**Acceptance criteria.**
+- The pure decision function declines below the token floor, declines within 6 turns of the last checkpoint, and accepts otherwise. Each case uses literal token counts and windows chosen by the test, such as 20k of 128k (decline) and 50k of 128k (accept).
+- The pure summary builder renders the three fields verbatim, then the file lists, then the capped git lines, matching a literal expected string. It truncates at 40 git lines with a "+N more" line, and it omits the git section when git fails.
+- A compaction this extension did not request reaches pi's default path unchanged: the handler returns nothing for it.
+- Smoke-verified in real pi 1.5.2 with a scratch repo, recorded in the Done entry:
+  - a scripted run whose model calls `checkpoint` after enough context is compacted;
+  - the next request holds the run prompt (part 1/2), the checkpoint summary and the kept recent turns;
+  - the session file's compaction entry has `details.kind === "checkpoint"`.
+- Only pi's dialect gains the rule: the claude, codex and opencode prompts are byte-identical to before.
+- `npm run test:gate` passes.
+
+**Tests.** test/checkpoint.test.ts covers the decision function, the summary builder and the handler's ignore path. test/context-budget.test.ts covers the new note wording. test/prompt-dialect.test.ts covers the rule being pi-only. Then the project's gate. The lab A/B and the live measurement are operator steps (plans/run-checkpoints.md "How we will know it worked"): run the A/B right after merge, and revert this part if it loses.
+
 ### Subtract, part 6a/6: The live docs and example config keep only the mechanisms that survived the series (planned 2026-11-02 by the plan role, splitting the 2026-10-26 too-large sweep part 6/6 after feature held it; sibling to Subtract part 6b/6, independent in files of it; design in plans/subtract.md "The six strokes" and "How we will know it worked"; its original prerequisites Subtract parts 1e/6, 5v/6 and 5x/6 have landed, and it requires Subtract part 3g/7 landed, the last unlanded Subtract part; touches docs/config.md docs/cli.md docs/glossary.md docs/how-it-works.md docs/invariants.md README.md DEVELOPMENT.md tumwater.example.json)
 
 **Goal.** The live prose and `tumwater.example.json` describe only mechanisms that still exist after the Subtract series: the names whose producer and reader the earlier parts removed are gone from the config tables, command lists, glossary, architecture prose and example config, while every mechanism the user kept is still documented and its keys still appear. This is the documentation half of the old sweep; the doctor rows, tests and before/after counts are part 6b/6.
