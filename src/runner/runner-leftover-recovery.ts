@@ -1,3 +1,10 @@
+/** The leftover-recovery half of a run, split out of runner-run.ts (2026-11-11, which shed its
+ * change-apply half into runner-apply.ts): the pre-author step that recovers a previous run's
+ * unmerged commit — `recoverLeftoversForRun` re-pins the leftover so it merges through the same
+ * pipeline as a fresh change, ends the run when it salvages one, and appends the red-main and
+ * remote-CI notes to the prompt the run authors on. (The run's own post-kill abort/reset phases
+ * live in runner-recovery.ts, a different thing — this one recovers a leftover commit, that one
+ * settles a killed run; both feed the prompt `runWithWorktreePhase` authors.) */
 import { logEventBestEffort } from "../events/events.js";
 import { recoverLeftover, setAsideWithdrawnWork } from "./runner-leftover.js";
 import { resetWorktreeToMain } from "../git/worktree.js";

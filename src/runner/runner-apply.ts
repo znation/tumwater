@@ -1,3 +1,11 @@
+/** The change-apply half of a run, split out of runner-run.ts (2026-11-11, which shed its
+ * leftover-recovery half into runner-leftover-recovery.ts): the pre-author steps that re-apply a
+ * change over current main — `applyConflictHandback` re-applies a handed-back change with its
+ * conflict markers left in place, `applyRevisionOrReject` re-applies a rejected diff for revision,
+ * and `resendHandoffNote` re-sends a hand-off's hand-back note to its fresh session. Each appends
+ * its note to the prompt `runWithWorktreePhase` authors; they run before the author run and after
+ * recovery. (The run's own post-kill abort/reset phases live in runner-recovery.ts, a different
+ * thing — this module applies a change, that one settles a killed run.) */
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { deleteRef, commitMessage, changeBaseRev } from "../git/git.js";
 import { mergeRefName, rejectedRefName } from "../paths.js";

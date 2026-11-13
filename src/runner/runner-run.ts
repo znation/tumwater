@@ -51,8 +51,8 @@ import {
   type RemoteResult,
 } from "../verdict/reply-contract.js";
 import { remoteCiTarget } from "../observer/remote-ci.js";
-import { recoverLeftoversForRun } from "./runner-recovery-family.js";
-import { applyConflictHandback, applyRevisionOrReject, resendHandoffNote } from "./runner-apply-family.js";
+import { recoverLeftoversForRun } from "./runner-leftover-recovery.js";
+import { applyConflictHandback, applyRevisionOrReject, resendHandoffNote } from "./runner-apply.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 
 /** Everything the run-pipeline phases need from their `RoleRunner` host. The runner builds one

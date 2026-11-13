@@ -258,8 +258,10 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 ## Layout
 
 - `src/runner/runner.ts`: the runner class and its lifecycle/public surface. `src/runner/runner-pi.ts`
-  holds its pi-run plumbing, `runner-run.ts` the run pipeline phases, `runner-recovery.ts`
-  the abort/pin/recovery phases, and `runner-request-timeouts.ts` the capped-config idiom the two
+  holds its pi-run plumbing, `runner-run.ts` the run pipeline phases (it calls the leftover-recovery
+  and change-apply halves — `runner-leftover-recovery.ts` and `runner-apply.ts` — before the author
+  run), `runner-recovery.ts` the phases that settle a run killed mid-flight (distinct from the leftover
+  recovery above), and `runner-request-timeouts.ts` the capped-config idiom the two
   `--continue` follow-up turns share.
 - `src/orchestrator/orchestrator.ts`: the scheduler; `src/orchestrator/orchestrator-launch.ts`
   holds its launch pass (admitting due roles to their runs).

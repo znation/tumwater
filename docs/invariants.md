@@ -949,8 +949,9 @@ never drops one.
 
 **Binds.** `src/scheduling/claims.ts` (`claimReleaseReason`, `dropWithdrawnWork`),
 `src/scheduling/scope.ts` (the poll's release loop), `src/runner/runner-leftover.ts`
-(`setAsideWithdrawnWork`), `src/runner/runner-run.ts` (`recoverLeftoversForRun`,
-`restoreSalvagedPhase`), `src/merge/merge-withdrawn.ts`
+(`setAsideWithdrawnWork`), `src/runner/runner-leftover-recovery.ts`
+(`recoverLeftoversForRun`), `src/runner/runner-run.ts`
+(`restoreSalvagedPhase`), `src/merge/merge-withdrawn.ts`
 (`withdrawnEntries`, `dropWithdrawnPin`), `src/merge/merge-to-main.ts` (`tryMerge`),
 `src/merge/merge-core.ts` (`mergeApprovedChangeIn`),
 `src/run/run-stage.ts` (the enqueue), `src/run/run-apply.ts` (`applyMergeOutcome`).
