@@ -30,7 +30,7 @@ import { pathTokens } from "../text/text.js";
 import { isDirectory, readRegularTextOrNull, readTextOrNull, statOrNull } from "../files/files.js";
 import { dayKey } from "../text/datetime.js";
 import { appendPromptNote, prependPromptNote } from "../text/format.js";
-import { ROLE_NOTES_MAX_BYTES, readRoleLessons, roleLessonsText } from "../roles/role-notes-write.js";
+import { ROLE_LESSONS_MAX_BYTES, ROLE_NOTES_MAX_BYTES, readRoleLessons, roleLessonsText } from "../roles/role-notes-write.js";
 import { truncateWithNote } from "../text/text.js";
 import { renderBacklogStructureBlock, renderDuplicatePlansBlock } from "../backlog/backlog-structure.js";
 import { renderBacklogIndexBlock } from "../backlog/backlog-index.js";
@@ -347,14 +347,19 @@ function readPromptNotes(
   // A missing file yields the empty store, so no lessons block; an unreadable file swallows
   // to the empty store like the note, so a torn runtime-state file never fails a run. The
   // lesson lines are what the run is asked to check before acting on it — the next-id marker
-  // is internal and is dropped, so it never rides into the prompt.
+  // is internal and is dropped, so it never rides into the prompt. The lessons text is
+  // bounded on read too (readRoleNote does the same for the note): truncateWithNote at
+  // ROLE_LESSONS_MAX_BYTES, the whole-file store cap — the file is hand-editable runtime
+  // state, so an over-cap file (a hand edit, an old build) would otherwise ride into every
+  // run's prompt uncapped. A store the write path accepted (at most the cap) never trips
+  // the bound; only an over-cap file is cut, with the visible marker naming the loss.
   let lessons: string | undefined;
   let hasLessons = false;
   try {
     const store = readRoleLessons(roleLessonsPath(root, role));
     hasLessons = store.lessons.length > 0;
     if (hasLessons) {
-      lessons = roleLessonsText(store.lessons);
+      lessons = truncateWithNote(roleLessonsText(store.lessons), ROLE_LESSONS_MAX_BYTES, "role lessons");
     }
   } catch {
     lessons = undefined;

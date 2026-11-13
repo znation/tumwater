@@ -12,7 +12,7 @@ import { briefTemplate, readmeTemplate } from "../src/brief/brief.js";
 import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { qaCoveragePath, roleNotesPath, roleLessonsPath, feedbackFilingsPath } from "../src/paths.js";
-import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
+import { ROLE_LESSONS_MAX_BYTES, ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
 import { freshRunnerState, saveRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { applyMergeOutcome } from "../src/run/run-apply.js";
@@ -334,6 +334,36 @@ test("an over-long role note is truncated into the prompt with a visible marker"
   assert.ok(overCap);
   assert.match(overCap.prompt, /<role-notes>\n/);
   assert.ok(overCap.prompt.includes(NOTE_TRUNCATION_MARKER), "the truncation is visible in the prompt");
+  assert.ok(!overCap.prompt.includes(tail), "text past the bound is not injected");
+});
+
+// The lessons are bounded on read too: the write path caps the whole file at
+// ROLE_LESSONS_MAX_BYTES, but the file is hand-editable runtime state, so an over-cap file
+// (a hand edit, an old build) must not ride into every run's prompt uncapped. A store the
+// write path accepted (≤ the cap) is never cut (a byte is never fewer than a character).
+const LESSONS_TRUNCATION_MARKER = `…[role lessons truncated at ${ROLE_LESSONS_MAX_BYTES} chars]`;
+test("an over-cap role lessons file is truncated into the prompt with a visible marker", () => {
+  const dir = root();
+  const lessonsPath = roleLessonsPath(dir, "coverage");
+
+  const atCap = promptFor(dir, "coverage");
+  assert.ok(atCap);
+  assert.ok(!atCap.prompt.includes("<role-lessons>"), "no lessons file means no block");
+
+  // At the cap: one lesson whose line plus its prefix sits under the bound — untouched.
+  writeFileDeep(lessonsPath, `<!-- next: L2 -->\n- L1 (2026-11-13): ${"z".repeat(2000)}\n`);
+  const atBound = promptFor(dir, "coverage");
+  assert.ok(atBound);
+  assert.match(atBound.prompt, /<role-lessons>\n/);
+  assert.ok(!atBound.prompt.includes(LESSONS_TRUNCATION_MARKER), "a lessons text at the bound is untouched");
+
+  // Past the cap: the tail is cut and the marker is visible in the prompt.
+  const tail = "the-lesson-tail";
+  fs.writeFileSync(lessonsPath, `<!-- next: L2 -->\n- L1 (2026-11-13): ${"y".repeat(2100)}${tail}\n`);
+  const overCap = promptFor(dir, "coverage");
+  assert.ok(overCap);
+  assert.match(overCap.prompt, /<role-lessons>\n/);
+  assert.ok(overCap.prompt.includes(LESSONS_TRUNCATION_MARKER), "the truncation is visible in the prompt");
   assert.ok(!overCap.prompt.includes(tail), "text past the bound is not injected");
 });
 
