@@ -20,7 +20,7 @@ export function okOutcome(detail: string): CheckOutcome {
 
 /** The doctor's stand-down on a missing or unreadable tumwater.json: an ok outcome saying
  * there is nothing to verify, because the config check reports the broken file itself. Shared
- * by the four checks that skip their walk when config is unavailable, so the message reads
+ * by the three checks that skip their walk when config is unavailable, so the message reads
  * identically across them. */
 export function noConfigOutcome(): CheckOutcome {
   return okOutcome("no readable tumwater.json — nothing to verify");
