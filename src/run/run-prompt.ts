@@ -30,7 +30,7 @@ import { pathTokens } from "../text/text.js";
 import { isDirectory, readRegularTextOrNull, readTextOrNull, statOrNull } from "../files/files.js";
 import { dayKey } from "../text/datetime.js";
 import { appendPromptNote, prependPromptNote } from "../text/format.js";
-import { ROLE_NOTES_MAX_BYTES, readRoleLessons } from "../roles/role-notes-write.js";
+import { ROLE_NOTES_MAX_BYTES, readRoleLessons, roleLessonsText } from "../roles/role-notes-write.js";
 import { truncateWithNote } from "../text/text.js";
 import { renderBacklogStructureBlock, renderDuplicatePlansBlock } from "../backlog/backlog-structure.js";
 import { renderBacklogIndexBlock } from "../backlog/backlog-index.js";
@@ -354,7 +354,7 @@ function readPromptNotes(
     const store = readRoleLessons(roleLessonsPath(root, role));
     hasLessons = store.lessons.length > 0;
     if (hasLessons) {
-      lessons = store.lessons.map((l) => `- ${l.id} (${l.date}): ${l.text}`).join("\n");
+      lessons = roleLessonsText(store.lessons);
     }
   } catch {
     lessons = undefined;

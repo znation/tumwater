@@ -40,6 +40,8 @@ import {
   addRoleLesson,
   replaceRoleLesson,
   retireRoleLesson,
+  roleLessonLine,
+  roleLessonsText,
   type RoleLesson,
 } from "./roles/role-notes-write.js";
 
@@ -78,7 +80,7 @@ function readLessonsText(): string {
   const store = parseRoleLessonsText(text);
   // The next-id marker is internal bookkeeping, not a lesson: render only the lesson lines,
   // each on its own line. An empty store renders nothing, so show prints no lessons section.
-  return store.lessons.map((l) => `- ${l.id} (${l.date}): ${l.text}`).join("\n") + (store.lessons.length ? "\n" : "");
+  return roleLessonsText(store.lessons) + (store.lessons.length ? "\n" : "");
 }
 
 /** Print a lessons store's text as the show's lessons section: each lesson's line verbatim.
@@ -217,7 +219,7 @@ function cmdLesson(args: string[]): number {
       return refuse(`could not read the lessons: ${errorMessage(err)}`);
     }
     for (const l of lessons) {
-      process.stdout.write(stripTerminalControls(`- ${l.id} (${l.date}): ${l.text}\n`));
+      process.stdout.write(stripTerminalControls(`${roleLessonLine(l)}\n`));
     }
     return 0;
   }

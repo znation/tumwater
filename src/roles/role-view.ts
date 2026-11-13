@@ -32,7 +32,7 @@ import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
 import { readAccount, windowEntries } from "../agent/subscription-account.js";
 import { CONFIG_BASENAME, configPath, roleLessonsPath, roleNotesPath } from "../paths.js";
-import { parseRoleLessonsText } from "./role-notes-write.js";
+import { parseRoleLessonsText, roleLessonsText } from "./role-notes-write.js";
 import { coverageRows, readQaCoverage, type CoverageRow } from "../observer/qa-coverage.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { filingRows, readFeedbackFilings, type FilingRow } from "../observer/feedback-filings.js";
@@ -580,9 +580,7 @@ function notesAndWindowsOf(
     const lessonsText = readRegularTextOrNull(roleLessonsPath(root, role));
     try {
       const store = parseRoleLessonsText(lessonsText ?? "");
-      lessons = store.lessons.length > 0
-        ? store.lessons.map((l) => `- ${l.id} (${l.date}): ${l.text}`).join("\n")
-        : null;
+      lessons = store.lessons.length > 0 ? roleLessonsText(store.lessons) : null;
     } catch {
       lessons = null;
     }

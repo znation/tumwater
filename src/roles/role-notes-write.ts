@@ -124,11 +124,29 @@ export function parseRoleLessons(text: string): { nextId: number; lessons: RoleL
   return { nextId, lessons };
 }
 
-/** Serialize a lessons store to its file text: the next-id marker, then one line per lesson,
- * each ending in a newline. The inverse of parseRoleLessons. */
+/** One lesson's display line: `- L<n> (YYYY-MM-DD): <text>` — the one home of the shape every
+ * surface renders a lesson in. parseRoleLessons reads back exactly this line, so the store
+ * file (renderRoleLessons) and each display surface — the run prompt, the role view, and
+ * `tumwater-notes lesson list`/`show` — all quote the same format and cannot drift on what a
+ * lesson looks like. */
+export function roleLessonLine(l: RoleLesson): string {
+  return `- ${l.id} (${l.date}): ${l.text}`;
+}
+
+/** A role's lessons as their display lines joined by newlines, one lesson per line — the
+ * text every surface shows for the role's lessons: the run prompt, the role view, and
+ * `tumwater-notes lesson show`. Empty for an empty store. The next-id marker is internal
+ * bookkeeping, so it is dropped here (the file's renderRoleLessons is the one surface that
+ * keeps it). */
+export function roleLessonsText(lessons: RoleLesson[]): string {
+  return lessons.map((l) => roleLessonLine(l)).join("\n");
+}
+
+/** Serialize a lessons store to its file text: the next-id marker, then one line per lesson
+ * (roleLessonLine), each ending in a newline. The inverse of parseRoleLessons. */
 export function renderRoleLessons(nextId: number, lessons: RoleLesson[]): string {
   const lines = [`<!-- next: L${nextId} -->`];
-  for (const l of lessons) lines.push(`- ${l.id} (${l.date}): ${l.text}`);
+  for (const l of lessons) lines.push(roleLessonLine(l));
   return lines.join("\n") + "\n";
 }
 

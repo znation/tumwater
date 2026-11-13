@@ -20,6 +20,8 @@ import {
   readRoleLessons,
   replaceRoleLesson,
   renderRoleLessons,
+  roleLessonLine,
+  roleLessonsText,
   retireRoleLesson,
   validateRoleLesson,
   writeRoleLessons,
@@ -58,6 +60,30 @@ test("renderRoleLessons is the inverse of parseRoleLessons (round trip)", () => 
   const text = renderRoleLessons(3, lessons);
   assert.equal(text, `<!-- next: L3 -->\n- L1 (2026-11-12): keep the test runner out of the repo root\n- L2 (2026-11-13): the since-last-run block is synchronous\n`);
   assert.deepEqual(parseRoleLessons(text), { nextId: 3, lessons });
+});
+
+test("roleLessonLine renders one lesson as its display line, exactly the shape parseRoleLessons reads back", () => {
+  const line = roleLessonLine({ id: "L2", date: "2026-11-13", text: "a durable lesson" });
+  assert.equal(line, "- L2 (2026-11-13): a durable lesson");
+  // The display line and the stored line are the same string, so a hand-written line the
+  // operator sees is one parseRoleLessons accepts (and vice versa): the two cannot drift.
+  assert.deepEqual(parseRoleLessons(`<!-- next: L3 -->\n${line}\n`), {
+    nextId: 3,
+    lessons: [{ id: "L2", date: "2026-11-13", text: "a durable lesson" }],
+  });
+});
+
+test("roleLessonsText joins a store's display lines, one per lesson, and is the round-trip twin of renderRoleLessons", () => {
+  const lessons = [
+    { id: "L1", date: "2026-11-12", text: "first lesson" },
+    { id: "L2", date: "2026-11-13", text: "second lesson" },
+  ];
+  // Worked out from the format, not the code: the two display lines joined by a newline.
+  assert.equal(roleLessonsText(lessons), "- L1 (2026-11-12): first lesson\n- L2 (2026-11-13): second lesson");
+  // It is exactly renderRoleLessons' body with the internal next-id marker dropped, so the
+  // store file and every display surface cannot disagree on what a lesson looks like.
+  assert.equal(renderRoleLessons(3, lessons).replace(/^<!-- next: L3 -->\n/, ""), roleLessonsText(lessons) + "\n");
+  assert.equal(roleLessonsText([]), "");
 });
 
 test("parseRoleLessons refuses a file whose first line is not the next-id marker", () => {
