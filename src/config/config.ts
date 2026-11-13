@@ -100,7 +100,12 @@ export function defaultConfig(): ResolvedModelConfig {
     // every resume before the task could finish. A run that stops making progress is still
     // bounded earlier by the quiet watchdog, not by this cap.
     runTimeoutSeconds: 4 * 60 * 60,
-    quietTimeoutSeconds: 1800,
+    // One hour (widened from 30 min): a slow local model is still making progress well past
+    // the 30-min silence bound, so the narrower window quiet-killed a progressing review
+    // ("killed as hung: no agent progress for over 1800s") before its own longer deadline
+    // and the review never reached a verdict. Doubled, not re-tuned per model: it is a global
+    // hang guard on every run, and a genuinely wedged run is still reaped in bounded time.
+    quietTimeoutSeconds: 3600,
     // Five minutes of command silence is well past any legitimate prefill or slow scan, and
     // lands long before the quiet watchdog's kill — the warning names what is hung while there
     // is still time to see it (BUGS.md 2026-09-13: stalled tool calls were invisible until the

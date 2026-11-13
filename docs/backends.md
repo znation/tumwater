@@ -451,7 +451,7 @@ longer describe what runs.
   a large-but-finite `"httpIdleTimeoutMs"` (e.g. `1800000` = 30 min) in
   pi's `settings.json` — `$PI_CODING_AGENT_DIR/settings.json` when that env var is set, else
   `~/.pi/agent/settings.json` —. Do not use `0` (fully disabled): a zombie socket then waits
-  forever. tumwater's `quietTimeoutSeconds` stall watchdog (default 30 min; kills a run when no
+  forever. tumwater's `quietTimeoutSeconds` stall watchdog (default 1 hour; kills a run when no
   *progress* — message, turn, and tool boundary events, plus content-bearing streaming deltas —
   happens, so content-free keepalives cannot reset it) and `runTimeoutSeconds` remain the
   layered hang guards.
