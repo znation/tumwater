@@ -8,8 +8,9 @@
  * the default. Both stall surfaces (runPi's warning, the dashboard's flag) must apply the
  * same threshold or one cries wolf while the other stays silent. */
 import { streamsToolOutput } from "../agent/backend-traits.js";
+import type { OpenToolCall } from "./pi-event-line.js";
 
-export function bufferedCommandStallMs(stallMs: number): number {
+function bufferedCommandStallMs(stallMs: number): number {
   return Math.max(stallMs * 2, 10 * 60_000);
 }
 
@@ -57,4 +58,27 @@ export function commandBuffersOutput(command: string): boolean {
  * command classifier so they cannot drift. */
 export function callBuffersOutput(agent: string | undefined, command: string): boolean {
   return !streamsToolOutput(agent) || commandBuffersOutput(command);
+}
+
+/** The text one open tool call is classified from for a buffered-output check: its full raw
+ * command, falling back to its display label when no command rides along. The label is display
+ * text truncated at 32 chars, so a shape only present past that point (a pipe or redirect in a
+ * long command) is invisible there; the two stall surfaces must read the same text or one
+ * classifies a call the other does not (BUGS.md 2026-09-28). */
+export function callClassifiedCommand(call: OpenToolCall): string {
+  return call.command || call.label;
+}
+
+/** The wall-clock threshold, in ms, that one open tool call must pass before it counts as
+ * stalled, for the threshold's source `stallMs`: a call that buffers its output (or runs on
+ * an agent that never streams it) is judged by the buffered wall-clock threshold, because its
+ * silence is the prescribed shape, not a hang (INV-A2); every other call is judged by the
+ * silence threshold `stallMs` itself (0 disables the stall decision). One home for the
+ * buffered/live fork so the event feed's warning (src/pi/pi-watchdogs.ts) and the state cell's
+ * flag (src/ui/progress-data.ts) cannot drift apart — they already share the two threshold
+ * builders and the classifier above, and this joins the fork that composes them.
+ * `OpenToolCall` is a type-only import, so this pure module gains no runtime dependency on
+ * the parser layer. */
+export function stallThresholdMs(agent: string | undefined, call: OpenToolCall, stallMs: number): number {
+  return callBuffersOutput(agent, callClassifiedCommand(call)) ? bufferedCommandStallMs(stallMs) : stallMs;
 }

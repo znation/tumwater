@@ -1,4 +1,4 @@
-import { callBuffersOutput } from "../pi/command-shape.js";
+import { callBuffersOutput, callClassifiedCommand } from "../pi/command-shape.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress-data.js";
 import { compactTokens } from "../text/format.js";
@@ -91,7 +91,7 @@ export function inFlightDetail(head: string, p: LiveProgress | null): string {
   // and a real stall past that window has already named itself as `tool call stalled: <tool>`
   // above. Defer to the call so a slow suite stops being read as a hang (BUGS.md 2026-10-28).
   const hasOpenBuffered =
-    p.openToolCalls?.some((call) => callBuffersOutput(p.agent, call.command || call.label)) ?? false;
+    p.openToolCalls?.some((call) => callBuffersOutput(p.agent, callClassifiedCommand(call))) ?? false;
   // A model request left unanswered past the stall threshold names the cause instead: the
   // provider has not replied (BUGS.md 2026-10-29). pi's retries write to the log, so the bare
   // silence measure restarts with each attempt, while this one spans the whole wait.

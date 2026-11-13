@@ -10,7 +10,7 @@ import {
   type PendingReply,
   type PiRunKind,
 } from "../pi/pi-event-line.js";
-import { bufferedCommandStallMs, callBuffersOutput } from "../pi/command-shape.js";
+import { stallThresholdMs } from "../pi/command-shape.js";
 import { describeToolCall } from "../text/phrases.js";
 import { squash } from "../text/text.js";
 import { defaultConfig, liveConfig } from "../config/config.js";
@@ -380,14 +380,12 @@ export function stalledToolLabel(
 ): string | undefined {
   if (!open || stallMs <= 0) return undefined;
   for (const call of open) {
-    // claude never sends content-bearing tool updates, so silence is expected for every call
-    // and only the wall-clock duration can show a hang (plans/agent-backends.md "Watchdogs and
-    // progress"); pi keeps the per-command classification.
-    if (callBuffersOutput(agent, call.command || call.label)) {
-      if (now - call.lastActivityAt >= bufferedCommandStallMs(stallMs)) return call.label;
-      continue;
-    }
-    if (now - call.lastActivityAt >= stallMs) return call.label;
+    // A call that buffers its output (or runs on an agent that never streams it) is judged by
+    // the buffered wall-clock threshold — its silence is the prescribed shape, not a hang —
+    // every other by the silence threshold; the one home for that fork is stallThresholdMs,
+    // the same one runPi's warning applies, so the state cell and the event feed agree on
+    // "stalled" (INV-A2).
+    if (now - call.lastActivityAt >= stallThresholdMs(agent, call, stallMs)) return call.label;
   }
   return undefined;
 }

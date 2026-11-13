@@ -7,7 +7,7 @@
  * window, the zero-byte grace, the warned-call set) and exposes the flags the run's close
  * handler reads back; agent-run.ts feeds the parser live through the deps accessors, so no
  * notification path is needed when events land. */
-import { bufferedCommandStallMs, callBuffersOutput } from "./command-shape.js";
+import { callBuffersOutput, stallThresholdMs } from "./command-shape.js";
 import type { OpenToolCall, PendingReply } from "./pi-event-line.js";
 
 interface PiWatchdogDeps {
@@ -295,10 +295,10 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
       // ANY of its calls — every one is judged by the buffered wall-clock threshold
       // (plans/agent-backends.md "Watchdogs and progress"); pi keeps its per-command
       // classification, where only a piped or redirected command is buffered.
+      const thresholdMs = stallThresholdMs(deps.agent, call, deps.stallMs);
       if (callBuffersOutput(deps.agent, call.command || call.label)) {
         const openMs = Date.now() - call.lastActivityAt;
-        const bufferedStallMs = bufferedCommandStallMs(deps.stallMs);
-        if (openMs >= bufferedStallMs) {
+        if (openMs >= thresholdMs) {
           warnedStalledCalls.add(call.id);
           deps.onStallWarning?.(
             `tool call stalled: ${call.label} — no exit for ${silenceLabel(openMs)}`,
@@ -307,7 +307,7 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
         continue;
       }
       const silentMs = Date.now() - call.lastActivityAt;
-      if (silentMs >= deps.stallMs) {
+      if (silentMs >= thresholdMs) {
         warnedStalledCalls.add(call.id);
         deps.onStallWarning?.(`tool call stalled: ${call.label} — no output for ${silenceLabel(silentMs)}`);
       }

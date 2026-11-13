@@ -46,10 +46,12 @@ absent, rather than checking pi).
 **Guarantee.** A command whose stdout is piped or redirected carries no silence signal, so both
 stall surfaces judge it by the same wall-clock threshold from `bufferedCommandStallMs`, and both
 classify the command with the same `commandBuffersOutput` — the event feed's warning and the
-dashboard's flag agree on when a buffered command is stalled.
+dashboard's flag agree on when a buffered command is stalled. The buffered/live fork that turns a
+call into one of the two thresholds lives in `stallThresholdMs` in `command-shape.ts`, so the
+surfaces cannot drift apart on which threshold a call gets.
 
-**Binds.** `src/pi/command-shape.ts` (`bufferedCommandStallMs`, `commandBuffersOutput`),
-`src/pi/pi-watchdogs.ts` (runPi's stall warning), `src/ui/progress-data.ts`
+**Binds.** `src/pi/command-shape.ts` (`stallThresholdMs`, `bufferedCommandStallMs`,
+`commandBuffersOutput`), `src/pi/pi-watchdogs.ts` (runPi's stall warning), `src/ui/progress-data.ts`
 (`stalledToolLabel`, the in-flight flag).
 
 **Pinned by.** `test/pi.test.ts` — "a piped command open past the buffered wall-clock threshold
