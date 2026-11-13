@@ -251,6 +251,18 @@ test("retire validates its arguments like the other operator commands", async ()
   r = await cli(root, "retire", "--role", "../x");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role/);
+  // `--role` present but empty: the value gate fails with the spec's role-value wording, before
+  // any config read or git work.
+  r = await cli(root, "retire", "--role", "");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /tumwater: --role needs a role id/);
+  // An unreadable tumwater.json is a distinct arm of the same id gate: a leftover id no config
+  // names must consult the config to decide known vs. leftover, and a corrupt file fails there
+  // with the harness's not-valid-JSON wording instead of pretending the config was read.
+  fs.writeFileSync(path.join(root, "tumwater.json"), "{ not json");
+  r = await cli(root, "retire", "--role", "bogus");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /tumwater: tumwater\.json is not valid JSON/);
 });
 
 function leftoverInstanceRepo() {
