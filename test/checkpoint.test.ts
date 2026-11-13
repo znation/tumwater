@@ -185,3 +185,55 @@ test("the adapter never throws into pi when the context offers nothing", () => {
   assert.doesNotThrow(() => checkpoint(fake as never));
   assert.equal((fake.tool as { name: string }).name, "checkpoint");
 });
+
+// A fake pi whose register call throws for one event: the adapter must absorb the throw and
+// degrade (the "never throws into pi" contract) rather than let it escape into pi.
+function throwingPi(throwOn: string) {
+  return {
+    handlers: {} as Record<string, unknown>,
+    tool: undefined as unknown,
+    on(event: string, _cb: unknown) {
+      if (event === throwOn) throw new Error("boom");
+    },
+    registerTool(t: { name: string }) {
+      this.tool = t;
+    },
+  };
+}
+
+test("the adapter absorbs a throwing register of the turn_end handler and degrades to nothing", () => {
+  const fake = throwingPi("turn_end");
+  // The first register throws, so the adapter's first catch returns before registering the tool
+  // and before the compaction handler: it must not throw into pi, and it registers nothing.
+  assert.doesNotThrow(() => checkpoint(fake as never));
+  assert.equal(fake.tool, undefined, "a failed turn_end register registers no tool and no handler");
+});
+
+test("the adapter absorbs a throwing register of the compaction handler and keeps the tool alone", () => {
+  const fake = throwingPi("session_before_compact");
+  // The turn_end register succeeds (the tool is registered); only the compaction handler's
+  // register throws, so the second catch swallows it and the tool still stands.
+  assert.doesNotThrow(() => checkpoint(fake as never));
+  assert.equal((fake.tool as { name: string }).name, "checkpoint", "the tool is registered before the throwing handler");
+});
+
+test("the adapter's turn counter drives the tool and its handler writes the summary for a self-requested compaction", async () => {
+  const fake = fakePi();
+  checkpoint(fake as never);
+  const tool = fake.tool as {
+    execute: (id: string, p: { done: string }) => Promise<{ content: Array<{ text: string }> }>;
+  };
+  // Drive the shared turn counter through the registered turn_end handler, the way pi does at
+  // each step boundary, so the tool's `currentTurn()` closure reads the advanced value.
+  for (let i = 0; i < 10; i++) fake.handlers.turn_end!({ turnIndex: i });
+  // A ready call (10 turns since the last checkpoint, context above the floor) is accepted and
+  // queues the compaction the run asked for.
+  const accepted = await tool.execute("t", { done: "stepped" }) as { content: Array<{ text: string }> };
+  assert.match(accepted.content[0]!.text, /recorded/);
+  // The session_before_compact handler then writes the measured summary for that request.
+  const resolved = (await fake.handlers.session_before_compact!({ preparation: undefined }, { cwd: "/w" })) as
+    | { compaction: { summary: string } }
+    | undefined;
+  assert.ok(resolved, "the self-requested compaction resolves to our summary");
+  assert.match(resolved.compaction.summary, /done:\nstepped/);
+});
