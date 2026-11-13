@@ -193,6 +193,9 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
       return null;
     }
     if (await dropStalePin(ctx.root, ref, sha, ctx.mainBranch)) {
+      // The pin's in-flight marker names a merge no process is running (a merge that landed
+      // its commit but a crash skipped releasing its slot): clear it here, as the drain does on
+      // its own drop, so the observer surfaces never show a phantom merge.
       removeMergeChange(ctx.root, ctx.role);
       return null;
     }
