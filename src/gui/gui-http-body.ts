@@ -144,10 +144,13 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 }
 
 /** Read a POST body as a JSON object — the shared front half of every /api POST handler:
- * oversized bodies get 413, malformed or non-object bodies get 400 with `example` showing
- * the expected shape (client-side failures get an actionable message, not a 500 carrying
- * Node's raw SyntaxError/TypeError, which misreports the fault and hides the fix), and the
- * parsed object is returned — null once any 4xx was sent. */
+ * a failed body read gets 413 (every reason readBody rejects — the body over the cap, a
+ * socket error, or a request that closed before its body finished — is one "client-fixable"
+ * bucket: the operator retries, and the read neither hangs nor leaks its buffered bytes), a
+ * malformed or non-object body gets 400 with `example` showing the expected shape (client-side
+ * failures get an actionable message, not a 500 carrying Node's raw SyntaxError/TypeError,
+ * which misreports the fault and hides the fix), and the parsed object is returned — null once
+ * any 4xx was sent. */
 export async function readJsonObject(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -157,7 +160,10 @@ export async function readJsonObject(
   try {
     body = await readBody(req);
   } catch (err) {
-    sendJson(res, 413, { error: errorMessage(err) }); // body too large: ... over the ... cap
+    // readBody rejects for any of: the body over the cap, a socket error, or a request that
+    // closed before its body finished — all 413, the "client-fixable bucket" above (the
+    // operator retries; the read never hangs or leaks its buffered bytes).
+    sendJson(res, 413, { error: errorMessage(err) });
     return null;
   }
   // Malformed JSON and valid JSON that is not an object ("just a string", [1], null) get
