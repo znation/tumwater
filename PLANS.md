@@ -31,6 +31,77 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** test/since-last-run.test.ts covers the collector against real git in a temp repo (test/helpers/git-faults.ts gives a git that cannot start). test/run-prompt.test.ts covers placement after the notes block and omission. Then the project's gate. Measuring whether it helped is an operator step after merge (plans/since-last-run.md "How we will know it worked"), not part of this entry.
 
+### Typed role notes, part 1/3: A lessons store that tumwater keeps verbatim, with `tumwater-notes lesson` commands (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; touches src/paths.ts src/roles/role-notes-write.ts src/notes-cli.ts src/roles/legacy-role-migration.ts test/notes-cli.test.ts test/role-lessons.test.ts)
+
+**Goal.** Each role gets a second, durable store beside its note: a list of dated, numbered lessons that survive every `tumwater-notes write` unchanged and change only through explicit commands. Today every write replaces the whole note, and only 16% of a note's paragraphs carry verbatim into the next write (2026-11-12 measurement in plans/typed-role-notes.md "Why"). This part adds the store and commands only; no prompt mentions them yet.
+
+**Approach.**
+- src/paths.ts: `roleLessonsPath(root, role)` → `.tumwater/state/notes/lessons/<role>.md`.
+- src/roles/role-notes-write.ts: parse, validate and atomically write the lessons file. Lines are `- L<n> (<YYYY-MM-DD>): <text>`; ids increase and are never reused, even after a retire (keep the next id in the file, e.g. a first line `<!-- next: L<n> -->`). Caps: 12 lessons, each at most 300 bytes and one paragraph (no blank line), 2 KB in total. Refusals name the count and the fix, in the same style as `validateRoleNote`.
+- src/notes-cli.ts: `lesson add` (stdin, prints the new id), `lesson replace L<n>` (stdin, same id, today's date), `lesson retire L<n>`, `lesson list`. `show` prints lessons then the note. The path is `<dirname(TUMWATER_NOTES_PATH)>/lessons/<basename>`, never an argument. A full store refuses `add` with "lessons full (12/12): retire or replace one first", naming the commands. An unknown id refuses with exit 1. `write` and `clear` keep today's behavior and never touch lessons.
+- src/roles/legacy-role-migration.ts: move the lessons file with the note when a legacy role id is renamed.
+- Check that the notes-dir listing in src/status/status-role-notes.ts ignores the `lessons/` subdirectory (it must not read as a role), and that src/agent/write-guard.ts's notes-dir guard already covers it; add a test for each rather than changing code unless one fails.
+
+**Files touched.** src/paths.ts src/roles/role-notes-write.ts src/notes-cli.ts src/roles/legacy-role-migration.ts test/notes-cli.test.ts test/role-lessons.test.ts
+
+**Acceptance criteria.**
+- Through the real CLI (spawned with `TUMWATER_NOTES_PATH` in a temp dir), with expected file contents written out literally in the test: `add` twice gives L1 and L2; `retire L1` then `add` gives L3, not L1; `replace L2` keeps the id and sets today's date; `list` and `show` print what was stored.
+- `write` and `clear` leave the lessons file byte-identical.
+- A 13th lesson, a lesson over 300 bytes, one containing a blank line, or one pushing the file past 2 KB is refused with exit 1 and the file unchanged.
+- An unknown or malformed id is refused with exit 1.
+- A model agent cannot write the lessons file directly: the write guard refuses it, the same way it refuses the note file.
+- The status notes listing does not report `lessons` as a role.
+- Renaming a legacy role moves its lessons file.
+- `npm run test:gate` passes.
+
+**Tests.** test/role-lessons.test.ts covers parse/validate/write. test/notes-cli.test.ts covers the subcommands end to end, plus the guard and listing checks above. Then the project's gate.
+
+### Typed role notes, part 2/3: Run prompts show the lessons and say what belongs in a lesson versus the note (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; requires Typed role notes part 1/3 and Since last run part 1/1 landed; both edit the same notes code; touches src/prompt/prompt.ts src/run/run-prompt.ts src/prompt/notes-backlog.ts test/prompt.test.ts test/run-prompt.test.ts test/notes-backlog.test.ts test/prompt-rules.test.ts)
+
+**Goal.** Every authoring run sees its role's lessons and knows when to add, replace or retire one, so durable knowledge stops depending on the model copying it forward on every note rewrite.
+
+**Approach.**
+- src/run/run-prompt.ts `readPromptNotes`: also read the lessons file for the role; a missing or empty file yields no lessons.
+- src/prompt/prompt.ts: a `<role-lessons>` block right before `<role-notes>` in `runNotesBlocks`. Its lead sentence: these are your role's own conclusions from earlier runs, kept verbatim and dated; check one before acting on it; `replace` it when it needs amending and `retire` it when it has proved wrong.
+- Reword `roleNotesInstruction` to cover both stores with the commands. A lesson is something that will still be true and useful in a week: a trap and how to avoid it, how to verify something, a bar or criterion, a ruled-out candidate with its reason. The note is this run's state and next step. Neither copies PLANS.md or BUGS.md. Keep the 4 KB note cap wording.
+- Seeding: when the role has no lessons file and a non-empty note, add one sentence asking the run to move durable lessons out of its note with `lesson add`, and drop them from the note when it next writes it.
+- src/prompt/notes-backlog.ts: run the stale-backlog-state check over the lessons text as well as the note, so a lesson naming a refused, blocked or done entry gets the same live-state block.
+- Update test/prompt-rules.test.ts's pinned directives for the reworded instruction.
+
+**Files touched.** src/prompt/prompt.ts src/run/run-prompt.ts src/prompt/notes-backlog.ts test/prompt.test.ts test/run-prompt.test.ts test/notes-backlog.test.ts test/prompt-rules.test.ts
+
+**Acceptance criteria.**
+- With a lessons file present, the run prompt has `<role-lessons>` holding exactly the stored lines, before `<role-notes>`. Without one, there is no lessons block.
+- The seeding sentence appears only when the lessons file is absent and the note is non-empty.
+- The instruction names `tumwater-notes write`, `lesson add`, `lesson replace` and `lesson retire`, and states the lesson-versus-note rule.
+- A lesson naming a live PLANS.md entry produces the notes-backlog live-state block, just as the same text in the note does.
+- The director's prompt is unchanged.
+- `npm run test:gate` passes.
+
+**Tests.** test/prompt.test.ts and test/run-prompt.test.ts cover block placement, omission and seeding. test/notes-backlog.test.ts covers lessons naming entries. test/prompt-rules.test.ts covers the directives. Then the project's gate. Measuring the effect is an operator step after merge (plans/typed-role-notes.md "How we will know it worked").
+
+### Typed role notes, part 3/3: Operators see and clear lessons wherever they see notes (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; requires Typed role notes part 1/3 landed; touches src/roles/role-view.ts src/status/status-role-notes.ts src/doctor/doctor-role-notes.ts src/cli/cli-role-command.ts src/ui/tui/tui-pane-transcript.ts src/gui/gui-operator-commands.ts docs/cli.md docs/how-it-works.md test/tui-notes.test.ts)
+
+**Goal.** Lessons are visible and resettable through the same operator surfaces as notes, and documented, so an operator can see what a role believes and clear a bad lesson without editing files under `.tumwater/state`.
+
+**Approach.**
+- src/roles/role-view.ts and the TUI notes pane (src/ui/tui/tui-pane-transcript.ts), plus the dashboard role drawer fed by role-view: show the lessons, read-only, above the note under a "Lessons" label. Show nothing extra when a role has none.
+- src/cli/cli-role-command.ts: `tumwater role <id> --clear-lessons` empties the lessons file. `--clear-notes` keeps clearing only the note.
+- src/gui/gui-operator-commands.ts: a clear-lessons operator command beside the existing notes commands. Operator editing of individual lessons is out of scope.
+- src/status/status-role-notes.ts and src/doctor/doctor-role-notes.ts: the over-cap check also reports a lessons file over 2 KB or 12 lessons, for example one an operator edited by hand.
+- docs/cli.md: the `tumwater-notes lesson` subcommands and `--clear-lessons`. docs/how-it-works.md: one paragraph on the two stores and why lessons are kept verbatim.
+
+**Files touched.** src/roles/role-view.ts src/status/status-role-notes.ts src/doctor/doctor-role-notes.ts src/cli/cli-role-command.ts src/ui/tui/tui-pane-transcript.ts src/gui/gui-operator-commands.ts docs/cli.md docs/how-it-works.md test/tui-notes.test.ts
+
+**Acceptance criteria.**
+- The role view, TUI pane and drawer list a role's lessons above its note, and show no lessons section for a role without any.
+- `--clear-lessons` and the dashboard command empty the lessons file and leave the note byte-identical. `--clear-notes` leaves the lessons byte-identical.
+- The doctor reports a hand-edited lessons file over either cap.
+- docs/cli.md lists every new subcommand and flag, and the CLI doc parity tests pass.
+- `npm run test:gate` passes.
+
+**Tests.** test/tui-notes.test.ts plus the existing role-view, CLI-doc and doctor tests for those modules, then the project's gate.
+
 ### Subtract, part 6a/6: The live docs and example config keep only the mechanisms that survived the series (planned 2026-11-02 by the plan role, splitting the 2026-10-26 too-large sweep part 6/6 after feature held it; sibling to Subtract part 6b/6, independent in files of it; design in plans/subtract.md "The six strokes" and "How we will know it worked"; its original prerequisites Subtract parts 1e/6, 5v/6 and 5x/6 have landed, and it requires Subtract part 3g/7 landed, the last unlanded Subtract part; touches docs/config.md docs/cli.md docs/glossary.md docs/how-it-works.md docs/invariants.md README.md DEVELOPMENT.md tumwater.example.json)
 
 **Goal.** The live prose and `tumwater.example.json` describe only mechanisms that still exist after the Subtract series: the names whose producer and reader the earlier parts removed are gone from the config tables, command lists, glossary, architecture prose and example config, while every mechanism the user kept is still documented and its keys still appear. This is the documentation half of the old sweep; the doctor rows, tests and before/after counts are part 6b/6.
