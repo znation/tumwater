@@ -249,3 +249,21 @@ test("revert refuses a run that did not merge, an unknown run and an unknown rol
   assert.equal(headSha(repo), before);
   assert.equal(sh(repo, "git", "status", "--porcelain"), "");
 });
+
+test("revert with a dirty worktree fails, writing nothing", async () => {
+  // A real (non-dry-run) revert whose checkout has staged or unstaged tracked changes is
+  // refused by revertMergedCommit's fail-closed dirty check — the CLI renderer must surface
+  // that error via fail(result.error) (line 129) rather than silently skipping it.
+  const repo = makeRepo();
+  await initProject(repo, "cli revert real dirty");
+  fs.writeFileSync(path.join(repo, "to-undo.txt"), "one\n");
+  commitIn(repo, "work to undo");
+  const clean = headSha(repo);
+  fs.writeFileSync(path.join(repo, "to-undo.txt"), "edited but uncommitted\n");
+
+  const r = await cli(repo, "revert", clean);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /the worktree has staged or unstaged changes/);
+  assert.equal(headSha(repo), clean, "no commit was written");
+  assert.equal(sh(repo, "git", "status", "--porcelain"), " M to-undo.txt", "the dirty edit is untouched");
+});
