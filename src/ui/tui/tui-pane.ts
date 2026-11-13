@@ -396,22 +396,30 @@ function reportBody(_pane: Extract<TuiView, { kind: "usage" | "failures" }>, opt
   };
 }
 
-function activityBody(pane: Extract<TuiView, { kind: "activity" }>, opts: PaneBodyOpts): TuiPaneBody {
-  const { root, width, eventBudget, state } = opts;
-  // The Activity pane windows its read by the active trailing event window (Ctrl+Y,
-  // `pane.since`): null loads the fixed newest-200 tail, a window loads every retained event
-  // inside it (the trailing `readEventsSince` the `tumwater logs --since` read uses). The rows
-  // are then narrowed by the active role scope and text search, and windowed: null follows the
-  // live tail (the newest eventBudget events), a stored offset pages back through the window.
-  // Both clamp to [0, events.length - rows]. An active filter that matched nothing names the
-  // filter instead of claiming the log is empty. One dim tally line above the feed, built from
-  // the type-unfiltered rows, counts every type the Ctrl+O cycle offers (so none is hidden
-  // while a type is selected); it takes one line of the body budget, so the feed fills the
-  // rest. When an active window's read cannot prove it reached its cutoff (retention cut the
-  // window), one dim sparse-window note below the tally says so — the same note every
-  // windowed render prints (SPARSE_WINDOW_NOTE); it takes one body line, so the feed then
-  // fills the rest after the tally and the note. The window's coverage and the sparse line
-  // count against the body budget before the feed is sliced.
+/** The Activity pane windows its read by the active trailing event window (Ctrl+Y,
+ * `pane.since`): null loads the fixed newest-200 tail, a window loads every retained event
+ * inside it (the trailing `readEventsSince` the `tumwater logs --since` read uses). The rows
+ * are then narrowed by the active role scope and text search, and windowed: null follows the
+ * live tail (the newest eventBudget events), a stored offset pages back through the window.
+ * Both clamp to [0, events.length - rows]. An active filter that matched nothing names the
+ * filter instead of claiming the log is empty. One dim tally line above the feed, built from
+ * the type-unfiltered rows, counts every type the Ctrl+O cycle offers (so none is hidden
+ * while a type is selected); it takes one line of the body budget, so the feed fills the
+ * rest. When an active window's read cannot prove it reached its cutoff (retention cut the
+ * window), one dim sparse-window note below the tally says so — the same note every
+ * windowed render prints (SPARSE_WINDOW_NOTE); it takes one body line, so the feed then
+ * fills the rest after the tally and the note. The window's coverage and the sparse line
+ * count against the body budget before the feed is sliced.
+ *
+ * This helper reads the events and builds the two above-feed lines; the windowed feed slice
+ * that fills the remaining budget is `activityFeed`, and the two together are composed by
+ * `activityBody`.
+ */
+function activityFeedLines(
+  pane: Extract<TuiView, { kind: "activity" }>,
+  opts: PaneBodyOpts,
+): { events: HarnessEvent[]; tallyLine: StatusLine[]; sparseLine: StatusLine[] } {
+  const { root, width } = opts;
   const { events: preType, covered } = activityRead(root, pane.role, pane.grep, null, pane.notable ?? false, pane.since ?? null);
   const events = pane.type === null ? preType : preType.filter((e) => e.type === pane.type);
   const windowed = pane.since !== null && pane.since !== undefined;
@@ -431,9 +439,24 @@ function activityBody(pane: Extract<TuiView, { kind: "activity" }>, opts: PaneBo
             "dim",
           ),
         ];
-  const rows = Math.max(1, eventBudget - tallyLine.length - sparseLine.length);
+  return { events, tallyLine, sparseLine };
+}
+
+/** The Activity pane's windowed feed slice and its empty note: the rows the read left after
+ * the above-feed lines, clamped by the stored scroll offset, each formatted and toned.
+ */
+function activityFeed(
+  pane: Extract<TuiView, { kind: "activity" }>,
+  opts: PaneBodyOpts,
+  events: HarnessEvent[],
+  rows: number,
+  tallyLine: StatusLine[],
+  sparseLine: StatusLine[],
+): TuiPaneBody {
+  const { width, state } = opts;
   const maxStart = Math.max(0, events.length - rows);
   const start = state.activityScroll === null ? maxStart : Math.min(state.activityScroll, maxStart);
+  const windowed = pane.since !== null && pane.since !== undefined;
   return {
     body: [...tallyLine, ...sparseLine, ...events.slice(start, start + rows).map((e) => toneLine(formatEvent(e), width, eventTone(e)))],
     emptyNote:
@@ -441,4 +464,10 @@ function activityBody(pane: Extract<TuiView, { kind: "activity" }>, opts: PaneBo
         ? "(no events yet)"
         : "(no events match this filter)",
   };
+}
+
+function activityBody(pane: Extract<TuiView, { kind: "activity" }>, opts: PaneBodyOpts): TuiPaneBody {
+  const { events, tallyLine, sparseLine } = activityFeedLines(pane, opts);
+  const rows = Math.max(1, opts.eventBudget - tallyLine.length - sparseLine.length);
+  return activityFeed(pane, opts, events, rows, tallyLine, sparseLine);
 }
