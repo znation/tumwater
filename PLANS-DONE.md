@@ -18,7 +18,7 @@ only grows: search it with grep, or read one entry by its line range. Never read
 **Files touched.** src/baseline/main-watch.ts, src/baseline/main-red-spell.ts (new), docs/invariants.md.
 
 **Acceptance criteria.**
-- `grep -rn "redSpellOpeners\|OpenRedSpell\|narrowOffenders" src/` finds them only in src/baseline/main-red-spell.ts and the import line in src/baseline/main-watch.ts — no direct map mutation remains in the factory; the two public APIs (`knownMainFailures`, `onlyKnownMainFailures`) are unchanged in signature and result.
+- `grep -rn "redSpellOpeners\|narrowOffenders" src/` finds them only in src/baseline/main-red-spell.ts — no direct map mutation remains in the factory — and the `OpenRedSpell` type appears in main-red-spell.ts and, in src/baseline/main-watch.ts, only in the import and the pre-existing spell-parameter types on `narrowOpenRed` and `narrowStillFailingRed`; the two public APIs (`knownMainFailures`, `onlyKnownMainFailures`) are unchanged in signature and result.
 - `git diff --name-only` lists exactly the three files; no test file is added, changed or deleted (the existing test/main-watch-spells.test.ts, test/main-watch-failures.test.ts, test/main-watch.test.ts pin the behavior end to end through `createMainWatch`/`knownMainFailures` and must stay green).
 - docs/invariants.md's red-spell binding names `src/baseline/main-red-spell.ts` for the `redSpellOpeners` map and keeps `src/baseline/main-watch.ts` for `fullPass`/`settleOpener`/`reportCulprit`; `npm run test:gate` passes, with the three main-watch test files green unchanged and no invariant-doc failure.
 
