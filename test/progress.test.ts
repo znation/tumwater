@@ -716,12 +716,30 @@ test("the first content-bearing delta or an answered message ends the wait; a ke
   assert.equal(parseProgress([requestStart(sent), SESSION], 0).pendingReply, undefined, "a new session starts fresh");
 });
 
-test("unansweredReply flags a wait only once it reaches the stall threshold", () => {
+test("unansweredReply flags a wait only once it reaches the target's threshold", () => {
   const pending = { since: 1_000_000, target: "huggingface/m", attempts: 3 };
-  assert.equal(unansweredReply(pending, 1_000_000 + 299_999, 300_000), undefined);
-  assert.deepEqual(unansweredReply(pending, 1_000_000 + 300_000, 300_000), { waitedMs: 300_000, attempts: 3 });
-  assert.equal(unansweredReply(pending, 2_000_000, 0), undefined, "toolCallStallSeconds 0 disables the flag");
-  assert.equal(unansweredReply(undefined, 2_000_000, 300_000), undefined);
+  const stallMsFor = () => 300_000;
+  assert.equal(unansweredReply(pending, 1_000_000 + 299_999, stallMsFor), undefined);
+  assert.deepEqual(unansweredReply(pending, 1_000_000 + 300_000, stallMsFor), { waitedMs: 300_000, attempts: 3 });
+  assert.equal(unansweredReply(pending, 2_000_000, () => 0), undefined, "a 0 threshold disables the flag for that model");
+  assert.equal(unansweredReply(undefined, 2_000_000, stallMsFor), undefined);
+});
+
+test("unansweredReply resolves a per-model override and a cloud default for different targets", () => {
+  // The slow local qwen gets the configured 30-minute window; an unlisted cloud model keeps the
+  // five-minute `toolCallStallSeconds` default — the same unansweredStallSecondsFor agreement
+  // the watchdog and the state cell share.
+  const qwen = { since: 1_000_000, target: "qwenrunner/Qwen3.8-27B-MLX-Serve-4bit", attempts: 1 };
+  const cloud = { since: 1_000_000, target: "huggingface/m", attempts: 1 };
+  const overrides: Record<string, number> = { "qwenrunner/Qwen3.8-27B-MLX-Serve-4bit": 1_800_000 };
+  const forTarget = (t: string) => overrides[t] ?? 300_000;
+  // At five minutes the cloud model (default 5 m) is flagged, the slow local model is not —
+  // still prefilling inside its 30-minute window.
+  assert.deepEqual(unansweredReply(cloud, 1_000_000 + 600_000, forTarget), { waitedMs: 600_000, attempts: 1 });
+  assert.equal(unansweredReply(qwen, 1_000_000 + 600_000, forTarget), undefined);
+  // Past the local override both are flagged.
+  assert.deepEqual(unansweredReply(qwen, 1_000_000 + 1_800_000, forTarget), { waitedMs: 1_800_000, attempts: 1 });
+  assert.deepEqual(unansweredReply(cloud, 1_000_000 + 1_800_000, forTarget), { waitedMs: 1_800_000, attempts: 1 });
 });
 
 test("readLiveProgress clears a pending reply when a later poll brings the answer's first delta", () => {

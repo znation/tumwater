@@ -171,6 +171,40 @@ test("duration-seconds fields reject values whose milliseconds overflow node's t
   assert.equal(validateConfig({ ...defaultConfig() }), undefined);
 });
 
+// Per-model unanswered thresholds share the duration bound the seconds keys use; a key that
+// is not a provider/model selector can never match the pending target pi names and is a load
+// error (the same "not silently inert" rule as the unknown-role caps).
+test("validateConfig checks the unansweredStallSeconds map keys and values", () => {
+  const MAX_DURATION_SECONDS = 2147483;
+  assert.equal(
+    validateConfig({
+      ...defaultConfig(),
+      unansweredStallSeconds: { "qwenrunner/Qwen3.8-27B-MLX-Serve-4bit": 1800 },
+    }),
+    undefined,
+  );
+  assert.match(
+    validationError({
+      ...defaultConfig(),
+      unansweredStallSeconds: { "qwenrunner/Qwen3.8-27B-MLX-Serve-4bit": 1e300 },
+    }),
+    new RegExp(`unansweredStallSeconds\\.qwenrunner/Qwen3\\.8-27B-MLX-Serve-4bit must be a number of 0 or more, at most ${MAX_DURATION_SECONDS} \\(0 disables\\)`),
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), unansweredStallSeconds: { "qwenrunner": 1800 } }),
+    /unansweredStallSeconds\.qwenrunner must name a provider\/model selector/,
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), unansweredStallSeconds: 300 }),
+    /unansweredStallSeconds must be an object/,
+  );
+  // 0 disables the warning for that model, so it is a valid value.
+  assert.equal(
+    validateConfig({ ...defaultConfig(), unansweredStallSeconds: { "qwenrunner/Qwen3.8-27B-MLX-Serve-4bit": 0 } }),
+    undefined,
+  );
+});
+
 // Per-role quiet hours (PLANS.md quietHoursPerRole): the same known-role gate as the caps,
 // each value a quiet-hours window (empty string = off).
 test("validateConfig accepts a well-formed quietHoursPerRole map and rejects bad ones", () => {

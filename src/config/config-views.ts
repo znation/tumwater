@@ -28,6 +28,17 @@ export type ResolvedModelConfig = Omit<TumwaterConfig, "model"> & {
   agent?: string;
 };
 
+/** The unanswered-model-request threshold in seconds for one pending target
+ * (`<provider>/<model>` as pi names it): the per-model `unansweredStallSeconds` override when
+ * the target is listed, else `toolCallStallSeconds` — 0 disables the warning for that model.
+ * One home for the resolution so the event feed's watchdog (src/pi/pi-watchdogs.ts) and the
+ * state cell (src/ui/progress-data.ts) cannot drift apart on when "no model reply" means a
+ * hang for a slow local model. */
+export function unansweredStallSecondsFor(config: TumwaterConfig, target: string): number {
+  const override = config.unansweredStallSeconds?.[target];
+  return typeof override === "number" ? override : config.toolCallStallSeconds;
+}
+
 /** The effective `backends.<id>` entry as a run sees it (plans/agent-backends.md "Back-compat"):
  * the file's own entry, with the legacy top-level `agentBin`/`piArgs` read as the pi backend's
  * `bin`/`args` when the new form leaves a field absent. Pure — it never writes those legacy

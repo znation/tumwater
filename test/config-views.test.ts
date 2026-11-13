@@ -19,6 +19,7 @@ import {
   seamHoldKey,
   tierModel,
   topTierBackend,
+  unansweredStallSecondsFor,
   withModelOverrides,
 } from "../src/config/config-views.js";
 import {
@@ -1084,4 +1085,16 @@ test("the migrated operator config resolves claude for every primary seam and pi
   const fallback = seams.filter((s) => s.label.startsWith("fallback:"));
   assert.ok(fallback.length > 0);
   assert.ok(fallback.every((s) => s.agent === "pi" && s.provider === "qwenrunner" && s.model === "qwen3.8-27b"));
+});
+
+test("unansweredStallSecondsFor applies the listed model's threshold and falls back to toolCallStallSeconds", () => {
+  const config = { ...defaultConfig(), toolCallStallSeconds: 300 } as TumwaterConfig;
+  config.unansweredStallSeconds = { "qwenrunner/Qwen3.8-27B-MLX-Serve-4bit": 1800 };
+  // A listed slow local model gets its override; an unlisted cloud model and a provider-less
+  // target keep the tool-call default; 0 disables the warning for that model.
+  assert.equal(unansweredStallSecondsFor(config, "qwenrunner/Qwen3.8-27B-MLX-Serve-4bit"), 1800);
+  assert.equal(unansweredStallSecondsFor(config, "huggingface/deepseek-ai/DeepSeek-V4-Flash-0731"), 300);
+  assert.equal(unansweredStallSecondsFor(config, ""), 300);
+  config.unansweredStallSeconds = { "qwenrunner/Qwen3.8-27B-MLX-Serve-4bit": 0 };
+  assert.equal(unansweredStallSecondsFor(config, "qwenrunner/Qwen3.8-27B-MLX-Serve-4bit"), 0);
 });

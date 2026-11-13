@@ -18,6 +18,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { StringDecoder } from "node:string_decoder";
+import { unansweredStallSecondsFor } from "../config/config-views.js";
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import { ensureDir, removeTree } from "../files/files.js";
 import type { ResolvedBackendBin } from "../pi/pi-bin.js";
@@ -358,6 +359,9 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       runTimeoutMs: opts.config.runTimeoutSeconds * 1000,
       quietMs: opts.config.quietTimeoutSeconds * 1000,
       stallMs: Math.max(0, opts.config.toolCallStallSeconds) * 1000,
+      // A slow local model's unanswered request is a legitimately long prefill, not the short
+      // tool-call stall — the watchdog decides per target (config unansweredStallSeconds).
+      unansweredStallMs: (target) => unansweredStallSecondsFor(opts.config, target) * 1000,
       // The run's backend id: claude never sends content updates, so the watchdog judges its
       // every open call by the buffered wall-clock threshold (plans/agent-backends.md).
       agent: backend.id,

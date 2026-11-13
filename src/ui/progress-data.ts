@@ -14,6 +14,7 @@ import { bufferedCommandStallMs, callBuffersOutput } from "../pi/command-shape.j
 import { describeToolCall } from "../text/phrases.js";
 import { squash } from "../text/text.js";
 import { defaultConfig, liveConfig } from "../config/config.js";
+import { unansweredStallSecondsFor } from "../config/config-views.js";
 import { nonNegativeNumber, parseJsonObject } from "../files/json-object.js";
 import { worktreesDir } from "../paths.js";
 import { statRoleLog, readCompleteLines, type TailState, withTail } from "../files/tail.js";
@@ -391,16 +392,20 @@ export function stalledToolLabel(
   return undefined;
 }
 
-/** How long `pending` has waited and over how many attempts, once that wait reaches `stallMs` —
- * the in-flight cell's "no model reply" flag, on the same threshold runPi's unanswered-request
- * warning uses (src/pi/pi-watchdogs.ts), so the state cell and the event feed agree. `now` and
- * `stallMs` are injectable for tests. */
+/** How long `pending` has waited and over how many attempts, once that wait reaches its
+ * threshold — the in-flight cell's "no model reply" flag, on the same per-target resolution
+ * runPi's unanswered-request warning uses (src/pi/pi-watchdogs.ts), so the state cell and the
+ * event feed agree (a listed slow local model gets a longer threshold via
+ * `unansweredStallSeconds`, unlisted models keep `toolCallStallSeconds`). `now` and `stallMsFor`
+ * are injectable for tests. */
 export function unansweredReply(
   pending: PendingReply | undefined,
   now = Date.now(),
-  stallMs = defaultConfig().toolCallStallSeconds * 1000,
+  stallMsFor: (target: string) => number = () => defaultConfig().toolCallStallSeconds * 1000,
 ): LiveProgress["unansweredReply"] {
-  if (!pending || stallMs <= 0) return undefined;
+  if (!pending) return undefined;
+  const stallMs = stallMsFor(pending.target);
+  if (stallMs <= 0) return undefined;
   const waitedMs = now - pending.since;
   return waitedMs >= stallMs ? { waitedMs, attempts: pending.attempts } : undefined;
 }
@@ -479,7 +484,11 @@ export function readLiveProgress(root: string, role: string, kind: ProgressRunKi
   // observer first saw the log stamps "now" at seed, so it cannot be flagged retroactively;
   // the mtime-based "no pi output" flag covers late observers.
   progress.stalledTool = stalledToolLabel(progress.openToolCalls, Date.now(), toolCallStallMs(root), progress.agent);
-  progress.unansweredReply = unansweredReply(progress.pendingReply, Date.now(), toolCallStallMs(root));
+  progress.unansweredReply = unansweredReply(
+    progress.pendingReply,
+    Date.now(),
+    (target) => unansweredStallSecondsFor(liveConfig(root), target) * 1000,
+  );
   // Copy the open-call entries: feedLine mutates the stored tail value in place — an
   // un-copied collection would alias one mutable structure across every frame ever returned
   // AND with the live tail state.

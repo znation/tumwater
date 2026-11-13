@@ -334,6 +334,17 @@ export interface TumwaterConfig {
    * request has gone this long with no reply (pi only: the event names the provider and model,
    * the cell reads "no model reply for <wait>"). 0 disables both warnings. */
   toolCallStallSeconds: number;
+  /** Per-model override (seconds) for the unanswered-model-request threshold, keyed by the
+   * model selector `<provider>/<model>` that pi's message names when it sends the request
+   * (the `pending.target` the event feed and the state cell share, src/pi/pi-event-line.ts).
+   * A request to a listed model waits this many seconds instead of `toolCallStallSeconds`
+   * before the "model request unanswered" warning fires — so a slow local model's long
+   * prefill of a large context (a much heavier parent than the stall warning's tool-call
+   * case) is notnamed as a hang, while a cloud model stays on the short default. 0 disables
+   * the unanswered warning for that model. An unlisted model uses `toolCallStallSeconds`, so
+   * the key is opt-in and backward compatible. Only the unanswered-request warning — never
+   * the stalled-tool-call warning or the quiet kill — reads this map. */
+  unansweredStallSeconds?: Record<string, number>;
   /** Rotate events.jsonl and per-role pi logs when they exceed this size. */
   logMaxBytes: number;
   /** Delete pi session files older than this many days at orchestrator start (0 disables). */
@@ -473,6 +484,7 @@ export const TOP_LEVEL_KEYS = [
   "runTimeoutSeconds",
   "quietTimeoutSeconds",
   "toolCallStallSeconds",
+  "unansweredStallSeconds",
   "logMaxBytes",
   "sessionRetentionDays",
   "maxDailyCostUsd",

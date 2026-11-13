@@ -21,6 +21,14 @@ interface PiWatchdogDeps {
   runTimeoutMs: number;
   quietMs: number;
   stallMs: number;
+  /** The unanswered-request threshold in ms for one pending target (`<provider>/<model>` as pi
+   * names it): a slow local model's long prefill of a large context is not a hang, while a
+   * cloud model stays on the short default. Falls back to `stallMs` when absent or unlisted;
+   * a returned 0 disables the unanswered warning for that model. Only the unanswered-request
+   * warning reads it — the stalled-tool-call warning and the quiet kill keep `stallMs`/
+   * `quietMs`. The state cell uses the same resolution so they agree (config-views.ts
+   * unansweredStallSecondsFor). */
+  unansweredStallMs?: (target: string) => number;
   /** The run's agent backend id (plans/agent-backends.md "Watchdogs and progress"): claude
    * never emits content-bearing tool updates, so every open call gets the buffered wall-clock
    * threshold instead of the silence threshold; pi keeps its per-command classification.
@@ -33,7 +41,8 @@ interface PiWatchdogDeps {
   /** Kill the agent run's process tree (terminateChild on the spawned child). */
   kill(): void;
   /** Receives each stall warning: a tool call silent (or open) past its threshold, or a model
-   * request unanswered past stallMs. Warns only; the quiet watchdog still owns the kill. */
+   * request unanswered past its threshold (stallMs, or the target's per-model override).
+   * Warns only; the quiet watchdog still owns the kill. */
   onStallWarning?: (message: string) => void;
   /** The unanswered-request warning's structured twin: true when it fires, false once that
    * wait ends (the model answered, or the run settled with the request still open). The model
@@ -321,7 +330,13 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
     }
     if (!pending || pending.since === state.replyWaitSince) return;
     const waitedMs = Date.now() - pending.since;
-    if (waitedMs < deps.stallMs) return;
+    // A per-model threshold (config unansweredStallSeconds) decides for this target when a
+    // long wait is a hang: a slow local model's prefill of a large context is legitimate and
+    // far outlives the tool-call stall default, while a cloud model stays on it. 0 disables
+    // the warning for that model. Falls back to `stallMs` for an unlisted target.
+    const thresholdMs = deps.unansweredStallMs?.(pending.target) ?? deps.stallMs;
+    if (thresholdMs <= 0) return;
+    if (waitedMs < thresholdMs) return;
     state.replyWaitSince = pending.since;
     deps.onStallWarning?.(
       `model request unanswered: ${pending.target || "model"} — no reply for ${silenceLabel(waitedMs)}`,

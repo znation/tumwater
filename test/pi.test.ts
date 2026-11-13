@@ -384,6 +384,39 @@ test("a model request the provider never answers warns once, naming the provider
   );
 });
 
+// The per-model `unansweredStallSeconds` override lets a slow local model's long prefill run
+// past the tool-call stall default before the warning names it, while an unlisted model keeps
+// the default. Same fixture as the baseline above — the 2 s toolCallStallSeconds would fire in
+// the baseline's 30 s advance — except the listed target's threshold is 60 s, so nothing warns
+// or flags before the quiet watchdog reaps the run at 5 s.
+test("a listed slow model does not warn at the tool-call stall default", async (t) => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.quietTimeoutSeconds = 5;
+  config.toolCallStallSeconds = 2;
+  config.unansweredStallSeconds = { "huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra": 60 };
+  const warnings: string[] = [];
+  const waits: boolean[] = [];
+  const clock = watchdogClock(t);
+  const result = await withPi(
+    [`printf '%s\n' '${requestStartLine}'`, `exec sleep 30`].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, {
+        config,
+        onStallWarning: (message) => warnings.push(message),
+        onUnansweredReply: (waiting) => waits.push(waiting),
+      });
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, "message_start");
+      clock.advance(30_000);
+      return run;
+    },
+  );
+  assert.equal(result.quietKilled, true, "the quiet watchdog still reaps the wedged run");
+  assert.deepEqual(warnings, [], "the listed model's longer threshold holds the warning off");
+  assert.deepEqual(waits, [], "neither the warning nor its end fired for the listed model");
+});
+
 test("a model request answered by a content-bearing delta raises no unanswered warning", async (t) => {
   const answer = JSON.stringify({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "Reading" } });
   const { warnings, waits } = await withUnansweredRequest(t, [answer]);

@@ -207,6 +207,24 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     checkNumber(r, "", "runTimeoutSeconds", DURATION_POSITIVE);
     checkNumber(r, "", "quietTimeoutSeconds", DURATION_OR_DISABLED);
     checkNumber(r, "", "toolCallStallSeconds", DURATION_OR_DISABLED);
+    // Per-model overrides for the unanswered-request threshold: a map of model selector keys
+    // ( `<provider>/<model>`, matching the pending target the watchdog and the state cell
+    // share) to a duration in seconds. A value outside the duration bound reports like the
+    // other second-count keys; a key that is not a provider/model selector can never match the
+    // target pi names and would be a silently inert override, so it is a load error like the
+    // unknown-role caps. Iterating the object keeps the message naming the exact key.
+    checkObjectSection(r, "unansweredStallSeconds", problems, (map) => {
+      for (const [model, value] of Object.entries(map)) {
+        if (!model.includes("/"))
+          problems.push(
+            `unansweredStallSeconds.${model} must name a provider/model selector like "omlx/Qwen3.8-27B-MLX-oQ4e-mtp" (got ${show(model)})`,
+          );
+        if (!DURATION_OR_DISABLED.ok(value as number))
+          problems.push(
+            `unansweredStallSeconds.${model} must be ${DURATION_OR_DISABLED.what} (got ${show(value)})`,
+          );
+      }
+    });
     checkNumber(r, "", "logMaxBytes", POSITIVE);
     checkNumber(r, "", "sessionRetentionDays", NON_NEGATIVE_OR_DISABLED);
     checkNumber(r, "", "maxDailyCostUsd", DOLLAR_CAP);
