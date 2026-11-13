@@ -1,6 +1,6 @@
 {
   "name": "tumwater",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Opinionated autonomous development team on a pluggable model backend. You write the initial prompt; role-driven runs build the project.",
   "type": "module",
   "license": "MIT",
