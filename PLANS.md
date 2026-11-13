@@ -6,6 +6,31 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
+### Since last run, part 1/1: Each run's prompt says what changed on main since the role's last run (planned 2026-11-12 by the operator; design in plans/since-last-run.md; touches src/prompt/since-last-run.ts src/prompt/prompt.ts src/run/run-prompt.ts test/since-last-run.test.ts test/run-prompt.test.ts docs/how-it-works.md)
+
+**Goal.** An authoring run starts knowing, from git, what landed on main since its role's previous run: which commits, which files, and how that run ended. Runs stay fresh sessions. The block replaces part of the orientation that costs a median of 22 tool calls and 44k tokens before the first edit (2026-10-17 measurement). Why not a long-running conversation per role instead: plans/since-last-run.md "Why".
+
+**Approach.**
+- New src/prompt/since-last-run.ts exporting one collector that takes the project root, main branch, the runner's state, the role id and the claimed entry's touched paths (when assigned). It runs one `git log --no-merges --format=… --name-only <lastMainHead>..<main>` and renders the block described in plans/since-last-run.md "Design": a header line (time since `lastRunEndedAt`, `lastResult`, `lastSummary`, commit count), commit subjects newest first capped at 30 with `tumwater(<role>):` subjects marked as the role's own, changed files ranked by commit count capped at 20, and for an assigned run the changed files the claimed entry names listed first.
+- Hard cap 4,000 characters, truncating the file list before the subjects, with "+N older" / "+N more" lines.
+- Return undefined (no block) when `lastMainHead` is empty, is not an ancestor of main, or the git call fails; never fail or delay the run over it. When main has not moved, return a single line saying nothing changed since the last run.
+- src/run/run-prompt.ts: call the collector beside the other `collect*` calls and pass the result as a new optional `sinceLastRun` field on `RunPromptInput`. Skip it for the director.
+- src/prompt/prompt.ts: render it in `runNotesBlocks`, right after the role-notes block, in a `<since-last-run>` tag whose lead sentence says tumwater generated it from git and it is current (unlike the notes), and that the run should re-read any listed file it plans to edit rather than trust an earlier view. Omitted input leaves the prompt byte-unchanged.
+- One git spawn per run at most; no per-commit or per-file git calls, and no new config key.
+- docs/how-it-works.md: one sentence where the run prompt's blocks are described.
+
+**Files touched.** src/prompt/since-last-run.ts src/prompt/prompt.ts src/run/run-prompt.ts test/since-last-run.test.ts test/run-prompt.test.ts docs/how-it-works.md
+
+**Acceptance criteria.**
+- In a temp repo with known commits after `lastMainHead`, the block lists exactly those commits newest first, marks the role's own `tumwater(<role>):` commits, and ranks files by how many of those commits touched them; the expected lists come from the commits the test itself made, not from re-running the collector's own git command.
+- An assigned run's block lists the claimed entry's touched files that changed before other files.
+- Over 30 commits or 20 files, the block truncates with "+N older" / "+N more", and it never exceeds 4,000 characters.
+- No block when `lastMainHead` is empty, is not an ancestor of main, or git fails; one "nothing changed" line when main has not moved.
+- The director's prompt and a prompt built without `sinceLastRun` are byte-identical to before.
+- `npm run test:gate` passes.
+
+**Tests.** test/since-last-run.test.ts covers the collector against real git in a temp repo (test/helpers/git-faults.ts gives a git that cannot start). test/run-prompt.test.ts covers placement after the notes block and omission. Then the project's gate. Measuring whether it helped is an operator step after merge (plans/since-last-run.md "How we will know it worked"), not part of this entry.
+
 ### Subtract, part 6a/6: The live docs and example config keep only the mechanisms that survived the series (planned 2026-11-02 by the plan role, splitting the 2026-10-26 too-large sweep part 6/6 after feature held it; sibling to Subtract part 6b/6, independent in files of it; design in plans/subtract.md "The six strokes" and "How we will know it worked"; its original prerequisites Subtract parts 1e/6, 5v/6 and 5x/6 have landed, and it requires Subtract part 3g/7 landed, the last unlanded Subtract part; touches docs/config.md docs/cli.md docs/glossary.md docs/how-it-works.md docs/invariants.md README.md DEVELOPMENT.md tumwater.example.json)
 
 **Goal.** The live prose and `tumwater.example.json` describe only mechanisms that still exist after the Subtract series: the names whose producer and reader the earlier parts removed are gone from the config tables, command lists, glossary, architecture prose and example config, while every mechanism the user kept is still documented and its keys still appear. This is the documentation half of the old sweep; the doctor rows, tests and before/after counts are part 6b/6.
