@@ -82,7 +82,7 @@ test("the notes instruction is backend-independent and names only the command", 
   // Part 2/4: the one carrier is the tumwater-notes command, so roleNotesInstruction takes no
   // dialect and never names a per-backend tool.
   const instruction = roleNotesInstruction();
-  assert.match(instruction, /save the full replacement\nnote \(at most 4 KB\) by running:/);
+  assert.match(instruction, /save it as the full replacement note \(at most 4 KB\) by running:/);
   assert.match(instruction, /tumwater-notes write <<'TUMWATER_NOTES'/);
   assert.match(instruction, /^TUMWATER_NOTES$/m, "the heredoc delimiter closes the instruction");
   assert.ok(!instruction.includes("role_notes"));

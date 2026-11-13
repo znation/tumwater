@@ -73,6 +73,12 @@ const DIRECTIVES: readonly string[] = [
   "LAST edit",
   "wc -l",
   "grep -n",
+  // The reworded write instruction (typed role notes part 2/3) names the lesson commands and
+  // states the lesson-versus-note rule, so the run is told where durable knowledge belongs.
+  "tumwater-notes lesson add",
+  "tumwater-notes lesson replace L<n>",
+  "tumwater-notes lesson retire L<n>",
+  "still be true and useful in a week",
   PI_DIALECT.readRange,
   PI_DIALECT.oversizedOutput,
   "ONE focused task",

@@ -11,7 +11,7 @@ import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles/roles.js";
 import { briefTemplate, readmeTemplate } from "../src/brief/brief.js";
 import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
-import { qaCoveragePath, roleNotesPath, feedbackFilingsPath } from "../src/paths.js";
+import { qaCoveragePath, roleNotesPath, roleLessonsPath, feedbackFilingsPath } from "../src/paths.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
 import { freshRunnerState, saveRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
@@ -254,6 +254,65 @@ test("a role run prompt reads the note from roleNotesPath, and omits the block w
   assert.ok(without);
   assert.ok(!without.prompt.includes("<role-notes>"), "a missing note file means no block");
   assert.match(without.prompt, /tumwater-notes write <<'TUMWATER_NOTES'/, "the write instruction is still present");
+});
+
+// The lessons: the run reads the role's lessons file from disk and renders it verbatim in a
+// <role-lessons> block before <role-notes>; a missing or empty file yields no block, and a
+// non-empty note with no lessons file yet gets the one-time seeding sentence.
+test("a role run prompt reads the lessons from roleLessonsPath, and omits the block when there are none", () => {
+  const dir = root();
+  const lessonsPath = roleLessonsPath(dir, "coverage");
+  writeFileDeep(lessonsPath, "<!-- next: L2 -->\n- L1 (2026-11-13): the oracle helpers drive coverage\n");
+  const withLessons = promptFor(dir, "coverage");
+  assert.ok(withLessons);
+  assert.match(withLessons.prompt, /<role-lessons>\n- L1 \(2026-11-13\): the oracle helpers drive coverage\n<\/role-lessons>/);
+  assert.match(withLessons.prompt, /check one before acting on it/);
+  assert.ok(!withLessons.prompt.includes("Your role has no lessons yet"), "a role with lessons is not seeding");
+
+  fs.rmSync(lessonsPath);
+  const withoutLessons = promptFor(dir, "coverage");
+  assert.ok(withoutLessons);
+  assert.ok(!withoutLessons.prompt.includes("<role-lessons>"), "a missing lessons file means no block");
+  assert.match(withoutLessons.prompt, /tumwater-notes lesson add/, "the lesson commands are still taught");
+});
+
+test("a role with a note but no lessons file gets the one-time seeding sentence", () => {
+  const dir = root();
+  writeFileDeep(roleNotesPath(dir, "coverage"), "coverage runs through the oracle helpers\n");
+  const result = promptFor(dir, "coverage");
+  assert.ok(result);
+  assert.match(result.prompt, /Your role has no lessons yet/);
+  assert.match(result.prompt, /tumwater-notes lesson add/);
+});
+
+test("a role run prompt whose lessons name a planned part gets the live backlog block, and the director has none", () => {
+  const dir = root();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    [
+      "# Plans",
+      "## Planned",
+      "### Codex backend, part 2b/9: b (planned 2026-10-01)",
+      "**Needs review 2026-10-21 by feature: rejected after 2 review rounds**",
+      "## Done",
+      "_None._",
+    ].join("\n"),
+  );
+  const lessonsPath = roleLessonsPath(dir, "coverage");
+  writeFileDeep(lessonsPath, "<!-- next: L2 -->\n- L1 (2026-11-13): Codex 2b/9 carry Refused — the theme is dead\n");
+  const withLesson = promptFor(dir, "coverage");
+  assert.ok(withLesson);
+  const lessonsEnd = withLesson.prompt.indexOf("</role-lessons>");
+  const backlogIdx = withLesson.prompt.indexOf("What the backlog says now");
+  assert.ok(lessonsEnd >= 0 && backlogIdx > lessonsEnd, "the live-state block follows the lessons");
+  assert.match(withLesson.prompt, /- Codex backend, part 2b\/9 — needs review\b/);
+
+  // The director never reads the lessons path, so it carries no block.
+  enqueuePrompt(dir, "what should we build next");
+  const director = promptFor(dir, DIRECTOR_ROLE);
+  assert.ok(director);
+  assert.ok(!director.prompt.includes("What the backlog says now"), "director carries no backlog block");
+  assert.ok(!director.prompt.includes("<role-lessons>"), "director carries no lessons");
 });
 
 // The notes is bounded on read too: the tool caps writes at ROLE_NOTES_MAX_BYTES, but the

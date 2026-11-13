@@ -16,6 +16,21 @@ function empty(overrides: Partial<NotesBacklog> = {}): NotesBacklog {
   return { planned: [], openBugs: [], donePlanTitles: [], ...overrides };
 }
 
+test("a lesson naming a live entry renders the same live-state block as the same text in a note", () => {
+  // The run checks the lessons against the backlog as well as the note (plans/typed-role-notes.md
+  // "Prompt"). The block is a pure function of its text, so the same backlog claim — as a
+  // note line or a lesson line — renders an identical block.
+  const planned = [series("2b", 9, "b", "**Needs review 2026-10-21 by feature: x**")];
+  const noteText = "Codex 2b/9 carry Refused — the theme is dead";
+  const lessonLine = "- L1 (2026-11-13): Codex 2b/9 carry Refused — the theme is dead";
+  const noteBlock = notesBacklogBlock(noteText, empty({ planned }));
+  const lessonBlock = notesBacklogBlock(lessonLine, empty({ planned }));
+  assert.ok(noteBlock && lessonBlock);
+  assert.equal(lessonBlock, noteBlock, "the lesson and the note render the identical block");
+  assert.match(lessonBlock!, /- Codex backend, part 2b\/9 — needs review\b/);
+  assert.ok(!lessonBlock!.includes("refused (only the operator clears it)"), "the stale claim loses to the live hold");
+});
+
 test("notes claiming Refused still read the live hold when the backlog has lifted it", () => {
   // The 2026-10-21 plan run's lines against a PLANS.md where 2b/9 and 6/9 now carry Needs-review
   // notes (parts 2a–8/9). 2b and 6 read needs-review; the other seven wait on an earlier planned

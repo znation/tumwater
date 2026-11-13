@@ -24,13 +24,13 @@ import { selfcheckDigest } from "../observer/selfcheck-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "../observer/qa-coverage.js";
 import { parityBlockFor } from "../observer/ci-parity.js";
 import { readFeedbackFilings, renderFilingsBlock } from "../observer/feedback-filings.js";
-import { roleNotesPath } from "../paths.js";
+import { roleNotesPath, roleLessonsPath } from "../paths.js";
 import * as path from "node:path";
 import { pathTokens } from "../text/text.js";
 import { isDirectory, readRegularTextOrNull, readTextOrNull, statOrNull } from "../files/files.js";
 import { dayKey } from "../text/datetime.js";
 import { appendPromptNote, prependPromptNote } from "../text/format.js";
-import { ROLE_NOTES_MAX_BYTES } from "../roles/role-notes-write.js";
+import { ROLE_NOTES_MAX_BYTES, readRoleLessons } from "../roles/role-notes-write.js";
 import { truncateWithNote } from "../text/text.js";
 import { renderBacklogStructureBlock, renderDuplicatePlansBlock } from "../backlog/backlog-structure.js";
 import { renderBacklogIndexBlock } from "../backlog/backlog-index.js";
@@ -163,7 +163,7 @@ function buildRoleRunPrompt(
   const filings = collectFeedbackFilingsBlock(root, base);
   const backlogStructure = collectBacklogStructureBlock(root, base);
   const duplicatePlans = collectDuplicatePlansBlock(root, base);
-  const { notes, notesSavedDay, notesBacklog } = readPromptNotes(root, role);
+  const { notes, lessons, notesSavedDay, notesBacklog, lessonsSeeding } = readPromptNotes(root, role);
   // What landed on main since this role's last run, from git (since-last-run.ts): one bounded
   // spawn, omitted for a first run, an off-main anchor, or a git failure. A run holding a claim
   // with no queued request is the one that gets it — its entry is most likely to have moved.
@@ -187,8 +187,10 @@ function buildRoleRunPrompt(
     duplicatePlans,
     backlogIndex: assigned ? undefined : backlogIndex,
     notes,
+    lessons,
     notesSavedDay,
     notesBacklog,
+    lessonsSeeding,
     sinceLastRun,
     planTargetNote,
     flakyChecks,
@@ -325,31 +327,59 @@ function collectDuplicatePlansBlock(root: string, base: string): string | undefi
 function collectPendingPlansBlock(root: string, base: string): string | undefined {
   return base === "plan" ? renderPendingPlansBlock(root) : undefined;
 }
-/** Read the role's own notes plus their saved day and live backlog state (notes-backlog.ts),
- * returning all three in one place. */
-function readPromptNotes(root: string, role: string): { notes: string | undefined; notesSavedDay: string | undefined; notesBacklog: string | undefined } {
+/** Read the role's own notes, its lessons, their saved day, and the live backlog state of
+ * whatever the notes or lessons name (notes-backlog.ts), returning all in one place. The
+ * lessons ride into the prompt verbatim (a missing or unreadable file yields no lessons — a
+ * torn runtime-state file must never fail a run); the live-state block is checked over the
+ * lessons as well as the note, so a stale lesson cannot keep a hold the backlog has lifted.
+ * Seeding (`lessonsSeeding`) is on while the role has a non-empty note but no lessons file yet. */
+function readPromptNotes(
+  root: string,
+  role: string,
+): { notes: string | undefined; lessons: string | undefined; notesSavedDay: string | undefined; notesBacklog: string | undefined; lessonsSeeding: boolean } {
   // The role's own notes (readRoleNote): its earlier runs' note. A missing,
   // empty, or unreadable file yields undefined, so the block is omitted; the write
   // instruction in buildRunPrompt is present either way. The director branch above never
   // reads this path, so it carries no notes.
   const notes = readRoleNote(root, role);
+  // The role's lessons (readRoleLessons): its own earlier runs' conclusions, kept verbatim.
+  // A missing file yields the empty store, so no lessons block; an unreadable file swallows
+  // to the empty store like the note, so a torn runtime-state file never fails a run. The
+  // rendered file is what the run is asked to check before acting on it — marker and all.
+  let lessons: string | undefined;
+  let hasLessons = false;
+  try {
+    const store = readRoleLessons(roleLessonsPath(root, role));
+    hasLessons = store.lessons.length > 0;
+    if (hasLessons) {
+      lessons = store.lessons.map((l) => `- ${l.id} (${l.date}): ${l.text}`).join("\n");
+    }
+  } catch {
+    lessons = undefined;
+    hasLessons = false;
+  }
   // The note file's mtime is when the notes were last saved (writes replace the file), so the
   // run can weigh how stale they are.
   const savedStat = notes === undefined ? null : statOrNull(roleNotesPath(root, role));
   const notesSavedDay = savedStat ? dayKey(savedStat.mtimeMs) : undefined;
-  // The live state of each entry and series the notes name, so a stale note cannot keep a hold
-  // the backlog has lifted (notes-backlog.ts). The three readers are already stat-cached. A
-  // note naming nothing live yields undefined and no block — the common case, since most notes
-  // are about the code, not the backlog.
+  // The one-time seeding sentence: while the role has a non-empty note but no lessons file
+  // yet, the run is asked to move its durable lessons out of the note with `lesson add` and
+  // drop them from the note it next writes (plans/typed-role-notes.md "Prompt").
+  const lessonsSeeding = notes !== undefined && notes.trim() !== "" && !hasLessons;
+  // The live state of each entry and series the notes OR lessons name, so a stale note or
+  // lesson cannot keep a hold the backlog has lifted (notes-backlog.ts). The three readers
+  // are already stat-cached. Naming nothing live yields undefined and no block — the common
+  // case, since most notes and lessons are about the code, not the backlog.
+  const sourceText = [notes ?? "", lessons ?? ""].filter((t) => t.trim() !== "").join("\n");
   const notesBacklog =
-    notes === undefined || notes.trim() === ""
+    sourceText === ""
       ? undefined
-      : notesBacklogBlock(notes, {
+      : notesBacklogBlock(sourceText, {
           planned: plannedPlanEntries(root),
           openBugs: openBugEntries(root),
           donePlanTitles: donePlans(root),
         });
-  return { notes, notesSavedDay, notesBacklog };
+  return { notes, lessons, notesSavedDay, notesBacklog, lessonsSeeding };
 }
 
 /** The directive notes a run may carry: the plan charter's stop target, the bugfix flake

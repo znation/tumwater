@@ -6,30 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Typed role notes, part 2/3: Run prompts show the lessons and say what belongs in a lesson versus the note (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; requires Typed role notes part 1/3 and Since last run part 1/1 landed; both edit the same notes code; touches src/prompt/prompt.ts src/run/run-prompt.ts src/prompt/notes-backlog.ts test/prompt.test.ts test/run-prompt.test.ts test/notes-backlog.test.ts test/prompt-rules.test.ts)
-
-**Goal.** Every authoring run sees its role's lessons and knows when to add, replace or retire one, so durable knowledge stops depending on the model copying it forward on every note rewrite.
-
-**Approach.**
-- src/run/run-prompt.ts `readPromptNotes`: also read the lessons file for the role; a missing or empty file yields no lessons.
-- src/prompt/prompt.ts: a `<role-lessons>` block right before `<role-notes>` in `runNotesBlocks`. Its lead sentence: these are your role's own conclusions from earlier runs, kept verbatim and dated; check one before acting on it; `replace` it when it needs amending and `retire` it when it has proved wrong.
-- Reword `roleNotesInstruction` to cover both stores with the commands. A lesson is something that will still be true and useful in a week: a trap and how to avoid it, how to verify something, a bar or criterion, a ruled-out candidate with its reason. The note is this run's state and next step. Neither copies PLANS.md or BUGS.md. Keep the 4 KB note cap wording.
-- Seeding: when the role has no lessons file and a non-empty note, add one sentence asking the run to move durable lessons out of its note with `lesson add`, and drop them from the note when it next writes it.
-- src/prompt/notes-backlog.ts: run the stale-backlog-state check over the lessons text as well as the note, so a lesson naming a refused, blocked or done entry gets the same live-state block.
-- Update test/prompt-rules.test.ts's pinned directives for the reworded instruction.
-
-**Files touched.** src/prompt/prompt.ts src/run/run-prompt.ts src/prompt/notes-backlog.ts test/prompt.test.ts test/run-prompt.test.ts test/notes-backlog.test.ts test/prompt-rules.test.ts
-
-**Acceptance criteria.**
-- With a lessons file present, the run prompt has `<role-lessons>` holding exactly the stored lines, before `<role-notes>`. Without one, there is no lessons block.
-- The seeding sentence appears only when the lessons file is absent and the note is non-empty.
-- The instruction names `tumwater-notes write`, `lesson add`, `lesson replace` and `lesson retire`, and states the lesson-versus-note rule.
-- A lesson naming a live PLANS.md entry produces the notes-backlog live-state block, just as the same text in the note does.
-- The director's prompt is unchanged.
-- `npm run test:gate` passes.
-
-**Tests.** test/prompt.test.ts and test/run-prompt.test.ts cover block placement, omission and seeding. test/notes-backlog.test.ts covers lessons naming entries. test/prompt-rules.test.ts covers the directives. Then the project's gate. Measuring the effect is an operator step after merge (plans/typed-role-notes.md "How we will know it worked").
-
 ### Typed role notes, part 3/3: Operators see and clear lessons wherever they see notes (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; requires Typed role notes part 1/3 landed; touches src/roles/role-view.ts src/status/status-role-notes.ts src/doctor/doctor-role-notes.ts src/cli/cli-role-command.ts src/ui/tui/tui-pane-transcript.ts src/gui/gui-operator-commands.ts docs/cli.md docs/how-it-works.md test/tui-notes.test.ts)
 
 **Goal.** Lessons are visible and resettable through the same operator surfaces as notes, and documented, so an operator can see what a role believes and clear a bad lesson without editing files under `.tumwater/state`.

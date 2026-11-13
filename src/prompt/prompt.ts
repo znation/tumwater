@@ -319,21 +319,32 @@ A note that tells you to skip or never re-author an entry is always overridden b
 <role-notes>\n${notes.trim()}\n</role-notes>`;
 }
 
-/** The standing instruction that makes the notes seedable: every role run is told it may
- * write one, so the first run (when no note exists yet) can create it. The note content block
- * (roleNotesBlock) is what is omitted when there is nothing to show. Every backend speaks the
- * same shell command (plans/notes-command.md §3), and the director never reaches
- * buildRunPrompt, so it never carries one. */
+/** The standing instruction that makes both stores seedable: every role run is told it may
+ * write a note (at most 4 KB) and manage its lessons (tumwater-notes lesson add/replace/retire),
+ * so the first run (when neither exists yet) can create them. The note content block
+ * (roleNotesBlock) and the lessons block (roleLessonsBlock) are what are omitted when there is
+ * nothing to show. The lesson-versus-note rule (plans/typed-role-notes.md "Prompt") keeps durable
+ * knowledge in the lessons, which tumwater keeps verbatim, and this run's state in the note. Every
+ * backend speaks the same shell commands (plans/notes-command.md §3), and the director never
+ * reaches buildRunPrompt, so it never carries one. */
 export function roleNotesInstruction(): string {
-  return `Before you end, if you learned something the next run of your role should know (where
-things live, what you ruled out and why, what you would look at next), save the full replacement
-note (at most 4 KB) by running:
+  return `Before you end, record what the next run of your role should know, in the store it
+belongs in:
+- A lesson — something that will still be true and useful in a week: a trap and how to avoid
+  it, how to verify something, a bar or criterion, or a ruled-out candidate with its reason —
+  belongs in the lessons, which tumwater keeps verbatim: add one with
+  \`tumwater-notes lesson add\` (one lesson on stdin), amend it with
+  \`tumwater-notes lesson replace L<n>\`, and \`tumwater-notes lesson retire L<n>\` when it
+  has proved wrong.
+- The note — this run's state and next step (where things live, what you ruled out and why,
+  what you would look at next) — save it as the full replacement note (at most 4 KB) by running:
 
 tumwater-notes write <<'TUMWATER_NOTES'
 <the note>
 TUMWATER_NOTES
 
-Do not copy backlog entries into it — PLANS.md and BUGS.md hold the work itself.`;
+Neither store copies backlog entries — PLANS.md and BUGS.md hold the work itself; do not restate
+in the note what the lessons already keep.`;
 }
 
 interface RunPromptInput {
@@ -370,6 +381,18 @@ interface RunPromptInput {
    * <role-notes> block is omitted; the write instruction is always present. The director
    * never reaches buildRunPrompt, so it never carries either. */
   notes?: string;
+  /** The role's lessons (roleLessonsPath, read by run-prompt.ts): its own earlier runs'
+   * durable conclusions, kept verbatim and dated by tumwater (plans/typed-role-notes.md).
+   * Passed as the file's lines, marker and all, rendered into the <role-lessons> block
+   * right before <role-notes>; an undefined value means the file is missing, so the block
+   * is omitted (the run is then told to seed one). The director never reaches
+   * buildRunPrompt, so it never carries one. */
+  lessons?: string;
+  /** True while the role has a non-empty note but no lessons file yet: the one-time
+   * seeding sentence in the write instruction asks the run to move its durable lessons out
+   * of the note with `lesson add` (plans/typed-role-notes.md "Prompt"). Omitted: the role
+   * has a lessons file or no note, so the prompt is byte-identical. */
+  lessonsSeeding?: boolean;
   /** The note file's mtime as a local YYYY-MM-DD (read by run-prompt.ts). Omitted: the notes
    * heading carries no age. */
   notesSavedDay?: string;
@@ -510,10 +533,38 @@ function runEvidenceBlocks(input: RunPromptInput): string[] {
   return parts;
 }
 
-/** The role-notes block (only when a note exists), the live backlog state block, and the
- * since-last-run block, in that order. */
+/** The role's lessons as shown to it: its own earlier runs' conclusions, kept verbatim and
+ * dated by tumwater (roleLessonsPath). Rides only when there are stored lessons; the standing
+ * instruction to manage them is always present (roleNotesInstruction), so a role's first run
+ * — with no lessons yet — still learns the commands. Unlike the notes, a lesson is checked
+ * before acting on it: the live-state block after it (notes-backlog.ts) applies to the
+ * lessons as well as the note, so a stale lesson cannot keep a hold the backlog has lifted. */
+function roleLessonsBlock(lessons: string): string {
+  return `Lessons your role concluded in earlier runs — kept verbatim and dated by tumwater, so
+they survive every note rewrite: check one before acting on it, \`replace\` it when it needs
+amending, and \`retire\` it when it has proved wrong. The live-state block after your note is
+checked against the lessons as well as the note, so a stale lesson cannot keep a hold the
+backlog has lifted.
+<role-lessons>\n${lessons.trim()}\n</role-lessons>`;
+}
+
+/** The one-time seeding sentence (plans/typed-role-notes.md "Prompt"): while the role has a
+ * non-empty note but no lessons file yet, the run is asked to move any durable lessons out of
+ * its note with `lesson add` and drop them from the note it next writes — the note keeps only
+ * this run's state and next step. Rendered at the front of the write instruction, so the run
+ * that rewrites the note also seeds the lessons. */
+function lessonsSeedingNote(): string {
+  return `Your role has no lessons yet: before you write your note, move any lesson in it that
+will still be true and useful in a week into the lessons with
+\`tumwater-notes lesson add\` (one lesson on stdin), and drop it from the note — the note
+keeps only this run's state and next step.`;
+}
+
+/** The lessons block (only when there are stored lessons), the role-notes block (only when a
+ * note exists), the live backlog state block, and the since-last-run block, in that order. */
 function runNotesBlocks(input: RunPromptInput, day: string): string[] {
   const parts: string[] = [];
+  if (input.lessons && input.lessons.trim() !== "") parts.push(roleLessonsBlock(input.lessons));
   if (input.notes && input.notes.trim() !== "")
     parts.push(roleNotesBlock(input.notes, Boolean(input.backlogIndex), input.notesSavedDay, day));
   if (input.sinceLastRun) parts.push(`<since-last-run>\n${input.sinceLastRun.trim()}\n</since-last-run>`);
@@ -533,10 +584,15 @@ function runTaskBlocks(input: RunPromptInput): string[] {
   return parts;
 }
 
-/** The note-write instruction and the shared rules, which close the prompt. */
+/** The note-write instruction (and, while the role is still seeding its lessons, the
+ * one-time sentence that moves durable lessons out of the note) and the shared rules, which
+ * close the prompt. */
 function runRulesBlocks(input: RunPromptInput, dialect: PromptDialect): string[] {
+  const instruction = input.lessonsSeeding
+    ? `${lessonsSeedingNote()}\n\n${roleNotesInstruction()}`
+    : roleNotesInstruction();
   return [
-    roleNotesInstruction(),
+    instruction,
     commonRules(input.check, input.briefFile, input.role.scope, dialect, input.assigned, input.gateCommand).trim(),
   ];
 }

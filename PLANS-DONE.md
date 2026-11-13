@@ -5,6 +5,30 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Typed role notes, part 2/3: Run prompts show the lessons and say what belongs in a lesson versus the note (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; requires Typed role notes part 1/3 and Since last run part 1/1 landed; both edit the same notes code; touches src/prompt/prompt.ts src/run/run-prompt.ts src/prompt/notes-backlog.ts test/prompt.test.ts test/run-prompt.test.ts test/notes-backlog.test.ts test/prompt-rules.test.ts) — done 2026-11-13 by the feature role
+
+**Goal.** Every authoring run sees its role's lessons and knows when to add, replace or retire one, so durable knowledge stops depending on the model copying it forward on every note rewrite.
+
+**Approach.**
+- src/run/run-prompt.ts `readPromptNotes`: also read the lessons file for the role; a missing or empty file yields no lessons.
+- src/prompt/prompt.ts: a `<role-lessons>` block right before `<role-notes>` in `runNotesBlocks`. Its lead sentence: these are your role's own conclusions from earlier runs, kept verbatim and dated; check one before acting on it; `replace` it when it needs amending and `retire` it when it has proved wrong.
+- Reword `roleNotesInstruction` to cover both stores with the commands. A lesson is something that will still be true and useful in a week: a trap and how to avoid it, how to verify something, a bar or criterion, a ruled-out candidate with its reason. The note is this run's state and next step. Neither copies PLANS.md or BUGS.md. Keep the 4 KB note cap wording.
+- Seeding: when the role has no lessons file and a non-empty note, add one sentence asking the run to move durable lessons out of its note with `lesson add`, and drop them from the note when it next writes it.
+- The stale-backlog-state check runs over the lessons text as well as the note (driven from src/run/run-prompt.ts, which feeds both to notesBacklogBlock), so a lesson naming a refused, blocked or done entry gets the same live-state block the note gets; notesBacklogBlock stays a pure function of its text and is unchanged (test/notes-backlog.test.ts pins that a lesson line and a note line render the identical block).
+- Update test/prompt-rules.test.ts's pinned directives for the reworded instruction.
+
+**Files touched.** src/prompt/prompt.ts src/run/run-prompt.ts test/prompt.test.ts test/run-prompt.test.ts test/notes-backlog.test.ts test/prompt-rules.test.ts test/prompt-dialect.test.ts (src/prompt/notes-backlog.ts is unchanged: its stale-state check is pure over the text and is driven from run-prompt.ts, which feeds it the lessons as well as the note)
+
+**Acceptance criteria.**
+- With a lessons file present, the run prompt has `<role-lessons>` holding exactly the stored lines, before `<role-notes>`. Without one, there is no lessons block.
+- The seeding sentence appears only when the lessons file is absent and the note is non-empty.
+- The instruction names `tumwater-notes write`, `lesson add`, `lesson replace` and `lesson retire`, and states the lesson-versus-note rule.
+- A lesson naming a live PLANS.md entry produces the notes-backlog live-state block, just as the same text in the note does.
+- The director's prompt is unchanged.
+- `npm run test:gate` passes.
+
+**Tests.** test/prompt.test.ts and test/run-prompt.test.ts cover block placement, omission and seeding. test/notes-backlog.test.ts covers lessons naming entries. test/prompt-rules.test.ts covers the directives. Then the project's gate. Measuring the effect is an operator step after merge (plans/typed-role-notes.md "How we will know it worked").
+
 ### Typed role notes, part 1/3: A lessons store that tumwater keeps verbatim, with `tumwater-notes lesson` commands (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; touches src/paths.ts src/roles/role-notes-write.ts src/notes-cli.ts src/roles/legacy-role-migration.ts test/notes-cli.test.ts test/role-lessons.test.ts) — done 2026-11-13 by the feature role
 
 **Goal.** Each role gets a second, durable store beside its note: a list of dated, numbered lessons that survive every `tumwater-notes write` unchanged and change only through explicit commands. Today every write replaces the whole note, and only 16% of a note's paragraphs carry verbatim into the next write (2026-11-12 measurement in plans/typed-role-notes.md "Why"). This part adds the store and commands only; no prompt mentions them yet.

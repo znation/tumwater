@@ -99,12 +99,81 @@ test("without a notesBacklog block the prompt carries the live-source caption bu
   assert.ok(!prompt.includes("What the backlog says now"), "no backlog block without one supplied");
 });
 
+// The lessons: the run prompt shows the role's stored lessons verbatim in a <role-lessons>
+// block right before <role-notes>, and omits the block when there are none.
+test("a role's run prompt carries the role-lessons block only when there are lessons, before the note", () => {
+  const role = roleById("feature")!;
+  const lessons = `- L1 (2026-11-13): the test PATH gotcha
+- L2 (2026-11-13): no node_modules in the worktree`;
+  const withLessons = buildRunPrompt({ role, lessons });
+  assert.match(withLessons, /<role-lessons>\n- L1 \(2026-11-13\): the test PATH gotcha\n- L2 \(2026-11-13\): no node_modules in the worktree\n<\/role-lessons>/);
+  assert.match(withLessons, /check one before acting on it/);
+  for (const empty of [undefined, "", "   \n"]) {
+    const prompt = buildRunPrompt({ role, lessons: empty });
+    assert.ok(!prompt.includes("<role-lessons>"), `no lessons block for ${JSON.stringify(empty)}`);
+  }
+});
+
+test("the lessons block rides right before the role-notes block", () => {
+  const role = roleById("feature")!;
+  const prompt = buildRunPrompt({ role, lessons: "- L1 (2026-11-13): a durable lesson", notes: "this run's state" });
+  const lessonsPos = prompt.indexOf("<role-lessons>");
+  const notesPos = prompt.indexOf("<role-notes>");
+  assert.ok(lessonsPos !== -1 && notesPos !== -1, "both blocks present");
+  assert.ok(lessonsPos < notesPos, "the lessons block precedes the notes block");
+});
+
+test("the lessons are checked against the live backlog, so a stale lesson gets the live-state block", () => {
+  const role = roleById("feature")!;
+  const backlogBlock = `What the backlog says now about entries your notes name (PLANS.md and BUGS.md as of this run; where your notes disagree, this is current):\n- Codex backend, part 2b/9 — needs review`;
+  // A lesson names a live planned part (the note names nothing), and the caller already ran
+  // the same text through notes-backlog.ts. The block follows the lessons, as it does the note.
+  const prompt = buildRunPrompt({ role, lessons: "- L1 (2026-11-13): Codex 2b/9 carry Refused", notesBacklog: backlogBlock });
+  const lessonsEnd = prompt.indexOf("</role-lessons>");
+  const backlogIdx = prompt.indexOf("What the backlog says now");
+  assert.ok(lessonsEnd >= 0 && backlogIdx > lessonsEnd, "the live-state block follows the lessons");
+  assert.match(prompt, /- Codex backend, part 2b\/9 — needs review/);
+});
+
 test("every role run is told to write a note, even the first one with none", () => {
   const role = roleById("feature")!;
   const prompt = buildRunPrompt({ role });
   assert.match(prompt, /tumwater-notes write <<'TUMWATER_NOTES'/);
   assert.match(prompt, /at most 4 KB/);
   assert.ok(!prompt.includes("<role-notes>"), "no note content block when there is no note");
+  assert.ok(!prompt.includes("<role-lessons>"), "no lessons content block when there are none");
+  assert.ok(!prompt.includes("Your role has no lessons yet"), "no seeding sentence for a bare first run");
+});
+
+// The reworded write instruction covers both stores with their commands and states the
+// lesson-versus-note rule, keeping the note's 4 KB cap.
+test("the write instruction names the lesson commands and states the lesson-versus-note rule", () => {
+  const role = roleById("feature")!;
+  const prompt = buildRunPrompt({ role });
+  assert.match(prompt, /tumwater-notes write <<'TUMWATER_NOTES'/);
+  assert.match(prompt, /tumwater-notes lesson add/);
+  assert.match(prompt, /tumwater-notes lesson\s+replace L<n>/);
+  assert.match(prompt, /tumwater-notes lesson\s+retire L<n>/);
+  assert.match(prompt, /still be true and useful in a week/);
+  assert.match(prompt, /at most 4 KB/);
+  assert.match(prompt, /Neither store copies backlog entries/);
+});
+
+// The one-time seeding sentence appears only while the role has a non-empty note but no
+// lessons file yet, asking the run to move durable lessons out of the note it next writes.
+test("the lessons seeding sentence appears only when the note is non-empty and the lessons are absent", () => {
+  const role = roleById("feature")!;
+  // Seeding: a non-empty note and no lessons file yet.
+  const seeding = buildRunPrompt({ role, notes: "where things live", lessonsSeeding: true });
+  assert.match(seeding, /Your role has no lessons yet/);
+  assert.match(seeding, /tumwater-notes lesson add/);
+  assert.match(seeding, /tumwater-notes write <<'TUMWATER_NOTES'/, "the note write instruction is still there");
+  // The role has a lessons file: no seeding sentence (it is no longer seeding).
+  const hasLessons = buildRunPrompt({ role, notes: "where things live", lessons: "- L1 (2026-11-13): a durable lesson", lessonsSeeding: false });
+  assert.ok(!hasLessons.includes("Your role has no lessons yet"), "no seeding sentence once the role has lessons");
+  // The role has no note (a first run): no seeding sentence.
+  const noNote = buildRunPrompt({ role, lessonsSeeding: false });
+  assert.ok(!noNote.includes("Your role has no lessons yet"), "no seeding sentence with no note");
 });
 
 test("the role-notes block names the <backlog-index> block above it as the live source of entry state", () => {
