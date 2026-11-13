@@ -28,7 +28,7 @@ import { planRunStart, planWithSalvagedWork, takesSalvagedWork, type RunStartPla
 import { keepSalvagedWorkForOperator, restoreSalvagedWork } from "../git/slot-salvage.js";
 import { DEFAULT_BACKEND } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
-import { foldAgentCommitsSince } from "../run/run-stage.js";
+import { foldAgentCommitsSince } from "../run/run-summary-recovery.js";
 import { planBacklogFull } from "../scheduling/claims.js";
 import { refreshPendingPlans } from "../backlog/backlog-pending.js";
 import { baseRoleOf } from "../roles/runner-ids.js";

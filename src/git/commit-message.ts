@@ -15,8 +15,8 @@ import { isMergeClaim, isPriorReview } from "../merge/merge-queue.js";
  * with run metadata. Split out of prompt.ts — which keeps building the prompts that declare
  * this contract (the machine-detectable half — sentinel and verdict-line detection — lives in
  * reply-contract.ts) — because turning a reply into what `git commit` receives is the git side
- * of the contract, consumed by the run pipeline (run-stage.ts, run-verdict.ts) and
- * refusal.ts. */
+ * of the contract, consumed by the run pipeline (run-stage.ts, run-summary-recovery.ts,
+ * run-verdict.ts) and refusal.ts. */
 
 /** Cap on the commit subject's summary portion (the SUMMARY line), so a verbose model cannot
  * bloat every commit subject. Truncated with an ellipsis — like the body fields below — rather

@@ -662,7 +662,7 @@ without the re-check, passes at 1 with it).
 (`git reset --soft` to the pre-run HEAD) before the verdict is read, so they end up inside the
 run's single tumwater-stamped commit, and a clean tree after such a run is not `no_change`.
 
-**Binds.** `src/git/git.ts`, `src/runner/runner-run.ts`, `src/run/run-stage.ts`.
+**Binds.** `src/git/git.ts`, `src/runner/runner-run.ts`, `src/run/run-summary-recovery.ts` (`foldAgentCommitsSince`).
 
 **Pinned by.** `test/agent-commit-fold.test.ts` — "an agent commit beside uncommitted edits becomes
 one harness commit", "an agent commit with a clean tree is not dropped as no_change", and the
@@ -4992,7 +4992,7 @@ index, rather than skipping the preserve".
 
 **Guarantee.** `changedFiles` throws when `git status` fails, so the refusal path's contradiction check and the stage self-check's tests end the run unsettled instead of discarding its work. Views and the stray-write warning catch the error themselves. The self-check's empty-tree test uses `isDirty`, which also throws. `commitPathsAndDiscardRest` throws when `git add` could not start, rather than returning "nothing stageable". `salvageSlotLeftovers` rethrows a git that could not start on a usable worktree (`gitCouldNotStart`, a spawn errno), which fails the lease with the slot untouched.
 
-**Binds.** `src/git/git-diff.ts` (`changedFiles`), `src/git/git-run.ts` (`gitCouldNotStart`), `src/git/git.ts` (`commitPathsAndDiscardRest`), `src/git/slot-salvage.ts` (`salvageSlotLeftovers`), `src/run/run-stage.ts`, `src/verdict/refusal.ts`, `src/runner/runner-run.ts` and `src/change/change-data.ts`.
+**Binds.** `src/git/git-diff.ts` (`changedFiles`), `src/git/git-run.ts` (`gitCouldNotStart`), `src/git/git.ts` (`commitPathsAndDiscardRest`), `src/git/slot-salvage.ts` (`salvageSlotLeftovers`), `src/run/run-stage.ts` and `src/run/run-summary-recovery.ts` (the discard-deciding reads), `src/verdict/refusal.ts`, `src/runner/runner-run.ts` and `src/change/change-data.ts`.
 
 **Pinned by.** `test/git-diff.test.ts` — "changedFiles throws when git cannot answer, rather than reporting no changes"; `test/refusal.test.ts` — "refusalContradiction throws on a git that cannot read the worktree instead of letting the refusal discard it"; `test/run-stage.test.ts` — "a git failure after the fix-up throws instead of reading as a reverted change"; `test/git.test.ts` — "gitCouldNotStart is true for a git that never ran and false for git's own failure".
 
