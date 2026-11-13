@@ -47,6 +47,18 @@ function rankedRoleTotals(series: ReportDay[], pick: (d: ReportDay) => Record<st
   return rankedRoleMap(totals);
 }
 
+/** Window totals across the series of one named per-day `Record<string, number>` field
+ * (runsByRole, tokensByRole, costByRole, …), ranked — the one home of the per-line shape the
+ * breakdown lines above all share. `?? {}` is the one guard it owns: the collector leaves the
+ * field absent on a day with no entry of that kind (zero means absent), and an absent day
+ * contributes nothing to the window total exactly as an empty map would, so a day with none of
+ * the field ranks to "-" (the zero-means-absent rule) in exactly one place. Every one-off
+ * breakdown line routes here except `notionalByRole`, whose map is also consumed by
+ * `costPerCommitPairs` on the next line, so that one stays a local lambda fed to both. */
+function rankedBy<K extends keyof ReportDay>(series: ReportDay[], field: K): [string, number][] {
+  return rankedRoleTotals(series, (d) => (d[field] as Record<string, number> | undefined) ?? {});
+}
+
 /** One "**Label:** role — n · role — n" Markdown line from already-ranked pairs; an empty
  * pair list (an all-zero window) renders "-". fmt formats each role's number. */
 export function rankedRoleLine(label: string, pairs: [string, number][], fmt: (n: number) => string): string {
@@ -325,25 +337,25 @@ function pushReportSeriesTable(lines: string[], data: ReportData): void {
 
 /** The per-role runs/tokens/prompt/cost breakdown lines. */
 function pushReportRoleLines(lines: string[], data: ReportData): void {
-  lines.push(rankedRoleLine("Runs by role", rankedRoleTotals(data.series, (d) => d.runsByRole), String));
+  lines.push(rankedRoleLine("Runs by role", rankedBy(data.series, "runsByRole"), String));
   // The same breakdown for output tokens (the resource the budget charges): window totals per
   // role from tokensByRole, ranked like the runs line. Zero-token roles are omitted; an
   // all-zero window renders "-" like the runs line.
-  pushRankedRoleLine(lines, "Tokens by role", rankedRoleTotals(data.series, (d) => d.tokensByRole ?? {}), compactTokens);
+  pushRankedRoleLine(lines, "Tokens by role", rankedBy(data.series, "tokensByRole"), compactTokens);
   // The input side of that same bill, straight after the output-token line: each role's prompt
   // totals and, when some run reported a cache read, the share of them served from cache — so
   // the same report that says who burned output tokens also says whose prompts are cached.
   lines.push(
     promptTokensLine(
-      rankedRoleTotals(data.series, (d) => d.promptTokensByRole ?? {}),
-      rankedRoleTotals(data.series, (d) => d.cacheReadTokensByRole ?? {}),
+      rankedBy(data.series, "promptTokensByRole"),
+      rankedBy(data.series, "cacheReadTokensByRole"),
     ),
   );
   // The same breakdown for spend: window totals per role from costByRole, ranked by spend
   // desc then name asc — spend is what the operator acts on (an operator tuning per-role
   // intervals wants the burning role first, not the busiest one). Zero-spend roles are
   // omitted; an all-zero window renders "-" like the runs line.
-  pushRankedRoleLine(lines, "Cost by role", rankedRoleTotals(data.series, (d) => d.costByRole), usd);
+  pushRankedRoleLine(lines, "Cost by role", rankedBy(data.series, "costByRole"), usd);
 }
 
 /** The team-only per-provider and per-model breakdown lines. */
@@ -357,8 +369,8 @@ function pushReportProviderLines(lines: string[], data: ReportData): void {
   if (data.role === undefined) {
     pushCostAndNotionalLines(
       lines,
-      () => rankedRoleTotals(data.series, (d) => d.costByProvider ?? {}),
-      () => rankedRoleTotals(data.series, (d) => d.notionalByProvider ?? {}),
+      () => rankedBy(data.series, "costByProvider"),
+      () => rankedBy(data.series, "notionalByProvider"),
     );
     // The same breakdown per MODEL (each run_start's agent-qualified selector — the model a
     // team mixing providers, per-role overrides and fallbacks actually ran on), gated to the
@@ -366,7 +378,7 @@ function pushReportProviderLines(lines: string[], data: ReportData): void {
     // omits it (ROLE_SCOPE_NOTE covers the omission), and a window with no modelled start
     // prints no line (keeping a model-less day's output unchanged), exactly as the provider
     // lines stay absent when no provider spent. Ranked and formatted like Cost by role.
-    pushPresentRankedLine(lines, "Runs by model", rankedRoleTotals(data.series, (d) => d.runsByModel ?? {}));
+    pushPresentRankedLine(lines, "Runs by model", rankedBy(data.series, "runsByModel"));
     // The token twin of the line above: each model's share of the window's output tokens
     // (each run's tokens attributed to the model its run_start named), beside the runs line
     // so a mixed team sees which exact selector burned the window's tokens. Gated to the
@@ -375,7 +387,7 @@ function pushReportProviderLines(lines: string[], data: ReportData): void {
     pushPresentRankedLine(
       lines,
       "Tokens by model",
-      rankedRoleTotals(data.series, (d) => d.tokensByModel ?? {}),
+      rankedBy(data.series, "tokensByModel"),
       compactTokens,
     );
     // The spend twins of the model lines above: each run's real and notional spend attributed
@@ -385,8 +397,8 @@ function pushReportProviderLines(lines: string[], data: ReportData): void {
     // absent), and usd formats it like Cost by role.
     pushCostAndNotionalLines(
       lines,
-      () => rankedRoleTotals(data.series, (d) => d.costByModel ?? {}),
-      () => rankedRoleTotals(data.series, (d) => d.notionalByModel ?? {}),
+      () => rankedBy(data.series, "costByModel"),
+      () => rankedBy(data.series, "notionalByModel"),
       { cost: "Cost by model", notional: "Estimated by model" },
     );
   }
@@ -397,16 +409,16 @@ function pushReportFrictionLines(lines: string[], data: ReportData): void {
   // The same breakdown for review friction: window rejections per role from review_rejected
   // events, ranked like the runs line; a window with none renders "-". The post-merge line
   // is the afterMerge: true subset — rejections that reached an already-merged commit.
-  pushRankedRoleLine(lines, "Rejections by role", rankedRoleTotals(data.series, (d) => d.rejectionsByRole ?? {}));
-  pushRankedRoleLine(lines, "Post-merge rejections by role", rankedRoleTotals(data.series, (d) => d.postMergeRejectionsByRole ?? {}));
-  pushRankedRoleLine(lines, "Revisions by role", rankedRoleTotals(data.series, (d) => d.revisionsByRole ?? {}));
-  pushRankedRoleLine(lines, "Refusals by role", rankedRoleTotals(data.series, (d) => d.refusalsByRole ?? {}));
+  pushRankedRoleLine(lines, "Rejections by role", rankedBy(data.series, "rejectionsByRole"));
+  pushRankedRoleLine(lines, "Post-merge rejections by role", rankedBy(data.series, "postMergeRejectionsByRole"));
+  pushRankedRoleLine(lines, "Revisions by role", rankedBy(data.series, "revisionsByRole"));
+  pushRankedRoleLine(lines, "Refusals by role", rankedBy(data.series, "refusalsByRole"));
   // The same breakdown for outright failures: error-class run_ends per role under the
   // digest's OUTCOME_CLASS — runs that burned agent time and merged nothing without going
   // through review, which rejections/revisions would miss entirely. Zero-means-absent, so a
   // failure-free window renders no line and an all-zero window renders "-" like the others.
-  pushRankedRoleLine(lines, "Failed runs by role", rankedRoleTotals(data.series, (d) => d.failedRunsByRole ?? {}));
-  pushRankedRoleLine(lines, "Image reroutes by role", rankedRoleTotals(data.series, (d) => d.imageReroutesByRole ?? {}));
+  pushRankedRoleLine(lines, "Failed runs by role", rankedBy(data.series, "failedRunsByRole"));
+  pushRankedRoleLine(lines, "Image reroutes by role", rankedBy(data.series, "imageReroutesByRole"));
 }
 
 /** The team-only deferred-runs-by-reason line. */
@@ -417,7 +429,7 @@ function pushReportDeferralLines(lines: string[], data: ReportData): void {
   // reason is not a role (ROLE_SCOPE_NOTE covers the omission). Zero-means-absent: a window
   // with no deferral prints no line, so a deferral-free day's output is unchanged.
   if (data.role === undefined) {
-    pushPresentRankedLine(lines, "Deferred runs by reason", rankedRoleTotals(data.series, (d) => d.deferredByReason ?? {}));
+    pushPresentRankedLine(lines, "Deferred runs by reason", rankedBy(data.series, "deferredByReason"));
   }
 }
 
@@ -425,7 +437,7 @@ function pushReportDeferralLines(lines: string[], data: ReportData): void {
 function pushReportMergeLines(lines: string[], data: ReportData): void {
   // Work ratio 4/4: the merged commits split by base role and by tier. The totals line's
   // `commits` carries the count; these lines say who made it and how much of it was work.
-  lines.push(rankedRoleLine("Commits by role", rankedRoleTotals(data.series, (d) => d.commitsByRole ?? {}), String));
+  lines.push(rankedRoleLine("Commits by role", rankedBy(data.series, "commitsByRole"), String));
   // The merged-outcomes split by base role: which authoring roles' changes reach main through
   // the merge slot, and — the new signal — which roles' changes bounce off the gate (a
   // merge_failed: review rejection, under-cap review, a conflict, a blocked fast-forward, a
@@ -434,12 +446,12 @@ function pushReportMergeLines(lines: string[], data: ReportData): void {
   // contradict that stance. Zero-means-absent: a window with merges renders Merged by role;
   // the failures line prints only when some role actually has one.
   if (data.role === undefined) {
-    const mergeDone = rankedRoleTotals(data.series, (d) => d.mergedByRole ?? {});
+    const mergeDone = rankedBy(data.series, "mergedByRole");
     lines.push(rankedRoleLine("Merged by role", mergeDone, String));
-    pushPresentRankedLine(lines, "Merge failures by role", rankedRoleTotals(data.series, (d) => d.mergeFailedByRole ?? {}));
+    pushPresentRankedLine(lines, "Merge failures by role", rankedBy(data.series, "mergeFailedByRole"));
     // The --since reason twin, folded across the series the same way; a reason-free window
     // prints no line, so its output is byte-for-byte unchanged.
-    pushPresentRankedLine(lines, "Merge failures by reason", rankedRoleTotals(data.series, (d) => d.mergeFailedByReason ?? {}));
+    pushPresentRankedLine(lines, "Merge failures by reason", rankedBy(data.series, "mergeFailedByReason"));
     // Per-day median passing check time, so a suite slowing over days shows; days without a
     // check are left out, and no line prints when no day has one (zero means absent).
     pushDayCameoLine(lines, data.series, "Merge check median", (d) => d.checkMedianMs);
@@ -453,11 +465,11 @@ function pushReportMergeLines(lines: string[], data: ReportData): void {
     // The day twin of the --since window's totals line: the same tests ranked across the
     // series' per-day main-red maps (Main red by test). Zero-absent: no line when no day
     // named a failing test.
-    pushPresentRankedLine(lines, "Main red by test", rankedRoleTotals(data.series, (d) => d.mainRedByTest ?? {}));
+    pushPresentRankedLine(lines, "Main red by test", rankedBy(data.series, "mainRedByTest"));
     // The day twin of the --since window's merges line: the same culprits ranked across the
     // series' per-day main-red maps (Main red by merge). Zero-absent: no line when no day
     // blamed a merge.
-    pushPresentRankedLine(lines, "Main red by merge", rankedRoleTotals(data.series, (d) => d.mainRedByCulprit ?? {}));
+    pushPresentRankedLine(lines, "Main red by merge", rankedBy(data.series, "mainRedByCulprit"));
     pushDayCameoLine(lines, data.series, "Merge wait median", (d) => d.mergeWaitMedianMs);
     // How long the merge slot itself held each change it landed, beside the merge-wait median:
     // the queue backlog (merge wait minus slot time) apart from the slot's own review/check/
