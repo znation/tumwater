@@ -11,12 +11,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { branchName, mergeRefName, legacyLandingRefName, pausedRolesPath, slotWorktreePath, worktreePath } from "../src/paths.js";
 import { collectRetire, hasRetirableLeftovers, previewRetire, retireRole, type RetireResult, type RetireStatus } from "../src/operator/operator-retire.js";
+import { cmdRetire } from "../src/cli/cli-retire-command.js";
 import { mergeRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { readSlotsState, writeSlotsState } from "../src/git/slots-state.js";
 import { cli } from "./helpers/cli-harness.js";
 import { readJson } from "./helpers/json-read.js";
+import { attemptAsync } from "./helpers/exit-capture.js";
 import { disableRole } from "./helpers/disable-role.js";
 import { branchHead, setRef } from "../src/git/git.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
@@ -413,4 +415,41 @@ test("hasRetirableLeftovers counts a legacy-named pin", async () => {
   const root = await initializedRepo();
   await setRef(root, legacyLandingRefName("oldpin"), mainSha(root));
   assert.equal(await hasRetirableLeftovers(root, "oldpin"), true);
+});
+
+// --- cmdRetire's target-resolution guard: a custom id retire is not a built-in, so its
+// membership is checked against the loaded config; a malformed tumwater.json throws inside
+// that load, and the catch surfaces the config error as the uniform fail() instead of an
+// escaped throw. The CLI-child retire tests only ever pass built-in ids (which return before
+// any config load), so this guard's catch is theirs by omission.
+
+test("a custom --role against a malformed tumwater.json fails with the config error, removing nothing", async () => {
+  const root = await initializedRepo();
+  // Give the id something to refuse on if the load did not throw: a retired role's leftover
+  // branch, so the unknown-role rail — the next line the resolution reaches — would also
+  // fail. Whatever fails, nothing may be removed.
+  const custom = "custom-thing";
+  sh(root, "git", "branch", branchName(custom));
+  const file = path.join(root, "tumwater.json");
+  const before = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+  fs.writeFileSync(file, "{ not json\n");
+  try {
+    const out = await attemptAsync(() => cmdRetire(root, ["--role", custom, "--force"]));
+    // fail() is `never`: the guard's catch exits 1 with the load's own error text, and the
+    // unknown-role message must not have been reached after it.
+    assert.ok(out.exited && out.code === 1, "the config load failure is the uniform fail");
+    assert.match(out.stderr, /tumwater\.json is not valid JSON/);
+    assert.doesNotMatch(out.stderr, /unknown role/);
+  } finally {
+    if (before === null) fs.rmSync(file);
+    else fs.writeFileSync(file, before);
+  }
+  // The custom role's only leftover is still here: the fail fired before any removal.
+  let still = true;
+  try {
+    sh(root, "git", "rev-parse", "--verify", "refs/heads/" + branchName(custom));
+  } catch {
+    still = false;
+  }
+  assert.equal(still, true, "nothing removed before the config error surfaced");
 });
