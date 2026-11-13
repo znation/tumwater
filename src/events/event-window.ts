@@ -362,15 +362,40 @@ export function readEventsSinceJoined(
   const cutoff = now - sinceMs;
   const joinCutoff = now - (sinceMs + joinBackslackMs);
   const window = readWindowEvents(root, dayKey(joinCutoff));
+  const join = joinWindowEvents(joinCutoff, window);
+  const events = narrowWindowEvents(join.events, cutoff);
+  const covered = windowCoveredByWideScan(window, cutoff);
+  return { cutoff, events, join, covered };
+}
+
+/** The join window's view: the wide day-key read's events filtered to the (wider) join cutoff,
+ * returned beside that cutoff so the caller's `join` field is one name. The filter keeps
+ * exactly the events whose numeric timestamp reaches the join cutoff — the pull-back that keeps
+ * a cutoff-spanning run's queued verdict resolvable. */
+function joinWindowEvents(
+  joinCutoff: number,
+  window: EventWindow,
+): { cutoff: number; events: HarnessEvent[] } {
   const joinEvents = window.events.filter((e) => typeof e.ts === "number" && e.ts >= joinCutoff);
-  // The rows' view: the wide day-key read filtered to the narrow cutoff instant — every
-  // such event's day key is >= the narrow day key (day keys are monotone in ts), so the
-  // wide read's day filter cannot have dropped one the narrow read would hold.
-  const events = joinEvents.filter((e) => typeof e.ts === "number" && e.ts >= cutoff);
-  // Coverage of the NARROW window, decided from the one wide scan. The narrow day's local
-  // midnight turns the day-key comparisons into ts comparisons — day(ts) < narrowFromKey is
-  // exactly ts < that midnight — so the checks below are numeric and the event list's
-  // oldest-first order makes them one bounded pass instead of a day-key formatting per event.
+  return { cutoff: joinCutoff, events: joinEvents };
+}
+
+/** The rows' view: the wide day-key read filtered to the narrow cutoff instant — every
+ * such event's day key is >= the narrow day key (day keys are monotone in ts), so the
+ * wide read's day filter cannot have dropped one the narrow read would hold. */
+function narrowWindowEvents(joinEvents: HarnessEvent[], cutoff: number): HarnessEvent[] {
+  return joinEvents.filter((e) => typeof e.ts === "number" && e.ts >= cutoff);
+}
+
+/** Coverage of the NARROW window, decided from the one wide scan. The narrow day's local
+ * midnight turns the day-key comparisons into ts comparisons — day(ts) < narrowFromKey is
+ * exactly ts < that midnight — so the checks below are numeric and the event list's
+ * oldest-first order makes them one bounded pass instead of a day-key formatting per event.
+ * Returns true when one wide day-key scan proves the narrow window fully covered: the wide
+ * read reached back before its own key, or the oldest retained line predates the narrow day,
+ * or no retained event sits inside the narrow day, or the narrow day's oldest event is at or
+ * before the narrow cutoff — the same predicate eventWindowCovers applies to a single read. */
+function windowCoveredByWideScan(window: EventWindow, cutoff: number): boolean {
   const cut = new Date(cutoff);
   const narrowDayStartMs = dayAt(0, cut).getTime();
   // One pass up the oldest-first list: the oldest numerically-timestamped event (any line
@@ -388,12 +413,12 @@ export function readEventsSinceJoined(
       break;
     }
   }
-  const covered =
+  return (
     window.coversFullWindow ||
     (oldestTs !== null && oldestTs < narrowDayStartMs) ||
     firstNarrowIdx === -1 ||
-    (window.events[firstNarrowIdx]?.ts ?? Number.POSITIVE_INFINITY) <= cutoff;
-  return { cutoff, events, join: { cutoff: joinCutoff, events: joinEvents }, covered };
+    (window.events[firstNarrowIdx]?.ts ?? Number.POSITIVE_INFINITY) <= cutoff
+  );
 }
 
 /** The duration-shaped windowed read behind `logs --since` (cli-log-commands.ts): the cutoff is
