@@ -17,8 +17,9 @@ import type { HarnessEvent } from "../../events/events.js";
 import { backlogLines, entryBodyWindow, browsableBacklogEntries, isOpenBacklogLabel, planListLines, clampSelection } from "./tui-backlog.js";
 import { answeredQuestionSummaries } from "../../backlog/backlog-question-answer.js";
 import { DASHBOARD_ANSWERED_QUESTIONS, DASHBOARD_RECENT_FINISHED, recentFinished } from "../status-payload.js";
-import { donePlanEntries, DONE_DATE_RE, entryMatches, FIXED_DATE_RE, fixedBugEntries } from "../../backlog/backlog.js";
+import { donePlanEntries, DONE_DATE_RE, entryMatches, FIXED_DATE_RE, fixedBugEntries, type BacklogEntry } from "../../backlog/backlog.js";
 import { isNotableEvent } from "../tone.js";
+import type { EntryHold } from "../../backlog/backlog-eligibility.js";
 import type { QueuedListRow } from "../../inbox/inbox.js";
 import { rolePayload } from "../../roles/role-view.js";
 import { inspectMarkdownLines } from "../../roles/role-render.js";
@@ -203,8 +204,109 @@ function transcriptBody(pane: Extract<TuiView, { kind: "transcript" }>, opts: Pa
   };
 }
 
+/** The browsable backlog entries the pane shows: the flat read narrowed by the active `/`
+ * search (the answered/done/fixed rows are read-only and hidden while a search is applied;
+ * entry mode still opens `flat[sel]`, the unfiltered index the selection holds) and the
+ * Ctrl+O ready/held stops. The Held-only stop keeps only the open entries a hold keeps from
+ * being picked — ready rows, questions and the answered/done/fixed rows all carry a null
+ * hold and drop under it — where the Ready-only stop drops only the held open entries and
+ * keeps everything else.
+ */
+function backlogShownEntries(
+  flat: Array<{ label: string; mark: string; hold: EntryHold; claimer: string | undefined } & BacklogEntry>,
+  grep: string | null,
+  heldOnly: boolean,
+  readyOnly: boolean,
+): Array<{ label: string; mark: string; hold: EntryHold; claimer: string | undefined } & BacklogEntry> {
+  return flat.filter((e) => {
+    if (grep !== null && !(isOpenBacklogLabel(e.label) && entryMatches(e, grep))) return false;
+    if (heldOnly) {
+      if (!isOpenBacklogLabel(e.label) || e.hold === null || e.hold === undefined) return false;
+    } else if (readyOnly && isOpenBacklogLabel(e.label) && e.hold !== null) {
+      return false;
+    }
+    return true;
+  });
+}
+
+/** The Backlog pane's list-mode body: its sections, with headings standing out and empty
+ * sections reading dim, keeping the list's head when it overflows (file order is
+ * newest-first, unlike events, which keep the tail) — or the `/` search's header with its
+ * self-explanatory rows, or the held-only empty line.
+ */
+function backlogListBody(
+  opts: PaneBodyOpts,
+  shown: Array<{ label: string; mark: string; hold: EntryHold; claimer: string | undefined } & BacklogEntry>,
+  grep: string | null,
+  heldOnly: boolean,
+): TuiPaneBody {
+  const { root, width, eventBudget } = opts;
+  const listed = (label: string) => shown.filter((e) => e.label === label).map((e) => e.title + e.mark);
+  // Plans list a series' blocked parts as one line (as `plan --list` does); the selection
+  // below still walks the flat list, one entry per part.
+  const plans = shown.filter((e) => e.label === "plan");
+  // A `/` search active: the answered/done/fixed sections are hidden, the sections build
+  // only from the matching open entries under a `search: "<grep>"` header, and nothing
+  // matching paints a self-explanatory line.
+  if (grep !== null) {
+    const prefix = [`search: "${grep}"`];
+    const rest = shown.length === 0
+      ? [`(no entries match "${grep}")`]
+      : backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length);
+    return {
+      body: [...prefix, ...rest]
+        .slice(0, eventBudget)
+        .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
+      emptyNote: "(no events yet)",
+    };
+  }
+  // The newest answered questions follow the open ones: they are in `flat` (up/down open
+  // their bodies), but no edit key acts on them. The Held-only stop drops them and the
+  // done/fixed rows too (an answered question or finished entry carries a null hold).
+  const answered = heldOnly ? [] : answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS).map((q) =>
+    q.decision ? `${q.title} — ${q.decision}` : q.title,
+  );
+  // Done plans and fixed bugs follow, browsable and read-only the same way.
+  const finishedRows = (rows: ReturnType<typeof recentFinished>, verb: string) =>
+    rows.map((r) => (r.completedOn ? `${r.title} — ${verb} ${r.completedOn}` : r.title));
+  const finished = heldOnly
+    ? {}
+    : {
+        done: finishedRows(recentFinished(donePlanEntries(root, DASHBOARD_RECENT_FINISHED), DONE_DATE_RE), "done"),
+        fixed: finishedRows(recentFinished(fixedBugEntries(root, DASHBOARD_RECENT_FINISHED), FIXED_DATE_RE), "fixed"),
+      };
+  // With no held entries the Held-only stop says so instead of painting blank sections.
+  if (heldOnly && shown.length === 0) {
+    return {
+      body: [toneLine("(no held entries)", width, "dim")],
+      emptyNote: "(no events yet)",
+    };
+  }
+  return {
+    body: backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length, answered, finished)
+      .slice(0, eventBudget)
+      .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions|answered recently|done recently|fixed recently) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
+    emptyNote: "(no events yet)",
+  };
+}
+
+/** The Backlog pane's entry-mode body: the selected entry's full body under a line naming
+ * its section and title, windowed.
+ */
+function backlogEntryBody(
+  opts: PaneBodyOpts,
+  entry: { label: string; mark: string; hold: EntryHold; claimer: string | undefined } & BacklogEntry,
+): TuiPaneBody {
+  const { width, entryBudget, state } = opts;
+  const win = entryBodyWindow(entry.body, state.entryScroll, entryBudget, width);
+  return {
+    body: [toneLine(`${entry.label}: ${entry.title}${entry.mark}`, width, "bold"), ...win.lines.map((l) => toneLine(l, width))],
+    emptyNote: "(no events yet)",
+  };
+}
+
 function backlogBody(_pane: Extract<TuiView, { kind: "backlog" }>, opts: PaneBodyOpts): TuiPaneBody {
-  const { root, width, eventBudget, entryBudget, state } = opts;
+  const { root, state } = opts;
   // The flat, labeled entry list is the one backlog read this frame needs: it carries every
   // planned feature, open bug, and open question (then the newest answered questions, done
   // plans and fixed bugs)
@@ -213,85 +315,14 @@ function backlogBody(_pane: Extract<TuiView, { kind: "backlog" }>, opts: PaneBod
   // entry mode used to read the three sections and derive the holds directly and
   // then again inside the flat list, so every render paid twice for the same reads and verdicts.
   const flat = browsableBacklogEntries(root);
-  // A `/` search narrows the browsable list to the matching open entries (the answered/done/
-  // fixed rows are read-only and hidden while a search is applied); entry mode still opens
-  // `flat[sel]`, the unfiltered index the selection holds.
   const grep = state.backlogGrep ?? null;
-  // The Held-only stop keeps only the open entries a hold keeps from being picked: ready rows,
-  // questions and the answered/done/fixed rows all carry a null hold and drop under it, where
-  // the Ready-only stop drops only the held open entries and keeps everything else.
   const heldOnly = state.backlogHeldOnly === true;
-  const shown = flat.filter((e) => {
-    if (grep !== null && !(isOpenBacklogLabel(e.label) && entryMatches(e, grep))) return false;
-    if (heldOnly) {
-      if (!isOpenBacklogLabel(e.label) || e.hold === null || e.hold === undefined) return false;
-    } else if (state.backlogReadyOnly && isOpenBacklogLabel(e.label) && e.hold !== null) {
-      return false;
-    }
-    return true;
-  });
+  const readyOnly = state.backlogReadyOnly === true;
+  const shown = backlogShownEntries(flat, grep, heldOnly, readyOnly);
   // A stale selection (an entry removed since the last render) clamps to the last; no
   // entries at all falls back to list mode.
   const sel = state.selectedEntry === null || flat.length === 0 ? null : clampSelection(state.selectedEntry, flat.length);
-  if (sel === null) {
-    // List mode: section headings stand out, empty sections read dim. Keeps the HEAD of the
-    // list when it overflows — file order is newest-first, unlike events which keep the tail.
-    const listed = (label: string) => shown.filter((e) => e.label === label).map((e) => e.title + e.mark);
-    // Plans list a series' blocked parts as one line (as `plan --list` does); the selection
-    // below still walks the flat list, one entry per part.
-    const plans = shown.filter((e) => e.label === "plan");
-    // A `/` search active: the answered/done/fixed sections are hidden, the sections build
-    // only from the matching open entries under a `search: "<grep>"` header, and nothing
-    // matching paints a self-explanatory line.
-    if (grep !== null) {
-      const prefix = [`search: "${grep}"`];
-      const rest = shown.length === 0
-        ? [`(no entries match "${grep}")`]
-        : backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length);
-      return {
-        body: [...prefix, ...rest]
-          .slice(0, eventBudget)
-          .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
-        emptyNote: "(no events yet)",
-      };
-    }
-    // The newest answered questions follow the open ones: they are in `flat` (up/down open
-    // their bodies), but no edit key acts on them. The Held-only stop drops them and the
-    // done/fixed rows too (an answered question or finished entry carries a null hold).
-    const answered = heldOnly ? [] : answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS).map((q) =>
-      q.decision ? `${q.title} — ${q.decision}` : q.title,
-    );
-    // Done plans and fixed bugs follow, browsable and read-only the same way.
-    const finishedRows = (rows: ReturnType<typeof recentFinished>, verb: string) =>
-      rows.map((r) => (r.completedOn ? `${r.title} — ${verb} ${r.completedOn}` : r.title));
-    const finished = heldOnly
-      ? {}
-      : {
-          done: finishedRows(recentFinished(donePlanEntries(root, DASHBOARD_RECENT_FINISHED), DONE_DATE_RE), "done"),
-          fixed: finishedRows(recentFinished(fixedBugEntries(root, DASHBOARD_RECENT_FINISHED), FIXED_DATE_RE), "fixed"),
-        };
-    // With no held entries the Held-only stop says so instead of painting blank sections.
-    if (heldOnly && shown.length === 0) {
-      return {
-        body: [toneLine("(no held entries)", width, "dim")],
-        emptyNote: "(no events yet)",
-      };
-    }
-    return {
-      body: backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length, answered, finished)
-        .slice(0, eventBudget)
-        .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions|answered recently|done recently|fixed recently) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
-      emptyNote: "(no events yet)",
-    };
-  }
-  // Entry browsing: the selected entry's full body under a line naming its section and
-  // title.
-  const e = flat[sel]!;
-  const win = entryBodyWindow(e.body, state.entryScroll, entryBudget, width);
-  return {
-    body: [toneLine(`${e.label}: ${e.title}${e.mark}`, width, "bold"), ...win.lines.map((l) => toneLine(l, width))],
-    emptyNote: "(no events yet)",
-  };
+  return sel === null ? backlogListBody(opts, shown, grep, heldOnly) : backlogEntryBody(opts, flat[sel]!);
 }
 
 function historyBody(pane: Extract<TuiView, { kind: "history" }>, opts: PaneBodyOpts): TuiPaneBody {
