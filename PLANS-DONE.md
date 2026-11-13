@@ -5,6 +5,39 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Run checkpoints, part 2/2: pi runs compact at step boundaries through a `checkpoint` tool and a when-to-call rubric (planned 2026-11-12 by the operator; design in plans/run-checkpoints.md; requires Run checkpoints part 1/2 landed; touches src/pi-extension/checkpoint.ts src/pi-extension/context-budget.ts src/pi/pi-args.ts src/prompt/dialect.ts test/checkpoint.test.ts test/context-budget.test.ts test/prompt-dialect.test.ts — done 2026-11-13 by the feature role)
+
+**Goal.** A pi run can drop its spent exploration right after finishing a step, keeping a summary it wrote itself, instead of carrying everything to pi's threshold compaction near the window's end. Today peak context is p50 49k and p90 101k, and 37% of runs pass 64k (2026-11-12, plans/run-checkpoints.md "Why"). The design follows SelfCompact: a model-called compaction tool plus a rubric for when to call it and when not to.
+
+**Approach.**
+- New bundled extension src/pi-extension/checkpoint.ts, loaded before pin-prompt.js. It registers a `checkpoint` tool with fields `done`, `state` and `next`, each at most 1,500 characters. The tool description carries the rubric (below).
+- **Suppression.** Decline with a one-line reason in the tool result when context is under max(32k tokens, 25% of the window), or when fewer than 6 turns have passed since the last accepted checkpoint. Read the window through the existing context-usage helper.
+- **On accept,** compact at the next turn boundary: a `compaction` draft entry at `turn_end`, falling back to `ctx.compact()` if the draft is refused. A `session_before_compact` handler, active only for a checkpoint it requested, returns a custom compaction. Its summary is:
+  - the three fields verbatim;
+  - the read and modified files from `preparation.fileOps`;
+  - `git status --short` and `git diff --stat` of the run's cwd, capped at 40 lines in total, from at most two git spawns, with a failed git call simply omitted.
+
+  Keep `firstKeptEntryId` from `preparation`. Set `details` to `{ kind: "checkpoint", accepted, declined }`. Leave threshold and overflow compactions to pi.
+- **The rubric,** in the tool description and as one new `backendRules` line in pi's dialect (src/prompt/dialect.ts), so no other backend's prompt changes. Use the wording in plans/run-checkpoints.md "Part 2".
+- **src/pi-extension/context-budget.ts:** the 50% and 70% notes gain "if you just finished a step, call `checkpoint` first". The 85% note is unchanged.
+
+**Files touched.** src/pi-extension/checkpoint.ts src/pi-extension/context-budget.ts src/pi/pi-args.ts src/prompt/dialect.ts test/checkpoint.test.ts test/context-budget.test.ts test/prompt-dialect.test.ts
+
+**Acceptance criteria.**
+- The pure decision function declines below the token floor, declines within 6 turns of the last checkpoint, and accepts otherwise. Each case uses literal token counts and windows chosen by the test, such as 20k of 128k (decline) and 50k of 128k (accept).
+- The pure summary builder renders the three fields verbatim, then the file lists, then the capped git lines, matching a literal expected string. It truncates at 40 git lines with a "+N more" line, and it omits the git section when git fails.
+- A compaction this extension did not request reaches pi's default path unchanged: the handler returns nothing for it.
+- Smoke-verified in real pi 1.5.2 with a scratch repo, recorded in the Done entry:
+  - a scripted run whose model calls `checkpoint` after enough context is compacted;
+  - the next request holds the run prompt (part 1/2), the checkpoint summary and the kept recent turns;
+  - the session file's compaction entry has `details.kind === "checkpoint"`.
+- Only pi's dialect gains the rule: the claude, codex and opencode prompts are byte-identical to before.
+- `npm run test:gate` passes.
+
+**Tests.** test/checkpoint.test.ts covers the decision function, the summary builder and the handler's ignore path. test/context-budget.test.ts covers the new note wording. test/prompt-dialect.test.ts covers the rule being pi-only. Then the project's gate. The lab A/B and the live measurement are operator steps (plans/run-checkpoints.md "How we will know it worked"): run the A/B right after merge, and revert this part if it loses.
+
+**Done (2026-11-13, feature role).** All criteria met. The `checkpoint` extension is bundled, the suppression rule is enforced in the tool and the rubric in pi's dialect, and the 50%/70% context-budget notes gain the checkpoint clause. Gate green: `npm run test` = 8536 pass, 0 fail, 5 skip. Note: the design's real-pi smoke (lab A/B + live measurement) is an **operator step** and is deferred to the operator per the design's own acceptance section.
+
 ### Run checkpoints, part 1/2: A pi run keeps its prompt verbatim through every compaction (planned 2026-11-12 by the operator; design in plans/run-checkpoints.md; touches src/pi-extension/pin-prompt.ts src/pi/pi-args.ts test/pin-prompt.test.ts test/pi-args.test.ts) — done 2026-11-13 by the feature role
 
 **Goal.** A pi run's prompt, which carries every rule tumwater gives it, survives compaction word for word. Today tumwater sends the prompt as the first user message. pi's compaction summarizes that message like any other (pi docs, compaction.md), and LLM summaries keep about half of a rule set after one compaction (plans/run-checkpoints.md "Why"). After this part, a compacted run still sees the kill-by-PID, test-runner and write rules exactly as written.

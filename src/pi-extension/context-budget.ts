@@ -13,9 +13,13 @@
  * a window under 128k context-shake crosses earlier, under pi's compaction line — see its
  * `shakeLimits` — while these notes keep their percentages.) The
  * failure mode the numbers exist for is the fallback's local model (Qwen3.8-27B): its longest runs
- * peaked at 96–110k tokens (coverage, steward, selfcheck, plan; 2026-09-29..10-01) while the
- * prompt's reading budget could only say "your window is finite". On a large-window model the
+ * peaked at 96–110k tokens (coverage, steward, selfcheck, plan; 2026-09-29..10-01) while
+ * the prompt's reading budget could only say "your window is finite". On a large-window model the
  * thresholds are rarely reached, so the extension costs nothing there.
+ *
+ * Run checkpoints, part 2/2: the 50% and 70% notes gain the checkpoint clause — when a step just
+ * finished, the `checkpoint` tool (src/pi-extension/checkpoint.ts) is the way to free the window at
+ * the step boundary, so the note that says "start wrapping" names it.
  *
  * The threshold logic is a pure, exported function (`contextNote`) so it is unit-testable without
  * pi; the default export is a thin adapter over pi's `tool_result` event and
@@ -30,6 +34,13 @@ import { nonNegativeNumber } from "../files/json-object.js";
 import { compactTokens } from "../text/format.js";
 import { appendToolResultNote } from "./tool-result-content.js";
 import { readContextUsage } from "./context-usage.js";
+
+/** Run checkpoints, part 2/2: the clause the 50% and 70% notes gain — when a step just
+ * finished, call the `checkpoint` tool (src/pi-extension/checkpoint.ts) first, so the window
+ * frees at the step boundary before the next unrelated exploration. Pure. */
+export function checkpointClause(): string {
+  return "if you just finished a step, call `checkpoint` first";
+}
 
 /** Context-usage percentages at which the model is told where it stands. */
 export const CONTEXT_THRESHOLDS: readonly number[] = [50, 70, 85];
@@ -62,8 +73,8 @@ export function contextNote(
     threshold >= 85
       ? "Stop reading now: finish what is in progress, then end your reply in the form your instructions require."
       : threshold >= 70
-        ? "Wrap up: make the smallest change that completes your task, verify it, and end your reply."
-        : "Finish the task you chose with what you have; start no new exploration.";
+        ? `Wrap up: make the smallest change that completes your task, ${checkpointClause()}, verify it, and end your reply.`
+        : `Finish the task you chose with what you have; start no new exploration. ${checkpointClause()}.`;
   return { threshold, text: `[tumwater: your context window is ${Math.floor(percent)}% full${used}. ${advice}]` };
 }
 

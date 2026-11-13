@@ -56,6 +56,7 @@ test("piArgs loads the context-shake extension right after bounded-output", () =
     "bounded-output.js",
     "context-shake.js",
     "context-budget.js",
+    "checkpoint.js",
     "strip-thinking.js",
     "trim-system-prompt.js",
     "write-guard.js",

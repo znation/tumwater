@@ -105,11 +105,13 @@ test("opencode's dialect carries both backend rules", () => {
 });
 
 test("pi and claude prompts stay byte-identical: no backend blank line in the reading budget", () => {
-  // backendRuleLines returns "" for a dialect with no backendRules (pi, claude), so each
-  // prompt's Reading budget block is exactly its pre-dialect rule text from the dialect's own
-  // contextBudgetRule, followed by one blank line before "Where you work" — rendered through
-  // the full buildRunPrompt so the block is compared byte-for-byte, the regression for the
-  // earlier blank-line bug (a backend rule rendered as an empty line doubled that separator).
+  // Each prompt's Reading budget block is its pre-dialect rule text (contextBudgetRule), then the
+  // dialect's backend rules one bullet each, then one blank line before "Where you work" —
+  // rendered through the full buildRunPrompt so the block is compared byte-for-byte, the
+  // regression for the earlier blank-line bug (a backend rule rendered as an empty line doubled
+  // that separator). pi carries one backend rule (the checkpoint rubric, part 2/2); claude none.
+  const backendRuleBlock = (rules: readonly string[] | undefined) =>
+    rules && rules.length > 0 ? "\n" + rules.map((r) => `- ${r}`).join("\n") : "";
   for (const [agent, dialect] of [
     ["pi", PI_DIALECT],
     ["claude", CLAUDE_DIALECT],
@@ -120,9 +122,11 @@ test("pi and claude prompts stay byte-identical: no backend blank line in the re
       prompt.indexOf(marker) + marker.length,
       prompt.indexOf("Where you work:"),
     );
-    assert.equal(block, "\n" + contextBudgetRule(dialect) + "\n\n", `${agent} reading budget`);
+    const expected = "\n" + contextBudgetRule(dialect) + backendRuleBlock(dialect.backendRules) + "\n\n";
+    assert.equal(block, expected, `${agent} reading budget`);
   }
-  assert.equal(PI_DIALECT.backendRules, undefined);
+  assert.equal(PI_DIALECT.backendRules?.length, 1, "pi carries the checkpoint rubric as one rule");
+  assert.match(PI_DIALECT.backendRules![0]!, /\`checkpoint\`/);
   assert.equal(CLAUDE_DIALECT.backendRules, undefined);
 });
 

@@ -18,17 +18,26 @@ export interface PromptDialect {
   oversizedOutput: string;
   /** Backend-specific shell/reasoning rules rendered right after the reading-budget rule's
    * oversized-output bullet (opencode's shell-timeout and foreground rules, §5). A backend
-   * with none (pi, claude) keeps its prompts byte-identical. */
+   * with none (claude) keeps its prompts byte-identical. */
   backendRules?: string[];
 }
 
 /** pi's dialect: the identity of the prompts before agent backends — its `read` tool's
- * `offset`/`limit`, and its bundled head+tail marker. */
+ * `offset`/`limit`, and its bundled head+tail marker. Run checkpoints part 2/2 adds one
+ * backend rule: the `checkpoint` tool's when-to-call rubric, which only pi runs see (the other
+ * backends compact by their own rules, and a run cannot trigger their compaction from inside). */
 export const PI_DIALECT: PromptDialect = {
   readRange: "the read tool's offset/limit (or `sed -n 'A,Bp'`)",
   oversizedOutput: `Oversized tool results come back as head+tail around a marker that names the omitted amount
   and where the full output lives — follow the pointer (re-read with \`offset\`/\`limit\`, or open
   the full-output file path) instead of retrying the same read.`,
+  backendRules: [
+    `Call \`checkpoint\` right after you finish a step: when your exploration has settled what to
+  change, after a set of edits passes its targeted tests, or before you move to an unrelated
+  part of the task. Never call it in the middle of an edit, while diagnosing a failure, or
+  when stuck: a summary written then loses what you need. Write it so you could continue
+  from it alone.`,
+  ],
 };
 
 /** claude's dialect: the Read tool takes `offset`/`limit`, and Claude Code truncates

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   CONTEXT_THRESHOLDS,
+  checkpointClause,
   contextNote,
   default as contextBudget,
 } from "../src/pi-extension/context-budget.js";
@@ -16,6 +17,14 @@ test("contextNote stays silent below the first threshold and on unknown usage", 
   assert.equal(contextNote(null, null, 126_928, 0), null);
   assert.equal(contextNote(undefined, 1, 126_928, 0), null);
   assert.equal(contextNote(Number.NaN, 1, 126_928, 0), null);
+});
+
+test("the 50% and 70% notes name the checkpoint tool, and the 85% backstop does not", () => {
+  assert.equal(checkpointClause(), "if you just finished a step, call `checkpoint` first");
+  assert.match(contextNote(52, 66_400, 126_928, 0)!.text, /if you just finished a step, call `checkpoint` first/);
+  assert.match(contextNote(71, 90_000, 126_928, 50)!.text, /if you just finished a step, call `checkpoint` first/);
+  const backstop = contextNote(86, 109_000, 126_928, 70)!;
+  assert.ok(!backstop.text.includes("checkpoint"), "the 85% stop-reading backstop never names the tool");
 });
 
 test("contextNote fires once per threshold and names the numbers", () => {

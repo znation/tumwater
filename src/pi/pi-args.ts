@@ -15,7 +15,8 @@ import type { ResolvedModelConfig } from "../config/config-views.js";
  * small-window chat-completions model, trim-system-prompt drops pi's docs section from the
  * system prompt, write-guard refuses an edit or write outside the run's worktree, and
  * kill-guard refuses a bash call that kills processes by pattern (pkill/killall and ps/pgrep fed
- * into kill). pin-prompt pins the run prompt verbatim at the front of the conversation across
+ * into kill), checkpoint lets the run compact its own context at a step boundary it chooses, and
+ * pin-prompt pins the run prompt verbatim at the front of the conversation across
  * every compaction, and is loaded last so it sees the messages after context-shake and
  * strip-thinking have run. Notes ride
  * the `tumwater-notes` command on
@@ -25,6 +26,7 @@ export function bundledExtensionPaths(): string[] {
     "bounded-output.js",
     "context-shake.js",
     "context-budget.js",
+    "checkpoint.js",
     "strip-thinking.js",
     "trim-system-prompt.js",
     "write-guard.js",
