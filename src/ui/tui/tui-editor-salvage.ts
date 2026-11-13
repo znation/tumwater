@@ -1,6 +1,6 @@
 import { applySalvagePatchForOperator } from "../../git/slot-salvage.js";
 import { isGitRepo } from "../../git/git.js";
-import { collectSalvagePatches, dropSalvagePatch, salvagePatchAt } from "../../status/status-salvage.js";
+import { collectSalvagePatches, dropSalvagePatch, salvagePatchAt, type SalvagePatch } from "../../status/status-salvage.js";
 import { parsePositiveInt } from "../../text/text.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import { openBlankPromptLine, savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
@@ -86,6 +86,33 @@ export function createSalvageEditor(session: TuiEditorSession): TuiEditorModule 
     return true;
   };
 
+  // Resolve the number on the shared prompt line into a kept salvage patch — the preamble both
+  // Enter arms share: read the line, flash the standard sentences for an empty line, a
+  // non-plain-decimal number, and a number outside the list, and resolve it through
+  // salvagePatchAt, so a bad number never reaches either arm's apply or drop action. Plain
+  // decimal digits only, via the shared parsePositiveInt the CLI's --show/--apply/--drop use —
+  // bare Number() would silently read an exponent spelling ("1e2" → 100) as a position, while
+  // the sibling TUI editors (interval, instances, budget) enforce the same plain-decimal rule.
+  // Returns the resolved patch to act on, or false when it flashed and the line stays open.
+  const resolveSalvagePosition = (): { position: number; patch: SalvagePatch } | false => {
+    const text = session.input.trim();
+    if (text === "") {
+      session.flashMessage("a salvaged patch position is required");
+      return false;
+    }
+    const position = parsePositiveInt(text);
+    if (position === null) {
+      session.flashMessage("salvage position must be a whole number");
+      return false;
+    }
+    const at = salvagePatchAt(collectSalvagePatches(session.root), position);
+    if ("message" in at) {
+      session.flashMessage(at.message!);
+      return false;
+    }
+    return { position, patch: at.patch };
+  };
+
   // Enter applies the typed patch number through applySalvagePatchForOperator — the same core,
   // and the same never-delete-the-patch / never-commit policy, the CLI's `tumwater salvage --apply
   // <n>` and the dashboard's Apply button use — then flashes the CLI's own outcome wording. An
@@ -93,27 +120,9 @@ export function createSalvageEditor(session: TuiEditorSession): TuiEditorModule 
   // patch that does not apply all flash and STAY in the editor so the operator can fix the input
   // or reach for the CLI; only a successful apply exits the editor and repaints the Health list.
   const submitSalvageApply = (): boolean => {
-    const text = session.input.trim();
-    if (text === "") {
-      session.flashMessage("a salvaged patch position is required");
-      return true;
-    }
-    // Plain decimal digits only, via the shared parsePositiveInt the CLI's --show/--apply/--drop
-    // use — bare Number() would silently read an exponent spelling ("1e2" → 100) as a position,
-    // while the sibling TUI editors (interval, instances, budget) all enforce the same
-    // plain-decimal rule. A non-plain-decimal shape flashes the same whole-number wording and
-    // STAYS in the editor.
-    const position = parsePositiveInt(text);
-    if (position === null) {
-      session.flashMessage("salvage position must be a whole number");
-      return true;
-    }
-    const at = salvagePatchAt(collectSalvagePatches(session.root), position);
-    if ("message" in at) {
-      session.flashMessage(at.message!);
-      return true;
-    }
-    const patch = at.patch;
+    const resolved = resolveSalvagePosition();
+    if (resolved === false) return true;
+    const { position, patch } = resolved;
     void (async () => {
       // Apply needs a git checkout (the list needs none); a non-git root changes nothing and
       // stays open, the same refusal the CLI's `--apply` branch gives.
@@ -143,31 +152,15 @@ export function createSalvageEditor(session: TuiEditorSession): TuiEditorModule 
   // Enter in drop mode deletes the typed patch number through `dropSalvagePatch` — the same
   // core the CLI's `tumwater salvage --drop <n>` uses, so the terminal drop cannot drift from
   // it. The empty-line, non-whole-number, and past-the-list flashes are the apply arm's, so a
-  // bad number cannot delete anything. On a successful delete the editor exits and repaints
-  // the Health list with the patch gone; on a delete that could not remove the file it flashes
-  // the CLI's `could not drop` sentence and stays open.
+  // bad number cannot delete anything. The empty-line, non-whole-number, and past-the-list
+  // flashes come from resolveSalvagePosition, so a bad number cannot delete anything. On a
+  // successful delete the editor exits and repaints the Health list with the patch gone; on a
+  // delete that could not remove the file it flashes the CLI's `could not drop` sentence and
+  // stays open.
   const submitSalvageDrop = (): boolean => {
-    const text = session.input.trim();
-    if (text === "") {
-      session.flashMessage("a salvaged patch position is required");
-      return true;
-    }
-    // Plain decimal digits only, via the shared parsePositiveInt the CLI's --show/--apply/--drop
-    // use — bare Number() would silently read an exponent spelling ("1e2" → 100) as a position,
-    // while the sibling TUI editors (interval, instances, budget) all enforce the same
-    // plain-decimal rule. A non-plain-decimal shape flashes the same whole-number wording and
-    // STAYS in the editor.
-    const position = parsePositiveInt(text);
-    if (position === null) {
-      session.flashMessage("salvage position must be a whole number");
-      return true;
-    }
-    const at = salvagePatchAt(collectSalvagePatches(session.root), position);
-    if ("message" in at) {
-      session.flashMessage(at.message!);
-      return true;
-    }
-    const patch = at.patch;
+    const resolved = resolveSalvagePosition();
+    if (resolved === false) return true;
+    const { position, patch } = resolved;
     void (async () => {
       const dropped = dropSalvagePatch(session.root, patch.file);
       if (!dropped) {
