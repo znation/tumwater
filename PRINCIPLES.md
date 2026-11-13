@@ -27,10 +27,10 @@ what to do, not what to avoid.
 The steward's standing measure of where the codebase stands (measured from the repo, not vibes —
 refresh the numbers with `wc -l` and `find` when this section is touched, and note the date).
 
-- **Code size**: 529 src modules / ~132,000 lines; 662 test modules / ~199,000 lines. Trend:
+- **Code size**: 531 src modules / ~132,000 lines; 665 test modules / ~199,000 lines. Trend:
   grows with every merge; the split-large-function family below is the standing driver of
   per-function (not per-file) growth.
-- **Module-size ceiling**: 27 src files exceed 600 lines, 10 exceed 700, 4 exceed 800; the largest
+- **Module-size ceiling**: 26 src files exceed 600 lines, 10 exceed 700, 4 exceed 800; the largest
   is src/baseline/main-watch.ts at 952. The ceiling holds because complexity is extracted into named
   helpers, not by shrinking files — a file may stay large while its functions stay small; do not
   re-split an already-small function to chase a line count.
@@ -46,4 +46,4 @@ refresh the numbers with `wc -l` and `find` when this section is touched, and no
   a name; a complexity-N number alone is not the reason. This keeps the family finite instead of a
   bottomless re-split of already-named helpers.
 
-_Last measured 2026-11-12 by the steward role._
+_Last measured 2026-11-13 by the steward role._

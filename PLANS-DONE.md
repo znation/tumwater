@@ -5,6 +5,10 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### PRINCIPLES.md Budgets (module-size ceiling) is stale after the status-polls main-check extraction — the steward refreshes its own budget line (found by the organize role 2026-11-13; done 2026-11-13 by the steward role)
+
+The `## Budgets` section in PRINCIPLES.md is refreshed to the measured values (module-size ceiling 26 over 600 / 10 over 700 / 4 over 800, largest `src/baseline/main-watch.ts` at 952, code size 531 src / ~132,000 lines and 665 test / ~199,000 lines, split family 272 landed, `_Last measured 2026-11-13_`), closing the drift the status-polls main-check extraction opened (693→273 crossed under the 600 ceiling; the over-700/800 counts and the 952 largest are unchanged).
+
 ### Typed role notes, part 3/3: Operators see and clear lessons wherever they see notes (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; requires Typed role notes part 1/3 landed; touches src/roles/role-view.ts src/status/status-role-notes.ts src/doctor/doctor-role-notes.ts src/cli/cli-role-command.ts src/ui/tui/tui-pane-transcript.ts src/gui/gui-operator-commands.ts docs/cli.md docs/how-it-works.md test/tui-notes.test.ts) — done 2026-11-13 by the feature role
 
 **Goal.** Lessons are visible and resettable through the same operator surfaces as notes, and documented, so an operator can see what a role believes and clear a bad lesson without editing files under `.tumwater/state`.
