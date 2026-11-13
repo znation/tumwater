@@ -31,7 +31,8 @@ import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
 import { readAccount, windowEntries } from "../agent/subscription-account.js";
-import { CONFIG_BASENAME, configPath, roleNotesPath } from "../paths.js";
+import { CONFIG_BASENAME, configPath, roleLessonsPath, roleNotesPath } from "../paths.js";
+import { parseRoleLessonsText } from "./role-notes-write.js";
 import { coverageRows, readQaCoverage, type CoverageRow } from "../observer/qa-coverage.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { filingRows, readFeedbackFilings, type FilingRow } from "../observer/feedback-filings.js";
@@ -138,6 +139,11 @@ export interface RoleViewPayload {
   /** The role's notes: the note its own earlier runs wrote, or
    * null when there is none (missing, empty, or unreadable). Always null for the director. */
   notes: string | null;
+  /** The role's lessons, rendered one line each (`- L<n> (date): text`), or null when there
+   * are none (missing, empty, or unreadable). Always null for the director, which has no
+   * lessons (its work is the operator's prompt). Read whole for display, like the note; a
+   * corrupted file degrades to null rather than failing the inspection. */
+  lessons: string | null;
   /** The epoch-ms instant the note file was last modified (`fs.statSync(...).mtimeMs`) — the
    * operator twin of the `<role-notes>` prompt block's `last saved <day>` age, so the role
    * view can name how stale a note is. Null exactly when `notes` is null (a missing, empty
@@ -550,6 +556,7 @@ function notesAndWindowsOf(
 ): {
   note: string | null;
   noteSavedAt: number | null;
+  lessons: string | null;
   quietHours: NonNullable<RoleViewPayload["quietHours"]>;
   contextWindow: number | null;
 } {
@@ -559,11 +566,26 @@ function notesAndWindowsOf(
   // null when there is no note.
   let note: string | null = null;
   let noteSavedAt: number | null = null;
+  let lessons: string | null = null;
   if (role !== DIRECTOR_ROLE) {
     const notesPath = roleNotesPath(root, role);
     const text = readRegularTextOrNull(notesPath);
     note = text !== null && text.trim() !== "" ? text : null;
     if (note !== null) noteSavedAt = statOrNull(notesPath)?.mtimeMs ?? null;
+    // The role's lessons, read whole for display through readRegularTextOrNull (lstat-guarded,
+    // the same line as the note read above: a symlink dropped at the lessons path reads as
+    // absent, so an outside file's text is never pulled into the operator surface — INV-G2).
+    // A missing or empty store is "no lessons"; a corrupted file degrades to null rather than
+    // failing the inspection, the same tolerance the note read gives a torn note.
+    const lessonsText = readRegularTextOrNull(roleLessonsPath(root, role));
+    try {
+      const store = parseRoleLessonsText(lessonsText ?? "");
+      lessons = store.lessons.length > 0
+        ? store.lessons.map((l) => `- ${l.id} (${l.date}): ${l.text}`).join("\n")
+        : null;
+    } catch {
+      lessons = null;
+    }
   }
   // The windows the scheduler applies (gates/gate-polls.ts), through the same parser and
   // predicate; the director is exempt from both gates.
@@ -577,7 +599,7 @@ function notesAndWindowsOf(
   // The resolved primary seam's declared context window. A run currently on the model
   // fallback may use a different window, which is the fallback's own documented state.
   const contextWindow = seamContextWindowForRole(cfg, role, root, modelsPath);
-  return { note, noteSavedAt, quietHours, contextWindow };
+  return { note, noteSavedAt, lessons, quietHours, contextWindow };
 }
 
 /** The role's persisted schedule (runner-state.ts) surfaced read-only in the payload: the
@@ -689,6 +711,7 @@ interface AssemblePayloadParams {
   base: string;
   note: string | null;
   noteSavedAt: number | null;
+  lessons: string | null;
   flowCoverage?: CoverageRow[];
   filings?: FilingRow[];
   contextWindow: number | null;
@@ -757,11 +780,12 @@ function overrideFields(p: AssemblePayloadParams): Partial<RoleViewPayload> {
 // The payload's role context: the search text, notes, observer ledgers, and the next-run
 // preview seam.
 function contextFields(p: AssemblePayloadParams): Partial<RoleViewPayload> {
-  const { role, resolved, note, noteSavedAt, flowCoverage, filings, contextWindow, nextPrompt, root } = p;
+  const { role, resolved, note, noteSavedAt, lessons, flowCoverage, filings, contextWindow, nextPrompt, root } = p;
   return {
     find: role === DIRECTOR_ROLE ? null : resolved.find,
     notes: note,
     noteSavedAt,
+    lessons,
     ...(flowCoverage !== undefined ? { flowCoverage } : {}),
     ...(filings !== undefined ? { filings } : {}),
     inboxCount: queuedRolePromptCount(root, role),
@@ -840,7 +864,7 @@ export function rolePayload(
   const { state, nextPrompt, schedule } = preview;
   const { recentOutcomes, usage } = historyOf(root, role);
   const { dailyCap, dailyCapHitAt } = dailyCapOf(root, cfg, role, now, state);
-  const { note, noteSavedAt, quietHours, contextWindow } = notesAndWindowsOf(root, cfg, role, now, modelsPath);
+  const { note, noteSavedAt, lessons, quietHours, contextWindow } = notesAndWindowsOf(root, cfg, role, now, modelsPath);
   const overrides = overrideFieldsOf(root, base);
   const { minRunIntervalOverride, providerOverride, modelOverride, thinkingOverride, backendOverride } = overrides;
   const ledgers = observerLedgers(role, root, now);
@@ -868,6 +892,7 @@ export function rolePayload(
     base,
     note,
     noteSavedAt,
+    lessons,
     flowCoverage,
     filings,
     contextWindow,

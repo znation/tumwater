@@ -23,6 +23,7 @@ import {
   retireRoleLesson,
   validateRoleLesson,
   writeRoleLessons,
+  clearRoleLessons,
 } from "../src/roles/role-notes-write.js";
 
 /** A lessons file path under a fresh temp dir. */
@@ -144,4 +145,28 @@ test("writeRoleLessons writes through the atomic path and leaves no temp remnant
   writeRoleLessons(file, 1, []); // a marker-only file
   assert.equal(fs.readFileSync(file, "utf8"), "<!-- next: L1 -->\n");
   assert.deepEqual(fs.readdirSync(path.dirname(file)).filter((f) => f.includes(".tmp-")), [], "no temp remnant");
+});
+
+test("clearRoleLessons empties the store but keeps the next-id counter (a later add takes a fresh id)", () => {
+  const file = lessonsFile();
+  addRoleLesson(file, "first", "2026-11-12"); // L1
+  addRoleLesson(file, "second", "2026-11-13"); // L2
+  clearRoleLessons(file);
+  assert.equal(fs.readFileSync(file, "utf8"), "<!-- next: L3 -->\n", "all lessons dropped, counter kept");
+  assert.equal(addRoleLesson(file, "third", "2026-11-13"), "L3", "a later add never reuses a cleared id");
+  assert.deepEqual(readRoleLessons(file).lessons.map((l) => l.id), ["L3"]);
+});
+
+test("clearRoleLessons of a missing file writes the empty store (a no-op that leaves an empty file)", () => {
+  const file = lessonsFile();
+  clearRoleLessons(file);
+  assert.equal(fs.readFileSync(file, "utf8"), "<!-- next: L1 -->\n");
+  assert.deepEqual(readRoleLessons(file), { nextId: 1, lessons: [] });
+});
+
+test("clearRoleLessons of a corrupted store throws, like every read of it", () => {
+  const file = lessonsFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, "- L1 (2026-11-12): no marker\n");
+  assert.throws(() => clearRoleLessons(file), /next-id marker/);
 });

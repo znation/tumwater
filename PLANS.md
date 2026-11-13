@@ -6,28 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Typed role notes, part 3/3: Operators see and clear lessons wherever they see notes (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; requires Typed role notes part 1/3 landed; touches src/roles/role-view.ts src/status/status-role-notes.ts src/doctor/doctor-role-notes.ts src/cli/cli-role-command.ts src/ui/tui/tui-pane-transcript.ts src/gui/gui-operator-commands.ts docs/cli.md docs/how-it-works.md test/tui-notes.test.ts)
-
-**Goal.** Lessons are visible and resettable through the same operator surfaces as notes, and documented, so an operator can see what a role believes and clear a bad lesson without editing files under `.tumwater/state`.
-
-**Approach.**
-- src/roles/role-view.ts and the TUI notes pane (src/ui/tui/tui-pane-transcript.ts), plus the dashboard role drawer fed by role-view: show the lessons, read-only, above the note under a "Lessons" label. Show nothing extra when a role has none.
-- src/cli/cli-role-command.ts: `tumwater role <id> --clear-lessons` empties the lessons file. `--clear-notes` keeps clearing only the note.
-- src/gui/gui-operator-commands.ts: a clear-lessons operator command beside the existing notes commands. Operator editing of individual lessons is out of scope.
-- src/status/status-role-notes.ts and src/doctor/doctor-role-notes.ts: the over-cap check also reports a lessons file over 2 KB or 12 lessons, for example one an operator edited by hand.
-- docs/cli.md: the `tumwater-notes lesson` subcommands and `--clear-lessons`. docs/how-it-works.md: one paragraph on the two stores and why lessons are kept verbatim.
-
-**Files touched.** src/roles/role-view.ts src/status/status-role-notes.ts src/doctor/doctor-role-notes.ts src/cli/cli-role-command.ts src/ui/tui/tui-pane-transcript.ts src/gui/gui-operator-commands.ts docs/cli.md docs/how-it-works.md test/tui-notes.test.ts
-
-**Acceptance criteria.**
-- The role view, TUI pane and drawer list a role's lessons above its note, and show no lessons section for a role without any.
-- `--clear-lessons` and the dashboard command empty the lessons file and leave the note byte-identical. `--clear-notes` leaves the lessons byte-identical.
-- The doctor reports a hand-edited lessons file over either cap.
-- docs/cli.md lists every new subcommand and flag, and the CLI doc parity tests pass.
-- `npm run test:gate` passes.
-
-**Tests.** test/tui-notes.test.ts plus the existing role-view, CLI-doc and doctor tests for those modules, then the project's gate.
-
 ### Run checkpoints, part 1/2: A pi run keeps its prompt verbatim through every compaction (planned 2026-11-12 by the operator; design in plans/run-checkpoints.md; touches src/pi-extension/pin-prompt.ts src/pi/pi-args.ts test/pin-prompt.test.ts test/pi-args.test.ts)
 
 **Goal.** A pi run's prompt, which carries every rule tumwater gives it, survives compaction word for word. Today tumwater sends the prompt as the first user message. pi's compaction summarizes that message like any other (pi 1.5.2 docs/compaction.md), and LLM summaries keep about half of a rule set after one compaction (plans/run-checkpoints.md "Why"). After this part, a compacted run still sees the kill-by-PID, test-runner and write rules exactly as written.

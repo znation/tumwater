@@ -633,6 +633,11 @@ Usage:
                                    Clear that role's notes; [--json] prints one
                                    { command:"role", action:"clear", role, key:"notes",
                                    status:"cleared" } object in place of the prose line
+  tumwater role <id> --clear-lessons [--json]
+                                   Empty that role's lessons store (it leaves the note
+                                   untouched); [--json] prints one
+                                   { command:"role", action:"clear", role, key:"lessons",
+                                   status:"cleared" } object in place of the prose line
   tumwater role <id> --notes-file <path> [--json]
                                    Replace that role's notes from a file ("-" reads stdin;
                                    4 KB cap); a run in progress at that moment may still

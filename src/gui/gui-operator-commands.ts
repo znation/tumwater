@@ -15,8 +15,8 @@ import { dropBrokenPins, brokenPinDropLines, type BrokenPinDrop, retireLeftovers
 import { commitUncommittedBacklog, backlogCommitMessage, type BacklogCommitReport } from "../doctor/doctor-backlog.js";
 import { archiveFinishedOnMain, describeArchivedFile, type ArchiveOnMainOutcome } from "../backlog/backlog-archive.js";
 import { loadConfigSafe } from "../config/config.js";
-import { saveRoleNote } from "../roles/role-notes-write.js";
-import { roleNotesPath, MERGE_LOCK_WAIT_MS } from "../paths.js";
+import { saveRoleNote, clearRoleLessons } from "../roles/role-notes-write.js";
+import { roleLessonsPath, roleNotesPath, MERGE_LOCK_WAIT_MS } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { artifactPhrase, retireRole } from "../operator/operator-retire.js";
 import { previewRevert, revertFollowUp, revertMergedCommit } from "../operator/operator-revert.js";
@@ -248,6 +248,23 @@ export async function handleRoleNotes(req: http.IncomingMessage, res: http.Serve
   if (text === null) return;
   try {
     sendJson(res, 200, { ok: true, message: saveRoleNote(roleNotesPath(root, role), text) });
+  } catch (err) {
+    badRequest(res, errorMessage(err));
+  }
+}
+/** Handle POST /api/role-lessons: the role drawer's lessons Clear — the same clearRoleLessons
+ * `tumwater role <id> --clear-lessons` calls, so the two stores clear independently and cannot
+ * drift. The note is left untouched. The director has no lessons (400, the CLI's wording). A
+ * corrupted (hand-corrupted) lessons file answers a 400 carrying the parse's message rather
+ * than being cleared from a mistaken read. */
+export async function handleRoleLessons(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readRoleBody(req, res, '{"role": "feature"}', root);
+  if (!body) return;
+  const role = body.role as string;
+  if (role === DIRECTOR_ROLE) return badRequest(res, "the director has no lessons");
+  try {
+    clearRoleLessons(roleLessonsPath(root, role));
+    sendJson(res, 200, { ok: true, message: `lessons cleared` });
   } catch (err) {
     badRequest(res, errorMessage(err));
   }

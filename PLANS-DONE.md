@@ -5,6 +5,28 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Typed role notes, part 3/3: Operators see and clear lessons wherever they see notes (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; requires Typed role notes part 1/3 landed; touches src/roles/role-view.ts src/status/status-role-notes.ts src/doctor/doctor-role-notes.ts src/cli/cli-role-command.ts src/ui/tui/tui-pane-transcript.ts src/gui/gui-operator-commands.ts docs/cli.md docs/how-it-works.md test/tui-notes.test.ts) — done 2026-11-13 by the feature role
+
+**Goal.** Lessons are visible and resettable through the same operator surfaces as notes, and documented, so an operator can see what a role believes and clear a bad lesson without editing files under `.tumwater/state`.
+
+**Approach.**
+- src/roles/role-view.ts and the TUI notes pane (src/ui/tui/tui-pane-transcript.ts), plus the dashboard role drawer fed by role-view: show the lessons, read-only, above the note under a "Lessons" label. Show nothing extra when a role has none.
+- src/cli/cli-role-command.ts: `tumwater role <id> --clear-lessons` empties the lessons file. `--clear-notes` keeps clearing only the note.
+- src/gui/gui-operator-commands.ts: a clear-lessons operator command beside the existing notes commands. Operator editing of individual lessons is out of scope.
+- src/status/status-role-notes.ts and src/doctor/doctor-role-notes.ts: the over-cap check also reports a lessons file over 2 KB or 12 lessons, for example one an operator edited by hand.
+- docs/cli.md: the `tumwater-notes lesson` subcommands and `--clear-lessons`. docs/how-it-works.md: one paragraph on the two stores and why lessons are kept verbatim.
+
+**Files touched.** src/roles/role-view.ts (payload reads lessons through readRegularTextOrNull, the lstat-guarded line) src/roles/role-render.ts (a Lessons section in the shared inspectMarkdownLines the CLI and TUI pane render) src/status/status-role-notes.ts (a readRoleLessonsOverCap walk) src/doctor/doctor-role-notes.ts (a lessons over-cap arm on the row) src/cli/cli-role-command.ts (--clear-lessons) src/cli/help-text.ts (the role help stanza) src/gui/gui-operator-commands.ts (handleRoleLessons) src/gui/gui-server.ts + src/gui/gui-endpoint-commands.ts (POST /api/role-lessons) src/ui/gui/gui-client-drawer.ts + src/ui/gui/gui-client-boot.ts (the drawer's Lessons section and two-click clear) docs/cli.md docs/how-it-works.md. The TUI pane (src/ui/tui/tui-pane-transcript.ts) renders roleInspectMarkdown and needed no edit. test/role-view.test.ts test/role-lessons.test.ts test/status-role-notes.test.ts test/doctor-checks.test.ts test/cli-doc.test.ts test/tui-notes.test.ts.
+
+**Acceptance criteria.**
+- The role view, TUI pane and drawer list a role's lessons above its note, and show no lessons section for a role without any.
+- `--clear-lessons` and the dashboard command empty the lessons file and leave the note byte-identical. `--clear-notes` leaves the lessons byte-identical.
+- The doctor reports a hand-edited lessons file over either cap.
+- docs/cli.md lists every new subcommand and flag, and the CLI doc parity tests pass.
+- `npm run test:gate` passes.
+
+**Tests.** the role-view payload/render tests, the role-lessons clearRoleLessons tests, the status-role-notes over-cap walk, the doctor lessons arm, the CLI-doc flag-parity tests, and a tui-notes test that the notes view shows a role's lessons above the note and omits the section without any — then the project's check.
+
 ### Typed role notes, part 2/3: Run prompts show the lessons and say what belongs in a lesson versus the note (planned 2026-11-12 by the operator; design in plans/typed-role-notes.md; requires Typed role notes part 1/3 and Since last run part 1/1 landed; both edit the same notes code; touches src/prompt/prompt.ts src/run/run-prompt.ts src/prompt/notes-backlog.ts test/prompt.test.ts test/run-prompt.test.ts test/notes-backlog.test.ts test/prompt-rules.test.ts) — done 2026-11-13 by the feature role
 
 **Goal.** Every authoring run sees its role's lessons and knows when to add, replace or retire one, so durable knowledge stops depending on the model copying it forward on every note rewrite.

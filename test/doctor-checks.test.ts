@@ -69,8 +69,8 @@ import { QA_COVERAGE_STALE_MS, recordFlow } from "../src/observer/qa-coverage.js
 import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
 import { checkRoleNotes } from "../src/doctor/doctor-role-notes.js";
 import { checkSalvagePatches } from "../src/doctor/doctor-salvage.js";
-import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
-import { roleNotesPath, salvageDir, salvagePendingDir } from "../src/paths.js";
+import { ROLE_NOTES_MAX_BYTES, ROLE_LESSONS_MAX_COUNT } from "../src/roles/role-notes-write.js";
+import { roleNotesPath, roleLessonsPath, salvageDir, salvagePendingDir } from "../src/paths.js";
 import { writeOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { BRIEF_TEXT_MAX_CHARS } from "../src/brief/brief.js";
 import { fakeGh } from "./fakes/fake-gh.js";
@@ -636,6 +636,29 @@ test("checkRoleNotes warns only when the prompt would truncate a role's note", (
   // Non-notes files are ignored rather than counted as roles.
   fs.writeFileSync(path.join(notesDir, "scratch.txt"), "y".repeat(ROLE_NOTES_MAX_BYTES + 1));
   assert.equal(checkRoleNotes(okRoot).level, "warn", "still warns on the oversized role note");
+});
+
+test("checkRoleNotes warns on a lessons file grown past its store caps, and the director's absence leaves a clean role ok", () => {
+  const absent = makeRepo();
+  assert.deepEqual(checkRoleNotes(absent), { level: "ok", detail: "no role notes recorded yet" });
+
+  // A healthy lessons store (well under the caps): ok, no warning.
+  const okRoot = makeRepo();
+  const lessonsDir = path.dirname(roleLessonsPath(okRoot, "feature"));
+  fs.mkdirSync(lessonsDir, { recursive: true });
+  fs.writeFileSync(roleLessonsPath(okRoot, "feature"), "<!-- next: L2 -->\n- L1 (2026-11-12): keep this\n");
+  const ok = checkRoleNotes(okRoot);
+  assert.equal(ok.level, "ok");
+  assert.match(ok.detail, /within the/);
+
+  // 13 lessons (over the 12-lesson count cap): the row warns, naming the role and its lesson count.
+  fs.writeFileSync(roleLessonsPath(okRoot, "planner"),
+    "<!-- next: L14 -->\n" + Array.from({ length: ROLE_LESSONS_MAX_COUNT + 1 }, (_, i) => `- L${i + 1} (2026-11-12): x`).join("\n") + "\n");
+  const warn = checkRoleNotes(okRoot);
+  assert.equal(warn.level, "warn");
+  assert.match(warn.detail, /planner/);
+  assert.match(warn.detail, /13 lessons/);
+  assert.doesNotMatch(warn.detail, /feature/, "the healthy role is not named");
 });
 
 test("checkSalvagePatches ok with no direct patch, warn naming count and age for one, and pending-only ok", () => {

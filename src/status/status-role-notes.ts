@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { readRegularTextOrNull } from "../files/files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { roleNotesPath } from "../paths.js";
-import { ROLE_NOTES_MAX_BYTES } from "../roles/role-notes-write.js";
+import { roleLessonsPath, roleNotesPath } from "../paths.js";
+import { ROLE_LESSONS_MAX_BYTES, ROLE_LESSONS_MAX_COUNT, ROLE_NOTES_MAX_BYTES } from "../roles/role-notes-write.js";
 
 /** One role's notes file that the run prompt would truncate on read: the role's id and the
  * file's length in UTF-16 *characters* (the unit truncateWithNote cuts on, so this can never
@@ -87,4 +87,46 @@ export function readRoleNotesOverCap(root: string): RoleNoteOverCap[] | null {
  * "nothing recorded yet" degrade the doctor's checkRoleNotes treats as a pass). */
 export function collectRoleNotesOverCap(root: string): RoleNoteOverCap[] {
   return readRoleNotesOverCap(root) ?? [];
+}
+
+/** One role's lessons file that has grown past its store caps (role-notes-write.ts): the
+ * role's id, the file's UTF-8 byte length, and its lesson count. A hand-edited lessons file
+ * that exceeds the 2 KB whole-file or 12-lesson cap is named so the doctor can tell the
+ * operator the role's write path will now refuse to grow it (a missing lessons dir or file
+ * simply means no lessons — nothing to report). */
+interface RoleLessonOverCap {
+  role: string;
+  bytes: number;
+  lessons: number;
+}
+
+/** Every role whose lessons file has grown past the 12-lesson or 2 KB store caps, in
+ * descending-byte order — the data source for the doctor `role notes` row's lessons arm
+ * (src/doctor/doctor-role-notes.ts), so a hand-edited lessons store the write path will now
+ * refuse is surfaced rather than left to silently stop learning. Unlike readRoleNotesOverCap it
+ * reads each file's bytes directly (no stat-keyed cache): the doctor is one-shot, not the
+ * status snapshot's once-a-second poll, so the cache's overhead buys nothing here. A lessons
+ * dir that is missing or unreadable reads [] (no lessons recorded yet); a file whose text
+ * cannot be read is skipped rather than counted. Never throws, like every check's reads. */
+export function readRoleLessonsOverCap(root: string): RoleLessonOverCap[] {
+  const lessonsDir = path.dirname(roleLessonsPath(root, "role"));
+  let names: string[];
+  try {
+    names = fs.readdirSync(lessonsDir);
+  } catch {
+    return []; // no lessons dir: nothing recorded yet
+  }
+  const over: RoleLessonOverCap[] = [];
+  for (const name of names) {
+    if (!name.endsWith(".md")) continue;
+    const text = readRegularTextOrNull(path.join(lessonsDir, name));
+    if (text === null) continue;
+    const bytes = Buffer.byteLength(text, "utf8");
+    const lessons = (text.match(/^- L\d+ \(/gm) || []).length;
+    if (bytes > ROLE_LESSONS_MAX_BYTES || lessons > ROLE_LESSONS_MAX_COUNT) {
+      over.push({ role: name.slice(0, -3), bytes, lessons });
+    }
+  }
+  over.sort((a, b) => b.bytes - a.bytes);
+  return over;
 }

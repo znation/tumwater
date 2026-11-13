@@ -305,6 +305,10 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         disarmNoteClear();
       }
       postAction("/api/role-notes", { role: arg, text }, settingDone(() => { noteEditing = null; }, "Notes updated"));
+    } else if (act === "lesson-clear") {
+      if (!lessonsClearArmed(arg)) { armLessonsClear(arg); return; }
+      disarmLessonsClear();
+      postAction("/api/role-lessons", { role: arg }, settingDone(() => {}, "Lessons cleared"));
     } else if (act === "cap-edit") {
       startCapEdit(arg, drawerRole?.view?.dailyCap?.capUsd ?? 0);
     } else if (act === "cap-discard") {

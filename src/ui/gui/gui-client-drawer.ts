@@ -281,6 +281,10 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     else {
       const view = r.view && typeof r.view === "object" ? r.view : {};
       const note = typeof view.notes === "string" && view.notes.trim() !== "" ? view.notes : null;
+      // The role's lessons (the p.lessons field role-view assembles, the read-only twin of the
+      // <role-lessons> prompt block). null when the role has none — no section, so a lesson-less
+      // drawer stays byte-identical to one without it.
+      const lessons = typeof view.lessons === "string" && view.lessons.trim() !== "" ? view.lessons : null;
       // When the note was last saved (role-view's noteSavedAt, the stat's mtimeMs) — the
       // drawer twin of the prompt block's last-saved age, made muted so a stale note reads
       // as stale. A non-numeric/missing field adds nothing, so a no-note drawer stays as today.
@@ -306,7 +310,12 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
           "<div><button type='button' class='btn btn-sm btn-primary' data-act='note-save' data-arg='" + esc(r.role) + "'>Save</button> " +
           "<button type='button' class='btn btn-sm' data-act='note-discard' data-arg='" + esc(r.role) + "'>Discard</button></div>"
         : note ? "<pre class='mono'>" + esc(note) + "</pre>" + (editing || !noteAgeLine ? "" : "<p class='muted' style='font-size:13px'>Last saved " + noteAgeLine + "</p>") : "<p class='muted'>No notes yet.</p>";
-      body = "<div class='sec-head'><h3>Notes</h3>" + (editing ? "" : buttons) + "</div>" + noteBody +
+      // The Lessons section, above the note: read-only, with a two-click Clear beside the note's
+      // own (the lessons and the note clear independently). A lesson-less role (lessons null) gets
+      // no section at all, so the drawer is byte-identical to one without it.
+      const lessonsButtons = !canEdit || !lessons ? "" : "<span style='margin-left:auto'><button type='button' class='btn btn-sm btn-danger' data-act='lesson-clear' data-arg='" + esc(r.role) + "'>" + (lessonsClearArmed(r.role) ? "Click again to clear" : "Clear") + "</button></span>";
+      const lessonsSection = lessons ? "<div class='sec-head'><h3>Lessons</h3>" + lessonsButtons + "</div><pre class='mono'>" + esc(lessons) + "</pre>" + "" : "";
+      body = lessonsSection + "<div class='sec-head'><h3>Notes</h3>" + (editing ? "" : buttons) + "</div>" + noteBody +
         "<details><summary>Next run's prompt</summary>" + (nextPrompt ? "<pre class='mono'>" + esc(nextPrompt) + "</pre>" : "<p class='muted'>Nothing to run (empty inbox).</p>") + "</details>" +
         // The qa flow-coverage ledger (rolePayload's flowCoverage), the drawer twin of the
         // CLI's "## Flow coverage" section — each flow's last exercise and result in coverageRows
@@ -371,6 +380,12 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   const noteClearArmed = (role) => noteClear.armed(role);
   function armNoteClear(role) { noteClear.arm(role); }
   function disarmNoteClear() { noteClear.disarm(); }
+  // The lessons clear arms and disarms like the note's (a two-click confirm); it is its own slot so
+  // clearing the lessons never touches the note's arm state.
+  const lessonsClear = confirmSlot(repaintDrawerRole);
+  const lessonsClearArmed = (role) => lessonsClear.armed(role);
+  function armLessonsClear(role) { lessonsClear.arm(role); }
+  function disarmLessonsClear() { lessonsClear.disarm(); }
   function startNoteEdit(role, text) { noteEditing = { role, text }; disarmNoteClear(); repaintDrawerRole(); }
   function stopNoteEdit() { noteEditing = null; repaintDrawerRole(); }
   function startCapEdit(role, capUsd) { capEditing = { role, value: capUsd ? Number(capUsd) || 0 : 0 }; repaintDrawerRole(); }

@@ -51,11 +51,23 @@ export function inspectMarkdownLines(p: RoleViewPayload, now = Date.now()): stri
  * renders through its own helper; the body is the ordered concatenation. */
 function inspectBodyLines(p: RoleViewPayload, now: number): string[] {
   return [
+    ...inspectLessonsLines(p),
     ...inspectNotesLines(p, now),
     ...inspectFlowCoverageLines(p, now),
     ...inspectFilingLines(p, now),
     ...inspectNextPromptLines(p),
   ];
+}
+
+/** The Lessons fence — the durable lessons the role's own earlier runs kept, rendered one
+ * line each, above the note. Present only when the role has at least one lesson (p.lessons is
+ * null with none), so a lesson-less role's render is byte-identical to one without it: no
+ * section, no placeholder. The read-only twin of the `<role-lessons>` prompt block: the
+ * operator sees what the run is asked to check before acting on it. */
+function inspectLessonsLines(p: RoleViewPayload): string[] {
+  if (p.lessons === null || p.lessons.trim() === "") return [];
+  const fence = fenceFor(p.lessons);
+  return [`## Lessons`, "", fence, p.lessons.replace(/\n+$/, ""), fence, ""];
 }
 
 /** The Notes fence plus the note's save-age line — the operator twin of the `<role-notes>`

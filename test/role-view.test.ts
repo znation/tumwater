@@ -15,7 +15,7 @@ import { inspectMarkdownLines, renderRoleMarkdown } from "../src/roles/role-rend
 import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { contextBudgetRule } from "../src/prompt/prompt.js";
 import { PI_DIALECT } from "../src/prompt/dialect.js";
-import { pausedRolesPath, roleNotesPath } from "../src/paths.js";
+import { pausedRolesPath, roleLessonsPath, roleNotesPath } from "../src/paths.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readmeTemplate } from "../src/brief/brief.js";
 import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -379,6 +379,53 @@ test("a role's notes renders verbatim, or reads as none yet", () => {
   assert.equal(rolePayload(dir, "feature", NO_MODELS).notes, null);
   assert.match(blank, /## Notes\n\n_\(none yet/);
   assert.doesNotMatch(blank, /_Last saved/);
+});
+
+test("rolePayload reads the role's lessons whole, one line each, null with none or for the director", () => {
+  const dir = root();
+  // A role with two stored lessons: the field renders them one line each, in file order.
+  writeFileDeep(roleLessonsPath(dir, "feature"),
+    "<!-- next: L3 -->\n- L1 (2026-11-12): first lesson\n- L2 (2026-11-13): second lesson\n");
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.lessons, "- L1 (2026-11-12): first lesson\n- L2 (2026-11-13): second lesson");
+
+  // No lessons file: null. The director: null (it has no lessons, like its note).
+  assert.equal(rolePayload(dir, "clean", NO_MODELS).lessons, null);
+  assert.equal(rolePayload(dir, "director", NO_MODELS).lessons, null);
+});
+
+test("a corrupted lessons file degrades to null, never a throw", () => {
+  const dir = root();
+  // A hand-corrupted file (no next-id marker) throws on parse; the collector degrades to
+  // null the way a torn note does, so the inspection still renders.
+  writeFileDeep(roleLessonsPath(dir, "feature"), "- L1 (2026-11-12): no marker above me\n");
+  assert.equal(rolePayload(dir, "feature", NO_MODELS).lessons, null);
+});
+
+test("the Lessons section renders above the note, and a lesson-less role renders without it", () => {
+  const dir = root();
+  const notes = roleNotesPath(dir, "feature");
+  writeFileDeep(notes, "the scheduler lives in team.ts\n");
+  const lessons = roleLessonsPath(dir, "feature");
+
+  // Lesson-less: the render is byte-identical to one without the Lessons section at all —
+  // no "## Lessons" heading, no placeholder.
+  const noLessons = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
+  assert.doesNotMatch(noLessons, /## Lessons/);
+  assert.match(noLessons, /## Notes\n\n```\nthe scheduler lives in team\.ts\n```/);
+
+  // With a lesson: a fenced Lessons section above the note.
+  writeFileDeep(lessons, "<!-- next: L2 -->\n- L1 (2026-11-12): the scheduler lives in team.ts\n");
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.lessons, "- L1 (2026-11-12): the scheduler lives in team.ts");
+  const md = renderRoleMarkdown(p);
+  const lines = inspectMarkdownLines(p);
+  assert.deepEqual(lines.slice(0, 5), ["## Lessons", "", "```", "- L1 (2026-11-12): the scheduler lives in team.ts", "```"]);
+  const lessonsAt = md.indexOf("## Lessons");
+  const notesAt = md.indexOf("## Notes");
+  assert.ok(lessonsAt >= 0 && notesAt > lessonsAt, "the Lessons section sits above the note");
+  assert.match(md, /## Lessons\n\n```\n- L1 \(2026-11-12\): the scheduler lives in team\.ts\n```/);
+  assert.match(md, /## Notes\n\n```\nthe scheduler lives in team\.ts\n```/);
 });
 
 test("rolePayload carries the note's save time, and null without a note", () => {

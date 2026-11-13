@@ -17,8 +17,8 @@ import { defaultConfig, knownRoleIds, loadConfigSafe } from "../config/config.js
 import { rolePayload } from "../roles/role-view.js";
 import { renderRoleMarkdown } from "../roles/role-render.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
-import { saveRoleNote } from "../roles/role-notes-write.js";
-import { roleNotesPath } from "../paths.js";
+import { saveRoleNote, clearRoleLessons } from "../roles/role-notes-write.js";
+import { roleLessonsPath, roleNotesPath } from "../paths.js";
 import { errorMessage, gotSuffix, isExponentSpelling, isPlainDecimal } from "../text/text.js";
 import { readPromptFileArg } from "./cli-prompt-file.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
@@ -28,6 +28,10 @@ import { setConfigKey, unsetConfigKey } from "../config/config-write.js";
 /** `role`'s notes-write flags: clear the note, or replace it from a file (`-` for stdin). */
 const CLEAR_NOTES_SPEC = { names: ["--clear-notes"] };
 const NOTES_FILE_SPEC = { names: ["--notes-file"], value: true, valueName: "<path>" };
+
+/** `role`'s lessons-write flag: clear the role's lessons store. `--clear-notes` keeps
+ * clearing only the note, so the two stores clear independently. */
+const CLEAR_LESSONS_SPEC = { names: ["--clear-lessons"] };
 
 /** `role`'s instructions-override flags: clear it, or replace it from a file (`-` for stdin). */
 const CLEAR_INSTRUCTIONS_SPEC = { names: ["--clear-instructions"] };
@@ -210,19 +214,24 @@ function resolveRoleId(positional: string | null, flagId: string | null): string
  * spellings and write kinds; the rest of parseWriteFlags owns only the field and tally
  * order. */
 function parseTextWriteFlags(rest: string[]): {
-  fields: { notesWrite: boolean; clear: boolean; notesFile: string | null | undefined; instructionsWrite: boolean; clearInst: boolean; instFile: string | null | undefined };
+  fields: { notesWrite: boolean; clear: boolean; notesFile: string | null | undefined; lessonsWrite: boolean; instructionsWrite: boolean; clearInst: boolean; instFile: string | null | undefined };
   writes: string[];
 } {
   const clear = rest.includes("--clear-notes");
   const notesFile = flagValue(rest, "--notes-file");
+  const lessonsWrite = rest.includes("--clear-lessons");
   const clearInst = rest.includes("--clear-instructions");
   const instFile = flagValue(rest, "--instructions-file");
   const notesWrite = clear || rest.includes("--notes-file");
   const instructionsWrite = clearInst || rest.includes("--instructions-file");
   const writes: string[] = [];
+  if (lessonsWrite) writes.push("lessons");
   if (notesWrite) writes.push("notes");
   if (instructionsWrite) writes.push("instructions");
-  return { fields: { notesWrite, clear, notesFile, instructionsWrite, clearInst, instFile }, writes };
+  return {
+    fields: { notesWrite, clear, notesFile, lessonsWrite, instructionsWrite, clearInst, instFile },
+    writes,
+  };
 }
 
 /** `tumwater role <id>`'s quiet-hours flag group: the window write and its clear twin,
@@ -359,6 +368,25 @@ function writeNotes(root: string, id: string, rest: string[], clear: boolean, no
       );
     } else {
       say(`${id}: ${prose}`);
+    }
+  } catch (err) {
+    fail(errorMessage(err));
+  }
+}
+
+/** `tumwater role <id>`'s lessons write: clear the role's lessons store, leaving the note
+ * untouched. `--clear-notes` and `--clear-lessons` cannot share one invocation (the shared-
+ * write refusal names them), so the two stores always clear independently. The director has
+ * no lessons, like its note refusal. */
+function writeLessons(root: string, id: string, json: boolean): void {
+  if (id === DIRECTOR_ROLE) fail("the director has no lessons");
+  requireKnownRole(root, id);
+  try {
+    clearRoleLessons(roleLessonsPath(root, id));
+    if (json) {
+      sayJson({ command: "role", action: "clear", role: id, key: "lessons", status: "cleared" });
+    } else {
+      say(`${id}: lessons cleared`);
     }
   } catch (err) {
     fail(errorMessage(err));
@@ -590,7 +618,7 @@ export async function cmdRole(root: string, args: string[], seams: FollowViewSea
     if (next?.startsWith("--"))
       fail(`${flag} needs a value (the next token ${JSON.stringify(next)} is a flag, not a value)`);
   }
-  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, FOLLOW_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC, CLEAR_INSTANCES_SPEC, INSTANCES_SPEC, CLEAR_PROVIDER_SPEC, PROVIDER_SPEC, CLEAR_MODEL_SPEC, MODEL_SPEC, CLEAR_THINKING_SPEC, THINKING_SPEC, CLEAR_BACKEND_SPEC, BACKEND_SPEC]);
+  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, FOLLOW_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_LESSONS_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC, CLEAR_INSTANCES_SPEC, INSTANCES_SPEC, CLEAR_PROVIDER_SPEC, PROVIDER_SPEC, CLEAR_MODEL_SPEC, MODEL_SPEC, CLEAR_THINKING_SPEC, THINKING_SPEC, CLEAR_BACKEND_SPEC, BACKEND_SPEC]);
   refuseTeamWorkspace(root);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
   // spelling every other role-targeting command shares). Both at once is a mistake, not
@@ -628,6 +656,7 @@ export async function cmdRole(root: string, args: string[], seams: FollowViewSea
   // per-write logic lives in the named helpers below; these closures only wire the args.
   const dispatch: Record<string, () => void> = {
     notes: () => writeNotes(root, id, rest, f.clear, f.notesFile ?? "", rest.includes("--json")),
+    lessons: () => writeLessons(root, id, rest.includes("--json")),
     instructions: () => writeInstructions(root, id, rest, f.clearInst, f.instFile ?? "", rest.includes("--json")),
     "quiet-hours": () => writeQuietHours(root, id, rest, f.clearQuiet, rest.includes("--json")),
     cap: () => writeDailyCap(root, id, rest, f.clearCap, rest.includes("--json")),

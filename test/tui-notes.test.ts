@@ -3,18 +3,27 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
-import { roleNotesPath } from "../src/paths.js";
+import { roleNotesPath, roleLessonsPath } from "../src/paths.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Ctrl+N notes mode: on a role's transcript, the pane swaps the live transcript for the
-// role's notes and next run's prompt, and swaps back — the terminal view of what the
-// dashboard drawer shows.
+// role's lessons and note and next run's prompt, and swaps back — the terminal view of what
+// the dashboard drawer shows. The notes view renders roleInspectMarkdown (the shared
+// inspectMarkdownLines), so the new Lessons section rides the same render the CLI uses.
 
 /** Seed a role's notes file. */
 function seedNote(repo: string, role: string, text: string): void {
   const note = roleNotesPath(repo, role);
   writeFileDeep(note, text);
+}
+
+/** Seed a role's lessons store (the typed store's file format: a next-id marker, one line
+ * per lesson). */
+function seedLessons(repo: string, role: string, lessons: string[]): void {
+  const file = roleLessonsPath(repo, role);
+  writeFileDeep(file, "<!-- next: L" + (lessons.length + 1) + " -->\n" +
+    lessons.map((t, i) => `- L${i + 1} (2026-11-12): ${t}`).join("\n") + "\n");
 }
 
 test("Ctrl+N shows the viewed role's notes and next run prompt, and toggles back", async () => {
@@ -214,5 +223,33 @@ test("a file over the notes byte cap flashes saveRoleNote's message and writes n
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /shorten it to at most 4096 bytes/);
     assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "keep me\n");
+  });
+});
+
+// The notes view renders roleInspectMarkdown (the shared inspectMarkdownLines the CLI's
+// "tumwater role <id>" uses), so a role's lessons appear there read-only above the note, and a
+// lesson-less role shows no Lessons section — the terminal twin of the dashboard drawer.
+test("Ctrl+N on a role with lessons shows them above the note, and omits the section without any", async () => {
+  const repo = await makeTuiRepo();
+  seedNote(repo, "clean", "the scheduler lives in team.ts\n");
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true }); // events → transcript (the one enabled role: clean)
+    tui.key(undefined, "n", { ctrl: true }); // → notes
+    // Lesson-less: the ## Lessons section is absent, but the note still renders.
+    assert.doesNotMatch(tui.lastFrame(), /## Lessons/);
+    assert.match(tui.lastFrame(), /## Notes/);
+    assert.match(tui.lastFrame(), /the scheduler lives in team\.ts/);
+  });
+
+  seedLessons(repo, "clean", ["the scheduler lives in team.ts", "run the check before committing"]);
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "n", { ctrl: true }); // → notes
+    const frame = tui.lastFrame();
+    assert.match(frame, /## Lessons/);
+    assert.match(frame, /L1 \(2026-11-12\): the scheduler lives in team\.ts/);
+    const lessonsAt = frame.indexOf("## Lessons");
+    const notesAt = frame.indexOf("## Notes");
+    assert.ok(lessonsAt >= 0 && notesAt > lessonsAt, "the Lessons section sits above the note");
   });
 });

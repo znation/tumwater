@@ -594,16 +594,24 @@ pi's own documentation. Each turn re-sends the whole prompt, so the shorter one 
 every turn of every run.
 
 Each role also has notes: a short, model-written note its own earlier runs left for the
-next fresh session (where things live, what was ruled out, what to look at next). They live at
-`.tumwater/state/notes/<role>.md`, are capped at 4 KB, and are the only state carried between a
-role's runs besides the repo itself. A run sees the note when one exists, along with the day it was last saved and how many days ago that was, and may replace it
-by running `tumwater-notes write` on every backend; the director, whose work is your prompt rather
-than a recurring search, has no notes. When a note runs past the 4 KB bound (a hand edit or an old
+next fresh session (where things live, what was ruled out, what to look at next), and lessons:
+the durable conclusions a role's earlier runs kept (a still-true, reusable lesson, not a
+point-in-time recollection) — the operator twin of the `<role-lessons>` block a run is asked to
+check before acting on them. They live at `.tumwater/state/notes/<role>.md` and
+`.tumwater/state/notes/lessons/<role>.md` respectively. The note is capped at 4 KB; a lessons
+store holds at most 12 lessons of at most 300 bytes each (2 KB whole file). A run sees the note
+when one exists, along with the day it was last saved and how many days ago that was, and may replace it
+by running `tumwater-notes write` on every backend; it may add, replace, or retire a lesson with
+`tumwater-notes lesson add` / `replace` / `retire`, and sees its stored lessons in the run prompt
+before the note. The director, whose work is your prompt rather
+than a recurring search, has neither. When a note runs past the 4 KB bound (a hand edit or an old
 build), the next run sees only its head plus a truncation marker while every operator surface reads
-the file whole — `tumwater doctor`'s `role notes` row warns on that over-bound state, and
+the file whole — `tumwater doctor`'s `role notes` row warns on that over-bound state (and on a lessons
+file grown past its 12-lesson / 2 KB store caps, which the role's own `add` will now refuse), and
 `tumwater status --json` carries the over-bound roles as a `roleNotesOverCap` array. You can clear or replace a note with
-`tumwater role <id> --clear-notes` or `--notes-file <path>`; a run in progress at that moment may
-still overwrite it through its own `tumwater-notes` call. When a note names an entry or series of
+`tumwater role <id> --clear-notes` or `--notes-file <path>`, and empty a role's lessons with
+`--clear-lessons` (it leaves the note untouched); a run in progress at that moment may
+still overwrite them through its own `tumwater-notes` call. When a note names an entry or series of
 the backlog, the run prompt also shows the current backlog state of each thing the note names
 (PLANS.md and BUGS.md as of that run), right after the note, so the live state wins where the two
 disagree — a note cannot keep telling a role to skip an entry the operator has since lifted.

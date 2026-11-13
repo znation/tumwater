@@ -221,6 +221,16 @@ export function replaceRoleLesson(lessonsPath: string, id: string, text: string,
   writeRoleLessons(lessonsPath, nextId, next);
 }
 
+/** Empty a role's lessons store: every lesson is dropped, but the next-id counter is kept so
+ * a later add takes a fresh id, never a retired one (the same id-never-reused rule retire
+ * keeps). A missing file is already empty: this is a no-op that still writes the empty store,
+ * so the caller can rely on "the file exists and is empty" afterwards. The file is rewritten
+ * atomically. */
+export function clearRoleLessons(lessonsPath: string): void {
+  const { nextId } = readRoleLessons(lessonsPath);
+  writeRoleLessons(lessonsPath, nextId, []);
+}
+
 /** Retire one lesson, dropping it. Its id is never reused: the next-id counter is untouched,
  * so a later add takes a fresh id, not the retired one's. */
 export function retireRoleLesson(lessonsPath: string, id: string): void {
