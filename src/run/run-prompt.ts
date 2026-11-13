@@ -346,7 +346,8 @@ function readPromptNotes(
   // The role's lessons (readRoleLessons): its own earlier runs' conclusions, kept verbatim.
   // A missing file yields the empty store, so no lessons block; an unreadable file swallows
   // to the empty store like the note, so a torn runtime-state file never fails a run. The
-  // rendered file is what the run is asked to check before acting on it — marker and all.
+  // lesson lines are what the run is asked to check before acting on it — the next-id marker
+  // is internal and is dropped, so it never rides into the prompt.
   let lessons: string | undefined;
   let hasLessons = false;
   try {

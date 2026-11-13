@@ -383,10 +383,10 @@ interface RunPromptInput {
   notes?: string;
   /** The role's lessons (roleLessonsPath, read by run-prompt.ts): its own earlier runs'
    * durable conclusions, kept verbatim and dated by tumwater (plans/typed-role-notes.md).
-   * Passed as the file's lines, marker and all, rendered into the <role-lessons> block
-   * right before <role-notes>; an undefined value means the file is missing, so the block
-   * is omitted (the run is then told to seed one). The director never reaches
-   * buildRunPrompt, so it never carries one. */
+   * Passed as its lesson lines (the file's next-id marker dropped — it is internal and never
+   * rides into the prompt), rendered into the <role-lessons> block right before <role-notes>;
+   * an undefined value means the file is missing, so the block is omitted (the run is then
+   * told to seed one). The director never reaches buildRunPrompt, so it never carries one. */
   lessons?: string;
   /** True while the role has a non-empty note but no lessons file yet: the one-time
    * seeding sentence in the write instruction asks the run to move its durable lessons out
