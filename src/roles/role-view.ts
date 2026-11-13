@@ -574,7 +574,7 @@ function notesAndWindowsOf(
     if (note !== null) noteSavedAt = statOrNull(notesPath)?.mtimeMs ?? null;
     // The role's lessons, read whole for display through readRegularTextOrNull (lstat-guarded,
     // the same line as the note read above: a symlink dropped at the lessons path reads as
-    // absent, so an outside file's text is never pulled into the operator surface — INV-G2).
+    // absent, so an outside file's text is never pulled into the operator surface — INV-G3).
     // A missing or empty store is "no lessons"; a corrupted file degrades to null rather than
     // failing the inspection, the same tolerance the note read gives a torn note.
     const lessonsText = readRegularTextOrNull(roleLessonsPath(root, role));
