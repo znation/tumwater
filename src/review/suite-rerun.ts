@@ -126,33 +126,40 @@ function firstNonFlag(words: readonly string[], from: number, valueFlags?: Reado
   return -1;
 }
 
+/** True when an `npm` invocation's words run the full suite (no filter) or reinstall
+ * dependencies (`npm ci`). Value-skipping everywhere npm flags can appear, including after the
+ * subcommand (`npm run --prefix /tmp/rev test`): without it the flag's value reads as the
+ * subcommand or script name and a copied-tree suite run goes unflagged (BUGS.md 2026-09-29).
+ * Reinstalling dependencies is the setup of a scratch-copy suite run; a dry run installs nothing
+ * (a reviewer checking a lockfile change). The caller has already matched `bin === "npm"`. */
+function npmRunsFullSuite(words: readonly string[]): boolean {
+  const sub = firstNonFlag(words, 1, NPM_VALUE_FLAGS);
+  if (sub < 0) return false;
+  const name = words[sub] ?? "";
+  if (NPM_CI.has(name)) return !words.includes("--dry-run");
+  if (NPM_TEST.has(name)) return !hasFilter(words.slice(sub + 1), NPM_VALUE_FLAGS);
+  if (NPM_RUN.has(name)) {
+    const script = firstNonFlag(words, sub + 1, NPM_VALUE_FLAGS);
+    return script >= 0 && words[script] === "test" && !hasFilter(words.slice(script + 1), NPM_VALUE_FLAGS);
+  }
+  return false;
+}
+
+/** True when a `node` invocation's words run tumwater's own test runner — `node
+ * dist/test/test-runner.js`, what `npm test` runs after compiling — with no filter. The runner
+ * must be node's entry point: a `sed -n 1,80p test/test-runner.ts` read or a `pkill -f
+ * test-runner` names the file without running it. The caller has already matched
+ * `bin === "node"`. */
+function nodeRunsFullSuite(words: readonly string[]): boolean {
+  const entry = firstNonFlag(words, 1, NODE_VALUE_FLAGS);
+  return entry >= 0 && (words[entry] ?? "").endsWith("test-runner.js") && !hasFilter(words.slice(entry + 1), NODE_VALUE_FLAGS);
+}
+
 /** True when one command segment's words run the full suite or reinstall dependencies. */
 function segmentRunsFullSuite(words: readonly string[]): boolean {
   const bin = path.basename(words[0] ?? "");
-  if (bin === "npm") {
-    // Value-skipping everywhere npm flags can appear, including after the subcommand (`npm run
-    // --prefix /tmp/rev test`): without it the flag's value reads as the subcommand or script
-    // name and a copied-tree suite run goes unflagged (BUGS.md 2026-09-29).
-    const sub = firstNonFlag(words, 1, NPM_VALUE_FLAGS);
-    if (sub < 0) return false;
-    const name = words[sub] ?? "";
-    // Reinstalling dependencies is the setup of a scratch-copy suite run; a dry run installs
-    // nothing (a reviewer checking a lockfile change).
-    if (NPM_CI.has(name)) return !words.includes("--dry-run");
-    if (NPM_TEST.has(name)) return !hasFilter(words.slice(sub + 1), NPM_VALUE_FLAGS);
-    if (NPM_RUN.has(name)) {
-      const script = firstNonFlag(words, sub + 1, NPM_VALUE_FLAGS);
-      return script >= 0 && words[script] === "test" && !hasFilter(words.slice(script + 1), NPM_VALUE_FLAGS);
-    }
-    return false;
-  }
-  if (bin === "node") {
-    // `node dist/test/test-runner.js` — what `npm test` runs after compiling. The runner must be
-    // node's entry point: a `sed -n 1,80p test/test-runner.ts` read or a `pkill -f test-runner`
-    // names the file without running it.
-    const entry = firstNonFlag(words, 1, NODE_VALUE_FLAGS);
-    return entry >= 0 && (words[entry] ?? "").endsWith("test-runner.js") && !hasFilter(words.slice(entry + 1), NODE_VALUE_FLAGS);
-  }
+  if (bin === "npm") return npmRunsFullSuite(words);
+  if (bin === "node") return nodeRunsFullSuite(words);
   return false;
 }
 
