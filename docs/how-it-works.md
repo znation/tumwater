@@ -4,7 +4,8 @@
 
 `tumwater init "<prompt>"` seeds a git repo with the project brief (README.md, holding your prompt
 and a status section between managed markers), PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md,
-and tumwater.json, and commits them. A bare `tumwater init` reads the prompt from an existing
+and tumwater.json, and commits the tracked ones — tumwater.json is created too, but stays
+untracked and gitignored, so it is the one seeded file the commit leaves behind. A bare `tumwater init` reads the prompt from an existing
 README.md's `tumwater:prompt` markers instead. A `TUMWATER.md` with the same markers takes
 precedence over README.md, so an existing project's README can stay untouched. A brief
 missing a usable marker block (markers missing, or no text between them), or one past the

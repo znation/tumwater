@@ -97,6 +97,9 @@ interface InitResult {
   created: string[];
   /** Files init looked for and found already present, so left byte-identical. */
   leftAlone: string[];
+  /** The seeded paths that went into the commit — `created` minus the untracked config
+   * (gitignored) and the empty starter directories; `committed` is `committedFiles.length > 0`. */
+  committedFiles: string[];
   committed: boolean;
   /** True when the cwd was not a git repository and init created one (on a dry run: would). */
   repoInitialized: boolean;
@@ -486,13 +489,17 @@ function seedStarterDirs(root: string, tpl: InitPlan["tpl"], writers: SeedWriter
   }
 }
 
-/** What gets committed: the committable filter and the `git add` / staged-check / commit. */
+/** What gets committed: the committable filter and the `git add` / staged-check / commit.
+ * Returns `[committed, committable]` — whether a commit actually ran, and the exact pathspec
+ * it added and committed (created minus the gitignored config and the empty starter
+ * directories). The pathspec is returned even when no commit ran (a dry run, or a config-only
+ * re-seed), because it names precisely which created paths were left out of the commit. */
 async function commitSeeded(
   root: string,
   plan: InitPlan,
   withCommits: boolean,
   writers: SeedWriters,
-): Promise<boolean> {
+): Promise<[boolean, string[]]> {
   // The config stays out of the commit pathspec: `git add -- tumwater.json` fails on a path
   // the just-written .gitignore ignores (plans/portability.md §4a/7). It still heads the
   // `created …` line the CLI prints — the file WAS created, it just must not be tracked. When
@@ -522,7 +529,7 @@ async function commitSeeded(
       committed = true;
     }
   }
-  return committed;
+  return [committed, committable];
 }
 
 /** Seed `root` from a resolved `InitPlan`: git init (a new repo only), every absent project
@@ -534,7 +541,10 @@ async function seedProject(
   root: string,
   plan: InitPlan,
 ): Promise<
-  Pick<InitResult, "created" | "leftAlone" | "committed" | "repoInitialized" | "branch" | "bootstrap">
+  Pick<
+    InitResult,
+    "created" | "leftAlone" | "committedFiles" | "committed" | "repoInitialized" | "branch" | "bootstrap"
+  >
 > {
   const { dryRun, tpl } = plan;
   const { repoInitialized, createdBranch } = await initSeedRepo(root, plan);
@@ -545,10 +555,11 @@ async function seedProject(
   const bootstrap = seedConfigFile(root, fresh, dryRun, writers);
   seedGitignore(root, dryRun, writers);
   seedStarterDirs(root, tpl, writers);
-  const committed = await commitSeeded(root, plan, withCommits, writers);
+  const [committed, committedFiles] = await commitSeeded(root, plan, withCommits, writers);
   return {
     created: writers.created,
     leftAlone: writers.leftAlone,
+    committedFiles,
     committed,
     repoInitialized,
     branch: createdBranch,

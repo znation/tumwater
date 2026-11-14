@@ -20,7 +20,7 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
                             # add --json to print one acknowledgement object (command, status
                             # initialized or already_initialized, dryRun, template, adopted,
                             # readmeExists, wasRepo, repoInitialized, branch, created,
-                            # leftAlone, committed, bootstrap) instead of the prose report;
+                            # leftAlone, committedFiles, committed, bootstrap) instead of the prose report;
                             # --list-templates --json prints the catalog as a templates array
                             # a fresh/empty project is seeded with
                             # "bootstrap": {"untilPlansDone": 5}, holding the maintenance

@@ -5,7 +5,8 @@
 import { say, sayJson } from "./cli-output.js";
 import { parseInitArgs } from "./cli-command-args.js";
 import { initProject } from "../init/init.js";
-import { templateCatalog } from "../init/init-templates.js";
+import { getTemplate, templateCatalog } from "../init/init-templates.js";
+import { CONFIG_BASENAME } from "../paths.js";
 
 /** `tumwater init`: seed a project directory from the operator's brief (src/init/init.ts does the
  * work; this prints the report). --dry-run prints the would-be actions without writing
@@ -62,6 +63,7 @@ function initJson(result: Awaited<ReturnType<typeof initProject>>): Record<strin
     branch: result.branch ?? null,
     created: result.created,
     leftAlone: result.leftAlone,
+    committedFiles: result.committedFiles,
     committed: result.committed,
     bootstrap: result.bootstrap,
   };
@@ -101,9 +103,27 @@ function printDryRun(result: Awaited<ReturnType<typeof initProject>>): void {
   say("nothing written; re-run without --dry-run to apply");
 }
 
-/** Format the created-files line, appending `(committed)` when the repo was seeded. */
-function createdLine(result: Awaited<ReturnType<typeof initProject>>): string {
-  return `created ${result.created.join(", ")}${result.committed ? " (committed)" : ""}`;
+/** The created/committed/untracked lines for the init report. `created` names every path init
+ * seeded — including the gitignored `tumwater.json`, which `commitSeeded` deliberately keeps
+ * out of the commit (plans/portability.md §4a/7), and, for a templated seed, the empty starter
+ * directories, which git never tracks (no empty directories) and so are created but never
+ * committed. A bare `(committed)` qualifier on the whole `created` list would therefore overstate
+ * those as tracked; the lines instead report the `created <all>` list, the `committed <files>`
+ * that actually went into the commit, and — only when some created path is left out of it —
+ * `untracked (gitignored): <paths>` naming exactly those. No marker at all when nothing committed
+ * (a config-only re-seed). */
+function createdLines(result: Awaited<ReturnType<typeof initProject>>): string[] {
+  const lines = [`created ${result.created.join(", ")}`];
+  if (result.committed) lines.push(`committed ${result.committedFiles.join(", ")}`);
+  const committedSet = new Set(result.committedFiles);
+  const starterDirs = getTemplate(result.template)?.starterDirs ?? [];
+  const untracked = result.created.filter(
+    (name) => !committedSet.has(name) && (name === CONFIG_BASENAME || starterDirs.includes(name)),
+  );
+  if (untracked.length > 0) {
+    lines.push(`untracked (gitignored): ${untracked.join(", ")}`);
+  }
+  return lines;
 }
 
 /** Print the completed-init report: the already-initialized no-op, the repo line, the
@@ -116,7 +136,7 @@ function printInitReport(result: Awaited<ReturnType<typeof initProject>>): void 
   if (result.repoInitialized && result.branch) {
     say(`initialized a new git repository on branch ${result.branch}`);
   }
-  say(createdLine(result));
+  for (const line of createdLines(result)) say(line);
   if (result.bootstrap !== null) {
     say(
       `fresh project — maintenance roles wait until ${result.bootstrap} plans are done; remove "bootstrap" from tumwater.json to end that early`,

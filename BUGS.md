@@ -34,20 +34,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 **Needs review (2026-11-13 by selfcheck):** the failure cluster recurred on a new commit (a4d55b7d) *after* this entry's filing (05fdb15c), so confirm the *resolved reviewer model/backend* for the post-merge review — whether it actually resolved to the slow local `qwenrunner/Qwen3.8-27B-MLX-Serve-4bit` via the strong tier — before treating this as confirmed for the bugfix role; that is the one claim only the live event log (outside the worktree) can settle. The QUESTIONS.md fork (floor the reviewer's own model vs. a config value) governs the fix, not this confirmation.
 
-### `tumwater init`'s created-files line claims `tumwater.json` was `(committed)` when the config is seeded untracked and gitignored, so the output overstates what landed (found by the qa role 2026-11-14)
-
-**Symptom.** A first-time `tumwater init "Build a tiny markdown-to-html converter CLI in Python."` in a fresh empty repo prints:
-
-    created README.md, PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, tumwater.json, .gitignore (committed)
-
-The trailing `(committed)` reads as qualifying the whole `created` list, so the user is told `tumwater.json` was committed. It was not: `git ls-tree --name-only HEAD` lists exactly six files (`.gitignore`, `BUGS.md`, `PLANS.md`, `PRINCIPLES.md`, `QUESTIONS.md`, `README.md`) and the working tree is clean with no untracked `tumwater.json` — because the config is deliberately untracked and gitignored (`.gitignore` seeds `tumwater.json` beside `.tumwater/`), so it never enters the commit. `README.md` (markers), `PRINCIPLES.md`, the bootstrap seed (`"bootstrap": {"untilPlansDone": 5}`) and `tumwater brief` (prints the README path + brief) all match the docs; the one claim that diverges is the `(committed)` scope.
-
-**How to reproduce (offline, deterministic — no model).** `mktemp -d` under `$TMPDIR`, `cd` in, `git init`, `node <worktree>/dist/src/cli.js init "any brief"`, then `git ls-tree --name-only HEAD` (six files, no `tumwater.json`) and `git status --porcelain` (empty). Contrast with `tumwater init … --json`, whose `committed` is a separate boolean field alongside the `created` array — the accurate signal the prose line collapses.
-
-**Suspected cause.** `commitSeeded` (src/init/init.ts:489) correctly filters `CONFIG_BASENAME` (`tumwater.json`) out of the commit pathspec, because `git add --` fails on a path the just-written `.gitignore` ignores (plans/portability.md §4a/7: keep it in the reported `created` list, drop it from add/commit). But `createdLine` (src/cli/cli-init.ts:105) appends `(committed)` to the *entire* `result.created.join(", ")` when `result.committed` is true — `committed` is a single "a commit was made" boolean, and applying it as a list qualifier asserts every created file, including the untracked config, landed. The `--json` branch (cli-init.ts:55) already separates the two facts (`created` array + `committed` boolean), so only the prose form overstates.
-
-**Required behavior.** Scope the prose marker to what actually committed — e.g. drop the config from the `(committed)` clause (or move the untracked config to a separate "created but not committed (untracked, gitignored)" note) so the output no longer claims `tumwater.json` was committed. This is a wording fix in `createdLine`; the seeded-untracked-config design is intentional and out of scope. (docs/how-it-works.md:5's "and commits them" overstates in the same way and should be corrected in the same change.)
-
 ## Fixed
 
 ## Verified

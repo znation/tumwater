@@ -51,13 +51,24 @@ test("init creates the harness files and is idempotent", async () => {
   const repo = makeRepo();
   let r = await cli(repo, "init", "Build a todo CLI.");
   assert.equal(r.code, 0);
-  // The full created line, in file order, with the commit marker: the harness documents plus
-  // the seeded .gitignore, and tumwater.json created but untracked (it stays out of the
-  // commit pathspec), so init leaves the tree clean and says so with "(committed)".
+  // The created line, in file order, names every seeded path — the harness documents plus the
+  // seeded .gitignore, and tumwater.json, which is created but untracked (it stays out of the
+  // commit pathspec). The commit is reported on its own line scoped to the files that actually
+  // landed, and the gitignored config is named as untracked — so the output no longer claims
+  // tumwater.json was committed (BUGS.md 2026-11-14). init still leaves the tree clean.
   assert.equal(
     (/created .*/.exec(r.stdout))?.[0],
-    "created README.md, PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, tumwater.json, .gitignore (committed)",
+    "created README.md, PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, tumwater.json, .gitignore",
   );
+  assert.equal(
+    (/committed .*/.exec(r.stdout))?.[0],
+    "committed README.md, PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, .gitignore",
+  );
+  assert.equal(
+    (/untracked .*/.exec(r.stdout))?.[0],
+    "untracked (gitignored): tumwater.json",
+  );
+  assert.doesNotMatch(r.stdout, /\(committed\)/);
   assert.match(r.stdout, /next: `tumwater start` in one terminal, `tumwater tui` in another/);
   for (const f of ["README.md", "PLANS.md", "BUGS.md", "tumwater.json"]) {
     assert.ok(fs.existsSync(path.join(repo, f)), `${f} exists`);
@@ -79,7 +90,12 @@ test("init re-seeding a repo that only lacks its config reports it without claim
   fs.unlinkSync(path.join(repo, "tumwater.json"));
   const r = await cli(repo, "init", "Re-seed me.");
   assert.equal(r.code, 0, r.stderr);
-  assert.equal(r.stdout, "created tumwater.json\nnext: `tumwater start` in one terminal, `tumwater tui` in another\n");
+  // Nothing committed (the pathspec is the gitignored config alone), so there is no
+  // `committed …` line — and the config is named as created-but-untracked, never claimed.
+  assert.equal(
+    r.stdout,
+    "created tumwater.json\nuntracked (gitignored): tumwater.json\nnext: `tumwater start` in one terminal, `tumwater tui` in another\n",
+  );
   assert.ok(fs.existsSync(path.join(repo, "tumwater.json")), "config re-created");
   assertClean(repo);
 });
@@ -157,6 +173,7 @@ interface InitJson {
   branch: string | null;
   created: string[];
   leftAlone: string[];
+  committedFiles: string[];
   committed: boolean;
   bootstrap: number | null;
 }
@@ -181,6 +198,18 @@ test("init --json prints the acknowledgement object instead of the prose report"
   assert.equal(doc.readmeExists, false);
   assert.equal(doc.wasRepo, false);
   assert.equal(doc.committed, true);
+  // The committed set is `created` minus the gitignored config — the field the prose commit
+  // line scopes to. It is a distinct array beside `created`, which keeps the config.
+  assert.deepEqual(doc.committedFiles, [
+    "README.md",
+    "PLANS.md",
+    "BUGS.md",
+    "QUESTIONS.md",
+    "PRINCIPLES.md",
+    ".gitignore",
+  ]);
+  assert.ok(doc.created.includes("tumwater.json"));
+  assert.ok(!doc.committedFiles.includes("tumwater.json"));
   assert.equal(doc.bootstrap, 5);
   // created names the seeded set in seed order; every entry exists, the config among them
   // (created, but left out of the commit pathspec).
@@ -206,6 +235,8 @@ test("init --json prints the acknowledgement object instead of the prose report"
   const noop = initJsonDoc(again);
   assert.equal(noop.status, "already_initialized");
   assert.deepEqual(noop.created, []);
+  // The no-op commits nothing (everything is already seeded), so the committed set is empty.
+  assert.deepEqual(noop.committedFiles, []);
   assert.equal(noop.committed, false);
   // The no-op leaves nothing: every seeded file is read, so all land in leftAlone in seed order.
   assert.deepEqual(noop.leftAlone, [
@@ -459,7 +490,12 @@ test("init --template names the seeded template in its report and creates its st
   const r = await cli(repo, "init", "--template", "python-cli", "A markdown-to-html converter.");
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /template: python-cli/);
-  assert.match(r.stdout, /\(committed\)/);
+  // The commit is reported on its own line scoped to the tracked files — never a bare
+  // `(committed)` qualifying the whole created list — and the template's empty starter
+  // directories, which git never tracks, are named as untracked beside the gitignored config.
+  assert.match(r.stdout, /\ncommitted /);
+  assert.doesNotMatch(r.stdout, /\(committed\)/);
+  assert.match(r.stdout, /untracked \(gitignored\): tumwater\.json, src, tests/);
   assert.ok(fs.statSync(path.join(repo, "src")).isDirectory(), "src starter dir seeded");
   assert.ok(fs.statSync(path.join(repo, "tests")).isDirectory(), "tests starter dir seeded");
   // The brief carries the template's preamble first, the operator's words last.
