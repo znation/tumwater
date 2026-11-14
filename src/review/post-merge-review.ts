@@ -177,6 +177,12 @@ export function settlePostReview(root: string, commit: string, next: PostReview 
   writePostReviews(root, next ? [...rest, next] : rest);
 }
 
+/** What a post-merge review (`reviewMergedCommit`) found — the verdict the drain settles the
+ * entry against, one arm per shape: `approve`/`reject` carry the reviewer's recorded reasons;
+ * `fixed` is the reviewer's repair landed as a fix commit (its sha, for the drain to land on
+ * main); `exhausted` is a self-fix chain that hit REVISION_BACKSTOP (the surviving findings,
+ * the entry cleared); `failed` is a run that ended without a verdict, `infrastructure` when it
+ * did so on a transient provider failure. */
 export type PostReviewOutcome =
   | { kind: "approve"; reasons: string[] }
   | { kind: "reject"; reasons: string[] }
