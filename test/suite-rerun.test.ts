@@ -53,6 +53,15 @@ test("runsFullSuite flags backgrounded suite runs and keeps &-redirects out of t
   for (const command of ["npm test &> /tmp/out.txt", "npm test &>> /tmp/out.txt"]) {
     assert.ok(runsFullSuite(command), `flagged: ${command}`);
   }
+
+  // A bare output redirect that is NOT the segment's last token still runs the full suite: the
+  // parser must skip the operator AND its target (a path, not a filter), not just the operator.
+  for (const command of [
+    "npm test > /tmp/out.txt && npm ci", // bare redirect mid-line: target skipped, both legs run the suite
+    "npm test > /tmp/out.txt; echo done", // redirect then a separate command
+  ]) {
+    assert.ok(runsFullSuite(command), `flagged: ${command}`);
+  }
 });
 
 test("runsFullSuite leaves filtered runs and mere mentions of the runner alone", () => {
@@ -83,6 +92,23 @@ test("runsFullSuite leaves filtered runs and mere mentions of the runner alone",
     "node",
   ]) {
     assert.ok(!runsFullSuite(command), `not flagged: ${command}`);
+  }
+});
+
+test("an aliased test subcommand honors the same filter rules as `npm test`", () => {
+  // `npm tst`/`npm t` are npm's aliases for `npm test` (NPM_TEST); a positional after the alias is
+  // a test filter exactly like `npm test gui`, and a value-taking flag's value is the flag's, not
+  // a filter. The existing alias test pins the unfiltered alias only, and the `--`-positional and
+  // value-flag tests use the spelled `npm test` — the alias through hasFilter's true arm was
+  // untested, so a filter after an alias was read as a full-suite run.
+  for (const command of [
+    "npm tst gui", // positional filter after the alias
+    "npm t gui",
+    "npm tst -- gui", // positional after a bare --
+    "npm tst --prefix /tmp/rev", // value flag's value is not a filter → still the full suite, FLAGGED
+  ]) {
+    const expected = command.includes("--prefix");
+    assert.equal(runsFullSuite(command), expected, `${expected ? "flagged" : "not flagged"}: ${command}`);
   }
 });
 
