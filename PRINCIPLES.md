@@ -31,7 +31,7 @@ refresh the numbers with `wc -l` and `find` when this section is touched, and no
   grows with every merge; the split-large-function family below is the standing driver of
   per-function (not per-file) growth.
 - **Module-size ceiling**: 25 src files exceed 600 lines, 10 exceed 700, 4 exceed 800; the largest
-  is src/baseline/main-watch.ts at 952. The ceiling holds because complexity is extracted into named
+  is src/baseline/main-watch.ts at 943. The ceiling holds because complexity is extracted into named
   helpers, not by shrinking files — a file may stay large while its functions stay small; do not
   re-split an already-small function to chase a line count.
 - **Dependencies**: 2 runtime (ink, react) — the ink decision of 2026-10-01 and the react that
@@ -40,10 +40,10 @@ refresh the numbers with `wc -l` and `find` when this section is touched, and no
   and the type packages for node and react (@types/node, @types/react). Zero incidental runtime
   deps: any new one needs an explicit user decision recorded here, matching the principle above.
 - **Per-function complexity**: the split-large-function family is the team's main complexity
-  pressure — 274 such plans have landed (counted as `## Done` headings that name a body "split
+  pressure — 278 such plans have landed (counted as `## Done` headings that name a body "split
   into" named steps or one named helper per concern) and more sit in `## Planned`. A split earns a
   plan only when a named function is genuinely large and a reader's question is answered better by
   a name; a complexity-N number alone is not the reason. This keeps the family finite instead of a
   bottomless re-split of already-named helpers.
 
-_Last measured 2026-11-13 by the steward role._
+_Last measured 2026-11-14 by the steward role._
