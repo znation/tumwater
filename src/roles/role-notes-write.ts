@@ -155,9 +155,9 @@ export function renderRoleLessons(nextId: number, lessons: RoleLesson[]): string
 /** Validate one lesson's text against the per-lesson bounds: it must be non-empty, a single
  * paragraph (no line break), and at most ROLE_LESSON_MAX_BYTES. Returns null when it is
  * acceptable, or an error naming the overage and the fix — the same "at most" wording
- * validateRoleNote uses, so the model that overran learns what to do. The whole-file 2 KB
- * cap is checked separately against the rendered store, because it depends on the other
- * lessons, not on this one in isolation. */
+ * validateRoleNote uses, so the model that overran learns what to do. The whole-file 2 KB cap
+ * is checked separately, against the rendered store, by writeRoleLessons, because it depends
+ * on the other lessons, not on this one in isolation. */
 export function validateRoleLesson(text: string): string | null {
   if (text.trim() === "") return `a lesson must not be empty — pass one lesson, or none`;
   if (text.includes("\n") || text.includes("\r")) {
@@ -170,19 +170,28 @@ export function validateRoleLesson(text: string): string | null {
   return null;
 }
 
-/** The whole-file byte bound as a refusal, naming the overage and the curation fix. */
+/** The whole-file byte bound as a refusal, naming the overage and the curation fix. Enforced
+ * by writeRoleLessons against the rendered store — its one home. */
 function lessonsTooBig(bytes: number): string {
   return `the lessons file is ${bytes} bytes — shorten it to at most ${ROLE_LESSONS_MAX_BYTES} bytes (retire or replace one first)`;
 }
 
 /** The one write path for a role's lessons store, shared by every surface that touches it:
  * the `tumwater-notes lesson` commands (src/notes-cli.ts) and, later, the operator surfaces
- * (plans/typed-role-notes.md part 3/3). Like writeRoleNote, it writes through
- * src/files/files.ts's writeTextAtomic — the one home of the parent-dir creation, tmp+rename,
- * and no-remnant-on-failure contract — so the lessons dir cannot be littered with a temp file
- * nothing prunes. Callers validate first; this does not. */
+ * (plans/typed-role-notes.md part 3/3). It renders the store to its file text
+ * (renderRoleLessons), enforces the whole-file byte cap against that text, and writes
+ * atomically through src/files/files.ts's writeTextAtomic — the one home of the parent-dir
+ * creation, tmp+rename, and no-remnant-on-failure contract — so the lessons dir cannot be
+ * littered with a temp file nothing prunes. The whole-file cap is a property of the serialized
+ * file, so this is its one home: the cap is checked here, before any write, and add and
+ * replace do not re-check it. Callers validate the per-lesson text (validateRoleLesson); the
+ * file-size bound is this writer's. */
 export function writeRoleLessons(lessonsPath: string, nextId: number, lessons: RoleLesson[]): void {
-  writeTextAtomic(lessonsPath, renderRoleLessons(nextId, lessons));
+  const rendered = renderRoleLessons(nextId, lessons);
+  if (Buffer.byteLength(rendered, "utf8") > ROLE_LESSONS_MAX_BYTES) {
+    throw new Error(lessonsTooBig(Buffer.byteLength(rendered, "utf8")));
+  }
+  writeTextAtomic(lessonsPath, rendered);
 }
 
 /** Read and parse a lessons file, or the empty store when it is missing. An unreadable or
@@ -218,9 +227,11 @@ export function parseRoleLessonsText(text: string): { nextId: number; lessons: R
   return parseRoleLessons(text);
 }
 
-/** Add one lesson with the store's next id, validated against the count and byte caps. The
- * file is rewritten atomically. Returns the new lesson's id. Throws with the cap or byte
- * wording on refusal; the file is left untouched. */
+/** Add one lesson with the store's next id, validated against the count cap and the per-lesson
+ * byte cap (validateRoleLesson). The whole-file byte cap is enforced by writeRoleLessons when
+ * the store is written, so this method does not re-check it. The file is rewritten atomically.
+ * Returns the new lesson's id. Throws with the count, per-lesson, or whole-file wording on
+ * refusal; the file is left untouched. */
 export function addRoleLesson(lessonsPath: string, text: string, date: string): string {
   const { nextId, lessons } = readRoleLessons(lessonsPath);
   if (lessons.length >= ROLE_LESSONS_MAX_COUNT) {
@@ -230,10 +241,6 @@ export function addRoleLesson(lessonsPath: string, text: string, date: string): 
   if (error) throw new Error(error);
   const id = `L${nextId}`;
   const after = [...lessons, { id, date, text }];
-  const rendered = renderRoleLessons(nextId + 1, after);
-  if (Buffer.byteLength(rendered, "utf8") > ROLE_LESSONS_MAX_BYTES) {
-    throw new Error(lessonsTooBig(Buffer.byteLength(rendered, "utf8")));
-  }
   writeRoleLessons(lessonsPath, nextId + 1, after);
   return id;
 }
@@ -250,10 +257,6 @@ export function replaceRoleLesson(lessonsPath: string, id: string, text: string,
   if (error) throw new Error(error);
   const next = [...lessons];
   next[i] = { id, date, text };
-  const rendered = renderRoleLessons(nextId, next);
-  if (Buffer.byteLength(rendered, "utf8") > ROLE_LESSONS_MAX_BYTES) {
-    throw new Error(lessonsTooBig(Buffer.byteLength(rendered, "utf8")));
-  }
   writeRoleLessons(lessonsPath, nextId, next);
 }
 
