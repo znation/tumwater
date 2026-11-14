@@ -191,17 +191,39 @@ function foldStartEvidence(
   }
 }
 
-/** Launch one due runner's run: reserve it, park it in the semaphore, and start it under
- * runTimedRoleRun with the breaker-evidence wiring. Returns the task promise already added
- * to its in-flight bucket (its `finally` self-removes and folds the duration sample). */
-export function launchDueRuns(ctx: LaunchContext): void {
+/** Whether this poll's due runner starts the fallback probe run, and whether that runner then
+ * proceeds to launch. The one-probe-per-poll latch lives on `state` (shared across the pass's
+ * runners, never re-allocated per runner); the probe-role gate reads the breaker entry. A
+ * probe-role runner whose claim is already taken, or whose pair's entry is missing or already
+ * probing, *waits* — `{ skip: true }` — instead of launching; the one runner that starts the
+ * probe launches with `probe: true`; every other runner launches normally. */
+function admitProbe(
+  ctx: LaunchContext,
+  runner: RoleRunner,
+  state: { admittedProbe: boolean },
+): { skip: boolean; probe: boolean } {
+  const { probePair, probeRoles, gateStates } = ctx;
+  if (probePair === null || !probeRoles.has(runner.role)) return { skip: false, probe: false };
+  if (state.admittedProbe) return { skip: true, probe: false }; // this poll's claim is taken: waits
+  const b = gateStates.budget.breakers[probePair];
+  if (b === undefined || b.probing) return { skip: true, probe: false }; // no entry, or a claim already in flight: waits
+  gateStates.budget.breakers = startFallbackProbeAt(gateStates.budget.breakers, probePair);
+  state.admittedProbe = true;
+  return { skip: false, probe: true }; // this runner starts the probe
+}
+
+/** The per-runner launch lifecycle: reserve the runner, park it in the team semaphore (the
+ * director never queues), run it under runTimedRoleRun with the breaker-evidence wiring, and
+ * track it in its in-flight bucket with its work-bearing duration sample. Mutates the shared
+ * state in place through `ctx` (buckets, permit holders, duration ring, breakers), exactly as
+ * the inline version did. `probe` marks a run that started this poll's fallback probe. */
+function launchOneRun(ctx: LaunchContext, runner: RoleRunner, probe: boolean): void {
   const {
     root,
     reasons,
     signal,
     gateStates,
     probePair,
-    probeRoles,
     semaphore,
     rolePermitHolders,
     roleInFlight,
@@ -210,133 +232,132 @@ export function launchDueRuns(ctx: LaunchContext): void {
     startHeld,
     runTier = (runner) => (baseRoleOf(runner.role) === "ci" && runCarriesHealPrompt(root, runner.role) ? VERIFY_TIER : roleTier(runner.role)),
   } = ctx;
-  let admittedProbe = false;
+  const reason = reasons.get(runner);
+  if (reason && reason !== "scheduled" && reason !== "startup") {
+    logEventBestEffort(root, { source: runner.role, type: "wake", reason });
+  }
+  runner.state.running = true; // Reserve before the semaphore wait so we don't double-schedule.
+  // The director never queues behind roles: a user prompt starts immediately,
+  // even when maxConcurrent slots are busy. Parked waiters keep fairOrder's tier order
+  // across polls too: a work-role arrival jumps ahead of maintenance runs that queued
+  // in an earlier poll (in-flight runs always finish).
+  const usesSlot = runner.role !== DIRECTOR_ROLE;
+  // Mark the parked waiter while it waits: it holds no permit yet, so the dashboards
+  // render `awaiting slot` (an inactive state) and the active rows keep tracking
+  // maxConcurrent (BUGS.md 2026-09-24). Cleared the moment the permit is granted. The
+  // director never queues, so it is never a parked waiter.
+  runner.state.parkedSince = usesSlot ? Date.now() : undefined;
+  // The run's own duration (null when it never started, was cut off, or ended without
+  // work): the drain-window sample is taken only for a work-bearing run that finished
+  // on its own (runTimedRoleRun; BUGS.md 2026-09-30).
+  let durationMs: number | null = null;
+  // Whether runner.run() was ever called — false when the start gate (or a shutdown)
+  // turned the run away at its permit.
+  let started = false;
+  // The run's team semaphore lease, acquired at admission and released in place of the bare
+  // team release. The director never queues, so its lease is never created here.
+  let lease: Awaited<ReturnType<Semaphore["acquireLease"]>> | null = null;
+  const task = (async () => {
+    durationMs = await runTimedRoleRun(
+      signal,
+      usesSlot
+        ? async () => {
+            // The run is admitted by the one team total (maxConcurrent) alone — there is no
+            // per-provider key or cap any more. Which cap holds the run is always the team
+            // total.
+            const admittedAt = Date.now();
+            lease = await semaphore.acquireLease(runTier(runner));
+            // A wait of PROVIDER_WAIT_EVENT_MS or more for the team slot is
+            // contention worth surfacing: name it so `tumwater doctor`'s provider
+            // contention row can sum it and the operator can size maxConcurrent from real
+            // waits. Best-effort like the launch pass's other
+            // events, so an unwritable log never blocks a start; a run admitted at once
+            // stays silent.
+            if (Date.now() - admittedAt >= (ctx.providerWaitMs ?? PROVIDER_WAIT_EVENT_MS)) {
+              logEventBestEffort(ctx.root, {
+                source: TUMWATER_SOURCE,
+                type: "provider_wait",
+                role: runner.role,
+                waitedMs: Date.now() - admittedAt,
+              });
+            }
+            // Permit granted: the run is now an active, permit-holding state until the
+            // release below. A run the start gate turns away releases within the same
+            // microtask chain, so no poll ever counts it as a permit holder.
+            runner.state.parkedSince = undefined;
+            rolePermitHolders.add(runner);
+          }
+        : async () => {
+            // The director never queues behind roles: a user prompt starts at once, taking
+            // no semaphore permit (never counting toward maxConcurrent).
+          },
+      usesSlot
+        ? () => {
+            rolePermitHolders.delete(runner);
+            lease!.release();
+          }
+        : () => {},
+      async () => {
+        started = true;
+        const pair = startedPairFor(ctx, runner);
+        const checkPair = startedCheckPair(ctx, runner);
+        const outcome = await runUnderPermit(runner, usesSlot, lease!);
+        noteSuspectPair(ctx, checkPair, outcome);
+        foldStartEvidence(ctx, pair, outcome, probe);
+        return outcome;
+      },
+      Date.now,
+      // The restart start gate, plus the failure hold for role runs (the director is
+      // exempt, as at scheduling): a waiter granted its permit mid-storm must not start
+      // into it.
+      () => startHeld(runner.role),
+    );
+    // A reservation whose run never started hands itself back, so the role re-schedules
+    // once the hold lifts (or on the new build) instead of sitting `running` forever with
+    // nothing in flight. Memory only, on purpose: nothing started, so no state write and
+    // no run_start/run_end — the persisted state still reads exactly as the last real
+    // run left it, and the next generation schedules the role from that.
+    if (!started) runner.state.running = false;
+    // A probe turned away the same way answered nothing: hand its claim back (see
+    // abandonFallbackProbeAt) so the next poll can admit a probe that actually runs.
+    if (!started && probe && probePair !== null)
+      gateStates.budget.breakers = abandonFallbackProbeAt(gateStates.budget.breakers, probePair);
+  })();
+  const bucket = runner.role === DIRECTOR_ROLE ? directorInFlight : roleInFlight;
+  bucket.add(task);
+  // A RoleRunner.run folds every failure it handles into an `error` outcome, so this task
+  // should resolve. A throw outside that fold (a finalize-time file write, a runner bug)
+  // rejects it instead; the drain awaits the bucket with allSettled, but chaining cleanup
+  // off a bare `void task.finally(...)` would leave the derived promise's rejection
+  // unhandled and take the whole team down. Surface it as a warning (warnEventBestEffort,
+  // which keeps a failed warning write from becoming that unhandled rejection) and hand the
+  // reservation back so the role can schedule again, exactly as the unstarted path above
+  // does; the drain's allSettled is otherwise silent about the failure.
+  void task
+    .catch((err: unknown) => {
+      runner.state.running = false;
+      warnEventBestEffort(root, runner.role, `run task rejected: ${errorMessage(err)}`);
+    })
+    .finally(() => {
+      bucket.delete(task);
+      if (bucket === roleInFlight && durationMs !== null) {
+        roleRunDurationsMs.push(durationMs);
+        if (roleRunDurationsMs.length > ROLE_RUN_DURATION_SAMPLES) roleRunDurationsMs.shift();
+      }
+    });
+}
+
+/** The per-poll launch pass: for each due runner (in fairOrder), admit its probe (the
+ * one-per-poll fallback-probe latch) and, if the runner is not skipped, launch its run. The
+ * decision half — which runners are due — stays in runOrchestrator; this module turns each
+ * due runner into a reserved, semaphore-gated, in-flight run. */
+export function launchDueRuns(ctx: LaunchContext): void {
+  const { reasons, signal } = ctx;
+  const probeState = { admittedProbe: false };
   for (const runner of fairOrder([...reasons.keys()])) {
     if (signal.aborted) continue;
-    let probe = false;
-    // The probe goes to the first runner whose tier resolves to the probed pair (part 5c/8);
-    // every other runner launches normally, and only a further eligible runner waits — the
-    // probe claim is one per poll, so the rest of this pass skips just them.
-    if (probePair !== null && probeRoles.has(runner.role)) {
-      if (admittedProbe) continue; // this poll's claim is taken: the next eligible runner waits
-      const b = gateStates.budget.breakers[probePair];
-      if (b === undefined || b.probing) continue; // no entry, or a claim already in flight: waits
-      gateStates.budget.breakers = startFallbackProbeAt(gateStates.budget.breakers, probePair);
-      probe = true;
-      admittedProbe = true;
-    }
-    const reason = reasons.get(runner);
-    if (reason && reason !== "scheduled" && reason !== "startup") {
-      logEventBestEffort(root, { source: runner.role, type: "wake", reason });
-    }
-    runner.state.running = true; // Reserve before the semaphore wait so we don't double-schedule.
-    // The director never queues behind roles: a user prompt starts immediately,
-    // even when maxConcurrent slots are busy. Parked waiters keep fairOrder's tier order
-    // across polls too: a work-role arrival jumps ahead of maintenance runs that queued
-    // in an earlier poll (in-flight runs always finish).
-    const usesSlot = runner.role !== DIRECTOR_ROLE;
-    // Mark the parked waiter while it waits: it holds no permit yet, so the dashboards
-    // render `awaiting slot` (an inactive state) and the active rows keep tracking
-    // maxConcurrent (BUGS.md 2026-09-24). Cleared the moment the permit is granted. The
-    // director never queues, so it is never a parked waiter.
-    runner.state.parkedSince = usesSlot ? Date.now() : undefined;
-    // The run's own duration (null when it never started, was cut off, or ended without
-    // work): the drain-window sample is taken only for a work-bearing run that finished
-    // on its own (runTimedRoleRun; BUGS.md 2026-09-30).
-    let durationMs: number | null = null;
-    // Whether runner.run() was ever called — false when the start gate (or a shutdown)
-    // turned the run away at its permit.
-    let started = false;
-    // The run's team semaphore lease, acquired at admission and released in place of the bare
-    // team release. The director never queues, so its lease is never created here.
-    let lease: Awaited<ReturnType<Semaphore["acquireLease"]>> | null = null;
-    const task = (async () => {
-      durationMs = await runTimedRoleRun(
-        signal,
-        usesSlot
-          ? async () => {
-              // The run is admitted by the one team total (maxConcurrent) alone — there is no
-              // per-provider key or cap any more. Which cap holds the run is always the team
-              // total.
-              const admittedAt = Date.now();
-              lease = await semaphore.acquireLease(runTier(runner));
-              // A wait of PROVIDER_WAIT_EVENT_MS or more for the team slot is
-              // contention worth surfacing: name it so `tumwater doctor`'s provider
-              // contention row can sum it and the operator can size maxConcurrent from real
-              // waits. Best-effort like the launch pass's other
-              // events, so an unwritable log never blocks a start; a run admitted at once
-              // stays silent.
-              if (Date.now() - admittedAt >= (ctx.providerWaitMs ?? PROVIDER_WAIT_EVENT_MS)) {
-                logEventBestEffort(ctx.root, {
-                  source: TUMWATER_SOURCE,
-                  type: "provider_wait",
-                  role: runner.role,
-                  waitedMs: Date.now() - admittedAt,
-                });
-              }
-              // Permit granted: the run is now an active, permit-holding state until the
-              // release below. A run the start gate turns away releases within the same
-              // microtask chain, so no poll ever counts it as a permit holder.
-              runner.state.parkedSince = undefined;
-              rolePermitHolders.add(runner);
-            }
-          : async () => {
-              // The director never queues behind roles: a user prompt starts at once, taking
-              // no semaphore permit (never counting toward maxConcurrent).
-            },
-        usesSlot
-          ? () => {
-              rolePermitHolders.delete(runner);
-              lease!.release();
-            }
-          : () => {},
-        async () => {
-          started = true;
-          const pair = startedPairFor(ctx, runner);
-          const checkPair = startedCheckPair(ctx, runner);
-          const outcome = await runUnderPermit(runner, usesSlot, lease!);
-          noteSuspectPair(ctx, checkPair, outcome);
-          foldStartEvidence(ctx, pair, outcome, probe);
-          return outcome;
-        },
-        Date.now,
-        // The restart start gate, plus the failure hold for role runs (the director is
-        // exempt, as at scheduling): a waiter granted its permit mid-storm must not start
-        // into it.
-        () => startHeld(runner.role),
-      );
-      // A reservation whose run never started hands itself back, so the role re-schedules
-      // once the hold lifts (or on the new build) instead of sitting `running` forever with
-      // nothing in flight. Memory only, on purpose: nothing started, so no state write and
-      // no run_start/run_end — the persisted state still reads exactly as the last real
-      // run left it, and the next generation schedules the role from that.
-      if (!started) runner.state.running = false;
-      // A probe turned away the same way answered nothing: hand its claim back (see
-      // abandonFallbackProbeAt) so the next poll can admit a probe that actually runs.
-      if (!started && probe && probePair !== null)
-        gateStates.budget.breakers = abandonFallbackProbeAt(gateStates.budget.breakers, probePair);
-    })();
-    const bucket = runner.role === DIRECTOR_ROLE ? directorInFlight : roleInFlight;
-    bucket.add(task);
-    // A RoleRunner.run folds every failure it handles into an `error` outcome, so this task
-    // should resolve. A throw outside that fold (a finalize-time file write, a runner bug)
-    // rejects it instead; the drain awaits the bucket with allSettled, but chaining cleanup
-    // off a bare `void task.finally(...)` would leave the derived promise's rejection
-    // unhandled and take the whole team down. Surface it as a warning (warnEventBestEffort,
-    // which keeps a failed warning write from becoming that unhandled rejection) and hand the
-    // reservation back so the role can schedule again, exactly as the unstarted path above
-    // does; the drain's allSettled is otherwise silent about the failure.
-    void task
-      .catch((err: unknown) => {
-        runner.state.running = false;
-        warnEventBestEffort(root, runner.role, `run task rejected: ${errorMessage(err)}`);
-      })
-      .finally(() => {
-        bucket.delete(task);
-        if (bucket === roleInFlight && durationMs !== null) {
-          roleRunDurationsMs.push(durationMs);
-          if (roleRunDurationsMs.length > ROLE_RUN_DURATION_SAMPLES) roleRunDurationsMs.shift();
-        }
-      });
+    const d = admitProbe(ctx, runner, probeState);
+    if (d.skip) continue;
+    launchOneRun(ctx, runner, d.probe);
   }
 }
