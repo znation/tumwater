@@ -530,25 +530,31 @@ export class PiStreamParser {
     } else {
       for (const text of [event.errorMessage, event.finalError, event.message?.errorMessage]) {
         if (!text) continue;
-        if (CONTEXT_ERROR.test(text)) this.contextExceeded = true;
-        // Kept narrow on purpose: a false positive would mask real repeated failures from
-        // the session-poisoning heuristic and trigger needless retries.
-        if (TRANSIENT_SERVER_TIMEOUT.test(text)) this.transientServerTimeout = true;
-        if (TRANSIENT_RATE_LIMIT.test(text) || QUOTA_LIMIT_TEXT.test(text)) {
-          this.transientRateLimit = true;
-          const hint = RETRY_AFTER.exec(text);
-          if (hint) this.setRetryAfterSeconds(Number(hint[1]));
-        } else if (TRANSIENT_BACKEND.test(text)) {
-          // Rate-limit matched first, so a 429 stays a 429; this branch only sees the
-          // connection/5xx/model-load texts the hold groups by kind.
-          this.transientBackend = true;
-          this.backendFailureKind = backendKind(text);
-        } else if (isPermanentConfigError(text)) {
-          // A permanent 4xx config error: transient checks had their turn first, so 408/429
-          // never land here.
-          this.configError = true;
-        }
+        this.classifyErrorText(text);
       }
+    }
+  }
+
+  // One error text's classification into the flags the retry and stall logic read: the
+  // per-class regex tests in their precedence order, each carrying its own comment.
+  private classifyErrorText(text: string): void {
+    if (CONTEXT_ERROR.test(text)) this.contextExceeded = true;
+    // Kept narrow on purpose: a false positive would mask real repeated failures from
+    // the session-poisoning heuristic and trigger needless retries.
+    if (TRANSIENT_SERVER_TIMEOUT.test(text)) this.transientServerTimeout = true;
+    if (TRANSIENT_RATE_LIMIT.test(text) || QUOTA_LIMIT_TEXT.test(text)) {
+      this.transientRateLimit = true;
+      const hint = RETRY_AFTER.exec(text);
+      if (hint) this.setRetryAfterSeconds(Number(hint[1]));
+    } else if (TRANSIENT_BACKEND.test(text)) {
+      // Rate-limit matched first, so a 429 stays a 429; this branch only sees the
+      // connection/5xx/model-load texts the hold groups by kind.
+      this.transientBackend = true;
+      this.backendFailureKind = backendKind(text);
+    } else if (isPermanentConfigError(text)) {
+      // A permanent 4xx config error: transient checks had their turn first, so 408/429
+      // never land here.
+      this.configError = true;
     }
   }
 
