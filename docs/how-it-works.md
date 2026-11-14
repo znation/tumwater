@@ -751,12 +751,12 @@ stale settings.
   take; the hint line names it (`scope: team` or `scope: <id>`) and a scoped pane prefixes its
   body with `role: <id>`.
   `/` on the History pane with an empty prompt line opens a free-text search; Enter filters the
-  rows through the same `tickRowGrepHaystack` haystack and case-insensitive substring rule
+  rows through the same `runRowGrepHaystack` haystack and case-insensitive substring rule
   `tumwater history --grep` and the dashboard's History search use, the pane's `search:` header
   and the hint line name the active pattern, and Esc cancels.
   `Ctrl+N` swaps the pane for the newest completed run's full event trail — the newest among the
   pane's rows (its `Ctrl+G` scope, window, result and search) — rendered from the same
-  `readTickDetail`/`renderTickDetail` pair `tumwater history <role> --last` and the dashboard's
+  `readRunDetail`/`renderRunDetail` pair `tumwater history <role> --last` and the dashboard's
   History drill-down use, then the run commit's per-file stat footer (`tumwater history <role>
   <n> --stat`'s text, loaded async so the trail shows at once); the tab strip reads `Run` and
   `Ctrl+N` again returns to the rows. `Ctrl+P` on a trail steps to the next older run among those same rows, wrapping to the newest after the oldest. `Ctrl+R` on a trail adds the run's agent transcript, then the transcript with each agent run's prompt, then hides it again (the text of `history <role> <n> --transcript [--prompt]`). `Ctrl+W` adds the run's commit patch below the stat through `runDetailPatch`, the text `history <role> <n> --patch` prints.
@@ -765,9 +765,9 @@ stale settings.
   the base branch: it previews through `previewRevert`, then reverts through `revertMergedCommit`,
   the two cores `tumwater revert` uses (`POST /api/revert`).
   Its "Show patch" button loads the run's commit patch on demand through `GET /api/run?…&patch=1`,
-  the same `tickDetailPatch` text `tumwater history <role> <n> --patch` prints.
+  the same `runDetailPatch` text `tumwater history <role> <n> --patch` prints.
   Its "Show transcript" button loads the run's agent transcript through `GET /api/run?…&transcript=1`,
-  the same `tickTranscriptLines` text that `tumwater history <role> <n> --transcript` prints.
+  the same `runTranscriptLines` text that `tumwater history <role> <n> --transcript` prints.
   Once it is open, a "Show prompts" button reloads it through `GET /api/run?…&transcript=1&prompt=1`
   with each agent run's prompt, the text `tumwater history <role> <n> --transcript --prompt` prints.
   Its search box (applied on Enter) reloads it through `GET /api/run?…&transcript=1&grep=<text>`, keeping
