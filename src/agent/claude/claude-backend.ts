@@ -171,8 +171,9 @@ export const claudeBackend: AgentBackend = {
   invocation(run: AgentRunSpec): AgentInvocation {
     // Part 4b/7's config routing fills a claude tier default before the seam, so a nameless
     // run here is a caller bug (a config that named claude without going through the views).
+    // Name the run it rejects so the caller can tell which one routed here.
     if (run.config.model === undefined) {
-      throw new Error("claude backend: no model resolved for this run");
+      throw new Error(`claude backend: no model resolved for run ${JSON.stringify(run.sessionName)}`);
     }
     // The configured team config dir (plans/notes-command.md "Keeping funes out of team runs"):
     // the run's env, its resume lookup, and the account seed all follow it; unset, nothing changes.
