@@ -14,7 +14,7 @@ import { FINISHED_ARCHIVES } from "../backlog/backlog-md.js";
  * note. The other notes that carry the gate's verdicts back to the role that authored the
  * change live in gate-notes.ts. The machine-detectable half of the gate's reply contract —
  * verdict constants and detection for parsing a reviewer's VERDICT line — lives in
- * reply-contract.ts. */
+ * verdict/reply-contract.ts. */
 
 /** The listed-reasons placeholder the review and revision notes share when a rejection recorded
  * none: one home so a revision round's note and the next rejection's note cannot disagree on

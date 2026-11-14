@@ -12,12 +12,12 @@ import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
 
 /** Prompt construction for the roles' pi runs (run and director). The reply contract those
  * runs must follow — the TUMWATER_NOTHING_TO_DO sentinel, the TUMWATER_REFUSED line, the
- * SUMMARY/WHY/RISK/VERIFIED block format, the three endings, and the claims rules — lives in
- * reply-contract.ts; this module weaves it into each prompt. The follow-up prompts that pick a
- * session back up — the resume bridge, the missing-summary recovery, and the fresh-run cut-off
- * note — live in prompt-followup.ts. The merge gate's pi runs (conflict resolution, build fix,
- * review) build their prompts in gate-prompts.ts; assembling a reply into the run's commit message
- * lives in git/commit-message.ts.
+ * SUMMARY/WHY/RISK/VERIFIED block format, the three endings, and the claims rules —
+ * lives in verdict/reply-contract.ts; this module weaves it into each prompt. The
+ * follow-up prompts that pick a session back up — the resume bridge, the missing-summary
+ * recovery, and the fresh-run cut-off note — live in prompt-followup.ts. The merge gate's
+ * pi runs (conflict resolution, build fix, review) build their prompts in gate-prompts.ts;
+ * assembling a reply into the run's commit message lives in git/commit-message.ts.
  *
  * The prose is tuned for the team's models (2026-10-01): the primary GLM-5.3-Flash (an 18B-active
  * MoE behind a ~1M window) and the budget fallback's local Qwen3.8-27B (~127k window). Both follow
