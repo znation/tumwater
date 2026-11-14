@@ -7,7 +7,7 @@ import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
 import { git, gitTry } from "../git/git-run.js";
 import { gitLines } from "../git/git.js";
-import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { errorMessage } from "../text/text.js";
 import { fileQuarantineBugsOnMain } from "../backlog/backlog-file-bugs.js";
@@ -446,20 +446,16 @@ export function createMainWatch(
     try {
       const released = releaseQuarantine(root);
       if (released.length > 0) {
-        logEventBestEffort(root, {
-          source: TUMWATER_SOURCE,
-          type: "warning",
-          message: `quarantine released ${released.join(", ")}: its BUGS.md entry is no longer open`,
-        });
+        warnEventBestEffort(
+          root,
+          TUMWATER_SOURCE,
+          `quarantine released ${released.join(", ")}: its BUGS.md entry is no longer open`,
+        );
       }
       await filePendingQuarantine();
       await closeQuietWaits();
     } catch (err: unknown) {
-      logEventBestEffort(root, {
-        source: TUMWATER_SOURCE,
-        type: "warning",
-        message: `quarantine housekeeping failed: ${errorMessage(err)}`,
-      });
+      warnEventBestEffort(root, TUMWATER_SOURCE, `quarantine housekeeping failed: ${errorMessage(err)}`);
     }
   }
 
@@ -476,11 +472,11 @@ export function createMainWatch(
     }
     if (outcome.reason !== lastFilingWarning) {
       lastFilingWarning = outcome.reason;
-      logEventBestEffort(root, {
-        source: TUMWATER_SOURCE,
-        type: "warning",
-        message: `quarantined flaky tests are not filed in BUGS.md yet: ${outcome.reason}`,
-      });
+      warnEventBestEffort(
+        root,
+        TUMWATER_SOURCE,
+        `quarantined flaky tests are not filed in BUGS.md yet: ${outcome.reason}`,
+      );
     }
   }
 
@@ -490,22 +486,21 @@ export function createMainWatch(
     const outcome = await closeQuietBugWaitsOnMain(root);
     if (outcome.status === "closed") {
       lastCloseWarning = "";
-      logEventBestEffort(root, {
-        source: TUMWATER_SOURCE,
-        type: "warning",
-        message:
-          `closed ${outcome.titles.join("; ")}: its bugfix wait saw no recurrence in ` +
+      warnEventBestEffort(
+        root,
+        TUMWATER_SOURCE,
+        `closed ${outcome.titles.join("; ")}: its bugfix wait saw no recurrence in ` +
           `${BUGFIX_WAIT_QUIET_DAYS} days`,
-      });
+      );
       return;
     }
     if (outcome.status === "skipped" && outcome.reason !== lastCloseWarning) {
       lastCloseWarning = outcome.reason;
-      logEventBestEffort(root, {
-        source: TUMWATER_SOURCE,
-        type: "warning",
-        message: `bugs whose bugfix wait went quiet are not closed yet: ${outcome.reason}`,
-      });
+      warnEventBestEffort(
+        root,
+        TUMWATER_SOURCE,
+        `bugs whose bugfix wait went quiet are not closed yet: ${outcome.reason}`,
+      );
     }
   }
 
@@ -569,11 +564,11 @@ export function createMainWatch(
         );
         judgedThrough = commit;
         if (ruleReason !== undefined) {
-          logEventBestEffort(root, {
-            source: TUMWATER_SOURCE,
-            type: "warning",
-            message: `main's tip ${shortSha(tip)} fails the diff rules: ${ruleReason}`,
-          });
+          warnEventBestEffort(
+            root,
+            TUMWATER_SOURCE,
+            `main's tip ${shortSha(tip)} fails the diff rules: ${ruleReason}`,
+          );
           // A finding stops the walk mid-range; put the mirror back on the tip. The first finding
           // across the range is reported once, like the gate's short-circuit.
           await git(wt, "checkout", "-q", "--detach", "--force", tip);
@@ -597,11 +592,7 @@ export function createMainWatch(
   function warnCouldNotCheck(mainHead: string, err: unknown): void {
     if (lastFailedWatchHead === mainHead) return;
     lastFailedWatchHead = mainHead;
-    logEventBestEffort(root, {
-      source: TUMWATER_SOURCE,
-      type: "warning",
-      message: `main watch could not check main: ${errorMessage(err)}`,
-    });
+    warnEventBestEffort(root, TUMWATER_SOURCE, `main watch could not check main: ${errorMessage(err)}`);
   }
 
   /** The full-check pass (Hourly full check, part 2c/4): runs in the `_main-full` mirror on its

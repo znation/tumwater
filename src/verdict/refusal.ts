@@ -13,7 +13,7 @@ import { resetWorktreeToMain } from "../git/worktree.js";
 import { buildCommitMessage, commitTrailer, stampedSubject } from "../git/commit-message.js";
 import { errorMessage } from "../text/text.js";
 import { labeledLine } from "./reply-contract.js";
-import { logEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { clearSupersededRejection } from "../run/run-apply.js";
 import type { RunOutcome, RunResult } from "../run/run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
@@ -145,19 +145,19 @@ async function stripBlockedPlanRefusalNotes(ctx: RefusalContext, wt: string): Pr
       try {
         writeTextAtomic(plansFile, md);
         for (const title of dropped) {
-          logEventBestEffort(ctx.root, {
-            source: ctx.role,
-            type: "warning",
-            message: `dropped refusal note on blocked plan "${title}": its prerequisite is still planned, so the block already holds it`,
-          });
+          warnEventBestEffort(
+            ctx.root,
+            ctx.role,
+            `dropped refusal note on blocked plan "${title}": its prerequisite is still planned, so the block already holds it`,
+          );
         }
       } catch (err) {
         plansUnstripped = true;
-        logEventBestEffort(ctx.root, {
-          source: ctx.role,
-          type: "warning",
-          message: `could not drop refusal note(s) on blocked plan(s) ${dropped.map((t) => `"${t}"`).join(", ")}: ${errorMessage(err)}; PLANS.md is left out of this refusal's commit`,
-        });
+        warnEventBestEffort(
+          ctx.root,
+          ctx.role,
+          `could not drop refusal note(s) on blocked plan(s) ${dropped.map((t) => `"${t}"`).join(", ")}: ${errorMessage(err)}; PLANS.md is left out of this refusal's commit`,
+        );
       }
     }
   }
