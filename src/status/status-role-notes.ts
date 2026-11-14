@@ -89,7 +89,7 @@ export function collectRoleNotesOverCap(root: string): RoleNoteOverCap[] {
   return readRoleNotesOverCap(root) ?? [];
 }
 
-/** One role's lessons file that has grown past its store caps (role-notes-write.ts): the
+/** One role's lessons file that has grown past its store caps (roles/role-notes-write.ts): the
  * role's id, the file's UTF-8 byte length, and its lesson count. A hand-edited lessons file
  * that exceeds the 2 KB whole-file or 12-lesson cap is named so the doctor can tell the
  * operator the role's write path will now refuse to grow it (a missing lessons dir or file

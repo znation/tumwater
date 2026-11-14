@@ -27,8 +27,9 @@ interface RunDismissCtx {
   warn: (message: string) => void;
 }
 
-/** Record a dismissed run's qa flow (qa-coverage.ts's recordFlow) — a failed write warns
- * with the same wording on both dismissal paths. `summary` is the run's summary only when
+/** Record a dismissed run's qa flow (observer/qa-coverage.ts's recordFlow) — a failed write
+ * warns with the same wording on both dismissal paths. `summary` is the run's summary only
+ * when
  * the flow result is a bug (the recordFlow shape carries one just for the bug case, as each
  * path's caller spelled the ternary inline); a passed flow records none. */
 export function recordDismissedFlow(
@@ -82,9 +83,9 @@ export function recordDismissedRemote(
   }
 }
 
-/** Record a dismissed run's feedback filing (feedback-filings.ts's recordFiled) and log the
- * issue_filed event so the filing reaches the operator's activity feed — a failed ledger
- * write warns with the same wording on both dismissal paths. */
+/** Record a dismissed run's feedback filing (observer/feedback-filings.ts's recordFiled) and
+ * log the issue_filed event so the filing reaches the operator's activity feed — a failed
+ * ledger write warns with the same wording on both dismissal paths. */
 export function recordDismissedFiling(
   ctx: RunDismissCtx,
   root: string,

@@ -79,11 +79,11 @@ export function eventUsage(ev: HarnessEvent): { tokens: number; costUsd: number;
 /** Pair the run_start events of `events` by run, keyed `${role}#${run}` → the start event
  * itself — the one home of that pairing and its key format, shared by the timestamps
  * (runStartMap), the models (runStartModelMap), and the run drill-down's duration
- * (run-detail-data.ts uses runSpanMs' key). A run_start whose `ts` is not a finite number is
- * as unusable as an absent one and adds no entry either (the same "a torn or hand-edited line
- * carries no usable timestamp" policy eventRun/eventUsage apply to their fields), so every
- * entry is a real start the projections below can trust. Private: external consumers read one
- * of the projections, not this raw pairing. */
+ * (history/run-detail-data.ts uses runSpanMs' key). A run_start whose `ts` is not a finite
+ * number is as unusable as an absent one and adds no entry either (the same "a torn or
+ * hand-edited line carries no usable timestamp" policy eventRun/eventUsage apply to their
+ * fields), so every entry is a real start the projections below can trust. Private: external
+ * consumers read one of the projections, not this raw pairing. */
 function runStartEvents(events: HarnessEvent[]): Map<string, HarnessEvent> {
   const starts = new Map<string, HarnessEvent>();
   for (const e of events) {
@@ -102,12 +102,12 @@ export function runStartKey(ev: HarnessEvent): string {
 
 /** The run_start pairing's start epoch ms: `${role}#${run}` → start epoch ms, the projection
  * of runStartEvents onto each event's `ts` — shared by `tumwater history`'s row spans
- * (history-data.ts), the failure digest's time-and-spend fold (failure-time-spend.ts), and the run
- * drill-down's duration (run-detail-data.ts), so those consumers cannot drift into different
- * notions of a run's span. A run_end whose start is not in `events` (log rotation cut it, or
- * the run was skipped before any start logged) has no entry; callers decide what an unpaired
- * end costs. Lives in the read module, not in a ui module, so core collectors can share it
- * without a core→ui import. */
+ * (history-data.ts), the failure digest's time-and-spend fold (failure-time-spend.ts), and the
+ * run drill-down's duration (history/run-detail-data.ts), so those consumers cannot drift into
+ * different notions of a run's span. A run_end whose start is not in `events` (log rotation
+ * cut it, or the run was skipped before any start logged) has no entry; callers decide what an
+ * unpaired end costs. Lives in the read module, not in a ui module, so core collectors can
+ * share it without a core→ui import. */
 export function runStartMap(events: HarnessEvent[]): Map<string, number> {
   const starts = new Map<string, number>();
   for (const [key, e] of runStartEvents(events)) starts.set(key, finiteNumber(e.ts, 0));

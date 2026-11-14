@@ -94,7 +94,7 @@ function inspectNotesLines(p: RoleViewPayload, now: number): string[] {
   return lines;
 }
 
-/** The qa observer's flow-coverage ledger (role-view.ts's flowCoverage, qa-coverage.ts's
+/** The qa observer's flow-coverage ledger (role-view.ts's flowCoverage, observer/qa-coverage.ts's
  * coverageRows): each flow's last exercise and result, in the same order and wording family
  * as the prompt block (never-exercised first, then stalest-first), without the prompt's
  * intro sentence — the operator twin of the ledger that is otherwise the observer's only
@@ -119,10 +119,11 @@ function inspectFlowCoverageLines(p: RoleViewPayload, now: number): string[] {
 }
 
 /** The feedback observer's per-install filing ledger (role-view.ts's filings,
- * feedback-filings.ts's filingRows): each issue this install filed, newest-first, its number,
- * title, and age — the operator twin of the ledger that is otherwise the observer's only
- * memory. Present only for feedback, so every other role's render stays byte-identical; an
- * enabled-but-quiet observer reads as "none filed yet" rather than a truncated report. */
+ * observer/feedback-filings.ts's filingRows): each issue this install filed, newest-first,
+ * its number, title, and age — the operator twin of the ledger that is otherwise the
+ * observer's only memory. Present only for feedback, so every other role's render stays
+ * byte-identical; an enabled-but-quiet observer reads as "none filed yet" rather than a
+ * truncated report. */
 function inspectFilingLines(p: RoleViewPayload, now: number): string[] {
   if (!p.filings) return [];
   const lines: string[] = ["## Filings", ""];

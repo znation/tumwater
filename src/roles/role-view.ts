@@ -185,18 +185,18 @@ export interface RoleViewPayload {
   recentOutcomes?: Array<{ ts: number; result: string; durationMs?: number; summary?: string }>;
   /** The `qa` observer's flow-coverage ledger (plans/observer-roles.md 2/2), surfaced to its
    * one reader: each flow's last exercise and result in the prompt block's order
-   * (never-exercised first, then stalest-first) via qa-coverage.ts's `coverageRows`. Present
-   * only for the canonical `qa` id, so every other role's `--json` payload and Markdown render
-   * stay byte-identical. The ledger read degrades to empty coverage on a missing or torn file
-   * exactly as `readQaCoverage` already does. */
+   * (never-exercised first, then stalest-first) via observer/qa-coverage.ts's `coverageRows`.
+   * Present only for the canonical `qa` id, so every other role's `--json` payload and
+   * Markdown render stay byte-identical. The ledger read degrades to empty coverage on a
+   * missing or torn file exactly as `readQaCoverage` already does. */
   flowCoverage?: CoverageRow[];
   /** The `feedback` observer's per-install filing ledger (plans/feedback-role.md 2/2), surfaced
    * to its one reader: each GitHub issue this install already filed, newest-first (via
-   * feedback-filings.ts's `filingRows`), so the operator sees what the role filed, when, and
-   * under what title — the twin of `qa`'s `flowCoverage` above. Present only for the canonical
-   * `feedback` id, so every other role's `--json` payload and Markdown render stay
-   * byte-identical. The ledger read degrades to an empty list on a missing or torn file exactly
-   * as `readFeedbackFilings` already does. */
+   * observer/feedback-filings.ts's `filingRows`), so the operator sees what the role filed,
+   * when, and under what title — the twin of `qa`'s `flowCoverage` above. Present only for the
+   * canonical `feedback` id, so every other role's `--json` payload and Markdown render stay
+   * byte-identical. The ledger read degrades to an empty list on a missing or torn file
+   * exactly as `readFeedbackFilings` already does. */
   filings?: FilingRow[];
   /** The role's own spend over its retained event window — tokens, real cost, and notional
    * (subscription) cost summed from the same `run_end` events `recentOutcomes` reads, each

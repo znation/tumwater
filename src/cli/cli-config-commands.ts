@@ -43,7 +43,7 @@ import { unknownRoleMessage } from "../roles/roles.js";
 /** The config command's malformed-shapes usage line: cli.ts's arity gate fails a non-get/set
  * or wrongly-shaped subcommand with it, and cmdConfig repeats it as the defensive tail for an
  * argument the gate somehow missed. One constant so the synopsis cannot drift between the two
- * sites (mirrors run-detail.ts's RUN_DETAIL_USAGE). */
+ * sites (mirrors history/run-detail.ts's RUN_DETAIL_USAGE). */
 export const CONFIG_USAGE =
   "usage: tumwater config [get <key> | set <key> <value> [--json] | unset <key> [--json] | edit [--file <path>] [--json] | --diff] (bare config prints the whole resolved config; --diff prints only the non-default settings; edit opens the whole file in $VISUAL/$EDITOR or takes its replacement from --file, validating and writing it atomically)";
 
