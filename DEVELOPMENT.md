@@ -179,7 +179,8 @@ suite, for a change whose point is that the dashboards should look identical:
   `src/status/status-data.ts`, `src/ui/status-render.ts`, or the status payload. Stage the
   baseline once from a clean main checkout, then rebuild the worktree after your change:
 
-      npm run build && rm -rf /tmp/tw-baseline && mkdir /tmp/tw-baseline && cp -R dist /tmp/tw-baseline/   # from a clean main checkout
+      TW=$(node -pe "require('node:os').tmpdir()")   # the host's real scratch root ($TMPDIR, or /tmp)
+      npm run build && rm -rf "$TW/tw-baseline" && mkdir -p "$TW/tw-baseline" && cp -R dist "$TW/tw-baseline/"   # from a clean main checkout
       npm run build && node scripts/diff-check.mjs                                                         # from the worktree
 
   It prints `DIFF-CHECK PASS`, or the mismatching TUI lines and GUI fields, and exits

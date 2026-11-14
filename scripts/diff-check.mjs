@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { distRoleIds, requireDistBuild, seedLiveTeam } from "./live-fixture.mjs";
 
 // Before any dist/ import below: a tree without a build would otherwise die with a raw
@@ -10,14 +11,23 @@ import { distRoleIds, requireDistBuild, seedLiveTeam } from "./live-fixture.mjs"
 // builds, so a missing build is not an edge case — name it and the command that produces one.
 requireDistBuild("../dist/src/roles/roles.js", "diff-check compares compiled builds");
 
-// Same guard for the baseline side: on a fresh checkout (or after a /tmp cleanup) no baseline
+// The baseline build's home. Every other scratch dir here (the tw-diff-* fixtures, bench-live,
+// the smokes) resolves through os.tmpdir() — where the host actually puts scratch — so the
+// baseline does too, in a fixed name (tw-baseline, the family prefix) rather than a hardcoded
+// /tmp path. A fixed /tmp is the one thing the host rule does not allow: on a host where
+// $TMPDIR is set (macOS always sets it, to /var/folders/…) it is a *different* scratch root
+// than the fixtures', and a host that redirects /tmp would split the two in half. The baseline
+// must persist between the staging build and the check, so it is a fixed NAME in the system
+// tempdir, not mkdtemp's one-shot dir.
+const baselineDir = path.join(os.tmpdir(), "tw-baseline");
+// Same guard for the baseline side: on a fresh host (or after a tempdir cleanup) no baseline
 // has ever been staged, and the import below would die with a raw ERR_MODULE_NOT_FOUND stack
-// for /tmp/tw-baseline/dist/src/status/status-data.js — naming the staging command instead.
-if (!fs.existsSync("/tmp/tw-baseline/dist/src/status/status-data.js")) {
+// for the baseline's dist/src/status/status-data.js — naming the staging command instead.
+if (!fs.existsSync(path.join(baselineDir, "dist/src/status/status-data.js"))) {
   console.error(
-    "diff-check compares compiled builds: no baseline at /tmp/tw-baseline/dist — stage one before you start\n" +
-    "changing code, from a clean main checkout:\n" +
-    "  npm run build && rm -rf /tmp/tw-baseline && mkdir /tmp/tw-baseline && cp -R dist /tmp/tw-baseline/",
+    "diff-check compares compiled builds: no baseline at " + baselineDir + " — stage one before you start\n" +
+    "changing code, from a clean main checkout (the path is $TMPDIR/tw-baseline):\n" +
+    `  npm run build && rm -rf "${baselineDir}" && mkdir -p "${baselineDir}" && cp -R dist "${baselineDir}"/`,
   );
   process.exit(1);
 }
@@ -36,11 +46,11 @@ function makeFixture() {
   return root;
 }
 
-const baseline = await import("/tmp/tw-baseline/dist/src/status/status-data.js");
+const baseline = await import(pathToFileURL(path.join(baselineDir, "dist/src/status/status-data.js")).href);
 const current = await import("../dist/src/status/status-data.js");
-const baseRender = (await import("/tmp/tw-baseline/dist/src/ui/status-render.js")).renderStatus;
+const baseRender = (await import(pathToFileURL(path.join(baselineDir, "dist/src/ui/status-render.js")).href)).renderStatus;
 const curRender = (await import("../dist/src/ui/status-render.js")).renderStatus;
-const basePayload = (await import("/tmp/tw-baseline/dist/src/ui/status-payload.js")).statusPayload;
+const basePayload = (await import(pathToFileURL(path.join(baselineDir, "dist/src/ui/status-payload.js")).href)).statusPayload;
 const curPayload = (await import("../dist/src/ui/status-payload.js")).statusPayload;
 
 // Sanity, before any comparison: the shared fixture must actually render a working role's
@@ -104,8 +114,8 @@ for (const width of [undefined, 120, 60]) {
     }
   } finally {
     // A render that throws must not leak the fixture: the tempdir is this script's, and
-    // repeated debugging runs (or a fixture regression) would otherwise stack /tmp/tw-diff-*
-    // dirs — the cleanup bench-live.mjs already wraps its timed loop in.
+    // repeated debugging runs (or a fixture regression) would otherwise stack tw-diff-*
+    // dirs in the system tempdir — the cleanup bench-live.mjs already wraps its timed loop in.
     fs.rmSync(a, { recursive: true, force: true });
   }
 }
