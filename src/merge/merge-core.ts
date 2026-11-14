@@ -234,6 +234,22 @@ export async function reviewPinnedChange(
   // task re-stages the change `merging` as it continues — and a finished reviewer's last turns
   // left in the cell would accrue a false `no pi output` flag for the rest of the merge.
   setMergeStage(root, role, "merging");
+  await applyGateVerdictBookkeeping(gate, root, role, state, req, foldUsage);
+  return settleGateVerdict(gate, root, role, req, state, wt, discardPin);
+}
+
+/** The gate verdict's cross-run bookkeeping, in the order the gate must run it: record a
+ * rejected round, persist the role state best-effort, then fold the reviewer's up to three
+ * runs exactly once each. A state save that fails only warns (INV-CL1) and never throws, so
+ * the three folds still run and the merge write-back saves the same state later. */
+async function applyGateVerdictBookkeeping(
+  gate: GateResult,
+  root: string,
+  role: string,
+  state: RunnerState,
+  req: MergeRequest,
+  foldUsage: (run: PiRunResult) => void,
+): Promise<void> {
   // A rejection keeps the rejected commit alive while a revision is due (plans/revise-rejected.md):
   // point the rejected ref at the head the gate judged and record the round, so the author's next
   // run re-applies it. A rejection is final — clear the state, delete the ref, and log
@@ -263,7 +279,23 @@ export async function reviewPinnedChange(
   // The no-re-run nudge turn (review.ts) charges to the same role totals as the run that
   // produced it — one more line here, because a GateResult carries a third run now.
   if (gate.nudgeRun) foldUsage(gate.nudgeRun);
+}
 
+/** How each post-gate decision settles a pinned change: a consumed abort fails closed (the
+ * ref stays for the next run), a final rejection discards the pin, a failed verdict either
+ * discards it at the strike cap or keeps it (naming the failure), and an approved or exempt
+ * verdict re-tracks the pin to the head the gate judged. The discarded ref is the change's
+ * merge ref in the shared checkout — this path never removes the worktree it ran in. */
+async function settleGateVerdict(
+  gate: GateResult,
+  root: string,
+  role: string,
+  req: MergeRequest,
+  state: RunnerState,
+  wt: string,
+  discardPin: () => Promise<void>,
+): Promise<GateOutcome> {
+  const ref = mergeRefName(role);
   // Shutdown/user abort mid-review: fail closed — the ref stays and the next run re-merges it.
   // The caller routes "aborted" through its own abort handling (which discards the pin too when
   // the abort was a deliberate user stop).
