@@ -26,8 +26,8 @@ import { shortSha } from "../src/text/format.js";
 // its own, so these tests share no state.
 
 // The deterministic diff rules the watch runs on main's tip (PLANS.md "Every commit is verified
-// on main, part 1/3"): the full five-check set the watch and gate share — the gate runs only the
-// three a later commit cannot repair, the watch runs all five — against the new head. A
+// on main, part 1/3"): the full six-check set the watch and gate share — the gate runs only the
+// three a later commit cannot repair, the watch runs all six — against the new head. A
 // rule failure is reported as a warning naming the rule and the head, within one poll, with no
 // confirming re-run. The build stays green in every case, so each tip's build runs once.
 test("the watch runs the precheck rules on the tip: a conflict marker names the rule and the head", async () => {

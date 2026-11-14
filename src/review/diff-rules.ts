@@ -4,13 +4,13 @@
  * `baseRev` is a commit or branch name the async
  * rules resolve with changeBaseRev (merge-base of HEAD and it), so the watch passes a commit
  * while the gate passes the main branch. The final `scope` argument picks which set runs and in
- * what order: `"watch"` runs all five — conflictMarkerReason, then protectedEditReason, then
- * secretLeakReason, then — only for an exempt (md-only) diff — falseFixReason, then
- * backlogStructureReason for every diff — while `"gate"` (the pre-merge gate) runs only the
- * three a later commit cannot repair: briefEditReason, protectedEditReason, then
- * secretLeakReason. A conflict marker, a false fix claim and a broken backlog structure can all
- * be repaired by a later commit, so they stop refusing a diff pre-merge and the main watch
- * reports them on main's tip instead. Both scopes short-circuit on their first finding exactly
+ * what order: `"watch"` runs all six — conflictMarkerReason, then briefEditReason, then
+ * protectedEditReason, then secretLeakReason, then — only for an exempt (md-only) diff —
+ * falseFixReason, then backlogStructureReason for every diff — while `"gate"` (the pre-merge gate)
+ * runs only the three a later commit cannot repair: briefEditReason, protectedEditReason, then
+ * secretLeakReason. A conflict marker, a false fix claim and a broken backlog structure can all be
+ * repaired by a later commit, so they stop refusing a diff pre-merge and the main watch reports
+ * them on main's tip instead. Both scopes short-circuit on their first finding exactly
  * as the original gate did: a later rule never runs once an earlier one already rejects.
  * Returns a one-reason array when a rule fires (the reason the gate rejects on and the watch
  * reports) and `[]` when nothing is wrong. An empty `role` (the watch cannot name the tip's

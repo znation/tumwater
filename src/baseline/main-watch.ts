@@ -521,7 +521,7 @@ export function createMainWatch(
       fullCheckBase = undefined;
     }
     // The deterministic diff rules ("Every commit is verified on main, part 1/3"): run the full
-    // five-check set the watch and gate share — the gate now runs only the three a later commit
+    // six-check set the watch and gate share — the gate now runs only the three a later commit
     // cannot repair — against main's new tip. A rule failure is a deterministic red — it takes no
     // confirming re-run and never quarantines — reported as a warning naming the rule and the
     // head (and each committing role, when a recent merged event names one). It runs on every tip

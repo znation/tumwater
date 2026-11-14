@@ -519,7 +519,7 @@ The gate rejects some changes without running a reviewer, because the exempt fas
 markdown would otherwise merge them unreviewed.
 
 The main watch (part 1/3 of the every-commit-verified-on-main plan) runs the same deterministic
-diff rules on main's new tip after it lands, in the rules' own order — the full set of five,
+diff rules on main's new tip after it lands, in the rules' own order — the full set of six,
 while the pre-merge gate (part 3m/3) runs only the three findings a later commit cannot repair:
 the other three (a conflict marker, a false fix claim and a broken backlog structure) are all
 repairable by a later commit, so the gate lets them land and the watch reports them — naming the
