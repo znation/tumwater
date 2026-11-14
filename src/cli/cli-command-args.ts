@@ -337,25 +337,31 @@ function scanPromptFlags(args: string[], consumed: ReadonlySet<number>): PromptS
   const scanArgs = args.filter((_, i) => !consumed.has(i));
   rejectUnknownDoubleDash("prompt", scanArgs, PROMPT_FLAG_SPECS);
   const unpeeled = (i: number) => !consumed.has(i);
+  // The one "this token is the named flag and not a peeled --grep pair token" test every
+  // collection below shares: unpeeled keeps a flag-shaped pattern from impersonating a rival
+  // flag or becoming a stray claim, so the guard has a single home and each collection reads
+  // as "indices of <flag>, ignoring the peeled pair".
+  const match = (flag: string) => (a: string, i: number) => a === flag && unpeeled(i);
   // --json's positions, collected in one pass: the list branch's stray-argument claim and
   // json flag need the indices (the once-check rides rejectDuplicateFlags below).
-  const jsonFlags = args.flatMap((a, i) => (a === "--json" && unpeeled(i) ? [i] : []));
-  const listFlag = args.findIndex((a, i) => a === "--list" && unpeeled(i));
-  const cancelFlag = args.findIndex((a, i) => a === "--cancel" && unpeeled(i));
-  const editFlag = args.findIndex((a, i) => a === "--edit" && unpeeled(i));
-  const topFlag = args.findIndex((a, i) => a === "--top" && unpeeled(i));
-  const showFlag = args.findIndex((a, i) => a === "--show" && unpeeled(i));
-  const fileFlag = args.findIndex((a, i) => a === "--file" && unpeeled(i));
-  const atFlag = args.findIndex((a, i) => a === "--at" && unpeeled(i));
+  const jsonFlags = args.flatMap((a, i) => (match("--json")(a, i) ? [i] : []));
+  const listFlag = args.findIndex(match("--list"));
+  const cancelFlag = args.findIndex(match("--cancel"));
+  const editFlag = args.findIndex(match("--edit"));
+  const topFlag = args.findIndex(match("--top"));
+  const showFlag = args.findIndex(match("--show"));
+  const fileFlag = args.findIndex(match("--file"));
+  const atFlag = args.findIndex(match("--at"));
   // -f/--follow's positions, like --json's: the list branch claims them in its stray-argument
   // accounting, and the enqueue branch refuses the --follow spelling by name before it can be
   // baked into the queued text (the -f spelling stays free-form content in that mode). A token
-  // in the peeled grep pair is gone, so it is never a follow flag here.
+  // in the peeled grep pair is gone, so it is never a follow flag here. It keeps the
+  // .includes spelling for its two names (-f and --follow) — the one collection not on match.
   const followFlags = args.flatMap((a, i) => (FOLLOW_FLAG.names.includes(a) && unpeeled(i) ? [i] : []));
   // --attach is repeatable: every occurrence claims itself and its value token, like --role's
   // single pair, so the pairs ride out of the prompt text in every mode.
-  const attachFlags = args.flatMap((a, i) => (a === "--attach" && unpeeled(i) ? [i] : []));
-  const roleFlag = args.findIndex((a, i) => a === "--role" && unpeeled(i));
+  const attachFlags = args.flatMap((a, i) => (match("--attach")(a, i) ? [i] : []));
+  const roleFlag = args.findIndex(match("--role"));
   // --attach is repeatable, so the once-check skips it. Follow is checked by parsePromptFollow
   // instead of the raw occurrence count here: a `-f` in a valued flag's slot is that flag's
   // value, so only an unconsumed follow token is a repeat.
@@ -366,7 +372,7 @@ function scanPromptFlags(args: string[], consumed: ReadonlySet<number>): PromptS
   // A `--grep` beyond the peeled first is a duplicate, not a second filter: parseGrepFlag only
   // peels one pair, so a second --grep token survives into the scan and is refused by name
   // like any other repeated flag.
-  if (args.some((a, i) => a === "--grep" && unpeeled(i))) rejectRepeatFlag(true, "--grep");
+  if (args.some(match("--grep"))) rejectRepeatFlag(true, "--grep");
   return { jsonFlags, listFlag, cancelFlag, editFlag, topFlag, showFlag, fileFlag, atFlag, attachFlags, roleFlag, followFlags };
 }
 
