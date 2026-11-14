@@ -1,5 +1,5 @@
 import { knownRoleIds, loadConfig } from "../config/config.js";
-import { fail, say, sayJson } from "./cli-output.js";
+import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { failOverDurationCap, flagValue, optionalFlagValue, parseDurationFlag, parsePositionFlag, parseRoleFlag, rejectFlagLookingValue } from "./cli-args.js";
 import { errorMessage, splitCommaList } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "./cli-flag-specs.js";
@@ -147,44 +147,57 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
   // `--in <duration>` (the scheduled wake): the command's own gate (runMarkerCommand's
   // rejectUnknownArgs, not cli.ts — the marker dispatch moved out from under main()'s switch)
   // has already restricted the flag to this command and validated its value — shape and the
-  // 90-day cap both, via WAKE_IN_FLAG's validate — so its value is re-parsed here, beside the
-  // writer it feeds. The cap is pause --for's: a longer horizon is a queued prompt or a
-  // standing schedule's job, not a one-shot wake.
+  // 90-day cap both, via WAKE_IN_FLAG's validate — so its value is read once here and re-parsed
+  // beside its writer. The cap is pause --for's: a longer horizon is a queued prompt or a
+  // standing schedule's job, not a one-shot wake. Each mode then runs itself and reports
+  // through the shared `--json`-or-prose tail; the mode-selection order is unchanged.
   const inRaw = flagValue(args, "--in");
-  if (args.includes("--list")) {
-    if (inRaw !== null || args.includes("--cancel")) fail("wake --list cannot be combined with --in or --cancel");
-    const now = Date.now();
-    const roles = namedRoleList(root, args) ?? undefined;
-    const wakes = listWakes(root, roles, now);
-    say(args.includes("--json") ? JSON.stringify(wakes) : renderWakeList(wakes, now, roles));
+  if (args.includes("--list")) return wakeList(root, args);
+  if (args.includes("--cancel")) return wakeCancel(root, args, inRaw);
+  return wakeRequest(root, args, inRaw);
+}
+
+/** `wake --list`: the `--in`/`--cancel` rival gate (re-reading `--in` itself, since the gate is
+ * this mode's own — the command's flag gate has already validated its shape and 90-day cap), the
+ * one clock read, the optional `--role` scope, and the `--json`-array / prose-list report. The
+ * `--json` and prose branches render from the same already-computed `wakes` from one `say` (the
+ * shared `sayJsonOrRender` callback does not change what prints), so this form keeps its tail. */
+function wakeList(root: string, args: string[]): void {
+  const inRaw = flagValue(args, "--in");
+  if (inRaw !== null || args.includes("--cancel")) fail("wake --list cannot be combined with --in or --cancel");
+  const now = Date.now();
+  const roles = namedRoleList(root, args) ?? undefined;
+  const wakes = listWakes(root, roles, now);
+  say(args.includes("--json") ? JSON.stringify(wakes) : renderWakeList(wakes, now, roles));
+}
+
+/** `wake --cancel`: the `--in` rival gate, then the one-by-position vs drop-all fork. `wake
+ * --cancel <n>` drops ONE pending wake by the number `wake --list` prints under the same --role
+ * scope; a bare `wake --cancel` keeps dropping every pending wake (or the named roles' share).
+ * `optionalFlagValue` is the gate's own read (cli-flag-specs') so the two cannot disagree about
+ * whether a value token was claimed; each path reports via the shared `--json`/prose tail. */
+function wakeCancel(root: string, args: string[], inRaw: string | null | undefined): void {
+  if (inRaw !== null) fail("wake --cancel and --in cannot be combined");
+  const positionRaw = optionalFlagValue(args, "--cancel");
+  if (positionRaw !== null) {
+    const o = cancelWakeAtOutcome(root, parsePositionFlag("--cancel", positionRaw, "wake --cancel 2"), namedRoleList(root, args) ?? undefined);
+    sayJsonOrRender(args, o.payload, () => o.message);
     return;
   }
-  if (args.includes("--cancel")) {
-    if (inRaw !== null) fail("wake --cancel and --in cannot be combined");
-    // `wake --cancel <n>` drops ONE pending wake by the number `wake --list` prints under the
-    // same --role scope; a bare `wake --cancel` keeps dropping every pending wake (or the
-    // named roles' share) as today. optionalFlagValue is the gate's own read (cli-flag-specs')
-    // so the two cannot disagree about whether a value token was claimed.
-    const positionRaw = optionalFlagValue(args, "--cancel");
-    if (positionRaw !== null) {
-      const o = cancelWakeAtOutcome(root, parsePositionFlag("--cancel", positionRaw, "wake --cancel 2"), namedRoleList(root, args) ?? undefined);
-      if (args.includes("--json")) sayJson(o.payload);
-      else say(o.message);
-      return;
-    }
-    const o = cancelWakesOutcome(root, namedRoleList(root, args) ?? undefined);
-    if (args.includes("--json")) sayJson(o.payload);
-    else say(o.message);
-    return;
-  }
+  const o = cancelWakesOutcome(root, namedRoleList(root, args) ?? undefined);
+  sayJsonOrRender(args, o.payload, () => o.message);
+}
+
+/** `wake [--in <duration>]`: the duration parse and the 90-day cap, then the request. A bare
+ * `wake` with no `--in` requests an immediate wake (the marker is consumed within one poll). */
+function wakeRequest(root: string, args: string[], inRaw: string | null | undefined): void {
   const inMs = inRaw !== null ? parseDurationFlag("wake --in", inRaw) : undefined;
   if (inMs !== undefined) failOverDurationCap("wake --in", inMs, PAUSE_FOR_MAX_MS);
   // requestWakeOutcome takes the duration, not a deadline: it reads the clock once for both the
   // marker's deadline and its "wakes in" phrase, so no clock advance between two reads can reword
   // "45m" as "2699999ms".
   const o = requestWakeOutcome(root, targetRoles(root, args), inMs);
-  if (args.includes("--json")) sayJson(o.payload);
-  else say(o.message);
+  sayJsonOrRender(args, o.payload, () => o.message);
 }
 
 /** `tumwater reclaim [--dry-run] [--json]`: run one manual reclaim pass over every harness
