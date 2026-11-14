@@ -131,8 +131,59 @@ async function configGet(root: string, key: string | undefined): Promise<void> {
   sayJsonLine(value === undefined ? null : value); // Absent optional key → JSON null.
 }
 
-/** The `config unset` verb: screen the key, remove it, and confirm what, if anything, was
- * removed (or what the key now resolves to). */
+/** Reports a `config unset` write: one named helper per the write-then-report shape, holding
+ * today's reporting verbatim — the `not_set` and `removed` acknowledgements and prose lines —
+ * deriving the `resolved`/`resolves` suffix from the key's fresh resolution internally. */
+function reportUnsetResult(
+  // The `ok: true` branch only: configUnset has already failed on `!result.ok` before it calls
+  // here, so the helper receives a write that succeeded and reads `oldValue` directly.
+  result: Extract<ReturnType<typeof unsetConfigKey>, { ok: true }>,
+  key: string,
+  now: unknown,
+  json: boolean,
+): void {
+  const resolves = now === undefined ? "" : JSON.stringify(now);
+  if (result.oldValue === undefined) {
+    if (json) {
+      const ack: Record<string, unknown> = {
+        command: "config",
+        action: "unset",
+        key,
+        status: "not_set",
+      };
+      if (now !== undefined) ack.resolved = now;
+      sayJsonLine(ack);
+      return;
+    }
+    say(
+      `${key} is not set in tumwater.json, so nothing was removed` +
+        (now === undefined ? "" : ` (it resolves to ${resolves})`),
+    );
+    return;
+  }
+  if (json) {
+    // The script-facing twin of the prose below: one compact acknowledgement object whose
+    // status names what happened, with `oldValue` when the file held the key and `resolved`
+    // when it still resolves after removal. sayJsonLine, not sayJson: the contract is the
+    // whole stdout as one line, so a script can JSON.parse stdout directly (sayJson's
+    // two-space pretty print would span many lines).
+    const ack: Record<string, unknown> = {
+      command: "config",
+      action: "unset",
+      key,
+      status: "removed",
+      oldValue: result.oldValue,
+    };
+    if (now !== undefined) ack.resolved = now;
+    sayJsonLine(ack);
+    return;
+  }
+  const was = JSON.stringify(result.oldValue);
+  say(`unset ${key} (was ${was}${now === undefined ? "" : `; now resolves to ${resolves}`})`);
+}
+
+/** The `config unset` verb: screen the key, remove it, and report the result (or what the key
+ * now resolves to) through reportUnsetResult. */
 async function configUnset(root: string, key: string | undefined, json = false): Promise<void> {
   // cli.ts's arity gate requires exactly two args (`unset <key>`) before cmdConfig runs;
   // this is the defensive tail for a direct caller, matching the bare-config tail below.
@@ -147,44 +198,7 @@ async function configUnset(root: string, key: string | undefined, json = false):
   // The reload only feeds the message, so a failed one leaves `now` undefined.
   const reloaded = loadConfigSafe(root).config;
   const now = reloaded === undefined ? undefined : resolvedConfigValue(reloaded, parsed, k);
-  const resolves = now === undefined ? "" : JSON.stringify(now);
-  if (result.oldValue === undefined) {
-    if (json) {
-      const ack: Record<string, unknown> = {
-        command: "config",
-        action: "unset",
-        key: k,
-        status: "not_set",
-      };
-      if (now !== undefined) ack.resolved = now;
-      sayJsonLine(ack);
-      return;
-    }
-    say(
-      `${k} is not set in tumwater.json, so nothing was removed` +
-        (now === undefined ? "" : ` (it resolves to ${resolves})`),
-    );
-    return;
-  }
-  if (json) {
-    // The script-facing twin of the prose below: one compact acknowledgement object whose
-    // status names what happened, with `oldValue` when the file held the key and `resolved`
-    // when it still resolves after removal. sayJsonLine, not sayJson: the contract is the
-    // whole stdout as one line, so a script can JSON.parse stdout directly (sayJson's
-    // two-space pretty print would span many lines).
-    const ack: Record<string, unknown> = {
-      command: "config",
-      action: "unset",
-      key: k,
-      status: "removed",
-      oldValue: result.oldValue,
-    };
-    if (now !== undefined) ack.resolved = now;
-    sayJsonLine(ack);
-    return;
-  }
-  const was = JSON.stringify(result.oldValue);
-  say(`unset ${k} (was ${was}${now === undefined ? "" : `; now resolves to ${resolves}`})`);
+  reportUnsetResult(result, k, now, json);
 }
 
 /** The `config --diff` verb: print only the resolved settings that differ from the built-in
@@ -200,8 +214,56 @@ async function configDiff(root: string, extra: string | undefined): Promise<void
   sayJson(Object.fromEntries(nonDefaultConfigEntries(config)));
 }
 
+/** The roles-catalog-merge note a `roles` set prints in both shapes (the JSON ack's `note`
+ * and the prose `note:` line): one constant so the two sites cannot drift. A bare `roles` set
+ * replaces the FILE's section, but the built-in catalog always merges per entry at load, so the
+ * replacement cannot disable a role by omission. Say so here rather than let the confirmation
+ * imply the role is gone. */
+const ROLES_MERGE_NOTE =
+  "the built-in role catalog still merges per entry — disable a role with `tumwater config set roles.<id>.enabled false`, not by omitting it";
+
+/** Reports a `config set` write: one named helper per the write-then-report shape, holding
+ * today's confirmation verbatim — the one-line JSON acknowledgement under `--json` and the
+ * prose `already`/`set`/`note:` lines — with the roles-catalog-merge note from one constant. */
+function reportSetResult(
+  result: ReturnType<typeof setConfigKey>,
+  key: string | undefined,
+  json: boolean,
+): void {
+  const rk = canonicalConfigKey(key ?? "");
+  const value = (result as { value: unknown }).value;
+  const unchanged = Boolean((result as { unchanged?: true }).unchanged);
+  // The script-facing twin of the prose confirmation: one compact acknowledgement object
+  // whose status names the outcome — `set` when the file changed, `unchanged` when it
+  // already resolved to that value. sayJsonLine, not sayJson: the whole stdout must be one
+  // line so a script can JSON.parse it (sayJson's two-space pretty print spans many lines).
+  // A `--json` write carries no prose: with-json prints only the object.
+  if (json) {
+    const ack: Record<string, unknown> = {
+      command: "config",
+      action: "set",
+      key: rk,
+      value,
+      status: unchanged ? "unchanged" : "set",
+    };
+    const note = (result as { note?: string }).note;
+    if (note) ack.note = note;
+    else if (key === "roles") ack.note = ROLES_MERGE_NOTE;
+    sayJsonLine(ack);
+    return;
+  }
+  if (unchanged) {
+    say(`${rk} is already ${JSON.stringify(value)}, so tumwater.json was not written`);
+    return;
+  }
+  say(`set ${rk} to ${JSON.stringify(value)}`);
+  const note = (result as { note?: string }).note;
+  if (note) say(`note: ${note}`);
+  if (key === "roles") say(`note: ${ROLES_MERGE_NOTE}`);
+}
+
 /** The `config set` verb: write one value through setConfigKey (refusing a flag-looking
- * value first) and confirm the write or that it was already that value. */
+ * value first) and report the write through reportSetResult. */
 async function configSet(
   root: string,
   key: string | undefined,
@@ -222,44 +284,7 @@ async function configSet(
     );
   const result = setConfigKey(root, key ?? "", raw);
   if (!result.ok) fail(result.error);
-  const rk = canonicalConfigKey(key ?? "");
-  const value = (result as { value: unknown }).value;
-  const unchanged = Boolean((result as { unchanged?: true }).unchanged);
-  // The script-facing twin of the prose confirmation: one compact acknowledgement object
-  // whose status names the outcome — `set` when the file changed, `unchanged` when it
-  // already resolved to that value. sayJsonLine, not sayJson: the whole stdout must be one
-  // line so a script can JSON.parse it (sayJson's two-space pretty print spans many lines).
-  // A `--json` write carries no prose: with-json prints only the object.
-  if (json) {
-    const ack: Record<string, unknown> = {
-      command: "config",
-      action: "set",
-      key: rk,
-      value,
-      status: unchanged ? "unchanged" : "set",
-    };
-    const note = (result as { note?: string }).note;
-    if (note) ack.note = note;
-    else if (key === "roles")
-      ack.note =
-        "the built-in role catalog still merges per entry — disable a role with `tumwater config set roles.<id>.enabled false`, not by omitting it";
-    sayJsonLine(ack);
-    return;
-  }
-  if (unchanged) {
-    say(`${rk} is already ${JSON.stringify(value)}, so tumwater.json was not written`);
-    return;
-  }
-  say(`set ${rk} to ${JSON.stringify(value)}`);
-  const note = (result as { note?: string }).note;
-  if (note) say(`note: ${note}`);
-  // A bare `roles` set replaces the FILE's section, but the built-in catalog always merges
-  // per entry at load, so the replacement cannot disable a role by omission. Say so here
-  // rather than let the confirmation imply the role is gone.
-  if (key === "roles")
-    say(
-      "note: the built-in role catalog still merges per entry — disable a role with `tumwater config set roles.<id>.enabled false`, not by omitting it",
-    );
+  reportSetResult(result, key, json);
 }
 
 /** The bare-config tail: the whole resolved config as pretty JSON, refusing a surplus
