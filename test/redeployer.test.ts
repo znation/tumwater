@@ -333,8 +333,11 @@ test("a failed compile keeps the old build running and warns once", async () => 
   await settle();
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
   assert.deepEqual(types(), ["build_stale", "restart_pending", "restart_pending", "restart_blocked", "warning"]);
-  assert.match(String(events.at(-1)!.message), /the update to bbbbbbbb failed to build — staying on version aaaaaaaa: tsc exited 2/);
-  assert.equal(r.status().restartBlocked, "the update to bbbbbbbb failed to build");
+  assert.match(
+    String(events.at(-1)!.message),
+    /the running build cannot verify itself — its own check passed bbbbbbbb but its own build failed \(tsc exited 2: src\/x\.ts\(1,1\): error TS1005\); running aaaaaaaa, staying put: this is the binary, not the commit — restart the tumwater process to recover/,
+  );
+  assert.equal(r.status().restartBlocked, "the running build cannot verify itself");
   assert.deepEqual(f.calls.swap, []);
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none", "and stays blocked for this head");
 });
@@ -360,7 +363,7 @@ test("a blocked restart leaves the state stream: a restart_blocked event beside 
     type: "restart_blocked",
     from: BUILD.sha,
     to: HEAD_B,
-    reason: "the update to bbbbbbbb failed to build",
+    reason: "the running build cannot verify itself",
   });
   assert.equal(await r.poll(HEAD_B, IDLE, true), "none", "stays blocked for this head");
   assert.equal(events.filter((e) => e.type === "restart_blocked").length, 1, "the latch means no poll re-emits it");

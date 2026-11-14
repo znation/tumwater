@@ -106,6 +106,16 @@ export class Redeployer {
   private blockedHead: string | null = null;
   /** Why, in a few words, for status() to publish alongside the staleness verdict. */
   private blockedReason: string | null = null;
+  /** Process-lifetime latch: the running build is self-divergent — its own check accepted a tip
+   * its own build rejected (see blockSelfDivergent). Unlike blockedHead (per head, so a moved
+   * main re-enters the episode), this survives every tip: the divergence is a property of the
+   * running binary, not the head. It exists to keep the self-divergence diagnostic to ONE
+   * warning for the life of the process rather than re-emitting it on every tip (the 20× cluster
+   * BUGS.md 2026-11-14 was filed against); the per-head block() still latches so a frozen main
+   * stays quiet. A clean tip a self-divergent build CAN compile still reaches the swap and
+   * self-heals — the dedup does not gate the episode, so nothing is pinned behind it; the latch
+   * is simply cleared on a completed swap (the process exits right after). */
+  private selfDiverged = false;
   /** When the last completed auto-restart landed (epoch ms), or null when none yet — copied from
    * restartRecord at construction and updated when this process completes one. The cooldown is
    * measured from here on every poll (BUGS.md 2026-09-11). */
@@ -568,12 +578,16 @@ export class Redeployer {
         this.clearPending();
         return this.endDrain();
       }
-      const reason = `the update to ${shortSha(mainHead)} failed to build`;
-      this.block(
-        mainHead,
-        reason,
-        `${reason} — staying on version ${shortSha(this.build.sha)}: ${detail}`,
-      );
+      // A real compiler verdict that failed here is a self-divergence signal, not a bad commit:
+      // this branch is reached only after greenStage returned null, i.e. the green check PASSED,
+      // and the green check is the declared suite (npm test, which runs tsc) on the SAME mirror
+      // worktree and HEAD as compileStaged. In a self-consistent build the check and the build
+      // share one compiler, so a check that passed and a build that failed on the same tree is
+      // impossible — it can only happen when the running build's own check and build disagree
+      // (BUGS.md 2026-11-14: a self-divergent running build, pinned behind the green gate, that
+      // re-compiled and re-blocked on every tip until an operator restarted it). blockSelfDivergent
+      // says the running build cannot verify itself and latches for the life of the process.
+      this.blockSelfDivergent(mainHead, detail);
       return this.endDrain();
     }
     return null;
@@ -621,6 +635,10 @@ export class Redeployer {
     // starts its own clock and its own escalation schedule.
     this.staleSince = null;
     this.lastEscalationAt = null;
+    // A completed restart installed the new head — the self-divergence latch (in memory) dies with
+    // the pre-fix binary this process was running, so a successor that is not self-divergent starts
+    // clean. (The process exits right after; the respawn clears it too.)
+    this.selfDiverged = false;
     // The director is guaranteed finished by here (poll only reaches the swap with
     // directorInFlight === 0), so what gets aborted — and counted — are role runs only, and
     // only those holding a permit (see InFlightCounts). A director-extended hold reports
@@ -712,6 +730,30 @@ export class Redeployer {
     // stream's only trace of the episode's end.
     this.log({ source: TUMWATER_SOURCE, type: "restart_blocked", from: this.build.sha, to: head, reason });
     this.warn(message);
+  }
+
+  /** A real-verdict compile failure after a passed green check: the running build is self-divergent
+   * (its own check accepted a tip its own build rejected). Latch for the life of the process — no
+   * tip fixes a self-inconsistent binary, only a restart does — and publish one distinct, operator-
+   * actionable diagnostic (the BUILD is the problem, not any commit) instead of the generic
+   * "failed to build — staying on version <build>: tsc exited N" that re-emitted on every tip and
+   * named the wrong culprit (BUGS.md 2026-11-14). blockedHead is still latched, so a FROZEN main
+   * early-returns and is quiet; and the selfDiverged latch keeps a MOVED main quiet too, so the
+   * one warning is the only trace. The restart_blocked event and the daily sustained-pin escalation
+   * (escalateIfSustained, which ran before poll reached this branch) both still fire, so the state
+   * stream and the aggregate pin stay loud. */
+  private blockSelfDivergent(mainHead: string, detail: string): void {
+    this.blockedHead = mainHead;
+    this.blockedReason = "the running build cannot verify itself";
+    this.clearPending();
+    this.log({ source: TUMWATER_SOURCE, type: "restart_blocked", from: this.build.sha, to: mainHead, reason: this.blockedReason });
+    if (!this.selfDiverged) {
+      this.selfDiverged = true;
+      this.warn(
+        `the running build cannot verify itself — its own check passed ${shortSha(mainHead)} but its own build failed (${detail}); ` +
+          `running ${shortSha(this.build.sha)}, staying put: this is the binary, not the commit — restart the tumwater process to recover`,
+      );
+    }
   }
 
   /** A restart attempt just failed — record when, so sustained staleness WITH failures can

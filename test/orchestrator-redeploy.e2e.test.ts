@@ -238,7 +238,7 @@ test("a failed compile leaves the team running the old build", async () => {
   const { stop } = startRedeployRun(repo, redeployer);
   try {
     await waitFor(
-      () => readEvents(repo).some((e) => e.type === "warning" && /the update to .* failed to build/.test(String(e.message))),
+      () => readEvents(repo).some((e) => e.type === "warning" && String(e.message).includes("the running build cannot verify itself")),
       "compile-failure warning",
     );
     // Still running: runs keep coming after the failure was recorded. clean is deferrable

@@ -27,7 +27,11 @@ test("the incident shape — a failing compile verdict on every head while main 
   // 109-warnings shape — while the pin itself persists across every head.
   const f = fakeDeps({
     mainGreen: async () => true,
-    compile: async () => ({ ok: false, detail: "tsc exited ENOENT" }),
+    // A string code like ENOENT means the compiler never even started (the environment broke):
+    // real compileStaged classifies that as a rejection, which the state machine retries per head
+    // with a per-head warning — the 109-warnings shape this test models. It is NOT a real verdict
+    // (a numeric exit is), so it must not be the self-divergence dedup's one warning.
+    compile: async () => ({ ok: false, detail: "tsc exited ENOENT", rejected: true }),
   });
   const { r, events } = harness(f.deps);
   let t = 0;
