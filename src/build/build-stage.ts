@@ -85,7 +85,14 @@ function rejectedCompile(detail: string): CompileResult {
  * ancestor node_modules, and the mirror lives under <root>/.tumwater/. The compiler itself is
  * found the same way (resolveFromNodeModules): a checkout that never ran `npm install` — every
  * tumwater worktree — still has the install of an ancestor to borrow, and demanding a local one
- * is what left the team unable to rebuild itself on 2026-09-08 (BUGS.md). Never throws. */
+ * is what left the team unable to rebuild itself on 2026-09-08 (BUGS.md).
+ *
+ * The compiler is `typescript-native` — the SAME compiler `npm run build` and `npm test` run
+ * (scripts/tsc.mjs), NOT the 5.x `typescript` package that survives only for typescript-eslint's
+ * type-aware lint. After the TypeScript-7 migration the two compilers type-check differently:
+ * a tree the canonical 7.x build accepts (and the green gate ships) is rejected by the 5.x
+ * lint-compiler, so resolving the wrong one made every self-redeploy fail and latch a stale
+ * "restart blocked" (BUGS.md 2026-11-14). Never throws. */
 export async function compileStaged(
   root: string,
   mirrorWt: string,
@@ -96,9 +103,11 @@ export async function compileStaged(
    * removed from under the running build. */
   execPath: string = process.execPath,
 ): Promise<CompileResult> {
-  const tsc = resolveFromNodeModules(root, path.join("typescript", "bin", "tsc"));
+  const tsc = resolveFromNodeModules(root, path.join("typescript-native", "bin", "tsc"));
   if (!tsc)
-    return rejectedCompile(`typescript is not installed under node_modules at or above ${root} — cannot rebuild`);
+    return rejectedCompile(
+      `the build compiler (typescript-native) is not installed under node_modules at or above ${root} — cannot rebuild`,
+    );
   const staged = stagingDir(root, mainHead);
   removeTree(staged);
   ensureDir(staged);

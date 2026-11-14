@@ -19,22 +19,24 @@ import { withReadOnlyDir } from "./helpers/fs-faults.js";
 const HEAD_B = "b".repeat(40);
 const HEAD_C = "c".repeat(40);
 
-/** This repo's typescript package, resolved the way node itself resolves it — climbing ancestor
- * node_modules from the running test file. Hard-coding `<this checkout>/node_modules/typescript`
- * instead is what broke the team on 2026-09-08: no tumwater worktree has an install of its own
- * (node_modules is gitignored), so the symlink dangled, the compile test below failed in every
- * role worktree, main read red team-wide, and the harness could not restart itself (BUGS.md). */
-function typescriptDir(): string {
-  return path.dirname(createRequire(import.meta.url).resolve("typescript/package.json"));
+/** This repo's build compiler (`typescript-native`, the alias `npm run build`/`npm test` run —
+ * see scripts/tsc.mjs), resolved the way node itself resolves it — climbing ancestor node_modules
+ * from the running test file. Hard-coding `<this checkout>/node_modules/typescript-native` instead
+ * is what would break the team: no tumwater worktree has an install of its own (node_modules is
+ * gitignored), so the symlink dangles and the compile fails in every role worktree (BUGS.md
+ * 2026-09-08). It is deliberately the 7.x native compiler, NOT the 5.x `typescript` package that
+ * survives only for typescript-eslint's type-aware lint (BUGS.md 2026-11-14). */
+function buildCompilerDir(): string {
+  return path.dirname(createRequire(import.meta.url).resolve("typescript-native/package.json"));
 }
 
-/** Give `dir` a node_modules/typescript symlink to this repo's real typescript, so a staged
- * compile's tsc resolves the toolchain the way every tumwater worktree does — with no install
- * of its own, borrowing an ancestor's (the BUGS.md 2026-09-08 case above). The one home of
- * the mkdir+symlink pair for the tests here that stage a compilable project. */
+/** Give `dir` a node_modules/typescript-native symlink to this repo's real build compiler, so a
+ * staged compile's tsc resolves the toolchain the way every tumwater worktree does — with no
+ * install of its own, borrowing an ancestor's (the BUGS.md 2026-09-08 case above). The one home
+ * of the mkdir+symlink pair for the tests here that stage a compilable project. */
 function borrowTypeScript(dir: string): void {
   fs.mkdirSync(path.join(dir, "node_modules"), { recursive: true });
-  fs.symlinkSync(typescriptDir(), path.join(dir, "node_modules/typescript"));
+  fs.symlinkSync(buildCompilerDir(), path.join(dir, "node_modules/typescript-native"));
 }
 
 /** A tiny self-contained TS project committed to `root`'s main; returns its head. */
@@ -351,6 +353,48 @@ test("compileStaged compiles the mirror worktree with the project's tsc and stam
   assert.equal(readBuildInfo(stagingDir(root, bad)), null, "a failed compile leaves the staging dir unstamped");
 });
 
+test("compileStaged uses the build compiler, not the 5.x lint compiler: a tree the 7.x build accepts but the 5.x linter rejects still compiles", async () => {
+  // The self-redeploy's compiler MUST be the build compiler (scripts/tsc.mjs / typescript-native
+  // 7.x), not the 5.x `typescript` package that survives only for typescript-eslint's type-aware
+  // lint: the two type-check differently, so a tree the canonical 7.x build accepts (and the green
+  // gate ships) is rejected by the 5.x compiler, which latched a permanent "restart blocked"
+  // (BUGS.md 2026-11-14). Both real compilers are symlinked in, so the divergence — not a missing
+  // toolchain — is what is under test. The shape is accepted by 7.x and rejected by 5.x: a
+  // block-bodied arrow whose void return 5.x will not assign into a non-void-typed parameter
+  // (the shape that landed in src/pi-extension/checkpoint.ts).
+  const root = makeRepo();
+  const head = tinyTsProject(
+    root,
+    [
+      "interface Pi {",
+      '  on(event: "turn_end", handler: (event: { turnIndex?: number }, ctx?: unknown) => object | Promise<object> | undefined): void;',
+      "}",
+      "export function register(pi: Pi): void {",
+      "  let turn = -1;",
+      '  pi.on("turn_end", () => {',
+      "    turn += 1;",
+      "  });",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  const nm = path.join(root, "node_modules");
+  fs.mkdirSync(nm, { recursive: true });
+  fs.symlinkSync(
+    path.dirname(createRequire(import.meta.url).resolve("typescript-native/package.json")),
+    path.join(nm, "typescript-native"),
+  );
+  fs.symlinkSync(
+    path.dirname(createRequire(import.meta.url).resolve("typescript/package.json")),
+    path.join(nm, "typescript"),
+  );
+  const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
+  const result = await compileStaged(root, mirror, head);
+  assert.equal(result.ok, true, "the build compiler accepts the tree the 5.x linter rejects");
+  assert.equal(result.detail, "");
+  assert.ok(fs.existsSync(path.join(stagingDir(root, head), "src/a.js")), "the accepted tree emits output");
+});
+
 test("a successful compile prunes superseded stagings past the grace, keeping young and non-SHA entries", async () => {
   const root = makeRepo();
   const head = tinyTsProject(root);
@@ -497,9 +541,9 @@ test("compileStaged reads a tsc that died by signal as a rejection even with out
   // latch as a false verdict about a good commit (BUGS.md 2026-09-29). A tsc that prints and
   // then dies by signal (a null exit code) proves output no longer manufactures a verdict.
   const root = makeRepo();
-  fs.mkdirSync(path.join(root, "node_modules/typescript/bin"), { recursive: true });
+  fs.mkdirSync(path.join(root, "node_modules/typescript-native/bin"), { recursive: true });
   fs.writeFileSync(
-    path.join(root, "node_modules/typescript/bin/tsc"),
+    path.join(root, "node_modules/typescript-native/bin/tsc"),
     "require('node:fs').writeSync(1, 'verdict-shaped output\\n');\nprocess.kill(process.pid, 'SIGKILL');\n",
   );
   const result = await compileStaged(root, root, "e".repeat(40));
@@ -516,12 +560,12 @@ test("compileStaged reads the fallback tsc's numeric exit as a verdict, not a re
   // it (review objection 2026-09-29). A shebang'd shim exiting 7, reached only because the
   // injected interpreter is gone, pins the verdict shape.
   const root = makeRepo();
-  fs.mkdirSync(path.join(root, "node_modules/typescript/bin"), { recursive: true });
+  fs.mkdirSync(path.join(root, "node_modules/typescript-native/bin"), { recursive: true });
   fs.writeFileSync(
-    path.join(root, "node_modules/typescript/bin/tsc"),
+    path.join(root, "node_modules/typescript-native/bin/tsc"),
     "#!/usr/bin/env node\nprocess.exit(7);\n",
   );
-  fs.chmodSync(path.join(root, "node_modules/typescript/bin/tsc"), 0o755); // the shebang spawn needs the exec bit
+  fs.chmodSync(path.join(root, "node_modules/typescript-native/bin/tsc"), 0o755); // the shebang spawn needs the exec bit
   const result = await compileStaged(root, root, "e".repeat(40), undefined, "/nonexistent/node");
   assert.deepEqual(result, { ok: false, detail: "tsc exited 7" });
   assert.equal(result.rejected, undefined, "a numeric exit from the fallback tsc is a verdict, never a rejection");
@@ -532,12 +576,12 @@ test("compileStaged reports the fallback's own spawn failure as a rejection nami
   // a process: the rejection must say the fallback was tried and failed, not just the primary
   // spawn — an operator repairing the environment needs to know both paths are dead.
   const root = makeRepo();
-  fs.mkdirSync(path.join(root, "node_modules/typescript/bin"), { recursive: true });
+  fs.mkdirSync(path.join(root, "node_modules/typescript-native/bin"), { recursive: true });
   fs.writeFileSync(
-    path.join(root, "node_modules/typescript/bin/tsc"),
+    path.join(root, "node_modules/typescript-native/bin/tsc"),
     "#!/nonexistent/interpreter\nprocess.exit(7);\n",
   );
-  fs.chmodSync(path.join(root, "node_modules/typescript/bin/tsc"), 0o755); // the EACCES shape must not mask the ENOENT one
+  fs.chmodSync(path.join(root, "node_modules/typescript-native/bin/tsc"), 0o755); // the EACCES shape must not mask the ENOENT one
   const result = await compileStaged(root, root, "e".repeat(40), undefined, "/nonexistent/node");
   assert.equal(result.ok, false);
   assert.equal(result.rejected, true, "neither spawn produced a process — no verdict exists");
@@ -563,8 +607,8 @@ test("compileStaged still names the exit code when tsc fails without any output"
   // install printing nothing) must not produce an empty "tsc exited" message — the exit code
   // alone is what the redeploy state machine surfaces as `restart BLOCKED: …`.
   const root = makeRepo();
-  fs.mkdirSync(path.join(root, "node_modules/typescript/bin"), { recursive: true });
-  fs.writeFileSync(path.join(root, "node_modules/typescript/bin/tsc"), "process.exit(7);\n");
+  fs.mkdirSync(path.join(root, "node_modules/typescript-native/bin"), { recursive: true });
+  fs.writeFileSync(path.join(root, "node_modules/typescript-native/bin/tsc"), "process.exit(7);\n");
   const result = await compileStaged(root, root, "e".repeat(40));
   assert.deepEqual(result, { ok: false, detail: "tsc exited 7" });
 });

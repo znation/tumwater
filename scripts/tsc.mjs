@@ -3,8 +3,10 @@
 // same JavaScript as the JS compiler did (every file byte-identical, 2026-11-01) in a fraction of
 // the time: a full build 0.5 s against 4.2 s, a no-op `--incremental` 0.17 s against 1.0 s, a
 // one-file edit about 0.5 s against 2.2–2.7 s. `typescript` itself stays on 5.x because
-// typescript-eslint's type-aware lint needs its JS API (TypeScript 7 has none it supports), and
-// because the harness's self-redeploy compiles with `node_modules/typescript/bin/tsc`.
+// typescript-eslint's type-aware lint needs its JS API (TypeScript 7 has none it supports).
+// The harness's self-redeploy compiles with this same `typescript-native` compiler
+// (build-stage.ts resolves `node_modules/typescript-native/bin/tsc`), so a green-gated merge
+// always rebuilds.
 //
 // Both packages ship a `tsc` bin and npm links only one of them, in an order that is not fixed, so
 // the scripts never call a bare `tsc`. This finds the alias the way Node does, climbing to an
