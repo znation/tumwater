@@ -1,7 +1,7 @@
-import { andMore, quoteHeading, readBacklogChecked, FIX_CLAIMS_CHECKED, REFUSAL_NOTE_MAX, STALE_QUESTION_DAYS, STALE_BUG_DAYS } from "./doctor-backlog.js";
+import { andMore, quoteHeading, readBacklogChecked, REFUSAL_NOTE_MAX, STALE_QUESTION_DAYS, STALE_BUG_DAYS, fixedRecordsToCheck } from "./doctor-backlog.js";
 import { truncate } from "../text/text.js";
 import { plural, agree } from "../text/phrases.js";
-import { ageInDays, filingDate, fixedBugEntries, isRetiredTitle, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
+import { ageInDays, filingDate, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { questionFilingDate } from "../backlog/backlog-question-answer.js";
 import { entryHoldAgainst, needsReviewNote, refusalNote } from "../backlog/backlog-eligibility.js";
 import { plannedPartKeys, plansWaitingOn, prerequisitesMerged } from "../backlog/backlog-parts.js";
@@ -176,8 +176,9 @@ function sinceWindowMs(sinces: readonly number[]): number {
   return Math.max(0, Date.now() - Math.min(...sinces));
 }
 
-/** The regression candidates for the `regressed fixes` feed: a newest-FIX_CLAIMS_CHECKED BUGS.md
- * Fixed record whose heading quotes a test name and carries a `YYYY-MM-DD` date, unless an Open
+/** The regression candidates for the `regressed fixes` feed: a newest-`FIX_CLAIMS_CHECKED` BUGS.md
+ * Fixed record (retired ones removed, via the shared fixedRecordsToCheck selection) whose heading
+ * quotes a test name and carries a `YYYY-MM-DD` date, unless an Open
  * bug already quotes the same test (which means the regression is filed). Shared by the doctor's
  * `regressed fixes` row (checkRegressedFixes) and the always-on regressed-fixes alert, so the two
  * cannot drift on the selection. `since` is the day-after the fix date — the recurrence scan's
@@ -186,9 +187,7 @@ function sinceWindowMs(sinces: readonly number[]): number {
 function regressedFixCandidates(root: string): RegressedFixCandidate[] {
   // A retired bug sits under `## Fixed` but was closed without being fixed; its heading's last
   // date is the retirement date, not a fix date, so it is not a regression candidate.
-  const candidates = fixedBugEntries(root)
-    .filter((e) => !isRetiredTitle(e.title))
-    .slice(0, FIX_CLAIMS_CHECKED)
+  const candidates = fixedRecordsToCheck(root)
     .flatMap((entry) => {
       const name = quotedTestName(entry.title);
       const date = lastDate(entry.title, /(\d{4}-\d{2}-\d{2})/);

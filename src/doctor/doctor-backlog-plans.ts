@@ -1,10 +1,10 @@
-import { andMore, quoteHeading, readDoc, readBacklogChecked, FIX_CLAIMS_CHECKED, REFUSAL_NOTE_MAX } from "./doctor-backlog.js";
+import { andMore, quoteHeading, readDoc, readBacklogChecked, REFUSAL_NOTE_MAX, fixedRecordsToCheck } from "./doctor-backlog.js";
 import { agree } from "../text/phrases.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { VALIDATION_GAP_TAGS } from "../roles/role-guidance.js";
 import path from "node:path";
 import { truncate } from "../text/text.js";
-import { donePlans, fixedBugEntries, isRetiredTitle, openBugEntries, plannedPlanEntries, type BacklogEntry } from "../backlog/backlog.js";
+import { donePlans, openBugEntries, plannedPlanEntries, type BacklogEntry } from "../backlog/backlog.js";
 import { entryHold, entryKindLabel, isPlanStalled } from "../backlog/backlog-eligibility.js";
 import { isNeedsReviewNoteLine } from "../roles/role-guidance.js";
 import { planDependencyProblems } from "../backlog/backlog-parts.js";
@@ -42,7 +42,7 @@ export function checkFixClaims(root: string): CheckOutcome {
   const problems = fixClaimProblems(root);
   const [first, ...rest] = problems;
   if (!first)
-    return okOutcome(`newest ${fixClaimRecords(root).length} Fixed record(s) name code that exists on this tree`);
+    return okOutcome(`newest ${fixedRecordsToCheck(root).length} Fixed record(s) name code that exists on this tree`);
   // falseFixReason's message shape: the heading, then up to 3 missing names.
   const { heading, missing } = first;
   const names = missingSymbolNames(missing);
@@ -81,23 +81,15 @@ function classifyFixClaims(records: readonly BacklogEntry[], root: string): FixC
   return problems;
 }
 
-/** The ONE shared fix-claim scan: the newest Fixed records (bounded to FIX_CLAIMS_CHECKED so
- * pre-convention history never warns forever) as fixedBugEntries reads them — the stat-cached
- * section reader BUGS.md + BUGS-FIXED.md, bodies kept whole — classified through
- * classifyFixClaims. A retired bug sits under `## Fixed` but was closed without being fixed, so
- * it carries no fix paragraph to verify and is skipped before the newest-ten bound. */
-function fixClaimRecords(root: string): BacklogEntry[] {
-  return fixedBugEntries(root).filter((e) => !isRetiredTitle(e.title)).slice(0, FIX_CLAIMS_CHECKED);
-}
-
 /** The problems the ONE fix-claim scan found among the newest Fixed records at `root`
  * (empty when BUGS.md is unreadable or every newest Fixed record names at least one live
- * symbol). */
+ * symbol). The newest-`FIX_CLAIMS_CHECKED`-retired-removed selection (fixedRecordsToCheck) is
+ * classified through classifyFixClaims; a retired bug carries no fix paragraph to verify. */
 export function fixClaimProblems(root: string): FixClaimProblem[] {
-  return classifyFixClaims(fixClaimRecords(root), root);
+  return classifyFixClaims(fixedRecordsToCheck(root), root);
 }
 
-/** One problem found by the shared validation-gap scan (validationGapRecords, below): a newest
+/** One problem found by the shared validation-gap scan (fixedRecordsToCheck, below): a newest
  * Fixed record whose `**Validation gap:**` line is missing (`missing`), names a tag outside the
  * closed vocabulary (`unrecognized`, with `tag` set), or declares `unclear-invariant` while
  * naming no docs/invariants.md section (`unpinned`). `title` is the record's heading. The scan
@@ -126,15 +118,6 @@ function classifyValidationGaps(records: readonly BacklogEntry[]): ValidationGap
   return [...suspects, ...unpinned];
 }
 
-/** The ONE scan the doctor's `validation gaps` check hands its rows from: the newest Fixed
- * records (bounded to FIX_CLAIMS_CHECKED so pre-convention history never warns forever) as
- * fixedBugEntries reads them — the stat-cached section reader BUGS.md + BUGS-FIXED.md, bodies
- * kept whole — classified through classifyValidationGaps. A retired bug was closed without
- * being fixed, so it owes no `**Validation gap:**` trace and is skipped before the bound. */
-function validationGapRecords(root: string): BacklogEntry[] {
-  return fixedBugEntries(root).filter((e) => !isRetiredTitle(e.title)).slice(0, FIX_CLAIMS_CHECKED);
-}
-
 /** The fixed-record validation-gap twin of checkFixClaims, standing in for plans/repair-traces.md's
  * invariant 2 ("the vocabulary is closed and lives in one place"): the bugfix guidance tells every
  * run to write exactly one `**Validation gap:**` line with a known tag, and `none` rather than no
@@ -142,20 +125,21 @@ function validationGapRecords(root: string): BacklogEntry[] {
  * carries such a line or that its tag is one of the closed vocabulary — a typo like `no-reprod`
  * lands as its own key on `tumwater report`'s `Validation gaps` line and matches no
  * closed-vocabulary consumer that enumerates the six non-`none` tags, and an entry with no line at
- * all is invisible to every one of them. Re-reads the newest Fixed records with the same
- * FIX_CLAIMS_CHECKED bound (pre-convention history would otherwise warn forever) and warns on a
- * missing or unrecognized tag. An entry declaring `unclear-invariant` should also have pinned the
- * reconstructed guarantee in docs/invariants.md in the same commit — a fix that names no such
- * section warns with that nudge (informational: code-pinned or prose-that-skips-the-filename fixes
- * may spuriously warn). A warn, never a fail, like its sibling: a suspect record is
+ * all is invisible to every one of them. Re-reads the newest Fixed records through the one
+ * fixedRecordsToCheck selection (pre-convention history would otherwise warn forever) and warns
+ * on a missing or unrecognized tag. An entry declaring `unclear-invariant` should also have
+ * pinned the reconstructed guarantee in docs/invariants.md in the same commit — a fix that names
+ * no such section warns with that nudge (informational: code-pinned or prose-that-skips-the-
+ * filename fixes may spuriously warn). A warn, never a fail, like its sibling: a suspect record is
  * operator signal, not a broken environment. */
 export function checkValidationGaps(root: string): CheckOutcome {
   // The doctor's check reads BUGS.md itself so it can return its no-file outcome (a missing
-  // BUGS.md — nothing to verify); the classification then runs on the SAME fixedBugEntries
-  // reader, so the problem set cannot drift. There is only one scan (validationGapRecords).
+  // BUGS.md — nothing to verify); its read is only the no-file guard.
+  // The classification then runs on the SAME shared fixedRecordsToCheck selection, so the
+  // problem set cannot drift.
   const doc = readBacklogChecked(root, "BUGS.md");
   if (typeof doc !== "string") return doc;
-  const problems = classifyValidationGaps(validationGapRecords(root));
+  const problems = classifyValidationGaps(fixedRecordsToCheck(root));
   const suspects = problems.filter((p) => p.kind !== "unpinned");
   const unpinned = problems.filter((p) => p.kind === "unpinned");
   const [first, ...rest] = suspects;
@@ -167,7 +151,7 @@ export function checkValidationGaps(root: string): CheckOutcome {
         `docs/invariants.md section — record the reconstructed guarantee there (a "Pinned by" line) in the ` +
         `same commit so the next bug in that area does not reconstruct it again${more}`);
     }
-    return okOutcome(`newest ${validationGapRecords(root).length} Fixed record(s) carry a known Validation gap tag`);
+    return okOutcome(`newest ${fixedRecordsToCheck(root).length} Fixed record(s) carry a known Validation gap tag`);
   }
   const more = andMore(rest, (s) => quoteHeading(s.title), agree(rest.length, "record", "records"));
   const what = first.kind === "missing"

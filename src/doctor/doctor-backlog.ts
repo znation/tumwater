@@ -17,6 +17,7 @@ import { deliverableAt } from "../inbox/prompt-not-before.js";
 import { currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { stampedSubject } from "../git/commit-message.js";
+import { fixedBugEntries, isRetiredTitle, type BacklogEntry } from "../backlog/backlog.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { briefFile } from "../brief/brief.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
@@ -42,6 +43,18 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./doctor-outcome.js";
  * and pre-convention Fixed entries predate the validation-gap line — so a whole-section scan
  * would warn forever on records nobody should rewrite. */
 export const FIX_CLAIMS_CHECKED = 10;
+
+/** The newest `FIX_CLAIMS_CHECKED` of BUGS.md's Fixed records, retired ones removed — the one
+ * selection the three newest-first Fixed-record checks share (fix claims, validation gaps,
+ * regressed fixes), so they cannot drift on the retired-record rule or the newest-N bound. A
+ * retired bug sits under `## Fixed` but was closed without being fixed, so it is skipped; the
+ * bound keeps pre-convention history from warning forever. The newest-N bound rides the newest
+ * `FIX_CLAIMS_CHECKED` records that still qualify (not the first N after the filter), matching
+ * every caller's pre-factor selection. (The per-poll dashboards read `fixedBugEntries` directly
+ * with their own dashboard cap; they are not doctor Fixed-record checks.) */
+export function fixedRecordsToCheck(root: string): BacklogEntry[] {
+  return fixedBugEntries(root).filter((e) => !isRetiredTitle(e.title)).slice(0, FIX_CLAIMS_CHECKED);
+}
 
 /** A cited record's heading is trimmed to this many characters in a doctor warn — enough to
  * find it back in its file; quoteHeading applies it to every citation. */
