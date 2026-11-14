@@ -171,6 +171,114 @@ export function resetMergeTaskStarts(): void {
   mergeTaskStartsTotal = 0;
 }
 
+/** Run the change's merge the way `startMerge`'s task used to: when the task's role is already
+ * user-aborted, end the change "aborted" here (the entry dropped, and the pin discarded in the
+ * task's finally); otherwise mark the change `merging` and run `mergeApprovedChange`, which owns
+ * the change's one gate. Returns the reached `RunResult`, or `undefined` when the merge did not
+ * reach one — a user abort, or a throw that is not a `GateDeferredByHold` (a hold that closed the
+ * gate during the permit wait defers it: the task keeps its entry for the next poll and records
+ * no failure; any other throw is a plumbing failure, so the entry stays queued and unapproved,
+ * the message rides on the role's state, and the next poll re-runs it on the surviving pin).
+ * An unwritable state file in that catch warns and keeps going so the task's settle and slot-
+ * release still run, exactly as the inline catch did. */
+async function runMergeApproval(
+  root: string,
+  role: string,
+  merge: InFlightMerge,
+  entry: MergeEntry,
+  author: RoleRunner,
+  v: MergeTaskRecord,
+  mergerCtxOf: (v: MergeTaskRecord) => MergerContext,
+): Promise<RunResult | undefined> {
+  if (merge.userAborted) {
+    // A user abort that lands before the change starts ends it here: "aborted" written back,
+    // the entry dropped, and (in the finally) the pin discarded.
+    return "aborted";
+  }
+  setMergeChangeStatus(root, role, "merging");
+  try {
+    return await mergeApprovedChange(
+      mergerCtxOf(v),
+      {
+        role,
+        sha: entry.sha,
+        runNumber: entry.run,
+        summary: entry.summary,
+        // The task owns the change's one gate: mergeApprovedChange runs reviewQueuedChange
+        // under gatePermit before mergeToMain.
+        ...(entry.claim !== undefined ? { claim: entry.claim } : {}),
+        body: entry.body,
+        highFriction: entry.highFriction,
+        ...(entry.revisionRound !== undefined ? { revisionRound: entry.revisionRound } : {}),
+        ...(entry.priorReview !== undefined ? { priorReview: entry.priorReview } : {}),
+      },
+    );
+  } catch (err) {
+    // A hold that closed the gate during the permit wait defers the gate: the task keeps its
+    // entry for the next poll and records no failure. Any other throw is a plumbing failure:
+    // the entry stays queued and unapproved, the message rides on its role's state, and the
+    // next poll re-runs it on the surviving pin.
+    if (!(err instanceof GateDeferredByHold)) {
+      author.state.lastError = errorMessage(err);
+      // The catch exists to keep the entry queued when the merge throws. A throw out of this
+      // write — an unwritable state file — must not skip the settle and the finally that frees
+      // the merge slot, or the pipeline wedges with p.merge set forever; the write is
+      // bookkeeping a later save retries, so warn and keep going.
+      try {
+        saveRunnerState(root, author.state);
+      } catch (writeErr) {
+        warnEventBestEffort(
+          root,
+          TUMWATER_SOURCE,
+          `the merge error for ${role} could not be saved: ${errorMessage(writeErr)}`,
+        );
+      }
+    }
+    return undefined;
+  }
+}
+
+/** Settle the outcome a merge task reached, when `settleOne` never fired: keep the
+ * `if (!settled)` guard over the task's own `settled` snapshot (set exactly once, where
+ * `settleOne` fires) and its four arms. Settle "changed" when this task's own `mergedCommit`
+ * event fired, else the reached result, else "aborted" under a user abort, else remove the
+ * change marker. A completed outcome wins over a late abort, so a merge that already landed is
+ * never rewritten as "aborted". A retriable outcome has not landed, though: there the operator's
+ * stop wins, so the change cannot be re-queued against the pin the task's finally then discards;
+ * a change with no result (deferred or thrown before its outcome) settles aborted for a user
+ * stop as well.
+ *
+ * A `merged` event fires inside the lock the moment the fast-forward moves main, and the task's
+ * subscription keeps only THIS task's tagged event (a concurrent post-merge-review fix or refusal
+ * note also logs `merged` under the same role). So a set `mergedCommit` is the ground truth that
+ * this change LANDED — it outranks whatever the merge reported. If a consumed abort lands after
+ * the ff, the merge can still throw before it finalizes (result stays undefined), and the branch
+ * below would otherwise rewrite the already-landed change to "aborted". Landing means main holds
+ * the commit, so the only honest outcome is "changed" — the same path the ordinary merged settle
+ * takes. The retriable branch keeps the operator's stop for outcomes that never landed; a change
+ * with no result and no landing settles aborted for a user stop, or clears its marker otherwise.
+ * The call sits outside the run's catch, so a throw settling it (an unwritable state or queue
+ * file) surfaces through the task's guard and the finally still frees the slot. */
+async function settleReachedOutcome(
+  root: string,
+  role: string,
+  merge: InFlightMerge,
+  result: RunResult | undefined,
+  mergedCommit: string | undefined,
+  settled: boolean,
+  settleOne: (r: RunResult) => Promise<void>,
+): Promise<void> {
+  // A change the merge did not reach (a plumbing throw) keeps its entry for the next poll and
+  // clears its marker record; a user abort settles the change as "aborted" and discards its pin
+  // in the task's finally below.
+  if (!settled) {
+    if (mergedCommit !== undefined) await settleOne("changed");
+    else if (result !== undefined && !(merge.userAborted && RETRIABLE_MERGE_RESULTS.has(result))) await settleOne(result);
+    else if (merge.userAborted) await settleOne("aborted");
+    else removeMergeChange(root, role);
+  }
+}
+
 /** The merge task — main's one writer in the pipeline: the first eligible queue head's gate and
  * merge in one task (a rebase onto main's tip then the fast-forward under the merge lock). The
  * task's `mergeApprovedChange` call owns the change's ONE gate: it runs
@@ -294,80 +402,8 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, entry: MergeEnt
       await settleMergeOutcome(root, entry, author.state, r, Date.now() - v.startedAt, usage, file);
     };
     try {
-      if (merge.userAborted) {
-        // A user abort that lands before the change starts ends it here: "aborted" written back,
-        // the entry dropped, and (in the finally) the pin discarded.
-        result = "aborted";
-      } else {
-        setMergeChangeStatus(root, role, "merging");
-        try {
-          result = await mergeApprovedChange(
-            mergerCtxOf(v),
-            {
-              role,
-              sha: entry.sha,
-              runNumber: entry.run,
-              summary: entry.summary,
-              // The task owns the change's one gate: mergeApprovedChange runs reviewQueuedChange
-              // under gatePermit before mergeToMain.
-              ...(entry.claim !== undefined ? { claim: entry.claim } : {}),
-              body: entry.body,
-              highFriction: entry.highFriction,
-              ...(entry.revisionRound !== undefined ? { revisionRound: entry.revisionRound } : {}),
-              ...(entry.priorReview !== undefined ? { priorReview: entry.priorReview } : {}),
-            },
-          );
-        } catch (err) {
-          // A hold that closed the gate during the permit wait defers the gate: the task keeps
-          // its entry for the next poll and records no failure. Any other throw is a plumbing
-          // failure: the entry stays queued and unapproved, the message rides on its role's
-          // state, and the next poll re-runs it on the surviving pin.
-          if (!(err instanceof GateDeferredByHold)) {
-            author.state.lastError = errorMessage(err);
-            // The catch exists to keep the entry queued when the merge throws. A throw out of
-            // this write — an unwritable state file — must not skip the settle and the finally
-            // that frees the merge slot, or the pipeline wedges with p.merge set forever; the
-            // write is bookkeeping a later save retries, so warn and keep going.
-            try {
-              saveRunnerState(root, author.state);
-            } catch (writeErr) {
-              warnEventBestEffort(
-                root,
-                TUMWATER_SOURCE,
-                `the merge error for ${role} could not be saved: ${errorMessage(writeErr)}`,
-              );
-            }
-          }
-        }
-      }
-      // Settle the outcome the task reached — outside the catch, so a throw settling it (an
-      // unwritable state or queue file) surfaces through the task's guard and the finally still
-      // frees the slot, exactly as the merge's second-loop abort settlement did before the drain
-      // collapse. A change the merge did not reach (a plumbing throw) keeps its entry for the
-      // next poll and clears its marker record; a user abort settles the change as "aborted" and
-      // discards its pin in the finally below.
-      if (!settled) {
-        // A completed outcome wins over a late abort, so a merge that already landed is never
-        // rewritten as "aborted". A retriable outcome has not landed, though: there the
-        // operator's stop wins, so the change cannot be re-queued against the pin the finally
-        // then discards. A change with no result (deferred or thrown before its outcome)
-        // settles aborted for a user stop as well.
-        // A `merged` event fires inside the lock the moment the fast-forward moves main, and the
-        // subscription keeps only THIS task's tagged event (a concurrent post-merge-review fix
-        // or refusal note also logs `merged` under the same role). So a set mergedCommit is the
-        // ground truth that this change LANDED — it outranks whatever the merge reported. If a
-        // consumed abort lands after the ff, the merge can still throw before it finalizes
-        // (result stays undefined), and the branch below would otherwise rewrite the
-        // already-landed change to "aborted". Landing means main holds the commit, so the only
-        // honest outcome is "changed" — the same path the ordinary merged settle takes. The
-        // retriable branch keeps the operator's stop for outcomes that never landed; a change
-        // with no result and no landing settles aborted for a user stop, or clears its marker
-        // otherwise.
-        if (mergedCommit !== undefined) await settleOne("changed");
-        else if (result !== undefined && !(merge.userAborted && RETRIABLE_MERGE_RESULTS.has(result))) await settleOne(result);
-        else if (merge.userAborted) await settleOne("aborted");
-        else removeMergeChange(root, role);
-      }
+      result = await runMergeApproval(root, role, merge, entry, author, v, mergerCtxOf);
+      await settleReachedOutcome(root, role, merge, result, mergedCommit, settled, settleOne);
     } finally {
       unsubscribe();
       detachShutdown();
