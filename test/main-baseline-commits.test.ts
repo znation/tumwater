@@ -5,7 +5,7 @@ import { headSha, makeRepo, seedCommit } from "./fixtures/repo-fixtures.js";
 
 // commitsAboveFullGreen (src/baseline/main-baseline.ts) names the first-parent commits strictly
 // above the newest cached FULL-check-green verdict (oldest-first) — the range a fresh red's
-// opener is bisected across (main-watch settleOpener, Hourly full check part 3a/4, INV-AZ4).
+// opener is bisected across (main-settle settleOpener, Hourly full check part 3a/4, INV-AZ4).
 // Only a full check stamps `checkedAt`, so an inherited or merge-seeded green and a red full
 // check never anchor the range. It gained real callers in the 2026-11-02 guardrail fix but had
 // no direct tests: the spell suite reaches it only through the full watch machinery, and none

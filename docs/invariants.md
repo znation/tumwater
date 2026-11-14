@@ -3592,7 +3592,7 @@ to a full check instead, preserving the pre-narrowing behavior. The G1 clause an
 red detail publish a blame whose commit is the spell's opener or its newest red tip, so a red
 re-checked on a later tip keeps naming the opener instead of dropping or moving its blame.
 
-**Binds.** `src/baseline/main-watch.ts` (`settleOpener`, `redOpener`, `reportCulprit`), `src/baseline/main-red-spell.ts` (the `redSpellOpeners` map and its spell transitions),
+**Binds.** `src/baseline/main-settle.ts` (`settleOpener`, `redOpener`, `reportCulprit`), `src/baseline/main-red-spell.ts` (the `redSpellOpeners` map and its spell transitions),
 `src/baseline/main-guardrails.ts` (`redBlameClause`), `src/status/status-main-check.ts`
 (`scanMainCheck`'s `spellOpener`, `mainCheckForPoll`'s red detail).
 
@@ -3623,7 +3623,7 @@ bisection that cannot run — no re-run command, no full green, a one-commit ran
 whose re-run reaches no verdict — names the fallback opener (INV-AZ4) instead, so the tip is still
 named as today.
 
-**Binds.** `src/baseline/main-baseline.ts` (`commitsAboveFullGreen`), `src/baseline/main-watch.ts`
+**Binds.** `src/baseline/main-baseline.ts` (`commitsAboveFullGreen`), `src/baseline/main-settle.ts`
 (`settleOpener`, `bisectAt`).
 
 **Pinned by.** `test/main-watch.test.ts` — "a red whose breaking commit is intermediate is
