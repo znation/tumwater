@@ -118,19 +118,25 @@ function releaseFinishedClaim(root: string, role: string, state: RunnerState, ou
   }
 }
 
-/** One warning per error episode (BUGS.md 2026-09-15: every role failing identically
- * looked like a quiet team), quiet-kill episode (BUGS.md 2026-09-18: a role burning an hour
- * per run with no output must not look like a sleeping role) and cut-off episode (mirroring
- * quiet-kill: a role cycling cut-off → resume burns an hour-plus per cycle with no other
- * operator signal) — each fired exactly once at the streak's crossing, after the schedule. */
+/** One warning per error episode, one per quiet-kill episode, and one per cut-off episode —
+ * each fired exactly once at its streak's crossing, after the schedule. Each episode is one
+ * named helper (warnOnConsecutiveErrors, warnOnQuietKill, warnOnCutOff), so a name answers
+ * "when does this episode warn, and what does it print" instead of one read of an
+ * interleaved `if`-ladder. The call order matches the episode order the body held. */
 function warnOnStreakCrossings(root: string, role: string, state: RunnerState, outcome: RunOutcome): void {
-  // One warning per error episode (BUGS.md 2026-09-15: every role failing identically
-  // looked like a quiet team). applyRunOutcome increments the streak on error-class
-  // outcomes, preserves it across a plain `queued` run (the run's merge resolves it),
-  // and resets it on any other completed result — so warn only when THIS outcome incremented
-  // the streak up to the threshold: a preserved streak already sitting at the bar must not
-  // re-warn on the queued run's end. A rejection's crossing warns from the merge side
-  // instead (writeMergeOutcome, src/merge/merge-slot.ts), which is where rejections resolve.
+  warnOnConsecutiveErrors(root, role, state, outcome);
+  warnOnQuietKill(root, role, state);
+  warnOnCutOff(root, role, state, outcome);
+}
+
+/** One warning per error episode (BUGS.md 2026-09-15: every role failing identically looked
+ * like a quiet team). applyRunOutcome increments the streak on error-class outcomes, preserves
+ * it across a plain `queued` run (the run's merge resolves it), and resets it on any other
+ * completed result — so warn only when THIS outcome incremented the streak up to the
+ * threshold: a preserved streak already sitting at the bar must not re-warn on the queued
+ * run's end. A rejection's crossing warns from the merge side instead (writeMergeOutcome,
+ * src/merge/merge-slot.ts), which is where rejections resolve. */
+function warnOnConsecutiveErrors(root: string, role: string, state: RunnerState, outcome: RunOutcome): void {
   if (
     (outcome.result === "error" || outcome.recoveryFailure !== undefined) &&
     (state.consecutiveErrors ?? 0) === ERROR_STREAK_WARN
@@ -144,20 +150,26 @@ function warnOnStreakCrossings(root: string, role: string, state: RunnerState, o
       ),
     );
   }
-  // One warning per quiet-kill episode (BUGS.md 2026-09-18): a role burning an hour per
-  // run with no output must not look like a sleeping role. applyRunOutcome grows the
-  // streak on each kill and resets it on any other result, so the crossing fires once;
-  // the give-up (fresh session + backoff) follows on the next kill.
+}
+
+/** One warning per quiet-kill episode (BUGS.md 2026-09-18): a role burning an hour per run
+ * with no output must not look like a sleeping role. applyRunOutcome grows the streak on each
+ * kill and resets it on any other result, so the crossing fires once; the give-up (fresh
+ * session + backoff) follows on the next kill. */
+function warnOnQuietKill(root: string, role: string, state: RunnerState): void {
   if ((state.quietKillStreak ?? 0) === QUIET_KILL_RESUME_LIMIT) {
     warnEventBestEffort(root, role, `${state.quietKillStreak} consecutive stalls (no progress): ${state.lastError ?? "unknown hang"}`);
   }
-  // One warning per cut-off episode, mirroring quiet-kill above: a role cycling cut-off →
-  // resume burns an hour-plus per cycle (run-apply.ts CUT_OFF_RESUME_LIMIT) with no other
-  // operator signal, so the crossing must not look like a benign idle role. The `outcome.cutOff`
-  // guard makes it fire only on the run that increments the streak to the limit — every
-  // non-cut-off run resets the streak to 0 and a later cut-off sits above the limit — so
-  // exactly one warning per episode. No role guard, matching quiet-kill (a cut-off director
-  // prompt is re-queued but its streak still counts).
+}
+
+/** One warning per cut-off episode, mirroring quiet-kill above: a role cycling cut-off →
+ * resume burns an hour-plus per cycle (run-apply.ts CUT_OFF_RESUME_LIMIT) with no other
+ * operator signal, so the crossing must not look like a benign idle role. The `outcome.cutOff`
+ * guard makes it fire only on the run that increments the streak to the limit — every
+ * non-cut-off run resets the streak to 0 and a later cut-off sits above the limit — so
+ * exactly one warning per episode. No role guard, matching quiet-kill (a cut-off director
+ * prompt is re-queued but its streak still counts). */
+function warnOnCutOff(root: string, role: string, state: RunnerState, outcome: RunOutcome): void {
   if (outcome.cutOff === true && (state.cutOffStreak ?? 0) === CUT_OFF_RESUME_LIMIT) {
     warnEventBestEffort(root, role, `${state.cutOffStreak} consecutive runs cut off at the context ceiling; give the role a smaller task or a longer context window`);
   }

@@ -290,7 +290,7 @@ test("finalizeRun warns once at the quiet-kill streak crossing", async () => {
   await run(root, "organize", s, killed(QUIET_KILL_RESUME_LIMIT));
   const warnings = eventsOfType(root, "warning");
   assert.equal(warnings.length, 1);
-  assert.match(warnings[0]!.message as string, /^3 consecutive stalls \(no progress\): /);
+  assert.equal(warnings[0]!.message as string, "3 consecutive stalls (no progress): unknown hang");
   // Past the crossing: no re-warning while the episode continues.
   await run(root, "organize", s, killed(QUIET_KILL_RESUME_LIMIT + 1));
   assert.equal(eventsOfType(root, "warning").length, 1);
@@ -307,7 +307,10 @@ test("finalizeRun warns once at the cut-off streak crossing", async () => {
   await run(root, "organize", s, cutOff(CUT_OFF_RESUME_LIMIT));
   const warnings = eventsOfType(root, "warning");
   assert.equal(warnings.length, 1);
-  assert.match(warnings[0]!.message as string, /^3 consecutive runs cut off at the context ceiling/);
+  assert.equal(
+    warnings[0]!.message as string,
+    "3 consecutive runs cut off at the context ceiling; give the role a smaller task or a longer context window",
+  );
   // Past the crossing: no re-warning while the episode continues.
   await run(root, "organize", s, cutOff(CUT_OFF_RESUME_LIMIT + 1));
   assert.equal(eventsOfType(root, "warning").length, 1);
@@ -319,7 +322,10 @@ test("finalizeRun warns once at the cut-off streak crossing", async () => {
   }
   const again = eventsOfType(root, "warning");
   assert.equal(again.length, 2);
-  assert.match(again[1]!.message as string, /^3 consecutive runs cut off at the context ceiling/);
+  assert.equal(
+    again[1]!.message as string,
+    "3 consecutive runs cut off at the context ceiling; give the role a smaller task or a longer context window",
+  );
   // A run without cutOff never produces the warning even when the streak would otherwise sit.
   await run(root, "organize", s, { result: "no_change", summary: "plain" });
   assert.equal(eventsOfType(root, "warning").length, 2);
