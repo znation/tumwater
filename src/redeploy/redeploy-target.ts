@@ -1,6 +1,4 @@
-import { baselineCache } from "../baseline/main-baseline.js";
-import { gitLines } from "../git/git.js";
-import { gitTry } from "../git/git-run.js";
+import { baselineCache, firstParentWalk } from "../baseline/main-baseline.js";
 import { mirrorWorktreePath } from "../paths.js";
 
 /** The commit self-redeploy should run, split out of src/baseline/main-baseline.ts — whose
@@ -10,7 +8,10 @@ import { mirrorWorktreePath } from "../paths.js";
  * older green, or hold on the build) and their only consumer is the redeploy layer
  * (orchestrator-poll.ts's `pollRedeploy`). The verdict cache stays in main-baseline.ts; this
  * module imports it read-only, so a target-selection change cannot touch the cache's write
- * policy and vice versa. `watchVerifiesMain` — the main-watch mode predicate that picks
+ * policy and vice versa. The shared `firstParentWalk` git read lives in main-baseline.ts too
+ * (the main watch's red-opener walk reuses it); importing it read-only here keeps the
+ * `git rev-list --first-parent` shape — bound and flag — changeable in one place rather than
+ * re-spelled. `watchVerifiesMain` — the main-watch mode predicate that picks
  * `redeployTarget`'s `watched` branch — stays beside the watch in src/baseline/main-baseline.ts:
  * the review pre-check reads it too, and the review layer does not import redeploy. */
 
@@ -54,15 +55,6 @@ async function newestGreenAboveBuild(wt: string, tip: string, buildSha: string):
   const above = buildAt === -1 ? walk : walk.slice(0, buildAt);
   const green = above.find((sha) => baselineCache.get(sha)?.status === "green") ?? null;
   return { green, buildOnWalk: buildAt !== -1 };
-}
-
-/** The `git rev-list --first-parent --max-count=<max> <ref>` read `newestGreenAboveBuild`
- * runs — the same walk shape main-baseline.ts's own three first-parent scans share, spelled
- * here too so a change to the walk shape (the bound, the `--first-parent` flag) lands in one
- * place per module. Never throws: a git failure is an empty list, which the caller treats as
- * its no-history fallback answer. */
-async function firstParentWalk(wt: string, ref: string, max: number): Promise<string[]> {
-  return gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${max}`, ref));
 }
 
 /** The commit self-redeploy should run: main's newest first-parent commit with a green full-check
