@@ -1,3 +1,4 @@
+import { renameSync } from "node:fs";
 import type { RunnerState } from "../runner/runner-state.js";
 import { enqueueRolePrompt, removeSameStemSiblings, takeQueuedFile } from "./inbox.js";
 import { movePromptImages, stripVanishedImageReferences } from "./inbox-attachments.js";
@@ -142,20 +143,40 @@ export class PendingPrompt {
    * references and no reader ever sees the old paths. Each attachment moves on its own, so one
    * file that is gone or cannot be renamed is left where it is and named in a warning while the
    * rest still move; the re-queued prompt keeps the references that moved and drops the
-   * vanished ones with a loss note. */
+   * vanished ones with a loss note. A queue write that fails after the move (EIO, ENOSPC) moves
+   * the attachments back to the old stem before rethrowing, so a failed requeue never strands
+   * the dequeued prompt's images under a stem no queue file names (moveFileToTop's move-back
+   * twin, honoring movePromptImages' `moves`). */
   private enqueueCarryingImages(userPrompt: string): string {
     const fromFile = this.queueFile;
-    return enqueueRolePrompt(this.root, this.role, userPrompt, undefined, (newFile) => {
-      if (fromFile === null) return stripVanishedImageReferences(userPrompt).text;
-      const moved = movePromptImages(fromFile, newFile, userPrompt);
-      if (moved.problem !== null) {
-        warnEventBestEffort(
-          this.root,
-          this.role,
-          `could not move every attachment of the prompt returned to the inbox: ${moved.problem}`,
-        );
+    const moves: { from: string; to: string }[] = [];
+    try {
+      return enqueueRolePrompt(this.root, this.role, userPrompt, undefined, (newFile) => {
+        if (fromFile === null) return stripVanishedImageReferences(userPrompt).text;
+        const moved = movePromptImages(fromFile, newFile, userPrompt);
+        if (moved.problem !== null) {
+          warnEventBestEffort(
+            this.root,
+            this.role,
+            `could not move every attachment of the prompt returned to the inbox: ${moved.problem}`,
+          );
+        }
+        moves.push(...moved.moves);
+        return stripVanishedImageReferences(moved.text).text;
+      });
+    } catch (err) {
+      // The move ran inside the decorate hook, before the queue write; a write that fails
+      // after it would otherwise leave the attachments renamed onto a stem no queue file
+      // names and that settleImages (keyed on the old stem) never sweeps. Put them back
+      // under the old stem, best effort — the write error is the one the caller sees.
+      for (const m of moves) {
+        try {
+          renameSync(m.to, m.from);
+        } catch {
+          // Best effort: the write error is the one the caller sees.
+        }
       }
-      return stripVanishedImageReferences(moved.text).text;
-    });
+      throw err;
+    }
   }
 }

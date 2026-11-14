@@ -14,7 +14,7 @@ import {
   stripVanishedImageReferences,
 } from "../src/inbox/inbox-attachments.js";
 import { cancelQueuedFile } from "../src/inbox/inbox-cancel.js";
-import { dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
+import { dequeueRolePrompt, enqueueRolePrompt, queuedFiles, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { roleInboxDir } from "../src/paths.js";
@@ -274,6 +274,36 @@ test("requeueUnfulfilled never re-queues a dangling image reference", () => {
   assert.ok(requeued.startsWith("look at this"));
   assert.doesNotMatch(requeued, /\[image attached: /, "no reference to a file that is gone");
   assert.match(requeued, /\[image attachments dropped: 1 image file was missing/);
+});
+
+test("requeueUnfulfilled moves a dequeued prompt's attachments back when the queue write fails", () => {
+  const root = tmpdir();
+  const dir = roleInboxDir(root, "qa");
+  const queued = submitRolePrompt(root, "qa", "look", [png()]); // saves the image + appends its reference line
+  const from = queuedFiles(root, "qa")[0]!; // the queue file the run dequeues from
+  const image = imageReferencePaths(queued)[0]!;
+  // Dequeue the prompt (the run's settleImages is then keyed on this file's stem); the image
+  // stays on disk for the run to read.
+  assert.equal(dequeueRolePrompt(root, "qa"), queued);
+  const pending = new PendingPrompt(root, "qa");
+  pending.record(queued, from);
+  // Fail the requeue's queue-file write (the tmp+rename's write half) with EIO — the move has
+  // already run inside the decorate hook, so without compensation the image is stranded onto
+  // the new stem under a stem no queue file names.
+  const restoreWrite = patchFsMethod("writeFileSync", (orig) => (file, data, ...rest) => {
+    if (String(file).startsWith(dir) && !String(file).endsWith(".png")) {
+      throw Object.assign(new Error("EIO: error, write"), { code: "EIO" });
+    }
+    return orig(file, data, ...rest);
+  });
+  try {
+    assert.throws(() => pending.requeueUnfulfilled(pending.get()), /EIO/);
+  } finally {
+    restoreWrite();
+  }
+  // The attachments moved back under the old stem, not stranded on the new one.
+  assert.ok(fs.existsSync(image), "the attachment is restored to the old stem");
+  assert.ok(!queuedRolePrompts(root, "qa").some((q) => q.includes(`[image attached:`)), "no re-queued prompt points at a dangling image");
 });
 
 test("movePromptImages carries saved attachments to the new stem and rewrites their lines", () => {
