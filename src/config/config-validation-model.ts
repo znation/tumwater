@@ -107,59 +107,65 @@ interface FallbackBlockHelpers {
   eachTierBackend: (check: (backend: string, out: string[]) => void) => void;
 }
 
-/** Validate the `fallback` string-or-map block and the free-fallback-model (`fallbackModel`)
- * shape. The single call site in the gate is the point where these problems are appended
- * today, so the order across the whole pass is unchanged. */
-export function validateFallbackBlock(
+/** Validate the `fallback` selector in whatever form it takes — the string shorthand
+ * (plans/model-tiers.md), the per-tier map, or the whole-tier list — reporting each form's
+ * problem. The map form takes per-tier entries whose values are selector strings or "pause"
+ * (each tier's entry is consulted when that tier runs at the cap; part 5a/8). */
+function validateFallbackSelector(
+  f: unknown,
+  problems: string[],
+  helpers: FallbackBlockHelpers,
+): void {
+  const { tierBackend, eachTierBackend } = helpers;
+  if (isJsonObject(f)) {
+    checkKnownKeys(f, TIER_MAP_KEYS, "fallback", problems);
+    for (const [tier, v] of Object.entries(f)) {
+      if (Array.isArray(v)) checkFallbackList(`fallback.${tier}`, v, problems, tierBackend(tier));
+      else if (isJsonObject(v)) checkFallbackStep(`fallback.${tier}`, v, problems, tierBackend(tier));
+      else if (!isNonBlankString(v))
+        problems.push(
+          `fallback.${tier} must be a non-empty model id or "pause" (got ${show(v)})`,
+        );
+      else if (v !== "pause")
+        // An entry is a pure selector (config-views' fallbackSelectorFields parses it with
+        // no legacy provider in scope); "pause" names no model and stays valid.
+        {
+          checkSelectorValue(`fallback.${tier}`, v, undefined, problems);
+          checkRetiredSelector(`fallback.${tier}`, v, tierBackend(tier), problems);
+        }
+    }
+  } else if (Array.isArray(f)) {
+    eachTierBackend((b, out) => checkFallbackList("fallback", f, out, b));
+  } else if (!isNonBlankString(f)) {
+    problems.push(`fallback must be a model id or a map by tier (got ${show(f)})`);
+  } else if (f === "pause") {
+    problems.push(
+      `fallback "pause" is only valid as a tier map value — a string fallback must name a model id`,
+    );
+  } else {
+    // A selector-string fallback still parses to halves: report an empty one.
+    checkSelectorHalves({ fallback: f }, "", "fallback", undefined, problems);
+    eachTierBackend((b, out) => checkRetiredSelector("fallback", f, b, out));
+  }
+}
+
+/** A file naming both `fallback` and `fallbackModel` names the budget fallback twice: which
+ * one wins is not a question the file should ever pose. */
+function checkFallbackConflict(r: Record<string, unknown>, problems: string[]): void {
+  if ("fallback" in r && "fallbackModel" in r)
+    problems.push(`fallback and fallbackModel both name the budget fallback — keep only one (got fallback ${show(r.fallback)} and fallbackModel ${show(r.fallbackModel)})`);
+}
+
+/** Validate the free-fallback-model (`fallbackModel`) object (plans/fallback-model.md): shape
+ * only — whether the named pair is actually cost-free is a question about pi's models.json, not
+ * about this file, so it is answered at run time (src/pi/pi-models.ts) rather than failing a
+ * load here. An empty object is rejected: it names nothing, so it would silently never engage. */
+function validateFallbackModelObject(
   r: Record<string, unknown>,
   problems: string[],
   helpers: FallbackBlockHelpers,
 ): void {
-  const { checkModelTriple, checkLegacyProvider, tierBackend, eachTierBackend } = helpers;
-  // The free fallback model (plans/fallback-model.md): shape only — whether the named pair is
-  // actually cost-free is a question about pi's models.json, not about this file, so it is
-  // answered at run time (src/pi/pi-models.ts) rather than failing a load here. An empty object is
-  // rejected: it names nothing, so it would silently never engage.
-  // The selector-string shorthand `fallback` (plans/model-tiers.md) validates as one non-empty
-  // string; the map form takes per-tier entries whose values are selector strings or "pause"
-  // (each tier's entry is consulted when that tier runs at the cap; part 5a/8). Setting both
-  // forms — or the map form and `fallbackModel` — is an error naming both keys, since which
-  // one wins is not a question the file should ever pose.
-  if ("fallback" in r && r.fallback !== undefined) {
-    const f = r.fallback;
-    if (isJsonObject(f)) {
-      checkKnownKeys(f, TIER_MAP_KEYS, "fallback", problems);
-      for (const [tier, v] of Object.entries(f)) {
-        if (Array.isArray(v)) checkFallbackList(`fallback.${tier}`, v, problems, tierBackend(tier));
-        else if (isJsonObject(v)) checkFallbackStep(`fallback.${tier}`, v, problems, tierBackend(tier));
-        else if (!isNonBlankString(v))
-          problems.push(
-            `fallback.${tier} must be a non-empty model id or "pause" (got ${show(v)})`,
-          );
-        else if (v !== "pause")
-          // An entry is a pure selector (config-views' fallbackSelectorFields parses it with
-          // no legacy provider in scope); "pause" names no model and stays valid.
-          {
-            checkSelectorValue(`fallback.${tier}`, v, undefined, problems);
-            checkRetiredSelector(`fallback.${tier}`, v, tierBackend(tier), problems);
-          }
-      }
-    } else if (Array.isArray(f)) {
-      eachTierBackend((b, out) => checkFallbackList("fallback", f, out, b));
-    } else if (!isNonBlankString(f)) {
-      problems.push(`fallback must be a model id or a map by tier (got ${show(f)})`);
-    } else if (f === "pause") {
-      problems.push(
-        `fallback "pause" is only valid as a tier map value — a string fallback must name a model id`,
-      );
-    } else {
-      // A selector-string fallback still parses to halves: report an empty one.
-      checkSelectorHalves({ fallback: f }, "", "fallback", undefined, problems);
-      eachTierBackend((b, out) => checkRetiredSelector("fallback", f, b, out));
-    }
-  }
-  if ("fallback" in r && "fallbackModel" in r)
-    problems.push(`fallback and fallbackModel both name the budget fallback — keep only one (got fallback ${show(r.fallback)} and fallbackModel ${show(r.fallbackModel)})`);
+  const { checkModelTriple, checkLegacyProvider } = helpers;
   checkObjectSection(r, "fallbackModel", problems, (o) => {
     checkKnownKeys(o, MODEL_TRIPLE_KEYS, "fallbackModel", problems);
     checkModelTriple(o, "fallbackModel.");
@@ -170,4 +176,18 @@ export function validateFallbackBlock(
     if (!("provider" in o) && !("model" in o))
       problems.push(`fallbackModel must name a provider or a model (got ${show(o)})`);
   });
+}
+
+/** Validate the `fallback` string-or-map block and the free-fallback-model (`fallbackModel`)
+ * shape. The single call site in the gate is the point where these problems are appended
+ * today, so the order across the whole pass is unchanged. */
+export function validateFallbackBlock(
+  r: Record<string, unknown>,
+  problems: string[],
+  helpers: FallbackBlockHelpers,
+): void {
+  if ("fallback" in r && r.fallback !== undefined)
+    validateFallbackSelector(r.fallback, problems, helpers);
+  checkFallbackConflict(r, problems);
+  validateFallbackModelObject(r, problems, helpers);
 }
