@@ -150,34 +150,52 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   return lines.join("\n");
 }
 
-/** The digest's title, blank line, window line (bounded/since/day) and log-state lines. Owns the
- * local `bounded` const the empty branch reads, so the since-vs-day split stays in one place. */
+/** The digest's title, blank line, window line, optional role line, and evidence-state lines.
+ * Computes the shared `bounded` const once and passes it to both helpers below — since both
+ * read it, the since-vs-day split stays in one place. */
 function pushDigestHeader(lines: string[], data: FailureReportData): void {
   lines.push("# tumwater failure digest");
   lines.push("");
   // The since shape prints the same sections as the day shape but labels its window as an
   // instant span (the wording renderSinceReportMarkdown uses); the day shape keeps its
-  // day-window line. The empty branch follows the same split so neither claims the other's unit.
+  // day-window line. The evidence lines follow the same split so neither claims the other's
+  // unit.
   const bounded = data.sinceMs !== undefined && data.untilMs !== undefined && data.toIso !== undefined;
-  lines.push(
-    bounded
-      ? `${trailingWindowLine(data.sinceMs!, data.fromIso!, data.untilMs, data.toIso)} · ${data.runs} runs`
-      : data.sinceMs !== undefined
-        ? `${trailingWindowLine(data.sinceMs, data.fromIso!)} · ${data.runs} runs`
-        : `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.runs} runs`,
-  );
+  lines.push(digestWindowLine(data, bounded));
   if (data.role !== undefined) lines.push(`role: ${data.role}`);
-  if (data.logState === "unreadable") lines.push("log unreadable — evidence missing");
-  else if (data.emptyLog) lines.push("no events retained");
-  else if (!data.hasEvents) {
-    lines.push(
+  lines.push(...digestEvidenceLines(data, bounded));
+}
+
+/** The digest's window line with its shared run-count suffix: a bounded `--since`/`--until`
+ * span, a trailing `--since`, or a calendar day. The since shape uses the instant-span wording
+ * renderSinceReportMarkdown uses; the day shape keeps its `reportWindow` line. `bounded` is
+ * the caller's const, computed once in `pushDigestHeader`. */
+function digestWindowLine(data: FailureReportData, bounded: boolean): string {
+  const window = bounded
+    ? trailingWindowLine(data.sinceMs!, data.fromIso!, data.untilMs, data.toIso)
+    : data.sinceMs !== undefined
+      ? trailingWindowLine(data.sinceMs, data.fromIso!)
+      : reportWindow(data.from, data.to, data.days, eventsRotationLabel());
+  return `${window} · ${data.runs} runs`;
+}
+
+/** The digest's evidence-state lines — one when a state fires, none otherwise: a present-
+ * but-unreadable feed, an empty log, a window that retained no events (its since-vs-day
+ * wording follows the window line's `bounded` split), or a partial log. */
+function digestEvidenceLines(data: FailureReportData, bounded: boolean): string[] {
+  if (data.logState === "unreadable") return ["log unreadable — evidence missing"];
+  if (data.emptyLog) return ["no events retained"];
+  if (!data.hasEvents) {
+    return [
       bounded
         ? `no events from ${durationLabel(data.sinceMs!)} to ${durationLabel(data.untilMs!)} ago`
         : data.sinceMs !== undefined
-        ? `no events in the last ${durationLabel(data.sinceMs)}`
-        : `no events in the last ${dayLabel(data.days)}`,
-    );
-  } else if (data.partial) lines.push(`partial: retained log starts ${data.oldestEventDate ?? "?"}`);
+          ? `no events in the last ${durationLabel(data.sinceMs)}`
+          : `no events in the last ${dayLabel(data.days)}`,
+    ];
+  }
+  if (data.partial) return [`partial: retained log starts ${data.oldestEventDate ?? "?"}`];
+  return [];
 }
 
 /** The causal frame before the counts: what the team DID in the window, so the reader can ask

@@ -251,7 +251,20 @@ test("an empty log reads 'no events retained'", () => {
   const data = collectFailureReport(tmpdir(), 5);
   assert.equal(data.emptyLog, true);
   assert.equal(data.logState, "empty");
-  assert.match(renderFailureMarkdown(data), /^no events retained$/m);
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /^no events retained$/m);
+  // The calendar-day window-line shape, pinned so the day branch cannot drift from the
+  // since/bounded branches the --since assertions above already cover: the day-key bounds
+  // (the digest's own from/to), the day count, the source log, and the shared run-count
+  // suffix, in that order.
+  assert.match(
+    md,
+    new RegExp(
+      `^Window: ${data.from} → ${data.to} \\(5 days\\) ` +
+        `· source: events\\.jsonl \\(rotated at 16 MB, 5 kept\\) · 0 runs$`,
+      "m",
+    ),
+  );
 });
 
 test("a present-but-unreadable feed is named unreadable, not 'no events retained'", () => {
