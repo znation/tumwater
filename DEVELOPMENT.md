@@ -331,8 +331,8 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   `src/cli/cli-log-commands.ts` (the `logs` command body), and `src/cli/cli-query-commands.ts` (the
   other read-only command bodies; `src/cli/cli-follow-view.ts` holds the repaint loop those
   `-f/--follow` views share). The `bug` and `plan` command shells sit beside the other command
-  bodies in `src/cli/cli-backlog-cli.ts` (the writing shells: file, cancel, release, top, edit) and
-  `src/cli/cli-backlog-cli-view.ts` (the read-only `--list`/`--show` shells), over their domain core
+  bodies in `src/cli/cli-backlog.ts` (the writing shells: file, cancel, release, top, edit) and
+  `src/cli/cli-backlog-view.ts` (the read-only `--list`/`--show` shells), over their domain core
   in `src/backlog/`.
 - `src/status/`: the `status` collector behind the status table, TUI, and dashboard
   (`status-data.ts` — a thin composer over the per-domain collectors `status-roles.ts`,

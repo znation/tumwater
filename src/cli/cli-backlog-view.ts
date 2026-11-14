@@ -1,5 +1,5 @@
 /** The read-only CLI shells of `tumwater bug` and `tumwater plan` — `--list` (active and
- * `--done`, with `--grep`) and `--show` — split from cli-backlog-cli.ts, which keeps the writing
+ * `--done`, with `--grep`) and `--show` — split from cli-backlog.ts, which keeps the writing
  * shells (file, cancel, release, top, edit). Neither shell gates on a ready repo, commits, or
  * wakes a role. cli.ts reaches them through listAndAnnounce and showAndAnnounce. */
 

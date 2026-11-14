@@ -244,12 +244,12 @@ async function cmdHistoryCase(root: string, args: string[]): Promise<void> {
 async function cmdArchiveCase(root: string, args: string[]): Promise<void> {
   rejectUnknownArgs("archive", args, [JSON_FLAG, DRY_RUN_FLAG]);
   await requireReadyRepo(root);
-  await (await import("./cli/cli-backlog-cli.js")).cmdArchive(root, args);
+  await (await import("./cli/cli-backlog.js")).cmdArchive(root, args);
 }
 
 /** The `bug` and `plan` argument shells are identical — the same --show/--list/--edit/
  * --cancel/--top/--release/default dispatch, each branch delegating to the shared *AndAnnounce
- * shell (cli-backlog-cli.ts) with only the per-kind callbacks and file/section names differing. One
+ * shell (cli-backlog.ts) with only the per-kind callbacks and file/section names differing. One
  * spec groups those differences so a kind never spells the dispatch out again, and a flag added
  * to both cannot drift between the two cases. The dispatch's AndAnnounce shells are imported
  * lazily here (not at cli.ts top level), preserving the per-command lazy loading every case
@@ -281,8 +281,8 @@ interface BacklogCommandSpec {
  * exactly as cmdQuarantine and its sibling commands guard the same slot. */
 async function runBacklogCommand(root: string, args: string[], s: BacklogCommandSpec): Promise<void> {
   const { cancelAndAnnounce, editAndAnnounce, fileAndAnnounce, releaseAndAnnounce, retireAndAnnounce, topAndAnnounce } =
-    await import("./cli/cli-backlog-cli.js");
-  const { listAndAnnounce, showAndAnnounce } = await import("./cli/cli-backlog-cli-view.js");
+    await import("./cli/cli-backlog.js");
+  const { listAndAnnounce, showAndAnnounce } = await import("./cli/cli-backlog-view.js");
   // The token `--grep` consumes as its pattern is text, never the dispatch's mode flag: the
   // branch scan must skip exactly that slot, or `plan --list --grep --show` claims the
   // literal "--show" as the detail mode and fails with its missing-position error instead of
@@ -328,7 +328,7 @@ async function cmdBugCase(root: string, args: string[]): Promise<void> {
   const { OPERATOR_FILE_KINDS, bugWakeText, cancelBug, editBug, editBugFromText, fileBug, fileBugFromText, retireBug } =
     await import("./backlog/backlog-write.js");
   const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
-  const { bugTitleOf } = await import("./cli/cli-backlog-cli.js");
+  const { bugTitleOf } = await import("./cli/cli-backlog.js");
   const usage = 'tumwater bug "<symptom>"';
   await runBacklogCommand(root, args, {
     command: "bug",
@@ -353,7 +353,7 @@ async function cmdPlanCase(root: string, args: string[]): Promise<void> {
   const { OPERATOR_FILE_KINDS, cancelPlan, editPlan, editPlanFromText, filePlan, filePlanFromText, planWakeText, retirePlan } =
     await import("./backlog/backlog-write.js");
   const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
-  const { planTitleOf } = await import("./cli/cli-backlog-cli.js");
+  const { planTitleOf } = await import("./cli/cli-backlog.js");
   const usage = 'tumwater plan "<title>" [body...]';
   await runBacklogCommand(root, args, {
     command: "plan",

@@ -31,7 +31,7 @@ import { templateIds, unknownTemplateError } from "../init/init-templates.js";
  * prefix test — a negative run number (`history bugfix -3`) arrives flag-shaped and fails the
  * unknown-arg gate, which is the right answer for a non-positive n anyway. Lives here with
  * the CLI's other argument helpers, shared by cli.ts's history case and
- * cli-backlog-cli.ts's fileAndAnnounce. */
+ * cli-backlog.ts's fileAndAnnounce. */
 export function peelPositionals(args: string[]): {
   positionals: string[];
   rest: string[];
