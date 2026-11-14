@@ -139,6 +139,17 @@ export function scheduleAtMinInterval(s: RunnerState, cfg: { minRunIntervalSecon
   s.nextRunAt = Date.now() + cfg.minRunIntervalSeconds * 1000;
 }
 
+/** Reset the shared backoff ladder to zero, then schedule the next run at the role's
+ * minimum interval: the "a completed run re-arms the idle ladder from the bottom and comes
+ * back promptly" clock the three reset arms in run-apply.ts share. Composes scheduleAtMinInterval,
+ * so the min-interval cadence and the reset cannot drift. The skipped arm runs on the min
+ * interval without resetting and the cut_off arm resumes plus min interval; neither resets,
+ * so both stay on scheduleAtMinInterval directly. */
+export function scheduleResetToMinInterval(s: RunnerState, cfg: { minRunIntervalSeconds: number }): void {
+  s.backoffSeconds = 0;
+  scheduleAtMinInterval(s, cfg);
+}
+
 /** Backoff ladder for failed runs (`error` results). The idle ladder prices hour-long model
  * runs — its cap exists so a role that keeps finding nothing stops burning model time. A run
  * that fails (a broken toolchain, a dead pi subprocess) often never reaches the model, so it

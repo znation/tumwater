@@ -16,6 +16,7 @@ import {
   nextBackoffSeconds,
   scheduleBackoff,
   scheduleAtMinInterval,
+  scheduleResetToMinInterval,
   ERROR_BACKOFF,
 } from "../src/scheduling/backoff.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
@@ -194,4 +195,17 @@ test("scheduleAtMinInterval: the productive-side cadence is the role's own min i
   assert.ok(s.nextRunAt >= before + 120_000);
   assert.ok(s.nextRunAt <= Date.now() + 120_000 + 50);
   assert.equal(s.backoffSeconds, 0); // untouched: the productive side never climbs a ladder
+});
+
+test("scheduleResetToMinInterval: zeroes the idle ladder and schedules at the min interval", () => {
+  const s = freshRunnerState("readme");
+  s.backoffSeconds = 3600; // climb to the top of the idle ladder first
+  s.nextRunAt = 1_000;
+  const before = Date.now();
+
+  scheduleResetToMinInterval(s, { minRunIntervalSeconds: 120 });
+
+  assert.equal(s.backoffSeconds, 0); // the reset the three productive arms rely on
+  assert.ok(s.nextRunAt >= before + 120_000);
+  assert.ok(s.nextRunAt <= Date.now() + 120_000 + 50);
 });

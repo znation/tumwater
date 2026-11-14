@@ -8,6 +8,7 @@ import {
   pushYieldOutcome,
   scheduleAtMinInterval,
   scheduleBackoff,
+  scheduleResetToMinInterval,
 } from "../scheduling/backoff.js";
 import type { RunOutcome, RunResult } from "./run-outcome.js";
 import { firstReason } from "../text/phrases.js";
@@ -234,8 +235,7 @@ function scheduleCompletedOutcome(s: RunnerState, cfg: TumwaterConfig, outcome: 
   if (outcome.result === "changed") s.commits += 1;
   // The role committed new work, so the note about its discarded change has been delivered.
   s.conflictDiscard = undefined;
-  s.backoffSeconds = 0;
-  scheduleAtMinInterval(s, cfg);
+  scheduleResetToMinInterval(s, cfg);
 }
 
 /** Schedule a role whose change the review gate rejected — the "rejected" arm: address the
@@ -244,8 +244,7 @@ function scheduleRejectedOutcome(s: RunnerState, cfg: TumwaterConfig): void {
   // The reviewer objected and the gate already reset the branch: the author should address
   // the recorded reasons on its next eligible run, not sleep through them — schedule like
   // a change without counting a commit (nothing merged).
-  s.backoffSeconds = 0;
-  scheduleAtMinInterval(s, cfg);
+  scheduleResetToMinInterval(s, cfg);
 }
 
 /** Schedule a role whose run was skipped — the "skipped" arm: the director idles at the
@@ -356,8 +355,7 @@ function scheduleObserverOutcome(s: RunnerState, cfg: TumwaterConfig): void {
   // being healthy. With no ladder, minRunIntervalSeconds is the sole, honest cadence
   // (plans/observer-roles.md). The error/user_aborted arms above are untouched — a broken
   // toolchain and a deliberate operator stop still back off like any other role.
-  s.backoffSeconds = 0;
-  scheduleAtMinInterval(s, cfg);
+  scheduleResetToMinInterval(s, cfg);
 }
 
 /** Schedule a role whose completed run found nothing to do — the idle arm: back off on the
