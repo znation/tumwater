@@ -48,6 +48,7 @@ import {
   FOLLOW_FLAG,
   STOP_CANCEL_FLAG,
   STOP_IN_FLAG,
+  modeNamed,
 } from "./cli/cli-flag-specs.js";
 import { fail, say } from "./cli/cli-output.js";
 import { historyTrailForm, parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
@@ -289,11 +290,7 @@ async function runBacklogCommand(root: string, args: string[], s: BacklogCommand
   // filtering (the same guard cmdQuarantine and its siblings use). `--list` keeps the plain
   // includes check: the list shell itself consumes the --grep pattern, so a flag-shaped
   // pattern like `--list --grep --list` still routes on the real `--list` token.
-  const grepAt = args.indexOf("--grep");
-  const grepValueIndex = grepAt >= 0 ? grepAt + 1 : -1;
-  const modeNamed = (flag: string): boolean =>
-    args.some((arg, i) => arg === flag && i !== grepValueIndex);
-  if (modeNamed("--show")) {
+  if (modeNamed(args, "--show")) {
     showAndAnnounce(root, args, s.command);
     return;
   }
@@ -301,23 +298,23 @@ async function runBacklogCommand(root: string, args: string[], s: BacklogCommand
     await listAndAnnounce(root, args, s.command, s.file, s.section);
     return;
   }
-  if (modeNamed("--edit")) {
+  if (modeNamed(args, "--edit")) {
     await editAndAnnounce(root, args, s.command, s.edit, s.editText);
     return;
   }
-  if (modeNamed("--cancel")) {
+  if (modeNamed(args, "--cancel")) {
     await cancelAndAnnounce(root, args, s.command, s.cancel);
     return;
   }
-  if (s.retire && modeNamed("--retire")) {
+  if (s.retire && modeNamed(args, "--retire")) {
     await retireAndAnnounce(root, args, s.command, s.retire);
     return;
   }
-  if (modeNamed("--top")) {
+  if (modeNamed(args, "--top")) {
     await topAndAnnounce(root, args, s.command, s.top);
     return;
   }
-  if (modeNamed("--release")) {
+  if (modeNamed(args, "--release")) {
     await releaseAndAnnounce(root, args, s.command, s.release, s.releaseRole);
     return;
   }

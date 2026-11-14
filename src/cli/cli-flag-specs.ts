@@ -330,6 +330,21 @@ export function hasFollowFlag(args: readonly string[]): boolean {
   return FOLLOW_FLAG.names.some((name) => args.includes(name));
 }
 
+/** Whether an arg array names `flag` as a dispatch mode, ignoring a token an operator parked
+ * in `--grep`'s value slot: `--grep` takes its pattern as a value, so a flag-shaped token
+ * there (e.g. `plan --list --grep --show`) is the pattern to filter on, not a mode to route
+ * to. `grepValueIndex` is `-1` when `--grep` is absent, so a flag at index 0 is never skipped
+ * (the slot-skip only bites the token after a real `--grep`). Shared by the plan/backlog,
+ * reviews, quarantine and salvage dispatches, each of which spelled out the same `indexOf` /
+ * `+1` / skip-one-slot three-liner beside its `--show` branch. `--list` deliberately keeps
+ * its plain `includes` check beside this: the list shell consumes the `--grep` pattern, so a
+ * flag-shaped pattern like `--list --grep --list` still routes on the real `--list` token. */
+export function modeNamed(args: readonly string[], flag: string): boolean {
+  const grepAt = args.indexOf("--grep");
+  const grepValueIndex = grepAt >= 0 ? grepAt + 1 : -1;
+  return args.some((arg, i) => arg === flag && i !== grepValueIndex);
+}
+
 /** The `--ready` flag spec, accepted by `backlog`: keep only the entries no hold keeps from
  * being picked. Value-less, like STAT_FLAG. */
 export const READY_FLAG: FlagSpec = { names: ["--ready"] };

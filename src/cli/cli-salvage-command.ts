@@ -10,7 +10,7 @@
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { failFollowJsonRival, parseGrepFlag, scanPositionArgs } from "./cli-args.js";
-import { DRY_RUN_FLAG, FOLLOW_FLAG, JSON_FLAG, grepFlagSpec, hasFollowFlag, rejectUnknownArgs } from "./cli-flag-specs.js";
+import { DRY_RUN_FLAG, FOLLOW_FLAG, JSON_FLAG, grepFlagSpec, hasFollowFlag, modeNamed, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "./cli-follow-view.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
 import { salvagePatchStat, applySalvagePatchForOperator, checkSalvagePatchForOperator } from "../git/slot-salvage.js";
@@ -53,18 +53,15 @@ import { formatBytes } from "../text/format.js";
  * their own flag gate, which refuses a `--dry-run` token as an unknown flag before any patch
  * or checkout is touched, so a stray `--dry-run` never changes what the command does. */
 export async function cmdSalvage(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
-  const grepAt = args.indexOf("--grep");
-  const grepValueIndex = grepAt >= 0 ? grepAt + 1 : -1;
-  const modeNamed = (flag: string): boolean => args.some((arg, i) => arg === flag && i !== grepValueIndex);
-  if (modeNamed("--show")) {
+  if (modeNamed(args, "--show")) {
     await cmdSalvageShow(root, args);
     return;
   }
-  if (modeNamed("--drop")) {
+  if (modeNamed(args, "--drop")) {
     await cmdSalvageDrop(root, args);
     return;
   }
-  if (modeNamed("--apply")) {
+  if (modeNamed(args, "--apply")) {
     await cmdSalvageApply(root, args);
     return;
   }

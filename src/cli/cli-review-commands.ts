@@ -9,7 +9,7 @@
  * the read path and gates the write with `requireReadyRepo`; the
  * read case still writes no file. */
 
-import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, rejectUnknownArgs, grepFlagSpec, statusFlagSpec } from "./cli-flag-specs.js";
+import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, modeNamed, rejectUnknownArgs, grepFlagSpec, statusFlagSpec } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "./cli-follow-view.js";
 import { sayJsonOrRender, say, sayJson, fail } from "./cli-output.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
@@ -68,15 +68,11 @@ export async function cmdReviews(root: string, args: string[], seams: FollowView
   // `--show`/`--accept` token in --grep's value slot is the pattern, not the mode: routing
   // on it would make `reviews --grep --show` or `reviews --grep --accept` fail with that
   // mode's missing-position error instead of filtering (the same guard cmdQuarantine uses).
-  const grepAt = args.indexOf("--grep");
-  const grepValueIndex = grepAt >= 0 ? grepAt + 1 : -1;
-  const modeNamed = (flag: string): boolean =>
-    args.some((arg, i) => arg === flag && i !== grepValueIndex);
-  if (modeNamed("--show")) {
+  if (modeNamed(args, "--show")) {
     await cmdReviewsShow(root, args);
     return;
   }
-  if (modeNamed("--accept")) {
+  if (modeNamed(args, "--accept")) {
     await cmdReviewsAccept(root, args);
     return;
   }

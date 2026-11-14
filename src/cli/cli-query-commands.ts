@@ -7,7 +7,7 @@
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { followView, type FollowViewSeams } from "./cli-follow-view.js";
 import { failFollowJsonRival, flagValue, parseGrepFlag, parseRoleListScope, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
-import { DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, HELD_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
+import { DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, HELD_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, modeNamed, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { scopeSnapshotToRoles, snapshot, snapshotForStatus } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
@@ -211,15 +211,11 @@ export async function cmdQuarantine(root: string, args: string[], seams: FollowV
   // --grep's value slot is the pattern, not the mode: routing on it would make
   // `--grep --release` or `--grep --show` fail with that mode's missing-position error
   // instead of filtering.
-  const grepAt = args.indexOf("--grep");
-  const grepValueIndex = grepAt >= 0 ? grepAt + 1 : -1;
-  const modeNamed = (flag: string): boolean =>
-    args.some((arg, i) => arg === flag && i !== grepValueIndex);
-  if (modeNamed("--show")) {
+  if (modeNamed(args, "--show")) {
     await cmdQuarantineShow(root, args);
     return;
   }
-  if (modeNamed("--release")) {
+  if (modeNamed(args, "--release")) {
     await cmdQuarantineRelease(root, args);
     return;
   }
