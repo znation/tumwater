@@ -177,7 +177,7 @@ export function settlePostReview(root: string, commit: string, next: PostReview 
   writePostReviews(root, next ? [...rest, next] : rest);
 }
 
-type PostReviewOutcome =
+export type PostReviewOutcome =
   | { kind: "approve"; reasons: string[] }
   | { kind: "reject"; reasons: string[] }
   | { kind: "fixed"; fix: string; reasons: string[] }

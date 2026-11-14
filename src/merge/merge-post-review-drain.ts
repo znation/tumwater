@@ -1,4 +1,5 @@
 import { withRunPermit } from "../concurrency/run-permit.js";
+import type { SemaphoreLease } from "../concurrency/semaphore.js";
 import { subscribeEvents, warnEventBestEffort, TUMWATER_SOURCE, logEventBestEffort } from "../events/events.js";
 import { deleteRef, headOf, subjectOfCommit } from "../git/git.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
@@ -11,6 +12,7 @@ import {
   reviewMergedCommit,
   settlePostReview,
   type PostReview,
+  type PostReviewOutcome,
 } from "../review/post-merge-review.js";
 import { shortSha } from "../text/format.js";
 import { formatDate } from "../text/datetime.js";
@@ -26,6 +28,7 @@ import { setupFailureResult } from "../agent/agent-settle.js";
 import { recordReview } from "../run/run-apply.js";
 import { firstReason } from "../text/phrases.js";
 import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
+import type { RoleRunner } from "../runner/runner.js";
 import type { RunResult } from "../run/run-outcome.js";
 
 /** Distinguishes this task's `merged` event from another merge for the same role: a role's queued
@@ -53,6 +56,85 @@ function unreviewed(e: PostReview): boolean {
   return e.rejected === undefined && e.fixed === undefined;
 }
 
+/** Whether a parked review is admitted to run at all, once the team permit is held: it clears
+ * `task.parked` (no longer waiting on the permit) and hands the lease straight back — and returns
+ * false — when the shutdown signal fired while parked (a late grant is released by the acquire
+ * race, so the lease is null and there is nothing to release here); when a restart or team hold
+ * closed the start gate meanwhile; or when the entry was settled (`tumwater review --accept`) or
+ * re-reviewed meanwhile and so no longer `unreviewed`. True only when the gate is open and the
+ * entry still awaits its review. The check is synchronous (no `await` in its body) so the
+ * IIFE's `if (!admitPostReview(...)) return;` gate is synchronous too, exactly as the pre-split
+ * `if (stale)` was: a review never starts under a closed gate or over a settled entry. The IIFE
+ * releases the lease again in its `finally` after the run, but the semaphore's release is
+ * idempotent, so a not-admitted path's release is a no-op there, and the IIFE's `task.parked`
+ * and slot cleanup still run on every path. */
+function admitPostReview(
+  root: string,
+  lease: SemaphoreLease | null,
+  task: InFlightMerge,
+  ctx: MergePipelineContext,
+  entry: PostReview,
+): boolean {
+  task.parked = false;
+  if (lease === null) return false; // a shutdown while parked: the entry stays for the next generation
+  // A busy team's wait can be long. A restart or team hold that closed the gate meanwhile, or
+  // an entry settled meanwhile (`tumwater review --accept`), hands the permit straight back.
+  const stale =
+    task.controller.signal.aborted ||
+    ctx.startHeld() ||
+    !readPostReviews(root).some((e) => e.commit === entry.commit && unreviewed(e));
+  if (stale) {
+    lease.release();
+    return false;
+  }
+  return true;
+}
+
+/** Settle a review's verdict, one arm per `PostReviewOutcome` shape: `approve` clears the entry
+ * (`settlePostReview(null)`), `reject` keeps it with the reviewer's recorded reasons, `fixed`
+ * routes through `mergeReviewerFix` (lands the fix or keeps the entry on a failed landing),
+ * `exhausted` clears it with no reviewer fix, a transient `infrastructure` failure warns and keeps
+ * the entry WITHOUT counting it toward `POST_REVIEW_FAILURE_LIMIT` or filing a bug, and a plain
+ * `failed` warns and either files-and-drops at the limit or keeps it with the incremented count.
+ * The `aborted` flag is read once by the caller, at the point the ladder read it, so a shutdown
+ * between the run and this settles nothing. */
+async function settlePostReviewOutcome(
+  root: string,
+  ctx: MergePipelineContext,
+  entry: PostReview,
+  outcome: PostReviewOutcome,
+  author: RoleRunner,
+  aborted: boolean,
+): Promise<void> {
+  if (aborted) return; // a shutdown: the entry stays for the next generation
+  if (outcome.kind === "approve") settlePostReview(root, entry.commit, null);
+  else if (outcome.kind === "reject") settlePostReview(root, entry.commit, { ...entry, rejected: outcome.reasons });
+  else if (outcome.kind === "fixed") await mergeReviewerFix(ctx, entry, outcome.fix, author.state);
+  else if (outcome.kind === "exhausted") {
+    // A self-fix chain at the backstop: reviewMergedCommit has already recorded the surviving
+    // findings; the entry is cleared so nothing re-reviews it (Forward never back 2/6).
+    settlePostReview(root, entry.commit, null);
+  } else if (outcome.kind === "failed" && outcome.infrastructure) {
+    // The run ended on a transient provider failure (a 429 or quota wall, a backend
+    // failure): a world failure, not a review content failure. Keep the entry queued
+    // WITHOUT counting it toward POST_REVIEW_FAILURE_LIMIT and without filing a product
+    // bug — a multi-hour provider quota wall must not generate one "never reached a
+    // verdict" BUGS.md entry per commit (BUGS.md 2026-11-09). The entry stays in the
+    // post-review queue, where a later successful review settles it; a content failure
+    // (below) is still counted and filed as today. One operator-visible warning names the
+    // cause so the wall is discoverable from the feed.
+    warnEventBestEffort(root, entry.role, `the post-merge review of ${shortSha(entry.commit)} failed on a transient provider failure (${outcome.detail}); keeping it queued — not counted, not filed`);
+  } else {
+    const failures = (entry.failures ?? 0) + 1;
+    warnEventBestEffort(root, entry.role, `the post-merge review of ${shortSha(entry.commit)} failed (${outcome.detail})`);
+    if (failures >= POST_REVIEW_FAILURE_LIMIT) {
+      warnEventBestEffort(root, entry.role, `dropping the post-merge review of ${shortSha(entry.commit)} after ${failures} failed runs; it stays on main unreviewed`);
+      await fileDroppedReview(ctx, entry, outcome.detail);
+      settlePostReview(root, entry.commit, null);
+    } else settlePostReview(root, entry.commit, { ...entry, failures, lastFailure: outcome.detail });
+  }
+}
+
 /** Start one review task and record it in `p.postReview` until it settles. It parks for a team
  * permit at VERIFY_TIER, ahead of every queued role run, as a pre-merge verification does. It
  * used to start only when a permit was free at the poll and never queue, and the peek's
@@ -68,49 +150,14 @@ function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: Pos
   const run = (async () => {
     try {
       const lease = await acquireUnlessAborted(semaphore, VERIFY_TIER, task.controller.signal);
-      task.parked = false;
-      if (lease === null) return; // a shutdown while parked: the entry stays for the next generation
-      // A busy team's wait can be long. A restart or team hold that closed the gate meanwhile, or
-      // an entry settled meanwhile (`tumwater review --accept`), hands the permit straight back.
-      const stale = task.controller.signal.aborted || ctx.startHeld() ||
-        !readPostReviews(root).some((e) => e.commit === entry.commit && unreviewed(e));
-      if (stale) {
-        lease.release();
-        return;
-      }
+      if (!admitPostReview(root, lease, task, ctx, entry)) return;
       let outcome;
       try {
         outcome = await reviewMergedCommit(root, ctx.liveConfig, entry, (opts) => author.runGatePi(opts), task.controller.signal);
       } finally {
-        lease.release();
+        lease?.release(); // lease is non-null once admission passed; the `?.` keeps the guard honest
       }
-      if (task.controller.signal.aborted) return; // a shutdown: the entry stays for the next generation
-      if (outcome.kind === "approve") settlePostReview(root, entry.commit, null);
-      else if (outcome.kind === "reject") settlePostReview(root, entry.commit, { ...entry, rejected: outcome.reasons });
-      else if (outcome.kind === "fixed") await mergeReviewerFix(ctx, entry, outcome.fix, author.state);
-      else if (outcome.kind === "exhausted") {
-        // A self-fix chain at the backstop: reviewMergedCommit has already recorded the surviving
-        // findings; the entry is cleared so nothing re-reviews it (Forward never back 2/6).
-        settlePostReview(root, entry.commit, null);
-      } else if (outcome.kind === "failed" && outcome.infrastructure) {
-        // The run ended on a transient provider failure (a 429 or quota wall, a backend
-        // failure): a world failure, not a review content failure. Keep the entry queued
-        // WITHOUT counting it toward POST_REVIEW_FAILURE_LIMIT and without filing a product
-        // bug — a multi-hour provider quota wall must not generate one "never reached a
-        // verdict" BUGS.md entry per commit (BUGS.md 2026-11-09). The entry stays in the
-        // post-review queue, where a later successful review settles it; a content failure
-        // (below) is still counted and filed as today. One operator-visible warning names the
-        // cause so the wall is discoverable from the feed.
-        warnEventBestEffort(root, entry.role, `the post-merge review of ${shortSha(entry.commit)} failed on a transient provider failure (${outcome.detail}); keeping it queued — not counted, not filed`);
-      } else {
-        const failures = (entry.failures ?? 0) + 1;
-        warnEventBestEffort(root, entry.role, `the post-merge review of ${shortSha(entry.commit)} failed (${outcome.detail})`);
-        if (failures >= POST_REVIEW_FAILURE_LIMIT) {
-          warnEventBestEffort(root, entry.role, `dropping the post-merge review of ${shortSha(entry.commit)} after ${failures} failed runs; it stays on main unreviewed`);
-          await fileDroppedReview(ctx, entry, outcome.detail);
-          settlePostReview(root, entry.commit, null);
-        } else settlePostReview(root, entry.commit, { ...entry, failures, lastFailure: outcome.detail });
-      }
+      await settlePostReviewOutcome(root, ctx, entry, outcome, author, task.controller.signal.aborted);
     } catch (err) {
       warnEventBestEffort(root, TUMWATER_SOURCE, `the post-merge review of ${shortSha(entry.commit)} could not run: ${errorMessage(err)}`);
     } finally {
