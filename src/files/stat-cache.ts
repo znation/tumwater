@@ -1,4 +1,5 @@
 import { readRegularTextOrNull, sameStatIdentity, statOrNull } from "./files.js";
+import { readJsonFile } from "./json-files.js";
 
 /** Stat-keyed caching of file-derived values polled on an interval. Split out of
  * src/files/files.ts — which keeps the generic file operations — because this is a
@@ -85,5 +86,26 @@ export function cachedTextByStat<T>(
       return md === null ? null : parse(md);
     },
     clone,
+  );
+}
+
+/** One stat-cached read of a JSON object file, or null when it is missing, unreadable, torn,
+ * or not a plain object — the shared load half over `cachedByStat` for the readers that parse a
+ * JSON object file: it reads through readJsonFile, whose object check makes a scalar, `null`,
+ * or array a null (no data) so the same no-data policy holds on a cache miss and a hit alike,
+ * and returns a fresh shallow copy per call so each caller owns the object it reads or folds
+ * off. `file` is both the cache key and the path, the shape of every reader of a per-file
+ * JSON state marker. The callers: agent/subscription-account.ts's readAccountBody and
+ * team/team-state.ts's readMarkerBody. */
+export function cachedJsonBodyByStat(
+  cache: Map<string, StatKeyedValue<Record<string, unknown>>>,
+  file: string,
+): Record<string, unknown> | null {
+  return cachedByStat(
+    cache,
+    file,
+    file,
+    () => readJsonFile<object>(file) as Record<string, unknown> | null,
+    (body) => ({ ...body }),
   );
 }

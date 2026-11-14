@@ -1,6 +1,6 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
-import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
+import { cachedJsonBodyByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { removeIfPresent, removeQuiet } from "../files/files.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
@@ -67,13 +67,7 @@ const markerBodyCache = new Map<string, StatKeyedValue<Record<string, unknown>>>
  * per-call object (a shallow copy) so callers can fold/mutate the result without poisoning a
  * later poll (standingMarker deletes `until`/`reason` off its result). Never throws. */
 function readMarkerBody(file: string): Record<string, unknown> | null {
-  return cachedByStat(
-    markerBodyCache,
-    file,
-    file,
-    () => readJsonFile<object>(file) as Record<string, unknown> | null,
-    (body) => ({ ...body }),
-  );
+  return cachedJsonBodyByStat(markerBodyCache, file);
 }
 
 /** The reason cap every writer of a pause reason shares (chars): one constant so the CLI

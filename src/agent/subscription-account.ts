@@ -13,9 +13,9 @@
  * claude-account.ts) is this module specialized to the "claude" backend: for its file the
  * logical `plan` field is stored under the historical key `subscriptionType`, so claude's file
  * keeps today's shape. */
-import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber, isJsonObject, setOwn } from "../files/json-object.js";
-import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
+import { cachedJsonBodyByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { accountPath } from "../paths.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RateWindow } from "../pi/pi-stream.js";
@@ -150,13 +150,7 @@ const accountBodyCache = new Map<string, StatKeyedValue<Record<string, unknown>>
  * missing, unreadable, torn, or not a plain object — the same no-data policy as readJsonFile —
  * and a fresh per-call copy so readAccount's owns the object it reads fields off. Never throws. */
 function readAccountBody(file: string): Record<string, unknown> | null {
-  return cachedByStat(
-    accountBodyCache,
-    file,
-    file,
-    () => readJsonFile<object>(file) as Record<string, unknown> | null,
-    (body) => ({ ...body }),
-  );
+  return cachedJsonBodyByStat(accountBodyCache, file);
 }
 
 /** Read the persisted account state for a backend, or null when it is absent or unreadable. A
