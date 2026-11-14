@@ -169,60 +169,86 @@ function cmdClear(flag: string | undefined): number {
   return 0;
 }
 
-/** The `lesson` subcommands. `lesson <sub> <id?>`; `add` and `replace` read the lesson's text
- * from stdin. The lessons file is derived from the note's path, never an argument. */
+/** `lesson add` [verbatim add branch]: an id refuses (arity 1 — the guard moves with its
+ * mode); then read stdin, refuse empty input, write the lesson, and print the id the store
+ * assigned, exit 0. `args` is the command's own (the helper reads its arity off it); the
+ * lessons path and today's date are computed once in cmdLesson and passed in. */
+function lessonAdd(args: string[], lp: string, date: string): number {
+  const id = args[2];
+  if (id !== undefined) return refuse(USAGE);
+  const text = readStdin().trim();
+  if (text === "") return refuse("nothing to add — pipe one lesson, or `tumwater-notes lesson list` to see the stored ones");
+  let newId: string;
+  try {
+    newId = addRoleLesson(lp, text, date);
+  } catch (err) {
+    return refuse(errorMessage(err));
+  }
+  process.stdout.write(`${newId}\n`);
+  return 0;
+}
+
+/** `lesson replace <id>` [verbatim replace branch]: require exactly one id (arity 2, the
+ * guard moves with its mode); then read stdin, refuse empty input, rewrite the lesson keeping
+ * its id and today's date, print `<id> replaced`, exit 0. */
+function lessonReplace(args: string[], lp: string, date: string): number {
+  const id = args[2];
+  if (id === undefined || args.length > 3) return refuse(USAGE);
+  const text = readStdin().trim();
+  if (text === "") return refuse("nothing to replace — pipe the lesson's full replacement text");
+  try {
+    replaceRoleLesson(lp, id, text, date);
+  } catch (err) {
+    return refuse(errorMessage(err));
+  }
+  process.stdout.write(`${id} replaced\n`);
+  return 0;
+}
+
+/** `lesson retire <id>` [verbatim retire branch]: require exactly one id (arity 2, the guard
+ * moves with its mode); then drop the lesson and print `<id> retired`, exit 0. */
+function lessonRetire(args: string[], lp: string): number {
+  const id = args[2];
+  if (id === undefined || args.length > 3) return refuse(USAGE);
+  try {
+    retireRoleLesson(lp, id);
+  } catch (err) {
+    return refuse(errorMessage(err));
+  }
+  process.stdout.write(`${id} retired\n`);
+  return 0;
+}
+
+/** `lesson list` [verbatim list branch]: an id refuses (arity 1, the guard moves with its
+ * mode); then read the store and print each stored lesson line (terminal controls stripped at
+ * the display boundary, the same as `show`), in file order; an empty store prints nothing;
+ * exit 0. */
+function lessonList(args: string[], lp: string): number {
+  const id = args[2];
+  if (id !== undefined) return refuse(USAGE);
+  let lessons: RoleLesson[];
+  try {
+    lessons = readRoleLessons(lp).lessons;
+  } catch (err) {
+    return refuse(`could not read the lessons: ${errorMessage(err)}`);
+  }
+  for (const l of lessons) {
+    process.stdout.write(stripTerminalControls(`${roleLessonLine(l)}\n`));
+  }
+  return 0;
+}
+
+/** The `lesson` subcommands dispatch: `lesson <sub> <id?>`; `add` and `replace` read the
+ * lesson's text from stdin. The lessons file and today's date are computed once and passed to
+ * the mode helper each, which carries its own arity guard, IO, and print. */
 function cmdLesson(args: string[]): number {
-  const [, sub, id] = args;
+  const [, sub] = args;
   const lp = lessonsPath(NOTES_PATH!);
   const date = formatDate(new Date());
-  if (sub === "add") {
-    if (id !== undefined) return refuse(USAGE);
-    const text = readStdin().trim();
-    if (text === "") return refuse("nothing to add — pipe one lesson, or `tumwater-notes lesson list` to see the stored ones");
-    let newId: string;
-    try {
-      newId = addRoleLesson(lp, text, date);
-    } catch (err) {
-      return refuse(errorMessage(err));
-    }
-    process.stdout.write(`${newId}\n`);
-    return 0;
-  }
-  if (sub === "replace") {
-    if (id === undefined || args.length > 3) return refuse(USAGE);
-    const text = readStdin().trim();
-    if (text === "") return refuse("nothing to replace — pipe the lesson's full replacement text");
-    try {
-      replaceRoleLesson(lp, id, text, date);
-    } catch (err) {
-      return refuse(errorMessage(err));
-    }
-    process.stdout.write(`${id} replaced\n`);
-    return 0;
-  }
-  if (sub === "retire") {
-    if (id === undefined || args.length > 3) return refuse(USAGE);
-    try {
-      retireRoleLesson(lp, id);
-    } catch (err) {
-      return refuse(errorMessage(err));
-    }
-    process.stdout.write(`${id} retired\n`);
-    return 0;
-  }
-  if (sub === "list") {
-    if (id !== undefined) return refuse(USAGE);
-    let lessons: RoleLesson[];
-    try {
-      lessons = readRoleLessons(lp).lessons;
-    } catch (err) {
-      return refuse(`could not read the lessons: ${errorMessage(err)}`);
-    }
-    for (const l of lessons) {
-      process.stdout.write(stripTerminalControls(`${roleLessonLine(l)}\n`));
-    }
-    return 0;
-  }
+  if (sub === "add") return lessonAdd(args, lp, date);
+  if (sub === "replace") return lessonReplace(args, lp, date);
+  if (sub === "retire") return lessonRetire(args, lp);
+  if (sub === "list") return lessonList(args, lp);
   return refuse(USAGE);
 }
 

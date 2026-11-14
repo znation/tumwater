@@ -369,6 +369,7 @@ test("lesson retire L1 then add gives L3, not L1 (a retired id is never reused)"
   run(["lesson", "add"], notesPath, "second\n"); // L2
   const r = run(["lesson", "retire", "L1"], notesPath);
   assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, "L1 retired\n");
   assert.equal(lessonsText(lessonsPath)!.split("\n")[0], "<!-- next: L3 -->", "retire advances the next id past the retired one");
   const a = run(["lesson", "add"], notesPath, "third\n");
   assert.equal(a.stdout, "L3\n", "the new id is L3, not the retired L1");
@@ -379,6 +380,7 @@ test("lesson replace keeps the id and takes today's date; the file is rewritten"
   run(["lesson", "add"], notesPath, "original\n"); // L1
   const res = run(["lesson", "replace", "L1"], notesPath, "amended\n");
   assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stdout, "L1 replaced\n");
   const text = lessonsText(lessonsPath)!;
   assert.match(text, /- L1 \(\d{4}-\d{2}-\d{2}\): amended\n/, text);
   assert.equal(text.split("\n")[0], "<!-- next: L2 -->", "replace does not advance the next id");
