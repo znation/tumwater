@@ -1,6 +1,22 @@
+import { unsetConfigKey } from "../../config/config-write.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
 import { viewedRole, type TuiEditorCtx, type TuiEditorModule } from "./tui-editor-ctx.js";
 import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
+
+/** A role-key editor's write outcome: a success that may be a no-op (nothing written), or a
+ * named error that keeps the editor open. The commit arms of the editors that clear a key (the
+ * parallel-runner-count and min-run-interval editors) return this. */
+type RoleKeyWrite = { ok: true; noop?: true } | { ok: false; error: string };
+
+/** Clear a role key on Enter, reporting a no-op success (not a real write) when the key was
+ * never set, so the editor flashes its own "was not set" message: the shared clear arm the
+ * parallel-runner-count and min-run-interval editors commit through. The role-model editor clears
+ * all three fields through setRoleModelFields instead, and the team-scope config editor computes
+ * its no-op inline over its merged set/unset result — neither is this arm. */
+export function clearRoleKey(root: string, key: string): RoleKeyWrite {
+  const r = unsetConfigKey(root, key);
+  return r.ok && r.oldValue === undefined ? { ok: true, noop: true } : r;
+}
 
 /** The role-pinned editor arm (Ctrl+X role model, Ctrl+G parallel-runner count, Ctrl+S min
  * run interval) on the shared prompt line — the terminal twins of the dashboard role drawer's
@@ -29,7 +45,7 @@ interface RoleKeySpec {
     session: TuiEditorSession,
     base: string,
     text: string,
-  ) => { ok: true; noop?: true } | { ok: false; error: string };
+  ) => RoleKeyWrite;
   /** Message flashed when the commit succeeds for `role`; `text` is empty for a clear. */
   savedFlash: (role: string, text: string) => string;
   /** Message flashed instead when the commit succeeded as a no-op (the key was already

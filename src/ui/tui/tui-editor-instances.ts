@@ -1,9 +1,9 @@
-import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
+import { setConfigKey } from "../../config/config-write.js";
 import { rawRoleField } from "../../roles/role-view.js";
 import { gotSuffix, isExponentSpelling } from "../../text/text.js";
 import type { TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
-import { createRoleKeyEditor } from "./tui-editor-role-key.js";
+import { clearRoleKey, createRoleKeyEditor } from "./tui-editor-role-key.js";
 
 /** The Ctrl+G parallel-runner-count editor on the shared prompt line, the terminal twin of
  * `tumwater role <id> --instances` and the dashboard role drawer's instance-count editor. Enter
@@ -27,10 +27,7 @@ export function createInstancesEditor(session: TuiEditorSession): TuiEditorModul
       `edit ${role}'s parallel-runner count (an integer 1-8; feature and bugfix only; empty clears): Enter to save, Esc to cancel`,
     commit: (s, base, text) => {
       const cfgKey = `roles.${base}.instances`;
-      if (text === "") {
-        const r = unsetConfigKey(s.root, cfgKey);
-        return r.ok && r.oldValue === undefined ? { ok: true, noop: true } : r;
-      }
+      if (text === "") return clearRoleKey(s.root, cfgKey);
       // Shape, before the write: an exponent spelling like "2e0" is itself a JSON number (2),
       // so setConfigKey's JSON.parse would read it past validateConfig's INSTANCE_COUNT integer
       // check and silently write 2 — the same silent misread the CLI's --instances guard

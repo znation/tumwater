@@ -1,10 +1,10 @@
-import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
+import { setConfigKey } from "../../config/config-write.js";
 import { checkMinRunInterval } from "../../config/config-keys.js";
 import { rawRoleField } from "../../roles/role-view.js";
 import { gotSuffix, isPlainDecimal } from "../../text/text.js";
 import type { TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
-import { createRoleKeyEditor } from "./tui-editor-role-key.js";
+import { clearRoleKey, createRoleKeyEditor } from "./tui-editor-role-key.js";
 
 /** The Ctrl+S min-run-interval editor on the shared prompt line, the terminal twin of
  * `tumwater role <id> --min-run-interval` and the dashboard role drawer's `Min run interval`
@@ -32,10 +32,7 @@ export function createIntervalEditor(session: TuiEditorSession): TuiEditorModule
       const cfgKey = `roles.${base}.minRunIntervalSeconds`;
       // An empty or whitespace-only line clears the override (a no-op success when the file
       // never set it, so the operator sees "is not set").
-      if (text === "") {
-        const r = unsetConfigKey(s.root, cfgKey);
-        return r.ok && r.oldValue === undefined ? { ok: true, noop: true } : r;
-      }
+      if (text === "") return clearRoleKey(s.root, cfgKey);
       // Plain decimal seconds only — bare Number() would also read hex ("0x10" → 16) and
       // exponent ("1e2" → 100) as an interval, neither of which an operator means when
       // typing a second count; the budget editor's parseBudgetInput applies the same
