@@ -437,6 +437,17 @@ export function createMainWatch(
   /** The head a "main watch could not check main" warning was last logged for: the rules pass
    * and the full pass fail independently, and a broken main must not warn twice for one head. */
   let lastFailedWatchHead: string | undefined;
+  /** Count a head as watched and clear the suspended full check (Hourly full check, part 2b/4):
+   * the five paths that settle a head without a full verdict all advance to that head and leave
+   * no suspended check, so they share this instead of re-spelling the three assignments. Two
+   * sites cannot use it and keep the assignments spelled: the skipped-interval plan sets a
+   * due time (not a clear), and the settled-verdict site must read the base before clearing.
+   */
+  function markWatched(head: string): void {
+    lastWatched = head;
+    fullCheckDueAt = undefined;
+    fullCheckBase = undefined;
+  }
 
   /** Release quarantined tests whose bug left `## Open`, file the bugs of newly quarantined
    * ones on main — recording a filed test's new flake under its bug when that bug waits for one —
@@ -516,9 +527,7 @@ export function createMainWatch(
       // No declared build check: nothing to watch for a build red, but the diff rules still run on
       // the tip, and the head counts as watched (the full-check pass never runs here, so it owns
       // no lastWatched either). No suspended full check can be due without a build check.
-      lastWatched = mainHead;
-      fullCheckDueAt = undefined;
-      fullCheckBase = undefined;
+      markWatched(mainHead);
     }
     // The deterministic diff rules ("Every commit is verified on main, part 1/3"): run the full
     // six-check set the watch and gate share — the gate now runs only the three a later commit
@@ -644,9 +653,7 @@ export function createMainWatch(
       // next poll does not start another run for it. The diff rules still run on this tip, in
       // the rules pass.
       if (!baseline) {
-        lastWatched = tip;
-        fullCheckDueAt = undefined;
-        fullCheckBase = undefined;
+        markWatched(tip);
         return;
       }
       lastWatched = baseline.sha;
@@ -707,9 +714,7 @@ export function createMainWatch(
     config: TumwaterConfig,
   ): Promise<boolean> {
     const before = lastWatched;
-    lastWatched = tip;
-    fullCheckDueAt = undefined;
-    fullCheckBase = undefined;
+    markWatched(tip);
     const rerun = await rerunTests(root, TUMWATER_SOURCE, wt, config, spell.tests, spell.files, CHECK_TIER.merge);
     if (rerun === null) return false; // cannot narrow: the caller re-checks in full
     const stillFailing = spell.tests.filter((t) => rerun.failing.includes(t));
@@ -776,9 +781,7 @@ export function createMainWatch(
       const { check: confirmCheck } = await runBaselineCheck(root, wt, config);
       const confirmBaseline = confirmCheck.baseline;
       if (!confirmBaseline) return; // no verdict: the cleared head stays watched, with no full verdict
-      lastWatched = confirmBaseline.sha;
-      fullCheckDueAt = undefined;
-      fullCheckBase = undefined;
+      markWatched(confirmBaseline.sha);
       const confirmedOpener = await settleOpener(
         root,
         mainBranch,
@@ -855,9 +858,7 @@ export function createMainWatch(
         .catch((err: unknown) => {
           // A failed full pass (main unreadable, checkout refused) records nothing and is not
           // retried until main moves, so a persistent failure warns once per head.
-          lastWatched = mainHead;
-          fullCheckDueAt = undefined;
-          fullCheckBase = undefined;
+          markWatched(mainHead);
           warnCouldNotCheck(mainHead, err);
         })
         .finally(() => {
