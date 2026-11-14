@@ -5,7 +5,7 @@
 import os from "node:os";
 import { startGui } from "./gui-server.js";
 import { errCode } from "../errno.js";
-import { fail, say } from "../cli/cli-output.js";
+import { fail, say } from "../terminal.js";
 import { flagValue, parsePortFlag, tokenValueProblem } from "../cli/cli-args.js";
 
 /** External IPv4 addresses of this machine's network interfaces, for printing the URLs a

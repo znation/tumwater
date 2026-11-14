@@ -11,7 +11,7 @@
 
 import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, modeNamed, rejectUnknownArgs, grepFlagSpec, statusFlagSpec } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "./cli-follow-view.js";
-import { sayJsonOrRender, say, sayJson, fail } from "./cli-output.js";
+import { sayJsonOrRender, say, sayJson, fail } from "../terminal.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { failFollowJsonRival, parseGrepFlag, parseRoleListScope, parseStatusFlag, scanPositionArgs } from "./cli-args.js";
 import { readPostReviews, type PostReview } from "../review/post-merge-review.js";

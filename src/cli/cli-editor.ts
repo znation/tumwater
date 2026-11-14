@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fail } from "./cli-output.js";
+import { fail } from "../terminal.js";
 import { removeTree } from "../files/files.js";
 
 /** Signal number → name, for the shell's 128+n convention: a shell that does not re-raise a

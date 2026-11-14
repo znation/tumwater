@@ -15,7 +15,7 @@ import { actionableEntryRanges, type ActionableEntryRange } from "./backlog-inde
 import { stripEntryStamp } from "./backlog-structure.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
-import { fail } from "../cli/cli-output.js";
+import { fail } from "../terminal.js";
 import { backlogHolds, type EntryHold } from "./backlog-eligibility.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init/init.js";

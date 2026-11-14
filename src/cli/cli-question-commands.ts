@@ -7,7 +7,7 @@
  * is the command's argument scan, say/fail/editor jacket and commit-and-wake tail over that core,
  * routed to by src/cli.ts.
  */
-import { fail, say, sayJson, warnIfUncommitted } from "./cli-output.js";
+import { fail, say, sayJson, warnIfUncommitted } from "../terminal.js";
 import { failFollowJsonRival, parseCountFlag, parsePositionFlag, rejectRepeatFlag } from "./cli-args.js";
 import { FOLLOW_FLAG, JSON_FLAG, rejectEqualsForm } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "./cli-follow-view.js";

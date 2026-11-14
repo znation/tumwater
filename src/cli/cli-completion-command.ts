@@ -7,7 +7,7 @@ import {
   configValueWords,
   SUPPORTED_SHELLS,
 } from "./cli-completion.js";
-import { say, fail } from "./cli-output.js";
+import { say, fail } from "../terminal.js";
 import { gotSuffix } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 

@@ -50,7 +50,7 @@ import {
   STOP_IN_FLAG,
   modeNamed,
 } from "./cli/cli-flag-specs.js";
-import { fail, say } from "./cli/cli-output.js";
+import { fail, say } from "./terminal.js";
 import { historyTrailForm, parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli/cli-repo-gate.js";
 import { repoToplevel } from "./git/git.js";

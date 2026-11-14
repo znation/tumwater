@@ -5,7 +5,7 @@
  * run-detail-render.ts, so the CLI, the TUI's History drill-down, and the GUI's /api/run serve
  * the same text. Read-only over the event log, stdout only. The -f/--follow form repaints the
  * same trail through followView's shared loop instead of exiting after one render. */
-import { fail, say, sayJson } from "../cli/cli-output.js";
+import { fail, say, sayJson } from "../terminal.js";
 import { parseCountFlag } from "../cli/cli-args.js";
 import { followView, type FollowViewSeams } from "../cli/cli-follow-view.js";
 import { knownRoleIdsCached } from "../config/config.js";

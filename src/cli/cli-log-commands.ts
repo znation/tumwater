@@ -1,4 +1,4 @@
-import { fail, say, sayJson, sayJsonLine } from "./cli-output.js";
+import { fail, say, sayJson, sayJsonLine } from "../terminal.js";
 import { hasFollowFlag, LOGS_TRANSCRIPT_VALUE_ERROR } from "./cli-flag-specs.js";
 import { betweenWindow, durationLabel } from "../text/duration.js";
 import { failFollowJsonRival, failFollowSinceRival, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";

@@ -1,4 +1,4 @@
-import { fail } from "./cli-output.js";
+import { fail } from "../terminal.js";
 import { BRANCH_VALUE_ERROR, ROLE_VALUE_ERROR, TOKEN_VALUE_ERROR } from "./cli-flag-specs.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
@@ -17,7 +17,7 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
  * contract, and `--file`'s readFileSync would be this module's only I/O. The declarative
  * flag-vocabulary layer — the FlagSpec shape, the per-flag specs, and the unknown-argument
  * gate — lives in cli/cli-flag-specs.ts; this module keeps the imperative single-flag parsers
- * its specs re-run. Terminal output and the failure exit live in cli/cli-output.ts — this
+ * its specs re-run. Terminal output and the failure exit live in terminal.ts — this
  * module's parsers fail through fail() from there, but they do not write output of their own. */
 
 /** The raw value token that follows a valued flag in `args`: null when the flag is absent,

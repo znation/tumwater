@@ -2,7 +2,7 @@
  * Split out of cli/cli-start.ts, whose name is for start alone: every command it dispatches
  * delegates to its own module (cli-config-commands.ts, cli-log-commands.ts, doctor.ts, …), and init
  * is no exception. cli.ts stays the pure dispatcher. */
-import { say, sayJson } from "./cli-output.js";
+import { say, sayJson } from "../terminal.js";
 import { parseInitArgs } from "./cli-command-args.js";
 import { initProject } from "../init/init.js";
 import { getTemplate, templateCatalog } from "../init/init-templates.js";

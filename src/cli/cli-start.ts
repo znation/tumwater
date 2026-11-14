@@ -7,7 +7,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { baseRoleOf, runnerIds } from "../roles/runner-ids.js";
 import { knownRoleIds } from "../config/config.js";
 import { unknownRoleMessage } from "../roles/roles.js";
-import { fail, say, sayJson } from "./cli-output.js";
+import { fail, say, sayJson } from "../terminal.js";
 import { durationLabel } from "../text/duration.js";
 import {
   failRivalShapes,

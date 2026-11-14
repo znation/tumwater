@@ -9,7 +9,7 @@
  * cross-command file rule in one module each. */
 import fs from "node:fs";
 import { rejectFlagLookingValue } from "./cli-args.js";
-import { fail } from "./cli-output.js";
+import { fail } from "../terminal.js";
 import { errorMessage } from "../text/text.js";
 
 /** Read a `--file <path>` prompt file: fail naming the file when it cannot be read. A raw

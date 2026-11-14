@@ -1,5 +1,5 @@
 import { knownRoleIds, loadConfig } from "../config/config.js";
-import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
+import { fail, say, sayJson, sayJsonOrRender } from "../terminal.js";
 import { failOverDurationCap, flagValue, optionalFlagValue, parseDurationFlag, parsePositionFlag, parseRoleFlag, rejectFlagLookingValue } from "./cli-args.js";
 import { errorMessage, splitCommaList } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "./cli-flag-specs.js";

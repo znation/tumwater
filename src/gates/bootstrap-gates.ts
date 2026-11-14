@@ -98,7 +98,7 @@ export function pollBootstrapGate(
         writeJsonAtomic(bootstrapLatchPath(root), { plansDone: status.plansDone, ts: now });
       } catch (err) {
         // A terminal boundary: the error can name a path carrying control characters. Sanitize
-        // like cli-output's say()/fail(), so the fallback line cannot drive the operator's shell.
+        // like terminal.ts's say()/fail(), so the fallback line cannot drive the operator's shell.
         process.stderr.write(
           `tumwater: could not write bootstrap latch: ${stripTerminalControls(errorMessage(err))}\n`,
         );

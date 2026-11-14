@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { renderStatus, renderStatusSpans } from "../src/ui/status-render.js";
-import { say } from "../src/cli/cli-output.js";
+import { say } from "../src/terminal.js";
 import { sanitizeFrameLines } from "../src/ui/tui/tui-frame.js";
 import { attempt } from "./helpers/exit-capture.js";
 import { displayWidth } from "../src/text/text-width.js";

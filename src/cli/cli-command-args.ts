@@ -20,7 +20,7 @@ import {
   ROLE_VALUE_ERROR,
   rejectUnknownDoubleDash,
 } from "./cli-flag-specs.js";
-import { fail } from "./cli-output.js";
+import { fail } from "../terminal.js";
 import { DOCTOR_CHECK_NAMES, type DoctorCheckName } from "../doctor/doctor-check-names.js";
 import { typoSuffix } from "../text/suggest.js";
 import { templateIds, unknownTemplateError } from "../init/init-templates.js";

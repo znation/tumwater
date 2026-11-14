@@ -7,7 +7,7 @@
  * operator-intent helpers, each with its own broken-config policy — so the command lives
  * beside the queue module it drives. The team-side half — the dequeue and requeue a role
  * performs — is inbox.ts and pending-prompt.ts. */
-import { fail, say, sayJson } from "../cli/cli-output.js";
+import { fail, say, sayJson } from "../terminal.js";
 import path from "node:path";
 import { parsePromptArgs } from "../cli/cli-command-args.js";
 import {

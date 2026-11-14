@@ -9,7 +9,7 @@
  * loads lazily (see `superviseStartCommand`), so a command that never boots the team never
  * compiles the orchestrator/merge pipeline it pulls. */
 import type { StdioOptions } from "node:child_process";
-import { fail, say } from "./cli-output.js";
+import { fail, say } from "../terminal.js";
 import { parsePortFlag } from "./cli-args.js";
 import { runStartupProblem } from "../gates/startup-gates.js";
 import { repairInterruptedSwap } from "../build/build-stage.js";

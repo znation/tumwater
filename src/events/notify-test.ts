@@ -9,7 +9,7 @@
  * domain with the notifier, not in the CLI layer, so those surfaces import a core module
  * instead of reaching up into it. */
 import { spawn } from "node:child_process";
-import { fail, say, sayJson } from "../cli/cli-output.js";
+import { fail, say, sayJson } from "../terminal.js";
 import { loadConfig } from "../config/config.js";
 import { TUMWATER_SOURCE } from "./events.js";
 import { notifyCommandEnv, notifyExitGloss } from "./event-notify.js";

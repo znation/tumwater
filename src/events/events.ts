@@ -208,7 +208,7 @@ export function logEventBestEffort(root: string, event: HarnessEventInput): void
   try {
     logEvent(root, event);
   } catch (err) {
-    // A terminal display boundary like cli-output's say()/fail(): the role id, event type, and
+    // A terminal display boundary like terminal.ts's say()/fail(): the role id, event type, and
     // error text can carry model- or subprocess-supplied bytes, and stderr is a terminal. Strip
     // the control characters the same way so a fallback line cannot drive the operator's shell.
     const detail = `${event.source}: could not log ${event.type} event: ${errorMessage(err)}`;

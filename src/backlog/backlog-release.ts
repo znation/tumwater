@@ -8,7 +8,7 @@ import { backlogTarget, findEntry, readEntryLines, withLocatedEntry } from "./ba
 import type { ActionableEntryRange } from "./backlog-index-data.js";
 import { withoutNeedsReviewNotes, withoutRefusalNotes } from "./backlog-eligibility.js";
 import { writeTextAtomic } from "../files/files.js";
-import { fail } from "../cli/cli-output.js";
+import { fail } from "../terminal.js";
 import { trimTrailingBlankLines } from "../text/text.js";
 import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 

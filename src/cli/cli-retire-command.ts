@@ -8,7 +8,7 @@
  * and its CLI case already special-cases it as "not a marker command (it acts immediately)".
  */
 
-import { fail, say, sayJson } from "./cli-output.js";
+import { fail, say, sayJson } from "../terminal.js";
 import { flagValue } from "./cli-args.js";
 import { ROLE_VALUE_ERROR } from "./cli-flag-specs.js";
 import { knownRoleIds, loadConfig } from "../config/config.js";

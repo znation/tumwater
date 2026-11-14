@@ -1,9 +1,13 @@
-/** Terminal output and exit helpers shared by every command in cli.ts and the command
- * modules: the one home of how a tumwater CLI command writes to the user (stdout lines,
- * `--json` documents, and the uniform failure exit) so the write targets and exit
- * convention cannot drift per call site. Argument parsing lives beside it in
- * cli/cli-args.ts — a parser that fails calls fail() from this module. */
-import { stripTerminalControls } from "../text/text.js";
+/** The terminal output and exit boundary: the one home of how a tumwater command writes to
+ * the operator (stdout lines, `--json` documents, and the uniform failure exit) so the write
+ * targets and the exit convention cannot drift per call site. The command shells in cli/ use
+ * it, and the domain collectors (report, history, backlog, events, redeploy, gui) render their
+ * result through it too — that is why it sits at the source root beside text/ and paths/
+ * rather than inside the command layer: a core module importing it reaches sideways into a
+ * leaf, not up into the commands. Its only dependency is the pure stripTerminalControls
+ * (text/text.js). Argument parsing lives in cli/cli-args.ts — a parser that fails calls
+ * fail() from this module. */
+import { stripTerminalControls } from "./text/text.js";
 
 /** The raw stdout write every helper below funnels through: one `process.stdout.write(text +
  * "\n")`, so the trailing newline and write target cannot drift per call site and the one

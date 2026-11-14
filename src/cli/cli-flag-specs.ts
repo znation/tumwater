@@ -8,7 +8,7 @@
  * cli.ts before the ready-repo gate and every command body, so a bad flag (misspelled,
  * duplicated, missing or malformed value, equals-form spelling) fails fast with an
  * actionable message instead of the command silently running with default behavior. */
-import { fail } from "./cli-output.js";
+import { fail } from "../terminal.js";
 import { failOverDurationCap, parseCountFlag, parseDurationFlag, parsePositionFlag, parsePortFlag, rejectRepeatFlag } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { allRoleIds } from "../roles/roles.js";

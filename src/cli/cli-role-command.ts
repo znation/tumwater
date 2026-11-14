@@ -8,7 +8,7 @@
  * `config set`/`config unset` use. It lives in its own file because its mixed
  * positional/flag vocabulary and its write branches are its own, not the query commands'. */
 
-import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
+import { fail, say, sayJson, sayJsonOrRender } from "../terminal.js";
 import { failFollowJsonRival, flagValue } from "./cli-args.js";
 import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "./cli-follow-view.js";

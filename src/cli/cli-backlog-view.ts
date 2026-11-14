@@ -3,7 +3,7 @@
  * shells (file, cancel, release, top, edit). Neither shell gates on a ready repo, commits, or
  * wakes a role. cli.ts reaches them through listAndAnnounce and showAndAnnounce. */
 
-import { fail, say, sayJson } from "./cli-output.js";
+import { fail, say, sayJson } from "../terminal.js";
 import { failFollowJsonRival, parseCountFlag, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { FOLLOW_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "./cli-follow-view.js";

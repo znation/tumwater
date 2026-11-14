@@ -2283,7 +2283,7 @@ zero".
 
 **Guarantee.** `stripTerminalControls` removes every C0 control except `\n` and `\t`, plus DEL and
 the C1 block U+0080–U+009F. ESC goes with the rest, so no OSC or CSI sequence survives. The CLI's
-output helpers (`src/cli/cli-output.ts`) and the composed TUI frame (`src/ui/tui/tui-frame.ts`)
+output helpers (`src/terminal.ts`) and the composed TUI frame (`src/ui/tui/tui-frame.ts`)
 apply it, as do several stderr diagnostics and the notify command's message text; event JSON is
 not stripped, so machine-readable output stays byte-exact.
 

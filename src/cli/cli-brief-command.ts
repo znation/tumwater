@@ -4,7 +4,7 @@ import { editBriefText } from "../brief/brief-edit.js";
 import { editInEditor } from "./cli-editor.js";
 import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
 import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
-import { fail, say, sayJson } from "./cli-output.js";
+import { fail, say, sayJson } from "../terminal.js";
 import { requireReadyRepo } from "./cli-repo-gate.js";
 
 /** `brief`'s `--file <path>` flag: the replacement prompt (`-` for stdin). */

@@ -6,7 +6,7 @@
  * surgery and the locked read-modify-write live in backlog-write.ts. The wake of the role that
  * should act stays in cli.ts beside the other command bodies. */
 
-import { fail, say, sayJson, warnIfUncommitted } from "./cli-output.js";
+import { fail, say, sayJson, warnIfUncommitted } from "../terminal.js";
 import { parsePositionFlag, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
 import { plannedPlanEntries } from "../backlog/backlog.js";

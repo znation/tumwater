@@ -8,7 +8,7 @@
  * unreadable salvage dir degrades to the empty list, so the list reads in any directory and
  * never writes), and its output shape. */
 
-import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
+import { fail, say, sayJson, sayJsonOrRender } from "../terminal.js";
 import { failFollowJsonRival, parseGrepFlag, scanPositionArgs } from "./cli-args.js";
 import { DRY_RUN_FLAG, FOLLOW_FLAG, JSON_FLAG, grepFlagSpec, hasFollowFlag, modeNamed, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "./cli-follow-view.js";

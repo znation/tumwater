@@ -7,7 +7,7 @@
  * sha, and renders the preview or the committed inverse. cli.ts reaches it through the same
  * `await import()` seam every command body keeps behind. */
 
-import { fail, say, sayJson } from "./cli-output.js";
+import { fail, say, sayJson } from "../terminal.js";
 import { parseCountFlag } from "./cli-args.js";
 import { shortSha } from "../text/format.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";

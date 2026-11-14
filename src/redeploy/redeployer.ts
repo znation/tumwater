@@ -46,7 +46,7 @@ export function bestEffortLog(log: (event: RedeployEvent) => void): (event: Rede
       log(event);
     } catch (err) {
       // A terminal boundary: the error text can carry control characters. Sanitize like
-      // cli-output's say()/fail(), so the fallback line cannot drive the operator's shell.
+      // terminal.ts's say()/fail(), so the fallback line cannot drive the operator's shell.
       process.stderr.write(
         `tumwater: could not record ${event.type} event: ${stripTerminalControls(errorMessage(err))}\n`,
       );

@@ -4,7 +4,7 @@
  * the dispatcher (cli.ts), the marker commands (cli-marker-commands.ts), the write commands
  * (cli-backlog.ts), and the read-only command bodies (cli-query-commands.ts) all
  * import it, so a command layer never reaches into a sibling command module for a gate. */
-import { fail } from "./cli-output.js";
+import { fail } from "../terminal.js";
 import { teamWorkspaceMessage } from "../gates/readiness-gates.js";
 import { repoNotReady } from "../gates/startup-gates.js";
 import { owningTeamRoot } from "../paths.js";

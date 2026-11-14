@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { configPath, CONFIG_BASENAME } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { loadConfigSafe, knownRoleIds, nonDefaultConfigEntries } from "../config/config.js";
-import { fail, say, sayJson, sayJsonLine } from "./cli-output.js";
+import { fail, say, sayJson, sayJsonLine } from "../terminal.js";
 import {
   setConfigKey,
   unsetConfigKey,
