@@ -47,8 +47,9 @@ The team's review gate runs `npm run test:gate` before each model review
 host, so it checks only what is nearest the change:
 
 - the same compile as `npm test`: TypeScript 7's native compiler (`scripts/tsc.mjs`, about half
-  a second for a one-file edit). `typescript` itself stays on 5.x for the type-aware lint and the
-  harness's self-redeploy compile;
+  a second for a one-file edit), and the same one the harness's self-redeploy rebuilds with
+  (`compileStaged` resolves `typescript-native`). `typescript` itself stays on 5.x for the
+  type-aware lint;
 - the lint, over only the files the change touches (`scripts/lint-changed.mjs`). A change to the
   lint config, the dependencies or `tsconfig.json` lints the whole tree. It runs while the tests
   run (`--alongside`), and its report prints after theirs;
