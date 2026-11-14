@@ -31,7 +31,10 @@ const operatorStamp = () => `reported by the user ${formatDate(new Date())}`;
  * and the init template the file is seeded with when tumwater never created it (absent file,
  * not a stale one — the append's read-then-write still refuses an unreadable file). Every
  * kind-dispatching writer in this module (file, cancel, edit, release, show, retire) resolves
- * this one triple, so no site re-spells the file, section, or template literals. */
+ * this one triple, so no writer re-spells the file, section, or template literals. (Two
+ * non-writer sites keep their own section/file strings on purpose: sectionNoun maps a section
+ * to its display noun, and bugWakeText/planWakeText spell the path into fixed role prompts —
+ * neither is part of the kind→target routing. */
 export function backlogTarget(kind: "bug" | "plan"): {
   fileName: string;
   sectionTitle: string;
