@@ -267,13 +267,13 @@ test("the staleness, compile, and swap closures drive the real mechanics in a fi
   // also answers, so a foreign sha can never order a restart.
   assert.equal(await deps.staleness("f".repeat(40)), null);
 
-  // The compile closure serves its compile from the mirror worktree, repointed at the asked
-  // head. The fixture installs no typescript at or above itself, so the staged compile rejects
-  // without running tsc — the same verdict a real mirror without an install gets — but the
+  // The compile closure serves its compile from the mirror worktree, repointed at the asked head.
+  // The fixture installs no build compiler (typescript-native) above itself, so the staged compile
+  // rejects without running tsc — the same verdict a real mirror without an install gets — but the
   // mirror it built for the attempt is real and sits exactly where main points.
   const compiled = await deps.compile(newHead);
-  assert.equal(compiled.ok, false, "a fixture without typescript cannot stage a build");
-  assert.match(compiled.detail, /typescript is not installed/);
+  assert.equal(compiled.ok, false, "a fixture without the build compiler cannot stage a build");
+  assert.match(compiled.detail, /build compiler \(typescript-native\) is not installed/);
   assert.equal(
     headSha(mirrorWorktreePath(root)),
     newHead,

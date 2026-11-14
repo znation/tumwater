@@ -491,7 +491,7 @@ test("compileStaged without typescript installed anywhere above the project fail
   const root = makeRepo();
   const result = await compileStaged(root, root, "d".repeat(40));
   assert.equal(result.ok, false);
-  assert.match(result.detail, /typescript is not installed/);
+  assert.match(result.detail, /build compiler \(typescript-native\) is not installed/);
   assert.equal(result.rejected, true, "a missing toolchain is a rejection, not a compiler verdict");
 });
 
