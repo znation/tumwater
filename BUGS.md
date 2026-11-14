@@ -35,3 +35,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 **Needs review (2026-11-13 by selfcheck):** the failure cluster recurred on a new commit (a4d55b7d) *after* this entry's filing (05fdb15c), so confirm the *resolved reviewer model/backend* for the post-merge review — whether it actually resolved to the slow local `qwenrunner/Qwen3.8-27B-MLX-Serve-4bit` via the strong tier — before treating this as confirmed for the bugfix role; that is the one claim only the live event log (outside the worktree) can settle. The QUESTIONS.md fork (floor the reviewer's own model vs. a config value) governs the fix, not this confirmation.
 
 ## Fixed
+
+## Verified
+- 2026-11-14 run (real): `init` + `config set` scoping (only `feature` enabled, `maxConcurrent 1`, a local free `qwenrunner` model) + `prompt --role feature` + `start --once --json` — one no-change round, then a `.md`-only change merged to main (review-exempt); `status`/`logs`/`history` confirm the merge, linear history, cost $0.00.
