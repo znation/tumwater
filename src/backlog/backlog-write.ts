@@ -176,14 +176,14 @@ export function readEntryLines(
   return { file, lines: md.split("\n"), entry };
 }
 
-/** The title-checked entry lookup the four non-exiting dashboard writers share
- * (tryCancelEntry, tryEditEntry here; tryReleaseEntry, tryMoveEntryToTop in backlog-release.ts):
- * resolve `<fileName>`, read it — an absent file is an empty section, never a seed — locate the
- * `n`th actionable entry, and compare its heading to `expectedTitle`. Returns `gone` when there
- * is no entry at the position and `moved` when a different heading sits there, so the caller can
- * refuse as data without writing; on success returns the `ok` file path, raw markdown and entry
- * for the caller to splice and write its own outcome. A pure lookup, decided inside the caller's
- * lock. */
+/** The title-checked entry lookup the five non-exiting dashboard writers share
+ * (tryCancelEntry, tryEditEntry and tryRetireEntry here; tryReleaseEntry and tryMoveEntryToTop
+ * in backlog-release.ts): resolve `<fileName>`, read it — an absent file is an empty section,
+ * never a seed — locate the `n`th actionable entry, and compare its heading to `expectedTitle`.
+ * Returns `gone` when there is no entry at the position and `moved` when a different heading
+ * sits there, so the caller can refuse as data without writing; on success returns the `ok`
+ * file path, raw markdown and entry for the caller to splice and write its own outcome. A pure
+ * lookup, decided inside the caller's lock. */
 function locateDashboardEntry(
   root: string,
   fileName: string,
@@ -214,14 +214,15 @@ interface LocatedEntry {
  * outcome is a union of. */
 type LocatedRefusal = { status: "gone" } | { status: "moved"; title: string };
 
-/** The shared lock-and-locate prologue of the four non-exiting dashboard writers (tryCancelEntry
- * and tryEditEntry here; tryReleaseEntry and tryMoveEntryToTop in backlog-release.ts): take the
- * cross-process lock, locate the `n`th entry by position and expected title, and refuse as data —
- * returning `located`'s `gone`/`moved` verbatim when the lookup fails — without writing. On a
- * match it calls `splice` with the located file, markdown and entry and returns whatever the
- * splice returns, so each writer keeps its own `ok`-branch outcome; the return is the union of the
- * two refusals and `splice`'s own return, which is exactly each writer's outcome type. The
- * `splice` runs inside the lock, the same window the inline prologue held. */
+/** The shared lock-and-locate prologue of the five non-exiting dashboard writers:
+ * (tryCancelEntry, tryEditEntry and tryRetireEntry here; tryReleaseEntry and tryMoveEntryToTop
+ * in backlog-release.ts): take the cross-process lock, locate the `n`th entry by position and
+ * expected title, and refuse as data — returning `located`'s `gone`/`moved` verbatim when the
+ * lookup fails — without writing. On a match it calls `splice` with the located file, markdown
+ * and entry and returns whatever the splice returns, so each writer keeps its own `ok`-branch
+ * outcome; the return is the union of the two refusals and `splice`'s own return, which is
+ * exactly each writer's outcome type. The `splice` runs inside the lock, the same window the
+ * inline prologue held. */
 export function withLocatedEntry<S>(
   root: string,
   fileName: string,
