@@ -39,10 +39,10 @@ export function parseHistoryModelList(raw: string | undefined): string[] {
  * two observing views' wordings each name the command that printed them. */
 export const HISTORY_GREP_VALUE_ERROR = "history --grep needs a pattern";
 
-/** The missing-value error cmdHistory prints for a valueless or empty `--result`, exported so
- * cli.ts's rejectUnknownArgs spec for --result can fail a trailing `history --result` with the
- * same wording. Its sibling of HISTORY_GREP_VALUE_ERROR: each names the command that printed
- * it. */
+/** The missing-value error cmdHistory prints for a valueless, empty or comma-only `--result`,
+ * exported so cli.ts's rejectUnknownArgs spec for --result can fail a trailing
+ * `history --result` with the same wording. Its sibling of HISTORY_GREP_VALUE_ERROR: each
+ * names the command that printed it. */
 export const HISTORY_RESULT_VALUE_ERROR = "history --result needs a value";
 
 /** The missing-value error cmdHistory prints for a valueless, empty or comma-only `--model`,
