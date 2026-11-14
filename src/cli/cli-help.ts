@@ -1,12 +1,12 @@
 /** The CLI’s per-command help view. Moved out of cli.ts so the topic parser is testable
  * without importing that module (whose top-level main() would run on import): the full text
- * lives in help-text.ts as one template literal, and helpStanzas/helpTopic derive
+ * lives in cli-help-text.ts as one template literal, and helpStanzas/helpTopic derive
  * `tumwater help <command>` from it by splitting the usage block on its `  tumwater
  * <command>` lines, so a topic can never drift out of sync with the full listing. HELP is
- * re-exported so cli.ts and completion.ts keep importing it from here. */
+ * re-exported so cli.ts and cli-completion.ts keep importing it from here. */
 import { suggestClosest } from "../text/suggest.js";
 import { distinctOrdered } from "../collections.js";
-import { HELP } from "./help-text.js";
+import { HELP } from "./cli-help-text.js";
 export { HELP };
 /** The listed command closest to a mistyped one, or null when nothing is close enough to
  * suggest. Case-insensitive closest-match over the commands helpStanzas(HELP) names, capped

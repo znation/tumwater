@@ -10,7 +10,7 @@
 import { fail, say, sayJson, warnIfUncommitted } from "./cli-output.js";
 import { failFollowJsonRival, parseCountFlag, parsePositionFlag, rejectRepeatFlag } from "./cli-args.js";
 import { FOLLOW_FLAG, JSON_FLAG, rejectEqualsForm } from "./cli-flag-specs.js";
-import { followView, type FollowViewSeams } from "./follow-view.js";
+import { followView, type FollowViewSeams } from "./cli-follow-view.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
 import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
 import { editInEditor } from "./cli-editor.js";

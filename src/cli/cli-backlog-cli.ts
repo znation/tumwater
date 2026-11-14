@@ -2,7 +2,7 @@
  * and the confirmation each case prints — over the entry-writing primitives in
  * backlog-write.ts (the read half's mirror, backlog.ts). cli.ts reaches the file, cancel,
  * release, top, and edit cases only through the `*AndAnnounce` shells here (the read-only list
- * and show shells live in backlog-cli-view.ts); the markdown
+ * and show shells live in cli-backlog-cli-view.ts); the markdown
  * surgery and the locked read-modify-write live in backlog-write.ts. The wake of the role that
  * should act stays in cli.ts beside the other command bodies. */
 
@@ -23,7 +23,7 @@ import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { type FiledEntry, showEntry, splitEntryFile } from "../backlog/backlog-write.js";
-import { renderShownEntry } from "./backlog-cli-view.js";
+import { renderShownEntry } from "./cli-backlog-cli-view.js";
 import { archiveFinishedOnMain, describeArchivedFile, previewArchiveOnMain } from "../backlog/backlog-archive.js";
 import { MERGE_LOCK_WAIT_MS } from "../paths.js";
 import { shortSha } from "../text/format.js";

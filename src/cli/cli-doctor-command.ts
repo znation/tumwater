@@ -17,7 +17,7 @@ import {
 } from "./cli-flag-specs.js";
 import { DOCTOR_CHECK_NAMES } from "../doctor/doctor-check-names.js";
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
-import { followView, type FollowViewSeams } from "./follow-view.js";
+import { followView, type FollowViewSeams } from "./cli-follow-view.js";
 import { parseDoctorChecks, peelPositionals } from "./cli-command-args.js";
 import { loadConfigSafe } from "../config/config.js";
 import { failFollowJsonRival } from "./cli-args.js";

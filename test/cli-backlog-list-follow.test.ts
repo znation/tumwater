@@ -2,7 +2,7 @@ import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { listAndAnnounce } from "../src/cli/backlog-cli-view.js";
+import { listAndAnnounce } from "../src/cli/cli-backlog-cli-view.js";
 import { initProject } from "../src/init/init.js";
 import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";

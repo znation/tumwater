@@ -7,7 +7,7 @@
  * fenced-safe (a `## ` line quoted inside an entry's code fence is body text, never a boundary —
  * the same fenceTracker every backlog reader consults), and a file tumwater init never seeded is
  * created with init's template rather than failing. Flag classification, preflights, and the
- * printed confirmations live in the CLI's bug/plan shells (src/cli/backlog-cli.ts); the wake of
+ * printed confirmations live in the CLI's bug/plan shells (src/cli/cli-backlog-cli.ts); the wake of
  * the role that should act stays in cli.ts beside the other command bodies. */
 import path from "node:path";
 import { fenceTracker, headingMetadata, sectionSpan } from "./backlog-md.js";

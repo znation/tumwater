@@ -23,7 +23,7 @@ import { disableRole } from "./helpers/disable-role.js";
 import { branchHead, setRef } from "../src/git/git.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";
-import { helpTopic } from "../src/cli/help.js";
+import { helpTopic } from "../src/cli/cli-help.js";
 
 // `feature` is enabled by default config, so a retire of it must refuse; `clean` is a
 // user-defined role the tests disable in tumwater.json first.

@@ -15,7 +15,7 @@ import { spawnLockHolder, stopChild } from "./helpers/child-process.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { setConfigKey, unsetConfigKey, setDailyBudgetUsd, setRoleModelFields, replaceConfigText } from "../src/config/config-write.js";
 import { parseConfigKey } from "../src/config/config-keys.js";
-import { helpTopic } from "../src/cli/help.js";
+import { helpTopic } from "../src/cli/cli-help.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 
 // setConfigKey — `tumwater config set`'s engine: one top-level key, the value JSON-parsed

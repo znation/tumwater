@@ -22,10 +22,10 @@ export function groupBy<T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T
  * (postReviewRoles, overlapHolders in ui/tui/tui-pane-pending.ts), the
  * session pane's scope cycle (ui/tui/tui-pane-session.ts's scopeCycle), the report
  * scope fold (report/report-fold.ts's scopeBases), and the rest of the harness's
- * `[...new Set(...)]` dedupes (completion.ts's commands/config keys, cli-operator-commands.ts's
+ * `[...new Set(...)]` dedupes (cli-completion.ts's commands/config keys, cli-operator-commands.ts's
  * role lists, text.ts's splitCommaListUnique/pathTokens, startup-gates.ts's backendsInUse,
  * failure-data.ts's delta roles, doctor-backlog.ts's watched set, doctor-orphans.ts's pid
- * list, main-watch.ts's knownMainFailures, help.ts's suggestCommand candidates, and
+ * list, main-watch.ts's knownMainFailures, cli-help.ts's suggestCommand candidates, and
  * tui-pane-activity.ts's present types), so those sites cannot drift on how a repeat is
  * skipped. Returns a fresh array; the input is never mutated. (The dashboard's
  * role-scope builder in ui/gui/gui-client-report.ts keeps its own copy by design: it runs
@@ -206,7 +206,7 @@ export function medianAndMax(values: readonly number[]): { median: number; max: 
 
 /** Ascending string comparator by UTF-16 code unit — the locale-independent order a bare `.sort()`
  * uses, unlike `localeCompare` (which `rankByCount` uses for its tiebreak). Used directly by
- * src/cli/cli-start-summary.ts, src/cli/completion.ts, src/cli/cli-log-commands.ts,
+ * src/cli/cli-start-summary.ts, src/cli/cli-completion.ts, src/cli/cli-log-commands.ts,
  * src/history/history-data.ts, src/review/post-merge-review.ts, src/review/quarantine-render.ts,
  * src/budget/budget.ts and src/change/change-data.ts, and by `sortByValueDesc` for its tiebreak. */
 export function compareCodeUnits(a: string, b: string): number {

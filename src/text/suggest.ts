@@ -29,7 +29,7 @@ function editDistance(a: string, b: string): number {
 
 /** The candidate closest to a mistyped `input` by case-insensitive edit distance, or null
  * when nothing is close enough to suggest: the "did you mean" behind typo'd command names
- * (help.ts) and config keys (config-write.ts, cli-config-commands.ts, config-validation's
+ * (cli-help.ts) and config keys (config-write.ts, cli-config-commands.ts, config-validation's
  * checkKnownKeys/checkKnownRoleId). Capped at `maxDistance`
  * (two edits by default — a typo's distance, not a different word's), so only a near miss
  * gets a hint and the suggestion can never fire as an auto-correction; the caller still
@@ -72,7 +72,7 @@ export function didYouMean(suggestion: string | null): string {
  * unknownTemplateError) render the hint
  * through this one composition so the two-step pairing cannot drift; callers still print the
  * full valid list themselves — a suggestion only annotates it. (cli.ts's unknown-command and
- * no-help-topic errors stay on the bare halves: their suggestion arrives from help.ts's
+ * no-help-topic errors stay on the bare halves: their suggestion arrives from cli-help.ts's
  * suggestCommand, which derives the candidate list from the help text.) */
 export function typoSuffix(input: string, candidates: readonly string[]): string {
   return didYouMean(suggestClosest(input, candidates));

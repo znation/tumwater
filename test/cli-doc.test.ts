@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { HELP, HIDDEN_COMMAND_ALIASES, helpStanzas } from "../src/cli/help.js";
+import { HELP, HIDDEN_COMMAND_ALIASES, helpStanzas } from "../src/cli/cli-help.js";
 
 /** docs/cli.md against `tumwater help`: every command the help lists appears in the reference as
  * `tumwater <command>`, and the aliases the help hides do not. Long flags too: the help and the

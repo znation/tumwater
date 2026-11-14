@@ -5,7 +5,7 @@
  * with the wording and gating order moved verbatim from main()'s cases. */
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
-import { followView, type FollowViewSeams } from "./follow-view.js";
+import { followView, type FollowViewSeams } from "./cli-follow-view.js";
 import { failFollowJsonRival, flagValue, parseGrepFlag, parseRoleListScope, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, HELD_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";

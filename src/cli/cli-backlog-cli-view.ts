@@ -1,12 +1,12 @@
 /** The read-only CLI shells of `tumwater bug` and `tumwater plan` — `--list` (active and
- * `--done`, with `--grep`) and `--show` — split from backlog-cli.ts, which keeps the writing
+ * `--done`, with `--grep`) and `--show` — split from cli-backlog-cli.ts, which keeps the writing
  * shells (file, cancel, release, top, edit). Neither shell gates on a ready repo, commits, or
  * wakes a role. cli.ts reaches them through listAndAnnounce and showAndAnnounce. */
 
 import { fail, say, sayJson } from "./cli-output.js";
 import { failFollowJsonRival, parseCountFlag, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { FOLLOW_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
-import { followView, type FollowViewSeams } from "./follow-view.js";
+import { followView, type FollowViewSeams } from "./cli-follow-view.js";
 import {
   type BacklogEntry,
   DONE_DATE_RE,

@@ -81,7 +81,7 @@ server routes GET /api/logs to the slice handler".
 refused by `tumwater config set` as a legacy-only key absent a prior value — notably the
 legacy-only `fallbackModel`, which `setConfigKey` declines to add to a config that lacks it.
 
-**Binds.** `src/cli/help.ts` (the `config` stanza's example list), `src/config/config-write.ts`
+**Binds.** `src/cli/cli-help.ts` (the `config` stanza's example list), `src/config/config-write.ts`
 (`setConfigKey`'s legacy `provider`/`fallbackModel` refusal).
 
 **Pinned by.** `test/config-write.test.ts` — "the config help example names no key the writer
@@ -224,7 +224,7 @@ checkout stays clean for the next fast-forward. Only that file is committed (oth
 stay staged). Your cancel, edit, and question answer (`--cancel`, `--edit`, `questions answer`, and the dashboard and TUI equivalents) commit their file the same way, as `Cancel <kind>: <title>`, `Edit <kind>: <title>`, and `Answer question: <title>`; your release (`--release` and the dashboard's Release, `handleBacklogRelease`) commits `Release <kind>: <title>` and wakes the kind's role unless the entry stays held, which every surface reports with `stillHeldNote` and which wakes no role; your reorder (`--top`, the dashboard's Move to top `handleBacklogTop`, and the TUI's Ctrl+V) commits `Prioritize <kind>: <title>` and wakes no role; a refused or no-op write commits nothing. A question answer also wakes the role named in the heading's `(asked by <role> …)` clause when it is a known role, and wakes no role for an unknown or missing asker (`test/question-asker.test.ts`). When the primary is not on the base branch, or git fails, the commit is skipped
 (`commitOperatorBacklogEdit` returns false, never throws) and the entry stays written.
 
-**Binds.** `src/backlog/backlog-commit.ts` (`commitOperatorBacklogEdit`), `src/cli/backlog-cli.ts`
+**Binds.** `src/backlog/backlog-commit.ts` (`commitOperatorBacklogEdit`), `src/cli/cli-backlog-cli.ts`
 (`announceFiled`), `src/gui/gui-endpoint-commands.ts` (`handleBacklogFile`), `src/ui/tui/tui-keys.ts`, `src/cli/cli-brief-command.ts`, `src/brief/brief-edit.ts`, `src/gui/gui-endpoint-commands.ts` (`handleBriefEdit`), `src/gui/gui-backlog-commands.ts` (`handleBacklogRelease`, `handleBacklogTop`).
 
 **Pinned by.** `test/backlog-commit.test.ts`, `test/cli-brief-command.test.ts`, `test/gui-endpoints.test.ts`.

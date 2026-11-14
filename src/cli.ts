@@ -58,11 +58,11 @@ import { errCode } from "./errno.js";
 import { didYouMean } from "./text/suggest.js";
 import { errorMessage, gotSuffix, stripTerminalControls } from "./text/text.js";
 import { typoSuffix } from "./text/suggest.js";
-import { HELP, HELP_GREP_VALUE_ERROR, helpTopic, helpTopicForArgs, searchHelp, suggestCommand } from "./cli/help.js";
+import { HELP, HELP_GREP_VALUE_ERROR, helpTopic, helpTopicForArgs, searchHelp, suggestCommand } from "./cli/cli-help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
 
-// The CLI's help text lives in help-text.ts and its per-command topic parser in help.ts —
-// importing cli.ts would run main(), so tests pin the topics against help.ts directly.
+// The CLI's help text lives in cli-help-text.ts and its per-command topic parser in cli-help.ts —
+// importing cli.ts would run main(), so tests pin the topics against cli-help.ts directly.
 
 /** One run's trail, shared by `history <role> <n>` and its hidden alias `tick` so the two cannot
  * drift. Positional-first: the <role> <n> tokens peel off and the remaining flags go through
@@ -244,12 +244,12 @@ async function cmdHistoryCase(root: string, args: string[]): Promise<void> {
 async function cmdArchiveCase(root: string, args: string[]): Promise<void> {
   rejectUnknownArgs("archive", args, [JSON_FLAG, DRY_RUN_FLAG]);
   await requireReadyRepo(root);
-  await (await import("./cli/backlog-cli.js")).cmdArchive(root, args);
+  await (await import("./cli/cli-backlog-cli.js")).cmdArchive(root, args);
 }
 
 /** The `bug` and `plan` argument shells are identical — the same --show/--list/--edit/
  * --cancel/--top/--release/default dispatch, each branch delegating to the shared *AndAnnounce
- * shell (backlog-cli.ts) with only the per-kind callbacks and file/section names differing. One
+ * shell (cli-backlog-cli.ts) with only the per-kind callbacks and file/section names differing. One
  * spec groups those differences so a kind never spells the dispatch out again, and a flag added
  * to both cannot drift between the two cases. The dispatch's AndAnnounce shells are imported
  * lazily here (not at cli.ts top level), preserving the per-command lazy loading every case
@@ -281,8 +281,8 @@ interface BacklogCommandSpec {
  * exactly as cmdQuarantine and its sibling commands guard the same slot. */
 async function runBacklogCommand(root: string, args: string[], s: BacklogCommandSpec): Promise<void> {
   const { cancelAndAnnounce, editAndAnnounce, fileAndAnnounce, releaseAndAnnounce, retireAndAnnounce, topAndAnnounce } =
-    await import("./cli/backlog-cli.js");
-  const { listAndAnnounce, showAndAnnounce } = await import("./cli/backlog-cli-view.js");
+    await import("./cli/cli-backlog-cli.js");
+  const { listAndAnnounce, showAndAnnounce } = await import("./cli/cli-backlog-cli-view.js");
   // The token `--grep` consumes as its pattern is text, never the dispatch's mode flag: the
   // branch scan must skip exactly that slot, or `plan --list --grep --show` claims the
   // literal "--show" as the detail mode and fails with its missing-position error instead of
@@ -328,7 +328,7 @@ async function cmdBugCase(root: string, args: string[]): Promise<void> {
   const { OPERATOR_FILE_KINDS, bugWakeText, cancelBug, editBug, editBugFromText, fileBug, fileBugFromText, retireBug } =
     await import("./backlog/backlog-write.js");
   const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
-  const { bugTitleOf } = await import("./cli/backlog-cli.js");
+  const { bugTitleOf } = await import("./cli/cli-backlog-cli.js");
   const usage = 'tumwater bug "<symptom>"';
   await runBacklogCommand(root, args, {
     command: "bug",
@@ -353,7 +353,7 @@ async function cmdPlanCase(root: string, args: string[]): Promise<void> {
   const { OPERATOR_FILE_KINDS, cancelPlan, editPlan, editPlanFromText, filePlan, filePlanFromText, planWakeText, retirePlan } =
     await import("./backlog/backlog-write.js");
   const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
-  const { planTitleOf } = await import("./cli/backlog-cli.js");
+  const { planTitleOf } = await import("./cli/cli-backlog-cli.js");
   const usage = 'tumwater plan "<title>" [body...]';
   await runBacklogCommand(root, args, {
     command: "plan",
@@ -495,7 +495,7 @@ const markerCommandCase: CommandHandler = async (root, command, args) => {
 
 // The dispatch itself: one row per token main routes, in the order the switch listed them
 // before it became this table. Aliases are repeated keys; the marker tokens share one arrow.
-// A new command adds its row here and its usage stanza in help-text.ts.
+// A new command adds its row here and its usage stanza in cli-help-text.ts.
 const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
   init: async (root, _command, args) => {
     // Imported lazily: cli/cli-start.ts pulls the whole team-booting subgraph (orchestrator,
@@ -558,7 +558,7 @@ const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
   stop: (root, _command, args) => cmdStopCase(root, args),
   completion: async (root, _command, args) => {
     // Works outside a repo (no requireReadyRepo): the body lives in
-    // cli-completion-command.ts, beside its data (src/cli/completion.ts), and is imported
+    // cli-completion-command.ts, beside its data (src/cli/cli-completion.ts), and is imported
     // lazily like every command body so the dispatcher never compiles the completion
     // subgraph until `tumwater completion` is asked for.
     await (await import("./cli/cli-completion-command.js")).cmdCompletion(root, args);
@@ -574,7 +574,7 @@ const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
 /** The CLI's entry point: the shared prelude (Node-floor gate, the `--help` topic answer,
  * repo-root resolution) and then the COMMAND_HANDLERS table, which is the dispatch — one row
  * per token, aliases as repeated keys, the marker tokens sharing one arrow. A new command
- * adds its row to the table here and its usage stanza in help-text.ts. */
+ * adds its row to the table here and its usage stanza in cli-help-text.ts. */
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
   // A reader that closes the pipe a command writes into — `status | head -1`, a follow view
@@ -609,7 +609,7 @@ async function main(): Promise<void> {
   }
   // `tumwater <command> --help` (or `-h`) prints that command's help topic — the same text
   // `tumwater help <command>` derives from the full listing — and exits 0, before any command
-  // parses its arguments or gates on a ready repo. help.ts's helpTopicForArgs owns which
+  // parses its arguments or gates on a ready repo. cli-help.ts's helpTopicForArgs owns which
   // invocations count as a request (a free-form command's prose makes an embedded --help
   // content, not a request) and returns null when this one should dispatch normally.
   const topic = helpTopicForArgs(command, args);

@@ -11,7 +11,7 @@ import { DOCTOR_CHECK_NAMES } from "../doctor/doctor-check-names.js";
 import { allRoleIds } from "../roles/roles.js";
 import { EVENT_TYPE_LABELS } from "../events/event-labels.js";
 import { POST_REVIEW_STATES } from "../review/post-merge-review-render.js";
-import { HELP, helpStanzas } from "./help.js";
+import { HELP, helpStanzas } from "./cli-help.js";
 
 export const SUPPORTED_SHELLS = ["bash", "zsh", "fish"] as const;
 export type CompletionShell = (typeof SUPPORTED_SHELLS)[number];

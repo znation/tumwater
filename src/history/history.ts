@@ -5,7 +5,7 @@ import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, HIST
 import { renderModelSummary, renderRow, renderSummary, widenWidths, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { followUntilParentGone, type FollowSeams } from "../cli/cli-log-commands.js";
-import { followView, type FollowViewSeams } from "../cli/follow-view.js";
+import { followView, type FollowViewSeams } from "../cli/cli-follow-view.js";
 import { hasFollowFlag } from "../cli/cli-flag-specs.js";
 import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";

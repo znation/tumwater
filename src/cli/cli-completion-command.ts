@@ -1,4 +1,4 @@
-import type { CompletionShell } from "./completion.js";
+import type { CompletionShell } from "./cli-completion.js";
 import {
   completionConfigKeys,
   completionModels,
@@ -6,14 +6,14 @@ import {
   completionScript,
   configValueWords,
   SUPPORTED_SHELLS,
-} from "./completion.js";
+} from "./cli-completion.js";
 import { say, fail } from "./cli-output.js";
 import { gotSuffix } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 
 /** `tumwater completion`'s command body — the shell-completion script and its --roles/
  * --config-keys/--config-value/--models listing shapes. The completion data lives in
- * src/cli/completion.ts (the spec parser, the completionScript emitter and the read-only
+ * src/cli/cli-completion.ts (the spec parser, the completionScript emitter and the read-only
  * listing helpers); this module answers a `completion` invocation, split out of cli.ts so the
  * dispatcher stays the pure shared sequence and this command body sits beside its data the
  * way every other command body does. Imported lazily by cli.ts like each command body. */

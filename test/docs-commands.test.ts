@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { HELP, helpStanzas } from "../src/cli/help.js";
+import { HELP, helpStanzas } from "../src/cli/cli-help.js";
 
 /** Every `tumwater <command>` the current docs quote is a command `tumwater help` lists, so a
  * rename cannot leave a stale command name in the docs. Tests only; no source change. */

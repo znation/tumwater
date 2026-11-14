@@ -7,7 +7,7 @@ import { runDoctor, runDoctorCheck } from "../src/doctor/doctor.js";
 import { DOCTOR_CHECK_NAMES } from "../src/doctor/doctor-check-names.js";
 import type { ProcessProbe } from "../src/process/process-table.js";
 import { renderDoctor, renderDoctorProblems, problemsOnly } from "../src/doctor/doctor-render.js";
-import { helpTopic } from "../src/cli/help.js";
+import { helpTopic } from "../src/cli/cli-help.js";
 import { initProject } from "../src/init/init.js";
 import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";

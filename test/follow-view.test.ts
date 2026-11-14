@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { followView } from "../src/cli/follow-view.js";
+import { followView } from "../src/cli/cli-follow-view.js";
 import { captureStdout } from "./helpers/exit-capture.js";
 
 // `followView`'s first frame is painted (and awaited) outside the repaint loop, so a throw

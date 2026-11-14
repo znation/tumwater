@@ -1,9 +1,9 @@
 /** The CLI’s help text — the one template literal behind `tumwater help`, `help <command>
  * topics and shell completion. The text is the single source of truth: the parsers in
- * `help.ts` (helpStanzas/helpTopic/searchHelp) and `completion.ts` split and search it
+ * `cli-help.ts` (helpStanzas/helpTopic/searchHelp) and `cli-completion.ts` split and search it
  * rather than re-listing the commands, so a new command is discoverable the run it gains a
  * stanza and can never drift out of sync with the full listing. Lives in its own module so
- * `help.ts` holds only the parsing, one responsibility per file.
+ * `cli-help.ts` holds only the parsing, one responsibility per file.
  */
 /* The role-grouped summary’s JSON keys, quoted verbatim in `history --summary --json` help
  * (its `--by model` twin is the hardcoded `{ models, total }` beside it). */

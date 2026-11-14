@@ -11,7 +11,7 @@
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { failFollowJsonRival, parseGrepFlag, scanPositionArgs } from "./cli-args.js";
 import { DRY_RUN_FLAG, FOLLOW_FLAG, JSON_FLAG, grepFlagSpec, hasFollowFlag, rejectUnknownArgs } from "./cli-flag-specs.js";
-import { followView, type FollowViewSeams } from "./follow-view.js";
+import { followView, type FollowViewSeams } from "./cli-follow-view.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
 import { salvagePatchStat, applySalvagePatchForOperator, checkSalvagePatchForOperator } from "../git/slot-salvage.js";
 import { isGitRepo } from "../git/git.js";

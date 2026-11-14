@@ -7,7 +7,7 @@
  * cli-help.test.ts and cli-help-topic.test.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HELP_GREP_VALUE_ERROR, helpStanzas, searchHelp } from "../src/cli/help.js";
+import { HELP_GREP_VALUE_ERROR, helpStanzas, searchHelp } from "../src/cli/cli-help.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 
