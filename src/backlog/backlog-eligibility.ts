@@ -43,7 +43,7 @@ export interface EligibleEntry {
 
 /** The `**Refused …` note prefix a refusing run writes. Matched as a line prefix (hasNoteLine)
  * so a mention in prose never holds an entry. (The Needs-review note is matched by the widened
- * `isNeedsReviewNoteLine` predicate, not this prefix. */
+ * `isNeedsReviewNoteLine` predicate, not this prefix). */
 const REFUSED_PREFIX = "**Refused ";
 
 /** The legacy marker the old increment rule left beside a Needs-review note's prior held count

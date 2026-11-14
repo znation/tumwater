@@ -242,7 +242,7 @@ function pushFailedRunsByModel(lines: string[], data: FailureReportData): void {
  * no_change total — the quiet loss no cluster names, a review-rejected authoring span, a
  * merge-conflict/merge-blocked authoring span, a context cut-off (a run truncated at
  * its model's ceiling, a cost of length the harness resumes rather than quiet idleness),
- * or discarded authoring the pre-queue self-check's fix-up reverted whole.
+ * or discarded authoring the pre-queue self-check's fix-up reverted whole).
  * Grows only with the role catalog (fixed by config) and the LOSS_TOP cut, so the byte
  * bound argued above holds. */
 function pushTimeAndSpend(lines: string[], data: FailureReportData): void {

@@ -321,7 +321,7 @@ export function dirEntryNames(dir: string): string[] {
  * treeBytes all began by spelling out, so the "a vanished or unreadable directory is skipped,
  * never an error" policy lives in one place. `dirEntryNames` above is the plain-name sibling
  * for scans that need no file/directory distinction. build-stage.ts's pruneStaleStagings reads
- * the staging root the same way, and exports it the way dirEntryNames is exported.) */
+ * the staging root the same way, and exports it the way dirEntryNames is exported. */
 export function tryReadDirEntries(dir: string): fs.Dirent[] | null {
   try {
     return fs.readdirSync(dir, { withFileTypes: true });

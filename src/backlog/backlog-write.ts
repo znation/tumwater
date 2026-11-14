@@ -34,7 +34,7 @@ const operatorStamp = () => `reported by the user ${formatDate(new Date())}`;
  * this one triple, so no writer re-spells the file, section, or template literals. (Two
  * non-writer sites keep their own section/file strings on purpose: sectionNoun maps a section
  * to its display noun, and bugWakeText/planWakeText spell the path into fixed role prompts —
- * neither is part of the kind→target routing. */
+ * neither is part of the kind→target routing). */
 export function backlogTarget(kind: "bug" | "plan"): {
   fileName: string;
   sectionTitle: string;
