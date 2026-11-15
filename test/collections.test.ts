@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { addTo, getOrCreate, groupBy, memoSetLru, rankCountEntries, sortByValueDesc, topAndHidden } from "../src/collections.js";
+import { addTo, distinctOrdered, getOrCreate, groupBy, memoSetLru, rankCountEntries, sortByValueDesc, topAndHidden } from "../src/collections.js";
 
 // Unit seam for collections.ts's get-or-create step, the shape factored out of the failure
 // digest, the team hold, and the error-storm reducer. Those paths already cover it end to
@@ -232,4 +232,41 @@ test("topAndHidden respects the cap exactly at the boundary", () => {
   const { visible, hidden } = topAndHidden(["a", "b", "c"], 3);
   assert.deepEqual(visible, ["a", "b", "c"]);
   assert.equal(hidden, 0);
+});
+
+// distinctOrdered is the one home of the "keep the first occurrence of each distinct element,
+// in the order first seen, dropping later repeats" step its ~19 call sites share (the TUI panes'
+// role lists, the startup gates' in-use agents, the doctor descendant/pid lists, the baseline
+// known-failure list, the CLI command/key/path-flag lists, and the text comma-list + token
+// lists). Its siblings in the file are each pinned above; this is the one with no direct unit
+// pin. These pin the two facts its doc comment claims: a repeated element does not leak through,
+// and the surviving elements keep the order in which they were first seen.
+
+test("distinctOrdered drops a repeat, keeping the first occurrence in place", () => {
+  const items = ["a", "b", "a", "c"];
+  const out = distinctOrdered(items);
+  assert.deepEqual(out, ["a", "b", "c"]);
+  // A dropped `includes` guard would leak the repeat at index 2, giving ["a","b","a","c"].
+  assert.equal(out.length, 3);
+});
+
+test("distinctOrdered keeps first-seen order rather than re-sorting", () => {
+  // First occurrences are "c","a","b" — alphabetical would be ["a","b","c"].
+  const out = distinctOrdered(["c", "a", "b", "c"]);
+  assert.deepEqual(out, ["c", "a", "b"]);
+  // A stray `.sort()` would reorder to ["a","b","c"]; the forward `for` must not.
+});
+
+test("distinctOrdered returns a fresh array and leaves the input unmutated", () => {
+  const items = ["x", "y", "z"];
+  const out = distinctOrdered(items);
+  assert.deepEqual(out, ["x", "y", "z"]);
+  assert.notEqual(out, items, "the result is a fresh array, not the caller's reference");
+  assert.deepEqual(items, ["x", "y", "z"], "the caller's array is left unmutated");
+});
+
+test("distinctOrdered returns an empty array for empty input", () => {
+  const out = distinctOrdered([]);
+  assert.deepEqual(out, []);
+  assert.equal(out.length, 0);
 });
