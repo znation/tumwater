@@ -7,7 +7,7 @@ import { loadConfig } from "../src/config/config.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { commitIn, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
-import { ROLE_VALUE_ERROR } from "../src/cli/cli-flag-specs.js";
+import { ROLE_VALUE_ERROR } from "../src/cli/cli-args.js";
 import { NOT_A_REPO_MESSAGE, NOT_INITIALIZED_MESSAGE } from "../src/gates/readiness-gates.js";
 import { allRoleIds } from "../src/roles/roles.js";
 

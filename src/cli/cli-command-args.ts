@@ -17,9 +17,9 @@ import {
   FOLLOW_FLAG,
   JSON_FLAG,
   ROLE_FLAG,
-  ROLE_VALUE_ERROR,
   rejectUnknownDoubleDash,
 } from "./cli-flag-specs.js";
+import { ROLE_VALUE_ERROR } from "./cli-args.js";
 import { fail } from "../terminal.js";
 import { DOCTOR_CHECK_NAMES, type DoctorCheckName } from "../doctor/doctor-check-names.js";
 import { typoSuffix } from "../text/suggest.js";

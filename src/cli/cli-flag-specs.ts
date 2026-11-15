@@ -9,7 +9,7 @@
  * duplicated, missing or malformed value, equals-form spelling) fails fast with an
  * actionable message instead of the command silently running with default behavior. */
 import { fail } from "../terminal.js";
-import { failOverDurationCap, parseCountFlag, parseDurationFlag, parsePositionFlag, parsePortFlag, rejectRepeatFlag } from "./cli-args.js";
+import { BRANCH_VALUE_ERROR, failOverDurationCap, parseCountFlag, parseDurationFlag, parsePositionFlag, parsePortFlag, rejectRepeatFlag, ROLE_VALUE_ERROR, TOKEN_VALUE_ERROR } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { allRoleIds } from "../roles/roles.js";
 import { didYouMean, suggestClosest, typoSuffix } from "../text/suggest.js";
@@ -125,13 +125,6 @@ export function rejectEqualsForm(
       : `${arg} is not accepted — ${spec.names[0]} takes no value (give it on its own)`,
   );
 }
-
-/** The missing-value error parseRoleFlag and parsePromptArgs share with ROLE_FLAG's trailing
- * gate below, so the three wordings cannot drift (the drift-guard test imports it). */
-export const ROLE_VALUE_ERROR = "--role needs a role id (e.g. `--role feature`)";
-/** The missing-or-flag-shaped-value error parseBranchFlag (cli/cli-args.ts) shares with
- * START_FLAG_SPECS' --branch entry, for the same no-drift reason. */
-export const BRANCH_VALUE_ERROR = "--branch needs a branch name (e.g. `--branch release/2.0`)";
 
 /** The `--role <id>` flag spec, shared by every role-targeting command (logs, reset-counters,
  * wake, abort, pause, resume): one definition of the flag's spelling and value shape so the
@@ -512,12 +505,6 @@ const PORT_FLAG: FlagSpec = {
     parsePortFlag(value);
   },
 };
-
-/** The one refusal for a trailing `gui --token` with no value, phrased for what the
- * flag actually needs — the spec's missingValue (so the gate's early report says it)
- * and cmdGui's own re-check share this one wording. Declared above START_FLAG_SPECS
- * (whose TOKEN_FLAG references it at module load), not between the two spec arrays. */
-export const TOKEN_VALUE_ERROR = "--token requires a non-empty secret (e.g. `--token s3cret`)";
 
 /** `tumwater gui`'s `--all-interfaces` flag: serve the dashboard on every network
  * interface instead of loopback, exposing it to the LAN. Value-less. Shared by `gui` and

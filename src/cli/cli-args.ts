@@ -1,5 +1,4 @@
 import { fail } from "../terminal.js";
-import { BRANCH_VALUE_ERROR, ROLE_VALUE_ERROR, TOKEN_VALUE_ERROR } from "./cli-flag-specs.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
 import { gotSuffix, parsePositiveInt, splitCommaList } from "../text/text.js";
@@ -19,6 +18,18 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
  * gate — lives in cli/cli-flag-specs.ts; this module keeps the imperative single-flag parsers
  * its specs re-run. Terminal output and the failure exit live in terminal.ts — this
  * module's parsers fail through fail() from there, but they do not write output of their own. */
+
+/** The missing-value error parseRoleFlag and parsePromptArgs (cli-command-args.ts) share with
+ * the --role spec's trailing gate in cli-flag-specs.ts, so the three wordings cannot drift
+ * (the drift-guard test imports it). */
+export const ROLE_VALUE_ERROR = "--role needs a role id (e.g. `--role feature`)";
+/** The missing-or-flag-shaped-value error parseBranchFlag shares with START_FLAG_SPECS'
+ * --branch entry (cli-flag-specs.ts), for the same no-drift reason. */
+export const BRANCH_VALUE_ERROR = "--branch needs a branch name (e.g. `--branch release/2.0`)";
+/** The one refusal for a trailing `gui --token` with no value — the spec's missingValue
+ * (so the gate's early report says it) and tokenValueProblem's re-check share this one
+ * wording. */
+export const TOKEN_VALUE_ERROR = "--token requires a non-empty secret (e.g. `--token s3cret`)";
 
 /** The raw value token that follows a valued flag in `args`: null when the flag is absent,
  * the following token when present (undefined when the flag is the final argument, so the

@@ -10,7 +10,7 @@
 
 import { fail, say, sayJson } from "../terminal.js";
 import { flagValue } from "./cli-args.js";
-import { ROLE_VALUE_ERROR } from "./cli-flag-specs.js";
+import { ROLE_VALUE_ERROR } from "./cli-args.js";
 import { knownRoleIds, loadConfig } from "../config/config.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
 import { errorMessage } from "../text/text.js";
