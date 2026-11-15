@@ -27,11 +27,11 @@ what to do, not what to avoid.
 The steward's standing measure of where the codebase stands (measured from the repo, not vibes —
 refresh the numbers with `wc -l` and `find` when this section is touched, and note the date).
 
-- **Code size**: 535 src modules / ~133,000 lines; 668 test modules / ~201,000 lines. Trend:
+- **Code size**: 536 src modules / ~134,000 lines; 669 test modules / ~201,000 lines. Trend:
   grows with every merge; the split-large-function family below is the standing driver of
   per-function (not per-file) growth.
-- **Module-size ceiling**: 25 src files exceed 600 lines, 10 exceed 700, 4 exceed 800; the largest
-  is src/baseline/main-watch.ts at 943. The ceiling holds because complexity is extracted into named
+- **Module-size ceiling**: 25 src files exceed 600 lines, 9 exceed 700, 3 exceed 800; the largest
+  is src/roles/role-view.ts at 924. The ceiling holds because complexity is extracted into named
   helpers, not by shrinking files — a file may stay large while its functions stay small; do not
   re-split an already-small function to chase a line count.
 - **Dependencies**: 2 runtime (ink, react) — the ink decision of 2026-10-01 and the react that
@@ -40,7 +40,7 @@ refresh the numbers with `wc -l` and `find` when this section is touched, and no
   and the type packages for node and react (@types/node, @types/react). Zero incidental runtime
   deps: any new one needs an explicit user decision recorded here, matching the principle above.
 - **Per-function complexity**: the split-large-function family is the team's main complexity
-  pressure — 278 such plans have landed (counted as `## Done` headings that name a body "split
+  pressure — 286 such plans have landed (counted as `## Done` headings that name a body "split
   into" named steps or one named helper per concern) and more sit in `## Planned`. A split earns a
   plan only when a named function is genuinely large and a reader's question is answered better by
   a name; a complexity-N number alone is not the reason. This keeps the family finite instead of a
