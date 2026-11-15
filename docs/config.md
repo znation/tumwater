@@ -128,7 +128,7 @@ The `notify` command receives one of these values as `TUMWATER_EVENT_TYPE`; each
 | `role_streak_paused` | The repeated-failure breaker paused a role; the message names the streak and its last error. |
 | `role_cap_paused` | A role reached its own daily cost cap and stops starting runs. |
 | `disk_low` | Free space on the worktrees volume dropped below `diskHoldGB`, so new work is held. |
-| `main_red_hold` | Main's own check is failing; roles keep authoring on top of it. When the check names its failing tests, the message names the first and says changes that add no new failures still merge; otherwise a legacy merge-side `main_red` pin holds the kept change until main moves past it. Either way the `ci` healer is handed the red. |
+| `main_red_hold` | Main's own check is failing; a code role keeps authoring on top of it. When the check names its failing tests, the message names the first and says changes that add no new failures still merge; otherwise it says a change whose own check fails is kept until main moves. Either way the `ci` healer is handed the red. |
 | `remote_ci_failed` | GitHub Actions failed on a pushed main the `ci` role cannot see from this machine (plans/remote-ci.md): the message names the failed commit and its GitHub URL, and the `ci` role reproduces it and fixes or files it. One page per commit turning failed; re-recording the same failed commit pages nothing. |
 | `merge_failed` | A merge finished without landing its change; the message names the change's summary and why the merge failed: the review's first reason, or the check, block or error that stopped it. |
 | `restart_blocked` | The restart onto the new main is blocked, and the team is stuck behind it. |
