@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
+import fs from "node:fs";
 import {
   STATE_DIR,
   abortRequestPath,
@@ -22,10 +23,11 @@ import {
   slotWorktreePath,
   sessionsRootDir,
   statePath,
+  nearestTumwaterRoot,
   owningTeamRoot,
   worktreePath,
 } from "../src/paths.js";
-import { teamWorkspace } from "./fixtures/repo-fixtures.js";
+import { teamWorkspace, tmpdir } from "./fixtures/repo-fixtures.js";
 import { allRoleIds } from "../src/roles/roles.js";
 
 /** Unit coverage for src/paths.ts — the single source of truth for where every piece of
@@ -149,4 +151,37 @@ test("owningTeamRoot names the team root only for a directory inside its worktre
   assert.equal(owningTeamRoot(slot), root);
   assert.equal(owningTeamRoot(root), undefined);
   assert.equal(owningTeamRoot(path.join(root, "src")), undefined);
+});
+
+// nearestTumwaterRoot is the one lookup answering "which team root owns this directory?" —
+// owningTeamRoot and teamRootOf both delegate the search to it. Its three outcomes are each a
+// different real answer, but the only live test sees the {root, undefined} that owningTeamRoot
+// computes FROM it, so none of the walk's own branches were pinned. Pin them through the
+// exported function: a walk that returned a non-directory .tumwater, or stopped at the wrong
+// ancestor, is exactly how the 2026-10-18 phantom $TMPDIR/.tumwater was minted. Each case uses
+// a fresh realpath'd tmpdir() child, whose ancestors (the per-run root, the OS tmp mount) hold
+// no .tumwater directory — the same isolation the owningTeamRoot test assumes.
+
+test("nearestTumwaterRoot returns the directory itself the moment it holds a .tumwater directory", () => {
+  const dir = fs.realpathSync(tmpdir());
+  fs.mkdirSync(path.join(dir, ".tumwater"));
+  assert.equal(nearestTumwaterRoot(dir), dir);
+});
+
+test("nearestTumwaterRoot climbs to the nearest ancestor holding a .tumwater directory", () => {
+  const team = fs.realpathSync(tmpdir());
+  const slot = path.join(team, ".tumwater", "worktrees", "_slot-1"); // real role-worktree shape
+  fs.mkdirSync(slot, { recursive: true }); // creates team/.tumwater as a directory along the way
+  assert.equal(nearestTumwaterRoot(slot), team);
+});
+
+test("nearestTumwaterRoot returns undefined when no ancestor holds a .tumwater directory", () => {
+  const dir = fs.realpathSync(tmpdir()); // fresh, empty, no .tumwater here or above
+  assert.equal(nearestTumwaterRoot(dir), undefined);
+});
+
+test("nearestTumwaterRoot does not read a non-directory .tumwater entry as a root", () => {
+  const dir = fs.realpathSync(tmpdir());
+  fs.writeFileSync(path.join(dir, ".tumwater"), "x"); // a .tumwater FILE, not a directory
+  assert.equal(nearestTumwaterRoot(dir), undefined);
 });
