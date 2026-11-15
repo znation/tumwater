@@ -502,10 +502,10 @@ function listPromptArgs(args: string[], f: PromptFlags): PromptArgs {
   return { mode: "list", role: f.role, json: f.jsonFlags.length > 0, grep: f.grepRaw ?? null, follow: f.followClaim.length > 0 };
 }
 
-/** The shared `--cancel <n>` / `--top <n>` mode: each takes exactly one 1-based position
- * and refuses any other token — these modes have no prompt text. Shared so the two cannot
- * drift; `mode` drives both the refusal wording and the returned mode. */
-function positionOnlyPromptArgs<M extends "cancel" | "top">(
+/** The shared `--cancel <n>` / `--top <n>` / `--show <n>` modes: each takes exactly one 1-based
+ * position and refuses any other token — these modes have no prompt text. Shared so the three
+ * cannot drift; `mode` drives both the refusal wording and the returned mode. */
+function positionOnlyPromptArgs<M extends "cancel" | "top" | "show">(
   args: string[],
   f: PromptFlags,
   mode: M,
@@ -565,11 +565,7 @@ function topPromptArgs(args: string[], f: PromptFlags): PromptArgs {
 /** `--show <n>`: print the Nth queued prompt in full, read-only — the same position
  * addressing as `--cancel`/`--top`, with `--json` for the row as data. */
 function showPromptArgs(args: string[], f: PromptFlags): PromptArgs {
-  const n = parsePositionFlag("--show", args[f.showFlag + 1], "--show 2");
-  // The position, the --role pair and any --json tokens are the only tokens this mode may
-  // carry; anything else would be prompt text, and this mode has none.
-  failStrayArg(args, "with --show there is no prompt text", f.showFlag, f.showFlag + 1, ...f.roleClaim, ...f.jsonFlags);
-  return { mode: "show", role: f.role, position: n, json: f.jsonFlags.length > 0 };
+  return positionOnlyPromptArgs(args, f, "show", "--show", f.showFlag);
 }
 
 /** `--file <path>`: enqueue the file's (or stdin's) whole contents as the prompt. */
