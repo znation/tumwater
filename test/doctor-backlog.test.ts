@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledEntries, checkStrandedPlans, checkValidationGaps, fixClaimProblems, planDependencyProblem } from "../src/doctor/doctor-backlog-plans.js";
+import { fixedRecordsToCheck, FIX_CLAIMS_CHECKED } from "../src/doctor/doctor-backlog.js";
 import { checkHeldBugs, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, failureMentions, quotedTestName } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkPostReviews, atRiskPostReviews, atRiskPostReviewsPhrase, POST_REVIEW_AT_RISK_FAILURES, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, backlogCommitLines, backlogCommitMessage } from "../src/doctor/doctor-backlog.js";
 import type { DirtyBacklogFiles } from "../src/doctor/doctor-backlog.js";
@@ -122,6 +123,77 @@ test("checkFixClaims skips a retired bug that was closed without being fixed", (
   const r = checkFixClaims(root);
   assert.equal(r.level, "ok", r.detail);
   assert.match(r.detail, /newest 1 Fixed record/);
+});
+
+test("fixedRecordsToCheck takes the newest FIX_CLAIMS_CHECKED records that still qualify, not the first N", () => {
+  // The shared selection the three newest-first Fixed-record checks cannot drift on: retired
+  // records are removed, THEN the bound rides the newest FIX_CLAIMS_CHECKED records that still
+  // qualify. The retired record sits at index 8 (inside the first ten), with 8 reals before and
+  // 3 after: filter-then-bound returns the 8 reals + the next 2 (11 qualify, oldest of the 11
+  // dropped); bound-then-filter would return only the 8 reals (the retired slot wastes a bound
+  // slot) — the two orderings differ exactly here.
+  const root = tmpdir("doctor-fixed-records-selection-");
+  const real = (i: number) => `### Real ${i} (found by qa 2026-09-20, fixed 2026-09-21)\n`;
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n## Fixed\n\n` +
+      Array.from({ length: 8 }, (_, i) => real(i)).join("\n") +
+      `\n### Duplicate (found by qa 2026-11-01, retired 2026-11-08 by the user)\n\n` +
+      [8, 9, 10].map(real).join("\n") +
+      `\n`,
+  );
+  const titles = fixedRecordsToCheck(root).map((e) => e.title);
+  assert.deepEqual(titles, [
+    ...Array.from({ length: 8 }, (_, i) => `Real ${i} (found by qa 2026-09-20, fixed 2026-09-21)`),
+    "Real 8 (found by qa 2026-09-20, fixed 2026-09-21)",
+    "Real 9 (found by qa 2026-09-20, fixed 2026-09-21)",
+  ]);
+});
+
+test("checkFixClaims takes an older real record into the window that a retired record freed", () => {
+  // filter-then-bound: the retired record inside the newest window is removed first, so the 11th
+  // (oldest) real record qualifies for a slot — a bound-before-filter implementation would leave
+  // it outside the window and this assertion fails.
+  const root = tmpdir("doctor-fix-claims-bounded-retired-");
+  fs.mkdirSync(path.join(root, "src"));
+  fs.writeFileSync(path.join(root, "src", "real.ts"), "export function liveSymbol() {}\n");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n## Fixed\n\n` +
+      Array.from({ length: FIX_CLAIMS_CHECKED - 1 }, (_, i) =>
+        `### Real ${i} (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Fix:** \`liveSymbol\` does it.\n`)
+        .join("\n") +
+      `\n### Real 9 (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Fix:** \`liveSymbol\` does it.\n\n### Duplicate (found by qa 2026-11-01, retired 2026-11-08 by the user)\n\nNames \`phantomSymbol\`.\n\n### Real 11 (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Fix:** \`liveSymbol\` does it.\n`,
+  );
+  const r = checkFixClaims(root);
+  assert.equal(r.level, "ok", r.detail);
+  assert.match(r.detail, new RegExp(`newest ${FIX_CLAIMS_CHECKED} Fixed record`));
+});
+
+test("checkFixClaims warns on a stale record inside the window the retired record occupies, and spares the next stale one", () => {
+  // filter-then-bound at the behavior level: the retired record at index 8 sits inside the first
+  // ten, so a bound-before-filter window (the 8 reals + the retired, all live) reads ok — while
+  // the filter-then-bound window takes the 10 qualifying records, the 10th of which is the stale
+  // one. A swapped ordering reads ok and fails the warn below.
+  const root = tmpdir("doctor-fix-claims-bound-swap-");
+  fs.mkdirSync(path.join(root, "src"));
+  fs.writeFileSync(path.join(root, "src", "real.ts"), "export function liveSymbol() {}\n");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n## Fixed\n\n` +
+      Array.from({ length: 8 }, (_, i) =>
+        `### Real ${i} (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Fix:** \`liveSymbol\` does it.\n`)
+        .join("\n") +
+      `\n### Duplicate (found by qa 2026-11-01, retired 2026-11-08 by the user)\n\nNames \`phantomSymbol\`.\n\n` +
+      `### Real 9 (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Fix:** \`liveSymbol\` does it.\n\n` +
+      `### Stale 9 (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Fix:** \`goneSymbol\` does it.\n`,
+  );
+  const r = checkFixClaims(root);
+  assert.equal(r.level, "warn", r.detail);
+  assert.match(r.detail, /"Stale 9/);
+  assert.match(r.detail, /goneSymbol/);
+  assert.ok(!r.detail.includes("and 1 more"), r.detail); // the only suspect the window holds
+  assert.ok(!r.detail.includes("Duplicate"), r.detail); // the retired record owes no fix claim
 });
 
 test("checkFixClaims warns instead of throwing when BUGS.md vanishes between the stat and the read", () => {
@@ -259,6 +331,36 @@ test("checkValidationGaps verifies only the newest 10 Fixed records", () => {
   const recent = checkValidationGaps(validationGapsRepo([null, ...tagged]));
   assert.equal(recent.level, "warn", "the same untagged record as the newest is inside it");
   assert.match(recent.detail, /has no \*\*Validation gap:\*\* line/);
+});
+
+test("checkValidationGaps drops a retired record and takes the next qualifying one into the window", () => {
+  // The same filter-then-bound contract as its fix-claims twin, through the tag scan: the retired
+  // record inside the newest window is removed first, so the oldest qualifying record takes its
+  // freed slot and (untagged) warns — bound-before-filter would keep it out of scope and read ok.
+  const root = tmpdir("doctor-validation-gaps-bounded-retired-");
+  const entry = (title: string, trace: string) => `### ${title}\n\n**Symptom:** it broke.\n\n${trace}`;
+  const tagged = (title: string) => entry(title, "- **Validation gap:** none — the suite covered it.\n");
+  const noTrace = (title: string) => entry(title, "");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n## Fixed\n\n` +
+      Array.from({ length: FIX_CLAIMS_CHECKED - 2 }, (_, i) => tagged(`Real ${i} (found by qa 2026-09-20, fixed 2026-09-21)`))
+        .join("\n") +
+      `\n` +
+      tagged("Real 8 (found by qa 2026-09-20, fixed 2026-09-21)") +
+      `\n` +
+      entry("Duplicate (found by qa 2026-11-01, retired 2026-11-08 by the user)", "**Retired 2026-11-08 by the user: duplicate**\n") +
+      `\n` +
+      noTrace("Real 9 (found by qa 2026-09-20, fixed 2026-09-21)") +
+      `\n`,
+  );
+  const r = checkValidationGaps(root);
+  // 10 qualifying records: the 9 tagged ones plus the untagged one the retired slot freed —
+  // all inside the window, so the check warns naming exactly the untagged record.
+  assert.equal(r.level, "warn", r.detail);
+  assert.match(r.detail, /"Real 9/);
+  assert.match(r.detail, /has no \*\*Validation gap:\*\* line/);
+  assert.ok(!r.detail.includes("Duplicate"), r.detail);
 });
 
 test("checkValidationGaps reads ok with no BUGS.md", () => {
