@@ -10,7 +10,7 @@
  * the patch run. */
 
 import { fileURLToPath } from "node:url";
-import { nodeFallbackExec, strayWriteRefusal } from "../write-guard.js";
+import { HOOK_TIMEOUT_SECONDS, nodeFallbackExec, strayWriteRefusal } from "../write-guard.js";
 import { patchWritePaths } from "./codex-patch-paths.js";
 
 /** The tool a codex PreToolUse hook sees for file edits; anything else is not this hook's
@@ -37,10 +37,6 @@ export function codexWriteRefusal(payload: unknown): string | null {
   }
   return null;
 }
-
-/** Seconds codex waits for the hook before running the tool anyway (the same timeout claude's
- * hook gets). */
-const HOOK_TIMEOUT_SECONDS = 30;
 
 /** The matcher the PreToolUse hook is registered with; codex sends only `apply_patch` here. */
 const HOOK_MATCHER = "^apply_patch$";

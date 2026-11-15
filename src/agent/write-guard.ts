@@ -24,6 +24,11 @@ import os from "node:os";
 import path from "node:path";
 import { roleNotesPath, STATE_DIR, worktreesDir } from "../paths.js";
 
+/** Seconds each backend waits for a write-guard hook before running the tool anyway. The one
+ * home of the timeout the claude and codex PreToolUse hooks both get (claude-write-guard.ts,
+ * codex-write-guard.ts) so a slow host cannot time out one backend's guard but not the other's. */
+export const HOOK_TIMEOUT_SECONDS = 30;
+
 /** A run's checkout and the team root it sits in. */
 interface RunCheckout {
   root: string;

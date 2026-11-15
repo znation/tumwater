@@ -10,14 +10,11 @@
  * claude-write-guard-hook.ts beside this file. */
 
 import { fileURLToPath } from "node:url";
-import { nodeFallbackExec, strayWriteRefusal } from "../write-guard.js";
+import { HOOK_TIMEOUT_SECONDS, nodeFallbackExec, strayWriteRefusal } from "../write-guard.js";
 
 /** claude's file-writing tools a team run has: claude-args.ts's `--tools` allows only these two,
  * and `--tools` is a reserved flag, so no passthrough can add another. */
 const WRITE_TOOLS = ["Edit", "Write"] as const;
-
-/** Seconds claude waits for the hook before running the tool anyway. */
-const HOOK_TIMEOUT_SECONDS = 30;
 
 /** The `--settings` value for a run in `cwd`: one PreToolUse hook on the file-writing tools that
  * runs the compiled claude-write-guard-hook.js with this process's node, falling back to
