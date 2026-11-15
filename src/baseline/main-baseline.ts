@@ -336,13 +336,15 @@ export function noteInheritedGreen(sha: string, from: string): void {
 export const INHERIT_WALK_MAX = 64;
 
 /** The body of a `git rev-list --first-parent --max-count=<max> <ref>` read — the walk the
- * first-parent scans in this module share, plus the main watch's red-opener walk (main-watch.ts)
- * and self-redeploy's newest-green-above-build scan (src/redeploy/redeploy-target.ts),
- * spelled the same on purpose so a change to the walk shape (the bound, the `--first-parent` flag)
- * lands once. `inheritedGreen` and `watchedBaseline` walk a commit's ancestors (`${sha}^` /
- * `${tip}^`, the commit itself excluded); the red-opener walk starts at a commit and walks down.
- * Never throws: a git failure is an empty list, and every caller already treats that as a
- * no-inheritance / no-verdict / no-re-attribution answer. */
+ * first-parent scans in this module share, plus the main watch's full-check anchor walk
+ * (main-watch.ts's `fullCheckPlan`) and self-redeploy's newest-green-above-build scan
+ * (src/redeploy/redeploy-target.ts), spelled the same on purpose so a change to the walk shape
+ * (the bound, the `--first-parent` flag) lands once. (The main watch's red-opener walk
+ * (main-watch.ts) does NOT use this: it reuses only the bound and inlines its own rev-list.)
+ * `inheritedGreen` and `watchedBaseline` walk a commit's ancestors (`${sha}^` / `${tip}^`, the
+ * commit itself excluded); the full-check anchor walk starts at a commit (the tip) and walks down.
+ * Never throws: a git failure is an empty list, and every caller already treats that as its
+ * no-history fallback answer. */
 export async function firstParentWalk(wt: string, ref: string, max: number): Promise<string[]> {
   return gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${max}`, ref));
 }

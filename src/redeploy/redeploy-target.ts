@@ -9,7 +9,8 @@ import { mirrorWorktreePath } from "../paths.js";
  * (orchestrator-poll.ts's `pollRedeploy`). The verdict cache stays in main-baseline.ts; this
  * module imports it read-only, so a target-selection change cannot touch the cache's write
  * policy and vice versa. The shared `firstParentWalk` git read lives in main-baseline.ts too
- * (the main watch's red-opener walk reuses it); importing it read-only here keeps the
+ * (the main watch's full-check anchor walk, main-watch.ts's `fullCheckPlan`, reuses it); importing
+ * it read-only here keeps the
  * `git rev-list --first-parent` shape — bound and flag — changeable in one place rather than
  * re-spelled. `watchVerifiesMain` — the main-watch mode predicate that picks
  * `redeployTarget`'s `watched` branch — stays beside the watch in src/baseline/main-baseline.ts:
