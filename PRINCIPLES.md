@@ -27,7 +27,7 @@ what to do, not what to avoid.
 The steward's standing measure of where the codebase stands (measured from the repo, not vibes —
 refresh the numbers with `wc -l` and `find` when this section is touched, and note the date).
 
-- **Code size**: 536 src modules / ~134,000 lines; 671 test modules / ~201,000 lines. Trend:
+- **Code size**: 536 src modules / ~134,000 lines; 674 test modules / ~202,000 lines. Trend:
   grows with every merge; the split-large-function family below is the standing driver of
   per-function (not per-file) growth.
 - **Module-size ceiling**: 25 src files exceed 600 lines, 9 exceed 700, 3 exceed 800; the largest
