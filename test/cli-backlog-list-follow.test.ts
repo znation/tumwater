@@ -11,7 +11,7 @@ import { entryKey } from "../src/backlog/backlog-parts.js";
 import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
 import { cli } from "./helpers/cli-harness.js";
-import { followSeams } from "./fixtures/follow-fixtures.js";
+import { followSeams, runFollowedView } from "./fixtures/follow-fixtures.js";
 
 // `plan|bug --list -f` runs in-process with the follow's parent-death and TTY seams, driving
 // the follow deterministically the way cli-backlog-follow.test.ts drives `backlog -f`: mock
@@ -58,50 +58,14 @@ async function runFollow(
   count: (out: string) => number,
   flipParent: () => void,
 ): Promise<string> {
-  const cap = captureStdout();
-  let done = false;
-  let failure: unknown = null;
-  t.mock.timers.enable({ apis: ["setInterval"] });
-  const promise = listAndAnnounce(repo, args, command, fileName, sectionTitle, seams).then(
-    () => (done = true),
-    (err: unknown) => {
-      failure = err;
-      done = true;
-    },
+  return runFollowedView(
+    t,
+    (seams) => listAndAnnounce(repo, args, command, fileName, sectionTitle, seams),
+    seams,
+    count,
+    waitForFrames,
+    flipParent,
   );
-  try {
-    let out = cap.out();
-    for (let i = 0; i < 3000 && count(out) < 1 && !done; i++) {
-      await sleep(10);
-      out = cap.out();
-    }
-    assert.ok(count(out) >= 1, "first frame rendered");
-    for (let guard = 0; count(out) < waitForFrames && guard < 10_000; guard++) {
-      t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-      out = cap.out();
-    }
-    assert.ok(count(out) >= waitForFrames, `got ${count(out)} of ${waitForFrames} frames`);
-    const repainted = out;
-    flipParent();
-    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-    await promise;
-    assert.ok(done, "follow resolves once the parent is gone");
-    if (failure !== null) throw failure;
-    const settled = cap.out();
-    t.mock.timers.tick(60_000); // retired-name-ok: node:test mock clock
-    assert.equal(cap.out(), settled, "nothing printed after the follow ended");
-    return repainted;
-  } finally {
-    flipParent();
-    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-    try {
-      await promise;
-    } catch {
-      // Rejection already recorded above.
-    }
-    t.mock.timers.reset();
-    cap.restore();
-  }
 }
 
 test("plan --list -f repaints the numbered list until its parent exits", async (t) => {

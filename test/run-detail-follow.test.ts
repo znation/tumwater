@@ -11,7 +11,7 @@ import { initProject } from "../src/init/init.js";
 import { cli } from "./helpers/cli-harness.js";
 import { captureStdout } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
-import { followSeams } from "./fixtures/follow-fixtures.js";
+import { followSeams, runFollowedView } from "./fixtures/follow-fixtures.js";
 
 // `history <role> <n> -f` runs in-process with the follow's parent-death and TTY seams, the
 // way cli-role-follow.test.ts drives `role -f`: mock only setInterval so each repaint and
@@ -44,52 +44,14 @@ async function runFollow(
   opts: { opts?: Record<string, unknown>; waitForFrames?: number; count: (out: string) => number; flipParent: () => void },
 ): Promise<string> {
   const waitForFrames = opts.waitForFrames ?? 2;
-  const cap = captureStdout();
-  let done = false;
-  let failure: unknown = null;
-  t.mock.timers.enable({ apis: ["setInterval"] });
-  const promise = cmdRunDetail(repo, args, false, opts.opts ?? {}, seams).then(
-    () => (done = true),
-    (err: unknown) => {
-      failure = err;
-      done = true;
-    },
+  return runFollowedView(
+    t,
+    (seams) => cmdRunDetail(repo, args, false, opts.opts ?? {}, seams),
+    seams,
+    opts.count,
+    waitForFrames,
+    opts.flipParent,
   );
-  try {
-    let out = cap.out();
-    for (let i = 0; i < 3000 && opts.count(out) < 1 && !done; i++) {
-      await sleep(10);
-      out = cap.out();
-    }
-    assert.ok(opts.count(out) >= 1, "first frame rendered");
-    for (let guard = 0; opts.count(out) < waitForFrames && guard < 10_000; guard++) {
-      t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-      out = cap.out();
-    }
-    assert.ok(opts.count(out) >= waitForFrames, `got ${opts.count(out)} of ${waitForFrames} frames`);
-    const repainted = out;
-    opts.flipParent();
-    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-    await promise;
-    assert.ok(done, "follow resolves once the parent is gone");
-    if (failure !== null) throw failure;
-    const settled = cap.out();
-    t.mock.timers.tick(60_000); // retired-name-ok: node:test mock clock
-    assert.equal(cap.out(), settled, "nothing printed after the follow ended");
-    return repainted;
-  } finally {
-    // Flip and await even when an assertion above throws, so a failure never leaves the
-    // follow's interval or watch running into real stdout or keeping the test process alive.
-    opts.flipParent();
-    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-    try {
-      await promise;
-    } catch {
-      // Rejection already recorded above.
-    }
-    t.mock.timers.reset();
-    cap.restore();
-  }
 }
 
 test("history <role> <n> -f repaints the run's trail until its parent exits, then prints nothing", async (t) => {

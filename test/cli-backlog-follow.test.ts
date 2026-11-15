@@ -6,7 +6,7 @@ import { makeRepo, seedOpenBug, writeBacklogFile } from "./fixtures/repo-fixture
 import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
 import { cli } from "./helpers/cli-harness.js";
-import { followSeams } from "./fixtures/follow-fixtures.js";
+import { followSeams, runFollowedView } from "./fixtures/follow-fixtures.js";
 
 // `backlog -f` runs in-process with the follow's parent-death and TTY seams, driving the
 // follow deterministically the way status-follow.test.ts drives `status -f`: mock only
@@ -47,64 +47,7 @@ async function runFollow(
   count: (out: string) => number,
   flipParent: () => void,
 ): Promise<string> {
-  const cap = captureStdout();
-  let done = false;
-  let failure: unknown = null;
-  t.mock.timers.enable({ apis: ["setInterval"] });
-  // The follow's promise is driven by mock ticks, so it is awaited only after the death-watch
-  // tick resolves it; the rejection branch records a real follow failure (surfaced below) while
-  // still setting `done`, so the waits terminate and no rejection goes unhandled.
-  const promise = cmdBacklog(repo, args, seams).then(
-    () => (done = true),
-    (err: unknown) => {
-      failure = err;
-      done = true;
-    }
-  );
-  try {
-    // The follow renders its first frame synchronously as soon as its readiness gate passes, so
-    // the initial frame's appearance marks when the repaint interval and parent-death poll are
-    // registered (as mock timers). Before that, ticks would be no-ops, so wait for it in real
-    // time — this depends only on the gate (a git read), not on the 5 ms cadence the flake was
-    // about, so a generous bound is safe and costs nothing on the success path.
-    let out = cap.out();
-    for (let i = 0; i < 3000 && count(out) < 1 && !done; i++) {
-      await sleep(10);
-      out = cap.out();
-    }
-    assert.ok(count(out) >= 1, "first frame rendered after the readiness gate");
-    // Drive the repaint interval deterministically: each 5 ms tick fires one frame.
-    for (let guard = 0; count(out) < waitForFrames && guard < 10_000; guard++) {
-      t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-      out = cap.out();
-    }
-    assert.ok(count(out) >= waitForFrames, `got ${count(out)} of ${waitForFrames} frames`);
-    const repainted = out;
-    // Flip the parent away; the death-watch poll (same 5 ms cadence) fires on the next tick.
-    flipParent();
-    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-    await promise;
-    assert.ok(done, "follow resolves once the parent is gone");
-    if (failure !== null) throw failure;
-    // Nothing is repainted once the follow ended: both intervals were cleared on resolve, so
-    // advancing the mock clock far cannot change the captured output.
-    const settled = cap.out();
-    t.mock.timers.tick(60_000); // retired-name-ok: node:test mock clock
-    assert.equal(cap.out(), settled, "nothing printed after the follow ended");
-    return repainted;
-  } finally {
-    // Flip and await even when an assertion above throws, so a failure never leaves the follow's
-    // interval or watch running into real stdout or keeping the test process alive.
-    flipParent();
-    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-    try {
-      await promise;
-    } catch {
-      // Rejection already recorded above.
-    }
-    t.mock.timers.reset();
-    cap.restore();
-  }
+  return runFollowedView(t, (seams) => cmdBacklog(repo, args, seams), seams, count, waitForFrames, flipParent);
 }
 
 const ALPHA = "### Alpha (planned 2026-01-01 by operator)\n\nBody.";

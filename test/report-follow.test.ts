@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import { cmdReport } from "../src/report/report.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
-import { sleep } from "./helpers/wait.js";
-import { followSeams } from "./fixtures/follow-fixtures.js";
+import { followSeams, runFollowedView } from "./fixtures/follow-fixtures.js";
 
 // `report -f` runs in-process with the follow's parent-death and TTY seams, driving the
 // follow deterministically the way status-follow.test.ts drives `status -f`: mock only
@@ -31,54 +30,15 @@ async function runFollow(
   waitForFrames: number,
   flipParent: () => void,
 ): Promise<string> {
-  const cap = captureStdout();
-  let done = false;
-  let failure: unknown = null;
-  t.mock.timers.enable({ apis: ["setInterval"] });
-  const promise = cmdReport(repo, args, seams).then(
-    () => (done = true),
-    (err: unknown) => {
-      failure = err;
-      done = true;
-    }
+  // The frame counter is the report's heading; the orchestration is the shared helper.
+  return runFollowedView(
+    t,
+    (seams) => cmdReport(repo, args, seams),
+    seams,
+    (o) => (o.match(new RegExp(heading, "g")) ?? []).length,
+    waitForFrames,
+    flipParent,
   );
-  try {
-    const frames = (out: string) => (out.match(new RegExp(heading, "g")) ?? []).length;
-    // The first frame renders synchronously as soon as the follow starts (report has no
-    // ready-repo gate), so the repaint and parent-death intervals exist as mock timers
-    // immediately; a short real-time poll confirms that before ticking.
-    let out = cap.out();
-    for (let i = 0; i < 3000 && frames(out) < 1 && !done; i++) {
-      await sleep(10);
-      out = cap.out();
-    }
-    assert.ok(frames(out) >= 1, "first frame rendered");
-    for (let guard = 0; frames(out) < waitForFrames && guard < 10_000; guard++) {
-      t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-      out = cap.out();
-    }
-    assert.ok(frames(out) >= waitForFrames, `got ${frames(out)} of ${waitForFrames} frames`);
-    const repainted = out;
-    flipParent();
-    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-    await promise;
-    assert.ok(done, "follow resolves once the parent is gone");
-    if (failure !== null) throw failure;
-    const settled = cap.out();
-    t.mock.timers.tick(60_000); // retired-name-ok: node:test mock clock
-    assert.equal(cap.out(), settled, "nothing printed after the follow ended");
-    return repainted;
-  } finally {
-    flipParent();
-    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-    try {
-      await promise;
-    } catch {
-      // Rejection already recorded above.
-    }
-    t.mock.timers.reset();
-    cap.restore();
-  }
 }
 
 test("report -f repaints until its parent exits, then prints nothing", async (t) => {

@@ -8,7 +8,7 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { roleNotesPath } from "../src/paths.js";
 import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
-import { followSeams } from "./fixtures/follow-fixtures.js";
+import { followSeams, runFollowedView } from "./fixtures/follow-fixtures.js";
 
 // `role -f` runs in-process with the follow's parent-death and TTY seams, driving the
 // follow determinically the way cli-questions-follow.test.ts drives `questions -f`: mock
@@ -38,52 +38,7 @@ async function runFollow(
   count: (out: string) => number,
   flipParent: () => void,
 ): Promise<string> {
-  const cap = captureStdout();
-  let done = false;
-  let failure: unknown = null;
-  t.mock.timers.enable({ apis: ["setInterval"] });
-  const promise = cmdRole(repo, args, seams).then(
-    () => (done = true),
-    (err: unknown) => {
-      failure = err;
-      done = true;
-    },
-  );
-  try {
-    let out = cap.out();
-    for (let i = 0; i < 3000 && count(out) < 1 && !done; i++) {
-      await sleep(10);
-      out = cap.out();
-    }
-    assert.ok(count(out) >= 1, "first frame rendered");
-    for (let guard = 0; count(out) < waitForFrames && guard < 10_000; guard++) {
-      t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-      out = cap.out();
-    }
-    assert.ok(count(out) >= waitForFrames, `got ${count(out)} of ${waitForFrames} frames`);
-    const repainted = out;
-    flipParent();
-    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-    await promise;
-    assert.ok(done, "follow resolves once the parent is gone");
-    if (failure !== null) throw failure;
-    const settled = cap.out();
-    t.mock.timers.tick(60_000); // retired-name-ok: node:test mock clock
-    assert.equal(cap.out(), settled, "nothing printed after the follow ended");
-    return repainted;
-  } finally {
-    // Flip and await even when an assertion above throws, so a failure never leaves the
-    // follow's interval or watch running into real stdout or keeping the test process alive.
-    flipParent();
-    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
-    try {
-      await promise;
-    } catch {
-      // Rejection already recorded above.
-    }
-    t.mock.timers.reset();
-    cap.restore();
-  }
+  return runFollowedView(t, (seams) => cmdRole(repo, args, seams), seams, count, waitForFrames, flipParent);
 }
 
 test("role -f repaints the role's document until its parent exits, then prints nothing", async (t) => {
