@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { flagValue, parseBranchFlag, parseCountFlag, parseDurationFlag, parseGrepFlag, parsePortFlag, parsePositionFlag, parseRoleFlag, parseRoleListFlag, rejectFlagLookingValue } from "../src/cli/cli-args.js";
+import { flagValue, parseBranchFlag, parseCountFlag, parseDurationFlag, parseGrepFlag, parsePortFlag, parsePositionFlag, parseRoleFlag, parseRoleListFlag, rejectFlagLookingValue, tokenValueProblem, TOKEN_VALUE_ERROR } from "../src/cli/cli-args.js";
 import { durationLabel, parseDurationMs } from "../src/text/duration.js";
 import {
   rejectUnknownArgs,
@@ -163,6 +163,36 @@ test("flagValue distinguishes absent, trailing, and present flags", () => {
   assert.equal(flagValue([], "--role"), null);
   // Only the first occurrence wins, matching the indexOf the call sites replaced.
   assert.equal(flagValue(["--role", "a", "--role", "b"], "--role"), "a");
+});
+
+// --- tokenValueProblem (the one validation of the `--token <secret>` value, shared by
+// `tumwater gui` and `tumwater start --gui`) ---
+
+test("tokenValueProblem is null when the token is absent or a normal secret", () => {
+  // An absent --token is fine: the dashboard stays local.
+  assert.equal(tokenValueProblem(["--port", "80"], "tumwater gui"), null);
+  assert.equal(tokenValueProblem(["--token", "s3cret"], "tumwater gui"), null);
+  // A single-dash secret is legitimate; only a `--` token reads as a flag.
+  assert.equal(tokenValueProblem(["--token", "-x"], "tumwater gui"), null);
+});
+
+test("tokenValueProblem returns TOKEN_VALUE_ERROR for an empty or valueless --token", () => {
+  assert.equal(tokenValueProblem(["--token", ""], "tumwater gui"), TOKEN_VALUE_ERROR);
+  // The flag as the final argument: no value at all is a problem, not a no-op.
+  assert.equal(tokenValueProblem(["--token"], "tumwater gui"), TOKEN_VALUE_ERROR);
+});
+
+test("tokenValueProblem refuses a flag-shaped secret, naming the command the operator typed", () => {
+  // `--token --all-interfaces` must not serve with the literal secret "--all-interfaces".
+  assert.equal(
+    tokenValueProblem(["--token", "--all-interfaces"], "tumwater gui"),
+    '--token got the flag-looking value "--all-interfaces" instead of a secret — write the secret as its own argument (e.g. `tumwater gui --token s3cret --all-interfaces`)',
+  );
+  // The same slip under the other caller names that caller in the copyable fix.
+  assert.equal(
+    tokenValueProblem(["--token", "--port"], "tumwater start --gui"),
+    '--token got the flag-looking value "--port" instead of a secret — write the secret as its own argument (e.g. `tumwater start --gui --token s3cret --all-interfaces`)',
+  );
 });
 
 // --- parsePortFlag ---
