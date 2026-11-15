@@ -31,6 +31,39 @@ export const BRANCH_VALUE_ERROR = "--branch needs a branch name (e.g. `--branch 
  * wording. */
 export const TOKEN_VALUE_ERROR = "--token requires a non-empty secret (e.g. `--token s3cret`)";
 
+/** Peel a positional-first command's bare tokens off the argument list: every flag-shaped
+ * token rides in rest for rejectUnknownArgs, every bare token is a positional. For a
+ * no-valued-flags command (history: `--json` alone) the split is a prefix test — a negative
+ * run number (`history bugfix -3`) arrives flag-shaped and fails the unknown-arg gate, which
+ * is the right answer for a non-positive n anyway. The generic flag/positional split that the
+ * read-only listing commands lean on, so it lives here with the CLI's other argument helpers,
+ * shared by cli.ts's history case and cli-doctor-command.ts. */
+export function peelPositionals(args: string[]): {
+  positionals: string[];
+  rest: string[];
+} {
+  const positionals: string[] = [];
+  const rest: string[] = [];
+  for (const arg of args) (arg.startsWith("-") ? rest : positionals).push(arg);
+  return { positionals, rest };
+}
+
+/** The `history` listing flags that take a separate value token. */
+const HISTORY_LISTING_VALUED_FLAGS = ["-n", "--since", "--until", "--grep", "--result", "--role", "--model", "--by"];
+
+/** True when `history`'s args are the one-run trail form (`history <role> <n>`, `history
+ * <role> --last`, bare `history --last`): `--last`, or a token that is neither a flag nor the
+ * value of a listing-form valued flag. A valued flag's value is skipped by position, so
+ * `--grep -x` stays a listing. */
+export function historyTrailForm(args: string[]): boolean {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (HISTORY_LISTING_VALUED_FLAGS.includes(arg)) i++;
+    else if (!arg.startsWith("-") || arg === "--last") return true;
+  }
+  return false;
+}
+
 /** The raw value token that follows a valued flag in `args`: null when the flag is absent,
  * the following token when present (undefined when the flag is the final argument, so the
  * parse helpers fail with their `needs a value` messages rather than the caller silently

@@ -15,12 +15,29 @@ import {
   FOLLOW_FLAG,
   hasFollowFlag,
 } from "./cli-flag-specs.js";
-import { DOCTOR_CHECK_NAMES } from "../doctor/doctor-check-names.js";
+import { DOCTOR_CHECK_NAMES, type DoctorCheckName } from "../doctor/doctor-check-names.js";
 import { fail, say, sayJson, sayJsonOrRender } from "../terminal.js";
 import { followView, type FollowViewSeams } from "../follow-view.js";
-import { parseDoctorChecks, peelPositionals } from "./cli-command-args.js";
 import { loadConfigSafe } from "../config/config.js";
-import { failFollowJsonRival } from "./cli-args.js";
+import { failFollowJsonRival, peelPositionals } from "./cli-args.js";
+import { typoSuffix } from "../text/suggest.js";
+
+/** Map `tumwater doctor`'s bare tokens to check names (case-insensitive, deduplicated, in the
+ * order named); undefined for none, which runs every check. An unknown name fails with the
+ * closest check as a hint. */
+function parseDoctorChecks(positionals: string[]): DoctorCheckName[] | undefined {
+  if (positionals.length === 0) return undefined;
+  const names = new Set<DoctorCheckName>();
+  for (const token of positionals) {
+    const name = DOCTOR_CHECK_NAMES.find((n) => n.toLowerCase() === token.toLowerCase());
+    if (name === undefined)
+      fail(
+        `tumwater doctor: unknown check "${token}"${typoSuffix(token, DOCTOR_CHECK_NAMES)} (\`tumwater doctor\` lists every check by name)`,
+      );
+    else names.add(name);
+  }
+  return [...names];
+}
 
 /** The optional side-effect results `tumwater doctor --kill-orphans`,
  * `--commit-backlog`, `--resync-install`, `--drop-broken-pins`, `--retire-leftovers`

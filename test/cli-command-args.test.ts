@@ -9,7 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { historyTrailForm, parseInitArgs, parsePromptArgs } from "../src/cli/cli-command-args.js";
+import { parseInitArgs, parsePromptArgs } from "../src/cli/cli-command-args.js";
+import { historyTrailForm } from "../src/cli/cli-args.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
 

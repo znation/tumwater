@@ -7,7 +7,9 @@
  * once; single-dash tokens are content) and share failStrayArg, so they live together
  * apart from cli/cli-args.ts's generic machinery. The one --file I/O in the CLI's arg layer —
  * the prompt-file reads and the stdin memo — lives beside them in cli/cli-prompt-file.ts, the
- * cross-command prompt-source module. */
+ * cross-command prompt-source module. The parsers that do not carry free-form prompt text — the
+ * generic peelPositionals, doctor's parseDoctorChecks and history's historyTrailForm — sit with
+ * the command bodies they serve, so this module keeps only the two free-form parsers it names. */
 
 import { failOverDurationCap, parseBranchFlag, parseDurationFlag, parseGrepFlag, parsePositionFlag, rejectFlagLookingValue, rejectRepeatFlag } from "./cli-args.js";
 import { promptFileValue, readPromptFileArg, readPromptFileChecked } from "./cli-prompt-file.js";
@@ -21,59 +23,7 @@ import {
 } from "./cli-flag-specs.js";
 import { ROLE_VALUE_ERROR } from "./cli-args.js";
 import { fail } from "../terminal.js";
-import { DOCTOR_CHECK_NAMES, type DoctorCheckName } from "../doctor/doctor-check-names.js";
-import { typoSuffix } from "../text/suggest.js";
 import { templateIds, unknownTemplateError } from "../init/init-templates.js";
-
-/** Peel a positional-first command's bare tokens off the argument list: every flag-shaped
- * token rides in rest for rejectUnknownArgs, every bare token is a positional. For commands
- * with no valued flags (history: `--json` alone; bug/plan via fileAndAnnounce) the split is a
- * prefix test — a negative run number (`history bugfix -3`) arrives flag-shaped and fails the
- * unknown-arg gate, which is the right answer for a non-positive n anyway. Lives here with
- * the CLI's other argument helpers, shared by cli.ts's history case and
- * cli-backlog.ts's fileAndAnnounce. */
-export function peelPositionals(args: string[]): {
-  positionals: string[];
-  rest: string[];
-} {
-  const positionals: string[] = [];
-  const rest: string[] = [];
-  for (const arg of args) (arg.startsWith("-") ? rest : positionals).push(arg);
-  return { positionals, rest };
-}
-
-/** Map `tumwater doctor`'s bare tokens to check names (case-insensitive, deduplicated, in the
- * order named); undefined for none, which runs every check. An unknown name fails with the
- * closest check as a hint. */
-export function parseDoctorChecks(positionals: string[]): DoctorCheckName[] | undefined {
-  if (positionals.length === 0) return undefined;
-  const names = new Set<DoctorCheckName>();
-  for (const token of positionals) {
-    const name = DOCTOR_CHECK_NAMES.find((n) => n.toLowerCase() === token.toLowerCase());
-    if (name === undefined)
-      fail(
-        `tumwater doctor: unknown check "${token}"${typoSuffix(token, DOCTOR_CHECK_NAMES)} (\`tumwater doctor\` lists every check by name)`,
-      );
-    else names.add(name);
-  }
-  return [...names];
-}
-
-/** The `history` listing flags that take a separate value token. */
-const HISTORY_LISTING_VALUED_FLAGS = ["-n", "--since", "--until", "--grep", "--result", "--role", "--model", "--by"];
-
-/** True when `history`'s args are the one-run trail form (`history <role> <n>`, `history
- * <role> --last`, bare `history --last`): `--last`, or a token that is neither a flag nor the
- * value of a listing-form valued flag. A valued flag's value is skipped by position, so
- * `--grep -x` stays a listing. */
-export function historyTrailForm(args: string[]): boolean {
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i] as string;
-    if (HISTORY_LISTING_VALUED_FLAGS.includes(arg)) i++;
-    else if (!arg.startsWith("-") || arg === "--last") return true;
-  }
-  return false;
-}
 
 /** Fail when any token is not at one of the `claimed` positions — the shared "no extra tokens"
  * check for commands whose positionals are free-form prompt text (init, prompt): with their

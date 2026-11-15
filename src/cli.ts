@@ -13,7 +13,7 @@
  * modules; this file owns the shared sequence, including each row's flag rejection and its
  * ready-repo gate. An error escaping main() funnels through its catch to fail(errorMessage(err)),
  * the CLI's one error path. */
-import { failFollowJsonRival, parseCountFlag, parseGrepFlag, parseModelFlag, parseResultFlag } from "./cli/cli-args.js";
+import { failFollowJsonRival, historyTrailForm, parseCountFlag, parseGrepFlag, parseModelFlag, parseResultFlag, peelPositionals } from "./cli/cli-args.js";
 import { hasFollowFlag } from "./cli/cli-flag-specs.js";
 import type { LiftableHold } from "./backlog/backlog-release.js";
 import type { FiledEntry } from "./backlog/backlog-write.js";
@@ -51,7 +51,7 @@ import {
   modeNamed,
 } from "./cli/cli-flag-specs.js";
 import { fail, say } from "./terminal.js";
-import { historyTrailForm, parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
+import { parsePromptArgs } from "./cli/cli-command-args.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli/cli-repo-gate.js";
 import { repoToplevel } from "./git/git.js";
 import { errCode } from "./errno.js";
