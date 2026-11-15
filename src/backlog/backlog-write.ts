@@ -560,18 +560,25 @@ export function filePlan(root: string, rawTitle: string, rawBody: string, usage:
   return appendOperatorEntry(root, target.fileName, target.template, target.sectionTitle, title, collapseWhitespace(rawBody));
 }
 
+/** The one home of an exiting backlog cancel — the pairing cancelBug and cancelPlan both
+ * perform: resolve the kind's open section (backlogTarget) and remove its nth entry through
+ * removeEntry. cancelBug/cancelPlan are the kind-named delegations, the same shape as the
+ * kind-taking tryCancelEntry above, so the file/section routing cannot drift between them. */
+function cancelEntry(root: string, kind: "bug" | "plan", n: number): { file: string; title: string } {
+  const { fileName, sectionTitle } = backlogTarget(kind);
+  return removeEntry(root, fileName, sectionTitle, n);
+}
+
 /** `tumwater bug --cancel <n>`: remove the nth entry from BUGS.md's `## Open`, as
  * `tumwater backlog` lists it. The returned title is the removed `### ` heading's text. */
 export function cancelBug(root: string, n: number): { file: string; title: string } {
-  const { fileName, sectionTitle } = backlogTarget("bug");
-  return removeEntry(root, fileName, sectionTitle, n);
+  return cancelEntry(root, "bug", n);
 }
 
 /** `tumwater plan --cancel <n>`: remove the nth entry from PLANS.md's `## Planned`, as
  * `tumwater backlog` lists it. The returned title is the removed `### ` heading's text. */
 export function cancelPlan(root: string, n: number): { file: string; title: string } {
-  const { fileName, sectionTitle } = backlogTarget("plan");
-  return removeEntry(root, fileName, sectionTitle, n);
+  return cancelEntry(root, "plan", n);
 }
 
 /** `tumwater plan --retire <n> [--reason <text>]`: move the nth `## Planned` entry to
