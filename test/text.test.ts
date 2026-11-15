@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { asList, collapseWhitespace, cutSplitsSurrogatePair, errorFirstLine, errorMessage, escapeRegExp, firstTrimmedLineStartingWith, gotSuffix, isNonBlankString, joinParts, joinWithMore, parseNonNegativeInt, parsePositiveInt, pathTokens, splitCommaList, splitCommaListUnique, squash, stripTerminalControls, textOr, tooLongMessage, trimLeadingBlankLines, trimTrailingBlankLines, truncate, truncateWithNote } from "../src/text/text.js";
+import { asList, collapseWhitespace, cutSplitsSurrogatePair, errorFirstLine, errorMessage, escapeRegExp, firstTrimmedLineStartingWith, gotSuffix, isExponentSpelling, isNonBlankString, isPlainDecimal, joinParts, joinWithMore, parseNonNegativeInt, parsePositiveInt, pathTokens, splitCommaList, splitCommaListUnique, squash, stripTerminalControls, textOr, tooLongMessage, trimLeadingBlankLines, trimTrailingBlankLines, truncate, truncateWithNote } from "../src/text/text.js";
 import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
@@ -178,6 +178,32 @@ test("parseNonNegativeInt accepts plain decimal only and allows zero", () => {
   }
   for (const raw of ["9".repeat(400), "1".repeat(17)]) {
     assert.equal(parseNonNegativeInt(raw), null, `expected over-long ${raw.slice(0, 8)}… to be rejected`);
+  }
+});
+
+// isPlainDecimal and isExponentSpelling own the decimal-literal shape rule every numeric-write
+// surface reads through (the fractional/general pair: the integer rule is a distinct concern
+// pinned by INV-AD4 on parsePositiveInt/parseNonNegativeInt). isPlainDecimal admits only a
+// literal the operator typed (25, 12.34, .5, 300); isExponentSpelling refuses the 1e2/0x10
+// spellings Number() would silently read as numbers.
+
+test("isPlainDecimal admits only a plain decimal literal the operator typed", () => {
+  for (const raw of ["25", "12.34", ".5", "300", "0", "0.5"]) {
+    assert.equal(isPlainDecimal(raw), true, `expected ${JSON.stringify(raw)} to be a plain decimal`);
+  }
+  for (const raw of ["1.", "", "1e2", "0x10", "-5", "+5", " 5", "5 ", "1.2.3", "1 2"]) {
+    assert.equal(isPlainDecimal(raw), false, `expected ${JSON.stringify(raw)} to be rejected`);
+  }
+});
+
+test("isExponentSpelling is true exactly for an exponent Number() reads as a real number", () => {
+  for (const raw of ["1e2", "2.5E-3", "4e1", "1E+10", "1e+3", "0e0", "1E0", "1.0e1"]) {
+    assert.equal(isExponentSpelling(raw), true, `expected ${JSON.stringify(raw)} to be an exponent`);
+  }
+  // Degenerate / junk shapes: a plain decimal (no e) is refused by the !isPlainDecimal gate so
+  // the two shapes stay mutually exclusive; every other entry fails the whole-string exponent form.
+  for (const raw of ["3e", "e5", "1e", "1e+", "1e-", "1.5e2.3", "1e2x", " 1e2", "1e2 ", "25"]) {
+    assert.equal(isExponentSpelling(raw), false, `expected ${JSON.stringify(raw)} not to be an exponent`);
   }
 });
 
