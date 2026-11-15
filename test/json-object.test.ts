@@ -144,51 +144,56 @@ test("canonicalUsageBlock sums the four counts into totalTokens and wraps the co
   });
 });
 
-// validEntries is the map-level half of the untrusted-JSON read family: keep the entries that
-// pass the caller's guard, drop the foreign ones. validEntries is the one home of that rule for
-// every map-typed read of a persisted or wire value (the per-pair daily spend map's heal,
-// the opencode catalog cache's models map), so a regression that keeps a poison entry — or
-// lets a __proto__ key reach the prototype — lands in a budget comparison or a catalog model.
-// Its single-value siblings (finiteNumber, nonNegativeNumber) are pinned above; this pins the
-// map-level read.
-test("validEntries reads a non-object value as the empty map, whatever the guard", () => {
-  const guard = (v: unknown): v is number => typeof v === "number";
+// validEntries is the map-level half of the untrusted-JSON read family, and the one home of
+// "keep the well-formed entries of an untrusted map, drop the foreign ones": its two call sites
+// (the per-pair daily spend map's heal, the opencode catalog cache's models map) run through it,
+// so the rule that decides which entries of a torn or foreign map survive is the same at both.
+// validEntries is the one home of that rule for every map-typed read of a persisted or wire
+// value, so a regression that keeps a poison entry — or lets a __proto__ key reach the
+// prototype — lands in a budget comparison or a catalog model. Its single-value siblings
+// (finiteNumber, nonNegativeNumber) are pinned above; this pins the map-level read. The
+// `__proto__` case is the reason it rebuilds with Object.fromEntries rather than a bare
+// index-assignment, and its input must be built with JSON.parse — the form the callers actually
+// receive from readJsonFile.
+const keepNumber = (v: unknown): v is number => nonNegativeNumber(v, -1) >= 0;
+
+test("validEntries reads a non-object value as the empty map", () => {
+  // The shape is the reason, not the guard: a scalar, null, or an array is not a JSON object,
+  // so there is nothing to keep regardless of which guard is passed.
   for (const value of [5, null, [1, 2, 3]]) {
-    assert.deepEqual(validEntries(value, guard), {}, `${JSON.stringify(value)} is not a JSON object`);
+    assert.deepEqual(validEntries(value, keepNumber), {}, `${JSON.stringify(value)} is not a JSON object`);
   }
 });
 
 test("validEntries keeps every entry that passes the guard, in source order", () => {
-  const guard = (v: unknown): v is number => nonNegativeNumber(v, -1) >= 0;
-  assert.deepEqual(validEntries({ a: 1, b: 2 }, guard), { a: 1, b: 2 });
-  assert.deepEqual(Object.keys(validEntries({ a: 1, b: 2, c: 3 }, guard)), ["a", "b", "c"], "source order is kept");
+  assert.deepEqual(validEntries({ a: 1, b: 2 }, keepNumber), { a: 1, b: 2 });
+  assert.deepEqual(Object.keys(validEntries({ a: 1, b: 2, c: 3 }, keepNumber)), ["a", "b", "c"], "source order is kept");
 });
 
 test("validEntries drops the entries that fail the guard and keeps the ones that pass, in order", () => {
-  const guard = (v: unknown): v is number => nonNegativeNumber(v, -1) >= 0;
-  // b (object) and c (string) fail the number guard; only a survives, and it stays first.
-  assert.deepEqual(validEntries({ a: 1, b: { x: 1 }, c: "s" }, guard), { a: 1 });
+  // `b` (an object) and `c` (a string) fail the number guard; only `a` survives, in its place.
+  assert.deepEqual(validEntries({ a: 1, b: { x: 1 }, c: "s" }, keepNumber), { a: 1 });
   // The drop is the guard's call, not validEntries': under an object-valued guard the object
   // entry is the one that passes, so the number and string are the ones dropped.
   const objectGuard = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
   assert.deepEqual(validEntries({ a: 1, b: { x: 1 }, c: "s" }, objectGuard), { b: { x: 1 } });
 });
 
-test("validEntries keeps a JSON __proto__ key as an own property and leaves Object.prototype alone", () => {
-  const guard = (v: unknown): v is number => nonNegativeNumber(v, -1) >= 0;
+test("validEntries keeps a JSON __proto__ key as an own property and leaves Object.prototype untouched", () => {
   // The input is built the way the callers actually receive it — a value read back from disk
   // via readJsonFile, i.e. JSON.parse — where __proto__ is an own data property, not a
-  // prototype assignment.
-  const input = JSON.parse('{"__proto__":7,"a":1}');
-  const result = validEntries(input, guard);
+  // prototype assignment (a literal {"__proto__":7} would instead hit the assignment trap at
+  // creation).
+  const input: unknown = JSON.parse('{"__proto__":7,"a":1}');
+  const result = validEntries(input, keepNumber);
   assert.deepEqual(Object.keys(result), ["__proto__", "a"]);
   assert.equal(result["__proto__"], 7, "the __proto__ entry stays data, not the prototype");
   assert.equal(Object.hasOwn(result, "__proto__"), true, "a bare index-assignment would never make __proto__ an own key");
   assert.equal(Object.getPrototypeOf(result), Object.prototype, "the rebuilt map's prototype chain is intact, so Object.prototype is untouched");
   assert.equal(result["a"], 1);
+  assert.equal((Object.prototype as Record<string, unknown>)["a"], undefined, "rebuilding must not write onto Object.prototype");
 });
 
 test("validEntries reads an empty object as the empty map", () => {
-  const guard = (v: unknown): v is number => nonNegativeNumber(v, -1) >= 0;
-  assert.deepEqual(validEntries({}, guard), {});
+  assert.deepEqual(validEntries({}, keepNumber), {});
 });
