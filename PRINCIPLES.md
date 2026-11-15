@@ -27,7 +27,7 @@ what to do, not what to avoid.
 The steward's standing measure of where the codebase stands (measured from the repo, not vibes —
 refresh the numbers with `wc -l` and `find` when this section is touched, and note the date).
 
-- **Code size**: 536 src modules / ~134,000 lines; 669 test modules / ~201,000 lines. Trend:
+- **Code size**: 536 src modules / ~134,000 lines; 671 test modules / ~201,000 lines. Trend:
   grows with every merge; the split-large-function family below is the standing driver of
   per-function (not per-file) growth.
 - **Module-size ceiling**: 25 src files exceed 600 lines, 9 exceed 700, 3 exceed 800; the largest
@@ -46,4 +46,4 @@ refresh the numbers with `wc -l` and `find` when this section is touched, and no
   a name; a complexity-N number alone is not the reason. This keeps the family finite instead of a
   bottomless re-split of already-named helpers.
 
-_Last measured 2026-11-14 by the steward role._
+_Last measured 2026-11-15 by the steward role._
