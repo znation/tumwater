@@ -288,6 +288,12 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
     !session.anyEditorHeld("rolePromptFor", "search") &&
     ctx.roleIds.length > 0 &&
     ctx.view >= 1 && ctx.view <= ctx.roleIds.length;
+  // One Ctrl route per viewed-role control arm: each is editable exactly when the role view
+  // is (roleViewEditable) and delegates its keypress to roleControlArm, so the shared guard
+  // and delegate live in one place instead of being re-spelled at every arm.
+  const roleArmRoute =
+    (name: "p" | "a" | "w" | "v") => ({ name, should: roleViewEditable, run: (ctx: TuiEditorCtx) => roleControlArm(name, ctx) });
+  const roleArms = (["p", "a", "w", "v"] as const).map(roleArmRoute);
   const ctrlRoutes: ReadonlyArray<{
     name: string;
     should: (ctx: TuiEditorCtx) => boolean;
@@ -298,10 +304,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
     { name: "r", should: restartAllowed, run: restartNow },
     { name: "p", should: () => pauseEditRole !== null, run: closeRolePauseEdit },
     { name: "w", should: () => pauseEditRole !== null, run: closeRolePauseEdit },
-    { name: "p", should: roleViewEditable, run: (ctx) => roleControlArm("p", ctx) },
-    { name: "a", should: roleViewEditable, run: (ctx) => roleControlArm("a", ctx) },
-    { name: "w", should: roleViewEditable, run: (ctx) => roleControlArm("w", ctx) },
-    { name: "v", should: roleViewEditable, run: (ctx) => roleControlArm("v", ctx) },
+    ...roleArms,
   ];
   const routeCtrl = (key: { ctrl?: boolean; name?: string }, ctx: TuiEditorCtx): boolean | null => {
     for (const route of ctrlRoutes) {
