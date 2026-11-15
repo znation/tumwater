@@ -281,7 +281,7 @@ never has to wait a parked check out.
   green" clause) if main turned green before it ran. Separately, the
   `ci` role runs the workflow's own full suite and e2e at main's tip on its own clock and records what
   it covered in the CI-parity ledger. The main-check line on `tumwater status`, the TUI header and the
-  dashboard's team panel carries a `ci: covered <sha> <age> ago` badge as the glance surface (its tone
+  dashboard's team panel carries a `CI: covered <sha> <age> ago` badge as the glance surface (its tone
   follows the verdict) so an operator can tell whether the expensive verification behind a green main has
   actually run on this tip, while `tumwater doctor`'s `ci parity` row (and the dashboard Health card
   and TUI Health tab that render the same rows) is the exact surface answering "is main verified by
