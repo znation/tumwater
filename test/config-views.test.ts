@@ -235,6 +235,45 @@ test("reviewRunConfig floors the reviewer's budget at the fallback floor when th
   assert.equal(reviewRunConfig(config, starved, 0, false).runTimeoutSeconds, 2 * REVIEW_TIMEOUT_S);
 });
 
+test("reviewRunConfig floors the reviewer budget when the reviewer is a slow free seam", () => {
+  // The post-merge reviewer (src/review/post-merge-review.ts's reviewerSlowFree) passes
+  // slowReviewer when its own resolved model is a slow free one (typically local). That floors
+  // the budget's base at FALLBACK_REVIEW_TIMEOUT_S — the same floor the budget fallback applies
+  // when the team fell back — so a progressing local review is not killed mid-run and re-queued.
+  const config: TumwaterConfig = defaultConfig();
+  config.runTimeoutSeconds = 54_000;
+  config.review.model = "strong-model";
+  const quietLoad = () => ({ load1: 2, cpus: 8 });
+  const starvedLoad = () => ({ load1: 16, cpus: 8 });
+
+  // A quiet host: the slow floor raises the base from 900 s to 3600 s with no stretch; the
+  // non-slow path keeps 900 s, so every other caller is byte-identical to before.
+  assert.equal(reviewRunConfig(config, quietLoad, 0, true).runTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
+  assert.equal(reviewRunConfig(config, quietLoad, 0, false).runTimeoutSeconds, REVIEW_TIMEOUT_S);
+
+  // A starved host stretches the floored base to its 2x cap: 7200 s — past the 900 s
+  // fast-default budgets, yet still bounded (the quiet watchdog, not the wall, ends a wedged
+  // free review).
+  assert.equal(reviewRunConfig(config, starvedLoad, 0, true).runTimeoutSeconds, 2 * FALLBACK_REVIEW_TIMEOUT_S);
+
+  // A configured timeout below the floor is raised only on the slow path (the same rule
+  // fallbackReview applies); a smaller run budget still wins.
+  config.review.timeoutSeconds = 1800;
+  assert.equal(reviewRunConfig(config, quietLoad, 0, true).runTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
+  assert.equal(reviewRunConfig(config, quietLoad, 0, false).runTimeoutSeconds, 1800);
+  config.runTimeoutSeconds = 1200;
+  assert.equal(reviewRunConfig(config, quietLoad, 0, true).runTimeoutSeconds, 1200);
+
+  // A configured timeout above the floor stands; the floor is a floor, not a replacement.
+  config.runTimeoutSeconds = 54_000;
+  config.review.timeoutSeconds = 7200;
+  assert.equal(reviewRunConfig(config, quietLoad, 0, true).runTimeoutSeconds, 7200);
+
+  // The quiet watchdog is independent of the run budget: it is never changed by the floor.
+  const quiet = config.quietTimeoutSeconds;
+  assert.equal(reviewRunConfig(config, quietLoad, 0, true).quietTimeoutSeconds, quiet);
+});
+
 test("fallbackPair resolves the fallback over the top-level values", () => {
   const config: TumwaterConfig = defaultConfig();
   config.provider = "hf";
