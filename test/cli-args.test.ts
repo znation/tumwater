@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { flagValue, parseBranchFlag, parseCountFlag, parseDurationFlag, parsePortFlag, parsePositionFlag, parseRoleFlag, parseRoleListFlag } from "../src/cli/cli-args.js";
+import { flagValue, parseBranchFlag, parseCountFlag, parseDurationFlag, parsePortFlag, parsePositionFlag, parseRoleFlag, parseRoleListFlag, rejectFlagLookingValue } from "../src/cli/cli-args.js";
 import { durationLabel } from "../src/text/duration.js";
 import {
   rejectUnknownArgs,
@@ -70,6 +70,38 @@ test("parsePositionFlag refuses a flag-looking value as a slipped flag, not a ma
   assert.match(r.stderr, /--cancel needs a value \(the next token "--json" is a flag, not a value\)/);
   const neg = expectFail(() => parsePositionFlag("--cancel", "-2", "--cancel 2"));
   assert.match(neg.stderr, /--cancel needs a positive integer \(got "-2"\)/);
+});
+
+// --- rejectFlagLookingValue (the shared guard the `parse*Flag` helpers funnel into) ---
+
+test("rejectFlagLookingValue refuses a `--`-prefixed value with the shared flag-slot wording", () => {
+  // The guard is the one rule every user-facing valued-flag slot applies: a `--` token in the
+  // value position is a rival flag, never a value. It fails (exit 1) with the shared wording,
+  // naming the caller's own flag and the JSON.stringify-quoted token that slipped into its slot.
+  const r1 = expectFail(() => rejectFlagLookingValue("history --result", "--last"));
+  assert.equal(r1.code, 1);
+  assert.equal(r1.stderr, 'tumwater: history --result needs a value (the next token "--last" is a flag, not a value)\n');
+  const r2 = expectFail(() => rejectFlagLookingValue("--file", "--x"));
+  assert.equal(r2.code, 1);
+  assert.equal(r2.stderr, 'tumwater: --file needs a value (the next token "--x" is a flag, not a value)\n');
+});
+
+test("rejectFlagLookingValue passes a normal string and a single-dash value through unchanged", () => {
+  // Only a `--` token reads as a flag. A plain value returns untouched, and a single-dash token
+  // (a negative number, a one-dash filter) is NOT a flag, so it passes too — refusing it would
+  // break intentional one-dash filters and negative counts.
+  assert.equal(expectOk(() => rejectFlagLookingValue("--branch", "release/2.0")), "release/2.0");
+  assert.equal(expectOk(() => rejectFlagLookingValue("--x", "a b")), "a b");
+  assert.equal(expectOk(() => rejectFlagLookingValue("history --since", "-5")), "-5");
+  assert.equal(expectOk(() => rejectFlagLookingValue("--by", "-f")), "-f");
+});
+
+test("rejectFlagLookingValue passes an absent value through (null stays null, undefined stays undefined)", () => {
+  // An absent value is neither refused nor fabricated: the guard returns the argument as-is,
+  // so a flag left trailing still hands the caller its null/undefined to apply its own default
+  // or `needs a value` error.
+  assert.equal(expectOk(() => rejectFlagLookingValue("--x", undefined)), undefined);
+  assert.equal(expectOk(() => rejectFlagLookingValue("--y", null)), null);
 });
 
 // --- flagValue ---
