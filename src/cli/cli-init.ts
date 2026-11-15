@@ -110,18 +110,29 @@ function printDryRun(result: Awaited<ReturnType<typeof initProject>>): void {
  * committed. A bare `(committed)` qualifier on the whole `created` list would therefore overstate
  * those as tracked; the lines instead report the `created <all>` list, the `committed <files>`
  * that actually went into the commit, and — only when some created path is left out of it —
- * `untracked (gitignored): <paths>` naming exactly those. No marker at all when nothing committed
- * (a config-only re-seed). */
+ * the left-out paths, each for its own reason: an `untracked (gitignored): <paths>` line for the
+ * gitignored config and, when a template seeded starter directories, a separate `untracked:
+ * <dirs>` line for those (untracked, but not gitignored — git never tracks empty directories).
+ * No marker at all when nothing committed (a config-only re-seed). */
 function createdLines(result: Awaited<ReturnType<typeof initProject>>): string[] {
   const lines = [`created ${result.created.join(", ")}`];
   if (result.committed) lines.push(`committed ${result.committedFiles.join(", ")}`);
   const committedSet = new Set(result.committedFiles);
   const starterDirs = getTemplate(result.template)?.starterDirs ?? [];
-  const untracked = result.created.filter(
+  // The created paths left out of the commit, each for its own reason: the config is gitignored
+  // (it must never be tracked, plans/portability.md §4a/7), while a template's starter
+  // directories are merely untracked — git never tracks an empty directory, but they are not
+  // gitignored, so the two must not share one "(gitignored)" label.
+  const leftOut = result.created.filter(
     (name) => !committedSet.has(name) && (name === CONFIG_BASENAME || starterDirs.includes(name)),
   );
+  const gitignored = leftOut.filter((name) => name === CONFIG_BASENAME);
+  const untracked = leftOut.filter((name) => name !== CONFIG_BASENAME);
+  if (gitignored.length > 0) {
+    lines.push(`untracked (gitignored): ${gitignored.join(", ")}`);
+  }
   if (untracked.length > 0) {
-    lines.push(`untracked (gitignored): ${untracked.join(", ")}`);
+    lines.push(`untracked: ${untracked.join(", ")}`);
   }
   return lines;
 }

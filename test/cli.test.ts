@@ -491,11 +491,14 @@ test("init --template names the seeded template in its report and creates its st
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /template: python-cli/);
   // The commit is reported on its own line scoped to the tracked files — never a bare
-  // `(committed)` qualifying the whole created list — and the template's empty starter
-  // directories, which git never tracks, are named as untracked beside the gitignored config.
+  // `(committed)` qualifying the whole created list — and the created paths left out of the
+  // commit are named for their own reason: the gitignored config on its `(gitignored)` line and
+  // the template's empty starter directories (untracked, but not gitignored — git never tracks
+  // an empty directory) on a plain line, so the `(gitignored)` label is never overstated.
   assert.match(r.stdout, /\ncommitted /);
   assert.doesNotMatch(r.stdout, /\(committed\)/);
-  assert.match(r.stdout, /untracked \(gitignored\): tumwater\.json, src, tests/);
+  assert.match(r.stdout, /untracked \(gitignored\): tumwater\.json/);
+  assert.match(r.stdout, /untracked: src, tests/);
   assert.ok(fs.statSync(path.join(repo, "src")).isDirectory(), "src starter dir seeded");
   assert.ok(fs.statSync(path.join(repo, "tests")).isDirectory(), "tests starter dir seeded");
   // The brief carries the template's preamble first, the operator's words last.
