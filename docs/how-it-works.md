@@ -123,7 +123,7 @@ reads only the live merge pins.)
   it lands; a markdown-only diff is exempt; and a healthy change passes with no
   model reviewer. Every merged change is judged once, after it lands, by the post-landing review.
   Each reviewer run is capped at `review.timeoutSeconds` (default 900, never above
-  `runTimeoutSeconds`; at least 3600 while the over-cap model carries the team, since a slower
+  `runTimeoutSeconds`; at least 3600 while the reviewer's own model is a free one, since a slower
   free model needs as many turns); under a starved host the budget stretches by the
   load-to-cores ratio (capped at double, the merge-scope precedent), so a progressing review on
   a loaded box is not killed at the wall by load it does not control. A reviewer still making
