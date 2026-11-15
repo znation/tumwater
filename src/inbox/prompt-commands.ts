@@ -27,7 +27,7 @@ import {
   readQueuedPromptBody,
 } from "./inbox-edit.js";
 import { movePromptToTop, type TopOutcome } from "./inbox-top.js";
-import { editInEditor } from "../cli/cli-editor.js";
+import { editInEditor } from "../editor.js";
 import { listWideScope, queuedAgeSuffix, queuedFileAtPosition, promptPreview, queuedListRows, queuedRowsMatching, renderQueuedList } from "./inbox.js";
 import { durationLabel } from "../text/duration.js";
 import { failFollowJsonRival, parseRoleListFlag } from "../cli/cli-args.js";

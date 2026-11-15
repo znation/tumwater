@@ -1,11 +1,14 @@
-// Open text in the operator's editor, the way `git commit` and `crontab -e` do.
+// Open text in the operator's editor, the way `git commit` and `crontab -e` do. A general
+// leaf I/O capability (it spawns $VISUAL/$EDITOR on a temp file and reads the result back),
+// shared by the commands across the cli/ and inbox/ bodies — so it lives at the root tier
+// beside terminal.ts (its only in-tree I/O dependency), not in the cli/ command layer.
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fail } from "../terminal.js";
-import { removeTree } from "../files/files.js";
+import { fail } from "./terminal.js";
+import { removeTree } from "./files/files.js";
 
 /** Signal number → name, for the shell's 128+n convention: a shell that does not re-raise a
  * signal-killed child (dash on Linux) exits with 128+signo, so node sees an exit status where

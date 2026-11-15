@@ -17,7 +17,7 @@ import { liftedNotePhrase, type LiftableHold } from "../backlog/backlog-release.
 import { collapseWhitespace } from "../text/text.js";
 import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { requireReadyRepo } from "./cli-repo-gate.js";
-import { editInEditor } from "./cli-editor.js";
+import { editInEditor } from "../editor.js";
 import { requestWake, submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";

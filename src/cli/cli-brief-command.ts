@@ -1,7 +1,7 @@
 import path from "node:path";
 import { readBrief, renderBrief } from "../brief/brief.js";
 import { editBriefText } from "../brief/brief-edit.js";
-import { editInEditor } from "./cli-editor.js";
+import { editInEditor } from "../editor.js";
 import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
 import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { fail, say, sayJson } from "../terminal.js";

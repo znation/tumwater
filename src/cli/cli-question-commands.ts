@@ -13,7 +13,7 @@ import { FOLLOW_FLAG, JSON_FLAG, rejectEqualsForm } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "../follow-view.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
 import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
-import { editInEditor } from "./cli-editor.js";
+import { editInEditor } from "../editor.js";
 import { gotSuffix, parsePositiveInt } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";

@@ -13,7 +13,7 @@ import { parseConfigKey, unknownConfigKeyError, unknownRoleFieldError } from "..
 import { modelTierMap } from "../config/config-schema.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { rejectFlagLookingValue } from "./cli-args.js";
-import { editInEditor } from "./cli-editor.js";
+import { editInEditor } from "../editor.js";
 import { unknownRoleMessage } from "../roles/roles.js";
 
 /** The `tumwater config` command's CLI layer (split out of cli-operator-commands.ts, which
