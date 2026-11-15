@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { awaitQuietHost, waitFor, waitForFile } from "./helpers/wait.js";
+import { awaitQuietHost, recheckQuietHost, waitFor, waitForFile } from "./helpers/wait.js";
 import { fakeClock } from "./fakes/time.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -65,4 +65,22 @@ test("awaitQuietHost returns once the injected sampler crosses to quiet", async 
   load = 2;
   const second = await awaitQuietHost(100_000, () => ({ load1: load, cpus: 4 }), clock);
   assert.ok(second.quiet, "a host that drops below the bar at any point runs");
+});
+
+test("recheckQuietHost is quiet on a quiet injected sampler", async () => {
+  const result = recheckQuietHost(() => ({ load1: 1, load5: 2, cpus: 4 }));
+  assert.ok(result.quiet);
+  assert.equal(result.load1, 1);
+  assert.equal(result.load5, 2);
+  assert.equal(result.cpus, 4);
+});
+
+test("recheckQuietHost defers a host that re-saturated after it was admitted", async () => {
+  // The flake: the at-admission gate (awaitQuietHost) saw a below-bar sample and admitted the test,
+  // but the 5-minute average re-rose over the core count in the meantime, so the 150 s spawn wait
+  // would starve. The re-check the test applies just before that wait must defer, not run starved.
+  const result = recheckQuietHost(() => ({ load1: 2, load5: 32, cpus: 18 }));
+  assert.ok(!result.quiet, "a host whose 5-minute average rose over the bar after admission must defer");
+  assert.equal(result.load5, 32);
+  assert.equal(result.cpus, 18);
 });

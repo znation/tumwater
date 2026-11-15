@@ -4,7 +4,12 @@
  * old util.ts grab-bag, whose shared name made these unfindable. */
 import type { TestContext } from "node:test";
 import fs from "node:fs";
-import { sampleHostLoad, type LoadSampler } from "../../src/build/host-sleep.js";
+import { sampleHostLoad, type HostLoad, type LoadSampler } from "../../src/build/host-sleep.js";
+
+/** A host load reading beside its quiet verdict: the shape both quiet-host helpers return, so a
+ * caller that gates on admission (awaitQuietHost) or re-applies the bar (recheckQuietHost) reads
+ * the same fields. */
+type HostLoadReading = HostLoad & { quiet: boolean };
 
 /** The real setTimeout, captured when this module loads — before any test installs node:test
  * mock timers — so the wait helpers below keep polling in real time under a test that mocks
@@ -67,23 +72,39 @@ export async function awaitQuietHost(
   waitMs = QUIET_HOST_WAIT_MS,
   sample: LoadSampler = sampleHostLoad,
   clock: WaitClock = liveWaitClock,
-): Promise<{ quiet: boolean; load1: number; load5?: number; cpus: number }> {
-  // Both the short (1-minute) and sustained (5-minute) averages must sit at/below the core count
-  // for the host to be quiet: the 1-minute value alone dips below the bar on a host that is still
-  // saturated on the longer timescale, and it is that sustained load that starves a child run's
-  // spawn. `load5 ?? load1`: a sampler without a 5-minute reading falls back to the 1-minute
-  // average as its sustained reading, preserving the pre-fix bar for such samplers.
-  const quiet = (l: { load1: number; load5?: number; cpus: number }): boolean =>
-    l.load1 <= l.cpus && (l.load5 ?? l.load1) <= l.cpus;
+): Promise<HostLoadReading> {
   for (;;) {
     const { load1, load5, cpus } = sample();
-    if (quiet({ load1, load5, cpus })) return { quiet: true, load1, load5, cpus };
+    if (isQuietHost({ load1, load5, cpus })) return { quiet: true, load1, load5, cpus };
     // Sample again a few seconds out, bounded by waitMs: the caller would rather defer than
     // hold the host in view past its patience. A saturated host never quite crosses, so the
     // loop spends the whole wait and returns quiet:false.
     if (clock.now() > waitMs) return { quiet: false, load1, load5, cpus };
     await clock.sleep(5_000);
   }
+}
+
+/** One sample of the host judged by the quiet-host bar, with no bounded wait — the single-sample
+ * half of awaitQuietHost. A load-sensitive e2e file re-applies it one sample just before a
+ * wall-clock spawn wait and defers itself if the load re-saturated in the meantime, because the
+ * at-admission gate (awaitQuietHost) rules out a host already elevated when the test begins but
+ * not one that calms to a below-bar sample, gets admitted, and re-saturates during the run
+ * (BUGS.md 2026-11-14) — that rise is what starves the 150 s spawn wait and reddens a verdict a
+ * starved host never fairly reached. */
+export function recheckQuietHost(sample: LoadSampler = sampleHostLoad): HostLoadReading {
+  const { load1, load5, cpus } = sample();
+  return { quiet: isQuietHost({ load1, load5, cpus }), load1, load5, cpus };
+}
+
+/** The quiet-host bar applied to one load reading: BOTH the one-minute and the sustained
+ * five-minute averages at or below the core count. The 1-minute value alone dips below the bar
+ * on a host still saturated on the longer timescale, and it is that sustained load that starves
+ * a child run's spawn. `load5 ?? load1`: a sampler without a 5-minute reading falls back to the
+ * 1-minute average as its sustained reading, preserving the pre-load5 bar for such samplers.
+ * The one home of the bar: awaitQuietHost polls it, recheckQuietHost applies it to a single
+ * sample. */
+function isQuietHost(l: { load1: number; load5?: number; cpus: number }): boolean {
+  return l.load1 <= l.cpus && (l.load5 ?? l.load1) <= l.cpus;
 }
 
 /** Poll until `fn` holds. `ms` is a DEADLINE, not a sleep — this returns the moment the

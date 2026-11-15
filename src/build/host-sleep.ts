@@ -111,7 +111,7 @@ export function sleptMsBetween(a: SleepSample, b: SleepSample): number | undefin
  * it, and only the quiet-host gate (test/helpers/wait.ts) needs the sustained reading — a
  * near-bar host whose 1-minute value has dipped below the core count but whose 5-minute average
  * is still elevated. */
-interface HostLoad {
+export interface HostLoad {
   load1: number;
   load5?: number;
   cpus: number;

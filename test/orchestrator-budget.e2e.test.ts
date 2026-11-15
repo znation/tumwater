@@ -24,7 +24,7 @@ import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { awaitSettledRun, fastConfig, runRepoOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { mergeWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, logFlagsTo, readRunLines, recordingFakePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
-import { awaitQuietHost, sleep, waitFor } from "./helpers/wait.js";
+import { awaitQuietHost, recheckQuietHost, sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
 const FAST_POLL_MS = 100;
@@ -256,6 +256,14 @@ test("a reached cap switches roles to the free fallback model instead of stoppin
     // at the ≈105 verified-load ceiling the host could not schedule it within the 60s default
     // even one file at a time (BUGS.md 2026-10-27, where the carve recorded the ceiling but not
     // the bound).
+    // The admission gate covers a host elevated when the test began, not one that re-saturates
+    // mid-run (BUGS.md 2026-11-14): if the 5-minute load is over the core count now, the 150 s
+    // spawn wait would starve and red a verdict the starved host never fairly reached, so defer.
+    const recheck = recheckQuietHost();
+    if (!recheck.quiet) {
+      t.skip(`host load ${recheck.load1} (5-min ${recheck.load5}) on ${recheck.cpus} cores: e2e deferred after the load rose, not a verdict`);
+      return;
+    }
     await waitFor(() => runs().some((l) => l.includes("session=tumwater-clean-2")), "a role run after the cap was reached", 150_000);
     assert.match(
       runs().find((l) => l.includes("session=tumwater-clean-2")) ?? "",
@@ -386,6 +394,11 @@ test("a free fallback whose runs keep failing is demoted to a pause, then probed
     // CPU-starved orchestration event: at the ≈105 verified-load ceiling the host could not
     // schedule it within the 60s default even one file at a time (BUGS.md 2026-10-27, where the
     // carve recorded the ceiling but not the bound).
+    const recheck = recheckQuietHost();
+    if (!recheck.quiet) {
+      t.skip(`host load ${recheck.load1} (5-min ${recheck.load5}) on ${recheck.cpus} cores: e2e deferred after the load rose, not a verdict`);
+      return;
+    }
     await waitFor(() => Boolean(runFor(2)), "the first fallback run", 150_000);
     assert.match(runFor(2), /model=local-free/);
     await waitFor(() => clean().lastResult === "error", "the first fallback run to error");
