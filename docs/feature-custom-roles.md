@@ -7,13 +7,14 @@
 Let operators define their own background loops — custom roles — in `tumwater.json`,
 alongside the built-in roles.
 
-- **Definition.** A custom role entry in config specifies:
-  - `id` — unique identifier used everywhere roles are referenced (queues, reports,
+- **Definition.** A custom role entry in config specifies exactly two keys, `name` and
+  `task` (the schema rejects any other key on the entry):
+  - `name` — unique identifier used everywhere roles are referenced (queues, reports,
     dashboards, `--role` flags)
-  - standing prompt text (the loop's role-specific "find something to do, do one
-    thing" instructions)
-  - optional model/interval overrides (falling back to project defaults)
-  - enabled/disabled flag
+  - `task` — the standing instruction (the loop's role-specific "find something to do, do
+    one thing" prompt)
+  - optional per-role settings — model, run interval, enabled — go in the usual `roles.<name>`
+    section, exactly like a built-in (a custom role absent from `roles` stays enabled)
 - **Behavior.** Custom roles behave exactly like built-ins: persistent worktree and
   branch, one focused change per tick, review gate, landing pipeline, pause/wake,
   prompt queueing, history/tick logs. The only difference is their prompt and settings.
@@ -25,16 +26,19 @@ alongside the built-in roles.
 
 1. Operator adds to `tumwater.json`:
    ```json
-   "customLoops": [
+   "customRoles": [
      {
-       "id": "security",
-       "prompt": "Audit recent changes for security issues. Fix one concrete issue per tick, or record findings in SECURITY-NOTES.md.",
-       "model": { "provider": "openai", "model": "gpt-4o" },
-       "intervalMinutes": 45,
-       "enabled": true
+       "name": "security",
+       "task": "Audit recent changes for security issues. Fix one concrete issue per tick, or record findings in SECURITY-NOTES.md."
      }
-   ]
+   ],
+   "roles": {
+     "security": { "model": "openai/gpt-4o", "minRunIntervalSeconds": 2700 }
+   }
    ```
+   (The per-role settings ride on the usual `roles` section — `customRoles` itself carries only
+   `name` and `task` — so `model` is a selector string and `minRunIntervalSeconds` is seconds,
+   both exactly as a built-in role takes them.)
 2. `tumwater run` spins up the loop with its own worktree/branch; `tumwater status`
    lists it like any role; `--role security` works in prompts, logs, history.
 3. Removing the entry disables and archives the loop's branch safely (existing
