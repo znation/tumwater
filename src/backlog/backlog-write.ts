@@ -15,6 +15,7 @@ import { actionableEntryRanges, type ActionableEntryRange } from "./backlog-inde
 import { stripEntryStamp } from "./backlog-structure.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
+import { validPositionRange } from "../text/phrases.js";
 import { fail } from "../terminal.js";
 import { backlogHolds, type EntryHold } from "./backlog-eligibility.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
@@ -146,9 +147,9 @@ function locateEntry(
   const entry = findEntry(md, sectionTitle, n);
   if (entry === undefined) {
     const count = actionableEntryRanges(md, sectionTitle).length;
-    // Name the valid range when the section is non-empty, so the operator sees the fix in the
-    // same line instead of deriving `1..N` from the count; an empty section needs no range.
-    const range = count > 0 ? ` — valid: 1-${count}` : "";
+    // The valid-range tail (empty section: no range) comes from the shared validPositionRange,
+    // so the operator sees the fix in the same line instead of deriving `1..N` from the count.
+    const range = validPositionRange(count);
     fail(`no ${sectionNoun(sectionTitle)} at position ${n} (${count} in ${fileName})${range}`);
   }
   return entry;

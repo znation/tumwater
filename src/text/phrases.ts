@@ -380,3 +380,14 @@ export function describeToolCall(toolName: string, args: unknown): string {
 export function moreSuffix(count: number): string {
   return count > 0 ? ` (+${count} more)` : "";
 }
+
+/** The ` — valid: 1-N` tail every position-rejection message appends when the named list is
+ * non-empty — empty for an empty list, which names no range (its tests pin that). The single
+ * home of the tail's bytes, shared by the 13 position-miss sites in the inbox store
+ * (inbox/inbox.ts, inbox/prompt-commands.ts), the backlog writes (backlog/backlog-write.ts),
+ * the salvage read (status/status-salvage.ts), and the reviews, bug/plan, questions, and
+ * quarantine CLI shells (cli/), so the wording cannot drift between them. The surrounding
+ * message ("no X at position N (M in …)") stays with each caller; this supplies only the tail. */
+export function validPositionRange(count: number): string {
+  return count > 0 ? ` — valid: 1-${count}` : "";
+}

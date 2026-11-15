@@ -13,6 +13,7 @@ import { scopeSnapshotToRoles, snapshot, snapshotForStatus } from "../status/sta
 import { statusPayload } from "../ui/status-payload.js";
 import { renderStatus } from "../ui/status-render.js";
 import { gotSuffix } from "../text/text.js";
+import { validPositionRange } from "../text/phrases.js";
 import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
 import { readyBacklog, heldBacklog, grepBacklog, positionBacklog, renderBacklogMarkdown, type BacklogView, type PositionedEntry } from "../backlog/backlog-render.js";
@@ -271,7 +272,7 @@ async function cmdQuarantineShow(root: string, args: string[]): Promise<void> {
   const entries = loadQuarantine(root);
   const entry = quarantineEntryAt(entries, position);
   if (entry === null) {
-    const range = entries.length > 0 ? ` — valid: 1-${entries.length}` : "";
+    const range = validPositionRange(entries.length);
     fail(`no quarantined test at position ${position} (flake quarantine holds ${entries.length} tests)${range}`);
   }
   if (json) {
@@ -303,7 +304,7 @@ async function cmdQuarantineRelease(root: string, args: string[]): Promise<void>
   await requireReadyRepo(root);
   const rows = quarantineRows(loadQuarantine(root));
   if (position < 1 || position > rows.length) {
-    const range = rows.length > 0 ? ` — valid: 1-${rows.length}` : "";
+    const range = validPositionRange(rows.length);
     fail(`no quarantined test at position ${position} (flake quarantine holds ${rows.length} tests)${range}`);
   }
   const test = rows[position - 1]!.test;

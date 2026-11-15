@@ -4,6 +4,7 @@
  * wakes a role. cli.ts reaches them through listAndAnnounce and showAndAnnounce. */
 
 import { fail, say, sayJson } from "../terminal.js";
+import { validPositionRange } from "../text/phrases.js";
 import { failFollowJsonRival, parseCountFlag, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { FOLLOW_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "../follow-view.js";
@@ -478,7 +479,7 @@ export function showAndAnnounce(root: string, args: string[], command: "bug" | "
     const all = bug ? fixedBugEntries(root) : donePlanEntries(root);
     const entry = all[position - 1];
     if (entry === undefined) {
-      const range = all.length > 0 ? ` — valid: 1-${all.length}` : "";
+      const range = validPositionRange(all.length);
       fail(`no ${bug ? "fixed bug" : "done plan"} at position ${position} (${all.length} in ${bug ? "BUGS.md" : "PLANS.md"})${range}`);
     }
     if (json) {

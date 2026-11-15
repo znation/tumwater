@@ -34,7 +34,7 @@ import { failFollowJsonRival, parseRoleListFlag } from "../cli/cli-args.js";
 import { followView, type FollowViewSeams } from "../follow-view.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { errorMessage, stripTerminalControls } from "../text/text.js";
-import { plural } from "../text/phrases.js";
+import { plural, validPositionRange } from "../text/phrases.js";
 import { readPromptImageFiles, type PromptImageInput } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
@@ -51,8 +51,8 @@ function failQueueMiss<T extends { status: string }>(listed: T | ListedQueueMiss
       fail(`position ${position} is in more than one role's inbox (${listed.roles.join(", ")}) — name one with --role <id>`);
     }
     // `queued` is the longest queue's length — the highest position any role's numbering can
-    // reach — so a miss names it as the valid range when at least one role holds a prompt.
-    const range = listed.queued > 0 ? ` — valid: 1-${listed.queued}` : "";
+    // reach — so a miss names it as the valid range (the shared tail; empty: no range).
+    const range = validPositionRange(listed.queued);
     fail(`no prompt at position ${position} (longest inbox holds ${listed.queued})${range}`);
   }
   return listed;

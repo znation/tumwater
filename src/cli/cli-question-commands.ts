@@ -15,6 +15,7 @@ import { refuseTeamWorkspace } from "./cli-repo-gate.js";
 import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
 import { editInEditor } from "../editor.js";
 import { gotSuffix, parsePositiveInt } from "../text/text.js";
+import { validPositionRange } from "../text/phrases.js";
 import { typoSuffix } from "../text/suggest.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
@@ -39,7 +40,7 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
 /** Map a non-answered outcome to the CLI's `fail` wording; shared by both CLI entry points. */
 function answeredOrFail(n: number, outcome: AnswerOutcome): { title: string; decision: string } {
   if (outcome.status === "missing") {
-    const range = outcome.open > 0 ? ` — valid: 1-${outcome.open}` : "";
+    const range = validPositionRange(outcome.open);
     fail(`no question at position ${n} (${outcome.open} open)${range}`);
   }
   if (outcome.status === "fenced") fail(UNCLOSED_FENCE_MESSAGE);
@@ -230,7 +231,7 @@ function sayShownQuestion(root: string, inv: QuestionsInvocation): void {
     const a = answeredQuestionAt(root, show!);
     if (a === null) {
       const count = answeredQuestionCount(root);
-      const range = count > 0 ? ` — valid: 1-${count}` : "";
+      const range = validPositionRange(count);
       fail(`no answered question at position ${show} (${count} in QUESTIONS.md)${range}`);
     }
     if (jsonFlag) sayJson(a);
@@ -240,7 +241,7 @@ function sayShownQuestion(root: string, inv: QuestionsInvocation): void {
   const q = openQuestionAt(root, show!);
   if (q === null) {
     const count = questionListPayload(root).questions.length;
-    const range = count > 0 ? ` — valid: 1-${count}` : "";
+    const range = validPositionRange(count);
     fail(`no open question at position ${show} (${count} in QUESTIONS.md)${range}`);
   }
   if (jsonFlag) sayJson(q);
@@ -268,7 +269,7 @@ async function answerFromEditor(root: string, n: number, jsonFlag: boolean): Pro
   const open = questionListPayload(root).questions;
   const question = open[n - 1];
   if (question === undefined) {
-    const range = open.length > 0 ? ` — valid: 1-${open.length}` : "";
+    const range = validPositionRange(open.length);
     fail(`no question at position ${n} (${open.length} open)${range}`);
   }
   const edited = decisionFromEditorBuffer(

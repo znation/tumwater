@@ -28,6 +28,7 @@ import {
 import { roleInScope } from "../roles/runner-ids.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
+import { validPositionRange } from "../text/phrases.js";
 import { splitCommaList } from "../text/text.js";
 import { oneOfMessage } from "../text/suggest.js";
 
@@ -165,7 +166,7 @@ async function cmdReviewsAccept(root: string, args: string[]): Promise<void> {
   await requireReadyRepo(root);
   const outcome: AcceptPostReviewOutcome = acceptPostReview(root, position);
   if (outcome.status === "out-of-range") {
-    const range = outcome.depth > 0 ? ` — valid: 1-${outcome.depth}` : "";
+    const range = validPositionRange(outcome.depth);
     fail(`no post-merge review at position ${position} (post-merge review queue holds ${outcome.depth})${range}`);
   }
 
@@ -201,7 +202,7 @@ async function cmdReviewsShow(root: string, args: string[]): Promise<void> {
   refuseTeamWorkspace(root);
   const entries = readPostReviews(root);
   if (position > entries.length) {
-    const range = entries.length > 0 ? ` — valid: 1-${entries.length}` : "";
+    const range = validPositionRange(entries.length);
     fail(`no post-merge review at position ${position} (post-merge review queue holds ${entries.length})${range}`);
   }
   const entry = entries[position - 1]!;

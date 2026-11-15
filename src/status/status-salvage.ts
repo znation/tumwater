@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { salvageDir } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
+import { validPositionRange } from "../text/phrases.js";
 
 /** One operator-kept workspace patch: its position (1-based, oldest first — the number the
  * doctor `salvage patches` row and `tumwater salvage` print, which `salvage --show <n>` and
@@ -103,10 +104,9 @@ export function salvagePatchAt(
   position: number,
 ): { patch: SalvagePatch; message?: never } | { patch?: never; message: string } {
   if (position < 1 || position > patches.length) {
-    // Name the valid range when patches exist, so the operator sees the fix in the same
-    // line instead of deriving `1..N` from the count — the sibling position rejections
-    // (backlog, inbox, questions) each append the same ` — valid: 1-N` range.
-    const range = patches.length > 0 ? ` — valid: 1-${patches.length}` : "";
+    // The valid-range tail (no patches: no range) comes from the shared validPositionRange —
+    // the same tail the sibling position rejections (backlog, inbox, questions) append.
+    const range = validPositionRange(patches.length);
     return { message: `no salvaged workspace patch at position ${position} (salvage holds ${patches.length} patches)${range}` };
   }
   return { patch: patches[position - 1]! };
