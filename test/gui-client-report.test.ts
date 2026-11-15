@@ -4,6 +4,7 @@ import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";
 import { GUI_CLIENT_REPORT_CHART_JS } from "../src/ui/gui/gui-client-report-chart.js";
 import { clientScope, clientRegion, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 import type { ReportData, ReportDay, ReportTotals } from "../src/report/report-types.js";
+import { zeroReportTotals } from "./fixtures/report-fixtures.js";
 
 // The report tab's hover chip (gui-client-report.ts's report-tip region) runs in the
 // browser, so it is exercised here through the same regex-extract + new Function seam as
@@ -220,7 +221,7 @@ test("the Rejections by role chart stacks per role in the runs order and stays e
       mkDay("2026-09-01", { feature: 3 }, { feature: 2, bugfix: 1 }),
       mkDay("2026-09-02", { feature: 1 }, { qa: 1 }),
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   const parseRects = (svg: string) =>
@@ -252,7 +253,7 @@ test("the Post-merge rejections by role chart stacks per role and stays empty wi
   const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
   // A role that rejected post-merge but never ran (qa) still keeps a stack row.
   const data = mk([
@@ -285,7 +286,7 @@ test("the Image reroutes chart stacks per role and seriesHasAny gates it", () =>
   const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { feature: 3 }, { imageReroutesByRole: { qa: 1 } }),
@@ -318,7 +319,7 @@ test("the Failed runs and Merge failures charts stack per role and seriesHasAny 
   const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { feature: 3 }, { failedRunsByRole: { feature: 2 }, mergeFailedByRole: { qa: 1 } }),
@@ -354,7 +355,7 @@ test("the Merged by role chart stacks per role and seriesHasAny gates it", () =>
   const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { feature: 3 }, { mergedByRole: { feature: 2, qa: 1 } }),
@@ -385,7 +386,7 @@ test("the Commits by role chart stacks per role in the runs order", () => {
   const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { feature: 3 }, { commitsByRole: { feature: 2, qa: 1 } }),
@@ -414,7 +415,7 @@ test("the Revisions chart stacks per role and seriesHasAny gates it", () => {
   const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { feature: 3 }, { revisionsByRole: { feature: 2 } }),
@@ -447,7 +448,7 @@ test("the Refusals chart stacks per role and seriesHasAny gates it", () => {
   const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { feature: 3 }, { refusalsByRole: { feature: 2 } }),
@@ -558,7 +559,7 @@ test("the Tokens by role chart stacks per role and matches the runs legend", () 
     date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
     ...(tokensByRole ? { tokensByRole } : {}),
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { feature: 3, bugfix: 1 }, { feature: 1_500, bugfix: 2_000 }),
@@ -595,7 +596,7 @@ test("the Prompt tokens by role and Cached prompt tokens by role charts stack pe
     ...(prompt?.promptTokensByRole ? { promptTokensByRole: prompt.promptTokensByRole } : {}),
     ...(prompt?.cacheReadTokensByRole ? { cacheReadTokensByRole: prompt.cacheReadTokensByRole } : {}),
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { feature: 3, bugfix: 1 }, { promptTokensByRole: { feature: 1_500, bugfix: 2_000 }, cacheReadTokensByRole: { feature: 1_200 } }),
@@ -638,7 +639,7 @@ test("the Merge check median chart draws one bar per checked day and seriesHasCh
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { checkMedianMs: 95_000 }),
@@ -667,7 +668,7 @@ test("the Merge wait median chart draws one bar per timed day and seriesHasMerge
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { mergeWaitMedianMs: 95_000 }),
@@ -696,7 +697,7 @@ test("the Merge slot median chart draws one bar per timed day and seriesHasMerge
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { mergeSlotMedianMs: 95_000 }),
@@ -735,7 +736,7 @@ test("the Run duration median chart draws one bar per timed day and seriesHasRun
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { runMedianMs: 95_000 }),
@@ -764,7 +765,7 @@ test("the Review duration median chart draws one bar per timed day and seriesHas
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { reviewMedianMs: 95_000 }),
@@ -794,7 +795,7 @@ test("the Backlog lag median chart draws one bar per lagged day and seriesHasBac
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { backlogLagMedianDays: 2 }),
@@ -836,7 +837,7 @@ test("the Provider wait median chart draws one bar per timed day and seriesHasPr
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { providerWaitMedianMs: 40_000 }),
@@ -865,7 +866,7 @@ test("the Workspace wait median chart draws one bar per timed day and seriesHasS
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { slotWaitMedianMs: 40_000 }),
@@ -894,7 +895,7 @@ test("the Check wait median chart draws one bar per timed day and seriesHasCheck
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { checkWaitMedianMs: 40_000 }),
@@ -923,7 +924,7 @@ test("the Red merge checks chart draws one bar per red day and seriesHasCheckFai
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { checkFailures: 3 }),
@@ -952,7 +953,7 @@ test("the Main red time chart draws one bar per red day and seriesHasMainRedMs g
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { mainRedMs: 63 * 60_000 }),
@@ -981,7 +982,7 @@ test("the Backlog items chart stacks features and bugs per day and seriesHasBack
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { featuresDone: 2, bugsFixed: 1 }),
@@ -1010,7 +1011,7 @@ test("the Backlog items opened chart stacks plans added and bugs filed and serie
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { plansAdded: 2, bugsFiled: 1 }),
@@ -1044,7 +1045,7 @@ test("the Spend by provider charts stack per provider and reportProviderOrder li
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { costByProvider: { hf: 1.2 }, notionalByProvider: { claude: 0.5 } }),
@@ -1082,7 +1083,7 @@ test("the Spend by backend chart stacks per backend and reportBackendOrder lists
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { notionalByBackend: { claude: 0.5 } }),
@@ -1111,7 +1112,7 @@ test("the Work vs maintenance chart stacks work and maintenance per day and matc
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { workCommits: 2, maintenanceCommits: 1, commits: 3 }),
@@ -1143,7 +1144,7 @@ test("the Runs by model chart stacks per model and reportModelOrder lists each m
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { runsByModel: { "acme/m2": 1, "acme/m1": 2 } }),
@@ -1186,7 +1187,7 @@ test("reportMergeFailureOrder lists each reason once and chartMergeFailuresByRea
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { mergeFailedByReason: { rejected: 2, unknown: 1 } }),
@@ -1230,7 +1231,7 @@ test("reportValidationGapOrder lists each tag once and chartValidationGaps stack
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { validationGapsByTag: { "no-repro": 2 } }),
@@ -1276,7 +1277,7 @@ test("reportMainRedTestOrder and chartMainRedByTest rank and stack each day's fa
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { mainRedByTest: { "test/a.test.ts": 2 } }),
@@ -1313,7 +1314,7 @@ test("reportMainRedCulpritOrder and chartMainRedByMerge stack each day's blamed 
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { mainRedByCulprit: { "feature abc12345": 1 } }),
@@ -1366,7 +1367,7 @@ test("the Deferred runs by reason chart stacks per reason and reportDeferredOrde
   const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
     date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
   const data = mk([
     mkDay("2026-09-01", { deferredByReason: { "no-work": 1, backlog: 2 } }),

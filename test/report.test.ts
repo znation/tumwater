@@ -6,6 +6,7 @@ import { renderReportMarkdown } from "../src/report/report-render.js";
 import { renderSinceReportMarkdown } from "../src/report/report-since-render.js";
 import { atLocalTs as at, dayKey, HOUR, ago } from "./helpers/oracles.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
+import { zeroReportTotals } from "./fixtures/report-fixtures.js";
 import { makeRepo, tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { runCli } from "./helpers/cli-harness.js";
 
@@ -88,7 +89,7 @@ test("renderReportMarkdown prints a Rejections by role line ranked by count, onl
       { date: "2026-09-09", tokensOut: 0, runsByRole: {}, costByRole: {}, rejectionsByRole: { feature: 1 }, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
       { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, rejectionsByRole: { feature: 2, qa: 1 }, postMergeRejectionsByRole: { feature: 2 }, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   });
   assert.match(md, /\*\*Rejections by role:\*\* feature — 3 · qa — 1/, "window rejections rank by count desc then name asc");
@@ -371,7 +372,7 @@ test("renderReportMarkdown shows a one-day window as one whole day, matching the
     series: [
       { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(data), /^Window: 2026-09-10 → 2026-09-10 \(1 day\) · source: events\.jsonl \(rotated at 16 MB, 5 kept\)$/m);
@@ -1050,7 +1051,7 @@ test("renderReportMarkdown prints each role's cost per merged commit, folding in
   const render = (series: ReportData["series"]) =>
     renderReportMarkdown({
       days: series.length, from: "2026-09-10", to: "2026-09-11", series,
-      totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+      totals: zeroReportTotals(),
       coversFullWindow: true,
     });
   const want = "**Cost per commit:** clean — $0.30 (3) · feature — $0.15 (2) · plan — $0.90, no commits";
@@ -1095,7 +1096,7 @@ test("renderReportMarkdown prints Merge check median for the days that carry one
       { date: "2026-09-09", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
       { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, checkMedianMs: 95_000 },
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(base), /^\*\*Merge check median:\*\* 09-10 95s$/m);
@@ -1114,7 +1115,7 @@ test("renderReportMarkdown prints Red merge checks for the days that carry one, 
       { date: "2026-09-09", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
       { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, checkFailures: 3 },
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(base), /^\*\*Red merge checks:\*\* 09-10 ×3$/m);
@@ -1133,7 +1134,7 @@ test("renderReportMarkdown prints Main red wall-clock for the days that carry on
       { date: "2026-09-09", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
       { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mainRedMs: 63 * 60_000 },
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(base), /^\*\*Main red:\*\* 09-10 63m$/m);
@@ -1152,7 +1153,7 @@ test("renderReportMarkdown ranks each series day's main-red tests", () => {
       { date: "2026-09-09", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
       { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mainRedByTest: { "test/a.test.ts": 2 } },
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(base), /^\*\*Main red by test:\*\* test\/a\.test\.ts — 2$/m);
@@ -1182,7 +1183,7 @@ test("renderReportMarkdown prints Merge wait median for the days that carry one,
       { date: "2026-09-09", ...day },
       { date: "2026-09-10", ...day, mergeWaitMedianMs: 95_000 },
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(base), /^\*\*Merge wait median:\*\* 09-10 95s$/m);
@@ -1203,7 +1204,7 @@ test("renderReportMarkdown prints Merge slot median for the days that carry one,
       { date: "2026-09-09", ...day },
       { date: "2026-09-10", ...day, ...slot },
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(base), /^\*\*Merge slot median:\*\* 09-10 110s$/m);
@@ -1223,7 +1224,7 @@ test("renderReportMarkdown prints Run duration median for the days that carry on
       { date: "2026-09-09", ...day },
       { date: "2026-09-10", ...day, runMedianMs: 95_000 },
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(base), /^\*\*Run duration median:\*\* 09-10 95s$/m);
@@ -1243,7 +1244,7 @@ test("renderReportMarkdown prints Review duration median for the days that carry
       { date: "2026-09-09", ...day },
       { date: "2026-09-10", ...day, reviewMedianMs: 95_000 },
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(base), /^\*\*Review duration median:\*\* 09-10 95s$/m);
@@ -1263,7 +1264,7 @@ test("renderReportMarkdown prints Provider wait median for the days that carry o
       { date: "2026-09-09", ...day },
       { date: "2026-09-10", ...day, providerWaitMedianMs: 40_000 },
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(base), /^\*\*Provider wait median:\*\* 09-10 40s$/m);
@@ -1283,7 +1284,7 @@ test("renderReportMarkdown prints Workspace wait median for the days that carry 
       { date: "2026-09-09", ...day },
       { date: "2026-09-10", ...day, slotWaitMedianMs: 40_000 },
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(base), /^\*\*Workspace wait median:\*\* 09-10 40s$/m);
@@ -1303,7 +1304,7 @@ test("renderReportMarkdown prints Check wait median for the days that carry one,
       { date: "2026-09-09", ...day },
       { date: "2026-09-10", ...day, checkWaitMedianMs: 40_000 },
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(base), /^\*\*Check wait median:\*\* 09-10 40s$/m);

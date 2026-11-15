@@ -12,6 +12,7 @@ import { REPORT_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../src/events/event-win
 import { compactTokens } from "../src/text/format.js";
 import { initProject } from "../src/init/init.js";
 import { atLocalTs as atNoon, dayKey } from "./helpers/oracles.js";
+import { zeroReportTotals } from "./fixtures/report-fixtures.js";
 import { withGui } from "./fixtures/gui-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
@@ -272,7 +273,7 @@ test("the Usage charts render bars on a shared scale, stacks per role, and a lab
   }
   const data: ReportData = {
     days: 14, from: series[0]!.date, to: series[13]!.date, series,
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
   const parseRects = (svg: string) =>
@@ -358,7 +359,7 @@ test("the Usage charts count a role named after an Object.prototype key", () => 
       mkDay("2026-09-01", { constructor: 5 }, { constructor: 0.1 }),
       mkDay("2026-09-02", {}, { constructor: 0.2 }),
     ],
-    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    totals: zeroReportTotals(),
     coversFullWindow: true,
   };
 
@@ -798,7 +799,7 @@ test("the Usage notional chart and Spent-tile figure render only when notional s
   const mkDay = (date: string, extra: Partial<ReportDay>): ReportDay => ({
     date, tokensOut: 0, runsByRole: { feature: 2 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const totals = zeroReportTotals();
   const data: ReportData = {
     days: 2, from: "2026-09-01", to: "2026-09-02",
     series: [
