@@ -148,22 +148,32 @@ export function probeUnreadableWarning(command: string): CheckOutcome {
   return warnOutcome(`could not check — \`${command}\` did not run or its output was unreadable`);
 }
 
+/** Whether any model-carrying seam routes to `agent` — the doctor's per-backend readiness
+ * checks stand down when none does. The one home of the stand-down consult: the three
+ * backends' named predicates below (claude, opencode, codex) each delegate here so the
+ * consult is written once. Deliberately the model-filtered view (`seamPairs`), not the full
+ * routed view — the pi row uses `piSeamsInUse` (routed seams) for the reason documented there
+ * and stays apart from this. */
+function anyModelSeamOn(config: TumwaterConfig, agent: string): boolean {
+  return seamPairs(config).some((pair) => pair.agent === agent);
+}
+
 /** Whether any seam runs on the claude backend — the doctor's claude checks stand down when
  * none does (a pi-only team reads no `~/.claude` state and spawns no claude). */
 export function claudeSeamsInUse(config: TumwaterConfig): boolean {
-  return seamPairs(config).some((pair) => pair.agent === "claude");
+  return anyModelSeamOn(config, "claude");
 }
 
 /** Whether any seam routes to opencode — the doctor's opencode checks stand down when none
  * does (a pi-only team spawns no opencode and reads no opencode state). */
 export function opencodeSeamsInUse(config: TumwaterConfig): boolean {
-  return seamPairs(config).some((pair) => pair.agent === "opencode");
+  return anyModelSeamOn(config, "opencode");
 }
 
 /** Whether any seam routes to codex — the doctor's codex checks stand down when none does
  * (a pi-only team spawns no codex and reads no codex home state). */
 export function codexSeamsInUse(config: TumwaterConfig): boolean {
-  return seamPairs(config).some((pair) => pair.agent === "codex");
+  return anyModelSeamOn(config, "codex");
 }
 
 /** Whether any seam routes to the pi backend — the doctor's pi-extension row stands down when
