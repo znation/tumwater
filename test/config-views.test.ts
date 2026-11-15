@@ -169,6 +169,38 @@ test("reviewRunConfig stretches the reviewer budget by the diff's size as well a
   assert.ok(member <= 4 * REVIEW_TIMEOUT_S);
 });
 
+test("reviewRunConfig floors a slow free reviewer's base at the fallback floor", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.runTimeoutSeconds = 54_000;
+  const quietLoad = () => ({ load1: 2, cpus: 8 });
+
+  // quiet host + a diff past the reference (4x): the diff factor is 2, so the result is
+  // exactly 2 x base. With no floor the base is the 900 s default (2x = 1800 s); with a slow
+  // free reviewer the floor raises the base to 3600 s, so the same diff stretch lands on the
+  // 2 x 3600 = 7200 s cap the doc names.
+  assert.equal(reviewRunConfig(config, quietLoad, REVIEW_DIFF_REFERENCE_BYTES * 4).runTimeoutSeconds, 1800);
+  assert.equal(reviewRunConfig(config, quietLoad, REVIEW_DIFF_REFERENCE_BYTES * 4, true).runTimeoutSeconds, 7200);
+
+  // On a quiet host with no size term the base itself is the whole budget: the floor alone
+  // moves the default 900 s to 3600 s.
+  assert.equal(reviewRunConfig(config, quietLoad, 0, true).runTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
+});
+
+test("a slow free reviewer's floored base, stretched starved, doubles past the starved floor", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.review.timeoutSeconds = 1800; // below the 3600 s floor
+  config.runTimeoutSeconds = 54_000; // the run budget is far above, so it is not the cap
+  const starvedLoad = () => ({ load1: 16, cpus: 8 }); // exactly 2x the core count
+
+  // Same starved host, same (2x) load stretch, same small diff: the floor decides the result.
+  // Unfloored: base 1800 x 2 = 3600 s — the starved stretch itself just reaches the 3600 s
+  // cap, so a below-floor configured budget is not yet the slow free reviewer's real cost.
+  assert.equal(reviewRunConfig(config, starvedLoad, 0).runTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
+  // Floored: base max(1800, 3600) = 3600 x 2 = 7200 s — the cap the doc names, double the
+  // unfloored value: a slow free reviewer earns the floor the fallback would give it.
+  assert.equal(reviewRunConfig(config, starvedLoad, 0, true).runTimeoutSeconds, 2 * FALLBACK_REVIEW_TIMEOUT_S);
+});
+
 test("fallbackPair resolves the fallback over the top-level values", () => {
   const config: TumwaterConfig = defaultConfig();
   config.provider = "hf";
