@@ -151,7 +151,11 @@ test("an absent objects dir is untrusted: the files do not settle a ref read", (
 test("an absent HEAD is untrusted: the files do not settle a ref read", () => {
   const root = makeRepo();
   fs.rmSync(path.join(root, ".git", "HEAD"), { force: true });
-  assert.equal(refShaFromFiles(root, "HEAD"), undefined, "the guard refuses the files when HEAD is absent");
+  // A full ref read, not "HEAD": refShaFromHead reads that same file, so a HEAD-shaped read is
+  // undefined with or without the gate. The gate's HEAD-presence check is what refuses the read
+  // for every ref shape, and a full refs/… read answers from the intact loose ref once the gate
+  // does — so it discriminates the check.
+  assert.equal(refShaFromFiles(root, "refs/heads/main"), undefined, "the guard refuses the files when HEAD is absent");
 });
 
 test("a reftable store shadows the loose and packed refs even when objects and HEAD are present", async () => {
