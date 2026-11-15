@@ -399,11 +399,15 @@ test("claude classifies a not-logged-in stderr as a config error and leaves a ki
   assert.deepEqual(claudeBackend.classifyExit({ code: 1, stderr: "boom", killed: false }), {});
 });
 
-test("claude rejects a run with no resolved model", async () => {
+test("claude rejects a run with no resolved model, naming the run", async () => {
   const dir = tmpdir();
-  const run = claudeRun(dir);
+  const run = claudeRun(dir, { sessionName: "feature-12" });
   delete (run.config as { model?: string }).model;
-  await assert.rejects(runAgent(run), /no model resolved/);
+  // The change is the suffix: a config that routed a nameless model to claude is a caller
+  // bug the operator must be able to attribute to a run, so the message must carry the run's
+  // sessionName (a stable per-run id). The substring check alone would pass even if that
+  // suffix were dropped, so pin it.
+  await assert.rejects(runAgent(run), /no model resolved for run "feature-12"/);
 });
 
 test("claude resolves its binary from TUMWATER_CLAUDE_BIN or backends.claude.bin", () => {
