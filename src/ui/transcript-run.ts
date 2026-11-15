@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { createTranscriptFilter, formatTranscript } from "./transcript.js";
+import { createTranscriptFilter, formatTranscript, MARKER_ONLY } from "./transcript.js";
 import { parsePiEventLine } from "../pi/pi-event-line.js";
 
 /** One past run's agent transcript for `tumwater history <role> <n> --transcript`: the raw pi
@@ -8,7 +8,6 @@ import { parsePiEventLine } from "../pi/pi-event-line.js";
  * carried one, the `timestamp` of the segment's first user `message_end` (the field the
  * renderer stamps its separator from). A segment with neither is skipped. */
 
-const MARKER_ONLY = new Set(["tumwater_run"]);
 const MESSAGE_ONLY = new Set(["message_end"]);
 
 function segmentsInText(text: string): string[][] {

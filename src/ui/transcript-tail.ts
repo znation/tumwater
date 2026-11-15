@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { openForRead, statOrNull } from "../files/files.js";
-import { formatTranscript, type TranscriptEntry } from "./transcript.js";
+import { formatTranscript, MARKER_ONLY, type TranscriptEntry } from "./transcript.js";
 import { parsePiEventLine } from "../pi/pi-event-line.js";
 import { readCompleteLines } from "../files/tail.js";
 
@@ -37,10 +37,6 @@ function isEntryCandidate(line: string, includePrompts: boolean): boolean {
     line.includes('"auto_retry_start"')
   );
 }
-
-/** The one raw line type a backward scan parses for a label: a `tumwater_run` marker. Its label
- * — never its kind — is what changes the renderer's cross-line state. */
-const MARKER_ONLY = new Set(["tumwater_run"]);
 
 /** True when a `tumwater_run` line carries the non-empty string label the renderer's
  * pending-label state is set from (transcript.ts). A kind-only marker (every run writes one

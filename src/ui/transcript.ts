@@ -127,6 +127,13 @@ function renderUserPrompt(content: unknown): string[] {
  * the switch must be added here too or it will never reach the renderer. */
 const RENDERABLE_TYPES = new Set(["agent_start", "message_end", "auto_retry_start", "tumwater_run"]);
 
+/** The single event kind the transcript readers parse for a `tumwater_run` marker — the one line
+ * type both transcript-run.ts (segment boundaries) and transcript-tail.ts (the label a backward
+ * scan reads, which — never its kind — changes the renderer's cross-line state) act on. The
+ * renderer keeps the same marker inside RENDERABLE_TYPES, where it is one of several; these
+ * readers parse it alone. */
+export const MARKER_ONLY = new Set(["tumwater_run"]);
+
 interface TranscriptRenderer {
   /** Feed one raw JSONL line; returns the rendered lines of any entry this line completes
    * (empty for deltas, bookkeeping events, and user messages unless includePrompts). */
