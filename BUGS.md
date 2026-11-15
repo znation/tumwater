@@ -18,10 +18,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 **Required behavior.** Decide the canonical entry shape for one-line entries and make the range reader match it. The fork: (a) make `actionableEntryRanges` read a top-level `- ` bullet as an entry-start (matching parseEntryDetails/eachEntryStart) so the closed index, archive dedupe, and bug wait-close all see the majority archive shape — the open `## Open` shape then needs a guard so a `- ` repro step inside an entry body is not misread as a sibling entry, or (b) canonicalize one-line entries to `### ` in the archive and close paths so the `###`-only reader is never blind. This is a plan-role design call (it touches twelve call sites and the entry-shape contract); the bugfix role records it, not force-picks a shape.
 
-### post-merge review of c4f34d74 never reached a verdict (found by the review role 2026-11-15)
-
-The post-merge review of commit `c4f34d748a23fd4dc39425a3cef913a097219bae` (recovered leftover work from feature: Split startPostReview into helpers and export PostReviewOutcome) never reached a verdict: This operation was aborted. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
-
 ## Fixed
 
 ## Verified

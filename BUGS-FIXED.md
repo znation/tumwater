@@ -5,6 +5,13 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### post-merge review of c4f34d74 never reached a verdict (found by the review role 2026-11-15) — fixed 2026-11-15 by the bugfix role
+
+The post-merge review of commit `c4f34d748a23fd4dc39425a3cef913a097219bae` (recovered leftover work from feature: Split startPostReview into helpers and export PostReviewOutcome) never reached a verdict: This operation was aborted. It stays on main as ordinary unreviewed backlog work.
+
+**Fix.** Reviewed `c4f34d748a23fd4`'s diff on main against its parent: the change is a faithful, behavior-preserving extraction of `startPostReview`'s IIFE into `admitPostReview` and `settlePostReviewOutcome` plus one type-only source line (`type` → `export type PostReviewOutcome`). Every branch maps onto the pre-split control flow: `task.parked` is still cleared before the stale check and lease release, the `stale` guard (`aborted || startHeld() || !still-unreviewed`) is unchanged and `lease.release()` runs once, `lease?.release()` in the shared `finally` is a no-op when the acquire returned null on abort and idempotent otherwise, and the one-shot `aborted` read happens at the same point (after the run's `finally`, before settle). The "This operation was aborted" verdict is a shutdown/world event, not a code defect: nothing is wrong to fix, so this is settled with no code change.
+**Validation gap:** no-repro — the "aborted" verdict was a non-deterministic shutdown and does not reproduce on any offline path, so it was settled by inspecting the diff for a defect rather than reproducing one.
+
 ### A live-orchestrator e2e pin-drain test flakes on a loaded host — `a pin surviving a restart drains through the gate on next start` (test/orchestrator-3.e2e.test.ts:184) fails when the shared host is starved, though it passes isolated (found by the ci role 2026-11-15) — fixed 2026-11-15 by the bugfix role
 
 **Symptom.** On a full `npm run test:e2e` against main tip 91650da, this test failed once in the tier (`ℹ fail 1`): it seeds a survivor pin — one commit pinned by the merge ref, no queue entry, the crash-between-commitAll-and-pin-write state — starts a live orchestrator, waits for the pin to drain onto main, then asserts the `merge_done` count is 1. On the loaded host the drain never landed within the `waitFor` deadline, so the count stayed 0 and `assert.equal(eventsOfType(repo, "merge_done").length, 1, "the surviving change merged through the gate")` (line 207) failed: `0 !== 1`.
