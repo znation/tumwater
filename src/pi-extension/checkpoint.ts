@@ -30,18 +30,23 @@ interface FileOps { read: Set<string>; written: Set<string>; edited: Set<string>
 type DiffStat = { insertions: number; deletions: number } | null;
 
 /** The `session_before_compact` preparation: the file ops of the summarised range and the id
- * of the first entry the compaction keeps (kept by pi; the summary does not change it). */
+ * of the first entry the compaction keeps (kept by pi; the summary does not change it).
+ * `tokensBefore` is the context size pi reads off the entry's result. */
 interface BeforeCompactPreparation {
   fileOps?: FileOps;
   firstKeptEntryId?: string | null;
+  tokensBefore?: number;
 }
 
 /** The extension's per-process state. `lastCheckpointTurn` is the turn index the last accepted
- * checkpoint recorded at, and `fields` the model's prose the summary reuses. */
+ * checkpoint recorded at, `fields` the model's prose the summary reuses, and `accepted`/`declined`
+ * the call counts the compaction entry records in its `details` for the audit. */
 interface CheckpointState {
   lastCheckpointTurn: number;
   requested: boolean;
   fields: CheckpointParams | null;
+  accepted: number;
+  declined: number;
 }
 
 // The suppression floor, in tokens: below the greater of 32k or 25% of the window there is
@@ -231,6 +236,7 @@ export function buildCheckpointTool(
         currentTurn() - state.lastCheckpointTurn,
       );
       if (!decision.accept) {
+        state.declined += 1;
         return {
           content: [{ type: "text", text: `checkpoint refused: ${decision.reason}. Continue the step.` }],
         };
@@ -238,6 +244,7 @@ export function buildCheckpointTool(
       state.lastCheckpointTurn = currentTurn();
       state.requested = true;
       state.fields = params;
+      state.accepted += 1;
       let compacted = false;
       try {
         ctx?.compact?.();
@@ -268,6 +275,9 @@ export function buildCheckpointTool(
 export default function (
   pi: {
     registerTool(tool: ToolLike): void;
+    // pi's extension API object carries `exec` (the handler's per-event ctx does not), so the
+    // git reads ride the API object captured here, not the per-event ctx.
+    exec?: CompactCtx["exec"];
     on(
       event: "turn_end" | "session_before_compact",
       handler: (
@@ -280,7 +290,13 @@ export default function (
     ): void;
   },
 ): void {
-  const state: CheckpointState = { lastCheckpointTurn: -1, requested: false, fields: null };
+  const state: CheckpointState = {
+    lastCheckpointTurn: -1,
+    requested: false,
+    fields: null,
+    accepted: 0,
+    declined: 0,
+  };
   let turn = -1;
   try {
     pi.on("turn_end", () => {
@@ -296,12 +312,25 @@ export default function (
         if (!state.requested || !state.fields) return undefined;
         const cwd = typeof ctx?.cwd === "string" ? ctx.cwd : process.cwd();
         // Two git spawns at most (the design's budget): the worktree's status and diff-stat.
-        const gitStatus = await gitReading(ctx?.exec, ["status", "--short"], cwd);
-        const diffStat = parseShortstat(await gitReading(ctx?.exec, ["diff", "--shortstat"], cwd));
+        // `exec` rides the captured API object: pi's handler ctx does not carry it, so a
+        // `ctx?.exec` read would always be undefined and the git block would never render.
+        const gitStatus = await gitReading(pi.exec, ["status", "--short"], cwd);
+        const diffStat = parseShortstat(await gitReading(pi.exec, ["diff", "--shortstat"], cwd));
         const summary = buildCheckpointSummary(state.fields, event.preparation?.fileOps, gitStatus, diffStat);
         state.requested = false;
         state.fields = null;
-        return { compaction: { summary: summary ?? "" } };
+        // pi's compact() reads firstKeptEntryId/tokensBefore off the extension result and
+        // defaults a missing firstKeptEntryId to the compaction's own id, which would make the
+        // projection keep nothing before the summary — so carry pi's own values through.
+        // `details` records the call counts the design's audit and A/B read off the entry.
+        return {
+          compaction: {
+            summary: summary ?? "",
+            firstKeptEntryId: event.preparation?.firstKeptEntryId ?? null,
+            tokensBefore: event.preparation?.tokensBefore ?? 0,
+            details: { kind: "checkpoint", accepted: state.accepted, declined: state.declined },
+          },
+        };
       } catch {
         return undefined;
       }

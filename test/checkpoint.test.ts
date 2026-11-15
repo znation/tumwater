@@ -143,6 +143,11 @@ test("the tool refuses a too-fresh call and says why, and accepts a ready one", 
 
 // A structural fake of pi's extension API: it records the registrations so the adapter's
 // behaviour (register the tool, serve only a self-requested compaction) can be tested without pi.
+// The `exec` fake returns a fixed status line and no shortstat, so the git block renders through
+// the api object the handler reads it from (pi's real handler ctx does not carry `exec`).
+// `_cmd` is unused (the handler always calls it with "git") but must occupy the first slot, so
+// the `args` array the fake branches on lands in the second; the `_` prefix keeps it out of
+// noUnusedParameters.
 function fakePi() {
   const handlers: Record<string, (event: Record<string, unknown>, ctx?: Record<string, unknown>) => unknown> = {};
   let tool: unknown;
@@ -151,7 +156,9 @@ function fakePi() {
     get tool() { return tool; },
     on(event: string, cb: (event: Record<string, unknown>, ctx?: Record<string, unknown>) => unknown) { handlers[event] = cb; },
     registerTool(t: unknown) { tool = t; },
-    exec: async () => ({ stdout: "" }),
+    exec: async (_cmd: string, args: string[]) => ({
+      stdout: args[0] === "status" ? " M a.ts" : "",
+    }),
   };
 }
 
@@ -170,14 +177,35 @@ test("the adapter registers the tool and serves only a compaction the run reques
   };
   const accepted = await tool.execute("t", { done: "d", state: "s", next: "n" });
   assert.match(accepted.content[0]!.text, /recorded/, "the tool accepted and queued the compaction");
-  // The handler then writes the measured summary into the compaction entry.
-  const prep = { fileOps: { read: new Set(["a.ts"]), written: new Set(), edited: new Set() } };
+  // The handler then writes the measured summary into the compaction entry. It must also carry
+  // pi's own firstKeptEntryId (and tokensBefore) through to the result pi expects, so the
+  // projection keeps the recent turns after compaction instead of dropping everything before the
+  // summary (pi defaults a missing firstKeptEntryId to the compaction's own id).
+  const prep = {
+    fileOps: { read: new Set(["a.ts"]), written: new Set(), edited: new Set() },
+    firstKeptEntryId: "kept-42",
+    tokensBefore: 90_000,
+  };
   const resolved = (await fake.handlers.session_before_compact!({ preparation: prep }, { cwd: "/w" })) as
-    | { compaction: { summary: string } }
+    | {
+        compaction: {
+          summary: string;
+          firstKeptEntryId: string | null;
+          tokensBefore: number;
+          details: { kind: string; accepted: number; declined: number };
+        };
+      }
     | undefined;
   assert.ok(resolved, "a self-requested compaction gets our summary");
   assert.match(resolved.compaction.summary, /done:\nd/);
   assert.match(resolved.compaction.summary, /read: a\.ts/);
+  assert.match(resolved.compaction.summary, /git status/, "the git block renders through the api's exec, not the handler ctx");
+  assert.equal(resolved.compaction.firstKeptEntryId, "kept-42", "pi's kept-entry id is carried through");
+  assert.equal(resolved.compaction.tokensBefore, 90_000, "pi's token count is carried through");
+  // The design's audit signal: the entry's details kind and the accepted/declined call counts.
+  assert.equal(resolved.compaction.details.kind, "checkpoint");
+  assert.equal(resolved.compaction.details.accepted, 1, "one accepted checkpoint call so far");
+  assert.equal(resolved.compaction.details.declined, 0, "no declined calls yet");
 });
 
 test("the adapter never throws into pi when the context offers nothing", () => {
