@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { flagValue, parseBranchFlag, parseCountFlag, parseDurationFlag, parsePortFlag, parsePositionFlag, parseRoleFlag, parseRoleListFlag, rejectFlagLookingValue } from "../src/cli/cli-args.js";
+import { flagValue, parseBranchFlag, parseCountFlag, parseDurationFlag, parseGrepFlag, parsePortFlag, parsePositionFlag, parseRoleFlag, parseRoleListFlag, rejectFlagLookingValue } from "../src/cli/cli-args.js";
 import { durationLabel } from "../src/text/duration.js";
 import {
   rejectUnknownArgs,
@@ -102,6 +102,51 @@ test("rejectFlagLookingValue passes an absent value through (null stays null, un
   // or `needs a value` error.
   assert.equal(expectOk(() => rejectFlagLookingValue("--x", undefined)), undefined);
   assert.equal(expectOk(() => rejectFlagLookingValue("--y", null)), null);
+});
+
+// --- parseGrepFlag (the shared `--grep <text>` filter parser the filtering views use) ---
+// It is the deliberate inverse of rejectFlagLookingValue: a `--`- or `-`-token in the grep slot
+// is the text to search, never refused. Its value token still leaves `rest` (the `--grep` flag
+// token stays) so the pattern cannot be read as a rival flag or a positional, and a valueless or
+// empty value fails with the caller's own wording. The views drive it only through their own
+// commands; these cases pin the two load-bearing branches on their own.
+
+test("parseGrepFlag removes the value token from rest so a pattern cannot be a rival flag or positional", () => {
+  // "two" leaves the list; the `--grep` token and the trailing `-n` remain.
+  const err = "logs --grep needs a value";
+  const r = expectOk(() => parseGrepFlag(["--grep", "two", "-n"], err));
+  assert.deepEqual(r, { rest: ["--grep", "-n"], pattern: "two" });
+});
+
+test("parseGrepFlag keeps a flag-shaped or single-dash token as the pattern text, not a refusal", () => {
+  // The inverse of rejectFlagLookingValue: a `--`-token and a `-`-token in the grep slot are
+  // the pattern to search (e.g. `logs --grep -f` greps for "-f"), so they are returned as
+  // `pattern` and removed from `rest` — never refused as rival flags.
+  const err = "logs --grep needs a value";
+  const flag = expectOk(() => parseGrepFlag(["--grep", "--since"], err));
+  assert.deepEqual(flag, { rest: ["--grep"], pattern: "--since" });
+  const dash = expectOk(() => parseGrepFlag(["--grep", "-f"], err));
+  assert.deepEqual(dash, { rest: ["--grep"], pattern: "-f" });
+});
+
+test("parseGrepFlag returns null and leaves rest unchanged when the flag is absent", () => {
+  // No `--grep` token: nothing is removed and the filter reports no pattern.
+  const err = "logs --grep needs a value";
+  const r = expectOk(() => parseGrepFlag(["-n", "5"], err));
+  assert.deepEqual(r, { rest: ["-n", "5"], pattern: null });
+});
+
+test("parseGrepFlag fails with the caller's wording when the value is valueless or empty", () => {
+  // Both the trailing-no-value and the zero-length cases call the one fail(missingValueError),
+  // so each writes the exact `tumwater: <err>` line and exits 1 — an absent pattern is an
+  // error, not a no-op.
+  const err = "logs --grep needs a value";
+  const valueless = expectFail(() => parseGrepFlag(["--grep"], err));
+  assert.equal(valueless.code, 1);
+  assert.equal(valueless.stderr, `tumwater: ${err}\n`);
+  const empty = expectFail(() => parseGrepFlag(["--grep", ""], err));
+  assert.equal(empty.code, 1);
+  assert.equal(empty.stderr, `tumwater: ${err}\n`);
 });
 
 // --- flagValue ---
