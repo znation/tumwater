@@ -177,6 +177,21 @@ export interface ReportTotals {
   bugsFiled?: number; // window filing-stamp count (absent when zero)
 }
 
+/** The day report's `totals` group: the window totals plus the backlog-file tallies only the
+ * day collector can count (day-granular filing/done file metadata). Named so `ReportData` and
+ * a shared guard can reference the shape instead of each spelling the intersection. */
+export type DayTotals = ReportTotals & {
+  featuresDone: number;
+  bugsFixed: number;
+  commitsByRole?: Record<string, number>;
+  workCommits?: number;
+  maintenanceCommits?: number;
+  /** Fixed bugs' `Validation gap` tags over the window, by tag; team-only day-granular
+   * backlog metadata, absent when zero like its siblings (a tag has no role, so a
+   * role-scoped report never carries it). */
+  validationGapsByTag?: Record<string, number>;
+};
+
 /** Team usage over a window of exactly `days` local calendar days ending today. */
 export interface ReportData {
   days: number;
@@ -184,17 +199,7 @@ export interface ReportData {
   to: string; // day key of today
   role?: string; // the scoped base roles, comma-joined; set by the role-scoped collector; absent on the team report
   series: ReportDay[]; // oldest → newest, zero-filled
-  totals: ReportTotals & {
-    featuresDone: number;
-    bugsFixed: number;
-    commitsByRole?: Record<string, number>;
-    workCommits?: number;
-    maintenanceCommits?: number;
-    /** Fixed bugs' `Validation gap` tags over the window, by tag; team-only day-granular
-     * backlog metadata, absent when zero like its siblings (a tag has no role, so a
-     * role-scoped report never carries it). */
-    validationGapsByTag?: Record<string, number>;
-  };
+  totals: DayTotals;
   /** True when the report provably reflects every event the window could have contained:
    * the day-keyed read proved the log reaches back before the window's first day, or the
    * retained log holds no events at all — nothing ever existed that could have rotated away.

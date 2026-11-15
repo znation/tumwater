@@ -133,11 +133,24 @@ interface ReportFoldEntry {
 const reportFoldCache = new Map<string, ReportFoldEntry>();
 const REPORT_FOLD_CACHE_MAX = 8;
 
+/** The `Record<string, number>`-valued field names of a report shape `S` — its map cells.
+ * Derived from the shape the same way report-data.ts's `DayMapKey` derives `ReportDay`'s, so
+ * a key that names no cell the shape declares is a compile error at its spread site, not a
+ * stray key in the report JSON. */
+type ShapeMapKeys<S extends object> = {
+  [K in keyof S]-?: NonNullable<S[K]> extends Record<string, number> ? K : never;
+}[keyof S];
+
 /** Build one object-literal spread cell for a per-slice role/product map only when the map has
  * entries (`map` non-empty), so an entry-free window omits the field instead of carrying an
  * empty map. The single home of that guard for both window collectors — the day report's and
- * the trailing-window totals object-literal spreads all followed it inline before. */
-export function nonemptyObj<K extends string>(key: K, map: Record<string, number>): Partial<Record<K, Record<string, number>>> {
+ * the trailing-window totals object-literal spreads all followed it inline before. The first
+ * type argument is the shape the cell spreads into, which pins `key` to that shape's map
+ * cells (`ShapeMapKeys`). */
+export function nonemptyObj<S extends object, K extends ShapeMapKeys<S> = ShapeMapKeys<S>>(
+  key: K,
+  map: Record<string, number>,
+): Partial<Record<K, Record<string, number>>> {
   return Object.keys(map).length > 0 ? ({ [key]: map } as Record<K, Record<string, number>>) : {};
 }
 

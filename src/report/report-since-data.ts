@@ -61,8 +61,8 @@ export function collectReportSince(
       bases === undefined
         ? [...mainRedMinutesByDay(raw.events, cutoff, end).values()].reduce((a, b) => a + b, 0)
         : 0,
-    ...nonemptyObj("mainRedByTest", sinceMainRedByTest(raw, cutoff, end, bases)),
-    ...nonemptyObj("mainRedByCulprit", sinceMainRedByCulprit(raw, cutoff, end, bases)),
+    ...nonemptyObj<SinceReport>("mainRedByTest", sinceMainRedByTest(raw, cutoff, end, bases)),
+    ...nonemptyObj<SinceReport>("mainRedByCulprit", sinceMainRedByCulprit(raw, cutoff, end, bases)),
     coversFullWindow,
   };
 }
@@ -120,7 +120,7 @@ function sinceScopedTotals(acc: UsageFold, bases: string[] | undefined): ReportT
         commits: acc.commits,
         costUsd: acc.costUsd + (acc.mergeCostUsd ?? 0),
         ...(acc.notionalCostUsd > 0 ? { notionalCostUsd: acc.notionalCostUsd } : {}),
-        ...nonemptyObj("notionalByBackend", acc.notionalByBackend),
+        ...nonemptyObj<ReportTotals>("notionalByBackend", acc.notionalByBackend),
         mergeRuns: acc.mergeRuns ?? 0,
         mergeTokens: acc.mergeTokens ?? 0,
         mergeCostUsd: acc.mergeCostUsd ?? 0,
@@ -240,15 +240,15 @@ function sinceRoleMaps(
     failedRunsByRole: scopedByRole(acc.failedRunsByRole, bases),
     imageReroutesByRole: scopedByRole(acc.imageReroutesByRole, bases),
     tokensByRole: scopedByRole(acc.tokensByRole, bases),
-    ...nonemptyObj("promptTokensByRole", scopedByRole(acc.promptTokensByRole, bases)),
-    ...nonemptyObj("cacheReadTokensByRole", scopedByRole(acc.cacheReadTokensByRole, bases)),
+    ...nonemptyObj<SinceReport>("promptTokensByRole", scopedByRole(acc.promptTokensByRole, bases)),
+    ...nonemptyObj<SinceReport>("cacheReadTokensByRole", scopedByRole(acc.cacheReadTokensByRole, bases)),
     commitsByRole: scopedByRole(acc.commitsByRole, bases),
     mergedByRole: scopedByRole(acc.mergedByRole, bases),
     mergeFailedByRole: scopedByRole(acc.mergeFailedByRole, bases),
     // A result code is not a role, so a role-scoped window carries an empty map (a code
     // never baseRoleOf to the role) — the render gates the reason line to the team report.
     mergeFailedByReason: scopedByRole(acc.mergeFailedByReason, bases),
-    ...nonemptyObj("notionalByRole", notionalByRole),
+    ...nonemptyObj<SinceReport>("notionalByRole", notionalByRole),
     // Provider spend is a team attribution (a provider is not a role), so a role-scoped
     // window carries empty maps — providers never baseRoleOf to the role — and the render
     // gates the provider lines to the team report anyway. Always present, empty when none.
@@ -256,7 +256,7 @@ function sinceRoleMaps(
     notionalByProvider: scopedByRole(acc.notionalByProvider, bases),
     // Backend spend is a team attribution (a backend is not a role), so a role-scoped window
     // omits it — the same absent-when-empty rule the day collector applies.
-    ...nonemptyObj("notionalByBackend", scopedByRole(acc.notionalByBackend, bases)),
+    ...nonemptyObj<SinceReport>("notionalByBackend", scopedByRole(acc.notionalByBackend, bases)),
     // Model attribution is team-only (a model is not a role, so no model folds to the
     // scoped role), the same full-map-for-team / empty-for-scoped rule costByProvider
     // follows. Always present so the render can gate on the window's own events.
@@ -268,6 +268,6 @@ function sinceRoleMaps(
     // attributed to the model it started on, the same team-only / always-present rule.
     costByModel: scopedByRole(acc.costByModel, bases),
     notionalByModel: scopedByRole(acc.notionalByModel, bases),
-    ...nonemptyObj("deferredByReason", deferred),
+    ...nonemptyObj<SinceReport>("deferredByReason", deferred),
   };
 }

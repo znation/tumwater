@@ -36,7 +36,7 @@ import {
   zeroMergeCounts,
 } from "./report-fold.js";
 import { mainRedCulpritsByDay, mainRedFailingTestsByDay, mainRedMinutesByDay } from "./report-main-red.js";
-import type { ReportData, ReportDay } from "./report-types.js";
+import type { DayTotals, ReportData, ReportDay } from "./report-types.js";
 
 /** A `ReportDay`'s per-day lower-median fields — the eight `…MedianMs` cells in
  * report-types.ts, each set from one folded ms list. */
@@ -495,11 +495,11 @@ export function collectReport(root: string, days: number, role?: string | readon
     totals: {
       ...totals,
       ...(notionalCostUsd > 0 ? { notionalCostUsd } : {}),
-      ...nonemptyObj("notionalByBackend", notionalByBackend),
+      ...nonemptyObj<DayTotals>("notionalByBackend", notionalByBackend),
       ...(mergeFailed > 0 ? { mergeFailed } : {}),
       ...(plansAdded > 0 ? { plansAdded } : {}),
       ...(bugsFiled > 0 ? { bugsFiled } : {}),
-      ...nonemptyObj("validationGapsByTag", validationGaps),
+      ...nonemptyObj<DayTotals>("validationGapsByTag", validationGaps),
     },
     coversFullWindow,
   };
