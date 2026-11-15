@@ -96,19 +96,16 @@ test("runsFullSuite leaves filtered runs and mere mentions of the runner alone",
 });
 
 test("an aliased test subcommand honors the same filter rules as `npm test`", () => {
-  // `npm tst`/`npm t` are npm's aliases for `npm test` (NPM_TEST); a positional after the alias is
-  // a test filter exactly like `npm test gui`, and a value-taking flag's value is the flag's, not
-  // a filter. The existing alias test pins the unfiltered alias only, and the `--`-positional and
-  // value-flag tests use the spelled `npm test` — the alias through hasFilter's true arm was
-  // untested, so a filter after an alias was read as a full-suite run.
+  // `npm tst`/`npm t` are npm's aliases for `npm test` (NPM_TEST) and take the same hasFilter
+  // path as the spelled name, so a positional after the alias is a filter exactly like
+  // `npm test gui`. The alias-tables test already pins `npm tst gui` (filtered) and
+  // `npm tst --prefix` (value flag); these pin the remaining alias shapes — the `t` alias with a
+  // positional, and a positional after a bare `--` — through that same path.
   for (const command of [
-    "npm tst gui", // positional filter after the alias
-    "npm t gui",
+    "npm t gui", // positional filter after the `t` alias
     "npm tst -- gui", // positional after a bare --
-    "npm tst --prefix /tmp/rev", // value flag's value is not a filter → still the full suite, FLAGGED
   ]) {
-    const expected = command.includes("--prefix");
-    assert.equal(runsFullSuite(command), expected, `${expected ? "flagged" : "not flagged"}: ${command}`);
+    assert.ok(!runsFullSuite(command), `not flagged: ${command}`);
   }
 });
 
