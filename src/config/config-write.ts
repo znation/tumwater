@@ -243,19 +243,29 @@ export function setConfigKey(
     // The two merge groups close over these locals of the one writeConfigMutation below.
     let oldValue: unknown;
     let unchanged: true | undefined;
-    const mergeMapEntry = (
+    // The map and section arms each merge one entry/field into a loaded object section, keeping
+    // its other fields — the two read/merge/preserve bodies are identical apart from the section
+    // name and the entry key, so one helper holds that shared read (with the unchanged
+    // early-return), the one-key merge, and the roles-preserving write. validateConfig in
+    // writeConfigMutation owns the value type, so a bad value fails there and writes nothing.
+    const mergeIntoSection = (
       record: ConfigRecord,
-      parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "map" }>,
+      section: string,
+      entry: string,
     ): TumwaterConfig => {
-      const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
-      oldValue = existing[parsed.role];
+      const existing = (record[section] as Record<string, unknown> | undefined) ?? {};
+      oldValue = existing[entry];
       if (isDeepStrictEqual(oldValue, value)) {
         unchanged = true;
         return record as unknown as TumwaterConfig;
       }
-      const next = { ...record, [parsed.map]: { ...existing, [parsed.role]: value } } as unknown as TumwaterConfig;
+      const next = { ...record, [section]: { ...existing, [entry]: value } } as unknown as TumwaterConfig;
       return preservingFileRoles(root, next);
     };
+    const mergeMapEntry = (
+      record: ConfigRecord,
+      parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "map" }>,
+    ): TumwaterConfig => mergeIntoSection(record, parsed.map, parsed.role);
     const mergeTier = (
       record: ConfigRecord,
       parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "tier" }>,
@@ -277,18 +287,7 @@ export function setConfigKey(
     const mergeSection = (
       record: ConfigRecord,
       parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "section" }>,
-    ): TumwaterConfig => {
-      // Merge one field into the loaded section, keeping its other fields; validateConfig in
-      // writeConfigMutation owns the value type, so a bad value fails there and writes nothing.
-      const existing = (record[parsed.section] as Record<string, unknown> | undefined) ?? {};
-      oldValue = existing[parsed.field];
-      if (isDeepStrictEqual(oldValue, value)) {
-        unchanged = true;
-        return record as unknown as TumwaterConfig;
-      }
-      const next = { ...record, [parsed.section]: { ...existing, [parsed.field]: value } } as unknown as TumwaterConfig;
-      return preservingFileRoles(root, next);
-    };
+    ): TumwaterConfig => mergeIntoSection(record, parsed.section, parsed.field);
     const mergeAgent = (
       record: ConfigRecord,
       parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "agent" }>,
