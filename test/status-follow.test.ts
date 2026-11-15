@@ -6,6 +6,7 @@ import { initProject } from "../src/init/init.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
+import { followSeams } from "./fixtures/follow-fixtures.js";
 
 // `status -f` runs in-process with the follow's parent-death and TTY seams, driving the
 // follow deterministically the way cli-log-commands.test.ts drives `logs -f`: mock only
@@ -96,14 +97,14 @@ async function runFollow(t: TestContext, repo: string, args: string[], seams: Pa
 test("status -f repaints until its parent exits, then prints nothing", async (t) => {
   const repo = await readyRepo("status follow");
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, () => (parent.value = 1));
+  const out = await runFollow(t, repo, ["-f"], followSeams(() => parent.value), 2, () => (parent.value = 1));
   assert.ok(!out.includes(CLEAR), "non-TTY shape has no clear-screen");
 });
 
 test("status -f --role keeps only the listed role's rows", async (t) => {
   const repo = await readyRepo("status follow role");
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, ["--role", "feature", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 1, () => (parent.value = 1));
+  const out = await runFollow(t, repo, ["--role", "feature", "-f"], followSeams(() => parent.value), 1, () => (parent.value = 1));
   assert.match(out, /feature/);
   assert.doesNotMatch(out, /clean/, "a scoped follow keeps only the listed role's rows");
 });
@@ -126,7 +127,7 @@ test("status -f clears the screen only on a TTY", async (t) => {
   const ttyOut = await runFollow(t, repo, ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: true }, 1, () => (parent.value = 1));
   assert.ok(ttyOut.startsWith(CLEAR), "TTY follow starts with a clear-screen");
   parent = { value: 4242 };
-  const pipedOut = await runFollow(t, repo, ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 1, () => (parent.value = 1));
+  const pipedOut = await runFollow(t, repo, ["-f"], followSeams(() => parent.value), 1, () => (parent.value = 1));
   assert.ok(!pipedOut.includes(CLEAR), "non-TTY follow never clears the screen");
 });
 
@@ -140,6 +141,6 @@ test("status -f strips terminal controls from rendered data", async (t) => {
   await initProject(repo, "hostile name");
   await sleep(50);
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 1, () => (parent.value = 1));
+  const out = await runFollow(t, repo, ["-f"], followSeams(() => parent.value), 1, () => (parent.value = 1));
   assert.ok(!out.includes("evil\x1b[31m"), "the hostile control sequence is stripped before it reaches the terminal");
 });

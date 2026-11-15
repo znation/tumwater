@@ -11,6 +11,7 @@ import { entryKey } from "../src/backlog/backlog-parts.js";
 import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
 import { cli } from "./helpers/cli-harness.js";
+import { followSeams } from "./fixtures/follow-fixtures.js";
 
 // `plan|bug --list -f` runs in-process with the follow's parent-death and TTY seams, driving
 // the follow deterministically the way cli-backlog-follow.test.ts drives `backlog -f`: mock
@@ -106,7 +107,7 @@ async function runFollow(
 test("plan --list -f repaints the numbered list until its parent exits", async (t) => {
   const repo = await seedRepo(PLANS_THREE_PARTS, "plan list follow");
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, "plan", "PLANS.md", "Planned", ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, (o) => (o.match(/Export series, part 1\/3/g) ?? []).length, () => (parent.value = 1));
+  const out = await runFollow(t, repo, "plan", "PLANS.md", "Planned", ["-f"], followSeams(() => parent.value), 2, (o) => (o.match(/Export series, part 1\/3/g) ?? []).length, () => (parent.value = 1));
   assert.match(out, /planned features in PLANS\.md:/);
   assert.match(out, /1\. Export series, part 1\/3/);
   // The two blocked parts compress to one line naming their positions, as the one-shot list does.
@@ -117,7 +118,7 @@ test("plan --list -f repaints the numbered list until its parent exits", async (
 test("bug --list --follow repaints the open list too (long flag spelling)", async (t) => {
   const repo = await seedRepo(PLANS_THREE_PARTS, "bug list follow");
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, "bug", "BUGS.md", "Open", ["--follow"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, (o) => (o.match(/An open bug/g) ?? []).length, () => (parent.value = 1));
+  const out = await runFollow(t, repo, "bug", "BUGS.md", "Open", ["--follow"], followSeams(() => parent.value), 2, (o) => (o.match(/An open bug/g) ?? []).length, () => (parent.value = 1));
   assert.match(out, /open bugs in BUGS\.md:/);
   assert.match(out, /1\. An open bug/);
 });
@@ -132,7 +133,7 @@ test("plan --list -f renumbers when an entry is removed between frames", async (
   let done = false;
   let failure: unknown = null;
   t.mock.timers.enable({ apis: ["setInterval"] });
-  const promise = listAndAnnounce(repo, ["-f"], "plan", "PLANS.md", "Planned", { ppid: () => parent.value, intervalMs: 5, tty: false }).then(
+  const promise = listAndAnnounce(repo, ["-f"], "plan", "PLANS.md", "Planned", followSeams(() => parent.value)).then(
     () => (done = true),
     (err: unknown) => {
       failure = err;
@@ -184,7 +185,7 @@ test("plan --list --done -f repaints the finished list until its parent exits", 
     `# Plans\n\n## Planned\n\n### Still planned (planned 2026-10-01)\n\nbody\n\n## Done\n\n### Done one (done 2026-10-01)\n\n### Done two (done 2026-10-02)\n`,
   );
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, "plan", "PLANS.md", "Planned", ["--done", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, (o) => (o.match(/Done one/g) ?? []).length, () => (parent.value = 1));
+  const out = await runFollow(t, repo, "plan", "PLANS.md", "Planned", ["--done", "-f"], followSeams(() => parent.value), 2, (o) => (o.match(/Done one/g) ?? []).length, () => (parent.value = 1));
   assert.match(out, /done plans in PLANS\.md, newest first:/);
   assert.match(out, /1\. Done one \(done 2026-10-01\)/);
   assert.match(out, /2\. Done two \(done 2026-10-02\)/);
@@ -199,7 +200,7 @@ test("plan --list -f shows the working-on-it mark for a claim made between frame
   let done = false;
   let failure: unknown = null;
   t.mock.timers.enable({ apis: ["setInterval"] });
-  const promise = listAndAnnounce(repo, ["-f"], "plan", "PLANS.md", "Planned", { ppid: () => parent.value, intervalMs: 5, tty: false }).then(
+  const promise = listAndAnnounce(repo, ["-f"], "plan", "PLANS.md", "Planned", followSeams(() => parent.value)).then(
     () => (done = true),
     (err: unknown) => {
       failure = err;
@@ -255,7 +256,7 @@ test("plan --list --grep -f treats -f as the literal grep pattern, one snapshot 
 test("plan --list -f --grep composes the follow with the pattern", async (t) => {
   const repo = await seedRepo("### Zebra plan (planned 2026-10-01)\n\nFeed the zebra.\n\n### Other plan (planned 2026-10-02)\n\nOther body.\n", "plan list follow grep");
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, "plan", "PLANS.md", "Planned", ["-f", "--grep", "Zebra"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, (o) => (o.match(/Zebra plan/g) ?? []).length, () => (parent.value = 1));
+  const out = await runFollow(t, repo, "plan", "PLANS.md", "Planned", ["-f", "--grep", "Zebra"], followSeams(() => parent.value), 2, (o) => (o.match(/Zebra plan/g) ?? []).length, () => (parent.value = 1));
   assert.match(out, /Zebra plan/);
   assert.doesNotMatch(out, /Other plan/, "a --grep follow keeps only matching entries");
 });
@@ -291,6 +292,6 @@ test("plan --list -f clears the screen only on a TTY", async (t) => {
   const ttyOut = await runFollow(t, repo, "plan", "PLANS.md", "Planned", ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: true }, 1, (o) => (o.match(/Alpha/g) ?? []).length, () => (parent.value = 1));
   assert.ok(ttyOut.startsWith(CLEAR), "TTY follow starts with a clear-screen");
   parent = { value: 4242 };
-  const pipedOut = await runFollow(t, repo, "plan", "PLANS.md", "Planned", ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 1, (o) => (o.match(/Alpha/g) ?? []).length, () => (parent.value = 1));
+  const pipedOut = await runFollow(t, repo, "plan", "PLANS.md", "Planned", ["-f"], followSeams(() => parent.value), 1, (o) => (o.match(/Alpha/g) ?? []).length, () => (parent.value = 1));
   assert.ok(!pipedOut.includes(CLEAR), "non-TTY follow never clears the screen");
 });

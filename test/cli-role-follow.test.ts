@@ -8,6 +8,7 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { roleNotesPath } from "../src/paths.js";
 import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
+import { followSeams } from "./fixtures/follow-fixtures.js";
 
 // `role -f` runs in-process with the follow's parent-death and TTY seams, driving the
 // follow determinically the way cli-questions-follow.test.ts drives `questions -f`: mock
@@ -92,7 +93,7 @@ test("role -f repaints the role's document until its parent exits, then prints n
     t,
     repo,
     ["feature", "-f"],
-    { ppid: () => parent.value, intervalMs: 5, tty: false },
+    followSeams(() => parent.value),
     2,
     (o) => (o.match(/# tumwater role: feature/g) ?? []).length,
     () => (parent.value = 1),
@@ -108,7 +109,7 @@ test("role --follow repaints too (long flag spelling)", async (t) => {
     t,
     repo,
     ["feature", "--follow"],
-    { ppid: () => parent.value, intervalMs: 5, tty: false },
+    followSeams(() => parent.value),
     2,
     (o) => (o.match(/# tumwater role: feature/g) ?? []).length,
     () => (parent.value = 1),
@@ -126,7 +127,7 @@ test("role -f shows a notes change between frames in the next frame", async (t) 
   let done = false;
   let failure: unknown = null;
   t.mock.timers.enable({ apis: ["setInterval"] });
-  const promise = cmdRole(repo, ["feature", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }).then(
+  const promise = cmdRole(repo, ["feature", "-f"], followSeams(() => parent.value)).then(
     () => (done = true),
     (err: unknown) => {
       failure = err;

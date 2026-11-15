@@ -11,6 +11,7 @@ import { initProject } from "../src/init/init.js";
 import { cli } from "./helpers/cli-harness.js";
 import { captureStdout } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
+import { followSeams } from "./fixtures/follow-fixtures.js";
 
 // `history <role> <n> -f` runs in-process with the follow's parent-death and TTY seams, the
 // way cli-role-follow.test.ts drives `role -f`: mock only setInterval so each repaint and
@@ -98,7 +99,7 @@ test("history <role> <n> -f repaints the run's trail until its parent exits, the
     t,
     repo,
     ["bugfix", "3"],
-    { ppid: () => parent.value, intervalMs: 5, tty: false },
+    followSeams(() => parent.value),
     {
       opts: { follow: true },
       count: (o) => (o.match(/bugfix run #3 — /g) ?? []).length,
@@ -119,7 +120,7 @@ test("history <role> <n> --follow repaints too (long flag spelling)", async (t) 
     t,
     repo,
     ["bugfix", "3"],
-    { ppid: () => parent.value, intervalMs: 5, tty: false },
+    followSeams(() => parent.value),
     {
       opts: { follow: true },
       waitForFrames: 2,
@@ -136,7 +137,7 @@ test("history <role> <n> -f shows an event appended between frames in the next f
   let done = false;
   let failure: unknown = null;
   t.mock.timers.enable({ apis: ["setInterval"] });
-  const promise = cmdRunDetail(repo, ["bugfix", "3"], false, { follow: true }, { ppid: () => parent.value, intervalMs: 5, tty: false }).then(
+  const promise = cmdRunDetail(repo, ["bugfix", "3"], false, { follow: true }, followSeams(() => parent.value)).then(
     () => (done = true),
     (err: unknown) => {
       failure = err;
@@ -215,7 +216,7 @@ test("history <role> <n> -f with a missing run stays the one-shot not-found line
   try {
     // No mock timers armed: if the follow loop ever started, this would hang the suite —
     // the not-found answer must return before the loop.
-    await cmdRunDetail(repo, ["bugfix", "99"], false, { follow: true }, { ppid: () => 4242, intervalMs: 5, tty: false });
+    await cmdRunDetail(repo, ["bugfix", "99"], false, { follow: true }, followSeams(() => 4242));
     assert.match(cap.out(), /no run #99 for bugfix in the scanned window/);
     assert.ok(!cap.out().includes(CLEAR), "no clear-screen printed");
   } finally {
@@ -234,7 +235,7 @@ test("history <role> <n> -f with --last pins the run resolved on the first frame
   let done = false;
   let failure: unknown = null;
   t.mock.timers.enable({ apis: ["setInterval"] });
-  const promise = cmdRunDetail(repo, ["bugfix"], false, { last: true, follow: true }, { ppid: () => parent.value, intervalMs: 5, tty: false }).then(
+  const promise = cmdRunDetail(repo, ["bugfix"], false, { last: true, follow: true }, followSeams(() => parent.value)).then(
     () => (done = true),
     (err: unknown) => {
       failure = err;

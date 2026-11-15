@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { followView } from "../src/follow-view.js";
 import { captureStdout } from "./helpers/exit-capture.js";
+import { followSeams } from "./fixtures/follow-fixtures.js";
 
 // `followView`'s first frame is painted (and awaited) outside the repaint loop, so a throw
 // or rejection in that first read used to propagate out of followView and kill the whole
@@ -23,7 +24,7 @@ test("followView rides through a first-frame failure and repaints on the next ti
       if (calls === 1) return Promise.reject(new Error("transient git read failure"));
       return Promise.resolve(`frame${calls}`);
     },
-    { ppid: () => parent.value, intervalMs: 5, tty: false },
+    followSeams(() => parent.value),
   ).then(
     () => (done = true),
     (err: unknown) => {
@@ -88,7 +89,7 @@ test("followView rides through a sync frame throw on a tick and repaints on the 
       if (calls === 2) throw new Error("transient sync read failure"); // the sync-path fault
       return `frame${calls}`;
     },
-    { ppid: () => parent.value, intervalMs: 5, tty: false },
+    followSeams(() => parent.value),
   ).then(
     () => (done = true),
     (err: unknown) => {
@@ -153,7 +154,7 @@ test("followView skips a repaint that lands while an async frame is still in fli
       if (calls === 2) return new Promise<string>((r) => { resolveSlow = r; }); // the slow frame
       return `frame${calls}`; // frame3+ — sync, painted once the slow frame is done
     },
-    { ppid: () => parent.value, intervalMs: 5, tty: false },
+    followSeams(() => parent.value),
   ).then(
     () => (done = true),
     (err: unknown) => {

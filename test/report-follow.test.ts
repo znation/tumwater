@@ -4,6 +4,7 @@ import { cmdReport } from "../src/report/report.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
+import { followSeams } from "./fixtures/follow-fixtures.js";
 
 // `report -f` runs in-process with the follow's parent-death and TTY seams, driving the
 // follow deterministically the way status-follow.test.ts drives `status -f`: mock only
@@ -83,7 +84,7 @@ async function runFollow(
 test("report -f repaints until its parent exits, then prints nothing", async (t) => {
   const repo = makeRepo();
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, USAGE_HEADING, 2, () => (parent.value = 1));
+  const out = await runFollow(t, repo, ["-f"], followSeams(() => parent.value), USAGE_HEADING, 2, () => (parent.value = 1));
   assert.ok(out.includes(USAGE_HEADING), "frames carry the usage report heading");
   assert.ok(!out.includes(CLEAR), "non-TTY shape has no clear-screen");
 });
@@ -91,7 +92,7 @@ test("report -f repaints until its parent exits, then prints nothing", async (t)
 test("report -f --failures repaints the failure digest", async (t) => {
   const repo = makeRepo();
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, ["--failures", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, FAILURE_HEADING, 2, () => (parent.value = 1));
+  const out = await runFollow(t, repo, ["--failures", "-f"], followSeams(() => parent.value), FAILURE_HEADING, 2, () => (parent.value = 1));
   assert.ok(out.includes(FAILURE_HEADING), "frames carry the failure digest heading");
 });
 
@@ -125,6 +126,6 @@ test("report -f clears the screen only on a TTY", async (t) => {
   const ttyOut = await runFollow(t, repo, ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: true }, USAGE_HEADING, 1, () => (parent.value = 1));
   assert.ok(ttyOut.startsWith(CLEAR), "TTY follow starts with a clear-screen");
   parent = { value: 4242 };
-  const pipedOut = await runFollow(t, repo, ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, USAGE_HEADING, 1, () => (parent.value = 1));
+  const pipedOut = await runFollow(t, repo, ["-f"], followSeams(() => parent.value), USAGE_HEADING, 1, () => (parent.value = 1));
   assert.ok(!pipedOut.includes(CLEAR), "non-TTY follow never clears the screen");
 });

@@ -9,6 +9,7 @@ import { pathPrepend } from "./fakes/fake-commands.js";
 import { attemptAsync, captureStdout } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
 import { cli, spawnCli, exitCode } from "./helpers/cli-harness.js";
+import { followSeams } from "./fixtures/follow-fixtures.js";
 
 // `doctor -f` runs in-process with the follow's parent-death and TTY seams, driving the
 // follow deterministically the way status-follow.test.ts drives `status -f`: mock only
@@ -150,7 +151,7 @@ test("doctor -f shows a check's row change between ticks", async (t) => {
   // Name the `backlog headings` check so the follow runs only that fast file-scan check —
   // a full 70-check frame on a loaded box is slow enough that its in-flight paint would
   // bleed into the next test's stdout capture.
-  const promise = cmdDoctor(repo, ["backlog headings", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }).then(
+  const promise = cmdDoctor(repo, ["backlog headings", "-f"], followSeams(() => parent.value)).then(
     () => (done = true),
     (err: unknown) => {
       failure = err;
@@ -199,7 +200,7 @@ test("doctor -f composes with a check name", async (t) => {
   const repo = makeRepo();
   await sleep(50);
   const parent = { value: 4242 };
-  const named = await runFollow(t, repo, ["brief", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, () => (parent.value = 1));
+  const named = await runFollow(t, repo, ["brief", "-f"], followSeams(() => parent.value), 2, () => (parent.value = 1));
   assert.match(named, /^warn\s+brief/m);
   assert.doesNotMatch(named, /\bgit binary\b/, "the named-check follow runs only that check");
 });
@@ -211,7 +212,7 @@ test("doctor -f composes with --problems", async (t) => {
   const repo = makeRepo();
   await sleep(50);
   const parent = { value: 4242 };
-  const problems = await runFollow(t, repo, ["node", "--problems", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, () => (parent.value = 1));
+  const problems = await runFollow(t, repo, ["node", "--problems", "-f"], followSeams(() => parent.value), 2, () => (parent.value = 1));
   assert.match(problems, /1 ok check hidden/, "--problems counts the hidden ok row");
   assert.doesNotMatch(problems, /^ok\s+node/m, "--problems hides the ok row in every frame");
 });
@@ -239,7 +240,7 @@ test("doctor -f ends by parent death leaving the exit code untouched", async (t)
   let done = false;
   let failure: unknown = null;
   t.mock.timers.enable({ apis: ["setInterval"] });
-  const promise = cmdDoctor(repo, ["init", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }).then(
+  const promise = cmdDoctor(repo, ["init", "-f"], followSeams(() => parent.value)).then(
     () => (done = true),
     (err: unknown) => {
       failure = err;

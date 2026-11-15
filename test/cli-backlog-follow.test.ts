@@ -6,6 +6,7 @@ import { makeRepo, seedOpenBug, writeBacklogFile } from "./fixtures/repo-fixture
 import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
 import { cli } from "./helpers/cli-harness.js";
+import { followSeams } from "./fixtures/follow-fixtures.js";
 
 // `backlog -f` runs in-process with the follow's parent-death and TTY seams, driving the
 // follow deterministically the way status-follow.test.ts drives `status -f`: mock only
@@ -111,7 +112,7 @@ const ALPHA = "### Alpha (planned 2026-01-01 by operator)\n\nBody.";
 test("backlog -f repaints until its parent exits, then prints nothing", async (t) => {
   const repo = await seedBacklogRepo(ALPHA, "backlog follow");
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, (o) => (o.match(/Alpha/g) ?? []).length, () => (parent.value = 1));
+  const out = await runFollow(t, repo, ["-f"], followSeams(() => parent.value), 2, (o) => (o.match(/Alpha/g) ?? []).length, () => (parent.value = 1));
   assert.match(out, /Alpha/);
   assert.match(out, /An open bug/);
   assert.ok(!out.includes(CLEAR), "non-TTY shape has no clear-screen");
@@ -123,7 +124,7 @@ test("backlog -f --ready keeps only ready entries and names the hidden count", a
     "backlog follow ready",
   );
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, ["--ready", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, (o) => (o.match(/### Ready plan/g) ?? []).length, () => (parent.value = 1));
+  const out = await runFollow(t, repo, ["--ready", "-f"], followSeams(() => parent.value), 2, (o) => (o.match(/### Ready plan/g) ?? []).length, () => (parent.value = 1));
   assert.match(out, /### Ready plan/);
   assert.doesNotMatch(out, /Refused plan/, "a --ready follow never shows held entries");
   assert.match(out, /_\((\d+) held entries hidden; run `tumwater backlog` to see them\)_/);
@@ -135,7 +136,7 @@ test("backlog -f --held keeps only held entries and names the unheld count", asy
     "backlog follow held",
   );
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, ["--held", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, (o) => (o.match(/### Refused plan/g) ?? []).length, () => (parent.value = 1));
+  const out = await runFollow(t, repo, ["--held", "-f"], followSeams(() => parent.value), 2, (o) => (o.match(/### Refused plan/g) ?? []).length, () => (parent.value = 1));
   assert.match(out, /### Refused plan/);
   assert.doesNotMatch(out, /### Ready plan/, "a --held follow never shows unheld entries");
   assert.match(out, /\(2 unheld entries hidden; run `tumwater backlog` to see them\)/);
@@ -147,7 +148,7 @@ test("backlog -f --grep keeps only matching entries", async (t) => {
     "backlog follow grep",
   );
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, ["-f", "--grep", "Zebra"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, (o) => (o.match(/### Zebra plan/g) ?? []).length, () => (parent.value = 1));
+  const out = await runFollow(t, repo, ["-f", "--grep", "Zebra"], followSeams(() => parent.value), 2, (o) => (o.match(/### Zebra plan/g) ?? []).length, () => (parent.value = 1));
   assert.match(out, /### Zebra plan/);
   assert.doesNotMatch(out, /### Other plan/, "a --grep follow keeps only matching entries");
 });
@@ -185,6 +186,6 @@ test("backlog -f clears the screen only on a TTY", async (t) => {
   const ttyOut = await runFollow(t, repo, ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: true }, 1, (o) => (o.match(/Alpha/g) ?? []).length, () => (parent.value = 1));
   assert.ok(ttyOut.startsWith(CLEAR), "TTY follow starts with a clear-screen");
   parent = { value: 4242 };
-  const pipedOut = await runFollow(t, repo, ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 1, (o) => (o.match(/Alpha/g) ?? []).length, () => (parent.value = 1));
+  const pipedOut = await runFollow(t, repo, ["-f"], followSeams(() => parent.value), 1, (o) => (o.match(/Alpha/g) ?? []).length, () => (parent.value = 1));
   assert.ok(!pipedOut.includes(CLEAR), "non-TTY follow never clears the screen");
 });

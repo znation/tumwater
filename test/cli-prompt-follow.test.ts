@@ -8,6 +8,7 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
 import { cli } from "./helpers/cli-harness.js";
+import { followSeams } from "./fixtures/follow-fixtures.js";
 
 // `prompt --list -f` runs in-process with the follow's parent-death and TTY seams, driving
 // the follow deterministically the way cli-backlog-follow.test.ts drives `backlog -f`: mock
@@ -100,7 +101,7 @@ async function runFollow(
 test("prompt --list -f repaints the grouped queue until its parent exits, then prints nothing", async (t) => {
   const repo = await seedPromptRepo("prompt list follow");
   const parent = { value: 4242 };
-  const out = await runFollow(t, repo, ["--list", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, (o) => (o.match(/director task/g) ?? []).length, () => (parent.value = 1));
+  const out = await runFollow(t, repo, ["--list", "-f"], followSeams(() => parent.value), 2, (o) => (o.match(/director task/g) ?? []).length, () => (parent.value = 1));
   assert.match(out, /director task/);
   assert.match(out, /qa:/);
   assert.match(out, /docs task/);
@@ -114,7 +115,7 @@ test("prompt --list -f shows a prompt enqueued or dequeued between ticks, renumb
   let done = false;
   let failure: unknown = null;
   t.mock.timers.enable({ apis: ["setInterval"] });
-  const promise = cmdPrompt(repo, ["--list", "-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }).then(
+  const promise = cmdPrompt(repo, ["--list", "-f"], followSeams(() => parent.value)).then(
     () => (done = true),
     (err: unknown) => {
       failure = err;
@@ -158,14 +159,14 @@ test("prompt --list -f shows a prompt enqueued or dequeued between ticks, renumb
 test("prompt --list -f composes with --role and --grep", async (t) => {
   const repo = await seedPromptRepo("prompt list follow filters");
   const parent = { value: 4242 };
-  const roleOut = await runFollow(t, repo, ["--list", "-f", "--role", "qa"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 2, (o) => (o.match(/qa one/g) ?? []).length, () => (parent.value = 1));
+  const roleOut = await runFollow(t, repo, ["--list", "-f", "--role", "qa"], followSeams(() => parent.value), 2, (o) => (o.match(/qa one/g) ?? []).length, () => (parent.value = 1));
   assert.match(roleOut, /qa:/);
   assert.match(roleOut, /^1\. qa one/m);
   assert.match(roleOut, /^2\. qa two/m);
   assert.ok(!roleOut.includes("director task") && !roleOut.includes("docs task"), "--role keeps only the listed role's section");
 
   const parent2 = { value: 4242 };
-  const grepOut = await runFollow(t, repo, ["--list", "-f", "--grep", "task"], { ppid: () => parent2.value, intervalMs: 5, tty: false }, 2, (o) => (o.match(/director task/g) ?? []).length, () => (parent2.value = 1));
+  const grepOut = await runFollow(t, repo, ["--list", "-f", "--grep", "task"], followSeams(() => parent2.value), 2, (o) => (o.match(/director task/g) ?? []).length, () => (parent2.value = 1));
   assert.match(grepOut, /director task/);
   assert.match(grepOut, /docs task/);
   assert.ok(!grepOut.includes("qa one"), "--grep keeps only the matching rows, under their unfiltered numbers");
@@ -225,7 +226,7 @@ test("prompt --list --follow --grep --follow follows with the literal second --f
     t,
     repo,
     ["--list", "--follow", "--grep", "--follow"],
-    { ppid: () => parent.value, intervalMs: 5, tty: false },
+    followSeams(() => parent.value),
     3,
     (o) => (o.match(/no queued prompt matches "--follow"/g) ?? []).length,
     () => (parent.value = 1),

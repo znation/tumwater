@@ -8,6 +8,7 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
 import { cli } from "./helpers/cli-harness.js";
+import { followSeams } from "./fixtures/follow-fixtures.js";
 
 // `questions -f` runs in-process with the follow's parent-death and TTY seams, driving the
 // follow deterministically the way cli-backlog-follow.test.ts drives `backlog -f`: mock only
@@ -97,7 +98,7 @@ test("questions -f repaints the open list until its parent exits, then prints no
     t,
     repo,
     ["-f"],
-    { ppid: () => parent.value, intervalMs: 5, tty: false },
+    followSeams(() => parent.value),
     2,
     (o) => (o.match(/Cap the spend\?/g) ?? []).length,
     () => (parent.value = 1),
@@ -114,7 +115,7 @@ test("questions --follow repaints the open list too (long flag spelling)", async
     t,
     repo,
     ["--follow"],
-    { ppid: () => parent.value, intervalMs: 5, tty: false },
+    followSeams(() => parent.value),
     2,
     (o) => (o.match(/Cap the spend\?/g) ?? []).length,
     () => (parent.value = 1),
@@ -132,7 +133,7 @@ test("questions -f shows a question answered by another process in the next fram
   let done = false;
   let failure: unknown = null;
   t.mock.timers.enable({ apis: ["setInterval"] });
-  const promise = cmdQuestions(repo, ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }).then(
+  const promise = cmdQuestions(repo, ["-f"], followSeams(() => parent.value)).then(
     () => (done = true),
     (err: unknown) => {
       failure = err;
@@ -185,7 +186,7 @@ test("questions --answered -f repaints the answered list until its parent exits"
     t,
     repo,
     ["--answered", "-f"],
-    { ppid: () => parent.value, intervalMs: 5, tty: false },
+    followSeams(() => parent.value),
     2,
     (o) => (o.match(/Cap the spend\?/g) ?? []).length,
     () => (parent.value = 1),
@@ -204,7 +205,7 @@ test("questions -f --grep keeps only matching questions, under their unfiltered 
     t,
     repo,
     ["-f", "--grep", "zebra"],
-    { ppid: () => parent.value, intervalMs: 5, tty: false },
+    followSeams(() => parent.value),
     2,
     (o) => (o.match(/Ship the zebra\?/g) ?? []).length,
     () => (parent.value = 1),
