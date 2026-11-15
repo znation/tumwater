@@ -154,6 +154,10 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
       const paintedFirst = new Set();
       html = list.map((q) => {
         const addr = "data-file='" + esc(q.file) + "' data-role='" + esc(q.role) + "'";
+        // The row's control buttons all address the prompt the same way (queue file and role,
+        // in addr) and differ only by action and label — one helper so they cannot drift apart.
+        const qbtn = (action, label) =>
+          "<button type='button' class='btn btn-sm rowaction' data-action='" + action + "' " + addr + ">" + label + "</button>";
         // Mark this role's group head before the edit-row early return, so an edited head row
         // still leaves the Move to top button on that role's later rows.
         const alreadyFirst = paintedFirst.has(q.role);
@@ -165,21 +169,19 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
           shown++; // the open editor always shows, so a search never replaces it with "Nothing matches"
           return "<div class='list-item'><span class='li-icon'>" + icon("chat") + "</span>" +
             "<textarea id='queuedit' class='queuedit'>" + esc(queuedEdit.text) + "</textarea>" +
-            "<button type='button' class='btn btn-sm rowaction' data-action='prompteditsave' " + addr + ">Save</button>" +
-            "<button type='button' class='btn btn-sm rowaction' data-action='prompteditcancel' " + addr + ">Cancel</button></div>";
+            qbtn("prompteditsave", "Save") +
+            qbtn("prompteditcancel", "Cancel") + "</div>";
         }
         if (!hit(q.preview + " " + q.role) && !queuedHit(q)) return "";
         shown++;
-        const topBtn = alreadyFirst
-          ? "<button type='button' class='btn btn-sm rowaction' data-action='prompttop' " + addr + ">Move to top</button>"
-          : "";
+        const topBtn = alreadyFirst ? qbtn("prompttop", "Move to top") : "";
         return "<div class='list-item'><span class='li-icon'>" + icon("chat") + "</span><div class='li-main'><span class='li-title'>" + esc(q.preview) +
           "</span><span class='li-meta'>" + esc((q.role === "director" ? "for the director" : "for the " + roleLabel(q.role) + " role") +
             (q.notBeforeMs && q.notBeforeMs > Date.now() ? " · delivers in " + humanSeconds(Math.round((q.notBeforeMs - Date.now()) / 1000))
               : (q.queuedAtMs ? " · queued " + fmtAgo(q.queuedAtMs) : ""))) + "</span></div>" +
           topBtn +
-          "<button type='button' class='btn btn-sm rowaction' data-action='promptcancel' " + addr + ">Cancel</button>" +
-          "<button type='button' class='btn btn-sm rowaction' data-action='promptedit' " + addr + ">Edit</button></div>";
+          qbtn("promptcancel", "Cancel") +
+          qbtn("promptedit", "Edit") + "</div>";
       }).join("");
     } else {
       const open = openEntryKey();
