@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { flagValue, parseBranchFlag, parseCountFlag, parseDurationFlag, parseGrepFlag, parsePortFlag, parsePositionFlag, parseRoleFlag, parseRoleListFlag, rejectFlagLookingValue } from "../src/cli/cli-args.js";
-import { durationLabel } from "../src/text/duration.js";
+import { durationLabel, parseDurationMs } from "../src/text/duration.js";
 import {
   rejectUnknownArgs,
   durationFlagSpec,
@@ -498,6 +498,42 @@ test("durationLabel phrases a parsed duration back in the parser's vocabulary", 
   // A sub-second remainder keeps the raw-millisecond form (computed deltas can produce it;
   // parseDurationFlag's units bottom out at seconds).
   assert.equal(durationLabel(90 * 60_000 + 3_500), "5403500ms");
+});
+
+// --- parseDurationMs (the `<n><unit>` duration grammar the CLI flags, TUI send-later and GUI
+// prompt defer all validate through — pinned here directly, not only via its callers) ---
+
+test("parseDurationMs accepts single-unit and descending-order composites as exact ms totals", () => {
+  assert.equal(parseDurationMs("45s"), 45_000);
+  assert.equal(parseDurationMs("90m"), 5_400_000);
+  assert.equal(parseDurationMs("30m"), 1_800_000);
+  assert.equal(parseDurationMs("1h30m"), 5_400_000);
+  assert.equal(parseDurationMs("1h30m15s"), 5_415_000);
+  assert.equal(parseDurationMs("2d"), 172_800_000);
+  assert.equal(parseDurationMs("1d12h"), 129_600_000);
+});
+
+test("parseDurationMs refuses every other spelling with null", () => {
+  // A zero count is not a component, even when a nonzero component follows.
+  assert.equal(parseDurationMs("0s"), null);
+  assert.equal(parseDurationMs("0h30m"), null);
+  // The spelling must fill the whole string: no gap between, or padding around, components.
+  assert.equal(parseDurationMs("1h 30m"), null);
+  assert.equal(parseDurationMs(" 45s"), null);
+  assert.equal(parseDurationMs("45s "), null);
+  // A bare digit after a component is trailing junk, not a duration.
+  assert.equal(parseDurationMs("1s0"), null);
+  // Units descend d → h → m → s and never repeat.
+  assert.equal(parseDurationMs("30m1h"), null);
+  assert.equal(parseDurationMs("1h30m1h"), null);
+  assert.equal(parseDurationMs("1h1h"), null);
+  // A digit run past Number's range would overflow the sum to Infinity; refuse it.
+  assert.equal(parseDurationMs("9".repeat(400) + "s"), null);
+  // No valid component at all: empty, junk, a number without a unit, a unit without a number.
+  assert.equal(parseDurationMs(""), null);
+  assert.equal(parseDurationMs("abc"), null);
+  assert.equal(parseDurationMs("1"), null);
+  assert.equal(parseDurationMs("s"), null);
 });
 
 // --- the --flag=value spelling ---
