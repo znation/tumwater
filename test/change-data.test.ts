@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { collectChangeOverlaps, collectTeamChanges, collectRoleChange, collectRoleChanges } from "../src/change/change-data.js";
+import { collectChangeOverlaps, collectTeamChanges, collectRoleChange, collectRoleChanges, normalizeDiffPath } from "../src/change/change-data.js";
 import { loadConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
@@ -193,4 +193,41 @@ test("a branch whose base lags main reports behind beside ahead, in both views",
   const feature = team.roles.find((r) => r.role === "feature");
   assert.equal(feature?.behind, 2);
   assert.equal(team.roles.find((r) => r.state === "absent")?.behind ?? 0, 0);
+});
+
+// `normalizeDiffPath` (src/change/change-data.ts) is the shared path-traversal boundary both
+// user-facing `--path` / `?path=` scopes route through: `diff --path` (diffPathArg fails on null)
+// and the dashboard `GET /api/diff?path=` (handleDiff) refuse an argument it turns into null, so
+// a guard that stopped refusing `..`/absolute would let either climb out of the intended scope.
+// It is pure string logic (two replaces plus ===/isAbsolute and split/includes), so each accept
+// and refuse branch is pinned with a single literal — no repo, fs, git or clock needed.
+test("normalizeDiffPath accepts a plain and a nested relative path, returned as-is", () => {
+  assert.equal(normalizeDiffPath("src/cli.ts"), "src/cli.ts");
+  assert.equal(normalizeDiffPath("a/b"), "a/b");
+});
+
+test("normalizeDiffPath strips leading ./ pieces before the refusal checks run", () => {
+  assert.equal(normalizeDiffPath("./src/x.ts"), "src/x.ts");
+  assert.equal(normalizeDiffPath("././x"), "x");
+});
+
+test("normalizeDiffPath strips a trailing / so it is not mistaken for a segment", () => {
+  assert.equal(normalizeDiffPath("src/"), "src");
+  assert.equal(normalizeDiffPath("src/x/"), "src/x");
+});
+
+test("normalizeDiffPath returns null when there is nothing to scope to", () => {
+  assert.equal(normalizeDiffPath(""), null);
+  assert.equal(normalizeDiffPath("./"), null); // ./ collapses to the empty form
+  assert.equal(normalizeDiffPath("."), null); // a lone dot names the current dir, not a scope
+});
+
+test("normalizeDiffPath refuses any .. segment rather than normalising it away", () => {
+  assert.equal(normalizeDiffPath(".."), null);
+  assert.equal(normalizeDiffPath("src/../secrets"), null);
+  assert.equal(normalizeDiffPath("src/.."), null);
+});
+
+test("normalizeDiffPath refuses an absolute path", () => {
+  assert.equal(normalizeDiffPath("/etc/passwd"), null);
 });
