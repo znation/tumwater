@@ -111,10 +111,14 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   }
 
   const countAxis = (v) => String(Math.round(v));
+  // The spend charts' y-axis: "$0" for a zero day, fmtUsd otherwise.
+  const usdAxis = (v) => (v === 0 ? "$0" : fmtUsd(v));
+  // The token charts' y-axis: a whole-token count, human-scaled.
+  const tokenAxis = (v) => fmtTokens(Math.round(v));
 
   function chartTokens(data) {
     return reportSvg(data.series, (d) => [{ value: d.tokensOut, color: "#6366f1", title: d.date + ": " + fmtTokens(d.tokensOut) + " output tokens" }],
-      (v) => fmtTokens(Math.round(v)), true);
+      tokenAxis, true);
   }
 
   function chartCommits(data) {
@@ -287,12 +291,12 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   }
 
   function chartCostByRole(data) {
-    return roleStackChart(data, "costByRole", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
+    return roleStackChart(data, "costByRole", fmtUsd, usdAxis, false);
   }
 
   // The day's output tokens, per role, the dashboard twin of the CLI "Tokens by role" line.
   function chartTokensByRole(data) {
-    return roleStackChart(data, "tokensByRole", (n) => fmtTokens(num(n)) + " output tokens", (v) => fmtTokens(Math.round(v)), true);
+    return roleStackChart(data, "tokensByRole", (n) => fmtTokens(num(n)) + " output tokens", tokenAxis, true);
   }
 
   // The day's prompt tokens, per role, the browser twin of the report's "Prompt tokens by
@@ -300,27 +304,27 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // chartTokensByRole, so a role keeps its palette color and legend order from
   // reportRoleOrder.
   function chartPromptTokensByRole(data) {
-    return roleStackChart(data, "promptTokensByRole", (n) => fmtTokens(num(n)) + " prompt tokens", (v) => fmtTokens(Math.round(v)), true);
+    return roleStackChart(data, "promptTokensByRole", (n) => fmtTokens(num(n)) + " prompt tokens", tokenAxis, true);
   }
 
   // The day's cache-read prompt tokens, per role, the browser twin of the report's "Prompt
   // tokens by role" line's cache-read share — the same shape over cacheReadTokensByRole with
   // the " cached prompt tokens" label, keeping the same palette order and count axis.
   function chartCacheReadTokensByRole(data) {
-    return roleStackChart(data, "cacheReadTokensByRole", (n) => fmtTokens(num(n)) + " cached prompt tokens", (v) => fmtTokens(Math.round(v)), true);
+    return roleStackChart(data, "cacheReadTokensByRole", (n) => fmtTokens(num(n)) + " cached prompt tokens", tokenAxis, true);
   }
 
   // The API-equivalent (notional) spend of subscription runs, per role, on the same axis as
   // the cap spend.
   function chartNotionalByRole(data) {
-    return roleStackChart(data, "notionalByRole", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
+    return roleStackChart(data, "notionalByRole", fmtUsd, usdAxis, false);
   }
 
   // The team's real spend, per day, stacked by provider: each segment one (day, provider), on
   // the same axis as the role spend. Both provider maps are sparse, so a day with none keeps
   // its empty slot, as the role charts do.
   function chartCostByProvider(data) {
-    return stackChart(data, reportProviderOrder(data), "costByProvider", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
+    return stackChart(data, reportProviderOrder(data), "costByProvider", fmtUsd, usdAxis, false);
   }
 
   // The team's run starts, per day, stacked by model: each segment one (day, model), the
@@ -339,7 +343,7 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // The API-equivalent (notional) spend of subscription runs, per provider, on the same axis
   // as the estimated role spend; the provider twin of chartNotionalByRole.
   function chartNotionalByProvider(data) {
-    return stackChart(data, reportProviderOrder(data), "notionalByProvider", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
+    return stackChart(data, reportProviderOrder(data), "notionalByProvider", fmtUsd, usdAxis, false);
   }
 
   // Window tallies per subscription backend (claude/codex/opencode), name asc then count
@@ -356,7 +360,7 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // as the estimated role spend; the backend twin of chartNotionalByProvider, which
   // notionalByProvider alone cannot serve because it folds only from run_end.providerCost.
   function chartNotionalByBackend(data) {
-    return stackChart(data, reportBackendOrder(data), "notionalByBackend", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
+    return stackChart(data, reportBackendOrder(data), "notionalByBackend", fmtUsd, usdAxis, false);
   }
 
   // The team's review friction, per role, on a run-like count axis: one segment per
