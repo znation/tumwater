@@ -154,3 +154,49 @@ test("secretLeakReason names a changed file it cannot read, and skips a missing 
   }
   assert.equal(await secretLeakReason(wt, "main", ["gone.md", "a/b.md"], ENV), undefined);
 });
+
+test("secretLeakReason names at most ten leaked files and appends the overflow count", async () => {
+  // A change that dumps the same secret into eleven files: the reason names the first ten (its
+  // most-files-named bound) and appends ` (+1 more)` instead of an unbounded string, so a
+  // regression in the bound or the suffix wording fails here.
+  const files = Array.from({ length: 11 }, (_, i) => `leak-${i}.json`);
+  const edit: Record<string, string> = {};
+  for (const f of files) edit[f] = `{"env":"${VALUE}"}`;
+  const wt = await worktree({ "README.md": "# T\n" }, edit);
+  const reason = await secretLeakReason(wt, "main", files, ENV);
+  const shown = files.slice(0, 10);
+  const hidden = files[10]!;
+  for (const f of shown) assert.ok(reason!.includes(`\`${f}\` contains the value of $HF_TOKEN`), `${f} is named`);
+  assert.ok(!reason!.includes(`\`${hidden}\``), "the eleventh file is not named");
+  assert.match(reason!, / \(\+1 more\) — delete the file or remove the value; never commit credentials \(a Node diagnostic report, report\.\*\.json, dumps the whole environment\)$/);
+});
+
+test("secretLeakReason skips an oversized changed file without reading it", async () => {
+  // The per-file size cap: a regular file over 8 MiB is skipped before it is read (lstat size,
+  // never slurped), so a hostile or accidental huge file cannot be scanned. The oversized file
+  // still holds the value, so if the guard regressed the file would be read AND named — both
+  // fail here: the read-counting spy fails on any read of it, and the naming assertion fails if
+  // the small file's finding is displaced.
+  const big = "big.txt";
+  const edit = {
+    [big]: `big\n${"x".repeat(9_000_000)}`,
+    "small.txt": `small\n${VALUE}`,
+  };
+  const wt = await worktree({ "README.md": "# T\n" }, edit);
+  const readCalls: unknown[] = [];
+  const undo = patchFsMethod("readFileSync", (orig) => (...args) => {
+    readCalls.push(args[0]);
+    return (orig as (...a: unknown[]) => unknown)(...args);
+  });
+  try {
+    const reason = await secretLeakReason(wt, "main", [big, "small.txt"], ENV);
+    assert.match(reason!, /`small\.txt` contains the value of \$HF_TOKEN/);
+    assert.ok(!reason!.includes(`\`${big}\``), "the oversized file is not named");
+  } finally {
+    undo();
+  }
+  assert.ok(
+    !readCalls.some((a) => String(a).endsWith(big)),
+    `the oversized file must be skipped before it is read, reads: ${JSON.stringify(readCalls)}`,
+  );
+});
