@@ -541,6 +541,56 @@ function dailyCapOf(
   return { dailyCap, dailyCapHitAt };
 }
 
+/** The role's note for the operator surface, read whole, and the instant it was last saved:
+ * "what note does this role's inspection carry, and when was it last saved?" The note text is
+ * read through readRegularTextOrNull (lstat-guarded: a symlink dropped at the notes path reads
+ * as absent, so an outside file's text is never pulled in — INV-G3), then a missing, empty, or
+ * whitespace-only file is "no note yet" (null) rather than an error. The same path is stat'd
+ * once for the save instant (mtimeMs), null when there is no note. The director carries none. */
+function roleNoteAndSavedAt(root: string, role: string): { note: string | null; noteSavedAt: number | null } {
+  if (role === DIRECTOR_ROLE) return { note: null, noteSavedAt: null };
+  const notesPath = roleNotesPath(root, role);
+  const text = readRegularTextOrNull(notesPath);
+  const note = text !== null && text.trim() !== "" ? text : null;
+  const noteSavedAt = note !== null ? statOrNull(notesPath)?.mtimeMs ?? null : null;
+  return { note, noteSavedAt };
+}
+
+/** The role's persisted lessons, rendered whole for display: "what lessons does the role
+ * carry, and does a corrupted store degrade to null?" Read through readRegularTextOrNull
+ * (lstat-guarded: a symlink dropped at the lessons path reads as absent, so an outside file's
+ * text is never pulled into the operator surface — INV-G3). A missing or empty store is "no
+ * lessons" (null); a corrupted file degrades to null rather than failing the inspection, the
+ * same tolerance the note read gives a torn note. The director carries none. */
+function roleLessons(root: string, role: string): string | null {
+  if (role === DIRECTOR_ROLE) return null;
+  const lessonsText = readRegularTextOrNull(roleLessonsPath(root, role));
+  try {
+    const store = parseRoleLessonsText(lessonsText ?? "");
+    return store.lessons.length > 0 ? roleLessonsText(store.lessons) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The quiet-hours windows the scheduler applies for this role (gates/gate-polls.ts): the role's
+ * own (looked up by base role as the gate does) first, then the team-wide window, through the
+ * same parser and predicate. The director is exempt from both gates and carries none. */
+function roleQuietHours(
+  cfg: TumwaterConfig,
+  role: string,
+  now: Date,
+): NonNullable<RoleViewPayload["quietHours"]> {
+  const quietHours: NonNullable<RoleViewPayload["quietHours"]> = [];
+  if (role !== DIRECTOR_ROLE) {
+    const own = quietHoursStatus(cfg.quietHoursPerRole?.[baseRoleOf(role)], now);
+    if (own.window !== null) quietHours.push({ scope: "role", window: own.window, inWindow: own.inWindow });
+    const team = quietHoursStatus(cfg.quietHours, now);
+    if (team.window !== null) quietHours.push({ scope: "fleet", window: team.window, inWindow: team.inWindow }); // vocabulary-ok: persisted --json scope value
+  }
+  return quietHours;
+}
+
 /** The notes, quiet-hours windows, and the resolved seam window — "what does this role carry in
  * notes, when is it quiet, and how large is its context window?": the note read with its save
  * instant (the stat shares the one note path with the read), the quiet-hours windows the
@@ -560,40 +610,9 @@ function notesAndWindowsOf(
   quietHours: NonNullable<RoleViewPayload["quietHours"]>;
   contextWindow: number | null;
 } {
-  // The role's notes, read for display. The same degradation as every other read here: a
-  // missing, empty, or unreadable file is simply "no note yet". The director has none.
-  // Alongside the read, the same path is stat'd once for the note's save instant (mtimeMs),
-  // null when there is no note.
-  let note: string | null = null;
-  let noteSavedAt: number | null = null;
-  let lessons: string | null = null;
-  if (role !== DIRECTOR_ROLE) {
-    const notesPath = roleNotesPath(root, role);
-    const text = readRegularTextOrNull(notesPath);
-    note = text !== null && text.trim() !== "" ? text : null;
-    if (note !== null) noteSavedAt = statOrNull(notesPath)?.mtimeMs ?? null;
-    // The role's lessons, read whole for display through readRegularTextOrNull (lstat-guarded,
-    // the same line as the note read above: a symlink dropped at the lessons path reads as
-    // absent, so an outside file's text is never pulled into the operator surface — INV-G3).
-    // A missing or empty store is "no lessons"; a corrupted file degrades to null rather than
-    // failing the inspection, the same tolerance the note read gives a torn note.
-    const lessonsText = readRegularTextOrNull(roleLessonsPath(root, role));
-    try {
-      const store = parseRoleLessonsText(lessonsText ?? "");
-      lessons = store.lessons.length > 0 ? roleLessonsText(store.lessons) : null;
-    } catch {
-      lessons = null;
-    }
-  }
-  // The windows the scheduler applies (gates/gate-polls.ts), through the same parser and
-  // predicate; the director is exempt from both gates.
-  const quietHours: NonNullable<RoleViewPayload["quietHours"]> = [];
-  if (role !== DIRECTOR_ROLE) {
-    const own = quietHoursStatus(cfg.quietHoursPerRole?.[baseRoleOf(role)], now);
-    if (own.window !== null) quietHours.push({ scope: "role", window: own.window, inWindow: own.inWindow });
-    const team = quietHoursStatus(cfg.quietHours, now);
-    if (team.window !== null) quietHours.push({ scope: "fleet", window: team.window, inWindow: team.inWindow }); // vocabulary-ok: persisted --json scope value
-  }
+  const { note, noteSavedAt } = roleNoteAndSavedAt(root, role);
+  const lessons = roleLessons(root, role);
+  const quietHours = roleQuietHours(cfg, role, now);
   // The resolved primary seam's declared context window. A run currently on the model
   // fallback may use a different window, which is the fallback's own documented state.
   const contextWindow = seamContextWindowForRole(cfg, role, root, modelsPath);
