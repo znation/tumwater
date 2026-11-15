@@ -34,9 +34,13 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p === "waiting: budget spent") return { key: "budget", label: "Waiting", tone: "amber", live: false, detail: "budget" };
     if (p === "waiting: daily cap spent") return { key: "cap", label: "Waiting", tone: "amber", live: false, detail: "daily cap" };
     if (p === "waiting: low disk") return { key: "disk", label: "Waiting", tone: "amber", live: false, detail: "low disk" };
-    // A self-redeploy's hold (status-model rolePhase via badges.ts restartHoldRolePhase): blue,
-    // not amber — it ends on its own — with the step it waits on as the detail.
-    if (p.startsWith("waiting: update — ")) return { key: "update", label: "Waiting", tone: "blue", live: false, detail: "update: " + p.slice(18) };
+    // A self-redeploy's hold (status-model rolePhase via badges.ts restartHoldRolePhase): amber
+    // with every other waiting hold (2026-11-12 Option A, the user's answer to the QUESTIONS.md
+    // GUI Working/Waiting both blue) — the old blue collided with the live blue working pill.
+    // It still ends on its own; that is carried by the label and step detail, not color.
+    // (No backticks in this comment: the function sits inside the GUI_CLIENT_MODEL_JS
+    // String.raw template, so a backtick would end the template and break the parse.)
+    if (p.startsWith("waiting: update — ")) return { key: "update", label: "Waiting", tone: "amber", live: false, detail: "update: " + p.slice(18) };
     if (p === "waiting: bootstrap") return { key: "bootstrap", label: "Waiting", tone: "amber", live: false, detail: "bootstrap" };
     if (p === "waiting: model check") return { key: "modelcheck", label: "Waiting", tone: "amber", live: false, detail: "model check" };
     if (p.startsWith("waiting: maintenance allowance spent")) return { key: "quota", label: "Waiting", tone: "amber", live: false, detail: "maintenance allowance spent this poll" };

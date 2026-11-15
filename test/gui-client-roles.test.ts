@@ -93,13 +93,14 @@ test("the second line names a consecutive no-change streak on a resting idle cel
   assert.equal(phaseDetail({ phase: "paused", noChangeStreak: 2 }, paused, { running: true }), "starts no new runs");
 });
 
-test("a self-redeploy hold reads Waiting, blue, with the step it waits on", () => {
-  // rolePhase's `waiting: update — <step>` (2026-10-30): blue, not amber — the hold ends on its
-  // own — and the step rides the pill's second line.
+test("a self-redeploy hold reads Waiting, amber, with the step it waits on", () => {
+  // rolePhase's `waiting: update — <step>` (2026-10-30): amber like every other `waiting:` hold
+  // (2026-11-12 Option A) so it no longer collides in color with the live blue `working` pill —
+  // and the step rides the pill's second line.
   const info = phaseInfo("waiting: update — checking main bbbbbbbb");
   assert.deepEqual(
     [info.key, info.label, info.tone, info.live, info.detail],
-    ["update", "Waiting", "blue", false, "update: checking main bbbbbbbb"],
+    ["update", "Waiting", "amber", false, "update: checking main bbbbbbbb"],
   );
   assert.equal(phaseInfo("waiting: update — finishing 3 runs").detail, "update: finishing 3 runs");
 });
