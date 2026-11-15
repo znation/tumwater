@@ -6,7 +6,7 @@ import os from "node:os";
 import { startGui } from "./gui-server.js";
 import { errCode } from "../errno.js";
 import { fail, say } from "../terminal.js";
-import { flagValue, parsePortFlag, tokenValueProblem } from "../cli/cli-args.js";
+import { GUI_TOKEN_ENV, flagValue, parsePortFlag, tokenValueProblem } from "../cli/cli-args.js";
 
 /** External IPv4 addresses of this machine's network interfaces, for printing the URLs a
  * `gui --all-interfaces` server is reachable at. IPv6 and internal (loopback) addresses are
@@ -28,13 +28,6 @@ export function lanAddresses(
   }
   return out;
 }
-
-/** The env var that carries the dashboard gate token between a supervisor and its dashboard
- * child, and across a re-exec'd dashboard generation. Process env is what a spawn hands a
- * child intact (`childEnv` in process.ts, and reexecSelf's own childEnv), whereas argv is what
- * /proc/<pid>/cmdline exposes to every local user and what a reload re-runs verbatim — so the
- * secret must travel by env, never argv. */
-export const GUI_TOKEN_ENV = "TUMWATER_GUI_TOKEN";
 
 /** Injectable seams for cmdGui, mirroring runTui's TuiSeams: the server it starts, the LAN
  * address list and the printer its banner names, and the serve-until-Ctrl+C wait. Production

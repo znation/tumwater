@@ -30,6 +30,17 @@ export const BRANCH_VALUE_ERROR = "--branch needs a branch name (e.g. `--branch 
  * (so the gate's early report says it) and tokenValueProblem's re-check share this one
  * wording. */
 export const TOKEN_VALUE_ERROR = "--token requires a non-empty secret (e.g. `--token s3cret`)";
+/** The env var that carries the dashboard gate token: `gui --token` and the `run --gui`/`start
+ * --gui` supervisor each write it, and a spawned or re-exec'd dashboard child reads it back —
+ * process env is what a spawn hands a child intact and what reexecSelf propagates, whereas argv
+ * is what /proc/<pid>/cmdline exposes to every local user and what a reload re-runs verbatim, so
+ * the secret travels by env, never argv. One definition, shared by the dashboard command
+ * (gui/gui-command.ts, which reads it) and the supervisor (cli-start-supervisor.ts, which writes
+ * it into the child's env), so a rename or drift in either can never silently open the dashboard
+ * unauthenticated. It lives here (not in gui/gui-command.ts, which the `start`/`run` supervisor
+ * cannot import without pulling the GUI server graph onto the boot path) because both sides
+ * already import this module for the `--token` validator (tokenValueProblem) below. */
+export const GUI_TOKEN_ENV = "TUMWATER_GUI_TOKEN";
 
 /** Peel a positional-first command's bare tokens off the argument list: every flag-shaped
  * token rides in rest for rejectUnknownArgs, every bare token is a positional. For a

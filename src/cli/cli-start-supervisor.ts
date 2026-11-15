@@ -10,20 +10,12 @@
  * compiles the orchestrator/merge pipeline it pulls. */
 import type { StdioOptions } from "node:child_process";
 import { fail, say } from "../terminal.js";
-import { parsePortFlag } from "./cli-args.js";
+import { GUI_TOKEN_ENV, parsePortFlag } from "./cli-args.js";
 import { runStartupProblem } from "../gates/startup-gates.js";
 import { repairInterruptedSwap } from "../build/build-stage.js";
 import { logEvent } from "../events/events.js";
 import { notifyTeamDown } from "../events/event-notify.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
-
-/** The env var that carries the dashboard gate token between a supervisor and its dashboard
- * child (and across a re-exec'd dashboard generation), for the `run --gui`/`start --gui`
- * supervisor's own use. Defined here rather than imported from gui-command.js so this module
- * (and every `start`/`run` invocation) never pulls the GUI server graph onto the page; it
- * must stay the same literal as gui-command's GUI_TOKEN_ENV, and a merge that renames one
- * renames the other. */
-export const GUI_TOKEN_ENV = "TUMWATER_GUI_TOKEN";
 
 /** Split `run`'s args for `run --gui` and `run --tui`: whether the supervisor should also start
  * the dashboard and/or host the observer TUI, and the args the supervised orchestrator

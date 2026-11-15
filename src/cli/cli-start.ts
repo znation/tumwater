@@ -11,6 +11,7 @@ import { fail, say, sayJson } from "../terminal.js";
 import { durationLabel } from "../text/duration.js";
 import {
   failRivalShapes,
+  GUI_TOKEN_ENV,
   parseBranchFlag,
   parseRoleListFlag,
   tokenValueProblem,
@@ -51,7 +52,7 @@ export {
   type WindowReport,
 };
 
-import { GUI_TOKEN_ENV, superviseStartCommand } from "./cli-start-supervisor.js";
+import { superviseStartCommand } from "./cli-start-supervisor.js";
 
 interface StartInvocation {
   once: boolean;
