@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { drainInFlightWork, MERGE_ABORT_SETTLE_FLOOR_MS } from "../src/run/run-timing.js";
 import { writeMergeMarker, readMergeMarker } from "../src/merge/merge-slot.js";
-import type { InFlightMerge } from "../src/merge/merge-pipeline.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { flushImmediate, scriptedTimers } from "./helpers/wait.js";
+import { standInMerge } from "./fixtures/merge-fixtures.js";
 
 // drainInFlightWork is the shutdown drain's policy: on an operator stop it waits out the
 // reserved runs and every merge task unboundedly (the harness signal already aborted the
@@ -18,11 +18,6 @@ import { flushImmediate, scriptedTimers } from "./helpers/wait.js";
 // come from the injected `AfterDelay` seam (scriptedTimers), so the verdict is crossed by hand
 // and no assertion reads elapsed wall time.
 
-/** A minimal in-flight merge whose promise the test controls. */
-function merge(promise: Promise<void>, roles: string[]): InFlightMerge {
-  return { promise, controller: new AbortController(), roles, userAborted: false };
-}
-
 test("drainInFlightWork on an operator stop waits out runs and merges, announcing the merge", async () => {
   const root = tmpdir();
   let releaseRun!: () => void;
@@ -32,7 +27,7 @@ test("drainInFlightWork on an operator stop waits out runs and merges, announcin
   const timers = scriptedTimers();
   let aborts = 0;
   let returned = false;
-  const drain = drainInFlightWork(root, new Set([inFlightRun]), new Set(), [merge(task, ["clean", "dedupe"])], false, 5_000, () => void aborts++, timers.after).then(() => (returned = true));
+  const drain = drainInFlightWork(root, new Set([inFlightRun]), new Set(), [standInMerge(task, ["clean", "dedupe"])], false, 5_000, () => void aborts++, timers.after).then(() => (returned = true));
   await flushImmediate();
   assert.equal(returned, false, "the drain waits for the run and the merge");
   assert.equal(timers.pending(), 0, "an operator stop arms no hand-off window");
@@ -54,7 +49,7 @@ test("drainInFlightWork on a restart with a merge inside its window waits out th
   const timers = scriptedTimers();
   let aborts = 0;
   let returned = false;
-  const drain = drainInFlightWork(root, new Set([inFlightRun]), new Set(), [merge(task, ["organize"])], true, 5_000, () => void aborts++, timers.after).then(() => (returned = true));
+  const drain = drainInFlightWork(root, new Set([inFlightRun]), new Set(), [standInMerge(task, ["organize"])], true, 5_000, () => void aborts++, timers.after).then(() => (returned = true));
   assert.deepEqual(timers.delays, [5_000], "the merge gets one hand-off window");
   releaseMerge(); // finishes inside the hand-off window
   await flushImmediate();
@@ -77,7 +72,7 @@ test("drainInFlightWork hands off without a wedged merge and without waiting on 
   // Both stand-ins never settle: a merge wedged past its post-abort window, and a reserved
   // run parked behind its permit. If the drain ever waits on the runs here, the test times out.
   const never = new Promise<void>(() => {});
-  const drain = drainInFlightWork(root, new Set([never]), new Set(), [merge(never, ["clean"])], true, 50, () => void aborts++, timers.after).then(() => (returned = true));
+  const drain = drainInFlightWork(root, new Set([never]), new Set(), [standInMerge(never, ["clean"])], true, 50, () => void aborts++, timers.after).then(() => (returned = true));
   assert.deepEqual(timers.delays, [50], "the first hand-off window is armed");
   assert.equal(returned, false, "the drain does not abandon before its deadline lapses");
   timers.fire(); // the first window lapses: the merge is aborted

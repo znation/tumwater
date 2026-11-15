@@ -1,19 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { drainInFlightWork } from "../src/run/run-timing.js";
-import type { InFlightMerge } from "../src/merge/merge-pipeline.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { flushImmediate, scriptedTimers } from "./helpers/wait.js";
+import { standInMerge } from "./fixtures/merge-fixtures.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 
 // A run-timing guarantee the neighbouring files do not catch breaking: a restart's hand-off
 // folds every merge task into one wait that names all their roles.
-
-/** A minimal in-flight merge whose promise the test controls. */
-function merge(promise: Promise<void>, roles: string[]): InFlightMerge {
-  return { promise, controller: new AbortController(), roles, userAborted: false };
-}
 
 test("a restart's hand-off waits for every merge task and names all their roles", async () => {
   const root = tmpdir();
@@ -28,7 +23,7 @@ test("a restart's hand-off waits for every merge task and names all their roles"
     root,
     new Set(),
     new Set(),
-    [merge(t1, ["clean"]), merge(t2, ["dedupe"])],
+    [standInMerge(t1, ["clean"]), standInMerge(t2, ["dedupe"])],
     true,
     5_000,
     () => void aborts++,
@@ -63,7 +58,7 @@ test("an operator stop with an unwritable events feed still waits out the merge 
   const undo = unwritableEventsFeed();
   try {
     let settled = false;
-    const drain = drainInFlightWork(root, new Set(), new Set(), [merge(task, ["clean"])], false, 5_000, () => {}).then(
+    const drain = drainInFlightWork(root, new Set(), new Set(), [standInMerge(task, ["clean"])], false, 5_000, () => {}).then(
       () => (settled = true),
     );
     await flushImmediate();
@@ -87,7 +82,7 @@ test("a restart's hand-off with an unwritable events feed still aborts past its 
       root,
       new Set(),
       new Set(),
-      [merge(task, ["clean"])],
+      [standInMerge(task, ["clean"])],
       true,
       50,
       () => void aborts++,

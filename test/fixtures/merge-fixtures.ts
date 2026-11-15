@@ -20,14 +20,15 @@ import { mainSha, makeRepo, pinOffMain } from "./repo-fixtures.js";
 import { fakePi } from "../fakes/fake-pi.js";
 import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
 
-/** Shared fixtures for the merge-drain tests — merge-drain.test.ts, merge-pipeline.test.ts and
- * merge-pipeline-2.test.ts, which node --test runs as parallel processes (top-level tests
+/** Shared fixtures for the merge-drain tests — merge-drain.test.ts, merge-pipeline.test.ts
+ * and merge-pipeline-2.test.ts, which node --test runs as parallel processes (top-level tests
  * within one file run one after another). The pipeline context and poll loop the drain is
  * driven through, pins and queue entries in the shape a changed run leaves, the per-role
  * reviewer shim, a pipeline whose merge slot is held busy, and the row the status observers
  * render: until now the slices carried byte-identical copies of all of it — they build on this
  * module instead (test/post-merge-review.test.ts and the drain and pipeline suites seed pins
- * only). The merger*.test.ts
+ * only; the run-timing pair takes standInMerge; orchestrator-merge-pin.test.ts takes the
+ * queue-entry fixtures). The merger*.test.ts
  * family shares merger-fixtures.ts (a different wiring shape), not this. */
 
 export const APPROVE = (reply = "the work looks right") => reviewerPi(`VERDICT: approve\n${reply}`);
@@ -161,9 +162,17 @@ export function reviewers(flags: string, roles: string[], verdicts: Record<strin
 /** The busySlot stand-ins handed out so far (allTasks skips them). */
 const standIns = new WeakSet<InFlightMerge>();
 
+/** A stand-in for an in-flight merge task whose promise the test controls: a fresh
+ * controller, the listed roles, not user-aborted. The run-timing drain tests (run-timing
+ * and run-timing-edges) drive one through `drainInFlightWork`, and busySlot is its
+ * never-resolving, no-role variant. */
+export function standInMerge(promise: Promise<void>, roles: string[]): InFlightMerge {
+  return { promise, controller: new AbortController(), roles, userAborted: false };
+}
+
 /** A stand-in for a merge already holding the slot, so an approved change has to wait for it. */
 export function busySlot(): InFlightMerge {
-  const slot = { promise: new Promise<void>(() => {}), controller: new AbortController(), roles: [], userAborted: false };
+  const slot = standInMerge(new Promise<void>(() => {}), []);
   standIns.add(slot);
   return slot;
 }
