@@ -225,6 +225,44 @@ function mergesAroundCheck(
   return { after, before, beforeSpawn };
 }
 
+/** The final window's `facts` assembled into the returned `MainCheckScan`: the no-check branch
+ * (a malformed or absent merge-scope check yields only the cleared/culprit/opener it proves)
+ * and the settled-check branch (the check plus the same three plus the around-check commit
+ * pairing). Pure in `facts` alone — `root` is used only by the grew-full note bookkeeping that
+ * stays in `scanMainCheck`. ("what does the final window's facts assemble into as a main-check
+ * verdict?") */
+function assembleScanVerdict(facts: ScanWindowFacts): MainCheckScan {
+  const check = facts.check;
+  const mergeDone = facts.mergeDone;
+  const culprit = facts.culprit;
+  const opener = facts.opener;
+  const cleared = facts.cleared;
+  // The loop's last pass over the FINAL tail left `opener` current: an earlier window's value
+  // was reset before its own scan, and the break exits with the final tail's result.
+  const clearedLive = clearedRedIsLive(cleared, check);
+  if (!check || typeof check.ts !== "number" || !isMainCheckStatus(check.status)) {
+    return {
+      ...(clearedLive ? { cleared } : {}),
+      ...(culprit ? { culprit } : {}),
+      ...(opener ? { spellOpener: opener } : {}),
+    };
+  }
+  // A baseline check runs on the head main held at its spawn; a merge that lands while the
+  // run is in flight logs before the check's settle stamp but is not covered by it. Capture
+  // that spawn-bounded merge separately so the sha can name the head the run actually saw.
+  const spawnedAt = check.scope === "baseline" && typeof check.spawnedAt === "number" ? check.spawnedAt : undefined;
+  const { after, before, beforeSpawn } = mergesAroundCheck(mergeDone, check.ts, spawnedAt);
+  return {
+    check,
+    ...(clearedLive ? { cleared } : {}),
+    ...(culprit ? { culprit } : {}),
+    ...(opener ? { spellOpener: opener } : {}),
+    ...(typeof after?.commit === "string" ? { mergeDoneAfterCommit: after.commit } : {}),
+    ...(typeof before?.commit === "string" ? { mergeDoneBeforeCommit: before.commit } : {}),
+    ...(typeof beforeSpawn?.commit === "string" ? { mergeDoneBeforeSpawnCommit: beforeSpawn.commit } : {}),
+  };
+}
+
 /** Scan the log for MainCheckScan, growing the tail until a merge-scope check is inside it (see
  * MAIN_CHECK_SCAN_MAX_EVENTS): a check older than the default tail must still badge the header,
  * and every event after the check — the merged pairing the sha needs — is newer, so one window
@@ -254,38 +292,10 @@ function scanMainCheck(root: string): MainCheckScan {
     if (check || events.length < window || window >= MAIN_CHECK_SCAN_MAX_EVENTS) break;
     window = grewFull ? MAIN_CHECK_SCAN_MAX_EVENTS : Math.min(window * 4, MAIN_CHECK_SCAN_MAX_EVENTS);
   }
-  const check = facts.check;
-  const mergeDone = facts.mergeDone;
-  const culprit = facts.culprit;
-  const opener = facts.opener;
-  const cleared = facts.cleared;
   if (mainCheckGrewFull.size >= MAIN_CHECK_FULL_SET_MAX) mainCheckGrewFull.clear();
-  if (check) mainCheckGrewFull.delete(root);
+  if (facts.check) mainCheckGrewFull.delete(root);
   else mainCheckGrewFull.add(root);
-  // The loop's last pass over the FINAL tail left `opener` current: an earlier window's value
-  // was reset before its own scan, and the break exits with the final tail's result.
-  const clearedLive = clearedRedIsLive(cleared, check);
-  if (!check || typeof check.ts !== "number" || !isMainCheckStatus(check.status)) {
-    return {
-      ...(clearedLive ? { cleared } : {}),
-      ...(culprit ? { culprit } : {}),
-      ...(opener ? { spellOpener: opener } : {}),
-    };
-  }
-  // A baseline check runs on the head main held at its spawn; a merge that lands while the
-  // run is in flight logs before the check's settle stamp but is not covered by it. Capture
-  // that spawn-bounded merge separately so the sha can name the head the run actually saw.
-  const spawnedAt = check.scope === "baseline" && typeof check.spawnedAt === "number" ? check.spawnedAt : undefined;
-  const { after, before, beforeSpawn } = mergesAroundCheck(mergeDone, check.ts, spawnedAt);
-  return {
-    check,
-    ...(clearedLive ? { cleared } : {}),
-    ...(culprit ? { culprit } : {}),
-    ...(opener ? { spellOpener: opener } : {}),
-    ...(typeof after?.commit === "string" ? { mergeDoneAfterCommit: after.commit } : {}),
-    ...(typeof before?.commit === "string" ? { mergeDoneBeforeCommit: before.commit } : {}),
-    ...(typeof beforeSpawn?.commit === "string" ? { mergeDoneBeforeSpawnCommit: beforeSpawn.commit } : {}),
-  };
+  return assembleScanVerdict(facts);
 }
 
 /** The cached scan for `root`, computing it through scanMainCheck on a cache miss. The clone
