@@ -305,7 +305,8 @@ interface OpencodeRefreshOptions {
   cliBin?: string;
   /** Overrides Date.now, for a deterministic age check. */
   now?: () => number;
-  /** Called once when a fetch fails but an old cache is kept (part 6a's "logs one warning"). */
+  /** Called once when a fetch fails but an old cache is kept (part 6a's "logs one warning"),
+   * with the fetch failure's cause in the message. */
   warn?: (message: string) => void;
 }
 
@@ -317,9 +318,10 @@ export function opencodeCatalogStale(cache: OpencodeCatalogCache, now: number): 
 
 /** Return a cache fresh enough to price by, fetching and persisting when the current one is
  * missing, stale (older than 24 h) or fetched by a different `opencode --version`. A failed
- * fetch keeps the old cache (logging one warning) so the team still prices by the last good
- * data; `billedAt` from the old cache survives a successful refresh (part 6c/7). A failed cache
- * write warns and returns the fetched catalog, so the next start fetches again. */
+ * fetch keeps the old cache; it logs one warning naming the fetch failure's cause, so the
+ * team still prices by the last good data. `billedAt` from the old cache survives a successful
+ * refresh (part 6c/7). A failed cache write warns and returns the fetched catalog, so the next
+ * start fetches again. */
 export async function refreshOpencodeCatalog(root: string, opts: OpencodeRefreshOptions): Promise<OpencodeCatalogCache> {
   const now = opts.now !== undefined ? opts.now() : Date.now();
   const version = opts.cliVersion !== undefined ? opts.cliVersion : readCliVersion(opts.cliBin);
@@ -331,8 +333,11 @@ export async function refreshOpencodeCatalog(root: string, opts: OpencodeRefresh
   let body: unknown;
   try {
     body = await fetchOpencodeCatalog(opts.fetch);
-  } catch {
-    opts.warn?.(`OpenCode model catalog fetch failed; keeping the cached copy`);
+  } catch (err) {
+    // The cause is why the operator's models.dev fetch failed (a 5xx, a proxy refusal, a DNS or
+    // timeout error); the write-failure warn below already names its cause, so the fetch warn
+    // does too. Keeping the cached copy still reads — the team prices by the last good data.
+    opts.warn?.(`OpenCode model catalog fetch failed (${errorMessage(err)}); keeping the cached copy`);
     return current.fetchedAt === 0 ? { fetchedAt: 0, cliVersion: version, models: {} } : current;
   }
   const parsed = parseOpencodeCatalog(body, opts.providers);

@@ -175,7 +175,7 @@ test("a failed fetch keeps the old cache and logs one warning", async () => {
     cliVersion: "2.0.32",
     now: () => 1_000,
   });
-  let warnings = 0;
+  let warnings: string[] = [];
   const failing: CatalogFetch = async () => {
     throw new Error("network down");
   };
@@ -184,11 +184,14 @@ test("a failed fetch keeps the old cache and logs one warning", async () => {
     fetch: failing,
     cliVersion: "2.0.32",
     now: () => 100 * 24 * 60 * 60 * 1000,
-    warn: () => {
-      warnings += 1;
+    warn: (message) => {
+      warnings.push(message);
     },
   });
-  assert.equal(warnings, 1);
+  // The warning names the fetch failure's cause — the same the operator's models.dev fetch
+  // returned — not just that a fetch failed.
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0], "OpenCode model catalog fetch failed (network down); keeping the cached copy");
   assert.equal(result.fetchedAt, 1_000, "kept the old cache rather than a fetchedAt reset");
   const kept = result.models["opencode/deepseek-v4.1-flash-free"];
   assert.ok(kept);

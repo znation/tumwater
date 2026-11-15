@@ -544,7 +544,7 @@ test("the startup seed logs a warning when the catalog fetch fails or the cache 
       now: () => 1_000,
     });
     assert.ok(!("problem" in failing), JSON.stringify(failing));
-    const fetchWarning = "OpenCode model catalog fetch failed; keeping the cached copy";
+    const fetchWarning = "OpenCode model catalog fetch failed (offline); keeping the cached copy";
     const countFetch = (): number => warningMessages(repoA).filter((m) => m.includes(fetchWarning)).length;
     assert.equal(countFetch(), 1);
     await runStartupCheck(repoA, null, { fetch: async () => { throw new Error("offline"); }, now: () => 2_000 });
