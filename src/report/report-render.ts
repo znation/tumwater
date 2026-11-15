@@ -11,6 +11,7 @@
  * voice and cannot drift. */
 import type { ReportData, ReportDay, ReportTotals } from "./report-types.js";
 import { addTo, rankCountEntries, sortByValueDesc } from "../collections.js";
+import type { DayMapKey } from "./report-data.js";
 import { foldBaseRoles } from "./report-fold.js";
 import { compactTokens, usd, wholePercent } from "../text/format.js";
 import { durationLabel } from "../text/duration.js";
@@ -55,8 +56,8 @@ function rankedRoleTotals(series: ReportDay[], pick: (d: ReportDay) => Record<st
  * the field ranks to "-" (the zero-means-absent rule) in exactly one place. Every one-off
  * breakdown line routes here except `notionalByRole`, whose map is also consumed by
  * `costPerCommitPairs` on the next line, so that one stays a local lambda fed to both. */
-function rankedBy<K extends keyof ReportDay>(series: ReportDay[], field: K): [string, number][] {
-  return rankedRoleTotals(series, (d) => (d[field] as Record<string, number> | undefined) ?? {});
+function rankedBy(series: ReportDay[], field: DayMapKey): [string, number][] {
+  return rankedRoleTotals(series, (d) => d[field] ?? {});
 }
 
 /** One "**Label:** role — n · role — n" Markdown line from already-ranked pairs; an empty

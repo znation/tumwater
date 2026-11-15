@@ -61,7 +61,7 @@ function setLowerMedian(day: ReportDay, key: DayMedianKey, ms: number[]): void {
  * a day collector's cell name must name a field the shape declares, so a renamed or added
  * cell is a compile error at its `setMapIfNonempty` site, not a stray key in the report JSON.
  */
-type DayMapKey = {
+export type DayMapKey = {
   [K in keyof ReportDay]-?: NonNullable<ReportDay[K]> extends Record<string, number> ? K : never;
 }[keyof ReportDay];
 
