@@ -316,7 +316,7 @@ export function mergeBadge(mergeQueue: { depth: number }): string {
 
 /** The ci parity badge — the status header's always-visible twin of the `ci parity` doctor
  * row: the answer to "has the full suite covered main's tip?" at a glance, without running
- * doctor. `current` reads `ci: covered <sha> <age> ago` beside the main check so a green main
+ * doctor. `current` reads `CI: covered <sha> <age> ago` beside the main check so a green main
  * names the expensive verification behind it and how long ago it ran; `stale` (main or the
  * lock moved since) names the covered sha and its age; `failed` names where the last full
  * suite failed. Empty when there is no parity record — a repo the ci role has never run — so
@@ -328,9 +328,11 @@ export function ciParityBadge(parity: StatusSnapshot["ciParity"], now: number): 
   if (!parity) return "";
   const sha = shortSha(parity.covered);
   const age = humanAgo(parity.lastRunAt, now);
-  if (parity.state === "current") return ` · ci: covered ${sha} ${age}`;
-  if (parity.state === "failed") return ` · ci: failed at ${sha} ${age}`;
-  return ` · ci: stale — covered ${sha} ${age}`;
+  // The label is the `CI` acronym, not a title-cased `Ci`: the browser sidebar's badgeLabel
+  // upcases only its first character, so a lowercase `ci:` there would render as `Ci: …`.
+  if (parity.state === "current") return ` · CI: covered ${sha} ${age}`;
+  if (parity.state === "failed") return ` · CI: failed at ${sha} ${age}`;
+  return ` · CI: stale — covered ${sha} ${age}`;
 }
 
 /** The one state→tone map for the ci parity badge, shared by the CLI/TUI header and the

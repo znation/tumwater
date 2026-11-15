@@ -75,7 +75,7 @@ test("the status header carries the remote-CI badge right after the ci parity ba
   snap.ciParity = { state: "stale", covered: "abcdef0", lastRunAt: Date.now() };
   snap.remoteCi = { result: "failed", sha: "3e450b0c4d9e8f7a6b", checkedAt: Date.now() };
   const failed = headerOf(renderStatus(tmpdir(), snap));
-  assert.match(failed, /· ci: stale — covered abcdef0 .*· github: failed at 3e450b0 /, "the github badge rides right after the ci badge");
+  assert.match(failed, /· CI: stale — covered abcdef0 .*· github: failed at 3e450b0 /, "the github badge rides right after the ci badge");
 
   const running = snapshotWith([{ role: "clean" }]);
   running.remoteCi = { result: "pending", sha: "3e450b0c4d9e8f7a6b", checkedAt: Date.now() };

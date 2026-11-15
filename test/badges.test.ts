@@ -229,15 +229,15 @@ test("ciParityBadge phrases each state and omits none", () => {
   assert.equal(ciParityBadge(undefined, 0), "", "no parity record: no badge");
   assert.equal(
     ciParityBadge({ state: "current", covered: sha, lastRunAt: 0 }, 0),
-    " · ci: covered aaaaaaaa 0s ago",
+    " · CI: covered aaaaaaaa 0s ago",
   );
   assert.equal(
     ciParityBadge({ state: "stale", covered: sha, lastRunAt: 0 }, 0),
-    " · ci: stale — covered aaaaaaaa 0s ago",
+    " · CI: stale — covered aaaaaaaa 0s ago",
   );
   assert.equal(
     ciParityBadge({ state: "failed", covered: sha, lastRunAt: 0 }, 0),
-    " · ci: failed at aaaaaaaa 0s ago",
+    " · CI: failed at aaaaaaaa 0s ago",
   );
 });
 

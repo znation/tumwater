@@ -1487,17 +1487,18 @@ test("the team panel carries the remote-CI row after the ci parity row, absent w
   const d = {
     running: true,
     pid: 1,
-    ciParityBadge: " · ci: covered abcdef0 1m ago",
+    ciParityBadge: " · CI: covered abcdef0 1m ago",
     ciParityTone: "blue",
     remoteCiBadge: " · github: failed at 3e450b0 1m ago",
     remoteCiTone: "red",
   };
   renderSidebar(d);
   const html = panels.statuschips!;
-  // badgeLabel upcases only the first char: "Ci: …" and "Github: …" — not "CI:"/"GitHub:".
+  // badgeLabel upcases only the first char: the ci parity badge's label is the already-capital
+  // "CI" acronym (so it stays "CI: …"), while the remote-CI badge reads "Github: …".
   assert.match(html, /Github: failed at 3e450b0 1m ago/, "the row carries the badge's wording, upcased");
   assert.match(html, /t-red/, "the row is toned by the shared result-to-tone map");
-  assert.ok(html.indexOf("Github: failed at 3e450b0") > html.indexOf("Ci: covered abcdef0"), "the row rides after the ci parity row");
+  assert.ok(html.indexOf("Github: failed at 3e450b0") > html.indexOf("CI: covered abcdef0"), "the row rides after the ci parity row");
 
   // No record: no remote-CI row — the panel is byte-identical to before the badge existed.
   const bare: Record<string, unknown> = { ...d };
@@ -1505,5 +1506,5 @@ test("the team panel carries the remote-CI row after the ci parity row, absent w
   delete bare.remoteCiTone;
   renderSidebar(bare);
   assert.doesNotMatch(panels.statuschips!, /Github:/, "no record: no remote-CI row");
-  assert.match(panels.statuschips!, /Ci: covered abcdef0 1m ago/, "the ci parity row is untouched");
+  assert.match(panels.statuschips!, /CI: covered abcdef0 1m ago/, "the ci parity row is untouched");
 });

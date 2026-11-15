@@ -315,7 +315,7 @@ function headerHealthSpans(snap: StatusSnapshot, now: number): StatusSpan[] {
       ? (snap.mainCheck.cleared ? "yellow" : mainCheckVerdict(snap.mainCheck.status, "yellow").tone) as Tone
       : undefined),
     // The ci parity badge (the full suite's glance verdict) rides immediately after the fast
-    // main check: `· ci: covered <sha> <age> ago` when the ledger's last green run covered
+    // main check: `· CI: covered <sha> <age> ago` when the ledger's last green run covered
     // this tip with this lock, `stale`/`failed` otherwise. Empty without a parity record,
     // so a quiet team's header stays byte-identical. ciParityTone is the one state→tone map.
     ...badgeSpans(ciParityBadge(snap.ciParity, now), ciParityTone(snap.ciParity)),

@@ -262,7 +262,7 @@ test("the status header carries a ci badge only while a parity record exists", (
   snap.ciParity = { state: "stale", covered: "abcdef0", lastRunAt: Date.now() - 5 * 60_000 };
   const stale = headerOf(renderStatus(tmpdir(), snap));
   // The main-check badge precedes the ci badge; the age is rendered from the real clock.
-  assert.match(stale, /· ci: stale — covered abcdef0 /);
+  assert.match(stale, /· CI: stale — covered abcdef0 /);
 });
 
 // The disk floor (plans/disk-floor.md, part 4/4): the header carries the published free space,
