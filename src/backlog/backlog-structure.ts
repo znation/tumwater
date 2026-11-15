@@ -107,15 +107,15 @@ export function finishedTitle(title: string, dateRe: RegExp): string {
  * second line (`(planned 2026-09-02, done` / `2026-09-03)`). */
 const PLANNED_DATE = /\(planned \d{4}-\d{2}-\d{2}/;
 const DONE_DATE = /\bdone \d{4}-\d{2}-\d{2}/;
-/** A completion stamp: `done YYYY-MM-DD` introduced by a structural delimiter (`— done`,
- * `, done`, `; done`, `(done`) rather than by an English subject in prose. Every entry-own done
- * record in PLANS.md is delimiter-introduced (`…planned …, done …`, `…planned …; done …`,
- * `…) — done …`, `…) (done …)`); a "done DATE" that merely names PRIOR merged work is a
- * participle ("…part 2/2 … both done 2026-10-16, …") whose `done` follows a word, so this
- * narrower regex does not match it and a mention inside a heading's own `(planned …)` prose
- * cannot strand the entry. */
-const DONE_STAMP = /[—,(;]\s*done \d{4}-\d{2}-\d{2}/;
-/** A retired stamp: `retired YYYY-MM-DD` delimiter-introduced exactly like DONE_STAMP (plans,
+/** The entry's OWN completion stamp: a `done YYYY-MM-DD` introduced by a structural delimiter
+ * (`— done`, `; done`, or `…, done …`) that is the entry's LAST clause — i.e. followed only by an
+ * optional role phrase and a closing paren, never by a continuing clause. Anchoring on that tail
+ * distinguishes it from a `done DATE` that merely cites ANOTHER plan mid-parenthetical
+ * ("…PLANS-DONE.md, done 2026-10-28, so …"), which is followed by another clause and is therefore
+ * never the entry's own completion, so a live `## Planned` entry carrying such a citation is not
+ * stranded-done. */
+const COMPLETION_STAMP = /[—,;]\s*done \d{4}-\d{2}-\d{2}[^,]*$/;
+/** A retired stamp: `retired YYYY-MM-DD` delimiter-introduced exactly like COMPLETION_STAMP (plans,
  * "No duplicate plans" part 1/6). A `## Done` entry carrying it was closed without being built,
  * so it is finished and not stranded; a `## Planned` entry carrying it was retired and never
  * moved, so it is stranded. The same delimiter rule keeps a prose mention ("the retired
@@ -150,13 +150,16 @@ export function strandedPlanEntries(md: string): StrandedPlanEntry[] {
       const { text } = headingMetadata(lines, i);
       // A `## Done` entry is stranded when it carries the `(planned …)` opener but no done
       // stamp of its own. An entry still under `## Planned` is stranded only when its heading
-      // carries a completion stamp — a `done YYYY-MM-DD` introduced by a structural delimiter
-      // (`— done`, `, done`, `; done`, `(done`), the repo's completion shapes. A "done DATE" that
-      // merely describes PRIOR merged work ("…both done 2026-10-16, …") follows an English word,
-      // not a delimiter, so DONE_STAMP does not match it and the entry is not stranded.
+      // carries its OWN completion stamp: COMPLETION_STAMP is anchored to the trailing clause, so
+      // a `done YYYY-MM-DD` that merely cites ANOTHER plan inside the parenthetical ("…
+      // PLANS-DONE.md, done 2026-10-28, so …") is followed by a continuing clause and is never
+      // the entry's completion, so a live entry carrying such a citation is not stranded-done.
+      // RETIRED_STAMP stays a whole-text test: a retired stamp is a close-without-building state
+      // the entry wrote itself (never a citation of another plan), so mid-parenthetical it is the
+      // entry's own and still strands it.
       const misplaced = section === "Done"
         ? PLANNED_DATE.test(text) && !DONE_DATE.test(text) && !RETIRED_STAMP.test(text)
-        : DONE_STAMP.test(text) || RETIRED_STAMP.test(text);
+        : COMPLETION_STAMP.test(text) || RETIRED_STAMP.test(text);
       if (misplaced)
         stranded.push({ title: headingTitle(line, "### "), section });
     }

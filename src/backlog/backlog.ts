@@ -168,7 +168,7 @@ export const DONE_DATE_RE = /done (\d{4}-\d{2}-\d{2})/;
 export const RETIRED_DATE_RE = /\bretired (\d{4}-\d{2}-\d{2})/;
 /** True when a plan heading carries a `retired YYYY-MM-DD` stamp: the close-without-building
  * state (plans, "No duplicate plans" part 1/6). Delimiter-introduced, the same way
- * backlog-structure.ts's DONE_STAMP is — a structural delimiter (`— retired`, `, retired`,
+ * backlog-structure.ts's COMPLETION_STAMP is — a structural delimiter (`— retired`, `, retired`,
  * `; retired`, `(retired`) opens the stamp, so prose that merely mentions "the retired
  * 2026-10-30 entry" does not match and an unretired entry is never read as closed. */
 export function isRetiredTitle(title: string): boolean {

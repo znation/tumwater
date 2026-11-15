@@ -111,6 +111,42 @@ _None yet._`);
   assert.deepEqual(strandedPlanEntries(md), []);
 });
 
+test("a ## Planned heading that cites another plan as '<name>, done DATE' inside its parenthetical is not stranded", () => {
+  // The live trust-gate pin that triggered this: its `(planned …)` parenthetical names a prior
+  // plan as `PLANS-DONE.md, done 2026-10-28` — a citation, not this entry's completion. The
+  // old unanchored stamp matched the comma before `done`, stranding the live entry and reding
+  // the repo-checks test; the fix anchors a completion stamp to the entry's OWN trailing clause,
+  // so a mid-parenthetical citation no longer counts. (Regression: fails without the fix.)
+  const md = plansDoc(`## Planned
+
+### A live pin (planned 2026-11-14 by the plan role; independent of the sibling pin, which the archive records as split from PLANS-DONE.md, done 2026-10-28, so feature may take either)
+
+**Goal.** Still in flight; not finished.
+
+## Done
+
+_None yet._`);
+  assert.deepEqual(strandedPlanEntries(md), []);
+});
+
+test("a ## Planned heading whose own parenthetical carries the completion as ', done DATE' (the (planned …, done …) shape) is still stranded", () => {
+  // Guards the anchor from over-firing: the fix reads the trailing suffix off the stamp-stripped
+  // heading, so a heading whose stripped text ENDS in a comma (the parenthetical's trailing
+  // `…, done …` shape) still exposes its own `done` stamp in that suffix and is stranded-done.
+  const md = plansDoc(`## Planned
+
+### A finished plan (planned 2026-11-01 by the plan role, done 2026-11-03 by the feature role)
+
+**Goal.** Finished and never moved.
+
+## Done
+
+_None yet._`);
+  assert.deepEqual(strandedPlanEntries(md), [
+    { title: "A finished plan (planned 2026-11-01 by the plan role, done 2026-11-03 by the feature role)", section: "Planned" },
+  ]);
+});
+
 test("a ## Planned heading stamped '— done DATE' as its own completion is stranded", () => {
   const md = plansDoc(`## Planned
 
