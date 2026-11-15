@@ -28,7 +28,7 @@ import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
  * render: until now the slices carried byte-identical copies of all of it — they build on this
  * module instead (test/post-merge-review.test.ts and the drain and pipeline suites seed pins
  * only; the run-timing pair takes standInMerge; orchestrator-merge-pin.test.ts takes the
- * queue-entry fixtures). The merger*.test.ts
+ * pin and pipeline fixtures). The merger*.test.ts
  * family shares merger-fixtures.ts (a different wiring shape), not this. */
 
 export const APPROVE = (reply = "the work looks right") => reviewerPi(`VERDICT: approve\n${reply}`);
