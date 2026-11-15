@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { flagValue, parseBranchFlag, parseCountFlag, parseDurationFlag, parseGrepFlag, parsePortFlag, parsePositionFlag, parseRoleFlag, parseRoleListFlag, rejectFlagLookingValue, tokenValueProblem, TOKEN_VALUE_ERROR } from "../src/cli/cli-args.js";
+import { flagValue, parseBranchFlag, parseCountFlag, parseDurationFlag, parseGrepFlag, parsePortFlag, parsePositionFlag, parseRoleFlag, parseRoleListFlag, rejectFlagLookingValue, scanPositionArgs, tokenValueProblem, TOKEN_VALUE_ERROR } from "../src/cli/cli-args.js";
 import { durationLabel, parseDurationMs } from "../src/text/duration.js";
 import {
   rejectUnknownArgs,
@@ -602,4 +602,72 @@ test("rejectUnknownArgs hints `--role <id>` for a bare role id on a --role comma
   assert.match(typo.stderr, /did you mean `--role`\?/);
   const noRole = expectFail(() => rejectUnknownArgs("queue", ["feature"], []));
   assert.ok(!noRole.stderr.includes("--role"));
+});
+
+// --- scanPositionArgs (the shared scan every queue-style command shell repeats) ---
+
+test("scanPositionArgs consumes the position flag's value token and sets --json in one pass", () => {
+  // The value token is claimed by the position flag's skip, so it never reaches rest; --json
+  // sets the boolean. No extra booleans were named, so flags stays empty.
+  const r = expectOk(() => scanPositionArgs(["--cancel", "2", "--json"], "--cancel", "--cancel 2"));
+  assert.deepEqual(r, { json: true, flags: {}, position: 2, rest: [] });
+
+  // A lone valued flag: the position is parsed, everything else is absent.
+  const lone = expectOk(() => scanPositionArgs(["--show", "3"], "--show", "--show 2"));
+  assert.deepEqual(lone, { json: false, flags: {}, position: 3, rest: [] });
+});
+
+test("scanPositionArgs collects the extra boolean edge flags in flags", () => {
+  const r = expectOk(() =>
+    scanPositionArgs(["--show", "3", "--done", "--json"], "--show", "--show 2", ["--done"]),
+  );
+  assert.deepEqual(r, { json: true, flags: { "--done": true }, position: 3, rest: [] });
+});
+
+test("scanPositionArgs drops --help and -h instead of collecting them in rest", () => {
+  const help = expectOk(() => scanPositionArgs(["--show", "3", "--help"], "--show", "--show 2"));
+  assert.deepEqual(help, { json: false, flags: {}, position: 3, rest: [] });
+  const short = expectOk(() => scanPositionArgs(["--show", "3", "-h"], "--show", "--show 2"));
+  assert.deepEqual(short, { json: false, flags: {}, position: 3, rest: [] });
+});
+
+test("scanPositionArgs collects unrecognised tokens in rest for the caller's rejectUnknownArgs", () => {
+  const r = expectOk(() => scanPositionArgs(["--show", "3", "extra"], "--show", "--show 2"));
+  assert.equal(r.position, 3);
+  assert.equal(r.json, false);
+  assert.deepEqual(r.flags, {});
+  assert.deepEqual(r.rest, ["extra"]);
+});
+
+test("scanPositionArgs fails a repeated --json, a repeated extra boolean, and a repeated position flag with the shared once wording", () => {
+  const json = expectFail(() => scanPositionArgs(["--json", "--json"], "--cancel", "--cancel 2"));
+  assert.equal(json.code, 1);
+  assert.match(json.stderr, /--json may only be given once/);
+
+  const extra = expectFail(() => scanPositionArgs(["--done", "--done"], "--show", "--show 2", ["--done"]));
+  assert.equal(extra.code, 1);
+  assert.match(extra.stderr, /--done may only be given once/);
+
+  // The first occurrence's value token is consumed by the skip, so the second occurrence is
+  // a bare repeat and reaches rejectRepeatFlag through the position's own seen-check.
+  const position = expectFail(() => scanPositionArgs(["--show", "1", "--show", "2"], "--show", "--show 2"));
+  assert.equal(position.code, 1);
+  assert.match(position.stderr, /--show may only be given once/);
+});
+
+test("scanPositionArgs composes parsePositionFlag's value rule: valueless, flag-shaped, and non-integer values each fail", () => {
+  // A position flag as the final argument has no value token at all.
+  const valueless = expectFail(() => scanPositionArgs(["--cancel"], "--cancel", "--cancel 2"));
+  assert.equal(valueless.code, 1);
+  assert.match(valueless.stderr, /--cancel needs a position number/);
+
+  // A `--` token in the value slot is a slipped flag, named by the shared guard.
+  const slipped = expectFail(() => scanPositionArgs(["--cancel", "--json"], "--cancel", "--cancel 2"));
+  assert.equal(slipped.code, 1);
+  assert.match(slipped.stderr, /--cancel needs a value \(the next token "--json" is a flag, not a value\)/);
+
+  // A non-integer value fails with the positive-integer wording and the raw token.
+  const bad = expectFail(() => scanPositionArgs(["--cancel", "x"], "--cancel", "--cancel 2"));
+  assert.equal(bad.code, 1);
+  assert.match(bad.stderr, /--cancel needs a positive integer \(got "x"\)/);
 });
