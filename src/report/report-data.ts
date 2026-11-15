@@ -57,13 +57,21 @@ function setLowerMedian(day: ReportDay, key: DayMedianKey, ms: number[]): void {
   if (ms.length > 0) day[key] = lowerMedian(ms);
 }
 
+/** A `ReportDay`'s per-day map fields (`Record<string, number>`), derived from the shape:
+ * a day collector's cell name must name a field the shape declares, so a renamed or added
+ * cell is a compile error at its `setMapIfNonempty` site, not a stray key in the report JSON.
+ */
+type DayMapKey = {
+  [K in keyof ReportDay]-?: NonNullable<ReportDay[K]> extends Record<string, number> ? K : never;
+}[keyof ReportDay];
+
 /** Set one per-day role/product map cell only when the day actually has entries (`map`
  * non-empty), so a map-free day keeps its exact pre-feature shape (the field stays absent).
  * The single home of that guard — the day collector's per-role-and-product map cells all
  * followed it inline before. */
-function setMapIfNonempty(day: ReportDay, key: string, map: Record<string, number> | undefined): void {
+function setMapIfNonempty(day: ReportDay, key: DayMapKey, map: Record<string, number> | undefined): void {
   if (map !== undefined && Object.keys(map).length > 0) {
-    (day as unknown as Record<string, Record<string, number>>)[key] = map;
+    day[key] = map;
   }
 }
 
