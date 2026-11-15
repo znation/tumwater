@@ -128,6 +128,56 @@ test("an environment that redirects git keeps every read with git", (t) => {
   assert.equal(refShaFromFiles(root, "HEAD"), undefined);
 });
 
+// The files-backend trust gate (filesBackendTrusted, reached through repoFiles) decides whether
+// the repository's files may answer a ref read at all: this process's user owns the checkout and
+// git dirs, the objects dir and HEAD are present, and no reftable store shadows them. When the
+// gate refuses the files, every read must fall back to a git spawn. These cases mutate one layout
+// condition in a same-user primary checkout (git init leaves no commondir pointer, so the guard
+// reads .git/objects, .git/HEAD and .git/reftable directly) and pin that the gate refuses the
+// files, and that a probe then defers to git.
+
+test("a complete same-user checkout answers HEAD from files, exactly as git prints it", () => {
+  const root = makeRepo(); // one commit on main: complete, non-reftable, owned by this user
+  assert.notEqual(gitRevParse(root, "HEAD"), null, "git can resolve HEAD in a committed repo");
+  assert.equal(refShaFromFiles(root, "HEAD"), gitRevParse(root, "HEAD"), "the trusted path is the positive contract");
+});
+
+test("an absent objects dir is untrusted: the files do not settle a ref read", () => {
+  const root = makeRepo();
+  fs.rmSync(path.join(root, ".git", "objects"), { recursive: true, force: true });
+  assert.equal(refShaFromFiles(root, "HEAD"), undefined, "the guard refuses the files when objects is absent");
+});
+
+test("an absent HEAD is untrusted: the files do not settle a ref read", () => {
+  const root = makeRepo();
+  fs.rmSync(path.join(root, ".git", "HEAD"), { force: true });
+  assert.equal(refShaFromFiles(root, "HEAD"), undefined, "the guard refuses the files when HEAD is absent");
+});
+
+test("a reftable store shadows the loose and packed refs even when objects and HEAD are present", async () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, ".git", "reftable"));
+  assert.equal(refShaFromFiles(root, "HEAD"), undefined, "the guard refuses the files when a reftable store shadows them");
+  assert.equal(await hasCommits(root), true, "the probe defers to git, which still resolves the intact layout");
+});
+
+test("a redirecting environment keeps a full ref read with git too", (t) => {
+  const root = makeRepo();
+  const other = makeRepo();
+  t.after(setEnv("GIT_DIR", path.join(other, ".git")));
+  assert.equal(refShaFromFiles(root, "refs/heads/main"), undefined, "the environment bails every read, for any ref shape");
+});
+
+test("an untrusted files-backend read defers to a git spawn, and the probe still answers", async () => {
+  const root = makeRepo();
+  fs.rmSync(path.join(root, ".git", "objects"), { recursive: true, force: true });
+  assert.equal(refShaFromFiles(root, "HEAD"), undefined, "the files are untrusted, so they answer nothing");
+  // git itself refuses a repository without an objects dir (fatal: not a git repository), so the
+  // spawned fallback settles false rather than reading an incomplete layout: an untrusted read is
+  // left to git, whatever git answers, never to the files.
+  assert.equal(await hasCommits(root), false, "the spawn fallback answers, and an objects-less repo has no resolvable HEAD");
+});
+
 test("the probes answer from files and agree with git across hits and misses", async () => {
   const root = richRepo();
   const sub = path.join(root, "nested");
