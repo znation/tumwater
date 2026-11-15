@@ -2,8 +2,13 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { compareCodeUnits, increment } from "../collections.js";
 import { postReviewPath, postReviewWorktreePath, nativeLogPath, piLogPath, reviewRunSessionDir, reviewFixRef } from "../paths.js";
-import { reviewRunConfig } from "../config/config-views.js";
+import { reviewConfig, reviewRunConfig } from "../config/config-views.js";
 import { sampleHostLoad } from "../build/host-sleep.js";
+import { seamFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
+import { readAccount } from "../agent/subscription-account.js";
+import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
+import type { SubscriptionAccount } from "../agent/subscription-account.js";
+import type { OpencodeCatalogCache } from "../agent/opencode/opencode-catalog.js";
 import { logEventBestEffort, TUMWATER_SOURCE, tryOrWarn } from "../events/events.js";
 import { isJsonObject } from "../files/json-object.js";
 import { git, gitCouldNotStart, gitTry } from "../git/git-run.js";
@@ -292,6 +297,25 @@ async function applyReviewFix(
   return { kind: "fixed", fix, reasons: verdict.reasons };
 }
 
+/** Whether the post-merge reviewer's *own* resolved seam is free: the reviewer's model wiring
+ * (reviewConfig) judged by seamFree over the real catalog. A missing or torn account file or
+ * models.json reads NOT free, the safe direction, so the floor engages only when the seam is
+ * genuinely free — the one rule the budget gate, the fallback view, and the status free-ness
+ * read all share. The opencode catalog is read from the project root (an empty cache when the
+ * file is missing); a null catalog would also read not-free, so the floor never engages from a
+ * backend its own free-ness badge would not call free. */
+function reviewerSlowFree(root: string, config: TumwaterConfig): boolean {
+  const seam = reviewConfig(config);
+  const accounts = (backend: string): SubscriptionAccount | null => readAccount(root, backend);
+  const catalog: OpencodeCatalogCache = readOpencodeCache(root);
+  return seamFree(
+    readPiProviders(piModelsPath()),
+    { agent: seam.agent, provider: seam.provider, model: seam.model },
+    accounts,
+    catalog,
+  );
+}
+
 /** Review the merged commit C: the usual reviewer prompt over `git diff C^ C`, run in a detached
  * checkout of C. Logs `review_start` and `review_verdict` / `review_rejected` with
  * `afterMerge: true`. A diff git fails to produce is a failed review with no reviewer run: read
@@ -304,8 +328,18 @@ export async function reviewMergedCommit(
   entry: PostReview,
   runGatePi: GateRunsPi["runGatePi"],
   signal: AbortSignal | undefined,
+  slowReviewer?: boolean,
 ): Promise<PostReviewOutcome> {
   const { commit, role } = entry;
+  // A reviewer whose own resolved model is a slow free one (typically local) needs the same
+  // number of turns as a paid one but runs far slower per turn, so the load stretch alone
+  // (900 s x 2 = 1800 s) kills a *progressing* review mid-run and the drain re-queues it,
+  // burning dead compute per attempt. seamFree judges the reviewer's resolved seam with the
+  // real catalog (offline: a missing models.json reads not-free, the safe direction, so a
+  // test config with no model map keeps its pre-floor budget and the existing tests pass
+  // unmodified); the `slowReviewer` override forces the verdict for offline tests that must
+  // exercise the floor without a real catalog.
+  const slow = slowReviewer ?? reviewerSlowFree(root, config);
   try {
     const startedAt = Date.now();
     const fixRef = reviewFixRef(commit);
@@ -327,7 +361,12 @@ export async function reviewMergedCommit(
       // host load and with the diff's size (reviewRunConfig), so a progressing review of a large
       // diff is not killed at the load-only 2× cap. The bytes are the diff's actual UTF-8 size,
       // measured against REVIEW_DIFF_REFERENCE_BYTES.
-      const reviewCfg = reviewRunConfig(config, sampleHostLoad, Buffer.byteLength(diff, "utf8"));
+      const reviewCfg = reviewRunConfig(
+        config,
+        sampleHostLoad,
+        Buffer.byteLength(diff, "utf8"),
+        slow,
+      );
       logEventBestEffort(root, { source: role, type: "review_start", head: commit, afterMerge: true });
       const pi = await runGatePi({
         cwd: wt,

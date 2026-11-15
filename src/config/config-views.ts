@@ -407,14 +407,31 @@ export const FALLBACK_REVIEW_TIMEOUT_S = 3600;
  * making progress, and a still-progressing one gets one extension of the same length. `load`
  * defaults to `sampleHostLoad` and is injectable for offline tests; `diffBytes` is the reviewed
  * diff's size in bytes (0 → no diff-size stretch, so existing callers and the offline load-seam
- * tests are unchanged). */
+ * tests are unchanged). `slowReviewer` (default false) raises the budget's base to at least
+ * FALLBACK_REVIEW_TIMEOUT_S before the load/diff stretch, the same floor fallbackReview applies
+ * when the team fell back, for a reviewer whose own resolved model is a slow free one (typically
+ * local), so that floor is the base the load and diff stretch from: a slow local default is not
+ * killed mid-run and re-queued. `seamFree` cannot be imported here (pi-models.ts imports this
+ * module) so the free-ness verdict is passed in; every other caller leaves it false and reads
+ * today's value byte-identical. */
 export function reviewRunConfig(
   config: TumwaterConfig,
   load: LoadSampler = sampleHostLoad,
   diffBytes = 0,
+  slowReviewer = false,
 ): ResolvedModelConfig {
   const cfg = reviewConfig(config);
-  const baseMs = (config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S) * 1000;
+  // slowReviewer raises only the base: a configured timeoutSeconds above the floor stands, and
+  // below it the floor replaces the default (the same rule fallbackReview applies). The load
+  // and diff stretches and the run-budget cap below are unchanged, so the wedge and stretch
+  // semantics hold with the floored base. A free reviewer's 2x load stretch and 2x diff
+  // stretch then cap at 2 x 3600 = 7200 s — past the 900 s fast-default budgets, yet still
+  // bounded, so the quiet watchdog, not the wall, ends a wedged free review.
+  const baseMs = (
+    slowReviewer
+      ? Math.max(config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S, FALLBACK_REVIEW_TIMEOUT_S)
+      : (config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S)
+  ) * 1000;
   const stretched = starvedDeadlineMs(baseMs, load()) * (diffScaledMs(baseMs, diffBytes) / baseMs);
   return {
     ...cfg,
