@@ -29,6 +29,16 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   // escape the rest, and wrap it in the shared .diff pre. Formerly copy-pasted into both arms
   // so the trim/escape could drift between them.
   const diffPre = (text) => "<pre class='mono diff'>" + esc(String(text).replace(/\n+$/, "")) + "</pre>";
+  // A titled section holding a .run-list of already-built rows: the section head (the h3 and
+  // the muted ·N count badge) plus the run-list body, one home for the wrapper the role
+  // drawer's Flow coverage, Filings, and Recent outcomes sections each spelled inline, so
+  // the badge wording and the section open/close cannot drift between them. Returns "" for
+  // an empty row list, so a section its payload never fills renders nothing at all.
+  const countedListSection = (title, rows) => rows.length
+    ? "<section><div class='sec-head'><h3>" + esc(title) +
+      "</h3><span class='muted' style='font-size:13px'>· " + rows.length + "</span></div>" +
+      "<ul class='run-list'>" + rows.join("") + "</ul></section>"
+    : "";
 
   function showDrawer(bodyHtml) {
     for (const id of ["drawerhead", "draweractions", "drawermeta", "drawerrole", "transcript", "entrybody"]) delete lastPaint[id];
@@ -320,44 +330,38 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         // The qa flow-coverage ledger (rolePayload's flowCoverage), the drawer twin of the
         // CLI's "## Flow coverage" section — each flow's last exercise and result in coverageRows
         // order. No backticks allowed here (this whole script is one big String.raw template).
-        (flowCoverage && flowCoverage.length ? "<section><div class='sec-head'><h3>Flow coverage" +
-          "<span class='muted' style='font-size:13px'>· " + flowCoverage.length + "</span></h3></div>" +
-          "<ul class='run-list'>" + flowCoverage.map((f) => {
-            const flow = typeof f.flow === "string" ? f.flow : "";
-            const never = f.lastRunAt == null;
-            const text = never
-              ? flow + ": never exercised"
-              : flow + ": " + fmtAgo(Number(f.lastRunAt)) + ", " +
-                (f.result === "bug"
-                  ? "bug filed (BUGS.md: \"" + (typeof f.summary === "string" ? f.summary : "see BUGS.md") + "\")"
-                  : "passed");
-            return "<li><span class='when'>" + esc(flow) + "</span><span class='clamp1'>" + esc(text) + "</span></li>";
-          }).join("") + "</ul></section>" : "") +
+        countedListSection("Flow coverage", flowCoverage === null ? [] : flowCoverage.map((f) => {
+          const flow = typeof f.flow === "string" ? f.flow : "";
+          const never = f.lastRunAt == null;
+          const text = never
+            ? flow + ": never exercised"
+            : flow + ": " + fmtAgo(Number(f.lastRunAt)) + ", " +
+              (f.result === "bug"
+                ? "bug filed (BUGS.md: \"" + (typeof f.summary === "string" ? f.summary : "see BUGS.md") + "\")"
+                : "passed");
+          return "<li><span class='when'>" + esc(flow) + "</span><span class='clamp1'>" + esc(text) + "</span></li>";
+        })) +
         // The feedback filing ledger (rolePayload's filings), the drawer twin of the CLI's
         // "## Filings" section — each issue this install filed, newest-first, its number, title,
         // and age. No backticks allowed here (this whole script is one big String.raw template).
-        (filings && filings.length ? "<section><div class='sec-head'><h3>Filings" +
-          "<span class='muted' style='font-size:13px'>· " + filings.length + "</span></h3></div>" +
-          "<ul class='run-list'>" + filings.map((f) => {
-            const n = typeof f.issue === "number" ? String(f.issue) : "";
-            const title = typeof f.title === "string" ? f.title : "";
-            return "<li><span class='when'>" + esc(fmtAgo(Number(f.filedAt))) + "</span>" +
-              "<span class='clamp1'>#" + esc(n) + " " + esc(title) + "</span></li>";
-          }).join("") + "</ul></section>" : "") +
+        countedListSection("Filings", filings === null ? [] : filings.map((f) => {
+          const n = typeof f.issue === "number" ? String(f.issue) : "";
+          const title = typeof f.title === "string" ? f.title : "";
+          return "<li><span class='when'>" + esc(fmtAgo(Number(f.filedAt))) + "</span>" +
+            "<span class='clamp1'>#" + esc(n) + " " + esc(title) + "</span></li>";
+        })) +
         // The role's recent run outcomes (rolePayload's recentOutcomes, read from the event
         // log), rendered like the Recent runs list above: each with its relative age, result
         // label, summary, and duration. Mirrors the Recent run outcomes section of
         // tumwater role <id> — no backticks allowed here (this whole script is one big
         // String.raw template), so the page and the CLI read one role's outcomes identically.
-        (outcomes.length ? "<section><div class='sec-head'><h3>Recent outcomes" +
-          "<span class='muted' style='font-size:13px'>· " + outcomes.length + "</span></h3></div>" +
-          "<ul class='run-list'>" + outcomes.map((o) => {
-            const info = resultInfo(o.result);
-            const detail = typeof o.summary === "string" && o.summary.trim() !== "" ? o.summary : "";
-            return "<li><span class='when' title='" + esc(new Date(Number(o.ts)).toLocaleString()) + "'>" + esc(fmtAgo(Number(o.ts))) + "</span>" +
-              "<span class='clamp1' title='" + esc(detail) + "'><span class='res t-" + info.tone + "'>" + esc(info.label) + "</span>" + (detail ? " " + esc(detail) : "") + "</span>" +
-              "<span class='when'>" + (o.durationMs == null ? "" : esc(fmtSpan(Number(o.durationMs)))) + "</span></li>";
-          }).join("") + "</ul></section>" : "") +
+        countedListSection("Recent outcomes", outcomes.map((o) => {
+          const info = resultInfo(o.result);
+          const detail = typeof o.summary === "string" && o.summary.trim() !== "" ? o.summary : "";
+          return "<li><span class='when' title='" + esc(new Date(Number(o.ts)).toLocaleString()) + "'>" + esc(fmtAgo(Number(o.ts))) + "</span>" +
+            "<span class='clamp1' title='" + esc(detail) + "'><span class='res t-" + info.tone + "'>" + esc(info.label) + "</span>" + (detail ? " " + esc(detail) : "") + "</span>" +
+            "<span class='when'>" + (o.durationMs == null ? "" : esc(fmtSpan(Number(o.durationMs)))) + "</span></li>";
+        })) +
         drawerConfigHtml(view, r.role);
     }
     return "<section>" + body + "</section>";
