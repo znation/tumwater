@@ -3,10 +3,13 @@
  * `logs -f` and `history -f` stream new rows instead. Render once, then repaint on a
  * fixed interval until Ctrl+C or the process that started the command exits. Lifted out of
  * cli-query-commands.ts when `report -f` landed so the follow views have one leaf home instead
- * of a per-command copy. */
+ * of a per-command copy. It writes the raw terminal (process.stdout) and stops on the parent's
+ * death, so it is not a pure text helper; and the domain commands (history, report, inbox) drive
+ * it too, so it sits at the source root beside terminal.ts rather than inside the command layer
+ * cli/: a core module importing it reaches sideways into a leaf, not up into the commands. */
 
-import { expectedSupervisorPid, startParentDeathWatch } from "../process/supervisor.js";
-import { stripTerminalControls } from "../text/text.js";
+import { expectedSupervisorPid, startParentDeathWatch } from "./process/supervisor.js";
+import { stripTerminalControls } from "./text/text.js";
 
 /** The default repaint interval for a follow view — a fixed cadence, no knob. */
 const FOLLOW_VIEW_INTERVAL_MS = 2000;

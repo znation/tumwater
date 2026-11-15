@@ -10,7 +10,7 @@
  * read case still writes no file. */
 
 import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, modeNamed, rejectUnknownArgs, grepFlagSpec, statusFlagSpec } from "./cli-flag-specs.js";
-import { followView, type FollowViewSeams } from "./cli-follow-view.js";
+import { followView, type FollowViewSeams } from "../follow-view.js";
 import { sayJsonOrRender, say, sayJson, fail } from "../terminal.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { failFollowJsonRival, parseGrepFlag, parseRoleListScope, parseStatusFlag, scanPositionArgs } from "./cli-args.js";

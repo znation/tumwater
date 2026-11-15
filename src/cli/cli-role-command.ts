@@ -11,7 +11,7 @@
 import { fail, say, sayJson, sayJsonOrRender } from "../terminal.js";
 import { failFollowJsonRival, flagValue } from "./cli-args.js";
 import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
-import { followView, type FollowViewSeams } from "./cli-follow-view.js";
+import { followView, type FollowViewSeams } from "../follow-view.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
 import { defaultConfig, knownRoleIds, loadConfigSafe } from "../config/config.js";
 import { rolePayload } from "../roles/role-view.js";

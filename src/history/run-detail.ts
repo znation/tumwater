@@ -7,7 +7,7 @@
  * same trail through followView's shared loop instead of exiting after one render. */
 import { fail, say, sayJson } from "../terminal.js";
 import { parseCountFlag } from "../cli/cli-args.js";
-import { followView, type FollowViewSeams } from "../cli/cli-follow-view.js";
+import { followView, type FollowViewSeams } from "../follow-view.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, historyClass, readRunRows, runRowsOnModels, type HistoryResultClass, type RunRow } from "./history-data.js";
 import { parseHistoryModelList, parseHistoryResultList } from "./history.js";

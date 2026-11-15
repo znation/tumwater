@@ -9,7 +9,7 @@ import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderReportMarkdown } from "./report-render.js";
 import { renderSinceReportMarkdown } from "./report-since-render.js";
 import { say, sayJson, sayJsonOrRender } from "../terminal.js";
-import { followView, type FollowViewSeams } from "../cli/cli-follow-view.js";
+import { followView, type FollowViewSeams } from "../follow-view.js";
 import { failFollowJsonRival, failFollowSinceRival, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
 import { hasFollowFlag } from "../cli/cli-flag-specs.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
