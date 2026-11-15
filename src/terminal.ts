@@ -1,7 +1,7 @@
 /** The terminal output and exit boundary: the one home of how a tumwater command writes to
  * the operator (stdout lines, `--json` documents, and the uniform failure exit) so the write
  * targets and the exit convention cannot drift per call site. The command shells in cli/ use
- * it, and the domain collectors (report, history, backlog, events, redeploy, gui) render their
+ * it, and the domain collectors (report, history, backlog, events, inbox, gui) render their
  * result through it too — that is why it sits at the source root beside text/ and paths/
  * rather than inside the command layer: a core module importing it reaches sideways into a
  * leaf, not up into the commands. Its only dependency is the pure stripTerminalControls
