@@ -281,7 +281,7 @@ export interface TumwaterConfig {
   /** The agent binary to spawn (plans/portability.md §5/7): TUMWATER_PI_BIN overrides it
    * for one invocation, "pi" is the default. A value containing a path separator is
    * normalized to an absolute path against the harness process's cwd at resolution time
-   * (src/pi/pi-bin.ts resolveBackendBin), so a relative path names the same file to the run
+   * (src/agent/backend-bin.ts resolveBackendBin), so a relative path names the same file to the run
    * preflight, doctor, and the spawn itself — which runs with each run's worktree as
    * cwd; a bare name is left to PATH resolution exactly as before. */
   agentBin?: string;
@@ -292,7 +292,7 @@ export interface TumwaterConfig {
   piArgs: string[];
   /** Per-agent-backend overrides (plans/agent-backends.md "Config"): the binary and extra
    * argv each backend runs, keyed by the reserved agent id (`pi`, `claude`). Both backends
-   * resolve their binary through resolveBackendBin (pi-bin.ts), which reads this entry's `bin`
+   * resolve their binary through resolveBackendBin (backend-bin.ts), which reads this entry's `bin`
    * via config-views.ts; the claude adapter reads `.args` through that same view. The pi entry
    * resolves the legacy `agentBin`/`piArgs` as its `bin`/`args` when the new form leaves a
    * field absent, and a file may not set both spellings of one field. `defaultConfig()` seeds

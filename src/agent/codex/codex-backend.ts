@@ -21,7 +21,7 @@ import fs from "node:fs";
 import { loadConfigSafe } from "../../config/config.js";
 import { resolvedBackendConfig } from "../../config/config-views.js";
 import { backendRunEnv } from "../../process/run-marker.js";
-import { resolveBinForBackend, type ResolvedBackendBin } from "../../pi/pi-bin.js";
+import { resolveBinForBackend, type ResolvedBackendBin } from "../backend-bin.js";
 import { teamRootOf, nearestTumwaterRoot } from "../../paths.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../../events/events.js";
 import { errorMessage } from "../../text/text.js";

@@ -35,7 +35,7 @@ other.
 binary the team never runs nor a missing one it does.
 
 **Binds.** `src/gates/startup-gates.ts` (`backendsInUse`), `src/doctor/doctor-checks.ts`
-(`checkBackendBinary`), `src/pi/pi-bin.ts` (`resolveBackendBin`).
+(`checkBackendBinary`), `src/agent/backend-bin.ts` (`resolveBackendBin`).
 
 **Pinned by.** `test/doctor-checks.test.ts` — "checkBackendBinary checks the enabled seams'
 agents, not always pi" (a claude-only team passes with `claude` present and fails when it is

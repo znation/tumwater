@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { ensureParentDir, rotateIfLarge, statOrNull, terminateTornTail } from "../files/files.js";
-import type { ResolvedBackendBin } from "../pi/pi-bin.js";
+import type { ResolvedBackendBin } from "./backend-bin.js";
 import { terminateChild } from "../process/process.js";
 import { makeRunMarker } from "../process/run-marker.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";

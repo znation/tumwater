@@ -10,7 +10,7 @@ import { errorMessage } from "../text/text.js";
 import { backendsInUse, seedOpencodeCatalog, type OpenCodeSeedOptions } from "../gates/startup-gates.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
 import { codexApiKeyRefusalMessage, seedCodexAccount, readCodexAccount } from "../agent/codex/codex-account.js";
-import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
+import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../agent/backend-bin.js";
 
 /** The orchestrator's live view of tumwater.json: the single reload point shared by all roles,
  * polled once per scheduler cycle (src/orchestrator/orchestrator.ts). A broken file keeps the

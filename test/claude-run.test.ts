@@ -11,7 +11,7 @@ import { runAgent } from "../src/agent/agent-run.js";
 import type { AgentRunSpec } from "../src/agent/agent-backend.js";
 import { claudeBackend, claudeConfigDir, claudeProjectSlug, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
 import { readSessions, recordSession } from "../src/agent/session-ledger.js";
-import { backendBinSourceLabel } from "../src/pi/pi-bin.js";
+import { backendBinSourceLabel } from "../src/agent/backend-bin.js";
 import { defaultConfig } from "../src/config/config.js";
 import { configForRole } from "../src/config/config-views.js";
 import type { PiRunOptions } from "../src/agent/agent-run.js";

@@ -13,7 +13,7 @@
  */
 
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import { backendBinConfigKey, backendBinSourceLabel, type ResolvedBackendBin } from "../pi/pi-bin.js";
+import { backendBinConfigKey, backendBinSourceLabel, type ResolvedBackendBin } from "./backend-bin.js";
 import type { AgentBackend, AgentExitClassification } from "./agent-backend.js";
 import { terminateChild } from "../process/process.js";
 import { leftoversSweptMessage, sweepRunMarker } from "../process/run-marker.js";

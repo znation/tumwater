@@ -4,7 +4,7 @@
  * describes the same problems — so the wording lives here once and cannot drift.
  * `GIT_MISSING_MESSAGE` (git/git-run.ts) is the sibling for a machine with no git binary; the
  * agent-binary preconditions (resolveBackendBin, findBackendBinary, piMissingMessage) live beside
- * the spawn in pi/pi-bin.ts. */
+ * the spawn in agent/backend-bin.ts. */
 export const NOT_A_REPO_MESSAGE = "not a git repository (run `git init` first)";
 export const NO_COMMITS_MESSAGE =
   "the repo has no commits yet; `tumwater init` creates the first one";

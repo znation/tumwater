@@ -21,7 +21,7 @@ import type { StringDecoder } from "node:string_decoder";
 import { unansweredStallSecondsFor } from "../config/config-views.js";
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import { ensureDir, removeTree } from "../files/files.js";
-import type { ResolvedBackendBin } from "../pi/pi-bin.js";
+import type { ResolvedBackendBin } from "./backend-bin.js";
 import { runOnAbort, terminateChild } from "../process/process.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
 import type { PiStreamParser } from "../pi/pi-stream.js";

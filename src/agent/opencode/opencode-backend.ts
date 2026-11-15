@@ -25,7 +25,7 @@ import { ensureParentDir } from "../../files/files.js";
 import { loadConfigSafe } from "../../config/config.js";
 import { resolvedBackendConfig } from "../../config/config-views.js";
 import { backendRunEnv } from "../../process/run-marker.js";
-import { resolveBinForBackend, type ResolvedBackendBin } from "../../pi/pi-bin.js";
+import { resolveBinForBackend, type ResolvedBackendBin } from "../backend-bin.js";
 import { opencodeDbPath, teamRootOf } from "../../paths.js";
 import type {
   AgentBackend,

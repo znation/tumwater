@@ -18,7 +18,7 @@ import {
 } from "../src/agent/agent-settle.js";
 import type { RunSettleState } from "../src/agent/agent-run.js";
 import type { AgentBackend, AgentRunSpec } from "../src/agent/agent-backend.js";
-import type { ResolvedBackendBin } from "../src/pi/pi-bin.js";
+import type { ResolvedBackendBin } from "../src/agent/backend-bin.js";
 import { PiStreamParser } from "../src/pi/pi-stream.js";
 import type { ResolvedModelConfig } from "../src/config/config-views.js";
 import { defaultConfig } from "../src/config/config.js";

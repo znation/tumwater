@@ -15,7 +15,7 @@ import {
   teamWorkspaceMessage,
 } from "./readiness-gates.js";
 import { owningTeamRoot } from "../paths.js";
-import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
+import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../agent/backend-bin.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
 import { codexApiKeyRefusalMessage, seedCodexAccount } from "../agent/codex/codex-account.js";
 import { distinctOrdered } from "../collections.js";
@@ -117,8 +117,8 @@ export async function runStartupCheck(
   // is exactly what the runs spawn.
   for (const agent of backendsInUse(config)) {
     const resolved = resolveBackendBin(config, agent);
-    // The shared executability rule (pi/pi-bin.ts's findBackendBinary — the one doctor's pi check
-    // asks too), so a seam's missing binary reads the same way on both surfaces.
+    // The shared executability rule (agent/backend-bin.ts's findBackendBinary — the one
+    // doctor's pi check asks too), so a seam's missing binary reads the same way on both surfaces.
     if (!findBackendBinary(resolved)) return { problem: backendMissingMessage(resolved, agent) };
   }
   // Seed the claude account state before the first run (plans/agent-backends.md part 6a):

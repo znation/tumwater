@@ -44,7 +44,7 @@ export function unansweredStallSecondsFor(config: TumwaterConfig, target: string
  * `bin`/`args` when the new form leaves a field absent. Pure — it never writes those legacy
  * values back into `config.backends`, so a config write that re-serializes the merged config
  * cannot leak a second spelling into the file (which validateConfig would then reject).
- * pi-backend.ts and claude-backend.ts read `.bin` through resolveBackendBin (pi-bin.ts);
+ * pi-backend.ts and claude-backend.ts read `.bin` through resolveBackendBin (backend-bin.ts);
  * claude-backend.ts reads `.args` for passthrough argv. */
 export function resolvedBackendConfig(
   config: { backends?: Record<string, BackendConfig>; agentBin?: string; piArgs?: string[] },

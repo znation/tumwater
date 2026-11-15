@@ -30,7 +30,7 @@ import {
   INVALID_BRANCH_NAME_RULES,
   NO_COMMITS_MESSAGE,
 } from "../gates/readiness-gates.js";
-import { backendBinSourceLabelFor, backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
+import { backendBinSourceLabelFor, backendMissingMessage, findBackendBinary, resolveBackendBin } from "../agent/backend-bin.js";
 import { resolvedBackendConfig } from "../config/config-views.js";
 import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, configPath, owningTeamRoot } from "../paths.js";
 import { errorMessage } from "../text/text.js";
@@ -110,7 +110,8 @@ export function checkNodeVersion(
 /** git binary — fail with the shared GIT_MISSING_MESSAGE so every entry point reports the
  * same fix for a machine without git installed. Takes an explicit PATH so tests can exercise
  * the missing branch by passing "" (no PATH mutation, no spawning). The agent-binary check's
- * rule is richer (bare name vs path-shaped) and lives in pi/pi-bin.ts's findBackendBinary. */
+ * rule is richer (bare name vs path-shaped) and lives in agent/backend-bin.ts's
+ * findBackendBinary. */
 export function checkGitBinary(pathEnv: string = envPath()): CheckOutcome {
   const found = findOnPath("git", pathEnv);
   if (!found) return failOutcome(GIT_MISSING_MESSAGE);
@@ -278,8 +279,9 @@ function backendBinaryCheck(
  * (backendsInUse, the startup gate's rule), resolved through the same resolveBackendBin the spawn
  * uses, so doctor and the harness can never disagree about which binary runs (a malformed
  * tumwater.json resolves to the pi default; checkInit reports the config problem separately).
- * Executability is pi/pi-bin.ts's shared findBackendBinary — the same bare-name PATH lookup,
- * path-shaped accessSync(X_OK) rule, and null-on-unusable verdict the startup gate asks — so
+ * Executability is agent/backend-bin.ts's shared findBackendBinary — the same
+ * bare-name PATH lookup, path-shaped accessSync(X_OK) rule, and null-on-unusable verdict
+ * the startup gate asks — so
  * doctor cannot pass a binary the gate would reject. resolveBackendBin normalizes path-shaped
  * values against the process cwd at resolution time, so what doctor tests is exactly what
  * spawns. A claude-only team checks claude, not pi. The check fails on the first missing

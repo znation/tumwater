@@ -5,7 +5,7 @@
  * backend-neutral. The claude adapter registers alongside it in src/agent/agent-run.ts. */
 
 import { piArgs } from "./pi-args.js";
-import { resolveBinForBackend, type ResolvedBackendBin } from "./pi-bin.js";
+import { resolveBinForBackend, type ResolvedBackendBin } from "../agent/backend-bin.js";
 import { backendRunEnv } from "../process/run-marker.js";
 import { isPermanentConfigError, matchBackendFailure } from "./pi-failure.js";
 import { hasResumableSession, sessionResumable } from "../agent/session-ledger.js";

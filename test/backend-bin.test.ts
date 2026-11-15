@@ -9,11 +9,12 @@ import {
   findBackendBinary,
   piMissingMessage,
   resolveBackendBin,
-} from "../src/pi/pi-bin.js";
+} from "../src/agent/backend-bin.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-// Unit coverage for src/pi/pi-bin.ts's agent-binary resolution messages. The module exists so
-// that cli.ts's fail-fast, doctor.ts's report, and src/agent/agent-run.ts's spawn errors describe
+// Unit coverage for src/agent/backend-bin.ts's agent-binary resolution messages. The module
+// exists so that cli.ts's fail-fast, doctor.ts's report, and src/agent/agent-run.ts's spawn errors
+// describe
 // the same missing-binary problem with the same words — its contract is that the wording cannot
 // drift between the surfaces that quote it. cli.test.ts and doctor.test.ts pin the wording
 // end-to-end through the CLI/doctor surfaces; these tests pin the shared source directly,
@@ -152,7 +153,7 @@ test("findBackendBinary rejects a path-shaped bin that is a directory, which X_O
   // requirement a directory bin passes the preflight gate and doctor, then dies at the spawn
   // with no clear message — the very case findOnPath's bare-name branch already guards. A real
   // +x file must still resolve, so the file requirement cannot reject legitimate bins.
-  const dir = tmpdir("pi-bin-dir-");
+  const dir = tmpdir("backend-bin-dir-");
   try {
     assert.equal(findBackendBinary({ bin: dir, source: "config" }), null);
     const exe = path.join(dir, "pibin");

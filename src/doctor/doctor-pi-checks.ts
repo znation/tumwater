@@ -2,7 +2,7 @@ import { childEnv } from "../process/process.js";
 import { boundedProbe, AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS } from "./doctor-probe.js";
 import { parseJsonObject } from "../files/json-object.js";
 import { envPath } from "../files/files.js";
-import { resolveBackendBin } from "../pi/pi-bin.js";
+import { resolveBackendBin } from "../agent/backend-bin.js";
 import { parsePiModelImages, parsePiModelTable, writePiListedModels } from "../pi/pi-listed-models.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 

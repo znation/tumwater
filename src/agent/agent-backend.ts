@@ -18,7 +18,7 @@ import type { BackendConfig } from "../config/config-schema.js";
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
-import type { ResolvedBackendBin } from "../pi/pi-bin.js";
+import type { ResolvedBackendBin } from "./backend-bin.js";
 import { hasResumableSession } from "./session-ledger.js";
 
 /** The backend id used when a config names none: pi, the harness's default backend. */
@@ -70,7 +70,7 @@ export interface AgentInvocation {
 
 /** The config fields a backend's resolveBin reads (plans/agent-backends.md "Config"): the
  * per-agent entries plus pi's legacy aliases. Every field is optional, so a bare `{}` or
- * pi-bin.ts's resolvedBackendConfig view both type-check. */
+ * backend-bin.ts's resolvedBackendConfig view both type-check. */
 export interface BackendBinConfig {
   backends?: Record<string, BackendConfig>;
   agentBin?: string;
@@ -141,7 +141,7 @@ export interface AgentBackend {
    * below a configured model's floor. Optional — a backend with no version gate omits it. */
   minVersion?(model: string): string | undefined;
   /** Resolve which binary this backend spawns and where the value came from, reading its own
-   * `backends.<id>.bin` entry through pi/pi-bin.ts's resolveBinForBackend. */
+   * `backends.<id>.bin` entry through agent/backend-bin.ts's resolveBinForBackend. */
   resolveBin(config: BackendBinConfig): ResolvedBackendBin;
   /** Build the argv, stdin and environment for one run. */
   invocation(run: AgentRunSpec): AgentInvocation;
