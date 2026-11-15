@@ -340,7 +340,8 @@ export const INHERIT_WALK_MAX = 64;
  * (main-watch.ts's `fullCheckPlan`) and self-redeploy's newest-green-above-build scan
  * (src/redeploy/redeploy-target.ts), spelled the same on purpose so a change to the walk shape
  * (the bound, the `--first-parent` flag) lands once. (The main watch's red-opener walk
- * (main-watch.ts) does NOT use this: it reuses only the bound and inlines its own rev-list.)
+ * (main-settle.ts's `redOpener`) does NOT use this: it reuses only the bound and inlines its
+ * own rev-list.)
  * `inheritedGreen` and `watchedBaseline` walk a commit's ancestors (`${sha}^` / `${tip}^`, the
  * commit itself excluded); the full-check anchor walk starts at a commit (the tip) and walks down.
  * Never throws: a git failure is an empty list, and every caller already treats that as its
