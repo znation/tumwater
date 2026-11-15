@@ -1,7 +1,7 @@
 import { fail, say, sayJson, sayJsonLine } from "../terminal.js";
 import { hasFollowFlag, LOGS_TRANSCRIPT_VALUE_ERROR } from "./cli-flag-specs.js";
 import { betweenWindow, durationLabel } from "../text/duration.js";
-import { failFollowJsonRival, failFollowSinceRival, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";
+import { failFollowJsonRival, failFollowSinceRival, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseRoleScope, parseSinceUntilFlags, parseTypeFlag } from "./cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,
@@ -149,11 +149,9 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   // guessing a count. Rival shapes stay exclusive — follow means "from now on", -n means "last
   // N", and --transcript swaps in a transcript rather than this log — and each failure names
   // both flags. (--prompt requires --transcript, so it is excluded with it.)
-  const ms = parseSinceFlag(feed.rest, "logs --since", LOGS_SINCE_MAX_MS);
-  const untilMs = parseSinceFlag(feed.rest, "logs --until", LOGS_SINCE_MAX_MS, "--until");
-  failUntilShorterThanSince("logs", untilMs, ms);
-  if (ms !== null) {
-    sayLogsWindow(root, feed, ms, untilMs);
+  const { sinceMs, untilMs } = parseSinceUntilFlags(feed.rest, "logs", LOGS_SINCE_MAX_MS);
+  if (sinceMs !== null) {
+    sayLogsWindow(root, feed, sinceMs, untilMs);
     return;
   }
   const nRaw = flagValue(feed.rest, "-n");

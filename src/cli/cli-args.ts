@@ -427,14 +427,17 @@ export function failFollowJsonRival(label: string): never {
 
 /** Guard a trailing-window command's `--until <window>` against its `--since <window>` pair —
  * the shared fail sentences the three windowed views (logs, history, report) print, so the
- * wording cannot drift per command. When `--until` is present but `--since` is not, it fails
+ * wording cannot drift per command. Now invoked through the composed parseSinceUntilFlags
+ * (whose three call sites are the views), hence unexported: a caller reaching for the pair
+ * rule by hand is spelling the idiom the composed helper exists to own. When `--until` is
+ * present but `--since` is not, it fails
  * `` `${label} --until requires --since` ``; when both are present and the until window reaches
  * or exceeds the since window, it fails `` `${label} --until (<until>) must be shorter than
  * --since (<since>)` `` — each named through the same durationLabel the parser reads, so an
  * operator could retype the window. `sinceMs` is the command's parsed `--since` window (null
  * when it read the day-shape instead), the single value the until window must stay below.
  * Returns silently when both checks pass, like failOverDurationCap above. */
-export function failUntilShorterThanSince(
+function failUntilShorterThanSince(
   label: string,
   untilMs: number | null,
   sinceMs: number | null,
@@ -454,14 +457,35 @@ export function failUntilShorterThanSince(
  * "logs --since …" instead of the malformed and missing-value forms naming a bare "--since".
  * Rival-flag rules stay in each command body, checked on the returned non-null value — so a
  * malformed or over-cap `--since` fails on its own wording before a rival-flag check fires,
- * the same precedence a command with only --since shows. `flag` defaults to `--since`; logs,
- * history and report read their `--until` bound through the same idiom. */
+ * the same precedence a command with only --since shows. `flag` defaults to `--since`; the
+ * three windowed views read both windows through the composed parseSinceUntilFlags below.
+ */
 export function parseSinceFlag(args: string[], label: string, maxMs: number, flag = "--since"): number | null {
   const raw = flagValue(args, flag);
   if (raw === null) return null;
   const ms = parseDurationFlag(label, raw);
   failOverDurationCap(label, ms, maxMs);
   return ms;
+}
+
+/** The `--since <duration>` / `--until <duration>` trailing-window pair the three windowed
+ * read-only views (logs, history, report) read from a command's args: both windows through
+ * parseSinceFlag (one cap for the pair, the command naming every failure the windows carry)
+ * and then the pair's own rule through failUntilShorterThanSince — the validate-since,
+ * validate-until, check-the-pair sequence, so the three bodies cannot drift on what each
+ * failure names or on which one fires first. `command` is the bare command name; it rides
+ * into every message. Returns each window's parsed milliseconds, null when the flag is
+ * absent. Rival-flag rules stay in each command body, as they do for a lone `--since`: a
+ * malformed or over-cap value fails on its own wording before any rival check. */
+export function parseSinceUntilFlags(
+  args: string[],
+  command: string,
+  maxMs: number,
+): { sinceMs: number | null; untilMs: number | null } {
+  const sinceMs = parseSinceFlag(args, `${command} --since`, maxMs);
+  const untilMs = parseSinceFlag(args, `${command} --until`, maxMs, "--until");
+  failUntilShorterThanSince(command, untilMs, sinceMs);
+  return { sinceMs, untilMs };
 }
 
 /** Parse an optional `--role <id>` flag: the validated role id, or null when absent.

@@ -10,7 +10,7 @@ import { renderReportMarkdown } from "./report-render.js";
 import { renderSinceReportMarkdown } from "./report-since-render.js";
 import { say, sayJson, sayJsonOrRender } from "../terminal.js";
 import { followView, type FollowViewSeams } from "../follow-view.js";
-import { failFollowJsonRival, failFollowSinceRival, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
+import { failFollowJsonRival, failFollowSinceRival, failRivalShapes, flagValue, parseCountFlag, parseRoleListScope, parseSinceUntilFlags } from "../cli/cli-args.js";
 import { hasFollowFlag } from "../cli/cli-flag-specs.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 
@@ -21,16 +21,14 @@ import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../ev
 export async function cmdReport(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   // --since is handled before the day-shape reads: it is a rival shape (totals over a
   // trailing window vs a series over whole days), not a modifier of either.
-  const ms = parseSinceFlag(args, "report --since", REPORT_SINCE_MAX_MS);
-  const untilMs = parseSinceFlag(args, "report --until", REPORT_SINCE_MAX_MS, "--until");
-  failUntilShorterThanSince("report", untilMs, ms);
+  const { sinceMs, untilMs } = parseSinceUntilFlags(args, "report", REPORT_SINCE_MAX_MS);
   // --role scopes both report shapes: the usage report (day and --since) and the failure
   // digest, whose day and --since collectors take the same optional list of base roles.
   const role = parseRoleListScope(root, args);
   const follow = hasFollowFlag(args);
   if (follow && args.includes("--json")) failFollowJsonRival("report --json");
-  if (ms !== null) {
-    sinceReportShape(root, args, ms, role, untilMs, follow);
+  if (sinceMs !== null) {
+    sinceReportShape(root, args, sinceMs, role, untilMs, follow);
     return;
   }
   await dayReportShape(root, args, reportDays(args), role, follow, seams);
