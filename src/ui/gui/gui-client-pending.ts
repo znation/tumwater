@@ -35,6 +35,13 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   function roleOptionsHtml(ids, active) {
     return ids.map((id) => "<option value='" + esc(id) + "'" + (id === active ? " selected" : "") + ">" + esc(roleLabel(id)) + "</option>").join("");
   }
+  // The Role <select> shared by the Merge queue, Overlapping files, and Post-merge reviews
+  // cards: the labelled field, the picker's select id, the leading "All roles" option, then
+  // roleOptionsHtml — the one spelling of that wrapper, so the cards cannot drift on it.
+  function rolePickerSelect(pickerId, ids, active) {
+    return "<label><span class='sr-only'>Role</span><select class='field' id='" + pickerId + "'><option value=''>All roles</option>" +
+      roleOptionsHtml(ids, active) + "</select></label>";
+  }
   function pendingStateHtml(r) {
     if (r.state === "absent") return "<span class='muted'>no worktree</span>";
     if (r.state === "no-base") return "<span class='muted'>no base</span>";
@@ -139,8 +146,8 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       body = "<div class='empty'>merge queue: " + esc(depth) + " waiting</div>";
     } else {
       if (roles.length) {
-        head = "<div class='card-head'><h2>Merge queue</h2><label><span class='sr-only'>Role</span><select class='field' id='pendingqueuerole'><option value=''>All roles</option>" +
-          roleOptionsHtml(roles, active) + "</select></label></div>";
+        head = "<div class='card-head'><h2>Merge queue</h2>" +
+          rolePickerSelect("pendingqueuerole", roles, active) + "</div>";
       }
       body = "<div style='padding:10px 16px 12px'>" + entries.map((e, i) => ({ e, i })).filter(({ e }) => !active || (e && e.role === active)).map(({ e, i }) =>
         queueEntryLineHtml(e, i + 1, now, Array.isArray(labels) ? labels[i] : undefined)).join("") + "</div>";
@@ -199,8 +206,8 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       const active = role && holders.includes(role) ? role : "";
       const dirs = pendingOverlapDirs(view);
       const activeDir = dir && dirs.includes(dir) ? dir : "";
-      head = "<div class='card-head'><h2>Overlapping files</h2><label><span class='sr-only'>Role</span><select class='field' id='pendingoverlaprole'><option value=''>All roles</option>" +
-        roleOptionsHtml(holders, active) + "</select></label>" +
+      head = "<div class='card-head'><h2>Overlapping files</h2>" +
+        rolePickerSelect("pendingoverlaprole", holders, active) +
         (dirs.length ? "<label><span class='sr-only'>Folder</span><select class='field' id='pendingoverlapdir'><option value=''>All folders</option>" +
           dirs.map((d) => "<option value='" + esc(d) + "'" + (d === activeDir ? " selected" : "") + ">" + esc(d + "/") + "</option>").join("") + "</select></label>" : "") + "</div>";
       const lines = view.overlaps.map((o, i) => {
@@ -278,8 +285,8 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     const activeState = state && states.includes(state) ? state : "";
     let head = "<div class='card-head'><h2>Post-merge reviews</h2></div>";
     if (roles.length) {
-      head = "<div class='card-head'><h2>Post-merge reviews</h2><label><span class='sr-only'>Role</span><select class='field' id='pendingreviewrole'><option value=''>All roles</option>" +
-        roleOptionsHtml(roles, active) + "</select></label>" +
+      head = "<div class='card-head'><h2>Post-merge reviews</h2>" +
+        rolePickerSelect("pendingreviewrole", roles, active) +
         (states.length ? "<label><span class='sr-only'>State</span><select class='field' id='pendingreviewstate'><option value=''>All states</option>" +
           states.map((s) => "<option value='" + s + "'" + (s === activeState ? " selected" : "") + ">" + s + "</option>").join("") + "</select></label>" : "") + "</div>";
     }
