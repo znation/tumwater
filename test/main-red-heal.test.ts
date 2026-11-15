@@ -10,8 +10,8 @@ import { roleInboxDir } from "../src/paths.js";
 import { eventsOfType, mainRedHolds, warningMessages } from "./fixtures/log-fixtures.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { baselineFixture, fakeNpm } from "./fixtures/runner-fixtures.js";
-import { headSha, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { change, clockAt, culpritFixture, FAILING_OUTPUT } from "./fixtures/main-watch-fixtures.js";
+import { mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { change, clockAt, culpritFixture, FAILING_OUTPUT, watchAt, watchAtWith } from "./fixtures/main-watch-fixtures.js";
 import { defaultConfig } from "../src/config/config.js";
 
 // The hourly cadence (part 2b/4): a test that must make a fresh head's full check actually run
@@ -21,11 +21,6 @@ const HOUR = 7_200_000;
 
 // The red-main healer's dedup state (src/baseline/main-red.ts) is module-level, so this file runs
 // in its own process: lastHealKey and lastMainRedSha start fresh here.
-
-async function watchAt(watch: ReturnType<typeof createMainWatch>, root: string): Promise<void> {
-  watch.poll(headSha(root), false, defaultConfig());
-  await watch.idle();
-}
 
 test("a failing set queues one heal prompt in any order, and queues another after main turns green", async () => {
   const flags = tmpdir();
@@ -270,15 +265,11 @@ test("a bisected red opener is the culprit the heal prompt names", async () => {
   const watch = createMainWatch(root, "main", (culprit) => {
     queueCulpritHeal(root, culprit.tip, { culprit: culprit.commit, failingTests: culprit.failingTests });
   }, clock.now);
-  const watchAt = async (): Promise<void> => {
-    watch.poll(headSha(root), false, config);
-    await watch.idle();
-  };
-  await watchAt(); // seed: green, cached
+  await watchAtWith(watch, root, config); // seed: green, cached
   const broken = change(root, "bad.txt", "b"); // the commit that opens the red
   change(root, "extra.txt", "x"); // a later commit on top, its tree still red
   clock.advance(HOUR);
-  await watchAt();
+  await watchAtWith(watch, root, config);
   const prompt = queuedRolePrompts(root, "ci")[0] ?? "";
   assert.ok(prompt.includes(shortSha(broken)), prompt);
   assert.ok(prompt.includes("Failing: first"), prompt);

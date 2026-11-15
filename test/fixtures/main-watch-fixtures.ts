@@ -22,7 +22,9 @@ export function change(root: string, file: string, content: string): string {
   return headSha(root);
 }
 
-/** Poll `watch` at main's current head (`held`: the team is held) and wait until it settles. */
+/** Poll `watch` at main's current head (`held`: the team is held) with the shipped config and
+ * wait until it settles. The `poll-then-idle` shape every main-watch test slice repeats; call
+ * this (or `watchAtWith` with a varying `check` config) rather than re-spelling the idiom. */
 export async function watchAt(watch: ReturnType<typeof createMainWatch>, root: string, held = false): Promise<void> {
   watch.poll(headSha(root), held, defaultConfig());
   await watch.idle();
