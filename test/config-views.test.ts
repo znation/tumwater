@@ -201,6 +201,40 @@ test("a slow free reviewer's floored base, stretched starved, doubles past the s
   assert.equal(reviewRunConfig(config, starvedLoad, 0, true).runTimeoutSeconds, 2 * FALLBACK_REVIEW_TIMEOUT_S);
 });
 
+test("reviewRunConfig floors the reviewer's budget at the fallback floor when the reviewer is free", () => {
+  // The live post-merge path's remaining close (PLANS.md Option B): a reviewer whose own
+  // resolved seam is free gets the 3600 s floor as the base the load and diff stretch from, so
+  // a slow local default is not killed mid-run. The load samplers are injected, so the values
+  // are deterministic and load-robust: quiet (load1 <= cpus) does not stretch, starved
+  // (load1 = 2× cpus) stretches exactly to the 2× cap, and the load budget is set high (54000 s)
+  // so the run cap is inert and the stretches read back exactly.
+  const config: TumwaterConfig = defaultConfig();
+  config.runTimeoutSeconds = 54_000;
+  config.review.model = "strong-model";
+  const quiet = () => ({ load1: 2, cpus: 8 });
+  const starved = () => ({ load1: 16, cpus: 8 });
+  const large = REVIEW_DIFF_REFERENCE_BYTES * 4;
+
+  // Free (slowReviewer = true): the floor is the base, so the bounded load × diff stretches
+  // read back exactly at every combination.
+  assert.equal(reviewRunConfig(config, quiet, 0, true).runTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
+  assert.equal(reviewRunConfig(config, starved, 0, true).runTimeoutSeconds, 2 * FALLBACK_REVIEW_TIMEOUT_S);
+  assert.equal(reviewRunConfig(config, quiet, large, true).runTimeoutSeconds, 2 * FALLBACK_REVIEW_TIMEOUT_S);
+  assert.equal(reviewRunConfig(config, starved, large, true).runTimeoutSeconds, 4 * FALLBACK_REVIEW_TIMEOUT_S);
+
+  // A configured budget above the floor stands when free; one below it is raised to the floor.
+  config.review.timeoutSeconds = 7200;
+  assert.equal(reviewRunConfig(config, quiet, 0, true).runTimeoutSeconds, 7200, "a free configured budget above the floor stands");
+  config.review.timeoutSeconds = 120;
+  assert.equal(reviewRunConfig(config, quiet, 0, true).runTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S, "a free configured budget below the floor is raised");
+
+  // Not free (slowReviewer = false): the floor never engages — a paid reviewer's wall is the
+  // pre-floor base, byte-identical to before the floor.
+  config.review.timeoutSeconds = undefined;
+  assert.equal(reviewRunConfig(config, quiet, 0, false).runTimeoutSeconds, REVIEW_TIMEOUT_S);
+  assert.equal(reviewRunConfig(config, starved, 0, false).runTimeoutSeconds, 2 * REVIEW_TIMEOUT_S);
+});
+
 test("fallbackPair resolves the fallback over the top-level values", () => {
   const config: TumwaterConfig = defaultConfig();
   config.provider = "hf";

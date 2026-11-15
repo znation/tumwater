@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
-import { REVIEW_TIMEOUT_S } from "../src/config/config-views.js";
+import { FALLBACK_REVIEW_TIMEOUT_S, REVIEW_TIMEOUT_S } from "../src/config/config-views.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { drainPostReviews } from "../src/merge/merge-post-review-drain.js";
@@ -363,6 +363,68 @@ test("a post-merge review of a small diff keeps the load-only budget", async () 
   const budget = seen.config?.runTimeoutSeconds;
   assert.ok(budget !== undefined, "the reviewer run received a resolved budget");
   assert.ok(budget! <= 2 * REVIEW_TIMEOUT_S, `a small diff's budget stays within the load-only 2x cap, got ${budget}`);
+});
+
+test("a free post-merge reviewer's budget is floored at the fallback floor, whatever the host load is", async () => {
+  // Option B's remaining close: a reviewer whose own resolved seam is free (slowReviewer forced
+  // true for the offline test) gets the 3600 s floor as the base the load and diff stretch from,
+  // so a slow local default is not killed mid-run and re-queued. The diff is large enough to
+  // stretch, and the load is sampled live, so the assertion is load-robust: the stretched
+  // budget is at most 2× (load) × 2× (diff) = 4× the floor, and at least the floor itself.
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "big.txt"), "x\n".repeat(25_000));
+  sh(root, "git", "add", "--", "big.txt");
+  sh(root, "git", "commit", "-m", "add a large file");
+  const commit = headSha(root);
+  const seen: { config?: { runTimeoutSeconds?: number } } = {};
+  const runGatePi: CapturingRun = async (opts) => {
+    seen.config = opts.config;
+    return piRunResult({ verdictText: "VERDICT: approve\n1. fine" });
+  };
+  const outcome = await reviewMergedCommit(
+    root,
+    defaultConfig(),
+    { commit, role: "improve", summary: "add a large file" },
+    runGatePi as Parameters<typeof reviewMergedCommit>[3],
+    undefined,
+    true,
+  );
+  const budget = seen.config?.runTimeoutSeconds;
+  assert.ok(budget !== undefined, "the reviewer run received a resolved budget");
+  assert.ok(budget! >= FALLBACK_REVIEW_TIMEOUT_S, `a free reviewer's budget is floored at the fallback floor, got ${budget}`);
+  assert.ok(budget! <= 4 * FALLBACK_REVIEW_TIMEOUT_S, `the floor's load × diff stretches stay within the 4x ceiling, got ${budget}`);
+  assert.equal(outcome.kind, "approve", "the review still settles on the approving verdict");
+});
+
+test("a not-free post-merge reviewer keeps the pre-floor budget, below the fallback floor, whatever the host load is", async () => {
+  // The floor's other direction: a reviewer whose seam is not free (slowReviewer forced false)
+  // keeps today's budget — the 900 s base stretched by load and diff — which never reaches the
+  // 3600 s floor, so a paid reviewer's wall is byte-identical to before the floor. The tiny
+  // diff does not stretch, so the budget is the load-only stretch, at most the 2× cap; both
+  // bounds hold on any host load.
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "tiny.txt"), "one line\n");
+  sh(root, "git", "add", "--", "tiny.txt");
+  sh(root, "git", "commit", "-m", "add a small file");
+  const commit = headSha(root);
+  const seen: { config?: { runTimeoutSeconds?: number } } = {};
+  const runGatePi: CapturingRun = async (opts) => {
+    seen.config = opts.config;
+    return piRunResult({ verdictText: "VERDICT: approve\n1. fine" });
+  };
+  const outcome = await reviewMergedCommit(
+    root,
+    defaultConfig(),
+    { commit, role: "improve", summary: "add a small file" },
+    runGatePi as Parameters<typeof reviewMergedCommit>[3],
+    undefined,
+    false,
+  );
+  const budget = seen.config?.runTimeoutSeconds;
+  assert.ok(budget !== undefined, "the reviewer run received a resolved budget");
+  assert.ok(budget! <= 2 * REVIEW_TIMEOUT_S, `a not-free reviewer's budget stays within the load-only 2x cap, got ${budget}`);
+  assert.ok(budget! < FALLBACK_REVIEW_TIMEOUT_S, `a not-free reviewer's budget never reaches the fallback floor, got ${budget}`);
+  assert.equal(outcome.kind, "approve", "the review still settles on the approving verdict");
 });
 
 test("a post-merge review git could not start keeps its entry without counting a failed run", async () => {
