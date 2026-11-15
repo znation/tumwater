@@ -16,6 +16,7 @@ import { promptFileValue, readPromptFileArg, readPromptFileChecked } from "./cli
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import {
   type FlagSpec,
+  FILE_FLAG,
   FOLLOW_FLAG,
   JSON_FLAG,
   ROLE_FLAG,
@@ -49,7 +50,7 @@ function pairClaim(flagIndex: number): number[] {
  * a value; --adopt, --dry-run and --json are valueless and are never prompt content. One
  * definition, shared by the unknown-flag loop and the `--flag=value` refusal inside it. */
 const INIT_FLAG_SPECS: readonly FlagSpec[] = [
-  { names: ["--file"], value: true, valueName: "<path>" },
+  FILE_FLAG,
   { names: ["--branch"], value: true, valueName: "<name>" },
   { names: ["--template"], value: true, valueName: "<id>" },
   { names: ["--adopt"] },
@@ -213,7 +214,7 @@ const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
   { names: ["--edit"], value: true, valueName: "<n>" },
   { names: ["--top"], value: true, valueName: "<n>" },
   { names: ["--show"], value: true, valueName: "<n>" },
-  { names: ["--file"], value: true, valueName: "<path>" },
+  FILE_FLAG,
   { names: ["--at"], value: true, valueName: "<duration>" },
   { names: ["--attach"], value: true, valueName: "<path>" },
   { names: ["--grep"], value: true, valueName: "<text>" },

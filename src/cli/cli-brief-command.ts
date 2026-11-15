@@ -3,12 +3,9 @@ import { readBrief, renderBrief } from "../brief/brief.js";
 import { editBriefText } from "../brief/brief-edit.js";
 import { editInEditor } from "../editor.js";
 import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
-import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
+import { FILE_FLAG, JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { fail, say, sayJson } from "../terminal.js";
 import { requireReadyRepo } from "./cli-repo-gate.js";
-
-/** `brief`'s `--file <path>` flag: the replacement prompt (`-` for stdin). */
-const FILE_SPEC = { names: ["--file"], value: true, valueName: "<path>" };
 
 /** `brief`'s `--edit` flag: open the prompt in `$VISUAL`/`$EDITOR`. */
 const EDIT_SPEC = { names: ["--edit"] };
@@ -17,7 +14,7 @@ const EDIT_SPEC = { names: ["--edit"] };
  * replace it (or with `--edit`, open it in the editor) under the checks init applies and commit
  * that one file on main. */
 export async function cmdBrief(root: string, args: string[]): Promise<void> {
-  rejectUnknownArgs("brief", args, [JSON_FLAG, FILE_SPEC, EDIT_SPEC]);
+  rejectUnknownArgs("brief", args, [JSON_FLAG, FILE_FLAG, EDIT_SPEC]);
   await requireReadyRepo(root);
   const json = args.includes("--json");
   const fileIdx = args.indexOf("--file");

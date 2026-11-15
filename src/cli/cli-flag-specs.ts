@@ -304,6 +304,12 @@ export const N_FLAG: FlagSpec = {
  * whole spec, and the render-vs-JSON switch stays in each command body beside its render. */
 export const JSON_FLAG: FlagSpec = { names: ["--json"] };
 
+/** The `--file <path>` flag spec, shared by every command that reads a prompt or a decision
+ * from a file (`-` for stdin): brief, questions answer, init and prompt each gate the same
+ * spelling and value shape, so the spec lives in one place and the gate's accepted vocabulary
+ * cannot drift between their bodies. */
+export const FILE_FLAG: FlagSpec = { names: ["--file"], value: true, valueName: "<path>" };
+
 /** The `-f/--follow` flag spec, shared by every command with a follow view (logs, history,
  * status, queue, reviews, report, backlog, diff and quarantine — each snapshot command's
  * `-f/--follow`

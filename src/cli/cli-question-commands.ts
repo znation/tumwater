@@ -9,7 +9,7 @@
  */
 import { fail, say, sayJson, warnIfUncommitted } from "../terminal.js";
 import { failFollowJsonRival, parseCountFlag, parsePositionFlag, rejectRepeatFlag } from "./cli-args.js";
-import { FOLLOW_FLAG, JSON_FLAG, rejectEqualsForm } from "./cli-flag-specs.js";
+import { FILE_FLAG, FOLLOW_FLAG, JSON_FLAG, rejectEqualsForm } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "../follow-view.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
 import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
@@ -90,9 +90,6 @@ function sayQuestionList(root: string, json: boolean, pattern?: string): void {
   else say(openQuestionList(root, pattern));
 }
 
-/** `questions answer`'s `--file <path>` flag: the decision comes from the file, lines kept. */
-const FILE_SPEC = { names: ["--file"], value: true, valueName: "<path>" };
-
 /** The parsed shape of `tumwater questions`' `args`: the position words (subcommand, number,
  * then decision prose) plus each flag's value. */
 interface QuestionsInvocation {
@@ -166,7 +163,7 @@ function readAnywhereFlag(scan: QuestionsScan, args: string[], i: number): numbe
     return i;
   }
   if (arg.startsWith("--") && arg !== "--json") {
-    rejectEqualsForm(arg, [JSON_FLAG, FILE_SPEC, { names: ["--show"], value: true, valueName: "<n>" }, { names: ["--grep"], value: true, valueName: "<text>" }, FOLLOW_FLAG]);
+    rejectEqualsForm(arg, [JSON_FLAG, FILE_FLAG, { names: ["--show"], value: true, valueName: "<n>" }, { names: ["--grep"], value: true, valueName: "<text>" }, FOLLOW_FLAG]);
     // The complete flag set (this gate only sees `--`-flags, but `-n` is a real flag the
     // list should not omit) plus the same did-you-mean hint the sibling commands'
     // unknown-argument gate (cli-flag-specs's failUnknownArgument) attaches, so a mistyped
