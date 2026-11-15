@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { drainInFlightWork, MERGE_ABORT_SETTLE_FLOOR_MS, type AfterDelay } from "../src/run/run-timing.js";
+import { drainInFlightWork, MERGE_ABORT_SETTLE_FLOOR_MS } from "../src/run/run-timing.js";
 import { writeMergeMarker, readMergeMarker } from "../src/merge/merge-slot.js";
 import type { InFlightMerge } from "../src/merge/merge-pipeline.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
-import { flushImmediate } from "./helpers/wait.js";
+import { flushImmediate, scriptedTimers } from "./helpers/wait.js";
 
 // drainInFlightWork is the shutdown drain's policy: on an operator stop it waits out the
 // reserved runs and every merge task unboundedly (the harness signal already aborted the
@@ -21,33 +21,6 @@ import { flushImmediate } from "./helpers/wait.js";
 /** A minimal in-flight merge whose promise the test controls. */
 function merge(promise: Promise<void>, roles: string[]): InFlightMerge {
   return { promise, controller: new AbortController(), roles, userAborted: false };
-}
-
-/** A one-shot deadline scheduler the test fires by hand: `after` records each requested window
- * and its callback, its cancel drops a window that has not fired, and `fire` runs the oldest
- * pending one. `delays` is the assertion surface — the window is crossed on command, never
- * lived through, so host load cannot decide the verdict. */
-function scriptedTimers(): {
-  after: AfterDelay;
-  delays: number[];
-  fire(): void;
-  pending(): number;
-} {
-  const pending: Array<() => void> = [];
-  const delays: number[] = [];
-  return {
-    after: (ms, fn) => {
-      delays.push(ms);
-      pending.push(fn);
-      return () => {
-        const i = pending.indexOf(fn);
-        if (i >= 0) pending.splice(i, 1);
-      };
-    },
-    delays,
-    fire: () => void pending.shift()?.(),
-    pending: () => pending.length,
-  };
 }
 
 test("drainInFlightWork on an operator stop waits out runs and merges, announcing the merge", async () => {

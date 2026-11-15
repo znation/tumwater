@@ -1,10 +1,12 @@
 /** Wait-for-something helpers shared across the test suite: polling (waitFor, waitForFile,
  * waitForLogLines), the settle-within-a-budget check (within), the logical clock for
- * runPi's watchdog (watchdogClock), and the quiet-host gate (awaitQuietHost). Split from the
+ * runPi's watchdog (watchdogClock), the quiet-host gate (awaitQuietHost), and the scripted
+ * one-shot deadline scheduler (scriptedTimers). Split from the
  * old util.ts grab-bag, whose shared name made these unfindable. */
 import type { TestContext } from "node:test";
 import fs from "node:fs";
 import { sampleHostLoad, type HostLoad, type LoadSampler } from "../../src/build/host-sleep.js";
+import type { AfterDelay } from "../../src/run/run-timing.js";
 
 /** A host load reading beside its quiet verdict: the shape both quiet-host helpers return, so a
  * caller that gates on admission (awaitQuietHost) or re-applies the bar (recheckQuietHost) reads
@@ -35,6 +37,31 @@ export const sleep = (ms: number): Promise<void> => new Promise((resolve) => rea
  * test/pi.test.ts's
  * setImmediate callbacks, which schedule work instead of awaiting a flush. */
 export const flushImmediate = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+/** A one-shot deadline scheduler the test fires by hand: `after` records each requested window
+ * and its callback, its cancel drops a window that has not fired, and `fire` runs the oldest
+ * pending one. `delays` is the assertion surface — the window is crossed on command, never
+ * lived through, so host load cannot decide the verdict. The single home of this seam, injected
+ * wherever a run-timing or hand-off window is tested (run-timing, run-timing-edges,
+ * orchestrator-seams); it was a per-file copy in each of those three that the cross-file
+ * "see test/run-timing.test.ts" comments already flagged as one helper. */
+export function scriptedTimers(): { after: AfterDelay; delays: number[]; fire(): void; pending(): number } {
+  const pending: Array<() => void> = [];
+  const delays: number[] = [];
+  return {
+    after: (ms, fn) => {
+      delays.push(ms);
+      pending.push(fn);
+      return () => {
+        const i = pending.indexOf(fn);
+        if (i >= 0) pending.splice(i, 1);
+      };
+    },
+    delays,
+    fire: () => void pending.shift()?.(),
+    pending: () => pending.length,
+  };
+}
 
 /** The monotonic clock and pause a deadline wait reads. Defaults to the live host —
  * `performance.now()` and the real `sleep` — so a caller that passes nothing keeps today's

@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { drainInFlightWork, type AfterDelay } from "../src/run/run-timing.js";
+import { drainInFlightWork } from "../src/run/run-timing.js";
 import type { InFlightMerge } from "../src/merge/merge-pipeline.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
-import { flushImmediate } from "./helpers/wait.js";
+import { flushImmediate, scriptedTimers } from "./helpers/wait.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 
 // A run-timing guarantee the neighbouring files do not catch breaking: a restart's hand-off
@@ -13,25 +13,6 @@ import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 /** A minimal in-flight merge whose promise the test controls. */
 function merge(promise: Promise<void>, roles: string[]): InFlightMerge {
   return { promise, controller: new AbortController(), roles, userAborted: false };
-}
-
-/** A one-shot deadline scheduler the test fires by hand (see test/run-timing.test.ts). */
-function scriptedTimers(): { after: AfterDelay; delays: number[]; pending(): number; fire(): void } {
-  const pending: Array<() => void> = [];
-  const delays: number[] = [];
-  return {
-    after: (ms, fn) => {
-      delays.push(ms);
-      pending.push(fn);
-      return () => {
-        const i = pending.indexOf(fn);
-        if (i >= 0) pending.splice(i, 1);
-      };
-    },
-    delays,
-    pending: () => pending.length,
-    fire: () => void pending.shift()?.(),
-  };
 }
 
 test("a restart's hand-off waits for every merge task and names all their roles", async () => {

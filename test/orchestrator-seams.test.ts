@@ -1,4 +1,4 @@
-import { sleep, flushImmediate } from "./helpers/wait.js";
+import { sleep, flushImmediate, scriptedTimers } from "./helpers/wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -7,7 +7,6 @@ import {
   p75RunDurationMs,
   runTimedRoleRun,
   sleepInterruptible,
-  type AfterDelay,
 } from "../src/run/run-timing.js";
 import { pollTeamHold, type HoldInputs } from "../src/team/team-polls.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
@@ -40,25 +39,6 @@ import { warningMessages } from "./fixtures/log-fixtures.js";
 // run whose duration must not drag the window down), and none of that was under any unit
 // test before this file.
 
-/** A one-shot deadline scheduler the test fires by hand (see run-timing-edges.test.ts) so a
- * hand-off's windows pass deterministically instead of living through them. */
-function scriptedAfter(): { after: AfterDelay; delays: number[]; pending(): number; fire(): void } {
-  const pending: Array<() => void> = [];
-  const delays: number[] = [];
-  return {
-    after: (ms, fn) => {
-      delays.push(ms);
-      pending.push(fn);
-      return () => {
-        const i = pending.indexOf(fn);
-        if (i >= 0) pending.splice(i, 1);
-      };
-    },
-    delays,
-    pending: () => pending.length,
-    fire: () => void pending.shift()?.(),
-  };
-}
 
 /** Minimal recording harness for runTimedRoleRun: counts acquire/release, replays the given
  * run outcomes, and serves a controllable fake clock (each call advances by `stepMs`). */
@@ -448,7 +428,7 @@ test("awaitMergeForHandoff aborts a merge past its window and waits for it to st
 test("awaitMergeForHandoff hands off without a merge still running after the abort, clearing its marker", async () => {
   const root = tmpdir();
   writeMergeMarker(root, { role: "clean", sha: "a".repeat(40), summary: "wedged", startedAt: Date.now(), stage: "build-check" });
-  const timers = scriptedAfter();
+  const timers = scriptedTimers();
   let aborts = 0;
   // Never settles: a step wedged past its own bound, which no abort reaches.
   const outcome = awaitMergeForHandoff(root, { promise: new Promise(() => {}), roles: ["clean"] }, 100, () => void aborts++, timers.after);
@@ -472,7 +452,7 @@ test("awaitMergeForHandoff hands off without a merge still running after the abo
 
 test("awaitMergeForHandoff gives an aborted merge the settle floor, so a short deadline cannot abandon it mid-stop", async () => {
   const root = tmpdir();
-  const timers = scriptedAfter();
+  const timers = scriptedTimers();
   let stop = () => {};
   const promise = new Promise<void>((r) => (stop = r));
   let aborts = 0;
