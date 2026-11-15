@@ -8,6 +8,7 @@ import {
   isPromptImageSibling,
   movePromptImages,
   PROMPT_IMAGES_MAX_COUNT,
+  readPromptImageFiles,
   promptImagesProblem,
   promptImageExtensionProblem,
   savePromptImages,
@@ -53,6 +54,74 @@ test("promptImageExtensionProblem names the near miss on a mistyped extension, t
   assert.match(String(promptImageExtensionProblem("notes.txt")), /expected one of/);
   assert.doesNotMatch(String(promptImageExtensionProblem("notes.txt")), /did you mean/);
   assert.doesNotMatch(String(promptImageExtensionProblem("README")), /did you mean/);
+});
+
+test("readPromptImageFiles refuses a directory named like an image, naming the path", () => {
+  const dir = tmpdir();
+  const notAFile = path.join(dir, "x.png");
+  fs.mkdirSync(notAFile);
+  // A valid `.png` extension that is not a regular file: refused by its shape before it is read.
+  assert.throws(
+    () => readPromptImageFiles([notAFile]),
+    (err: Error) => err.message.includes("is not a regular file") && err.message.includes("x.png"),
+  );
+});
+
+test("readPromptImageFiles refuses an oversize file by its stat size before it is read", () => {
+  const dir = tmpdir();
+  const oversize = path.join(dir, "oversize.png");
+  // A sparse 5 MiB + 1 byte regular file: the size guard fires from the stat, so the content is
+  // never slurped into memory. Split out of the read so an oversized image cannot be encoded.
+  const handle = fs.openSync(oversize, "w");
+  fs.ftruncateSync(handle, 5 * 1024 * 1024 + 1);
+  fs.closeSync(handle);
+  assert.throws(
+    () => readPromptImageFiles([oversize]),
+    (err: Error) =>
+      err.message.includes("is 5242881 bytes") && err.message.includes("at most 5242880 (5 MiB) per image"),
+  );
+});
+
+test("readPromptImageFiles refuses a list over the count cap before reading any file", () => {
+  const dir = tmpdir();
+  // Five valid images: the raw path list is over the cap of four, refused before disk is touched.
+  const paths = Array.from({ length: PROMPT_IMAGES_MAX_COUNT + 1 }, (_, i) => {
+    const p = path.join(dir, `shot${i}.png`);
+    fs.writeFileSync(p, PNG);
+    return p;
+  });
+  assert.throws(
+    () => readPromptImageFiles(paths),
+    (err: Error) =>
+      new RegExp(`at most ${PROMPT_IMAGES_MAX_COUNT} images per prompt \\(got ${PROMPT_IMAGES_MAX_COUNT + 1}\\)`).test(
+        err.message,
+      ),
+  );
+});
+
+test("readPromptImageFiles refuses a non-image extension before the file is read", () => {
+  const dir = tmpdir();
+  const txt = path.join(dir, "note.txt");
+  fs.writeFileSync(txt, Buffer.from("not an image"));
+  assert.throws(
+    () => readPromptImageFiles([txt]),
+    (err: Error) => err.message.includes("unsupported image type"),
+  );
+});
+
+test("readPromptImageFiles reads small valid images into the GUI's base64 shape", () => {
+  const dir = tmpdir();
+  const a = path.join(dir, "a.png");
+  const b = path.join(dir, "b.png");
+  fs.writeFileSync(a, PNG);
+  fs.writeFileSync(b, PNG);
+  // The happy path: each written file comes back as its basename and the base64 of its bytes,
+  // and the reader's final endpoint re-validation passes so no error is thrown.
+  const images = readPromptImageFiles([a, b]);
+  assert.deepEqual(images, [
+    { name: "a.png", dataBase64: PNG.toString("base64") },
+    { name: "b.png", dataBase64: PNG.toString("base64") },
+  ]);
 });
 
 test("savePromptImages writes beside the queue file under the same stem, sanitized and deduplicated", () => {
