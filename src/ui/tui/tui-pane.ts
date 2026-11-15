@@ -138,6 +138,16 @@ function paneCacheLines(state: TuiPaneState, budget: number, width: number): str
   return state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, budget, width).lines : [];
 }
 
+/** The body lines a windowed cached body paints with its `#`-prefixed lines bolded: each
+ * windowed line in the default tone, a line beginning `#` in bold. The transcript notes
+ * view, the transcript change view, and the usage/failures report all apply this one rule to
+ * a cached string, so it lives here instead of one map expression copy-pasted at each site.
+ * (A pane that paints its cached lines in a single plain tone uses `paneCacheLines` above
+ * instead.) */
+function markdownBoldHeaders(text: string, offset: number, budget: number, width: number): StatusLine[] {
+  return entryBodyWindow(text, offset, budget, width).lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined));
+}
+
 /** The slice of the keypress handler's state each pane builder consumes: the backlog
  * selection and its scroll, the usage/failures pane's cached Markdown and its scroll, the
  * queued/pending/health/brief/history caches, and the activity scroll. Plain data, so tests
@@ -174,9 +184,8 @@ function transcriptBody(pane: Extract<TuiView, { kind: "transcript" }>, opts: Pa
   // The notes view (Ctrl+N) windows the cached inspection Markdown exactly like the
   // usage/failures panes, headings bold; the live transcript keeps the tail.
   if (pane.note) {
-    const win = entryBodyWindow(state.noteCache ?? "", state.paneScroll, eventBudget, width);
     return {
-      body: win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined)),
+      body: markdownBoldHeaders(state.noteCache ?? "", state.paneScroll, eventBudget, width),
       emptyNote: "(nothing to inspect yet)",
     };
   }
@@ -185,9 +194,8 @@ function transcriptBody(pane: Extract<TuiView, { kind: "transcript" }>, opts: Pa
   // paints the loading note rather than entryBodyWindow's "no details" placeholder.
   if (pane.change) {
     if (state.changeCache === null) return { body: [], emptyNote: "(loading pending change…)" };
-    const win = entryBodyWindow(state.changeCache, state.paneScroll, eventBudget, width);
     return {
-      body: win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined)),
+      body: markdownBoldHeaders(state.changeCache, state.paneScroll, eventBudget, width),
       emptyNote: "(loading pending change…)",
     };
   }
@@ -420,9 +428,8 @@ function reportBody(_pane: Extract<TuiView, { kind: "usage" | "failures" }>, opt
   const { width, eventBudget, state } = opts;
   // The Markdown `tumwater report`/`report --failures` prints, windowed like backlog entry
   // mode. The cache is set on view entry by the Ctrl+T handler, so this only re-windows a string.
-  const win = entryBodyWindow(state.paneCache ?? "", state.paneScroll, eventBudget, width);
   return {
-    body: win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined)),
+    body: markdownBoldHeaders(state.paneCache ?? "", state.paneScroll, eventBudget, width),
     emptyNote: "(no events yet)",
   };
 }
