@@ -45,7 +45,7 @@ refresh the numbers with `wc -l` and `find` when this section is touched, and no
   and the type packages for node and react (@types/node, @types/react). Zero incidental runtime
   deps: any new one needs an explicit user decision recorded here, matching the principle above.
 - **Per-function complexity**: the split-large-function family is the team's main complexity
-  pressure — 290 such plans have landed (counted as `## Done` headings that name a body "split
+  pressure — 291 such plans have landed (counted as `## Done` headings that name a body "split
   into" named steps or one named helper per concern) and more sit in `## Planned`. A split earns a
   plan only when a named function is genuinely large and a reader's question is answered better by
   a name; a complexity-N number alone is not the reason. This keeps the family finite instead of a
