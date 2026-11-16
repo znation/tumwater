@@ -165,28 +165,28 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       $("salvagecard").innerHTML = errorPanel("Salvaged patches could not load", err, "empty");
     }
   }
-  // The row's Apply button: the first click arms the row's slot (the card repaints the
-  // button as "Confirm apply") and nothing is applied; a second click within the confirm
-  // window posts { position } to /api/salvage-apply, flashes the server's message, and
-  // refetches the card.
-  async function salvageApplyClick(position) {
-    const key = "apply:" + position;
+  // The row's two-click salvage button: the first click arms the row's slot (the card repaints
+  // the button as "Confirm apply"/"Confirm drop") and nothing posts; a second click within the
+  // confirm window disarms, posts { position } to /api/salvage-<action>, flashes the server's
+  // message, and refetches the card. Apply and Drop are one shape differing only by the action
+  // token, which drives both the arm key ("<action>:" + position, the same key renderSalvage
+  // arms) and the endpoint — so the two arms cannot drift apart on their key or path.
+  async function salvageClick(action, position) {
+    const key = action + ":" + position;
     if (!salvageSlot.armed(key)) {
       salvageSlot.arm(key);
       return;
     }
     salvageSlot.disarm();
-    await postSetting("/api/salvage-apply", { position: Number(position) }, fetchSalvage, (d) => d.message);
+    await postSetting("/api/salvage-" + action, { position: Number(position) }, fetchSalvage, (d) => d.message);
   }
-  // The row's Drop button: the same two-click shape against /api/salvage-drop.
+  // The row's Apply button: POST /api/salvage-apply.
+  async function salvageApplyClick(position) {
+    return salvageClick("apply", position);
+  }
+  // The row's Drop button: POST /api/salvage-drop.
   async function salvageDropClick(position) {
-    const key = "drop:" + position;
-    if (!salvageSlot.armed(key)) {
-      salvageSlot.arm(key);
-      return;
-    }
-    salvageSlot.disarm();
-    await postSetting("/api/salvage-drop", { position: Number(position) }, fetchSalvage, (d) => d.message);
+    return salvageClick("drop", position);
   }
   // The Disabled roles card: every role set to enabled: false (GET /api/retire), each with an
   // Enable button (POST /api/role-enable) and — for a role that still keeps a worktree, branch,
