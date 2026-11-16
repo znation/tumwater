@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { addTo, compareCodeUnits, distinctOrdered, filterKeepPositions, getOrCreate, groupBy, memoSetLru, rankCountEntries, sortByValueDesc, topAndHidden } from "../src/collections.js";
+import { addTo, compareCodeUnits, distinctOrdered, filterKeepPositions, getOrCreate, groupBy, lowerMedian, memoSetLru, rankCountEntries, sortByValueDesc, topAndHidden } from "../src/collections.js";
 
 // Unit seam for collections.ts's get-or-create step, the shape factored out of the failure
 // digest, the team hold, and the error-storm reducer. Those paths already cover it end to
@@ -326,4 +326,24 @@ test("compareCodeUnits orders by raw code unit, not locale", () => {
   // Punctuation 0x21 sorts before a letter 0x41: a raw code-unit order, not a
   // collation order.
   assert.equal(compareCodeUnits("!", "A"), -1);
+});
+
+// Pins the one unpinned collections median rule. lowerMedian is the single home of the
+// lower-median rule the report and doctor rows read, whose doc comment draws the contrast
+// against failure-data.ts's mean-of-two median. Each expectation is index
+// Math.floor((n - 1) / 2) into an ascending sort of a fresh copy, derived from the
+// definition; none is computed by calling the function.
+test("lowerMedian takes the single middle (odd) or the lower middle (even)", () => {
+  // Odd count -> the single middle.
+  assert.equal(lowerMedian([1, 2, 3, 4, 5]), 3);
+  // Even count -> the lower of the two middles: 2, not the mean-of-two 2.5 that
+  // failure-data.ts's median would give. This is the regression the pin guards against.
+  assert.equal(lowerMedian([1, 2, 3, 4]), 2);
+  // Smallest counts: a single value, and the lower of the two.
+  assert.equal(lowerMedian([7]), 7);
+  assert.equal(lowerMedian([2, 5]), 2);
+  // A fresh copy is sorted; the caller's array is never mutated.
+  const input = [4, 1, 3, 2];
+  assert.equal(lowerMedian(input), 2);
+  assert.deepEqual(input, [4, 1, 3, 2]);
 });
