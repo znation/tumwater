@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { MergeEntry } from "../merge/merge-queue.js";
-import { hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";
+import { conflictAttempts, hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import {
@@ -480,7 +480,7 @@ function applyChangeLifetime(
   // The conflict streak counts failed resolutions of one pinned sha; a merge or a rejection
   // ends that pin's life. Every other outcome kept the pin as it was, so its count stands.
   if (result === "merge_conflict") {
-    const prior = s.mergeConflicts?.sha === change.sha ? s.mergeConflicts.count : 0;
+    const prior = conflictAttempts(s.mergeConflicts, change.sha);
     s.mergeConflicts = { sha: change.sha, count: prior + 1 };
   } else if (changeGone) {
     s.mergeConflicts = undefined;

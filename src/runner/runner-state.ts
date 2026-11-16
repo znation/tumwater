@@ -398,3 +398,13 @@ export function hasOutstandingWork(s: Pick<RunnerState, "revision" | "resumePend
 export function freshlyWoken(s: RunnerState): boolean {
   return s.wokenAt !== undefined && s.wokenAt > (s.lastRunEndedAt ?? 0);
 }
+
+/** Consecutive conflict-ended merges of `sha` in the role's conflict streak (0 when the
+ * streak is absent or names another sha). The single home of the read every consumer of
+ * RunnerState.mergeConflicts needs: the drain's retry decision (pinnedRetrySha), leftover
+ * recovery's cap check, the director-pin owed-run classification (scheduling/scope.ts), and
+ * the streak increment on a `merge_conflict` (run-apply.ts), so none of them can drift on
+ * what counts as the streak's own sha. */
+export function conflictAttempts(streak: RunnerState["mergeConflicts"], sha: string): number {
+  return streak?.sha === sha ? streak.count : 0;
+}

@@ -13,7 +13,12 @@ import { DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import { HOUR_MS } from "../text/datetime.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota-gates.js";
 import { INSTANCE_ROLES, baseRoleOf, runnerEnabled, runnerPaused } from "../roles/runner-ids.js";
-import { hasOutstandingWork, saveRunnerStateBestEffort, type SkipReason } from "../runner/runner-state.js";
+import {
+  conflictAttempts,
+  hasOutstandingWork,
+  saveRunnerStateBestEffort,
+  type SkipReason,
+} from "../runner/runner-state.js";
 import { MERGE_CONFLICT_LIMIT } from "../runner/runner-leftover.js";
 import { queuedMerges } from "../merge/merge-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
@@ -432,7 +437,7 @@ async function directorPinOwedRun(ctx: SchedulingPassCtx): Promise<boolean> {
   const sha = await refSha(root, mergeRefName(DIRECTOR_ROLE)).catch(() => null);
   if (sha === null) return false; // no pin at all: the director owes no run
   const streak = runners.find((r) => r.role === DIRECTOR_ROLE)?.state.mergeConflicts;
-  const attempts = streak?.sha === sha ? streak.count : 0;
+  const attempts = conflictAttempts(streak, sha);
   const present = await commitExists(root, sha).catch(() => false);
   const stale = present && (await isMergedInto(root, sha, mainBranch));
   const draining = present && !stale && attempts < MERGE_CONFLICT_LIMIT;

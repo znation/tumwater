@@ -7,7 +7,7 @@ import { mergeRefName, withdrawnRefName } from "../paths.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { shortSha } from "../text/format.js";
-import type { RunnerState } from "./runner-state.js";
+import { conflictAttempts, type RunnerState } from "./runner-state.js";
 
 /** Salvaging a commit a previous run left unmerged (plans/merge-queue.md). Since merge queue
  * 2/5 the role's branch is reset to main the moment its commit is pinned, so the leftover
@@ -54,11 +54,6 @@ async function dropDanglingPin(root: string, role: string, ref: string, sha: str
     `dropped merge pin ${shortSha(sha)}: its commit is missing from the repository, so it can never merge`,
   );
   return true;
-}
-
-/** Consecutive conflict-ended merges of `sha` (0 when the streak names another sha). */
-function conflictAttempts(streak: RunnerState["mergeConflicts"], sha: string): number {
-  return streak?.sha === sha ? streak.count : 0;
 }
 
 /** The sha of a role's kept pin when the merge pipeline may retry it itself: the pin exists,
