@@ -50,15 +50,6 @@ interface EligibilityOptions {
    * poll cadence (BUGS.md hot loop). Such an inbox is due only on the min-run-interval clock,
    * like the leftover-pinned arm. Reaches only the director arm. */
   inboxSelfRequeued?: boolean;
-  /** The role holds a live merge pin the drain settles on its own (drainable: present, not
-   * stale, and under the conflict cap). Reaches only the non-director arm: the director's
-   * draining pin is already covered by its dedicated `leftoverPending` gate. While this is set
-   * the role's idle (gap/scheduled) run is deferred — the merge is the drain's, not a role run's
-   * job — so the role is not re-run for leftover recovery every poll while its own pin waits
-   * (BUGS.md 2026-11-15 recovery-spin). The `queued` outcome's short clock is what would
-   * otherwise re-admit it, spinning ~0.2 s recovery runs until the merge settles.
-   * (resume and inbox demand still run.) */
-  draining?: boolean;
 }
 
 /** The decision one gate returns: run now, or hold with an optional reason/skip, or — for
@@ -111,20 +102,6 @@ function resumeGate(s: RunnerState, now: number): Eligibility | undefined {
     return dueOnMinInterval(s, now, "resume");
   }
   return undefined;
-}
-
-/** A role whose own merge pin the drain settles on its own owes no idle run: the merge is the
- * drain's job, and a `queued` (recovery) outcome leaves the short min-run-interval clock that
- * would otherwise re-admit the role every poll, spinning ~0.2 s recovery runs that only
- * re-pin the same pin (BUGS.md 2026-11-15 recovery-spin). Deferred — not a named skip reason —
- * so the status cell shows the merge's `merging` phase (the change record), not a redundant
- * "due" label, exactly as the director's draining pin already does. Placed after resume and
- * inbox so an interrupted run or a queued operator prompt still runs, but before the gap and
- * scheduled clocks that would admit the redundant idle run. A KEPT pin at the conflict cap is
- * not draining, so a role owed its conflict-hand-back run is never deferred by this gate. */
-function drainingGate(opts: EligibilityOptions): Eligibility | undefined {
-  if (!opts.draining) return undefined;
-  return { run: false };
 }
 
 /** A queued per-role prompt is due on its own existence, exactly like the director's inbox: no
@@ -182,7 +159,6 @@ export function isEligible(
   return (
     resumeGate(s, now) ??
     inboxGate(inboxCount) ??
-    drainingGate(opts) ??
     gapGate(runner, s, now, opts) ??
     scheduledGate(s, now, mainHead, opts) ??
     { run: false }

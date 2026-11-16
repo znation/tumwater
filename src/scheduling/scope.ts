@@ -13,11 +13,11 @@ import { DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import { HOUR_MS } from "../text/datetime.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota-gates.js";
 import { INSTANCE_ROLES, baseRoleOf, runnerEnabled, runnerPaused } from "../roles/runner-ids.js";
-import { hasOutstandingWork, saveRunnerStateBestEffort, type RunnerState, type SkipReason } from "../runner/runner-state.js";
+import { hasOutstandingWork, saveRunnerStateBestEffort, type SkipReason } from "../runner/runner-state.js";
 import { MERGE_CONFLICT_LIMIT } from "../runner/runner-leftover.js";
 import { queuedMerges } from "../merge/merge-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
-import { commitExists, commitMessage, isMergedInto, refAbsentFromFiles, refSha } from "../git/git.js";
+import { commitExists, commitMessage, isMergedInto, refSha } from "../git/git.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { mergeRefName } from "../paths.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
@@ -143,14 +143,8 @@ export interface SchedulingScope {
   deferredDue: Map<string, boolean>;
   workMergedSince: WorkMergedCache;
   modelCheckHeld: ReadonlySet<string>;
-  /** Each role's merge pin classified read-only against the pass's main branch (see
-   * classifyMergePin): `none` for no pin (or one the drain settles as drained), `draining`
-   * for a live pin under the conflict cap the drain settles on its own, or `stale`/`kept`
-   * for a pin the drain will not settle. The non-director arm defers its idle run on a
-   * draining pin (the drain owns the merge); the director arm derives its `leftoverPending`
-   * gate from the `stale`/`kept` classes — the 2026-11-04/11-09 spin, generalized from the
-   * director alone to every role (BUGS.md 2026-11-15 recovery-spin). */
-  pinClasses: Map<string, PinClass>;
+  /** The director holds a kept merge pin: owed an authoring run to re-pin it. */
+  pinnedDirector: boolean;
   claimGroups: Map<string, ClaimGroup>;
   /** Each claim-taking base's entries its OWN queued merges already claim (keyed by base):
    * the keys the poll must not hand back to the authoring runner, and that stay held for the
@@ -401,68 +395,48 @@ function orderForAdmission(
   ];
 }
 
-/** A merge pin's class against the pass's main branch — the read-only half of the drain's own
- * settle decision (pinnedRetrySha).
- *   - `none` — no pin, or a pin the drain settles on its own (draining): present, not stale, and
- *     under the conflict cap. The drain re-merges and lands or drops it, so no role run is owed.
- *   - `owed` — a pin the drain will NOT settle: stale (main already holds the sha — a crash
- *     skipped the un-pin; recovery deletes it and continues, but a run is owed) or kept at the
- *     cap (the drain refuses it — the author's conflict hand-back). A run must be owed so the
- *     pin is not stranded.
- * A dangling pin (its commit missing from the repository) reads `none`: the drain drops it,
- * nothing settles — the read-only pass never performs that drop. */
-export type PinClass = "none" | "draining" | "stale" | "kept";
-
-/** Classify a role's merge pin read-only, the way the drain settles it (see PinClass). This
- * mirrors pinnedRetrySha's decision WITHOUT its side effects: it must NOT call pinnedRetrySha,
- * whose ref-drop of a stale or dangling pin would corrupt a schedule-only pass (the real poll
- * runs the drain first, but the tests drive the pass in isolation). It is role-agnostic — the
- * one classification both the director's `leftoverPending` gate (stale or kept → owed a run)
- * and the non-director arm's draining deferral (draining → deferred) read (BUGS.md
- * 2026-11-15 recovery-spin), replacing the director-only check that let every other role spin
- * on its own draining pin. The four classes:
- *   - none — no pin, or a pin whose commit is missing (dangling): the drain settles or drops it
- *     on its own, so nothing is owed and nothing drains.
- *   - draining — live ahead of main and under the conflict cap (a fresh run's change, or one
- *     the drain is mid-retrying): the drain settles it, so the role owes NO idle run.
- *   - stale — main already holds the sha (a crash skipped the un-pin after the merge): the
- *     drain will not re-merge it, so the role OWES a run that recovery deletes and continues.
- *   - kept — live at the conflict cap: the drain refuses it (the author's conflict hand-back),
- *     so the role OWES a run.
- * The claim-reading `queuedMergeClaimKeys` is a separate reader, deliberately untouched: it
- * sources instance-role claims from the pin's Claim trailer and the legacy queue file, and
- * converting it to readMergePins would drop the `claim` field it exists to serve. */
-async function classifyMergePin(
-  root: string,
-  role: string,
-  mainBranch: string,
-  mergeConflicts: RunnerState["mergeConflicts"],
-): Promise<PinClass> {
-  const ref = mergeRefName(role);
-  // A ref no file settles is settled as absent without a git hop: most runners pin nothing,
-  // and an empty poll must not add an async hop just to confirm that (as the drain skips it).
-  if (refAbsentFromFiles(root, ref)) return "none";
-  const sha = await refSha(root, ref).catch(() => null);
-  if (sha === null) return "none";
-  const present = await commitExists(root, sha).catch(() => false);
-  if (!present) return "none"; // dangling: the drain drops it; the read-only pass must not
-  if (await isMergedInto(root, sha, mainBranch)) return "stale"; // the role owes a run
-  const attempts = mergeConflicts?.sha === sha ? mergeConflicts.count : 0;
-  return attempts < MERGE_CONFLICT_LIMIT ? "draining" : "kept"; // vocabulary-ok: the PinClass code for a pin the drain settles; internal, never user text
-}
-
-/** The role-agnostic pin-classification map buildSchedulingScope hands the per-runner loop (see
- * the SchedulingScope.pinClasses doc): one git read per runner per poll — the 2026-11-04/11-09
- * director-pin classification, generalized to every role (BUGS.md 2026-11-15 recovery-spin). */
-async function buildPinClasses(ctx: SchedulingPassCtx): Promise<Map<string, PinClass>> {
+/** Whether the director is owed a leftover run over its merge pin — a read-only classification
+ * of the pin's sha against the pass's main branch and the director's own conflict streak.
+ *
+ * The pin alone (hasUnmergedPin) used to be the whole answer, and that was the bug: a run now
+ * leaves only its pin (part 3e/7 writes no queue file), so a FRESH run's live pin read as
+ * "pinned" and the pass's `leftover` reason admitted a run on every poll; each run's leftover
+ * recovery re-pinned the same sha and ended `skipped` — the queue waited on a run the queue
+ * itself would have answered, hundreds of wasted runs on a 1–2 h queue wait (BUGS.md
+ * 2026-11-04 and 2026-11-09, the same spin with and without a second commit). The 2026-11-04
+ * fix keyed the suppression off the merge queue's directory — a source a fresh run no longer
+ * writes — so in production the queued check was a dead read and the spin returned.
+ *
+ * The fix classifies the pin the way the DRAIN settles it, but read-only. The drain's own
+ * decision (pinnedRetrySha) retries a pin only when it is present, not stale, and under
+ * MERGE_CONFLICT_LIMIT — it settles that pin on its own and leaves everything else to the
+ * author. This predicate mirrors that decision without its side effects: it must NOT call
+ * pinnedRetrySha, whose ref-drop of a stale or dangling pin would corrupt a schedule-only pass
+ * (the real poll runs the drain first, but the tests drive the pass in isolation), and it must
+ * NOT read readMergePins, which lists every live pin and cannot tell a draining one from a kept
+ * one. The three classes:
+ *   - stale — main already holds the sha (a crash skipped the un-pin after the merge): OWES a
+ *     run; recovery deletes it and continues, so the classification leaves it present;
+ *   - draining — live ahead of main and under the cap (a fresh run's change, or one the drain
+ *     is mid-retrying): the drain settles it, so the director OWES NO run. This is the spin, gone;
+ *   - kept — live at the cap: the drain refuses it (the author's conflict hand-back), so it
+ *     OWES a run, which the pass's skip.ts guard then admits or suppresses by hand-back.
+ * `pinnedDirector` is true for the stale and kept cases (a present pin that is not draining).
+ *
+ * The claim-reading `queuedMergeClaimKeys` is a separate reader and is deliberately NOT part of
+ * this change: it sources instance-role claims from the pin's Claim trailer (its pin loop) and
+ * the legacy queue file, and converting it to readMergePins would drop the `claim` field it
+ * exists to serve. Its legacy queue-file loop is trimmed by part 6/6 (the deletion). */
+async function directorPinOwedRun(ctx: SchedulingPassCtx): Promise<boolean> {
   const { root, runners, mainBranch } = ctx;
-  const classes = new Map<string, PinClass>();
-  await Promise.all(
-    runners.map(async (r) => {
-      classes.set(r.role, await classifyMergePin(root, r.role, mainBranch, r.state.mergeConflicts));
-    }),
-  );
-  return classes;
+  const sha = await refSha(root, mergeRefName(DIRECTOR_ROLE)).catch(() => null);
+  if (sha === null) return false; // no pin at all: the director owes no run
+  const streak = runners.find((r) => r.role === DIRECTOR_ROLE)?.state.mergeConflicts;
+  const attempts = streak?.sha === sha ? streak.count : 0;
+  const present = await commitExists(root, sha).catch(() => false);
+  const stale = present && (await isMergedInto(root, sha, mainBranch));
+  const draining = present && !stale && attempts < MERGE_CONFLICT_LIMIT;
+  return !draining;
 }
 
 /** Compute the once-per-poll precompute the scheduling pass's per-runner loop reads. Has the
@@ -498,12 +472,11 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     deferredDue,
     workMergedSince,
   } = ctx;
-  // Every role's merge pin, classified the way the drain settles it (classifyMergePin): a live pin
-  // under the conflict cap is DRAINING (the drain settles it, so a non-director role owes no
-  // idle run — the 2026-11-15 recovery-spin, gone, and the 11-04/11-09 director spin, which the
-  // director arm still reads through its own `leftover` gate); a kept pin at the cap is NOT
-  // draining, so a role owed its conflict-hand-back run is never deferred.
-  const pinClasses = await buildPinClasses(ctx);
+  // The director's merge pin, classified as stale / draining / kept (see directorPinOwedRun):
+  // a live pin under the conflict cap is DRAINING (the drain settles it, owes no run) — the
+  // 2026-11-04/11-09 spin, gone; a stale pin or a kept pin at the cap owes the run, which the
+  // pass's skip guard then splits by hand-back.
+  const pinnedDirector = await directorPinOwedRun(ctx);
   const queuedMergeClaims = await queuedMergeClaimKeys(root, runners);
   const claimGroups = await collectClaimGroups(root, runners, pausedRoles, now, queuedMergeClaims);
   // The team gates' block predicate (the director exempt — an explicit human prompt
@@ -573,7 +546,7 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     deferredDue,
     workMergedSince,
     modelCheckHeld: ctx.modelCheckHeld ?? new Set<string>(),
-    pinClasses,
+    pinnedDirector,
     claimGroups,
     queuedMergeClaims,
     writing,

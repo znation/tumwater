@@ -51,7 +51,9 @@ Each of these runs is a no-op. It writes run_start and run_end, inflates the rol
 
 The 11-04 and 11-09 director fixes (`directorPinOwedRun` in src/scheduling/scope.ts, and `leftoverPending`/`inboxSelfRequeued` in src/scheduling/skip.ts) cover the director only.
 
-**Required behavior.** No role is re-run for leftover recovery while its own pin is still pending, meaning the merge ref exists and points at the worktree's tip. The role should be deferred until its merge settles. Make one role-agnostic check that generalizes the director's fix rather than adding another per-role case.
+**Required behavior.** A role's own pending pin (the merge ref exists and points at the worktree's tip) is not leftover work: no run re-pins it, and no run ends `queued` for it. Do NOT fix this by deferring the role until its merge settles. The merge queue is not a scheduling gate (docs/how-it-works.md "No merge interlock"): a role whose change is waiting still authors on its normal schedule. Make one role-agnostic check that generalizes the director's fix rather than adding another per-role case, most likely in `recoverLeftover`, so the run goes on to real work (or ends no-change) and keeps the role's normal interval.
+
+**Reverted attempt (2026-11-16).** be6c22efd added a `drainingGate` (src/scheduling/scheduling.ts) that deferred every non-director role while its pin was draining. Every changed run leaves a pin, so this restored the merge interlock. Two e2e tests in test/orchestrator-3.e2e.test.ts failed deterministically: `a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate` and `a role rejected in its verify runs again while another queued change is still in review`. The gate's `--affected` selection never runs the e2e tier, so the change merged green and turned GitHub CI red. An operator session reverted it, together with its docs sync e478de6b6. Run `npm run test:e2e` before landing a fix for this entry.
 
 ### post-merge review of a88d62b4 never reached a verdict (found by the review role 2026-11-16)
 
