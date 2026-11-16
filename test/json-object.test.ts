@@ -7,6 +7,7 @@ import {
   nonNegativeNumber,
   objectOrEmpty,
   parseJsonObject,
+  setOwn,
   stringList,
   validEntries,
 } from "../src/files/json-object.js";
@@ -196,4 +197,68 @@ test("validEntries keeps a JSON __proto__ key as an own property and leaves Obje
 
 test("validEntries reads an empty object as the empty map", () => {
   assert.deepEqual(validEntries({}, keepNumber), {});
+});
+
+// setOwn is the map-level half of the untrusted-JSON write family, the `__proto__`-safe write
+// twin of validEntries: the one home of the `Object.defineProperty` store that turns a key which
+// may cross an external boundary (a model/flow name, an account window, a per-pair spend key —
+// all read from untrusted input) into a real own property. A plain `obj[key] = value` under a
+// `__proto__` key hits Object.prototype's setter, so the value is lost or the prototype is
+// rewritten for every reader and for the persisted JSON. These pin the two branches that a bare
+// index-assignment would get wrong.
+
+test("setOwn stores a normal key as an own property with the three flags, round-tripping the value", () => {
+  const o: Record<string, number> = {};
+  setOwn(o, "a", 1);
+  assert.equal(o.a, 1, "the stored value round-trips");
+  assert.deepEqual(Object.keys(o), ["a"]);
+  const d = Object.getOwnPropertyDescriptor(o, "a")!;
+  assert.equal(d.enumerable, true, "enumerable so it serializes in JSON.stringify and copies in a spread");
+  assert.equal(d.writable, true, "writable so a later setOwn or assignment updates it");
+  assert.equal(d.configurable, true, "configurable so the entry can be redefined or deleted");
+});
+
+test("setOwn shadows an inherited Object.prototype key with an own property, never the inherited value", () => {
+  const o: Record<string, number> = {};
+  setOwn(o, "constructor", 5);
+  assert.equal(o["constructor"], 5, "the own property wins over Object.prototype.constructor, not a read of the prototype");
+  assert.deepEqual(Object.keys(o), ["constructor"], "a key naming an Object.prototype member becomes a real entry");
+});
+
+test("setOwn makes a __proto__ key an own data property and leaves the prototype untouched", () => {
+  // The sharp defineProperty-vs-assignment discriminator: a plain `o["__proto__"] = marker` would
+  // set the object's PROTOTYPE to marker, whereas setOwn's defineProperty(value: marker) creates
+  // an own data property that shadows the accessor and leaves the prototype alone.
+  const marker = { m: 1 };
+  const o: Record<string, unknown> = {};
+  setOwn(o, "__proto__", marker);
+  assert.equal(o["__proto__"], marker, "the own data property shadows the prototype accessor, so the value round-trips");
+  assert.equal(Object.hasOwn(o, "__proto__"), true, "a bare index-assignment would never make __proto__ an own key");
+  assert.equal(Object.getPrototypeOf(o), Object.prototype, "the prototype is unchanged — a plain assignment would have set it to the value");
+  assert.deepEqual(Object.keys(o), ["__proto__"], "the entry is own and enumerable, so it serializes into the persisted JSON");
+});
+
+test("setOwn stores a non-object __proto__ value instead of dropping it", () => {
+  // A plain `o["__proto__"] = 7` is ignored for a non-object value (the accessor drops it), leaving
+  // no own key; the defineProperty store keeps it.
+  const o: Record<string, number> = {};
+  setOwn(o, "__proto__", 7);
+  assert.equal(o["__proto__"], 7);
+  assert.deepEqual(Object.keys(o), ["__proto__"]);
+});
+
+test("setOwn overwrites an existing key in place with no duplicate", () => {
+  const o: Record<string, number> = {};
+  setOwn(o, "a", 1);
+  setOwn(o, "a", 2);
+  assert.equal(o.a, 2, "the later store replaces the value in place");
+  assert.deepEqual(Object.keys(o), ["a"], "the key is not duplicated by the overwrite");
+});
+
+test("setOwn still defines the own property when the value is undefined", () => {
+  const o: Record<string, number> = {};
+  setOwn(o, "a", undefined);
+  assert.equal("a" in o, true, "the own key is present even for an undefined value");
+  assert.deepEqual(Object.getOwnPropertyNames(o), ["a"]);
+  assert.equal(o.a, undefined);
 });
