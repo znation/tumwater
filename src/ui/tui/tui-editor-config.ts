@@ -1,5 +1,6 @@
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
 import { gotSuffix, isExponentSpelling } from "../../text/text.js";
+import { configClearedNoopFlash, configUnchangedFlash } from "../../text/phrases.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
@@ -109,8 +110,8 @@ export function createTeamConfigKeyEditor(
     const noop = text === "" ? result.oldValue === undefined : "unchanged" in result;
     return noop
       ? text === ""
-        ? `${spec.configKey} is not set in tumwater.json, so nothing was cleared`
-        : `${spec.configKey} is already ${text}, so tumwater.json was not written`
+        ? configClearedNoopFlash(spec.configKey)
+        : configUnchangedFlash(spec.configKey, text)
       : text === ""
         ? spec.clearedFlash
         : spec.setFlash(text);

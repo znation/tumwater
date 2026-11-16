@@ -1,6 +1,7 @@
 import { setConfigKey, setDailyBudgetUsd } from "../../config/config-write.js";
 import { loadConfigSafe } from "../../config/config.js";
 import { usdCap } from "../../text/format.js";
+import { configUnchangedFlash } from "../../text/phrases.js";
 import { DIRECTOR_ROLE } from "../../roles/roles.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
 import { parseBudgetInput } from "./tui-input.js";
@@ -115,7 +116,7 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
       const off = role !== null ? "removed" : "disabled";
       const what = value === 0 ? off : usdCap(value);
       const subject = role !== null ? `${role}: cap` : "budget";
-      session.flashMessage(`${subject} is already ${what}, so tumwater.json was not written`);
+      session.flashMessage(configUnchangedFlash(subject, what));
       return;
     }
     if (role !== null) {

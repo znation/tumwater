@@ -391,3 +391,29 @@ export function moreSuffix(count: number): string {
 export function validPositionRange(count: number): string {
   return count > 0 ? ` — valid: 1-${count}` : "";
 }
+
+/** The success flash for a config write that found the key already unset and, on an empty
+ * line, had nothing to clear: `<subject> is not set in tumwater.json, so nothing was cleared`.
+ * One home for the sentence's bytes, shared by the seven no-op clear sites in the TUI editors
+ * (ui/tui: interval, config, instances, quiet, instructions), the CLI's per-role write
+ * (cli/cli-role-command.ts), and the dashboard's role-key write (gui/gui-config-commands.ts),
+ * so the wording cannot drift between the surfaces that report it. `<subject>` is what was
+ * named to the operator (a config key, `min run interval`-style noun, or a role's field);
+ * the tests pin the sentence byte-for-byte. */
+export function configClearedNoopFlash(subject: string): string {
+  return `${subject} is not set in tumwater.json, so nothing was cleared`;
+}
+
+/** The success flash for a config write whose value was already in place (an unchanged set):
+ * `<subject> is already <value>, so tumwater.json was not written`. One home for the sentence's
+ * bytes, shared by the ten no-op set sites in the TUI editors (ui/tui: interval, config,
+ * instances, quiet, budget), the CLI (cli/cli-config-commands.ts's `config set`,
+ * cli/cli-role-command.ts's per-role write), and the dashboard (gui/gui-config-commands.ts's
+ * min-run-interval and instances role writes); `value` renders through string interpolation,
+ * so a number and the text spelling of it read identically. The three `…unchanged, so
+ * tumwater.json was not written` sites (no value token) are a different sentence and stay
+ * with their callers. `<subject>` is what was named to the operator; the tests pin the
+ * sentence byte-for-byte. */
+export function configUnchangedFlash(subject: string, value: string | number): string {
+  return `${subject} is already ${value}, so tumwater.json was not written`;
+}

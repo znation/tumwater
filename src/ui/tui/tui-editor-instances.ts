@@ -1,6 +1,7 @@
 import { setConfigKey } from "../../config/config-write.js";
 import { rawRoleField } from "../../roles/role-view.js";
 import { gotSuffix, isExponentSpelling } from "../../text/text.js";
+import { configClearedNoopFlash, configUnchangedFlash } from "../../text/phrases.js";
 import type { TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 import { clearRoleKey, createRoleKeyEditor } from "./tui-editor-role-key.js";
@@ -44,7 +45,7 @@ export function createInstancesEditor(session: TuiEditorSession): TuiEditorModul
       text === "" ? `${role}: instances cleared` : `${role}: instances set to ${text}`,
     noopFlash: (role, text) =>
       text === ""
-        ? `${role}: instances is not set in tumwater.json, so nothing was cleared`
-        : `${role}: instances is already ${text}, so tumwater.json was not written`,
+        ? configClearedNoopFlash(`${role}: instances`)
+        : configUnchangedFlash(`${role}: instances`, text),
   });
 }

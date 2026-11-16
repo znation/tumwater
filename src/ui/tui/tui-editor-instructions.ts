@@ -1,4 +1,5 @@
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
+import { configClearedNoopFlash } from "../../text/phrases.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
 import type { TuiEditorModule } from "./tui-editor-ctx.js";
 import { createRoleFileEditor } from "./tui-editor-role-file.js";
@@ -44,7 +45,7 @@ export function createInstructionsEditor(session: TuiEditorSession): TuiEditorMo
           ok: true,
           message:
             result.oldValue === undefined
-              ? `${role}: instructions is not set in tumwater.json, so nothing was cleared`
+              ? configClearedNoopFlash(`${role}: instructions`)
               : `${role}: instructions cleared`,
         };
       }

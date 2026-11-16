@@ -2,6 +2,7 @@ import { setConfigKey } from "../../config/config-write.js";
 import { checkMinRunInterval } from "../../config/config-keys.js";
 import { rawRoleField } from "../../roles/role-view.js";
 import { gotSuffix, isPlainDecimal } from "../../text/text.js";
+import { configClearedNoopFlash, configUnchangedFlash } from "../../text/phrases.js";
 import type { TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 import { clearRoleKey, createRoleKeyEditor } from "./tui-editor-role-key.js";
@@ -58,7 +59,7 @@ export function createIntervalEditor(session: TuiEditorSession): TuiEditorModule
       text === "" ? `${role}: min run interval cleared` : `${role}: min run interval set to ${text}s`,
     noopFlash: (role, text) =>
       text === ""
-        ? `${role}: min run interval is not set in tumwater.json, so nothing was cleared`
-        : `${role}: min run interval is already ${text}s, so tumwater.json was not written`,
+        ? configClearedNoopFlash(`${role}: min run interval`)
+        : configUnchangedFlash(`${role}: min run interval`, `${text}s`),
   });
 }

@@ -20,6 +20,7 @@ import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { saveRoleNote, clearRoleLessons } from "../roles/role-notes-write.js";
 import { roleLessonsPath, roleNotesPath } from "../paths.js";
 import { errorMessage, gotSuffix, isExponentSpelling, isPlainDecimal } from "../text/text.js";
+import { configClearedNoopFlash, configUnchangedFlash } from "../text/phrases.js";
 import { readPromptFileArg } from "./cli-prompt-file.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
@@ -176,7 +177,7 @@ function writeRoleConfigKey(
     } else {
       say(
         result.oldValue === undefined
-          ? `${base}: ${noun} is not set in tumwater.json, so nothing was cleared`
+          ? configClearedNoopFlash(`${base}: ${noun}`)
           : `${base}: ${noun} cleared`,
       );
     }
@@ -188,7 +189,7 @@ function writeRoleConfigKey(
     } else {
       say(
         result.unchanged
-          ? `${base}: ${noun} is already ${display(raw)}, so tumwater.json was not written`
+          ? configUnchangedFlash(`${base}: ${noun}`, display(raw))
           : `${base}: ${noun} set to ${display(raw)}`,
       );
     }
@@ -532,7 +533,7 @@ function writeInstances(root: string, id: string, rest: string[], clearInstances
   if (loaded.config && !clearInstances && n.trim() === "1" && INSTANCE_ROLES.has(base) && cfg.roles[base]?.instances === undefined) {
     if (json)
       sayJson({ command: "role", action: "set", role: base, key: cfgKey, status: "unchanged", value: 1 });
-    else say(`${base}: instances is already 1, so tumwater.json was not written`);
+    else say(configUnchangedFlash(`${base}: instances`, 1));
     return;
   }
   writeRoleConfigKey(root, base, clearInstances, n, `roles.${base}.instances`, "instances", (v) => v, (v) => v, json);

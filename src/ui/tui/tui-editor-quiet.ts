@@ -1,4 +1,5 @@
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
+import { configClearedNoopFlash, configUnchangedFlash } from "../../text/phrases.js";
 import { loadConfigSafe } from "../../config/config.js";
 import { DIRECTOR_ROLE } from "../../roles/roles.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
@@ -166,8 +167,8 @@ export function createQuietEditor(session: TuiEditorSession): TuiEditorModule {
     session.flashMessage(
       noop
         ? text === ""
-          ? `${scope}: quiet hours is not set in tumwater.json, so nothing was cleared`
-          : `${scope}: quiet hours is already ${text}, so tumwater.json was not written`
+          ? configClearedNoopFlash(`${scope}: quiet hours`)
+          : configUnchangedFlash(`${scope}: quiet hours`, text)
         : text === ""
           ? `${scope}: quiet hours cleared`
           : `${scope}: quiet hours set to ${text}`,

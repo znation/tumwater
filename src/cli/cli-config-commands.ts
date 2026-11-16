@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { configPath, CONFIG_BASENAME } from "../paths.js";
 import { errorMessage } from "../text/text.js";
+import { configUnchangedFlash } from "../text/phrases.js";
 import { loadConfigSafe, knownRoleIds, nonDefaultConfigEntries } from "../config/config.js";
 import { fail, say, sayJson, sayJsonLine } from "../terminal.js";
 import {
@@ -253,7 +254,7 @@ function reportSetResult(
     return;
   }
   if (unchanged) {
-    say(`${rk} is already ${JSON.stringify(value)}, so tumwater.json was not written`);
+    say(configUnchangedFlash(rk, JSON.stringify(value)));
     return;
   }
   say(`set ${rk} to ${JSON.stringify(value)}`);

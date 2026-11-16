@@ -9,6 +9,7 @@
  * own `res`.
  */
 import { setConfigKey, setDailyBudgetUsd, setRoleModelFields, unsetConfigKey } from "../config/config-write.js";
+import { configClearedNoopFlash, configUnchangedFlash } from "../text/phrases.js";
 import { checkDailyBudgetUsd, checkMinRunInterval } from "../config/config-keys.js";
 import { testNotifyHook } from "../events/notify-test.js";
 import { rejectBadRole, requireConfigKey, requireStringField } from "./gui-args.js";
@@ -128,7 +129,7 @@ export async function handleRoleInterval(req: http.IncomingMessage, res: http.Se
     res, root, base, `roles.${base}.minRunIntervalSeconds`, "min run interval", value as number | null,
     (v) => `${base}: min run interval set to ${v}s`,
     {
-      unchangedMessage: (v) => `${base}: min run interval is already ${v}s, so tumwater.json was not written`,
+      unchangedMessage: (v) => configUnchangedFlash(`${base}: min run interval`, `${v}s`),
       guardClear: () => rejectBadRole(root, res, role),
       extra: { minRunIntervalSeconds: value as number },
     },
@@ -167,7 +168,7 @@ export async function handleRoleInstances(req: http.IncomingMessage, res: http.S
     res, root, base, `roles.${base}.instances`, "instances", value as number | null,
     (v) => `${base}: instances set to ${v}`,
     {
-      unchangedMessage: (v) => `${base}: instances is already ${v}, so tumwater.json was not written`,
+      unchangedMessage: (v) => configUnchangedFlash(`${base}: instances`, v),
       guardClear: () => rejectBadRole(root, res, role),
       extra: { instances: value as number },
     },
@@ -375,7 +376,7 @@ function writeRoleJsonKey(
     else {
       const message =
         result.oldValue === undefined
-          ? `${base}: ${noun} is not set in tumwater.json, so nothing was cleared`
+          ? configClearedNoopFlash(`${base}: ${noun}`)
           : `${base}: ${noun} cleared`;
       sendJson(res, 200, { ok: true, role: base, message });
     }
