@@ -3544,7 +3544,7 @@ the main watch's settled green calls `clearHealKeyOnGreen`, and the ci hand-off'
 observation clears it too. A red that ci found itself queues nothing.
 
 **Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedHealNote`, `clearHealKeyOnGreen`);
-`src/baseline/main-watch.ts` (`fullPass`).
+`src/baseline/main-watch-full.ts` (`fullPass`).
 
 **Pinned by.** `test/main-red.test.ts` — "ci's own red-main note queues nothing and still returns
 the note and warning"; `test/main-red-heal.test.ts` — "a failing set queues one heal prompt in any order, and queues
@@ -3643,7 +3643,7 @@ does not contain. Each removal logs a `prompt_cancelled` under ci; other prompts
 are never touched. The cap holds across restarts because it reads the inbox, not process memory.
 
 **Binds.** `src/baseline/main-red.ts` (`queueHealPrompt`, `dropHealPromptsCoveredBy`,
-`queuedHealPrompts`, `mainRedHealNote`); `src/baseline/main-watch.ts` (`fullPass`).
+`queuedHealPrompts`, `mainRedHealNote`); `src/baseline/main-watch-full.ts` (`fullPass`).
 
 **Pinned by.** `test/main-red-heal.test.ts` — "a heal prompt for a new failing set replaces the
 heal prompt waiting, and other prompts stay", "queueCulpritHeal replaces the heal prompt
@@ -4084,7 +4084,7 @@ and a bug that waits for nothing gets no commit.
 **Binds.** `src/backlog/backlog-eligibility.ts` (`entryHoldAgainst`, `holdMark`,
 `withoutBugfixWaitNotes`), `src/backlog/backlog-file-bugs.ts` (`recordRecurrence`,
 `fileQuarantineBugsOnMain`), `src/review/known-flakes.ts` (`quarantineTests`,
-`markQuarantineFiled`), `src/baseline/main-watch.ts` (`settleQuarantine`).
+`markQuarantineFiled`), `src/baseline/main-watch-quarantine.ts` (`settleQuarantine`).
 
 **Pinned by.** `test/bug-waits.test.ts` — "a bugfix wait is held as waiting for a recurrence, and
 any other Needs-review note keeps it needs review", "recordRecurrence lifts a bugfix wait, wrapped
@@ -4103,8 +4103,7 @@ younger wait, a director or plan-role Needs-review note, and a Refused note neve
 BUGS.md or BUGS-FIXED.md, or a checkout off the base branch, closes nothing.
 
 **Binds.** `src/backlog/backlog-bug-waits.ts` (`closeQuietWaitsText`, `closeQuietBugWaitsOnMain`),
-`src/roles/role-guidance.ts` (`BUGFIX_WAIT_QUIET_DAYS`), `src/baseline/main-watch.ts`
-(`settleQuarantine`).
+`src/roles/role-guidance.ts` (`BUGFIX_WAIT_QUIET_DAYS`), `src/baseline/main-watch-quarantine.ts` (`settleQuarantine`).
 
 **Pinned by.** `test/bug-waits.test.ts` — "closeQuietWaitsText closes only a bugfix wait past the
 quiet days, into the archive with a Fix and a validation-gap line" and "closeQuietBugWaitsOnMain
