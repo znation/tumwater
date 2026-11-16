@@ -61,6 +61,7 @@ export const piBackend: AgentBackend = {
       sessionName: run.sessionName,
       continueSession: run.continueSession,
       agentBin: run.agentBin,
+      kind: run.kind,
     });
     const env = backendRunEnv(run);
     return { args, stdin: run.prompt, env };

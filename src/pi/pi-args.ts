@@ -6,6 +6,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ResolvedModelConfig } from "../config/config-views.js";
+import type { PiRunKind } from "./pi-event-line.js";
 
 /** Paths to the bundled pi extensions, in load order, resolved from this module's own
  * location so staged builds (.tumwater/build/<sha>) load their own copies: bounded-output caps
@@ -58,6 +59,9 @@ interface PiArgOptions {
   /** The resolved agent binary (from resolveBackendBin); defaults to "pi". A non-pi
    * agent gets no `-e` flags — the bundled extensions are pi-specific. */
   agentBin?: string;
+  /** Which kind of run this is (src/pi/pi-event-line.ts). Gate (review/merge) runs drop the
+   * `checkpoint` extension — see the load loop below; author runs keep it. */
+  kind?: PiRunKind;
 }
 
 /** Build the pi argv for one run: the harness's own flags, the bundled extensions, then the
@@ -81,7 +85,14 @@ export function piArgs(opts: PiArgOptions): string[] {
     // own `-e` extensions; config.piArgs still wins (appended last).
     args.push("--no-extensions");
     for (const builtin of PI_KEPT_BUILTINS) args.push("-e", `builtin:${builtin}`);
-    for (const ext of bundledExtensionPaths()) args.push("-e", ext);
+    for (const ext of bundledExtensionPaths()) {
+      // The `checkpoint` tool's self-compact calls pi's fire-and-forget `compact()`, which
+      // aborts the turn still running it; a gate (review/merge) run has no resume, so an
+      // accepted checkpoint would cost it its verdict outright (BUGS.md 2026-11-15). Gate
+      // runs drop the extension; author runs keep it, where the abort is resumable.
+      if (opts.kind === "gate" && path.basename(ext) === "checkpoint.js") continue;
+      args.push("-e", ext);
+    }
   }
   args.push(...config.piArgs);
   return args;

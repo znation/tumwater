@@ -71,6 +71,32 @@ test("piArgs loads the context-shake extension right after bounded-output", () =
   assert.ok(fs.existsSync(pin), `pin-prompt.js exists in dist: ${pin}`);
 });
 
+// BUGS.md 2026-11-15: the `checkpoint` tool calls pi's fire-and-forget `compact()`, which
+// aborts the turn still running it. A gate (review/merge) run has no resume, so an accepted
+// checkpoint costs it its verdict outright; gate runs therefore drop the `checkpoint`
+// extension while author runs (and a kind-less run) keep it.
+test("piArgs drops the checkpoint extension for gate runs only, keeping every other extension", () => {
+  const base = { config: defaultConfig(), sessionDir: "/tmp/s", sessionName: "n" };
+  const basenames = (args: string[]) =>
+    args.flatMap((a, i) => (a === "-e" ? [i + 1 < args.length ? args[i + 1]! : ""] : [])).filter((v) => v !== "");
+  const checkpoint = (args: string[]) =>
+    args.flatMap((a, i) => (a === "-e" ? [args[i + 1]!] : [])).some((e) => path.basename(e) === "checkpoint.js");
+
+  // Gate: checkpoint.js is the only bundled extension dropped; the rest keep their order.
+  const gate = piArgs({ ...base, kind: "gate" });
+  assert.ok(!checkpoint(gate), "a gate run does not load checkpoint.js");
+  const gateExts = [...PI_KEPT_BUILTINS.map((b) => `builtin:${b}`), ...bundledExtensionPaths()];
+  assert.deepEqual(
+    basenames(gate).map((e) => (e.startsWith("builtin:") ? e : path.basename(e))),
+    gateExts.filter((e) => !e.endsWith("checkpoint.js")).map((e) => (e.startsWith("builtin:") ? e : path.basename(e))),
+    "every other extension still loads, in order",
+  );
+
+  // Author and kind-less runs keep checkpoint.js, exactly as before the fix.
+  assert.ok(checkpoint(piArgs({ ...base, kind: "author" })), "an author run still loads checkpoint.js");
+  assert.ok(checkpoint(piArgs(base)), "a kind-less run still loads checkpoint.js");
+});
+
 test("piArgs skips discovered extensions and re-enables only the kept pi built-ins", () => {
   const args = piArgs({ config: defaultConfig(), sessionDir: "/tmp/s", sessionName: "n" });
   assert.ok(args.includes("--no-extensions"), "--no-extensions present");

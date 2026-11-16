@@ -5,6 +5,33 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A `checkpoint` call ends the run instead of compacting it: pi 1.5.2's `compact()` aborts the running turn first, so the run exits before any compaction is written — fixed 2026-11-16 by the bugfix role
+
+Filed 2026-11-15 by an operator session from the live team's logs (build 72a0b257, pi 1.5.2, qwenrunner Qwen3.8-27B).
+
+**Symptom.** Since 11-12 the agent has called `checkpoint` and been accepted 113 times in role and review sessions under `.tumwater/sessions`. Each call returned "Checkpoint recorded; the context is being compacted", and in all 113 cases the next assistant message ended `stopReason: "aborted"`. None of those sessions contains a `compaction` entry. The harm differs by run type:
+- **Authoring runs** end as cut off. The warning blames the context ceiling, and the run resumes on the full, uncompacted context. The cut-off bridge in `buildResumePrompt` (src/prompt/prompt-followup.ts) tells the model its work "is summarized above", but no summary exists. The wait before resuming had a median of 0.4 min, a 90th percentile of 54 min, and a maximum of 221 min.
+- **Post-merge reviews** have no resume, so the review fails with "This operation was aborted". This happened 7 times on 11-14/15: 990e2906 ×2, 9e8e15e8 ×2, 34850403, 963e9219, and c4f34d74 ×2. Every one of those sessions ends right after a checkpoint tool result. The review of c4f34d74 was dropped after 3 failures (one 1800 s timeout and two of these aborts). By then it had a finished verdict and a PLANS.md repair in its worktree; both were lost, and the commit had to be reviewed by hand (BUGS-FIXED.md, "post-merge review of c4f34d74 never reached a verdict").
+
+**How to reproduce.** Open any session that contains an accepted checkpoint call, for example `.tumwater/sessions/_review/feature/post-c4f34d74/2026-11-15T19-53-53-936Z_*.jsonl` or `_review/bugfix/post-34850403/2026-11-14T22-07-00-619Z_*.jsonl`. The `checkpoint` toolResult is followed by `"stopReason":"aborted"` with `"errorMessage":"This operation was aborted"`, and no `"type":"compaction"` line follows.
+
+**Suspected cause.** `buildCheckpointTool` (src/pi-extension/checkpoint.ts) calls `ctx.compact()` from inside the tool's `execute`. pi 1.5.2 makes two choices that turn this into an abort:
+- The extension context's `compact` runs `void (async () => { await this.compact(...) })()`, which starts the compaction without waiting for it (`@earendil-works/pi-coding-agent/dist/core/agent-session.js:2927`).
+- `AgentSession.compact()` starts with `await this.abort()` (:2326), which aborts the very turn that is executing the tool.
+
+So the agent loop ends `aborted`. In `--print` mode pi then exits before the background compaction (a summary model call followed by a session write) can finish. 90fd4faef (11-14) changed only what the summary contains, not this ordering.
+
+**Required behavior.** An accepted checkpoint must leave the session compacted. The run should then continue, or end in a resumable state whose resume really is compacted. A checkpoint must never cost a review its verdict. Possible approaches:
+- Defer compaction to a turn boundary the extension can await, such as `turn_end` or `agent_end`, if pi's API allows that.
+- Have the runner recognize an abort that follows a checkpoint and run the compaction itself before resuming with the bridge.
+- Until either exists, leave `checkpoint` out of the tool list for reviews.
+
+In any case, the cut-off warning should not blame the context ceiling when the run actually ended on a checkpoint.
+
+**Fix (2026-11-16, the bug's own third, interim approach).** `piArgs` (src/pi/pi-args.ts) now omits the `checkpoint` bundled extension for gate runs — the `kind` flows from the run through `pi-backend.ts`'s `invocation` — so a review or merge gate (a run with no resume, where an accepted checkpoint costs its verdict outright, as c4f34d74 lost) never offers the tool. Author runs keep `checkpoint`; their abort is resumable. Pinned offline in test/pi-args.test.ts (gate drops `checkpoint.js`, keeping every other extension in order; author and kind-less runs keep it). The deep compaction-never-written ordering lives inside pi's own `--print` agent loop, which the offline fake-pi shim cannot model, so confirming the session is left compacted still needs a real run; the entry closes on the review side, the harm with no recovery.
+
+**Validation gap:** real-run-needed — the offline test pins the argv shape (checkpoint omitted for gate runs), but the compaction-never-written ordering is inside pi's `--print` agent loop, which the fake-pi shim cannot model, so confirming a gate run no longer ends aborted needs a real run.
+
 ### post-merge review of c4f34d74 never reached a verdict (found by the review role 2026-11-15) — fixed 2026-11-15 by the bugfix role
 
 The post-merge review of commit `c4f34d748a23fd4dc39425a3cef913a097219bae` (recovered leftover work from feature: Split startPostReview into helpers and export PostReviewOutcome) never reached a verdict: This operation was aborted. It stays on main as ordinary unreviewed backlog work.
