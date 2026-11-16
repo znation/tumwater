@@ -626,21 +626,42 @@ function rejectUnknownFlag(command: string, arg: string, specs: FlagSpec[]): nev
   failUnknownArgument(command, arg, specs);
 }
 
-/** Consume one recognised flag occurrence: fail a valued flag left without its value, name a
- * malformed value via the spec's validate call, and mark the one or two tokens (the flag and,
- * for a valued flag, its value) as consumed so a later loop iteration skips them. The value
- * is marked only after the value checks pass, so a failed value is never silently swallowed. */
-function consumeFlagOccurrence(spec: FlagSpec, args: string[], i: number, consumed: boolean[]): void {
-  if (spec.value && i === args.length - 1)
-    fail(spec.missingValue ?? `${spec.names[0]} needs a value`);
+/** The token-claim loop every flag kind's claim shares: mark `width` tokens starting at `i`
+ * as consumed, clamped at the end of `consumed`, so a later loop iteration skips the flag
+ * and any value it claimed. One home for the claim, so the three flag kinds' token-claiming
+ * cannot drift apart — the claim width is the only per-kind difference. */
+function claimTokens(consumed: boolean[], i: number, width: number): void {
+  for (let j = 0; j < width && i + j < consumed.length; j++) consumed[i + j] = true;
+}
+
+/** A valued flag's claim, called only when `spec.value` is set: fail when the flag is left
+ * without its value (its `missingValue` wording, or the default `<first spelling> needs a
+ * value`), name a malformed one via the spec's validate call, then claim the two tokens.
+ * The value is marked only after the value checks pass, so a failed value is never silently
+ * swallowed. */
+function valueClaim(spec: FlagSpec, args: string[], i: number, consumed: boolean[]): void {
+  if (i === args.length - 1) fail(spec.missingValue ?? `${spec.names[0]} needs a value`);
   // The value exists (the trailing-no-value case failed above): name a malformed one now,
   // before the ready-repo gate or any environment check can mask it.
-  if (spec.value) spec.validate?.(args[i + 1] ?? "");
-  // An optional-value flag claims the following token only when it is present and does not
-  // start with `-`: a bare `--cancel --role qa` must keep `--role` free for its own claim, so
-  // the flag alone is consumed and the token is validated only once it is genuinely the value.
-  const hasOptionalValue = !!spec.optionalValue && i + 1 < args.length && !(args[i + 1] ?? "").startsWith("-");
-  if (spec.optionalValue && hasOptionalValue) spec.validate?.(args[i + 1] ?? "");
-  const n = spec.value || hasOptionalValue ? 2 : 1;
-  for (let j = 0; j < n && i + j < args.length; j++) consumed[i + j] = true;
+  spec.validate?.(args[i + 1] ?? "");
+  claimTokens(consumed, i, 2);
+}
+
+/** An optional-value flag's claim, called only when `spec.optionalValue` is set. An
+ * optional-value flag claims the following token only when it is present and does not
+ * start with `-`: a bare `--cancel --role qa` must keep `--role` free for its own claim, so
+ * the flag alone is consumed and the token is validated only once it is genuinely the value. */
+function optionalValueClaim(spec: FlagSpec, args: string[], i: number, consumed: boolean[]): void {
+  const hasOptionalValue = i + 1 < args.length && !(args[i + 1] ?? "").startsWith("-");
+  if (hasOptionalValue) spec.validate?.(args[i + 1] ?? "");
+  claimTokens(consumed, i, hasOptionalValue ? 2 : 1);
+}
+
+/** Consume one recognised flag occurrence — one branch per flag kind the FlagSpec type
+ * admits, each a single call: a valued flag's missing-value fail and value validation,
+ * an optional-value flag's conditional claim, and a bare flag's one-token claim. */
+function consumeFlagOccurrence(spec: FlagSpec, args: string[], i: number, consumed: boolean[]): void {
+  if (spec.value) valueClaim(spec, args, i, consumed);
+  else if (spec.optionalValue) optionalValueClaim(spec, args, i, consumed);
+  else claimTokens(consumed, i, 1);
 }
