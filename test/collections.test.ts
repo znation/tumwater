@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { addTo, distinctOrdered, getOrCreate, groupBy, memoSetLru, rankCountEntries, sortByValueDesc, topAndHidden } from "../src/collections.js";
+import { addTo, distinctOrdered, filterKeepPositions, getOrCreate, groupBy, memoSetLru, rankCountEntries, sortByValueDesc, topAndHidden } from "../src/collections.js";
 
 // Unit seam for collections.ts's get-or-create step, the shape factored out of the failure
 // digest, the team hold, and the error-storm reducer. Those paths already cover it end to
@@ -269,4 +269,44 @@ test("distinctOrdered returns an empty array for empty input", () => {
   const out = distinctOrdered([]);
   assert.deepEqual(out, []);
   assert.equal(out.length, 0);
+});
+
+// filterKeepPositions is the single home of the "keep some, but number by the whole list"
+// step the post-merge-review render's --role/--status filter shares (src/review/
+// post-merge-review-render.ts). It is the positional twin of the value-only
+// Array.prototype.filter: it returns the kept items AND each kept item's 1-indexed position
+// in the ORIGINAL list. Its siblings above are pinned here; this was the one with no direct
+// unit pin. These pin the documented contract directly.
+
+test("filterKeepPositions returns kept items in source order with 1-indexed original positions", () => {
+  const out = filterKeepPositions(["a", "b", "c", "d"], (s) => s === "b" || s === "d");
+  assert.deepEqual(out.kept, ["b", "d"]);
+  assert.deepEqual(out.positions, [2, 4]);
+  // A kept-only renumber to [1, 2] or a 0-based [1, 3] would fail this: the positions must
+  // index the ORIGINAL list, where "b" is 2nd and "d" is 4th.
+});
+
+test("filterKeepPositions keeps every input across the full 1..n range", () => {
+  const out = filterKeepPositions(["a", "b", "c"], () => true);
+  assert.deepEqual(out.kept, ["a", "b", "c"]);
+  assert.deepEqual(out.positions, [1, 2, 3]);
+});
+
+test("filterKeepPositions returns two empty results when nothing is kept", () => {
+  const out = filterKeepPositions(["a", "b", "c"], () => false);
+  assert.equal(out.kept.length, 0);
+  assert.deepEqual(out.positions, []);
+});
+
+test("filterKeepPositions returns two empty results for empty input", () => {
+  const out = filterKeepPositions([], () => true);
+  assert.equal(out.kept.length, 0);
+  assert.deepEqual(out.positions, []);
+});
+
+test("filterKeepPositions does not mutate its input array", () => {
+  const input = ["a", "b", "c"];
+  filterKeepPositions(input, () => false);
+  assert.deepEqual(input, ["a", "b", "c"]);
+  assert.equal(input.length, 3);
 });
