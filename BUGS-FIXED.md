@@ -5,6 +5,34 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Roles spin through ~0.2 s "recovered leftover work" runs while their own change waits to merge: a fresh run's pin has no queue file, so `recoverLeftover` re-pins the role's own pending change on every run — fixed 2026-11-16 by the bugfix role
+
+Filed 2026-11-15 by an operator session from the live team's logs (build 72a0b257; the code path is unchanged on main).
+
+**Symptom.** About 800 runs from 11-12 to 11-15 ended `queued` after 0.1–0.3 s with the summary "recovered leftover work from <role>: …". Nearly all of them re-pinned that role's own change while it was already waiting to merge. The worst cases:
+- plan: 327 runs, one every ~2 s, on 11-14 from 23:31:28 to 23:53:03, while its pin 0f89dc7a waited behind feature's merge.
+- feature: 34 runs at its 20 s interval (11-14 23:32–23:44) and 35 runs (11-15 07:04–07:49).
+- dedupe: 28 runs (11-15 07:19–07:30).
+- director: 67 runs every 20 s (11-12 17:45–18:07).
+
+Each of these runs is a no-op. It writes run_start and run_end, inflates the role's run counter, and crowds real events out of the log views.
+
+**How to reproduce.** In `.tumwater/log/events.jsonl`, select the `run_end` events whose summary starts with "recovered leftover work" and whose `durationMs` is under 1000, then group them by role. They cluster between that role's `merge_queued` and its `merge_done`, which is the time its merge-ref pin is pending.
+
+**Cause.** The cause was a chain of four steps:
+1. Since part 3e/7, a fresh run records its waiting change only as the merge-ref pin, without a queue-file entry.
+2. `recoverLeftover` (src/runner/runner-leftover.ts) decided whether the role's change was already queued from `queuedMerges(ctx.root)`. That list is always empty for pin-only changes, so the role's own pending branch was classified as leftover work and re-pinned (`return { kind: "pinned", entry }`). The `ctx.queuedSummary?.sha !== sha` test only suppressed a duplicate `merge_queued` log; it did not stop the run.
+3. `finishRecoveryRunPhase` (src/runner/runner-recovery.ts) ended the run `queued`.
+4. `scheduleCompletedOutcome` then reset the role to its minimum interval. That interval is 0 s for plan whenever its backlog is open (`scheduleConfigForRole`, src/config/config-views.ts) and 20 s for the other roles. The role woke again and repeated until the merge settled.
+
+The 11-04 and 11-09 director fixes (`directorPinOwedRun` in src/scheduling/scope.ts, and `leftoverPending`/`inboxSelfRequeued` in src/scheduling/skip.ts) covered the director only.
+
+**Superseded attempt (2026-11-16).** be6c22efd added a gate that deferred every non-director role while its pin was draining. Every changed run leaves a pin, so this restored the merge interlock the docs forbid. Two e2e tests in test/orchestrator-3.e2e.test.ts failed deterministically (`a role with a queued or in-flight merge keeps running` and `a role rejected in its verify runs again while another queued change is still in review`); the gate's `--affected` selection never runs the e2e tier, so the change merged green and turned GitHub CI red. An operator session reverted it, together with its docs sync e478de6b6. The fix below is the role-agnostic no-op half, which the docs' "No merge interlock" section (docs/how-it-works.md) requires.
+
+**Fix:** `recoverLeftover` (src/runner/runner-leftover.ts) now treats a live merge pin whose `queuedSummary` is set and whose conflicts are under `MERGE_CONFLICT_LIMIT` as the role's own pending change — not leftover work — and returns `{ kind: "already_queued" }` instead of re-pinning it. Every queued run stashes its summary under the committed sha (src/run/run-apply.ts), so a set `queuedSummary` is the role-agnostic signal of its own change still waiting: the run authors on its normal interval while the pin waits for the merge to take it (the merge queue is not a scheduling gate, docs/how-it-works.md "No merge interlock"), and a pin whose `queuedSummary` is null (a genuine crash leftover) still re-queues. Landed in ff1a8d348 alongside the three regression tests in test/runner-leftover.test.ts. The two named e2e invariants ("No merge interlock") pass under `npm run test:e2e`.
+
+**Validation gap:** none — the existing suite reproduced the spin and the three new regression tests in test/runner-leftover.test.ts pin the no-op arm; the two "No merge interlock" e2e invariants were run and pass.
+
 ### `an aborted run releases its pipe handles, so an escaped separate-group daemon adds no harness handle` failed, then passed on the same tree (quarantined by tumwater 2026-11-16) — fixed 2026-11-16 by the review role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
