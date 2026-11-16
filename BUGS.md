@@ -56,6 +56,14 @@ Found while verifying a fix: a full `npm test` reded on exactly five tests, all 
 
 ## Fixed
 
+### `an aborted run releases its pipe handles, so an escaped separate-group daemon adds no harness handle` failed, then passed on the same tree (quarantined by tumwater 2026-11-16) — fixed 2026-11-16 by the review role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+**Fix.** The flake was the test's own wait, not a release regression: after the settle released the harness's pipe read-ends, the assertion slept a fixed 500 ms and then read `process.getActiveResourcesInfo()`, so on a loaded host the destroy/close — which lands on a later event-loop tick — had not landed yet and the `PipeWrap`/`ProcessWrap` count still read above baseline (the 2026-11-16 fail-then-pass on the same tree is that race). The change (test/process-group.test.ts) replaces that fixed sleep with `waitFor(() => handles() <= baseline, …, 5_000)`: a bounded deadline that resolves the instant the released handles actually close, and for a settle that never releases them fails deterministically at the 5 s bound instead of flaking — the risk the commit names. The release side the wait exercises is `releaseChildHandles` at settle in src/process/process-group.ts, which destroys both read-ends and unrefs the child, so the `handles()` baseline (counted before the run) is the value the released handles return to. I rebuilt `dist/test/process-group.test.js` and ran it three consecutive times: 6 pass / 0 fail each, the fixed test green without a fixed sleep. The `## Open`→`## Fixed` move is guardrail-safe: `strandedPlanEntries` is PLANS.md-only, and `hiddenFixedRecordReason` flags only a newly merged multi-block `## Fixed` body (this entry carries a single `**Fix:**` block).
+
+**Validation gap:** no-repro — the flake fires only on a loaded host (the 2026-11-16 "failed, then passed on a re-run of the same tree"), which no offline path can summon on demand; the regression it pins is deterministic in the opposite direction — a settle that does not release the handles now fails at the 5 s deadline rather than flaking.
+
 ## Verified
 
 - 2026-11-14 run (real): `init` + `config set` scoping (only `feature` enabled, `maxConcurrent 1`, a local free `qwenrunner` model) + `prompt --role feature` + `start --once --json` — one no-change round, then a `.md`-only change merged to main (review-exempt); `status`/`logs`/`history` confirm the merge, linear history, cost $0.00.
