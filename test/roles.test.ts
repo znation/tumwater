@@ -10,6 +10,7 @@ import {
   roleById,
   unknownRoleMessage,
 } from "../src/roles/roles.js";
+import { roleInScope } from "../src/roles/runner-ids.js";
 import { roleLabel } from "../src/roles/role-labels.js";
 
 // role-catalog.ts is the single source of truth for which roles exist (roles.ts re-exports it).
@@ -146,4 +147,27 @@ test("commitTier classifies the work, maintenance, and un-tiered roles", () => {
   assert.equal(commitTier("bugfix-3"), "work");
   assert.equal(commitTier("clean-3"), undefined);
   assert.equal(commitTier("plan-2"), undefined);
+});
+
+test("roleInScope matches an id directly or through its base role", () => {
+  // The logs --role / -n views, the merge queue's role scope, and the status snapshot's
+  // scopeSnapshotToRoles all filter through this one rule: a scope that names a base id
+  // also takes that base's instance ids. Its second arm folds the id through baseRoleOf
+  // before the scope check, so the flip a regression would silently make is dropping that
+  // arm — every instance id then stops matching a scope that named only its base.
+  // The direct arm: an id listed in the scope matches, and an unrelated base id does not.
+  assert.equal(roleInScope("feature", ["feature"]), true);
+  assert.equal(roleInScope("feature", ["bugfix"]), false);
+  // The instance fold through the base (the flip guard): only the second arm matches,
+  // since the scope holds the bare `feature`, not `feature-2`.
+  assert.equal(roleInScope("feature-2", ["feature"]), true);
+  // A scope that names the instance directly also holds.
+  assert.equal(roleInScope("feature-2", ["feature-2"]), true);
+  // A non-instance `-N` id does NOT ride the base: `plan` is not a feature/bugfix
+  // instance, so baseRoleOf returns `plan-2` unchanged and neither arm matches a scope
+  // holding only the bare `plan` — the fold applies only to feature/bugfix instances.
+  assert.equal(roleInScope("plan-2", ["plan"]), false);
+  // An empty scope matches nothing, instance id or not.
+  assert.equal(roleInScope("feature", []), false);
+  assert.equal(roleInScope("feature-2", []), false);
 });
