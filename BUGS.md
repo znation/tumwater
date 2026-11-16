@@ -6,6 +6,16 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
+### A checkpoint-caused abort is indistinguishable from a context-ceiling cut-off to the no-change warning, and its resume bridge lies: the "In any case" half of the 2026-11-15 checkpoint bug the gate-side fix closed on 2026-11-16
+
+Filed 2026-11-16 by the review role as the review of c1c5e4d0. The gate-side fix (BUGS-FIXED.md, "A `checkpoint` call ends the run instead of compacting it") closes the bug's review half — gate runs no longer offer `checkpoint`, so a review keeps its verdict. Two author-run requirements from that same entry stay open and untracked here:
+
+**1. The cut-off warning blames the wrong cause.** When an accepted `checkpoint` aborts the turn (pi 1.5.2), the run ends `stopReason: "aborted"` with a contentless final message and no `compaction` written. `diagnoseNoChange` (src/verdict/no-change.ts) classifies any contentless-final, sentinel-less run as `cutOff` and its note reads "likely cut off at the context ceiling" — blaming the ceiling for what was a checkpoint abort. The bug entry's "In any case, the cut-off warning should not blame the context ceiling when the run actually ended on a checkpoint" is unmet. The run result (src/pi/pi-run-result.ts) carries `stopReason` and `compacted`; whether it can tell a checkpoint abort apart from a ceiling cut-off — or whether that distinction is worth the machinery — needs a real run to settle (offline the fake-pi shim cannot model pi's own abort).
+
+**2. The resume bridge lies (the commit's RISK names this as deferred).** `buildResumePrompt` (src/prompt/prompt-followup.ts) tells a resumed author run its work "is summarized above", but a checkpoint abort leaves no summary — the resume runs on the full, uncompacted context. The fix needs a real run: confirm pi 1.5.2 ever writes the compaction, and if not, make the bridge honest (or have the runner run the compaction itself before resuming).
+
+Both are the author-run side of one bug whose review side c1c5e4d0 closed; the gate fix is the harm-with-no-recovery, this is the resumable-but-misled half. Neither is recorded in BUGS-FIXED.md's Fixed entry, which scopes its closure to the review side — so this entry is the live record keeping the rest from being archived away.
+
 ### Roles spin through ~0.2 s "recovered leftover work" runs while their own change waits to merge: a fresh run's pin has no queue file, so `recoverLeftover` re-pins the role's own pending change on every run
 
 Filed 2026-11-15 by an operator session from the live team's logs (build 72a0b257; the code path is unchanged on main).
