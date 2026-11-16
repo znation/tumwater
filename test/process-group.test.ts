@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { groupAlive, runScriptGroup } from "../src/process/process-group.js";
 import { NO_LAUNCH_SERVICES_CHECK_IN, withoutLaunchServicesCheckIn } from "../src/process/process.js";
-import { waitForFile } from "./helpers/wait.js";
+import { waitFor, waitForFile } from "./helpers/wait.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // runScriptGroup is the detached process-group runner behind runBuildCheck
@@ -148,11 +148,18 @@ test("an aborted run releases its pipe handles, so an escaped separate-group dae
     assert.equal(r.aborted, true, "the run settled on the harness's abort");
     assert.equal(r.timedOut, false, "the abort settled it, not a deadline");
     // The daemon still holds the pipe write-ends, but the settle released the harness's read-ends,
-    // which close asynchronously once destroyed. Allow that close to land, then the active-
-    // resource count must be back to the baseline: the escaped daemon is not what keeps the event
-    // loop alive. A settle that does not release the handles leaves them open, so the count stays
-    // above the baseline and this fails.
-    await new Promise((res) => setTimeout(res, 500));
+    // which close asynchronously once destroyed — the close lands on a later event-loop tick, and
+    // on a loaded host that tick can land well past a fixed sleep (the 2026-11-16 flake: a 500 ms
+    // wait raced the close and read the handles still open, then a calmer re-run passed). Wait for
+    // the released handles to actually close — a bounded deadline, not a fixed sleep — then the
+    // active-resource count must be back to the baseline: the escaped daemon is not what keeps the
+    // event loop alive. A settle that does not release the handles leaves them open, so the count
+    // never returns to the baseline and the wait times out, failing deterministically.
+    await waitFor(
+      () => handles() <= baseline,
+      "the settle's released pipe handles to close (an unbound daemon adds no harness handle)",
+      5_000,
+    );
     assert.equal(
       handles(),
       baseline,
