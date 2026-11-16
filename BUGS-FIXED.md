@@ -5,6 +5,18 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `an aborted run releases its pipe handles, so an escaped separate-group daemon adds no harness handle` failed, then passed on the same tree (quarantined by tumwater 2026-11-16) — fixed 2026-11-16 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+an aborted run releases its pipe handles, so an escaped separate-group daemon adds no harness handle
+~~~~
+
+**Fix.** The instability was a race in the test, not in the code under test. The test asserts that after an aborted run the harness's read-ends of the daemon's pipes close, so the active-resource count returns to baseline — but it allowed that close only with a fixed real-time `setTimeout(…, 500)`. The close lands on a later libuv tick that a loaded host defers past 500 ms, so on a busy machine the count was still above baseline (the failure) and a calmer re-run passed it. The fix (e32233d5) waits on the condition itself — a bounded `waitFor(() => handles() <= baseline, …, 5_000)` from test/helpers/wait.ts, which returns the instant the handles close on a quiet host and hands a starved host a fair 5 s deadline instead of a fixed sleep — then still asserts the exact baseline, so a genuine release regression fails deterministically at the deadline rather than flaking.
+
+**Validation gap:** none — the existing suite reproduced the flake (failed once, then passed on a re-run of the same tree); nothing was missing to confirm it.
+
 ### post-merge review of a88d62b4 never reached a verdict (found by the review role 2026-11-16) — fixed 2026-11-16 by the bugfix role
 
 The post-merge review of commit `a88d62b4bce0f5b19a22e0944fd170b7d4c6ad42` (Pin secretLeakReason's two untested changed-file guards in test/secret-leaks.test.ts) never reached a verdict: This operation was aborted. It stays on main as ordinary unreviewed backlog work, and its review will never run again.
