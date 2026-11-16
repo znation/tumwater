@@ -135,6 +135,64 @@ test("a same-sha recovery re-pin logs no second merge_queued", async () => {
   assert.equal(eventsOfType(root, "merge_queued").length, 1, "a same-sha re-pin logs no second merge_queued");
 });
 
+// BUGS.md 2026-11-15 recovery-spin: a live pin ahead of main with a SET queuedSummary is the
+// role's OWN pending change (a queued run stashes its summary under the committed sha). Recovery
+// no-ops instead of re-pinning and ending `queued`, so the role authors on its normal interval
+// while the merge takes the pin — instead of spinning a ~0.2 s no-op run every poll.
+test("a live pin the role itself queued (a set queuedSummary) is a no-op, not a re-pin", async () => {
+  const { root, sha } = await pinnedFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  // A fresh queued run stashes its summary under the sha it pinned — here the same sha.
+  const ctx = { ...makeCtx(root, wt), queuedSummary: { sha, summary: "the run's own change" } };
+
+  const recovered = await recoverLeftover(ctx);
+
+  assert.equal(recovered?.kind, "already_queued", "the role's own pin is not leftover work");
+  assert.equal(recovered?.kind === "already_queued" ? recovered.entry.sha : null, sha, "the no-op names the pin it is waiting on");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin is left for the merge to take");
+  assert.equal(eventsOfType(root, "merge_queued").length, 0, "the no-op re-queues nothing — the drain already owns the pin");
+});
+
+test("a heldOnBranch commit on top of a draining pin (queuedSummary ≠ pin) is a no-op, not a re-pin", async () => {
+  const { root, sha } = await pinnedFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  // The relief heldOnBranch path: the role authored a NEW commit on the branch while its own
+  // change drains — the queuedSummary stashes THAT commit, not the pin's sha.
+  fs.appendFileSync(path.join(wt, "held.txt"), "held work\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "tumwater(improve): held on the branch");
+  const held = headSha(wt);
+  const ctx = { ...makeCtx(root, wt), queuedSummary: { sha: held, summary: "held on the branch" } };
+
+  const recovered = await recoverLeftover(ctx);
+
+  assert.equal(recovered?.kind, "already_queued", "the draining own pin is not leftover work, even with a held commit above it");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the draining pin stays for the merge");
+  assert.equal(eventsOfType(root, "merge_queued").length, 0, "the no-op re-queues nothing, so the held commit is not stranded by a re-pin");
+});
+
+test("a pin at the conflict cap with a held queuedSummary still hands back, not no-ops", async () => {
+  const { root, sha } = await pinnedFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  // A relief run that held a commit on the branch while a pin that reached the conflict cap
+  // drains: the queuedSummary is the held commit, the pin is at the cap. The no-op must NOT
+  // fire here — the cap conflict must fall through to the `handback` so the role resolves it.
+  fs.appendFileSync(path.join(wt, "held.txt"), "held work\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "tumwater(improve): held on the branch");
+  const held = headSha(wt);
+  const ctx = {
+    ...makeCtx(root, wt),
+    queuedSummary: { sha: held, summary: "held on the branch" },
+    mergeConflicts: { sha, count: MERGE_CONFLICT_LIMIT },
+  };
+
+  const recovered = await recoverLeftover(ctx);
+
+  assert.equal(recovered?.kind, "handback", "the at-cap pin's conflict is handed back, not no-op'd");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin survives for the author to resolve");
+});
+
 test("a stale pin is dropped", async () => {
   const { root } = await pinnedFixture();
   sh(root, "git", "merge", "--ff-only", "stray");
