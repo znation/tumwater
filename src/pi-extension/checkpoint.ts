@@ -301,6 +301,7 @@ export default function (
   try {
     pi.on("turn_end", () => {
       turn += 1;
+      return undefined;
     });
     pi.registerTool(buildCheckpointTool(state, () => turn));
   } catch {
