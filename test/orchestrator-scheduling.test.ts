@@ -411,7 +411,7 @@ test("a primary whose queued change already claims its entry is not handed the e
   assert.equal(feature2.state.claim?.key, "beta", "the sibling's own entry is untouched");
 });
 
-test("a primary whose pinned change already claims its entry is not handed the entry again", async () => {
+test("a primary holding a draining merge pin is deferred, so its sibling takes the free entry", async () => {
   const root = await initializedRepo();
   fs.writeFileSync(path.join(root, "PLANS.md"), THREE_PLANS);
   commitIn(root, "plans");
@@ -424,9 +424,11 @@ test("a primary whose pinned change already claims its entry is not handed the e
   );
   assert.equal(feature.state.claim?.key, "alpha");
   // Feature's changed run now leaves only its merge pin, with the alpha claim on the commit's
-  // Claim trailer (part 3e/7); main still lists alpha while the pin waits. The next poll must
-  // read that trailer as the queue record: release feature's claim and keep alpha held, so the
-  // primary takes the free gamma instead of alpha again.
+  // Claim trailer (part 3e/7); main still lists alpha while the pin waits. The pin is live and
+  // ahead of main under the conflict cap — a DRAINING pin the poll's drain settles on its own —
+  // so the next poll must NOT run feature for it: a run would only re-pin the same pin and end
+  // queued (the recovery-spin, BUGS.md 2026-11-15). Feature is deferred; the sibling takes the
+  // free gamma (alpha stays held by the pin's claim record, beta is feature-2's own entry).
   const sha = pinOffMain(
     root,
     (d) => fs.writeFileSync(path.join(d, "alpha.txt"), "work alpha\n"),
@@ -436,13 +438,17 @@ test("a primary whose pinned change already claims its entry is not handed the e
   const second = await pollRunnerReasons(
     schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
   );
-  assert.equal(second.has(feature), true, "the primary is admitted on a different entry");
+  assert.equal(
+    second.has(feature),
+    false,
+    "a draining pin is settled by the drain, so the role owes no idle run",
+  );
   assert.equal(
     feature.state.claim?.key,
-    "gamma",
-    "the pin's claim is released and reassigned to a free entry, never its own",
+    undefined,
+    "a deferred role takes no entry; the free one stays free until the pin settles",
   );
-  assert.equal(feature2.state.claim?.key, "beta", "the sibling's own entry is untouched");
+  assert.equal(feature2.state.claim?.key, "beta", "the sibling keeps its own entry, untouched");
 });
 
 test("a primary owed a revision keeps its claim while its earlier change is queued", async () => {

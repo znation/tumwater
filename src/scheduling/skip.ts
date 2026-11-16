@@ -28,7 +28,11 @@ type SkipVerdict =
  * Mutates the shared scope — deferredDue, quotaAdmitted, once-mode settlement — and writes skip
  * reasons as its only side effects. */
 export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Promise<SkipVerdict> {
-  const { root, once, now, mainHead, planBacklogFull, pinnedDirector } = scope;
+  const { root, once, now, mainHead, planBacklogFull, pinClasses } = scope;
+  // This role's merge-pin class (scope.ts classifyMergePin): `none` (no pin or a pin the drain
+  // settles), `draining` (the drain settles it — defers the non-director arm's idle run), or
+  // `stale`/`kept` (a run the drain will not settle is owed — the director arm's leftover gate).
+  const pinClass = pinClasses.get(runner.role) ?? "none";
   // The role's inbox size and operator demand, computed once per runner per poll: every
   // consumer (the holds, isEligible's inbox count, the maintenance admission) shares
   // this one directory listing + per-file stat read instead of each re-scanning the queue.
@@ -54,7 +58,7 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
     // A pin at the conflict cap whose lineage is not yet handed back is owed an authoring run
     // (the promptless path would skip it unchanged every poll), so only a prompt makes it due.
     leftoverPending:
-      pinnedDirector &&
+      (pinClass === "stale" || pinClass === "kept") &&
       !(
         (runner.state.mergeConflicts?.count ?? 0) >= MERGE_CONFLICT_LIMIT &&
         runner.state.conflictHandback === undefined
@@ -74,6 +78,9 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
         if (!t) return false;
         return deliverablePromptStamps(root, runner.role, Date.now()).every((stamp) => stamp <= t);
       })(),
+    // Non-director roles with a draining pin are deferred by the drain (BUGS.md
+    // 2026-11-15 recovery-spin). The director's arm is never reached with this flag set.
+    draining: pinClass === "draining", // vocabulary-ok: the PinClass value the comparison reads; internal, never user text
   });
   if (!run) return notDue(scope, runner, skip);
   if (admissionHolds(scope, runner)) return { skip: true };
