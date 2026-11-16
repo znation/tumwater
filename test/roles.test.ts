@@ -6,6 +6,7 @@ import {
   OBSERVER_ROLES,
   ROLES,
   allRoleIds,
+  commitTier,
   roleById,
   unknownRoleMessage,
 } from "../src/roles/roles.js";
@@ -104,4 +105,45 @@ test("unknownRoleMessage appends a did-you-mean suggestion for a close typo, non
   // "bogus" is beyond edit distance 2 of every id — the wording stays as before, so the
   // existing pins (cli-operators-team, role-view, gui) still match.
   assert.equal(unknownRoleMessage("bogus", ids), "unknown role: bogus (valid ids: feature, bugfix, director)");
+});
+
+test("commitTier classifies the work, maintenance, and un-tiered roles", () => {
+  // The report's per-day work vs maintenance split, the maintenance-quota gate, the doctor
+  // holds row, and the status maintenance poll all read through this one rule:
+  // feature/bugfix/director are the shipping tier; readme plus the eight code-maintenance
+  // roles are upkeep; everything else — plan, steward, the four observers, unknown/custom —
+  // is in neither. A branch that moved a role to the wrong arm would silently miscount the
+  // split (e.g. a plan merge counted as maintenance would wrongly spend the allowance).
+  // "work" arm: the shipping tier.
+  assert.equal(commitTier("feature"), "work");
+  assert.equal(commitTier("bugfix"), "work");
+  assert.equal(commitTier(DIRECTOR_ROLE), "work");
+  // "maintenance" arm: readme plus all eight code-maintenance roles, enumerated by name
+  // because the catalog's maintenance list is module-private.
+  assert.equal(commitTier("readme"), "maintenance");
+  assert.equal(commitTier("organize"), "maintenance");
+  assert.equal(commitTier("coverage"), "maintenance");
+  assert.equal(commitTier("clean"), "maintenance");
+  assert.equal(commitTier("dedupe"), "maintenance");
+  assert.equal(commitTier("perf"), "maintenance");
+  assert.equal(commitTier("security"), "maintenance");
+  assert.equal(commitTier("robustness"), "maintenance");
+  assert.equal(commitTier("improve"), "maintenance");
+  // undefined arm: the roles the coarser roleTier folds into its "everything else" bucket
+  // but this rule deliberately keeps out of both tiers.
+  assert.equal(commitTier("plan"), undefined);
+  assert.equal(commitTier("steward"), undefined);
+  assert.equal(commitTier("qa"), undefined);
+  assert.equal(commitTier("ci"), undefined);
+  assert.equal(commitTier("selfcheck"), undefined);
+  assert.equal(commitTier("feedback"), undefined);
+  assert.equal(commitTier("myrole"), undefined);
+  // Instance ids: only feature and bugfix may run instances, so their instance ids fold to
+  // the base tier through baseRoleOf; every other id (including a non-instance like "plan-2")
+  // is returned unchanged, so a maintenance or un-tiered role with a "-N" suffix is an
+  // unknown id and stays out of its base role's tier.
+  assert.equal(commitTier("feature-2"), "work");
+  assert.equal(commitTier("bugfix-3"), "work");
+  assert.equal(commitTier("clean-3"), undefined);
+  assert.equal(commitTier("plan-2"), undefined);
 });
