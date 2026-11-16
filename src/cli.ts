@@ -122,6 +122,31 @@ async function cmdGuiCase(root: string, args: string[]): Promise<void> {
   await (await import("./gui/gui-command.js")).cmdGui(root, args);
 }
 
+// The `config` subcommands' arity ladder, lifted out of cmdConfigCase so the ready-repo
+// gate and dispatch in the body read as one guard + one call. configUsage is passed in
+// because CONFIG_USAGE is pulled from the lazy cli-config-commands import inside
+// cmdConfigCase (cli.ts keeps every command module a dynamic import); the helper stays
+// pure and reads nothing else beyond shaped and the module's fail/typoSuffix bindings.
+// Each verb keeps its own fail message and order, byte-identical to the inline branches.
+function checkConfigArity(shaped: string[], configUsage: string): void {
+  if (shaped[0] !== "get" && shaped[0] !== "set" && shaped[0] !== "unset" && shaped[0] !== "edit" && shaped[0] !== "--diff")
+    // A near-miss subcommand word gets the same typoSuffix `completion <shell>` and
+    // `logs --type` give, so `config gte` reads "did you mean `get`?" while a far-off
+    // word (`show`) and a flag (`--anything`) stay hint-free.
+    fail(`${configUsage}${typoSuffix(shaped[0] ?? "", ["get", "set", "unset", "edit"])}`);
+  if (shaped[0] === "get" && shaped.length !== 2) fail("usage: tumwater config get <key>");
+  if (shaped[0] === "set" && shaped.length !== 3) fail("usage: tumwater config set <key> <value>");
+  if (shaped[0] === "unset" && shaped.length !== 2) fail("usage: tumwater config unset <key>");
+  // `edit` takes exactly `--file <path>` (a flag plus its value) beyond the verb; a
+  // missing path or a surplus token fails the config usage, like the other verbs' arity tails.
+  if (shaped[0] === "edit" && !(shaped.length === 1 || (shaped.length === 3 && shaped[1] === "--file")))
+    fail(configUsage);
+  // `--diff` with an extra token is a malformed invocation, refused before the repo gate
+  // so it fails the same way in any directory; cmdConfig's configDiff repeats the line
+  // as the defensive tail for a direct caller.
+  if (shaped[0] === "--diff" && shaped.length !== 1) fail(configUsage);
+}
+
 async function cmdConfigCase(root: string, args: string[]): Promise<void> {
   const { cmdConfig, CONFIG_USAGE, peelConfigJson } = await import("./cli/cli-config-commands.js");
   // `--json` on a set/unset is peeled before the arity checks so the count sees the shaped
@@ -133,22 +158,7 @@ async function cmdConfigCase(root: string, args: string[]): Promise<void> {
   // key, `set` exactly a key and a value, and `--diff` takes nothing else. cmdConfig
   // dispatches on the (now well-shaped) args.
   if (shaped.length > 0) {
-    if (shaped[0] !== "get" && shaped[0] !== "set" && shaped[0] !== "unset" && shaped[0] !== "edit" && shaped[0] !== "--diff")
-      // A near-miss subcommand word gets the same typoSuffix `completion <shell>` and
-      // `logs --type` give, so `config gte` reads "did you mean `get`?" while a far-off
-      // word (`show`) and a flag (`--anything`) stay hint-free.
-      fail(`${CONFIG_USAGE}${typoSuffix(shaped[0] ?? "", ["get", "set", "unset", "edit"])}`);
-    if (shaped[0] === "get" && shaped.length !== 2) fail("usage: tumwater config get <key>");
-    if (shaped[0] === "set" && shaped.length !== 3) fail("usage: tumwater config set <key> <value>");
-    if (shaped[0] === "unset" && shaped.length !== 2) fail("usage: tumwater config unset <key>");
-    // `edit` takes exactly `--file <path>` (a flag plus its value) beyond the verb; a
-    // missing path or a surplus token fails the config usage, like the other verbs' arity tails.
-    if (shaped[0] === "edit" && !(shaped.length === 1 || (shaped.length === 3 && shaped[1] === "--file")))
-      fail(CONFIG_USAGE);
-    // `--diff` with an extra token is a malformed invocation, refused before the repo gate
-    // so it fails the same way in any directory; cmdConfig's configDiff repeats the line
-    // as the defensive tail for a direct caller.
-    if (shaped[0] === "--diff" && shaped.length !== 1) fail(CONFIG_USAGE);
+    checkConfigArity(shaped, CONFIG_USAGE);
   }
   // An initialized repo always has tumwater.json, so this gate doubles as "a config
   // exists to print" — the command never runs outside a project.
