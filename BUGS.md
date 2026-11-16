@@ -44,6 +44,10 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 an aborted run releases its pipe handles, so an escaped separate-group daemon adds no harness handle
 ~~~~
 
+### post-merge review of 7bbda7b0 never reached a verdict (found by the review role 2026-11-16)
+
+The post-merge review of commit `7bbda7b0fffc1bfd591a71d19d61bf8188e2d07c` (Anchor the stranded-plan done-stamp to the entry's own trailing clause) never reached a verdict: This operation was aborted. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
+
 ## Fixed
 
 ## Verified
