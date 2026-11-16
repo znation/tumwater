@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { addTo, distinctOrdered, filterKeepPositions, getOrCreate, groupBy, memoSetLru, rankCountEntries, sortByValueDesc, topAndHidden } from "../src/collections.js";
+import { addTo, compareCodeUnits, distinctOrdered, filterKeepPositions, getOrCreate, groupBy, memoSetLru, rankCountEntries, sortByValueDesc, topAndHidden } from "../src/collections.js";
 
 // Unit seam for collections.ts's get-or-create step, the shape factored out of the failure
 // digest, the team hold, and the error-storm reducer. Those paths already cover it end to
@@ -309,4 +309,21 @@ test("filterKeepPositions does not mutate its input array", () => {
   filterKeepPositions(input, () => false);
   assert.deepEqual(input, ["a", "b", "c"]);
   assert.equal(input.length, 3);
+});
+
+// Pins the one unpinned member of collections.ts's string-ordering family. The
+// expectations are the sign of the raw UTF-16 comparison (a < b ? -1 : a > b ? 1 : 0),
+// derived from the definition; none is computed by calling the function under test.
+test("compareCodeUnits orders by raw code unit, not locale", () => {
+  // The three comparator branches, pinned by their exact sign.
+  assert.equal(compareCodeUnits("a", "a"), 0);
+  assert.equal(compareCodeUnits("a", "b"), -1);
+  assert.equal(compareCodeUnits("b", "a"), 1);
+  // The discriminator: uppercase 0x5A sorts before lowercase 0x61 under raw code
+  // units, while localeCompare (accent- and case-insensitive) orders them opposite.
+  // A regression that routed this comparator through localeCompare would fail here.
+  assert.equal(compareCodeUnits("Z", "a"), -1);
+  // Punctuation 0x21 sorts before a letter 0x41: a raw code-unit order, not a
+  // collation order.
+  assert.equal(compareCodeUnits("!", "A"), -1);
 });
