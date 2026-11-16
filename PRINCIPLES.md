@@ -35,7 +35,7 @@ refresh the numbers with `wc -l` and `find` when this section is touched, and no
 - **Code size**: 536 src modules / ~134,000 lines; 674 test modules / ~202,000 lines. Trend:
   grows with every merge; the split-large-function family below is the standing driver of
   per-function (not per-file) growth.
-- **Module-size ceiling**: 25 src files exceed 600 lines, 9 exceed 700, 3 exceed 800; the largest
+- **Module-size ceiling**: 26 src files exceed 600 lines, 9 exceed 700, 4 exceed 800; the largest
   is src/roles/role-view.ts at 924. The ceiling holds because complexity is extracted into named
   helpers, not by shrinking files — a file may stay large while its functions stay small; do not
   re-split an already-small function to chase a line count.
