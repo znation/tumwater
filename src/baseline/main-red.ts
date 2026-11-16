@@ -407,7 +407,7 @@ function queueBehindFullMain<T>(task: () => Promise<T>): Promise<T> {
 }
 
 /** Run `fn` in the `_main-full` mirror re-pointed at `mainBranch`'s tip, on the mirror's own
- * queue: the main watch's full-check pass (main-watch.ts) runs its long full run here, so a
+ * queue: the main watch's full-check pass (main-watch-full.ts) runs its long full run here, so a
  * per-head diff-rules pass or a gate's main-tip verdict in `_gate-main` never waits behind it
  * (Hourly full check, part 2c/4). Shaped like withMainTipWorktree, minus the shared gate queue;
  * rejects when `mainBranch` is missing or unreadable (mainTipOf names which) or the checkout

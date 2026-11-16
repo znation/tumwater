@@ -331,7 +331,7 @@ export function noteInheritedGreen(sha: string, from: string): void {
 /** How far down main's first-parent history inheritedGreen looks for a verdict to carry over. main
  * gains about two dozen commits an hour under a full team, and the walk stops at the first cached
  * verdict anyway (the watch caches a verdict for each new tip it checks), so this bound only caps
- * the rev-list on a cold cache. The main watch's red-opener walk (main-watch.ts) reuses it: a red
+ * the rev-list on a cold cache. The main watch's red-opener walk (main-settle.ts) reuses it: a red
  * spell is recent, so the nearest non-exempt ancestor sits well within the bound. */
 export const INHERIT_WALK_MAX = 64;
 
@@ -351,7 +351,7 @@ export async function firstParentWalk(wt: string, ref: string, max: number): Pro
 }
 
 /** The first-parent commits strictly above the newest cached FULL-green verdict at or below
- * `tip`, oldest-first — the range a fresh red's opener is bisected across (main-watch.ts, Hourly
+ * `tip`, oldest-first — the range a fresh red's opener is bisected across (main-settle.ts, Hourly
  * full check part 3a/4). The newest full green is the newest cached verdict that carries
  * `checkedAt` (part 2a/4) and is green; only a full check stamps `checkedAt`, so inherited and
  * merge-seeded verdicts are skipped, as in fullCheckPlan's anchor rule. Commits above the anchor

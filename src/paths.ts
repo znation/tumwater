@@ -560,7 +560,7 @@ export function gateMainWorktreePath(root: string): string {
   return path.join(worktreesDir(root), "_gate-main");
 }
 
-/** Detached worktree pinned at main's head for the main watch's FULL check (main-watch.ts):
+/** Detached worktree pinned at main's head for the main watch's FULL check (main-watch-full.ts):
  * the full suite run, which can take minutes, gets its own mirror instead of the gate's
  * `_gate-main` above, so a per-head diff-rules pass or a gate's main-tip verdict never waits
  * behind it in that mirror (Hourly full check, part 2c/4). Named with a leading underscore
