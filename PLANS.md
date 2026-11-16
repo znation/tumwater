@@ -1,35 +1,67 @@
-# Plans
+# Backlog
 
-Planned features, written by the plan loop and implemented by the feature loop.
-Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done;
-tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
+This is the operator's view of what the team is carrying — open, in flight, done, and refused. The
+harness renders it read-only; the roles that act on it are plan (adds and retires `## Planned`
+entries), feature (claims, completes, refuses, and reports plan defects on `## Planned`), and bugfix
+(claims, fixes, and refuses `## Open`). Refusals carry a note so the record shows an entry was
+considered and set aside on purpose, and every state change is dated so staleness is visible.
 
 ## Planned
 
-_None yet._
+### `takesSalvagedWork`'s salvage-presence gate is pinned in test/run-resume.test.ts, so a regression in the one home of "does this run's plan carry salvaged work" the resume path (run-resume.ts) and the run gate (runner-run.ts:428) both branch on would be caught at the gate rather than as a resume that silently drops a conflict-restored patch (planned 2026-11-16 by the plan role; retires the pin-a-rule slot left by the stranded-done `sectionSpan` entry)
 
-### `sectionSpan`'s fence-aware section boundary is pinned in test/backlog.test.ts, so a regression in the one fence-aware home of a `## ` section's span the backlog writers (backlog-write.ts) and the archive mover (backlog-archive.ts) both read through — the heading a `## <title>` section opens at, and the next real `## ` heading that ends it — is caught by the suite (planned 2026-11-16 by the plan role; continues the pin-a-rule family — the recent `roleInScope` (test/roles.test.ts, above), `lowerMedian`, `compareCodeUnits`, `validEntries` entries each take one correct-but-unpinned single-home rule and pin it in its natural test file with plain `assert`. `sectionSpan(lines: readonly string[], title: string)` in src/backlog/backlog-md.ts returns the 0-based span `{ heading, end }` of the FIRST `## <title>` section — its heading line, then `nextSectionHeading`'s walk to the next real `## ` heading (or `lines.length`) — or `null` when no such section exists. It reads every line through the shared fenceTracker, so a `## ` line quoted inside a fenced code block is body text, never a section boundary. `grep -rlw sectionSpan test/` is empty — no test file references it. Its fence branch is genuinely unpinned: its only src consumers are the writers, and neither `test/backlog-archive.test.ts` (0 fenced blocks) nor a write test feeds a section whose boundary is quoted inside a fence. The two sibling fence-aware section readers are already pinned transitively and are NOT this entry's target — `fenceAwareHeadingLines`'s consumers (`duplicateHeadings`, `actionableEntryRanges`) have fenced-heading tests in test/backlog-structure.test.ts, and `sectionBodyLines`'s consumer (`strandedPlanEntries`) has a fenced-`## Planned` test there; pinning them again would add a duplicate. The flip a regression would silently make: read the heading line without the fence guard (or drop `fencedHeadingTitle`) and a `## Done` quoted inside a fenced entry is mistaken for the archive's real `## Done` heading — or, reading the end boundary without the guard, cuts the section at a quoted `## Fixed`, so the archive mover ships the wrong lines.
+`takesSalvagedWork` (src/run/run-resume.ts) has **no direct test** anywhere, and its only indirect
+cover is one arm: the salvage-true branch. Its consumer test `test/runner-salvage.test.ts` drives
+the true arm only — `resume.cause === "salvaged"` → `takesSalvagedWork` true → `planWithSalvagedWork`
+runs → a handoff prompt with the patch path is observed. The two **false** arms — a plan whose
+`prompt` is non-null, and a plan with a `userPrompt` — are unexercised on the exact output: the
+other runner tests that pass through the gate build their plans via the full plan path and never
+assert the gate's own decision, so a flip in either false arm (say, the `&&` becoming `||`, or a
+null-coalescing typo) would let `planWithSalvagedWork` run on a plan that has no salvaged work and
+append a phantom "resumed from a conflict-restored patch" handoff to an ordinary run — the L23 bar
+(0 direct refs and not transitively covered on the multi-branch input) is met.
 
-**Needs review 2026-11-16 by feature: plan defect — nothing to build.** Its deliverable is already on main: commit `3de68953` ("Pin `sectionSpan`'s fence-aware span in test/backlog.test.ts") added the `sectionSpan` import (test/backlog.test.ts:11) and the `sectionSpan finds a ## section's span, fence-aware` block (lines 397–426) whose five `assert` cases exactly match the plan's — `{ heading: 0, end: 7 }` for the quoted-`## Done`-inside-a-fence case, `null` for the fence-only case, `{ heading: 3, end: 7 }` for the plain case, `{ heading: 0, end: 3 }` for the EOF case, and `null` for the missing case. The pin is therefore live and this entry left no gap, so there is no code to write; the plan role should retire it rather than re-queue it.
+- **Approach**: in test/run-resume.test.ts, add `takesSalvagedWork` to the existing import from
+  `../src/run/run-resume.js` and pin all three arms of the predicate against a minimal
+  `RunStartPlan` stub. Exact expected values (hand-computed from the `plan.prompt !== null &&
+  plan.userPrompt === null` source, confirmed against the compiled `dist/`): a plan with
+  `prompt: "some text"` and `userPrompt: null` → `true`; a plan with `prompt: null` and
+  `userPrompt: "some text"` → `false`; a plan with `prompt: null` and `userPrompt: null` → `false`.
+  Each arm asserts the boolean directly.
+- **Acceptance criteria**:
+  - test/run-resume.test.ts passes with the three cases above.
+  - One of the three cases would fail if the `&&` in `takesSalvagedWork` were changed to `||`
+    (the `prompt: null` / `userPrompt: "some text"` case returns `true` under `||`).
+  - `npm run test:gate` passes.
 
-**Goal.** Pin the one fence-aware section reader the backlog writers read through — `sectionSpan` — in `test/backlog.test.ts`, the file that already hosts the fence-reading tests (`fenceTracker`, `fenceOpener`, `closesFence`) and imports from `../src/backlog/backlog-md.js`.
+### `isMergeClaim`'s fail-closed shape rejection is pinned in test/commit-message.test.ts, so a regression in the one home of "is this a valid merge claim" the SUMMARY/WHY/RISK/VERIFIED builder (buildMergeSummary) relies on to refuse a claim it cannot attribute would be caught at the gate rather than as a commit whose trailer names an entry the queue does not know (planned 2026-11-16 by the plan role; retires the pin-a-rule slot left by the stranded-done `sectionSpan` entry)
 
-**Approach.** One file, no new dependency, no src change, no invariant edit. In `test/backlog.test.ts` add `sectionSpan` to the existing `../src/backlog/backlog-md.js` import and add one `test(…)` block named for the rule (e.g. `"sectionSpan finds a ## section's span, fence-aware"`), with plain `assert` cases whose expected values are worked from the `fencedHeadingTitle`/`nextSectionHeading` bodies in src/backlog/backlog-md.ts, not from calling the function — `sectionSpan` takes a `string[]`, so each case is `sectionSpan([...lines], "<title>")` against a `assert.deepEqual` of the exact `{ heading, end }` or `null`:
-- a quoted `## <title>` inside a fence is not the section, and a later real `## <title>` is: `sectionSpan(["## Done", "", "x", "```md", "## Done", "```", "", "## Fixed", "y"], "Done")` is `{ heading: 0, end: 7 }` — the fence is open at line 4, so the quoted `## Done` (line 4) is body text and never the heading; the real heading is line 0 and the end is the real `## Fixed` at line 7.
-- a `## <title>` whose only occurrence is fenced is absent: `sectionSpan(["## Open", "", "```", "## Done", "```", "", "## Fixed", "y"], "Done")` is `null` — the sole `## Done` is a quoted line inside the fence, so the section does not exist.
-- a plain (unfenced) section still resolves: `sectionSpan(["## Open", "a", "", "## Done", "b", "", "c"], "Done")` is `{ heading: 3, end: 7 }` — the non-fenced rule still works, so the fence branch is a special case, not a rewrite.
-- a section that runs to EOF: `sectionSpan(["## Done", "x", "y"], "Done")` is `{ heading: 0, end: 3 }` — `nextSectionHeading` returns `lines.length` when no later `## ` heading follows.
-- a missing section: `sectionSpan(["## Open", "", "## Done"], "Missing")` is `null`.
+`isMergeClaim` (src/runner/commit-message.ts) has **no direct test** — its only references are in
+its consumer `buildMergeSummary` (same file) and that consumer's tests, which exercise the
+valid-claim path (a correctly-shaped key passes through to the trailer) but never the two
+fail-closed rejections. It is a genuine 3-arm predicate: a `PLANS.md` claim whose key is not a
+series part or a bug index is refused, a `BUGS.md` claim whose key is not a bug index is refused,
+and any other file is refused. The L23 bar (0 direct refs and not transitively covered on the
+multi-branch input) is met: a consumer test never feeds a malformed key and asserts the exact
+rejection string. A regression that loosens either shape check (say, dropping the `part`/`N/M`
+alternation, or the file dispatch) would let a mislabeled claim through to a commit trailer, where
+the merge queue then attributes work to an entry that does not exist — a silent bookkeeping rot the
+fail-closed string is the only guard against.
 
-Each expectation is read from `fencedHeadingTitle` (a `## ` line inside a fence returns `null`, so it is neither a heading nor a boundary) and `nextSectionHeading` (returns the next real `## ` index, or `lines.length`), not from a call to `sectionSpan`; the quoted-in-a-fence cases are the fence contract the pin asserts.
-
-**Files touched.** `test/backlog.test.ts` only — add `sectionSpan` to the existing `backlog-md.js` import and add the one test block. No `src/` file changes; no `docs/invariants.md` edit (no section-boundary section binds `sectionSpan`).
-
-**Acceptance criteria.**
-- The new test in `test/backlog.test.ts` passes on the current tree.
-- A regression that read the `## ` heading or the section end boundary WITHOUT the fence guard fails the new test on the quoted-`## Done`-inside-a-fence cases (`{ heading: 0, end: 7 }` and the `null` case).
-- The plain-section and EOF cases pin that the fence branch is a special case: an unfenced `## Done` still resolves to `{ heading: 3, end: 7 }` and a section with no following heading ends at `lines.length`.
-- The pin does NOT add a duplicate of the two sibling readers' existing coverage: it tests `sectionSpan` only (not `fenceAwareHeadingLines` or `sectionBodyLines`, whose fence branches their consumers' tests already exercise).
-- No `src/` file, `docs/invariants.md` line, or other test file changes — the change is confined to `test/backlog.test.ts`.
+- **Approach**: in test/commit-message.test.ts, add `isMergeClaim` to the existing import from
+  `../src/runner/commit-message.js` and pin all three arms against a minimal claim stub
+  (`{ file, key, title, description, why, risk, verified }`). Exact expected values (hand-computed
+  from the source's three template strings, confirmed against the compiled `dist/`): a `PLANS.md`
+  claim with key `"part 1/2"` and title `"Add X"` → the string `PLANS.md files "Add X" as "part
+  1/2" — claims must name an entry ("Fix the <kind> plan or bug")`; a `BUGS.md` claim with key
+  `"1/2"` and title `"Fix Y"` → the analogous `BUGS.md files "Fix Y" as "1/2" — …` string; a
+  `README.md` claim with key `"1/2"` and title `"Doc Z"` → `README.md has a claim that is not for
+  a plan or a bug`; and a `PLANS.md` claim with a correctly-shaped series-part key (per the regex
+  `/^[A-Za-z][A-Za-z0-9]*(?: [A-Za-z0-9]+)* (?:part \d+\|\d+|\d+\/\d+)$/`) → `undefined`.
+- **Acceptance criteria**:
+  - test/commit-message.test.ts passes with the three fail-closed cases and the one valid case.
+  - The two fail-closed cases quote the exact template strings above (the text is the contract the
+    operator reads).
+  - `npm run test:gate` passes.
 
 ## Done

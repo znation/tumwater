@@ -5,6 +5,50 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `sectionSpan`'s fence-aware section boundary is pinned in test/backlog.test.ts, so a regression in the one fence-aware home of a `## ` section's span the backlog writers (backlog-write.ts) and the archive mover (backlog-archive.ts) both read through would be caught at the gate rather than as a writer that overwrites an adjacent section (planned 2026-11-16 by the plan role; retires the pin-a-rule slot left by the stranded-done `roleInScope` entry) — done 2026-11-16 by the feature role
+
+**Done 2026-11-16 by the plan role (completing the overdue move):** the deliverable this entry
+names — the fence-aware `sectionSpan` pin in `test/backlog.test.ts` — was built and merged to main
+in 3de68953f ("Pin sectionSpan's fence-aware section boundary in test/backlog.test.ts", feature
+role); that run is the deliverable's landing, so the entry is done by the feature role. That run
+built the test-only deliverable but skipped the `## Done` move, leaving the entry stranded in `##
+Planned` first in the work queue — where feature would claim it next and waste a run
+re-implementing work that is already on main. The plan role completes the overdue move here; the
+commit-time sweep archives the entry.
+
+The pin covers the one fence-aware home of a `## ` section's span — `sectionSpan` (src/backlog/
+backlog-md.ts), read by both the writers (`backlog-write.ts` — `replaceSection` for `Planned` and
+`Done`) and the archive mover (`backlog-archive.ts` — `archiveNewFinishedEntries` /
+`removeStrandedFinishedEntries`). It has **no direct test** anywhere; its only indirect cover is
+one branch of its consumer.
+
+The fence-aware rule: `sectionSpan` returns `null` when no `## <name>` heading exists, otherwise
+the object `{ heading, end }` where `heading` is the line index of the first `## <name>` line and
+`end` is the line index of the next real (not fenced) `## ` line, or the file's line count if there
+is none. Both the heading search and the boundary walk consult the module-private
+`fencedHeadingTitle` (a `## ` line inside a code fence is data, not a boundary). A regression that
+drops the fence check in either the search or the boundary walk would let a code fence that quotes
+a `## ` heading truncate the section the writers cut on — a silent corruption of an adjacent
+section the gate would not otherwise flag, because the fence-aware helpers the consumer tests do
+cover (`fenceAwareHeadingLines`, `sectionBodyLines`) are tested separately in
+test/backlog-structure.test.ts.
+
+- **Approach**: in test/backlog.test.ts, add `sectionSpan` to the existing import from
+  `../src/backlog/backlog-md.js` and pin it with a small fenced document. Each case feeds a literal
+  array of lines and asserts the exact `{ heading, end }` (or `null`).
+- **Acceptance criteria** (five cases; expected values hand-computed from the
+  `fencedHeadingTitle`/`nextSectionHeading` bodies and confirmed against the compiled
+  `dist/backlog/backlog-md.js`):
+  - a document whose `## Done` heading is quoted inside a code fence, with the real `## Done`
+    heading later → `{ heading: 0, end: 7 }` (the quoted `## Done` inside the fence is not the
+    section start; the boundary is the real `## Planned` heading at index 7).
+  - a document whose only `## Done` heading is fenced → `null` (no real `## Done` heading exists).
+  - a document with a plain `## Done` heading, a `## Planned` heading, and no fences →
+    `{ heading: 3, end: 7 }`.
+  - a document with a `## Done` heading and no subsequent `## ` heading → `{ heading: 0, end: 3 }`
+    (the span runs to end-of-file).
+  - a document with no `## Done` heading at all → `null`.
+
 ### `roleInScope`'s direct-or-through-base membership is pinned in test/roles.test.ts, so a regression in the one home of the instance-aware role-scope filter the `logs --role`/`-n`/`--role` view filters, the merge-queue's role scope, and the status snapshot's `scopeSnapshotToRoles` all read through — a scope that names a base id also matches that base's instance ids — is caught by the suite (planned 2026-11-16 by the plan role; continues the pin-a-rule family — the recent `lowerMedian` (test/collections.test.ts, done+archived), `compareCodeUnits`, `validEntries`, `filterKeepPositions`, `setOwn`, `checkMinRunInterval`, `isPlainDecimal`/`isExponentSpelling` and `fallback`-chain entries each take one correct-but-unpinned single-home rule and pin it in its natural test file with plain `assert`. `roleInScope(id: string, scope: readonly string[]): boolean` in src/roles/runner-ids.ts is `scope.includes(id) || scope.includes(baseRoleOf(id))` — a membership test whose second arm folds an instance id (`feature-2`) to its base role (`feature`) before the scope check, so a scope naming the bare base also matches the instances. It is exported from the one home the three filters read, and no test file references it — `grep -rlw roleInScope test/` is empty. Its base fold, `baseRoleOf` (`feature-2`, `bugfix-10`, … → their base; `plan-2`, a custom id, or any other non-`feature`/`bugfix` `-N` id → unchanged), is pinned by the done+archived `commitTier` entry in the same file (test/roles.test.ts), so the pin adds `roleInScope` and needs no src change. The flip a regression would silently make: drop the `|| scope.includes(baseRoleOf(id))` arm and every instance id stops matching a scope that named only its base, so a scope of `["feature"]` no longer takes `feature-2` — the doc comment's own promise. No `docs/invariants.md` section binds a role-scope filter, so no invariant edit; touches test/roles.test.ts only. Independent of the family (a different rule, same test file — the same import-list extension shape each entry takes) — done 2026-11-16 by the feature role
 
 **Goal.** Pin the one unpinned instance-aware membership rule in `test/roles.test.ts`. `roleInScope` is the single home of the "a scope naming a base id also matches that base's instances" contract the logs/views filters, the merge-queue role scope, and the status snapshot all read, and its second arm — the `baseRoleOf` fold — is a genuinely multi-branch membership test no test references.
