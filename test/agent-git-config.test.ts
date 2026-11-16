@@ -5,11 +5,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { registerAgentBackend, type AgentBackend } from "../src/agent/agent-backend.js";
 import { runAgent } from "../src/agent/agent-run.js";
-import { globalGitConfigFiles } from "../src/agent/run-git-config.js";
+import { globalGitConfigFiles } from "../src/agent/agent-git-config.js";
 import { defaultConfig } from "../src/config/config.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-// Each agent run gets a private global git config (src/agent/run-git-config.ts). The incident it
+// Each agent run gets a private global git config (src/agent/agent-git-config.ts). The incident it
 // answers: the ci role ran a CI workflow's `git config --global user.name "tumwater ci"` step on
 // the host, and every repository on the operator's machine then committed as tumwater ci.
 
