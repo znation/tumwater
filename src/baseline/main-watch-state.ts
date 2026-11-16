@@ -34,6 +34,9 @@ export interface MainWatchState {
   lastFailedWatchHead: string | undefined;
 }
 
+/** Build a fresh `MainWatchState` for one `createMainWatch` instance: every in-flight guard
+ * and head cursor starts unset, and the two once-per-reason warning strings start empty (the
+ * "no reason warned yet" sentinel the quarantine pass compares before re-warning). */
 export function newMainWatchState(): MainWatchState {
   return {
     lastWatched: undefined,
