@@ -337,7 +337,7 @@ export const INHERIT_WALK_MAX = 64;
 
 /** The body of a `git rev-list --first-parent --max-count=<max> <ref>` read — the walk the
  * first-parent scans in this module share, plus the main watch's full-check anchor walk
- * (main-watch.ts's `fullCheckPlan`) and self-redeploy's newest-green-above-build scan
+ * (main-watch-full.ts's `fullCheckPlan`) and self-redeploy's newest-green-above-build scan
  * (src/redeploy/redeploy-target.ts), spelled the same on purpose so a change to the walk shape
  * (the bound, the `--first-parent` flag) lands once. (The main watch's red-opener walk
  * (main-settle.ts's `redOpener`) does NOT use this: it reuses only the bound and inlines its
