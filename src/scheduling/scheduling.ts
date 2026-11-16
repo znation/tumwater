@@ -78,6 +78,14 @@ function blockedFromRunning(runner: RoleRunner, s: RunnerState): boolean {
   return !runnerEnabled(runner.config, runner.role) || s.running === true;
 }
 
+/** One arm of a gate that admits a demand on the min-run-interval clock: the demand is due
+ * when its clock (`nextRunAt`) has elapsed, held until then. Only the admitted reason differs —
+ * the director's self-requeued inbox, the leftover-pinned arm, and a cut-off resume all wait on
+ * the same clock, so the one shape they share is named here rather than spelled at each site. */
+function dueOnMinInterval(s: RunnerState, now: number, reason: string): Eligibility {
+  return now >= s.nextRunAt ? { run: true, reason } : { run: false };
+}
+
 /** The director carries the user's own requests: no min-gap, no backoff — a queued prompt
  * runs as soon as the previous one finishes. Reaches either arm and always resolves. */
 function directorGate(s: RunnerState, now: number, inboxCount: number, opts: EligibilityOptions): Eligibility {
@@ -88,10 +96,10 @@ function directorGate(s: RunnerState, now: number, inboxCount: number, opts: Eli
     // the ~2 s poll cadence (BUGS.md hot loop). Such an inbox is due only on the min-run-
     // interval clock, like the leftover-pinned arm. A prompt an operator submitted since the
     // run ended (inboxSelfRequeued false) runs immediately, as before.
-    if (opts.inboxSelfRequeued) return now >= s.nextRunAt ? { run: true, reason: "inbox" } : { run: false };
+    if (opts.inboxSelfRequeued) return dueOnMinInterval(s, now, "inbox");
     return { run: true, reason: "inbox" };
   }
-  if (opts.leftoverPending) return now >= s.nextRunAt ? { run: true, reason: "leftover" } : { run: false };
+  if (opts.leftoverPending) return dueOnMinInterval(s, now, "leftover");
   return { run: false };
 }
 
@@ -100,7 +108,7 @@ function directorGate(s: RunnerState, now: number, inboxCount: number, opts: Eli
  * this gate. Resolves only when a resume is pending, else undefined. */
 function resumeGate(s: RunnerState, now: number): Eligibility | undefined {
   if (s.resumePending) {
-    return now >= s.nextRunAt ? { run: true, reason: "resume" } : { run: false };
+    return dueOnMinInterval(s, now, "resume");
   }
   return undefined;
 }
