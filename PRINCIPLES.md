@@ -21,6 +21,11 @@ what to do, not what to avoid.
 - Latest instruction wins: a newer user request supersedes older recorded bugs, plans, and docs —
   synthesize it with the existing entries and update them in place so the record reflects current
   intent.
+- Refusals surface as decisions, not alarms: a backlog entry a role has refused is shown to the
+  operator as a **Question** to answer when it is their call to make, or self-healed by the system
+  when it can settle it on its own — so the UI raises a warning only for what the operator must act
+  on, never a standing "waiting on your decision" banner. (recorded 2026-11-15 by the director role,
+  from the user's note on the refused-entry alert)
 
 ## Budgets
 

@@ -6,7 +6,15 @@ director). Loops never block on their own questions; they check here at the star
 
 ## Open
 
-_None yet._
+### Should a refused backlog entry surface to the user as a Question, or self-heal silently? (asked by director 2026-11-15)
+
+The user reported the dashboard's amber banner — "N refused entries wait on your decision · no role takes it until you release it (`tumwater plan|bug --release <n>`, or the entry's drawer) or cancel it" — and said a refused entry should **never** sit "waiting for a decision" as a standing warning: it should either be **self-healing** (the system settles it, so it appears nowhere) or be **surfaced as a Question** for the user. The banner is built by `pushRefusedAlert` (src/ui/team-alert-backlog.ts), fed by `refusedEntries` (src/backlog/backlog-eligibility.ts); it is the only backlog hold that raises an action-requesting (amber) warning. A `Refused` note is written when a work role judged its task harmful, or a product/design decision the user must make. The other holds already resolve without an operator warning (`needs-review` → the plan role splits it, `blockedBy` → waits on a prerequisite, `awaiting-recurrence` → waits on a test, `with-director` → the director handles it), and `tumwater doctor` already flags a refusal whose stated objection may be stale.
+
+- **Option A (recommended): surface as a Question.** Re-present the refused entry with the Question alert's indigo tone and wording — the same mechanism the `questions` arm already emits (the `?` indigo line / the dashboard's indigo Questions tab) — instead of a distinct amber warning. The entry stays in its own backlog file (PLANS.md/BUGS.md); only its *surfacing* changes. This fits the definition: a refusal is *the user's call*, so asking the user is coherent, and the indigo Question tone already reads as "you may want to answer this" rather than "you must act." Retire the amber `pushRefusedAlert` banner.
+- **Option B: self-heal.** The system detects a refusal whose stated objection no longer holds (e.g. a prerequisite has since landed) and lifts the `**Refused**` note on its own, so it never reaches the UI. This is sound only for the *mechanically-stale* subset; a refusal that is a genuine design call cannot self-heal without the system overriding the role's judgment. Under pure self-heal a non-stale refusal would surface nowhere, which is unsound.
+- **Hybrid (recommended within A):** surface genuine refusals as Questions (A) and self-heal only the mechanically-stale ones (B), so the UI raises a Question exactly when the operator's judgment is actually needed and stays silent otherwise.
+
+Recommendation: A, with the hybrid — it reuses the existing indigo Question surface, keeps `Refused = the user's call` coherent, and is a small change (retire the amber banner, route refusals through the Question alert); B alone is a larger, riskier auto-mutation of the backlog files. (Recorded 2026-11-15 by the director role.)
 
 ## Answered
 
