@@ -50,6 +50,13 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     const saveDiscard = (prefix) =>
       "<div><button type='button' class='btn btn-sm btn-primary' data-act='" + prefix + "-save' data-arg='" + esc(role) + "'>Save</button> " +
       "<button type='button' class='btn btn-sm' data-act='" + prefix + "-discard' data-arg='" + esc(role) + "'>Discard</button></div>";
+    // The closed-state edit button every config-field editor renders while its row is closed,
+    // named so the button shell (btn-sm, data-act '<field>-edit', data-arg role) lives in one
+    // home and cannot drift field to field; each caller passes only its act-name and the label
+    // expression (the Edit/Set-x label differs per field and is spelled at each site). The
+    // open row's input + Save/Discard pair is the saveDiscard helper above.
+    const editButton = (action, label) =>
+      "<button type='button' class='btn btn-sm' data-act='" + action + "' data-arg='" + esc(role) + "'>" + label + "</button>";
     const rows = [];
     // A role that runs on pi's own saved default carries no provider/model but a piDefault
     // selector (rolePayload's resolvedModelFields leaves both undefined), and the CLI's
@@ -94,7 +101,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
         "<input id='modeleditthinking' type='text' placeholder='thinking' value='" + esc(modelEditing.thinking) + "'>" +
         "<input id='modeleditbackend' type='text' placeholder='backend' value='" + esc(modelEditing.backend) + "'>" +
         saveDiscard("model")
-      : "<button type='button' class='btn btn-sm' data-act='model-edit' data-arg='" + esc(role) + "'>" + (rawTriple.length ? "Edit" : "Set model") + "</button>";
+      : editButton("model-edit", rawTriple.length ? "Edit" : "Set model");
     rows.push("<div><dt>Model overrides</dt><dd title='" + esc(modelBody) + "'>" + esc(modelBody) + modelControl + "</dd></div>");
     // Context window: the resolved primary seam's declared window - the same seam '- Next run:'
     // previews. Guard optional to keep an older payload that lacks the field rendering as before.
@@ -132,7 +139,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
       const intervalControl = editing
         ? "<input id='intervaleditinput' type='number' min='0' step='1' value='" + (seed === "" || seed == null ? "" : String(seed)) + "' placeholder='team default'>" +
           saveDiscard("interval")
-        : "<button type='button' class='btn btn-sm' data-act='interval-edit' data-arg='" + esc(role) + "'>" + (typeof view.minRunIntervalOverride === "number" ? "Edit" : "Set interval") + "</button>";
+        : editButton("interval-edit", typeof view.minRunIntervalOverride === "number" ? "Edit" : "Set interval");
       rows.push("<div><dt>Min run interval</dt><dd title='" + esc(intervalBody) + "'>" + esc(intervalBody) + intervalControl + "</dd></div>");
     }
     // The parallel-runner count (roles.<base>.instances), worded like role-render.ts's
@@ -155,7 +162,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
       const instControl = editingInst
         ? "<input id='instanceseditinput' type='number' min='1' max='8' step='1' value='" + (seed === "" || seed == null ? "" : String(seed)) + "' placeholder='default 1'>" +
           saveDiscard("instances")
-        : "<button type='button' class='btn btn-sm' data-act='instances-edit' data-arg='" + esc(role) + "'>" + (hasInstances ? "Edit" : "Set instances") + "</button>";
+        : editButton("instances-edit", hasInstances ? "Edit" : "Set instances");
       rows.push("<div><dt>Instances</dt><dd title='" + esc(instBody) + "'>" + esc(instBody) + instControl + "</dd></div>");
     }
     // The windows governing the role, worded like role-render.ts's Quiet hours line; the end time
@@ -175,7 +182,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
       const quietControl = editQuiet
         ? "<input id='quieteditinput' type='text' placeholder='23:00-07:00' value='" + esc(quietEditing.window) + "'>" +
           saveDiscard("quiet")
-        : "<button type='button' class='btn btn-sm' data-act='quiet-edit' data-arg='" + esc(role) + "'>" + (ownWindow !== "" ? "Edit" : "Set quiet hours") + "</button>";
+        : editButton("quiet-edit", ownWindow !== "" ? "Edit" : "Set quiet hours");
       rows.push("<div><dt>Quiet hours</dt><dd title='" + esc(quietBody) + "'>" + esc(quietBody) + quietControl + "</dd></div>");
     }
     if (Array.isArray(view.quietHours)) view.quietHours.forEach(function (w) {
@@ -217,7 +224,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
       const capControl = editing
         ? "<input id='capeditinput' type='number' min='0' step='0.01' value='" + (capEditing.value ? String(capEditing.value) : "") + "' placeholder='no cap'>" +
           saveDiscard("cap")
-        : "<button type='button' class='btn btn-sm' data-act='cap-edit' data-arg='" + esc(role) + "'>" + (dc ? "Edit cap" : "Set a cap") + "</button>";
+        : editButton("cap-edit", dc ? "Edit cap" : "Set a cap");
       rows.push("<div><dt>Daily cap</dt><dd title='" + esc(capBody) + "'>" + esc(capBody) + capControl + "</dd></div>");
     }
     // The standing instructions (roles.<base>.instructions, resolved through the base role),
@@ -234,7 +241,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     const instControl = instEditing
       ? "<textarea id='instructionsedittext' rows='10' class='mono' style='width:100%'>" + esc(instructionsEditing.text) + "</textarea>" +
         saveDiscard("instructions")
-      : "<button type='button' class='btn btn-sm' data-act='instructions-edit' data-arg='" + esc(role) + "'>Edit</button>";
+      : editButton("instructions-edit", "Edit");
     rows.push("<div><dt>Instructions override</dt><dd title='" + esc(instText) + "'>" + esc(instBody) + instControl + "</dd></div>");
     if (typeof view.find === "string" && view.find.trim() !== "") rows.push(kvRow("Find text", clamp(view.find), view.find));
     return rows.length ? "<section><div class='sec-head'><h3>Configuration</h3></div><dl class='kv'>" + rows.join("") + "</dl></section>" : "";
