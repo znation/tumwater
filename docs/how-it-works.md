@@ -224,10 +224,14 @@ never has to wait a parked check out.
   heal run (a `ci` run whose inbox holds a heal prompt — healing main is work, so it is admitted
   ahead of every queued role run even though `ci` otherwise schedules as maintenance), then
   work roles (feature, bugfix, plan), then maintenance roles.
-- **No merge interlock.** A role with a queued or in-flight change still authors on the next
-  poll: the merge queue is not a scheduling gate, so landing never holds authoring. A fresh run
-  resets the role's branch to main, and a second commit by a role with a waiting pin stays on its
-  own branch (`heldOnBranch`), so it cannot collide with the change that is landing.
+- **No merge interlock.** A role whose change is queued or in flight still authors on the next
+  poll: the merge queue is not a scheduling gate, so a landing change never holds the role's
+  *other* work (a fresh run resets the role's branch to main, and a second commit by a role with
+  a waiting pin stays on its own branch (`heldOnBranch`), so it cannot collide with the change
+  that is landing). The one exception is the role's own change: a non-director role whose live
+  pin is the one landing is deferred until the drain settles it (the drain owns that merge, so a
+  role run would only re-pin the same pin); once the pin is no longer draining (stale or kept)
+  the role returns to its normal run schedule. Resume and inbox demand still run in the meantime.
 - **One bound.** `maxConcurrent` is the only concurrency bound: a run whose admission waits
   30 s or more because the team is busy logs a `provider_wait` event, and `tumwater doctor`'s
   "provider contention" row sums the last 24 h and warns at 10 minutes. Every wait is a
