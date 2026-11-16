@@ -8,6 +8,7 @@ import {
   entryLags,
   fenceOpener,
   fenceTracker,
+  sectionSpan,
   validationGapTag,
 } from "../src/backlog/backlog-md.js";
 import {
@@ -391,6 +392,36 @@ test("closesFence closes only at a bare fence line of the same character, at lea
   assert.equal(closesFence("```ts", backtick3), false); // an info string: not a closer
   assert.equal(closesFence("~~~", backtick3), false); // the other fence character
   assert.equal(closesFence("```", { char: "`", length: 4 }), false); // shorter than the opener
+});
+
+// sectionSpan is the one fence-aware section reader the backlog writers (backlog-write.ts)
+// and the archive mover (backlog-archive.ts) read a `## ` section's span through — the heading
+// a section opens at, and the next real `## ` heading that ends it. Expected values are worked
+// from fencedHeadingTitle (a `## ` line inside a fence is neither a heading nor a boundary)
+// and nextSectionHeading (the next real `## ` index, or lines.length), not from a call.
+test("sectionSpan finds a ## section's span, fence-aware", () => {
+  // A quoted `## Done` inside a fence is body text: the real heading (line 0) opens the
+  // section and the real `## Fixed` (line 7) ends it. The fence at line 3 holds line 4,
+  // so the quoted heading there is never the section.
+  assert.deepEqual(
+    sectionSpan(["## Done", "", "x", "```md", "## Done", "```", "", "## Fixed", "y"], "Done"),
+    { heading: 0, end: 7 },
+  );
+  // A `## Done` whose only occurrence is quoted inside a fence does not exist as a section.
+  assert.equal(
+    sectionSpan(["## Open", "", "```", "## Done", "```", "", "## Fixed", "y"], "Done"),
+    null,
+  );
+  // A plain (unfenced) section still resolves — the fence branch is a special case, not a
+  // rewrite of the unfenced rule.
+  assert.deepEqual(
+    sectionSpan(["## Open", "a", "", "## Done", "b", "", "c"], "Done"),
+    { heading: 3, end: 7 },
+  );
+  // A section with no following `## ` heading runs to EOF: end is lines.length.
+  assert.deepEqual(sectionSpan(["## Done", "x", "y"], "Done"), { heading: 0, end: 3 });
+  // A section that is simply absent.
+  assert.equal(sectionSpan(["## Open", "", "## Done"], "Missing"), null);
 });
 
 test("a ### heading inside a fenced code block is body content, not an entry boundary", () => {
