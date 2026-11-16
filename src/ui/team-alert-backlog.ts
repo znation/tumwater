@@ -25,15 +25,17 @@ function pushQuestionsAlert(out: TeamAlert[], questions: readonly string[]): voi
   }
 }
 
-// Refused entries hold until a human decides; amber because the operator has to act.
+// Refused entries hold until a human decides; indigo — a question to answer, not a demand
+// (the 2026-11-15 "surface as a question" decision) — so the amber warning stays reserved for
+// what genuinely must be acted on.
 function pushRefusedAlert(out: TeamAlert[], refused: readonly RefusedEntry[]): void {
   if (refused.length) {
     const first = refused[0]!;
     out.push({
       key: "refused",
-      tone: "amber",
-      title: `${plural(refused.length, "refused entry waits", "refused entries wait")} on your decision`,
-      detail: `Refused ${entryKindLabel(first.file).toLowerCase()}: ${entryListDetail(refused.map((r) => r.title))} · no role takes it until you release it (tumwater plan|bug --release <n>, or the entry's drawer) or cancel it`,
+      tone: "indigo",
+      title: `${plural(refused.length, "refused entry needs", "refused entries need")} your answer`,
+      detail: `Refused ${entryKindLabel(first.file).toLowerCase()}: ${entryListDetail(refused.map((r) => r.title))} · release it or cancel it`,
       actions: openBacklogAction(first),
     });
   }

@@ -12,7 +12,7 @@ import { roleLabel } from "../roles/role-labels.js";
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
  * first title stripped of its stamp, plus ` — and N more` when others await, so the two
  * alert kinds cannot drift on the separator or the count. The caller appends its own
- * action suffix (the refused alert's " · no role takes it…" clause). */
+ * action suffix (the refused alert's " · release it or cancel it" clause). */
 export function entryListDetail(titles: readonly string[]): string {
   const first = titles[0] === undefined ? "" : stripEntryStamp(titles[0]);
   return titles.length > 1 ? `${first} — and ${titles.length - 1} more` : first;

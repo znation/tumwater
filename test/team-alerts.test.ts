@@ -281,18 +281,22 @@ test("a waiting: low disk raises one amber alert naming the free space and the f
   assert.deepEqual(teamAlerts(base, [], [], Date.now()), [], "no disk block: nothing new");
 });
 
-test("refused entries raise a standing amber alert right after the questions alert", () => {
+test("refused entries raise a standing indigo question alert right after the questions alert", () => {
   const now = Date.now();
   const one = teamAlerts(base, [], [], now, [{ file: "plans", index: 1, title: "Split X (planned 2026-10-14 by plan)" }]);
-  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["refused", "amber", "1 refused entry waits on your decision"]]);
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["refused", "indigo", "1 refused entry needs your answer"]]);
   assert.ok(one[0]!.detail.startsWith("Refused plan: Split X ·"));
-  assert.ok(one[0]!.detail.includes("--release"));
+  // The detail keeps the entry name and the release/cancel affordance but no longer alarms:
+  // it drops the "no role takes it" run-on and the `--release` spelling (both live in the drawer).
+  assert.ok(one[0]!.detail.includes("release it or cancel it"));
+  assert.ok(!one[0]!.detail.includes("no role takes it"));
+  assert.ok(!one[0]!.detail.includes("--release"));
   assert.deepEqual(one[0]!.actions, [{ label: "Open backlog", act: "backlog", arg: "plans:1" }]);
   const two = teamAlerts(base, [], [], now, [
     { file: "plans", index: 1, title: "A (planned 2026-10-14)" },
     { file: "bugs", index: 0, title: "B (reported 2026-10-14)" },
   ]);
-  assert.equal(two[0]!.title, "2 refused entries wait on your decision");
+  assert.equal(two[0]!.title, "2 refused entries need your answer");
   assert.ok(two[0]!.detail.includes("— and 1 more"));
   // The action lands on the first (named) refused entry: its file and 0-based row.
   assert.equal(two[0]!.actions[0]?.arg, "plans:1");
