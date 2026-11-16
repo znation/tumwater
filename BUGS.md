@@ -57,6 +57,14 @@ The 11-04 and 11-09 director fixes (`directorPinOwedRun` in src/scheduling/scope
 
 The post-merge review of commit `a88d62b4bce0f5b19a22e0944fd170b7d4c6ad42` (Pin secretLeakReason's two untested changed-file guards in test/secret-leaks.test.ts) never reached a verdict: This operation was aborted. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
 
+### `an aborted run releases its pipe handles, so an escaped separate-group daemon adds no harness handle` failed, then passed on the same tree (quarantined by tumwater 2026-11-16)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+an aborted run releases its pipe handles, so an escaped separate-group daemon adds no harness handle
+~~~~
+
 ## Fixed
 
 ## Verified
