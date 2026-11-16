@@ -5,6 +5,17 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### post-merge review of a88d62b4 never reached a verdict (found by the review role 2026-11-16) — fixed 2026-11-16 by the bugfix role
+
+The post-merge review of commit `a88d62b4bce0f5b19a22e0944fd170b7d4c6ad42` (Pin secretLeakReason's two untested changed-file guards in test/secret-leaks.test.ts) never reached a verdict: This operation was aborted. It stays on main as ordinary unreviewed backlog work, and its review will never run again.
+
+**Fix.** Settled by reading the commit's diff on main, as the entry asked. The change is test-only (46 added lines to test/secret-leaks.test.ts, no source change): two `secretLeakReason` guards the pre-merge gate carries had no pin, so a reviewer changing either would not fail the suite. Both tests pass on the current tree and each pins a real guard read in `src/review/secret-leaks.ts`:
+- `names at most ten leaked files and appends the overflow count` — pins `MAX_NAMED = 10` (src/review/secret-leaks.ts:17) and the ` (+1 more)` suffix `moreSuffix` emits from `leaks.length - MAX_NAMED`; an 11-file leak names the first ten and omits the eleventh.
+- `skips an oversized changed file without reading it` — pins the 8 MiB per-file cap `MAX_SCAN_BYTES = 8 * 1024 * 1024` (src/review/secret-leaks.ts:15): a >8 MiB file is skipped at `stat.size > MAX_SCAN_BYTES` in `readFileForScan`, before `readFileSync` ever runs (verified by a `readFileSync` spy), so a hostile or accidental huge file is never scanned while the small file's finding is still reported.
+Nothing in the diff is wrong; the commit is correct and safe to stand as merged.
+
+**Validation gap:** none — `npm test secret-leaks` reproduced the two added tests against the current tree and both pass (13 pass / 0 fail); the guards they pin are read directly in src/review/secret-leaks.ts. The one genuinely unconfirmed fact is the abort's cause (the aborted review's verdict), which is not part of the verdict this entry settles and cannot be recovered offline.
+
 ### A `checkpoint` call ends the run instead of compacting it: pi 1.5.2's `compact()` aborts the running turn first, so the run exits before any compaction is written — fixed 2026-11-16 by the bugfix role
 
 Filed 2026-11-15 by an operator session from the live team's logs (build 72a0b257, pi 1.5.2, qwenrunner Qwen3.8-27B).

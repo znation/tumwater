@@ -32,9 +32,6 @@ The 11-04 and 11-09 director fixes (`directorPinOwedRun` in src/scheduling/scope
 
 **Reverted attempt (2026-11-16).** be6c22efd added a `drainingGate` (src/scheduling/scheduling.ts) that deferred every non-director role while its pin was draining. Every changed run leaves a pin, so this restored the merge interlock. Two e2e tests in test/orchestrator-3.e2e.test.ts failed deterministically: `a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate` and `a role rejected in its verify runs again while another queued change is still in review`. The gate's `--affected` selection never runs the e2e tier, so the change merged green and turned GitHub CI red. An operator session reverted it, together with its docs sync e478de6b6. Run `npm run test:e2e` before landing a fix for this entry.
 
-### post-merge review of a88d62b4 never reached a verdict (found by the review role 2026-11-16)
-
-The post-merge review of commit `a88d62b4bce0f5b19a22e0944fd170b7d4c6ad42` (Pin secretLeakReason's two untested changed-file guards in test/secret-leaks.test.ts) never reached a verdict: This operation was aborted. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
 
 ### `an aborted run releases its pipe handles, so an escaped separate-group daemon adds no harness handle` failed, then passed on the same tree (quarantined by tumwater 2026-11-16)
 
