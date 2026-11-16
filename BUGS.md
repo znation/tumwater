@@ -53,6 +53,10 @@ The 11-04 and 11-09 director fixes (`directorPinOwedRun` in src/scheduling/scope
 
 **Required behavior.** No role is re-run for leftover recovery while its own pin is still pending, meaning the merge ref exists and points at the worktree's tip. The role should be deferred until its merge settles. Make one role-agnostic check that generalizes the director's fix rather than adding another per-role case.
 
+### post-merge review of a88d62b4 never reached a verdict (found by the review role 2026-11-16)
+
+The post-merge review of commit `a88d62b4bce0f5b19a22e0944fd170b7d4c6ad42` (Pin secretLeakReason's two untested changed-file guards in test/secret-leaks.test.ts) never reached a verdict: This operation was aborted. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
+
 ## Fixed
 
 ## Verified
