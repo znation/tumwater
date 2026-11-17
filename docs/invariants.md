@@ -533,7 +533,7 @@ PRINCIPLES.md from a role whose base is neither `director` nor `steward`, is rej
 review — md-only diffs included — and flagged at staging for one fix-up turn.
 
 **Binds.** `src/review/protected-edits.ts`, `src/review/review.ts`, `src/stage/stage-check.ts`,
-`src/baseline/main-watch.ts` (the tip check).
+`src/baseline/main-watch-rules.ts` (the tip check).
 
 **Pinned by.** `test/protected-edits.test.ts` (the per-case reasons), `test/review.test.ts` — "gate
 rejects an md-only edit to the brief text block with no pi run" and "gate rejects an md-only
@@ -551,7 +551,7 @@ md-only diffs included — and flagged at staging for one fix-up turn. The reaso
 variable or pi source, never the value.
 
 **Binds.** `src/review/secret-leaks.ts`, `src/review/review.ts`, `src/stage/stage-check.ts`,
-`src/baseline/main-watch.ts` (the tip check).
+`src/baseline/main-watch-rules.ts` (the tip check).
 
 **Pinned by.** `test/secret-leaks.test.ts` — "piCredentialValues returns literal apiKey, header,
 key, access and refresh values", "piCredentialValues skips interpolations, commands and short dummy

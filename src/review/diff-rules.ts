@@ -1,6 +1,6 @@
 /** The deterministic diff rules the review gate and the main watch share, each run in its own
- * `scope` and order — the one call site both the gate (review.ts) and the main watch
- * (main-watch.ts) use, so a finding reads the same on a changed tree and on main's tip.
+ * `scope` and order — the one call site both the gate (review.ts) and the watch
+ * (main-watch-rules.ts) use, so a finding reads the same on a changed tree and on main's tip.
  * `baseRev` is a commit or branch name the async
  * rules resolve with changeBaseRev (merge-base of HEAD and it), so the watch passes a commit
  * while the gate passes the main branch. The final `scope` argument picks which set runs and in

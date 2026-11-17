@@ -120,7 +120,7 @@ interface MainCheckScan {
    * check covers, even when a merge lands while the run is still in flight. */
   mergeDoneBeforeSpawnCommit?: string;
   /** The newest main_culprit event in the tail — the main watch's blame for the red it named
-   * (src/baseline/main-watch.ts). Collected in the same single pass as the check. */
+   * (src/baseline/main-settle.ts). Collected in the same single pass as the check. */
   culprit?: HarnessEvent;
   /** The oldest main_culprit since the newest passing full main_check in the tail — the opener
    * of the red spell still open at the tail's end, or undefined when the tail's end is green

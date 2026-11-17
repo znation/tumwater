@@ -3,9 +3,9 @@
  * synchronous over the event log and quarantine.json, so every surface (doctor's rows and the
  * selfcheck digest) words them the same. Read-only: it never writes an event, state or file.
  *
- * G1 lives on the `main_check` / `main_red_hold` event trail (src/baseline/main-watch.ts,
- * src/baseline/main-red.ts), and names the merge the watch blamed (`main_culprit`, logged by
- * src/baseline/main-watch.ts) in the same clause the dashboard alert uses. Only `main_check`
+ * G1 lives on the `main_check` / `main_red_hold` event trail (src/baseline/main-settle.ts,
+ * src/baseline/main-red.ts) and names the merge the watch blamed (`main_culprit` logged by
+ * src/baseline/main-settle.ts) in the same clause the dashboard alert uses. Only `main_check`
  * events that actually ran the check
  * (`durationMs` > 0; a cached or inherited verdict is ignored) and `main_red_hold` events
  * count, and a `main_check` that passed (a red naming only quarantined tests is recorded

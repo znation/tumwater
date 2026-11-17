@@ -159,10 +159,10 @@ export function runSpanMs(ev: HarnessEvent, starts: Map<string, number>): number
 const MERGED_EVENT_TAIL = 2000;
 
 /** The role whose `merged` event named `commit` — the owner of a main head, read by the main
- * watch's red-tip naming and its per-commit diff-rule attribution (main-watch.ts). undefined when
- * no recent merged event names the head. Lives here on the event READ side so main-watch.ts and
- * the merge paths that consult it share one definition without importing the events module.
- * (docs/code-metrics.md records "no runtime import cycles"). */
+ * watch's red-tip naming and its per-commit diff-rule attribution (src/baseline/main-settle.ts
+ * and src/baseline/main-watch-rules.ts). undefined when no recent merged event names the head.
+ * Lives here on the event READ side so every reader shares one definition without importing the
+ * events module (docs/code-metrics.md records "no runtime import cycles"). */
 export function mergingRoleOf(root: string, commit: string): string | undefined {
   return readEvents(root, MERGED_EVENT_TAIL)
     .reverse()
