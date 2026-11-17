@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isOsTempRoot } from "../paths.js";
 import { classifyLock, releaseOwnedLockDir, tryClaimLockDir } from "./lock.js";
 import { ensureParentDir, isDirectory, removeTree, walkUp } from "../files/files.js";
 
@@ -35,7 +36,10 @@ const CHECK_SLOT_RETRY_MS = 200;
  * locates the root the same way the harness's own root lookup does (shared walkUp climb), and a
  * suite run outside any team root has no ledger to contend for. Exported for tests. */
 export function findTeamRoot(startDir = process.cwd()): string | null {
-  return walkUp(startDir, 63, (dir) => (isDirectory(path.join(dir, ".tumwater", "state")) ? dir : null));
+  // The OS temp root is never a team root (isOsTempRoot): a stale .tumwater/state at the shared
+  // temp root would otherwise be claimed as the root and its slot ledger recreated there.
+  return walkUp(startDir, 63, (dir) =>
+    isDirectory(path.join(dir, ".tumwater", "state")) && !isOsTempRoot(dir) ? dir : null);
 }
 
 /** The slot directory for `index` of a ledger rooted at `root` (under `root/.tumwater/state`). One

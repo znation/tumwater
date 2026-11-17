@@ -13,7 +13,7 @@
  */
 
 import path from "node:path";
-import { toolOutputDir } from "../paths.js";
+import { isOsTempRoot, toolOutputDir } from "../paths.js";
 import { ensureDir, isDirectory, walkUp, writeTextAtomic } from "../files/files.js";
 
 /** Walk up from `startDir` looking for a `.tumwater/` directory — the harness root. Worktrees
@@ -23,7 +23,9 @@ import { ensureDir, isDirectory, walkUp, writeTextAtomic } from "../files/files.
  * terminates without walking to the filesystem root; returns null when no ancestor within
  * that bound has one, so such a run writes nothing. Exported for tests. */
 export function findTumwaterRoot(startDir: string = process.cwd()): string | null {
-  return walkUp(startDir, 63, (dir) => (isDirectory(path.join(dir, ".tumwater")) ? dir : null));
+  // The OS temp root is never a team root (isOsTempRoot): a stale .tumwater at the shared temp
+  // root would otherwise be claimed as the root and .tumwater/log recreated there (BUGS.md).
+  return walkUp(startDir, 63, (dir) => (isDirectory(path.join(dir, ".tumwater")) && !isOsTempRoot(dir) ? dir : null));
 }
 
 /** Persist a full tool output under the harness's gitignored `.tumwater/` area and return

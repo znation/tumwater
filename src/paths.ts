@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { DIRECTOR_ROLE } from "./roles/roles.js";
 import { isDirectory } from "./files/files.js";
@@ -406,6 +408,30 @@ export function sessionDir(root: string, role: string): string {
   return path.join(sessionsRootDir(root), role);
 }
 
+/** Whether `dir` is the resolved OS temp root (`os.tmpdir()`, symlink resolved). A real team
+ * root is a git checkout; the temp root never is, yet every parent walk for a `.tumwater`
+ * directory climbs through it. On a shared host where the temp root itself holds a stale
+ * `.tumwater` (leaked by an earlier run), such a walk otherwise claims the temp root as a team
+ * root and the code then recreates `.tumwater/{state,bin,log}` there — the self-renewing poison
+ * that reds the root-walk tests (BUGS.md 2026-11-16). The walk's guard: the temp root is never
+ * a team root. `os.tmpdir()` re-reads `TMPDIR` on each call, so a suite that redirects the
+ * temp root is guarded against that redirect too. */
+export function isOsTempRoot(dir: string): boolean {
+  let tempRoot: string;
+  try {
+    tempRoot = fs.realpathSync(os.tmpdir());
+  } catch {
+    return false; // no resolvable temp root: nothing to guard against.
+  }
+  let resolved: string;
+  try {
+    resolved = fs.realpathSync(dir); // resolve both sides: macOS /var -> /private/var otherwise differ
+  } catch {
+    return false; // dir missing: not a root, nothing to guard against.
+  }
+  return resolved === tempRoot;
+}
+
 /** `sessionDir`'s real team root — the nearest ancestor holding a `.tumwater` directory — or
  * undefined when none does. agent-spawn installs the notes shim from THIS (never from teamRootOf,
  * whose no-ancestor fallback can be a shared directory): writing `.tumwater` at the fallback
@@ -414,7 +440,9 @@ export function sessionDir(root: string, role: string): string {
 export function nearestTumwaterRoot(sessionDir: string): string | undefined {
   let dir = sessionDir;
   for (let i = 0; i < 64; i += 1) {
-    if (isDirectory(path.join(dir, ".tumwater"))) return dir;
+    // The OS temp root is never a team root (isOsTempRoot): a stale `.tumwater` at the shared
+    // temp root is poison, not a root — the notes shim must not install it either.
+    if (isDirectory(path.join(dir, ".tumwater")) && !isOsTempRoot(dir)) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;

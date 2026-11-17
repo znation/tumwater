@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs";
+import os from "node:os";
 import {
   STATE_DIR,
   abortRequestPath,
@@ -24,6 +25,7 @@ import {
   sessionsRootDir,
   statePath,
   nearestTumwaterRoot,
+  isOsTempRoot,
   owningTeamRoot,
   worktreePath,
 } from "../src/paths.js";
@@ -184,4 +186,17 @@ test("nearestTumwaterRoot does not read a non-directory .tumwater entry as a roo
   const dir = fs.realpathSync(tmpdir());
   fs.writeFileSync(path.join(dir, ".tumwater"), "x"); // a .tumwater FILE, not a directory
   assert.equal(nearestTumwaterRoot(dir), undefined);
+});
+
+// The OS temp root guard (isOsTempRoot) is the one rule that keeps the root walks from claiming
+// a stale .tumwater at os.tmpdir() as a team root (BUGS.md 2026-11-16). It compares the resolved
+// temp root (realpath'd, so macOS /var <-> /private/var agree) against path.resolve(dir): the
+// resolved temp root itself matches, its children do not.
+test("isOsTempRoot matches the resolved OS temp root and rejects a child of it", () => {
+  const tempRoot = fs.realpathSync(os.tmpdir());
+  assert.equal(isOsTempRoot(tempRoot), true, "the resolved temp root is the OS temp root");
+  assert.equal(isOsTempRoot(os.tmpdir()), true, "the raw os.tmpdir() form matches once resolved");
+  const child = fs.realpathSync(tmpdir()); // a fresh dir under the per-run root, under the temp root
+  assert.equal(isOsTempRoot(child), false, "a child of the temp root is not the temp root");
+  assert.equal(isOsTempRoot(path.join(child, "a")), false, "a deeper descendant is not the temp root");
 });

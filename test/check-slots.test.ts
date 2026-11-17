@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import {
@@ -26,6 +27,33 @@ test("findTeamRoot finds the ancestor holding .tumwater/state", () => {
   fs.mkdirSync(nested, { recursive: true });
   assert.equal(findTeamRoot(nested), root);
   assert.equal(findTeamRoot(tmpdir()), null, "a dir with no .tumwater/state ancestor has no team root");
+});
+
+// A stale .tumwater/state at the OS temp ROOT is poison, not a team root (BUGS.md 2026-11-16):
+// findTeamRoot must ignore it. Mutate the temp root in-process (os.tmpdir() re-reads TMPDIR),
+// restore it in finally, and remove the .tumwater it mints so a clean host never keeps it.
+test("findTeamRoot ignores a stale .tumwater/state at the OS temp root", () => {
+  const prior = process.env.TMPDIR;
+  const poison = fs.mkdtempSync(path.join(os.tmpdir(), "os-tmp-root-poison-"));
+  const poisonState = path.join(poison, ".tumwater", "state");
+  fs.mkdirSync(poisonState, { recursive: true });
+  try {
+    process.env.TMPDIR = poison;
+    assert.equal(findTeamRoot(os.tmpdir()), null, "a stale .tumwater/state at the temp root is not a team root");
+    const realRoot = fs.mkdtempSync(path.join(os.tmpdir(), "os-tmp-real-root-"));
+    try {
+      fs.mkdirSync(path.join(realRoot, ".tumwater", "state"), { recursive: true });
+      const nested = path.join(realRoot, "a", "b");
+      fs.mkdirSync(nested, { recursive: true });
+      assert.equal(findTeamRoot(nested), realRoot, "a child-of-temp-root team root is still found");
+    } finally {
+      fs.rmSync(path.join(realRoot, ".tumwater"), { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    }
+  } finally {
+    if (prior === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = prior;
+    fs.rmSync(path.join(poison, ".tumwater"), { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
 });
 
 test("at cap 1 a second acquire waits until the first slot is released", async () => {
