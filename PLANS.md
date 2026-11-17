@@ -59,46 +59,52 @@ compiled from the commit the release tag `v<version>` points at is that release.
   version>`, run `npm pack`, and confirm the tarball's `package/dist/build-info.json` has
   `release`; delete the tag, pack again, and confirm it does not.
 
-### Release version display, part 2/2: the GUI's Version row shows the npm release version, keeping the commit in its tooltip (planned 2026-11-16 by the operator; requires Release version display part 1/2 landed; touches src/build/build-info.ts src/ui/badges.ts src/ui/gui/gui-client-team.ts src/ui/status-payload.ts src/doctor/doctor.ts src/cli/cli-start.ts test/gui-client-sidebar.test.ts test/badges.test.ts test/status-payload.test.ts test/doctor-checks.test.ts)
+### Release version display, part 2/2: the GUI's Version row and `doctor` show the npm release version, keeping the commit in the GUI tooltip (planned 2026-11-16 by the operator, amended 2026-11-17 by the operator to leave the TUI alone; requires Release version display part 1/2 landed; touches src/build/build-info.ts src/ui/gui/gui-client-team.ts src/ui/status-payload.ts src/doctor/doctor.ts test/build-info.test.ts test/gui-client-sidebar.test.ts test/status-payload.test.ts test/doctor-checks.test.ts)
 
 **Goal.** When the running build is a release (`build.release`, part 1/2), the GUI sidebar's
-Version row reads `Version 0.8.1`, not `Version a1b2c3d4`. The commit stays one hover away for bug
-reports. Builds from a checkout (the self-hosted team, a developer's dist) have no `release` and
-keep showing the short sha, unchanged. Every other place that names the running build uses the
-same rule, so the GUI, the TUI header, `doctor` and `tumwater start` never disagree about which
-version is running.
+Version row reads `Version 0.8.1`, not `Version a1b2c3d4`, and `doctor`'s running line says
+`version 0.8.1`. The commit stays one hover away in the GUI for bug reports. Builds from a
+checkout (the self-hosted team, a developer's dist) have no `release` and keep showing the short
+sha, unchanged.
+
+**Out of scope.** Change nothing in the TUI or in what it shares: leave `buildBadge`
+(src/ui/badges.ts), src/ui/status-render.ts, src/ui/tui/ and `tumwater start`'s ` · build <sha>`
+line (src/cli/cli-start.ts) exactly as they are. The Remove the TUI series deletes or rewrites
+those files, and this part must not collide with it.
 
 **Approach.**
 - One shared label: a small exported helper beside `BuildStatus` in src/build/build-info.ts (for
   example `buildLabel(build)`), returning `build.release` when set and `shortSha(build.sha)`
-  otherwise. Each site below calls it; no site does its own `release ?? sha`.
-- GUI: the server sends the label ready-made, like `buildBadge`. src/ui/status-payload.ts ships
-  `buildLabel` beside `buildBadge`. gui-client-team.ts renders `"Version <span class='mono'>" +
-  esc(d.buildLabel || shortSha(d.build.sha)) + "</span>"`, falling back to the sha for a payload
-  from an older server.
-- Tooltip: `buildBadge` (src/ui/badges.ts) reads `, version 0.8.1 (build a1b2c3d4)` for a release
-  and keeps `, build a1b2c3d4` otherwise. The GUI tooltip's `.replace(/^, build/, "")` in
-  gui-client-team.ts must handle both, so a release tooltip reads `Running version 0.8.1 (build
-  a1b2c3d4)` and a checkout tooltip stays `Running version a1b2c3d4`. The TUI header uses the same
-  `buildBadge`, so it follows with no TUI change.
-- `doctor`'s running line (src/doctor/doctor.ts, `version ${shortSha(info.build.sha)}`) and
-  `tumwater start`'s ` · build <sha>` (src/cli/cli-start.ts) use the label too.
+  otherwise. The GUI payload and `doctor` both call it; neither does its own `release ?? sha`.
+- GUI row: the server sends the label ready-made, like `buildBadge`. src/ui/status-payload.ts
+  ships `buildLabel` beside `buildBadge`. gui-client-team.ts renders `"Version <span
+  class='mono'>" + esc(d.buildLabel || shortSha(d.build.sha)) + "</span>"`, falling back to the
+  sha for a payload from an older server.
+- GUI tooltip: today it is `"Running version" + buildBadge.replace(/^, build/, "")`. Keep
+  `buildBadge` unchanged and build the lead in gui-client-team.ts instead: strip the badge's
+  leading `, build <sha>` and prefix `Running version <label>`, adding ` (build <short sha>)`
+  when the label is a release. A release tooltip reads `Running version 0.8.1 (build a1b2c3d4)`;
+  a checkout tooltip stays byte-for-byte `Running version a1b2c3d4` plus today's suffixes.
+- `doctor`'s running line (src/doctor/doctor.ts, `version ${shortSha(info.build.sha)}`) uses the
+  label.
 - A release build is never stale (a non-self-hosted Redeployer never sets `stale`), so the
   "commits behind" and "update waits for main's check" suffixes need no release wording.
 
 **Acceptance criteria.**
+- `buildLabel` returns the release for a build with one and the 8-character short sha otherwise.
 - A GUI payload with `build: { sha: "aaaaaaaa…", release: "0.8.1" }` renders `Version <span
-  class='mono'>0.8.1</span>`, and its row title contains `0.8.1` and `aaaaaaaa`.
+  class='mono'>0.8.1</span>`, and its row title reads `Running version 0.8.1 (build aaaaaaaa)`.
 - A payload without `release` renders exactly today's `Version <span class='mono'>aaaaaaaa</span>`
   row, title and suffixes; the existing stale, waiting-for-check and restart-hold assertions in
   test/gui-client-sidebar.test.ts pass unchanged. A payload with `build` but no `buildLabel` (an
   older server) still renders the sha.
-- `buildBadge` returns `, version 0.8.1 (build aaaaaaaa)` for a release build and today's string
-  for every existing case in test/badges.test.ts.
 - `doctor` prints `version 0.8.1` for a release build and the short sha otherwise.
+- `git diff` for this part touches no file under src/ui/tui/, src/ui/badges.ts,
+  src/ui/status-render.ts or src/cli/cli-start.ts, and test/badges.test.ts passes unchanged.
 - Manual check: install the packed tarball from part 1/2's check globally (`npm i -g
   ./tumwater-<version>.tgz`) in a scratch environment, run `tumwater start` in a demo repo and
-  open the GUI. The sidebar reads `Version <version>` and hovering shows the commit.
+  open the GUI. The sidebar reads `Version <version>`, hovering shows the commit, and `tumwater
+  doctor` names the same version.
 
 ### `isMergeClaim`'s fail-closed boolean shape guard is pinned in test/merge-queue.test.ts, so a regression in the one home of "is this a well-formed backlog-claim trailer" the queue's file reader (`isMergeEntry`, which validates each entry's `claim`) and the commit-trailer reader (`claimOf`) both apply would be caught at the gate rather than as a torn or foreign claim the readers silently admit (planned 2026-11-16 by the plan role; the pin-a-rule the retired bad-anchor `isMergeClaim` entry's defect note flagged as "a different entry than this one" — the real boolean guard, not the 3-arm refusal-string builder that entry described)
 
