@@ -10,6 +10,96 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 _None yet._
 
+### Release version display, part 1/2: the build stamp records the npm release version when it was compiled from that release's tag (planned 2026-11-16 by the operator; touches src/build/build-info.ts src/redeploy/redeployer.ts src/team/team-orchestrator-info.ts test/build-info.test.ts test/stamp-build.test.ts test/redeployer.test.ts test/team-orchestrator-info.test.ts)
+
+**Goal.** An npm-installed tumwater shows a commit hash where the operator expects a version. The
+GUI sidebar's Version row (src/ui/gui/gui-client-team.ts) prints `shortSha(d.build.sha)`, and for
+an npm install that sha is the commit the Release workflow (.github/workflows/release.yml) packed
+from: `npm publish` runs `prepack` → `npm run build` → scripts/stamp-build.mjs, which writes
+`dist/build-info.json`, and package.json `files` ships that stamp. `createRedeployer`
+(src/redeploy/redeploy.ts) builds a Redeployer from any stamp, self-hosted or not, so
+`orchestrator.json` carries `build.sha` and every dashboard shows it. An operator who installed
+`tumwater@0.8.1` cannot match `a1b2c3d4` to a release. This part records the release version in
+the stamp so part 2/2 can show it.
+
+The version must come from the build, not be read from package.json at run time. Main always
+carries the NEXT version (scripts/release.mjs: "Main always carries the NEXT version"), so a
+checkout build showing package.json's version would claim an unreleased version. Only a build
+compiled from the commit the release tag `v<version>` points at is that release.
+
+**Approach.**
+- `BuildInfo` (src/build/build-info.ts) gains `release?: string`: the package.json version, set
+  only when the build's commit is the one tag `v<version>` points at. Doc comment: why it is not
+  read from package.json at run time (the sentence above).
+- `stampBuild(root, dist, sha?)` reads `version` from `root`'s package.json (reuse
+  `packageVersion` in src/version.ts) and asks git whether the tag `v<version>` resolves to the
+  stamped sha: `refSha(root, "refs/tags/v<version>^{commit}")` compared with the sha, or
+  `git tag --points-at` through `gitTry`. Match ⇒ write `release`. No package.json, no version, no
+  tag, or a tag on another commit ⇒ leave `release` out. A failed git read never fails the
+  stamp. The Release workflow's `actions/checkout@v4` on a tag push fetches the tag ref, so the
+  tag is present locally there; verify that in the acceptance check below rather than assume it.
+- `readBuildInfo` keeps `release` only when it is a non-empty string (a foreign value drops, like
+  the other fields).
+- `BuildStatus` gains `release?: string`. `Redeployer.status()` (src/redeploy/redeployer.ts)
+  copies `this.build.release` when set, and `parseBuild` (src/team/team-orchestrator-info.ts)
+  keeps it only when it is a non-empty string, so it reaches orchestrator.json and every
+  observer.
+- Nothing else changes: staleness, self-redeploy and self-reload still key on `sha`.
+
+**Acceptance criteria.**
+- In a fixture repo whose package.json says `1.2.3`: a stamp of a commit tagged `v1.2.3` carries
+  `release: "1.2.3"`; a stamp of an untagged commit, of a commit tagged `v1.2.2`, or with the
+  `v1.2.3` tag on an older commit carries no `release`; a missing or version-less package.json
+  stamps normally without `release`.
+- `readBuildInfo` round-trips `release`, and drops a non-string or empty one while keeping the
+  rest of the stamp.
+- `Redeployer.status()` includes `release` exactly when the build info has it, and `parseBuild`
+  keeps a string `release` and drops a foreign one without dropping the build.
+- Manual check, in a scratch clone (never in the primary checkout): tag HEAD `v<package.json
+  version>`, run `npm pack`, and confirm the tarball's `package/dist/build-info.json` has
+  `release`; delete the tag, pack again, and confirm it does not.
+
+### Release version display, part 2/2: the GUI's Version row shows the npm release version, keeping the commit in its tooltip (planned 2026-11-16 by the operator; requires Release version display part 1/2 landed; touches src/build/build-info.ts src/ui/badges.ts src/ui/gui/gui-client-team.ts src/ui/status-payload.ts src/doctor/doctor.ts src/cli/cli-start.ts test/gui-client-sidebar.test.ts test/badges.test.ts test/status-payload.test.ts test/doctor-checks.test.ts)
+
+**Goal.** When the running build is a release (`build.release`, part 1/2), the GUI sidebar's
+Version row reads `Version 0.8.1`, not `Version a1b2c3d4`. The commit stays one hover away for bug
+reports. Builds from a checkout (the self-hosted team, a developer's dist) have no `release` and
+keep showing the short sha, unchanged. Every other place that names the running build uses the
+same rule, so the GUI, the TUI header, `doctor` and `tumwater start` never disagree about which
+version is running.
+
+**Approach.**
+- One shared label: a small exported helper beside `BuildStatus` in src/build/build-info.ts (for
+  example `buildLabel(build)`), returning `build.release` when set and `shortSha(build.sha)`
+  otherwise. Each site below calls it; no site does its own `release ?? sha`.
+- GUI: the server sends the label ready-made, like `buildBadge`. src/ui/status-payload.ts ships
+  `buildLabel` beside `buildBadge`. gui-client-team.ts renders `"Version <span class='mono'>" +
+  esc(d.buildLabel || shortSha(d.build.sha)) + "</span>"`, falling back to the sha for a payload
+  from an older server.
+- Tooltip: `buildBadge` (src/ui/badges.ts) reads `, version 0.8.1 (build a1b2c3d4)` for a release
+  and keeps `, build a1b2c3d4` otherwise. The GUI tooltip's `.replace(/^, build/, "")` in
+  gui-client-team.ts must handle both, so a release tooltip reads `Running version 0.8.1 (build
+  a1b2c3d4)` and a checkout tooltip stays `Running version a1b2c3d4`. The TUI header uses the same
+  `buildBadge`, so it follows with no TUI change.
+- `doctor`'s running line (src/doctor/doctor.ts, `version ${shortSha(info.build.sha)}`) and
+  `tumwater start`'s ` · build <sha>` (src/cli/cli-start.ts) use the label too.
+- A release build is never stale (a non-self-hosted Redeployer never sets `stale`), so the
+  "commits behind" and "update waits for main's check" suffixes need no release wording.
+
+**Acceptance criteria.**
+- A GUI payload with `build: { sha: "aaaaaaaa…", release: "0.8.1" }` renders `Version <span
+  class='mono'>0.8.1</span>`, and its row title contains `0.8.1` and `aaaaaaaa`.
+- A payload without `release` renders exactly today's `Version <span class='mono'>aaaaaaaa</span>`
+  row, title and suffixes; the existing stale, waiting-for-check and restart-hold assertions in
+  test/gui-client-sidebar.test.ts pass unchanged. A payload with `build` but no `buildLabel` (an
+  older server) still renders the sha.
+- `buildBadge` returns `, version 0.8.1 (build aaaaaaaa)` for a release build and today's string
+  for every existing case in test/badges.test.ts.
+- `doctor` prints `version 0.8.1` for a release build and the short sha otherwise.
+- Manual check: install the packed tarball from part 1/2's check globally (`npm i -g
+  ./tumwater-<version>.tgz`) in a scratch environment, run `tumwater start` in a demo repo and
+  open the GUI. The sidebar reads `Version <version>` and hovering shows the commit.
+
 ### `isMergeClaim`'s fail-closed boolean shape guard is pinned in test/merge-queue.test.ts, so a regression in the one home of "is this a well-formed backlog-claim trailer" the queue's file reader (`isMergeEntry`, which validates each entry's `claim`) and the commit-trailer reader (`claimOf`) both apply would be caught at the gate rather than as a torn or foreign claim the readers silently admit (planned 2026-11-16 by the plan role; the pin-a-rule the retired bad-anchor `isMergeClaim` entry's defect note flagged as "a different entry than this one" — the real boolean guard, not the 3-arm refusal-string builder that entry described)
 
 `isMergeClaim` (src/merge/merge-queue.ts) is a **fail-closed boolean shape guard** — `isJsonObject(v) && (v.file === "PLANS.md" || v.file === "BUGS.md") && typeof v.key === "string" && typeof v.title === "string"` — with **no direct test** (`grep -rn isMergeClaim test/` prints nothing on this entry's base). Its two live readers — the queue-file reader `isMergeEntry` (same file, which validates `e.claim`) and the commit-trailer reader `claimOf` (src/git/commit-message.ts, `isMergeClaim(value) ? value : undefined`) — each consult it, and the existing `claimOf` trailer test (test/commit-message.test.ts) pins the valid arm, the wrong-`file` arm (`file: "NOT.md"` → absent), and the not-JSON arm, but never a non-string `key` or `title` or a non-object — those arms of the guard are unpinned, and `isJsonObject` (src/files/json-object.ts) accepts any plain object, so the `file`/`key`/`title` field checks are the only shape discipline. A regression that loosens one of them (say, dropping the `key`/`title` string checks) would let a torn or foreign claim — or a hand-made `Claim:` trailer — pass a reader meant to admit only a well-formed backlog claim, and no existing test catches it. The L23 bar (0 direct refs and an arm the readers leave unpinned) is met.
