@@ -5,6 +5,14 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### post-merge review of 7bbda7b0 never reached a verdict (found by the review role 2026-11-16) — fixed 2026-11-16 by the bugfix role
+
+The post-merge review of commit `7bbda7b0fffc1bfd591a71d19d61bf8188e2d07c` (Anchor the stranded-plan done-stamp to the entry's own trailing clause) never reached a verdict: This operation was aborted. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
+
+**Fix.** No fix — the diff on main is correct, so this is a review-only settlement. Checked the diff (src/backlog/backlog-structure.ts): the unanchored `DONE_STAMP` (`[—,(;]\s*done DATE`, tested over the whole heading) becomes `COMPLETION_STAMP` (`[—,;]\s*done DATE[^,]*$`, anchored to the trailing clause), and the `## Planned`-stranded test in `strandedPlanEntries` switches to it while the `## Done` arm keeps the unanchored `DONE_DATE`. Three checks: (1) the commit's own regression suite — `node --test dist/test/backlog-structure.test.js` = 73 pass / 0 fail; (2) the commit's named RISK, that a `done DATE` followed by a comma is now read as a citation rather than a completion — I grep'd the live PLANS.md / PLANS-DONE.md / BUGS.md and every `done DATE,` occurrence is a `## Done` entry (which the detector tests with the unanchored `DONE_DATE`, still matched) or body prose (never a `###` heading), so no real completion is dropped, and the dropped paren-introduced `(done` shape likewise has no live `## Planned` occurrence; (3) end-to-end — the detector's consumers (`doctor-backlog`'s `checkStrandedPlans` via doctor-backlog.test.ts, plus backlog-archive and backlog-write-retire) run 206 pass / 0 fail, and `strandedPlanEntries` called directly on the live PLANS.md and BUGS.md returns no entries. The change is correct, so the review reaches its verdict here.
+
+**Validation gap:** none — the existing `backlog-structure` regression suite (73 pass / 0 fail) reproduced and confirmed the detector; nothing was missing.
+
 ### Roles spin through ~0.2 s "recovered leftover work" runs while their own change waits to merge: a fresh run's pin has no queue file, so `recoverLeftover` re-pins the role's own pending change on every run — fixed 2026-11-16 by the bugfix role
 
 Filed 2026-11-15 by an operator session from the live team's logs (build 72a0b257; the code path is unchanged on main).
