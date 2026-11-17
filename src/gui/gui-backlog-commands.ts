@@ -193,7 +193,7 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
   }
 }
 
-/** Handle POST /api/backlog-retire: the Plans or Bugs drawer's Retire this plan/this bug — the
+/** Handle POST /api/backlog-retire: the Plans or Bugs drawer's Close without building/fixing — the
  * same move as `tumwater plan --retire <n>` / `tumwater bug --retire <n>` through the
  * non-exiting, title-checked tryRetirePlan/tryRetireBug (the dashboard twin of tryCancelEntry,
  * sharing withLocatedEntry's lookup-under-lock): the nth `## Planned` entry leaves for

@@ -442,7 +442,7 @@ test("a stale backlog response for a since-replaced entry is ignored", async () 
   assert.match(t.paintedFor("entrybody"), /data-act='entry-cancel' data-arg='plans:1'/);
 });
 
-test("the entry drawer offers Release this entry only on a refused entry", async () => {
+test("the entry drawer offers Clear refusal and retry only on a refused entry", async () => {
   const t = openDrawer(["toggleEntry"], {
     status: { roles: [] },
     responses: {
@@ -454,7 +454,7 @@ test("the entry drawer offers Release this entry only on a refused entry", async
   });
   t.scope.toggleEntry("plans", 0);
   await flush();
-  assert.match(t.paintedFor("entrybody"), /data-act='entry-release' data-arg='plans:0'/);
+  assert.match(t.paintedFor("entrybody"), /data-act='entry-release' data-arg='plans:0' title='A role refused this plan[^']*so feature tries it again\.'>Clear refusal and retry</);
   t.scope.toggleEntry("plans", 2);
   await flush();
   assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);
@@ -514,7 +514,7 @@ test("the entry drawer offers Move to top on every plan entry but the first", as
   assert.doesNotMatch(t.paintedFor("entrybody"), /entry-top/);
 });
 
-test("the entry drawer offers Retire this plan on an open plan and Retire this bug on an open bug, never on done rows", async () => {
+test("the entry drawer offers Close without building on an open plan and Close without fixing on an open bug, never on done rows", async () => {
   const t = openDrawer(["toggleEntry"], {
     status: { roles: [] },
     responses: {
@@ -526,11 +526,15 @@ test("the entry drawer offers Retire this plan on an open plan and Retire this b
   t.scope.toggleEntry("plans", 0);
   await flush();
   assert.match(t.paintedFor("entrybody"), /data-act='entry-retire' data-arg='plans:0'/);
-  assert.match(t.paintedFor("entrybody"), /Retire this plan/);
+  assert.match(t.paintedFor("entrybody"), />Close without building</);
+  assert.match(t.paintedFor("entrybody"), /title='Moves this plan to Done in PLANS\.md, marked retired, with its text kept as a record\./);
+  assert.match(t.paintedFor("entrybody"), /title='Removes this plan from PLANS\.md entirely\. No record is kept[^']*use Close without building instead\.[^']*'>Delete</);
   t.scope.toggleEntry("bugs", 0);
   await flush();
   assert.match(t.paintedFor("entrybody"), /data-act='entry-retire' data-arg='bugs:0'/);
-  assert.match(t.paintedFor("entrybody"), /Retire this bug/);
+  assert.match(t.paintedFor("entrybody"), />Close without fixing</);
+  assert.match(t.paintedFor("entrybody"), /Moves this bug to Fixed in BUGS\.md/);
+  assert.ok(t.paintedFor("entrybody").indexOf("entry-retire") < t.paintedFor("entrybody").indexOf("entry-cancel"), "the record-keeping close comes before the delete");
   t.scope.toggleEntry("done", 0);
   await flush();
   assert.doesNotMatch(t.paintedFor("entrybody"), /entry-retire/, "a done row carries no retire action");

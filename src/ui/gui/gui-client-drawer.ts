@@ -7,8 +7,8 @@
  * with `&prompt=1`; a search box narrows it with `&grep=`). For a backlog entry it shows the entry
  * in full (/api/backlog), rendered as Markdown, with a shortcut into the composer — answering a
  * question, or asking the director about a plan or bug — and, for a plan or bug, a two-click
- * Cancel that removes the entry (/api/backlog-cancel), plus, on an open plan only, a two-click
- * Retire this plan that moves it to the top of `## Done` as a retired record without building it
+ * Delete that removes the entry with no record (/api/backlog-cancel), and a two-click Close
+ * without building/fixing that moves it to `## Done`/`## Fixed` as a retired record
  * (/api/backlog-retire). Esc, the close button, or clicking the
  * same row again closes it. Spliced into gui-client.ts's script, reaching its helpers through
  * that concatenation. */
@@ -516,16 +516,32 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         "<textarea id='entryeditbody' rows='14'>" + esc(d.body || "") + "</textarea>");
       return;
     }
+    // Each backlog action names its effect, not tumwater's internal verb (release/retire/cancel),
+    // and carries a hover title spelling out what changes in the file and who acts next: an
+    // operator read "Cancel this entry" as "dismiss, change nothing" when it deletes the entry.
+    // The record-keeping close sits before the record-less delete.
+    const key = file + ":" + index;
+    const bug = file === "bugs";
+    const noun = bug ? "bug" : "plan";
+    const doc = bug ? "BUGS.md" : "PLANS.md";
+    const closedSection = bug ? "Fixed" : "Done";
+    const closeLabel = bug ? "Close without fixing" : "Close without building";
+    const releaseTip = "A role refused this " + noun + " (see its Refused note below), so no role will pick it up. " +
+      "This removes the Refused note so " + (bug ? "bugfix" : "feature") + " tries it again.";
+    const retireTip = "Moves this " + noun + " to " + closedSection + " in " + doc + ", marked retired, with its text kept as a record. " +
+      "Nothing gets " + (bug ? "fixed" : "built") + " and no role works on it. Asks you to click twice.";
+    const cancelTip = "Removes this " + noun + " from " + doc + " entirely. No record is kept (only git history has it). " +
+      "To keep a record, use " + closeLabel + " instead. Asks you to click twice.";
     const action = file === "done" || file === "fixed" || file === "answered" ? "" : file === "questions"
       ? "<textarea id='answertext' rows='3' placeholder='Your answer — recorded in QUESTIONS.md'></textarea>" +
         "<button type='button' class='btn btn-sm btn-primary' data-act='answer-record' data-arg='" + index + "'>" + icon("chat") + "Record answer</button>" +
         "<button type='button' class='btn btn-sm' data-act='answer' data-arg='" + index + "'>Ask the director instead</button>"
-      : "<button type='button' class='btn btn-sm' data-act='mention' data-arg='" + esc(file + ":" + index) + "'>" + icon("chat") + "Ask the director about this</button>" +
-        (d.refused ? "<button type='button' class='btn btn-sm btn-primary' data-act='entry-release' data-arg='" + esc(file + ":" + index) + "'>Release this entry</button>" : "") +
-        (index > 0 ? "<button type='button' class='btn btn-sm' data-act='entry-top' data-arg='" + esc(file + ":" + index) + "'>Move to top</button>" : "") +
-        "<button type='button' class='btn btn-sm' data-act='entry-edit' data-arg='" + esc(file + ":" + index) + "'>Edit this entry</button>" +
-        "<button type='button' class='btn btn-sm btn-danger' data-act='entry-cancel' data-arg='" + esc(file + ":" + index) + "'>" + (entryCancelArmed(file + ":" + index) ? "Click again to cancel" : "Cancel this entry") + "</button>" +
-        (file === "plans" || file === "bugs" ? "<button type='button' class='btn btn-sm btn-danger' data-act='entry-retire' data-arg='" + esc(file + ":" + index) + "'>" + (entryRetireArmed(file + ":" + index) ? "Click again to retire" : file === "bugs" ? "Retire this bug" : "Retire this plan") + "</button>" : "");
+      : "<button type='button' class='btn btn-sm' data-act='mention' data-arg='" + esc(key) + "'>" + icon("chat") + "Ask the director about this</button>" +
+        (d.refused ? "<button type='button' class='btn btn-sm btn-primary' data-act='entry-release' data-arg='" + esc(key) + "' title='" + esc(releaseTip) + "'>Clear refusal and retry</button>" : "") +
+        (index > 0 ? "<button type='button' class='btn btn-sm' data-act='entry-top' data-arg='" + esc(key) + "' title='Makes this the next " + noun + " " + (bug ? "bugfix" : "feature") + " takes'>Move to top</button>" : "") +
+        "<button type='button' class='btn btn-sm' data-act='entry-edit' data-arg='" + esc(key) + "'>Edit this entry</button>" +
+        (file === "plans" || bug ? "<button type='button' class='btn btn-sm btn-danger' data-act='entry-retire' data-arg='" + esc(key) + "' title='" + esc(retireTip) + "'>" + (entryRetireArmed(key) ? "Click again to close it" : closeLabel) + "</button>" : "") +
+        "<button type='button' class='btn btn-sm btn-danger' data-act='entry-cancel' data-arg='" + esc(key) + "' title='" + esc(cancelTip) + "'>" + (entryCancelArmed(key) ? "Click again to delete it" : "Delete") + "</button>";
     // The body is model-written Markdown: renderMarkdown escapes every piece of it.
     paintPanel("entrybody", (action ? "<div class='drawer-actions'>" + action + "</div>" : "") + "<div class='md'>" +
       (d.body ? renderMarkdown(d.body) : "<p class='muted'>No details for this entry.</p>") + "</div>");

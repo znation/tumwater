@@ -223,7 +223,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       postAction("/api/backlog-cancel", { kind: kindOf(file), position: index + 1, title }, (d) => {
         closeDrawer();
         return d && d.status === "cancelled"
-          ? "Cancelled “" + splitTitle(title).title + "” from " + entryFile(file) + uncommittedTail(d) + (d.workingNote ? " — " + d.workingNote : "") + (d.releasedNote ? " — " + d.releasedNote : "")
+          ? "Deleted “" + splitTitle(title).title + "” from " + entryFile(file) + " (no record kept)" + uncommittedTail(d) + (d.workingNote ? " — " + d.workingNote : "") + (d.releasedNote ? " — " + d.releasedNote : "")
           : "That entry was already removed or moved — refreshed";
       });
     } else if (act === "entry-retire") {
@@ -235,7 +235,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       postAction("/api/backlog-retire", { kind: kindOf(file), position: index + 1, title }, (d) => {
         closeDrawer();
         return d && d.status === "retired"
-          ? "Retired “" + splitTitle(title).title + "” in " + entryFile(file) + " — closed without being " + (kindOf(file) === "bug" ? "fixed" : "built") + uncommittedTail(d)
+          ? "Closed “" + splitTitle(title).title + "” without " + (kindOf(file) === "bug" ? "fixing it — kept in " + entryFile(file) + " under Fixed" : "building it — kept in " + entryFile(file) + " under Done") + " as retired" + uncommittedTail(d)
           : "That entry was already removed or moved — refreshed";
       });
     } else if (act === "entry-release") {
@@ -245,7 +245,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       postAction("/api/backlog-release", { kind: kindOf(file), position: index + 1, title }, (d) => {
         closeDrawer();
         if (d && d.status === "released") {
-          return "Released “" + splitTitle(title).title + "” in " + entryFile(file) + " — lifted the Refused note — " + (d.heldNote || pickupRole(file) + " will pick it up") + uncommittedTail(d);
+          return "Cleared the refusal on “" + splitTitle(title).title + "” in " + entryFile(file) + " — " + (d.heldNote || pickupRole(file) + " will try it again") + uncommittedTail(d);
         }
         return d && d.status === "not_refused"
           ? "That entry carries no Refused note — refreshed"

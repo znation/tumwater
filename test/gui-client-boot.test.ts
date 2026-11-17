@@ -272,8 +272,7 @@ test("entry-retire posts kind: bug for the Bugs tab and toasts the not-fixed clo
   );
   scope.runAct("entry-retire", "bugs:1");
   assert.deepEqual(posts, [["/api/backlog-retire", { kind: "bug", position: 2, title: "D (found 2026-10-12 by bugfix)" }]]);
-  assert.ok(out.includes("Retired “D (found 2026-10-12 by bugfix)” in BUGS.md"), out);
-  assert.ok(out.includes("closed without being fixed"), out);
+  assert.ok(out.includes("Closed “D (found 2026-10-12 by bugfix)” without fixing it — kept in BUGS.md under Fixed as retired"), out);
   assert.ok(!out.includes("built"), out);
 });
 
@@ -299,7 +298,7 @@ test("entry-retire toasts a retired plan and the gone refusal, closing the drawe
     scope.runAct("entry-retire", "plans:0");
     return out;
   };
-  assert.ok(toast({ status: "retired", committed: true }).includes("Retired “A” in PLANS.md — closed without being built"));
+  assert.ok(toast({ status: "retired", committed: true }).includes("Closed “A” without building it — kept in PLANS.md under Done as retired"));
   assert.ok(toast({ status: "retired", committed: false }).includes("but NOT committed to main (uncommitted in the checkout)"));
   assert.ok(toast({ status: "gone" }).includes("That entry was already removed or moved — refreshed"));
 });
@@ -325,7 +324,7 @@ test("entry-release posts the release at once for plans and bugs", () => {
 
 test("entry-release and entry-top toasts name a held entry instead of the role", () => {
   const cases: [string, string, string, string][] = [
-    ["entry-release", "/api/backlog-release", "released", "will pick it up"],
+    ["entry-release", "/api/backlog-release", "released", "will try it again"],
     ["entry-top", "/api/backlog-top", "moved_to_top", "takes it next"],
   ];
   for (const [act, post, status, role] of cases) {

@@ -2494,7 +2494,7 @@ test("handleBacklogCancel adds releasedNote naming the planned part that require
   assert.ok(note.includes("S, part 2/2: b"));
 });
 
-// ---- POST /api/backlog-retire: the plan drawer's Retire this plan ----
+// ---- POST /api/backlog-retire: the plan drawer's Close without building ----
 test("handleBacklogRetire retires the middle plan, keeps every other byte, answers gone for stale/out-of-range, 400s bad input, and wakes nobody", async () => {
   const root = tmpdir();
   writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned", body: "### A (planned 2026-11-01 by the plan role)\n\nbody alpha\n\n### B (planned 2026-11-02 by the plan role)\n\nbody beta" }, { heading: "## Done" }]);
