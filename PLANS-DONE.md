@@ -5,6 +5,35 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `isPriorReview`'s fail-closed shape guard is pinned in test/merge-queue.test.ts, so a regression in the one home of "is this a well-formed PriorReview object" the merge queue's file reader (planned 2026-11-16 by the plan role; the pin-a-rule for the `PriorReview` shape guard) — done 2026-11-16 by the feature role
+
+`isPriorReview` (src/merge/merge-queue.ts) is a **fail-closed shape guard** with **no direct test**.
+Its two live readers — the queue-file reader `isMergeEntry` (same file) and the revision-trailer
+reader `priorReviewOf` (src/git/commit-message.ts) — each consult it, and their tests exercise the
+not-a-object arm (a hand-edited trailer line that is not JSON reads as absent) and the valid arm (a
+well-shaped `PriorReview` round-trips through `parseCommitMetadata`), but never the field-shape
+rejections. The guard is a genuine multi-branch rule — a `PriorReview` object passes only when it is
+a plain object with a string `sha`, a string-array `reasons`, and, when present, a `counts` array
+whose every element is a finite non-negative number — and the L23 bar (0 direct refs and not
+transitively covered on the multi-branch input) is met. A regression that loosens one of those field
+checks (say, letting a non-string `sha` or a non-numeric `counts` element through) would let a torn
+or foreign queue file — or a reviewer's numbered objection — pass a reader meant to drop it.
+
+- **Approach**: in test/merge-queue.test.ts, add `isPriorReview` to the existing import from
+  `../src/merge/merge-queue.js` and pin all five arms against a plain object. Exact expected values
+  (hand-computed from the guard's source): a valid `PriorReview` —
+  `{ sha: "a".repeat(40), reasons: ["fix the bug"], counts: [1] }` → `true`; a non-object (`null`
+  or a JSON array) → `false`; a `sha` that is not a string → `false`; a `reasons` that is not an
+  array, or whose an element is not a string → `false`; a `counts` that is not an array, or whose
+  an element is not a finite non-negative number (`-1`, `NaN`, or a non-number) → `false`. Each case
+  asserts the boolean directly.
+- **Acceptance criteria**:
+  - test/merge-queue.test.ts passes with the five cases above.
+  - The `reasons`-element case would fail if `isPriorReview` dropped the
+    `every((r) => typeof r === "string")` check, and the `counts` case would fail if it dropped the
+    `every((c) => nonNegativeNumber(c, null) !== null)` check.
+  - `npm run test:gate` passes.
+
 ### `takesSalvagedWork`'s salvage-presence gate is pinned in test/run-resume.test.ts, so a regression in the one home of "does this run's plan carry salvaged work" the resume path (run-resume.ts) and the run gate (runner-run.ts:428) both branch on would be caught at the gate rather than as a resume that silently drops a conflict-restored patch (planned 2026-11-16 by the plan role; retires the pin-a-rule slot left by the stranded-done `sectionSpan` entry) — done 2026-11-16 by the feature role
 
 `takesSalvagedWork` (src/run/run-resume.ts) has **no direct test** anywhere, and its only indirect

@@ -38,34 +38,4 @@ fail-closed string is the only guard against.
     operator reads).
   - `npm run test:gate` passes.
 **Needs review 2026-11-16 by feature: plan defect** — every anchor the entry gives is wrong on current main. (1) The file: it names `src/runner/commit-message.ts`, which does not exist; `isMergeClaim` actually lives in `src/merge/merge-queue.ts:211`, and `test/commit-message.test.ts` imports from `../src/git/commit-message.js` — a third file. (2) The predicate shape: on main `isMergeClaim` is a boolean type guard — `v.file === "PLANS.md" || v.file === "BUGS.md"` and `typeof v.key === "string" && typeof v.title === "string"` — returning `v is MergeClaim`; there is no 3-arm file dispatch, no series-part `N/M`/`\d+\|\d+` key alternation, and no bug-index check as the entry describes. (3) The consumer: the only live reader is `claimOf` (src/git/commit-message.ts:246), which does `isMergeClaim(value) ? value : undefined` — a boolean gate, never a refusal string; there is no `buildMergeSummary` or string-producing claim builder anywhere in `src/` or `test/` (0 hits). (4) The acceptance criteria: the "exact template strings" it would pin (`… as "part 1/2" — claims must name an entry…`, `… is not for a plan or a bug`) do not exist in the source (0 hits), so the criteria cannot be met. The entry's 3-arm wording and its "L23 bar" rationale describe a shape that is not on main; the plan role should retire it. (The real fail-closed behavior — `claimOf` returning `undefined` on a malformed or non-backlog claim — is a testable contract, but a different entry than this one.)
-
-### `isPriorReview`'s fail-closed shape guard is pinned in test/merge-queue.test.ts, so a regression in the one home of "is this a well-formed PriorReview object" the merge queue's file reader (isMergeEntry) and the revision trailer reader (priorReviewOf) both apply would be caught at the gate rather than as a torn or foreign queue entry the reader drops, or a revision's objections a reader silently loses (planned 2026-11-16 by the plan role; the pin-a-rule for the `PriorReview` shape guard)
-
-`isPriorReview` (src/merge/merge-queue.ts) is a **fail-closed shape guard** with **no direct test**.
-Its two live readers — the queue-file reader `isMergeEntry` (same file) and the revision-trailer
-reader `priorReviewOf` (src/git/commit-message.ts) — each consult it, and their tests exercise the
-not-a-object arm (a hand-edited trailer line that is not JSON reads as absent) and the valid arm (a
-well-shaped `PriorReview` round-trips through `parseCommitMetadata`), but never the field-shape
-rejections. The guard is a genuine multi-branch rule — a `PriorReview` object passes only when it is
-a plain object with a string `sha`, a string-array `reasons`, and, when present, a `counts` array
-whose every element is a finite non-negative number — and the L23 bar (0 direct refs and not
-transitively covered on the multi-branch input) is met. A regression that loosens one of those field
-checks (say, letting a non-string `sha` or a non-numeric `counts` element through) would let a torn
-or foreign queue file — or a reviewer's numbered objection — pass a reader meant to drop it.
-
-- **Approach**: in test/merge-queue.test.ts, add `isPriorReview` to the existing import from
-  `../src/merge/merge-queue.js` and pin all five arms against a plain object. Exact expected values
-  (hand-computed from the guard's source): a valid `PriorReview` —
-  `{ sha: "a".repeat(40), reasons: ["fix the bug"], counts: [1] }` → `true`; a non-object (`null`
-  or a JSON array) → `false`; a `sha` that is not a string → `false`; a `reasons` that is not an
-  array, or whose an element is not a string → `false`; a `counts` that is not an array, or whose
-  an element is not a finite non-negative number (`-1`, `NaN`, or a non-number) → `false`. Each case
-  asserts the boolean directly.
-- **Acceptance criteria**:
-  - test/merge-queue.test.ts passes with the five cases above.
-  - The `reasons`-element case would fail if `isPriorReview` dropped the
-    `every((r) => typeof r === "string")` check, and the `counts` case would fail if it dropped the
-    `every((c) => nonNegativeNumber(c, null) !== null)` check.
-  - `npm run test:gate` passes.
-
 ## Done

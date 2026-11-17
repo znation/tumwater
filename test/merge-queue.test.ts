@@ -11,6 +11,7 @@ import {
   enqueueMerge,
   dropMerge,
   headMerge,
+  isPriorReview,
   queueDepth,
   queuedMergeFiles,
   queuedMerges,
@@ -255,6 +256,23 @@ test("readMergeQueue reads a missing queue dir as empty with no skips", () => {
   const repo = makeRepo();
   assert.ok(!fs.existsSync(mergeQueueDir(repo)), "no queue dir before the first enqueue");
   assert.deepEqual(readMergeQueue(repo), { entries: [], unreadable: 0 });
+});
+
+test("isPriorReview passes only a plain object with a string sha, string reasons, and finite non-negative counts", () => {
+  // Valid arm: counts is optional, so both with and without it pass.
+  assert.equal(isPriorReview({ sha: "a".repeat(40), reasons: ["fix the bug"], counts: [1] }), true);
+  assert.equal(isPriorReview({ sha: "a".repeat(40), reasons: ["fix the bug"] }), true);
+  // Non-object arms: null and a JSON array are not plain objects.
+  assert.equal(isPriorReview(null), false);
+  assert.equal(isPriorReview(["sha"]), false);
+  // Field-shape arms: a torn or foreign object fails on exactly one field.
+  assert.equal(isPriorReview({ sha: 40, reasons: ["fix the bug"], counts: [1] }), false);
+  assert.equal(isPriorReview({ sha: "a".repeat(40), reasons: "not a list", counts: [1] }), false);
+  assert.equal(isPriorReview({ sha: "a".repeat(40), reasons: ["ok", 2], counts: [1] }), false);
+  assert.equal(isPriorReview({ sha: "a".repeat(40), reasons: ["fix the bug"], counts: "one" }), false);
+  assert.equal(isPriorReview({ sha: "a".repeat(40), reasons: ["fix the bug"], counts: [1, -1] }), false);
+  assert.equal(isPriorReview({ sha: "a".repeat(40), reasons: ["fix the bug"], counts: [1, Number.NaN] }), false);
+  assert.equal(isPriorReview({ sha: "a".repeat(40), reasons: ["fix the bug"], counts: [1, "2"] }), false);
 });
 
 test("queueEntryMergeLabel reads an older-generation marker with no changes array as one merge record", () => {
