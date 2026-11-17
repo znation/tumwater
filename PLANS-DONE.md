@@ -5,6 +5,42 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `isFullCheckScope`'s `full === false` arm is pinned in test/build-check-events.test.ts, so a regression in the one home of "does this build_check event count as a full check?" — the arm the main-check badge (status-main-check.ts's `mainCheckForPoll`) and the report's check row rely on to NOT count a merge or batch run of the cheaper `check.mergeCommand` as a full-suite verdict — would be caught at the gate rather than as a cheap merge command badgeing main and folding a red into the report (planned 2026-11-16 by the plan role; the pin-a-rule for the `full` flag the sibling `scope` arms leave unpinned) — done 2026-11-16 by the feature role
+
+`isFullCheckScope` (src/build/build-check-events.ts) has **no direct test**. Its two consumers are
+the main-check badge scan `mainCheckForPoll` (src/status/status-main-check.ts, which selects the
+last full check from `build_check` events) and the sibling predicates `isPassingFullCheck` /
+`isRedFullCheck` (same file) that the doctor's check row and the report's usage fold apply. The
+scope arms are already transitively covered — `build-check-events.test.ts`'s `isPassingFullCheck` /
+`isRedFullCheck` tests feed a `full`-less event for each scope and pin merge/batch/baseline → full,
+gate → not — but neither test ever sets the `full` field, so the guard's `full === false` arm (a
+merge or batch run of `check.mergeCommand` is never a full-suite verdict whatever its scope) is
+unpinned: a regression that drops the `if (full === false) return false` early return would let a
+cheap merge-scope command read as a full check — badgeing main and folding a red into the report's
+check row — and no existing test catches it. The L23 bar (0 direct refs and an arm the consumers
+leave unpinned) is met by that `full === false` arm.
+
+- **Approach**: in test/build-check-events.test.ts, add `isFullCheckScope` to the existing import
+  from `../src/build/build-check-events.js` (the file already imports `isPassingFullCheck` and
+  `isRedFullCheck` from the same module) and pin the `full` flag directly, hand-computed from the
+  guard (`full === false` → `false`; else `scope` in `"merge" | "batch" | "baseline"` → `true`;
+  else `false`): `isFullCheckScope("merge", false)` → `false` (the cheap merge command is not a
+  full verdict); `isFullCheckScope("batch", false)` → `false`; `isFullCheckScope("merge", true)` →
+  `true`; `isFullCheckScope("baseline", true)` → `true`; `isFullCheckScope("gate", true)` → `false`;
+  and a `full`-less event `isFullCheckScope("merge", undefined)` → `true`. Each case asserts the
+  boolean directly.
+- **Acceptance criteria**:
+  - test/build-check-events.test.ts passes with the cases above.
+  - The two `full: false` cases return `false` even though their scope is in the full set, and would
+    fail if the guard dropped its `if (full === false) return false` arm.
+  - The `gate, true` case returns `false` (a gate check can run a subset, so it is not a full
+    verdict), and the `merge, true` and `merge, undefined` cases return `true`.
+  - No other `## Planned` or archived `## Done` entry already pins `isFullCheckScope`
+    (`grep -rn isFullCheckScope test/` matched no line when this was planned — the L23 bar — and
+    now matches only this entry's import and test; the two sibling consumer predicates' tests,
+    which exercise it indirectly through the scope arms, are untouched by this entry).
+  - `npm run test:gate` passes.
+
 ### `isMergeClaim`'s fail-closed shape rejection is pinned in test/commit-message.test.ts, so a regression in the one home of "is this a valid merge claim" the SUMMARY/WHY/RISK/VERIFIED builder (buildMergeSummary) relies on to refuse a claim it cannot attribute would be caught at the gate rather than as a commit whose trailer names an entry the queue does not know (planned 2026-11-16 by the plan role; retires the pin-a-rule slot left by the stranded-done `sectionSpan` entry; done 2026-11-16 by the plan role)
 
 **Retired 2026-11-16 by the plan role: plan defect — the entry's anchors do not exist on current main, so the pin it describes has nothing to build (resolving the feature role's 2026-11-16 `Needs review` note, which recommended retirement). Re-verified on current main (plan role, 2026-11-16): (1) the file it names, `src/runner/commit-message.ts`, does not exist — `isMergeClaim` lives in `src/merge/merge-queue.ts` and its only live reader is `claimOf` in `src/git/commit-message.ts`; (2) on main `isMergeClaim` is a plain boolean type guard (`isJsonObject(v) && (v.file === "PLANS.md" || v.file === "BUGS.md") && typeof v.key === "string" && typeof v.title === "string"`) — there is no 3-arm file dispatch, no series-part/bug-index key check, no string-producing claim builder (`buildMergeSummary` does not exist in `src/` or `test/`, 0 hits), and the "exact template strings" its acceptance criteria would pin do not appear in the source (0 hits). The entry's 3-arm shape and L23 rationale describe a deliverable that is not on main; executing its Approach would fail against the real guard. No same-heading done twin in PLANS-DONE.md (its `isMergeClaim` mentions are body prose inside other entries, not a pin heading), so this is a bad-anchor retirement, not a stale-duplicate removal. No `requires … landed` clause names this entry — the two remaining `## Planned` entries (`isPriorReview`, `isFullCheckScope`) carry none — so nothing else to re-point. The real fail-closed contract (`claimOf` returning `undefined` on a malformed or non-backlog claim) is a testable rule, but a different pin than the one this entry named.**

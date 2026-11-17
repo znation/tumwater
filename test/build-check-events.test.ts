@@ -7,6 +7,7 @@ import {
   logCheckWaitEvent,
   isPassingFullCheck,
   isRedFullCheck,
+  isFullCheckScope,
   MERGE_SCOPES,
   SCOPE_WORDS,
   timedOutPhrase,
@@ -164,6 +165,23 @@ test("isRedFullCheck counts failed merge/batch/baseline checks only", () => {
   assert.equal(isRedFullCheck(ev("failed", "gate")), false);
   for (const status of ["passed", "skipped"]) assert.equal(isRedFullCheck(ev(status, "merge")), false);
   assert.equal(isRedFullCheck({ ts: 0, source: "x", type: "run_end", run: 1, result: "changed" }), false);
+});
+
+// --- isFullCheckScope: the one home of "does this build_check count as a full check?" ---
+
+test("isFullCheckScope pins the full flag the sibling scope arms leave unpinned", () => {
+  // The full === false arm: a merge or batch run of check.mergeCommand is never a full-suite
+  // verdict whatever its scope. These two return false even though their scope is in the full
+  // set — a regression that dropped the `if (full === false) return false` early return would
+  // let a cheap merge command read as a full check and turn them true.
+  assert.equal(isFullCheckScope("merge", false), false);
+  assert.equal(isFullCheckScope("batch", false), false);
+  // Without a full field, the scope alone decides: merge and baseline are full-set, gate is not.
+  assert.equal(isFullCheckScope("merge", true), true);
+  assert.equal(isFullCheckScope("baseline", true), true);
+  assert.equal(isFullCheckScope("gate", true), false);
+  // A full-less event (the field simply absent) counts a merge scope as full.
+  assert.equal(isFullCheckScope("merge", undefined), true);
 });
 
 test("logCheckWaitEvent logs one check_wait only at or past the threshold", () => {
