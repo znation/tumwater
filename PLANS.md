@@ -10,6 +10,184 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 _None yet._
 
+### Visible session cleanup, part 1/3: the retention prune writes a progress marker and logs start and finish events (planned 2026-11-16 by the operator; touches src/paths.ts src/orchestrator/retention.ts src/agent/session-ledger.ts src/events/events.ts src/events/event-labels.ts src/events/event-format-hold.ts test/session-ledger-prune.test.ts test/retention.test.ts test/event-format.test.ts test/event-labels.test.ts)
+
+**Goal.** On 2026-11-16 the kde-macos8.6-theme team looked stuck after a restart: a running
+orchestrator, no paused marker, no alerts, no role started, director prompts waiting in the inbox
+and nothing in the event log after `orchestrator_start` for over an hour. The cause was the
+session-retention prune (`RetentionPruner.prune`, src/orchestrator/retention.ts), which runs in
+the constructor at startup and from `poll()` once a day. Its `pruneCodexSessions`
+(src/agent/session-ledger.ts) runs one synchronous `spawnSync(codex, ["delete", "--force", id])`
+per expired session: 3,944 ids at about 0.9 s each, about 75 minutes with the poll loop blocked.
+No role was scheduled (the director included), nothing was logged until the one summary warning
+at the end, and `orchestrator.json` and the role states stayed frozen. The operator restarted
+three times, and each restart threw the work away. `pruneOpencodeSessions` has the same shape.
+The blocked loop can still write files between two synchronous deletes, so this part makes the
+prune report its progress to disk, for the separate (responsive) GUI and TUI processes to read in
+part 2/3.
+
+**Approach.**
+- New `maintenancePath(root)` → `.tumwater/state/maintenance.json` in src/paths.ts, next to
+  `orchestratorStatePath`.
+- Marker shape (export the type from the module that writes it):
+  `{ pid, task: "session-prune", backend: "codex" | "opencode" | "files", done, total, startedAt,
+  updatedAt }`. `pid` is the orchestrator that wrote it; `task` leaves room for later blocking
+  housekeeping; `total` is known up front because the expired-id set is built before the delete
+  loop; `startedAt` is the start of the whole prune pass.
+- `pruneCodexSessions` and `pruneOpencodeSessions` take an optional `onProgress(done, total)` in
+  their options. They call it once with `done = 0` after the expired set is built (only when
+  `total > 0`) and after each id they handle. They stay free of path knowledge.
+- `RetentionPruner.prune` writes the marker before the OpenCode half, passes an `onProgress` that
+  rewrites it with `writeJsonAtomic` (throttled: at most once per second or every 25 ids,
+  whichever comes first, plus the final id), sets `backend: "files"` for the file and ledger-line
+  passes, and removes the marker in a `finally`. Marker writes are best-effort: a failed write
+  never fails the prune (this runs in the poll loop, where a throw ends the team).
+- Events, so the log is not silent: `maintenance_start { task, backend, total }` when a half has
+  work (`total > 0`), and `maintenance_done { task, backend, done, durationMs }` when it finishes.
+  Add both to the events.ts type union with doc comments, labels in event-labels.ts, and
+  formatting beside the hold formatters in event-format-hold.ts. Keep the existing
+  `deleted N expired codex sessions` warning.
+
+**Acceptance criteria.**
+- `pruneCodexSessions` and `pruneOpencodeSessions` call `onProgress` with a monotonically
+  increasing `done` ending at the final `total`, and never call it when nothing is expired.
+- With a stubbed slow delete, `maintenance.json` exists while the prune runs (carrying the
+  orchestrator's pid and a rising `done`) and is gone afterwards, including when a delete throws.
+- A prune with work logs one `maintenance_start` and one `maintenance_done` per half that had
+  work; a prune with nothing to delete logs neither.
+- `maintenance_start`/`maintenance_done` format through the hold formatter, and the legacy-event
+  table (src/events/event-legacy.ts) is unaffected.
+
+### Visible session cleanup, part 2/3: the GUI and TUI show a session-cleanup banner with progress and an ETA, and idle rows read `held: session cleanup` (planned 2026-11-16 by the operator; requires Visible session cleanup part 1/3 landed; touches src/status/status-data.ts src/ui/team-alert-status.ts src/ui/status-model.ts test/status-data.test.ts test/team-alert-status.test.ts test/team-alerts.test.ts test/status-model.test.ts)
+
+**Goal.** Whenever the prune blocks scheduling, the dashboard says so, shows progress and
+estimates when it will finish, instead of a healthy-looking team doing nothing. The prune blocks
+the whole poll loop, not one role, so it is a team alert banner (the `TeamAlert` model,
+src/ui/team-alerts.ts), which the GUI banners and the TUI's attention lines both render. The roles
+table changes too: otherwise its rows show their last-known phase (`idle`, overdue `next run in …`
+countdowns), which is the misleading part.
+
+**Approach.**
+- src/status/status-data.ts: add `maintenance?: MaintenanceMarker & { etaMs?: number }` to
+  `StatusSnapshot`, read fresh on every poll like the pause marker (no cache). Treat it as absent
+  when its `pid` is not the live orchestrator pid: a SIGKILLed orchestrator skips the `finally`,
+  and its stale marker must not hold the banner up forever.
+- `etaMs = (updatedAt − startedAt) / done × (total − done)`, left out until `done ≥ 10` so the
+  first noisy samples give no silly ETA.
+- New alert in src/ui/team-alert-status.ts, emitted early in the order because it explains every
+  other symptom: `key: "maintenance"`, `tone: "blue"` (it informs; there is nothing to do), title
+  `Cleaning up expired sessions — roles start when it finishes`, detail like
+  `deleting expired codex sessions: 1,204 / 3,944 · about 48 min left · started 22:38`, with the
+  suffix `Restarting tumwater starts this over.` (that line is what would have prevented the three
+  restarts; Fast session cleanup part 1/2 drops it). No actions: a "skip for now" button would need
+  the blocked orchestrator to read a request.
+- `rolePhase` (src/ui/status-model.ts) takes one more team-wide hold argument beside `restartHold`
+  and returns `held: session cleanup` for every row that is not in flight. A run already in flight
+  when a daily in-poll prune starts keeps its working label, because its agent process is still
+  running. Its one call site derives it from the snapshot (src/ui/status-model.ts, where
+  `restartHoldRolePhase(snap.build)` is passed), so the GUI and TUI rows both pick it up.
+- The TUI gets the alert through `alertLines` and the row cell through the shared `rolePhase`, with
+  no TUI-specific change.
+
+**Acceptance criteria.**
+- A marker whose pid differs from the live orchestrator pid reads as absent; no marker file reads
+  as absent; the ETA is absent below 10 deletes and present from 10.
+- The maintenance alert's title, detail (count with thousands separators, ETA, start time) and
+  restart suffix match the text above, and it sorts ahead of the other status alerts.
+- `rolePhase` returns `held: session cleanup` for an idle row and for a row with an overdue next
+  run while the hold is set, and keeps the working label for an in-flight row.
+- Manual check: about 4,000 expired Codex ledger records and a stub `codex` that sleeps 1 s.
+  Start the team and open the GUI. Within one GUI poll the blue banner shows
+  `deleting expired codex sessions: n / N` with a rising count and, after 10 deletes, an ETA;
+  every idle row reads `held: session cleanup`; the event log has a `maintenance_start` line.
+  SIGKILL the orchestrator: the banner goes once the GUI sees the pid gone, and the stopped-team
+  alert replaces it.
+
+### Visible session cleanup, part 3/3: an amber "orchestrator hasn't polled" alert when the poll loop stalls without a marker (planned 2026-11-16 by the operator; requires Visible session cleanup part 2/3 landed; touches src/paths.ts src/orchestrator/orchestrator-poll.ts src/status/status-data.ts src/ui/team-alert-status.ts test/status-data.test.ts test/team-alert-status.test.ts)
+
+**Goal.** Parts 1/3 and 2/3 cover the session prune. The next synchronous pass that blocks the
+poll loop will have no marker, and the team will look healthy and idle again. A heartbeat gives
+the observers a generic backstop.
+
+**Approach.**
+- At the top of each poll (src/orchestrator/orchestrator-poll.ts), stamp
+  `{ pid, lastPollAt }` into a new small `.tumwater/state/heartbeat.json` (`heartbeatPath(root)`
+  in src/paths.ts) with `writeJsonAtomic`, rather than rewriting the larger `orchestrator.json`
+  every ~2 s. Best-effort: a failed write never fails the poll.
+- status-data reads it fresh each poll. Observers raise an amber alert,
+  `Orchestrator hasn't polled for 3m — it may be blocked`, when the orchestrator pid is alive,
+  the heartbeat's pid matches it, `lastPollAt` is more than 3 minutes old, and no maintenance
+  marker stands. The marker wins because it is the more specific explanation. No heartbeat file at
+  all (a team started by an older build) raises nothing.
+- Before settling on 3 minutes, measure the longest synchronous poll step that is not a prune on
+  a live team (the doc assumes a merge's check runs as a child process and does not block the
+  poll; confirm it) and record the measurement in the constant's doc comment.
+
+**Acceptance criteria.**
+- A live pid with a 4-minute-old heartbeat and no marker raises the amber alert; a 1-minute-old
+  heartbeat does not; a dead pid does not (the stopped-team alert covers that).
+- With a maintenance marker standing for the live pid, the heartbeat alert is suppressed and the
+  blue maintenance alert shows instead.
+- A missing heartbeat file raises nothing.
+
+### Fast session cleanup, part 1/2: the session prune skips already-gone Codex sessions and resumes where a restart stopped it (planned 2026-11-16 by the operator; requires Visible session cleanup part 2/3 landed; touches src/agent/session-ledger.ts src/orchestrator/retention.ts src/ui/team-alert-status.ts test/session-ledger-prune.test.ts test/retention.test.ts test/team-alert-status.test.ts)
+
+**Goal.** Visibility explains a long prune; this makes it short and restart-safe. On 2026-11-16
+half of the 3,944 expired Codex ids had no rollout left (earlier, interrupted passes had already
+deleted them) yet each still cost about 1 s of `codex delete`. And because ledger lines are
+trimmed only after the whole pass, every restart started the 75-minute pass over.
+
+**Approach.**
+- In `pruneCodexSessions`, look up `findRollout(home, id)` before spawning, and skip
+  `codex delete` when the rollout is already gone (count it handled, not deleted). Keep the
+  existing rollout-unlink fallback for a failed delete.
+- Make progress durable: after each handled id, record it so a restart does not redo it. Either
+  trim that id's ledger lines as it goes, or append it to a resume file under `.tumwater/state/`
+  that the next pass subtracts from the expired set and that is removed once the ledger trim
+  runs. Pick whichever keeps the ledger writer single-homed (`pruneSessionLedgers`), and say which
+  in the commit.
+- Apply both to `pruneOpencodeSessions` (skip an id OpenCode no longer has, if its CLI or DB can
+  tell cheaply; otherwise only the resume half).
+- Note: the "(bounded)" in both functions' doc comments means the 10 s per-delete timeout
+  (`SESSION_DELETE_TIMEOUT_MS`), not a cap on deletes per pass; reword it so it is not misread.
+- Drop the `Restarting tumwater starts this over.` suffix from the maintenance alert (part 2/3),
+  since it is no longer true.
+
+**Acceptance criteria.**
+- An expired Codex id whose rollout is already absent is never passed to the `codex` binary (a
+  stub binary that records its argv sees only ids that still have a rollout).
+- A prune interrupted after k of N ids (stub delete that throws or the test stops it) and run
+  again spawns deletes only for the remaining N − k ids.
+- The maintenance alert no longer carries the restart suffix.
+
+### Fast session cleanup, part 2/2: session deletes run off the poll loop, so roles keep running during cleanup (planned 2026-11-16 by the operator; requires Fast session cleanup part 1/2 landed; touches src/agent/session-ledger.ts src/orchestrator/retention.ts src/orchestrator/orchestrator.ts src/orchestrator/orchestrator-poll.ts src/ui/team-alert-status.ts src/ui/status-model.ts test/session-ledger-prune.test.ts test/retention.test.ts test/team-alert-status.test.ts test/status-model.test.ts)
+
+**Goal.** Even short, a synchronous prune holds every role for its whole length, at startup and
+once a day. Running the CLI deletes asynchronously lets scheduling continue during cleanup. (A
+per-pass delete cap was the other option; it was not chosen because a daily pass with a cap can
+fall behind a busy Codex team indefinitely.)
+
+**Approach.**
+- `pruneCodexSessions` and `pruneOpencodeSessions` become async, using `spawn` with a small
+  concurrency limit (4) and the same 10 s per-delete timeout and status-0 success rule.
+- `RetentionPruner` starts the prune as a background task from the constructor and from `poll()`
+  and never awaits it in the poll; a pass already in flight makes `poll()` skip starting another.
+  The file and ledger-line passes still run after the deletes, inside the same task, so the ledger
+  is read before it is trimmed. Stopping the orchestrator abandons the task cleanly (its progress
+  is durable since part 1/2), and a rejected task logs a warning instead of ending the team.
+- The marker and events from part 1/3 stay. The maintenance alert becomes purely informational:
+  title `Cleaning up expired sessions in the background`, no "roles start when it finishes".
+  Remove the `held: session cleanup` hold from `rolePhase` (part 2/3), so rows show their normal
+  phases during cleanup.
+
+**Acceptance criteria.**
+- With a stub `codex` that sleeps 1 s and 50 expired ids, a role due at startup starts its run
+  before the prune finishes.
+- No more than 4 delete processes run at once.
+- A second `poll()` while a prune is in flight does not start another pass.
+- The maintenance alert reads as informational and idle rows show their normal phase while the
+  marker stands.
+
 ### Operator steering, part 1/5: `tumwater land` puts a hand-made commit on main under the team's merge lock (planned 2026-11-16 by the operator; touches src/operator/operator-land.ts src/cli/cli-land-command.ts src/cli.ts src/cli/cli-help-text.ts docs/cli.md test/operator-land.test.ts)
 
 **Goal.** The intended way to use tumwater is an operator steering the team, mostly by editing
