@@ -69,7 +69,7 @@ export function parsePiModelList(stdout: string): Set<string> | null {
 /** The models pi itself lists (`pi --list-models`), which include its built-in catalog that
  * models.json does not repeat. pi lists only the providers it has credentials for. Null when the
  * probe could not run or failed; never throws. Given a `root`, it also records the images column
- * for `seamImageInput` (src/pi/pi-listed-models.ts). */
+ * for `seamImageInput` (src/agent/image-input.ts). */
 export async function piListedModels(
   config: TumwaterConfig,
   pathEnv: string = envPath(),
