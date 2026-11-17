@@ -384,6 +384,73 @@ test("an already_queued recovery from any role falls through to author", async (
   );
 });
 
+/** A fake pi that counts its authoring calls in `count` and runs `steps[n - 1]` on call n (the
+ * last step repeats): each step is the shell body of one authoring run in the role's worktree. */
+function countedPi(count: string, steps: string[]): string {
+  const arms = steps.map((body, i) =>
+    i === steps.length - 1 ? `else\n${body}` : `${i === 0 ? "if" : "elif"} [ "$n" -eq ${i + 1} ]; then\n${body}`,
+  );
+  return [`n=$(cat "${count}" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "${count}"`, ...arms, "fi"].join("\n");
+}
+
+const changeStep = (file: string, summary: string): string =>
+  `printf '%s\\n' '${assistantLine(`done\nSUMMARY: ${summary}`)}'\necho ${file} > ${file}.txt`;
+const nothingStep = `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`;
+
+// BUGS.md 2026-11-15 recovery-spin: while a role's own change waits to merge, its later runs
+// author on their normal schedule. A run that ends without a change must not forget which pin
+// is the role's own, or the run after it re-pins that pin as leftover work and ends `queued` in
+// ~0.2 s, and the spin comes back on every other run.
+test("a role's own waiting pin stays its own across no-change runs: no later run re-pins it", async () => {
+  const repo = await initializedRepo();
+  const count = path.join(tmpdir(), "count");
+  await withPi(countedPi(count, [changeStep("one", "first change"), nothingStep]), async () => {
+    const runner = makeRoleRunner(repo, "improve");
+    const first = await runner.run();
+    assert.equal(first.result, "queued", "the first run pins its change");
+    const pin = await refSha(repo, mergeRefName("improve"));
+    assert.equal(pin, first.commit);
+
+    // The merge never runs here, so the pin waits through every later run.
+    for (let run = 2; run <= 4; run++) {
+      const outcome = await runner.run();
+      assert.equal(outcome.recoveredLeftover, undefined, `run ${run} authored rather than re-pinning the waiting change`);
+      assert.equal(outcome.result, "no_change", `run ${run} reached the model and found nothing to do`);
+    }
+    assert.equal(fs.readFileSync(count, "utf8").trim(), "4", "every run reached the model");
+    assert.equal(await refSha(repo, mergeRefName("improve")), pin, "the waiting pin is untouched");
+    assert.equal(eventsOfType(repo, "merge_queued").length, 1, "only the first run queued anything");
+  });
+});
+
+// A run admitted while its own change waits holds its new commit on the branch (heldOnBranch).
+// The next run's recovery must leave that held commit alone: resetting the branch to main
+// would lose committed work that no ref holds.
+test("a commit held on the branch beside the role's own waiting pin survives the next run", async () => {
+  const repo = await initializedRepo();
+  const count = path.join(tmpdir(), "count");
+  await withPi(
+    countedPi(count, [changeStep("one", "first change"), changeStep("two", "held change"), nothingStep]),
+    async () => {
+      const runner = makeRoleRunner(repo, "improve");
+      assert.equal((await runner.run()).result, "queued", "the first run pins its change");
+      const pin = await refSha(repo, mergeRefName("improve"));
+
+      const second = await runner.run();
+      assert.equal(second.result, "queued");
+      assert.equal(second.heldOnBranch, true, "the second change is held on the branch, not pinned");
+      const held = sh(repo, "git", "rev-parse", "tumwater/improve").trim();
+      assert.notEqual(held, pin);
+
+      const third = await runner.run();
+      assert.equal(third.result, "skipped", "the run waits for the pin rather than authoring over the held commit");
+      assert.equal(fs.readFileSync(count, "utf8").trim(), "2", "the waiting run ran no model");
+      assert.equal(sh(repo, "git", "rev-parse", "tumwater/improve").trim(), held, "the held commit is still the branch tip");
+      assert.equal(await refSha(repo, mergeRefName("improve")), pin, "the waiting pin is untouched");
+    },
+  );
+});
+
 test("an unmergeable leftover is retried on the next run and keeps its merge pin", async () => {
   const repo = await initializedRepo();
   const m1 = path.join(tmpdir(), "phase1");

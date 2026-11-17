@@ -521,15 +521,28 @@ test("a resolved merge pairs its result with the summary of the change it merged
   assert.equal(other.queuedSummary, undefined);
 });
 
-test("any completed run clears a stale queued-summary stash", () => {
-  // A role with a queued merge never runs, so a stash that survives to a later run names a
-  // change that is no longer waiting: the completed run records its own pair and drops it.
+test("a completed run keeps the waiting change's stash; a held run never replaces it", () => {
+  // No merge interlock: the role keeps running while its change waits, and leftover recovery
+  // reads the stash to tell that change's pin from leftover work (BUGS.md 2026-11-15
+  // recovery-spin). A completed run records its own pair and leaves the stash for the merge.
   const s = freshRunnerState("feature");
   s.queuedSummary = { sha: PINNED, summary: "did it" };
   applyRunOutcome(s, testConfig(), "feature", { result: "no_change", summary: "found nothing" });
   assert.equal(s.lastResult, "no_change");
   assert.equal(s.lastSummary, "found nothing");
-  assert.equal(s.queuedSummary, undefined);
+  assert.deepEqual(s.queuedSummary, { sha: PINNED, summary: "did it" }, "the waiting change keeps its stash");
+
+  // A held run's commit sits on the branch with no pin: it is not the change that is waiting.
+  applyRunOutcome(s, testConfig(), "feature", {
+    result: "queued",
+    commit: "d".repeat(40),
+    summary: "held work",
+    heldOnBranch: true,
+  });
+  assert.deepEqual(s.queuedSummary, { sha: PINNED, summary: "did it" }, "a held commit does not replace the stash");
+
+  applyMergeOutcome(s, "changed", { sha: PINNED, summary: "did it" });
+  assert.equal(s.queuedSummary, undefined, "the merge outcome clears it");
 });
 
 test("applyRunOutcome: an aborted run resumes promptly — role via resumePending, director via re-queue", () => {

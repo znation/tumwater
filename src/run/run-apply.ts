@@ -181,14 +181,18 @@ function recordCompletedOutcome(s: RunnerState, outcome: RunOutcome): void {
   // the state column shows that (`merge <elapsed>`, the merge-queue badge) — so the pair
   // keeps the prior outcome WITH its own summary while the change waits (BUGS.md 2026-09-23),
   // and the run's summary is stashed under the pinned sha for applyMergeOutcome to pair with
-  // the merge's result. Every other outcome is completed and clears the stash: a role with a
-  // queued or in-flight merge never runs (the orchestrator's interlock), so a stash that
-  // survives to a later run names a change that is no longer waiting.
+  // the merge's result. The stash outlives the role's later runs (no merge interlock: the role
+  // keeps running while its change waits) and only a merge outcome clears it: leftover recovery
+  // reads it to tell the role's own waiting pin from leftover work (BUGS.md 2026-11-15
+  // recovery-spin). A held run (heldOnBranch) pinned nothing, so its commit never replaces the
+  // stash of the pin that is waiting. Every reader matches the stash by sha, so a stash whose
+  // pin went away without a merge outcome (dropped, discarded) is inert.
   if (outcome.result === "queued") {
-    s.queuedSummary =
-      outcome.commit && outcome.summary ? { sha: outcome.commit, summary: outcome.summary } : undefined;
+    if (!outcome.heldOnBranch) {
+      s.queuedSummary =
+        outcome.commit && outcome.summary ? { sha: outcome.commit, summary: outcome.summary } : undefined;
+    }
   } else {
-    s.queuedSummary = undefined;
     s.lastResult = outcome.result;
     s.lastSummary = outcome.summary; // a summary-less outcome wipes the prior run's text
   }

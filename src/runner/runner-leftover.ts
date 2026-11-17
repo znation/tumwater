@@ -146,6 +146,17 @@ export type FinishableRecovery = Exclude<
   { kind: "discarded" } | { kind: "handback" } | { kind: "already_queued" }
 >;
 
+/** Whether the role's branch holds a commit no pin holds: the branch is ahead of main and its
+ * tip is not the pinned sha. An unreadable worktree reads as held: skipping one run is safe,
+ * and resetting a branch that may hold work is not. */
+async function heldBesidePin(wt: string, mainBranch: string, pinSha: string): Promise<boolean> {
+  const ahead = await aheadOfMain(wt, mainBranch).catch(() => null);
+  if (ahead === null) return true;
+  if (ahead <= 0) return false;
+  const tip = await headOf(wt, "HEAD").catch(() => null);
+  return tip !== pinSha;
+}
+
 /** Whether the role holds a kept merge pin — the ref `recoverLeftover` reads. Ref presence is the
  * whole answer: a pin main already holds is left to `recoverLeftover`, which deletes it. */
 export async function hasUnmergedPin(root: string, role: string): Promise<boolean> {
@@ -203,30 +214,26 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
       removeMergeChange(ctx.root, ctx.role);
       return null;
     }
-    // BUGS.md 2026-11-15 recovery-spin: a live pin ahead of main with a SET queuedSummary is
-    // the role's OWN pending change, not leftover work. A queued run stashes its summary under
-    // the committed sha (run-apply), and every queued run the role ran (fresh, or a relief
-    // heldOnBranch commit on the branch) set that stash — so a non-null queuedSummary is the
-    // role's own change still waiting for the merge. Re-queueing it (as this arm did before
-    // 2026-11-16) ended the run queued and reset the role to its minimum interval, so the role
-    // spun a ~0.2 s no-op "recovered leftover work" run every poll until the merge settled
-    // (build 72a0b257: ~800 such runs). Recovery no-ops (already_queued) so the run authors on
-    // its normal interval (the merge queue is not a scheduling gate, docs/how-it-works.md "No
-    // merge interlock") while the pin keeps waiting for the merge to take it. A live pin with
-    // a NULL queuedSummary is a genuine leftover a crashed run left (no queued run set the
-    // stash) — recovery re-queuees and ends queued, unchanged. Deferring the role until its
-    // merge settles instead (the reverted 2026-11-16 drainingGate) restored the merge
-    // interlock the docs forbid; no-op is the role-agnostic half. The under-cap guard is
-    // required: applyMergeOutcome clears the queuedSummary on any merge outcome, so a SET
-    // queuedSummary only ever co-exists with an under-cap pin — a pin that reached the conflict
-    // cap (whose queuedSummary is null, or a held commit a relief run staged on top of it) must
-    // still fall through to the `handback`/`discarded` arms below, which resolve the stuck
-    // conflict; only a resolvable own change no-ops.
-    if (ctx.queuedSummary !== undefined && conflictAttempts(ctx.mergeConflicts, sha) < MERGE_CONFLICT_LIMIT) {
-      return {
-        kind: "already_queued",
-        entry: recoveredMergeEntry(ctx.role, sha, await recoveredMetadata(ctx.root, sha), ctx.runNumber),
-      };
+    // BUGS.md 2026-11-15 recovery-spin: a pin whose sha the role's stash names is the role's
+    // OWN change still waiting for the merge, not leftover work. A queued run stashes its
+    // summary under the sha it pinned (run-apply), the stash survives the role's later runs,
+    // and only a merge outcome clears it (applyMergeOutcome). Re-pinning that pin ended the run
+    // `queued` and reset the role to its minimum interval, so the role spun a ~0.2 s no-op
+    // "recovered leftover work" run every poll until the merge settled (build 72a0b257: ~800
+    // such runs). Instead recovery leaves the pin to the drain and the run authors on its
+    // normal interval: the merge queue is not a scheduling gate (docs/how-it-works.md "No merge
+    // interlock"; the 2026-11-16 drainingGate, which deferred the role instead, was reverted).
+    // Every other live pin still takes the `pinned` arm once: one a crashed run left (no
+    // stash), and one whose last merge failed and cleared the stash, whose re-pin feeds the
+    // failure into the error streak (finishRecoveryRun). That run stashes the sha, so the runs
+    // after it no-op. A pin at the conflict cap falls through to `handback`/`discarded`.
+    if (ctx.queuedSummary?.sha === sha && conflictAttempts(ctx.mergeConflicts, sha) < MERGE_CONFLICT_LIMIT) {
+      const entry = recoveredMergeEntry(ctx.role, sha, await recoveredMetadata(ctx.root, sha), ctx.runNumber);
+      // A run admitted while this pin waits holds its new commit on the branch (heldOnBranch,
+      // run-stage.ts). The `already_queued` fall-through resets the branch to main before it
+      // authors, which would lose that commit, so the run waits it out instead.
+      if (await heldBesidePin(ctx.wt, ctx.mainBranch, sha)) return { kind: "relief_wait", entry };
+      return { kind: "already_queued", entry };
     }
   } else {
     // No pin: either nothing was left behind, or a crash hit the commit→pin window (or

@@ -153,20 +153,37 @@ test("a live pin the role itself queued (a set queuedSummary) is a no-op, not a 
   assert.equal(eventsOfType(root, "merge_queued").length, 0, "the no-op re-queues nothing — the drain already owns the pin");
 });
 
-test("a heldOnBranch commit on top of a draining pin (queuedSummary ≠ pin) is a no-op, not a re-pin", async () => {
+test("a commit held on the branch beside the role's own pin waits (relief_wait), never reset away", async () => {
   const { root, sha } = await pinnedFixture();
   const wt = await ensureWorktree(root, ROLE, "main");
   // The relief heldOnBranch path: the role authored a NEW commit on the branch while its own
-  // change drains — the queuedSummary stashes THAT commit, not the pin's sha.
-  seedCommit(wt, "held.txt", "held work\n", "tumwater(improve): held on the branch");
+  // change waits. The stash still names the pin (a held run never replaces it, run-apply).
+  fs.appendFileSync(path.join(wt, "held.txt"), "held work\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "tumwater(improve): held on the branch");
   const held = headSha(wt);
-  const ctx = { ...makeCtx(root, wt), queuedSummary: { sha: held, summary: "held on the branch" } };
+  const ctx = { ...makeCtx(root, wt), queuedSummary: { sha, summary: "the run's own change" } };
 
   const recovered = await recoverLeftover(ctx);
 
-  assert.equal(recovered?.kind, "already_queued", "the draining own pin is not leftover work, even with a held commit above it");
-  assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the draining pin stays for the merge");
-  assert.equal(eventsOfType(root, "merge_queued").length, 0, "the no-op re-queues nothing, so the held commit is not stranded by a re-pin");
+  // `already_queued` would fall through to a branch reset before authoring, losing the commit.
+  assert.equal(recovered?.kind, "relief_wait", "the held commit waits for the pin to merge");
+  assert.equal(headSha(wt), held, "the held commit is still the branch tip");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the waiting pin is untouched");
+  assert.equal(eventsOfType(root, "merge_queued").length, 0, "nothing is re-queued");
+});
+
+test("a stash naming another sha does not claim the pin: it is recovered as leftover work", async () => {
+  const { root, sha } = await pinnedFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  // A stash left by a change whose pin went away without a merge outcome names some other sha.
+  const ctx = { ...makeCtx(root, wt), queuedSummary: { sha: "c".repeat(40), summary: "an older change" } };
+
+  const recovered = await recoverLeftover(ctx);
+
+  assert.equal(recovered?.kind, "pinned", "only the stash's own sha is the role's waiting change");
+  assert.equal(recovered?.kind === "pinned" ? recovered.entry.sha : null, sha);
+  assert.equal(eventsOfType(root, "merge_queued").length, 1);
 });
 
 test("a pin at the conflict cap with a held queuedSummary still hands back, not no-ops", async () => {
