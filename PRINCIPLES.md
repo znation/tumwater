@@ -26,6 +26,12 @@ what to do, not what to avoid.
   when it can settle it on its own — so the UI raises a warning only for what the operator must act
   on, never a standing "waiting on your decision" banner. (recorded 2026-11-15 by the director role,
   from the user's note on the refused-entry alert)
+- The operator steers through the backlog: tumwater is built to be steered, not left alone. The
+  operator, most often through their own interactive agent on a strong model, writes, sharpens,
+  reorders, and retires PLANS.md and BUGS.md entries, and the team's job is to build them well.
+  Treat an operator-written entry as the operator's intent — build it, or refine and split it
+  toward that intent, and raise a **Question** when it looks wrong — and keep the docs, prompts,
+  and UI describing a steered team, never a hands-off one. (recorded 2026-11-16 by the operator)
 
 ## Budgets
 

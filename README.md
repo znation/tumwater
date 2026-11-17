@@ -137,8 +137,8 @@ code against human-written open source, see [docs/code-metrics.md](docs/code-met
 
 ## Appendix: the brief
 
-The brief this repository was started from, kept for history. tumwater still reads the brief from
-between the markers below on every run.
+The brief this repository was started from, amended 2026-11-16 where the original vision proved
+impractical. tumwater still reads the brief from between the markers below on every run.
 
 <!-- tumwater:prompt:start -->
 Idea: agentic harness
