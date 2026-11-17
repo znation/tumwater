@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { planRunStart } from "../src/run/run-resume.js";
+import { planRunStart, takesSalvagedWork } from "../src/run/run-resume.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
@@ -652,4 +652,23 @@ test("a budgetCapped claude run keeps the worktree and hands off to the fallback
   } finally {
     restoreHome();
   }
+});
+
+// takesSalvagedWork is the one home of "does this run's plan carry salvaged work" the resume path
+// (src/run/run-resume.ts) and the run gate (src/runner/runner-run.ts:428) both branch on. The
+// consumer test (test/runner-salvage.test.ts) drives only the true arm end-to-end, so the two
+// false arms are pinned here, directly, against a minimal plan stub: a flip of either false arm
+// (say the && becoming ||) would let planWithSalvagedWork run on a plan with no salvaged work.
+test("takesSalvagedWork is true only for an authoring run: a prompt with no user request", () => {
+  // Hand-computed from the source (plan.prompt !== null && plan.userPrompt === null).
+  const authoring = { prompt: "some text", userPrompt: null } as Parameters<typeof takesSalvagedWork>[0];
+  assert.equal(takesSalvagedWork(authoring), true, "an authoring run of the role's own work takes back the patch");
+
+  // A user request: the edits are not about it, so the patch waits for a later run.
+  const userRequest = { prompt: null, userPrompt: "some text" } as Parameters<typeof takesSalvagedWork>[0];
+  assert.equal(takesSalvagedWork(userRequest), false, "a user's request leaves the patch waiting");
+
+  // A promptless recovery run: it authors nothing, so the patch waits.
+  const promptless = { prompt: null, userPrompt: null } as Parameters<typeof takesSalvagedWork>[0];
+  assert.equal(takesSalvagedWork(promptless), false, "a promptless recovery run authors nothing");
 });

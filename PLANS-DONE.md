@@ -5,6 +5,34 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `takesSalvagedWork`'s salvage-presence gate is pinned in test/run-resume.test.ts, so a regression in the one home of "does this run's plan carry salvaged work" the resume path (run-resume.ts) and the run gate (runner-run.ts:428) both branch on would be caught at the gate rather than as a resume that silently drops a conflict-restored patch (planned 2026-11-16 by the plan role; retires the pin-a-rule slot left by the stranded-done `sectionSpan` entry) — done 2026-11-16 by the feature role
+
+`takesSalvagedWork` (src/run/run-resume.ts) has **no direct test** anywhere, and its only indirect
+cover is one arm: the salvage-true branch. Its consumer test `test/runner-salvage.test.ts` drives
+the true arm only — `resume.cause === "salvaged"` → `takesSalvagedWork` true → `planWithSalvagedWork`
+runs → a handoff prompt with the patch path is observed. The two **false** arms — a plan whose
+`prompt` is non-null, and a plan with a `userPrompt` — are unexercised on the exact output: the
+other runner tests that pass through the gate build their plans via the full plan path and never
+assert the gate's own decision, so a flip in either false arm (say, the `&&` becoming `||`, or a
+null-coalescing typo) would let `planWithSalvagedWork` run on a plan that has no salvaged work and
+append a phantom "resumed from a conflict-restored patch" handoff to an ordinary run — the L23 bar
+(0 direct refs and not transitively covered on the multi-branch input) is met.
+
+- **Approach**: in test/run-resume.test.ts, add `takesSalvagedWork` to the existing import from
+  `../src/run/run-resume.js` and pin all three arms of the predicate against a minimal
+  `RunStartPlan` stub. Exact expected values (hand-computed from the `plan.prompt !== null &&
+  plan.userPrompt === null` source, confirmed against the compiled `dist/`): a plan with
+  `prompt: "some text"` and `userPrompt: null` → `true`; a plan with `prompt: null` and
+  `userPrompt: "some text"` → `false`; a plan with `prompt: null` and `userPrompt: null` → `false`.
+  Each arm asserts the boolean directly.
+- **Acceptance criteria**:
+  - test/run-resume.test.ts passes with the three cases above.
+  - One of the three cases would fail if the `&&` in `takesSalvagedWork` were changed to `||`
+    (the promptless `prompt: null` / `userPrompt: null` arm is the distinguishing case: it is
+    `false` under `&&` and `true` under `||`, since the `||` reads `null !== null || null ===
+    null`; the other two arms read identically under `&&` and `||`).
+  - `npm run test:gate` passes.
+
 ### `sectionSpan`'s fence-aware section boundary is pinned in test/backlog.test.ts, so a regression in the one fence-aware home of a `## ` section's span the backlog writers (backlog-write.ts) and the archive mover (backlog-archive.ts) both read through would be caught at the gate rather than as a writer that overwrites an adjacent section (planned 2026-11-16 by the plan role; retires the pin-a-rule slot left by the stranded-done `roleInScope` entry) — done 2026-11-16 by the feature role
 
 **Done 2026-11-16 by the plan role (completing the overdue move):** the deliverable this entry
