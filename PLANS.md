@@ -439,9 +439,12 @@ team does the volume work; the operator steers it, and the primary way to steer 
 in the operator's own interactive harness (claude, codex, omp) editing PLANS.md and BUGS.md. Today
 no doc says so; the knowledge an operator's agent needs lived only outside the repo.
 
+_Amended 2026-11-16 by the operator: no longer names the TUI, which the Remove the TUI series
+deletes._
+
 **Approach.** Write docs/steering.md for a human reader, in plain terms (docs/glossary.md):
 - **The three ways to steer**, in order: your own agent in the repo (the primary one); the
-  director prompt (dashboard, TUI, `tumwater prompt`) for quick steering without leaving the UI;
+  director prompt (dashboard, `tumwater prompt`) for quick steering without leaving the UI;
   answering the questions the team raises (`tumwater questions`). Running hands-off works (`start
   --for`, `--once`), but it is not where tumwater does its best work.
 - **The loop.** Start the team; in a second terminal open your agent in the repo and tell it to
@@ -473,6 +476,9 @@ no doc says so; the knowledge an operator's agent needs lived only outside the r
 steered, not run hands-off, and that the primary way is their own interactive agent editing the
 backlog.
 
+_Amended 2026-11-16 by the operator: no longer names the TUI, which the Remove the TUI series
+deletes._
+
 **Approach.**
 - Rewrite the intro paragraph after the token warning. Keep what it says about roles, small reviewed
   commits and local-only git state. Replace "It came from wanting to write only the brief and let
@@ -484,7 +490,7 @@ backlog.
   ("start the team, open your agent in the repo, tell it to run `tumwater guide`"), and a link to
   docs/steering.md.
 - In Usage, the paragraph starting "From another terminal" leads with your agent and `tumwater
-  guide` before `tumwater tui`, `status` and `logs`.
+  guide` before the browser dashboard, `status` and `logs`.
 - Leave the warning, the `tumwater:status` markers and the brief appendix between the
   `tumwater:prompt` markers untouched; the brief is the operator's to change.
 
@@ -527,6 +533,207 @@ step mentions only `tumwater start` and `tumwater tui`.
 
 **Tests.** Update the init and help tests that pin the old wording to the new text (test/init*.ts,
 test/help.test.ts) from the template constants, not by copying the output. Then the project's gate.
+
+### Remove the TUI, part 1/5: delete the terminal dashboard and both ways to start it, `tumwater tui` and `start --tui` (planned 2026-11-16 by the operator; touches src/ui/tui/ src/cli.ts src/cli/cli-start.ts src/cli/cli-start-supervisor.ts src/cli/cli-flag-specs.ts src/cli/cli-help-text.ts src/cli/cli-init.ts src/doctor/doctor-orphans.ts src/doctor/doctor-backlog.ts src/ui/status-render.ts src/ui/status-payload.ts src/roles/role-view.ts src/history/history-data.ts test/tui-*.test.ts test/cli-tui-strictness.test.ts test/fixtures/tui-fixtures.ts test/gui-client.test.ts test/status-render.test.ts test/transcript.test.ts test/categories-tumwater.test.ts test/supervisor.test.ts docs/cli.md docs/invariants.md README.md RELEASE_NOTES.md)
+
+**Goal.** The operator watches and steers the team through the browser dashboard (`tumwater gui`,
+`tumwater start --gui`) and the CLI, and has stopped using the ink TUI. The TUI is too busy to
+read, bugs and UX problems have piled up in it because nobody uses it, and every change to a
+shared status, alert or editor rule has to be built and tested twice. It is 58 files and about
+10,900 lines under `src/ui/tui/`, plus 30 test files, and it is the only reason tumwater has
+runtime dependencies (ink, react). Nobody else runs tumwater. Remove it outright. Nothing in it
+is ported to the GUI: a TUI-only control is dropped, not moved (operator's decision 2026-11-16).
+This part deletes the code and its two entry points, and fixes everything that would otherwise
+fail to build or fail the suite. Parts 2/5 to 5/5 tidy what is left.
+
+**Approach.**
+- Delete `src/ui/tui/` and its tests: every `test/tui-*.test.ts`,
+  test/cli-tui-strictness.test.ts and test/fixtures/tui-fixtures.ts.
+- `tumwater tui`: drop `cmdTuiCase` and the `tui` row of `COMMAND_HANDLERS` in src/cli.ts. The
+  command then fails as an unknown command, and the existing did-you-mean (src/text/suggest.ts)
+  names `gui`. No tombstone message.
+- `tumwater start --tui`: drop the `--tui` flag spec (src/cli/cli-flag-specs.ts), the two `--tui`
+  rival-shape refusals in src/cli/cli-start.ts, and the supervisor's hosting path in
+  src/cli/cli-start-supervisor.ts: `spawnTui`, the TTY guard through `tuiTerminalError`, the
+  hosted `runTui` and its abort controller, and the silent `childStdio` used while a TUI is
+  hosted (children always inherit stdio now). `start --tui` then fails as an unknown flag before
+  anything boots.
+- src/cli.ts `main`'s stdout/stderr error guard: drop the EIO deferral
+  (`errCode(err) === "EIO" && stream.listenerCount("error") > 1`) and its comment. It existed only
+  so the TUI's own `error` listener could take its quit teardown. EPIPE still exits 0, and every
+  other write error, EIO included, throws.
+- Text a user reads: the `tumwater tui` stanza and the `--tui` lines in
+  src/cli/cli-help-text.ts; the `watch:` line in src/cli/cli-start.ts names `tumwater gui` or
+  `tumwater logs -f`; the `next:` line in src/cli/cli-init.ts says `tumwater gui` where it says
+  `tumwater tui` and keeps the rest of the line (Operator steering part 5/5 edits that line too);
+  drop the "or the TUI Health tab's …" clauses in src/doctor/doctor-orphans.ts and
+  src/doctor/doctor-backlog.ts.
+- Shared exports that only the TUI imported. test/exports.test.ts names them once the TUI is
+  gone: `HistorySummaryGroup` (src/history/history-data.ts), `rawRoleField`
+  (src/roles/role-view.ts), `DASHBOARD_ANSWERED_QUESTIONS`, `DASHBOARD_RECENT_FINISHED` and
+  `recentFinished` (src/ui/status-payload.ts), and `StatusSpan`, `StatusLine`, `clipSpans` and
+  `toneLine` (src/ui/status-render.ts). When the symbol's own module still uses it, drop only the
+  `export`; otherwise delete it and any helper only it used.
+- Tests that reach into the TUI for a shared rule:
+  - test/gui-client.test.ts imports `parseBudgetInput` to show the GUI's cap editor agrees with
+    the TUI. Rewrite that test against `checkDailyBudgetUsd` (src/config/config-keys.ts), the
+    rule both surfaces were meant to share, with expected verdicts written out as literals.
+  - test/status-render.test.ts uses `sanitizeFrameLines` (tui-frame.ts) and
+    test/transcript.test.ts uses `paneBody` (tui-pane.ts). Keep the cases that test a surviving
+    function, and delete the ones that only exercised the TUI half.
+  - test/categories-tumwater.test.ts: replace the `src/ui/tui/tui.tsx` row with another
+    `src/ui/` file.
+  - test/supervisor.test.ts: drop the `--tui` cases and keep the `--gui` ones.
+  - Drop the tests that pinned the EIO deferral (the "CLI-hosted TUI exits 0 when its terminal
+    dies" case). Keep the EPIPE cases.
+- docs/cli.md: the `tumwater start --tui` example, `tumwater tui` in the "Watch the team" row
+  (the row then leads with the browser dashboard), and the whole `## TUI keys` section.
+- docs/invariants.md. test/invariants-doc.test.ts requires every cited path and test title to
+  exist, so six entries change here:
+  - INV-A6, INV-AD5, INV-AK4, INV-B5 and INV-T6: drop the TUI clause and its path, keeping each
+    guarantee for the surfaces that remain.
+  - INV-DC1: drop the EIO-deferral sentence, the `src/ui/tui/tui.tsx` (`runTui`) Binds path and
+    the test/tui-dead-terminal.test.ts pin.
+- README.md: the `tumwater start --tui` example, "`tumwater tui` or the browser dashboard" and
+  "every … TUI key". RELEASE_NOTES.md, under `## CLI`: a bullet saying the terminal dashboard
+  (`tumwater tui`, `start --tui`) is removed and to use `tumwater gui` / `start --gui`.
+
+**Acceptance criteria.**
+- `src/ui/tui/` and the 30 TUI test files are gone, and nothing in src/, test/ or scripts/
+  imports from `ui/tui/`.
+- `tumwater tui` exits 1 as an unknown command whose message names `gui`.
+- `tumwater start --tui` exits nonzero as an unknown flag without starting an orchestrator.
+- `tumwater start` and `tumwater start --gui` behave as before: the supervisor's children inherit
+  stdio, and the supervisor and cli-start tests pass.
+- A CLI whose stdout reader closes still exits 0 (EPIPE); an EIO on stdout is no longer swallowed.
+- The repo-wide scans pass, which the gate's `--affected` selection can skip: run
+  `npm run test:rerun -- exports.test invariants-doc.test docs-links.test docs-commands.test cli-doc.test help.test completion.test comment-width.test`
+  as well as the gate.
+
+**Tests.** No new tests beyond the rewritten `checkDailyBudgetUsd` case, which takes its expected
+verdicts from the rule's own definition (finite, ≥ 0, ≤ MAX_SAFE_INTEGER), not from calling it.
+The deletion is pinned by the existing unknown-command and unknown-flag tests: add `tui` and
+`start --tui` cases to them (test/cli-help-unknown.test.ts, test/cli-start-guards.test.ts), with
+the expected suggestion `gui` written as a literal. Then the project's gate and the scans above.
+
+### Remove the TUI, part 2/5: delete what is left in src/ only for tests now that the TUI is gone (planned 2026-11-16 by the operator; requires Remove the TUI part 1/5 landed; touches src/history/history-data.ts src/inbox/inbox.ts src/review/quarantine-render.ts src/roles/role-render.ts src/ui/status-render.ts src/redeploy/self-reload.ts test/history*.test.ts test/inbox*.test.ts test/quarantine*.test.ts test/role-render*.test.ts test/status-render*.test.ts test/self-reload*.test.ts)
+
+**Goal.** After part 1/5, some exports in src/ are used by nothing in src/ except their own
+module; only tests still import them. test/exports.test.ts counts a test as a user, so it does
+not flag them, but they are dead code with tests pinning them in place. As of 2026-11-16 they are
+`runRowGrepHaystack` (src/history/history-data.ts), `enqueuePrompt` (src/inbox/inbox.ts),
+`renderQuarantineSection` (src/review/quarantine-render.ts), `inspectMarkdownLines`
+(src/roles/role-render.ts) and `renderStatusSpans` (src/ui/status-render.ts). The self-reload
+watch (src/redeploy/self-reload.ts) also still carries reasoning written for an orphaned TUI on
+the operator's terminal.
+
+**Approach.**
+- Re-derive the list on the tree as it stands: for each exported symbol in src/, collect the
+  files outside its own module that use it. A symbol whose only such users are under test/ is a
+  candidate.
+- From the candidates, take only those that a TUI file imported before part 1/5
+  (`git show <part 1/5's parent>:src/ui/tui/…`). Other test-only exports are not this part's
+  business.
+- For each one: if its own module still calls it, drop the `export` and rewrite its tests to go
+  through the exported function that calls it. Otherwise delete it, along with any helper only it
+  used and the tests that only pinned it.
+- src/redeploy/self-reload.ts: the dashboards it reloads are now `tumwater gui` alone. Delete any
+  branch, option or state that only a TUI process exercised (`reloadDisabled` was passed only by
+  the hosted TUI), and reword the module's doc comment. Keep the GUI's reload behaviour exactly.
+
+**Acceptance criteria.**
+- Nothing on the list keeps an `export` that only tests use.
+- `tumwater gui` still reloads itself after a self-redeploy swaps `dist/`. The self-reload tests
+  that cover the GUI pass unchanged, apart from deleted TUI-only options.
+- No behaviour visible through the CLI or the GUI changes.
+
+**Tests.** Removed tests are those that only pinned a deleted symbol. Tests of a now-unexported
+helper move to its exported caller with the same expected values. Then the project's gate, plus
+`npm run test:rerun -- exports.test`.
+
+### Remove the TUI, part 3/5: drop ink and react, so tumwater has no runtime dependencies (planned 2026-11-16 by the operator; requires Remove the TUI part 1/5 landed; touches package.json package-lock.json tsconfig.json eslint.config.js scripts/stamp-build.mjs test/stamp-build.test.ts PRINCIPLES.md docs/code-metrics.md)
+
+**Goal.** ink and react, plus the `@types/react` dev dependency, were adopted for the TUI alone
+(the ink decision of 2026-10-01 in PRINCIPLES.md). With the TUI gone, nothing imports them, and
+removing them returns tumwater to zero runtime dependencies. That means a smaller install and no
+JSX toolchain settings.
+
+**Approach.**
+- `npm uninstall ink react @types/react`, so package.json and package-lock.json change together.
+  The team re-syncs the primary tree's node_modules from the lockfile after its own merge.
+- tsconfig.json: drop `"jsx": "react-jsx"` and the `src/**/*.tsx` include.
+- eslint.config.js: drop the `src/**/*.tsx` globs.
+- scripts/stamp-build.mjs: no source is `.tsx` any more, so a `.js` output's source is its `.ts`
+  alone. Drop the `.tsx` branch and its comment, and update test/stamp-build.test.ts to match.
+- PRINCIPLES.md: the dependency rule no longer names ink as an exception (the TypeScript
+  toolchain stays the only one), and the **Dependencies** line reads 0 runtime.
+  docs/code-metrics.md: the dependencies bullet says the same.
+
+**Acceptance criteria.**
+- `npm ls --omit=dev --depth=0` shows no dependencies, and package.json names neither ink nor
+  react.
+- `npm run build` succeeds from a clean `dist/`, and no `.tsx` file exists under src/.
+- The built CLI starts: `node dist/src/cli.js help` exits 0.
+
+**Tests.** test/stamp-build.test.ts as above. Then the project's gate, plus
+`npm run test:rerun -- stamp-build.test`.
+
+### Remove the TUI, part 4/5: source comments stop describing a TUI (planned 2026-11-16 by the operator; requires Remove the TUI parts 1/5, 2/5, 3/5 landed; touches src/ (comments only) scripts/diff-check.mjs scripts/live-fixture.mjs)
+
+**Goal.** Before part 1/5, about 100 files under src/ (outside `src/ui/tui/`) mentioned the TUI
+some 315 times. Most of those mentions are comments that call a piece of code "the TUI's twin",
+cite a `src/ui/tui/…` path, name a TUI key (Ctrl+…), or list the TUI among the surfaces that read
+a file. Part 1/5 removes only the user-facing ones. A reader, human or model, who follows the rest
+looks for code that does not exist, or keeps two surfaces in step when there is only one.
+
+**Approach.**
+- Wherever a comment in src/ or scripts/ names the TUI, a `ui/tui/` path or a TUI key, rewrite
+  the sentence for the surfaces that remain (the CLI, the GUI, `tumwater status`). Drop "twin of
+  the TUI's …" cross-references outright. Change comments only; any code change found along the
+  way becomes its own BUGS.md entry. Keep comment lines within the 100-column limit
+  (test/comment-width.test.ts).
+- scripts/diff-check.mjs compares the `renderStatus` table (the `tumwater status` view) and the
+  GUI's `/api/status` payload; say so instead of "TUI table strings". Fix the TUI mentions in
+  scripts/live-fixture.mjs.
+
+**Acceptance criteria.**
+- `grep -rniw tui src scripts` matches nothing.
+- No source line other than a comment changes: `git diff -U0 -- src scripts` adds and removes
+  only comment lines.
+- test/comment-width.test.ts passes.
+
+**Tests.** None new. Run the project's gate, plus `npm run test:rerun -- comment-width.test`.
+
+### Remove the TUI, part 5/5: tests and docs stop describing a TUI (planned 2026-11-16 by the operator; requires Remove the TUI parts 1/5, 2/5, 3/5 landed; touches test/ (comments and test titles only) docs/invariants.md DEVELOPMENT.md README.md docs/how-it-works.md docs/feature-doctor.md docs/backends.md docs/glossary.md docs/feature-per-role-spending.md docs/implementation-per-role-spending.md docs/implementation-model-fallback.md docs/code-metrics.md)
+
+**Goal.** Outside the deleted TUI tests, about 70 test files mention the TUI some 480 times, in
+comments and in test titles such as "matches the TUI's …". Several docs still describe TUI panes
+and keys as current. Once the TUI is gone, these mislead whoever reads them next.
+
+**Approach.**
+- test/: rewrite comments and test titles that name the TUI, a `ui/tui/` path or a TUI key for
+  the surfaces that remain. Change no assertion. When a renamed title is cited in
+  docs/invariants.md (a `**Pinned by.**` line quotes it), update the citation in the same change.
+- DEVELOPMENT.md: "Checking rendered output by hand" says diff-check compares the
+  `tumwater status` table and the GUI payload, not "TUI status-table strings"; the src/ layout
+  list drops `src/ui/tui/`; drop other TUI mentions.
+- docs/: rewrite each live description of a TUI pane, key or surface (how-it-works,
+  feature-doctor, backends, glossary, the per-role-spending and model-fallback docs, and
+  code-metrics' TUI key-handler complexity rows) for its GUI or CLI equivalent, or delete it
+  where there is none. README.md's "observable by gui/tui/log. GUI/TUI also gives user a main
+  prompt" becomes gui/log and GUI.
+- Leave history alone: plans/*.md, PLANS-DONE.md, BUGS-FIXED.md and earlier release-note
+  sections record what was true at the time.
+
+**Acceptance criteria.**
+- `grep -rniw tui test` matches nothing. `grep -rniw tui docs README.md DEVELOPMENT.md
+  PRINCIPLES.md` matches only sentences saying that the TUI was removed.
+- No test assertion changes: `git diff -U0 -- test` touches only comments and test-title
+  strings.
+- test/docs-links.test.ts, test/invariants-doc.test.ts and test/comment-width.test.ts pass.
+
+**Tests.** None new. Run the project's gate, plus
+`npm run test:rerun -- docs-links.test invariants-doc.test comment-width.test`.
 
 ## Done
 
