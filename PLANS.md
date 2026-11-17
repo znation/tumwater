@@ -10,7 +10,7 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 _None yet._
 
-### Release version display, part 1/2: the build stamp records the npm release version when it was compiled from that release's tag (planned 2026-11-16 by the operator; touches src/build/build-info.ts src/redeploy/redeployer.ts src/team/team-orchestrator-info.ts test/build-info.test.ts test/stamp-build.test.ts test/redeployer.test.ts test/team-orchestrator-info.test.ts)
+### Release version display, part 1/3: the build stamp records the npm release version when it was compiled from that release's tag (planned 2026-11-16 by the operator; touches src/build/build-info.ts src/redeploy/redeployer.ts src/team/team-orchestrator-info.ts test/build-info.test.ts test/stamp-build.test.ts test/redeployer.test.ts test/team-orchestrator-info.test.ts)
 
 **Goal.** An npm-installed tumwater shows a commit hash where the operator expects a version. The
 GUI sidebar's Version row (src/ui/gui/gui-client-team.ts) prints `shortSha(d.build.sha)`, and for
@@ -20,7 +20,7 @@ from: `npm publish` runs `prepack` → `npm run build` → scripts/stamp-build.m
 (src/redeploy/redeploy.ts) builds a Redeployer from any stamp, self-hosted or not, so
 `orchestrator.json` carries `build.sha` and every dashboard shows it. An operator who installed
 `tumwater@0.8.1` cannot match `a1b2c3d4` to a release. This part records the release version in
-the stamp so part 2/2 can show it.
+the stamp so part 2/3 can show it.
 
 The version must come from the build, not be read from package.json at run time. Main always
 carries the NEXT version (scripts/release.mjs: "Main always carries the NEXT version"), so a
@@ -59,9 +59,9 @@ compiled from the commit the release tag `v<version>` points at is that release.
   version>`, run `npm pack`, and confirm the tarball's `package/dist/build-info.json` has
   `release`; delete the tag, pack again, and confirm it does not.
 
-### Release version display, part 2/2: the GUI's Version row and `doctor` show the npm release version, keeping the commit in the GUI tooltip (planned 2026-11-16 by the operator, amended 2026-11-17 by the operator to leave the TUI alone; requires Release version display part 1/2 landed; touches src/build/build-info.ts src/ui/gui/gui-client-team.ts src/ui/status-payload.ts src/doctor/doctor.ts test/build-info.test.ts test/gui-client-sidebar.test.ts test/status-payload.test.ts test/doctor-checks.test.ts)
+### Release version display, part 2/3: the GUI's Version row and `doctor` show the npm release version, keeping the commit in the GUI tooltip (planned 2026-11-16 by the operator, amended 2026-11-17 by the operator to leave the TUI alone; requires Release version display part 1/3 landed; touches src/build/build-info.ts src/ui/gui/gui-client-team.ts src/ui/status-payload.ts src/doctor/doctor.ts test/build-info.test.ts test/gui-client-sidebar.test.ts test/status-payload.test.ts test/doctor-checks.test.ts)
 
-**Goal.** When the running build is a release (`build.release`, part 1/2), the GUI sidebar's
+**Goal.** When the running build is a release (`build.release`, part 1/3), the GUI sidebar's
 Version row reads `Version 0.8.1`, not `Version a1b2c3d4`, and `doctor`'s running line says
 `version 0.8.1`. The commit stays one hover away in the GUI for bug reports. Builds from a
 checkout (the self-hosted team, a developer's dist) have no `release` and keep showing the short
@@ -70,7 +70,7 @@ sha, unchanged.
 **Out of scope.** Change nothing in the TUI or in what it shares: leave `buildBadge`
 (src/ui/badges.ts), src/ui/status-render.ts, src/ui/tui/ and `tumwater start`'s ` · build <sha>`
 line (src/cli/cli-start.ts) exactly as they are. The Remove the TUI series deletes or rewrites
-those files, and this part must not collide with it.
+those files; part 3/3 changes `tumwater status` and `tumwater start` once the TUI is gone.
 
 **Approach.**
 - One shared label: a small exported helper beside `BuildStatus` in src/build/build-info.ts (for
@@ -101,10 +101,48 @@ those files, and this part must not collide with it.
 - `doctor` prints `version 0.8.1` for a release build and the short sha otherwise.
 - `git diff` for this part touches no file under src/ui/tui/, src/ui/badges.ts,
   src/ui/status-render.ts or src/cli/cli-start.ts, and test/badges.test.ts passes unchanged.
-- Manual check: install the packed tarball from part 1/2's check globally (`npm i -g
+- Manual check: install the packed tarball from part 1/3's check globally (`npm i -g
   ./tumwater-<version>.tgz`) in a scratch environment, run `tumwater start` in a demo repo and
   open the GUI. The sidebar reads `Version <version>`, hovering shows the commit, and `tumwater
   doctor` names the same version.
+
+### Release version display, part 3/3: `tumwater status` and `tumwater start` name the npm release version too (planned 2026-11-17 by the operator; requires Release version display part 2/3 and Remove the TUI part 1/5 landed; touches src/ui/badges.ts src/ui/gui/gui-client-team.ts src/cli/cli-start.ts test/badges.test.ts test/gui-client-sidebar.test.ts test/status-render.test.ts test/cli-start.test.ts)
+
+**Goal.** After part 2/3 the GUI and `doctor` say `0.8.1` for a release build, while
+`tumwater status`'s header still says `build a1b2c3d4` and `tumwater start` still announces
+` · build a1b2c3d4`. This part brings those two in line, so every place that names the running
+build agrees. It waits for Remove the TUI part 1/5 because the TUI header renders through the same
+`buildBadge` (via `renderStatusSpans`) and that part rewrites src/cli/cli-start.ts: once the TUI
+is gone, changing the badge changes only `tumwater status` and the GUI tooltip, and the two plans
+never edit the same lines at once.
+
+**Approach.**
+- `buildBadge` (src/ui/badges.ts) leads with `, version 0.8.1 (build a1b2c3d4)` when
+  `build.release` is set, using part 2/3's `buildLabel` for the version, and keeps
+  `, build a1b2c3d4` otherwise. Every suffix (update available, waiting for check, restart
+  blocked or pending) follows the lead unchanged. `tumwater status` (renderStatus,
+  src/ui/status-render.ts) picks this up with no change of its own.
+- GUI tooltip (src/ui/gui/gui-client-team.ts): part 2/3 built the tooltip's lead itself because
+  `buildBadge` could not change yet. Go back to deriving it from the badge, stripping either lead
+  word (`/^, (?:build|version) /`) after `Running version `, so the tooltip text stays exactly
+  what part 2/3 shipped (`Running version 0.8.1 (build a1b2c3d4)` for a release, today's text for
+  a checkout) and the badge is again its one home.
+- `tumwater start`'s announcement (src/cli/cli-start.ts, today
+  `` ` · build ${shortSha(redeploy.build.sha)}` ``) reads ` · version 0.8.1 (build a1b2c3d4)` for
+  a release build and keeps ` · build a1b2c3d4` otherwise. If Remove the TUI part 1/5 moved this
+  line, change it where it now lives.
+
+**Acceptance criteria.**
+- `buildBadge` returns `, version 0.8.1 (build aaaaaaaa)` for a release build, with each existing
+  suffix appended unchanged, and today's string for every existing case in test/badges.test.ts.
+- `renderStatus` on a snapshot with a release build shows `version 0.8.1 (build aaaaaaaa)` in its
+  header; a checkout build's header is unchanged.
+- The GUI row title for a release build is still `Running version 0.8.1 (build aaaaaaaa)`, and
+  every existing tooltip assertion in test/gui-client-sidebar.test.ts passes unchanged.
+- `tumwater start`'s announcement names `version 0.8.1 (build aaaaaaaa)` for a release build and
+  ` · build aaaaaaaa` for a checkout build.
+- Manual check: with the tarball install from part 1/3's check, `tumwater status` and the line
+  `tumwater start` prints both name the installed version.
 
 ### `isMergeClaim`'s fail-closed boolean shape guard is pinned in test/merge-queue.test.ts, so a regression in the one home of "is this a well-formed backlog-claim trailer" the queue's file reader (`isMergeEntry`, which validates each entry's `claim`) and the commit-trailer reader (`claimOf`) both apply would be caught at the gate rather than as a torn or foreign claim the readers silently admit (planned 2026-11-16 by the plan role; the pin-a-rule the retired bad-anchor `isMergeClaim` entry's defect note flagged as "a different entry than this one" — the real boolean guard, not the 3-arm refusal-string builder that entry described)
 
