@@ -5,6 +5,38 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `isMergeClaim`'s fail-closed shape rejection is pinned in test/commit-message.test.ts, so a regression in the one home of "is this a valid merge claim" the SUMMARY/WHY/RISK/VERIFIED builder (buildMergeSummary) relies on to refuse a claim it cannot attribute would be caught at the gate rather than as a commit whose trailer names an entry the queue does not know (planned 2026-11-16 by the plan role; retires the pin-a-rule slot left by the stranded-done `sectionSpan` entry; done 2026-11-16 by the plan role)
+
+**Retired 2026-11-16 by the plan role: plan defect — the entry's anchors do not exist on current main, so the pin it describes has nothing to build (resolving the feature role's 2026-11-16 `Needs review` note, which recommended retirement). Re-verified on current main (plan role, 2026-11-16): (1) the file it names, `src/runner/commit-message.ts`, does not exist — `isMergeClaim` lives in `src/merge/merge-queue.ts` and its only live reader is `claimOf` in `src/git/commit-message.ts`; (2) on main `isMergeClaim` is a plain boolean type guard (`isJsonObject(v) && (v.file === "PLANS.md" || v.file === "BUGS.md") && typeof v.key === "string" && typeof v.title === "string"`) — there is no 3-arm file dispatch, no series-part/bug-index key check, no string-producing claim builder (`buildMergeSummary` does not exist in `src/` or `test/`, 0 hits), and the "exact template strings" its acceptance criteria would pin do not appear in the source (0 hits). The entry's 3-arm shape and L23 rationale describe a deliverable that is not on main; executing its Approach would fail against the real guard. No same-heading done twin in PLANS-DONE.md (its `isMergeClaim` mentions are body prose inside other entries, not a pin heading), so this is a bad-anchor retirement, not a stale-duplicate removal. No `requires … landed` clause names this entry — the two remaining `## Planned` entries (`isPriorReview`, `isFullCheckScope`) carry none — so nothing else to re-point. The real fail-closed contract (`claimOf` returning `undefined` on a malformed or non-backlog claim) is a testable rule, but a different pin than the one this entry named.**
+
+`isMergeClaim` (src/runner/commit-message.ts) has **no direct test** — its only references are in
+its consumer `buildMergeSummary` (same file) and that consumer's tests, which exercise the
+valid-claim path (a correctly-shaped key passes through to the trailer) but never the two
+fail-closed rejections. It is a genuine 3-arm predicate: a `PLANS.md` claim whose key is not a
+series part or a bug index is refused, a `BUGS.md` claim whose key is not a bug index is refused,
+and any other file is refused. The L23 bar (0 direct refs and not transitively covered on the
+multi-branch input) is met: a consumer test never feeds a malformed key and asserts the exact
+rejection string. A regression that loosens either shape check (say, dropping the `part`/`N/M`
+alternation, or the file dispatch) would let a mislabeled claim through to a commit trailer, where
+the merge queue then attributes work to an entry that does not exist — a silent bookkeeping rot the
+fail-closed string is the only guard against.
+
+- **Approach**: in test/commit-message.test.ts, add `isMergeClaim` to the existing import from
+  `../src/runner/commit-message.js` and pin all three arms against a minimal claim stub
+  (`{ file, key, title, description, why, risk, verified }`). Exact expected values (hand-computed
+  from the source's three template strings, confirmed against the compiled `dist/`): a `PLANS.md`
+  claim with key `"part 1/2"` and title `"Add X"` → the string `PLANS.md files "Add X" as "part
+  1/2" — claims must name an entry ("Fix the <kind> plan or bug")`; a `BUGS.md` claim with key
+  `"1/2"` and title `"Fix Y"` → the analogous `BUGS.md files "Fix Y" as "1/2" — …` string; a
+  `README.md` claim with key `"1/2"` and title `"Doc Z"` → `README.md has a claim that is not for
+  a plan or a bug`; and a `PLANS.md` claim with a correctly-shaped series-part key (per the regex
+  `/^[A-Za-z][A-Za-z0-9]*(?: [A-Za-z0-9]+)* (?:part \d+\|\d+|\d+\/\d+)$/`) → `undefined`.
+- **Acceptance criteria**:
+  - test/commit-message.test.ts passes with the three fail-closed cases and the one valid case.
+  - The two fail-closed cases quote the exact template strings above (the text is the contract the
+    operator reads).
+  - `npm run test:gate` passes.
+
 ### `isPriorReview`'s fail-closed shape guard is pinned in test/merge-queue.test.ts, so a regression in the one home of "is this a well-formed PriorReview object" the merge queue's file reader (planned 2026-11-16 by the plan role; the pin-a-rule for the `PriorReview` shape guard) — done 2026-11-16 by the feature role
 
 `isPriorReview` (src/merge/merge-queue.ts) is a **fail-closed shape guard** with **no direct test**.
