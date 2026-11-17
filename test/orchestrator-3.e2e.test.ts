@@ -255,9 +255,11 @@ test("an entry whose sha main already holds is dropped at the drain without a me
     // fast-forward (its ff writes the file into the primary checkout), so its presence there is
     // the faithful "merged to main" signal — unlike lastResult, which a later no_change run
     // overwrites and would otherwise make this wait flaky.
+    // The slot logs merge_done only after the fast-forward writes hello.txt, so wait for both:
+    // a stale pin planted in that gap is dropped before the first merge_done lands.
     await waitFor(
-      () => fs.existsSync(path.join(repo, "hello.txt")),
-      "the change to merge on main",
+      () => fs.existsSync(path.join(repo, "hello.txt")) && eventsOfType(repo, "merge_done").length === 1,
+      "the change to merge on main and log merge_done",
     );
     // …and the crash-between-ff-and-drop residue is simulated the pin way: the pin repointed
     // at main's head (a sha main already holds), which the drain drops stale without a merge.
@@ -306,9 +308,11 @@ test("a stale marker beside a stale pin is dropped at the drain without a merge 
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
+    // The slot logs merge_done only after the fast-forward writes hello.txt, so wait for both:
+    // a stale pin planted in that gap is dropped before the first merge_done lands.
     await waitFor(
-      () => fs.existsSync(path.join(repo, "hello.txt")),
-      "the change to merge on main",
+      () => fs.existsSync(path.join(repo, "hello.txt")) && eventsOfType(repo, "merge_done").length === 1,
+      "the change to merge on main and log merge_done",
     );
     // …and the crash residue is the pin way: the pin repointed at main's head (a sha main
     // already holds — a pin that resolves nowhere new) with a stale in-flight marker left

@@ -144,7 +144,7 @@ test("refusalContradiction throws on a git that cannot read the worktree instead
   const index = path.join(sh(wt, "git", "rev-parse", "--absolute-git-dir"), "index");
   fs.chmodSync(index, 0);
   try {
-    await assert.rejects(refusalContradiction(wt, "did it\nSUMMARY: fixed the leak\nTUMWATER_REFUSED: none"), /git status/);
+    await assert.rejects(refusalContradiction(wt, "did it\nSUMMARY: fixed the leak\nTUMWATER_REFUSED: none"), /git --no-optional-locks status/);
   } finally {
     fs.chmodSync(index, 0o644);
   }

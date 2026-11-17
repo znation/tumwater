@@ -24,11 +24,27 @@ test("changedFiles throws when git cannot answer, rather than reporting no chang
   const index = path.join(repo, ".git", "index");
   fs.chmodSync(index, 0);
   try {
-    await assert.rejects(changedFiles(repo), /git status --porcelain -z failed/);
+    await assert.rejects(changedFiles(repo), /git --no-optional-locks status --porcelain -z failed/);
   } finally {
     fs.chmodSync(index, 0o644);
   }
   assert.deepEqual(await changedFiles(repo), ["work.txt"]);
+});
+
+test("changedFiles never rewrites the index, so it cannot hold the lock a concurrent merge needs", async () => {
+  // Runs read the primary checkout with changedFiles while a merge fast-forwards there; a status
+  // that refreshes the index takes `.git/index.lock`, and the ff then fails merge_blocked.
+  const repo = makeRepo();
+  const index = path.join(repo, ".git", "index");
+  // Same content, new mtime: a refreshing status re-stats seed.txt and writes the index back.
+  const later = new Date(Date.now() + 60_000);
+  fs.utimesSync(path.join(repo, "seed.txt"), later, later);
+  const before = fs.statSync(index).mtimeMs;
+  const bytes = fs.readFileSync(index);
+
+  assert.deepEqual(await changedFiles(repo), [], "an mtime-only change is no change");
+  assert.equal(fs.statSync(index).mtimeMs, before, "the index file was not rewritten");
+  assert.deepEqual(fs.readFileSync(index), bytes);
 });
 
 test("changedFiles lists modified, untracked, and deleted files by repo-relative path", async () => {

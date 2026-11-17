@@ -85,7 +85,11 @@ export function unquotePorcelainPath(p: string): string {
  * `-z` a rename/copy is two records — `XY <to>\0<from>\0`, destination first — so this reads
  * the destination (the path that exists now) and skips the extra origin record. */
 export async function changedFiles(wt: string): Promise<string[]> {
-  const out = await git(wt, "status", "--porcelain", "-z");
+  // Read-only: a plain `git status` may take the index lock to refresh stat data, and runs read
+  // the PRIMARY checkout with this (the stray-write check, runner-run.ts) while a merge's
+  // `merge --ff-only` there needs that same lock. A collision failed the merge `merge_blocked`
+  // ("Unable to create '…/.git/index.lock': File exists").
+  const out = await git(wt, "--no-optional-locks", "status", "--porcelain", "-z");
   if (!out) return [];
   const files: string[] = [];
   const records = out.split("\0");
