@@ -232,15 +232,32 @@ the observers a generic backstop.
   blue maintenance alert shows instead.
 - A missing heartbeat file raises nothing.
 
-### Fast session cleanup, part 1/2: the session prune skips already-gone Codex sessions and resumes where a restart stopped it (planned 2026-11-16 by the operator; requires Visible session cleanup part 2/3 landed; touches src/agent/session-ledger.ts src/orchestrator/retention.ts src/ui/team-alert-status.ts test/session-ledger-prune.test.ts test/retention.test.ts test/team-alert-status.test.ts)
+### Fast session cleanup, part 1/2: the session prune skips placeholder and already-gone Codex sessions, walks the rollout tree once, and resumes where a restart stopped it (planned 2026-11-16 by the operator; requires Visible session cleanup part 2/3 landed; touches src/agent/session-ledger.ts src/agent/codex/codex-rollout.ts src/agent/codex/codex-backend.ts src/orchestrator/retention.ts src/ui/team-alert-status.ts test/session-ledger-prune.test.ts test/retention.test.ts test/team-alert-status.test.ts)
 
 **Goal.** Visibility explains a long prune; this makes it short and restart-safe. On 2026-11-16
 half of the 3,944 expired Codex ids had no rollout left (earlier, interrupted passes had already
 deleted them) yet each still cost about 1 s of `codex delete`. And because ledger lines are
 trimmed only after the whole pass, every restart started the 75-minute pass over.
 
+_Amended 2026-11-16 by the operator: added the placeholder-id skip and the single rollout walk,
+from bugs found while diagnosing the same stall._
+
 **Approach.**
-- In `pruneCodexSessions`, look up `findRollout(home, id)` before spawning, and skip
+- In `pruneCodexSessions`, skip every id that is not a Codex thread UUID before any lookup or
+  spawn. A fresh Codex run's pre-spawn ledger record carries the session *name* as its id
+  (src/agent/agent-spawn.ts, `invocation.sessionId ?? opts.sessionName`; the streamed UUID is a
+  second record), and `codex delete --force <name>` always refuses (`--force requires a session
+  UUID`). On 2026-11-16, 5,488 of 11,003 Codex records were placeholders and 875 of the expired
+  ids were names. Move `THREAD_ID_RE` out of src/agent/codex/codex-backend.ts into
+  codex-rollout.ts (which session-ledger already imports, so no import cycle) and use it in both
+  places. The placeholder lines are still trimmed by `pruneSessionLedgers` as today. (Resume is
+  already safe: `resolveCodexSession` and `resumable` accept only `THREAD_ID_RE` ids.)
+- Build one `id → rollout path` index from a single walk of `$CODEX_HOME/sessions` at the start
+  of the pass and look ids up in it, instead of calling `findRollout` per id: `findRollout`
+  walks the whole tree on every call and never stops at the first match (about 4,000 ids ×
+  3,800 entries per prune), and its comment claiming the walk "stays small" is wrong; fix the
+  comment too.
+- Then look up each id's rollout in that index before spawning, and skip
   `codex delete` when the rollout is already gone (count it handled, not deleted). Keep the
   existing rollout-unlink fallback for a failed delete.
 - Make progress durable: after each handled id, record it so a restart does not redo it. Either
@@ -256,6 +273,9 @@ trimmed only after the whole pass, every restart started the 75-minute pass over
   since it is no longer true.
 
 **Acceptance criteria.**
+- An expired non-UUID Codex id (a session name) is never passed to the `codex` binary, and its
+  ledger lines are still trimmed by the line pass.
+- One prune pass walks `$CODEX_HOME/sessions` once, however many ids are expired.
 - An expired Codex id whose rollout is already absent is never passed to the `codex` binary (a
   stub binary that records its argv sees only ids that still have a rollout).
 - A prune interrupted after k of N ids (stub delete that throws or the test stops it) and run
@@ -277,6 +297,9 @@ fall behind a busy Codex team indefinitely.)
   The file and ledger-line passes still run after the deletes, inside the same task, so the ledger
   is read before it is trimmed. Stopping the orchestrator abandons the task cleanly (its progress
   is durable since part 1/2), and a rejected task logs a warning instead of ending the team.
+  Today a SIGTERM during the prune cannot reach the JS handler while `spawnSync` blocks, so
+  shutdown never runs: the 2026-11-16 instances stopped mid-prune (pids 4663, 15799) logged no
+  `orchestrator_stop`, handed off no merge and released no slot.
 - The marker and events from part 1/3 stay. The maintenance alert becomes purely informational:
   title `Cleaning up expired sessions in the background`, no "roles start when it finishes".
   Remove the `held: session cleanup` hold from `rolePhase` (part 2/3), so rows show their normal
@@ -287,6 +310,8 @@ fall behind a busy Codex team indefinitely.)
   before the prune finishes.
 - No more than 4 delete processes run at once.
 - A second `poll()` while a prune is in flight does not start another pass.
+- A SIGTERM while a prune is in flight ends the orchestrator within the shutdown window, with an
+  `orchestrator_stop` event and the usual merge hand-off and slot release.
 - The maintenance alert reads as informational and idle rows show their normal phase while the
   marker stands.
 
