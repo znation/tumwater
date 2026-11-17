@@ -32,8 +32,9 @@ export interface UsageFold {
    * role whose every change draws a new objection is visible alongside its runs/cost. */
   rejectionsByRole: Record<string, number>;
   /** The `review_rejected` events whose `afterMerge` is true, per role id — a subset of
-   * `rejectionsByRole`, kept apart because a post-merge rejection turns back an already-merged
-   * commit (one that must come off main, unlike a rejection of a change the gate held). */
+   * `rejectionsByRole`, kept apart because a post-merge rejection judges an already-merged
+   * commit (or withholds the reviewer's fix of one): the commit stays on main with the
+   * reviewer's recorded reasons (Forward, never back), unlike a change the gate held. */
   postMergeRejectionsByRole: Record<string, number>;
   /** revision events per role id — the rework rounds a rejected change is re-applied through,
    * split by role so a role whose every iteration is a fresh rework is visible (the author-side
