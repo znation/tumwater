@@ -14,9 +14,15 @@ interface NoChangeDiagnosis {
    * PiRunResult.finalMessageContentless). Such a run is NOT fulfilled — a director prompt
    * goes back to the inbox, a role resumes its compacted session next run. */
   cutOff: boolean;
+  /** True when the run ended on a checkpoint abort: its final message is contentless, it
+   * stopped "aborted", and no compaction was ever written (BUGS.md 2026-11-16). Distinguished
+   * from a context-ceiling cut-off (also contentless, but a normal stop and a compaction);
+   * such a run is NOT a cut-off — it ends as an ordinary no_change rather than resuming a
+   * session that was never compacted. */
+  checkpointAborted: boolean;
   /** Diagnostic notes for the warning event when no sentinel appeared (empty otherwise): an
-   * abnormal stopReason, missing assistant text, a contentless final message (likely cut off
-   * at the context ceiling), and auto-compaction — so a no-sentinel no_change run is
+   * abnormal stopReason, missing assistant text, a contentless final message (a checkpoint
+   * abort, or a ceiling cut-off), and auto-compaction — so a no-sentinel no_change run is
    * diagnosable from its event alone. */
   notes: string[];
 }
@@ -29,15 +35,29 @@ interface NoChangeDiagnosis {
  * context window, with the provider misreporting the truncation as a normal stop), and whether
  * pi auto-compacted the session. */
 export function diagnoseNoChange(pi: PiRunResult): NoChangeDiagnosis {
-  const cutOff = !pi.nothingToDo && pi.finalMessageContentless;
-  if (pi.nothingToDo) return { cutOff, notes: [] }; // Sentinel present — nothing to diagnose.
+  // A checkpoint abort (BUGS.md 2026-11-16) ends the turn contentless with stopReason
+  // "aborted" and writes no compaction (pi 1.5.2's fire-and-forget compact() aborts the turn
+  // still running it). Its contentless final is NOT a context-ceiling cut-off: a ceiling
+  // cut-off stops normally and pi compacts it. Distinguish the two by the abort plus the
+  // missing compaction, and name the real cause.
+  const checkpointAborted =
+    !pi.nothingToDo && pi.finalMessageContentless && pi.stopReason === "aborted" && !pi.compacted;
+  // A checkpoint abort did real work but was never compacted, so resuming it would hand the
+  // model a session that was never summarized and claim otherwise — it is not a cut-off and
+  // must not arm a resume (BUGS.md 2026-11-16). A ceiling cut-off is.
+  const cutOff = !pi.nothingToDo && pi.finalMessageContentless && !checkpointAborted;
+  if (pi.nothingToDo) return { cutOff, checkpointAborted, notes: [] }; // Sentinel present — nothing to diagnose.
   const notes: string[] = [];
   if (pi.stopReason && pi.stopReason !== "stop") notes.push(`stopReason=${pi.stopReason}`);
   if (!pi.finalText.trim()) notes.push("no assistant text");
   if (pi.finalMessageContentless)
-    notes.push("final message had no text or tool call — likely cut off at the context ceiling");
+    notes.push(
+      checkpointAborted
+        ? "final message had no text or tool call — the run ended on a checkpoint abort, not a context-ceiling cut-off"
+        : "final message had no text or tool call — likely cut off at the context ceiling",
+    );
   if (pi.compacted) notes.push("pi auto-compacted the session");
-  return { cutOff, notes };
+  return { cutOff, checkpointAborted, notes };
 }
 
 /** Cap on a no-change answer kept as the run's summary, so a verbose reply cannot bloat the

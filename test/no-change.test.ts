@@ -32,6 +32,46 @@ test("a contentless final message without a sentinel is a context-ceiling cut-of
   ]);
 });
 
+test("a checkpoint abort is not a context-ceiling cut-off and names the real cause", () => {
+  // BUGS.md 2026-11-16: a checkpoint's fire-and-forget compact() aborts the running turn, so
+  // the run ends contentless with stopReason "aborted" and no compaction written. Its
+  // contentless final is NOT a ceiling cut-off, so the no-change warning must not blame the
+  // ceiling — the pre-fix code read every contentless final that way.
+  const d = diagnoseNoChange(
+    noChangePi({ nothingToDo: false, finalText: "", stopReason: "aborted", finalMessageContentless: true }),
+  );
+  assert.equal(d.cutOff, false);
+  assert.equal(d.checkpointAborted, true);
+  assert.deepEqual(d.notes, [
+    "stopReason=aborted",
+    "no assistant text",
+    "final message had no text or tool call — the run ended on a checkpoint abort, not a context-ceiling cut-off",
+  ]);
+});
+
+test("an aborted contentless run that DID compact is a ceiling cut-off, not a checkpoint abort", () => {
+  // pi's own context compaction also ends contentless: an aborted final that wrote a
+  // compaction is a real (post-compaction) cut-off, so the "in any case" arm stays a cut-off
+  // and keeps the old note. The two arms differ only in whether a compaction was written.
+  const d = diagnoseNoChange(
+    noChangePi({
+      nothingToDo: false,
+      finalText: "",
+      stopReason: "aborted",
+      finalMessageContentless: true,
+      compacted: true,
+    }),
+  );
+  assert.equal(d.cutOff, true);
+  assert.equal(d.checkpointAborted, false);
+  assert.deepEqual(d.notes, [
+    "stopReason=aborted",
+    "no assistant text",
+    "final message had no text or tool call — likely cut off at the context ceiling",
+    "pi auto-compacted the session",
+  ]);
+});
+
 test("a contentless final message that auto-compacted notes the compaction last", () => {
   const d = diagnoseNoChange(
     noChangePi({ nothingToDo: false, finalText: "", finalMessageContentless: true, compacted: true }),
