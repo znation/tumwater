@@ -389,7 +389,7 @@ a verification rejection drops its entry at once — its role may run next poll 
 
 **Validation gap:** no-repro — the failure is load-timing (a read landing in the window between the gate's pin-delete and the settle's write, which only widens on a loaded host), so it cannot be reproduced deterministically offline; the fix closes the window by construction — the test now polls for the settle's event, which by write order (state saved before the event logged) implies the state is persisted, so no read can land in the race.
 
-## A role's leftover recovery re-pins its own in-flight, already-queued merge and drops its queue file — `a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate` (test/orchestrator-3.e2e.test.ts) fails deterministically (found by the ci role 2026-11-09) — fixed 2026-11-09 by the bugfix role
+### A role's leftover recovery re-pins its own in-flight, already-queued merge and drops its queue file — `a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate` (test/orchestrator-3.e2e.test.ts) fails deterministically (found by the ci role 2026-11-09) — fixed 2026-11-09 by the bugfix role
 
 The e2e test `a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate` failed deterministically at the tip: every isolated run of the single file failed (`node dist/test/test-runner.js orchestrator-3`), the e2e tier was 88 pass / 1 fail, and the same test was green at the last green tip. Filed by the ci role, which runs the whole e2e tier where the merge gate's affected-tests selection does not.
 
