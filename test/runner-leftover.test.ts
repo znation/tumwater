@@ -12,7 +12,7 @@ import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { shortSha } from "../src/text/format.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { eventsOfType, unwritableEvents, warningMessages } from "./fixtures/log-fixtures.js";
-import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Unit coverage for runner-leftover.ts's recoverLeftover — the salvage path that re-pins a
@@ -158,9 +158,7 @@ test("a heldOnBranch commit on top of a draining pin (queuedSummary ≠ pin) is 
   const wt = await ensureWorktree(root, ROLE, "main");
   // The relief heldOnBranch path: the role authored a NEW commit on the branch while its own
   // change drains — the queuedSummary stashes THAT commit, not the pin's sha.
-  fs.appendFileSync(path.join(wt, "held.txt"), "held work\n");
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "tumwater(improve): held on the branch");
+  seedCommit(wt, "held.txt", "held work\n", "tumwater(improve): held on the branch");
   const held = headSha(wt);
   const ctx = { ...makeCtx(root, wt), queuedSummary: { sha: held, summary: "held on the branch" } };
 
@@ -177,9 +175,7 @@ test("a pin at the conflict cap with a held queuedSummary still hands back, not 
   // A relief run that held a commit on the branch while a pin that reached the conflict cap
   // drains: the queuedSummary is the held commit, the pin is at the cap. The no-op must NOT
   // fire here — the cap conflict must fall through to the `handback` so the role resolves it.
-  fs.appendFileSync(path.join(wt, "held.txt"), "held work\n");
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "tumwater(improve): held on the branch");
+  seedCommit(wt, "held.txt", "held work\n", "tumwater(improve): held on the branch");
   const held = headSha(wt);
   const ctx = {
     ...makeCtx(root, wt),
@@ -271,9 +267,7 @@ test("a queued merge with a relief commit ahead of main recovers relief_wait, no
   const root = makeRepo();
   const wt = await ensureWorktree(root, ROLE, "main");
   enqueueMerge(root, { role: ROLE, sha: "a".repeat(40), run: 3, summary: "queued change", enqueuedAt: Date.now() });
-  fs.appendFileSync(path.join(wt, "relief.txt"), "held work\n");
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "relief run held this commit");
+  seedCommit(wt, "relief.txt", "held work\n", "relief run held this commit");
   const tip = headSha(wt);
 
   const recovered = await recoverLeftover(makeCtx(root, wt));
@@ -438,9 +432,7 @@ test("an unpinned commit ahead of main (crash in the commit→pin window) is ado
 test("a no-pin ahead-of-main commit is adopted into the pin scheme and queued", async () => {
   const root = makeRepo();
   const wt = await ensureWorktree(root, ROLE, "main");
-  fs.appendFileSync(path.join(wt, "held.txt"), "held work\n");
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "commit the hold names");
+  seedCommit(wt, "held.txt", "held work\n", "commit the hold names");
   const tip = headSha(wt);
   assert.equal(await refSha(root, mergeRefName(ROLE)), null, "fixture sanity: no pin");
 
