@@ -143,8 +143,11 @@ impractical. tumwater still reads the brief from between the markers below on ev
 <!-- tumwater:prompt:start -->
 Idea: agentic harness
 
-Opinionated. Built on pi. Lots of autonomous loops. You only write the markdown/initial prompt.
-It builds the project with immense effort. First puts the initial prompt and project status into
+Opinionated. Built on pi. Lots of autonomous loops. You write the markdown/initial prompt, then
+steer: you, usually through your own interactive agent on a strong model, write and sharpen the
+entries in PLANS.md and BUGS.md, and the loops build them. (Amended 2026-11-16: the original "you
+only write the initial prompt" proved impractical; steering through the backlog is the intended
+use.) It builds the project with immense effort. First puts the initial prompt and project status into
 README.md. Background loops are observable by gui/tui/log. GUI/TUI also gives user a main prompt.
 Loop sleeps a while when the prompt results in no further changes. Starts again after a while to
 see if the answer has changed due to the new state of the world. Each run attempts to find
