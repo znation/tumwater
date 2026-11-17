@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { findTumwaterRoot, writeFullOutput } from "../src/pi-extension/full-output.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -76,41 +75,11 @@ test("findTumwaterRoot walks up to the harness root", () => {
 });
 
 // A stale .tumwater at the OS temp ROOT (leaked by an earlier run on a shared host) is poison,
-// not a team root (BUGS.md 2026-11-16). The guard must make findTumwaterRoot ignore it whether
-// the walk starts at the temp root or climbs through it — the exact five red tests. The temp
-// root is mutated in-process (os.tmpdir() re-reads TMPDIR) and restored in finally, and the
-// .tumwater it mints is removed, so a clean host never keeps it.
-function withPoisonedTempRoot(fn: () => void): void {
-  const prior = process.env.TMPDIR;
-  const poison = fs.mkdtempSync(path.join(os.tmpdir(), "os-tmp-root-poison-"));
-  const poisonDir = path.join(poison, ".tumwater");
-  fs.mkdirSync(poisonDir, { recursive: true });
-  try {
-    process.env.TMPDIR = poison;
-    fn();
-  } finally {
-    if (prior === undefined) delete process.env.TMPDIR;
-    else process.env.TMPDIR = prior;
-    fs.rmSync(poisonDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
-  }
-}
-
-test("findTumwaterRoot ignores a stale .tumwater at the OS temp root", () => {
-  withPoisonedTempRoot(() => {
-    // The walk starts at the poisoned temp root itself.
-    assert.equal(findTumwaterRoot(os.tmpdir()), null, "the temp root's own .tumwater is not a root");
-    // ...and a real root in a CHILD of the temp root is still found (the guard is not overbroad).
-    const realRoot = fs.mkdtempSync(path.join(os.tmpdir(), "os-tmp-real-root-"));
-    try {
-      fs.mkdirSync(path.join(realRoot, ".tumwater"));
-      const deep = path.join(realRoot, "worktrees", "_slot-1");
-      fs.mkdirSync(deep, { recursive: true });
-      assert.equal(findTumwaterRoot(deep), realRoot, "a child-of-temp-root team root is still found");
-    } finally {
-      fs.rmSync(path.join(realRoot, ".tumwater"), { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
-    }
-  });
-});
+// not a team root (BUGS.md 2026-11-16): findTumwaterRoot's isOsTempRoot guard must ignore it.
+// The guard itself is pinned in test/paths.test.ts (the pure isOsTempRoot unit test); the
+// in-process poison variant that created a raw mkdtempSync under os.tmpdir() was removed
+// because it tripped the tmpdir() convention guard and failed on a host whose TMPDIR was
+// itself already poisoned.
 
 test("writeFullOutput falls back to a timestamped name when the tool call has no id", () => {
   // Parallel tool mode names files by toolCallId; a call without one (or with a junk-free
