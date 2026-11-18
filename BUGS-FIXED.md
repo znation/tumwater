@@ -5,6 +5,18 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `tumwater plan --file` silently drops a series part's `requires … landed` clause, so the part is handed out before its prerequisite lands (reported by the user 2026-11-16) — fixed 2026-11-17 by the bugfix role
+
+A series part filed through `tumwater plan --file` (or `tumwater plan "<title>"`, or the dashboard's file endpoint) loses its dependency. `appendOperatorEntry` (src/backlog/backlog-write.ts) writes the heading as `### <title> (<stamp>)`, so the operator stamp `(reported by the user <date>)` becomes the heading's last parenthetical. `requiresClause` (src/backlog/backlog-parts.ts) reads the `requires … landed` clause only from the trailing parenthetical (or an open one), so a title like `S, part 2/2: B (requires S part 1/2 landed)` parses to no prerequisites once stamped. The claim allocator then treats part 2/2 as ready and a feature run can claim it while part 1/2 is still planned or in flight. Nothing warns: `planDependencyProblems`'s `unparsed` list only catches a clause that is found but parses to nothing, and its `misworded` scan looks for other dependency verbs, not a `requires` clause in an earlier parenthetical.
+
+This matters more now that the intended use is an operator's own agent filing plans (PLANS.md "Operator steering" series): an agent filing a series the documented way gets it silently unordered. The 2026-11-16 Operator steering series had to be written into PLANS.md by hand and landed under the merge lock for this reason.
+
+**Reproduce.** On the built tree: `requiredParts("S, part 2/2: B (requires S part 1/2 landed)")` returns `[{series: "S", part: "1", of: 2}]`, and `requiredParts("S, part 2/2: B (requires S part 1/2 landed) (reported by the user 2026-11-16)")` returns `[]`. End to end: in a fixture repo, `tumwater plan --file` a part 1/2 and then a part 2/2 whose title ends in `(requires S part 1/2 landed)`; `tumwater plan --list` shows part 2/2 as ready instead of `[blocked: …]`.
+
+**Suspected cause.** The filing path and the dependency parser disagree on where heading metadata lives. Either fix is plausible; pick the one that keeps every other heading reader (`stripEntryStamp`, `entryDates`, `entryKey`, the retired-stamp readers) consistent: (a) when the filed title already ends in a parenthetical, fold the operator stamp into it as `(…; reported by the user <date>)` instead of appending a second group; or (b) have `requiresClause` look at every top-level parenthetical in the heading, not only the last. Also consider having `planDependencyProblems` report a `requires … landed` clause that sits outside the parenthetical it reads, so a hand-written heading with the same shape is caught.
+
+**Validation gap:** none — the drop reproduced offline in a fixture repo (file a series part whose title ends in a `(requires … landed)` group through `tumwater plan --file`), so nothing was missing to confirm it.
+
 ### A checkpoint-caused abort is indistinguishable from a context-ceiling cut-off to the no-change warning, and its resume bridge lies: the "In any case" half of the 2026-11-15 checkpoint bug the gate-side fix closed on 2026-11-16 — fixed 2026-11-16 by the bugfix role
 
 Filed 2026-11-16 by the review role as the review of c1c5e4d0. The gate-side fix (BUGS-FIXED.md, "A `checkpoint` call ends the run instead of compacting it") closes the bug's review half — gate runs no longer offer `checkpoint`, so a review keeps its verdict. Two author-run requirements from that same entry stay open and untracked here:

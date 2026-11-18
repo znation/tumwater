@@ -3,7 +3,7 @@
  * text and entry lists; the hold rules built on them live in backlog-eligibility.ts. */
 
 import { collapseWhitespace } from "../text/text.js";
-import { openParenthetical, trailingParenthetical, type BacklogEntry } from "./backlog-md.js";
+import type { BacklogEntry } from "./backlog-md.js";
 import { isRetiredTitle } from "./backlog.js";
 import { stripEntryStamp } from "./backlog-structure.js";
 
@@ -153,11 +153,14 @@ export function plansWaitingOn(planned: readonly BacklogEntry[], index: number):
   return [...seen].sort((a, b) => a - b);
 }
 
-/** The prerequisite parts a plan heading's trailing parenthetical (or, when the heading wraps
- * and the parenthetical stays open past the line, its open parenthetical) names through the clause
+/** The prerequisite parts a plan heading's parentheticals name through the clause
  * `requires <ref>((, | and )<ref>)* landed`, with each range (e.g. `parts 1/5–3/5`) expanded.
- * Returns [] when the heading has no such clause or the clause does not parse — an agent judges
- * an unparseable clause, exactly as it does today. Only the heading is read, never the body. */
+ * The clause is read across EVERY top-level parenthetical — the trailing one (or an open one when
+ * the heading wraps), and any earlier group. An operator-filed heading carries a second trailing
+ * group, `(reported by the user <date>)`, so a `(requires … landed)` in the FIRST group is no
+ * longer shadowed the way a trailing-only read dropped it (BUGS.md 2026-11-16). Returns [] when
+ * the heading has no such clause or the clause does not parse — an agent judges an unparseable
+ * clause, exactly as it does today. Only the heading is read, never the body. */
 export function requiredParts(title: string): PartRef[] {
   const clause = requiresClause(title);
   if (clause === null) return [];
@@ -172,16 +175,45 @@ export function requiredParts(title: string): PartRef[] {
   return refs;
 }
 
-/** The ref text a heading's `requires <refs> landed` clause captures — read from the trailing
- * parenthetical, or the open one of a wrapped heading — or null when the heading has no such
- * clause. requiredParts parses it; planDependencyProblems uses it to spot a clause that parses to
- * nothing. */
+/** The ref text a heading's `requires <refs> landed` clause captures, or null when the heading
+ * carries no such clause. Read across every top-level parenthetical in heading order (so a
+ * `(requires … landed)` in a first group survives a later appended stamp group — the operator-filed
+ * shape — and a wrapped heading's still-open trailing group still counts), taking the first group
+ * that holds the clause. requiredParts parses it; planDependencyProblems uses it to spot a clause
+ * that parses to nothing. */
 function requiresClause(title: string): string | null {
-  let meta = trailingParenthetical(title);
-  if (meta === "") meta = openParenthetical(title);
-  if (meta === "") return null;
-  const m = /requires\s+(.+?)\s+landed\b/i.exec(meta); // vocabulary-ok: parses the requires … landed heading syntax
-  return m === null ? null : m[1]!;
+  for (const meta of headingParentheticals(title)) {
+    const m = /requires\s+(.+?)\s+landed\b/i.exec(meta); // vocabulary-ok: parses the requires … landed heading syntax
+    if (m !== null) return m[1]!;
+  }
+  return null;
+}
+
+/** The inner text of each top-level parenthetical of `line` in order, nesting-aware, plus — when
+ * the heading wraps and a group stays open past the line — that group's still-open tail. An
+ * operator-filed heading ends in the appended `(reported by the user <date>)` stamp, so a
+ * `(requires … landed)` in an earlier group is one of several top-level groups and must still be
+ * read (BUGS.md 2026-11-16). A single trailing or open parenthetical yields the same single string
+ * the earlier trailing/open read produced, so the common shape is unchanged. */
+function headingParentheticals(line: string): string[] {
+  const groups: string[] = [];
+  let start = -1;
+  let depth = 0;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === "(") {
+      if (depth === 0) start = i + 1;
+      depth++;
+    } else if (ch === ")") {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        groups.push(line.slice(start, i));
+        start = -1;
+      }
+    }
+  }
+  if (depth > 0 && start !== -1) groups.push(line.slice(start));
+  return groups;
 }
 
 /** A dependency verb followed by a series part ref in a heading's parenthetical — the wording the
@@ -241,15 +273,15 @@ function miswordedDependencyRefs(
   plannedKeys: ReadonlySet<string>,
   misworded: Array<{ title: string; ref: string }>,
 ): void {
-  let meta = trailingParenthetical(entry.title);
-  if (meta === "") meta = openParenthetical(entry.title);
   const held = new Set(refs.map((ref) => partKey(ref.series, ref.part)));
-  for (const m of meta.matchAll(MISWORDED_DEPENDENCY_RE)) {
-    for (const ref of parseRef(m[1]!, own.series).refs) {
-      const key = partKey(ref.series, ref.part);
-      if (!plannedKeys.has(key) || held.has(key)) continue;
-      const name = `${ref.series} ${ref.part}/${ref.of}`;
-      if (!misworded.some((w) => w.title === entry.title && w.ref === name)) misworded.push({ title: entry.title, ref: name });
+  for (const meta of headingParentheticals(entry.title)) {
+    for (const m of meta.matchAll(MISWORDED_DEPENDENCY_RE)) {
+      for (const ref of parseRef(m[1]!, own.series).refs) {
+        const key = partKey(ref.series, ref.part);
+        if (!plannedKeys.has(key) || held.has(key)) continue;
+        const name = `${ref.series} ${ref.part}/${ref.of}`;
+        if (!misworded.some((w) => w.title === entry.title && w.ref === name)) misworded.push({ title: entry.title, ref: name });
+      }
     }
   }
 }

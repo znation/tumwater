@@ -127,6 +127,30 @@ test("requiredParts returns [] for a clause that does not parse and for a headin
   assert.deepEqual(requiredParts("Foo (planned 2026-10-01; requires something else entirely)"), []);
 });
 
+test("requiredParts reads a requires clause that a later appended stamp group no longer shadows", () => {
+  // The operator-filing shape: the title already ends in a parenthetical, so appendOperatorEntry
+  // appends a SECOND group. A trailing-only read saw only the stamp and dropped the requires
+  // clause in the first group (BUGS.md 2026-11-16); the multi-group read keeps it.
+  assert.deepEqual(
+    requiredParts("S, part 2/2: B (requires S part 1/2 landed) (reported by the user 2026-11-16)"),
+    [{ series: "S", part: "1", of: 2 }],
+  );
+  // A stamp group that opens with a stamp verb keeps the stamp-stripped title readable, so a
+  // hand-written heading that folds the clause after the stamp in one group still parses.
+  assert.deepEqual(
+    requiredParts("S, part 2/2: B (planned 2026-11-16 by operator; requires S part 1/2 landed)"),
+    [{ series: "S", part: "1", of: 2 }],
+  );
+});
+
+test("entryHold blocks a part whose requires clause an appended stamp group would otherwise shadow", () => {
+  const title = "S, part 2/2: B (requires S part 1/2 landed) (reported by the user 2026-11-16)";
+  const hold = entryHold(entry(title), [{ title: "S, part 1/2: A (planned 2026-11-16)", body: "" }]);
+  assert.deepEqual(hold, { blockedBy: ["S 1/2"] });
+  // With the prerequisite absent the part is ready, exactly as before.
+  assert.equal(entryHold(entry(title), []), null);
+});
+
 test("entryHold resolves a <Series> parts a/n and b/n clause to the named series, not the entry's own", () => {
   const own = "Check-permit priority, part 2/2: x (requires Disk floor parts 1/4 and 3/4 landed)";
   // Dropped hold: the clause's named prerequisite blocks the plan (before the fix the bare 3/4

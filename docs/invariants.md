@@ -849,9 +849,13 @@ but keeps the owner's own claim".
 
 ### INV-N2: a plan is held while a prerequisite named in its heading's requires clause is still planned, and only that clause holds it
 
-**Guarantee.** `entryHoldAgainst` holds an entry whose heading's trailing parenthetical (or a
-parenthetical left open by a wrapped heading) names, through `requiredParts`, a part still listed
-under `## Planned`. Once no named part is planned, the hold lifts. A `requires` mention in the body
+**Guarantee.** `entryHoldAgainst` holds an entry whose heading's parentheticals name, through
+`requiredParts`, a part still listed under `## Planned` — read across every top-level
+parenthetical in heading order (the trailing one, a parenthetical left open by a wrapped heading,
+and any earlier group), taking the first that holds the clause, so a filed `(requires … landed)`
+in a first group is still read once `appendOperatorEntry` appends the `(reported by the user
+<date>)` stamp as a second group. Once no named part is planned, the hold lifts. A `requires`
+mention in the body
 never holds. A note line (Refused or Needs review) holds
 as well. `planDependencyProblems` reports a still-planned prerequisite named without the clause.
 The parse treats the keyword `parts`/`part` as belonging to neither a named series nor a bare ref,
@@ -865,7 +869,8 @@ names another.
 `src/doctor/doctor-backlog-plans.ts` (where the wording problem is reported).
 
 **Pinned by.** `test/backlog-eligibility.test.ts` — "requiredParts reads the trailing
-parenthetical, expands ranges, and resolves bare refs to the own series", "requiredParts keeps the
+parenthetical, expands ranges, and resolves bare refs to the own series", "requiredParts reads a
+requires clause that a later appended stamp group no longer shadows", "requiredParts keeps the
 parts keyword out of a named series and bare refs inherit the clause's last named series", "a body mentioning
 'requires' never blocks — only the heading's clause does", "entryHold blocks a wrapped heading while
 its prerequisite is planned", "prerequisitesMerged returns the refs only when none is still

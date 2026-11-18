@@ -7,6 +7,8 @@ import { initProject } from "../src/init/init.js";
 import { fileBug, fileBugFromText, filePlan, filePlanFromText, normalizeEntryBody, splitEntryFile } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { openBugs, plannedPlans } from "../src/backlog/backlog.js";
+import { requiredParts } from "../src/backlog/backlog-parts.js";
+import { entryHold } from "../src/backlog/backlog-eligibility.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { primaryWorktreeLockPath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
@@ -57,6 +59,25 @@ test("filePlan appends to ## Planned with the body as entry text", async () => {
   assert.ok(md.indexOf("### Add an export command") < md.indexOf("## Done"));
   assert.equal(filed.file, "PLANS.md");
   assert.deepEqual(plannedPlans(repo)[0]!.startsWith("Add an export command"), true);
+});
+
+test("filePlan keeps a series part's requires clause readable through the appended operator stamp", async () => {
+  // End to end: a series part whose title already ends in a parenthetical is filed the documented
+  // way; appendOperatorEntry appends a second group, and the dependency parser must still read the
+  // requires clause from the first (BUGS.md 2026-11-16). Before the fix requiredParts returned []
+  // and the part was handed out before its prerequisite landed.
+  const repo = makeRepo();
+  const usage = 'tumwater plan "<title>" [body...]';
+  filePlan(repo, "S, part 1/2: A", "", usage);
+  const filed = filePlan(repo, "S, part 2/2: B (requires S part 1/2 landed)", "", usage);
+  assert.deepEqual(filed.title, "S, part 2/2: B (requires S part 1/2 landed)");
+  const plans = plannedPlans(repo);
+  assert.equal(plans.length, 2);
+  assert.match(plans[1]!, /S, part 2\/2: B \(requires S part 1\/2 landed\) \(reported by the user \d{4}-\d{2}-\d{2}\)$/);
+  assert.deepEqual(requiredParts(plans[1]!), [{ series: "S", part: "1", of: 2 }]);
+  // The held part is not ready: it waits on the still-planned part 1/2.
+  const plannedEntries = plans.map((title) => ({ title, body: "" } as never));
+  assert.deepEqual(entryHold(plannedEntries[1]!, plannedEntries), { blockedBy: ["S 1/2"] });
 });
 
 test("a missing BUGS.md/PLANS.md is seeded with the init scaffolding rather than failing", async () => {
