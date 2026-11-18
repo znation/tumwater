@@ -143,6 +143,31 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
   }
   // report-role:end
 
+  // report-card:start
+  // The Usage tab's two rejection charts explain themselves in a hover tooltip on their
+  // titles. block gives one chart card; its <h2> carries a native title (a has-tip class) when
+  // a tip is passed, so the operator can see the title has a note and read it on hover.
+  // Reaches only esc — pure — so a test renders it with the script's esc and no DOM.
+  function block(title, svg, sub, tip) {
+    const h2 = tip
+      ? "<h2 class='has-tip' title='" + esc(tip) + "'>" + esc(title) + "</h2>"
+      : "<h2>" + esc(title) + "</h2>";
+    return "<section class='card chart-card'><header class='card-head'>" + h2 +
+      "<span class='muted'>" + esc(sub || "per day") + "</span></header><div class='chart'>" + svg + "</div></section>";
+  }
+  // Each tip is one or two short plain sentences answering "what got counted here?"; a short
+  // comment names the gate code it describes, so a later change to the gate knows to update it.
+  // "Rejections by role": the reviewer's pre-merge gate drops a change that fails the project's
+  // check, edits a protected file or the brief, or leaks a secret — and it also counts every
+  // post-merge rejection (review.ts reviewAttempt, review-precheck.ts,
+  // merge-post-review-drain.ts precheckReviewerFix).
+  const REJECTIONS_TIP = "Changes sent back to the role that made them. Before a merge this happens when the change fails the project's check, edits a protected file or the brief, or leaks a secret: the change is dropped and the role sees the reasons on its next run. This chart also counts every post-merge rejection.";
+  // "Post-merge rejections by role": a commit already on main that the reviewer then objected to;
+  // the commit stays on main and the reviewer's reasons are recorded (a reviewer fix held back
+  // because it failed the check counts here too) (post-merge-review.ts logReviewVerdict).
+  const POST_MERGE_REJECTIONS_TIP = "Commits that had already merged and that the reviewer then objected to, by the role that made them. The commit stays on main, and the reviewer's reasons are recorded (the reviewer may also land a fix). A reviewer fix held back because it failed the check counts here too.";
+  // report-card:end
+
   // view-scaffold:start
   // The window pickers' choices and the views' shared head (title, blurb, picker, Refresh).
   function viewHead(title, blurb, pickerId, choices, current, refreshId, rolePickerId, sinceChoices) {
@@ -324,16 +349,14 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
         const md = String(d.markdown).replace(/^# .*\n+/, "");
         return "<article class='card md'>" + renderMarkdown(md, true) + "</article>";
       }
-      const block = (title, svg, sub) => "<section class='card chart-card'><header class='card-head'><h2>" + esc(title) +
-        "</h2><span class='muted'>" + esc(sub || "per day") + "</span></header><div class='chart'>" + svg + "</div></section>";
       // A scoped report drops to the four scoped tiles and says what it left out, mirroring the
       // CLI's --role report. The team-wide render is unchanged.
       return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div>" + (d.totals.mergeRuns > 0 ? "<p class='muted merge-share'>" + esc(mergeShareText(d.totals)) + "</p>" : "") + "<p class='muted cost-per-commit'>" + esc(costPerCommitText("Cost per commit", d.series)) + "</p>" + (d.totals.notionalCostUsd > 0 ? "<p class='muted cost-per-commit'>" + esc(estimatedPerCommitText(d.series)) + "</p>" : "") + "<div class='grid-2 even'>" +
         block("Work vs maintenance commits", chartCommitTiers(d), "per day · work + maintenance") + block("Merged commits", chartCommits(d)) + block("Commits by role", chartCommitsByRole(d)) + (seriesHasBacklogAdded(d) ? block("Backlog items opened", chartBacklogItemsOpened(d), "per day · plans added + bugs filed") : "") + (seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") + (seriesHasBacklogLagMedian(d) ? block("Backlog lag median", chartBacklogLagMedian(d), "per day · filing to done") : "") + block("Runs by role", chartRunsByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Tokens by role", chartTokensByRole(d)) + (seriesHasAny(d, "promptTokensByRole") ? block("Prompt tokens by role", chartPromptTokensByRole(d)) : "") + (seriesHasAny(d, "cacheReadTokensByRole") ? block("Cached prompt tokens by role", chartCacheReadTokensByRole(d)) : "") + block("Spend by role", chartCostByRole(d)) +
         (!d.role && seriesHasAny(d, "costByProvider") ? block("Spend by provider", chartCostByProvider(d)) : "") +
-        block("Rejections by role", chartRejectionsByRole(d)) +
-        (seriesHasAny(d, "postMergeRejectionsByRole") ? block("Post-merge rejections by role", chartPostMergeRejectionsByRole(d)) : "") +
+        block("Rejections by role", chartRejectionsByRole(d), undefined, REJECTIONS_TIP) +
+        (seriesHasAny(d, "postMergeRejectionsByRole") ? block("Post-merge rejections by role", chartPostMergeRejectionsByRole(d), undefined, POST_MERGE_REJECTIONS_TIP) : "") +
         (seriesHasAny(d, "revisionsByRole") ? block("Revisions by role", chartRevisionsByRole(d)) : "") +
         (seriesHasAny(d, "refusalsByRole") ? block("Refusals by role", chartRefusalsByRole(d)) : "") +
         (seriesHasAny(d, "imageReroutesByRole") ? block("Image reroutes by role", chartImageReroutesByRole(d)) : "") +

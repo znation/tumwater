@@ -467,6 +467,47 @@ test("the Refusals chart stacks per role and seriesHasAny gates it", () => {
   assert.equal(seriesHasAny(data, "refusalsByRole"), true);
 });
 
+test("block renders a chart card with a title tooltip (has-tip) only when a tip is passed", () => {
+  // The report-card region (the Usage render chain's card builder plus its two rejection-tip
+  // constants) lives in GUI_CLIENT_REPORT_JS, not in the dashboard's GUI_CLIENT_JS — so this
+  // test extracts the region the same way the report-tip seam does, then runs it after the
+  // script's own esc. block is pure: with no tip it must emit exactly the pre-tooltip markup,
+  // so the charts that pass no tip are unchanged; a tip becomes a native title plus has-tip.
+  const reportCardRegion = /\/\/ report-card:start\n([\s\S]*?)\n  \/\/ report-card:end/.exec(GUI_CLIENT_REPORT_JS)![1]!;
+  const { block, REJECTIONS_TIP, POST_MERGE_REJECTIONS_TIP, esc } = new Function(
+    `${ESC_LINE}\n${reportCardRegion}\nreturn { block, REJECTIONS_TIP, POST_MERGE_REJECTIONS_TIP, esc };`,
+  )() as {
+    block(title: string, svg: string, sub?: string, tip?: string): string;
+    REJECTIONS_TIP: string;
+    POST_MERGE_REJECTIONS_TIP: string;
+    esc(s: unknown): string;
+  };
+  // No tip: byte-identical to the card markup the charts drew before the tooltip existed.
+  assert.equal(
+    block("Merged commits", "<svg>…</svg>"),
+    "<section class='card chart-card'><header class='card-head'><h2>Merged commits</h2><span class='muted'>per day</span></header><div class='chart'><svg>…</svg></div></section>",
+    "no tip renders exactly the pre-tooltip card",
+  );
+  // A tip: the <h2> gains a has-tip class and a native title carrying the escaped tip.
+  assert.equal(
+    block("Rejections by role", "<svg>…</svg>", undefined, REJECTIONS_TIP),
+    "<section class='card chart-card'><header class='card-head'><h2 class='has-tip' title='" + esc(REJECTIONS_TIP) + "'>Rejections by role</h2><span class='muted'>per day</span></header><div class='chart'><svg>…</svg></div></section>",
+    "a tip becomes <h2 class='has-tip' title='…'>",
+  );
+  assert.equal(
+    block("Post-merge rejections by role", "<svg>…</svg>", undefined, POST_MERGE_REJECTIONS_TIP),
+    "<section class='card chart-card'><header class='card-head'><h2 class='has-tip' title='" + esc(POST_MERGE_REJECTIONS_TIP) + "'>Post-merge rejections by role</h2><span class='muted'>per day</span></header><div class='chart'><svg>…</svg></div></section>",
+    "the post-merge tip is likewise carried on the <h2>",
+  );
+  // A tip containing the esc metacharacters (', < and &) is escaped in the title, and a sub
+  // still overrides the default "per day" when a tip is present.
+  const tricky = "a'b " + "& c<d";
+  assert.equal(
+    block("T", "<svg>…</svg>", "s", tricky),
+    "<section class='card chart-card'><header class='card-head'><h2 class='has-tip' title='a&#39;b &amp; c&lt;d'>T</h2><span class='muted'>s</span></header><div class='chart'><svg>…</svg></div></section>",
+  );
+});
+
 test("the Usage render chain gates the Refusals by role chart right after Revisions by role", () => {
   // The usage view's render chain must name the Refusals by role chart exactly once, gated
   // on the series really carrying refusals, sitting right after the Revisions by role term.
@@ -489,9 +530,9 @@ test("the Usage render chain gates the Post-merge rejections by role chart right
   const postMerge = chain.indexOf('block("Post-merge rejections by role"');
   assert.ok(rejections >= 0, "the Rejections by role term exists");
   assert.ok(postMerge > rejections, "Post-merge rejections by role sits after Rejections by role in the chain");
-  assert.match(chain, /seriesHasAny\(d, "postMergeRejectionsByRole"\) \? block\("Post-merge rejections by role", chartPostMergeRejectionsByRole\(d\)\) : ""/);
+  assert.match(chain, /seriesHasAny\(d, "postMergeRejectionsByRole"\) \? block\("Post-merge rejections by role", chartPostMergeRejectionsByRole\(d\), undefined, POST_MERGE_REJECTIONS_TIP\) : ""/);
   // Exactly one such gated term.
-  assert.equal((chain.match(/block\("Post-merge rejections by role", chartPostMergeRejectionsByRole\(d\)\)/g) || []).length, 1);
+  assert.equal((chain.match(/block\("Post-merge rejections by role", chartPostMergeRejectionsByRole\(d\), undefined, POST_MERGE_REJECTIONS_TIP\)/g) || []).length, 1);
 });
 
 test("the Usage render chain gates the Estimated spend by backend chart right after Estimated spend by provider", () => {
