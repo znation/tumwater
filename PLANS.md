@@ -636,15 +636,16 @@ test/help.test.ts) from the template constants, not by copying the output. Then 
 `tumwater start --gui`) and the CLI, and has stopped using the ink TUI. The TUI is too busy to
 read, bugs and UX problems have piled up in it because nobody uses it, and every change to a
 shared status, alert or editor rule has to be built and tested twice. It is 58 files and about
-10,900 lines under `src/ui/tui/`, plus 30 test files, and it is the only reason tumwater has
+10,900 lines under `src/ui/tui/`, plus 31 test files, and it is the only reason tumwater has
 runtime dependencies (ink, react). Nobody else runs tumwater. Remove it outright. Nothing in it
 is ported to the GUI: a TUI-only control is dropped, not moved (operator's decision 2026-11-16).
 This part deletes the code and its two entry points, and fixes everything that would otherwise
 fail to build or fail the suite. Parts 2/5 to 5/5 tidy what is left.
 
 **Approach.**
-- Delete `src/ui/tui/` and its tests: every `test/tui-*.test.ts`,
-  test/cli-tui-strictness.test.ts and test/fixtures/tui-fixtures.ts.
+- Delete `src/ui/tui/` and its tests: every `test/tui-*.test.ts` and the dot-named
+  `test/tui.test.ts` (the glob misses it), test/cli-tui-strictness.test.ts and
+  test/fixtures/tui-fixtures.ts.
 - `tumwater tui`: drop `cmdTuiCase` and the `tui` row of `COMMAND_HANDLERS` in src/cli.ts. The
   command then fails as an unknown command, and the existing did-you-mean (src/text/suggest.ts)
   names `gui`. No tombstone message.
@@ -695,8 +696,9 @@ fail to build or fail the suite. Parts 2/5 to 5/5 tidy what is left.
   (`tumwater tui`, `start --tui`) is removed and to use `tumwater gui` / `start --gui`.
 
 **Acceptance criteria.**
-- `src/ui/tui/` and the 30 TUI test files are gone, and nothing in src/, test/ or scripts/
-  imports from `ui/tui/`.
+- `src/ui/tui/` and the 31 TUI test files (all 30 `test/*tui*.test.ts` plus
+  `test/fixtures/tui-fixtures.ts`) are gone, and nothing in src/, test/ or scripts/ imports
+  from `ui/tui/`.
 - `tumwater tui` exits 1 as an unknown command whose message names `gui`.
 - `tumwater start --tui` exits nonzero as an unknown flag without starting an orchestrator.
 - `tumwater start` and `tumwater start --gui` behave as before: the supervisor's children inherit
