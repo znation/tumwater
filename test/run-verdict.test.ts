@@ -245,6 +245,55 @@ test("a role runner's prompt-less nothing-to-do is not treated as an answer", as
   assert.equal(outcome?.summary, undefined);
 });
 
+test("a checkpoint-abort no_change is not a cut-off and its warning names the real cause", async () => {
+  const { root, wt } = await initializedWorktree("improve");
+  // BUGS.md 2026-11-16: a checkpoint's fire-and-forget compact() aborts the running turn, so
+  // the run ends contentless with stopReason "aborted" and no compaction. noChangeArm must not
+  // read that contentless final as a context-ceiling cut-off — the pre-fix code did — so the
+  // run is an ordinary no_change and its warning names the abort, not the ceiling.
+  const pi: PiRunResult = piRunResult({
+    nothingToDo: false,
+    finalText: "",
+    finalMessageContentless: true,
+    stopReason: "aborted",
+    // compacted stays false: the abort means no compaction was ever written.
+  });
+  const { ctx, warns } = makeCtx(root, wt, "improve", { pi });
+  const outcome = await resolveRunVerdict(ctx);
+
+  assert.equal(outcome?.result, "no_change");
+  assert.equal(outcome?.cutOff, undefined, "a checkpoint abort is not a context-ceiling cut-off");
+  assert.equal(outcome?.undeclared, true, "the run declared no sentinel, so the warning stands");
+  assert.equal(warns.length, 1);
+  assert.match(warns[0]!, /checkpoint abort/, "the warning names the real cause");
+  assert.doesNotMatch(warns[0]!, /likely cut off/, "...and does not blame the context ceiling");
+});
+
+test("a context-ceiling cut-off no_change arms a cut-off resume and blames the ceiling", async () => {
+  const { root, wt } = await initializedWorktree("improve");
+  // The opposite arm of the same fix: a ceiling cut-off ALSO ends contentless, but stops
+  // normally and pi compacts it — so noChangeArm reads it as real, unfulfilled work (cutOff)
+  // and its warning blames the ceiling. Same contentless final as a checkpoint abort; the two
+  // arms differ only in cause, and a flip of the checkpointAborted test in diagnoseNoChange
+  // would merge them into one wrong classification here.
+  const pi: PiRunResult = piRunResult({
+    nothingToDo: false,
+    finalText: "",
+    finalMessageContentless: true,
+    stopReason: "length",
+    compacted: true,
+  });
+  const { ctx, warns } = makeCtx(root, wt, "improve", { pi });
+  const outcome = await resolveRunVerdict(ctx);
+
+  assert.equal(outcome?.result, "no_change");
+  assert.equal(outcome?.cutOff, true, "a ceiling cut-off is real, unfulfilled work");
+  assert.equal(warns.length, 1);
+  assert.match(warns[0]!, /likely cut off at the context ceiling/);
+  assert.match(warns[0]!, /auto-compacted/);
+  assert.doesNotMatch(warns[0]!, /checkpoint abort/);
+});
+
 test("a no_change run records its qa flow", async () => {
   const { root, wt } = await initializedWorktree("qa");
   const pi: PiRunResult = piRunResult({ nothingToDo: true, finalText: "TUMWATER_NOTHING_TO_DO" });
