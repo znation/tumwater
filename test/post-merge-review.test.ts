@@ -11,6 +11,8 @@ import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-
 import { addPostReview, readPostReviews, POST_REVIEW_FAILURE_LIMIT, postMergeRejectionCounts, reviewMergedCommit } from "../src/review/post-merge-review.js";
 import { logEvent, subscribeEvents, type HarnessEvent } from "../src/events/events.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
+import { RunUsage } from "../src/run/run-usage.js";
+import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { postReviewPath, reviewFixRef } from "../src/paths.js";
 import { HOLD_BASE_MS, HOLD_CAP_MS } from "../src/team/team-hold.js";
@@ -67,6 +69,10 @@ function fakeRunner(role: string, verdict: string): RoleRunner {
     baseRole: role,
     state: freshRunnerState(role),
     runGatePi: async () => ({ ok: true, verdictText: verdict }),
+    // No-op fold: a minimal fake stands in for the author, and startPostReview folds the
+    // reviewer's final run into it (BUGS.md 2026-11-16) — the no-op keeps the fold a no-op for
+    // these verdict-shape tests, which assert nothing about the author's usage.
+    foldMergeUsage: () => {},
   } as unknown as RoleRunner;
 }
 
@@ -89,6 +95,41 @@ function setup(verdict: string) {
   addPostReview(root, { commit, role: "improve", summary: "add x" });
   return { root, commit, runner, ctx };
 }
+
+test("a post-merge review's final run is folded into the author's usage and failure stamps (regression, BUGS.md 2026-11-16)", async () => {
+  // The post-merge review's final run was never folded into the authoring role: runGatePi folds
+  // only a RETRIED first attempt, and the pre-merge gate folds its final run (merge-core)
+  // while the post-merge path did not. So a review that ended on a 429 left the author's
+  // lastRateLimit unset and its cost unchanged — maxDailyCostUsd undercounted review spend, and
+  // a quota wall on the reviewer never fed the team failure hold. A real RunUsage (the
+  // production accounting) makes the fold observable: the run's cost lands in usage.costUsd and
+  // the 429 stamps lastRateLimit, the two things the drain leaves behind.
+  const { root, ctx } = setup("VERDICT: approve\n1. fine");
+  const usage = new RunUsage();
+  const state = freshRunnerState("improve");
+  const author = {
+    role: "improve",
+    baseRole: "improve",
+    state,
+    // The reviewer's final run ends on a 429 with a known cost (a failed, verdict-less run).
+    runGatePi: async () => piRunResult({ ok: false, transientRateLimit: true, costUsd: 1.5, retryAfterSeconds: 300 }),
+    foldMergeUsage: (run: PiRunResult, provider?: string, pair?: string) => usage.fold(state, run, false, provider, pair),
+  } as unknown as RoleRunner;
+  (ctx as { runners: RoleRunner[] }).runners = [author];
+  // A distinct reviewer seam (provider "prov") so the stamp's provider is a known, non-top-level
+  // value — proof the fold ran on the reviewer's own seam, not a coincident one.
+  ctx.liveConfig.review = { enabled: true, exemptPaths: ["*.md"], provider: "prov", model: "prov/reviewer" };
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  // The review ran and ended on the 429; the drain keeps the entry uncounted (BUGS.md 2026-11-09).
+  assert.equal(eventsOfType(root, "review_start").length, 1, "the post-merge review ran");
+  assert.equal(readPostReviews(root)[0]?.failures ?? 0, 0, "the transient failure is not counted (existing guarantee)");
+  // The final run's usage reached the author: its cost, and the 429 stamp under the reviewer seam.
+  assert.equal(usage.costUsd, 1.5, "the review's cost reached the author's usage counters");
+  assert.equal(usage.lastRateLimit?.provider, "prov", "the 429 stamps the author under the reviewer's seam");
+  assert.equal(usage.lastRateLimit?.retryAfterSeconds, 300, "the 429's retry-after hint rides the stamp");
+});
 
 test("an approving post-merge review ends the entry and logs afterMerge events", async () => {
   const { root, ctx } = setup("VERDICT: approve\n1. fine");
@@ -841,6 +882,9 @@ function fixingRunner(role: string, reply = "VERDICT: reject\n1. breaks the cont
       fs.writeFileSync(path.join(opts.cwd, "x.txt"), "fixed\n");
       return { ok: true, verdictText: reply };
     },
+    // No-op fold: startPostReview folds the reviewer's final run into the author (BUGS.md
+    // 2026-11-16); these fix tests assert nothing about the author's usage, so the fold is a no-op.
+    foldMergeUsage: () => {},
   } as unknown as RoleRunner;
 }
 
@@ -1008,6 +1052,7 @@ test("a fix that lands on a main which moved under the review records the actual
         fs.writeFileSync(path.join(opts.cwd, "x.txt"), "fixed\n");
         return { ok: true, verdictText: "VERDICT: reject\n1. breaks the contract\nFIX: x.txt" };
       },
+      foldMergeUsage: () => {},
     } as unknown as RoleRunner,
   ];
   const p = newMergePipeline();
@@ -1059,6 +1104,7 @@ test("another same-role merge's event does not stand in for the reviewer fix's l
         });
         return piRunResult({ finalText: "resolved" });
       },
+      foldMergeUsage: () => {},
     } as unknown as RoleRunner,
   ];
   try {
@@ -1180,6 +1226,7 @@ test("a fix whose conflict resolution leaves the reviewer's scope is withheld by
         fs.writeFileSync(path.join(wt, "README.md"), prompt("rewritten by the resolver"));
         return piRunResult({ finalText: "resolved" });
       },
+      foldMergeUsage: () => {},
     } as unknown as RoleRunner,
   ];
   const p = newMergePipeline();
@@ -1230,6 +1277,7 @@ test("a conflicting fix whose resolver soundly merges main's edit now lands (rec
         fs.writeFileSync(path.join(wt, "x.txt"), "main and fixed\n");
         return piRunResult({ finalText: "resolved" });
       },
+      foldMergeUsage: () => {},
     } as unknown as RoleRunner,
   ];
   const p = newMergePipeline();

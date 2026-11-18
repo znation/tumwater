@@ -6,28 +6,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-### A post-merge review's final run is never folded into the author's usage or failure stamps (reported by the user 2026-11-16)
-
-`startPostReview` (src/merge/merge-post-review-drain.ts) passes `(opts) => author.runGatePi(opts)`
-to `reviewMergedCommit`. `runGatePi` (src/runner/runner-pi.ts) folds only a retried first attempt
-and leaves the final run to the caller; the pre-merge gate does that fold through
-`mergeUsage(author, root).foldUsage` (src/merge/merge-slot.ts), which calls
-`author.foldMergeUsage(run, reviewProvider, reviewPair)`. Nothing in src/review/post-merge-review.ts
-or merge-post-review-drain.ts folds it. So for every post-merge review: its cost and tokens never
-reach the authoring role's counters, so `maxDailyCostUsd` and the report undercount review spend;
-and its `lastRateLimit`/`lastBackendFailure` stamps are never written, so a quota wall or 429 on
-the reviewer never feeds the team failure hold (`holdObservations`, src/team/team-polls.ts), and
-nothing holds reviews off a provider that keeps refusing them.
-
-**Reproduce.** Found by reading the code at 952092e, not reproduced. A test: run one post-merge
-review whose stubbed final run ends on `transientRateLimit` with a known cost; the author's
-`lastRateLimit` is unset and its daily cost unchanged.
-
-**Suspected cause.** The post-review path never got the fold the pre-merge gate has. Fix: build
-`mergeUsage(author, root)` in the post-review path (or call `author.foldMergeUsage` directly) on
-the final run, with the review seam's provider and pair, exactly once. Pin it with the test above
-asserting `lastRateLimit` carries the review seam's provider, and that the cost is counted once.
-
 ### Codex runs default to the operator's own `~/.codex`, filling it with team sessions (reported by the user 2026-11-16)
 
 `codexHome` (src/agent/codex/codex-catalog.ts) falls back to `~/.codex` when the Codex backend has

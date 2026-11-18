@@ -4628,6 +4628,24 @@ review still runs, and a plain content failure stamps no `notBeforeMs` and keeps
 **Pinned by.** `test/post-merge-review.test.ts` — "a post-merge review that ended on a transient
 provider failure is not re-run on the next poll (regression, BUGS.md 2026-11-16)".
 
+### INV-BT7: a post-merge review's final run is folded into the author's usage and failure stamps
+
+**Guarantee.** `startPostReview` folds the reviewer's final run into the authoring role exactly
+once, through `author.foldMergeUsage` on the run's own seam — the reviewer seam the run actually
+executed on (`seamHoldKey` / `seamPairName` of the run's `config`) — the same fold the pre-merge
+gate applies to its final reviewer run (merge-core's `reviewPinnedChange` folds `gate.run`).
+`runGatePi` folds only a RETRIED first attempt, never the final run, so the final run is folded
+once, not twice. Without this fold a post-merge review's cost and tokens never reach the
+authoring role's counters (so `maxDailyCostUsd` and the daily report undercount review spend),
+and its 429 / backend-failure stamps (`lastRateLimit` / `lastBackendFailure`) never write, so a
+quota wall on the reviewer never feeds the team failure hold (BUGS.md 2026-11-16).
+
+**Binds.** `src/merge/merge-post-review-drain.ts` (`startPostReview`'s `runGatePi` callback), which
+folds the final run returned by `reviewMergedCommit`'s single `runGatePi` call.
+
+**Pinned by.** `test/post-merge-review.test.ts` — "a post-merge review's final run is folded into
+the author's usage and failure stamps (regression, BUGS.md 2026-11-16)".
+
 ## Observer run ledgers: a failed ledger write never fails a run
 
 ### INV-BW1: a failed qa-coverage.json write warns and the run keeps its outcome

@@ -5,6 +5,33 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A post-merge review's final run is never folded into the author's usage or failure stamps (reported by the user 2026-11-16) — fixed 2026-11-18 by the bugfix role
+
+`startPostReview` (src/merge/merge-post-review-drain.ts) passed `(opts) => author.runGatePi(opts)`
+to `reviewMergedCommit`. `runGatePi` (src/runner/runner-pi.ts) folds only a retried first attempt
+and leaves the final run to the caller; the pre-merge gate does that fold through
+`mergeUsage(author, root).foldUsage` (src/merge/merge-slot.ts), which calls
+`author.foldMergeUsage(run, reviewProvider, reviewPair)`. Nothing in src/review/post-merge-review.ts
+or merge-post-review-drain.ts folded it. So for every post-merge review: its cost and tokens never
+reached the authoring role's counters, so `maxDailyCostUsd` and the report undercounted review
+spend; and its `lastRateLimit`/`lastBackendFailure` stamps were never written, so a quota wall or
+429 on the reviewer never fed the team failure hold (`holdObservations`, src/team/team-polls.ts),
+and nothing held reviews off a provider that kept refusing them.
+
+**Fix.** `startPostReview` (src/merge/merge-post-review-drain.ts) now folds the reviewer's final
+run into the authoring role: the `runGatePi` callback returns the run after
+`author.foldMergeUsage(pi, seamHoldKey(opts.config), seamPairName(opts.config))` — the run's own
+seam, exactly the reviewer seam it executed on. `runGatePi` folds only a retried first attempt,
+never the final run, so the final run is folded exactly once, mirroring the pre-merge gate
+(merge-core folds `gate.run`). This brings in the review's cost and tokens (the `maxDailyCostUsd`
+/ report undercount) and writes its 429 / backend-failure stamps so a quota wall on the reviewer
+feeds the team failure hold. Pinned in `test/post-merge-review.test.ts`; invariant INV-BT7.
+
+**Validation gap:** none — a new test stubs the reviewer's final run to end on a 429 with a known
+cost and a distinct reviewer seam, then asserts the cost reached the author's usage and
+`lastRateLimit` carried the reviewer's provider (fails without the fold, passes with it); it runs
+offline against the fake pi shim.
+
 ### A post-merge review that ends on a transient provider failure is retried every poll, with no backoff and no limit (reported by the user 2026-11-16) — fixed 2026-11-17 by the bugfix role
 
 Since 4120526fe (2026-11-11) a post-merge review that ends on a transient provider failure (a 429,

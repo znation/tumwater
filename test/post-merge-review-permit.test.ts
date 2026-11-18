@@ -24,6 +24,9 @@ function fakeRunner(role: string, verdict: string): RoleRunner {
     baseRole: role,
     state: freshRunnerState(role),
     runGatePi: async () => ({ ok: true, verdictText: verdict }),
+    // No-op fold: startPostReview folds the reviewer's final run into the author (BUGS.md
+    // 2026-11-16); these permit tests assert only parking/permits, so the fold is a no-op here.
+    foldMergeUsage: () => {},
   } as unknown as RoleRunner;
 }
 

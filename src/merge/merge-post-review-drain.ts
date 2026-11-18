@@ -28,6 +28,7 @@ import { setupFailureResult } from "../agent/agent-settle.js";
 import { recordReview } from "../run/run-apply.js";
 import { firstReason } from "../text/phrases.js";
 import { HOLD_BASE_MS, HOLD_CAP_MS } from "../team/team-hold.js";
+import { seamHoldKey, seamPairName } from "../config/config-views.js";
 import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import type { RoleRunner } from "../runner/runner.js";
 import type { RunResult } from "../run/run-outcome.js";
@@ -193,7 +194,26 @@ function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: Pos
       if (!admitPostReview(root, lease, task, ctx, entry)) return;
       let outcome;
       try {
-        outcome = await reviewMergedCommit(root, ctx.liveConfig, entry, (opts) => author.runGatePi(opts), task.controller.signal);
+        // The reviewer's final run is folded into the AUTHORING role here (foldMergeUsage on the
+        // run's own seam — exactly the reviewer seam the run executed on), exactly as the pre-merge
+        // gate folds its final reviewer run (merge-core's reviewPinnedChange folds gate.run).
+        // runGatePi folds only a RETRIED first attempt, never the final run, so this is the final
+        // run's one fold — not a double count. Without it a post-merge review's cost and its 429
+        // / backend stamps never reach the author (BUGS.md 2026-11-16). The retried fold inside
+        // runGatePi already stamps the hold before any wait; this stamps the outcome it ends on.
+        outcome = await reviewMergedCommit(
+          root,
+          ctx.liveConfig,
+          entry,
+          (opts) =>
+            author
+              .runGatePi(opts)
+              .then((pi) => {
+                author.foldMergeUsage(pi, seamHoldKey(opts.config), seamPairName(opts.config));
+                return pi;
+              }),
+          task.controller.signal,
+        );
       } finally {
         lease?.release(); // lease is non-null once admission passed; the `?.` keeps the guard honest
       }
