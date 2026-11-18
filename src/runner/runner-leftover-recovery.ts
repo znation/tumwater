@@ -5,6 +5,7 @@
  * remote-CI notes to the prompt the run authors on. (The run's own post-kill abort/reset phases
  * live in runner-recovery.ts, a different thing — this one recovers a leftover commit, that one
  * settles a killed run; both feed the prompt `runWithWorktreePhase` authors.) */
+import { aheadOfMain } from "../git/git.js";
 import { logEventBestEffort } from "../events/events.js";
 import { recoverLeftover, setAsideWithdrawnWork } from "./runner-leftover.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
@@ -50,7 +51,15 @@ export async function recoverLeftoversForRun(
   const settled = await handleRecoveredLeftover(ctx, plan, wt, s, recovered);
   if (settled === null) return null;
   if (settled.action === "end") return settled;
-  await resetWorktreeToMain(wt, ctx.mainBranch);
+  // The no-op (already_queued) authors on its normal interval, so the worktree must be pristine
+  // main before the run — except when the branch is ahead of main with work this run did not
+  // pin: a heldOnBranch commit a prior relief run left there (the same commit the `pinned` arm
+  // guards in finishRecoveryRunPhase). A reset --hard to main would discard it before it is
+  // ever merged, so skip the reset and let the run author on top of the branch; the held
+  // commit merges when the draining pin clears.
+  const ahead = await aheadOfMain(wt, ctx.mainBranch).catch(() => 0);
+  const tipIsHeld = recovered?.kind === "already_queued" && ahead > 0;
+  if (!tipIsHeld) await resetWorktreeToMain(wt, ctx.mainBranch);
   // A promptless recovery run found nothing to salvage (or deleted a stale pin): it authors
   // nothing, so it ends here rather than reach the authoring run with a null prompt.
   if (plan.prompt === null) return null;
