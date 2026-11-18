@@ -1,5 +1,18 @@
 # tumwater
 
+## Getting Started
+
+```bash
+npm install -g tumwater
+cd your-project
+tumwater init "Build a tiny markdown-to-html converter CLI in Python."
+tumwater start --gui
+```
+
+Then open http://127.0.0.1:7180 to watch the team work. Requires Node 20.3+ on macOS or Linux.
+
+![The tumwater web dashboard running tumwater's own team: a sidebar with the project, its team status, and the Team, History, Usage, Failures, and Settings views, with today's spend against the cap and the pause control; the director prompt box; and today's progress (roles running, commits merged, runs, open backlog) above the roles grouped by what they are doing, each with its status, current work or last result, spend, and controls](docs/gui.png)
+
 > ### ⚠️ Warning: tumwater eats tokens
 >
 > tumwater runs models continuously, all day, on every role. A busy team can burn through
@@ -17,8 +30,6 @@ of always-on specialists do the rest: each role owns one concern, merges one cha
 sleeps when it has nothing to do, and wakes when main moves. All project state lives in the
 local git repo, and no remote is ever touched. The words used here (team, role, run, merge) are
 defined in [docs/glossary.md](docs/glossary.md).
-
-![The tumwater web dashboard running tumwater's own team: a sidebar with the project, its team status, and the Team, History, Usage, Failures, and Settings views, with today's spend against the cap and the pause control; the director prompt box; and today's progress (roles running, commits merged, runs, open backlog) above the roles grouped by what they are doing, each with its status, current work or last result, spend, and controls](docs/gui.png)
 
 ## Install
 
