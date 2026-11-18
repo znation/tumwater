@@ -53,6 +53,21 @@ export interface PostReview {
    * wrote. `settlePostReview` already spreads `next`, so a failed re-settle and a rejection
    * keep the original stamp. */
   enqueuedAt?: number;
+  /** The earliest time a further review may start, epoch ms. A run that ended on a transient
+   * provider failure (a 429 or quota wall, a backend failure) stamps it — the run's retry-after
+   * when present, else a growing backoff capped at the team-hold cap — and the drain skips the
+   * entry until it passes, so a multi-hour wall re-probes a few times an hour instead of
+   * re-reviewing the same commit on every poll (BUGS.md 2026-11-16). Cleared when the entry is
+   * settled or re-queued. */
+  notBeforeMs?: number;
+  /** How many consecutive runs this entry has ended on a transient provider failure, present only
+   * while that streak is being re-armed: the drain's infrastructure arm increments it, and the
+   * backoff grows (doubled) with it, capped at the team-hold cap, so a multi-hour quota wall
+   * re-probes a few times an hour rather than a steady rate. A non-transient (content) failure
+   * means the provider served the model, so that arm resets the streak to 0; the verdict arms
+   * (approve / reject / fixed) and `settlePostReview(null)` leave it or drop it, but a settled
+   * entry is never re-selected, so a counter riding a settled record is inert. */
+  consecutiveTransientFailures?: number;
 }
 
 /** A commit's review is dropped, with a warning, after this many runs with no verdict. */
@@ -130,7 +145,7 @@ const postReviewCache = new Map<string, StatKeyedValue<PostReview[]>>();
  * `PostReview` fields list them. */
 function parsePostReview(raw: unknown): PostReview | null {
   if (!isJsonObject(raw)) return null;
-  const { commit, role, summary, body, failures, lastFailure, rejected, enqueuedAt, fixed } = raw;
+  const { commit, role, summary, body, failures, lastFailure, rejected, enqueuedAt, fixed, notBeforeMs, consecutiveTransientFailures } = raw;
   if (typeof commit !== "string" || typeof role !== "string" || typeof summary !== "string") return null;
   if (rejected !== undefined && !Array.isArray(rejected)) return null;
   const entry: PostReview = { commit, role, summary };
@@ -140,6 +155,8 @@ function parsePostReview(raw: unknown): PostReview | null {
   if (Array.isArray(rejected)) entry.rejected = rejected.filter((r): r is string => typeof r === "string");
   if (typeof fixed === "string") entry.fixed = fixed;
   if (typeof enqueuedAt === "number" && Number.isFinite(enqueuedAt) && enqueuedAt >= 0) entry.enqueuedAt = enqueuedAt;
+  if (typeof notBeforeMs === "number" && Number.isFinite(notBeforeMs) && notBeforeMs >= 0) entry.notBeforeMs = notBeforeMs;
+  if (typeof consecutiveTransientFailures === "number" && Number.isInteger(consecutiveTransientFailures) && consecutiveTransientFailures >= 0) entry.consecutiveTransientFailures = consecutiveTransientFailures;
   return entry;
 }
 export function readPostReviews(root: string): PostReview[] {
@@ -196,7 +213,7 @@ export type PostReviewOutcome =
    * failure) rather than a content failure: the drain keeps the commit queued, never counts
    * it toward POST_REVIEW_FAILURE_LIMIT, and never files a product bug (BUGS.md: a Codex
    * quota wall converted ~820 merged commits into fake entries). */
-  | { kind: "failed"; detail: string; infrastructure?: boolean }
+  | { kind: "failed"; detail: string; infrastructure?: boolean; retryAfterSeconds?: number }
   /** A self-fix chain reached REVISION_BACKSTOP: the reviewer stops fixing, records the
    * surviving findings and clears the entry (Forward never back 2/6). The answered plan needs
    * no hold — it was archived to PLANS-DONE.md when its implementation landed. */
@@ -396,7 +413,7 @@ export async function reviewMergedCommit(
         return {
           kind: "failed",
           detail: pi.errorMessage ?? "no parseable VERDICT line in the reviewer's reply",
-          ...(infrastructure ? { infrastructure: true } : {}),
+          ...(infrastructure ? { infrastructure: true, retryAfterSeconds: pi.retryAfterSeconds } : {}),
         };
       }
       const durationMs = Date.now() - startedAt;

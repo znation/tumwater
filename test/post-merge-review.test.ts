@@ -6,13 +6,14 @@ import { defaultConfig } from "../src/config/config.js";
 import { FALLBACK_REVIEW_TIMEOUT_S, REVIEW_TIMEOUT_S } from "../src/config/config-views.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
-import { drainPostReviews } from "../src/merge/merge-post-review-drain.js";
+import { drainPostReviews, reviewBackoffMs } from "../src/merge/merge-post-review-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-pipeline.js";
 import { addPostReview, readPostReviews, POST_REVIEW_FAILURE_LIMIT, postMergeRejectionCounts, reviewMergedCommit } from "../src/review/post-merge-review.js";
 import { logEvent, subscribeEvents, type HarnessEvent } from "../src/events/events.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { postReviewPath, reviewFixRef } from "../src/paths.js";
+import { HOLD_BASE_MS, HOLD_CAP_MS } from "../src/team/team-hold.js";
 import { shortSha } from "../src/text/format.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { gateFixture, reviewGate } from "./fixtures/gate-fixtures.js";
@@ -455,10 +456,12 @@ test("a post-merge review that ended on a transient provider failure keeps its e
   fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: [{ commit, role: "improve", summary: "add x" }] }));
   // Drain repeatedly, past the old failure limit: a transient failure must never count, so the
   // entry stays queued every time (the old bug dropped it at the limit and filed a product bug).
+  // The first run stamps a backoff deadline, so later polls skip the entry rather than re-run it
+  // (BUGS.md 2026-11-16) — the loop awaits a started review only when one started.
   for (let i = 0; i < POST_REVIEW_FAILURE_LIMIT + 2; i++) {
     const p = newMergePipeline();
     drainPostReviews(ctx, p);
-    await p.postReview!.promise;
+    if (p.postReview) await p.postReview.promise;
   }
   const after = readPostReviews(root);
   assert.equal(after.length, 1, "the entry stays queued — a transient failure is never dropped");
@@ -469,6 +472,99 @@ test("a post-merge review that ended on a transient provider failure keeps its e
     const openSection = bugs.split("## Open")[1]?.split("## Fixed")[0] ?? "";
     assert.equal(/###\s/.test(openSection), false, "a transient failure never files a product bug");
   }
+});
+
+test("a post-merge review that ended on a transient provider failure is not re-run on the next poll (regression, BUGS.md 2026-11-16)", async () => {
+  // Before the backoff, the infrastructure arm kept the entry exactly as it was, so the next
+  // poll (a couple of seconds later) selected the same unchanged entry again and ran the review,
+  // opening a fresh agent session every poll for as long as the wall held. The entry now carries
+  // a backoff deadline, so the next poll skips it and picks the next due entry instead.
+  const { root, ctx, runner } = setup("VERDICT: approve\n1. fine");
+  (runner as { runGatePi: RoleRunner["runGatePi"] }).runGatePi = async () =>
+    piRunResult({ ok: true, transientRateLimit: true });
+  const p = newMergePipeline();
+  const t0 = Date.now();
+  // First poll: the review starts and ends on the wall, stamping a backoff deadline.
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(eventsOfType(root, "review_start").length, 1, "the first poll ran the review");
+  const afterFirst = readPostReviews(root)[0]!;
+  assert.ok(
+    afterFirst.notBeforeMs !== undefined && afterFirst.notBeforeMs > t0,
+    "the transient failure stamps a future backoff deadline",
+  );
+  // Second poll a few seconds later, still inside the backoff: the entry is skipped and nothing
+  // runs — no second review_start. Pre-fix this ran again and opened a second session.
+  const p2 = newMergePipeline();
+  drainPostReviews(ctx, p2);
+  assert.equal(p2.postReview, null, "the second poll does not re-run a review still inside its backoff");
+  await sleep(50);
+  assert.equal(eventsOfType(root, "review_start").length, 1, "the transient failure is not retried on the next poll");
+  const afterSecond = readPostReviews(root)[0]!;
+  assert.equal(afterSecond.notBeforeMs, afterFirst.notBeforeMs, "the skipped poll leaves the deadline unchanged");
+  assert.equal(afterSecond.failures ?? 0, 0, "and never counts toward the drop limit");
+});
+
+test("a 429 that carries a retry-after hint longer than the base sets the backoff from the hint", async () => {
+  // The backoff is the LONGEST of the escalated base and the run's retry-after, floored to the
+  // team-hold cap — the same rule the team hold uses. A 429 that says "retry after Ns" with N
+  // past the base waits that long (capped); a short hint is instead floored up to the escalating
+  // base so it never re-probes faster than the backoff would. Hint-less (the prior test) is just
+  // the escalated base.
+  const { root, ctx, runner } = setup("VERDICT: approve\n1. fine");
+  (runner as { runGatePi: RoleRunner["runGatePi"] }).runGatePi = async () =>
+    piRunResult({ ok: true, transientRateLimit: true, retryAfterSeconds: 300 });
+  const t0 = Date.now();
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  const entry = readPostReviews(root)[0]!;
+  assert.ok(entry.notBeforeMs !== undefined, "the 429 stamps a backoff deadline");
+  const waitMs = entry.notBeforeMs! - t0;
+  assert.ok(waitMs >= 290 * 1000, `the deadline is the 5-minute hint, not the 60s base, got ${waitMs}ms`);
+  assert.ok(waitMs <= 310 * 1000, `the deadline is the 5-minute hint, not longer, got ${waitMs}ms`);
+});
+
+test("a post-merge review that ended on a content failure is re-run on the next poll, without a backoff deadline", async () => {
+  // The backoff is for transient (infrastructure) failures only: a plain content failure keeps
+  // the today behavior — the entry stays queued with an incremented failure count and the next
+  // poll re-runs it (that path already has the POST_REVIEW_FAILURE_LIMIT brake). No deadline is
+  // stamped, so the skipped-poll branch above never applies to it. A no-parent commit forces a
+  // content failure deterministically (git cannot produce its diff): no transient flag, counted.
+  const { root, ctx } = setup("VERDICT: approve\n1. fine");
+  const first = sh(root, "git", "rev-list", "--max-parents=0", "HEAD");
+  fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: [{ commit: first, role: "improve", summary: "seed" }] }));
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  const kept = readPostReviews(root)[0]!;
+  assert.equal(kept.failures ?? 0, 1, "the content failure is counted");
+  assert.equal(kept.notBeforeMs, undefined, "a content failure stamps no backoff deadline");
+  // Next poll re-runs it (the pre-existing limit-braked retry): a second review starts, and the
+  // counted failure increments again — the content path never gains a backoff deadline.
+  const p2 = newMergePipeline();
+  drainPostReviews(ctx, p2);
+  assert.ok(p2.postReview, "the content failure is re-run on the next poll");
+  await p2.postReview!.promise;
+  assert.equal(readPostReviews(root)[0]!.failures, 2, "the re-run counted the failure again");
+  assert.equal(readPostReviews(root)[0]!.notBeforeMs, undefined, "still no backoff deadline after the re-run");
+});
+
+test("the transient-failure backoff doubles with the consecutive-failure count and caps at the team-hold cap", () => {
+  // The escalation is the whole point of the counter (BUGS.md 2026-11-16): a wall that outlasts
+  // every re-probe must re-probe "a few times an hour" (HOLD_CAP_MS), not at a steady rate. The
+  // base doubles per repeat and floors at the cap — the same ladder the team hold uses, where the
+  // fourth relapse reaches the cap (1, 2, 4, 8, 15 min). A dead doubling (one that never grows)
+  // would fail this: it would answer 60s on every repeat instead of climbing to the cap.
+  assert.equal(reviewBackoffMs(0, undefined), HOLD_BASE_MS, "the first failure rests the team-hold base");
+  assert.equal(reviewBackoffMs(1, undefined), 2 * HOLD_BASE_MS, "the second doubles it");
+  assert.equal(reviewBackoffMs(3, undefined), 8 * HOLD_BASE_MS, "it keeps doubling");
+  assert.equal(reviewBackoffMs(4, undefined), HOLD_CAP_MS, "it floors at the cap on the fifth");
+  assert.equal(reviewBackoffMs(99, undefined), HOLD_CAP_MS, "it never exceeds the cap, however many repeats");
+  // A retry-after hint longer than the escalated base is honored; a short one is floored to it.
+  assert.equal(reviewBackoffMs(0, 300), 300 * 1000, "a long 429 hint wins over the base");
+  assert.equal(reviewBackoffMs(0, 5), HOLD_BASE_MS, "a short 429 hint is floored to the base");
+  assert.equal(reviewBackoffMs(4, 300), HOLD_CAP_MS, "the cap still bounds an even longer hint");
 });
 
 test("a torn post-review.json entry is dropped and the well-formed one is still reviewed", async () => {

@@ -5,6 +5,42 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A post-merge review that ends on a transient provider failure is retried every poll, with no backoff and no limit (reported by the user 2026-11-16) — fixed 2026-11-17 by the bugfix role
+
+Since 4120526fe (2026-11-11) a post-merge review that ends on a transient provider failure (a 429,
+a quota wall, a backend failure) settles as `infrastructure`: `settlePostReviewOutcome`
+(src/merge/merge-post-review-drain.ts) keeps the entry queued, not counted toward
+`POST_REVIEW_FAILURE_LIMIT` and not filed. That stopped the fake "never reached a verdict"
+BUGS.md entries, but it also removed the only brake on the loop. `drainPostReviews` picks
+`pending.find(unreviewed)`, the infrastructure arm leaves that entry unchanged, so the next drain
+(the next poll, about 2 s later) reviews the same commit again. No backoff, retry-after or attempt
+counter applies. The team failure hold cannot trip either: review runs never stamp the author's
+`lastRateLimit`/`lastBackendFailure` (see the post-merge usage-fold bug below), and even once they
+do, every retry is the same commit and so the same author role, while the hold needs two distinct
+roles within 2 minutes (`HOLD_STORM_ROLES = 2`, src/team/team-hold.ts). Every retry also opens a
+new agent session, which is what fills the session ledgers that the retention prune later spends
+an hour deleting (PLANS.md "Visible session cleanup").
+
+**Reproduce.** Found by reading the code at 952092e; the pre-4120526fe form was observed in
+kde-macos8.6-theme's `log/events.jsonl`: on 2026-11-08 2,004 `review_start` against 190
+`review_verdict` (1,212 starts in the 23:00 hour), on 2026-11-11 2,238 against 351. In a test,
+stub the review seam to end every run on `transientRateLimit` and drive several drains: the same
+commit is reviewed on each drain with no delay.
+
+**Fix.** `PostReview` gains `notBeforeMs`, a backoff deadline the drain's `unreviewed` selection
+skips while it is in the future. The `failed`/`infrastructure` outcome now carries the run's
+`retryAfterSeconds`; `settlePostReviewOutcome`'s infrastructure arm keeps the entry with
+`notBeforeMs` = now + the run's retry-after when present, else a doubling pause (the team-hold
+base of one minute, so a per-minute rate-limit bucket refills) capped at the team-hold cap of 15
+minutes. The entry re-probes the provider on that schedule instead of every poll, while a later
+queue entry's review still runs now (a plain content failure stamps no deadline, so that path's
+existing limit-braked retry is unchanged). Pinned in `test/post-merge-review.test.ts`.
+
+**Validation gap:** none — a new test stubs the reviewer's run to end on a transient failure and
+drives the drain twice: the second poll skips the entry instead of re-running it (which fails
+without the backoff and passes with it), and a no-hint 429 is skipped while a later entry's review
+still runs.
+
 ### `tumwater plan --file` silently drops a series part's `requires … landed` clause, so the part is handed out before its prerequisite lands (reported by the user 2026-11-16) — fixed 2026-11-17 by the bugfix role
 
 A series part filed through `tumwater plan --file` (or `tumwater plan "<title>"`, or the dashboard's file endpoint) loses its dependency. `appendOperatorEntry` (src/backlog/backlog-write.ts) writes the heading as `### <title> (<stamp>)`, so the operator stamp `(reported by the user <date>)` becomes the heading's last parenthetical. `requiresClause` (src/backlog/backlog-parts.ts) reads the `requires … landed` clause only from the trailing parenthetical (or an open one), so a title like `S, part 2/2: B (requires S part 1/2 landed)` parses to no prerequisites once stamped. The claim allocator then treats part 2/2 as ready and a feature run can claim it while part 1/2 is still planned or in flight. Nothing warns: `planDependencyProblems`'s `unparsed` list only catches a clause that is found but parses to nothing, and its `misworded` scan looks for other dependency verbs, not a `requires` clause in an earlier parenthetical.

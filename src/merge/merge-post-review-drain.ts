@@ -27,6 +27,7 @@ import { reviewAheadOfMain } from "../review/review.js";
 import { setupFailureResult } from "../agent/agent-settle.js";
 import { recordReview } from "../run/run-apply.js";
 import { firstReason } from "../text/phrases.js";
+import { HOLD_BASE_MS, HOLD_CAP_MS } from "../team/team-hold.js";
 import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import type { RoleRunner } from "../runner/runner.js";
 import type { RunResult } from "../run/run-outcome.js";
@@ -51,9 +52,34 @@ export function drainPostReviews(ctx: MergePipelineContext, p: MergePipeline): v
 /** Whether an entry still awaits its review. A `fixed` entry is a settled record naming both shas
  * (the reviewed commit and its landed fix); a rejected one is terminal too — the reviewer proposed
  * no fix, or its pre-check withheld the one it proposed — so neither is ever re-reviewed (Forward
- * never back 1a/6). */
+ * never back 1a/6). An entry still inside its transient-failure backoff (`notBeforeMs` in the
+ * future) is not reviewable yet either: the last review run ended on a provider failure and the
+ * team is re-probing the wall on a schedule, not every poll (BUGS.md 2026-11-16), so the drain
+ * skips it until the deadline passes and picks the next due entry — a later entry's review still
+ * runs, only the wall-fed one waits. */
 function unreviewed(e: PostReview): boolean {
-  return e.rejected === undefined && e.fixed === undefined;
+  if (e.rejected !== undefined || e.fixed !== undefined) return false;
+  if (e.notBeforeMs !== undefined && e.notBeforeMs > Date.now()) return false;
+  return true;
+}
+
+/** The backoff a run that ended on a transient provider failure schedules, in ms: the longest
+ * of the team-hold base (provider rate limits meter in per-minute buckets, so a minute is the
+ * shortest pause that lets one refill) doubled with the entry's consecutive transient failures
+ * and the run's own retry-after, capped at the team-hold cap — the same escalation the team hold
+ * uses, so a wall that outlasts every re-probe re-probes a few times an hour instead of parking
+ * the review forever and never hammering the provider every poll (BUGS.md 2026-11-16).
+ * `escalation` is how many consecutive times this entry has hit the wall; it is 1 on the first
+ * failure, so the base pause is two minutes and doubles on each repeat until the cap. The run's
+ * retry-after (a 429's hint) is floored into it when it outlasts the escalated base, since the
+ * provider asked for more than our backoff would wait. */
+export function reviewBackoffMs(
+  escalation: number,
+  retryAfterSeconds: number | undefined,
+): number {
+  const retryAfterMs =
+    retryAfterSeconds && retryAfterSeconds > 0 ? Math.max(0, retryAfterSeconds * 1000) : 0;
+  return Math.min(HOLD_CAP_MS, Math.max(HOLD_BASE_MS * 2 ** escalation, retryAfterMs));
 }
 
 /** Whether a parked review is admitted to run at all, once the team permit is held: it clears
@@ -119,11 +145,25 @@ async function settlePostReviewOutcome(
     // failure): a world failure, not a review content failure. Keep the entry queued
     // WITHOUT counting it toward POST_REVIEW_FAILURE_LIMIT and without filing a product
     // bug — a multi-hour provider quota wall must not generate one "never reached a
-    // verdict" BUGS.md entry per commit (BUGS.md 2026-11-09). The entry stays in the
-    // post-review queue, where a later successful review settles it; a content failure
-    // (below) is still counted and filed as today. One operator-visible warning names the
-    // cause so the wall is discoverable from the feed.
-    warnEventBestEffort(root, entry.role, `the post-merge review of ${shortSha(entry.commit)} failed on a transient provider failure (${outcome.detail}); keeping it queued — not counted, not filed`);
+    // verdict" BUGS.md entry per commit (BUGS.md 2026-11-09). A bare keep-without-count
+    // is not a brake: the next poll (a couple of seconds later) re-selects the same
+    // unchanged entry and re-runs the review, opening a fresh agent session every poll
+    // for as long as the wall holds (BUGS.md 2026-11-16). So the entry also gets a
+    // backoff deadline — the escalated pause, floored to the run's own retry-after when it
+    // outlasts it, and capped at the team-hold cap — and the drain skips it until that passes,
+    // so the team re-probes the wall on a schedule (a few times an hour at the cap) instead of
+    // on every poll, while a later entry's review still runs now.
+    warnEventBestEffort(root, entry.role, `the post-merge review of ${shortSha(entry.commit)} failed on a transient provider failure (${outcome.detail}); keeping it queued — not counted, not filed — and re-tried only once the wait clears`);
+    // Each transient failure bumps the counter (persisted for the next re-probe) and sets the
+    // backoff from the PRIOR count, so the first failure rests the team-hold base (one minute,
+    // so a per-minute rate-limit bucket refills) and each subsequent one doubles it until the
+    // cap — a still-parked wall that the provider keeps refusing re-arms from a higher base.
+    const consecutiveTransientFailures = (entry.consecutiveTransientFailures ?? 0) + 1;
+    settlePostReview(root, entry.commit, {
+      ...entry,
+      consecutiveTransientFailures,
+      notBeforeMs: Date.now() + reviewBackoffMs(entry.consecutiveTransientFailures ?? 0, outcome.retryAfterSeconds),
+    });
   } else {
     const failures = (entry.failures ?? 0) + 1;
     warnEventBestEffort(root, entry.role, `the post-merge review of ${shortSha(entry.commit)} failed (${outcome.detail})`);
@@ -131,7 +171,7 @@ async function settlePostReviewOutcome(
       warnEventBestEffort(root, entry.role, `dropping the post-merge review of ${shortSha(entry.commit)} after ${failures} failed runs; it stays on main unreviewed`);
       await fileDroppedReview(ctx, entry, outcome.detail);
       settlePostReview(root, entry.commit, null);
-    } else settlePostReview(root, entry.commit, { ...entry, failures, lastFailure: outcome.detail });
+    } else settlePostReview(root, entry.commit, { ...entry, failures, lastFailure: outcome.detail, consecutiveTransientFailures: 0 });
   }
 }
 

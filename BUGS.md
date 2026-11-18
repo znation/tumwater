@@ -6,35 +6,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-### A post-merge review that ends on a transient provider failure is retried every poll, with no backoff and no limit (reported by the user 2026-11-16)
-
-Since 4120526fe (2026-11-11) a post-merge review that ends on a transient provider failure (a 429,
-a quota wall, a backend failure) settles as `infrastructure`: `settlePostReviewOutcome`
-(src/merge/merge-post-review-drain.ts) keeps the entry queued, not counted toward
-`POST_REVIEW_FAILURE_LIMIT` and not filed. That stopped the fake "never reached a verdict"
-BUGS.md entries, but it also removed the only brake on the loop. `drainPostReviews` picks
-`pending.find(unreviewed)`, the infrastructure arm leaves that entry unchanged, so the next drain
-(the next poll, about 2 s later) reviews the same commit again. No backoff, retry-after or attempt
-counter applies. The team failure hold cannot trip either: review runs never stamp the author's
-`lastRateLimit`/`lastBackendFailure` (see the post-merge usage-fold bug below), and even once they
-do, every retry is the same commit and so the same author role, while the hold needs two distinct
-roles within 2 minutes (`HOLD_STORM_ROLES = 2`, src/team/team-hold.ts). Every retry also opens a
-new agent session, which is what fills the session ledgers that the retention prune later spends
-an hour deleting (PLANS.md "Visible session cleanup").
-
-**Reproduce.** Found by reading the code at 952092e; the pre-4120526fe form was observed in
-kde-macos8.6-theme's `log/events.jsonl`: on 2026-11-08 2,004 `review_start` against 190
-`review_verdict` (1,212 starts in the 23:00 hour), on 2026-11-11 2,238 against 351. In a test,
-stub the review seam to end every run on `transientRateLimit` and drive several drains: the same
-commit is reviewed on each drain with no delay.
-
-**Suspected cause.** The infrastructure arm keeps the entry exactly as it was. Fix: on that arm
-record `lastTransientAt` and a growing `notBefore` on the entry (the run's retry-after when
-present, otherwise exponential backoff capped at about 30 min), and have the drain's
-`unreviewed`/`find` skip entries still inside `notBefore`, so other commits are still reviewed.
-Separately, consider letting a quota wall on the review seam hold reviews (`reviewHeldNow`)
-without needing two roles: a quota wall is account-wide, unlike a 429 burst.
-
 ### A post-merge review's final run is never folded into the author's usage or failure stamps (reported by the user 2026-11-16)
 
 `startPostReview` (src/merge/merge-post-review-drain.ts) passes `(opts) => author.runGatePi(opts)`

@@ -4600,14 +4600,33 @@ so neither accept variant can throw out of its command.
 incrementing its `failures` count, without dropping it at `POST_REVIEW_FAILURE_LIMIT`, and without
 filing a `BUGS.md` entry — so a multi-hour provider quota wall never generates one fake product
 bug per merged commit (BUGS.md 2026-11-09: 821 entries over 20 minutes). The entry stays in the
-post-review queue where a later successful review settles it.
+post-review queue where a later successful review settles it. Keeping the entry without counting
+it is not a brake on its own (BUGS.md 2026-11-16): the drain's `unreviewed` selection therefore
+also skips an entry whose `notBeforeMs` backoff deadline is in the future, and the
+`infrastructure` settle stamps that deadline — the run's retry-after when present, else the
+team-hold base (one minute) doubled per repeat and capped at the team-hold cap (15 minutes) — so
+a wall makes the review re-probe the provider a few times an hour instead of on every poll.
+A plain content failure stamps no `notBeforeMs` and keeps the today retry (counted, limit-braked).
 
-**Binds.** `src/review/post-merge-review.ts` (`reviewMergedCommit`, the `infrastructure` flag
-on the `failed` outcome) and `src/merge/merge-post-review-drain.ts` (`startPostReview`, the
-`infrastructure` branch).
+**Binds.** `src/review/post-merge-review.ts` (`reviewMergedCommit`, the `infrastructure` flag and
+`retryAfterSeconds` on the `failed` outcome) and `src/merge/merge-post-review-drain.ts`
+(`startPostReview`, the `infrastructure` branch) and `reviewBackoffMs`.
 
 **Pinned by.** `test/post-merge-review.test.ts` — "a post-merge review that ended on a transient
 provider failure keeps its entry without counting or filing (regression, BUGS.md 2026-11-09)".
+
+### INV-BT6: a post-merge review that ended on a transient provider failure is not re-run on the next poll
+
+**Guarantee.** `unreviewed` (and so `drainPostReviews`' selection) returns false for an entry
+whose `notBeforeMs` backoff deadline is in the future, so the next poll does not start another
+review of the same commit while it is inside its transient-failure backoff; a later queue entry's
+review still runs, and a plain content failure stamps no `notBeforeMs` and keeps the today retry.
+
+**Binds.** `src/merge/merge-post-review-drain.ts` (`unreviewed`, `drainPostReviews`) and
+`src/review/post-merge-review.ts` (`PostReview.notBeforeMs`, `parsePostReview`).
+
+**Pinned by.** `test/post-merge-review.test.ts` — "a post-merge review that ended on a transient
+provider failure is not re-run on the next poll (regression, BUGS.md 2026-11-16)".
 
 ## Observer run ledgers: a failed ledger write never fails a run
 
