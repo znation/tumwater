@@ -33,7 +33,7 @@ The steward's standing measure of where the codebase stands, measured from the r
 
 - **Code size**: 540 src / ~134,000 lines; 674 test / ~202,000 lines. Grows with every merge; the
   split-large-function family is the standing driver of per-function (not per-file) growth.
-- **Module-size ceiling**: 25 src files exceed 600 lines, 9 exceed 700, 4 exceed 800; the largest
+- **Module-size ceiling**: 25 src files exceed 600 lines, 10 exceed 700, 4 exceed 800; the largest
   is src/roles/role-view.ts at 924. The ceiling holds because complexity is extracted into named
   helpers, not by shrinking files — a file may stay large while its functions stay small; do not
   re-split an already-small function to chase a line count.
@@ -46,4 +46,4 @@ The steward's standing measure of where the codebase stands, measured from the r
   answered better by a name; a complexity-N number alone is not the reason. This keeps the family
   finite, not a bottomless re-split.
 
-_Last measured 2026-11-16 by the director role._
+_Last measured 2026-11-17 by the steward role._
