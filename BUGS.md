@@ -98,6 +98,41 @@ a corrupted cache entry is ignored and re-looked-up
 
 **Suspected cause.** `POLICY_SCANS` was written for the four pre-existing scans and the tmpdir self-scan (added later to `repo-fixtures.test.ts`) was never registered. `fitBudget`'s guarantee is keyed to that explicit set, so an unregistered scan of the same shape is silently skipped. **Fix.** Register `test/repo-fixtures.test.ts` in `POLICY_SCANS` (the set is the one home of "a repo-wide policy scan the budgeted gate must always run"), so a change that adds a raw-`os.tmpdir()` offender fails its own gate; keep the guard test itself and pin the registration in `test/affected-tests.test.ts`. (The two offender lines that 1fc125aa left are a separate, ci-owned known-red — this entry is the gate-selection defect that let them land.)
 
+### The budget-fallback e2e `a free fallback whose runs keep failing is demoted to a pause` still flakes on a shared host just under the quiet gate's bar — the 2026-11-14 single-sample recheck admits a host at 5-min load 17.6/18, which re-saturates during its 150 s spawn wait (found by the ci role 2026-11-17)
+
+The live-orchestrator e2e file `test/orchestrator-budget.e2e.test.ts` failed the CI
+workflow's full e2e step against main tip 6ab53d1 (lock 3811de5): `a reached cap
+switches roles to the free fallback model instead of stopping them` timed out at
+**150409 ms** (`timed out waiting for a role run after the cap was reached`); the other
+86 e2e tests passed. It is a load-sensitive flake, not a regression: that same test
+passed in 1.2 s when the file was re-run in isolation on a quiet host, and the whole
+file then ran **7 pass / 0 fail / 0 skip** (2.9 s) on a quiet host. Only
+`src/runner/runner-leftover.ts` and a comment re-wrap moved since my last covered tip
+(f85f56e); neither is the budget-fallback path, so no source change caused it.
+
+**Residual the 2026-11-14 fix did not close.** That fix (BUGS-FIXED.md 2026-11-14,
+commit 7ec4669e) added a `recheckQuietHost()` re-sample immediately before each 150 s
+spawn wait, deferring the test if the 5-minute average is over the core count. The
+re-check is a **single sample** using the same inclusive bar (`isQuietHost`:
+`load1 <= cpus && (load5 ?? load1) <= cpus`). Re-running the file in isolation while
+the host sat at 5-min load 17.63 on 18 cores, `recheckQuietHost` admitted it (17.63 <
+18), and the test then starved its 150 s first-fallback-run wait (`timed out waiting
+for the first fallback run`) at **150468 ms**. The 5-minute average is a trailing
+mean, so a host that has just *peaked* can still read under the bar and re-saturate
+within the 150 s window; the one sample cannot see that.
+
+**Required behavior.** A load-sensitive 150 s wall-clock spawn wait must not red the
+e2e tier on a shared host sitting just under the quiet gate's bar. The 150 s budget is
+a losing arms race on a loaded host (the 2026-11-12/11-14 entries record the ceiling,
+not a bound), so the fix is to make the admission decision robust near the bar, not to
+raise the bound: either require the re-check sample to be *comfortably* under the bar
+(a margin, e.g. `<= cpus - 1` or `load5 <= 0.8*cpus`), or sample a shorter window
+(1-min) that tracks a recent spike, or drive the run-start-marker wait on the fake
+clock like the watchdog tests. A regression in `test/wait.test.ts` should pin a
+near-bar sample (load5 just under the count) as **not** quiet enough to admit. The
+at-admission `awaitQuietHost` gate and the existing `recheckQuietHost` are the seams;
+no production budget behavior changes.
+
 ### The checkpoint-abort diagnosis from 54a4a07f never fires on a real run: pi emits `compaction_start` before it exits, so `compacted` reads true (found by an operator session 2026-11-18)
 
 BUGS-FIXED.md closes "A checkpoint-caused abort is indistinguishable from a context-ceiling cut-off" with 54a4a07f. `diagnoseNoChange` (src/verdict/no-change.ts) counts a run as `checkpointAborted` only when `!pi.compacted`. On a real pi 1.5.2 run that condition is never true. After the aborted turn, pi's fire-and-forget `compact()` emits `{"type":"compaction_start","reason":"manual"}`, and then pi exits before any `compaction_end` or `compaction` session entry. `PiStreamParser` (src/pi/pi-stream.ts:600) sets `compacted = true` on `compaction_start`. So every checkpoint abort is still diagnosed as a ceiling cut-off and arms a `"cut-off"` resume.
