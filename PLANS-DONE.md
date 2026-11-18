@@ -5,6 +5,60 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The Usage tab's two rejection charts explain themselves in a hover tooltip on their titles (planned 2026-11-17 by the operator; touches src/ui/gui/gui-client-report.ts src/ui/gui/gui-styles.ts test/gui-client-report.test.ts; done 2026-11-17 by the plan role)
+
+**Retired 2026-11-17 by the plan role: plan defect — the entry's deliverable is already built and merged, so the open entry has nothing to build (a sibling run completed it; the backlog move its own run flagged "pending" never landed, so the entry stranded in ## Planned and its move was never applied). Re-verified on current main tip 6ab53d1e (plan role, 2026-11-17): src/ui/gui/gui-client-report.ts holds the optional-tip `block` (`<h2 class='has-tip' title='…'>`) with `REJECTIONS_TIP`/`POST_MERGE_REJECTIONS_TIP` and passes both through the render chain; src/ui/gui/gui-styles.ts carries `.card-head h2.has-tip`; and commit d33525000 (2026-11-17, feature #2997) "Add hover tooltips to the Usage tab's two rejection chart titles" is on main with its tip test in test/gui-client-report.test.ts. No `## Planned` twin and no same-heading done entry in PLANS-DONE.md (`hover tooltip`/`REJECTIONS_TIP` = 0 archive hits), so this is a plan-defect retirement to ## Done, not a stale-duplicate removal. No `requires … landed` clause names this entry, so nothing to re-point.**
+
+**Goal.** The Usage tab draws "Rejections by role" and "Post-merge rejections by role", but
+nothing on the page says what a rejection is. An operator cannot tell from the dashboard that
+the first chart already includes the second, that no model reviews a change before it merges, or
+that a post-merge rejection leaves the commit on main. Give each of the two chart titles a short,
+plain-language tooltip that answers "what got counted here?".
+
+**Approach.**
+- `block(title, svg, sub)` in the Usage view's render (src/ui/gui/gui-client-report.ts) takes an
+  optional fourth argument, `tip`. When it is set, the card's `<h2>` gets `title='<esc(tip)>'`
+  and a `has-tip` class. When it is not set, the HTML is exactly what it is today. A native
+  `title` tooltip is the GUI's existing convention (gui-client-drawer-config.ts and
+  gui-client-history.ts use it). Do not reuse the chart hover chip (the `report-tip` region),
+  which follows bars and does not suit a static note.
+- Pass the tip to these two blocks only. Their `sub` argument stays `undefined`, so they keep
+  reading "per day". Use this text as written; it matches the code as of e47f48cb4 (review.ts
+  `reviewAttempt`, review-precheck.ts, post-merge-review.ts `logReviewVerdict`,
+  merge-post-review-drain.ts `precheckReviewerFix`):
+  - Rejections by role: "Changes sent back to the role that made them. Before a merge this
+    happens when the change fails the project's check, edits a protected file or the brief, or
+    leaks a secret: the change is dropped and the role sees the reasons on its next run. This
+    chart also counts every post-merge rejection."
+  - Post-merge rejections by role: "Commits that had already merged and that the reviewer then
+    objected to, by the role that made them. The commit stays on main, and the reviewer's reasons
+    are recorded (the reviewer may also land a fix). A reviewer fix held back because it failed
+    the check counts here too."
+- Keep each tip in a named constant next to the render (`REJECTIONS_TIP`,
+  `POST_MERGE_REJECTIONS_TIP`) so the render chain stays one line per chart. A short comment on
+  each constant names the code it describes, so a later change to the gate knows to update it.
+- In src/ui/gui/gui-styles.ts, `.card-head h2.has-tip` gets a dotted underline and
+  `cursor: help`, so the operator can see the title has a note. Use the existing color tokens
+  only; do not add a new color.
+- Out of scope: other charts and the Failures tab. "Revisions by role" is about rework after a
+  rejection, but its title does not mention rejections; leave it for a later entry if wanted.
+
+**Acceptance criteria.**
+- The Usage render chain passes `REJECTIONS_TIP` to the "Rejections by role" block and
+  `POST_MERGE_REJECTIONS_TIP` to the "Post-merge rejections by role" block. The post-merge term
+  is still gated on `seriesHasAny(d, "postMergeRejectionsByRole")` and still comes right after
+  Rejections by role. Update the existing ordering tests in test/gui-client-report.test.ts,
+  whose regexes match the current three-argument call.
+- Rendering `block` with a tip gives an `<h2 class='has-tip' title='…'>` whose title is the
+  escaped tip. A tip containing `'`, `<` and `&` comes out escaped. Without a tip, `block` gives
+  the same markup as before (assert on the exact string), so no other chart changes. If the
+  test cannot reach the inline arrow, lift `block` into a named function in the same file.
+- No other `block(...)` call in the chain passes a fourth argument.
+- Each tip is one or two short sentences of plain words: no event names (`review_rejected`), no
+  file names, and nothing over about 300 characters.
+- Manual check on the demo-repo dashboard (served in-process, safe to click): hover each of the
+  two titles and see its note; the other chart titles show no underline and no tooltip.
+
 ### `sectionSpan`'s fence-aware section boundary is pinned in test/backlog.test.ts, so a regression in the one fence-aware home of a `## ` section's span the backlog writers (backlog-write.ts) and the archive mover (backlog-archive.ts) both read through — the heading a `## <title>` section opens at, and the next real `## ` heading that ends it — is caught by the suite (planned 2026-11-16 by the plan role; continues the pin-a-rule family — the recent `roleInScope` (test/roles.test.ts, above), `lowerMedian`, `compareCodeUnits`, `validEntries` entries each take one correct-but-unpinned single-home rule and pin it in its natural test file with plain `assert`. `sectionSpan(lines: readonly string[], title: string)` in src/backlog/backlog-md.ts returns the 0-based span `{ heading, end }` of the FIRST `## <title>` section — its heading line, then `nextSectionHeading`'s walk to the next real `## ` heading (or `lines.length`) — or `null` when no such section exists. It reads every line through the shared fenceTracker, so a `## ` line quoted inside a fenced code block is body text, never a section boundary. `grep -rlw sectionSpan test/` is empty — no test file references it. Its fence branch is genuinely unpinned: its only src consumers are the writers, and neither `test/backlog-archive.test.ts` (0 fenced blocks) nor a write test feeds a section whose boundary is quoted inside a fence. The two sibling fence-aware section readers are already pinned transitively and are NOT this entry's target — `fenceAwareHeadingLines`'s consumers (`duplicateHeadings`, `actionableEntryRanges`) have fenced-heading tests in test/backlog-structure.test.ts, and `sectionBodyLines`'s consumer (`strandedPlanEntries`) has a fenced-`## Planned` test there; pinning them again would add a duplicate. The flip a regression would silently make: read the heading line without the fence guard (or drop `fencedHeadingTitle`) and a `## Done` quoted inside a fenced entry is mistaken for the archive's real `## Done` heading — or, reading the end boundary without the guard, cuts the section at a quoted `## Fixed`, so the archive mover ships the wrong lines — done 2026-11-16 by the feature role
 
 **Goal.** Pin the one fence-aware section reader the backlog writers read through — `sectionSpan` — in `test/backlog.test.ts`, the file that already hosts the fence-reading tests (`fenceTracker`, `fenceOpener`, `closesFence`) and imports from `../src/backlog/backlog-md.js`.

@@ -8,60 +8,6 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 ## Planned
 
-_None yet._
-
-### The Usage tab's two rejection charts explain themselves in a hover tooltip on their titles (planned 2026-11-17 by the operator; touches src/ui/gui/gui-client-report.ts src/ui/gui/gui-styles.ts test/gui-client-report.test.ts)
-
-**Goal.** The Usage tab draws "Rejections by role" and "Post-merge rejections by role", but
-nothing on the page says what a rejection is. An operator cannot tell from the dashboard that
-the first chart already includes the second, that no model reviews a change before it merges, or
-that a post-merge rejection leaves the commit on main. Give each of the two chart titles a short,
-plain-language tooltip that answers "what got counted here?".
-
-**Approach.**
-- `block(title, svg, sub)` in the Usage view's render (src/ui/gui/gui-client-report.ts) takes an
-  optional fourth argument, `tip`. When it is set, the card's `<h2>` gets `title='<esc(tip)>'`
-  and a `has-tip` class. When it is not set, the HTML is exactly what it is today. A native
-  `title` tooltip is the GUI's existing convention (gui-client-drawer-config.ts and
-  gui-client-history.ts use it). Do not reuse the chart hover chip (the `report-tip` region),
-  which follows bars and does not suit a static note.
-- Pass the tip to these two blocks only. Their `sub` argument stays `undefined`, so they keep
-  reading "per day". Use this text as written; it matches the code as of e47f48cb4 (review.ts
-  `reviewAttempt`, review-precheck.ts, post-merge-review.ts `logReviewVerdict`,
-  merge-post-review-drain.ts `precheckReviewerFix`):
-  - Rejections by role: "Changes sent back to the role that made them. Before a merge this
-    happens when the change fails the project's check, edits a protected file or the brief, or
-    leaks a secret: the change is dropped and the role sees the reasons on its next run. This
-    chart also counts every post-merge rejection."
-  - Post-merge rejections by role: "Commits that had already merged and that the reviewer then
-    objected to, by the role that made them. The commit stays on main, and the reviewer's reasons
-    are recorded (the reviewer may also land a fix). A reviewer fix held back because it failed
-    the check counts here too."
-- Keep each tip in a named constant next to the render (`REJECTIONS_TIP`,
-  `POST_MERGE_REJECTIONS_TIP`) so the render chain stays one line per chart. A short comment on
-  each constant names the code it describes, so a later change to the gate knows to update it.
-- In src/ui/gui/gui-styles.ts, `.card-head h2.has-tip` gets a dotted underline and
-  `cursor: help`, so the operator can see the title has a note. Use the existing color tokens
-  only; do not add a new color.
-- Out of scope: other charts and the Failures tab. "Revisions by role" is about rework after a
-  rejection, but its title does not mention rejections; leave it for a later entry if wanted.
-
-**Acceptance criteria.**
-- The Usage render chain passes `REJECTIONS_TIP` to the "Rejections by role" block and
-  `POST_MERGE_REJECTIONS_TIP` to the "Post-merge rejections by role" block. The post-merge term
-  is still gated on `seriesHasAny(d, "postMergeRejectionsByRole")` and still comes right after
-  Rejections by role. Update the existing ordering tests in test/gui-client-report.test.ts,
-  whose regexes match the current three-argument call.
-- Rendering `block` with a tip gives an `<h2 class='has-tip' title='…'>` whose title is the
-  escaped tip. A tip containing `'`, `<` and `&` comes out escaped. Without a tip, `block` gives
-  the same markup as before (assert on the exact string), so no other chart changes. If the
-  test cannot reach the inline arrow, lift `block` into a named function in the same file.
-- No other `block(...)` call in the chain passes a fourth argument.
-- Each tip is one or two short sentences of plain words: no event names (`review_rejected`), no
-  file names, and nothing over about 300 characters.
-- Manual check on the demo-repo dashboard (served in-process, safe to click): hover each of the
-  two titles and see its note; the other chart titles show no underline and no tooltip.
-
 ### Release version display, part 1/3: the build stamp records the npm release version when it was compiled from that release's tag (planned 2026-11-16 by the operator; touches src/build/build-info.ts src/redeploy/redeployer.ts src/team/team-orchestrator-info.ts test/build-info.test.ts test/stamp-build.test.ts test/redeployer.test.ts test/team-orchestrator-info.test.ts)
 
 **Goal.** An npm-installed tumwater shows a commit hash where the operator expects a version. The
