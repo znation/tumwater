@@ -1,6 +1,6 @@
 /**
- * The in-memory state of each root's open red spell (Hourly full check, part 3b/4) and the
- * root-keyed "known failures" maps that read from it — the spell state that
+ * The in-memory known-failures state of main: each root's open red spell (Hourly full check,
+ * part 3b/4) and the root-keyed "known failures" maps that read from it — the state that
  * src/baseline/main-watch.ts mutates as its passes settle verdicts.
  *
  * A red spell is the commit that OPENED a red — the tip of the first red verdict since the last
@@ -13,10 +13,16 @@
  * settled red tip then names itself as culprit — the pre-fix behaviour, and a bounded one (one
  * tip per restart, since a spell's later tips inherit the red and settle without a re-run).
  *
- * The maps are module-private; the watch (and its public `knownMainFailures` /
- * `onlyKnownMainFailures` reads) reach this state only through the named seams below, so the
- * state has one home and one way in and out.
+ * The maps are module-private; the watch (and the review gate's `knownMainFailures` /
+ * `onlyKnownMainFailures` reads below) reach this state only through the named seams, so the
+ * state has one home and one way in and out. The two reads live here beside the maps they read —
+ * this module is their data — rather than in the watch's factory module, which holds only the
+ * watch itself.
  */
+
+import { distinctOrdered } from "../collections.js";
+import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
+import { quarantinedTests } from "../review/known-flakes.js";
 
 /** Each root's open red spell: the commit that OPENED the red, the failing tests STILL open on
  * the newest red tip, and (red only) the file each open test lives in plus the policy-scan
@@ -119,14 +125,16 @@ export function spellOpen(root: string): boolean {
 
 /** The open failing tests of `root`'s red spell: empty when no spell is open (a green, or none
  * ever opened). A red's <main-known-red> note reads this so a test a later head showed passing
- * leaves the set while the spell is still open. */
-export function spellOpenTests(root: string): string[] {
+ * leaves the set while the spell is still open. Module-private: only `knownMainFailures` reads
+ * it. */
+function spellOpenTests(root: string): string[] {
   return redSpellOpeners.get(root)?.tests ?? [];
 }
 
 /** The failing tests of `root`'s newest verdict (the knownFailures map): empty when the verdict
- * is green, red with no parsed test, or none has been recorded yet in this process. */
-export function knownFailuresFor(root: string): string[] {
+ * is green, red with no parsed test, or none has been recorded yet in this process.
+ * Module-private: only `knownMainFailures` reads it. */
+function knownFailuresFor(root: string): string[] {
   return knownFailures.get(root) ?? [];
 }
 
@@ -138,4 +146,25 @@ export function setKnownFailures(root: string, tests: string[]): void {
 /** Record `root`'s newest verdict's policy-scan offender lists in the knownOffenders map. */
 export function setKnownOffenders(root: string, offenders: Record<string, string[]>): void {
   knownOffenders.set(root, offenders);
+}
+
+/** Main's known failures: while a red spell is open, the spell's remaining open failing tests —
+ * narrowed on every new head by re-running only them, so a test a later head showed passing
+ * stops being named before the whole red clears (part 3b/4). With no spell open, the failing
+ * tests of the watch's newest verdict (the knownFailures map). Either way plus every quarantined
+ * flaky test (review/known-flakes.ts). Empty when the verdict is green, red with no parsed test,
+ * or none has been recorded yet in this process, and nothing is quarantined. */
+export function knownMainFailures(root: string): string[] {
+  const open = spellOpenTests(root);
+  const base = open.length > 0 ? open : knownFailuresFor(root);
+  return distinctOrdered([...base, ...quarantinedTests(root)]);
+}
+
+/** The failing tests of a failed check when every one of them is a known main failure; null when
+ * the output names no test, any test is outside the known set, or none is known. A list at
+ * FAILING_TESTS_MAX may have been cut short, so it never counts as complete. */
+export function onlyKnownMainFailures(root: string, failingTests: readonly string[] | undefined): string[] | null {
+  if (!failingTests || failingTests.length === 0 || failingTests.length >= FAILING_TESTS_MAX) return null;
+  const known = new Set(knownMainFailures(root));
+  return failingTests.every((t) => known.has(t)) ? [...failingTests] : null;
 }

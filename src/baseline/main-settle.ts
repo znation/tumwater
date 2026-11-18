@@ -2,7 +2,7 @@ import { checkMainBaseline, commitsAboveFullGreen, INHERIT_WALK_MAX, settleRedBy
 import { canRerun, rerunTests } from "../build/build-check-rerun.js";
 import { baselineCheckLogger, withMainTipWorktree } from "./main-red.js";
 import { onlyQuarantined, quarantineTests } from "../review/known-flakes.js";
-import { setKnownFailures, setKnownOffenders, setSpell, spellFor } from "./main-red-spell.js";
+import { setKnownFailures, setKnownOffenders, setSpell, spellFor } from "./main-known-failures.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
 import { git, gitTry } from "../git/git-run.js";
 import { gitLines } from "../git/git.js";

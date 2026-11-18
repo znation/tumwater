@@ -14,7 +14,7 @@ import {
   narrowStillFailing,
   spellFor,
   spellOpen,
-} from "./main-red-spell.js";
+} from "./main-known-failures.js";
 import {
   countCovered,
   mainCheckEvent,

@@ -1,9 +1,5 @@
-import { distinctOrdered } from "../collections.js";
-import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { quarantinedTests } from "../review/known-flakes.js";
-import { knownFailuresFor, spellOpenTests } from "./main-red-spell.js";
 import type { MainCulprit } from "./main-settle.js";
 import {
   markWatched,
@@ -14,6 +10,12 @@ import {
 import { startRulesPass } from "./main-watch-rules.js";
 import { fullPass } from "./main-watch-full.js";
 import { startQuarantineHousekeeping } from "./main-watch-quarantine.js";
+
+/** Main's known failures, re-exported from main-known-failures.ts, where they live beside the
+ * red-spell and known-failure maps they read — this module holds only the watch itself. Kept
+ * here so the review gate and the main-watch tests import the reads from the watch's long-standing
+ * public home. */
+export { knownMainFailures, onlyKnownMainFailures } from "./main-known-failures.js";
 
 /** The main watch: after main's head moves, run the full check on the new tip in its own
  * `_main-full` mirror and record the verdict — a `main_check` event, and the failing tests on the
@@ -43,7 +45,9 @@ import { startQuarantineHousekeeping } from "./main-watch-quarantine.js";
  * pass runs in the shared `_gate-main` mirror (withMainTipWorktree), and the full-check pass runs
  * in its own `_main-full` mirror (withFullMainTipWorktree) on its own queue, so a rules pass or a
  * gate's main-tip verdict never waits behind a full run. `poll` starts each pass independently and
- * `idle()` waits for both, plus housekeeping. */
+ * `idle()` waits for both, plus housekeeping. The red-spell and known-failure maps it settles
+ * live in main-known-failures.ts (their data home), which also holds `knownMainFailures` /
+ * `onlyKnownMainFailures`; this module re-exports those two reads from there. */
 interface MainWatch {
   /** Look at main's head; starts a background watch run when it is unwatched and none is in
    * flight. `held` (a restart pending, or the disk hold) starts nothing; `config` is the live
@@ -51,27 +55,6 @@ interface MainWatch {
   poll(mainHead: string, held: boolean, config: TumwaterConfig): void;
   /** Resolves when no watch run is in flight — a test seam. */
   idle(): Promise<void>;
-}
-
-/** Main's known failures: while a red spell is open, the spell's remaining open failing tests —
- * narrowed on every new head by re-running only them, so a test a later head showed passing
- * stops being named before the whole red clears (part 3b/4). With no spell open, the failing
- * tests of the watch's newest verdict (the knownFailures map). Either way plus every quarantined
- * flaky test (review/known-flakes.ts). Empty when the verdict is green, red with no parsed test,
- * or none has been recorded yet in this process, and nothing is quarantined. */
-export function knownMainFailures(root: string): string[] {
-  const open = spellOpenTests(root);
-  const base = open.length > 0 ? open : knownFailuresFor(root);
-  return distinctOrdered([...base, ...quarantinedTests(root)]);
-}
-
-/** The failing tests of a failed check when every one of them is a known main failure; null when
- * the output names no test, any test is outside the known set, or none is known. A list at
- * FAILING_TESTS_MAX may have been cut short, so it never counts as complete. */
-export function onlyKnownMainFailures(root: string, failingTests: readonly string[] | undefined): string[] | null {
-  if (!failingTests || failingTests.length === 0 || failingTests.length >= FAILING_TESTS_MAX) return null;
-  const known = new Set(knownMainFailures(root));
-  return failingTests.every((t) => known.has(t)) ? [...failingTests] : null;
 }
 
 export function createMainWatch(
