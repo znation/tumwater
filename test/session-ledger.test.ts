@@ -66,6 +66,22 @@ test("readSessions skips a line that parses but is not a complete record", () =>
   assert.deepEqual(latestSession(dir), good, "a shape-invalid newest line does not shadow a valid one");
 });
 
+test("readSessions skips a line whose kind drifted off the run kinds", () => {
+  const dir = tmpdir();
+  const good = record({ kind: "author", name: "author" });
+  recordSession(dir, good);
+  // kind is "author" | "gate" (PiRunKind): a ledger line whose kind is anything else is not a
+  // record. It must be skipped like a torn one — a reader that accepts any string kind would let
+  // a drifted line shadow a real session in the newest-of-kind lookup.
+  fs.appendFileSync(
+    sessionLedgerPath(dir),
+    '{"agent":"pi","kind":"review","id":"x","name":"n","cwd":"/wt","at":2}\n',
+  );
+  assert.deepEqual(readSessions(dir), [good]);
+  assert.deepEqual(latestSession(dir), good, "a wrong-kind newest line does not shadow a valid one");
+  assert.equal(latestSession(dir, "gate"), null);
+});
+
 test("latestSession and resumableSession pick the newest of the run's kind, not the newest overall", () => {
   const dir = tmpdir();
   // The hazard: a conflict resolver's gate run shares the author's dir and is newest overall.
