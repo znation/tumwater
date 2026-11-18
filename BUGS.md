@@ -119,6 +119,14 @@ This matters more now that the intended use is an operator's own agent filing pl
 
 **Suspected cause.** The filing path and the dependency parser disagree on where heading metadata lives. Either fix is plausible; pick the one that keeps every other heading reader (`stripEntryStamp`, `entryDates`, `entryKey`, the retired-stamp readers) consistent: (a) when the filed title already ends in a parenthetical, fold the operator stamp into it as `(…; reported by the user <date>)` instead of appending a second group; or (b) have `requiresClause` look at every top-level parenthetical in the heading, not only the last. Also consider having `planDependencyProblems` report a `requires … landed` clause that sits outside the parenthetical it reads, so a hand-written heading with the same shape is caught.
 
+### `a corrupted cache entry is ignored and re-looked-up` failed, then passed on the same tree (quarantined by tumwater 2026-11-17)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+a corrupted cache entry is ignored and re-looked-up
+~~~~
+
 ## Fixed
 
 ## Verified
