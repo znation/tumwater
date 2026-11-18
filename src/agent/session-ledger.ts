@@ -15,6 +15,7 @@ import path from "node:path";
 import { daysAgoMs, dirEntryNames, ensureParentDir, readTextOrNull, statOrNull, terminateTornTail, walkFiles, writeTextAtomic } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { findRollout } from "./codex/codex-rollout.js";
+import type { PiRunKind } from "../pi/pi-event-line.js";
 
 /** The ledger file name every session dir holds. Deliberately a `.jsonl` name so it sits beside
  * the backend's own session files; readers that count session files must exclude it. */
@@ -28,7 +29,7 @@ export interface SessionRecord {
   id: string;
   /** The run's kind (PiRunKind: "author" | "gate"), so a follow-up can ignore another kind's
    * session in the same dir. */
-  kind: string;
+  kind: PiRunKind;
   /** The run's session name. */
   name: string;
   /** The worktree the run started in (claude's resume is cwd-scoped). */
@@ -69,7 +70,7 @@ export function recordSession(dir: string, record: SessionRecord): void {
 export function sessionRecordFor(
   agent: string,
   id: string,
-  opts: { kind: string; sessionName: string; cwd: string; config: { model?: string } },
+  opts: { kind: PiRunKind; sessionName: string; cwd: string; config: { model?: string } },
 ): SessionRecord {
   return {
     agent,
@@ -124,7 +125,7 @@ function isSessionRecord(value: unknown): value is SessionRecord {
   return (
     typeof value.agent === "string" &&
     typeof value.id === "string" &&
-    typeof value.kind === "string" &&
+    (value.kind === "author" || value.kind === "gate") &&
     typeof value.name === "string" &&
     typeof value.cwd === "string" &&
     typeof value.at === "number" &&
