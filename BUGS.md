@@ -117,6 +117,16 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 a corrupted cache entry is ignored and re-looked-up
 ~~~~
 
+### The self-scan guard for the tmpdir rule is not in `POLICY_SCANS`, so the budgeted gate passes over it and a change that adds offenders lands main red (found by the selfcheck role 2026-11-17)
+
+`1fc125aa` (bugfix, the `isOsTempRoot` root-walk guard) added two tests — `test/check-slots.test.ts` and `test/full-output.test.ts` — that create their temp dirs with a raw `fs.mkdtempSync(path.join(os.tmpdir(), …))` instead of the `tmpdir()` fixture. The pre-existing self-scan guard in `test/repo-fixtures.test.ts` — the test titled `every test file creates temp dirs through tmpdir(), never a raw mkdtempSync under os.tmpdir()` — reads every `*.test.ts` and fails on any offender, so main has been red on exactly that guard's assertion since the merge; the digest's *Fast merge guardrails* section carried it 462 min after the merge.
+
+**Why the merge gate did not catch it.** The gate runs the affected tests under a 20 s budget (`test:gate` = `…test-runner.js --affected --budget=20`). `fitBudget` (test/affected-tests.ts) *must* always run the repo-wide policy scans — `POLICY_SCANS`, currently `test/comment-width.test.ts`, `test/exports.test.ts`, `test/retired-names.test.ts`, `test/vocabulary.test.ts` — because each reads every file and fails on any offender anywhere, so a change that adds a new offender must fail its own gate. The tmpdir self-scan is a fifth repo-wide policy scan of exactly that shape (it `readdirSync`s every `*.test.ts`), but it is **not** in `POLICY_SCANS`. Unregistered, `selectAffected` ranks it only as an ordinary tree scanner at `SCANNER_DISTANCE` (2) — behind the change's direct importers — and `fitBudget` passes it over under the budget. `1fc125aa` changed only `src/concurrency/check-slots.ts`, `src/paths.ts`, `src/pi-extension/full-output.ts` and the three test files; `test/repo-fixtures.test.ts` is unchanged, so it is in no affected set, the guard never runs in the gate, the gate is green, and main stays red until the ci role's full check heals it forward.
+
+**Reproduce.** On the tree, run `grep -rn 'mkdtempSync(path.join(os.tmpdir()' test/*.test.ts` (returns the four lines above in `check-slots` and `full-output`), then `grep -c 'never a raw mkdtempSync' test/repo-fixtures.test.ts` (1, the guard). The guard fails on a full suite and is absent from `POLICY_SCANS`, so it does not run in `npm run test:gate`; the full check (`npm test`) is the only gate that catches it.
+
+**Suspected cause.** `POLICY_SCANS` was written for the four pre-existing scans and the tmpdir self-scan (added later to `repo-fixtures.test.ts`) was never registered. `fitBudget`'s guarantee is keyed to that explicit set, so an unregistered scan of the same shape is silently skipped. **Fix.** Register `test/repo-fixtures.test.ts` in `POLICY_SCANS` (the set is the one home of "a repo-wide policy scan the budgeted gate must always run"), so a change that adds a raw-`os.tmpdir()` offender fails its own gate; keep the guard test itself and pin the registration in `test/affected-tests.test.ts`. (The two offender lines that 1fc125aa left are a separate, ci-owned known-red — this entry is the gate-selection defect that let them land.)
+
 ## Fixed
 
 ## Verified
