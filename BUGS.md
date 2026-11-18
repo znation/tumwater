@@ -98,6 +98,47 @@ a corrupted cache entry is ignored and re-looked-up
 
 **Suspected cause.** `POLICY_SCANS` was written for the four pre-existing scans and the tmpdir self-scan (added later to `repo-fixtures.test.ts`) was never registered. `fitBudget`'s guarantee is keyed to that explicit set, so an unregistered scan of the same shape is silently skipped. **Fix.** Register `test/repo-fixtures.test.ts` in `POLICY_SCANS` (the set is the one home of "a repo-wide policy scan the budgeted gate must always run"), so a change that adds a raw-`os.tmpdir()` offender fails its own gate; keep the guard test itself and pin the registration in `test/affected-tests.test.ts`. (The two offender lines that 1fc125aa left are a separate, ci-owned known-red — this entry is the gate-selection defect that let them land.)
 
+### The checkpoint-abort diagnosis from 54a4a07f never fires on a real run: pi emits `compaction_start` before it exits, so `compacted` reads true (found by an operator session 2026-11-18)
+
+BUGS-FIXED.md closes "A checkpoint-caused abort is indistinguishable from a context-ceiling cut-off" with 54a4a07f. `diagnoseNoChange` (src/verdict/no-change.ts) counts a run as `checkpointAborted` only when `!pi.compacted`. On a real pi 1.5.2 run that condition is never true. After the aborted turn, pi's fire-and-forget `compact()` emits `{"type":"compaction_start","reason":"manual"}`, and then pi exits before any `compaction_end` or `compaction` session entry. `PiStreamParser` (src/pi/pi-stream.ts:600) sets `compacted = true` on `compaction_start`. So every checkpoint abort is still diagnosed as a ceiling cut-off and arms a `"cut-off"` resume.
+
+**Seen live.** Three author runs on 11-17 ran build f85f56e5, which contains 54a4a07f: robustness at 18:40, organize at 19:39 and improve at 21:29 PST. Each called `checkpoint`, got "Checkpoint recorded; the context is being compacted", and its next assistant message ended `stopReason: "aborted"`. None of the three session files holds a `compaction` entry. All three warnings still read "final message had no text or tool call — likely cut off at the context ceiling, pi auto-compacted the session". Robustness's resume (11-18 01:48) then received the cut-off bridge: "tumwater compacted the session … what you did so far is summarized above". No summary exists. The role pi logs hold 13 `compaction_start` events with `reason: "manual"` and no matching `compaction_end`.
+
+**Reproduce.** `grep -n '"compaction_start","reason":"manual"' .tumwater/log/robustness.pi.jsonl`. The line follows `{"type":"agent_settled","aborted":true}`, and no `compaction_end` follows it before the next `tumwater_run`. The session it belongs to is `.tumwater/sessions/robustness/2026-11-18T01-37-40-448Z_*.jsonl`, and its last assistant message is the aborted one right after the `checkpoint` toolResult.
+
+**Suspected cause.** The fix's validation said no real run was needed, because the fake-pi shim overrides `compacted` directly. The shim never produces the start-without-end event stream real pi does. **Fix direction.** Set `compacted` only on evidence that a compaction was written (`compaction_end` without an error, or the session file's `compaction` entry), not on `compaction_start`. Pin it with a parser test that feeds `agent_settled{aborted:true}` and then a lone `compaction_start` and asserts `compacted === false`, and a `diagnoseNoChange` case built from that parsed result. The underlying abort is still unsolved for author runs: the BUGS-FIXED checkpoint entry's required behavior, "an accepted checkpoint must leave the session compacted", is unmet.
+
+### A post-merge review that times out "while still making progress" restarts from scratch every attempt and counts toward the drop limit, so a review longer than its budget can never finish (found by an operator session 2026-11-18)
+
+When a post-merge review hits its wall budget while progressing, the warning reads "the post-merge review of <sha> failed (timed out after 7200s while still making progress — session and worktree edits preserved for resume)". Nothing on the post-merge path resumes:
+- `reviewMergedCommit` (src/review/post-merge-review.ts) calls `ensureDetachedWorktree`, which hard-resets the post-review worktree to the commit, and resets the review-fix ref to the commit.
+- It then starts `runGatePi` without `continueSession`, so pi opens a new session file.
+- `settlePostReviewOutcome` (src/merge/merge-post-review-drain.ts) counts the timeout as an ordinary failed run toward `POST_REVIEW_FAILURE_LIMIT` (3). The third timeout drops the commit unreviewed and files a "never reached a verdict" entry.
+
+The pre-merge gate had the same wording bug, fixed on 10-01 (BUGS-FIXED.md, "A timed-out review is reported as 'session and worktree edits preserved for resume'…"). That fix rewrote the message only in src/review/review.ts. The post-merge drain reports `pi.errorMessage` unchanged.
+
+**Seen live.** On 11-17 every failed post-merge review hit the 7200 s cap: f6e2431a, 7734f02f, 54a4a07f, ff1a8d34, 620887d8 and 1fc125aa. That is about 12 slot-hours on the local Qwen. The day had 15 post-merge review starts and 8 verdicts. 54a4a07f's second attempt (`_review/bugfix/post-54a4a07f/2026-11-18T07-48-57-952Z_*.jsonl`) is a new session that re-reads the same files the first one had read. It timed out again at 11-18 01:48:57 PST. ff1a8d34 and 54a4a07f are now at 2 of 3 failures, so one more timeout each drops them unreviewed.
+
+**Reproduce.** `ls .tumwater/sessions/_review/bugfix/post-54a4a07f/` shows two session files, one per attempt. `sessions.jsonl` there records two starts with the same session name. The events log pairs each `review_start` (`afterMerge: true`) with a timeout warning exactly 7200 s later.
+
+**Suspected cause / fix direction.** The post-merge path was built on the gate's fresh-session design and never got either remedy. At minimum, reword the message for this path as review.ts does, keeping the failure-cluster pooling in src/failure/failure-cluster.ts. The fix that ends the waste is to continue the timed-out reviewer's own session on the same commit without resetting the worktree or the fix ref. Alternatively, do not count a progressing timeout toward the drop limit while each attempt keeps making progress. Without one of those, a review that needs more than one budget has no way to finish.
+
+### A model check run while the only local server is saturated fails on queue position, holding every role and handing back runs to "a pair that answers" that does not exist (found by an operator session 2026-11-18)
+
+The team runs every role on one local pair, `qwenrunner/Qwen3.8-27B-MLX-Serve-4bit` (Splash 1.6.1, `--max-concurrent 4`). On 11-17 the model check failed four times ("gave no reply (no answer within 300s) — runs on it wait (feature, bugfix, plan, …, +13 more)"), each time holding all 19 runners. The Splash log (`~/qwenrunner/logs/splash.8090.log`) shows that the server was answering, not down:
+- At 14:08:57 and 14:20:00 PST the probe's requests (input 1,420 tokens, 0 cached) were `Cancelled` with output 0 and never `Started`. The server was memory-starved ("Memory: growth paused; waiting=1") and kept starting cache-hit follow-ups from the sessions already running, while new uncached requests waited.
+- In the same minutes the running sessions' requests finished at 30–48 tok/s.
+- dedupe's request (input 50,031, 0 cached) had waited unstarted since about 13:43.
+
+The hand-back cancelled dedupe's run at 14:08:59 (aborted after 2.0 h) and clean's at 14:27:18 (after 1.75 h). Each warning says "the run resumes on a pair that answers", but no other pair is configured. Once clean's request was cancelled, the next probe started at once and answered in 3 s (`model_check_passed` at 14:27:20). So the check measured the probe's place in a saturated server's admission queue, and the hand-back is what made the next probe pass.
+
+**Reproduce.** In the Splash log's 11-17 section (after the 23:59→00:00 rollover near line 600823), filter 14:02–14:28 to `Started|Done|Cancelled`. Compare with `.tumwater/log/events.jsonl` `warning` events at 14:08:57–14:27:20 and the `model_check_passed` event at 14:27:20.
+
+**Suspected cause / fix direction.** The probe (src/model-check/model-check-probe.ts, `MODEL_CHECK_TIMEOUT_S` = 300) competes for the same server slots and memory as the runs it judges. A request that never started is read the same as a model that does not answer. Part of this is Splash's admission behavior under memory pressure, which tumwater cannot fix. On the harness side, options are:
+- Don't treat "no answer" as a failed pair while the team's own runs on that pair are getting replies in the same window.
+- Or reserve headroom for the probe, for example by lowering the team's concurrency by one while a check is due.
+- Either way, the hand-back warning should not promise another pair when the tier has none.
+
 ## Fixed
 
 ## Verified
