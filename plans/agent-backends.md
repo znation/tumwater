@@ -179,7 +179,7 @@ The claude translator:
 | each `tool_use` block | `tool_execution_start` (`toolCallId`, `toolName`, `args`) emitted as soon as the block is folded, before the tool runs (so an open-call tracker can see the call while it runs) |
 | `user` `tool_result` block | `tool_execution_end` (`toolCallId`, `isError`) |
 | `system/api_retry` | `auto_retry_start` (`attempt`, `maxAttempts`, `errorMessage` built from `error_status`/`error`) — the transcript already renders it |
-| `system/compact_boundary` | `compaction_start` (→ `compacted`) |
+| `system/compact_boundary` | `compaction_start` then `compaction_end` (`{result: {}}`) — the marker only appears after claude has rewritten the context, and the parser marks `compacted` on the completed pair (docs/invariants.md INV-DD1) |
 | `rate_limit_event` with `status: "rejected"` | an error-bearing event the parser maps to `transientRateLimit`, with `retryAfterSeconds` from `resetsAt` |
 | `result` | new canonical `run_cost {total}` (PiStreamParser: the run's authoritative cost replaces the per-message sum), then a synthetic final `message_end` only if the run ended with an error: `stopReason: "error"` and an `errorMessage` that carries an explicit classification (below) |
 

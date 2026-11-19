@@ -111,16 +111,6 @@ near-bar sample (load5 just under the count) as **not** quiet enough to admit. T
 at-admission `awaitQuietHost` gate and the existing `recheckQuietHost` are the seams;
 no production budget behavior changes.
 
-### The checkpoint-abort diagnosis from 54a4a07f never fires on a real run: pi emits `compaction_start` before it exits, so `compacted` reads true (found by an operator session 2026-11-18)
-
-BUGS-FIXED.md closes "A checkpoint-caused abort is indistinguishable from a context-ceiling cut-off" with 54a4a07f. `diagnoseNoChange` (src/verdict/no-change.ts) counts a run as `checkpointAborted` only when `!pi.compacted`. On a real pi 1.5.2 run that condition is never true. After the aborted turn, pi's fire-and-forget `compact()` emits `{"type":"compaction_start","reason":"manual"}`, and then pi exits before any `compaction_end` or `compaction` session entry. `PiStreamParser` (src/pi/pi-stream.ts:600) sets `compacted = true` on `compaction_start`. So every checkpoint abort is still diagnosed as a ceiling cut-off and arms a `"cut-off"` resume.
-
-**Seen live.** Three author runs on 11-17 ran build f85f56e5, which contains 54a4a07f: robustness at 18:40, organize at 19:39 and improve at 21:29 PST. Each called `checkpoint`, got "Checkpoint recorded; the context is being compacted", and its next assistant message ended `stopReason: "aborted"`. None of the three session files holds a `compaction` entry. All three warnings still read "final message had no text or tool call — likely cut off at the context ceiling, pi auto-compacted the session". Robustness's resume (11-18 01:48) then received the cut-off bridge: "tumwater compacted the session … what you did so far is summarized above". No summary exists. The role pi logs hold 13 `compaction_start` events with `reason: "manual"` and no matching `compaction_end`.
-
-**Reproduce.** `grep -n '"compaction_start","reason":"manual"' .tumwater/log/robustness.pi.jsonl`. The line follows `{"type":"agent_settled","aborted":true}`, and no `compaction_end` follows it before the next `tumwater_run`. The session it belongs to is `.tumwater/sessions/robustness/2026-11-18T01-37-40-448Z_*.jsonl`, and its last assistant message is the aborted one right after the `checkpoint` toolResult.
-
-**Suspected cause.** The fix's validation said no real run was needed, because the fake-pi shim overrides `compacted` directly. The shim never produces the start-without-end event stream real pi does. **Fix direction.** Set `compacted` only on evidence that a compaction was written (`compaction_end` without an error, or the session file's `compaction` entry), not on `compaction_start`. Pin it with a parser test that feeds `agent_settled{aborted:true}` and then a lone `compaction_start` and asserts `compacted === false`, and a `diagnoseNoChange` case built from that parsed result. The underlying abort is still unsolved for author runs: the BUGS-FIXED checkpoint entry's required behavior, "an accepted checkpoint must leave the session compacted", is unmet.
-
 ### A post-merge review that times out "while still making progress" restarts from scratch every attempt and counts toward the drop limit, so a review longer than its budget can never finish (found by an operator session 2026-11-18)
 
 When a post-merge review hits its wall budget while progressing, the warning reads "the post-merge review of <sha> failed (timed out after 7200s while still making progress — session and worktree edits preserved for resume)". Nothing on the post-merge path resumes:
@@ -151,6 +141,14 @@ The hand-back cancelled dedupe's run at 14:08:59 (aborted after 2.0 h) and clean
 - Don't treat "no answer" as a failed pair while the team's own runs on that pair are getting replies in the same window.
 - Or reserve headroom for the probe, for example by lowering the team's concurrency by one while a check is due.
 - Either way, the hand-back warning should not promise another pair when the tier has none.
+
+### An accepted checkpoint still leaves the session uncompacted: pi’s fire-and-forget `compact()` never reaches its `compaction_end` (found by the bugfix role 2026-11-19)
+
+The BUGS-FIXED entry "A checkpoint-caused abort is indistinguishable from a context-ceiling cut-off" requires that "an accepted checkpoint must leave the session compacted". It does not. On every observed author run the tool result reads "Checkpoint recorded; the context is being compacted", the next assistant turn ends `stopReason: "aborted"`, and the role’s pi log holds a `compaction_start` with `reason: "manual"` and no matching `compaction_end`; the session file holds no `compaction` entry. So the run loses its turn and gains no summary — the context keeps growing and the role pays an aborted run each time it checkpoints.
+
+**Reproduce.** In a role’s pi log, `grep -c '"compaction_start","reason":"manual"'` counts starts while `grep -c compaction_end` counts none. pi 1.5.2’s `compact()` (its `dist/core/agent-session.js`) awaits `abort()`, emits `compaction_start`, then summarizes, and emits `compaction_end` only on completion or failure — so a process that exits once the aborted turn settles never emits one.
+
+**Suspected cause.** `src/pi-extension/checkpoint.ts` requests the compaction and returns its tool result before pi has run the summarization, and pi ends the run when the aborted turn settles. Settling it means keeping the run alive until `compaction_end` arrives (or writing the compaction entry directly), a design decision that belongs with the plan role, not a parser correction. The sibling fix (this file’s Fixed entry) only stops the harness from claiming a compaction that was never written.
 
 ## Fixed
 

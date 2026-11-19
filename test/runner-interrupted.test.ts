@@ -79,7 +79,8 @@ test("a run cut off at the context ceiling warns, skips backoff, and resumes", a
   await withPi(
     `printf '%s\n' '${assistantLine("Now git.ts:")}'\n` +
       `printf '%s\n' '${thinkingOnlyLine("git.ts looks clean. Next", { output: 16 })}'\n` +
-      `printf '%s\n' '${JSON.stringify({ type: "compaction_start", reason: "threshold" })}'`,
+      `printf '%s\n' '${JSON.stringify({ type: "compaction_start", reason: "threshold" })}'\n` +
+      `printf '%s\n' '${JSON.stringify({ type: "compaction_end", reason: "threshold", result: { summary: "compacted" }, aborted: false })}'`,
     async () => {
       const runner = makeRoleRunner(repo, "clean");
       assert.equal((await runner.run()).result, "no_change");
@@ -121,6 +122,40 @@ test("cut-off resumes stop after the streak limit and fall back to backoff", asy
       const runs = fs.readFileSync(argsFile, "utf8").trim().split("\n");
       assert.ok(!runs[0]?.includes("--continue"), "first run was fresh");
       for (const later of runs.slice(1)) assert.ok(later.includes("--continue"), "resumes continued the session");
+    },
+  );
+});
+
+test("a checkpoint abort whose compaction never completed is not a cut-off and arms no resume", async () => {
+  const repo = await initializedRepo();
+  // The shape pi 1.5.2 really produces (BUGS.md 2026-11-18): the accepted checkpoint aborts
+  // the running turn (a contentless assistant message, stopReason "aborted"), pi's
+  // fire-and-forget compact() emits a lone compaction_start, and pi exits before any
+  // compaction_end — so no compaction entry was ever written and the session must NOT be
+  // resumed as compacted. Before the fix the parser marked the run compacted on the start,
+  // the warning blamed the context ceiling, and the resume bridge claimed a summary that
+  // does not exist.
+  const abortedTurn = JSON.stringify({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "thinking", thinking: "checkpoint recorded" }],
+      usage: { totalTokens: 5000, output: 12, cost: { total: 0 } },
+      stopReason: "aborted",
+    },
+  });
+  await withPi(
+    `printf '%s\n' '${abortedTurn}'\n` +
+      `printf '%s\n' '${JSON.stringify({ type: "compaction_start", reason: "manual" })}'`,
+    async () => {
+      const runner = makeRoleRunner(repo, "clean");
+      assert.equal((await runner.run()).result, "no_change");
+      const [warning] = eventsOfType(repo, "warning");
+      assert.ok(warning, "expected exactly one warning");
+      assert.match(String(warning.message), /checkpoint abort/);
+      assert.doesNotMatch(String(warning.message), /cut off at the context ceiling/);
+      assert.doesNotMatch(String(warning.message), /auto-compacted/);
+      assert.ok(!runner.state.resumePending, "a session that was never compacted is not resumed");
     },
   );
 });

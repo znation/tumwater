@@ -263,7 +263,14 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
         }),
       ];
     }
-    if (subtype === "compact_boundary") return [JSON.stringify({ type: "compaction_start" })];
+    // A compact_boundary marker appears only after claude has rewritten the context, so the
+    // pair is emitted completed: the parser marks the session compacted on the end's result
+    // (never on a start alone), and claude's marker carries no summary payload of its own.
+    if (subtype === "compact_boundary")
+      return [
+        JSON.stringify({ type: "compaction_start" }),
+        JSON.stringify({ type: "compaction_end", result: {} }),
+      ];
     // A thinking-token estimate during extended thinking: known, carries nothing canonical.
     if (subtype === "thinking_tokens") return [];
     record(`system:${subtype ?? "unknown"}`);

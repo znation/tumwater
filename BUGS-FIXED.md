@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### The checkpoint-abort diagnosis from 54a4a07f never fires on a real run: pi emits `compaction_start` before it exits, so `compacted` reads true (found by an operator session 2026-11-18) — fixed 2026-11-19 by the bugfix role
+
+BUGS-FIXED.md closes "A checkpoint-caused abort is indistinguishable from a context-ceiling cut-off" with 54a4a07f. `diagnoseNoChange` (src/verdict/no-change.ts) counts a run as `checkpointAborted` only when `!pi.compacted`. On a real pi 1.5.2 run that condition is never true. After the aborted turn, pi's fire-and-forget `compact()` emits `{"type":"compaction_start","reason":"manual"}`, and then pi exits before any `compaction_end` or `compaction` session entry. `PiStreamParser` (src/pi/pi-stream.ts:600) sets `compacted = true` on `compaction_start`. So every checkpoint abort is still diagnosed as a ceiling cut-off and arms a `"cut-off"` resume.
+
+**Seen live.** Three author runs on 11-17 ran build f85f56e5, which contains 54a4a07f: robustness at 18:40, organize at 19:39 and improve at 21:29 PST. Each called `checkpoint`, got "Checkpoint recorded; the context is being compacted", and its next assistant message ended `stopReason: "aborted"`. None of the three session files holds a `compaction` entry. All three warnings still read "final message had no text or tool call — likely cut off at the context ceiling, pi auto-compacted the session". Robustness's resume (11-18 01:48) then received the cut-off bridge: "tumwater compacted the session … what you did so far is summarized above". No summary exists. The role pi logs hold 13 `compaction_start` events with `reason: "manual"` and no matching `compaction_end`.
+
+**Reproduce.** `grep -n '"compaction_start","reason":"manual"' .tumwater/log/robustness.pi.jsonl`. The line follows `{"type":"agent_settled","aborted":true}`, and no `compaction_end` follows it before the next `tumwater_run`. The session it belongs to is `.tumwater/sessions/robustness/2026-11-18T01-37-40-448Z_*.jsonl`, and its last assistant message is the aborted one right after the `checkpoint` toolResult.
+
+**Suspected cause.** The fix's validation said no real run was needed, because the fake-pi shim overrides `compacted` directly. The shim never produces the start-without-end event stream real pi does. **Fix direction.** Set `compacted` only on evidence that a compaction was written (`compaction_end` without an error, or the session file's `compaction` entry), not on `compaction_start`. Pin it with a parser test that feeds `agent_settled{aborted:true}` and then a lone `compaction_start` and asserts `compacted === false`, and a `diagnoseNoChange` case built from that parsed result. The underlying abort is still unsolved for author runs: the BUGS-FIXED checkpoint entry's required behavior, "an accepted checkpoint must leave the session compacted", is unmet.
+
+**Fix.** `PiStreamParser` now decides `compacted` from evidence: a `compaction_end` carrying a result object and not `aborted: true` sets it; a `compaction_start` alone never does, and a failed or aborted end (`result: undefined`) does not either. The progress count still credits a compaction that never completes, so the hang watchdog behaves as before. The claude translator now maps `system/compact_boundary` to the completed pair (`compaction_start` + `compaction_end` with a result), since that marker only appears after claude has already rewritten the context — the only other writer of the flag.
+
+- **Validation gap:** no-fake — the fake-pi shim only ever emitted a lone `compaction_start`, never the start-then-exit stream real pi writes, so no offline test could see the flag read wrongly until a fixture emitted that stream.
+
 ### A post-merge review's final run is never folded into the author's usage or failure stamps (reported by the user 2026-11-16) — fixed 2026-11-18 by the bugfix role
 
 `startPostReview` (src/merge/merge-post-review-drain.ts) passed `(opts) => author.runGatePi(opts)`

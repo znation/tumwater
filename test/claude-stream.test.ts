@@ -278,7 +278,7 @@ test("retries and compaction translate to the canonical events the transcript re
     claudeApiRetry({ attempt: 2, maxRetries: 5, errorStatus: 503, error: "overloaded" }),
     claudeCompactBoundary(),
   ]);
-  assert.deepEqual(types(canonical), ["auto_retry_start", "compaction_start"]);
+  assert.deepEqual(types(canonical), ["auto_retry_start", "compaction_start", "compaction_end"]);
   assert.equal(parser.compacted, true);
 });
 

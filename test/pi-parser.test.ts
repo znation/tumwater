@@ -282,7 +282,35 @@ test("parser records that pi auto-compacted the session", () => {
   const parser = new PiStreamParser();
   assert.equal(parser.compacted, false);
   parser.feed(JSON.stringify({ type: "compaction_start", reason: "threshold" }) + "\n");
-  assert.ok(parser.compacted);
+  // pi emits the start before it has summarized anything, so a start alone is not evidence a
+  // compaction exists (BUGS.md 2026-11-18) — only the completed end is.
+  assert.equal(parser.compacted, false, "a compaction that never completed wrote nothing");
+  parser.feed(
+    JSON.stringify({ type: "compaction_end", reason: "threshold", result: { summary: "s" }, aborted: false }) + "\n",
+  );
+  assert.ok(parser.compacted, "a completed compaction marks the session compacted");
+});
+
+test("parser ignores a compaction_end that aborted or failed", () => {
+  // pi's failure arms emit the end with no result: `result: undefined` with `aborted: true`
+  // when it was cancelled, and with an `errorMessage` when the summary call itself failed.
+  for (const end of [
+    { type: "compaction_end", reason: "manual", result: undefined, aborted: true },
+    { type: "compaction_end", reason: "overflow", result: undefined, aborted: false, errorMessage: "Compaction failed: x" },
+  ]) {
+    const parser = new PiStreamParser();
+    parser.feed(JSON.stringify({ type: "compaction_start", reason: end.reason }) + "\n");
+    parser.feed(JSON.stringify(end) + "\n");
+    assert.equal(parser.compacted, false, JSON.stringify(end));
+  }
+});
+
+test("parser counts a compaction that never completed as forward progress", () => {
+  // The progress count keeps the hang watchdog off a run that is mid-compaction, so the
+  // stricter `compacted` rule must not stop the start event from counting.
+  const parser = new PiStreamParser();
+  parser.feed(JSON.stringify({ type: "compaction_start", reason: "manual" }) + "\n");
+  assert.equal(parser.progressCount, 1, "the start is still progress");
 });
 
 test("parser handles chunked lines and ignores noise", () => {
