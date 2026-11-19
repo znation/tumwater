@@ -54,7 +54,7 @@ and is also outside `npm test`.
 ## Status
 
 <!-- tumwater:status:start -->
-**v0.8.2**: working tumwater. The director and 15 of the 17 roles are enabled by default; `selfcheck`,
+**v0.8.3**: working tumwater. The director and 15 of the 17 roles are enabled by default; `selfcheck`,
 which files tumwater bugs from tumwater's own event log, and `feedback`, which files them as GitHub
 issues on znation/tumwater, are opt-in (`roles.selfcheck.enabled`, `roles.feedback.enabled`).
 
@@ -81,7 +81,8 @@ maintenance roles until 5 plans are done; remove it from `tumwater.json` to end 
 From another terminal, `tumwater tui` or the browser dashboard watches the team, `tumwater status`
 and `tumwater logs -f` check it, `tumwater brief --file <path>` replaces the brief,
 `tumwater prompt "<text>"` sends a message to the director's inbox, `tumwater plan` and
-`tumwater bug` file backlog entries, `tumwater revert <sha>` undoes one merged change on main,
+`tumwater bug` file backlog entries, `tumwater land` puts your own hand-made commit on main
+under the team's merge lock, `tumwater revert <sha>` undoes one merged change on main,
 and `tumwater pause`, `resume`, `wake`, and `stop` control the roles. `tumwater doctor` audits the team and `tumwater report` shows usage and cost. `gui
 --all-interfaces` exposes the dashboard, and with it the director prompt, to your whole network,
 so pair it with `--token <secret>`.
