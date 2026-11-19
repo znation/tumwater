@@ -180,6 +180,63 @@ test("the sidebar's disk row mirrors the header badge, hold named", () => {
   assert.doesNotMatch(panels.statuschips!, /Disk /, "an empty badge leaves the sidebar unchanged");
 });
 
+// Release version display part 2/3: a release build names itself by its npm version in the
+// Version row, with the commit kept one hover away in the title for bug reports. The payload's
+// buildLabel (build-info.ts) decides which half; the row never re-derives it.
+test("a release build's Version row names the release, with the commit in its tooltip", () => {
+  const { renderSidebar, panels } = sidebarScope();
+  const sha = "a".repeat(40);
+  renderSidebar({
+    running: true,
+    pid: 123,
+    build: { sha, release: "0.8.1", stale: false, aheadCommits: 0 },
+    buildLabel: "0.8.1",
+    buildBadge: ", build aaaaaaaa",
+  });
+  assert.match(panels.statuschips!, /Version <span class='mono'>0\.8\.1<\/span>/, "the row reads the version");
+  assert.doesNotMatch(panels.statuschips!, /Version <span class='mono'>aaaaaaaa<\/span>/, "not the commit");
+  assert.match(
+    panels.statuschips!,
+    /title='Running version 0\.8\.1 \(build aaaaaaaa\)'/,
+    "the tooltip keeps the commit reachable",
+  );
+});
+
+// A payload from a server that predates buildLabel (an older orchestrator's dist served by a
+// newer page, or vice versa) must still name the build by its sha — never an empty cell.
+test("a payload with build but no buildLabel still renders the sha, unchanged", () => {
+  const { renderSidebar, panels } = sidebarScope();
+  const sha = "a".repeat(40);
+  renderSidebar({
+    running: true,
+    pid: 123,
+    build: { sha, stale: true, aheadCommits: 3 },
+    buildBadge: ", build aaaaaaaa — update available (3 commits behind)",
+  });
+  assert.match(panels.statuschips!, /Version <span class='mono'>aaaaaaaa<\/span> · 3 commits behind/);
+  assert.match(
+    panels.statuschips!,
+    /title='Running version aaaaaaaa — update available \(3 commits behind\)'/,
+    "the checkout tooltip stays the text it always was: label plus the badge's suffixes",
+  );
+});
+
+test("a release build's tooltip carries the badge's suffixes after both halves", () => {
+  const { renderSidebar, panels } = sidebarScope();
+  const sha = "a".repeat(40);
+  renderSidebar({
+    running: true,
+    pid: 123,
+    build: { sha, release: "0.8.1", stale: true, aheadCommits: 4 },
+    buildLabel: "0.8.1",
+    buildBadge: ", build aaaaaaaa — update available (4 commits behind); restart blocked: main cccccccc is red",
+  });
+  assert.match(
+    panels.statuschips!,
+    /title='Running version 0\.8\.1 \(build aaaaaaaa\) — update available \(4 commits behind\); restart blocked: main cccccccc is red'/,
+  );
+});
+
 test("the sidebar shows a Stops in row only for a windowed run", () => {
   const { renderSidebar, panels } = sidebarScope();
   renderSidebar({ running: true, pid: 123, runWindowBadge: " · stops in 2h" });

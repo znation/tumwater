@@ -134,6 +134,27 @@ same name on both surfaces instead of one surface showing an empty model cell.
 default" (an opencode role without a model carries `opencode default`, a pi seam with no readable
 pi default carries `pi default`, and the readable-pi-default case keeps `modelFromPi`).
 
+### INV-A8: one label says which build the team is running
+
+**Guarantee.** `buildLabel` is the one home of the decision about which half of the build stamp
+names the running harness to an operator: the npm release version when the build `release` is set
+(a build compiled from that release's tag), the 8-character commit otherwise, and `""` for no
+stamp at all. The status payload ships its result as `buildLabel` beside the preformatted
+`buildBadge`, the dashboard's Version row renders that field (falling back to the raw sha only for
+a payload from a server that predates it), and `doctor`'s running line prints it, so the two
+surfaces cannot drift on whether a release install reads `0.8.1` or a commit.
+
+**Binds.** `src/build/build-info.ts` (`buildLabel`), `src/ui/status-payload.ts` (`buildLabel`),
+`src/ui/gui/gui-client-team.ts` (the sidebar's Version row), `src/doctor/doctor.ts` (`doctorHeader`).
+
+**Pinned by.** `test/build-info.test.ts` — "buildLabel names a release build by its version and
+every other build by its 8-character sha"; `test/status-payload.test.ts` — "status payload
+carries the build badge pre-formatted by buildBadge" (its `buildLabel` assertions);
+`test/doctor.test.ts` — "runDoctor's header names a release build by its npm version, a checkout
+build by its sha"; `test/gui-client-sidebar.test.ts` — "a release build's Version row names the
+release, with the commit in its tooltip" and "a payload with build but no buildLabel still
+renders the sha, unchanged".
+
 ## Reader and writer over a persisted or appended file
 
 A file that one process appends to or persists and another reads has two ends to agree on: the

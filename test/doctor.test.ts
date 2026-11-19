@@ -112,15 +112,18 @@ test("runDoctor's header names the live orchestrator pid when the harness is run
   assert.equal(report.header, `tumwater doctor — running (pid ${process.pid})`);
 });
 
+/** A ready repo whose orchestrator marker publishes `build` — the header's only input. */
+function writeOrchestratorBuild(build: Record<string, unknown>): string {
+  const root = readyRepo();
+  writeOrchestratorMarker(root, [], { build });
+  return root;
+}
+
 test("runDoctor's header carries the running build's sha, staleness, and restart block", async () => {
   // orchestrator.json's build field is what an operator reads to answer "why is doctor saying
   // STALE / restart blocked" — the header must surface all three states, not just the pid.
   const sha = "a".repeat(40);
-  const writeInfo = (build: Record<string, unknown>) => {
-    const root = readyRepo();
-    writeOrchestratorMarker(root, [], { build });
-    return root;
-  };
+  const writeInfo = (build: Record<string, unknown>) => writeOrchestratorBuild(build);
 
   // Fresh, un-stale build: just the sha.
   const fresh = await runDoctor(writeInfo({ sha, builtAt: Date.now() }), fakeBins("git", "pi"), noProcesses);
@@ -142,6 +145,28 @@ test("runDoctor's header carries the running build's sha, staleness, and restart
     noProcesses,
   );
   assert.match(blocked.header, new RegExp(`version ${sha.slice(0, 8)} — update available \\(restart blocked\\)`));
+});
+
+// Release version display part 2/3: an operator who installed a published release runs `tumwater
+// doctor` and reads the version they installed, not a commit they cannot look up. The commit
+// stays the answer for a checkout build (the self-hosted team), where it is the useful name.
+test("runDoctor's header names a release build by its npm version, a checkout build by its sha", async () => {
+  const release = await runDoctor(
+    writeOrchestratorBuild({ sha: "a".repeat(40), builtAt: Date.now(), release: "0.8.1" }),
+    fakeBins("git", "pi"),
+    noProcesses,
+  );
+  assert.match(release.header, new RegExp(`running \\(pid ${process.pid}, version 0\\.8\\.1\\)`));
+  assert.doesNotMatch(release.header, /version aaaaaaaa/, "the commit is not what a release install names");
+
+  // A checkout build (no release) keeps naming itself by its commit, the useful name for the
+  // self-hosted team.
+  const checkout = await runDoctor(
+    writeOrchestratorBuild({ sha: "a".repeat(40), builtAt: Date.now() }),
+    fakeBins("git", "pi"),
+    noProcesses,
+  );
+  assert.match(checkout.header, new RegExp(`running \\(pid ${process.pid}, version aaaaaaaa\\)`));
 });
 
 test("runDoctor survives a corrupt config and lets the init check report it", async () => {

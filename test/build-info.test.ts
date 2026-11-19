@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   BUILD_INPUTS,
   buildInfoPath,
+  buildLabel,
   buildStaleness,
   isSelfHosted,
   readBuildInfo,
@@ -177,6 +178,15 @@ test("a missing or version-less package.json stamps normally with no release", a
   const info = await stampBuild(notARepo, path.join(tmpdir(), "d6"), "f".repeat(40));
   assert.equal(info?.sha, "f".repeat(40));
   assert.equal(info?.release, undefined);
+});
+
+// The observer-facing name of the running build (part 2/3): the GUI's Version row and doctor's
+// running line both read it, so the release-vs-commit decision has one home.
+test("buildLabel names a release build by its version and every other build by its 8-character sha", () => {
+  assert.equal(buildLabel({ sha: "a".repeat(40) }), "aaaaaaaa", "a checkout build is its commit");
+  assert.equal(buildLabel({ sha: "a".repeat(40), release: "0.8.1" }), "0.8.1", "a release build is its version");
+  assert.equal(buildLabel({ sha: "a".repeat(40), release: "0.8.1" }).length, 5, "the version, not a sha");
+  assert.equal(buildLabel(null), "", "no harness, no stamp: nothing to name");
 });
 
 test("readBuildInfo drops a foreign or empty release and keeps the rest of the stamp", () => {

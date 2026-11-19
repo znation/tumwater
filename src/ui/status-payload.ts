@@ -11,6 +11,7 @@ import { contextShareLabel } from "../text/format.js";
 import { queueEntryMergeLabel } from "../merge/merge-slot.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { scopeSnapshotToRoles, snapshot, type StatusSnapshot } from "../status/status-data.js";
+import { buildLabel } from "../build/build-info.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, permitsBadge, checksBadge, quietBadge, restartHoldText, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
@@ -242,6 +243,11 @@ function headerFields(root: string, snap: StatusSnapshot, now: number) {
     // the page is browser JS that cannot import TypeScript, and this multi-branch text must
     // not be re-derived client-side where it could drift from the TUI header.
     buildBadge: buildBadge(snap.build, now),
+    // The version an operator reads, pre-formatted through build-info.ts's buildLabel — the npm
+    // release version for a release build, the short commit otherwise. Shipped display-ready like
+    // buildBadge so the page never re-derives which half of the stamp names the build (part 2/3);
+    // the row falls back to the raw sha for a payload from a server that predates the field.
+    buildLabel: buildLabel(snap.build),
     // A self-redeploy's hold as the sidebar's own row (badges.ts's restartHoldText, the same
     // sentence the build badge ends with): `holding new runs: checking main 21b55874 before
     // restarting (5m)`. Null when no hold stands — a held team otherwise showed every role idle

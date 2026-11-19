@@ -4,6 +4,7 @@ import { gitTry } from "../git/git-run.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
 import { commitExists, refSha } from "../git/git.js";
+import { shortSha } from "../text/format.js";
 import { packageVersion } from "../version.js";
 
 /** Build provenance for the compiled harness: which commit `dist/` was compiled from, written by
@@ -144,6 +145,17 @@ export interface BuildStatus {
    * is main's tip. Without it a team whose main checks kept timing out ran an old build for
    * hours with nothing on any surface saying an update was waiting (BUGS.md 2026-10-29). */
   waitingForCheck?: { head: string; aheadCommits: number };
+}
+
+/** How an operator names the running harness: the npm release version when the build IS a
+ * published release (`release`), and the 8-character commit otherwise — the same abbreviation
+ * every surface already uses. One home so the GUI's Version row and `doctor`'s running line
+ * cannot drift on which half of the stamp they show; a surface that also wants the commit (the
+ * GUI tooltip) prints the label and appends `shortSha(sha)` itself. Null (no harness, or an
+ * unstamped dist) reads "" — nothing to name. */
+export function buildLabel(build: Pick<BuildStatus, "sha" | "release"> | null): string {
+  if (!build) return "";
+  return build.release ? build.release : shortSha(build.sha);
 }
 
 /** The steps a self-redeploy holds new runs through, in order: main's check of the target head

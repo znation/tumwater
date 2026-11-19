@@ -52,11 +52,23 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
         // nothing to move to (BuildStatus.waitingForCheck): amber, and the Main row below says why.
         // No restart button — a forced restart would land on this same build.
         const waiting = !stale && d.build.waitingForCheck;
+        // The version an operator reads: the payload's buildLabel — the installed npm release for
+        // a release build, the short commit otherwise (build-info.ts's buildLabel, the same rule
+        // doctor's running line uses). A payload from a server that predates buildLabel keeps its
+        // sha, so an old server cannot render an empty row.
+        const label = d.buildLabel || shortSha(d.build.sha);
+        const isRelease = label === d.build.release;
+        // The tooltip names both halves for a release build (a bug report needs the commit), and
+        // keeps today's exact text for a checkout build: the badge's commit lead is dropped and
+        // the label leads instead, with every suffix — update available, waiting for the check,
+        // restart blocked or pending — carried over unchanged.
         rows += row(stale ? (d.build.restartBlocked ? "amber" : "blue") : waiting ? "amber" : "", lead,
-          "Version <span class='mono'>" + esc(shortSha(d.build.sha)) + "</span>" +
+          "Version <span class='mono'>" + esc(label) + "</span>" +
             (stale ? " · " + esc(plural(d.build.aheadCommits || 0, "commit")) + " behind"
               : waiting ? " · update waits for main's check" : ""),
-          localizeInstants(("Running version" + (d.buildBadge || "").replace(/^, build/, "")).trim()));
+          localizeInstants(("Running version " + label +
+            (isRelease ? " (build " + shortSha(d.build.sha) + ")" : "") +
+            (d.buildBadge || "").replace(/^, build [^ ]*/, "")).trim()));
       }
       // A self-redeploy holding new runs: its own row, so a held team says what it waits on
       // (the payload's preformatted restartHoldBadge — badges.ts's restartHoldText, the sentence

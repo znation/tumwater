@@ -454,6 +454,25 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
   const heldPayload = (await statusPayload(repo)) as { buildBadge: string; restartHoldBadge: string | null };
   assert.equal(heldPayload.restartHoldBadge, "holding new runs: checking main bbbbbbbb before restarting (0s)");
   assert.ok(heldPayload.buildBadge.endsWith(` — ${heldPayload.restartHoldBadge}`), "the badge and the row say the same thing");
+
+  // Release version display part 2/3: the Version row's text ships pre-formatted through
+  // build-info.ts's buildLabel — the npm release version for a release build, the short sha
+  // otherwise — so the page never decides which half of the stamp names the build.
+  const release = {
+    sha: "a".repeat(40), builtAt: 1, release: "0.8.1",
+  };
+  writeOrchestratorMarker(repo, ["clean"], { build: release });
+  const releasePayload = (await statusPayload(repo)) as { buildLabel: string; build: { release?: string } };
+  assert.equal(releasePayload.buildLabel, "0.8.1", "a release build labels itself by its version");
+  assert.equal(releasePayload.build.release, "0.8.1", "the raw block stays machine-readable");
+
+  // A checkout build (no release) keeps labelling itself by its sha.
+  writeOrchestratorMarker(repo, ["clean"], { build: { sha: "a".repeat(40), builtAt: 1 } });
+  assert.equal(((await statusPayload(repo)) as { buildLabel: string }).buildLabel, "aaaaaaaa");
+
+  // No running harness: no stamp, so nothing to name (the row itself is skipped client-side).
+  fs.rmSync(orchestratorStatePath(repo));
+  assert.equal(((await statusPayload(repo)) as { buildLabel: string }).buildLabel, "", "no stamp: no label");
 });
 
 // The operator pause on the GUI surface: /api/status — and

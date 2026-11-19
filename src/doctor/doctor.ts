@@ -10,7 +10,7 @@ import { checkRoleNotes } from "./doctor-role-notes.js";
 import { checkSalvagePatches } from "./doctor-salvage.js";
 import { checkLaunchServicesPorts } from "./doctor-launch-services.js";
 import { plural } from "../text/phrases.js";
-import { shortSha } from "../text/format.js";
+import { buildLabel } from "../build/build-info.js";
 import { failOutcome, type CheckOutcome } from "./doctor-outcome.js";
 import { errorMessage } from "../text/text.js";
 import type { DoctorCheckName } from "./doctor-check-names.js";
@@ -134,7 +134,7 @@ export async function runDoctor(
 function doctorHeader(root: string, info: ReturnType<typeof readOrchestratorInfo>): string {
   return (
     orchestratorAlive(root, info) && info
-      ? `tumwater doctor — running (pid ${info.pid}${info.build ? `, version ${shortSha(info.build.sha)}${info.build.stale ? " — update available" : ""}${info.build.restartBlocked ? " (restart blocked)" : ""}` : ""})`
+      ? `tumwater doctor — running (pid ${info.pid}${info.build ? `, version ${buildLabel(info.build)}${info.build.stale ? " — update available" : ""}${info.build.restartBlocked ? " (restart blocked)" : ""}` : ""})`
       : "tumwater doctor — not running"
   );
 }
