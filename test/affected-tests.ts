@@ -429,10 +429,14 @@ const SCANNER_DISTANCE = 2;
  * ranked behind the dozens of direct importers of a change and the 20 s budget left them all out,
  * so new offenders merged and main stayed red (BUGS.md 2026-11-05). They are cheap (0.1–5 s,
  * measured) and are the only tests that catch a new policy offender, so a change that adds one
- * must fail the gate that merges it. A new policy scan joins the set here. */
+ * must fail the gate that merges it. A new policy scan joins the set here; one added later and
+ * left out of it is silently skipped by the budgeted gate, which is how a raw-`os.tmpdir()`
+ * offender merged and left main red (BUGS.md 2026-11-19). The set's registration is pinned on the
+ * real tree in test/affected-tests.test.ts. */
 const POLICY_SCANS = new Set([
   "test/comment-width.test.ts",
   "test/exports.test.ts",
+  "test/repo-fixtures.test.ts",
   "test/retired-names.test.ts",
   "test/vocabulary.test.ts",
 ]);

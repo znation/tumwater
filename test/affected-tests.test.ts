@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildDepGraph, fitBudget, gateLintTargets, selectAffected } from "./affected-tests.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { repoRoot } from "./helpers/repo-root.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // The affected-test selector behind `npm run test:gate` (test/affected-tests.ts), pinned on a
@@ -130,6 +132,30 @@ test("a policy scan is in the gate's run even when the budget would crowd it out
     1000,
   );
   assert.deepEqual(noDistance, { run: ["test/other-0.test.ts"], left: [scan] });
+});
+
+test("the real tree's registered policy scans survive a budget that fits only one file", () => {
+  // The repository's own registered scans, read over the real compiled tree (BUGS.md 2026-11-19):
+  // registration in POLICY_SCANS is the only thing lifting a scan above the budget, so an
+  // unregistered scan ranks behind the change's direct importers and the gate passes over it —
+  // how a raw-os.tmpdir() offender merged and left main red. A scan added to test/ joins this
+  // list and POLICY_SCANS together; a name in one and not the other fails here.
+  const root = repoRoot(path.dirname(fileURLToPath(import.meta.url)));
+  const graph = buildDepGraph(path.join(root, "dist"), root);
+  const scans = [
+    "test/comment-width.test.ts",
+    "test/exports.test.ts",
+    "test/repo-fixtures.test.ts",
+    "test/retired-names.test.ts",
+    "test/vocabulary.test.ts",
+  ];
+  const pick = selectAffected(graph, ["src/paths.ts"]);
+  const fit = fitBudget(pick, () => 20_000, 20_000);
+  for (const scan of scans) {
+    assert.ok(graph.scanners.has(scan), `${scan} reads the tree, so the graph can rank it`);
+    assert.ok(fit.run.includes(scan), `${scan} survives a budget that fits only one test file`);
+    assert.equal(fit.left.includes(scan), false, `${scan} is never left for main's full check`);
+  }
 });
 
 test("gateLintTargets lints the changed source files, or the whole tree when the lint's own inputs change", () => {
