@@ -36,6 +36,7 @@ const ALL_COMMANDS = [
   "restart",
   "retire",
   "revert",
+  "land",
   "stop",
   "completion",
   "help",

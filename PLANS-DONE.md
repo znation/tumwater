@@ -5,6 +5,78 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Operator steering, part 1/5: `tumwater land` puts a hand-made commit on main under the team's merge lock (planned 2026-11-16 by the operator; touches src/operator/operator-land.ts src/cli/cli-land-command.ts src/cli.ts src/cli/cli-help-text.ts docs/cli.md test/operator-land.test.ts) — done 2026-11-18 by the feature role
+
+**Goal.** The intended way to use tumwater is an operator steering the team, mostly by editing
+PLANS.md and BUGS.md from their own interactive agent (claude, codex, omp) with a strong model.
+Those edits have no safe way onto main while a team runs. A bare `git merge --ff-only` (or a
+commit in the primary checkout) can move main while a team merge is inside its locked check, so
+that merge fails as a reasonless `merge_blocked` and the change redoes gate, review and check.
+Concurrent role commits also conflict at the top of `## Planned`, `## Done` and `## Fixed`, which
+tumwater already knows how to merge entry by entry. `tumwater land` makes this one command: it
+takes the locks the team takes and fast-forwards main to the operator's commits.
+
+**Approach.**
+- New `src/operator/operator-land.ts` holding `landOnMain(root, ref, opts)`. Shape it on
+  `archiveOnMain` (src/backlog/backlog-archive.ts:477): `withLock(mergeLockDir(root), …)` around
+  `withPrimaryWorktreeLockAsync(root, …)`, so a land waits for an in-flight team merge instead of
+  racing it.
+- Inside the locks: resolve `ref` (default `HEAD` of the cwd's worktree) and the base branch. Refuse
+  when `ref` is already contained in main (`nothing to land`), when it holds a merge commit, or when
+  its range touches `.tumwater/`. When main is an ancestor of `ref`, fast-forward through
+  `ffMainToOrWhy` (src/merge/merge-git.ts) and nothing else. When main has moved, replay the
+  commits main lacks onto main in a temporary detached worktree under `.tumwater/` (never the
+  operator's worktree, never the primary checkout). Settle conflicts in PLANS.md, BUGS.md and
+  QUESTIONS.md with `resolveBacklogInsertConflicts` (src/merge/merge-backlog-conflicts.ts). Any
+  other conflict aborts the replay, removes the temporary worktree and refuses, naming the
+  conflicted paths and leaving main and the operator's branch exactly as they were. Then
+  fast-forward main to the replayed tip.
+- After a replay, point the operator's branch at the landed tip only when it is checked out
+  nowhere else and has no uncommitted changes. Otherwise say which sha landed so the operator can
+  `git reset --hard <sha>` in their worktree.
+- No model runs, no check runs: the operator's own commit is trusted, and the hourly full check
+  and the next role gates see it as any other main move. Say so in the help stanza.
+- CLI: `tumwater land [<ref>] [--dry-run] [--json]` in a new `src/cli/cli-land-command.ts`, a row in
+  the `COMMAND_HANDLERS` table in src/cli.ts behind `requireReadyRepo` and `rejectUnknownArgs`, and
+  a usage stanza in src/cli/cli-help-text.ts. `--dry-run` reports the commits, the paths they
+  touch, whether a replay is needed and whether it would apply, and writes nothing. `--json` prints
+  `{ landed, beforeSha, headSha, replayed, commits }`, and on a dry run `{ dryRun: true, commits,
+  paths, replay, applies }`. Add the command's row to docs/cli.md's "Steer the project" row
+  beside `tumwater revert`.
+
+**Acceptance criteria.**
+- With a team merge holding `.tumwater/merge.lock`, `tumwater land` waits and lands after it
+  releases; it never moves main while that lock is held by someone else.
+- A branch one commit ahead of main lands as a fast-forward: main's new tip is that commit's sha.
+- A branch whose base is behind main, adding a `### ` entry at the top of `## Planned` while main
+  added a different entry at the same spot, lands with both entries present and main's entry
+  order otherwise unchanged.
+- A replay that conflicts in a code file refuses with exit 1, names the file, and leaves main, the
+  operator's branch and the primary checkout byte-identical; no temporary worktree is left behind.
+- `--dry-run` writes nothing (main's sha and `git worktree list` unchanged).
+- Refusals: an already-merged ref, a merge commit in the range, a range touching `.tumwater/`.
+
+**Tests.** test/operator-land.test.ts against repo fixtures (test/fixtures/repo-fixtures.ts):
+fast-forward, replay with a backlog insert conflict, code conflict refusal, dry run, each refusal,
+and the lock wait (hold the merge lock from the test, start a land, release, assert it landed
+after). Expected shas come from the fixture's own commits, not from the code under test. Then the
+project's gate.
+
+**Implemented 2026-11-18 note (deviations from the approach).** (1) The whole land
+holds only the merge lock, not `withLock ∘ withPrimaryWorktreeLockAsync`: `ffMainToOrWhy` takes
+the primary-worktree lock itself inside the fast-forward, and the file lock is not reentrant, so
+the written nesting would self-deadlock. The wait-behind-a-merge guarantee is withLock’s own
+(pinned in test/lock.test.ts) and is now also pinned from the land side in test/operator-land.test.ts.
+(2) It also refuses a dirty primary checkout before taking any lock, since the fast-forward
+rewrites that checkout’s files — the entry’s own “no uncommitted changes” wording. The deterministic
+insert-only resolver itself is already pinned in test/merge-backlog-conflicts.test.ts; the
+code-conflict test here exercises the replay’s call into it. Code names use the current vocabulary
+(“steer”), never the retired `land` identifier family, per plans/terminology.md “Code names”; the
+user-facing token stays `tumwater land`, held as a quoted string key in COMMAND_HANDLERS. The
+`--json` success payload names the move `steered`, not the retired `landed`. One file the
+entry’s touched list omitted: test/help.test.ts enumerates every command the full help lists,
+so the new command’s token was added to its ALL_COMMANDS list too.
+
 ### The Usage tab's two rejection charts explain themselves in a hover tooltip on their titles (planned 2026-11-17 by the operator; touches src/ui/gui/gui-client-report.ts src/ui/gui/gui-styles.ts test/gui-client-report.test.ts; done 2026-11-17 by the plan role)
 
 **Retired 2026-11-17 by the plan role: plan defect — the entry's deliverable is already built and merged, so the open entry has nothing to build (a sibling run completed it; the backlog move its own run flagged "pending" never landed, so the entry stranded in ## Planned and its move was never applied). Re-verified on current main tip 6ab53d1e (plan role, 2026-11-17): src/ui/gui/gui-client-report.ts holds the optional-tip `block` (`<h2 class='has-tip' title='…'>`) with `REJECTIONS_TIP`/`POST_MERGE_REJECTIONS_TIP` and passes both through the render chain; src/ui/gui/gui-styles.ts carries `.card-head h2.has-tip`; and commit d33525000 (2026-11-17, feature #2997) "Add hover tooltips to the Usage tab's two rejection chart titles" is on main with its tip test in test/gui-client-report.test.ts. No `## Planned` twin and no same-heading done entry in PLANS-DONE.md (`hover tooltip`/`REJECTIONS_TIP` = 0 archive hits), so this is a plan-defect retirement to ## Done, not a stale-duplicate removal. No `requires … landed` clause names this entry, so nothing to re-point.**

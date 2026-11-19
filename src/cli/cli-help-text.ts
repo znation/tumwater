@@ -820,6 +820,20 @@ Usage:
                                    forms revert the commit the run merged as, the sha
                                    'history <role> <n>' names;
                                    --json prints the preview or the new head as data
+  tumwater land [<ref>] [--dry-run] [--json]
+                                   Put your own commit(s) on main under the team's
+                                   merge lock, so an interactive-agent edit (to PLANS.md, BUGS.md,
+                                   or code) reaches main while a team runs; takes the merge lock a
+                                   team merge takes, so it waits behind an in-flight merge instead
+                                   of racing it. Default ref is the cwd's HEAD. Fast-forwards main
+                                   when it is behind, or replays the commit(s) onto a moved main
+                                   in a throwaway worktree, settling backlog insert conflicts and
+                                   refusing (exit 1) on a code conflict, an already-merged ref, a
+                                   merge commit, or a range into .tumwater/ — never moving main
+                                   through one; runs no model or check. --dry-run names the
+                                   commits, the paths they touch, and says whether it would apply,
+                                   writing nothing; --json prints that preview or the merged head
+                                   as data
   tumwater abort [--role <id>[,<id>...]] [--all] [--json]
                                    Stop each named role's run in progress (work discarded;
                                    the role keeps going); --all aborts every enabled role's

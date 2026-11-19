@@ -410,6 +410,13 @@ async function cmdRevertCase(root: string, args: string[]): Promise<void> {
   await (await import("./cli/cli-revert-command.js")).cmdRevert(root, args);
 }
 
+async function cmdSteerCase(root: string, args: string[]): Promise<void> {
+  // Acts immediately on main under the merge lock; the ref and the --dry-run/--json flags are
+  // validated inside cmdSteer.
+  await requireReadyRepo(root);
+  await (await import("./cli/cli-land-command.js")).cmdSteer(root, args);
+}
+
 async function cmdStopCase(root: string, args: string[]): Promise<void> {
   // Bare stop signals the recorded orchestrator pid; `--in`/`--cancel` schedule or drop a
   // deferred stop; `--json` prints the acknowledgement as one object. Anything else is a
@@ -562,6 +569,9 @@ const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
   restart: markerCommandCase,
   retire: (root, _command, args) => cmdRetireCase(root, args),
   revert: (root, _command, args) => cmdRevertCase(root, args),
+  // Quoted: the token is the CLI's user-facing word, not a code name — the retired-name guard
+  // reads bare property keys as identifiers (plans/terminology.md "Code names").
+  "land": (root, _command, args) => cmdSteerCase(root, args),
   stop: (root, _command, args) => cmdStopCase(root, args),
   completion: async (root, _command, args) => {
     // Works outside a repo (no requireReadyRepo): the body lives in
