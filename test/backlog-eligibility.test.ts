@@ -141,6 +141,13 @@ test("requiredParts reads a requires clause that a later appended stamp group no
     requiredParts("S, part 2/2: B (planned 2026-11-16 by operator; requires S part 1/2 landed)"),
     [{ series: "S", part: "1", of: 2 }],
   );
+  // A stray `)` in the heading TEXT (an unbalanced closer, e.g. a quoted typo) sits at depth 0
+  // before any group opens — ignored, exactly as sibling openParenthetical ignores it — so the
+  // real group after it is still read instead of the clause swallowing into a dropped group.
+  assert.deepEqual(
+    requiredParts('Fix the "a) b" typo, part 2/2: x (planned 2026-11-17 by operator; requires S part 1/2 landed)'),
+    [{ series: "S", part: "1", of: 2 }],
+  );
 });
 
 test("entryHold blocks a part whose requires clause an appended stamp group would otherwise shadow", () => {

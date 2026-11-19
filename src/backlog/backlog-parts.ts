@@ -194,7 +194,9 @@ function requiresClause(title: string): string | null {
  * operator-filed heading ends in the appended `(reported by the user <date>)` stamp, so a
  * `(requires … landed)` in an earlier group is one of several top-level groups and must still be
  * read (BUGS.md 2026-11-16). A single trailing or open parenthetical yields the same single string
- * the earlier trailing/open read produced, so the common shape is unchanged. */
+ * the earlier trailing/open read produced, so the common shape is unchanged. A `)` with no group
+ * open — a stray closer in the heading text — is ignored, exactly as the sibling
+ * `openParenthetical` (backlog-md.ts) ignores it, so the group after it is still read. */
 function headingParentheticals(line: string): string[] {
   const groups: string[] = [];
   let start = -1;
@@ -204,7 +206,7 @@ function headingParentheticals(line: string): string[] {
     if (ch === "(") {
       if (depth === 0) start = i + 1;
       depth++;
-    } else if (ch === ")") {
+    } else if (ch === ")" && depth > 0) {
       depth--;
       if (depth === 0 && start !== -1) {
         groups.push(line.slice(start, i));
