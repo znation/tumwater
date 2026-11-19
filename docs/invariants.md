@@ -4428,7 +4428,7 @@ the `PiRunKind` union (`"author"` | `"gate"`) the record type declares.
 drops the record without throwing"; `test/session-ledger.test.ts` — "recordSession and readSessions
 round-trip records, skipping malformed lines", "recordSession repairs a torn previous line so the
 next record is not lost", "readSessions skips a line that parses but is not a complete record" and
-"readSessions skips a line whose kind is outside the author/gate union and keeps both members".
+"readSessions skips a line whose kind drifted off the run kinds".
 
 ### INV-BP2: a resume continues only into a session of its own kind, agent and cwd
 
