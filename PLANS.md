@@ -8,55 +8,6 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 ## Planned
 
-### Release version display, part 1/3: the build stamp records the npm release version when it was compiled from that release's tag (planned 2026-11-16 by the operator; touches src/build/build-info.ts src/redeploy/redeployer.ts src/team/team-orchestrator-info.ts test/build-info.test.ts test/stamp-build.test.ts test/redeployer.test.ts test/team-orchestrator-info.test.ts)
-
-**Goal.** An npm-installed tumwater shows a commit hash where the operator expects a version. The
-GUI sidebar's Version row (src/ui/gui/gui-client-team.ts) prints `shortSha(d.build.sha)`, and for
-an npm install that sha is the commit the Release workflow (.github/workflows/release.yml) packed
-from: `npm publish` runs `prepack` → `npm run build` → scripts/stamp-build.mjs, which writes
-`dist/build-info.json`, and package.json `files` ships that stamp. `createRedeployer`
-(src/redeploy/redeploy.ts) builds a Redeployer from any stamp, self-hosted or not, so
-`orchestrator.json` carries `build.sha` and every dashboard shows it. An operator who installed
-`tumwater@0.8.1` cannot match `a1b2c3d4` to a release. This part records the release version in
-the stamp so part 2/3 can show it.
-
-The version must come from the build, not be read from package.json at run time. Main always
-carries the NEXT version (scripts/release.mjs: "Main always carries the NEXT version"), so a
-checkout build showing package.json's version would claim an unreleased version. Only a build
-compiled from the commit the release tag `v<version>` points at is that release.
-
-**Approach.**
-- `BuildInfo` (src/build/build-info.ts) gains `release?: string`: the package.json version, set
-  only when the build's commit is the one tag `v<version>` points at. Doc comment: why it is not
-  read from package.json at run time (the sentence above).
-- `stampBuild(root, dist, sha?)` reads `version` from `root`'s package.json (reuse
-  `packageVersion` in src/version.ts) and asks git whether the tag `v<version>` resolves to the
-  stamped sha: `refSha(root, "refs/tags/v<version>^{commit}")` compared with the sha, or
-  `git tag --points-at` through `gitTry`. Match ⇒ write `release`. No package.json, no version, no
-  tag, or a tag on another commit ⇒ leave `release` out. A failed git read never fails the
-  stamp. The Release workflow's `actions/checkout@v4` on a tag push fetches the tag ref, so the
-  tag is present locally there; verify that in the acceptance check below rather than assume it.
-- `readBuildInfo` keeps `release` only when it is a non-empty string (a foreign value drops, like
-  the other fields).
-- `BuildStatus` gains `release?: string`. `Redeployer.status()` (src/redeploy/redeployer.ts)
-  copies `this.build.release` when set, and `parseBuild` (src/team/team-orchestrator-info.ts)
-  keeps it only when it is a non-empty string, so it reaches orchestrator.json and every
-  observer.
-- Nothing else changes: staleness, self-redeploy and self-reload still key on `sha`.
-
-**Acceptance criteria.**
-- In a fixture repo whose package.json says `1.2.3`: a stamp of a commit tagged `v1.2.3` carries
-  `release: "1.2.3"`; a stamp of an untagged commit, of a commit tagged `v1.2.2`, or with the
-  `v1.2.3` tag on an older commit carries no `release`; a missing or version-less package.json
-  stamps normally without `release`.
-- `readBuildInfo` round-trips `release`, and drops a non-string or empty one while keeping the
-  rest of the stamp.
-- `Redeployer.status()` includes `release` exactly when the build info has it, and `parseBuild`
-  keeps a string `release` and drops a foreign one without dropping the build.
-- Manual check, in a scratch clone (never in the primary checkout): tag HEAD `v<package.json
-  version>`, run `npm pack`, and confirm the tarball's `package/dist/build-info.json` has
-  `release`; delete the tag, pack again, and confirm it does not.
-
 ### Release version display, part 2/3: the GUI's Version row and `doctor` show the npm release version, keeping the commit in the GUI tooltip (planned 2026-11-16 by the operator, amended 2026-11-17 by the operator to leave the TUI alone; requires Release version display part 1/3 landed; touches src/build/build-info.ts src/ui/gui/gui-client-team.ts src/ui/status-payload.ts src/doctor/doctor.ts test/build-info.test.ts test/gui-client-sidebar.test.ts test/status-payload.test.ts test/doctor-checks.test.ts)
 
 **Goal.** When the running build is a release (`build.release`, part 1/3), the GUI sidebar's

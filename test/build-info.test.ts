@@ -121,3 +121,70 @@ test("buildStaleness is null for a build sha this repo does not have", async () 
   const head = headSha(repo);
   assert.equal(await buildStaleness(repo, "b".repeat(40), head), null);
 });
+
+// The release half of the stamp (BuildInfo.release): the npm version, recorded only when the
+// stamped commit is the one the tag v<version> points at. Expected values come from the tag and
+// version the test itself writes, never from the code under test.
+
+/** A makeRepo'd repo whose committed package.json declares `version` (absent when null). */
+function versionedRepo(version: string | null): { repo: string; sha: string } {
+  const repo = makeRepo();
+  const body = JSON.stringify(version === null ? { name: "tumwater" } : { name: "tumwater", version });
+  return { repo, sha: commitFile(repo, "package.json", body, "package") };
+}
+
+test("a stamp of the commit the v<version> tag points at records that release", async () => {
+  const { repo, sha } = versionedRepo("1.2.3");
+  sh(repo, "git", "tag", "v1.2.3");
+  const dist = path.join(tmpdir(), "dist");
+  const info = await stampBuild(repo, dist);
+  assert.equal(info?.sha, sha);
+  assert.equal(info?.release, "1.2.3");
+  // readBuildInfo round-trips it, so the running harness sees the same release the build wrote.
+  assert.deepEqual(readBuildInfo(dist), info);
+});
+
+test("an annotated tag peels to its commit and still records the release", async () => {
+  const { repo } = versionedRepo("1.2.3");
+  sh(repo, "git", "tag", "-a", "v1.2.3", "-m", "release 1.2.3");
+  assert.equal((await stampBuild(repo, path.join(tmpdir(), "dist")))?.release, "1.2.3");
+});
+
+test("no release is recorded for an untagged commit, another version's tag, or a tag elsewhere", async () => {
+  // Untagged HEAD.
+  const plain = versionedRepo("1.2.3");
+  assert.equal((await stampBuild(plain.repo, path.join(tmpdir(), "d1")))?.release, undefined);
+  // HEAD is tagged v1.2.2 while package.json says 1.2.3: not the 1.2.3 release.
+  const mismatched = versionedRepo("1.2.3");
+  sh(mismatched.repo, "git", "tag", "v1.2.2");
+  assert.equal((await stampBuild(mismatched.repo, path.join(tmpdir(), "d2")))?.release, undefined);
+  // v1.2.3 sits on an older commit, so HEAD is not that release.
+  const repo = makeRepo();
+  const older = commitFile(repo, "a.txt", "1\n", "first");
+  sh(repo, "git", "tag", "v1.2.3", older);
+  commitFile(repo, "package.json", JSON.stringify({ name: "tumwater", version: "1.2.3" }), "package");
+  assert.equal((await stampBuild(repo, path.join(tmpdir(), "d3")))?.release, undefined);
+});
+
+test("a missing or version-less package.json stamps normally with no release", async () => {
+  const bare = makeRepo();
+  assert.equal((await stampBuild(bare, path.join(tmpdir(), "d4")))?.release, undefined);
+  assert.equal((await stampBuild(versionedRepo(null).repo, path.join(tmpdir(), "d5")))?.release, undefined);
+  // A failed git read (no repository) never fails the stamp: an explicit sha still stamps, and
+  // a version it cannot check against a tag stays out.
+  const notARepo = tmpdir();
+  fs.writeFileSync(path.join(notARepo, "package.json"), JSON.stringify({ name: "tumwater", version: "1.2.3" }));
+  const info = await stampBuild(notARepo, path.join(tmpdir(), "d6"), "f".repeat(40));
+  assert.equal(info?.sha, "f".repeat(40));
+  assert.equal(info?.release, undefined);
+});
+
+test("readBuildInfo drops a foreign or empty release and keeps the rest of the stamp", () => {
+  const dist = tmpdir();
+  fs.writeFileSync(buildInfoPath(dist), JSON.stringify({ sha: "abc", root: "/x", builtAt: 5, release: 7 }));
+  assert.deepEqual(readBuildInfo(dist), { sha: "abc", root: "/x", builtAt: 5 });
+  fs.writeFileSync(buildInfoPath(dist), JSON.stringify({ sha: "abc", root: "/x", builtAt: 5, release: "" }));
+  assert.deepEqual(readBuildInfo(dist), { sha: "abc", root: "/x", builtAt: 5 });
+  fs.writeFileSync(buildInfoPath(dist), JSON.stringify({ sha: "abc", root: "/x", builtAt: 5, release: "0.8.1" }));
+  assert.deepEqual(readBuildInfo(dist), { sha: "abc", root: "/x", builtAt: 5, release: "0.8.1" });
+});

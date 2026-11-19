@@ -263,6 +263,9 @@ function parseBuild(v: unknown): BuildStatus | undefined {
   if (typeof v.stale === "boolean") build.stale = v.stale;
   if (isFiniteNumber(v.aheadCommits)) build.aheadCommits = v.aheadCommits;
   if (typeof v.checkedHead === "string") build.checkedHead = v.checkedHead;
+  // The npm release version: kept only as a non-empty string, like every other field's shape
+  // discipline — a foreign value drops without dropping the build.
+  if (typeof v.release === "string" && v.release !== "") build.release = v.release;
   if (typeof v.restartPending === "boolean") build.restartPending = v.restartPending;
   if (typeof v.restartBlocked === "string") build.restartBlocked = v.restartBlocked;
   const hold = parseRestartHold(v.restartHold);

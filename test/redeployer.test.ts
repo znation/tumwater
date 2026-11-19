@@ -32,6 +32,15 @@ import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningEvents } from "./fixtures/log-fixtures.js";
 import { dieMidWrite } from "./helpers/fs-faults.js";
 import { projManifest } from "./fakes/fake-commands.js";
+test("status() publishes the build's release version exactly when the stamp carries one", () => {
+  // BuildStatus.release (release-version display 1/3): the version rides to orchestrator.json
+  // only when the stamp recorded one; a checkout build's status stays sha/builtAt alone.
+  const released = new Redeployer({ ...BUILD, release: "0.8.1" }, false, fakeDeps().deps, () => {});
+  assert.deepEqual(released.status(), { sha: BUILD.sha, builtAt: 1, release: "0.8.1" });
+  const checkout = new Redeployer(BUILD, false, fakeDeps().deps, () => {});
+  assert.deepEqual(checkout.status(), { sha: BUILD.sha, builtAt: 1 });
+});
+
 test("a non-self-hosted harness never acts, whatever main does", async () => {
   const f = fakeDeps();
   const { r, events } = harness(f.deps, false);

@@ -4,6 +4,7 @@ import { gitTry } from "../git/git-run.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
 import { commitExists, refSha } from "../git/git.js";
+import { packageVersion } from "../version.js";
 
 /** Build provenance for the compiled harness: which commit `dist/` was compiled from, written by
  * `npm run build` (scripts/stamp-build.mjs) as dist/build-info.json and read back by the running
@@ -23,6 +24,13 @@ export interface BuildInfo {
   builtAt: number;
   /** Absolute path of the project root the build was compiled from (the tsconfig.json dir). */
   root: string;
+  /** The npm release version this build was compiled from — set only when the stamped commit is
+   * the one the release tag `v<version>` points at. Deliberately NOT read from package.json at
+   * run time: main always carries the NEXT version (scripts/release.mjs), so a checkout build
+   * that printed its package.json version would claim an unreleased release. Only a build
+   * compiled from the tagged commit is that release; every other build leaves this out and its
+   * observers show the commit. */
+  release?: string;
 }
 
 /** The paths whose change makes a build stale — everything tsc compiles into dist/ plus the
@@ -51,7 +59,22 @@ export function buildInfoPath(dist: string): string {
 export function readBuildInfo(dist = distDir()): BuildInfo | null {
   const info = readJsonFile<Partial<BuildInfo>>(buildInfoPath(dist));
   if (!info || typeof info.sha !== "string" || !info.sha || typeof info.root !== "string") return null;
-  return { sha: info.sha, builtAt: finiteNumber(info.builtAt, 0), root: info.root };
+  // A foreign or empty release drops like the other optional fields: a stamp whose release half
+  // cannot be trusted shows its commit, which is always true.
+  const release = typeof info.release === "string" && info.release !== "" ? info.release : undefined;
+  return { sha: info.sha, builtAt: finiteNumber(info.builtAt, 0), root: info.root, ...(release ? { release } : {}) };
+}
+
+/** The npm version `root`'s package.json declares, when its HEAD commit `sha` is exactly the one
+ * the release tag `v<version>` points at — the only build that IS that release. `^{commit}` peels
+ * an annotated tag to its commit, so a tag object matches too. No package.json, no version field,
+ * no such tag, a tag on another commit, or any failed git read (gitTry's null) yields undefined:
+ * stamping never fails over a version it cannot name. */
+async function releaseOfTaggedCommit(root: string, sha: string): Promise<string | undefined> {
+  const { version } = packageVersion(path.join(root, "package.json"));
+  if (version === undefined) return undefined;
+  const tagged = await gitTry(root, "rev-parse", "--verify", `refs/tags/v${version}^{commit}`);
+  return tagged === sha ? version : undefined;
 }
 
 /** Stamp a freshly compiled `dist` with the commit it was built from — `sha` when the caller
@@ -61,7 +84,8 @@ export function readBuildInfo(dist = distDir()): BuildInfo | null {
 export async function stampBuild(root: string, dist: string, sha?: string): Promise<BuildInfo | null> {
   const head = sha ?? (await refSha(root, "HEAD"));
   if (!head) return null;
-  const info: BuildInfo = { sha: head, builtAt: Date.now(), root: path.resolve(root) };
+  const release = await releaseOfTaggedCommit(root, head);
+  const info: BuildInfo = { sha: head, builtAt: Date.now(), root: path.resolve(root), ...(release ? { release } : {}) };
   // Atomic: a process killed mid-write (a redeploy swap, a timeout-killed `npm test`) would
   // otherwise leave a torn stamp, and readBuildInfo reads that as no provenance at all —
   // createRedeployer then returns null and the team never self-redeploys onto newer main,
@@ -109,6 +133,10 @@ export interface BuildStatus {
    * post-restart cooldown (it lapses on its own) and a new build that could not start here (the
    * startup gate is re-asked every poll, so repairing the environment clears it). */
   restartBlocked?: string;
+  /** The npm release version the build was compiled from (BuildInfo.release) — present exactly
+   * when the build is a published release, absent for a checkout build, which shows its commit.
+   * Staleness and self-redeploy still key on `sha` alone. */
+  release?: string;
   /** Main's tip, when its build inputs differ from the running build's but no commit that
    * carries them has passed main's check yet: while the main watch verifies main, redeploy moves
    * only to a passing commit (redeployTarget), so `checkedHead` stays behind and `stale` reads

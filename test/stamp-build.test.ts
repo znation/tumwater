@@ -73,6 +73,31 @@ test("an object bin map chmods string targets and ignores non-string values", ()
   assert.ok(!fs.existsSync(path.join(root, "dist", "src", "nope.js")), "a missing target is skipped, not created");
 });
 
+test("the stamp the build script writes names the release when HEAD is the tagged commit", () => {
+  // The prepack path: `npm publish` builds from the tagged commit, so the shipped
+  // dist/build-info.json names the version. Expected values come from the version and tag this
+  // test writes, never from the code under test.
+  const root = tmpdir("stamp-build-release-");
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "tumwater", version: "1.2.3" }));
+  touch(path.join(root, "src", "cli.ts"));
+  touch(path.join(root, "dist", "src", "cli.js"));
+  execFileSync("git", ["-C", root, "init", "-q"]);
+  execFileSync("git", ["-C", root, "add", "-A"]);
+  execFileSync("git", ["-C", root, "commit", "-q", "-m", "seed"]);
+  execFileSync("git", ["-C", root, "tag", "v1.2.3"]);
+
+  execFileSync(process.execPath, [script], { cwd: root, stdio: "ignore" });
+
+  const stamp = JSON.parse(fs.readFileSync(path.join(root, "dist", "build-info.json"), "utf8"));
+  assert.equal(stamp.release, "1.2.3", "the packed stamp names the release");
+
+  // With the tag deleted (a checkout build), the same script stamps no release.
+  execFileSync("git", ["-C", root, "tag", "-d", "v1.2.3"]);
+  execFileSync(process.execPath, [script], { cwd: root, stdio: "ignore" });
+  const plain = JSON.parse(fs.readFileSync(path.join(root, "dist", "build-info.json"), "utf8"));
+  assert.equal(plain.release, undefined, "an untagged build names no version");
+});
+
 test("the top-level prune removes a stray file and keeps the named artifacts", () => {
   const root = tmpdir("stamp-build-top-");
   fs.writeFileSync(path.join(root, "package.json"), "{}");

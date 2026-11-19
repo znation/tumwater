@@ -214,6 +214,9 @@ export class Redeployer {
    * — a test seam, since the cooldown deadline is only meaningful against it. */
   status(now = Date.now()): BuildStatus {
     const s: BuildStatus = { sha: this.build.sha, builtAt: this.build.builtAt };
+    // The release version rides to every observer (orchestrator.json, the dashboards, doctor)
+    // exactly when the stamp has one; the commit stays in `sha` either way.
+    if (this.build.release !== undefined) s.release = this.build.release;
     if (this.lastHead !== null && this.staleness) {
       s.stale = this.staleness.stale;
       s.aheadCommits = this.staleness.aheadCommits;

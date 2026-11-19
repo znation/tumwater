@@ -175,6 +175,23 @@ test("readOrchestratorInfo keeps a well-formed restartHold and drops a foreign o
   assert.equal(read("checking")?.restartPending, true, "the rest of the build stays");
 });
 
+test("readOrchestratorInfo keeps a string build release and drops a foreign one", () => {
+  // BuildStatus.release (part 1/3 of the release-version display): the npm version the build was
+  // compiled from, published so every observer can name the release. A foreign or empty value
+  // drops without dropping the build.
+  const root = tmpdir();
+  const file = orchestratorStatePath(root);
+  ensureParentDir(file);
+  const build = { sha: "abcdef012345", builtAt: 100, stale: false };
+  const read = (release: unknown) => {
+    fs.writeFileSync(file, JSON.stringify({ pid: process.pid, startedAt: 1, roles: [], build: { ...build, release } }));
+    return readOrchestratorInfo(root)?.build;
+  };
+  assert.deepEqual(read("0.8.1"), { ...build, release: "0.8.1" });
+  assert.deepEqual(read(7), build, "a non-string release drops, the build stays");
+  assert.deepEqual(read(""), build, "an empty release drops, the build stays");
+});
+
 test("readOrchestratorInfo round-trips a well-formed providerHolds and drops foreign entries", () => {
   const root = tmpdir();
   const file = orchestratorStatePath(root);
