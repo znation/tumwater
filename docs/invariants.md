@@ -4419,14 +4419,16 @@ entries" and "orchestratorAlive is false with no info and reflects pid liveness 
 ### INV-BP1: recording never throws, and reading skips what is not a whole record
 
 **Guarantee.** `recordSession` never throws and repairs a torn previous line before it appends;
-`readSessions` skips torn, malformed and incomplete lines.
+`readSessions` skips torn, malformed and incomplete lines — including one whose `kind` is outside
+the `PiRunKind` union (`"author"` | `"gate"`) the record type declares.
 
 **Binds.** `src/agent/session-ledger.ts` (`recordSession`, `readSessions`, `isSessionRecord`).
 
 **Pinned by.** `test/session-ledger-prune.test.ts` — "recordSession into a path it cannot create
 drops the record without throwing"; `test/session-ledger.test.ts` — "recordSession and readSessions
 round-trip records, skipping malformed lines", "recordSession repairs a torn previous line so the
-next record is not lost" and "readSessions skips a line that parses but is not a complete record".
+next record is not lost", "readSessions skips a line that parses but is not a complete record" and
+"readSessions skips a line whose kind is outside the author/gate union and keeps both members".
 
 ### INV-BP2: a resume continues only into a session of its own kind, agent and cwd
 
