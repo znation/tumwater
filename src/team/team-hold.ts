@@ -323,6 +323,16 @@ function holdEscalation(
   return relapse ? prev.escalation + 1 : 0;
 }
 
+/** The hold ladder itself: the base doubled once per escalation, floored to `retryAfterMs`
+ * when the provider asked for more than that, capped at HOLD_CAP_MS. Every wait this ladder
+ * answers is measured from now, so `retryAfterMs` is a DURATION, not a deadline. Two callers
+ * read it: this module's storm hold, and the post-merge review's transient-failure backoff
+ * (`reviewBackoffMs`, src/merge/merge-post-review-drain.ts), which re-uses the ladder because
+ * it is re-probing the same kind of provider wall. */
+export function escalatedHoldMs(escalation: number, retryAfterMs: number): number {
+  return Math.min(HOLD_CAP_MS, Math.max(HOLD_BASE_MS * 2 ** escalation, retryAfterMs));
+}
+
 /** How long this storm's hold lasts: the longest of the escalated base hold and, for a
  * rate-limit storm, the furthest Retry-After deadline among its observations (each measured
  * from its own 429, since that is when the provider said it), capped at HOLD_CAP_MS. */
@@ -332,7 +342,7 @@ function holdDurationMs(
   now: number,
 ): number {
   const retryAfterMs = Math.max(0, ...storm.map((o) => o.at + (o.retryAfterSeconds ?? 0) * 1000 - now));
-  return Math.min(HOLD_CAP_MS, Math.max(HOLD_BASE_MS * 2 ** escalation, retryAfterMs));
+  return escalatedHoldMs(escalation, retryAfterMs);
 }
 
 /** Step the hold by one orchestrator poll: from `prev` and every role's latest failure

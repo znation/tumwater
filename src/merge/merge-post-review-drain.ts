@@ -27,7 +27,7 @@ import { reviewAheadOfMain } from "../review/review.js";
 import { setupFailureResult } from "../agent/agent-settle.js";
 import { recordReview } from "../run/run-apply.js";
 import { firstReason } from "../text/phrases.js";
-import { HOLD_BASE_MS, HOLD_CAP_MS } from "../team/team-hold.js";
+import { escalatedHoldMs } from "../team/team-hold.js";
 import { seamHoldKey, seamPairName } from "../config/config-views.js";
 import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import type { RoleRunner } from "../runner/runner.js";
@@ -70,17 +70,20 @@ function unreviewed(e: PostReview): boolean {
  * and the run's own retry-after, capped at the team-hold cap — the same escalation the team hold
  * uses, so a wall that outlasts every re-probe re-probes a few times an hour instead of parking
  * the review forever and never hammering the provider every poll (BUGS.md 2026-11-16).
- * `escalation` is how many consecutive times this entry has hit the wall; it is 1 on the first
- * failure, so the base pause is two minutes and doubles on each repeat until the cap. The run's
+ * `escalation` is how many consecutive times this entry has already hit the wall BEFORE this
+ * run, so the first failure rests the plain base and each repeat doubles it until the cap.
+ * The run's
  * retry-after (a 429's hint) is floored into it when it outlasts the escalated base, since the
- * provider asked for more than our backoff would wait. */
+ * provider asked for more than our backoff would wait. The doubling-and-cap itself is the team
+ * hold's ladder — one `escalatedHoldMs` in src/team/team-hold.ts, the module that owns the
+ * base and cap constants — so the two waits cannot drift apart. */
 export function reviewBackoffMs(
   escalation: number,
   retryAfterSeconds: number | undefined,
 ): number {
   const retryAfterMs =
     retryAfterSeconds && retryAfterSeconds > 0 ? Math.max(0, retryAfterSeconds * 1000) : 0;
-  return Math.min(HOLD_CAP_MS, Math.max(HOLD_BASE_MS * 2 ** escalation, retryAfterMs));
+  return escalatedHoldMs(escalation, retryAfterMs);
 }
 
 /** Whether a parked review is admitted to run at all, once the team permit is held: it clears

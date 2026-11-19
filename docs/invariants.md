@@ -3957,7 +3957,9 @@ furthest Retry-After, measured from its own 429, and never more than `HOLD_CAP_M
 same provider and kind re-tripping within `HOLD_RELAPSE_MS` of the re-open; anything else starts at
 the base.
 
-**Binds.** `src/team/team-hold.ts` (`HOLD_BASE_MS`, `HOLD_RELAPSE_MS`, `HOLD_CAP_MS`).
+**Binds.** `src/team/team-hold.ts` (`HOLD_BASE_MS`, `HOLD_RELAPSE_MS`, `HOLD_CAP_MS`,
+`escalatedHoldMs` — the doubling-and-cap ladder, shared with the post-merge review's transient-
+failure backoff).
 
 **Pinned by.** `test/team-hold.test.ts` — "the hold honors the largest Retry-After seen, measured
 from its own 429, and caps it", "backend failures of one kind trip the same hold, but carry no
