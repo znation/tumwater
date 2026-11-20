@@ -5,7 +5,7 @@
  * reserve and exit — and moved here without reordering any of them. */
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { publishInfoFields, type OrchestratorInfo } from "../team/team-orchestrator-info.js";
-import { runnerEnabled } from "../roles/runner-ids.js";
+import { configuredInstances, runnerEnabled } from "../roles/runner-ids.js";
 import type { newLiveConfigReload } from "../config/config-live.js";
 import type { FallbackBreakerPolicy } from "../budget/fallback-breaker.js";
 import { reviewHoldKey, reviewPairKey, pollDeferralInputs, pollRunnerReasons } from "./orchestrator-scheduling.js";
@@ -536,7 +536,7 @@ export async function pollReserveAndExit(ctx: PollContext, state: PollState, { l
   const reserve = workReserveCount(root, runners, {
     maxConcurrent: liveConfig.maxConcurrent,
     enabled: new Set(runners.filter((r) => runnerEnabled(r.config, r.role)).map((r) => r.role)),
-    instancesOf: (base) => liveConfig.roles[base]?.instances ?? 1,
+    instancesOf: (base) => configuredInstances(liveConfig, base),
   });
   semaphore.setReserve(reserve);
   // The maintenance permit floor (PLANS.md 2026-11-19), the mirror of the reserve set just

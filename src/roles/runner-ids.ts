@@ -12,6 +12,15 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 /** The base roles that may run more than one instance. */
 export const INSTANCE_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix"]);
 
+/** What an unset `roles.<base>.instances` means: the instance count a role runs at when its
+ * config names none. The one home for that default — every reader of an instance count goes
+ * through `configuredInstances`, so the scheduler, the doctor, the Settings card and the role
+ * drawer cannot disagree about what an absent count means (PLANS.md "Three work instances by
+ * default, part 1/2: one home for the default instance count, still 1"). It is a fallback, not
+ * an entry in `defaultConfig().roles`, so "absent means the default" holds for a loaded file and
+ * for a hand-built config alike. */
+export const DEFAULT_INSTANCES = 1;
+
 /** How many runner ids an instance role may hold per configured instance. `instances: N` limits the
  * runs writing code at once; a runner whose change waits in the merge pipeline never runs
  * (plans/merge-queue.md invariant 3), so tumwater keeps up to N × this many runner ids and the
@@ -46,19 +55,21 @@ export function roleInScope(id: string, scope: readonly string[]): boolean {
   return scope.includes(id) || scope.includes(baseRoleOf(id));
 }
 
-/** The instance count configured for a runner id's base role (`roles.<base>.instances`, default
- * 1). A caller tells a multi-instance base (whose unassigned runs stage claims for their
- * siblings) from a single-runner one by this. */
+/** The instance count configured for a runner id's base role (`roles.<base>.instances`, absent
+ * means DEFAULT_INSTANCES). The one reader of an instance count: every site that asks how many
+ * instances a role runs calls this, so none carries its own fallback. A caller tells a
+ * multi-instance base (whose unassigned runs stage claims for their siblings) from a
+ * single-runner one by this. */
 export function configuredInstances(config: TumwaterConfig, id: string): number {
   const role = config.roles[baseRoleOf(id)];
-  return role?.instances ?? 1;
+  return role?.instances ?? DEFAULT_INSTANCES;
 }
 
 /** How many runner ids a base role holds: its configured instance count, times
  * RUNNERS_PER_INSTANCE once it runs more than one instance. A role left at one instance keeps its
  * single bare runner, so its scheduling is exactly the single-runner one. */
 function runnerCount(config: TumwaterConfig, base: string): number {
-  const count = config.roles[base]?.instances ?? 1;
+  const count = configuredInstances(config, base);
   return INSTANCE_ROLES.has(base) && count > 1 ? count * RUNNERS_PER_INSTANCE : count;
 }
 

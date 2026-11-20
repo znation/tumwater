@@ -140,7 +140,7 @@ export async function handleRoleInterval(req: http.IncomingMessage, res: http.Se
  * role's parallel-runner count — the count that lets `feature-2`…`feature-N` run. Same body
  * discipline as /api/role-interval (readPostBody → 400 malformed/non-object, 413 oversized); a
  * null, "" or whitespace-only value clears the key through unsetConfigKey (so the role falls
- * back to the default 1), otherwise the write rides the CLI's own setConfigKey dotted path so
+ * back to the default count), otherwise the write rides the CLI's own setConfigKey dotted path so
  * whole-candidate validateConfig owns the final truth. There is no own range or role check here
  * (unlike handleRoleCap's director exemption): setConfigKey runs the candidate through
  * validateConfig, whose INSTANCE_COUNT rejects 0, 9, 1.5 and `abc` and whose INSTANCE_ROLES

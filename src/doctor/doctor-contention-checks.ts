@@ -25,7 +25,7 @@ import { errorMessage, joinParts, textOr } from "../text/text.js";
 import { rankCountEntries } from "../collections.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { hostLoadStarved, sampleHostLoad, type LoadSampler } from "../build/host-sleep.js";
-import { INSTANCE_ROLES, runnerEnabled, runnerIds } from "../roles/runner-ids.js";
+import { INSTANCE_ROLES, configuredInstances, runnerEnabled, runnerIds } from "../roles/runner-ids.js";
 import { staleClaimDetail, staleClaimEntries } from "../scheduling/claim-entries.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../team/team-orchestrator-info.js";
@@ -650,14 +650,15 @@ export function checkWorkInstances(
 
 /** An enabled multi-instance role contending for a worktree pool smaller than the run cap —
  * the pool-mismatch clause of the doctor's `parallel instances` row (checkWorkInstances):
- * the `INSTANCE_ROLES` ids with more than one configured instance while `slotCount(config)`
- * (worktreeSlots, else maxConcurrent + 1) is below `config.maxConcurrent`, phrased as the
- * row's one clause; `[]` when no such role or the pool is at least `maxConcurrent`. Shared by
- * the row and its clause so they cannot drift on the trigger, the role list, or the wording. */
+ * the `INSTANCE_ROLES` ids whose resolved count (configuredInstances, so an unset one reads
+ * DEFAULT_INSTANCES) exceeds a single instance, while `slotCount(config)` (worktreeSlots, else
+ * maxConcurrent + 1) is below `config.maxConcurrent`, phrased as the row's one clause; `[]`
+ * when no such role or the pool is at least `maxConcurrent`. Shared by the row and its clause
+ * so they cannot drift on the trigger, the role list, or the wording. */
 export function smallPoolProblems(config: TumwaterConfig): string[] {
   const multi = Object.entries(config.roles)
     .filter(
-      ([id, role]) => INSTANCE_ROLES.has(id) && role.enabled && (role.instances ?? 1) > 1,
+      ([id, role]) => INSTANCE_ROLES.has(id) && role.enabled && configuredInstances(config, id) > 1,
     )
     .map(([id]) => id);
   const slots = slotCount(config);

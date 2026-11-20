@@ -4,9 +4,13 @@
  * data-act/data-open attributes (alert and tile buttons, role names anywhere, questions),
  * the keyboard shortcuts (Escape closes the drawer, "/" focuses the composer), the theme
  * toggle, and the one-second /api/status poll that renders every view and reloads the page
- * when the serving build moves. Spliced into gui-client.ts's script as its last section,
- * reaching the shared state and the render helpers of every other section through that
- * concatenation. */
+ * when the serving build moves. Spliced into gui-client.ts's script as its last section, the
+ * default instance count interpolated into its save-guard messages from
+ * src/roles/runner-ids.ts (browser code cannot import it — the gui-client-labels.ts
+ * INSTANCE_ID_SOURCE precedent), reaching the shared state and the render helpers of every
+ * other section through that concatenation. */
+import { DEFAULT_INSTANCES } from "../../roles/runner-ids.js";
+
 export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written to the file but the worktree was left dirty" toasts: the
   // cancel/edit/file backlog actions share the same committed===false copy, kept in one place
   // so the operator-facing wording about an uncommitted edit cannot drift between them. The
@@ -363,13 +367,13 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       if (!input) return;
       // typedNumberValue holds the badInput and plain-decimal shape guards; undefined means
       // one flashed and the save stops. The empty raw value posts null (the server restores
-      // the default 1); "2e0" is rejected as shape, not silently read as 2. (A rejected "2.5"
+      // the default count); "2e0" is rejected as shape, not silently read as 2. (A rejected "2.5"
       // is a real number the browser accepts, so it posts and validateConfig's 1–8 integer
       // rule 400s it, flashed through postAction's error path.)
       const typed = typedNumberValue(
         input,
-        "the instances must be an integer from 1 to 8 — leave it empty for the default 1",
-        "the instances must be a plain integer like 2 — no +/-, exponent, or hex notation — leave it empty for the default 1",
+        "the instances must be an integer from 1 to 8 — leave it empty for the default ${DEFAULT_INSTANCES}",
+        "the instances must be a plain integer like 2 — no +/-, exponent, or hex notation — leave it empty for the default ${DEFAULT_INSTANCES}",
       );
       if (typed === undefined) return;
       const value = typed === "" ? null : Number(typed);

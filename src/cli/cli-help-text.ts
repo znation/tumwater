@@ -702,7 +702,7 @@ Usage:
                                    (an integer from 1 to 8; only feature and bugfix split),
                                    written to roles.<id>.instances for the base id
   tumwater role <id> --clear-instances [--json]
-                                   Clear that role's instance count (back to 1)
+                                   Clear that role's instance count (back to the default)
   tumwater prompt <text...> [--json]     Send a message to the director's inbox
   tumwater prompt --file <path> [--json] Send a message read from a file ("-" reads stdin)
   tumwater prompt --role <id> <text...> [--json]

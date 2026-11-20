@@ -92,7 +92,8 @@ export interface RoleConfig {
   minRunIntervalSeconds?: number;
   /** How many parallel runners this role may have (plans/parallel-work-instances.md, part
    * 5/7): the bare id is instance 1, and `feature-2`…`feature-N` are the rest. Integer 1–8,
-   * valid only under the `INSTANCE_ROLES` (`feature`, `bugfix`); absent means 1. */
+   * valid only under the `INSTANCE_ROLES` (`feature`, `bugfix`); absent means `DEFAULT_INSTANCES`
+   * (src/roles/runner-ids.ts, the one home for that default). */
   instances?: number;
   /** Whether the `ci` role reads the hosted CI's verdict on the pushed main (plans/remote-
    * ci.md): valid only under `ci`; `false` stops the ci role reading GitHub Actions, and

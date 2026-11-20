@@ -146,7 +146,9 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     // Instances line — the last per-role hold the drawer edits. Rendered only for a role that
     // may split (its base, an instance strip, is feature or bugfix): the count is meaningless
     // for any other role, which role-view never carries. The body reads the payload's numeric
-    // count (roles.<base>.instances) tagged (set) or falls back to 1 tagged (default) when the
+    // count (roles.<base>.instances) tagged (set) or falls back to the default instance count
+    // (DEFAULT_INSTANCES, spliced in from the server's constant by the labels region) tagged
+    // (default) when the
     // file leaves it unset — role-view carries instances only when the file sets it. While the
     // editor is open for this role, an input prefilled with the count (empty when none) and
     // Save/Discard
@@ -155,12 +157,12 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     const splitBase = role.replace(/-\d+$/, "");
     if (splitBase === "feature" || splitBase === "bugfix") {
       const hasInstances = typeof view.instances === "number";
-      const instCount = hasInstances ? view.instances : 1;
+      const instCount = hasInstances ? view.instances : DEFAULT_INSTANCES;
       const instBody = String(instCount) + (hasInstances ? " (set)" : " (default)");
       const editingInst = instancesEditing && instancesEditing.role === role;
       const seed = instancesEditing ? instancesEditing.value : null;
       const instControl = editingInst
-        ? "<input id='instanceseditinput' type='number' min='1' max='8' step='1' value='" + (seed === "" || seed == null ? "" : String(seed)) + "' placeholder='default 1'>" +
+        ? "<input id='instanceseditinput' type='number' min='1' max='8' step='1' value='" + (seed === "" || seed == null ? "" : String(seed)) + "' placeholder='default " + DEFAULT_INSTANCES + "'>" +
           saveDiscard("instances")
         : editButton("instances-edit", hasInstances ? "Edit" : "Set instances");
       rows.push("<div><dt>Instances</dt><dd title='" + esc(instBody) + "'>" + esc(instBody) + instControl + "</dd></div>");

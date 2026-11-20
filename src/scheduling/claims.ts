@@ -29,8 +29,9 @@ export const CLAIM_IDLE_MAX_MS = DAY_MS;
 /** The number of eligible plans PLANS.md's `## Planned` should hold before the plan role stops
  * for lack of work: one waiting plan per configured feature instance, plus one, so every
  * runner has something to take and the next planner run still has headroom. At the default
- * one feature instance this is 2 — the "two or more plans" threshold the plan charter has
- * always used (plans/parallel-work-instances.md "…keeping the plan role ahead", part 5c/7). */
+ * instance count (DEFAULT_INSTANCES, src/roles/runner-ids.ts) that is DEFAULT_INSTANCES + 1 —
+ * the "two or more plans" threshold the plan charter has always used at the shipped default
+ * (plans/parallel-work-instances.md "…keeping the plan role ahead", part 5c/7). */
 export function planBacklogTarget(config: TumwaterConfig): number {
   return configuredInstances(config, "feature") + 1;
 }
