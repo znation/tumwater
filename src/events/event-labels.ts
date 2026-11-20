@@ -68,6 +68,8 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   disk_low: "waiting: low disk",
   disk_ok: "disk space restored",
   disk_reclaim: "disk space reclaimed",
+  maintenance_start: "session cleanup started",
+  maintenance_done: "session cleanup finished",
   claim: "entry claimed",
   permit_reserve: "permits reserved",
   slot_wait: "waited to start",

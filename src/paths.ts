@@ -158,6 +158,15 @@ export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }
 
+/** The blocking-housekeeping progress marker (src/orchestrator/retention.ts, the session
+ * retention prune): one orchestrator's long synchronous pass, written while it runs and removed
+ * when it ends, so the separate (responsive) GUI and TUI processes can say what the blocked poll
+ * loop is doing (PLANS.md "Visible session cleanup, part 1/3"). Runtime state under
+ * .tumwater/state/, never committed; absent whenever no such pass is running. */
+export function maintenancePath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "maintenance.json");
+}
+
 /** The images column `tumwater doctor` last read from `pi --list-models`, keyed provider/model.
  * Runtime state under .tumwater/state/, never committed. */
 export function piListedModelsPath(root: string): string {

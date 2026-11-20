@@ -254,6 +254,11 @@ interface OpencodePruneOptions {
   bin?: string;
   /** The run environment, carrying OPENCODE_DB for the team root. */
   env?: NodeJS.ProcessEnv;
+  /** Progress reporter (PLANS.md "Visible session cleanup" part 1/3): called once with
+   * `done = 0` once the expired set is built and only when it is non-empty, then after each id
+   * this pass handles, so `done` rises monotonically to `total`. The purge stays free of path
+   * knowledge — the caller owns the marker the report feeds. */
+  onProgress?: (done: number, total: number) => void;
 }
 
 /** Delete each OpenCode session the ledger records as expired, with one
@@ -272,13 +277,22 @@ export function pruneOpencodeSessions(
   const cutoff = daysAgoMs(days);
   let deleted = 0;
   if (opts.bin !== undefined) {
+    // The expired ids are gathered before the delete loop so `total` is known up front — the
+    // progress reporter's contract (part 1/3). The ledgers are not written by this pass, so
+    // gathering first sees exactly what the old inline walk saw.
+    const expired: string[] = [];
     walkFiles(sessionsRoot, (file) => {
       if (!file.endsWith(SESSION_LEDGER_FILE)) return;
       for (const record of readSessions(path.dirname(file))) {
         if (record.agent !== "opencode" || record.at >= cutoff) continue;
-        if (sessionDeleteSucceeds(opts.bin!, ["session", "delete", record.id, "--standalone"], opts.env))
-          deleted += 1;
+        expired.push(record.id);
       }
+    });
+    const total = expired.length;
+    if (total > 0) opts.onProgress?.(0, total);
+    expired.forEach((id, i) => {
+      if (sessionDeleteSucceeds(opts.bin!, ["session", "delete", id, "--standalone"], opts.env)) deleted += 1;
+      opts.onProgress?.(i + 1, total);
     });
   }
   const spill = opts.spillDir;
@@ -308,6 +322,9 @@ interface CodexPruneOptions {
   bin?: string;
   /** The run environment, carrying CODEX_HOME for the team root. */
   env?: NodeJS.ProcessEnv;
+  /** Progress reporter, the OpenCode twin's shape: `done = 0` once the delete candidates are
+   * built and only when there are any, then after each candidate handled. */
+  onProgress?: (done: number, total: number) => void;
 }
 
 /** Delete each Codex session the ledger records as expired, with one
@@ -342,8 +359,12 @@ export function pruneCodexSessions(
       (record.at >= cutoff ? live : expired).add(record.id);
     }
   });
-  for (const id of expired) {
-    if (live.has(id)) continue;
+  // A resumed id is spared, so the reporter's `total` counts what this loop actually handles —
+  // `done` still rises monotonically to `total` and a run with nothing to do reports nothing.
+  const candidates = [...expired].filter((id) => !live.has(id));
+  const total = candidates.length;
+  if (total > 0) opts.onProgress?.(0, total);
+  candidates.forEach((id, i) => {
     if (opts.bin !== undefined && sessionDeleteSucceeds(opts.bin, ["delete", "--force", id], opts.env))
       deleted += 1;
     // Fallback: unlink the home's rollout for this session so neither the ledger line nor
@@ -361,6 +382,7 @@ export function pruneCodexSessions(
         }
       }
     }
-  }
+    opts.onProgress?.(i + 1, total);
+  });
   return deleted;
 }

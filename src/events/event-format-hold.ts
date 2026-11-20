@@ -1,7 +1,7 @@
 import type { HarnessEvent } from "./events.js";
 import { budgetPhrase, teamPausePhrase, teamResumePhrase, rolePausePhrase, roleResumePhrase, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
 import { isNonBlankString, squash, textOr } from "../text/text.js";
-import { pauseSuffix } from "./event-format-fragments.js";
+import { elapsed, pauseSuffix } from "./event-format-fragments.js";
 
 /** The team-and-role pause/resume lines: team_paused and team_resumed, then the
  * per-role pair. A pause names its until/reason suffix and who keeps running;
@@ -81,6 +81,22 @@ function maintenanceAdmissionEventMessage(e: HarnessEvent): string {
   }
 }
 
+/** The blocking-housekeeping pair: the session-retention prune's start and finish for one
+ * backend's half (PLANS.md "Visible session cleanup" part 1/3). Each names the task, the
+ * backend and the id count; the finish adds what it handled and its span. Routine state
+ * change, like maintenance_quota_hold — no warning prefix: the pass IS the harness keeping the
+ * session store bounded, and the pair exists to explain the blocked poll loop. The counts ride
+ * textOr, so a torn or hand-edited line never renders "undefined". */
+function maintenanceProgressEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
+    case "maintenance_start":
+      return `cleanup started — ${textOr(e.task)} (${textOr(e.backend)}): ${textOr(e.total)} sessions to handle`;
+    case "maintenance_done":
+      return `cleanup finished — ${textOr(e.task)} (${textOr(e.backend)}): ${textOr(e.done)} sessions handled${elapsed(e.durationMs)}`;
+    default: return textOr(e.type);
+  }
+}
+
 export function holdEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "team_paused":
@@ -105,6 +121,10 @@ export function holdEventMessage(e: HarnessEvent): string {
       return maintenanceAdmissionEventMessage(e);
     case "bootstrap_complete":
       return maintenanceAdmissionEventMessage(e);
+    case "maintenance_start":
+      return maintenanceProgressEventMessage(e);
+    case "maintenance_done":
+      return maintenanceProgressEventMessage(e);
     default: return textOr(e.type);
   }
 }

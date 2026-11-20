@@ -135,6 +135,8 @@ export const STATE_CHANGE_EXCLUDED_TYPES = new Set<string>([
   "check_wait",
   // Observations and actions.
   "disk_reclaim",
+  "maintenance_start",
+  "maintenance_done",
   "image_blind",
   // State-adjacent but not self-decisions.
   "state_migrated",
