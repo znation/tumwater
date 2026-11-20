@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { RetentionPruner, dueForPrune } from "../src/orchestrator/retention.js";
-import { sessionsRootDir, toolOutputDir, eventsLogPath, opencodeDbPath, salvageDir, salvagePendingDir } from "../src/paths.js";
+import { maintenancePath, sessionsRootDir, toolOutputDir, eventsLogPath, opencodeDbPath, salvageDir, salvagePendingDir } from "../src/paths.js";
 import { recordSession, sessionLedgerPath } from "../src/agent/session-ledger.js";
 import { backdate } from "./helpers/backdate.js";
+import { patchFsMethod, errnoError } from "./helpers/fs-faults.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { record } from "./fakes/session-record.js";
@@ -140,6 +141,112 @@ test("RetentionPruner: an idle role's expired codex session is purged before its
     eventsOfType(root, "warning").map((e) => String(e.message)).join("\n"),
     /deleted 1 expired codex session/,
   );
+});
+
+/** `n` distinct expired Codex ids, in the order the purge will handle them. */
+function expiredCodexIds(n: number): { id: string; at: number }[] {
+  const at = Date.now() - 30 * 24 * 3600 * 1000;
+  return Array.from({ length: n }, (_, i) => ({
+    id: `c7b3e2a1-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    at,
+  }));
+}
+
+test("RetentionPruner: the prune pass publishes maintenance.json while it deletes and removes it after", () => {
+  const root = tmpdir();
+  const dir = path.join(sessionsRootDir(root), "feature");
+  // Past the 25-id throttle, so a later delete must see a marker whose `done` has risen.
+  const ids = expiredCodexIds(26);
+  for (const { id, at } of ids) recordSession(dir, record({ agent: "codex", id, at }));
+
+  const home = tmpdir("codex-marker-home-");
+  writeConfig(root, { backends: { codex: { configDir: home } } });
+  const bin = tmpdir("codex-marker-bin-");
+  const marker = path.join(tmpdir("codex-marker-capture-"), "marker.log");
+  fs.mkdirSync(path.dirname(marker), { recursive: true });
+  // The fake delete is the observer inside the blocked pass: it dumps the marker file (with
+  // the pretty-printer's spaces and newlines stripped, so each line is one JSON object), or
+  // MISSING when the marker it should be reading is not there.
+  const markerFile = maintenancePath(root);
+  writeScript(
+    path.join(bin, "codex"),
+    `if [ -f ${markerFile} ]; then tr -d ' \\n' < ${markerFile} >> ${marker}; printf '\\n' >> ${marker}; else printf 'MISSING\\n' >> ${marker}; fi`,
+  );
+  process.env.TUMWATER_CODEX_BIN = path.join(bin, "codex");
+  try {
+    new RetentionPruner(root, 7);
+  } finally {
+    delete process.env.TUMWATER_CODEX_BIN;
+  }
+  assert.equal(fs.existsSync(markerFile), false, "the marker is gone once the pass ends");
+
+  const lines = fs.readFileSync(marker, "utf8").trim().split("\n");
+  assert.equal(lines.length, 26, "one marker read per delete, none MISSING");
+  const seen = lines.map((l) => JSON.parse(l) as { pid: number; task: string; backend: string; done: number; total: number });
+  for (const m of seen) {
+    assert.equal(m.pid, process.pid, "the marker names the orchestrator that wrote it");
+    assert.equal(m.task, "session-prune");
+    assert.equal(m.backend, "codex");
+    assert.equal(m.total, 26, "total is known up front");
+  }
+  assert.equal(seen[0]?.done, 0, "the first delete sees a marker that has handled nothing yet");
+  seen.forEach((m, j) => {
+    // The marker never runs ahead of the pass (the id-throttle bounds how far behind it
+    // lags), and it is never further behind than the throttle allows — widen the id bound
+    // and this is what reports it. `j` deletes have happened when the delete after them
+    // reads the marker, so a persisted `done` sits in [j - 24, j].
+    assert.ok(m.done <= j, `marker read ${j} claims ${m.done} handled of ${j} so far`);
+    assert.ok(m.done >= j - 24, `marker read ${j} lags to ${m.done} while ${j} are handled`);
+  });
+  assert.ok((seen[25]?.done ?? -1) > 0, "done rises during the pass, not only at its end");
+});
+
+test("RetentionPruner: a throw part-way through the pass still removes the marker", () => {
+  const root = tmpdir();
+  const dir = path.join(sessionsRootDir(root), "feature");
+  recordSession(dir, record({ agent: "codex", id: "c7b3e2a1-0000-4000-8000-0000000000c1", at: Date.now() - 30 * 24 * 3600 * 1000 }));
+  // Stand-in for a throw anywhere in the pass: the salvage pass' first existsSync is the one
+  // call in it outside a try, so it propagates out of RetentionPruner.prune.
+  const salvage = salvageDir(root);
+  const undo = patchFsMethod("existsSync", (orig) => (p: unknown) => {
+    if (String(p) === salvage) throw errnoError("EIO");
+    return orig(p);
+  });
+  try {
+    assert.throws(() => new RetentionPruner(root, 7));
+  } finally {
+    undo();
+  }
+  assert.equal(fs.existsSync(maintenancePath(root)), false, "the finally still removes the marker");
+});
+
+test("RetentionPruner: a prune with work logs one maintenance_start and one maintenance_done for that half, and a prune with none logs neither", () => {
+  const root = tmpdir();
+  const dir = path.join(sessionsRootDir(root), "feature");
+  // No binary configured: the CLI delete is skipped but the half still has work to handle, so
+  // the pair must still be logged — it explains the blocked loop, not the delete's outcome.
+  recordSession(dir, record({ agent: "codex", id: "c7b3e2a1-0000-4000-8000-0000000000d1", at: Date.now() - 30 * 24 * 3600 * 1000 }));
+  recordSession(dir, record({ agent: "codex", id: "c7b3e2a1-0000-4000-8000-0000000000d2", at: Date.now() - 30 * 24 * 3600 * 1000 }));
+  new RetentionPruner(root, 7);
+
+  const starts = eventsOfType(root, "maintenance_start");
+  const dones = eventsOfType(root, "maintenance_done");
+  assert.equal(starts.length, 1, "one start per half that had work");
+  assert.equal(dones.length, 1, "one finish per half that had work");
+  assert.equal(starts[0]?.task, "session-prune");
+  assert.equal(starts[0]?.backend, "codex");
+  assert.equal(starts[0]?.total, 2);
+  assert.equal(dones[0]?.task, "session-prune");
+  assert.equal(dones[0]?.backend, "codex");
+  assert.equal(dones[0]?.done, 2, "done counts the ids the half handled");
+  assert.ok(typeof dones[0]?.durationMs === "number" && (dones[0]?.durationMs as number) >= 0);
+
+  // A pass with nothing past the window logs neither half of the pair.
+  const quiet = tmpdir();
+  recordSession(path.join(sessionsRootDir(quiet), "feature"), record({ agent: "codex", id: "c7b3e2a1-0000-4000-8000-0000000000d3" }));
+  new RetentionPruner(quiet, 7);
+  assert.equal(eventsOfType(quiet, "maintenance_start").length, 0);
+  assert.equal(eventsOfType(quiet, "maintenance_done").length, 0);
 });
 
 test("RetentionPruner: an unavailable config never unlinks rollouts from the inherited CODEX_HOME", () => {

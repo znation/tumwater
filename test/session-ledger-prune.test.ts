@@ -174,6 +174,74 @@ test("pruneCodexSessions removes the rollout when the delete fails", () => {
   assert.equal(fs.existsSync(rollout), false, "failed delete still removes the rollout");
 });
 
+/** Collects every `onProgress(done, total)` call a purge makes, in call order. */
+function progressLog(): { calls: Array<[number, number]>; onProgress: (done: number, total: number) => void } {
+  const calls: Array<[number, number]> = [];
+  return { calls, onProgress: (done, total) => { calls.push([done, total]); } };
+}
+
+test("pruneCodexSessions reports progress once up front and once per candidate it handles", () => {
+  const root = tmpdir();
+  const dir = path.join(root, "feature");
+  fs.mkdirSync(dir);
+  for (const n of ["0a", "0b", "0c"]) {
+    recordSession(dir, record({ agent: "codex", id: `c7b3e2a1-0000-4000-8000-00000000${n}`, at: Date.now() - 30 * DAY }));
+  }
+  // No binary: the CLI deletes are skipped but the rollout fallback still handles every
+  // candidate, so the reporter must still see each one — `total` counts what the loop handles.
+  const progress = progressLog();
+  pruneCodexSessions(root, 7, { onProgress: progress.onProgress });
+  assert.deepEqual(progress.calls, [[0, 3], [1, 3], [2, 3], [3, 3]]);
+});
+
+test("pruneCodexSessions reports no progress when nothing is expired, and spares an id out of total", () => {
+  const root = tmpdir();
+  const dir = path.join(root, "feature");
+  fs.mkdirSync(dir);
+  const freshId = "c7b3e2a1-0000-4000-8000-0000000000f1";
+  recordSession(dir, record({ agent: "codex", id: freshId }));
+  const progress = progressLog();
+  pruneCodexSessions(root, 7, { onProgress: progress.onProgress });
+  assert.deepEqual(progress.calls, [], "a ledger with nothing past the window reports nothing");
+
+  // One id expired with no fresh record joins the reporter; an id whose records are both expired
+  // AND resumed fresh is spared, so it never raises `total` to 2 — `done` must still reach
+  // `total` exactly.
+  recordSession(dir, record({ agent: "codex", id: "c7b3e2a1-0000-4000-8000-0000000000f2", at: Date.now() - 30 * DAY }));
+  const sparedId = "c7b3e2a1-0000-4000-8000-0000000000f3";
+  recordSession(dir, record({ agent: "codex", id: sparedId, at: Date.now() - 30 * DAY }));
+  recordSession(dir, record({ agent: "codex", id: sparedId }));
+  const second = progressLog();
+  pruneCodexSessions(root, 7, { onProgress: second.onProgress });
+  assert.deepEqual(second.calls, [[0, 1], [1, 1]]);
+});
+
+test("pruneOpencodeSessions reports progress per delete, and nothing with no binary or nothing expired", () => {
+  const root = tmpdir();
+  const dir = path.join(root, "feature");
+  fs.mkdirSync(dir);
+  const progress = progressLog();
+  pruneOpencodeSessions(root, 7, { onProgress: progress.onProgress });
+  assert.deepEqual(progress.calls, [], "no binary means no delete candidates to report");
+
+  const bin = tmpdir("opencode-bin-");
+  writeScript(path.join(bin, "opencode"), "exit 0");
+  recordSession(dir, record({ agent: "opencode", id: "ses_p1", at: Date.now() - 30 * DAY }));
+  recordSession(dir, record({ agent: "opencode", id: "ses_p2", at: Date.now() - 30 * DAY }));
+  const first = progressLog();
+  pruneOpencodeSessions(root, 7, { bin: path.join(bin, "opencode"), onProgress: first.onProgress });
+  assert.deepEqual(first.calls, [[0, 2], [1, 2], [2, 2]]);
+
+  // Everything now inside the window: the purge finds no candidate and reports nothing.
+  const dir2 = path.join(root, "author");
+  recordSession(dir2, record({ agent: "opencode", id: "ses_fresh" }));
+  const dir3 = path.join(root, "gate");
+  recordSession(dir3, record({ agent: "opencode", id: "ses_old", at: Date.now() - 30 * DAY }));
+  const second = progressLog();
+  pruneOpencodeSessions(root, 400, { bin: path.join(bin, "opencode"), onProgress: second.onProgress });
+  assert.deepEqual(second.calls, []);
+});
+
 test("pruneCodexSessions spares a session whose id was resumed fresh within the window", () => {
   const root = tmpdir();
   const dir = path.join(root, "feature");
