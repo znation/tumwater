@@ -94,12 +94,12 @@ export interface LeftoverContext {
   /** The role's outstanding hand-back (RunnerState.conflictHandback): when one exists, a pin at
    * the cap means this lineage already used its one hand-back, so it is discarded. */
   conflictHandback?: RunnerState["conflictHandback"];
-  /** The queued entry this run's slot stashed (RunnerState.queuedSummary): a pin whose sha the
-   * stash names is the role's own pending change, and reads as `already_queued` rather than
-   * `pinned` in the live-pin arm (BUGS.md 2026-11-15 recovery-spin; the 2026-11-16 refinement
-   * 61a0e509: match by the pinned sha, not by a set entry). A pin the stash does not name —
-   * a crashed run left it, or a merge failure or a cleared pin left a stale entry behind —
-   * reads as `pinned`. */
+  /** The queued entry this run's slot stashed (RunnerState.queuedSummary): under the conflict
+   * cap, a pin whose sha the stash names is the role's own pending change, and reads as
+   * `already_queued` rather than `pinned` in the live-pin arm (BUGS.md 2026-11-15 recovery-spin;
+   * the 2026-11-16 refinement 61a0e509: match by the pinned sha, not by a set entry). A pin the
+   * stash does not name reads as `pinned` — a crashed run left it (no stash), a merge failure
+   * cleared the stash, or a dropped pin left a stale stash naming another sha. */
   queuedSummary?: RunnerState["queuedSummary"];
 }
 
@@ -112,13 +112,15 @@ export interface LeftoverContext {
  *   a legacy queue entry (the interlock relief admits it — runner-run.ts's `already_queued` arm
  *   falls through to author for every role) or, since 2026-11-16 (BUGS.md 2026-11-15
  *   recovery-spin), a pre-existing pin ahead of main whose sha the role's stash names under
- *   the conflict cap: the pin is left untouched and no ref is re-pinned,
- *   so the run authors on its normal schedule while the merge takes the pin. Neither kind is
- *   enqueued twice; a kept pin at the cap is a distinct `handback`/`discarded` outcome.
- * - `relief_wait`: the role already has a merge on the queue AND its branch holds a second
- *   commit ahead of main staged unpinned by a prior relief run (plans/interlock-relief.md
- *   part 1/4) — neither re-queued nor reset, left on the branch for the run after the queued
- *   entry drains;
+ *   the conflict cap: the pin is left untouched and no ref is re-pinned, so the run authors on
+ *   its normal schedule while the merge takes the pin (a commit held beside that pin diverts
+ *   this arm to `relief_wait`). Neither kind is enqueued twice; a kept pin at the cap is a
+ *   distinct `handback`/`discarded` outcome.
+ * - `relief_wait`: the role already has a merge waiting — a legacy queue entry, or a live pin
+ *   its own stash names — AND its branch holds a second commit ahead of main staged unpinned by
+ *   a prior relief run (plans/interlock-relief.md part 1/4; beside a live pin since 2026-11-16,
+ *   read by `heldBesidePin`) — neither re-queued nor reset, left on the branch for the run after
+ *   the waiting merge drains;
  * - `unpinned`: the commit sits on the branch ahead of main and adopting it into the merge
  *   ref failed — a merge without a pin loses the ref lifecycle the queue depends on, so the
  *   commit stays on the branch for the next run, like a fresh run's failed pin;
@@ -169,16 +171,18 @@ export async function hasUnmergedPin(root: string, role: string): Promise<boolea
  * branch is ahead of main (crash between the commit and the pin). A present-but-contained ref is
  * stale — a crash between the ff-merge and the ref deletion — and is deleted without pinning
  * anything, and so is a pin whose commit is missing from the repository (with a warning — it can
- * never merge). Returns null when there was nothing to salvage. A pin whose sha the role's stash
- * (queuedSummary) names is its own pending change, so recovery no-ops (already_queued) and the
- * run authors on its normal schedule (BUGS.md 2026-11-15 recovery-spin); the `pinned` arm
- * re-pins a pin the stash does not name (a crashed run left it, or a merge failure or a cleared
- * pin left a stale entry behind) and carries the recovered sha plus the summary, body, and
- * high-friction flag read back from its commit message (the authoring run that set them is
- * gone). `merge_queued` is logged exactly once: the pin is the waiting state and no queue file
- * is written (part 3e/7), so the poll's drain merges it. From there the merge slot keeps or
- * deletes the ref per the merger's usual policy. An unreadable ref or worktree reads as no
- * leftover — only git-level errors in the stale-pin cleanup propagate. */
+ * never merge). Returns null when there was nothing to salvage. Under the conflict cap, a pin
+ * whose sha the role's stash (queuedSummary) names is its own pending change: recovery no-ops
+ * (already_queued, or relief_wait when a commit is held beside the pin) and the run authors on
+ * its normal schedule (BUGS.md 2026-11-15 recovery-spin). The `pinned` arm re-pins every other
+ * live pin — one a crashed run left (no stash), one whose last merge failed (any merge outcome
+ * clears the stash), and one a dropped pin left a stale stash naming another sha — and carries
+ * the recovered sha plus the summary, body, and high-friction flag read back from its commit
+ * message (the authoring run that set them is gone). `merge_queued` is logged exactly once: the
+ * pin is the waiting state and no queue file is written (part 3e/7), so the poll's drain merges
+ * it. From there the merge slot keeps or deletes the ref per the merger's usual policy. An
+ * unreadable ref or worktree reads as no leftover — only git-level errors in the stale-pin
+ * cleanup propagate. */
 export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRecovery | null> {
   // One merge ref per role, so at most one outstanding merge per role: a second entry beside
   // one the slot has yet to finish would share — and fight over — the same ref. This arm reads
