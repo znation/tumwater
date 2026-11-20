@@ -140,6 +140,54 @@ The BUGS-FIXED entry "A checkpoint-caused abort is indistinguishable from a cont
 
 **Suspected cause.** `src/pi-extension/checkpoint.ts` requests the compaction and returns its tool result before pi has run the summarization, and pi ends the run when the aborted turn settles. Settling it means keeping the run alive until `compaction_end` arrives (or writing the compaction entry directly), a design decision that belongs with the plan role, not a parser correction. The sibling fix (this file’s Fixed entry) only stops the harness from claiming a compaction that was never written.
 
+### Host sleep counts as model silence: the run watchdogs, the model check and the run and review wall budgets kill or hand back work the host slept through (found by an operator session 2026-11-19)
+
+On 11-19 the host was lid-closed from about 05:20 to 15:41 PST. `pmset -g log` shows it asleep 37–61 minutes of every hour, with short maintenance DarkWakes in between. Every watchdog that judges a run measures on the wall clock, so that sleep read as a backend that stopped answering:
+- 75 `model request unanswered … no reply for 5m–20m` warnings. There were none before 05:20.
+- Five `model check failed: … gave no reply` warnings, at 07:06, 11:54, 13:25, 13:52 and 14:59. Each held all 29 runners.
+- Each check failure handed back the runs waiting on a reply. These ended `aborted` after 7–145 minutes: feature, bugfix, qa, organize, selfcheck, bugfix-2, plan, bugfix-3, and some of them more than once.
+- Three runs were `quiet_killed` with "killed as hung: no agent progress for over 1800s": bugfix-3 #136, perf #562 and plan #2689.
+- Feature #3013 was killed with "timed out after 14400s while still making progress".
+- Four post-merge reviews timed out "after 7200s" or "after 14400s": 99ebf171, d3352500, c4fb62f2 and 1fc125aa.
+
+Overlaying each of those 22 endings on the pmset sleep intervals shows that 85–95% of each one's wall time was host sleep. Feature #3013 ran 242 minutes and was asleep for 223 of them. 1fc125aa's review ran 240 minutes and was asleep for 201. Each post-merge review timeout also counts toward `POST_REVIEW_FAILURE_LIMIT`, so sleep alone can push a commit toward being dropped unreviewed. The open entry above, "A post-merge review that times out … restarts from scratch", covers why that limit hurts.
+
+**Reproduce.** Write `pmset -g log | grep 'Entering Sleep state'` to a file. Parse each line's timestamp and its trailing `N secs` into an interval. For every `run_end` with result `aborted` or `quiet_killed`, and every "post-merge review of … timed out" warning in `.tumwater/log/events.jsonl` since 11-19 05:00, sum the sleep that falls inside `[ts − durationMs, ts]`.
+
+**Suspected cause / fix direction.** Build checks already measure host sleep: `sleptMs` in src/build/host-sleep.ts, through `SLEEP_SPAN_TOLERANCE_MS` and `unverifiedTreeOutcome`. None of the following use that measurement:
+- The quiet and stall clock in src/pi/pi-watchdogs.ts (`startQuietWatch`, whose `waitedMs = Date.now() - pending.since` feeds the unanswered warning).
+- The zero-byte 30-minute bound and the run and review timeouts.
+- The model-check probe's 300 s budget (`MODEL_CHECK_TIMEOUT_S`, src/model-check/model-check-probe.ts).
+
+One fix is to subtract measured host sleep from each silence or budget before acting on it. Another is to treat a window that spans a sleep as no evidence, the way an unverified build check is treated: re-arm the timer and do not count a failure. A probe whose window held a sleep should be retried, not failed. This entry is separate from the open "A model check run while the only local server is saturated…" entry. That one is about server admission while the host is awake. This one is about the host being asleep.
+
+### An extra instance that is never admitted keeps its staged claim, so a higher backlog entry waits while a lower-index sibling takes a later one (found by an operator session 2026-11-19)
+
+With `roles.bugfix.instances: 3`, tumwater keeps six bugfix runner ids (`RUNNERS_PER_INSTANCE` = 2, src/roles/runner-ids.ts). It admits a runner only while fewer than 3 are writing (`admissionHolds`, src/scheduling/skip.ts). `orderForAdmission` (src/scheduling/scope.ts) prefers the lowest index, but every idle instance can be handed a claim. On 11-19 this caused two inversions:
+- **Bugs.** At 09:46:35 bugfix-2, bugfix-3 and bugfix-4 were assigned BUGS.md's top three open entries. bugfix-4 holds "Five root-walk tests fail on a shared host…" (line 53) and has not started a run since 11-09 (`skipReason: "instances-full"` in `.tumwater/state/bugfix-4.json`). At 11:55 bugfix, freed when its change merged, took the next entry instead: "`a corrupted cache entry is ignored…`" (line 61). It ran that entry at 13:33. The root-walk bug is still unworked 7.5 h after it was claimed.
+- **Plans.** At 15:44 feature-4 was assigned "Operator steering, part 2/5" (PLANS.md line 264) and has never run. After the 16:39 restart, feature took "Remove the TUI, part 1/5" (line 426) and started it at once.
+
+The claim is released only by the 24 h stale sweep (`CLAIM_IDLE_MAX_MS`), or when the instance is disabled or paused. An instance that is enabled but never admitted is none of those, so the entry stays held while the lower-index runners keep winning admission.
+
+**Reproduce.** In `.tumwater/log/events.jsonl`, pair each `claim` `assigned` event with that runner's next `run_start`. Since 11-19, bugfix-4's and feature-4's claims have no `run_start` at all, while siblings' later claims start within 0–219 minutes. `tumwater backlog` shows both entries as being worked.
+
+**Suspected cause / fix direction.** Claim staging and admission disagree about who will run next. Options:
+- Stage claims only on runners that admission would let in.
+- Have admission prefer the runner that holds the highest-placed backlog entry, rather than the lowest index.
+- When a lower-index runner becomes free while a higher-index sibling's claim is still waiting, move that claim to it.
+
+### A shutdown or restart that waits on a post-merge review names no role: "waiting on the merge in progress for " (found by an operator session 2026-11-19)
+
+The feed logged `shutdown waiting on the merge in progress for ` at 11-19 05:20:09 and `restart waiting on the merge in progress for  (deadline 360s)` at 16:38:04. In both, the role list is empty. The task in flight both times was a post-merge review: coverage's review of 6ab53d1e settled at 16:39:18, just before `orchestrator_stop`. `startPostReview` (src/merge/merge-post-review-drain.ts) builds its `InFlightMerge` with `roles: []`. `drainInFlightWork` and `awaitMergeForHandoff` (src/run/run-timing.ts) join `roles` into the message, and the abort and abandon follow-ups use it too. The operator cannot tell what the restart is waiting for. Fix direction: give the post-merge review task its author role, or name the commit under review, so the hand-off wording identifies it. Check first that `tumwater abort --role` (`abortableMerges`) is still meant to skip a post-merge review once it carries a role.
+
+**Reproduce.** `grep 'merge in progress for ' .tumwater/log/events.jsonl`.
+
+### A full check that the host slept through marks main's head watched, so a code head goes without a verdict until main moves again (found by an operator session 2026-11-19)
+
+Bugfix's 6c9b25b6 (a `src/` change) merged at 11-19 11:29. The `_main-full` mirror's baseline failed with `sleptMs: 140544` (18 tests), and its clean retry failed with `sleptMs: 182225` (34 tests) at 12:01. Both were correctly not cached red: `runBaselineOnce` returns `unverified`. Then nothing re-ran. There was no `main_check` for 6c9b25b6. The next full check ran only when da13f613 merged at 16:02, 4.5 h later, although the hourly interval (`check.fullIntervalMinutes`, default 60) had long passed. The cause is in `fullPass` (src/baseline/main-watch-full.ts). On a run with no verdict it calls `markWatched(state, tip)`, which sets `lastWatched` to the tip and clears `fullCheckDueAt`. The poll in src/baseline/main-watch.ts then sees `mainHead === state.lastWatched` with nothing due, and never retries. This contradicts runBaselineOnce's own comment: "nothing is cached — the next consult re-runs". A red main that lands just before a sleep therefore goes unseen until someone else merges. Fix direction: after an unverified or skipped full run, leave the head due, for example by setting `fullCheckDueAt` to now plus a short backoff instead of clearing it. Keep the existing rule that a run with no verdict is never cached.
+
+**Reproduce.** In events.jsonl, find the two `build_check` `scope: "baseline"` events at 11:36:49 and 12:01:02 with `sleptMs` > 0. No `main_check` follows until 16:08:02.
+
 ## Fixed
 
 ## Verified
