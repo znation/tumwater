@@ -272,32 +272,73 @@ test("an app-server that exits before hooks/list rejects with the early-exit mes
   }
 });
 
+/** The trust cache key `codexHookTrust` resolves for one definition probed as `version`
+ * (`${version}${JSON.stringify(definition)}`, src/agent/codex/codex-hook-trust.ts). */
+function cacheKey(version: string, def: { matcher: string; command: string; timeout: number }): string {
+  return `${version}${JSON.stringify(def)}`;
+}
+
+/** How many app-server starts a fake recorded. */
+function starts(callsFile: string): number {
+  const text = fs.readFileSync(callsFile, "utf8").trim();
+  return text === "" ? 0 : text.split("\n").length;
+}
+
 test("a corrupted cache entry is ignored and re-looked-up", async () => {
   const root = tmpdir();
   const cwd = tmpdir();
-  const fake = fakeCodexAppServer();
+  const version = "0.163.0";
+  const fake = fakeCodexAppServer({ version });
   try {
     const def = definition();
     const file = codexHookTrustPath(root);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    // Seed the cache under whatever key this build's --version probe produces, then corrupt
-    // that entry in place. Hardcoding the version prefix (0.163.0) made this test flaky: a
-    // --version probe that times out under load reports "" (codexVersion's fallback), which
-    // changes the cache key, so the corrupt-and-read-back keys diverged and the read-back
-    // found only the marker. Seeding first means the corrupted key is always the real one.
-    await codexHookTrust(root, { bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 });
-    const seeded = JSON.parse(fs.readFileSync(file, "utf8"));
-    const entries = Object.entries(seeded);
-    assert.equal(entries.length, 1, "the seed wrote exactly one cache entry");
-    const seedKey = entries[0]![0];
-    fs.writeFileSync(file, JSON.stringify({ [seedKey]: "not-a-trust" }));
+    // Seed a corrupt entry under EVERY key this one lookup can resolve, then look up once.
+    // Deriving the corrupt key from an earlier lookup (the previous shape) still coupled the
+    // test to the probe's outcome: each lookup runs its own `--version` probe, capped at a
+    // third of the deadline, so on a saturated host the two probes could disagree — the
+    // first timing out and reporting "" (codexVersion's fallback), the second answering —
+    // which put the seed and the consulted key on different entries, left the read-back on
+    // the corrupt string, and reddened the test (BUGS.md 2026-11-17 quarantine). Seeding both
+    // candidate keys makes the corrupt entry the consulted one whichever way the probe goes.
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ [cacheKey(version, def)]: "not-a-trust", [cacheKey("", def)]: "not-a-trust" }),
+    );
     const trust = await codexHookTrust(root, { bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 });
     assert.equal(trust.hash, `sha256:${createHash("sha256").update(def.command).digest("hex")}`);
-    // The non-trust cache value did not short-circuit the lookup: exactly two app-server starts.
-    assert.equal(fs.readFileSync(fake.callsFile, "utf8").trim().split("\n").length, 2);
-    const cached = JSON.parse(fs.readFileSync(file, "utf8"))[seedKey];
+    // The non-trust cache value did not short-circuit the lookup: exactly one app-server start.
+    assert.equal(starts(fake.callsFile), 1);
+    const entries = Object.values(JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>);
+    const fresh = entries.filter((v) => v !== "not-a-trust");
+    assert.equal(fresh.length, 1, "the lookup cached exactly one fresh entry, under its own key");
+    const cached = fresh[0] as { key: string; hash: string; checkedAt: number };
     assert.equal(cached.key, trust.key);
     assert.equal(cached.hash, trust.hash);
+    assert.ok(typeof cached.checkedAt === "number", "the cached entry records when it was checked");
+  } finally {
+    fake.restore();
+  }
+});
+
+test("a corrupted cache entry is ignored when the --version probe times out and reports no version", async () => {
+  const root = tmpdir();
+  const cwd = tmpdir();
+  // The load path that made the quarantined test flaky: a `--version` probe too slow for its
+  // slice of the deadline reports "" (codexVersion's fallback), so the cache key drops its
+  // version prefix. The corrupt entry under that key must still be ignored and re-looked-up.
+  const fake = fakeCodexAppServer({ versionHang: true });
+  try {
+    const def = definition();
+    const file = codexHookTrustPath(root);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ [cacheKey("", def)]: "not-a-trust" }));
+    const trust = await codexHookTrust(root, { bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 });
+    assert.equal(trust.hash, `sha256:${createHash("sha256").update(def.command).digest("hex")}`);
+    assert.equal(starts(fake.callsFile), 1, "the corrupt entry did not short-circuit the lookup");
+    // The file's post-state is deliberately not asserted: whether a probe-less run may write
+    // or read a version-less cache key at all is open work (BUGS.md 2026-11-19), so pinning it
+    // here would make that fix break this test.
   } finally {
     fake.restore();
   }

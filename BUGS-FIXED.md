@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `a corrupted cache entry is ignored and re-looked-up` failed, then passed on the same tree (quarantined by tumwater 2026-11-17) — fixed 2026-11-19 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+The test still depended on one probe answering. `codexHookTrust` runs its own `--version` probe per lookup, capped at a third of the deadline (1.6 s at `timeoutMs: 5_000`), and `codexVersion` reports `""` when the probe exceeds it. The test's *premise* — "the corrupt entry sits under the key the lookup will consult" — was therefore only true while every probe answered inside 1.6 s. On a saturated host the first probe (the seeding lookup) can expire and report `""`, so the seed lands on the version-less key while the second lookup consults `0.163.0…`: the read-back under the seed key returns the corrupt string and the assertions fail; the next run, with both probes answering, passes. Reproduced deterministically offline with a `codex` shim whose **first** `--version` sleeps 3 s and whose later ones answer instantly: seed key carries no version prefix, the lookup caches under the prefixed key, and the read-back under the seed key is `"not-a-trust"`.
+
+The test is now premise-independent: it seeds a corrupt entry under **both** keys one lookup can resolve (`0.163.0` and the `""` probe-failure fallback) and performs exactly one lookup, asserting a fresh trust is returned, exactly one app-server start, and exactly one fresh entry cached in the file whichever key it landed on. A second test pins the load path itself — a `--version` probe that hangs (so `codexVersion` reports `""`) still ignores the corrupt entry under the version-less key and re-caches there. `docs/invariants.md` INV-CW5 now states the probe-failure `""` half of the key explicitly and cites both tests. The probe-less cache entry's own correctness hole is left as a separate open entry above.
+
+**Validation gap:** no-repro — the flake needs a real saturated host to time out a 1.6 s `--version` probe, so it could not be reproduced as-is; the mechanism was confirmed deterministically with a shim that slows only the first probe, which reddened the old assertions and passes the rewritten ones.
+
+~~~~
+a corrupted cache entry is ignored and re-looked-up
+~~~~
+
 ### The self-scan guard for the tmpdir rule is not in `POLICY_SCANS`, so the budgeted gate passes over it and a change that adds offenders lands main red (found by the selfcheck role 2026-11-17) — fixed 2026-11-19 by the bugfix role
 
 
