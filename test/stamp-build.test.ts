@@ -83,7 +83,10 @@ test("the stamp the build script writes names the release when HEAD is the tagge
   touch(path.join(root, "dist", "src", "cli.js"));
   execFileSync("git", ["-C", root, "init", "-q"]);
   execFileSync("git", ["-C", root, "add", "-A"]);
-  execFileSync("git", ["-C", root, "commit", "-q", "-m", "seed"]);
+  // The identity the commit needs is pinned on the argv, not left to the ambient config:
+  // makeRepo's fixture repos carry it in .git/config, and a bare `git init` here carries none,
+  // so a machine (or CI container) with no global user.name would fail this test outright.
+  execFileSync("git", ["-C", root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "seed"]);
   execFileSync("git", ["-C", root, "tag", "v1.2.3"]);
 
   execFileSync(process.execPath, [script], { cwd: root, stdio: "ignore" });
