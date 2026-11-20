@@ -191,8 +191,8 @@ test("nearestTumwaterRoot does not read a non-directory .tumwater entry as a roo
 
 // The OS temp root guard (isOsTempRoot) is the one rule that keeps the root walks from claiming
 // a stale .tumwater at os.tmpdir() as a team root (BUGS.md 2026-11-16). It compares the resolved
-// temp root (realpath'd, so macOS /var <-> /private/var agree) against path.resolve(dir): the
-// resolved temp root itself matches, its children do not.
+// temp root (realpath'd, so macOS /var <-> /private/var agree) against the resolved candidate
+// directory, likewise realpath'd: the resolved temp root itself matches, its children do not.
 // The walk-level pin for the same rule (BUGS.md 2026-11-16): the in-process poison variants
 // removed in f85f56e5 were fragile because they built the poison with a raw mkdtempSync under
 // os.tmpdir() (tripping the tmpdir() convention guard) and asserted `undefined`, which a SECOND
