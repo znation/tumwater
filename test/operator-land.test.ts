@@ -63,6 +63,61 @@ test("land replays the ref's commits onto a moved main when the two have diverge
   assert.equal(sh(root, "git", "show", "main:main.txt"), "main");
 });
 
+// The acceptance criterion "a branch whose base is behind main, adding a `### ` entry at the top
+// of a section while main added a different entry at the same spot, lands with both entries
+// present" — the replay's one deterministic conflict path, and the reason the cherry-pick runs
+// with merge.conflictStyle=diff3: PLANS-DONE.md is a finished archive, so the entry-by-entry
+// merge declines it and only the diff3-hunk insert-only pass can settle it. Expected content is
+// spelled from the seeded fixtures, never read back from the code under test.
+test("land replays both sides' backlog inserts when main moved under the same section top", async () => {
+  const root = makeRepo(tmpdir());
+  seedCommit(root, "PLANS.md", "# PLANS\n\n## Planned\n\n### base plan\n\nbase body\n", "seed plans");
+  seedCommit(root, "PLANS-DONE.md", "# PLANS DONE\n\n## Done\n\n### base done\n\nbase done body\n", "seed done");
+  const { feat } = repoWithFeat(root);
+  seedCommit(
+    feat,
+    "PLANS.md",
+    "# PLANS\n\n## Planned\n\n### feat plan\n\nfeat body\n\n### base plan\n\nbase body\n",
+    "feat plans",
+  );
+  seedCommit(
+    feat,
+    "PLANS-DONE.md",
+    "# PLANS DONE\n\n## Done\n\n### feat done\n\nfeat done body\n\n### base done\n\nbase done body\n",
+    "feat done",
+  );
+  seedCommit(
+    root,
+    "PLANS.md",
+    "# PLANS\n\n## Planned\n\n### main plan\n\nmain body\n\n### base plan\n\nbase body\n",
+    "main plans",
+  );
+  seedCommit(
+    root,
+    "PLANS-DONE.md",
+    "# PLANS DONE\n\n## Done\n\n### main done\n\nmain done body\n\n### base done\n\nbase done body\n",
+    "main done",
+  );
+  const before = mainSha(root);
+  const result = await steerToMain(root, "feat");
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (result.ok) assert.equal(result.replayed, true);
+  // Both inserts are on main, and main's own entries and ordering survive around them.
+  assert.notEqual(mainSha(root), before);
+  const plans = sh(root, "git", "show", "main:PLANS.md");
+  for (const heading of ["### feat plan", "### main plan", "### base plan"]) {
+    assert.ok(plans.includes(heading), `PLANS.md lost ${heading}:\n${plans}`);
+  }
+  assert.equal(plans.split("\n").filter((l) => l.startsWith("### ")).length, 3, `PLANS.md duplicated an entry:\n${plans}`);
+  assert.ok(plans.indexOf("### base plan") > plans.indexOf("### main plan"), `main's order changed:\n${plans}`);
+  const done = sh(root, "git", "show", "main:PLANS-DONE.md");
+  for (const heading of ["### feat done", "### main done", "### base done"]) {
+    assert.ok(done.includes(heading), `PLANS-DONE.md lost ${heading}:\n${done}`);
+  }
+  assert.equal(done.split("\n").filter((l) => l.startsWith("### ")).length, 3, `PLANS-DONE.md duplicated an entry:\n${done}`);
+  assert.ok(!done.includes("<<<<<<<") && !plans.includes("<<<<<<<"), "a conflict marker reached main");
+});
+
 test("land waits for a merge lock another holder owns and lands after it releases", async () => {
   const root = makeRepo(tmpdir());
   const { feat } = repoWithFeat(root);
@@ -110,6 +165,37 @@ test("land refuses and leaves main unchanged when the replay hits a code conflic
   assert.equal(result.ok, false);
   if (!result.ok) assert.match(result.error, /code file/);
   assert.equal(mainSha(root), before); // main untouched on refusal
+});
+
+test("land refuses a merge commit in the range, leaving main unchanged", async () => {
+  const root = makeRepo(tmpdir());
+  const { feat } = repoWithFeat(root);
+  seedCommit(feat, "feat.txt", "feat\n", "feat edit");
+  // A second branch off feat, merged back into it: the range then holds a merge commit.
+  sh(feat, "git", "checkout", "-q", "-b", "side");
+  seedCommit(feat, "side.txt", "side\n", "side edit");
+  sh(feat, "git", "checkout", "-q", "feat");
+  sh(feat, "git", "merge", "--no-ff", "-q", "-m", "merge side", "side");
+  const before = mainSha(root);
+  const result = await steerToMain(root, "feat");
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.error, /merge commit/);
+  assert.equal(mainSha(root), before); // main untouched
+});
+
+test("land refuses a range that touches tumwater's own state dir", async () => {
+  const root = makeRepo(tmpdir());
+  const { feat } = repoWithFeat(root);
+  // .tumwater/ is gitignored by the fixture (as in a real root), so the commit needs -f.
+  fs.mkdirSync(path.join(feat, ".tumwater", "notes"), { recursive: true });
+  fs.writeFileSync(path.join(feat, ".tumwater", "notes", "stuck.md"), "hand-written state\n");
+  sh(feat, "git", "add", "-f", ".tumwater/notes/stuck.md");
+  sh(feat, "git", "commit", "-q", "-m", "state edit");
+  const before = mainSha(root);
+  const result = await steerToMain(root, "feat");
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.error, /state dir/);
+  assert.equal(mainSha(root), before); // main untouched
 });
 
 test("land refuses a dirty primary checkout, leaving it and main untouched", async () => {

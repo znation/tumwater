@@ -106,12 +106,21 @@ async function mergeCommitRefusal(root: string, commits: SteerCommit[]): Promise
   return null;
 }
 
-/** True while a rebase is stopped mid-way in `wt` (state files git leaves behind). */
 /** Cherry-pick one commit from `srcRef` into the temp worktree, or null when it stops on a
- * conflict the caller must settle. GIT_EDITOR=true so a commit-message prompt can never block. */
+ * conflict the caller must settle. GIT_EDITOR=true so a commit-message prompt can never block.
+ * `merge.conflictStyle=diff3` is what makes the settled-hunk resolver able to read the hunk at
+ * all — `resolveInsertOnlyText` parses the `|||||||` base section, which the default two-way
+ * style never writes — and it is the same flag the team merge's rebase (merge-git.ts) and the
+ * revision cherry-pick (runner-revision.ts) pass for the same reason. Without it the insert-only
+ * pass settles nothing and the archive files (PLANS-DONE.md, BUGS-FIXED.md), which the
+ * entry-by-entry merge deliberately declines, would refuse every top-of-section insert. */
 async function pickIn(wt: string, srcRef: string): Promise<string | null> {
   try {
-    await runGit(wt, [...(await committerIdentArgs(wt)), "cherry-pick", srcRef], { GIT_EDITOR: "true" });
+    await runGit(
+      wt,
+      [...(await committerIdentArgs(wt)), "-c", "merge.conflictStyle=diff3", "cherry-pick", srcRef],
+      { GIT_EDITOR: "true" },
+    );
     return await headOf(wt, "HEAD");
   } catch {
     return null; // a conflict (or a stop) the caller resolves and continues
@@ -169,9 +178,11 @@ async function replayIn(wt: string, commits: SteerCommit[]): Promise<{ ok: true;
 
 /** The temp checkout the replay happens in: a detached worktree under .tumwater/worktrees, never
  * the operator's checkout and never the primary. The leading underscore keeps it clear of role
- * worktrees, matching _merge / _main. */
-function steerWorktreePath(root: string): string {
-  return path.join(worktreesDir(root), "_steer");
+ * worktrees, matching _merge / _main. The preview gets its OWN path: a `--dry-run` runs outside
+ * the merge lock, so sharing one dir with a land in flight would let the preview's ensure/reset
+ * wipe a replay mid-cherry-pick (and its cleanup remove the worktree from under it). */
+function steerWorktreePath(root: string, preview = false): string {
+  return path.join(worktreesDir(root), preview ? "_steer-preview" : "_steer");
 }
 
 /** Move the operator's branch to the landed tip ONLY when it is checked out in no worktree — a
@@ -276,7 +287,7 @@ export async function previewSteer(root: string, ref = "HEAD"): Promise<SteerPre
     return { ok: true, beforeSha: mainSha, commits, paths, replay: false, applies: true };
 
   // Diverged: decide "would it apply" in a throwaway worktree, removed before returning.
-  const wt = steerWorktreePath(root);
+  const wt = steerWorktreePath(root, true);
   let applies = false;
   try {
     await ensureDetachedWorktree(root, wt, mainSha);
