@@ -11,6 +11,7 @@ import {
   enqueueMerge,
   dropMerge,
   headMerge,
+  isMergeClaim,
   isPriorReview,
   queueDepth,
   queuedMergeFiles,
@@ -273,6 +274,24 @@ test("isPriorReview passes only a plain object with a string sha, string reasons
   assert.equal(isPriorReview({ sha: "a".repeat(40), reasons: ["fix the bug"], counts: [1, -1] }), false);
   assert.equal(isPriorReview({ sha: "a".repeat(40), reasons: ["fix the bug"], counts: [1, Number.NaN] }), false);
   assert.equal(isPriorReview({ sha: "a".repeat(40), reasons: ["fix the bug"], counts: [1, "2"] }), false);
+});
+
+test("isMergeClaim passes only a plain object with a backlog file and string key and title", () => {
+  // Valid arms: the two backlog files the guard admits.
+  assert.equal(isMergeClaim({ file: "PLANS.md", key: "alpha", title: "Alpha" }), true);
+  assert.equal(isMergeClaim({ file: "BUGS.md", key: "alpha", title: "Alpha" }), true);
+  // Non-object arms: null, a JSON array, and a bare string are not plain objects.
+  assert.equal(isMergeClaim(null), false);
+  assert.equal(isMergeClaim(["PLANS.md"]), false);
+  assert.equal(isMergeClaim("PLANS.md"), false);
+  // Field-shape arms: a torn or foreign object fails on exactly one field. The key/title
+  // arms are the ones no reader test covers end-to-end.
+  assert.equal(isMergeClaim({ file: "PLANS.md", key: 1, title: "Alpha" }), false);
+  assert.equal(isMergeClaim({ file: "PLANS.md", key: "alpha", title: { text: "Alpha" } }), false);
+  assert.equal(isMergeClaim({ file: "PLANS.md", key: "alpha" }), false);
+  assert.equal(isMergeClaim({ key: "alpha", title: "Alpha" }), false);
+  // A non-backlog file is foreign even with the rest well-formed.
+  assert.equal(isMergeClaim({ file: "NOT.md", key: "alpha", title: "Alpha" }), false);
 });
 
 test("queueEntryMergeLabel reads an older-generation marker with no changes array as one merge record", () => {
