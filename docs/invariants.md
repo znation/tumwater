@@ -4582,6 +4582,34 @@ for a role's next run and those kept for the operator, and warns with the count 
 **Pinned by.** `test/retention.test.ts` — "RetentionPruner: salvaged workspace patches past the
 window are pruned, waiting or kept".
 
+### INV-BQ6: a prune pass publishes its progress marker and always removes it
+
+**Guarantee.** While a prune pass runs, `.tumwater/state/maintenance.json` names the writing
+process, the task, the backend it is in, and a `done`/`total` pair whose `total` is known before
+the delete loop starts; `done` never runs ahead of the pass nor lags further than the write
+throttle allows. The marker is gone once the pass ends, including when a half throws.
+
+**Binds.** `src/orchestrator/retention.ts` (`SessionPruneMarker`, `RetentionPruner.prune`) and
+`src/paths.ts` (`maintenancePath`).
+
+**Pinned by.** `test/retention.test.ts` — "RetentionPruner: the prune pass publishes
+maintenance.json while it deletes and removes it after" and "RetentionPruner: a throw part-way
+through the pass still removes the marker".
+
+### INV-BQ7: each prune half with work logs a maintenance_start/maintenance_done pair
+
+**Guarantee.** A half of a prune pass that has work logs one `maintenance_start` (with its task,
+backend and total) and one `maintenance_done` (with what it handled and its span); a pass with
+nothing to handle logs neither, and both names stay out of the legacy-event table.
+
+**Binds.** `src/orchestrator/retention.ts` (`SessionPruneMarker.onProgress` and `endHalf`) and
+`src/agent/session-ledger.ts` (the `onProgress` option in `pruneCodexSessions` and
+`pruneOpencodeSessions`).
+
+**Pinned by.** `test/retention.test.ts` — "RetentionPruner: a prune with work logs one
+maintenance_start and one maintenance_done for that half, and a prune with none logs neither";
+`test/event-legacy.test.ts` — "the session-cleanup pair is a current name, not a legacy rewrite".
+
 ## Runner state in the poll loop: a failed save costs only that save
 
 ### INV-BR1: a skip-reason or claim-release save that fails warns and the poll goes on

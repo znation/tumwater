@@ -33,6 +33,18 @@ test("normalizeLegacyEvent rewrites in place, never throws, and leaves a current
   assert.doesNotThrow(() => normalizeLegacyEvent({}));
 });
 
+test("the session-cleanup pair is a current name, not a legacy rewrite", () => {
+  // PLANS.md "Visible session cleanup, part 1/3" adds maintenance_start/maintenance_done. The
+  // legacy table's rewrites are permanent, so a new name must stay out of it: each reads back
+  // exactly as written, and the rewrite leaves such a line untouched.
+  for (const type of ["maintenance_start", "maintenance_done"]) {
+    assert.equal(canonicalEventType(type), type);
+    const ev = { ts: 1, type, task: "session-prune", backend: "codex", total: 2 };
+    assert.equal(normalizeLegacyEvent(ev), ev);
+    assert.deepEqual(ev, { ts: 1, type, task: "session-prune", backend: "codex", total: 2 });
+  }
+});
+
 test("parseEventLine, readEvents and readWindowEvents (live and archive) read an old line as the new name", () => {
   const repo = makeRepo();
   const file = eventsLogPath(repo);

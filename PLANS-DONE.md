@@ -5,6 +5,56 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Visible session cleanup, part 1/3: the retention prune writes a progress marker and logs start and finish events (planned 2026-11-16 by the operator; touches src/paths.ts src/orchestrator/retention.ts src/agent/session-ledger.ts src/events/events.ts src/events/event-labels.ts src/events/event-format-hold.ts test/session-ledger-prune.test.ts test/retention.test.ts test/event-format.test.ts test/event-labels.test.ts) — done 2026-11-20 by the feature role
+
+**Goal.** On 2026-11-16 the kde-macos8.6-theme team looked stuck after a restart: a running
+orchestrator, no paused marker, no alerts, no role started, director prompts waiting in the inbox
+and nothing in the event log after `orchestrator_start` for over an hour. The cause was the
+session-retention prune (`RetentionPruner.prune`, src/orchestrator/retention.ts), which runs in
+the constructor at startup and from `poll()` once a day. Its `pruneCodexSessions`
+(src/agent/session-ledger.ts) runs one synchronous `spawnSync(codex, ["delete", "--force", id])`
+per expired session: 3,944 ids at about 0.9 s each, about 75 minutes with the poll loop blocked.
+No role was scheduled (the director included), nothing was logged until the one summary warning
+at the end, and `orchestrator.json` and the role states stayed frozen. The operator restarted
+three times, and each restart threw the work away. `pruneOpencodeSessions` has the same shape.
+The blocked loop can still write files between two synchronous deletes, so this part makes the
+prune report its progress to disk, for the separate (responsive) GUI and TUI processes to read in
+part 2/3.
+
+**Approach.**
+- New `maintenancePath(root)` → `.tumwater/state/maintenance.json` in src/paths.ts, next to
+  `orchestratorStatePath`.
+- Marker shape (the type lives in the module that writes it; part 1/3 as landed keeps it
+  unexported because the unused-export gate rejects an exported type no other file names yet —
+  part 2/3's reader re-exports it when it gains a user):
+  `{ pid, task: "session-prune", backend: "codex" | "opencode" | "files", done, total, startedAt,
+  updatedAt }`. `pid` is the orchestrator that wrote it; `task` leaves room for later blocking
+  housekeeping; `total` is known up front because the expired-id set is built before the delete
+  loop; `startedAt` is the start of the whole prune pass.
+- `pruneCodexSessions` and `pruneOpencodeSessions` take an optional `onProgress(done, total)` in
+  their options. They call it once with `done = 0` after the expired set is built (only when
+  `total > 0`) and after each id they handle. They stay free of path knowledge.
+- `RetentionPruner.prune` writes the marker before the OpenCode half, passes an `onProgress` that
+  rewrites it with `writeJsonAtomic` (throttled: at most once per second or every 25 ids,
+  whichever comes first, plus the final id), sets `backend: "files"` for the file and ledger-line
+  passes, and removes the marker in a `finally`. Marker writes are best-effort: a failed write
+  never fails the prune (this runs in the poll loop, where a throw ends the team).
+- Events, so the log is not silent: `maintenance_start { task, backend, total }` when a half has
+  work (`total > 0`), and `maintenance_done { task, backend, done, durationMs }` when it finishes.
+  Add both to the events.ts type union with doc comments, labels in event-labels.ts, and
+  formatting beside the hold formatters in event-format-hold.ts. Keep the existing
+  `deleted N expired codex sessions` warning.
+
+**Acceptance criteria.**
+- `pruneCodexSessions` and `pruneOpencodeSessions` call `onProgress` with a monotonically
+  increasing `done` ending at the final `total`, and never call it when nothing is expired.
+- With a stubbed slow delete, `maintenance.json` exists while the prune runs (carrying the
+  orchestrator's pid and a rising `done`) and is gone afterwards, including when a delete throws.
+- A prune with work logs one `maintenance_start` and one `maintenance_done` per half that had
+  work; a prune with nothing to delete logs neither.
+- `maintenance_start`/`maintenance_done` format through the hold formatter, and the legacy-event
+  table (src/events/event-legacy.ts) is unaffected.
+
 ### Remove the TUI, part 1/5: delete the terminal dashboard and both ways to start it, `tumwater tui` and `start --tui` (planned 2026-11-16 by the operator; touches src/ui/tui/ src/cli.ts src/cli/cli-start.ts src/cli/cli-start-supervisor.ts src/cli/cli-flag-specs.ts src/cli/cli-help-text.ts src/cli/cli-init.ts src/doctor/doctor-orphans.ts src/doctor/doctor-backlog.ts src/ui/status-render.ts src/ui/status-payload.ts src/roles/role-view.ts src/history/history-data.ts test/tui-*.test.ts test/cli-tui-strictness.test.ts test/fixtures/tui-fixtures.ts test/gui-client.test.ts test/status-render.test.ts test/transcript.test.ts test/categories-tumwater.test.ts test/supervisor.test.ts docs/cli.md docs/invariants.md README.md RELEASE_NOTES.md) — done 2026-11-20 by the feature role
 
 **Resolved 2026-11-20 by feature** — the whole of this part landed in one commit (the deletion,

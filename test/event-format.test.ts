@@ -1236,3 +1236,32 @@ test("formatEvent renders quiet hours, a forced restart, and a backend check in 
   assert.match(found, /binary found/);
   assert.match(eventMessage({ ts: 0, source: "tumwater", type: "backend_binary", agent: "claude", found: false } as never), /^warning:/);
 });
+
+// The session-cleanup pair (PLANS.md "Visible session cleanup, part 1/3"): src/orchestrator/
+// retention.ts logs one maintenance_start and one maintenance_done per half of a blocking prune
+// pass that has work, and event-format-hold.ts renders both. Routine state change, like
+// maintenance_quota_hold — no warning prefix: the pass IS the harness keeping the session store
+// bounded, and the pair exists to explain the blocked poll loop. The finish's span rides the
+// shared elapsed() fragment, so the s/m bucketing cannot drift from the countdowns elsewhere.
+test("formatEvent renders maintenance_start and maintenance_done with task, backend and counts", () => {
+  const line = (e: Record<string, unknown>) => formatEvent({ ts: 0, source: "tumwater", ...e } as never);
+  const started = line({ type: "maintenance_start", task: "session-prune", backend: "codex", total: 3944 });
+  assert.match(started, /tumwater\s+cleanup started — session-prune \(codex\): 3944 sessions to handle$/);
+  assert.ok(!started.includes("warning"), `the cleanup start is routine, not a warning: ${started}`);
+
+  // 4,500,000 ms is 75 whole minutes, so shortSpanPhrase takes its minute arm.
+  const done = line({ type: "maintenance_done", task: "session-prune", backend: "codex", done: 3944, durationMs: 4_500_000 });
+  assert.match(done, /tumwater\s+cleanup finished — session-prune \(codex\): 3944 sessions handled \(in 75m\)$/);
+  // Under two minutes reads as seconds, not minutes.
+  const quick = line({ type: "maintenance_done", task: "session-prune", backend: "opencode", done: 2, durationMs: 90_000 });
+  assert.match(quick, /2 sessions handled \(in 90s\)$/);
+
+  // A torn or hand-edited line renders the "?" placeholders, never "undefined" or a bare "(in )".
+  const tornStart = line({ type: "maintenance_start" });
+  assert.match(tornStart, /cleanup started — \? \(\?\): \? sessions to handle$/);
+  assert.doesNotMatch(tornStart, /undefined/);
+  // With no durationMs at all, elapsed() contributes nothing — the line does not end in "(in )".
+  const tornDone = line({ type: "maintenance_done" });
+  assert.match(tornDone, /cleanup finished — \? \(\?\): \? sessions handled$/);
+  assert.doesNotMatch(tornDone, /undefined|\(in\s*\)/);
+});
