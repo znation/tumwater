@@ -148,10 +148,7 @@ export function applyRunStartModel(models: Map<string, string>, ev: HarnessEvent
  * runStartEvents, the one home of the pairing. */
 export function runStartModelMap(events: HarnessEvent[]): Map<string, string> {
   const models = new Map<string, string>();
-  for (const e of events) {
-    if (finiteNumber(e.ts, null) === null) continue;
-    applyRunStartModel(models, e);
-  }
+  for (const e of runStartEvents(events).values()) applyRunStartModel(models, e);
   return models;
 }
 

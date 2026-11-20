@@ -126,6 +126,14 @@ test("applyRunStartModel keeps the last start's model per run key, and the batch
     ev({ type: "run_end", source: "clean", run: 1, ts: 500, model: "acme/nope" }),
   ];
   assert.deepEqual([...runStartModelMap(stream).entries()], [["clean#1", "acme/m9"]]);
+  // A start with no usable ts is invisible to the pairing: it neither names a model nor clears
+  // one, so a torn line cannot erase a good start's model — the finite-`ts` guard the batch read
+  // applies rides runStartEvents, and a streaming fold drops the same line with its own filter.
+  const torn = [
+    ev({ type: "run_start", source: "feature", run: 4, ts: 100, model: "acme/m1" }),
+    ev({ type: "run_start", source: "feature", run: 4, ts: Number.NaN }),
+  ];
+  assert.deepEqual([...runStartModelMap(torn).entries()], [["feature#4", "acme/m1"]]);
 });
 
 test("runSpanMs measures start→end, clamps negatives to 0, and reads an unpaired end as null", () => {
