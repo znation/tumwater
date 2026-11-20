@@ -5,7 +5,6 @@
  * remote-CI notes to the prompt the run authors on. (The run's own post-kill abort/reset phases
  * live in runner-recovery.ts, a different thing — this one recovers a leftover commit, that one
  * settles a killed run; both feed the prompt `runWithWorktreePhase` authors.) */
-import { aheadOfMain } from "../git/git.js";
 import { logEventBestEffort } from "../events/events.js";
 import { recoverLeftover, setAsideWithdrawnWork } from "./runner-leftover.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
@@ -52,14 +51,14 @@ export async function recoverLeftoversForRun(
   if (settled === null) return null;
   if (settled.action === "end") return settled;
   // The no-op (already_queued) authors on its normal interval, so the worktree must be pristine
-  // main before the run — except when the branch is ahead of main with work this run did not
-  // pin: a heldOnBranch commit a prior relief run left there (the same commit the `pinned` arm
-  // guards in finishRecoveryRunPhase). A reset --hard to main would discard it before it is
-  // ever merged, so skip the reset and let the run author on top of the branch; the held
-  // commit merges when the draining pin clears.
-  const ahead = await aheadOfMain(wt, ctx.mainBranch).catch(() => 0);
-  const tipIsHeld = recovered?.kind === "already_queued" && ahead > 0;
-  if (!tipIsHeld) await resetWorktreeToMain(wt, ctx.mainBranch);
+  // main before the run. A branch ahead of main with a commit no pin holds (a heldOnBranch relief
+  // commit) never reaches here: recoverLeftover routes it to `relief_wait` at both its
+  // already_queued sites, and that arm ends the run through finishRecoveryRunPhase. The only
+  // already_queued state ahead of main is a tip that IS the waiting pin (crash residue — every
+  // successful pin path resets the worktree to main), where reset --hard main discards nothing
+  // (the pin holds it in its own ref) and keeps the run authoring on pristine main, not stacked
+  // on the in-flight pin.
+  await resetWorktreeToMain(wt, ctx.mainBranch);
   // A promptless recovery run found nothing to salvage (or deleted a stale pin): it authors
   // nothing, so it ends here rather than reach the authoring run with a null prompt.
   if (plan.prompt === null) return null;
