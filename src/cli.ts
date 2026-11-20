@@ -417,6 +417,13 @@ async function cmdStopCase(root: string, args: string[]): Promise<void> {
 }
 
 
+async function cmdGuideCase(root: string, args: string[]): Promise<void> {
+  // No flags, and deliberately no ready-repo gate: outside a repo `guide` prints the static body
+  // and exits 0, like `help` does, and inside a ready one it appends that repo's own facts.
+  rejectUnknownArgs("guide", args, []);
+  await (await import("./operator/operator-guide.js")).cmdGuide(root);
+}
+
 async function cmdVersionCase(args: string[]): Promise<void> {
   // A stray flag fails like every other command's: `tumwater version --json` (a plausible
   // slip from `status --json`) must not print a version as if it had answered the query.
@@ -562,6 +569,7 @@ const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
   // reads bare property keys as identifiers (plans/terminology.md "Code names").
   "land": (root, _command, args) => cmdSteerCase(root, args),
   stop: (root, _command, args) => cmdStopCase(root, args),
+  guide: (root, _command, args) => cmdGuideCase(root, args),
   completion: async (root, _command, args) => {
     // Works outside a repo (no requireReadyRepo): the body lives in
     // cli-completion-command.ts, beside its data (src/cli/cli-completion.ts), and is imported

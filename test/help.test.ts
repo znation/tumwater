@@ -37,6 +37,7 @@ const ALL_COMMANDS = [
   "revert",
   "land",
   "stop",
+  "guide",
   "completion",
   "help",
   "version",

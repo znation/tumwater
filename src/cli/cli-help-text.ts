@@ -876,6 +876,12 @@ Usage:
                                    one acknowledgement object ({command, status
                                    "requested"|"not_running"|"scheduled"|"cancelled"|
                                    "no_scheduled_stop", inMs for a scheduled stop})
+  tumwater guide                 Print the working rules for an interactive agent that steers
+                                   this project's backlog: what to investigate, how to write a
+                                   plan or bug entry, and how to get an edit onto main. Inside a
+                                   ready repo it ends with that project's base branch, declared
+                                   check, and whether a team is running. Takes no arguments and
+                                   needs no ready repo, like help
   tumwater completion <bash|zsh|fish>   Print a shell completion script (eval "$(tumwater completion zsh)" in your rc; fish: tumwater completion fish | source)
   tumwater completion --roles      Print the role ids --role completes (this repo's; the catalog when tumwater.json is unreadable)
   tumwater completion --config-keys  Print the keys config get/set/unset complete (this repo's role keys; the catalog's when tumwater.json is unreadable)
