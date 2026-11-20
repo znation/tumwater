@@ -301,11 +301,15 @@ test("a corrupted cache entry is ignored and re-looked-up", async () => {
     // which put the seed and the consulted key on different entries, left the read-back on
     // the corrupt string, and reddened the test (BUGS.md 2026-11-17 quarantine). Seeding both
     // candidate keys makes the corrupt entry the consulted one whichever way the probe goes.
+    // The deadline is generous (30 s, so the probe's slice is 10 s) because this test reads the
+    // fresh entry back from the file, and a probe-less lookup caches nothing at all
+    // (BUGS.md 2026-11-19): a probe cut off inside its slice would leave no fresh entry to read
+    // rather than a wrong one. The probe-less path is pinned by the two tests below.
     fs.writeFileSync(
       file,
       JSON.stringify({ [cacheKey(version, def)]: "not-a-trust", [cacheKey("", def)]: "not-a-trust" }),
     );
-    const trust = await codexHookTrust(root, { bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 });
+    const trust = await codexHookTrust(root, { bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 30_000 });
     assert.equal(trust.hash, `sha256:${createHash("sha256").update(def.command).digest("hex")}`);
     // The non-trust cache value did not short-circuit the lookup: exactly one app-server start.
     assert.equal(starts(fake.callsFile), 1);
@@ -336,11 +340,53 @@ test("a corrupted cache entry is ignored when the --version probe times out and 
     const trust = await codexHookTrust(root, { bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 });
     assert.equal(trust.hash, `sha256:${createHash("sha256").update(def.command).digest("hex")}`);
     assert.equal(starts(fake.callsFile), 1, "the corrupt entry did not short-circuit the lookup");
-    // The file's post-state is deliberately not asserted: whether a probe-less run may write
-    // or read a version-less cache key at all is open work (BUGS.md 2026-11-19), so pinning it
-    // here would make that fix break this test.
+    // And a probe-less run writes nothing back: the file still holds only the seeded corrupt
+    // entry, so no later run can match an entry whose key carries no version (BUGS.md 2026-11-19).
+    const after = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    assert.deepEqual(Object.values(after), ["not-a-trust"], "the probe-less lookup wrote no entry");
   } finally {
     fake.restore();
+  }
+});
+
+test("a lookup whose --version probe times out caches nothing and reuses nothing", async () => {
+  const root = tmpdir();
+  const cwd = tmpdir();
+  // Build A: its `--version` probe hangs (so the probe contributes ""), and its hooks/list
+  // trusts the guard's hook. Build B: a different build, also probe-less, that does NOT trust
+  // the guard's hook — so B's own lookup must run and must fail. Sharing A's verdict with B is
+  // the bug: an entry with no version prefix is a hit for any later probe-less run.
+  const buildA = fakeCodexAppServer({ version: "0.163.0", versionHang: true });
+  const buildB = fakeCodexAppServer({ version: "0.164.0", versionHang: true, mismatch: true });
+  try {
+    const def = definition();
+    // A forged version-less entry, the shape an older tumwater left behind: a probe-less run
+    // must not consult it either, so this pins the READ half of the bypass, not just the write.
+    const file = codexHookTrustPath(root);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ [cacheKey("", def)]: { key: "/stale/config.toml:pre_tool_use:9:9", hash: "sha256:stale", checkedAt: 1 } }),
+    );
+    const first = await codexHookTrust(root, {
+      bin: buildA.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000,
+    });
+    assert.equal(first.key, "/<session-flags>/config.toml:pre_tool_use:0:0", "A read no version-less entry");
+    // The probe-less lookup wrote no entry: the cache file holds nothing a later build could
+    // match, since a failed probe proves nothing about the build it came from.
+    const cached = fs.existsSync(file)
+      ? JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>
+      : {};
+    assert.deepEqual(Object.keys(cached), [cacheKey("", def)], "a probe-less lookup cached no entry");
+    // B must do its own lookup and get its own honest verdict, not A's or the forged trust.
+    await assert.rejects(
+      codexHookTrust(root, { bin: buildB.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 }),
+      /codex listed no session-flag PreToolUse hook with this command/,
+    );
+    assert.equal(starts(buildB.callsFile), 1, "the probe-less build B ran its own lookup");
+  } finally {
+    buildA.restore();
+    buildB.restore();
   }
 });
 

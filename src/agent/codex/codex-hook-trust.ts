@@ -250,6 +250,13 @@ function isTrust(value: unknown): value is { key: string; hash: string } {
  * hash, finding 3) each re-look-up; each entry is `{key, hash, checkedAt}`. A hit resolves
  * without spawning `app-server`; a miss looks up and writes the entry atomically.
  *
+ * A probe that failed or ran past its slice reports `""`, and such a probe-less run neither
+ * reads nor writes the cache: an entry keyed without a version is a hit for EVERY later
+ * probe-less run, so a saturated host could carry one build's `trusted` verdict across a codex
+ * upgrade and pass a `trusted_hash` the new build no longer matches (BUGS.md 2026-11-19). A
+ * probe that did not answer proves nothing about the build, so nothing may be keyed on it —
+ * the lookup runs honestly and its answer is returned uncached.
+ *
  * `root` undefined (a hand run with no `.tumwater` root) looks up and caches nothing and never
  * creates a `.tumwater` directory — a hand run once minted a phantom `$TMPDIR/.tumwater` and
  * reddened every suite on the host (plans/codex-write-guard.md "Visibility"). */
@@ -269,13 +276,17 @@ export async function codexHookTrust(
   const deadline = Date.now() + timeoutMs;
   const version = await codexVersion(opts.bin, opts.env, opts.cwd, Math.floor(timeoutMs / 3));
   const cacheKey = `${version}${JSON.stringify(opts.definition)}`;
-  const cache = readJsonFile<Record<string, unknown>>(file);
+  // A probe that reported nothing keys an entry every other probe-less run would match, so
+  // that run bypasses the cache in both directions (see the doc comment above).
+  const cacheable = version !== "";
+  const cache = cacheable ? readJsonFile<Record<string, unknown>>(file) : undefined;
   const hit = cache?.[cacheKey];
   if (isTrust(hit)) return { key: hit.key, hash: hit.hash };
   const trust = await lookupCodexHookTrust({
     ...opts,
     timeoutMs: Math.max(1, deadline - Date.now()),
   });
+  if (!cacheable) return trust;
   const next = { ...(cache ?? {}) };
   next[cacheKey] = { key: trust.key, hash: trust.hash, checkedAt: Date.now() };
   try {
