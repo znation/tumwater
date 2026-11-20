@@ -191,7 +191,7 @@ test("a release build's Version row names the release, with the commit in its to
     pid: 123,
     build: { sha, release: "0.8.1", stale: false, aheadCommits: 0 },
     buildLabel: "0.8.1",
-    buildBadge: ", build aaaaaaaa",
+    buildBadge: ", version 0.8.1 (build aaaaaaaa)",
   });
   assert.match(panels.statuschips!, /Version <span class='mono'>0\.8\.1<\/span>/, "the row reads the version");
   assert.doesNotMatch(panels.statuschips!, /Version <span class='mono'>aaaaaaaa<\/span>/, "not the commit");
@@ -229,12 +229,35 @@ test("a release build's tooltip carries the badge's suffixes after both halves",
     pid: 123,
     build: { sha, release: "0.8.1", stale: true, aheadCommits: 4 },
     buildLabel: "0.8.1",
-    buildBadge: ", build aaaaaaaa — update available (4 commits behind); restart blocked: main cccccccc is red",
+    buildBadge: ", version 0.8.1 (build aaaaaaaa) — update available (4 commits behind); restart blocked: main cccccccc is red",
   });
   assert.match(
     panels.statuschips!,
     /title='Running version 0\.8\.1 \(build aaaaaaaa\) — update available \(4 commits behind\); restart blocked: main cccccccc is red'/,
   );
+});
+
+// Release version display part 3/3: the payload's buildBadge now leads a release build with its
+// version, and the tooltip strips whichever lead the badge carries instead of rebuilding the lead
+// client-side — so the badge stays the one home of this text and the title a release build shows is
+// unchanged from part 2/3, with every suffix following the new lead.
+test("the release tooltip strips the badge's version lead and carries the suffixes", () => {
+  const { renderSidebar, panels } = sidebarScope();
+  const sha = "a".repeat(40);
+  renderSidebar({
+    running: true,
+    pid: 123,
+    build: { sha, release: "0.8.1", stale: false, aheadCommits: 0, waitingForCheck: { head: "c".repeat(40), aheadCommits: 6 } },
+    buildLabel: "0.8.1",
+    buildBadge: ", version 0.8.1 (build aaaaaaaa) — update waiting: main is 6 commits ahead at cccccccc, and no newer commit has passed main's check yet",
+  });
+  assert.match(
+    panels.statuschips!,
+    /title='Running version 0\.8\.1 \(build aaaaaaaa\) — update waiting: main is 6 commits ahead at cccccccc, and no newer commit has passed main&#39;s check yet'/,
+    "the version lead is stripped; the commit parenthetical and the suffix stay",
+  );
+  // The row's own text is still the payload's buildLabel, not the badge's lead.
+  assert.match(panels.statuschips!, /Version <span class='mono'>0\.8\.1<\/span>/, "the row is unchanged");
 });
 
 test("the sidebar shows a Stops in row only for a windowed run", () => {

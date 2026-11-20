@@ -138,13 +138,19 @@ pi default carries `pi default`, and the readable-pi-default case keeps `modelFr
 **Guarantee.** `buildLabel` is the one home of the decision about which half of the build stamp
 names the running harness to an operator: the npm release version when the build `release` is set
 (a build compiled from that release's tag), the 8-character commit otherwise, and `""` for no
-stamp at all. The status payload ships its result as `buildLabel` beside the preformatted
+stamp at all. `buildStampPhrase` puts that same decision into one phrase — `version 0.8.1
+(build a1b2c3d4)` for a release build, `build a1b2c3d4` otherwise, `""` for no stamp — and leads
+both build badges with it, so a release install reads its version on every surface and a bug
+report still has the commit. The status payload ships `buildLabel` beside the preformatted
 `buildBadge`, the dashboard's Version row renders that field (falling back to the raw sha only for
-a payload from a server that predates it), and `doctor`'s running line prints it, so the two
-surfaces cannot drift on whether a release install reads `0.8.1` or a commit.
+a payload from a server that predates it) and its tooltip strips whichever lead the badge carries,
+`doctor`'s running line prints the label, and `tumwater start`'s banner prints the phrase, so no
+surface can drift on whether a release install reads `0.8.1` or a commit.
 
-**Binds.** `src/build/build-info.ts` (`buildLabel`), `src/ui/status-payload.ts` (`buildLabel`),
-`src/ui/gui/gui-client-team.ts` (the sidebar's Version row), `src/doctor/doctor.ts` (`doctorHeader`).
+**Binds.** `src/build/build-info.ts` (`buildLabel`, `buildStampPhrase`),
+`src/ui/status-payload.ts` (`buildLabel`), `src/ui/badges.ts` (`buildBadge`),
+`src/ui/gui/gui-client-team.ts` (the sidebar's Version row and its tooltip),
+`src/cli/cli-start.ts` (`startBannerBuildNote`), `src/doctor/doctor.ts` (`doctorHeader`).
 
 **Pinned by.** `test/build-info.test.ts` — "buildLabel names a release build by its version and
 every other build by its 8-character sha"; `test/status-payload.test.ts` — "status payload
@@ -152,7 +158,11 @@ carries the build badge pre-formatted by buildBadge" (its `buildLabel` assertion
 `test/doctor.test.ts` — "runDoctor's header names a release build by its npm version, a checkout
 build by its sha"; `test/gui-client-sidebar.test.ts` — "a release build's Version row names the
 release, with the commit in its tooltip" and "a payload with build but no buildLabel still
-renders the sha, unchanged".
+renders the sha, unchanged"; `test/badges.test.ts` — "buildBadge leads a release build with its
+version and keeps the commit, suffixes unchanged"; `test/status-render.test.ts` — "the status
+header names a release build by its npm version and a checkout build by its sha";
+`test/cli-start.test.ts` — "the start banner names a release build by its version, a checkout
+build by its sha, and none at all without a stamp".
 
 ## Reader and writer over a persisted or appended file
 

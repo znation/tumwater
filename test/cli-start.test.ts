@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ONCE_FAILURE_RESULTS, armDeadlineTimer, inheritedWindowStart, onceFailures, onceReport, onceSummary, parseRunWindow, renderOnceSummary, windowReport, windowSummary, type WindowReport } from "../src/cli/cli-start.js";
+import { ONCE_FAILURE_RESULTS, armDeadlineTimer, inheritedWindowStart, onceFailures, onceReport, onceSummary, parseRunWindow, renderOnceSummary, startBannerBuildNote, windowReport, windowSummary, type WindowReport } from "../src/cli/cli-start.js";
 import { dashboardChildEnv, guiChildPlan } from "../src/cli/cli-start-supervisor.js";
 import { summarizeRunRows, type RunRow } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
@@ -55,6 +55,19 @@ test("parseRunWindow enforces pause --for's 90-day cap", () => {
   // The command-scoped label matches the durationFlagSpec("start --for") gate's cap
   // wording, so the same overflow prints one message whichever check fires first.
   assert.match(r.stderr, /start --for is capped at 90d \(got 200d\)/);
+});
+
+// --- startBannerBuildNote: the build note `tumwater start` prints in its banner ---
+
+// Release version display part 3/3: an operator who installed a published release must read the
+// version they installed in the line that says the team booted, with the commit beside it for bug
+// reports (build-info.ts's buildStampPhrase — the same phrase `tumwater status`'s header badge
+// leads with). A checkout build keeps the note it always printed, and a `--once` round, which
+// builds no redeployer and so holds no stamp, prints none.
+test("the start banner names a release build by its version, a checkout build by its sha, and none at all without a stamp", () => {
+  assert.equal(startBannerBuildNote({ sha: "a".repeat(40), release: "0.8.1" }), " · version 0.8.1 (build aaaaaaaa)");
+  assert.equal(startBannerBuildNote({ sha: "a".repeat(40) }), " · build aaaaaaaa");
+  assert.equal(startBannerBuildNote(null), "", "no stamp: no note");
 });
 
 // --- guiChildPlan: the run --gui arg split the supervisor spawns from ---

@@ -5,7 +5,7 @@
  * travels with the per-role display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, chainBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, pauseBadge, pauseCountdown, permitsBadge, checksBadge, runWindowBadge, workspacesBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
+import { budgetBadge, buildBadge, chainBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, pauseBadge, pauseCountdown, permitsBadge, checksBadge, runWindowBadge, workspacesBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
 import type { SubscriptionWindowBlock } from "../src/agent/subscription-account.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
@@ -109,6 +109,50 @@ test("budgetBadge appends the burn-rate forecast as · ~cap at HH:MM and stays b
     budgetBadge({ spentUsd: 0, capUsd: 50, capHitAt: null, free: true, fallback: null }),
     " · budget: n/a",
     "an all-free team never carries a forecast",
+  );
+});
+
+// Release version display part 3/3: an operator who installed a published release reads the
+// version they installed on every surface, so the status header's badge leads with it and keeps
+// the commit in a parenthetical for bug reports. The lead comes from build-info.ts's
+// buildStampPhrase (which keeps buildLabel's rule about which half leads); every suffix rides it
+// unchanged, and a checkout build's badge is byte-identical to what it was.
+test("buildBadge leads a release build with its version and keeps the commit, suffixes unchanged", () => {
+  const release = { sha: "a".repeat(40), builtAt: 1, release: "0.8.1", stale: false, aheadCommits: 0, checkedHead: "b".repeat(40) };
+  assert.equal(buildBadge(release), ", version 0.8.1 (build aaaaaaaa)");
+  // Each suffix follows the lead verbatim — the same text a checkout build's badge carries after
+  // its own lead.
+  assert.equal(
+    buildBadge({ ...release, stale: true, aheadCommits: 4 }),
+    ", version 0.8.1 (build aaaaaaaa) — update available (4 commits behind)",
+  );
+  assert.equal(
+    buildBadge({ ...release, stale: true, aheadCommits: 4, restartBlocked: "main cccccccc is red" }),
+    ", version 0.8.1 (build aaaaaaaa) — update available (4 commits behind); restart blocked: main cccccccc is red",
+  );
+  assert.equal(
+    buildBadge({ ...release, stale: true, aheadCommits: 4, restartPending: true }, 10 * 60_000),
+    ", version 0.8.1 (build aaaaaaaa) — update available (4 commits behind) — restart pending",
+  );
+  assert.equal(
+    buildBadge({
+      ...release,
+      stale: true,
+      aheadCommits: 4,
+      restartPending: true,
+      restartHold: { stage: "checking", since: 5 * 60_000 },
+    }, 10 * 60_000),
+    ", version 0.8.1 (build aaaaaaaa) — update available (4 commits behind) — holding new runs: checking main bbbbbbbb before restarting (5m)",
+  );
+  assert.equal(
+    buildBadge({ ...release, waitingForCheck: { head: "c".repeat(40), aheadCommits: 6 } }),
+    ", version 0.8.1 (build aaaaaaaa) — update waiting: main is 6 commits ahead at cccccccc, and no newer commit has passed main's check yet",
+  );
+  // A checkout build — the self-hosted team, a developer's dist — keeps naming its commit, and no
+  // stray parenthetical appears.
+  assert.equal(
+    buildBadge({ sha: "a".repeat(40), builtAt: 1, stale: false, aheadCommits: 0 }),
+    ", build aaaaaaaa",
   );
 });
 

@@ -24,7 +24,7 @@ import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import { runStartupMigrations } from "../orchestrator/startup-migration-steps.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
-import { shortSha } from "../text/format.js";
+import { buildStampPhrase, type BuildStatus } from "../build/build-info.js";
 import { readRunRowsSince, summarizeRunRows } from "../history/history-data.js";
 import {
   ONCE_FAILURE_RESULTS,
@@ -282,6 +282,17 @@ async function bootGenerationParts(root: string, branchArg: string | null, once:
   return { redeploy, launchServicesWatch, modelCheck };
 }
 
+/** The banner's build note: ` · version 0.8.1 (build a1b2c3d4)` for a build compiled from a
+ * published npm release, ` · build a1b2c3d4` for any other build, and "" when the dist carries no
+ * stamp (a `--once` round, which never builds a redeployer). Phrased by build-info.ts's
+ * buildStampPhrase — the same phrase `tumwater status`'s header badge leads with — so the line an
+ * operator sees when they boot the team names the version they installed, and a bug report still
+ * gets the commit. */
+export function startBannerBuildNote(build: Pick<BuildStatus, "sha" | "release"> | null): string {
+  const phrase = buildStampPhrase(build);
+  return phrase ? ` · ${phrase}` : "";
+}
+
 /** Print the supervised generation's banner and subscribe to its event stream on non-json runs. */
 function announceGeneration(
   roles: string[],
@@ -386,7 +397,7 @@ async function runSupervisedGeneration(input: SupervisedGenerationInput): Promis
   // A scoped round's role list is exactly the filter; otherwise every enabled role runs.
   const roles = roleFilter ?? enabled;
   const { redeploy, launchServicesWatch, modelCheck } = await bootGenerationParts(root, branchArg, once);
-  const build = redeploy ? ` · build ${shortSha(redeploy.build.sha)}` : "";
+  const build = startBannerBuildNote(redeploy ? redeploy.build : null);
   const unsubscribe = announceGeneration(roles, mainBranch, once, json, forMs, root, build);
   // Snapshot each role's run counter so the once summary can tell this round's runs from
   // the persisted history (the state file accumulates across rounds).

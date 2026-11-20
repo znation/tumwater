@@ -158,6 +158,21 @@ export function buildLabel(build: Pick<BuildStatus, "sha" | "release"> | null): 
   return build.release ? build.release : shortSha(build.sha);
 }
 
+/** The same stamp as one phrase, without a leading separator: `version 0.8.1 (build a1b2c3d4)`
+ * for a build compiled from a published release, `build a1b2c3d4` for any other build. The lead
+ * every surface puts in front of the build badge's suffixes — the `tumwater status` header
+ * (badges.ts's buildBadge) and `tumwater start`'s banner — so a release install reads the version
+ * it installed on both, and a checkout keeps naming its commit. It keeps `buildLabel` as the
+ * answer to which half leads (INV-A8) and appends the commit only when the label is a version,
+ * because a bug report against an installed release still needs the commit it was tagged from.
+ * Empty for no stamp. */
+export function buildStampPhrase(build: Pick<BuildStatus, "sha" | "release"> | null): string {
+  if (!build) return "";
+  return build.release
+    ? `version ${buildLabel(build)} (build ${shortSha(build.sha)})`
+    : `build ${buildLabel(build)}`;
+}
+
 /** The steps a self-redeploy holds new runs through, in order: main's check of the target head
  * has not answered yet, the staged build of it is compiling, then the built update waits while
  * the runs already in flight finish. */

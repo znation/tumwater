@@ -57,18 +57,21 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
         // doctor's running line uses). A payload from a server that predates buildLabel keeps its
         // sha, so an old server cannot render an empty row.
         const label = d.buildLabel || shortSha(d.build.sha);
-        const isRelease = label === d.build.release;
-        // The tooltip names both halves for a release build (a bug report needs the commit), and
-        // keeps today's exact text for a checkout build: the badge's commit lead is dropped and
-        // the label leads instead, with every suffix — update available, waiting for the check,
-        // restart blocked or pending — carried over unchanged.
+        // The tooltip is the badge with its lead swapped for 'Running version ': part 3/3 made
+        // buildBadge name a release build by its version, so the tooltip derives from the badge
+        // again instead of rebuilding the lead — strip whichever lead it carries (', build …' or
+        // ', version … (build …)') and every suffix (update available, waiting for the check,
+        // restart blocked or pending) carries over unchanged. The text a release build shows stays
+        // 'Running version 0.8.1 (build aaaaaaaa)' and a checkout build's stays what it always was.
+        const tipLead = (d.buildBadge || "").replace(/^, (?:build|version) /, "");
+        // A payload whose server ships no buildBadge falls back to the label alone, so the title
+        // never reads just 'Running version '; every current server sends the badge.
+        const tip = tipLead || label;
         rows += row(stale ? (d.build.restartBlocked ? "amber" : "blue") : waiting ? "amber" : "", lead,
           "Version <span class='mono'>" + esc(label) + "</span>" +
             (stale ? " · " + esc(plural(d.build.aheadCommits || 0, "commit")) + " behind"
               : waiting ? " · update waits for main's check" : ""),
-          localizeInstants(("Running version " + label +
-            (isRelease ? " (build " + shortSha(d.build.sha) + ")" : "") +
-            (d.buildBadge || "").replace(/^, build [^ ]*/, "")).trim()));
+          localizeInstants(("Running version " + tip).trim()));
       }
       // A self-redeploy holding new runs: its own row, so a held team says what it waits on
       // (the payload's preformatted restartHoldBadge — badges.ts's restartHoldText, the sentence

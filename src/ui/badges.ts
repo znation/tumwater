@@ -1,4 +1,5 @@
 import type { TestCounts } from "../build/build-check-counts.js";
+import { buildStampPhrase } from "../build/build-info.js";
 import { utilizationPct, windowLabel, type SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
@@ -30,7 +31,13 @@ import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
  * current against the newest commit that passed main's check, while main's tip has moved its code
  * on, says the update waits for that check (BuildStatus.waitingForCheck) — otherwise nothing
  * tells the operator why the team stays on an old build. Empty when the dist carries no stamp.
- * Shared by the TUI/status header and the GUI's. */
+ * Shared by the status header and the GUI's. A build compiled from a published npm release leads
+ * with that version and keeps the commit in a parenthetical — `, version 0.8.1 (build a1b2c3d4)` —
+ * so an operator running an installed release reads the version they installed and a bug report can
+ * still quote the commit; `buildStampPhrase` (build-info.ts) is the one home of that lead and keeps
+ * `buildLabel`'s rule about which half leads it (INV-A8). A checkout build keeps leading with
+ * the commit. Every suffix follows the lead unchanged, so the dashboard tooltip, which strips
+ * it, carries them either way. */
 export function buildBadge(build: StatusSnapshot["build"], now = Date.now()): string {
   if (!build) return "";
   const waiting = build.waitingForCheck;
@@ -47,7 +54,7 @@ export function buildBadge(build: StatusSnapshot["build"], now = Date.now()): st
     : build.restartPending
       ? ` — ${restartHoldText(build, now) ?? "restart pending"}`
       : "";
-  return `, build ${shortSha(build.sha)}${stale}${restart}`;
+  return `, ${buildStampPhrase(build)}${stale}${restart}`;
 }
 
 /** A self-redeploy's hold as one sentence — `holding new runs: checking main 21b55874 before

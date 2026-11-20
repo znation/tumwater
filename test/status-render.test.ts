@@ -62,6 +62,27 @@ test("totals row shows zeros without breaking alignment", () => {
 // name plus one footnote line under the table — and a team without any of them renders the
 // exact same table as before the marker existed.
 
+// Release version display part 3/3: the header's build fragment names a release install by the
+// version the operator installed, commit still in the same line for a bug report. A checkout
+// build's header keeps naming its commit — its badge lead is unchanged (badges.ts's buildBadge,
+// which leads with build-info.ts's buildStampPhrase).
+test("the status header names a release build by its npm version and a checkout build by its sha", () => {
+  const base = { ...snapshotWith([{ role: "clean" }]), running: true, pid: 4242 };
+  const release = {
+    ...base,
+    build: { sha: "a".repeat(40), builtAt: 1, release: "0.8.1", stale: false, aheadCommits: 0, checkedHead: "b".repeat(40) },
+  };
+  assert.match(headerOf(renderStatus("/tmp/x", release)), /running \(pid 4242, version 0\.8\.1 \(build aaaaaaaa\)\)/);
+  // A stale release build keeps the whole suffix after the new lead.
+  assert.match(
+    headerOf(renderStatus("/tmp/x", { ...release, build: { ...release.build, stale: true, aheadCommits: 7 } })),
+    /version 0\.8\.1 \(build aaaaaaaa\) — update available \(7 commits behind\)/,
+  );
+  // A checkout build (no release) reads exactly the header it always read.
+  const checkout = { ...base, build: { sha: "a".repeat(40), builtAt: 1, stale: false, aheadCommits: 0, checkedHead: "b".repeat(40) } };
+  assert.match(headerOf(renderStatus("/tmp/x", checkout)), /running \(pid 4242, build aaaaaaaa\)/);
+});
+
 // The remote-CI badge (plans/remote-ci.md "Surfaces") rides the header immediately after the
 // ci parity badge — the hosted CI's verdict on the pushed main beside the full-suite verdict —
 // and is absent without a record or for an `unavailable` one, keeping the header

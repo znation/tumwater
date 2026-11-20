@@ -5,6 +5,44 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Release version display, part 3/3: `tumwater status` and `tumwater start` name the npm release version too (planned 2026-11-17 by the operator; requires Release version display part 2/3 and Remove the TUI part 1/5 landed; touches src/ui/badges.ts src/ui/gui/gui-client-team.ts src/cli/cli-start.ts test/badges.test.ts test/gui-client-sidebar.test.ts test/status-render.test.ts test/cli-start.test.ts) — done 2026-11-20 by the feature role
+
+**Goal.** After part 2/3 the GUI and `doctor` say `0.8.1` for a release build, while
+`tumwater status`'s header still says `build a1b2c3d4` and `tumwater start` still announces
+` · build a1b2c3d4`. This part brings those two in line, so every place that names the running
+build agrees. It waits for Remove the TUI part 1/5 because the TUI header renders through the same
+`buildBadge` (via `renderStatusSpans`) and that part rewrites src/cli/cli-start.ts: once the TUI
+is gone, changing the badge changes only `tumwater status` and the GUI tooltip, and the two plans
+never edit the same lines at once.
+
+**Approach.**
+- `buildBadge` (src/ui/badges.ts) leads with `, version 0.8.1 (build a1b2c3d4)` when
+  `build.release` is set, using part 2/3's `buildLabel` for the version, and keeps
+  `, build a1b2c3d4` otherwise. Every suffix (update available, waiting for check, restart
+  blocked or pending) follows the lead unchanged. `tumwater status` (renderStatus,
+  src/ui/status-render.ts) picks this up with no change of its own.
+- GUI tooltip (src/ui/gui/gui-client-team.ts): part 2/3 built the tooltip's lead itself because
+  `buildBadge` could not change yet. Go back to deriving it from the badge, stripping either lead
+  word (`/^, (?:build|version) /`) after `Running version `, so the tooltip text stays exactly
+  what part 2/3 shipped (`Running version 0.8.1 (build a1b2c3d4)` for a release, today's text for
+  a checkout) and the badge is again its one home.
+- `tumwater start`'s announcement (src/cli/cli-start.ts, today
+  `` ` · build ${shortSha(redeploy.build.sha)}` ``) reads ` · version 0.8.1 (build a1b2c3d4)` for
+  a release build and keeps ` · build a1b2c3d4` otherwise. If Remove the TUI part 1/5 moved this
+  line, change it where it now lives.
+
+**Acceptance criteria.**
+- `buildBadge` returns `, version 0.8.1 (build aaaaaaaa)` for a release build, with each existing
+  suffix appended unchanged, and today's string for every existing case in test/badges.test.ts.
+- `renderStatus` on a snapshot with a release build shows `version 0.8.1 (build aaaaaaaa)` in its
+  header; a checkout build's header is unchanged.
+- The GUI row title for a release build is still `Running version 0.8.1 (build aaaaaaaa)`, and
+  every existing tooltip assertion in test/gui-client-sidebar.test.ts passes unchanged.
+- `tumwater start`'s announcement names `version 0.8.1 (build aaaaaaaa)` for a release build and
+  ` · build aaaaaaaa` for a checkout build.
+- Manual check: with the tarball install from part 1/3's check, `tumwater status` and the line
+  `tumwater start` prints both name the installed version.
+
 ### Visible session cleanup, part 1/3: the retention prune writes a progress marker and logs start and finish events (planned 2026-11-16 by the operator; touches src/paths.ts src/orchestrator/retention.ts src/agent/session-ledger.ts src/events/events.ts src/events/event-labels.ts src/events/event-format-hold.ts test/session-ledger-prune.test.ts test/retention.test.ts test/event-format.test.ts test/event-labels.test.ts) — done 2026-11-20 by the feature role
 
 **Goal.** On 2026-11-16 the kde-macos8.6-theme team looked stuck after a restart: a running
