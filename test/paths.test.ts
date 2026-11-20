@@ -30,6 +30,7 @@ import {
   worktreePath,
 } from "../src/paths.js";
 import { teamWorkspace, tmpdir } from "./fixtures/repo-fixtures.js";
+import { setEnv } from "./helpers/env.js";
 import { allRoleIds } from "../src/roles/roles.js";
 
 /** Unit coverage for src/paths.ts — the single source of truth for where every piece of
@@ -192,6 +193,27 @@ test("nearestTumwaterRoot does not read a non-directory .tumwater entry as a roo
 // a stale .tumwater at os.tmpdir() as a team root (BUGS.md 2026-11-16). It compares the resolved
 // temp root (realpath'd, so macOS /var <-> /private/var agree) against path.resolve(dir): the
 // resolved temp root itself matches, its children do not.
+// The walk-level pin for the same rule (BUGS.md 2026-11-16): the in-process poison variants
+// removed in f85f56e5 were fragile because they built the poison with a raw mkdtempSync under
+// os.tmpdir() (tripping the tmpdir() convention guard) and asserted `undefined`, which a SECOND
+// stale .tumwater above the redirected temp root decides. This one poisons a tmpdir() child (the
+// per-run root sweeps it), redirects TMPDIR onto it so it IS the temp root, and asserts only what
+// the guard promises: the temp root itself is never claimed, and a real root below it still is.
+test("nearestTumwaterRoot never claims a stale .tumwater at the OS temp root", () => {
+  const poison = tmpdir("temp-root-poison-");
+  fs.mkdirSync(path.join(poison, ".tumwater"));
+  const restore = setEnv("TMPDIR", poison); // os.tmpdir() re-reads TMPDIR on each call
+  try {
+    assert.notEqual(nearestTumwaterRoot(poison), poison, "the temp root's own .tumwater is not a root");
+    const real = path.join(poison, "checkout"); // a team root in a CHILD of the temp root
+    fs.mkdirSync(path.join(real, ".tumwater", "worktrees", "_slot-1"), { recursive: true });
+    assert.equal(nearestTumwaterRoot(path.join(real, ".tumwater", "worktrees", "_slot-1")), real,
+      "the guard is not overbroad: a root below the temp root is still found");
+  } finally {
+    restore();
+  }
+});
+
 test("isOsTempRoot matches the resolved OS temp root and rejects a child of it", () => {
   const tempRoot = fs.realpathSync(os.tmpdir());
   assert.equal(isOsTempRoot(tempRoot), true, "the resolved temp root is the OS temp root");

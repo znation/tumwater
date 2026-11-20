@@ -10,6 +10,7 @@ import {
   releaseCheckSlot,
 } from "../src/concurrency/check-slots.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
+import { setEnv } from "./helpers/env.js";
 import { sleep } from "./helpers/wait.js";
 
 // The slot ledger is files under a temp root's `.tumwater/state`, so every case drives a fresh
@@ -30,9 +31,27 @@ test("findTeamRoot finds the ancestor holding .tumwater/state", () => {
 
 // A stale .tumwater/state at the OS temp ROOT is poison, not a team root (BUGS.md 2026-11-16):
 // findTeamRoot's isOsTempRoot guard must ignore it. The guard itself is pinned in
-// test/paths.test.ts (the pure isOsTempRoot unit test); the in-process poison variant that
-// created a raw mkdtempSync under os.tmpdir() was removed because it tripped the tmpdir()
-// convention guard and failed on a host whose TMPDIR was itself already poisoned.
+// test/paths.test.ts (the pure isOsTempRoot unit test); the in-process poison variant removed in
+// f85f56e5 was fragile because it built the poison with a raw mkdtempSync under os.tmpdir()
+// (tripping the tmpdir() convention guard) and asserted null, which a stale .tumwater/state
+// further up decides. This one poisons a tmpdir() child (the per-run root sweeps it), redirects
+// TMPDIR onto it so it IS the temp root, and asserts only what the guard promises.
+test("findTeamRoot never claims a stale .tumwater/state at the OS temp root", () => {
+  const poison = tmpdir("temp-root-poison-");
+  fs.mkdirSync(path.join(poison, ".tumwater", "state"), { recursive: true });
+  const restore = setEnv("TMPDIR", poison); // os.tmpdir() re-reads TMPDIR on each call
+  try {
+    assert.notEqual(findTeamRoot(poison), poison, "the temp root's own ledger is not a team root");
+    const real = path.join(poison, "checkout"); // a team root in a CHILD of the temp root
+    fs.mkdirSync(path.join(real, ".tumwater", "state"), { recursive: true });
+    const nested = path.join(real, "a", "b");
+    fs.mkdirSync(nested, { recursive: true });
+    assert.equal(findTeamRoot(nested), real, "the guard is not overbroad: a root below the temp root is still found");
+  } finally {
+    restore();
+  }
+});
+
 test("at cap 1 a second acquire waits until the first slot is released", async () => {
   const root = teamRoot();
   const first = await acquireCheckSlot(root, 1, 2_000);

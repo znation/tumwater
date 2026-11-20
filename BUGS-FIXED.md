@@ -5,6 +5,31 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Five root-walk tests fail on a shared host once a stale `.tumwater` dir sits at the system temp root (found by the bugfix role 2026-11-16) — fixed 2026-11-20 by the bugfix role
+
+Found while verifying a fix: a full `npm test` reded on exactly five tests, all in the `.tumwater`-root-walk family — `findTeamRoot` / `nearestTumwaterRoot` / `writeFullOutput` (test/check-slots.test.ts, test/paths.test.ts, test/full-output.test.ts) — and they pass in isolation on a clean host. The five are `findTeamRoot finds the ancestor holding .tumwater/state`, `writeFullOutput returns null when no ancestor has .tumwater/`, `findTumwaterRoot walks up to the harness root`, and the two `nearestTumwaterRoot` cases.
+
+**Reproduce.** `npm test` on a host whose `os.tmpdir()` is a directory that already holds a `.tumwater` dir with a `state` subdirectory. On this shared host the system temp root is `/tmp` and a leaked `/tmp/.tumwater/state` (from an earlier run) sat there, so the tests walked up from their per-test temp dir into `/tmp/.tumwater/state` and returned `/tmp` (or the wrong root) instead of `null`, failing the assertion "a dir with no `.tumwater`/`state` ancestor has no team root." The same tests pass in isolation on a host whose `os.tmpdir()` is a clean per-user dir, and the suite's `--affected` gate is green.
+
+**Suspected cause.** The root-walk tests create per-test dirs under `os.tmpdir()` (the `tmpdir()` fixture, test/fixtures/repo-fixtures.ts) and assert "no ancestor has `.tumwater`/`state`", but they have no quiet-host skip and no guard against a `.tumwater` dir at the temp root. On a shared host that already holds a stale `.tumwater` (leaked by an earlier run — the same `$TMPDIR/.tumwater` poisoning recorded in BUGS-FIXED, the `runAgent` notes-shim fallback), those assertions fail. A full suite that runs with the system temp root as `os.tmpdir()` can also write its own `.tumwater` there (it creates `<tmp>/.tumwater/{bin,log}`), so the poison is self-perpetuating run-to-run on such a host.
+
+**Fixed.** The three root walks now reject the resolved OS temp root (`isOsTempRoot`, src/paths.ts,
+landed in 1fc125aac), so a stale `.tumwater` at `os.tmpdir()` is never claimed as a team root and
+never rewritten there by a later run — the poison cannot renew itself — while a real root in a child
+of the temp root is still found. This entry closes with the walk-level pins the fragile in-process
+variants removed in f85f56e5 left missing: `findTeamRoot never claims a stale .tumwater/state at the
+OS temp root`, `findTumwaterRoot never claims a stale .tumwater at the OS temp root` and
+`nearestTumwaterRoot never claims a stale .tumwater at the OS temp root`. Each poisons a `tmpdir()`
+child (so the per-run root sweeps it and the tmpdir() convention guard stays green), redirects
+`TMPDIR` onto it with `setEnv` so it *is* the temp root, and asserts only what the guard promises —
+never the bare `null`/`undefined` a stale `.tumwater` higher up decides, which is what made the
+removed variants host-dependent. The reconstructed guarantee is pinned as INV-AC5
+(docs/invariants.md).
+
+**Validation gap:** unclear-invariant — the five reds were assertions about which directory counts as
+a team root, and the invariant had to be reconstructed (a real team root is a git checkout, never the
+OS temp root) before any test could say what a green host guarantees; it is now INV-AC5.
+
 ### The budget-fallback e2e `a free fallback whose runs keep failing is demoted to a pause` still flakes on a shared host just under the quiet gate's bar — the 2026-11-14 single-sample recheck admits a host at 5-min load 17.6/18, which re-saturates during its 150 s spawn wait (found by the ci role 2026-11-17) — fixed 2026-11-20 by the bugfix role
 
 The live-orchestrator e2e file `test/orchestrator-budget.e2e.test.ts` failed the CI

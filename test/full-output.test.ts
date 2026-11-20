@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { findTumwaterRoot, writeFullOutput } from "../src/pi-extension/full-output.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { setEnv } from "./helpers/env.js";
 import { dieMidWrite } from "./helpers/fs-faults.js";
 
 test("writeFullOutput writes into .tumwater/log/tool-output named by toolCallId", () => {
@@ -76,10 +77,29 @@ test("findTumwaterRoot walks up to the harness root", () => {
 
 // A stale .tumwater at the OS temp ROOT (leaked by an earlier run on a shared host) is poison,
 // not a team root (BUGS.md 2026-11-16): findTumwaterRoot's isOsTempRoot guard must ignore it.
-// The guard itself is pinned in test/paths.test.ts (the pure isOsTempRoot unit test); the
-// in-process poison variant that created a raw mkdtempSync under os.tmpdir() was removed
-// because it tripped the tmpdir() convention guard and failed on a host whose TMPDIR was
-// itself already poisoned.
+// The guard itself is pinned in test/paths.test.ts (the pure isOsTempRoot unit test) and its
+// walk effect through nearestTumwaterRoot there too; the in-process poison variants removed in
+// f85f56e5 were fragile because they built the poison with a raw mkdtempSync under os.tmpdir()
+// (tripping the tmpdir() convention guard) and asserted null, which a stale .tumwater further up
+// decides. This one poisons a tmpdir() child (the per-run root sweeps it), redirects TMPDIR onto
+// it so it IS the temp root, and asserts only what the guard promises.
+test("findTumwaterRoot never claims a stale .tumwater at the OS temp root", () => {
+  const poison = tmpdir("temp-root-poison-");
+  fs.mkdirSync(path.join(poison, ".tumwater"));
+  const restore = setEnv("TMPDIR", poison); // os.tmpdir() re-reads TMPDIR on each call
+  try {
+    assert.notEqual(findTumwaterRoot(poison), poison, "the temp root's own .tumwater is not a root");
+    const real = path.join(poison, "checkout"); // a harness root in a CHILD of the temp root
+    fs.mkdirSync(path.join(real, ".tumwater", "worktrees", "feature"), { recursive: true });
+    assert.equal(
+      findTumwaterRoot(path.join(real, ".tumwater", "worktrees", "feature")),
+      real,
+      "the guard is not overbroad: a root below the temp root is still found",
+    );
+  } finally {
+    restore();
+  }
+});
 
 test("writeFullOutput falls back to a timestamped name when the tool call has no id", () => {
   // Parallel tool mode names files by toolCallId; a call without one (or with a junk-free

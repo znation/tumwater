@@ -2104,6 +2104,23 @@ each character outside `[\w-]` replaced by `_`. A missing, non-string or empty i
 named by toolCallId", "writeFullOutput falls back to a timestamped name when the tool call has no
 id" and "writeFullOutput keeps a toolCallId with path characters inside tool-output".
 
+### INV-AC5: the OS temp root is never claimed as a team root
+
+**Guarantee.** All three `.tumwater`-root walks — `findTeamRoot`, `findTumwaterRoot`,
+`nearestTumwaterRoot` — reject the resolved OS temp root (`os.tmpdir()` realpath'd on both sides,
+`isOsTempRoot`) even when it holds a `.tumwater` dir, so a stale one leaked there by an earlier
+run is never claimed as a team root and never rewritten by the next (the poison cannot renew
+itself); a real root in a *child* of the temp root is still found, so the guard is not overbroad.
+
+**Binds.** `src/paths.ts` (`isOsTempRoot`, `nearestTumwaterRoot`), `src/concurrency/check-slots.ts`
+(`findTeamRoot`), `src/pi-extension/full-output.ts` (`findTumwaterRoot`).
+
+**Pinned by.** `test/paths.test.ts` — "isOsTempRoot matches the resolved OS temp root and rejects a
+child of it" and "nearestTumwaterRoot never claims a stale .tumwater at the OS temp root";
+`test/check-slots.test.ts` — "findTeamRoot never claims a stale .tumwater/state at the OS temp
+root"; `test/full-output.test.ts` — "findTumwaterRoot never claims a stale .tumwater at the OS temp
+root".
+
 ## System-prompt trim: pi's docs section never goes out, and nothing else in the prompt changes
 
 `src/pi-extension/trim-system-prompt.ts` is a pi extension loaded on every pi run. Its rule is a
