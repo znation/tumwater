@@ -77,7 +77,9 @@ tumwater start --once           # one round of runs for cron/CI; exits 3 if a ru
 A fresh or empty project is seeded with `"bootstrap": {"untilPlansDone": 5}`, which holds the
 maintenance roles until 5 plans are done; remove it from `tumwater.json` to end that early.
 
-From another terminal, the browser dashboard watches the team, `tumwater status`
+From another terminal, `tumwater guide` prints the working rules for an interactive agent —
+your own claude, codex, or omp — steering the backlog in `PLANS.md` and `BUGS.md`; the browser
+dashboard watches the team, `tumwater status`
 and `tumwater logs -f` check it, `tumwater brief --file <path>` replaces the brief,
 `tumwater prompt "<text>"` sends a message to the director's inbox, `tumwater plan` and
 `tumwater bug` file backlog entries, `tumwater land` puts your own hand-made commit on main
