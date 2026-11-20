@@ -294,9 +294,12 @@ test("parser records that pi auto-compacted the session", () => {
 test("parser ignores a compaction_end that aborted or failed", () => {
   // pi's failure arms emit the end with no result: `result: undefined` with `aborted: true`
   // when it was cancelled, and with an `errorMessage` when the summary call itself failed.
+  // The last case is the defensive arm INV-DD1 names: pi 1.5.2 never pairs a result with
+  // `aborted: true`, so without this line the aborted guard could be dropped with a green suite.
   for (const end of [
     { type: "compaction_end", reason: "manual", result: undefined, aborted: true },
     { type: "compaction_end", reason: "overflow", result: undefined, aborted: false, errorMessage: "Compaction failed: x" },
+    { type: "compaction_end", reason: "manual", result: { summary: "s" }, aborted: true },
   ]) {
     const parser = new PiStreamParser();
     parser.feed(JSON.stringify({ type: "compaction_start", reason: end.reason }) + "\n");
