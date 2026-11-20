@@ -517,6 +517,43 @@ test/help.test.ts) from the template constants, not by copying the output. Then 
 
 ### Remove the TUI, part 1/5: delete the terminal dashboard and both ways to start it, `tumwater tui` and `start --tui` (planned 2026-11-16 by the operator; touches src/ui/tui/ src/cli.ts src/cli/cli-start.ts src/cli/cli-start-supervisor.ts src/cli/cli-flag-specs.ts src/cli/cli-help-text.ts src/cli/cli-init.ts src/doctor/doctor-orphans.ts src/doctor/doctor-backlog.ts src/ui/status-render.ts src/ui/status-payload.ts src/roles/role-view.ts src/history/history-data.ts test/tui-*.test.ts test/cli-tui-strictness.test.ts test/fixtures/tui-fixtures.ts test/gui-client.test.ts test/status-render.test.ts test/transcript.test.ts test/categories-tumwater.test.ts test/supervisor.test.ts docs/cli.md docs/invariants.md README.md RELEASE_NOTES.md)
 
+**Needs review 2026-11-20 by feature: rejected after 6 review rounds** — six runs worked this
+entry in one reject→revise chain (commits 05797d95, 0268590e, 1dd63543, 967dab2f, 89d4face,
+4c14ac9d — the first carries the entry's `Claim:` trailer, the last carries `Revision: 5`) and it
+stopped at `REVISION_BACKSTOP` (6, src/runner/runner-revision.ts). Every round shipped one slice
+of the deletion and left the rest of the tree red, so `npm run test:gate` failed each round on a
+different dangling import; the final round's failure was the rewritten cap-rule test's own
+assertion, quoted below. Measured on current main: `src/ui/tui/` is still 58 files / 10,867
+lines, `test/` still holds 30 `*tui*.test.ts` files, and `src/cli.ts` still has the `tui`
+handler row — the entry is entirely unbuilt. The plan role should split it so each part leaves
+main green (a deletion of a module cannot land while its entry points, flag spec, help text,
+docs/invariants citations and shared-export pins still name it).
+
+Objections that survived the final round:
+
+1. check failed (`npm run test:gate`): ✖ the cap editor admits exactly the caps
+   checkDailyBudgetUsd accepts, and names its own rule — AssertionError [ERR_ASSERTION]: "+5"
+   echoes the value
+2. at TestContext.<anonymous>
+   (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/gui-client.test.js:638:16)
+3. at Test.runInAsyncScope (node:async_hooks:226:14)
+4. generatedMessage: false,
+5. code: 'ERR_ASSERTION',
+6. actual: 'the cap must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or
+   hex notation — leave it empty for no cap (got "+5")',
+7. expected: /got "+5"/,
+8. operator: 'match',
+9. diff: 'simple'
+10. }
+11. lint: clean
+
+Why objection 7 failed, for the rewrite: the test built its expectation by feeding the typed
+value straight into `new RegExp(…)`, with the value `"+5"`. Unescaped, `"+` is a quantifier over
+the quote, so the pattern means *one or more quotes then a 5* — the message's `+` never matches.
+The fix is `escapeRegExp` (src/text/text.ts) around the interpolated value, or a substring
+assertion instead of a regex. The rewrite this entry asks for is otherwise correct; only that
+expectation is wrong.
+
 **Goal.** The operator watches and steers the team through the browser dashboard (`tumwater gui`,
 `tumwater start --gui`) and the CLI, and has stopped using the ink TUI. The TUI is too busy to
 read, bugs and UX problems have piled up in it because nobody uses it, and every change to a
