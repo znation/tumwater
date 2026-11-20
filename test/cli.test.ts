@@ -69,7 +69,7 @@ test("init creates the harness files and is idempotent", async () => {
     "untracked (gitignored): tumwater.json",
   );
   assert.doesNotMatch(r.stdout, /\(committed\)/);
-  assert.match(r.stdout, /next: `tumwater start` in one terminal, `tumwater tui` in another/);
+  assert.match(r.stdout, /next: `tumwater start` in one terminal, `tumwater gui` in another/);
   for (const f of ["README.md", "PLANS.md", "BUGS.md", "tumwater.json"]) {
     assert.ok(fs.existsSync(path.join(repo, f)), `${f} exists`);
   }
@@ -94,7 +94,7 @@ test("init re-seeding a repo that only lacks its config reports it without claim
   // `committed …` line — and the config is named as created-but-untracked, never claimed.
   assert.equal(
     r.stdout,
-    "created tumwater.json\nuntracked (gitignored): tumwater.json\nnext: `tumwater start` in one terminal, `tumwater tui` in another\n",
+    "created tumwater.json\nuntracked (gitignored): tumwater.json\nnext: `tumwater start` in one terminal, `tumwater gui` in another\n",
   );
   assert.ok(fs.existsSync(path.join(repo, "tumwater.json")), "config re-created");
   assertClean(repo);
@@ -106,7 +106,7 @@ test("init seeds a git repo in an empty directory (BUGS.md 2026-09-08)", async (
   assert.equal(r.code, 0);
   assert.match(r.stdout, /initialized a new git repository on branch main/);
   assert.match(r.stdout, /created README\.md/);
-  assert.match(r.stdout, /next: `tumwater start` in one terminal, `tumwater tui` in another/);
+  assert.match(r.stdout, /next: `tumwater start` in one terminal, `tumwater gui` in another/);
   assert.equal(sh(dir, "git", "symbolic-ref", "--short", "HEAD"), "main");
 });
 
