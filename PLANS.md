@@ -8,6 +8,71 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 ## Planned
 
+### Maintenance permit floor, part 1/1: while a maintenance role waits, work runs leave it the next free permit (planned 2026-11-19 by the operator; touches src/concurrency/semaphore.ts src/orchestrator/orchestrator-poll.ts test/semaphore.test.ts docs/invariants.md docs/how-it-works.md)
+
+**Goal.** Work runs (feature, bugfix, plan: tier 0 in `roleTier`) can hold every run permit
+for hours, and maintenance roles (tier 1) wait behind them. The age bound (5982fff6b, BUGS.md
+2026-11-08) promotes a tier-1 waiter after two hours, but this repo's own team shows that is not
+enough. It runs 3 feature + 3 bugfix instances on `maxConcurrent` 4. From the
+`provider_wait` events in .tumwater/log/events.jsonl* between 2026-11-12 and 2026-11-20, the
+tier-1 roles' waits were: median 23–85 min, p90 113–186 min, max 541 min. 95 of 816 tier-1
+waits exceeded 130 min. Long waits come in groups: a wake (often right after
+`model_check_passed` or a restart) makes ten or more maintenance roles due at once. They age
+together and are then promoted into one FIFO line, where each one waits for a work run to finish.
+Three work instances by default part 2/2 gives every team this shape (3 + 3 + plan on
+`maxConcurrent` 6), so the guarantee should be one that does not depend on a two-hour clock.
+
+**Approach.**
+- A maintenance floor in `Semaphore` (src/concurrency/semaphore.ts), the mirror of the work
+  reserve:
+  - track `maintenanceInUse`: permits held by leases acquired at tier ≥ 1 (by the tier they
+    asked for, aged or not). Release, pause and resume keep it exact, as they already do for
+    `inUse`;
+  - `setFloor(n)` sets the floor like `setReserve` and re-runs `drive()`.
+- The rule: while `maintenanceInUse < floor` and a tier ≥ 1 waiter is parked, the
+  longest-parked tier ≥ 1 waiter takes the next permit that frees, and the reserve does not
+  apply to it. It goes ahead of every tier-0 waiter and of a fresh tier-0 arrival's fast path
+  (`grantAheadOf` / `canLeaseAtOnce`). The verify and merge tiers still go first, so a red-main
+  heal (VERIFY_TIER) and merges are unaffected. The queue's order is fixed when a waiter
+  inserts, so find the floor waiter by scanning (smallest `since` among tier ≥ 1 waiters), not
+  by queue position.
+- Nothing is preempted: in-flight work keeps its permits, and the floor only decides who gets
+  the next released one. So a maintenance wait is bounded by the next release of any permit,
+  not by two hours. Once maintenance holds `floor` permits, ordering is exactly today's
+  (tier, then FIFO, age bound included).
+- Sizing: the orchestrator sets the floor every poll next to `setReserve` in
+  `pollReserveAndExit` (src/orchestrator/orchestrator-poll.ts). It is
+  `maxConcurrent >= 2 ? Math.max(1, Math.floor(maxConcurrent / 3)) : 0`, the same
+  `floor(maxConcurrent / 3)` the work reserve uses as its ceiling, so neither side can claim more
+  than a third: 2 at the default 6, 1 at 4, 0 at 1. Not a config key: the
+  maintenance quota (`maintenance_quota_hold`) and each role's own `minRunIntervalSeconds`
+  already decide how much maintenance runs; this only stops it from queuing for hours once it
+  is due.
+- Keep the age bound. It still governs maintenance waiters beyond the floor.
+- docs/invariants.md INV-P3: add the floor to the guarantee ("while maintenance holds fewer
+  than the floor, the longest-parked maintenance waiter takes the next free permit ahead of
+  work, ignoring the reserve") and name the new pinning tests. docs/how-it-works.md: one
+  sentence beside the priority-headroom text.
+
+**Acceptance criteria.**
+- test/semaphore.test.ts, all with an injected clock and no real waits:
+  - cap 3, floor 1: three tier-0 holders, then a tier-1 waiter parks, then a tier-0 waiter;
+    one release grants the tier-1 waiter;
+  - the same with one tier-1 lease already held: the release grants the tier-0 waiter;
+  - with reserve 1 and floor 1, the floor waiter is granted although the reserve would withhold
+    it, and a later tier-1 waiter is still withheld;
+  - a parked VERIFY_TIER waiter is granted ahead of the floor waiter;
+  - pausing a held tier-1 lease drops `maintenanceInUse`, so the floor applies again, and
+    resuming restores it; a released lease never takes it below 0;
+  - two tier-1 waiters parked at different times: the earlier one gets the floor permit;
+  - floor 0 is today's behavior, and every existing semaphore test passes unchanged.
+- `pollReserveAndExit` sets floor 2 at `maxConcurrent` 6, 1 at 4 and 0 at 1 (unit test on
+  the sizing helper).
+- Measurement after three days on this repo's team, running the same
+  `provider_wait` query (tier ≥ 1 roles, `waitedMs` per role, since the landing): p90 under
+  60 min for every maintenance role, and no wait over 130 min. Record the numbers in the entry's
+  Done note. If they miss, say so there rather than tuning the floor in the same change.
+
 ### Three work instances by default, part 1/2: one home for the default instance count, still 1 (planned 2026-11-19 by the operator; touches src/roles/runner-ids.ts src/orchestrator/orchestrator-poll.ts src/doctor/doctor-contention-checks.ts src/gui/gui-admin-endpoints.ts src/gui/gui-config-commands.ts src/ui/gui/gui-client-drawer-config.ts src/ui/gui/gui-client-boot.ts src/config/config-schema.ts src/scheduling/claims.ts src/cli/cli-help-text.ts test/runner-ids.test.ts test/gui-client-drawer.test.ts test/gui-client-settings.test.ts)
 
 **Goal.** On every project the operator has run, new or nearly finished, they end up raising
@@ -53,7 +118,7 @@ behavior change: the constant is still 1 when this part lands.
 - The whole suite passes with no expectation changed except wording assertions, since the value
   is still 1.
 
-### Three work instances by default, part 2/2: feature and bugfix default to 3 instances (planned 2026-11-19 by the operator; requires Three work instances by default part 1/2 landed; touches src/roles/runner-ids.ts test/ docs/config.md docs/how-it-works.md docs/glossary.md README.md RELEASE_NOTES.md)
+### Three work instances by default, part 2/2: feature and bugfix default to 3 instances (planned 2026-11-19 by the operator; requires Three work instances by default part 1/2 and Maintenance permit floor part 1/1 landed; touches src/roles/runner-ids.ts test/ docs/config.md docs/how-it-works.md docs/glossary.md README.md RELEASE_NOTES.md)
 
 **Goal.** A team with no `instances` in tumwater.json runs up to three feature and three bugfix
 runs at once. The operator raises these counts on every project, at every stage, so 1 is the
@@ -80,8 +145,9 @@ part 1/2's wording plus the new default is all the GUI needs.
     instead of two;
   - with the default `maxConcurrent` 6, feature, bugfix and plan (all tier 0, `roleTier`) can hold
     every permit while both backlogs are deep. That is already this repo's own setup (3 + 3 on
-    `maxConcurrent` 4). `maxConcurrent` stays 6: raising it changes host load and spend for
-    every team, which is a separate decision;
+    `maxConcurrent` 4), and the Maintenance permit floor (required above) is what keeps
+    maintenance roles from queuing for hours behind them. `maxConcurrent` stays 6: raising it
+    changes host load and spend for every team, which is a separate decision;
   - the doctor's `instance-pool` alert (`smallPoolProblems`) now applies to any team whose
     `worktreeSlots` is below `maxConcurrent`, not only to teams that set `instances`.
 - Test fallout: flip the constant, run the full suite (`npm run test:rerun`), and sort each
