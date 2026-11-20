@@ -5265,7 +5265,7 @@ instead of skipping its re-review".
 
 **Binds.** `test/affected-tests.ts` (`POLICY_SCANS`, `isPolicyScan`, `selectAffected`, `fitBudget`), `test/test-runner.ts` (`affectedTestFiles`, the `--budget` path that calls `fitBudget`).
 
-**Pinned by.** `test/affected-tests.test.ts` — "a repo-wide policy scan ranks at distance 0 for a code change, ahead of a direct importer" (the ranking, including that a doc change reaches no scan), "a policy scan is in the gate's run even when the budget would crowd it out" (the force-keep) and "the real tree's registered policy scans survive a budget that fits only one file" (every scan the real tree registers, over the real compiled graph — a scan named in the tree but not in `POLICY_SCANS` fails it).
+**Pinned by.** `test/affected-tests.test.ts` — "a repo-wide policy scan ranks at distance 0 for a code change, ahead of a direct importer" (the ranking, including that a doc change reaches no scan), "a policy scan is in the gate's run even when the budget would crowd it out" (the force-keep) and "the real tree's registered policy scans survive a budget that fits only one file" (each scan that test names, over the real compiled graph — a name it carries that `POLICY_SCANS` no longer registers fails it; the pin does not see a scan registered in the set but left out of that list, or one added to the tree and left out of both, so `POLICY_SCANS` stays the one place a scan is registered).
 
 ## A closed stdout pipe: a CLI command ends quietly when the reader stops reading
 

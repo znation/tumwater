@@ -39,7 +39,7 @@ interface GatePrecheckResult {
 }
 
 /** The prefix a policy scan gives each offender as its own failing test (`violation <file>:<line>
- * (<kind>)`, test/comment-width.test.ts and its three siblings). A base verdict saved before that
+ * (<kind>)`, test/comment-width.test.ts and its siblings). A base verdict saved before that
  * naming carries only the scan's aggregate title, so its offender subtests cannot match by name;
  * treating those as gaps would reject a branch for its base's own offender. */
 const POLICY_OFFENDER_TEST_PREFIX = "violation ";

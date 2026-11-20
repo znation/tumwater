@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
+import { policyOffenderLine } from "../src/build/policy-offenders.js";
 import assert from "node:assert/strict";
 
 test("a test process that used tmpdir() leaves no temp dir behind at exit", () => {
@@ -40,7 +41,9 @@ test("a test process that used tmpdir() leaves no temp dir behind at exit", () =
   assert.equal(fs.existsSync(runRoot), false, `per-run root survived process exit: ${runRoot}`);
 });
 
-test("every test file creates temp dirs through tmpdir(), never a raw mkdtempSync under os.tmpdir()", () => {
+const TMPDIR_GUARD_TITLE = "every test file creates temp dirs through tmpdir(), never a raw mkdtempSync under os.tmpdir()";
+
+test(TMPDIR_GUARD_TITLE, () => {
   // The suite runs compiled from dist/test, so the source test files sit two levels up; run from
   // test/ itself they sit beside this module. Scanning dist/test for .test.ts found none, which
   // made the guard vacuous.
@@ -52,8 +55,20 @@ test("every test file creates temp dirs through tmpdir(), never a raw mkdtempSyn
   for (const name of fs.readdirSync(testDir)) {
     if (!name.endsWith(".test.ts")) continue;
     const text = fs.readFileSync(path.join(testDir, name), "utf8");
-    if (text.includes(needle)) offenders.push(name);
+    if (text.includes(needle)) offenders.push(`test/${name}`);
   }
+  // Registered in POLICY_SCANS (test/affected-tests.ts), this guard is force-run by the budgeted
+  // gate, so it follows the sibling scans' offender contract: name each offender as its own
+  // failing test, so a change's own offender is not excused as main's known failure when main is
+  // already red on this guard's aggregate (the aggregate name alone hid it; BUGS.md 2026-11-05).
+  for (const offender of offenders) {
+    test(`violation ${offender}`, () => {
+      assert.ok(false, `temp dir created outside the per-run root: ${offender}`);
+    });
+  }
+  // And one machine-readable offender line each (policy-offenders.ts), so the check's complete
+  // output carries the offender list beside this diff (BUGS.md 2026-11-08).
+  for (const offender of offenders) console.log(policyOffenderLine(TMPDIR_GUARD_TITLE, offender));
   assert.deepEqual(offenders, [],
     `temp dirs created outside the per-run root leak into the system temp dir; use tmpdir() from fixtures/repo-fixtures.ts in: ${offenders.join(", ")}`);
 });

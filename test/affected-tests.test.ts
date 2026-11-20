@@ -139,7 +139,9 @@ test("the real tree's registered policy scans survive a budget that fits only on
   // registration in POLICY_SCANS is the only thing lifting a scan above the budget, so an
   // unregistered scan ranks behind the change's direct importers and the gate passes over it —
   // how a raw-os.tmpdir() offender merged and left main red. A scan added to test/ joins this
-  // list and POLICY_SCANS together; a name in one and not the other fails here.
+  // list and POLICY_SCANS together: a name this list carries that POLICY_SCANS no longer
+  // registers fails here. The pin cannot spot a scan registered in the set and left out of this
+  // list, or one added to the tree and left out of both — POLICY_SCANS stays the one registration.
   const root = repoRoot(path.dirname(fileURLToPath(import.meta.url)));
   const graph = buildDepGraph(path.join(root, "dist"), root);
   const scans = [

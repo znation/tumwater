@@ -1,4 +1,4 @@
-/** The machine-readable contract the four repo-wide policy scans use to name each offender, and
+/** The machine-readable contract the repo-wide policy scans use to name each offender, and
  * the parse that turns a check's complete output back into per-test offender lists. Part 1/2 of
  * the policy-offender attribution work (BUGS.md 2026-11-08): before this, a scan reported one
  * aggregate failing test (parseFailingTests kept only its title), so a later attribution could not

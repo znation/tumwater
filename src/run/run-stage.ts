@@ -73,7 +73,7 @@ const SELF_CHECK_FILED_FINDING_CHARS = 120;
 /** File one BUGS.md `## Open` entry per self-check finding the one-turn fix-up could not close
  * and reverted the whole change over (the run ends `no_change` flagged `selfCheckReverted`, with
  * the finding only in the warning event — nothing else surfaces it, so a recurring finding, one
- * of the four repo-wide policy scans say, re-burns the same authoring next run instead of
+ * of the repo-wide policy scans say, re-burns the same authoring next run instead of
  * becoming bugfix work). Filed under the merge lock and deduped by the finding's text, so an
  * already-open finding reuses its heading instead of piling up duplicate entries. Best-effort
  * and never throws: a skipped or failed filing warns and keeps the finding in the warning
