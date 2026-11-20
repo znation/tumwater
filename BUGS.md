@@ -153,6 +153,22 @@ Bugfix's 6c9b25b6 (a `src/` change) merged at 11-19 11:29. The `_main-full` mirr
 
 The post-merge review of commit `54a4a07f9d57a0fd649376ecbe00fa8d349e47ac` (Name checkpoint aborts in the no-change diagnosis, not ceiling cut-offs) never reached a verdict: timed out after 7200s while still making progress — session and worktree edits preserved for resume. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
 
+### the stage self-check finding "added lines name paths that do not exist in the tree: src/cli/cli-land-command.js, src/operator/operator-land.js, src/c…" was not closed by the fix-up turn and re-fires each run (filed by tumwater 2026-11-20)
+
+- **Symptom:** the pre-queue self-check raised this finding on the run's change; the one-turn fix-up could not close it and reverted the whole change instead, so the run ended `no_change` (`selfCheckReverted`) and the finding lived only in the run's warning event.
+- **Finding:** `added lines name paths that do not exist in the tree: src/cli/cli-land-command.js, src/operator/operator-land.js, src/cli/cli-retire-command.js, src/report/report-types.js, src/agent/agent-args.js, src/agent/agent-backend.js, src/agent/agent-git-config.js, src/agent/agent-run.js, src/agent/agent-se…`
+- **Reproduce:** author a change that trips a pre-queue self-check finding the fix-up resolves by reverting the whole change (clean tree); the run ends `no_change` with only the self-check warning carrying the finding.
+- **Cause:** a finding the fix-up could not close was never filed to BUGS.md, so the same finding re-burned the same authoring each run instead of becoming bugfix work.
+- **Fix sketch:** fix the finding's cause — the file and line it names, or the check that raised it — and move this entry to Fixed with a Fix paragraph showing the finding gone.
+
+### the stage self-check finding "added lines carry garbled rename wording (reword them; a rote word swap such as "tick" → "run" reads wrong here or leav…" was not closed by the fix-up turn and re-fires each run (filed by tumwater 2026-11-20)
+
+- **Symptom:** the pre-queue self-check raised this finding on the run's change; the one-turn fix-up could not close it and reverted the whole change instead, so the run ended `no_change` (`selfCheckReverted`) and the finding lived only in the run's warning event.
+- **Finding:** `added lines carry garbled rename wording (reword them; a rote word swap such as "tick" → "run" reads wrong here or leaves a word doubled): .scratch/cov.log:858 "run runs", .scratch/cov.log:9204 "run runs", .scratch/cov.log:9770 "run's run"`
+- **Reproduce:** author a change that trips a pre-queue self-check finding the fix-up resolves by reverting the whole change (clean tree); the run ends `no_change` with only the self-check warning carrying the finding.
+- **Cause:** a finding the fix-up could not close was never filed to BUGS.md, so the same finding re-burned the same authoring each run instead of becoming bugfix work.
+- **Fix sketch:** fix the finding's cause — the file and line it names, or the check that raised it — and move this entry to Fixed with a Fix paragraph showing the finding gone.
+
 ## Fixed
 
 ## Verified
