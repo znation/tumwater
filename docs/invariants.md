@@ -4628,9 +4628,10 @@ bug per merged commit (BUGS.md 2026-11-09: 821 entries over 20 minutes). The ent
 post-review queue where a later successful review settles it. Keeping the entry without counting
 it is not a brake on its own (BUGS.md 2026-11-16): the drain's `unreviewed` selection therefore
 also skips an entry whose `notBeforeMs` backoff deadline is in the future, and the
-`infrastructure` settle stamps that deadline — the run's retry-after when present, else the
-team-hold base (one minute) doubled per repeat and capped at the team-hold cap (15 minutes) — so
-a wall makes the review re-probe the provider a few times an hour instead of on every poll.
+`infrastructure` settle stamps that deadline — the longer of the run's retry-after and the
+team-hold base (one minute) doubled per consecutive transient failure, capped at the team-hold cap
+(15 minutes) — so a wall makes the review re-probe the provider a few times an hour instead of on
+every poll.
 A plain content failure stamps no `notBeforeMs` and keeps the today retry (counted, limit-braked).
 
 **Binds.** `src/review/post-merge-review.ts` (`reviewMergedCommit`, the `infrastructure` flag and
@@ -4651,7 +4652,10 @@ review still runs, and a plain content failure stamps no `notBeforeMs` and keeps
 `src/review/post-merge-review.ts` (`PostReview.notBeforeMs`, `parsePostReview`).
 
 **Pinned by.** `test/post-merge-review.test.ts` — "a post-merge review that ended on a transient
-provider failure is not re-run on the next poll (regression, BUGS.md 2026-11-16)".
+provider failure is not re-run on the next poll (regression, BUGS.md 2026-11-16)", "a later queue
+entry is reviewed while an entry inside its transient-failure backoff waits", and "a re-probe that
+ends on the wall again doubles the pause: the consecutive-failure counter rides the record the
+drain writes".
 
 ### INV-BT7: a post-merge review's final run is folded into the author's usage and failure stamps
 

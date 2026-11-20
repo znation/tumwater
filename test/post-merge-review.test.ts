@@ -566,6 +566,73 @@ test("a 429 that carries a retry-after hint longer than the base sets the backof
   assert.ok(waitMs <= 310 * 1000, `the deadline is the 5-minute hint, not longer, got ${waitMs}ms`);
 });
 
+test("a later queue entry is reviewed while an entry inside its transient-failure backoff waits", async () => {
+  // The skip must cost only the wall-fed entry: the drain picks the NEXT due entry, so a commit
+  // queued behind a backed-off one still gets its review. Without the skip in `unreviewed`, the
+  // head entry is selected again on every poll and the later commit waits behind it forever.
+  const { root, commit, ctx, runner } = setup("VERDICT: approve\n1. fine");
+  (runner as { runGatePi: RoleRunner["runGatePi"] }).runGatePi = async () =>
+    piRunResult({ ok: true, transientRateLimit: true });
+  // Poll 1: the hint-less 429 takes the head entry and stamps its backoff.
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(eventsOfType(root, "review_start").length, 1, "the first poll reviewed the head entry");
+  const firstStamp = readPostReviews(root).find((e) => e.commit === commit)!.notBeforeMs;
+  // A second commit queues behind it (which re-writes the file, spread and all), then poll 2.
+  fs.appendFileSync(path.join(root, "x.txt"), "later\n");
+  sh(root, "git", "add", "--", "x.txt");
+  sh(root, "git", "commit", "-m", "later change");
+  const later = headSha(root);
+  addPostReview(root, { commit: later, role: "improve", summary: "later" });
+  const p2 = newMergePipeline();
+  drainPostReviews(ctx, p2);
+  assert.ok(p2.postReview, "the drain starts a review despite the head entry being backed off");
+  await p2.postReview!.promise;
+  const started = eventsOfType(root, "review_start");
+  assert.equal(started.length, 2, "one more review started on the second poll");
+  assert.equal(started[1]?.head, later, "it is the later entry's, not the backed-off head's");
+  const after = readPostReviews(root);
+  assert.equal(after.length, 2, "both entries stay queued — a transient failure is never dropped or counted");
+  const stillWaiting = after.find((e) => e.commit === commit)!;
+  assert.equal(stillWaiting.notBeforeMs, firstStamp, "the re-run of the other entry left this entry's deadline alone");
+  assert.equal(stillWaiting.failures ?? 0, 0, "and it is still never counted");
+});
+
+test("a re-probe that ends on the wall again doubles the pause: the consecutive-failure counter rides the record the drain writes", async () => {
+  // The escalation lives on the persisted record, not in memory: the drain reads the entry's
+  // stored streak, sets the next deadline from the PRIOR count (so the streak of 2 here re-arms
+  // from 4 minutes, not 1), and writes the incremented count back. A settle that dropped the
+  // counter would re-probe at the base forever.
+  const { root, commit, ctx, runner } = setup("VERDICT: approve\n1. fine");
+  (runner as { runGatePi: RoleRunner["runGatePi"] }).runGatePi = async () =>
+    piRunResult({ ok: true, transientRateLimit: true });
+  fs.writeFileSync(
+    postReviewPath(root),
+    JSON.stringify({ pending: [{ commit, role: "improve", summary: "add x", consecutiveTransientFailures: 2, notBeforeMs: 1 }] }),
+  );
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  const t1 = Date.now();
+  const kept = readPostReviews(root)[0]!;
+  assert.equal(kept.consecutiveTransientFailures, 3, "the streak rides into the record the drain writes");
+  const waitMs = (kept.notBeforeMs ?? 0) - t1;
+  const ladderMs = 4 * HOLD_BASE_MS; // the streak of 2 re-arms from 60s x 2^2
+  assert.ok(waitMs >= ladderMs - 10_000 && waitMs <= ladderMs, `the third re-probe waits the prior count's ${ladderMs / 1000}s, got ${waitMs}ms`);
+  // A content failure means the provider served the model, so that streak restarts: the counted
+  // arm writes 0, and a later transient failure would re-arm from the base.
+  const second = setup("VERDICT: approve\n1. fine");
+  const first = sh(second.root, "git", "rev-list", "--max-parents=0", "HEAD");
+  fs.writeFileSync(postReviewPath(second.root), JSON.stringify({ pending: [{ commit: first, role: "improve", summary: "seed", consecutiveTransientFailures: 2 }] }));
+  const p2 = newMergePipeline();
+  drainPostReviews(second.ctx, p2);
+  await p2.postReview!.promise;
+  const afterContent = readPostReviews(second.root)[0]!;
+  assert.equal(afterContent.consecutiveTransientFailures, 0, "a content failure resets the streak");
+  assert.equal(afterContent.notBeforeMs, undefined, "and the reset arm stamps no deadline");
+});
+
 test("a post-merge review that ended on a content failure is re-run on the next poll, without a backoff deadline", async () => {
   // The backoff is for transient (infrastructure) failures only: a plain content failure keeps
   // the today behavior — the entry stays queued with an incremented failure count and the next

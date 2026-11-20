@@ -86,7 +86,7 @@ commit is reviewed on each drain with no delay.
 **Fix.** `PostReview` gains `notBeforeMs`, a backoff deadline the drain's `unreviewed` selection
 skips while it is in the future. The `failed`/`infrastructure` outcome now carries the run's
 `retryAfterSeconds`; `settlePostReviewOutcome`'s infrastructure arm keeps the entry with
-`notBeforeMs` = now + the run's retry-after when present, else a doubling pause (the team-hold
+`notBeforeMs` = now + the longer of the run's retry-after and a doubling pause (the team-hold
 base of one minute, so a per-minute rate-limit bucket refills) capped at the team-hold cap of 15
 minutes. The entry re-probes the provider on that schedule instead of every poll, while a later
 queue entry's review still runs now (a plain content failure stamps no deadline, so that path's
@@ -95,7 +95,8 @@ existing limit-braked retry is unchanged). Pinned in `test/post-merge-review.tes
 **Validation gap:** none — a new test stubs the reviewer's run to end on a transient failure and
 drives the drain twice: the second poll skips the entry instead of re-running it (which fails
 without the backoff and passes with it), and a no-hint 429 is skipped while a later entry's review
-still runs.
+still runs. Two more pin the escalation the counter carries (the streak rides the persisted record
+and the next deadline grows from it, and a content failure resets it) and the unit ladder above.
 
 ### `tumwater plan --file` silently drops a series part's `requires … landed` clause, so the part is handed out before its prerequisite lands (reported by the user 2026-11-16) — fixed 2026-11-17 by the bugfix role
 

@@ -70,13 +70,13 @@ function unreviewed(e: PostReview): boolean {
  * and the run's own retry-after, capped at the team-hold cap — the same escalation the team hold
  * uses, so a wall that outlasts every re-probe re-probes a few times an hour instead of parking
  * the review forever and never hammering the provider every poll (BUGS.md 2026-11-16).
- * `escalation` is how many consecutive times this entry has already hit the wall BEFORE this
- * run, so the first failure rests the plain base and each repeat doubles it until the cap.
- * The run's
- * retry-after (a 429's hint) is floored into it when it outlasts the escalated base, since the
- * provider asked for more than our backoff would wait. The doubling-and-cap itself is the team
- * hold's ladder — one `escalatedHoldMs` in src/team/team-hold.ts, the module that owns the
- * base and cap constants — so the two waits cannot drift apart. */
+ * `escalation` is how many consecutive transient failures the entry carried BEFORE this run, so
+ * it is 0 on the first failure and the first pause is the one-minute base, doubling on each
+ * repeat until the cap. The run's retry-after (a 429's hint) wins over the escalated base when it
+ * outlasts it, since the provider asked for more than our backoff would wait; a shorter hint is
+ * floored up to the base. The doubling-and-cap itself is the team hold's ladder — one
+ * `escalatedHoldMs` in src/team/team-hold.ts, the module that owns the base and cap constants —
+ * so the two waits cannot drift apart. */
 export function reviewBackoffMs(
   escalation: number,
   retryAfterSeconds: number | undefined,
