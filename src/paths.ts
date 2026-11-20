@@ -400,8 +400,9 @@ export function nativeLogPath(root: string, role: string, backend: string): stri
 
 /** Root of the full-output files the bundled pi extension writes for oversized tool
  * results (.tumwater/log/tool-output/<toolCallId>.log). Pruned by the same sessionRetentionDays
- * window as sessions (orchestrator.ts's two retention passes): a pointer to a tool result is
- * only useful while its run is recent, and the files otherwise accumulate without bound. */
+ * window as sessions (orchestrator/retention.ts's startup and in-poll passes): a pointer to a
+ * tool result is only useful while its run is recent, and the files otherwise accumulate
+ * without bound. */
 export function toolOutputDir(root: string): string {
   return path.join(tumwaterDir(root), "log", "tool-output");
 }

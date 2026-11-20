@@ -347,7 +347,10 @@ export interface TumwaterConfig {
   unansweredStallSeconds?: Record<string, number>;
   /** Rotate events.jsonl and per-role pi logs when they exceed this size. */
   logMaxBytes: number;
-  /** Delete pi session files older than this many days at orchestrator start (0 disables). */
+  /** Delete session files older than this many days: at orchestrator start, once a day while
+   * the team runs, and at once on a live change to this window (0 disables). The pass covers
+   * pi session files and session ledgers, tool-output files, salvaged workspace patches and
+   * each backend's expired OpenCode/Codex sessions — see src/orchestrator/retention.ts. */
   sessionRetentionDays: number;
   /** Daily cost budget in USD for the team's autonomous spend: while the sum of every role's
    * spend for the local day has reached this, roles stop starting new runs until the next

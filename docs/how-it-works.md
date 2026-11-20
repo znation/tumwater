@@ -531,8 +531,12 @@ check's scratch files) are saved directly under `.tumwater/salvage/` for you to 
 patches are surfaced until session retention prunes them: a doctor `salvage patches` row and the
 standing amber `salvage-patches` alert on `tumwater status`, the dashboard and the TUI name them
 (capped, with a count of the rest), so work a run left behind is never silently discarded. Both
-kinds
-are deleted after `sessionRetentionDays`. An
+kinds are deleted with the session store by the `sessionRetentionDays` pass, which also ages out
+each role's pi session files, its session ledgers and the full-output files kept for oversized
+tool results, and purges the expired OpenCode and Codex sessions each backend's ledger names. It
+runs at start, once a day while the team runs, and at once whenever you change the window (0
+disables it); the pass blocks the poll loop while it runs, so it writes a progress marker and
+logs one `maintenance_start`/`maintenance_done` event pair per half that has work. An
 interrupted merge goes back through the pipeline, and an interrupted director prompt goes back to
 its inbox. In the merge pipeline too, git commands that fail never read as "nothing there": a
 conflict list, a change's diff or a resolution's diff that git cannot produce fails that merge or
