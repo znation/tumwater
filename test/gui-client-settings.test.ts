@@ -4,6 +4,7 @@ import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { GUI_CLIENT_BOOT_JS } from "../src/ui/gui/gui-client-boot.js";
 import { GUI_CLIENT_SETTINGS_JS } from "../src/ui/gui/gui-client-settings.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
+import { DEFAULT_INSTANCES } from "../src/roles/runner-ids.js";
 import { clientScope, clientRegion, ESC_LINE } from "./helpers/gui-client-scope.js";
 
 // The dashboard's Settings panel, browser-side (src/ui/gui/gui-client-settings.ts): the curated
@@ -85,6 +86,12 @@ test("renderSettings renders one row per curated key, esc'd, with the key's conf
   assert.match(html, /<label for='set-roles\.bugfix\.instances'>Bugfix role instances<span class='settings-key'>roles\.bugfix\.instances<\/span><\/label>/);
   assert.match(html, /id='set-roles\.feature\.instances' value='3'/);
   assert.match(html, /id='set-roles\.bugfix\.instances' value='2'/);
+  // A count the file leaves unset arrives from GET /api/config as the resolved default
+  // (DEFAULT_INSTANCES), so the field shows that number, not an empty box — the panel and the
+  // scheduler read the same constant, so the row cannot drift when the default moves.
+  const defaultRow = renderSettings({ "roles.feature.instances": DEFAULT_INSTANCES, "roles.bugfix.instances": DEFAULT_INSTANCES });
+  assert.match(defaultRow, new RegExp(`id='set-roles\\.feature\\.instances' value='${DEFAULT_INSTANCES}'`));
+  assert.match(defaultRow, new RegExp(`id='set-roles\\.bugfix\\.instances' value='${DEFAULT_INSTANCES}'`));
   assert.match(html, /id='set-quietHours' value=''/);
   assert.match(html, /id='set-notify' value=''/);
   // An object value renders as compact JSON (esc'd), so it can round-trip through the field.

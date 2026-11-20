@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { GUI_CLIENT_DRAWER_JS } from "../src/ui/gui/gui-client-drawer.js";
 import { GUI_CLIENT_DRAWER_CONFIG_JS } from "../src/ui/gui/gui-client-drawer-config.js";
 import { clientRegion, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
+import { DEFAULT_INSTANCES } from "../src/roles/runner-ids.js";
 
 // The dashboard's detail drawer, browser-side (src/ui/gui/gui-client-drawer.ts): the open/close
 // state machine over roles and backlog entries with its #role/<role> hash
@@ -1247,8 +1248,10 @@ test("the min run interval row tags override vs team default and its editor pref
 // The Instances row is the parallel-runner count (roles.<base>.instances) — the last
 // per-role hold the drawer edits. It renders only for a role that may split (its base,
 // an instance strip, is feature or bugfix), reads the count from the role payload tagged
-// `(set)` or falls back to 1 tagged `(default)`, and while open prefills an editor that
-// survives a poll repaint.
+// `(set)` or falls back to the default instance count tagged `(default)`, and while open
+// prefills an editor that survives a poll repaint. The default assertions interpolate the
+// server's DEFAULT_INSTANCES: the drawer blob reads the constant the labels region splices
+// in, so the two cannot drift from what the scheduler reads for an absent count.
 test("the Instances row renders only for split-capable roles, tags set vs default, and prefills its editor", async () => {
   const splitStatus = (role: string) => {
     const now = Date.now();
@@ -1285,14 +1288,30 @@ test("the Instances row renders only for split-capable roles, tags set vs defaul
   inst.scope.toggleRole("feature-2");
   await flush();
   assert.match(inst.paintedFor("drawerrole"), /<dt>Instances<\/dt><dd title='4 \(set\)'>4 \(set\)<button[^>]*data-act='instances-edit'[^>]*>Edit<\/button><\/dd>/);
-  // Without the count the body reads `1 (default)` and offers a Set instances control.
-  const withDefault = openDrawer(["toggleRole"], {
+  // Without the count the body reads `${DEFAULT_INSTANCES} (default)` and offers a Set
+  // instances control. The constant is an integer, so it needs no regex escaping.
+  const withDefault = openDrawer(["toggleRole", "startInstancesEdit"], {
     status: splitStatus("feature"),
     responses: { "/api/role?role=feature": { notes: null, nextPrompt: null } },
   });
   withDefault.scope.toggleRole("feature");
   await flush();
-  assert.match(withDefault.paintedFor("drawerrole"), /<dt>Instances<\/dt><dd title='1 \(default\)'>1 \(default\)<button[^>]*data-act='instances-edit'[^>]*>Set instances<\/button><\/dd>/);
+  assert.match(withDefault.paintedFor("drawerrole"), new RegExp(
+    `<dt>Instances</dt><dd title='${DEFAULT_INSTANCES} \\(default\\)'>${DEFAULT_INSTANCES} \\(default\\)<button[^>]*data-act='instances-edit'[^>]*>Set instances</button></dd>`,
+  ));
+  // The open editor's placeholder names the same default, so an empty Save is worded as the
+  // count the server will resolve, not a number written in the browser.
+  withDefault.scope.startInstancesEdit("feature", "");
+  assert.match(withDefault.paintedFor("drawerrole"), new RegExp(
+    `<input id='instanceseditinput' type='number' min='1' max='8' step='1' value='' placeholder='default ${DEFAULT_INSTANCES}'>`,
+  ));
+  // The constant the browser reads is spliced in from the server module by the labels region
+  // (gui-client-labels.ts) — pin the spliced line to the imported constant, so a default moved
+  // on the server cannot leave the drawer naming the old number.
+  assert.match(clientRegion("labels"), new RegExp(`const DEFAULT_INSTANCES = ${DEFAULT_INSTANCES};`));
+  // While the default is still 1, an interpolated assertion cannot tell the constant from a
+  // hand-written 1, so pin the drawer's fallback by source: it reads the constant.
+  assert.match(GUI_CLIENT_DRAWER_CONFIG_JS, /const instCount = hasInstances \? view\.instances : DEFAULT_INSTANCES;/);
   // A role that cannot split (steward/director) renders no Instances row at all.
   for (const r of ["steward", "director"]) {
     const t = openDrawer(["toggleRole"], {

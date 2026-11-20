@@ -6,8 +6,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  DEFAULT_INSTANCES,
   INSTANCE_ROLES,
   baseRoleOf,
+  configuredInstances,
   instanceIndex,
   instancePauseKey,
   runnerEnabled,
@@ -75,6 +77,22 @@ test("runnerEnabled reads the base role and its configured instance count", () =
   assert.equal(runnerEnabled(config, "feature"), false);
   assert.equal(runnerEnabled(config, "feature-2"), false, "a disabled base role disables its instances");
   assert.equal(runnerEnabled(config, "my-loop"), false, "an unknown id has no enabled base entry");
+});
+
+test("configuredInstances is the one reader of an instance count: the file's value, else DEFAULT_INSTANCES", () => {
+  const config = defaultConfig();
+  assert.equal(configuredInstances(config, "feature"), DEFAULT_INSTANCES, "an absent count means the default");
+  assert.equal(configuredInstances(config, "feature-2"), DEFAULT_INSTANCES, "an instance id reads its base role's absent count");
+
+  config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 4 };
+  assert.equal(configuredInstances(config, "feature"), 4, "a configured count is read verbatim");
+  assert.equal(configuredInstances(config, "feature-3"), 4, "an instance id resolves through its base role");
+  assert.equal(configuredInstances(config, "bugfix"), DEFAULT_INSTANCES, "another base keeps the default");
+
+  // The default is a fallback, not an entry in the shipped config, so a hand-built config
+  // naming no count anywhere and the loaded default agree on one number — the count stays
+  // unset in defaultConfig().roles, so role-view's "(set)" tag still means the file named one.
+  assert.equal(defaultConfig().roles.feature?.instances, undefined, "the shipped default config names no count");
 });
 
 test("runnerIds enumerates enabled roles and each instance base's extra runners", () => {

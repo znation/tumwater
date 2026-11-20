@@ -24,6 +24,7 @@ import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
 import { LOGS_SINCE_MAX_MS } from "../src/events/event-window.js";
 import { writeEvents, eventsOfType } from "./fixtures/log-fixtures.js";
 import { BRIEF_TEXT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief/brief.js";
+import { DEFAULT_INSTANCES } from "../src/roles/runner-ids.js";
 import { initializedRepo, sh, assertClean, tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { startLocalGui } from "./fixtures/gui-fixtures.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
@@ -1045,10 +1046,11 @@ test("handleConfig returns exactly the curated keys, resolved values with null f
   assert.equal(cfg.worktreeSlots, null);
   // customRoles is deliberately not served: the panel's reach is the curated set.
   assert.equal("customRoles" in cfg, false);
-  // A file that leaves the instance counts unset serves their resolved default (1), not null.
+  // A file that leaves the instance counts unset serves their resolved default, not null —
+  // the same DEFAULT_INSTANCES the scheduler resolves through configuredInstances.
   const instancesUnset = await serveConfig(unsetRoot);
-  assert.equal((instancesUnset.data as Record<string, unknown>)["roles.feature.instances"], 1);
-  assert.equal((instancesUnset.data as Record<string, unknown>)["roles.bugfix.instances"], 1);
+  assert.equal((instancesUnset.data as Record<string, unknown>)["roles.feature.instances"], DEFAULT_INSTANCES);
+  assert.equal((instancesUnset.data as Record<string, unknown>)["roles.bugfix.instances"], DEFAULT_INSTANCES);
 });
 
 test("handleConfig answers 500 with validateConfig's message on a broken tumwater.json", async () => {
@@ -1170,13 +1172,13 @@ test("handleConfigSet/Unset round-trip the instance-role counts and refuse out-o
   const other = await serveConfigSet(root, { key: "roles.qa.instances", value: 2 });
   assert.equal(other.captured.status, 400);
   assert.equal(fs.readFileSync(configPath(root), "utf8"), before);
-  // Unset removes the field from the file; GET then serves the resolved default (1).
+  // Unset removes the field from the file; GET then serves the resolved default.
   const unset = await serveConfigUnset(root, { key: "roles.feature.instances" });
   assert.equal(unset.captured.status, 200);
   assert.deepEqual(unset.data, { ok: true, key: "roles.feature.instances", oldValue: 3 });
   const afterUnset = readJson(configPath(root)) as Record<string, unknown>;
   assert.equal("instances" in ((afterUnset.roles as Record<string, Record<string, unknown>>).feature ?? {}), false);
-  assert.equal((await served(root))["roles.feature.instances"], 1);
+  assert.equal((await served(root))["roles.feature.instances"], DEFAULT_INSTANCES, "the unset key reads the one default");
 });
 
 test("handleBudget refuses a finite-but-unrepresentable cap with the shared screen's message", async () => {

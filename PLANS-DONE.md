@@ -5,6 +5,51 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Three work instances by default, part 1/2: one home for the default instance count, still 1 (planned 2026-11-19 by the operator; touches src/roles/runner-ids.ts src/orchestrator/orchestrator-poll.ts src/doctor/doctor-contention-checks.ts src/gui/gui-admin-endpoints.ts src/gui/gui-config-commands.ts src/ui/gui/gui-client-drawer-config.ts src/ui/gui/gui-client-boot.ts src/config/config-schema.ts src/scheduling/claims.ts src/cli/cli-help-text.ts test/runner-ids.test.ts test/gui-client-drawer.test.ts test/gui-client-settings.test.ts) — done 2026-11-20 by the feature role
+
+**Goal.** On every project the operator has run, new or nearly finished, they end up raising
+`roles.feature.instances` and `roles.bugfix.instances` above the default 1 (this repo's own
+tumwater.json sets both to 3). Part 2/2 makes 3 the default. Today "absent means 1" is written
+out in at least six places that do not share a constant, so flipping it in one place would leave
+the scheduler, the doctor, the Settings card and the role drawer disagreeing about what an unset
+count means. This part gives the default one home and routes every reader through it, with no
+behavior change: the constant is still 1 when this part lands.
+
+**Approach.**
+- src/roles/runner-ids.ts: export `DEFAULT_INSTANCES = 1` beside `INSTANCE_ROLES`, with the
+  rationale comment part 2/2 will rewrite. `configuredInstances` and `runnerCount` read
+  `role?.instances ?? DEFAULT_INSTANCES`; `configuredInstances` becomes the one reader every
+  other site calls.
+- Replace each hand-written `?? 1` on an instance count with `configuredInstances`:
+  `instancesOf` in `pollReserveAndExit` (src/orchestrator/orchestrator-poll.ts),
+  `smallPoolProblems` (src/doctor/doctor-contention-checks.ts), and `settingsValue`
+  (src/gui/gui-admin-endpoints.ts; it reads the config `loadConfigSafe` returned, so it can take
+  the typed config). After this part, `grep -rn "instances ?? 1" src` finds nothing.
+- Dashboard client: the role drawer's Instances row (src/ui/gui/gui-client-drawer-config.ts)
+  falls back to the constant, not `1`, for "N (default)" and the input's `default N`
+  placeholder; the two save-guard messages in src/ui/gui/gui-client-boot.ts ("leave it empty
+  for the default N") say the same. Browser code cannot import, so interpolate the constant into
+  the script string the way `INSTANCE_ID_SOURCE` already is (gui-client-labels.ts).
+- Wording that names the default: `instances` in src/config/config-schema.ts ("absent means
+  `DEFAULT_INSTANCES`"), the `--clear-instances` help line in src/cli/cli-help-text.ts ("back to
+  the default"), the comments in gui-config-commands.ts and gui-admin-endpoints.ts, and
+  `planBacklogTarget`'s comment in src/scheduling/claims.ts (which states "At the default one
+  feature instance this is 2"). Word them so they stay true at any default, not "1".
+- If Remove the TUI part 1/5 has not landed, give the TUI instances editor
+  (src/ui/tui/tui-editor-instances.ts) the same wording; if it has, there is nothing to do there.
+- `role-view` keeps carrying `instances` only when the file sets it; the drawer's "(set)" vs
+  "(default)" tag depends on that.
+
+**Acceptance criteria.**
+- `configuredInstances` on a config with no `instances` for feature returns `DEFAULT_INSTANCES`,
+  and on one with `instances: 4` returns 4; `runnerIds` on the default config is unchanged.
+- No `?? 1` fallback on an instance count remains in src/ (a grep in review, not a test).
+- The role drawer test renders an unset feature count as `${DEFAULT_INSTANCES} (default)` with
+  the placeholder `default ${DEFAULT_INSTANCES}`, built from the imported constant, not a literal.
+- GET /api/config returns `DEFAULT_INSTANCES` for an unset `roles.feature.instances`.
+- The whole suite passes with no expectation changed except wording assertions, since the value
+  is still 1.
+
 ### Release version display, part 3/3: `tumwater status` and `tumwater start` name the npm release version too (planned 2026-11-17 by the operator; requires Release version display part 2/3 and Remove the TUI part 1/5 landed; touches src/ui/badges.ts src/ui/gui/gui-client-team.ts src/cli/cli-start.ts test/badges.test.ts test/gui-client-sidebar.test.ts test/status-render.test.ts test/cli-start.test.ts) — done 2026-11-20 by the feature role
 
 **Goal.** After part 2/3 the GUI and `doctor` say `0.8.1` for a release build, while
