@@ -10,7 +10,7 @@
  * Markdown rendering in src/report/report-since-render.ts (which imports the shared formatting
  * voice from src/report/report-render.ts). */
 import { assertReportSinceMs, eventWindowCovers, readWindowEvents, sinceWindowTiming } from "../events/event-window.js";
-import { runStartKey } from "../events/event-read.js";
+import { applyRunStartModel } from "../events/event-read.js";
 import { dayKey } from "../text/datetime.js";
 import { addTo } from "../collections.js";
 import {
@@ -95,13 +95,11 @@ function foldSinceWindow(
   const runModels = new Map<string, string>();
   for (const ev of raw.events) {
     if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now || (untilMs !== undefined && ev.ts >= end)) continue;
-    // Keep the last start per key, including a model-less one: a run number reused after
-    // `reset-counters` must not inherit the earlier run's model (runStartModelMap's rule).
-    if (ev.type === "run_start") {
-      const key = runStartKey(ev);
-      if (typeof ev.model === "string" && ev.model !== "") runModels.set(key, ev.model);
-      else runModels.delete(key);
-    }
+    // Grow the pairing with applyRunStartModel — runStartModelMap's rule, the same one the
+    // day fold's foldEventInto applies: the last start for a key decides, including a
+    // model-less one, so a run number reused after `reset-counters` must not inherit the
+    // earlier run's model.
+    applyRunStartModel(runModels, ev);
     foldUsageEvent(acc, ev, runModels);
   }
   return { raw, acc };

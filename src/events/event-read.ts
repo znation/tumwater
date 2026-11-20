@@ -94,10 +94,19 @@ function runStartEvents(events: HarnessEvent[]): Map<string, HarnessEvent> {
 }
 
 /** The run_start pairing's key, `${role}#${run}` — the one home of that format: runStartEvents
- * writes it and runStartModel reads it, so the writer and the lookup cannot drift into two
- * notions of which end belongs to which start. */
-export function runStartKey(ev: HarnessEvent): string {
+ * writes it, runStartModel and runStartTs read it, so the writer and the lookups cannot drift
+ * into two notions of which end belongs to which start. Unexported: every reader outside this
+ * file goes through one of those projections. */
+function runStartKey(ev: HarnessEvent): string {
   return `${ev.source}#${ev.run}`;
+}
+
+/** The `run_start` timestamp paired with the end event `ev` in a runStartMap pairing, or
+ * undefined when the start is missing (log rotation cut it, or the run started before the read
+ * began). The keyed lookup, spelled once so no consumer re-formats the key — runSpanMs and
+ * history-queued.ts's queued-row floor guard both read through it. */
+export function runStartTs(ev: HarnessEvent, starts: Map<string, number>): number | undefined {
+  return starts.get(runStartKey(ev));
 }
 
 /** The run_start pairing's start epoch ms: `${role}#${run}` → start epoch ms, the projection
@@ -114,17 +123,34 @@ export function runStartMap(events: HarnessEvent[]): Map<string, number> {
   return starts;
 }
 
+/** Grow one run_start→model pairing with a single event — the one-home spelling of the pairing
+ * rule the batch read (runStartModelMap) and the report's streaming folds share: a `run_start`
+ * whose `model` is a non-empty string sets the key to it, and any other `run_start` for that key
+ * clears it, so the LAST start for a run number decides and a run number reused after
+ * `reset-counters` never inherits the earlier run's model. Every other event type leaves the map
+ * untouched. Mutates `models`; no return. Takes no `ts` guard: the batch read filters
+ * non-finite-timestamped starts through runStartEvents, and each streaming caller applies its own
+ * window filter before calling, so the guard would be spelled twice here. */
+export function applyRunStartModel(models: Map<string, string>, ev: HarnessEvent): void {
+  if (ev.type !== "run_start") return;
+  const key = runStartKey(ev);
+  if (typeof ev.model === "string" && ev.model !== "") models.set(key, ev.model);
+  else models.delete(key);
+}
+
 /** The run_start pairing's model selectors: `${role}#${run}` → the run's model when its
  * run_start carries a non-empty string `model` (the agent-qualified selector string — a
  * per-role override, a fallback, or the primary — that the status rows carry; see
  * config-views.ts's backendQualifiedSelector). A run_start with no `model`, or an empty or
- * non-string one, adds no entry, so `tumwater history`'s model cell renders empty for a start
- * that named none — exactly the empty-usage convention applied to cells. The finite-`ts`
- * guard rides runStartEvents, the one home of the pairing. */
+ * non-string one, leaves no entry, so `tumwater history`'s model cell renders empty for a start
+ * that named none — exactly the empty-usage convention applied to cells. The pairing rule itself
+ * is applyRunStartModel's; this is the whole-list read of it. The finite-`ts` guard rides
+ * runStartEvents, the one home of the pairing. */
 export function runStartModelMap(events: HarnessEvent[]): Map<string, string> {
   const models = new Map<string, string>();
-  for (const [key, e] of runStartEvents(events)) {
-    if (typeof e.model === "string" && e.model !== "") models.set(key, e.model);
+  for (const e of events) {
+    if (finiteNumber(e.ts, null) === null) continue;
+    applyRunStartModel(models, e);
   }
   return models;
 }
@@ -149,7 +175,7 @@ export function runStartModel(ev: HarnessEvent, models: Map<string, string>): st
  * (`runSpanMs(ev, starts) ?? 0`) folded that NaN straight into its agent-hour totals —
  * `NaN ?? 0` is still NaN. */
 export function runSpanMs(ev: HarnessEvent, starts: Map<string, number>): number | null {
-  const startTs = starts.get(`${ev.source}#${ev.run}`);
+  const startTs = runStartTs(ev, starts);
   const endTs = finiteNumber(ev.ts, null);
   return startTs === undefined || endTs === null ? null : Math.max(0, endTs - startTs);
 }

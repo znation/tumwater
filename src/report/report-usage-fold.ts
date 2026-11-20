@@ -549,7 +549,8 @@ function foldMergeOutcome(target: UsageFold, ev: HarnessEvent): void {
  * breakdown, and the merge line is how the reviewer's share is named. Both collectors fold
  * through this one place, so the two windows' aggregation rules cannot drift apart. */
 /** When given, `runModels` pairs each run_end to the model its run_start named (the
- * `${source}#${run}` keys runStartKey writes) so foldRunEnd can attribute the run's output
+ * `${source}#${run}` keys the pairing's map keys use, written by applyRunStartModel) so
+ * foldRunEnd can attribute the run's output
  * tokens to a model selector; the fold keeps no pairing of its own — the map is built by
  * the window collector from the same event stream, which is why a run_start appended
  * between reads still pairs with a later run_end. */

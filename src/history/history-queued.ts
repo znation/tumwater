@@ -5,6 +5,7 @@
  * join (history-data.ts's runRows, failure/failure-time-spend.ts, run-detail-data.ts) import it
  * from here. */
 import type { HarnessEvent } from "../events/events.js";
+import { runStartTs } from "../events/event-read.js";
 import { textOr } from "../text/text.js";
 import { groupBy } from "../collections.js";
 
@@ -109,7 +110,7 @@ export function resolveQueuedResult(
 function queuedRowEvidenceWhole(end: HarnessEvent, joinStarts: Map<string, number>, floorTs: number | null): boolean {
   if (end.heldOnBranch === true) return false;
   if (floorTs !== null) {
-    const startTs = joinStarts.get(`${end.source}#${end.run}`);
+    const startTs = runStartTs(end, joinStarts);
     if (startTs !== undefined && startTs < floorTs) return false;
   }
   return true;

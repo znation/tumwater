@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  applyRunStartModel,
   eventDayKey,
   eventRole,
   eventUsage,
@@ -95,6 +96,36 @@ test("runStartModelMap pairs only model-carrying run_start events, and runStartM
   assert.equal(runStartModel(ev({ run: 8 }), models), null);
   assert.equal(runStartModel(ev({ run: 9 }), models), null);
   assert.equal(runStartModel(ev({ run: 1 }), runStartModelMap([])), null);
+});
+
+test("applyRunStartModel keeps the last start's model per run key, and the batch map agrees", () => {
+  // The streaming folds (report-fold.ts, report-since-data.ts) grow a pairing event by event
+  // with this rule; runStartModelMap is the same rule over a whole list. Both spellings must
+  // decide identically, or the report and history disagree on one run's model.
+  const models = new Map<string, string>();
+  applyRunStartModel(models, ev({ type: "run_start", source: "feature", run: 4, model: "acme/m1" }));
+  assert.deepEqual([...models.entries()], [["feature#4", "acme/m1"]]);
+  // A later start for the same run number replaces the model.
+  applyRunStartModel(models, ev({ type: "run_start", source: "feature", run: 4, model: "acme/m2" }));
+  assert.deepEqual([...models.entries()], [["feature#4", "acme/m2"]]);
+  // A model-less start for that key CLEARS it: a run number reused after reset-counters must
+  // not inherit the earlier run's model.
+  applyRunStartModel(models, ev({ type: "run_start", source: "feature", run: 4 }));
+  assert.deepEqual([...models.entries()], []);
+  applyRunStartModel(models, ev({ type: "run_start", source: "feature", run: 4, model: "" }));
+  assert.deepEqual([...models.entries()], []);
+  // Every other event type leaves the map untouched — including a run_end for a paired key.
+  applyRunStartModel(models, ev({ type: "run_end", source: "feature", run: 4, model: "acme/m3" }));
+  assert.deepEqual([...models.entries()], []);
+  // The batch read lands on the same answer for the same stream.
+  const stream = [
+    ev({ type: "run_start", source: "feature", run: 4, ts: 100, model: "acme/m1" }),
+    ev({ type: "run_start", source: "feature", run: 4, ts: 200, model: "acme/m2" }),
+    ev({ type: "run_start", source: "feature", run: 4, ts: 300 }),
+    ev({ type: "run_start", source: "clean", run: 1, ts: 400, model: "acme/m9" }),
+    ev({ type: "run_end", source: "clean", run: 1, ts: 500, model: "acme/nope" }),
+  ];
+  assert.deepEqual([...runStartModelMap(stream).entries()], [["clean#1", "acme/m9"]]);
 });
 
 test("runSpanMs measures start→end, clamps negatives to 0, and reads an unpaired end as null", () => {

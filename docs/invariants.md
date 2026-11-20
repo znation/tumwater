@@ -1338,7 +1338,8 @@ queued.
 model. Rows come back newest first, at most `limit` of them, filtered by role.
 
 **Binds.** `src/history/history-data.ts` (`runRows`, `RunRow`), `src/events/event-read.ts`
-(`runStartMap`, `runSpanMs`, `runStartModel`).
+(`runStartMap`, `runSpanMs`, `runStartModel`, and the pairing's keyed lookups `runStartTs` and
+`applyRunStartModel`, which the report's streaming folds use instead of re-formatting the key).
 
 **Pinned by.** `test/history-data.test.ts` — "runRows pairs each run_end with its run_start for
 the duration", "runRows renders no duration when the run's start is outside the scanned window",

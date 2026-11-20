@@ -10,7 +10,7 @@
  * dependencies: node built-ins and the app's own modules only. */
 import { sameStatIdentity, statIdentityOrZero, statOrNull } from "../files/files.js";
 import { readWindowEvents } from "../events/event-window.js";
-import { eventDayKey, parseEventLine, runStartKey } from "../events/event-read.js";
+import { applyRunStartModel, eventDayKey, parseEventLine } from "../events/event-read.js";
 import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -115,7 +115,8 @@ interface ReportFoldEntry {
   hadEvents: boolean;
   firstEventTs?: number;
   days: Map<string, DayFold>;
-  /** The run_start pairing (runStartKey keys → the start's model) for this window, grown as
+  /** The run_start pairing (the pairing's `${role}#${run}` keys → the start's model) for this
+   * window, grown as
    * run_start lines fold in, so a run_end appended after its start still attributes its
    * output tokens to a model across the memo's append path — the foldUsageEvent third
    * argument both the append and the full re-read path hand it. */
@@ -248,17 +249,11 @@ function foldEventInto(entry: ReportFoldEntry, ev: HarnessEvent): void {
   }
   if (isRedMain(ev) || isPassingMainCheck(ev) || ev.type === "main_culprit") entry.redEvents.push(ev);
   // Grow the start→model pairing before folding the event, so a run_end folded here can
-  // already see a run_start that preceded it in the same stream. The entry's guard is
-  // runStartEvents' own: a finite `ts` (eventDayKey is non-null) and a non-empty string
-  // model — the same rules runStartModelMap applies, spelled against one event. A later
-  // start for the same key replaces the earlier one even when it names no model (the
-  // pairing keeps the last start, so a model-less rerun after `reset-counters` reuses a
-  // run number and must not inherit the previous run's model).
-  if (ev.type === "run_start") {
-    const key = runStartKey(ev);
-    if (typeof ev.model === "string" && ev.model !== "") entry.runModels.set(key, ev.model);
-    else entry.runModels.delete(key);
-  }
+  // already see a run_start that preceded it in the same stream. applyRunStartModel is
+  // runStartModelMap's rule spelled against one event: a later start for the same key
+  // replaces the earlier one even when it names no model (a model-less rerun after
+  // `reset-counters` reuses a run number and must not inherit the previous run's model).
+  applyRunStartModel(entry.runModels, ev);
   foldUsageEvent(dayFoldFor(entry, dayKey), ev, entry.runModels);
 }
 
