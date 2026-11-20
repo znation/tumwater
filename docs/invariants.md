@@ -1146,14 +1146,29 @@ fully restores after a burst: no slot leak".
 **Guarantee.** Parked waiters are ordered by tier, a lower tier ahead of a higher one, and FIFO
 within a tier. A higher tier is not starved: once no lower-tier waiter is parked, it drains FIFO.
 The reserve withholds permits from tier 1 and above (maintenance), so a work acquirer finds one
-free; the verify and merge tiers ignore the reserve.
+free; the verify and merge tiers ignore the reserve. Against it stands the maintenance floor:
+while maintenance holds fewer permits than the floor, the longest-parked maintenance waiter takes
+the next free permit ahead of every work waiter and of a fresh work arrival's fast path, the
+reserve notwithstanding; a parked verify-tier waiter is still granted ahead of it, the floor is
+found by scanning the parked waiters (a waiter's queue position is fixed when it inserts), it is
+counted by the tier a lease asked for and stays exact across pause and resume, and floor 0 leaves
+the ordering above exactly as it was.
 
-**Binds.** `src/concurrency/semaphore.ts` (`acquire`, `acquireLease`).
+**Binds.** `src/concurrency/semaphore.ts` (`acquire`, `acquireLease`, `setFloor`,
+`maintenanceFloorCount`), `src/orchestrator/orchestrator-poll.ts` (`pollReserveAndExit`).
 
 **Pinned by.** `test/semaphore.test.ts` — "a lower-tier arrival jumps ahead of parked higher-tier
 waiters, FIFO within a tier", "tier ordering never starves a higher tier: once no lower-tier waiter
 is parked, it drains FIFO", "a reserve keeps a permit free for a work acquirer while maintenance
-sits at its cap" and "the verify and merge tiers ignore the reserve";
+sits at its cap", "the verify and merge tiers ignore the reserve", "the maintenance floor hands
+the next free permit to the parked maintenance waiter ahead of a parked work waiter", "a held
+maintenance permit fills the floor, so the next free one goes to the work waiter", "the floor
+grants through the reserve, and the reserve still withholds a second maintenance waiter", "a parked
+verify-tier waiter is granted ahead of the floor waiter", "pause drops the floor's maintenance
+count and resume restores it, exactly", "a filled floor leaves the reserve in force against a later
+maintenance waiter", "the floor gives the next permit to the maintenance waiter that parked first,
+not the queue head", and "floor 0 keeps the old order: a fresh
+work arrival still jumps ahead of a young maintenance waiter";
 `test/orchestrator-permits.e2e.test.ts` — "the director's run starts immediately while every
 maxConcurrent slot is busy".
 

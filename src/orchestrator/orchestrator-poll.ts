@@ -30,6 +30,7 @@ import {
 } from "../operator/operator-requests.js";
 import { checkPermitSnapshot } from "../concurrency/check-permit.js";
 import { slotPoolSnapshot } from "../git/worktree-pool.js";
+import { maintenanceFloorCount } from "../concurrency/semaphore.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import type { createMainWatch } from "../baseline/main-watch.js";
 import { watchVerifiesMain } from "../baseline/main-baseline.js";
@@ -538,6 +539,12 @@ export async function pollReserveAndExit(ctx: PollContext, state: PollState, { l
     instancesOf: (base) => liveConfig.roles[base]?.instances ?? 1,
   });
   semaphore.setReserve(reserve);
+  // The maintenance permit floor (PLANS.md 2026-11-19), the mirror of the reserve set just
+  // above: while maintenance holds fewer permits than this, the longest-parked maintenance run
+  // takes the next freed permit ahead of every work run, the reserve notwithstanding. Sized as
+  // the same third of the team cap the reserve is capped at, so neither side claims more than a
+  // third — 2 at the default 6, 1 at 4, 0 at cap 1 where a floor would be the whole team.
+  semaphore.setFloor(maintenanceFloorCount(liveConfig.maxConcurrent));
   if ((state.lastReserve === 0) !== (reserve === 0)) {
     ctx.emit({ source: TUMWATER_SOURCE, type: "permit_reserve", reserve });
   }

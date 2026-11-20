@@ -224,6 +224,10 @@ never has to wait a parked check out.
   heal run (a `ci` run whose inbox holds a heal prompt — healing main is work, so it is admitted
   ahead of every queued role run even though `ci` otherwise schedules as maintenance), then
   work roles (feature, bugfix, plan), then maintenance roles.
+  **Maintenance permit floor.** While maintenance holds fewer than its permit floor —
+  `floor(maxConcurrent / 3)`, the same share the work reserve may claim, so 2 at the default 6 —
+  the longest-parked maintenance run takes the next free permit ahead of every work run, the
+  reserve not withstanding; nothing already running is preempted.
 - **No merge interlock.** A role with a queued or in-flight change still authors on the next
   poll: the merge queue is not a scheduling gate, so landing never holds authoring. A fresh run
   resets the role's branch to main, and a second commit by a role with a waiting pin stays on its

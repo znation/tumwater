@@ -5,6 +5,73 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Maintenance permit floor, part 1/1: while a maintenance role waits, work runs leave it the next free permit (planned 2026-11-19 by the operator; touches src/concurrency/semaphore.ts src/orchestrator/orchestrator-poll.ts test/semaphore.test.ts docs/invariants.md docs/how-it-works.md) — done 2026-11-20 by the feature role
+
+**Goal.** Work runs (feature, bugfix, plan: tier 0 in `roleTier`) can hold every run permit
+for hours, and maintenance roles (tier 1) wait behind them. The age bound (5982fff6b, BUGS.md
+2026-11-08) promotes a tier-1 waiter after two hours, but this repo's own team shows that is not
+enough. It runs 3 feature + 3 bugfix instances on `maxConcurrent` 4. From the
+`provider_wait` events in .tumwater/log/events.jsonl* between 2026-11-12 and 2026-11-20, the
+tier-1 roles' waits were: median 23–85 min, p90 113–186 min, max 541 min. 95 of 816 tier-1
+waits exceeded 130 min. Long waits come in groups: a wake (often right after
+`model_check_passed` or a restart) makes ten or more maintenance roles due at once. They age
+together and are then promoted into one FIFO line, where each one waits for a work run to finish.
+Three work instances by default part 2/2 gives every team this shape (3 + 3 + plan on
+`maxConcurrent` 6), so the guarantee should be one that does not depend on a two-hour clock.
+
+**Approach.**
+- A maintenance floor in `Semaphore` (src/concurrency/semaphore.ts), the mirror of the work
+  reserve:
+  - track `maintenanceInUse`: permits held by leases acquired at tier ≥ 1 (by the tier they
+    asked for, aged or not). Release, pause and resume keep it exact, as they already do for
+    `inUse`;
+  - `setFloor(n)` sets the floor like `setReserve` and re-runs `drive()`.
+- The rule: while `maintenanceInUse < floor` and a tier ≥ 1 waiter is parked, the
+  longest-parked tier ≥ 1 waiter takes the next permit that frees, and the reserve does not
+  apply to it. It goes ahead of every tier-0 waiter and of a fresh tier-0 arrival's fast path
+  (`grantAheadOf` / `canLeaseAtOnce`). The verify and merge tiers still go first, so a red-main
+  heal (VERIFY_TIER) and merges are unaffected. The queue's order is fixed when a waiter
+  inserts, so find the floor waiter by scanning (smallest `since` among tier ≥ 1 waiters), not
+  by queue position.
+- Nothing is preempted: in-flight work keeps its permits, and the floor only decides who gets
+  the next released one. So a maintenance wait is bounded by the next release of any permit,
+  not by two hours. Once maintenance holds `floor` permits, ordering is exactly today's
+  (tier, then FIFO, age bound included).
+- Sizing: the orchestrator sets the floor every poll next to `setReserve` in
+  `pollReserveAndExit` (src/orchestrator/orchestrator-poll.ts). It is
+  `maxConcurrent >= 2 ? Math.max(1, Math.floor(maxConcurrent / 3)) : 0`, the same
+  `floor(maxConcurrent / 3)` the work reserve uses as its ceiling, so neither side can claim more
+  than a third: 2 at the default 6, 1 at 4, 0 at 1. Not a config key: the
+  maintenance quota (`maintenance_quota_hold`) and each role's own `minRunIntervalSeconds`
+  already decide how much maintenance runs; this only stops it from queuing for hours once it
+  is due.
+- Keep the age bound. It still governs maintenance waiters beyond the floor.
+- docs/invariants.md INV-P3: add the floor to the guarantee ("while maintenance holds fewer
+  than the floor, the longest-parked maintenance waiter takes the next free permit ahead of
+  work, ignoring the reserve") and name the new pinning tests. docs/how-it-works.md: one
+  sentence beside the priority-headroom text.
+
+**Acceptance criteria.**
+- test/semaphore.test.ts, all with an injected clock and no real waits:
+  - cap 3, floor 1: three tier-0 holders, then a tier-1 waiter parks, then a tier-0 waiter;
+    one release grants the tier-1 waiter;
+  - the same with one tier-1 lease already held: the release grants the tier-0 waiter;
+  - with reserve 1 and floor 1, the floor waiter is granted although the reserve would withhold
+    it, and a later tier-1 waiter is still withheld;
+  - a parked VERIFY_TIER waiter is granted ahead of the floor waiter;
+  - pausing a held tier-1 lease drops `maintenanceInUse`, so the floor applies again, and
+    resuming restores it; a released lease never takes it below 0;
+  - two tier-1 waiters parked at different times: the earlier one gets the floor permit;
+  - floor 0 is today's behavior, and every existing semaphore test passes unchanged.
+- `pollReserveAndExit` sets floor 2 at `maxConcurrent` 6, 1 at 4 and 0 at 1 (unit test on
+  the sizing helper).
+- Measurement after three days on this repo's team, running the same
+  `provider_wait` query (tier ≥ 1 roles, `waitedMs` per role, since the landing): p90 under
+  60 min for every maintenance role, and no wait over 130 min. Record the numbers in the entry's
+  Done note. If they miss, say so there rather than tuning the floor in the same change.
+  (The three-day measurement cannot be scored by the landing run itself: the floor is live only
+  from the merge, so the numbers go into this entry on a later run.)
+
 ### `isMergeClaim`'s fail-closed boolean shape guard is pinned in test/merge-queue.test.ts, so a regression in the one home of "is this a well-formed backlog-claim trailer" the queue's file reader (`isMergeEntry`, which validates each entry's `claim`) and the commit-trailer reader (`claimOf`) both apply would be caught at the gate rather than as a torn or foreign claim the readers silently admit (planned 2026-11-16 by the plan role; the pin-a-rule the retired bad-anchor `isMergeClaim` entry's defect note flagged as "a different entry than this one" — the real boolean guard, not the 3-arm refusal-string builder that entry described) — done 2026-11-19 by the feature role
 
 `isMergeClaim` (src/merge/merge-queue.ts) is a **fail-closed boolean shape guard** — `isJsonObject(v) && (v.file === "PLANS.md" || v.file === "BUGS.md") && typeof v.key === "string" && typeof v.title === "string"` — with **no direct test** on this entry's base (`grep -rn isMergeClaim test/` printed nothing there; after this entry's change it prints only the new pin — the import line and the guard test — in test/merge-queue.test.ts). Its two live readers — the queue-file reader `isMergeEntry` (same file, which validates `e.claim`) and the commit-trailer reader `claimOf` (src/git/commit-message.ts, `isMergeClaim(value) ? value : undefined`) — each consult it, and the existing `claimOf` trailer test (test/commit-message.test.ts) pins the valid arm, the wrong-`file` arm (`file: "NOT.md"` → absent), and the not-JSON arm, but never a non-string `key` or `title` or a non-object — those arms of the guard are unpinned, and `isJsonObject` (src/files/json-object.ts) accepts any plain object, so the `file`/`key`/`title` field checks are the only shape discipline. A regression that loosens one of them (say, dropping the `key`/`title` string checks) would let a torn or foreign claim — or a hand-made `Claim:` trailer — pass a reader meant to admit only a well-formed backlog claim, and no existing test catches it. The L23 bar (0 direct refs and an arm the readers leave unpinned) is met.

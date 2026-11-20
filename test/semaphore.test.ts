@@ -1,7 +1,7 @@
 import { flushImmediate, sleep } from "./helpers/wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Semaphore } from "../src/concurrency/semaphore.js";
+import { Semaphore, maintenanceFloorCount } from "../src/concurrency/semaphore.js";
 
 test("semaphore bounds concurrency", async () => {
   const sem = new Semaphore(2);
@@ -554,4 +554,329 @@ test("releasing a paused lease, or one whose resume is still queued, owes nothin
   assert.equal(sem.snapshot().inUse, 0, "no count goes negative or leaks");
   await holder.resume(); // a released lease never takes a permit back
   assert.equal(sem.snapshot().inUse, 0);
+});
+
+// --- Maintenance permit floor (PLANS.md 2026-11-19: work runs hold every permit for hours and
+// maintenance roles wait behind them; the two-hour age bound is not enough) ---
+
+test("the maintenance floor hands the next free permit to the parked maintenance waiter ahead of a parked work waiter", async () => {
+  // Cap 3, floor 1: three work holders fill the team; a maintenance waiter and then a work
+  // waiter park; the one freed permit goes to maintenance, and the work waiter stays parked.
+  const sem = new Semaphore(3);
+  sem.setFloor(1);
+  const order: string[] = [];
+  const snap = () => [...order];
+  const a = await sem.acquireLease(0);
+  const b = await sem.acquireLease(0);
+  const c = await sem.acquireLease(0); // at capacity
+  const maint = sem.acquireLease(1).then((lease) => {
+    order.push("maint");
+    return lease;
+  });
+  await flushImmediate();
+  const work = sem.acquireLease(0).then((lease) => {
+    order.push("work");
+    return lease;
+  });
+  await flushImmediate();
+  assert.deepEqual(snap(), [], "nothing runs while all three permits are held");
+  assert.equal(sem.waiting, 2, "both waiters parked");
+
+  a.release(); // the one freed permit: the floor gives it to maintenance, not to the queue head
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint"], "the floor waiter takes the next free permit ahead of work");
+  assert.equal(sem.waiting, 1, "the work waiter is still parked — the floor admits one");
+
+  (await maint).release();
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint", "work"], "work takes the permit maintenance gave back");
+  (await work).release();
+  b.release();
+  c.release();
+  assert.equal(sem.snapshot().inUse, 0, "every lease gave its permit back");
+});
+
+test("a held maintenance permit fills the floor, so the next free one goes to the work waiter", async () => {
+  // The same shape with one maintenance lease already held: the floor is filled, so ordering is
+  // exactly the old tier-then-FIFO order and the work waiter wins.
+  const sem = new Semaphore(3);
+  sem.setFloor(1);
+  const order: string[] = [];
+  const snap = () => [...order];
+  const a = await sem.acquireLease(0);
+  const b = await sem.acquireLease(0);
+  const maintHeld = await sem.acquireLease(1); // fills the floor
+  const maint2 = sem.acquireLease(1).then((lease) => {
+    order.push("maint2");
+    return lease;
+  });
+  await flushImmediate();
+  const work = sem.acquireLease(0).then((lease) => {
+    order.push("work");
+    return lease;
+  });
+  await flushImmediate();
+  assert.deepEqual(snap(), [], "nothing runs at capacity");
+
+  a.release();
+  await flushImmediate();
+  assert.deepEqual(snap(), ["work"], "maintenance already holds the floor, so work takes the freed permit");
+
+  (await work).release();
+  await flushImmediate();
+  assert.deepEqual(snap(), ["work", "maint2"], "the parked maintenance waiter takes the next one");
+  (await maint2).release();
+  maintHeld.release();
+  b.release();
+  assert.equal(sem.snapshot().inUse, 0);
+});
+
+test("the floor grants through the reserve, and the reserve still withholds a second maintenance waiter", async () => {
+  // Reserve 1, floor 1, cap 2: one work holder, so the only permit is reserved for work. A
+  // maintenance waiter parks, and the release grants it anyway — the floor ignores the reserve.
+  const sem = new Semaphore(2);
+  sem.setFloor(1);
+  sem.setReserve(1);
+  const holder = await sem.acquireLease(0); // in-use 1 == capacity - reserve: no tier-1 headroom
+  let maintGranted = false;
+  const maint = sem.acquireLease(1).then((lease) => {
+    maintGranted = true;
+    return lease;
+  });
+  await flushImmediate();
+  assert.equal(maintGranted, false, "the reserve withholds the free permit from the maintenance waiter");
+  assert.equal(sem.canLeaseAtOnce(0), false, "a fresh work arrival cannot barge the floor waiter's fast path");
+
+  holder.release();
+  await flushImmediate();
+  assert.equal(maintGranted, true, "the floor waiter takes the reserved permit");
+
+  (await maint).release();
+  assert.equal(sem.snapshot().inUse, 0, "no permit leaked through the floor grant");
+});
+
+test("a filled floor leaves the reserve in force against a later maintenance waiter", async () => {
+  // Reserve 1, floor 1, cap 2: maintenance already holds its one floor permit, so a second
+  // maintenance waiter is withheld while a work acquirer takes the free permit at once.
+  const sem = new Semaphore(2);
+  sem.setFloor(1);
+  sem.setReserve(1);
+  const maintHeld = await sem.acquireLease(1); // fills the floor: in-use 1 == capacity - reserve
+  let secondGranted = false;
+  const second = sem.acquireLease(1).then((lease) => {
+    secondGranted = true;
+    return lease;
+  });
+  await flushImmediate();
+  assert.equal(secondGranted, false, "the floor is filled, so the reserve still withholds the second waiter");
+  let workGranted = false;
+  const work = sem.acquireLease(0).then((lease) => {
+    workGranted = true;
+    return lease;
+  });
+  await flushImmediate();
+  assert.equal(workGranted, true, "work still takes the reserved permit at once");
+  assert.equal(secondGranted, false, "and the second maintenance waiter stays parked behind it");
+  (await work).release();
+  await flushImmediate();
+  assert.equal(secondGranted, false, "a work release still leaves the filled floor and the reserve");
+  maintHeld.release(); // frees the floor's permit
+  await flushImmediate();
+  assert.equal(secondGranted, true, "the freed floor permit goes to the parked maintenance waiter");
+  (await second).release();
+  assert.equal(sem.snapshot().inUse, 0, "every lease gave its permit back");
+});
+
+test("a parked verify-tier waiter is granted ahead of the floor waiter", async () => {
+  // A red-main heal or a landing never waits behind the floor: the negative tier leads it.
+  const sem = new Semaphore(1);
+  sem.setFloor(1);
+  const order: string[] = [];
+  const snap = () => [...order];
+  const holder = await sem.acquireLease(0); // the only permit
+  const maint = sem.acquireLease(1).then((lease) => {
+    order.push("maint");
+    return lease;
+  });
+  await flushImmediate();
+  const verify = sem.acquireLease(-1).then((lease) => {
+    order.push("verify");
+    return lease;
+  });
+  await flushImmediate();
+  assert.equal(sem.waiting, 2, "both parked, the verify-tier waiter at the queue head");
+
+  holder.release();
+  await flushImmediate();
+  assert.deepEqual(snap(), ["verify"], "the verify tier is granted before the floor waiter");
+  (await verify).release();
+  await flushImmediate();
+  assert.deepEqual(snap(), ["verify", "maint"], "then the floor waiter takes the next permit");
+  (await maint).release();
+  assert.equal(sem.snapshot().inUse, 0);
+});
+
+test("pause drops the floor's maintenance count and resume restores it, exactly", async () => {
+  // Cap 2, floor 1. The count the floor compares against follows a maintenance lease's permit:
+  // pausing one opens the floor again (its waiter beats a parked work waiter), a second pause is
+  // a no-op, the resumed lease refills the floor, a work release leaves the count alone, and the
+  // tier-1 release reopens the floor.
+  let clock = 0;
+  const sem = new Semaphore(2, { now: () => clock });
+  sem.setFloor(1);
+  const order: string[] = [];
+  const snap = () => [...order];
+  const maintLease = await sem.acquireLease(1); // fills the floor: maintenanceInUse 1
+  const work = await sem.acquireLease(0); // at capacity
+  const maint2 = sem.acquireLease(1).then((lease) => {
+    order.push("maint2");
+    return lease;
+  });
+  await flushImmediate();
+  clock = 1_000;
+  const work2 = sem.acquireLease(0).then((lease) => {
+    order.push("work2");
+    return lease;
+  });
+  await flushImmediate();
+  assert.deepEqual(snap(), [], "the floor is filled, so both waiters park");
+
+  maintLease.pause(); // hands its permit back and opens the floor again
+  maintLease.pause(); // a second pause is a no-op, never a second give-back
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint2"], "the opened floor beats the parked work waiter");
+  assert.equal(sem.snapshot().inUse, 2, "one permit back, one permit granted");
+
+  (await maint2).release(); // a maintenance release: the count drops, the queue head takes it
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint2", "work2"], "work takes the freed permit");
+
+  const resume = maintLease.resume(); // re-admits at tier 1, so it must park
+  await flushImmediate();
+  assert.equal(sem.waiting, 1, "the resume queues like any admission waiter");
+  await maintLease.resume(); // a second resume while queued is a no-op, never a second waiter
+  assert.equal(sem.waiting, 1, "and leaves exactly one waiter parked");
+  work.release();
+  await resume;
+  assert.equal(sem.snapshot().inUse, 2, "the resumed lease took its permit back at tier 1");
+
+  clock = 2_000;
+  const maint3 = sem.acquireLease(1).then((lease) => {
+    order.push("maint3");
+    return lease;
+  });
+  await flushImmediate();
+  const work3 = sem.acquireLease(0).then((lease) => {
+    order.push("work3");
+    return lease;
+  });
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint2", "work2"], "the resumed lease refills the floor: both park");
+
+  (await work2).release(); // a work release must leave the maintenance count alone
+  await flushImmediate();
+  assert.deepEqual(
+    snap(),
+    ["maint2", "work2", "work3"],
+    "the floor stays filled, so the queue head (work) wins over the maintenance waiter",
+  );
+
+  maintLease.release(); // the tier-1 release drops the count and reopens the floor
+  await flushImmediate();
+  assert.deepEqual(snap(), ["maint2", "work2", "work3", "maint3"], "the floor admits the maintenance waiter");
+  (await maint3).release();
+  (await work3).release();
+  assert.equal(sem.snapshot().inUse, 0, "no count went negative or leaked");
+});
+
+test("the floor gives the next permit to the maintenance waiter that parked first, not the queue head", async () => {
+  // A waiter's queue position is fixed when it inserts, so the longest-parked tier >= 1 waiter is
+  // not the deepest one: a tier-2 waiter parked first sits behind a later tier-1 arrival, and the
+  // floor must scan for it.
+  let clock = 0;
+  const sem = new Semaphore(1, { now: () => clock });
+  sem.setFloor(1);
+  const order: string[] = [];
+  const snap = () => [...order];
+  const holder = await sem.acquireLease(0); // the only permit
+  const first = sem.acquireLease(2).then((lease) => {
+    order.push("first");
+    return lease;
+  });
+  await flushImmediate();
+  clock = 5_000; // parked later, and its tier sorts ahead of the first
+  const second = sem.acquireLease(1).then((lease) => {
+    order.push("second");
+    return lease;
+  });
+  await flushImmediate();
+
+  holder.release();
+  await flushImmediate();
+  assert.deepEqual(snap(), ["first"], "the longest-parked maintenance waiter is the floor waiter");
+  (await first).release();
+  await flushImmediate();
+  assert.deepEqual(snap(), ["first", "second"], "the next freed permit goes by tier order again");
+  (await second).release();
+  assert.equal(sem.snapshot().inUse, 0);
+});
+
+test("floor 0 keeps the old order: a fresh work arrival still jumps ahead of a young maintenance waiter", async () => {
+  // The default floor is 0, so every pre-floor ordering rule is unchanged.
+  const sem = new Semaphore(1);
+  const order: string[] = [];
+  const snap = () => [...order];
+  const holder = await sem.acquireLease(0);
+  const maint = sem.acquireLease(1).then((lease) => {
+    order.push("maint");
+    return lease;
+  });
+  await flushImmediate();
+  const work = sem.acquireLease(0).then((lease) => {
+    order.push("work");
+    return lease;
+  });
+  await flushImmediate();
+  holder.release();
+  await flushImmediate();
+  assert.deepEqual(snap(), ["work"], "no floor: the queue head (the work arrival) wins");
+  (await work).release();
+  await flushImmediate();
+  assert.deepEqual(snap(), ["work", "maint"]);
+  (await maint).release();
+});
+
+test("raising the floor admits a parked maintenance waiter without a release", async () => {
+  // setFloor re-runs the hand-off like setReserve: raising it re-runs drive, lowering it never
+  // preempts a maintenance run already holding a permit.
+  const sem = new Semaphore(2);
+  sem.setReserve(1);
+  const holder = await sem.acquireLease(0); // in-use 1 == capacity - reserve
+  let granted = false;
+  const maint = sem.acquireLease(1).then((lease) => {
+    granted = true;
+    return lease;
+  });
+  await flushImmediate();
+  assert.equal(granted, false, "the reserve withholds the free permit while the floor is 0");
+  sem.setFloor(1);
+  await flushImmediate();
+  assert.equal(granted, true, "raising the floor admits the parked maintenance waiter");
+  sem.setFloor(0);
+  assert.equal(sem.snapshot().inUse, 2, "lowering the floor preempts nothing");
+  (await maint).release();
+  holder.release();
+  assert.equal(sem.snapshot().inUse, 0);
+});
+
+test("maintenanceFloorCount sizes the floor as a third of the cap, at least 1 from cap 2 up", () => {
+  // The same floor(maxConcurrent / 3) the work reserve is capped at, so neither side can claim
+  // more than a third of the team; 0 at cap 1, where a floor would be the whole team.
+  assert.equal(maintenanceFloorCount(1), 0);
+  assert.equal(maintenanceFloorCount(2), 1);
+  assert.equal(maintenanceFloorCount(3), 1);
+  assert.equal(maintenanceFloorCount(4), 1);
+  assert.equal(maintenanceFloorCount(5), 1);
+  assert.equal(maintenanceFloorCount(6), 2);
+  assert.equal(maintenanceFloorCount(9), 3);
 });

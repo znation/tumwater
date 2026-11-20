@@ -33,12 +33,27 @@ interface Waiter {
    * in the type so an acquirer's `{ tier, resolve }` literal is assignable; effectiveTier reads
    * it as "never aged" when absent. */
   since?: number;
+  /** True for a waiter parked by `acquireLease` (or a paused lease's resume): its grant counts
+   * toward `maintenanceInUse`, the count the maintenance floor compares against. Recorded here
+   * rather than derived from the tier because the unpaired `release()` — used only by the
+   * check-permit pool, whose admissions go through `acquire` — cannot know the releasing tier,
+   * so a grant it counted would never be given back. */
+  counted?: boolean;
   resolve: () => void;
 }
 
 /** How long the age bound lets a tier ≥ 1 waiter be passed over before a fresh tier-0
  * (work) arrival stops jumping ahead of it (BUGS.md 2026-11-05/08: tier-1 starvation). */
 const DEFAULT_STARVE_MS = 2 * 60 * 60 * 1000; // two hours
+
+/** The maintenance permit floor for a team cap: how many permits maintenance may keep in hand
+ * while work runs queue behind it — the mirror of the work reserve, and the same
+ * `floor(maxConcurrent / 3)` the reserve is capped at, so neither side can claim more than a
+ * third of the team. 1 at cap 2–5, 2 at the default 6, 0 at cap 1 where a floor would be the
+ * whole team (PLANS.md "Maintenance permit floor", 2026-11-19). */
+export function maintenanceFloorCount(maxConcurrent: number): number {
+  return maxConcurrent >= 2 ? Math.max(1, Math.floor(maxConcurrent / 3)) : 0;
+}
 
 export class Semaphore {
   /** A parked WAITING (admission) waiter: its scheduling tier, the clock tick at which it
@@ -58,6 +73,15 @@ export class Semaphore {
    * one without waiting for a maintenance run to release (plans/parallel-work-instances.md
    * "Priority headroom", part 7/7). Tiers ≤ 0 (work, VERIFY_TIER, MERGE_TIER) ignore it. */
   private reserve = 0;
+  /** Permits held by leases that asked for tier ≥ 1 — aged or not, counted by the tier they
+   * asked for, never by their effective tier. The floor compares against this, so an
+   * age-promoted maintenance run still counts as maintenance toward the floor. */
+  private maintenanceInUse = 0;
+  /** The maintenance floor: while `maintenanceInUse` sits below it, the longest-parked tier ≥ 1
+   * waiter takes the next free permit ahead of every tier ≥ 0 waiter and the reserve does not
+   * apply to it (PLANS.md "Maintenance permit floor"). 0, the default, is the previous behavior
+   * exactly. */
+  private floor = 0;
 
   constructor(
     private capacity: number,
@@ -103,6 +127,20 @@ export class Semaphore {
     });
   }
 
+  /** Take one team permit for a `tier` acquirer. `counted` marks a lease admission — the only
+   * grants that move `maintenanceInUse`, which the unpaired release() cannot give back. */
+  private takePermit(tier: number, counted: boolean): void {
+    this.inUse += 1;
+    if (counted && tier >= 1) this.maintenanceInUse += 1;
+  }
+
+  /** Give one team permit back for a tier ≥ 1 lease holder, never taking the maintenance count
+   * below 0 whatever sequence of pause/release reached it. A tier ≤ 0 holder leaves it alone. */
+  private givePermitBack(tier: number): void {
+    this.inUse -= 1;
+    if (tier >= 1) this.maintenanceInUse = Math.max(0, this.maintenanceInUse - 1);
+  }
+
   /** Admit by the team total alone and return a lease handle. `tier` orders the wait exactly
    * as acquire does. FIFO holds within a tier. */
   async acquireLease(tier: number): Promise<SemaphoreLease> {
@@ -134,25 +172,25 @@ export class Semaphore {
         paused = false;
       }
       if (paused) return; // pause() already gave the permit back
-      this.inUse -= 1;
+      this.givePermitBack(tier);
       this.drive();
     };
     const pause = (): void => {
       if (closed || paused) return;
       paused = true;
-      this.inUse -= 1;
+      this.givePermitBack(tier);
       this.drive();
     };
     const resume = async (): Promise<void> => {
       if (closed || !paused || parkedResume !== null) return;
       this.grantAheadOf(tier);
       if (this.inUse < this.capacity - this.reserveFor(tier)) {
-        this.inUse += 1;
+        this.takePermit(tier, true);
         paused = false;
         return;
       }
       await new Promise<void>((resolve) => {
-        const waiter = { tier, resolve };
+        const waiter = { tier, resolve, counted: true };
         parkedResume = waiter;
         this.enqueue(waiter);
       });
@@ -164,11 +202,11 @@ export class Semaphore {
 
     this.grantAheadOf(tier);
     if (this.inUse < this.capacity - this.reserveFor(tier)) {
-      this.inUse += 1;
+      this.takePermit(tier, true);
       return lease;
     }
     await new Promise<void>((resolve) => {
-      this.enqueue({ tier, resolve });
+      this.enqueue({ tier, resolve, counted: true });
     });
     return lease;
   }
@@ -211,7 +249,16 @@ export class Semaphore {
     // A fast-path admission still queues behind every parked waiter whose effective tier is
     // not greater than its own, so account for the permits those waiters would take first.
     let inUse = this.inUse;
+    // The floor's maintenance waiter — one a tier ≥ 0 arrival queues behind — takes the first
+    // free permit and leaves nothing withheld; only a negative-tier (verify/merge) arrival skips
+    // it, since that tier leads the floor.
+    const floorWaiter = tier >= 0 ? this.floorWaiter() : null;
+    if (floorWaiter !== null) {
+      if (inUse >= this.capacity) return false;
+      inUse += 1;
+    }
     for (const w of this.waiters) {
+      if (w === floorWaiter) continue; // its permit was counted above
       const effective = this.effectiveTier(w);
       if (effective > tier) break;
       if (inUse >= this.capacity - this.reserveFor(effective)) return false;
@@ -237,15 +284,52 @@ export class Semaphore {
    * arriving tier is withheld there too, because reserveFor is monotone in tier. */
   private grantAheadOf(tier: number): void {
     for (;;) {
-      const waiter = this.waiters[0];
-      if (waiter === undefined) return;
-      const effective = this.effectiveTier(waiter);
-      if (effective > tier) return;
-      if (this.inUse >= this.capacity - this.reserveFor(effective)) return;
-      this.waiters.shift();
-      this.inUse += 1;
-      waiter.resolve();
+      const next = this.nextGrantAheadOf(tier);
+      if (next === null) return;
+      if (this.inUse >= this.capacity - next.withhold) return;
+      this.waiters.splice(this.waiters.indexOf(next.waiter), 1);
+      this.takePermit(next.waiter.tier, next.waiter.counted === true);
+      next.waiter.resolve();
     }
+  }
+
+  /** Which parked waiter the next free permit belongs to ahead of a fresh `tier` arrival, and
+   * how many permits that waiter's tier must leave withheld. In order:
+   * 1. a negative-tier (verify/merge) waiter at the queue head — it leads everything, the floor
+   *    included, so a red-main heal or a landing never waits behind the floor;
+   * 2. the floor's maintenance waiter, when the floor applies and the arriving tier is not
+   *    negative — it leads every tier ≥ 0 waiter and the reserve does not apply to it;
+   * 3. the queue head, when its effective tier is at or below the arriving tier, at that
+   *    effective tier's reserve.
+   * Null when nothing parked queues ahead of the arriving tier. */
+  private nextGrantAheadOf(tier: number): { waiter: Waiter; withhold: number } | null {
+    const head = this.waiters[0];
+    if (head === undefined) return null;
+    const headEffective = this.effectiveTier(head);
+    if (headEffective < 0) {
+      return headEffective > tier ? null : { waiter: head, withhold: 0 };
+    }
+    const floorWaiter = tier >= 0 ? this.floorWaiter() : null;
+    if (floorWaiter !== null) return { waiter: floorWaiter, withhold: 0 };
+    if (headEffective > tier) return null;
+    return { waiter: head, withhold: this.reserveFor(headEffective) };
+  }
+
+  /** The floor's waiter: the longest-parked tier ≥ 1 waiter, while maintenance holds fewer than
+   * `floor` permits; null when the floor is 0, is already filled, or no tier ≥ 1 waiter is
+   * parked. Found by scanning for the smallest `since` rather than by queue position, because a
+   * waiter's queue position is fixed when it inserts: a tier-0 arrival jumps ahead of a young
+   * tier-1 waiter, and the age bound moves an aged one, so the maintenance waiter that has
+   * waited longest is not the deepest tier ≥ 1 entry. Aged or not, a waiter is matched by the
+   * tier it asked for. */
+  private floorWaiter(): Waiter | null {
+    if (this.floor <= 0 || this.maintenanceInUse >= this.floor) return null;
+    let best: Waiter | null = null;
+    for (const w of this.waiters) {
+      if (w.tier < 1) continue;
+      if (best === null || (w.since ?? 0) < (best.since ?? 0)) best = w;
+    }
+    return best;
   }
 
   /** The permits withheld from `tier`: `reserve` for tier ≥ 1 (maintenance), 0 for every tier
@@ -261,6 +345,9 @@ export class Semaphore {
    * until releases bring in-use under the cap. In the normal case this is exactly the classic
    * hand-off — one release wakes one waiter, net in-use unchanged. */
   release(): void {
+    // The unpaired form, used only by the check-permit pool: it cannot know the releasing tier,
+    // so it leaves `maintenanceInUse` alone — exact, because that pool admits through `acquire`,
+    // whose grants are never counted (see Waiter.counted), and it never sets a floor.
     this.inUse -= 1;
     this.drive();
   }
@@ -278,6 +365,15 @@ export class Semaphore {
    * preempts an in-flight holder — it only withholds future grants. */
   setReserve(n: number): void {
     this.reserve = Math.max(0, n);
+    this.drive();
+  }
+
+  /** Live-resize the maintenance floor — the mirror of setReserve (PLANS.md "Maintenance permit
+   * floor"). Raising it re-runs the hand-off, so a parked maintenance waiter can take a permit
+   * the queue order had left to work; lowering it never preempts a maintenance run already
+   * holding one, it only stops reopening the floor for later grants. */
+  setFloor(n: number): void {
+    this.floor = Math.max(0, n);
     this.drive();
   }
 
