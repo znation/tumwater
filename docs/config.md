@@ -6,7 +6,7 @@ name a model or `"pause"`, and a role's `model` may name a tier; see
 [plans/model-tiers.md](../plans/model-tiers.md)),
 run intervals and timeouts (`minRunIntervalSeconds`, `runTimeoutSeconds`), the merge batch size
 (`mergeBatchMax`), per-role `instances` (`feature` and `bugfix` may each run 1–8 parallel instances, every one
-with its own branch and state; default 1), the daily spend cap
+with its own branch and state; default 3), the daily spend cap
 (`maxDailyCostUsd`, with optional per-role caps `maxDailyCostUsdPerRole` — a role over its own
 cap starts no new runs until the next local day or a live edit), a
 `maintenancePerWorkMerge` ratio (default 2; a rolling 24 h allowance of that many
@@ -24,7 +24,7 @@ drop their gitignored build outputs before the hold engages; 0 disables), and a
 `worktreeIdleReclaimHours` window (default 24; an hourly pass drops a worktree's gitignored build
 outputs once it has sat unused that long, whatever the free space; 0 disables), a
 `worktreeSlots` count of workspaces shared by role runs and merge checks (default
-`maxConcurrent` + 1; the director's workspace sits outside the shared set; a value below `maxConcurrent` with an instance role's `instances` above 1 raises the standing amber `instance-pool` alert) — your own
+`maxConcurrent` + 1; the director's workspace sits outside the shared set; a value below `maxConcurrent` with an instance role's `instances` above 1 — the default 3 included — raises the standing amber `instance-pool` alert) — your own
 `customRoles`, and an
 optional `notify` shell command run when the team needs a human (a budget pause, a budget warning
 at 80% of the cap while the gate is still open, a role's own cap warning or cap pause, low disk
@@ -102,7 +102,7 @@ The fields of a `roles.<id>` entry:
 | `backend` | none | The backend (`pi`, `claude`, `opencode`, `codex`) that runs this role's `model`; the id passes to it as written. Alone, it inherits the tier's model only when that tier already routes to the same backend, otherwise the backend's tier default applies. `tumwater role <id> --backend` writes this field (`--clear-backend` clears it). See [backends.md](backends.md). |
 | `thinking` | none | A thinking-level override for this role; unset uses the top-level value. |
 | `minRunIntervalSeconds` | `3600` for plan and organize, `1800` for readme, `7200` for qa, ci, selfcheck and feedback, `21600` for steward, otherwise the top-level value | The minimum seconds between two runs of this role, overriding the top-level value. While PLANS.md's `## Planned` still has planning room (`planBacklogFull` false — below the plan role's eligible-plan target, or holding a plan that needs review), the plan role schedules with a zero gap instead, so a productive plan run reruns on the next poll and an unproductive one drops to the idle backoff; once the target is met the plan role defers (`plans-full`) and this interval applies. |
-| `instances` | `1` | How many runs of the role may write code at once, 1–8; accepted only for feature and bugfix. Editable from the dashboard Settings card as `Feature role instances` (`roles.feature.instances`) and `Bugfix role instances` (`roles.bugfix.instances`); `maxConcurrent` still caps every run. Above 1, tumwater keeps up to twice as many runners (`feature` … `feature-10` at 5), so a runner waiting on its change does not hold a place. When `worktreeSlots` sits below `maxConcurrent`, an instance count above 1 raises the standing amber `instance-pool` alert. |
+| `instances` | `3` | How many runs of the role may write code at once, 1–8; accepted only for feature and bugfix. Editable from the dashboard Settings card as `Feature role instances` (`roles.feature.instances`) and `Bugfix role instances` (`roles.bugfix.instances`); `maxConcurrent` still caps every run. An idle extra costs nothing: an instance with no unclaimed eligible entry is skipped without a run, and a feature instance with no eligible plan at all stands down, so extra instances spend only when there is queued work for them — set `1` to keep one runner per role. Above 1, tumwater keeps up to twice as many runners (`feature` … `feature-10` at 5), so a runner waiting on its change does not hold a place. When `worktreeSlots` sits below `maxConcurrent`, an instance count above 1 — the default included — raises the standing amber `instance-pool` alert. |
 | `remote` | on when detectable | Whether the `ci` role reads the hosted CI's verdict on the pushed main; accepted only for `ci`. `false` stops the ci role checking GitHub Actions and drops the `REMOTE:` line; absent means on whenever detection finds a GitHub remote and a `.github/workflows` file (plans/remote-ci.md). |
 
 Model backends (OpenAI-compatible endpoints, the `claude` backend, and fallbacks) are covered in

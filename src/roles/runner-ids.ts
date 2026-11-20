@@ -2,7 +2,9 @@
  * base role may run several runner ids — `feature`, `feature-2`, `bugfix-3`, … — each keying
  * its own persisted state, branch, refs, session and notes, while every lookup that is ABOUT the
  * role (its catalog charter, model, tier, caps, scheduling class) resolves through the base role.
- * With no instances configured, every runner id is bare, so `baseRoleOf` is the identity.
+ * At the default instance count (DEFAULT_INSTANCES) a feature or bugfix role already holds
+ * several runner ids; only an explicit `instances: 1` leaves it with the bare id alone, and
+ * `baseRoleOf` never consults a config, so it is the identity for a bare or non-instance id.
  *
  * Only `feature` and `bugfix` may gain instances; any other id is returned unchanged, including a
  * custom role whose name merely resembles an instance. */
@@ -15,11 +17,18 @@ export const INSTANCE_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix"]
 /** What an unset `roles.<base>.instances` means: the instance count a role runs at when its
  * config names none. The one home for that default — every reader of an instance count goes
  * through `configuredInstances`, so the scheduler, the doctor, the Settings card and the role
- * drawer cannot disagree about what an absent count means (PLANS.md "Three work instances by
- * default, part 1/2: one home for the default instance count, still 1"). It is a fallback, not
- * an entry in `defaultConfig().roles`, so "absent means the default" holds for a loaded file and
- * for a hand-built config alike. */
-export const DEFAULT_INSTANCES = 1;
+ * drawer cannot disagree about what an absent count means. It is a fallback, not an entry in
+ * `defaultConfig().roles`, so "absent means the default" holds for a loaded file and for a
+ * hand-built config alike.
+ *
+ * Three. The operator raises these counts on every project, at every stage, so one is the wrong
+ * default (2026-11-19), and idle extras cost almost nothing: an extra instance with no unclaimed
+ * eligible entry is skipped without a run, and a feature instance with no eligible plan at all
+ * stands down (`standDownForNoWork`, src/scheduling/admit.ts), so extra instances spend only
+ * when there is queued work for them. The Maintenance permit floor keeps a waiting maintenance
+ * role from queuing behind them (src/gates/maintenance-quota-gates.ts). A team that wants the
+ * old behavior sets `roles.feature.instances` / `roles.bugfix.instances` to 1. */
+export const DEFAULT_INSTANCES = 3;
 
 /** How many runner ids an instance role may hold per configured instance. `instances: N` limits the
  * runs writing code at once; a runner whose change waits in the merge pipeline never runs
@@ -86,8 +95,9 @@ export function runnerEnabled(config: TumwaterConfig, id: string): boolean {
  * (runnerCount: twice the configured instances once there is more than one). Other roles and
  * custom roles stay bare — only feature and bugfix may split. The one
  * answer to "which runners should exist", so the orchestrator (part 5b/7) and live reload
- * enumerate the same set. At the default instance count this returns exactly the bare ids
- * `enabledRoleIds` returns. */
+ * enumerate the same set. At the default instance count each enabled feature/bugfix role holds
+ * twice DEFAULT_INSTANCES plus one ids (`feature`, `feature-2` … `feature-6`); a role with
+ * `instances: 1` contributes only its bare id. */
 export function runnerIds(config: TumwaterConfig): string[] {
   const ids: string[] = [];
   for (const [id, role] of Object.entries(config.roles)) {

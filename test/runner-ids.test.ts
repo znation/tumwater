@@ -32,8 +32,10 @@ test("instancePauseKey and runnerPaused give instance 1 its own pause key only w
   const two = defaultConfig();
   two.roles.feature!.instances = 2;
   const one = defaultConfig();
+  one.roles.feature!.instances = 1;
   assert.equal(instancePauseKey(two, "feature"), "feature-1");
-  assert.equal(instancePauseKey(one, "feature"), "feature");
+  assert.equal(instancePauseKey(one, "feature"), "feature", "a pinned single runner pauses under its bare id");
+  assert.equal(instancePauseKey(defaultConfig(), "feature"), "feature-1", "the default instance count gives instance 1 its own key");
   assert.equal(instancePauseKey(two, "feature-2"), "feature-2");
   assert.equal(instancePauseKey(two, "qa"), "qa");
   assert.equal(runnerPaused(new Set(["feature-1"]), "feature"), true);
@@ -63,7 +65,17 @@ test("baseRoleOf and instanceIndex map only a base role's -N ids", () => {
 test("runnerEnabled reads the base role and its configured instance count", () => {
   const config = defaultConfig();
   assert.equal(runnerEnabled(config, "feature"), true, "a bare enabled role runs");
-  assert.equal(runnerEnabled(config, "feature-2"), false, "the default instance count keeps index 2 off");
+  assert.equal(runnerEnabled(config, "feature-2"), true, "the default instance count runs index 2");
+  assert.equal(
+    runnerEnabled(config, `feature-${2 * DEFAULT_INSTANCES}`),
+    true,
+    "the default count keeps twice as many runners as instances",
+  );
+  assert.equal(
+    runnerEnabled(config, `feature-${2 * DEFAULT_INSTANCES + 1}`),
+    false,
+    "index above twice the default count stays off",
+  );
 
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
   assert.equal(runnerEnabled(config, "feature-3"), true, "instance 3 runs at instances: 3");
@@ -97,18 +109,37 @@ test("configuredInstances is the one reader of an instance count: the file's val
 
 test("runnerIds enumerates enabled roles and each instance base's extra runners", () => {
   const config = defaultConfig();
-  assert.deepEqual(runnerIds(config), Object.keys(config.roles).filter((id) => config.roles[id]?.enabled),
-    "at the default count it is exactly the enabled bare ids, in config.roles order");
+  const ids = runnerIds(config);
+  const bare = Object.keys(config.roles).filter((id) => config.roles[id]?.enabled);
+  const expected: string[] = [];
+  for (const id of bare) {
+    expected.push(id);
+    if (INSTANCE_ROLES.has(id)) {
+      for (let i = 2; i <= 2 * DEFAULT_INSTANCES; i++) expected.push(`${id}-${i}`);
+    }
+  }
+  assert.deepEqual(ids, expected,
+    `at the default count each feature/bugfix base holds its bare id plus -2 … -${2 * DEFAULT_INSTANCES}, in config.roles order`);
+  assert.ok(["feature-2", "feature-3", "feature-4", "feature-5", "feature-6"].every((id) => ids.includes(id)),
+    "the default runs three feature instances");
+  assert.ok(["bugfix-2", "bugfix-3", "bugfix-4", "bugfix-5", "bugfix-6"].every((id) => ids.includes(id)),
+    "and three bugfix instances");
+
+  const single = defaultConfig();
+  single.roles.feature = { ...(single.roles.feature ?? { enabled: true }), instances: 1 };
+  single.roles.bugfix = { ...(single.roles.bugfix ?? { enabled: true }), instances: 1 };
+  assert.deepEqual(runnerIds(single), Object.keys(single.roles).filter((id) => single.roles[id]?.enabled),
+    "a config pinning instances: 1 yields exactly the enabled bare ids");
 
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
-  const ids = runnerIds(config);
-  const feature = ids.indexOf("feature");
+  const threeIds = runnerIds(config);
+  const feature = threeIds.indexOf("feature");
   assert.deepEqual(
-    ids.slice(feature, feature + 6),
+    threeIds.slice(feature, feature + 6),
     ["feature", "feature-2", "feature-3", "feature-4", "feature-5", "feature-6"],
     "a feature base is followed by runners up to twice its instances",
   );
-  assert.ok(!ids.includes("feature-7"));
+  assert.ok(!threeIds.includes("feature-7"));
   // Only INSTANCE_ROLES split: a configured count on another role would be a validation
   // error, and here the bare id stays single regardless.
   config.roles.clean = { ...(config.roles.clean ?? { enabled: true }) };
