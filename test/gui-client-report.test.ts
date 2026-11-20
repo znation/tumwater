@@ -533,6 +533,11 @@ test("the Usage render chain gates the Post-merge rejections by role chart right
   assert.match(chain, /seriesHasAny\(d, "postMergeRejectionsByRole"\) \? block\("Post-merge rejections by role", chartPostMergeRejectionsByRole\(d\), undefined, POST_MERGE_REJECTIONS_TIP\) : ""/);
   // Exactly one such gated term.
   assert.equal((chain.match(/block\("Post-merge rejections by role", chartPostMergeRejectionsByRole\(d\), undefined, POST_MERGE_REJECTIONS_TIP\)/g) || []).length, 1);
+  // The ordering above is a prefix `indexOf`, so it pins nothing about the Rejections by role
+  // term's OWN tip argument — the entry's acceptance criteria name both tip calls, so both are
+  // pinned here, and the tipped-call total pins that no other chart gained a fourth argument.
+  assert.equal((chain.match(/block\("Rejections by role", chartRejectionsByRole\(d\), undefined, REJECTIONS_TIP\)/g) || []).length, 1, "the Rejections by role term passes REJECTIONS_TIP");
+  assert.equal((chain.match(/block\("[^"]+", chart[A-Za-z0-9_]+\(d\), undefined, [A-Z][A-Z_]*TIP\)/g) || []).length, 2, "only the two rejection charts pass a tip");
 });
 
 test("the Usage render chain gates the Estimated spend by backend chart right after Estimated spend by provider", () => {
