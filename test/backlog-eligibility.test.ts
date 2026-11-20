@@ -558,6 +558,10 @@ test("planDependencyProblems flags a still-planned prerequisite named without a 
   // a duplicated title's same misworded ref is reported once, not once per occurrence:
   // the dedup spans the whole planned list, matching the pre-split behavior
   assert.deepEqual(planDependencyProblems([e("S, part 1/2: a"), e(b), e(b)], []).misworded, [{ title: b, ref: "S 1/2" }]);
+  // the verb may sit in an earlier group than the appended operator stamp: a trailing-only read
+  // saw only the stamp group and reported nothing, leaving the misworded part unheld and unwarned
+  const stamped = "S, part 2/2: b (planned 2026-10-14 by plan; blocked by part 1/2 above) (reported by the user 2026-10-14)";
+  assert.deepEqual(planDependencyProblems([e("S, part 1/2: a"), e(stamped)], []).misworded, [{ title: stamped, ref: "S 1/2" }]);
 });
 
 test("planDependencyProblems finds dangling refs, unparsed clauses and cycles", () => {

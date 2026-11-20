@@ -129,8 +129,8 @@ markdown.
   - an entry whose body carries a `**Refused …**` note or the `NEEDS_REVIEW_NOTE` prefix
     (`**Needs review `);
   - an entry whose heading metadata names an unlanded prerequisite.
-- **Parsing prerequisites.** Only the heading's trailing parenthetical is parsed, never the
-  body.
+- **Parsing prerequisites.** Only the heading's parentheticals are parsed, never the body; every
+  top-level group is read, so a clause in a first group survives an appended stamp group.
   - The clause is `requires <ref>[, | and <ref>]… landed`.
   - A ref is `[<Series>] [part|parts] i/n[–j/n]`, and a range expands.
   - A ref with no series name means the entry's own series: the heading text before

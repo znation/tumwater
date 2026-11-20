@@ -265,7 +265,7 @@ function dependencyKnownParts(
 }
 
 /** The misworded refs a still-planned `Series, part i/n:` entry contributes: the series-parts its
- * trailing-or-open parenthetical names through a dependency verb with no requires clause holding
+ * heading parentheticals name through a dependency verb with no requires clause holding
  * them, each `title`+`ref` deduped against the refs already collected across the whole planned
  * list (a duplicate title contributes one ref, not one per occurrence). */
 function miswordedDependencyRefs(
