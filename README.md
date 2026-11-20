@@ -89,7 +89,7 @@ so pair it with `--token <secret>`.
 `tumwater prompt --attach <image>` gives a role an image to read at its next run. When a role's
 model cannot read images, the command refuses the attachment up front (naming the fix) unless
 the role reroutes a blind read to a vision model, in which case it says where the message will
-run; the dashboards and `tumwater role <id>` say which roles read images and where a blind
+run; the browser dashboard and `tumwater role <id>` say which roles read images and where a blind
 run reroutes.
 
 Every command and flag is in [docs/cli.md](docs/cli.md); `tumwater help` prints the
