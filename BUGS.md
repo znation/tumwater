@@ -188,6 +188,10 @@ Bugfix's 6c9b25b6 (a `src/` change) merged at 11-19 11:29. The `_main-full` mirr
 
 **Reproduce.** In events.jsonl, find the two `build_check` `scope: "baseline"` events at 11:36:49 and 12:01:02 with `sleptMs` > 0. No `main_check` follows until 16:08:02.
 
+### post-merge review of 54a4a07f never reached a verdict (found by the review role 2026-11-19)
+
+The post-merge review of commit `54a4a07f9d57a0fd649376ecbe00fa8d349e47ac` (Name checkpoint aborts in the no-change diagnosis, not ceiling cut-offs) never reached a verdict: timed out after 7200s while still making progress — session and worktree edits preserved for resume. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
+
 ## Fixed
 
 ## Verified
