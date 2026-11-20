@@ -86,9 +86,11 @@ const QUIET_HOST_WAIT_MS = 300_000;
 /** The quiet-host gate a load-sensitive e2e file gates itself on: samples the host's load
  * averages from `src/build/host-sleep.ts` (the same `sampleHostLoad` the doctor's contention
  * check and the build check read) and returns true at once when BOTH the one-minute average
- * and the sustained (five-minute) average are at or below the core count — a near-bar host whose
- * 1-minute value has dipped below the count but whose 5-minute average is still elevated would
- * otherwise be admitted and then starve the file's wall-clock spawn wait (BUGS.md 2026-11-12).
+ * and the sustained (five-minute) average sit at or below the headroom bar (`quietHostBar`,
+ * 80% of the core count) — a near-bar host whose 1-minute value has dipped below the count but
+ * whose 5-minute average is still elevated would otherwise be admitted and then starve the
+ * file's wall-clock spawn wait (BUGS.md 2026-11-12), and a host just under the count re-
+ * saturates inside the 150 s window the same way (BUGS.md 2026-11-17).
  * Under a higher load it polls every few seconds up to `waitMs`, then returns false — the caller
  * defers the file rather than run it starved. The sampler is injectable (like the doctor's `load`
  * seam) so a test can pin it offline; the wait is real time by default, but a test may inject
@@ -123,15 +125,29 @@ export function recheckQuietHost(sample: LoadSampler = sampleHostLoad): HostLoad
   return { quiet: isQuietHost({ load1, load5, cpus }), load1, load5, cpus };
 }
 
+/** How far below the core count a load-sensitive e2e file may be admitted: the quiet-host bar is
+ * this fraction of the core count, not the count itself. A 5-minute average is a trailing mean,
+ * so a host that has just PEAKED reads under a bar set at the core count and re-saturates inside
+ * the 150 s spawn wait the admission buys — the 2026-11-14 single-sample re-check admitted a host
+ * at 17.63 on 18 cores and the test then starved (BUGS.md 2026-11-17). One fraction, no knob: the
+ * bar is the same at admission and on the re-check. */
+const QUIET_HOST_HEADROOM = 0.8;
+
+/** The load average a host must not exceed to run a load-sensitive e2e file. */
+function quietHostBar(cpus: number): number {
+  return cpus * QUIET_HOST_HEADROOM;
+}
+
 /** The quiet-host bar applied to one load reading: BOTH the one-minute and the sustained
- * five-minute averages at or below the core count. The 1-minute value alone dips below the bar
- * on a host still saturated on the longer timescale, and it is that sustained load that starves
- * a child run's spawn. `load5 ?? load1`: a sampler without a 5-minute reading falls back to the
- * 1-minute average as its sustained reading, preserving the pre-load5 bar for such samplers.
- * The one home of the bar: awaitQuietHost polls it, recheckQuietHost applies it to a single
- * sample. */
+ * five-minute averages at or below `quietHostBar(cpus)` — 80% of the core count, with headroom
+ * for a host that is about to re-saturate (see QUIET_HOST_HEADROOM). The 1-minute value alone
+ * dips below the bar on a host still saturated on the longer timescale, and it is that sustained
+ * load that starves a child run's spawn. `load5 ?? load1`: a sampler without a 5-minute reading
+ * falls back to the 1-minute average as its sustained reading. The one home of the bar:
+ * awaitQuietHost polls it, recheckQuietHost applies it to a single sample. */
 function isQuietHost(l: { load1: number; load5?: number; cpus: number }): boolean {
-  return l.load1 <= l.cpus && (l.load5 ?? l.load1) <= l.cpus;
+  const bar = quietHostBar(l.cpus);
+  return l.load1 <= bar && (l.load5 ?? l.load1) <= bar;
 }
 
 /** Poll until `fn` holds. `ms` is a DEADLINE, not a sleep — this returns the moment the

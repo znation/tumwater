@@ -257,8 +257,9 @@ test("a reached cap switches roles to the free fallback model instead of stoppin
     // even one file at a time (BUGS.md 2026-10-27, where the carve recorded the ceiling but not
     // the bound).
     // The admission gate covers a host elevated when the test began, not one that re-saturates
-    // mid-run (BUGS.md 2026-11-14): if the 5-minute load is over the core count now, the 150 s
-    // spawn wait would starve and red a verdict the starved host never fairly reached, so defer.
+    // mid-run (BUGS.md 2026-11-14): if the 5-minute load is over the quiet-host bar now — 80% of
+    // the core count, with headroom for a host that has just peaked (BUGS.md 2026-11-17) — the
+    // 150 s spawn wait would starve and red a verdict the starved host never fairly reached.
     const recheck = recheckQuietHost();
     if (!recheck.quiet) {
       t.skip(`host load ${recheck.load1} (5-min ${recheck.load5}) on ${recheck.cpus} cores: e2e deferred after the load rose, not a verdict`);

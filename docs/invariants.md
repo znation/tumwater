@@ -534,6 +534,29 @@ hold assertions wait on the injected breaker clock's own reads instead of a wall
 deadline-clock half and the remaining flake regressions are pinned by the cases the plan's parts
 2/5–5/5 add.
 
+### INV-F2: the e2e tier's quiet-host bar carries headroom below the core count, at admission and on the re-check
+
+**Guarantee.** A load-sensitive live-orchestrator e2e file samples the host through
+`test/helpers/wait.ts` and defers itself (skip, not verdict) unless BOTH the one-minute and the
+five-minute load averages sit at or below 80% of the core count — the same bar at admission
+(`awaitQuietHost`) and on the single-sample re-check just before a wall-clock spawn wait
+(`recheckQuietHost`). A bar set at the core count itself admits a host that has just peaked: the
+5-minute average is a trailing mean, so it reads under the count and re-saturates inside the 150 s
+wait the admission bought, redning the e2e tier for a verdict the starved host never reached
+(BUGS.md 2026-11-12, 2026-11-14, 2026-11-17). The headroom is one fixed fraction, not a knob, and
+no production budget behaviour depends on it.
+
+**Binds.** `test/helpers/wait.ts` (`QUIET_HOST_HEADROOM`, `quietHostBar`, `isQuietHost`,
+`awaitQuietHost`, `recheckQuietHost`).
+
+**Pinned by.** `test/wait.test.ts` — "recheckQuietHost defers a near-bar host whose 5-minute
+average sits just under the core count", "the quiet-host bar admits a host with headroom and
+defers one at the headroom boundary", "awaitQuietHost defers a near-bar host for the whole bounded
+wait instead of admitting it", "awaitQuietHost defers a near-bar host whose 5-minute average is
+still elevated" and "recheckQuietHost defers a host that re-saturated after it was admitted";
+`test/orchestrator-quiet-gate.test.ts` — "the pin-drain e2e test gates on awaitQuietHost before it
+runs".
+
 ## The merge gate's deterministic rejections
 
 The gate rejects some changes without running a reviewer, because the exempt fast path for

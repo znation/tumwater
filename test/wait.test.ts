@@ -84,3 +84,35 @@ test("recheckQuietHost defers a host that re-saturated after it was admitted", a
   assert.equal(result.load5, 32);
   assert.equal(result.cpus, 18);
 });
+
+test("recheckQuietHost defers a near-bar host whose 5-minute average sits just under the core count", async () => {
+  // The residual flake (BUGS.md 2026-11-17): the single-sample re-check judged the host on the
+  // core count itself, so 17.63 on 18 cores was admitted, and the 5-minute average is a TRAILING
+  // mean — the host had just peaked and re-saturated inside the 150 s spawn wait, which starved.
+  // The bar carries headroom, so a near-bar sample does not buy the 150 s wait.
+  const result = recheckQuietHost(() => ({ load1: 17.63, load5: 17.63, cpus: 18 }));
+  assert.ok(!result.quiet, "a host reading just under the core count must defer, not spend the 150 s wait");
+  assert.equal(result.load5, 17.63);
+  assert.equal(result.cpus, 18);
+});
+
+test("the quiet-host bar admits a host with headroom and defers one at the headroom boundary", async () => {
+  // One fraction of the core count decides both halves, so the boundary is checkable: on 18 cores
+  // the bar is 0.8 × 18 = 14.4, so 14.4 (at the bar, inclusive) runs and 14.41 does not. A host
+  // at the old bar of exactly the core count is now deferred.
+  assert.ok(recheckQuietHost(() => ({ load1: 14.4, load5: 14.4, cpus: 18 })).quiet, "14.4 = 0.8 * 18");
+  assert.ok(!recheckQuietHost(() => ({ load1: 14.41, load5: 14.41, cpus: 18 })).quiet);
+  // A sampler reporting no 5-minute reading is judged on its 1-minute reading against the same bar.
+  assert.ok(recheckQuietHost(() => ({ load1: 3, cpus: 4 })).quiet, "3 <= 0.8 * 4 = 3.2");
+  assert.ok(!recheckQuietHost(() => ({ load1: 3.3, cpus: 4 })).quiet, "3.3 > 3.2");
+});
+
+test("awaitQuietHost defers a near-bar host for the whole bounded wait instead of admitting it", async () => {
+  // The at-admission half of the same bar: a host reading 17.63 on 18 cores must never be let in,
+  // so the gate spends its bounded wait and defers rather than starving the run it admitted.
+  const clock = fakeClock();
+  const result = await awaitQuietHost(100_000, () => ({ load1: 5, load5: 17.63, cpus: 18 }), clock);
+  assert.ok(!result.quiet, "a near-bar host must defer at admission, not run and starve");
+  assert.ok(clock.now() >= 100_000, `the bounded wait must elapse; saw ${clock.now()}`);
+  assert.equal(result.load5, 17.63);
+});
