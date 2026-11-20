@@ -75,15 +75,10 @@ interface SupervisedGenerationInput {
   roleFilter: string[] | null;
 }
 
-/** Refuse the --once run-mode rivals: a TUI and a dashboard each cannot be hosted by a run that
- * is about to stop, so both are refused together before any boot. --for stays allowed — both
- * serve for the window. Owns the run-mode rival refusals. */
+/** Refuse the --once run-mode rivals: a dashboard cannot be hosted by a run that is about to
+ * stop, so both are refused together before any boot. --for stays allowed — it serves for the
+ * window. Owns the run-mode rival refusals. */
 function assertOnceRivalFlags(args: string[], once: boolean): void {
-  // The TUI cannot be hosted by a run that is about to stop, like the dashboard: a --once round
-  // drains and exits within the same invocation, so the two shapes are refused together before
-  // any boot. --for stays allowed — the TUI runs for the window, like the dashboard.
-  if (once && args.includes("--tui"))
-    failRivalShapes("--tui", "--once", "a one-round run cannot hold a TUI it is about to kill");
   // The dashboard cannot serve a run that is about to stop: a --once round drains and exits
   // within the same invocation, so the two shapes are refused together before any boot. --for
   // stays allowed — the dashboard serves for the window.
@@ -149,16 +144,14 @@ function resolveRoleFilter(args: string[], config: TumwaterConfig, once: boolean
   return roleFilter;
 }
 
-/** Refuse --json without --once or --for, and the --gui/--tui rivals of a --json round/window.
+/** Refuse --json without --once or --for, and the --gui rival of a --json round/window.
  * Owns the --json mode refusals. */
 function assertJsonMode(args: string[], json: boolean, once: boolean, forMs: number | null): void {
   if (json && !once && forMs === null) fail("--json is only valid with --once or --for");
-  // Both interactive modes write their own banner to the stdout a JSON document must own, so a
-  // --json round/window refuses them before any boot.
+  // The interactive mode writes its own banner to the stdout a JSON document must own, so a
+  // --json round/window refuses it before any boot.
   if (json && args.includes("--gui"))
     failRivalShapes("--json", "--gui", "the dashboard writes its banner to the stdout a JSON document must own");
-  if (json && args.includes("--tui"))
-    failRivalShapes("--json", "--tui", "a TUI owns the terminal");
 }
 
 /** Guard a non-null --role filter against a disabled or unknown id. Owns the disabled/unknown
@@ -190,7 +183,7 @@ function assertNoRunningOrchestrator(root: string): void {
     );
 }
 
-/** Parse and validate the invocation before any team boots: the --tui/--gui/--json/--port/
+/** Parse and validate the invocation before any team boots: the --gui/--json/--port/
  * --all-interfaces/--token/--role/--for/--branch guards, the --token argv scrub, runStartupCheck,
  * and the already-running-orchestrator refusal. Returns the resolved invocation. The per-job
  * guard groups each live in a named helper — assertOnceRivalFlags, assertDashboardOnlyFlags,
@@ -314,7 +307,7 @@ function announceGeneration(
         : `tumwater running on branch ${mainBranch}${forNote}${build}${rootNote} — Ctrl+C to stop`,
     );
     say(`roles: ${roles.join(", ")}`);
-    say("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n");
+    say("watch: `tumwater gui` in another terminal, or `tumwater logs -f`; events stream below\n");
   }
   return json ? () => {} : subscribeEvents((e) => say(formatEvent(e)));
 }

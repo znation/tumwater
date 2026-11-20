@@ -292,7 +292,7 @@ test("spawnStartChild runs the same script with `run`, SUPERVISED_ENV set, and r
   }
 });
 
-test("spawnGuiChild runs the same script with `gui`, and a silent stdio (run --tui) still lets it run", async () => {
+test("spawnGuiChild runs the same script with `gui`, and inherit stdio still lets it run", async () => {
   const dir = tmpdir();
   try {
     const outFile = path.join(dir, "evidence-gui.json");
@@ -302,20 +302,7 @@ test("spawnGuiChild runs the same script with `gui`, and a silent stdio (run --t
     });
     assert.equal(readJson<Record<string, unknown>>(outFile).argv2, "gui", "the child is the same script with `gui` as its command");
 
-    // `run --gui --tui` silences the dashboard child's stdio so its `tumwater gui at http://…`
-    // banner cannot paint over the observer TUI's full-screen render; the child must still run
-    // (a separate fs path still receives its writes) and report its exit.
-    const silentOut = path.join(dir, "evidence-gui-silent.json");
-    await withArgv1(
-      probeScript(dir, silentOut, "process.exit(0);\n"),
-      async () => {
-        const e = await within(spawnGuiChild(new AbortController().signal, {}, ["ignore", "ignore", "ignore"]), 15_000);
-        assert.deepEqual(e, { code: 0, signal: null });
-      },
-    );
-    assert.equal(readJson<Record<string, unknown>>(silentOut).argv2, "gui");
-
-    // `run --gui --port N` hands the dashboard child the port as extra args, so the spawned
+    // `run --gui` hands the dashboard child the port as extra args, so the spawned
     // command is `gui --port N` — the child (and its banner) must see them.
     const portOut = path.join(dir, "evidence-gui-port.json");
     await withArgv1(

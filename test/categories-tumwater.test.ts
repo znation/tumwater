@@ -26,7 +26,7 @@ test("classifies a path by its longest-matching rule", async () => {
     ["docs/code-metrics/categories-tumwater.cjs", "docs:tooling"],
     ["docs/code-metrics/README.md", "docs:tooling"],
     // src/ui must win over the src prefix, or the UI split collapses into the general bucket.
-    ["src/ui/tui/tui.tsx", "src/ui"],
+    ["src/ui/status-render.ts", "src/ui"],
     ["src/ui/gui/gui-client.ts", "src/ui"],
     ["src/cli.ts", "src"],
     ["src/backlog/backlog.ts", "src"],

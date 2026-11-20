@@ -6,7 +6,6 @@ import { HELP, HIDDEN_COMMAND_ALIASES, helpStanzas, helpTopic, helpTopicForArgs,
 const ALL_COMMANDS = [
   "init",
   "start",
-  "tui",
   "gui",
   "status",
   "report",
@@ -62,7 +61,7 @@ test("helpStanzas keeps each stanza's description continuations and nothing else
   const stanzas = helpStanzas();
   const gui = stanzas.filter((s) => s.command === "gui");
   assert.equal(gui.length, 1);
-  assert.match(gui[0]!.text, /Same dashboard in the browser/); // continuation attached
+  assert.match(gui[0]!.text, /The dashboard in the browser/); // continuation attached
   assert.doesNotMatch(gui[0]!.text, /One-shot status table/); // neighbor stanza does not bleed in
   assert.doesNotMatch(gui[0]!.text, /persistent worktree/); // closing paragraph is not a stanza
 });
@@ -103,7 +102,7 @@ test("suggestCommand names a listed command within two edits", () => {
 });
 
 test("topics end with the pointer back to the full list", () => {
-  assert.match(helpTopic("tui")!, /See `tumwater help` for the full command list\./);
+  assert.match(helpTopic("gui")!, /See `tumwater help` for the full command list\./);
 });
 
 test("HELP still lists the per-command help form itself", () => {

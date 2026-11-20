@@ -8,7 +8,7 @@ import { shortSha as tsShortSha, usd as tsUsd, usdCap as tsUsdCap } from "../src
 import { inFlightDetail } from "../src/ui/run-progress-model.js";
 import type { LiveProgress } from "../src/ui/progress-data.js";
 import { eventKind as tsEventKind } from "../src/ui/tone.js";
-import { parseBudgetInput } from "../src/ui/tui/tui-input.js";
+import { checkDailyBudgetUsd } from "../src/config/config-keys.js";
 
 // The dashboard's browser logic, exercised region by region (see gui-client-scope.ts): the
 // pure view model that turns a status payload into what the page shows, the Markdown
@@ -688,16 +688,47 @@ test("the cap editor says when the cap it saved is the one already set", async (
 });
 
 // One rule for both cap editors: the dashboard's parseBudgetField must admit and refuse exactly
-// what the TUI's parseBudgetInput does, so an operator's spelling cannot work on one surface and
-// error on the other.
-test("the cap editor's plain-decimal rule matches the TUI's parseBudgetInput", () => {
+// what the config key's own check (checkDailyBudgetUsd, src/config/config-keys.ts) does, so an
+// operator's spelling cannot work on one surface and error on the other. Each expected verdict
+// is written out here, worked from the two rules: the editor's plain-decimal shape gate
+// (`^\d*\.?\d+$` on the trimmed text, empty meaning no cap = 0) and the shared numeric rule
+// (a finite number, 0 or more, at most MAX_SAFE_INTEGER).
+test("the cap editor admits exactly the caps checkDailyBudgetUsd accepts, and names its own rule", () => {
   const { scope } = operatorScope();
-  for (const s of ["", "   ", "0", "25", "12.34", ".5", "0x10", "1e2", "+5", "-1", "abc", "Infinity", "9".repeat(25)]) {
-    const gui = scope.parseBudgetField(s);
-    const tui = parseBudgetInput(s);
-    assert.equal(gui.ok, tui.ok, `ok parity for ${JSON.stringify(s)}`);
-    if (gui.ok && tui.ok) assert.equal(gui.value, tui.value, `value parity for ${JSON.stringify(s)}`);
+  const shapeRule = (typed: string): object => ({
+    ok: false,
+    error:
+      'the cap must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation — leave it empty for no cap (got "' +
+      typed +
+      '")',
+  });
+  // Every accepted text lands on its number, and each accepted number passes the shared rule.
+  const accepted: [string, number][] = [
+    ["", 0],
+    ["   ", 0],
+    ["0", 0],
+    ["25", 25],
+    ["12.34", 12.34],
+    [".5", 0.5],
+  ];
+  for (const [typed, value] of accepted) {
+    assert.deepEqual(scope.parseBudgetField(typed), { ok: true, value }, `accepted: ${JSON.stringify(typed)}`);
+    assert.equal(checkDailyBudgetUsd(value), null, `the shared rule accepts ${value}`);
   }
+  // A fine number in a non-decimal spelling is refused by the shape rule even though the shared
+  // numeric rule would take its Number() value ("1e2" reads as 100) — the editor refuses first.
+  for (const typed of ["0x10", "1e2", "+5", "-1", "abc", "Infinity"]) {
+    assert.deepEqual(scope.parseBudgetField(typed), shapeRule(typed), `shape refusal: ${JSON.stringify(typed)}`);
+  }
+  // A 25-digit run IS plain decimal, so it reaches the bound; the shared rule refuses it too.
+  const huge = "9".repeat(25);
+  assert.deepEqual(scope.parseBudgetField(huge), {
+    ok: false,
+    error: "the cap must be a number of 0 or more, at most 9007199254740991 — leave it empty for no cap",
+  });
+  assert.match(checkDailyBudgetUsd(Number(huge)) ?? "", /at most 9007199254740991/);
+  // The signed misspelling the shape rule refuses is refused by the shared rule as well.
+  assert.match(checkDailyBudgetUsd(-1) ?? "", /must be a number of 0 or more/);
 });
 
 test("the pause control offers timed pauses and shows a timed pause's countdown", async () => {

@@ -575,7 +575,7 @@ and starts the pending update immediately — every other gate (a passing check 
 successful compile, in-flight runs finishing) still applies. From the terminal, run
 `tumwater restart` to press the same button: both write the marker the redeployer consumes.
 
-`tumwater tui` and `tumwater gui` follow the swap: each re-execs onto the new `dist/` within a
+`tumwater gui` follows the swap: it re-execs onto the new `dist/` within a
 second, and only onto a build stamped with a real commit of the repo. Because the team executes
 your checkout's own `dist/`, `npm test` refuses to run in that checkout while the team is up (the
 suite's first steps recompile and restamp `dist/`), so run suites in a worktree.

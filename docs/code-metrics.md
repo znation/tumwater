@@ -92,7 +92,6 @@ Comment share is comment lines divided by comment plus code lines.
     ([src/orchestrator/orchestrator.ts](../src/orchestrator/orchestrator.ts)).
   - `eventMessage`: 72, mostly one flat switch
     ([src/events/event-format.ts](../src/events/event-format.ts)).
-  - The TUI key handler: 60 ([src/ui/tui/tui-keys.ts](../src/ui/tui/tui-keys.ts)).
   - `main`: 57 ([src/cli.ts](../src/cli.ts)).
   - `reviewAheadOfMain`: 50 ([src/review/review.ts](../src/review/review.ts)).
 - **File sizes:** median 94 code lines, largest 474 (`src/ui/gui/gui-styles.ts`), none over 500.

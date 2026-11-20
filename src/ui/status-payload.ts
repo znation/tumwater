@@ -29,13 +29,13 @@ export type { OrphanAlert } from "./alert-feeds.js";
  * out the routine ones (run starts, wakes, passing checks). */
 const RECENT_EVENTS = 80;
 /** How many answered questions the dashboard lists under the open ones (a default, not a knob). */
-export const DASHBOARD_ANSWERED_QUESTIONS = 5;
+const DASHBOARD_ANSWERED_QUESTIONS = 5;
 
 /** How many done plans / fixed bugs the dashboard lists under the open ones (a default). */
-export const DASHBOARD_RECENT_FINISHED = 5;
+const DASHBOARD_RECENT_FINISHED = 5;
 
 /** The newest finished entries (sections are newest first), titles cleaned of their stamp. */
-export function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title: string; completedOn: string | null }[] {
+function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title: string; completedOn: string | null }[] {
   return entries.slice(0, DASHBOARD_RECENT_FINISHED).map((e) => ({ title: finishedTitle(e.title, dateRe), completedOn: completionDate(e.title, dateRe) }));
 }
 

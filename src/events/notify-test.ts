@@ -2,10 +2,9 @@
  * synthetic test event. The notifier's production spawn is detached fire-and-forget
  * (src/events/event-notify.ts), so nothing in the real path waits on a hook — the only
  * bounded, awaited hook run in the harness is this diagnostic, and three surfaces drive it:
- * `tumwater notify --test` (`cmdNotify` below, inherited stdio), the dashboard
- * Settings card's Send test (src/gui/gui-config-commands.ts) and the TUI Health tab's
- * Ctrl+N (src/ui/tui/tui-pane-health.ts), both with stdio ignored so a chatty hook cannot
- * corrupt a server terminal or the alternate screen. The capability lives in the notify
+ * `tumwater notify --test` (`cmdNotify` below, inherited stdio) and the dashboard Settings
+ * card's Send test (src/gui/gui-config-commands.ts), the latter with stdio ignored so a chatty
+ * hook cannot corrupt a server terminal. The capability lives in the notify
  * domain with the notifier, not in the CLI layer, so those surfaces import a core module
  * instead of reaching up into it. */
 import { spawn } from "node:child_process";

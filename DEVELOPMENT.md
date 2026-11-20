@@ -321,8 +321,7 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   serves lives in `src/ui/gui/`; this directory owns the socket and the control endpoints,
   not the page.
 - `src/ui/`: the shared status table, backlog report, and transcript rendering; `src/ui/gui/`
-  holds the browser dashboard's page and client assets and `src/ui/tui/` the ink terminal
-  renderer. Imported only by each other and the command layer that drives it — the `cli.ts`
+  holds the browser dashboard's page and client assets. Imported only by each other and the command layer that drives it — the `cli.ts`
   dispatcher, the read-only command bodies in `src/cli/`, `src/history/run-detail.ts` (the `tick`/`history`
   command body, whose transcript it renders via `src/history/run-detail-render.ts`), and the dashboard transport in `src/gui/`; `test/layering.test.ts` pins that importer set.
 - `src/history/history.ts`, `src/history/run-detail.ts`, `src/report/report.ts`: the `history`,

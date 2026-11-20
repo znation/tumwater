@@ -66,13 +66,17 @@ test("run --gui --once fails before boot with the rival-shapes message", async (
   });
 });
 
-test("run --tui --once fails before boot with the rival-shapes message", async () => {
+// The terminal dashboard is removed, so `--tui` names no flag: the dispatcher's unknown-flag
+// refusal fires before cmdStart parses anything, so no team boots. No tombstone message.
+test("start --tui fails before boot as an unknown flag", async () => {
   const repo = makeRepo();
-  await initProject(repo, "cli run tui once");
+  await initProject(repo, "cli start tui");
   await withPi("exit 0", async () => {
-    const r = await cli(repo, "run", "--tui", "--once");
+    const r = await cli(repo, "start", "--tui");
     assert.equal(r.code, 1);
-    assert.match(r.stderr, /--tui cannot be combined with --once/);
+    assert.match(r.stderr, /unknown argument: --tui/);
+    assert.match(r.stderr, /valid flags for tumwater start:/);
+    assert.equal(readEvents(repo).length, 0, "no events — the run never booted");
   });
 });
 
@@ -138,22 +142,7 @@ test("run --gui --token fails before boot with the spec's non-empty-secret messa
   });
 });
 
-// A TUI owns the terminal, so `run --tui` refuses before boot when this supervisor's stdin or
-// stdout is not a TTY (piped, as under a script or this harness) — failing fast with the
-// actionable tuiTerminalError instead of pointlessly booting a team and only then crashing on
-// runTui's own guard. This guards suite runs the CLI with piped stdio, so the bare `--tui`
-// shape lands on the guard, not on a real terminal.
-test("run --tui fails before boot when the terminal is not interactive", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli run tui tty");
-  await withPi("exit 0", async () => {
-    const r = await cli(repo, "run", "--tui");
-    assert.equal(r.code, 1);
-    assert.match(r.stderr, /tumwater tui needs an interactive terminal/);
-  });
-});
-
-// A JSON document owns stdout, so --json refuses the two modes that paint their own banner
+// A JSON document owns stdout, so --json refuses the mode that paints its own banner
 // there, before any boot — the same fail-fast rival-shapes wording as the --gui/--once pair.
 test("run --for --json --gui fails before boot with the rival-shapes message", async () => {
   const repo = makeRepo();
@@ -162,17 +151,6 @@ test("run --for --json --gui fails before boot with the rival-shapes message", a
     const r = await cli(repo, "run", "--for", "1s", "--json", "--gui");
     assert.equal(r.code, 1);
     assert.match(r.stderr, /--json cannot be combined with --gui/);
-    assert.equal(readEvents(repo).length, 0, "no events — the run never booted");
-  });
-});
-
-test("run --for --json --tui fails before boot with the rival-shapes message", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli run for json tui");
-  await withPi("exit 0", async () => {
-    const r = await cli(repo, "run", "--for", "1s", "--json", "--tui");
-    assert.equal(r.code, 1);
-    assert.match(r.stderr, /--json cannot be combined with --tui/);
     assert.equal(readEvents(repo).length, 0, "no events — the run never booted");
   });
 });

@@ -21,7 +21,6 @@ export const QA_FLOWS: readonly string[] = [
   "prompt",
   "reset-counters",
   "gui",
-  "tui",
   "run",
   "run (real)",
 ];

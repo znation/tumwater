@@ -153,5 +153,5 @@ function printInitReport(result: Awaited<ReturnType<typeof initProject>>): void 
       `fresh project — maintenance roles wait until ${result.bootstrap} plans are done; remove "bootstrap" from tumwater.json to end that early`,
     );
   }
-  say("next: `tumwater start` in one terminal, `tumwater tui` in another");
+  say("next: `tumwater start` in one terminal, `tumwater gui` in another");
 }

@@ -32,7 +32,7 @@ import {
 
 /** The marker-writing cores of the operator-intent protocol, shared by every surface that writes
  * one (the `cmd*` CLI commands in src/cli/cli-operator-commands.ts, the dashboard's POST routes
- * in src/gui/gui-endpoint-commands.ts, and the TUI's key bindings in src/ui/tui/tui-keys.ts): each
+ * in src/gui/gui-endpoint-commands.ts): each
  * core returns the confirmation its caller prints verbatim, so the surfaces cannot drift on marker
  * format, idempotence, or wording. The team-side consumer half is
  * src/operator/operator-requests.ts; this module holds the producer half's shared core, split out

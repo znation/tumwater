@@ -120,20 +120,20 @@ const COLUMN_GAP = 2;
 /** A run of text on a status line, with the tone it may be drawn in (tone.ts's Tone, or
  * "brand" / "bold" for the header's name and the totals). Plain renderings join the text and
  * ignore the tone; the TUI colors each toned span. */
-export interface StatusSpan {
+interface StatusSpan {
   text: string;
   tone?: Tone | "brand" | "bold";
 }
 
 /** One status line as spans. */
-export type StatusLine = StatusSpan[];
+type StatusLine = StatusSpan[];
 
 const plainText = (line: readonly StatusSpan[]): string => line.map((s) => s.text).join("");
 
 /** Clip a line of spans to `width` display columns exactly as clipToWidth clips its joined text
  * (same cut, same ellipsis), keeping each surviving span's tone — so coloring a line never
  * changes where it is cut, and escape codes are never counted as columns. */
-export function clipSpans(line: readonly StatusSpan[], width: number): StatusSpan[] {
+function clipSpans(line: readonly StatusSpan[], width: number): StatusSpan[] {
   const joined = plainText(line);
   const clipped = clipToWidth(joined, width);
   if (clipped === joined) return [...line];
@@ -165,7 +165,7 @@ const ALERT_MARKS: Record<TeamAlert["tone"], { mark: string; tone: Tone | undefi
 };
 
 /** A plain line clipped to a width, in one tone. */
-export function toneLine(text: string, width: number, tone?: StatusSpan["tone"]): StatusLine {
+function toneLine(text: string, width: number, tone?: StatusSpan["tone"]): StatusLine {
   return clipSpans([{ text, ...(tone ? { tone } : {}) }], width);
 }
 
@@ -550,10 +550,10 @@ function statusRoleSummaries(withMetrics: readonly StatusRowMetric[]): StatusRol
   }));
 }
 
-/** Render the status table shared by `tumwater status` and the TUI as lines of toned spans,
- * plus the per-role facts it computed (see StatusRoleRow). When `maxWidth` is given, wide cells
- * are clipped so no line exceeds it (terminal rows never wrap). */
-export function renderStatusSpans(
+/** Render the status table as lines of toned spans, plus the per-role facts it computed (see
+ * StatusRoleRow). When `maxWidth` is given, wide cells are clipped so no line exceeds it
+ * (terminal rows never wrap). */
+function renderStatusSpans(
   root: string,
   snap: StatusSnapshot,
   maxWidth?: number,

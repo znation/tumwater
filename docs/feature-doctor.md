@@ -50,8 +50,8 @@ text form, and `--json` carries each result on the payload:
 - `--drop-broken-pins` — drop broken `refs/tumwater/` pins.
 - `--retire-leftovers` — retire disabled roles' leftover branches.
 
-**Surfaces besides the CLI.** The TUI Health pane (src/ui/tui/tui-pane-health.ts) and the
-dashboard (src/gui/gui-admin-endpoints.ts, `handleDoctor`) run the same doctor read-only.
+**Surfaces besides the CLI.** The dashboard (src/gui/gui-admin-endpoints.ts, `handleDoctor`)
+runs the same doctor read-only.
 
 ## Check families
 

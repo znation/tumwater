@@ -23,6 +23,14 @@ test("a mistyped command suggests the closest listed one", async () => {
   assert.match(r.stderr, /unknown command: "statis" — did you mean `status`\?/);
 });
 
+// The removed terminal dashboard leaves no tombstone: `tumwater tui` is just an unknown command,
+// and the existing did-you-mean names the browser dashboard (`gui`), the operator's replacement.
+test("tumwater tui (the removed dashboard) fails as an unknown command that names gui", async () => {
+  const r = await cli(tmpdir(), "tui");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown command: "tui" — did you mean `gui`\?/);
+});
+
 test("a mistyped help topic suggests the closest command too", async () => {
   const r = await cli(tmpdir(), "help", "statu");
   assert.equal(r.code, 1);

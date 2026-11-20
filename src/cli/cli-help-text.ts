@@ -21,7 +21,7 @@ Usage:
                                    created, leftAlone, committed, bootstrap — in place of the
                                    prose report, and --list-templates --json prints the
                                    template catalog as a templates array)
-  tumwater start [--branch <name>] [--once] [--json] [--for <duration>] [--role <id>[,<id>...]] [--gui [--port <n>]] [--tui]
+  tumwater start [--branch <name>] [--once] [--json] [--for <duration>] [--role <id>[,<id>...]] [--gui [--port <n>]]
                                    Start the team: every enabled role runs in turn (headless;
                                    Ctrl+C finishes current work, then stops);
                                    --once does one round of runs, finishes the
@@ -32,7 +32,7 @@ Usage:
                                    --once --json prints the round's totals, per-result counts, skipped roles and failures as one JSON object on stdout (no banner or event stream) (the --once report; --json is refused without --once or --for);
                                    --for <duration> runs for that window then finishes current work, prints a per-role summary
                                    (one window across self-redeploys),
-                                   --for --json prints the window's per-role summary as one JSON object on stdout at exit (no banner or event stream); --json with --gui or --tui is refused;
+                                   --for --json prints the window's per-role summary as one JSON object on stdout at exit (no banner or event stream); --json with --gui is refused;
                                    and exits like Ctrl+C would (for an overnight
                                    trial, a demo, a CI step);
                                    --gui also serves the browser dashboard at
@@ -40,13 +40,9 @@ Usage:
                                    dashboard flags \`--port <n>\` (pick another
                                    port), \`--all-interfaces\` (serve the LAN) and
                                    \`--token <secret>\` (the auth gate), exactly as
-                                   \`tumwater gui\` takes them);
-                                   --tui also hosts the TUI in this terminal
-                                   (the \`tumwater tui\` view — quitting it stops the
-                                   team like Ctrl+C)
-  tumwater tui                     Dashboard + inbox input (watches a running \`tumwater start\`)
+                                   \`tumwater gui\` takes them)
   tumwater gui [--port N] [--all-interfaces] [--token <secret>]
-                                   Same dashboard in the browser (default port 7180,
+                                   The dashboard in the browser (default port 7180,
                                    localhost only; --all-interfaces serves the whole
                                    network — without --token there is no auth, anyone
                                    reaching it can message the director); booting with

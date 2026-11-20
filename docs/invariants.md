@@ -106,8 +106,7 @@ as the header" and "markdownTable defaults every column to left alignment".
 
 **Guarantee.** `numberedList` numbers items from 1 as `N. item`, one per line, and returns its
 `empty` argument verbatim for no items. The review prompt's prior objections and findings, the
-rejected/revision notes, `tumwater questions`' list and `wake --list` all build through it. One surface numbers its own lines and is not bound:
-the TUI's queued-prompt rows (`src/ui/tui/tui.tsx`) push one styled row per item.
+rejected/revision notes, `tumwater questions`' list and `wake --list` all build through it.
 
 **Binds.** `src/text/markdown.ts` (`numberedList`), `src/prompt/gate-prompts.ts`,
 `src/prompt/gate-notes.ts`, `src/backlog/backlog-question-answer.ts`, `src/operator/operator-intent.ts`
@@ -237,16 +236,16 @@ passes a readable one".
 
 ### INV-B5: an entry you filed is committed on main under the primary-worktree lock
 
-**Guarantee.** `tumwater bug`/`tumwater plan`, the dashboard's New form, the TUI's Ctrl+N, and
+**Guarantee.** `tumwater bug`/`tumwater plan`, the dashboard's New form, and
 `tumwater brief --file`/`--edit` and the dashboard's brief Save (the brief file, as `tumwater(operator): Edit brief`)
 commit the one file they wrote as `tumwater(operator): File <kind>: <title>` while
 holding the primary-worktree lock `ffMainTo` takes, so the entry reaches main and the primary
 checkout stays clean for the next fast-forward. Only that file is committed (other staged paths
-stay staged). Your cancel, edit, and question answer (`--cancel`, `--edit`, `questions answer`, and the dashboard and TUI equivalents) commit their file the same way, as `Cancel <kind>: <title>`, `Edit <kind>: <title>`, and `Answer question: <title>`; your release (`--release` and the dashboard's Release, `handleBacklogRelease`) commits `Release <kind>: <title>` and wakes the kind's role unless the entry stays held, which every surface reports with `stillHeldNote` and which wakes no role; your reorder (`--top`, the dashboard's Move to top `handleBacklogTop`, and the TUI's Ctrl+V) commits `Prioritize <kind>: <title>` and wakes no role; a refused or no-op write commits nothing. A question answer also wakes the role named in the heading's `(asked by <role> …)` clause when it is a known role, and wakes no role for an unknown or missing asker (`test/question-asker.test.ts`). When the primary is not on the base branch, or git fails, the commit is skipped
+stay staged). Your cancel, edit, and question answer (`--cancel`, `--edit`, `questions answer`, and the dashboard equivalents) commit their file the same way, as `Cancel <kind>: <title>`, `Edit <kind>: <title>`, and `Answer question: <title>`; your release (`--release` and the dashboard's Release, `handleBacklogRelease`) commits `Release <kind>: <title>` and wakes the kind's role unless the entry stays held, which every surface reports with `stillHeldNote` and which wakes no role; your reorder (`--top`, the dashboard's Move to top `handleBacklogTop`) commits `Prioritize <kind>: <title>` and wakes no role; a refused or no-op write commits nothing. A question answer also wakes the role named in the heading's `(asked by <role> …)` clause when it is a known role, and wakes no role for an unknown or missing asker (`test/question-asker.test.ts`). When the primary is not on the base branch, or git fails, the commit is skipped
 (`commitOperatorBacklogEdit` returns false, never throws) and the entry stays written.
 
 **Binds.** `src/backlog/backlog-commit.ts` (`commitOperatorBacklogEdit`), `src/cli/cli-backlog.ts`
-(`announceFiled`), `src/gui/gui-endpoint-commands.ts` (`handleBacklogFile`), `src/ui/tui/tui-keys.ts`, `src/cli/cli-brief-command.ts`, `src/brief/brief-edit.ts`, `src/gui/gui-endpoint-commands.ts` (`handleBriefEdit`), `src/gui/gui-backlog-commands.ts` (`handleBacklogRelease`, `handleBacklogTop`).
+(`announceFiled`), `src/gui/gui-endpoint-commands.ts` (`handleBacklogFile`), `src/cli/cli-brief-command.ts`, `src/brief/brief-edit.ts`, `src/gui/gui-endpoint-commands.ts` (`handleBriefEdit`), `src/gui/gui-backlog-commands.ts` (`handleBacklogRelease`, `handleBacklogTop`).
 
 **Pinned by.** `test/backlog-commit.test.ts`, `test/cli-brief-command.test.ts`, `test/gui-endpoints.test.ts`.
 
@@ -1557,8 +1556,8 @@ configured pool itself, `smallPoolProblems`), and each alert's detail is the war
 doctor row it twins (checkBuildCheck, checkBrief, checkRoleNotes, checkSalvagePatches,
 smallPoolProblems; config-problem phrases the `init` row's config-validity
 failure from the `configProblem` string, with the remedy) — so the rendered alert and the
-`tumwater doctor` row cannot disagree on the trigger, the caps, or the remedy, and all three
-surfaces (`tumwater status`'s banners, the dashboard's `alerts`, the TUI's attention lines) show
+`tumwater doctor` row cannot disagree on the trigger, the caps, or the remedy, and both
+surfaces (`tumwater status`'s banners, the dashboard's `alerts`) show
 them from the one `teamAlerts` source. A caller that passes no standing inputs raises none of
 them (the pre-alert rendering), never a false one. An over-cap PRINCIPLES.md raises none of the
 seven: the `principlesTruncated` snapshot key and the doctor `principles` row stay the diagnostic,
@@ -1568,8 +1567,8 @@ so an over-cap episode never repeats the assignment.
 
 **Binds.** `src/ui/team-alert-standings.ts` (`buildStandingAlerts`),
 `src/ui/team-alerts.ts` (`teamAlerts`' `standings` argument),
-`src/ui/status-render.ts` (`renderStatus`), `src/ui/tui/tui.tsx`, `src/ui/status-payload.ts`
-(`alertFields`) — the three call sites that pass `{ snap, config, root }` — and
+`src/ui/status-render.ts` (`renderStatus`), `src/ui/status-payload.ts`
+(`alertFields`) — the two call sites that pass `{ snap, config, root }` — and
 `src/prompt/principles-consolidation.ts` (`requestPrinciplesConsolidation`), the
 over-cap assignment that replaces the removed `principles-truncated` alert.
 
@@ -2348,8 +2347,7 @@ zero".
 
 **Guarantee.** `stripTerminalControls` removes every C0 control except `\n` and `\t`, plus DEL and
 the C1 block U+0080–U+009F. ESC goes with the rest, so no OSC or CSI sequence survives. The CLI's
-output helpers (`src/terminal.ts`) and the composed TUI frame (`src/ui/tui/tui-frame.ts`)
-apply it, as do several stderr diagnostics and the notify command's message text; event JSON is
+output helpers (`src/terminal.ts`) apply it, as do several stderr diagnostics and the notify command's message text; event JSON is
 not stripped, so machine-readable output stays byte-exact.
 
 **Binds.** `src/text/text.ts` (`stripTerminalControls`).
@@ -2634,8 +2632,8 @@ carries the survivors".
 **Guarantee.** `promptImagesProblem` composes `promptImagesCountProblem`,
 `promptImageExtensionProblem` and `promptImageSizeProblem` with the base64 check, and the limits
 come from `PROMPT_IMAGES_MAX_COUNT` and `PROMPT_IMAGE_MAX_BYTES`. Surfaces outside `src/inbox`
-import these instead of restating them: `src/ui/tui/tui-editor-attach.ts`,
-`src/ui/gui/gui-client-composer.ts` and `src/gui/gui-prompt-commands.ts`.
+import these instead of restating them: `src/ui/gui/gui-client-composer.ts`
+and `src/gui/gui-prompt-commands.ts`.
 
 **Binds.** `src/inbox/inbox-attachments.ts` (`promptImagesProblem`, `promptImagesCountProblem`,
 `promptImageExtensionProblem`, `promptImageSizeProblem`, `PROMPT_IMAGE_MAX_BYTES`,
@@ -5281,16 +5279,12 @@ its stdout. Without the listener Node throws that failure from the event loop as
 exception: a stack trace and a crash exit where the reader deliberately stopped reading, and on
 `tumwater start` a crash that takes the whole team process down. Any other write error (ENOSPC,
 EIO) still throws through the normal uncaught-exception path, so a real failure is never turned
-silent — except an EIO while a second listener owns the stream: the TUI installs its own `error`
-listener (`runTui`) and takes its quit teardown when the terminal dies, so the guard defers to
-that listener instead of throwing first.
+silent.
 
-**Binds.** `src/cli.ts` (`main`), `src/errno.ts` (`errCode`), `src/ui/tui/tui.tsx` (`runTui`).
+**Binds.** `src/cli.ts` (`main`), `src/errno.ts` (`errCode`).
 
 **Pinned by.** `test/cli-epipe.test.ts` — "a follow view whose stdout pipe closes exits 0
-quietly, not with an EPIPE crash"; `test/tui-dead-terminal.test.ts` — "a runTui whose terminal
-dies (EIO on a stream write) quits instead of crashing on an uncaught exception" and "a real
-CLI-hosted TUI exits 0 when its terminal dies: the guard defers EIO to the TUI quit".
+quietly, not with an EPIPE crash".
 
 ## Compaction evidence: the parser marks a session compacted only on a completed compaction
 

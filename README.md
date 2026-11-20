@@ -70,7 +70,6 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
                                 # --template, --file, and --adopt pick a starting point (see docs/cli.md)
 tumwater start                  # start the team (Ctrl+C to stop)
 tumwater start --gui            # ... and serve the browser dashboard at http://127.0.0.1:7180
-tumwater start --tui            # ... and attach the terminal TUI in the same window
 tumwater start --for 2h         # run for a bounded window, then finish current work, summarize, and exit
 tumwater start --once           # one round of runs for cron/CI; exits 3 if a run failed
 ```
@@ -78,7 +77,7 @@ tumwater start --once           # one round of runs for cron/CI; exits 3 if a ru
 A fresh or empty project is seeded with `"bootstrap": {"untilPlansDone": 5}`, which holds the
 maintenance roles until 5 plans are done; remove it from `tumwater.json` to end that early.
 
-From another terminal, `tumwater tui` or the browser dashboard watches the team, `tumwater status`
+From another terminal, the browser dashboard watches the team, `tumwater status`
 and `tumwater logs -f` check it, `tumwater brief --file <path>` replaces the brief,
 `tumwater prompt "<text>"` sends a message to the director's inbox, `tumwater plan` and
 `tumwater bug` file backlog entries, `tumwater land` puts your own hand-made commit on main
@@ -93,7 +92,7 @@ the role reroutes a blind read to a vision model, in which case it says where th
 run; the dashboards and `tumwater role <id>` say which roles read images and where a blind
 run reroutes.
 
-Every command, flag, and TUI key is in [docs/cli.md](docs/cli.md); `tumwater help` prints the
+Every command and flag is in [docs/cli.md](docs/cli.md); `tumwater help` prints the
 same list, and `tumwater completion bash|zsh|fish` prints shell completion. Settings live in
 `tumwater.json` and edits apply live while the team runs; see [docs/config.md](docs/config.md).
 

@@ -363,7 +363,7 @@ export async function checkUncommittedBacklog(root: string, config: TumwaterConf
   return warnOutcome(`${list} ${dirty.length > 1 ? "have" : "has"} uncommitted changes in your checkout — ` +
     `roles branch from main and do not see them, and a merge that touches one cannot fast-forward the checkout ` +
     `(merge_blocked); review them with \`git diff -- ${list}\` and commit them on ${base} ` +
-    `(or run \`tumwater doctor --commit-backlog\`, or the Health card's Commit backlog, or the TUI Health tab's Ctrl+A)`);
+    `(or run \`tumwater doctor --commit-backlog\`, or the Health card's Commit backlog)`);
 }
 
 /** What `doctor --commit-backlog` did: the base branch it committed on, the files it committed,

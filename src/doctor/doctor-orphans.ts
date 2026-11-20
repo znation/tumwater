@@ -381,7 +381,7 @@ export function orphanFailDetail(root: string, scan: OrphanScan): string | null 
       ? ""
       : `; ${plural(liveOwned.length, "parentless tree", "parentless trees")} left alone (a live run's own command: ${liveListed.join("; ")}${liveMore > 0 ? `; and ${liveMore} more` : ""})`;
   return `${count}: ${listed.join("; ")}${more > 0 ? `; and ${more} more` : ""}${live}` +
-      " — the team's own sweep reaps each with its descendants while the team runs; a stopped team does not, so kill them now with `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice)" +
+      " — the team's own sweep reaps each with its descendants while the team runs; a stopped team does not, so kill them now with `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans)" +
       (cwdProblem !== null ? ` (process cwds unreadable — ${cwdProblem}; argv matched only)` : "");
 }
 

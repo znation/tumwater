@@ -303,21 +303,23 @@ test("rejectUnknownArgs accepts empty args and every known flag spelling", () =>
   expectOk(() => rejectUnknownArgs("gui", ["--port", "8080", "--all-interfaces"], GUI_SPECS));
 });
 
-test("run's flag vocabulary accepts --branch, --once, --role, --gui, and --tui and rejects everything else", () => {
+test("run's flag vocabulary accepts --branch, --once, --role and --gui and rejects everything else", () => {
   // The specs cmdStart itself passes: all spellings, combined and alone.
   expectOk(() => rejectUnknownArgs("run", ["--branch", "trunk", "--once"], START_FLAG_SPECS));
   expectOk(() => rejectUnknownArgs("run", ["--once"], START_FLAG_SPECS));
   expectOk(() => rejectUnknownArgs("run", ["--once", "--role", "feature"], START_FLAG_SPECS));
   expectOk(() => rejectUnknownArgs("run", ["--gui"], START_FLAG_SPECS));
   expectOk(() => rejectUnknownArgs("run", ["--gui", "--port", "8123"], START_FLAG_SPECS));
-  expectOk(() => rejectUnknownArgs("run", ["--tui"], START_FLAG_SPECS));
   // A typo'd --once must fail with the standard wording, not silently run a daemon round.
   const r = expectFail(() => rejectUnknownArgs("run", ["--onc"], START_FLAG_SPECS));
   assert.match(r.stderr, /unknown argument: --onc/);
   assert.match(
     r.stderr,
-    /valid flags for tumwater run: --branch <name>, --once, --json, --gui, --port <n>, --all-interfaces, --token <secret>, --tui, --for <duration>, --role <id>/,
+    /valid flags for tumwater run: --branch <name>, --once, --json, --gui, --port <n>, --all-interfaces, --token <secret>, --for <duration>, --role <id>/,
   );
+  // The removed terminal dashboard: --tui names no flag on run either.
+  const tui = expectFail(() => rejectUnknownArgs("run", ["--tui"], START_FLAG_SPECS));
+  assert.match(tui.stderr, /unknown argument: --tui/);
   // --once takes no value: a following token is a stray, not its argument.
   const valued = expectFail(() => rejectUnknownArgs("run", ["--once", "yes"], START_FLAG_SPECS));
   assert.match(valued.stderr, /unknown argument: yes/);

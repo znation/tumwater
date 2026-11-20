@@ -65,27 +65,21 @@ test("parseRunWindow enforces pause --for's 90-day cap", () => {
 test("guiChildPlan strips --gui and reports it, leaving other args untouched", () => {
   assert.deepEqual(guiChildPlan(["--gui"]), {
     spawnGui: true,
-    spawnTui: false,
     guiArgs: [],
     guiToken: undefined,
     orchestratorArgs: [],
-    childStdio: "inherit",
   });
   assert.deepEqual(guiChildPlan(["--branch", "x", "--gui", "--for", "2h"]), {
     spawnGui: true,
-    spawnTui: false,
     guiArgs: [],
     guiToken: undefined,
     orchestratorArgs: ["--branch", "x", "--for", "2h"],
-    childStdio: "inherit",
   });
   assert.deepEqual(guiChildPlan(["--once", "--role", "clean"]), {
     spawnGui: false,
-    spawnTui: false,
     guiArgs: [],
     guiToken: undefined,
     orchestratorArgs: ["--once", "--role", "clean"],
-    childStdio: "inherit",
   });
 });
 
@@ -95,19 +89,15 @@ test("guiChildPlan strips --gui and reports it, leaving other args untouched", (
 test("guiChildPlan threads --port onto the dashboard child and strips it from the orchestrator", () => {
   assert.deepEqual(guiChildPlan(["--gui", "--port", "8123"]), {
     spawnGui: true,
-    spawnTui: false,
     guiArgs: ["--port", "8123"],
     guiToken: undefined,
     orchestratorArgs: [],
-    childStdio: "inherit",
   });
   assert.deepEqual(guiChildPlan(["--branch", "x", "--gui", "--port", "8123", "--for", "2h"]), {
     spawnGui: true,
-    spawnTui: false,
     guiArgs: ["--port", "8123"],
     guiToken: undefined,
     orchestratorArgs: ["--branch", "x", "--for", "2h"],
-    childStdio: "inherit",
   });
 });
 
@@ -121,21 +111,17 @@ test("guiChildPlan threads --port onto the dashboard child and strips it from th
 test("guiChildPlan threads --all-interfaces onto the dashboard child, returns --token as guiToken, and strips them from the orchestrator", () => {
   assert.deepEqual(guiChildPlan(["--gui", "--all-interfaces", "--token", "s3cret"]), {
     spawnGui: true,
-    spawnTui: false,
     guiArgs: ["--all-interfaces"],
     guiToken: "s3cret",
     orchestratorArgs: [],
-    childStdio: "inherit",
   });
   assert.deepEqual(
     guiChildPlan(["--branch", "x", "--gui", "--port", "8123", "--all-interfaces", "--token", "s3cret", "--for", "2h"]),
     {
       spawnGui: true,
-      spawnTui: false,
       guiArgs: ["--port", "8123", "--all-interfaces"],
       guiToken: "s3cret",
       orchestratorArgs: ["--branch", "x", "--for", "2h"],
-      childStdio: "inherit",
     },
   );
 });
@@ -160,36 +146,6 @@ test("dashboardChildEnv carries a guiToken under GUI_TOKEN_ENV and marks the spo
   });
 });
 
-// `run --tui` gets the same treatment as `--gui`: `--tui` is stripped so a self-redeploy
-// generation never re-attaches a TUI in a terminal the parent owns, and reported so the
-// supervisor hosts it. The two flags together stay allowed (dashboard child + in-terminal TUI
-// are orthogonal) and both are stripped.
-test("guiChildPlan strips --tui (and --gui), reports spawnTui and silences the child's stdio", () => {
-  assert.deepEqual(guiChildPlan(["--tui"]), {
-    spawnGui: false,
-    spawnTui: true,
-    guiArgs: [],
-    guiToken: undefined,
-    orchestratorArgs: [],
-    childStdio: ["ignore", "ignore", "ignore"],
-  });
-  assert.deepEqual(guiChildPlan(["--gui", "--tui"]), {
-    spawnGui: true,
-    spawnTui: true,
-    guiArgs: [],
-    guiToken: undefined,
-    orchestratorArgs: [],
-    childStdio: ["ignore", "ignore", "ignore"],
-  });
-  assert.deepEqual(guiChildPlan(["--branch", "x", "--tui", "--for", "2h"]), {
-    spawnGui: false,
-    spawnTui: true,
-    guiArgs: [],
-    guiToken: undefined,
-    orchestratorArgs: ["--branch", "x", "--for", "2h"],
-    childStdio: ["ignore", "ignore", "ignore"],
-  });
-});
 
 // --- armDeadlineTimer: the deadline timer cmdStart arms for `run --for` ---
 

@@ -7,9 +7,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { renderStatus, renderStatusSpans } from "../src/ui/status-render.js";
+import { renderStatus } from "../src/ui/status-render.js";
 import { say } from "../src/terminal.js";
-import { sanitizeFrameLines } from "../src/ui/tui/tui-frame.js";
 import { attempt } from "./helpers/exit-capture.js";
 import { displayWidth } from "../src/text/text-width.js";
 import { rolePhase } from "../src/ui/status-model.js";
@@ -653,7 +652,7 @@ test("renderStatus shows the bootstrap progress and hold in the header and state
 });
 
 /** A running feature role whose currentWork is a hostile OSC 52 sequence plus a C1 byte: the
- * status table's state cell prepends it, so both terminal consumers must strip it. */
+ * status table's state cell prepends it, so the terminal consumer must strip it. */
 function hostileWorkItem(): { root: string; snap: StatusSnapshot } {
   const root = tmpdir();
   const esc = "\u001b]52;c;AAAA\u0007\u009b";
@@ -673,22 +672,14 @@ function hostileWorkItem(): { root: string; snap: StatusSnapshot } {
 
 // The terminal boundary for the status table's live work item (BUGS.md 2026-10-07, the
 // terminal-escape fix): `currentWork` is the first assistant text of the in-flight run — model
-// output — and the state cell prepends it, so both terminal consumers must strip its control
-// bytes: `tumwater status` through say(), and the TUI through sanitizeFrameLines() on the final
-// frame. The table's own render stays raw by design, so these drive the real boundaries rather
-// than assert on renderStatus's bytes.
+// output — and the state cell prepends it, so the terminal consumer must strip its control
+// bytes: `tumwater status` through say(). The table's own render stays raw by design, so this
+// drives the real boundary rather than assert on renderStatus's bytes.
 test("say strips the status table's currentWork at the CLI boundary", () => {
   const { root, snap } = hostileWorkItem();
   const cli = attempt(() => say(renderStatus(root, snap)));
   assert.ok(!/[\u001b\u0007\u009b]/.test(cli.stdout), `say'd status leaks control bytes: ${JSON.stringify(cli.stdout)}`);
   assert.ok(cli.stdout.includes("fix ]52;c;AAAA now"), `the stripped work item still renders: ${JSON.stringify(cli.stdout)}`);
-});
-
-test("sanitizeFrameLines strips the status table's currentWork in the TUI frame", () => {
-  const { root, snap } = hostileWorkItem();
-  const frame = sanitizeFrameLines(renderStatusSpans(root, snap).lines).flat().map((s) => s.text).join("\n");
-  assert.ok(!/[\u001b\u0007\u009b]/.test(frame), `TUI frame leaks control bytes: ${JSON.stringify(frame)}`);
-  assert.ok(frame.includes("fix ]52;c;AAAA now"), `the stripped work item still renders: ${JSON.stringify(frame)}`);
 });
 
 test("renderStatus shows the run --for countdown only on a running windowed team", () => {

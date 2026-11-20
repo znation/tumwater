@@ -106,16 +106,6 @@ async function cmdStartCase(root: string, args: string[]): Promise<void> {
   await (await import("./cli/cli-start.js")).cmdStart(root, args);
 }
 
-async function cmdTuiCase(root: string, args: string[]): Promise<void> {
-  rejectUnknownArgs("tui", args, []);
-  await requireReadyRepo(root);
-  // Imported lazily: the TUI module pulls in ink (the one runtime dependency the
-  // tree carries), and an install whose node_modules is absent must still reach
-  // every other command's own broken-install reporting instead of dying on import.
-  const { runTui } = await import("./ui/tui/tui.js");
-  await runTui(root);
-}
-
 async function cmdGuiCase(root: string, args: string[]): Promise<void> {
   rejectUnknownArgs("gui", args, GUI_FLAG_SPECS);
   await requireReadyRepo(root);
@@ -520,7 +510,6 @@ const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
   },
   start: startCaseRow,
   run: startCaseRow,
-  tui: (root, _command, args) => cmdTuiCase(root, args),
   gui: (root, _command, args) => cmdGuiCase(root, args),
   status: async (root, _command, args) => {
     await (await import("./cli/cli-query-commands.js")).cmdStatus(root, args);
@@ -603,14 +592,10 @@ async function main(): Promise<void> {
   // the command's contract with the operator, and once the reader is gone there is nothing left
   // to say, so exit 0 quietly: the output up to the close was delivered. Any other write error
   // (ENOSPC on a full disk, EIO on a closed TTY) still surfaces through the normal
-  // uncaught-exception path, so a real failure is never turned silent — except an EIO while a
-  // second listener owns the stream: the TUI installs its own 'error' listener to take its
-  // quit teardown when the terminal dies. Defer to that listener, or this guard's throw would
-  // preempt it (listeners run in registration order) and the TUI would still crash on EIO.
+  // uncaught-exception path, so a real failure is never turned silent.
   for (const stream of [process.stdout, process.stderr]) {
     stream.on("error", (err: unknown) => {
       if (errCode(err) === "EPIPE") process.exit(0);
-      if (errCode(err) === "EIO" && stream.listenerCount("error") > 1) return;
       throw err;
     });
   }

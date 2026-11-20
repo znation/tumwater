@@ -6,12 +6,12 @@ import type { BuildCheckOutcome } from "../build/build-check.js";
 /** The shared COLOR/EVENT-CLASSIFICATION vocabulary of the observer surfaces, split out of
  * status-model.ts (which keeps only the status display model: role phases, badges, row cells):
  * the tone palette both surfaces color by, a run result's tone, and what kind of news an
- * event is for the activity feeds. Kept apart from the renderers (status-render.ts,
- * tui-frame.ts) so "what color is this" lives in one place while "how a terminal draws it"
+ * event is for the activity feeds. Kept apart from the renderers (status-render.ts is the
+ * terminal one) so "what color is this" lives in one place while "how a terminal draws it"
  * stays with the layout. The dashboard draws the same families in its own tones
  * (gui-client-model.ts phaseInfo/resultInfo; its eventKind is generated from this file's
- * PROBLEM_RESULTS/ROUTINE_EVENTS/PROBLEM_EVENTS lists; test/gui-client.test.ts and
- * test/tui-frame.test.ts keep the copies aligned): in-progress work blue, a role that needs
+ * PROBLEM_RESULTS/ROUTINE_EVENTS/PROBLEM_EVENTS lists; test/gui-client.test.ts keeps the copy
+ * aligned): in-progress work blue, a role that needs
  * attention red, a held role yellow, a merged change green, a change on its way to merge
  * cyan; idle states and neutral outcomes stay uncolored. */
 

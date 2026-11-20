@@ -101,7 +101,7 @@ test("a ## Planned heading that mentions a done date in its own stamp's prose is
   // "both done 2026-10-16" — that is not this entry's completion.
   const md = plansDoc(`## Planned
 
-### Split the TUI prompt-line editor monolith \`src/ui/tui/tui-editors.ts\` into per-editor modules beside a shared prompt-line session (planned 2026-10-17 by the organize role; the natural second half of the landed "split the TUI key-handling monolith" series — part 1/2 made \`tui-editors\` the prompt-line editors and part 2/2 split the pane state into \`tui-panes\`, both done 2026-10-16, so the single largest source file left is this one factory closure)
+### Split the prompt-line editor monolith \`src/roles/role-view.ts\` into per-editor modules beside a shared prompt-line session (planned 2026-10-17 by the organize role; the natural second half of the landed "split the TUI key-handling monolith" series — part 1/2 made \`tui-editors\` the prompt-line editors and part 2/2 split the pane state into \`tui-panes\`, both done 2026-10-16, so the single largest source file left is this one factory closure)
 
 **Goal.** Still in flight; not finished.
 
