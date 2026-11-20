@@ -54,11 +54,11 @@ export interface PostReview {
    * keep the original stamp. */
   enqueuedAt?: number;
   /** The earliest time a further review may start, epoch ms. A run that ended on a transient
-   * provider failure (a 429 or quota wall, a backend failure) stamps it — the run's retry-after
-   * when present, else a growing backoff capped at the team-hold cap — and the drain skips the
-   * entry until it passes, so a multi-hour wall re-probes a few times an hour instead of
-   * re-reviewing the same commit on every poll (BUGS.md 2026-11-16). Cleared when the entry is
-   * settled or re-queued. */
+   * provider failure (a 429 or quota wall, a backend failure) stamps it — the longer of the run's
+   * retry-after and the team-hold base doubled with the entry's consecutive transient failures,
+   * capped at the team-hold cap — and the drain skips the entry until it passes, so a multi-hour
+   * wall re-probes a few times an hour instead of re-reviewing the same commit on every poll
+   * (BUGS.md 2026-11-16). Cleared when the entry is settled or re-queued. */
   notBeforeMs?: number;
   /** How many consecutive runs this entry has ended on a transient provider failure, present only
    * while that streak is being re-armed: the drain's infrastructure arm increments it, and the
