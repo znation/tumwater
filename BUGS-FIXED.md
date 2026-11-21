@@ -5,6 +5,12 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A shutdown or restart that waits on a post-merge review names no role: "waiting on the merge in progress for " (found by an operator session 2026-11-19) — fixed 2026-11-21 by the bugfix role
+
+The feed logged `shutdown waiting on the merge in progress for ` at 11-19 05:20:09 and `restart waiting on the merge in progress for  (deadline 360s)` at 16:38:04. In both, the role list was empty: `startPostReview` (src/merge/merge-post-review-drain.ts) built the review's `InFlightMerge` with `roles: []`. Fix: the review task now carries its commit's author role (`entry.role`), as a queued merge task already does, so the restart and shutdown wording names it. The same role now reaches `tumwater abort --role` through `consumeAbortRequests`; an aborted review keeps its entry and counts no failure (settlePostReviewOutcome returns on `aborted`). Regression test: test/post-merge-review-permit.test.ts, "a post-merge review task carries its author role…" — it failed with `roles` = `[]` before the fix and passes after.
+
+**Validation gap:** none — the existing suite did not cover the empty role list; the new unit assertion on the review task's `roles` pins it directly, and the events-feed line showed the empty name without any reconstruction.
+
 ### A model check run while the only local server is saturated fails on queue position, holding every role and handing back runs to "a pair that answers" that does not exist (found by an operator session 2026-11-18) — fixed 2026-11-21 by the bugfix role
 
 The team runs every role on one local pair, `qwenrunner/Qwen3.8-27B-MLX-Serve-4bit` (Splash 1.6.1, `--max-concurrent 4`). On 11-17 the model check failed four times ("gave no reply (no answer within 300s) — runs on it wait (feature, bugfix, plan, …, +13 more)"), each time holding all 19 runners. The Splash log (`~/qwenrunner/logs/splash.8090.log`) shows that the server was answering, not down:

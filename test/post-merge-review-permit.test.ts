@@ -80,6 +80,15 @@ test("a post-merge review parks for a busy team's next permit ahead of a queued 
   roleRuns[1]!.release();
 });
 
+test("a post-merge review task carries its author role, so the restart and abort wording names it", async () => {
+  const { roleRuns, ctx } = await saturated(1);
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  assert.deepEqual(p.postReview!.roles, ["improve"], "the review names the role whose commit it reviews");
+  roleRuns[0]!.release();
+  await p.postReview!.promise;
+});
+
 test("a parked post-merge review whose start gate closes hands its permit back and keeps its entry", async () => {
   let held = false;
   const { root, commit, semaphore, roleRuns, ctx } = await saturated(1, () => held);

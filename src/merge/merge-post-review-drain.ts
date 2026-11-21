@@ -192,7 +192,9 @@ async function settlePostReviewOutcome(
  * against 81 merges, 68 commits waiting. */
 function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: PostReview): void {
   const { root, semaphore } = ctx;
-  const task: InFlightMerge = { promise: Promise.resolve(), controller: new AbortController(), roles: [], userAborted: false, parked: true };
+  // The review names its commit's author role, so the restart and shutdown wording says what it
+  // waits on and `tumwater abort --role <author>` reaches it (BUGS.md 2026-11-19).
+  const task: InFlightMerge = { promise: Promise.resolve(), controller: new AbortController(), roles: [entry.role], userAborted: false, parked: true };
   p.postReview = task;
   const detach = abortOnShutdown(ctx.signal, task.controller);
   const author = resolveAuthor(ctx, entry.role);

@@ -17,7 +17,8 @@ import type { RunnerState } from "../runner/runner-state.js";
  * one gate-then-merge task, or a post-merge review: its task, the controller that aborts it
  * (harness shutdown OR `tumwater abort --role` for any of its roles), and whether the abort was
  * a deliberate user stop — which decides what happens to the pinned refs when it ends. `roles`
- * is every role the task holds: the one queued change the merge task gates and merges. */
+ * is every role the task holds: the one queued change the merge task gates and merges, or the
+ * author of the commit a post-merge review reads. */
 export interface InFlightMerge {
   promise: Promise<void>;
   controller: AbortController;
