@@ -104,26 +104,33 @@ With no `model` configured, each agent backend runs the newest released model fo
    stays the strong default and Haiku 5.5 the default and small. Revisit only when a new Opus or
    Haiku ships.
 2. **Codex strong is `gpt-6.2-sol`.** This keeps the 2026-10-28 one-step-down choice (finding 5).
+3. **Keep the plan with no live Sol check (2026-11-21).** The operator no longer has a Plus
+   account; their only ChatGPT login is free-plan, and no Sol model runs on it (finding 9).
+   Defaults serve every tumwater user, and `gpt-6.2-sol` is confirmed in Codex's own catalog, so
+   the change goes ahead. The live Sol run waits for whoever next has a paid login (H5). On a free
+   login, set an explicit codex model such as `gpt-6-luna` for the strong tier.
 
 ## Hand steps
 
-- **H4: confirm GPT-6.2 Sol live, after the part merges.** (H1–H3 are plans/codex-backend.md's.)
+- **H4: check the CLI after the part merges, on the operator's free login.** (H1–H3 are
+  plans/codex-backend.md's.)
   1. `codex --version` reads 0.170.0 or newer. It was installed 2026-11-20 with
      `npm install -g @openai/codex@0.170.0`.
-  2. Log in with the ChatGPT **Plus** account: `codex login`, and
-     `CODEX_HOME=<team home> codex login --device-auth` for a team home. A free-plan login's
-     catalog has no Sol model at all (finding 9). To check the plan, decode the id token in
-     `$CODEX_HOME/auth.json` and read `chatgpt_plan_type`, or check that `codex debug models`
-     lists `gpt-6.1-sol`.
-  3. Run a one-word `codex exec -m gpt-6.2-sol` and check that the turn completes.
-     - If it still says the model "is not supported when using Codex with a ChatGPT account"
-       while `gpt-6.1-sol` now works, the plan has not reached this subscription yet.
-     - Revert the strong default to `gpt-6.1-sol` until it does. The floor can stay at 0.170.0.
-  4. Run `npm run build && npm run smoke:codex -- --tier strong`, then `npm run smoke:codex`. Both
-     must pass. A failure in a step that passed on 0.163.0 means a CLI change between 0.163.0 and
-     0.170.0 (flags, stream or rollout shape). File it as a bug, quoting the failing step.
-  5. Run `tumwater doctor`. The `codex version` and `codex models` rows should read ok on a config
-     that routes a seam to codex.
+  2. Run `npm run build && npm run smoke:codex`. The default tier is `gpt-6-luna`, which runs on a
+     free plan, and it must pass. A failure in a step that passed on 0.163.0 means a CLI change
+     between 0.163.0 and 0.170.0 (flags, stream or rollout shape). File it as a bug, quoting the
+     failing step.
+  3. Run `tumwater doctor` on a config that routes a seam to codex. The `codex version` row reads
+     ok. On a free login, the `codex models` row warns that `gpt-6.2-sol` is not in the catalog.
+     That warning is expected, and it is the cue to set an explicit strong-tier model.
+- **H5: run GPT-6.2 Sol live, when a paid ChatGPT login is available.** Nobody here has one
+  (decision 3).
+  1. Check that the login is paid: decode the id token in `$CODEX_HOME/auth.json` and read
+     `chatgpt_plan_type`, or check that `codex debug models` lists `gpt-6.1-sol`.
+  2. Run `npm run smoke:codex -- --tier strong`. It must pass.
+  3. If Codex refuses `gpt-6.2-sol` as "not supported when using Codex with a ChatGPT account"
+     while `gpt-6.1-sol` runs, revert the strong default to `gpt-6.1-sol`. The floor can stay at
+     0.170.0.
 
 ## Parts
 
@@ -131,12 +138,13 @@ With no `model` configured, each agent backend runs the newest released model fo
 
 ## Risks
 
-- **Whether the subscription can run it is unverified until H4.** The id, window and levels are
-  confirmed from the 0.170.0 catalog (finding 4), but no run completed (finding 9). Codex is not
-  in the team's live tumwater.json today (it runs pi), so a refusal surfaces in H4 before any team
-  run uses it.
+- **No paid plan has run it.** The id, window and levels are confirmed from the 0.170.0 catalog
+  (finding 4), but no Sol run completed, because the only login here is free-plan (finding 9,
+  decision 3). Codex is not in the team's live tumwater.json today (it runs pi). On a paid plan
+  that cannot run 6.2 Sol yet, the strong tier would be refused. Doctor's `codex models` row and
+  H5 are where that shows up.
 - **CLI drift across seven releases.** The adapter's flags were verified live on 0.163.0 (H1).
-  H4's smoke runs are the check for 0.170.0.
+  H4's smoke run (default tier) is the check for 0.170.0.
 - **Subscription allowance.** GPT-6.2 Sol may use the 5-hour and weekly windows at a different
   rate than 6.1 Sol. The window readings already show it per run. Re-read them after a day if
   codex carries a tier (plans/codex-backend.md H3).

@@ -54,8 +54,9 @@ design and its sources are in plans/codex-default-models.md.
   the throwaway repo or spawns anything, so it can be run without a codex install. With no flag,
   the script still picks `gpt-6-luna`.
 - `grep -rn "gpt-6.1-sol" README.md docs/backends.md src` finds no line that calls it the default.
-- Live confirmation is the operator's hand step H4 in plans/codex-default-models.md, after merge.
-  No role runs the real codex CLI for this entry.
+- No role runs the real codex CLI for this entry. After merge, the operator runs hand step H4
+  (the CLI on a free login) from plans/codex-default-models.md. The live Sol run (H5) waits for a
+  paid login.
 
 ### Visible session cleanup, part 2/3: the GUI and TUI show a session-cleanup banner with progress and an ETA, and idle rows read `held: session cleanup` (planned 2026-11-16 by the operator; requires Visible session cleanup part 1/3 landed; touches src/status/status-data.ts src/ui/team-alert-status.ts src/ui/status-model.ts test/status-data.test.ts test/team-alert-status.test.ts test/team-alerts.test.ts test/status-model.test.ts)
 
