@@ -205,6 +205,42 @@ test("a nothing-to-do run backs off without committing", async () => {
   });
 });
 
+// plans/model-check.md busy part 1/2: the runner keeps the latest answer time per pair, so the
+// model check can tell a server that is busy answering the team from a dead one. The parser-side
+// edge is pinned in pi-parser.test.ts; this pins the runner end: the answer arrives through the
+// real spawn+parse path, lands under the run's seam pair, and survives the run ending.
+
+test("an authoring run records when its pair answered, per pair, and keeps it after the run", async () => {
+  const repo = await initializedRepo();
+  const config = defaultConfig();
+  config.provider = "local";
+  config.model = "flint";
+  // One open request answered: pi's message_start goes out, a content-bearing delta answers it,
+  // and the run finishes nothing-to-do (so nothing else about the run matters here).
+  const script = [
+    `printf '%s\\n' '${JSON.stringify({
+      type: "message_start",
+      message: { role: "assistant", content: [], provider: "local", model: "flint", stopReason: "pending" },
+    })}'`,
+    `printf '%s\\n' '${JSON.stringify({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "looking" },
+    })}'`,
+    `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+  ].join("\n");
+  await withPi(script, async () => {
+    const runner = makeRoleRunner(repo, "clean", config);
+    const before = Date.now();
+    const outcome = await runner.run();
+    assert.equal(outcome.result, "no_change");
+    const answered = runner.lastAnsweredAt("local/flint");
+    assert.ok(typeof answered === "number", "the seam pair got an answer timestamp");
+    assert.ok(answered! >= before, "recorded during the run, not before it started");
+    assert.ok(answered! <= Date.now(), "recorded by now");
+    assert.equal(runner.lastAnsweredAt("other/pair"), null, "an unused pair has no record");
+  });
+});
+
 // The qa observer's coverage ledger (plans/observer-roles.md 2/2): every run is a fresh
 // session, so the only memory of which flow it last exercised is the runtime file the harness
 // writes from the reply's FLOW line. A passing cheap check changes no files, so it must still
