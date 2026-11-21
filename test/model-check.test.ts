@@ -465,6 +465,31 @@ test("a handed-back run is promised another pair only when its own tier's fallba
   assert.match(String(handedBack[0]?.message), / — the run resumes on a pair that answers$/);
 });
 
+test("a handed-back run is promised another pair when its tier borrows another tier's answering fallback", async () => {
+  const root = makeRepo();
+  const config = teamConfig();
+  // Only strong declares a fallback; the default tier borrows it (default → strong → small).
+  config.fallback = { strong: "omlx/qwen" };
+  const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: [] };
+  let now = 7_000_000;
+  const { prober, answer } = manualProber();
+  const gate = new ModelCheckGate(root, prober, new AbortController().signal, POLICY, () => now);
+  const hung = runner("feature", config, "flintrunner/flint");
+  const poll = () => gate.poll({ runners: [hung], liveConfig: config, roleConfig: config, info });
+  poll();
+  for (const pair of ["flintrunner/flint", "hf/deepseek", "omlx/qwen"]) answer(pair, { ok: true });
+  await gate.settled();
+  now += POLICY.suspectMinMs;
+  poll();
+  answer("flintrunner/flint", { ok: false, reason: "no reply", reply: "", detail: "no answer within 300s" });
+  await gate.settled();
+  poll();
+  assert.deepEqual(hung.handBacks, ["model-check"]);
+  const handedBack = warningEvents(readEvents(root)).filter((e) => String(e.message).startsWith("run handed back"));
+  assert.equal(handedBack.length, 1);
+  assert.match(String(handedBack[0]?.message), / — the run resumes on a pair that answers$/);
+});
+
 test("endedBeforeAnyReply: a failure with no reply counts; a reply, a 429, a refused request, a cap or an abort does not", () => {
   const failed = { ok: false, producedAssistantContent: false, contextExceeded: false, transientRateLimit: false };
   assert.equal(endedBeforeAnyReply(result({ ...failed, errorMessage: "connect ECONNREFUSED" })), true);

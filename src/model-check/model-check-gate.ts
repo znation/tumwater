@@ -18,7 +18,7 @@ import {
   withModelOverrides,
   type ResolvedModelConfig,
 } from "../config/config-views.js";
-import { tierChainSteps } from "../config/config-fallbacks.js";
+import { BORROW_ORDER, tierChainSteps } from "../config/config-fallbacks.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { runnerEnabled } from "../roles/runner-ids.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -202,13 +202,15 @@ export class ModelCheckGate {
     }
   }
 
-  /** Whether a pair of `tier`'s own chain other than `pair` (a fallback step, or the primary
-   * a check move left) answered its last probe: the only case in which a handed-back run has
-   * another pair to resume on — the reviewer's or another tier's pair is not one. With none,
-   * the run waits for `pair` itself. */
+  /** Whether a pair other than `pair` that `tier`'s check move can land on (a step of its own
+   * chain or of a chain it borrows in BORROW_ORDER, or the primary a check move left) answered
+   * its last probe: the only case in which a handed-back run has another pair to resume on —
+   * the reviewer's pair, or a chain the tier never borrows, is not one. With none, the run
+   * waits for `pair` itself. */
   private answersElsewhere(pair: string, tier: ModelTier): boolean {
     const onTier = (label: string): boolean =>
-      label === `fallback:${tier}` || label.startsWith(`fallback:${tier}#`) || label === `primary:${tier}`;
+      label === `primary:${tier}` ||
+      BORROW_ORDER[tier].some((t) => label === `fallback:${t}` || label.startsWith(`fallback:${t}#`));
     return [...this.uses].some(([other, use]) => other !== pair && use.seams.some(onTier) && this.verified(other));
   }
 
