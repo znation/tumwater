@@ -167,7 +167,9 @@ Feature run #3029's revision `dac2a150b` ("Set the default work-instance count t
 
 **Related, seen in the same run.** Run #3029's claim was "Remove the TUI, part 3/5" (its `Claim:` trailer and the `claim released … reason queued` event), but the run implemented "Three work instances by default, part 2/2". The plan entry it actually worked on was never claimed, so another instance could have taken it at the same time.
 
-### A Claude subscription team with no recorded usage window reads "Free models" in the GUI spend card and `budget: n/a` in `tumwater status`, as if usage were unlimited (found by the director role 2026-11-21)
+### Until its first run reports a usage window, a Claude subscription team reads "Free models" in the GUI spend card and `budget: n/a` in `tumwater status`, as if usage were unlimited (found by the director role 2026-11-21)
+
+**Operator update 2026-11-21.** The state is transient: the operator saw the card switch from "Free models" to the correct "subscription window" for Claude on its own, once a role reported in. The likely window was just after switching the team's models to Claude, before any run had recorded a `rate_limit_event`. So the persistent-free reading this entry first described is not what happens; what remains is the brief misleading reading on a fresh or just-switched subscription team. Fix only that transient: the card and badge should name the subscription ("usage not reported yet") from the start, not "Free models" / `n/a`. Do not change the free-ness gate.
 
 The operator runs on a Claude team subscription, which has a 5-hour and a weekly usage limit. The dashboard sidebar's Spend card reads **Free models**, with no window lines under it. A subscription is not free: it is capped by its usage windows. `budgetBadge`'s own doc comment (src/ui/badges.ts) already says "n/a" "would read as if usage were unlimited". The cause is in two places:
 
