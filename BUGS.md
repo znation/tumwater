@@ -34,6 +34,8 @@ fix the retention comment either way.
 
 ### 1,451 commits dropped from post-merge review on 2026-11-09 and 11-11 stay unreviewed, and nothing can re-queue them (reported by the user 2026-11-16)
 
+**Needs review 2026-11-21 by feature: too large for one run** — it bundles three parts: emitting a `review_dropped` event on every drop (src/merge/merge-post-review-drain.ts), a `tumwater review --requeue-dropped [--since <date>]` command that reads both the events and the legacy `dropping the post-merge review` warnings, and the one-time re-queue run once the provider has quota. Split it into those parts, and have the user decide whether the matching BUGS-FIXED.md entries are deleted or kept.
+
 Before 4120526fe the review provider's quota wall made each commit's post-merge review fail three
 times and get dropped ("dropping the post-merge review of … after 3 failed runs; it stays on main
 unreviewed"): 821 drops on 2026-11-09 and 630 on 2026-11-11 in kde-macos8.6-theme. Those commits
