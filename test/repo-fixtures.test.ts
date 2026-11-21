@@ -73,6 +73,14 @@ test(TMPDIR_GUARD_TITLE, () => {
     `temp dirs created outside the per-run root leak into the system temp dir; use tmpdir() from fixtures/repo-fixtures.ts in: ${offenders.join(", ")}`);
 });
 
+test("this scan reports each offender on a machine-readable policy-offender line", () => {
+  // The guard's own exact failing-test title must ride the shared prefix, or runBuildCheck's
+  // failingOffenders never lists this scan's offenders for attribution (policy-offenders.ts).
+  const line = policyOffenderLine(TMPDIR_GUARD_TITLE, "test/a.test.ts");
+  assert.ok(line.startsWith(`tumwater-policy-offender\t${TMPDIR_GUARD_TITLE}\t`), `contracted line: ${line}`);
+  assert.ok(line.endsWith("test/a.test.ts"), `contracted line: ${line}`);
+});
+
 test("writeBacklogFile renders the canonical backlog skeleton per file", () => {
   const root = tmpdir();
   writeBacklogFile(root, "PLANS.md", [
