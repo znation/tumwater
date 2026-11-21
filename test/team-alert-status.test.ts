@@ -74,7 +74,7 @@ test("a session-prune pass raises a blue banner that leads the status alerts", (
   const startedAt = Date.UTC(2026, 10, 21, 22, 38, 0);
   const alerts = buildStatusAlerts({
     snap: {
-      ...pruneSnap({ pid: 4242, task: "session-prune", backend: "codex", done: 1204, total: 3944, startedAt, updatedAt: startedAt + 1, etaMs: 48 * 60_000 }),
+      ...pruneSnap({ pid: 4242, task: "session-prune", backend: "codex", done: 1204, total: 3944, startedAt, halfStartedAt: startedAt, updatedAt: startedAt + 1, etaMs: 48 * 60_000 }),
       modelChecks: [{ pair: "DeepSeek-V4-Flash", status: "failed", seams: ["default"], reason: "no reply", probeAt: startedAt, failures: 2 }],
     },
     roles: [],
@@ -94,7 +94,7 @@ test("a session-prune pass raises a blue banner that leads the status alerts", (
 test("a session-prune pass with no ETA yet omits the ETA clause and names session files", () => {
   const startedAt = Date.UTC(2026, 10, 21, 22, 38, 0);
   const [banner] = buildStatusAlerts({
-    snap: pruneSnap({ pid: 4242, task: "session-prune", backend: "files", done: 3, total: 40, startedAt, updatedAt: startedAt }),
+    snap: pruneSnap({ pid: 4242, task: "session-prune", backend: "files", done: 3, total: 40, startedAt, halfStartedAt: startedAt, updatedAt: startedAt }),
     roles: [],
   });
   assert.equal(

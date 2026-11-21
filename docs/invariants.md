@@ -4678,8 +4678,8 @@ maintenance_start and one maintenance_done for that half, and a prune with none 
 **Guarantee.** The status snapshot's `maintenance` field is the marker of INV-BQ6, read fresh each
 poll, and present only when its `pid` is the live orchestrator's pid: no marker, a marker another
 pid wrote (a SIGKILLed orchestrator never removes its own), or no live orchestrator reads as
-absent. Its `etaMs` is `(updatedAt − startedAt) / done × (total − done)` and is absent below ten
-deletes. While it is present, the team alert leads the status alerts in blue, and every idle role
+absent. Its `etaMs` is `(updatedAt − halfStartedAt) / done × (total − done)` — the current half's
+rate, since `done`/`total` reset each half — and is absent below ten deletes. While it is present, the team alert leads the status alerts in blue, and every idle role
 row reads `held: session cleanup`; an in-flight row keeps its working label.
 
 **Binds.** `src/status/status-data.ts` (`maintenanceForPoll`), `src/ui/team-alert-status.ts`

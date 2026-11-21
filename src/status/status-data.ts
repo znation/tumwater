@@ -643,15 +643,16 @@ function liveInfoField<T>(running: boolean, field: T | undefined): T | undefined
 /** The session-prune marker the live orchestrator (pid `livePid`) is writing, read fresh per poll
  * (no cache, like the paused markers). A marker naming another pid — a SIGKILLed orchestrator
  * never removed its own — or no live orchestrator at all reads as absent. `etaMs` is the linear
- * estimate `(updatedAt − startedAt) / done × (total − done)`, withheld until ten deletes so the
- * first noisy samples give no silly figure. */
+ * estimate `(updatedAt − halfStartedAt) / done × (total − done)` — this half's elapsed time, as
+ * `done`/`total` reset each half — withheld until ten deletes so the first noisy samples give no
+ * silly figure. */
 export function maintenanceForPoll(root: string, livePid: number | undefined): StatusSnapshot["maintenance"] {
   if (livePid === undefined) return undefined;
   const marker = readJsonFile<MaintenanceMarker>(maintenancePath(root));
   if (marker?.pid !== livePid || !Number.isFinite(marker.done)) return undefined;
-  const { done, startedAt, updatedAt } = marker;
-  const etaMs = done >= 10 ? ((updatedAt - startedAt) / done) * (marker.total - done) : undefined;
-  return { ...marker, ...(etaMs === undefined ? {} : { etaMs }) };
+  const { done, halfStartedAt, updatedAt } = marker;
+  const etaMs = done >= 10 ? ((updatedAt - halfStartedAt) / done) * (marker.total - done) : undefined;
+  return { ...marker, ...(etaMs === undefined || !Number.isFinite(etaMs) ? {} : { etaMs }) };
 }
 
 /** How long the poll heartbeat may go unstamped before observers call the poll loop stalled.

@@ -929,4 +929,6 @@ test("a session-prune hold replaces an idle row's countdown but not a running ro
   running.running = true;
   running.lastRunStartedAt = Date.now() - 5_000;
   assert.match(rolePhase(running, true, root, false, null, false, null, false, undefined, false, false, undefined, undefined, undefined, true), /^working /);
+  // The held row groups with the other team holds (rank 3, beside `waiting: update — …`), not Idle.
+  assert.equal(roleRank("held: session cleanup"), 3);
 });

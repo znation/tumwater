@@ -42,7 +42,9 @@ const MARKER_PROGRESS_MS = 1000;
 /** What `.tumwater/state/maintenance.json` (src/paths.ts's `maintenancePath`) says while one
  * blocking housekeeping pass runs: which process is blocking its poll loop, on which task and
  * backend, and how far it has got. `total` is known up front because the expired-id set is built
- * before the delete loop; `startedAt` is the whole pass, `updatedAt` this half's last rewrite.
+ * before the delete loop; `startedAt` is the whole pass, `halfStartedAt` this half (the base
+ * of the snapshot's ETA, since `done`/`total` reset each half), `updatedAt` this half's last
+ * rewrite.
  * Written by `SessionPruneMarker` below, and absent whenever no such pass is running. Exported
  * for the status snapshot's reader (status-data.ts), which reads it fresh each poll. */
 export interface MaintenanceMarker {
@@ -53,6 +55,7 @@ export interface MaintenanceMarker {
   done: number;
   total: number;
   startedAt: number;
+  halfStartedAt: number;
   updatedAt: number;
 }
 
@@ -148,6 +151,7 @@ class SessionPruneMarker {
         done: this.done,
         total: this.total,
         startedAt: this.startedAt,
+        halfStartedAt: this.halfStartedAt || this.startedAt,
         updatedAt: Date.now(),
       } satisfies MaintenanceMarker);
     } catch {

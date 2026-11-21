@@ -51,6 +51,7 @@ test("every phase label rolePhase renders maps to a known status on the page", (
     [rolePhase(at({}), true, undefined, true, null, false, undefined, true), "cap", false],
     [rolePhase(at({}), true, undefined, false, null, false, undefined, true), "cap", false],
     [rolePhase(at({}), true, undefined, false, null, false, undefined, false, undefined, false, true), "bootstrap", false],
+    [rolePhase(at({}), true, undefined, false, null, false, undefined, false, undefined, false, false, undefined, undefined, undefined, true), "maintenance", false],
     [rolePhase(at({ consecutiveErrors: 9 }), true), "failing", false],
     [rolePhase(at({ nextRunAt: now + 600_000 }), true), "sleeping", false],
     [rolePhase(at({ nextRunAt: now - 1_000 }), true), "queued", false],

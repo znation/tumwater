@@ -426,7 +426,7 @@ export const ROLE_RANK_RULES: ReadonlyArray<{
   { rank: 1, prefixes: ["waiting to start"] },
   { rank: 2, phases: ["failing"] },
   { rank: 3, phases: ["paused"] },
-  { rank: 3, prefixes: ["paused", "waiting:"] },
+  { rank: 3, prefixes: ["paused", "waiting:", "held:"] },
 ];
 
 /** The rank ROLE_RANK_RULES assigns `phase`: -1 for director working, 4 for idle, otherwise the

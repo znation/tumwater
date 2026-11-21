@@ -249,6 +249,7 @@ const pruneMarker = (over: object = {}) => ({
   done: 10,
   total: 110,
   startedAt: 0,
+  halfStartedAt: 0,
   updatedAt: 10_000,
   ...over,
 });
@@ -268,6 +269,9 @@ test("the maintenance ETA is linear over the progress so far, and absent below t
   assert.equal(maintenanceForPoll(repo, 4242)?.etaMs, undefined, "nine deletes give no ETA");
   writeMaintenance(repo, pruneMarker({ done: 10 }));
   // (10,000 ms elapsed − 0) ÷ 10 deletes = 1,000 ms each, × 100 left = 100,000 ms.
+  assert.equal(maintenanceForPoll(repo, 4242)?.etaMs, 100_000);
+  // A later half (done/total reset) times only itself: an earlier half's 50 s is not in the rate.
+  writeMaintenance(repo, pruneMarker({ startedAt: -50_000 }));
   assert.equal(maintenanceForPoll(repo, 4242)?.etaMs, 100_000);
 });
 
