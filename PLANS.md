@@ -1,9 +1,10 @@
 # Backlog
 
-This is the operator's view of what the team is carrying — open, in flight, done, and refused. The
-harness renders it read-only; the roles that act on it are plan (adds and retires `## Planned`
-entries), feature (claims, completes, refuses, and reports plan defects on `## Planned`), and bugfix
-(claims, fixes, and refuses `## Open`). Refusals carry a note so the record shows an entry was
+This is the operator's view of what the team is carrying — open, in flight, done, and refused. You
+write, sharpen, reorder and retire entries here too, usually through your own agent; the roles that
+act on it are plan (adds and retires `## Planned` entries), feature (claims, completes, refuses, and
+reports plan defects on `## Planned`), and bugfix (claims, fixes, and refuses `## Open`).
+Refusals carry a note so the record shows an entry was
 considered and set aside on purpose, and every state change is dated so staleness is visible.
 
 ## Planned
@@ -221,38 +222,6 @@ fall behind a busy Codex team indefinitely.)
   `orchestrator_stop` event and the usual merge hand-off and slot release.
 - The maintenance alert reads as informational and idle rows show their normal phase while the
   marker stands.
-
-### Operator steering, part 5/5: Seeded files, help and package text stop describing a hands-off team (planned 2026-11-16 by the operator; requires Operator steering part 2/5 landed; touches src/init/init-templates.ts src/cli/cli-init.ts src/cli/cli-help-text.ts package.json docs/glossary.md PLANS.md)
-
-**Goal.** The text a new user meets outside the README matches the steered use. Today the seeded
-PLANS.md says plans are "written by the plan role", the help's first line and package.json
-describe "an autonomous development team" that needs only the initial prompt, and `init`'s next
-step mentions only `tumwater start` and `tumwater tui`.
-
-**Approach.**
-- src/init/init-templates.ts: `PLANS_TEMPLATE`'s lead becomes "Planned features, written by you
-  (often through your own agent) or the plan role, and implemented by the feature role." and
-  `BUGS_TEMPLATE`'s "recorded by any role" becomes "recorded by you or any role". Keep the rest of
-  both templates.
-- src/cli/cli-init.ts: the `next:` line adds "and point your own agent at `tumwater guide`".
-- src/cli/cli-help-text.ts: `HELP`'s first line describes a development team you steer, still
-  naming the four backends.
-- package.json: `description` says the team builds the project while you steer it through the
-  backlog, from your own agent or the director; keep `autonomous` in keywords.
-- docs/glossary.md: add a Terms row "your agent: the interactive harness (claude, codex, omp) you
-  run in the repo to steer the team; not one of tumwater's roles".
-- This repo's PLANS.md lead paragraph: replace "The harness renders it read-only; the roles that
-  act on it are …" with a sentence that the operator (often through their own agent) writes and
-  edits entries too, keeping the list of what each role does. Edit only that paragraph.
-
-**Acceptance criteria.**
-- A fresh `tumwater init` writes the new PLANS.md and BUGS.md leads and prints the new `next:` line.
-- `tumwater help`'s first line and package.json's `description` no longer say the team needs only
-  the initial prompt.
-- The glossary row exists; no `### ` entry in PLANS.md changes.
-
-**Tests.** Update the init and help tests that pin the old wording to the new text (test/init*.ts,
-test/help.test.ts) from the template constants, not by copying the output. Then the project's gate.
 
 ### Remove the TUI, part 2/5: delete what is left in src/ only for tests now that the TUI is gone (planned 2026-11-16 by the operator; requires Remove the TUI part 1/5 landed; touches src/history/history-data.ts src/inbox/inbox.ts src/review/quarantine-render.ts src/roles/role-render.ts src/ui/status-render.ts src/redeploy/self-reload.ts test/history*.test.ts test/inbox*.test.ts test/quarantine*.test.ts test/role-render*.test.ts test/status-render*.test.ts test/self-reload*.test.ts)
 

@@ -25,6 +25,7 @@ current one, so history, old logs and old scripts stay readable.
 | inbox | Messages waiting for a role's next run (`tumwater prompt`). | queued prompts, "Queued" tab |
 | check | The project's declared check (`check.command`). | main check, build check, gate check, baseline check, project check, suite |
 | update | tumwater's own newer build, restarted onto after the cooldown; work continues on the current build meanwhile. | stale build, self-redeploy, generation |
+| your agent | The interactive agent program (claude, codex, omp) you run in the repo yourself to steer the team; not one of tumwater's roles, and not tumwater itself. | (new) |
 
 ## Status words
 

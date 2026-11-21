@@ -4,7 +4,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { cmdInit } from "../src/cli/cli-init.js";
-import { INIT_TEMPLATES, getTemplate, templateCatalog, templateIds, unknownTemplateError } from "../src/init/init-templates.js";
+import {
+  BUGS_TEMPLATE,
+  INIT_TEMPLATES,
+  PLANS_TEMPLATE,
+  getTemplate,
+  templateCatalog,
+  templateIds,
+  unknownTemplateError,
+} from "../src/init/init-templates.js";
 import { parseEntryDetails } from "../src/backlog/backlog-md.js";
 import { parseInitArgs } from "../src/cli/cli-command-args.js";
 import { BRIEF_TEXT_MAX_CHARS, readBriefText } from "../src/brief/brief.js";
@@ -182,6 +190,22 @@ test("a near-miss --template id gets the did-you-mean hint, a far one does not",
   assert.match(unknownTemplateError("pythn-cli"), / — did you mean `python-cli`\?$/);
   // "nope" is a real word, not a typo of any id: the suggestion threshold stays off.
   assert.doesNotMatch(unknownTemplateError("nope"), /did you mean/);
+});
+
+// The seeded backlog leads name the operator as an author beside the roles (Operator steering
+// part 5/5). Pin the leads off the exported template constants, not off init's printed output.
+test("the seeded PLANS.md and BUGS.md leads name you, not only the roles", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "Build a todo CLI.");
+  assert.match(PLANS_TEMPLATE, /^Planned features, written by you \(often through your own agent\) or the plan role,/m);
+  assert.match(BUGS_TEMPLATE, /^Known bugs, recorded by you or any role and fixed by the bugfix role\./m);
+  // A fresh project carries the steered leads: the plan role is not the only named author.
+  const plans = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
+  const bugs = fs.readFileSync(path.join(repo, "BUGS.md"), "utf8");
+  assert.ok(plans.includes(PLANS_TEMPLATE.split("\n")[1]!), "seeded PLANS.md carries the template lead");
+  assert.ok(bugs.includes(BUGS_TEMPLATE.split("\n")[1]!), "seeded BUGS.md carries the template lead");
+  assert.doesNotMatch(plans, /written by the plan role and/, "no hands-off lead survives");
+  assert.doesNotMatch(bugs, /recorded by any role and/, "no hands-off bug lead survives");
 });
 
 test("the seed skeletons speak of roles and runs", async () => {

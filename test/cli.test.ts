@@ -6,6 +6,7 @@ import { initProject } from "../src/init/init.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { readBriefText } from "../src/brief/brief.js";
 import { defaultConfig } from "../src/config/config.js";
+import { INIT_NEXT_LINE } from "../src/cli/cli-init.js";
 import { assertClean, initializedRepo, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
 import { cli, cliWithEnv } from "./helpers/cli-harness.js";
@@ -69,7 +70,9 @@ test("init creates the harness files and is idempotent", async () => {
     "untracked (gitignored): tumwater.json",
   );
   assert.doesNotMatch(r.stdout, /\(committed\)/);
-  assert.match(r.stdout, /next: `tumwater start` in one terminal, `tumwater gui` in another/);
+  // The "next:" line is pinned from the exported constant, not copied, so rewording init's
+  // guidance cannot silently pass on a stale expectation.
+  assert.ok(r.stdout.includes(`${INIT_NEXT_LINE}\n`), `next line: ${r.stdout}`);
   for (const f of ["README.md", "PLANS.md", "BUGS.md", "tumwater.json"]) {
     assert.ok(fs.existsSync(path.join(repo, f)), `${f} exists`);
   }
@@ -94,7 +97,7 @@ test("init re-seeding a repo that only lacks its config reports it without claim
   // `committed …` line — and the config is named as created-but-untracked, never claimed.
   assert.equal(
     r.stdout,
-    "created tumwater.json\nuntracked (gitignored): tumwater.json\nnext: `tumwater start` in one terminal, `tumwater gui` in another\n",
+    `created tumwater.json\nuntracked (gitignored): tumwater.json\n${INIT_NEXT_LINE}\n`,
   );
   assert.ok(fs.existsSync(path.join(repo, "tumwater.json")), "config re-created");
   assertClean(repo);
@@ -106,7 +109,7 @@ test("init seeds a git repo in an empty directory (BUGS.md 2026-09-08)", async (
   assert.equal(r.code, 0);
   assert.match(r.stdout, /initialized a new git repository on branch main/);
   assert.match(r.stdout, /created README\.md/);
-  assert.match(r.stdout, /next: `tumwater start` in one terminal, `tumwater gui` in another/);
+  assert.ok(r.stdout.includes(`${INIT_NEXT_LINE}\n`), "next line names start, gui and the guide");
   assert.equal(sh(dir, "git", "symbolic-ref", "--short", "HEAD"), "main");
 });
 

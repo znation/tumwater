@@ -1,7 +1,7 @@
 {
   "name": "tumwater",
   "version": "0.9.0",
-  "description": "Opinionated autonomous development team on a pluggable model backend. You write the initial prompt; role-driven runs build the project.",
+  "description": "Opinionated development team on a pluggable model backend: role-driven runs build the project while you steer it through the backlog, from your own agent or the director.",
   "type": "module",
   "license": "MIT",
   "repository": {

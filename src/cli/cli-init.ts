@@ -137,6 +137,12 @@ function createdLines(result: Awaited<ReturnType<typeof initProject>>): string[]
   return lines;
 }
 
+/** The one "next:" line a completed init prints: run the team, watch it, and point an
+ * interactive agent at the steering guide, so a new project starts steered rather than
+ * hands-off. Exported so the tests pin the line from here instead of copying the printed text. */
+export const INIT_NEXT_LINE =
+  "next: `tumwater start` in one terminal, `tumwater gui` in another, and point your own agent at `tumwater guide`";
+
 /** Print the completed-init report: the already-initialized no-op, the repo line, the
  * created-files line, the bootstrap note, and the "next:" line. */
 function printInitReport(result: Awaited<ReturnType<typeof initProject>>): void {
@@ -153,5 +159,5 @@ function printInitReport(result: Awaited<ReturnType<typeof initProject>>): void 
       `fresh project — maintenance roles wait until ${result.bootstrap} plans are done; remove "bootstrap" from tumwater.json to end that early`,
     );
   }
-  say("next: `tumwater start` in one terminal, `tumwater gui` in another");
+  say(INIT_NEXT_LINE);
 }

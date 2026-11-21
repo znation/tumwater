@@ -110,6 +110,16 @@ test("HELP still lists the per-command help form itself", () => {
   assert.match(HELP, /tumwater help \[<command>\]/);
 });
 
+// Operator steering part 5/5: help's first line describes a team you steer, and still names
+// the four backends.
+test("help's first line describes a team you steer and names every backend", () => {
+  assert.match(HELP, /^tumwater — a development team you steer, running on /);
+  for (const backend of ["pi", "Claude Code", "OpenCode", "Codex"]) {
+    assert.ok(HELP.split("\n")[0]!.includes(backend), `first line names ${backend}`);
+  }
+  assert.doesNotMatch(HELP.split("\n")[0]!, /autonomous/, "the first line makes no hands-off claim");
+});
+
 // reset-counters deliberately keeps the daily budget window (dayStamp/dayCostUsd) so the
 // daily spend cap cannot be reset past — the help must not promise it zeroes today's spend.
 test("reset-counters help says what is zeroed and that today's budget spend is kept", () => {

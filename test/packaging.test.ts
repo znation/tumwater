@@ -8,11 +8,21 @@ import { readJson } from "./helpers/json-read.js";
  * on a metadata-only diff — a diff the suite would otherwise verify nothing about. */
 
 const pkg = readJson(new URL("../../package.json", import.meta.url)) as {
+  description?: string;
+  keywords?: string[];
   files?: string[];
   scripts?: Record<string, string>;
   engines?: { node?: string; os?: string[] };
   bin?: Record<string, string>;
 };
+
+// The npm description is the first text a stranger reads (Operator steering part 5/5): it names
+// steering the backlog rather than a hands-off team, and keywords keep `autonomous` for discovery.
+test("the package description names steering, and keywords keep autonomous", () => {
+  assert.match(pkg.description ?? "", /steer it through the backlog/);
+  assert.match(pkg.description ?? "", /your own agent or the director/);
+  assert.ok(pkg.keywords?.includes("autonomous"), "keywords keep autonomous");
+});
 
 test("files allowlist ships only the built package", () => {
   assert.deepEqual(pkg.files, ["dist/src", "dist/build-info.json", "README.md", "LICENSE"]);

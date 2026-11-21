@@ -5,6 +5,38 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Operator steering, part 5/5: Seeded files, help and package text stop describing a hands-off team (planned 2026-11-16 by the operator; requires Operator steering part 2/5 landed; touches src/init/init-templates.ts src/cli/cli-init.ts src/cli/cli-help-text.ts package.json docs/glossary.md PLANS.md) — done 2026-11-20 by the feature role
+
+**Goal.** The text a new user meets outside the README matches the steered use. Today the seeded
+PLANS.md says plans are "written by the plan role", the help's first line and package.json
+describe "an autonomous development team" that needs only the initial prompt, and `init`'s next
+step mentions only `tumwater start` and `tumwater tui`.
+
+**Approach.**
+- src/init/init-templates.ts: `PLANS_TEMPLATE`'s lead becomes "Planned features, written by you
+  (often through your own agent) or the plan role, and implemented by the feature role." and
+  `BUGS_TEMPLATE`'s "recorded by any role" becomes "recorded by you or any role". Keep the rest of
+  both templates.
+- src/cli/cli-init.ts: the `next:` line adds "and point your own agent at `tumwater guide`".
+- src/cli/cli-help-text.ts: `HELP`'s first line describes a development team you steer, still
+  naming the four backends.
+- package.json: `description` says the team builds the project while you steer it through the
+  backlog, from your own agent or the director; keep `autonomous` in keywords.
+- docs/glossary.md: add a Terms row "your agent: the interactive harness (claude, codex, omp) you
+  run in the repo to steer the team; not one of tumwater's roles".
+- This repo's PLANS.md lead paragraph: replace "The harness renders it read-only; the roles that
+  act on it are …" with a sentence that the operator (often through their own agent) writes and
+  edits entries too, keeping the list of what each role does. Edit only that paragraph.
+
+**Acceptance criteria.**
+- A fresh `tumwater init` writes the new PLANS.md and BUGS.md leads and prints the new `next:` line.
+- `tumwater help`'s first line and package.json's `description` no longer say the team needs only
+  the initial prompt.
+- The glossary row exists; no `### ` entry in PLANS.md changes.
+
+**Tests.** Update the init and help tests that pin the old wording to the new text (test/init*.ts,
+test/help.test.ts) from the template constants, not by copying the output. Then the project's gate.
+
 ### Operator steering, part 4/5: The README says up front that you steer tumwater, mainly from your own agent (planned 2026-11-16 by the operator; requires Operator steering part 3/5 landed; touches README.md) — done 2026-11-20 by the feature role
 
 **Goal.** A first-time reader learns from the README's opening that tumwater is meant to be

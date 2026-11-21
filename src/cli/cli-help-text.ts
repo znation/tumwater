@@ -8,7 +8,7 @@
 /* The role-grouped summary’s JSON keys, quoted verbatim in `history --summary --json` help
  * (its `--by model` twin is the hardcoded `{ models, total }` beside it). */
 const SUMMARY_JSON_KEYS = "{ roles, total }";
-export const HELP = `tumwater — an autonomous development team running on pi, Claude Code, OpenCode or Codex
+export const HELP = `tumwater — a development team you steer, running on pi, Claude Code, OpenCode or Codex
 
 Usage:
   tumwater init <prompt...> [--json]   Initialize this repo (--file <prompt.md>, --adopt: brief in
