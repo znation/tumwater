@@ -9,6 +9,53 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 ## Planned
 
+### Codex default models: the codex strong tier defaults to `gpt-6.2-sol` and the codex CLI floor rises to 0.171.0 (planned 2026-11-20 by the operator; touches src/config/config-model-selector.ts src/agent/codex/codex-backend.ts src/agent/codex/codex-args.ts scripts/smoke-codex.mjs test/config-model-selector.test.ts test/doctor-checks.test.ts test/fakes/fake-codex.ts README.md docs/backends.md)
+
+**Goal.** With no `model` configured, codex's strong tier (reviewer, plan role, conflict
+resolver, director) runs GPT-6.2 Sol. Codex released it on 2026-11-17 as the successor to the
+current default, `gpt-6.1-sol`. Default and small stay on `gpt-6-luna`, since no newer Luna has
+shipped. Claude's defaults are unchanged: the operator checked them and declined Fable 5.2. The
+design and its sources are in plans/codex-default-models.md.
+
+**Approach.**
+- src/config/config-model-selector.ts: in `BACKEND_DEFAULT_MODELS.codex`, set `strong` to
+  `"gpt-6.2-sol"`. Rewrite the comment above it to cite plans/codex-default-models.md: GPT-6.2 Sol
+  replaces 6.1 Sol, which keeps the 2026-10-28 one-step-down choice over Astra.
+- src/agent/codex/codex-backend.ts: raise `CODEX_MIN_VERSION` to `"0.171.0"`, the first Codex CLI
+  whose catalog carries GPT-6.2. Its comment should say so. Keep it one floor for every codex
+  model; do not add a `minVersion(model)` hook.
+- scripts/smoke-codex.mjs:
+  - Import `CODEX_MIN_VERSION` from dist and use it in place of the hard-coded `"0.163.0"` (the
+    step name and the comparison).
+  - Accept `--tier <small|default|strong>` (default `default`) and pick `MODEL` through
+    `routeModel(undefined, undefined, "codex", tier)`. An unknown tier exits 2 and names the three
+    valid ones.
+- test/fakes/fake-codex.ts: the fake's default `--version` and app-server version become
+  `0.171.0`, so fakes sit at the floor. Leave tests that pass an explicit version (the
+  hook-trust tests) alone.
+- src/agent/codex/codex-args.ts: change the doc-comment example to `gpt-6.2-sol`.
+- README.md (the tier-defaults table, the strong-tier sentence, the mixing example) and
+  docs/backends.md (the codex section's tier sentence and the `codex/<id>` example): replace the
+  strong default `gpt-6.1-sol` with `gpt-6.2-sol`. Do not touch test/fixtures/codex-captures/:
+  those are real 0.163.0 captures.
+
+**Acceptance criteria.**
+- `routeModel(undefined, undefined, "codex", "strong")` returns
+  `{ agent: "codex", model: "gpt-6.2-sol" }`. `default` and `small` still return `gpt-6-luna`. An
+  explicit `gpt-6.1-sol` still routes as written. test/config-model-selector.test.ts asserts all
+  of this, including its comment's list of defaults.
+- `checkCodexVersion` fails on `0.170.9`, naming `older than 0.171.0 — upgrade the codex CLI`, and
+  passes on `0.171.0` with `(>= 0.171.0)`. The unreadable-probe case still warns. The
+  test/doctor-checks.test.ts case that covers this is updated to these values.
+- The suite passes with the fake at its new default version. No test outside the two above needs a
+  model-id change: tests that name `gpt-6.1-sol` as an explicit model keep it.
+- `node scripts/smoke-codex.mjs --tier bogus` exits 2 and names the three tiers before it builds
+  the throwaway repo or spawns anything, so it can be run without a codex install. With no flag,
+  the script still picks `gpt-6-luna`.
+- `grep -rn "gpt-6.1-sol" README.md docs/backends.md src` finds no line that calls it the default.
+- Live confirmation is the operator's hand step H4 in plans/codex-default-models.md, after merge.
+  No role runs the real codex CLI for this entry.
+
 ### Visible session cleanup, part 2/3: the GUI and TUI show a session-cleanup banner with progress and an ETA, and idle rows read `held: session cleanup` (planned 2026-11-16 by the operator; requires Visible session cleanup part 1/3 landed; touches src/status/status-data.ts src/ui/team-alert-status.ts src/ui/status-model.ts test/status-data.test.ts test/team-alert-status.test.ts test/team-alerts.test.ts test/status-model.test.ts)
 
 **Goal.** Whenever the prune blocks scheduling, the dashboard says so, shows progress and
