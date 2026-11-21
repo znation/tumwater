@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { saveConfig } from "../config/config.js";
 import { seedConfig } from "../config/config-example.js";
-import { ensureDir, findOnPath, writeTextAtomic } from "../files/files.js";
+import { ensureDir, findOnPath, readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { GIT_MISSING_MESSAGE, commitAuthorArgs, committerIdentArgs, git, gitTry } from "../git/git-run.js";
 import { hasCommits, isGitRepo } from "../git/git.js";
 import {
@@ -37,7 +37,7 @@ export { PLANS_TEMPLATE, BUGS_TEMPLATE } from "./init-templates.js";
 function ensureGitignore(root: string, dryRun = false): boolean {
   const file = path.join(root, ".gitignore");
   const wanted = [`${STATE_DIR}/`, CONFIG_BASENAME];
-  const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  const existing = readTextIfExists(file) ?? "";
   const lines = existing.split("\n").map((l) => l.trim());
   const missing = wanted.filter((e) => !lines.some((l) => l === e || l === e.replace(/\/$/, "")));
   if (missing.length === 0) return false;

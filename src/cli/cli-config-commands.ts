@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { configPath, CONFIG_BASENAME } from "../paths.js";
+import { readTextOrNull } from "../files/files.js";
 import { errorMessage } from "../text/text.js";
 import { configUnchangedFlash } from "../text/phrases.js";
 import { loadConfigSafe, knownRoleIds, nonDefaultConfigEntries } from "../config/config.js";
@@ -325,12 +326,8 @@ async function configEdit(root: string, args: string[], json: boolean): Promise<
       fail(`cannot read config file ${p}: ${errorMessage(err)}`);
     }
   } else {
-    let current = "{}";
-    try {
-      current = fs.readFileSync(configPath(root), "utf8");
-    } catch {
-      current = "{}"; // absent file — the bare defaults, so the editor starts from an empty object
-    }
+    // absent file — the bare defaults, so the editor starts from an empty object
+    const current = readTextOrNull(configPath(root)) ?? "{}";
     text = editInEditor(current, CONFIG_BASENAME, "pass --file <path>");
     if (text.trim() === current.trim()) {
       if (json) sayJsonLine({ command: "config", action: "edit", file: CONFIG_BASENAME, status: "unchanged" });

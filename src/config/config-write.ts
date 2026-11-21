@@ -10,8 +10,8 @@
  * config-views.ts, and the config KEY language — how keys are parsed, addressed and given
  * per-key value screeners — lives in config-keys.ts (both the write verbs here and the read
  * side / doctor share it). */
-import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
+import { readTextOrNull } from "../files/files.js";
 import { modelTierMap, type TumwaterConfig } from "./config-schema.js";
 import { isJsonObject, objectOrEmpty } from "../files/json-object.js";
 import { isExponentSpelling, errorMessage, gotSuffix } from "../text/text.js";
@@ -759,12 +759,7 @@ export function replaceConfigText(
         return fail(errorMessage(err));
       }
       const candidate = JSON.stringify(collapsed, null, 2) + "\n";
-      let current = "";
-      try {
-        current = fs.readFileSync(file, "utf8");
-      } catch {
-        current = ""; // absent file — the bare defaults; a write always changes something
-      }
+      const current = readTextOrNull(file) ?? ""; // absent file — the bare defaults; a write always changes something
       if (candidate === current) return { ok: true, changed: false };
       try {
         writeJsonAtomic(file, collapsed, true); // writes exactly `candidate` (2-space + newline)
