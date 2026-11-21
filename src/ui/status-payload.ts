@@ -329,7 +329,7 @@ function mergeAndCheckFields(root: string, snap: StatusSnapshot, now: number) {
     // re-derive (or drift from) it. Empty string/no tone without a record or for an
     // `unavailable` one, so the panel renders exactly as before.
     remoteCiBadge: remoteCiBadge(snap.remoteCi, now),
-    // The raw machine-readable twin of the amber `no-check` alert (present only when no
+    // The raw machine-readable twin of the blue `no-check` info alert (present only when no
     // deterministic check is declared, so `tumwater status --json` scripts can read the same
     // state before the dashboard renders it as an alert). Omitted (absent) when a check is
     // declared, the same omit-undefined idiom as ciParity.
