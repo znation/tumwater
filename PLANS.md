@@ -9,40 +9,101 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 ## Planned
 
-### Fast session cleanup, part 2/2: session deletes run off the poll loop, so roles keep running during cleanup (planned 2026-11-16 by the operator; requires Fast session cleanup part 1/2 landed; touches src/agent/session-ledger.ts src/orchestrator/retention.ts src/orchestrator/orchestrator.ts src/orchestrator/orchestrator-poll.ts src/ui/team-alert-status.ts src/ui/status-model.ts test/session-ledger-prune.test.ts test/retention.test.ts test/team-alert-status.test.ts test/status-model.test.ts)
+### Fast session cleanup, part 2a/2: session deletes run as a background task, so roles keep running during cleanup (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; requires Fast session cleanup part 1/2 landed; touches src/agent/session-ledger.ts src/orchestrator/retention.ts test/session-ledger-prune.test.ts test/session-ledger.test.ts test/retention.test.ts)
 
-**Needs review 2026-11-21 by feature: too large for one run**
+Part 2/2 was split into 2a, 2b and 2c after the feature role found it too large for one run.
+2a moves the deletes off the poll loop; 2b ("Fast session cleanup part 2b/2") lets a stop
+abandon an in-flight pass; 2c ("Fast session cleanup part 2c/2") rewords the alert and drops the
+row hold. 2b and 2c each require 2a landed and are independent of each other.
 
 **Goal.** Even short, a synchronous prune holds every role for its whole length, at startup and
-once a day. Running the CLI deletes asynchronously lets scheduling continue during cleanup. (A
-per-pass delete cap was the other option; it was not chosen because a daily pass with a cap can
-fall behind a busy Codex team indefinitely.)
+once a day: `sessionDeleteSucceeds` (src/agent/session-ledger.ts) calls `spawnSync` once per
+expired id, inside `RetentionPruner`'s constructor and `poll()`. Running the CLI deletes
+asynchronously lets scheduling continue during cleanup. (A per-pass delete cap was the other
+option; it was not chosen because a daily pass with a cap can fall behind a busy Codex team
+indefinitely.)
 
 **Approach.**
-- `pruneCodexSessions` and `pruneOpencodeSessions` become async, using `spawn` with a small
-  concurrency limit (4) and the same 10 s per-delete timeout and status-0 success rule.
-- `RetentionPruner` starts the prune as a background task from the constructor and from `poll()`
-  and never awaits it in the poll; a pass already in flight makes `poll()` skip starting another.
-  The file and ledger-line passes still run after the deletes, inside the same task, so the ledger
-  is read before it is trimmed. Stopping the orchestrator abandons the task cleanly (its progress
-  is durable since part 1/2), and a rejected task logs a warning instead of ending the team.
-  Today a SIGTERM during the prune cannot reach the JS handler while `spawnSync` blocks, so
-  shutdown never runs: the 2026-11-16 instances stopped mid-prune (pids 4663, 15799) logged no
-  `orchestrator_stop`, handed off no merge and released no slot.
-- The marker and events from part 1/3 stay. The maintenance alert becomes purely informational:
-  title `Cleaning up expired sessions in the background`, no "roles start when it finishes".
-  Remove the `held: session cleanup` hold from `rolePhase` (part 2/3), so rows show their normal
-  phases during cleanup.
+- `sessionDeleteSucceeds` becomes async on `spawn`, keeping the 10 s `SESSION_DELETE_TIMEOUT_MS`
+  bound (the child is killed at the bound and counts as failed), the status-0 success rule, and
+  the swallow-every-error policy. `pruneCodexSessions` and `pruneOpencodeSessions` return
+  `Promise<number>` and run their candidates through one small shared pool of at most 4 deletes at
+  a time. Progress still rises monotonically to `total`, and each id is recorded in the resume
+  file after its own delete settles. The rollout and spill-file fallbacks are unchanged.
+- `RetentionPruner.prune` becomes async and keeps its pass order (INV-BQ3 in docs/invariants.md:
+  both session purges, then the file, ledger-line and salvage passes, marker removed in its
+  `finally`). The constructor and `poll()` start it as a background task held in a private field
+  and never await it; `poll()` starts no pass while one is in flight (a due pass waits for the
+  next poll after it ends; a window change still logs `retention_changed` at once). A rejected
+  task logs one warning event and clears the field instead of ending the team. Add
+  `whenIdle(): Promise<void>` (resolves when no pass is in flight) for tests and part 2b.
+- Existing callers in tests gain `await`; retention tests await `whenIdle()` before asserting.
+- Update INV-BQ3's wording in docs/invariants.md if it says the pass blocks the poll.
 
 **Acceptance criteria.**
-- With a stub `codex` that sleeps 1 s and 50 expired ids, a role due at startup starts its run
-  before the prune finishes.
-- No more than 4 delete processes run at once.
-- A second `poll()` while a prune is in flight does not start another pass.
-- A SIGTERM while a prune is in flight ends the orchestrator within the shutdown window, with an
-  `orchestrator_stop` event and the usual merge hand-off and slot release.
-- The maintenance alert reads as informational and idle rows show their normal phase while the
-  marker stands.
+- With a stub `codex` on PATH that sleeps 1 s per delete and 50 expired thread ids, `new
+  RetentionPruner(...)` returns before the first delete finishes, and the pass deletes all 50 once
+  `whenIdle()` resolves.
+- A stub that records its concurrent invocations (e.g. a counter file) never sees more than 4
+  deletes running at once.
+- A second `poll()` while a pass is in flight starts no second pass (the stub sees each id once).
+- A stub that sleeps past the timeout counts as not deleted and the pass still finishes.
+- A pass whose purge throws leaves a warning event, removes the maintenance marker, and a later
+  due `poll()` starts a new pass.
+
+### Fast session cleanup, part 2b/2: stopping the orchestrator abandons an in-flight session prune (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; requires Fast session cleanup part 2a/2 landed; touches src/agent/session-ledger.ts src/orchestrator/retention.ts src/orchestrator/orchestrator.ts test/retention.test.ts)
+
+Sibling of "Fast session cleanup part 2a/2" (background deletes) and 2c/2 (alert wording).
+
+**Goal.** Today a SIGTERM during the prune cannot reach the JS handler while `spawnSync` blocks,
+so shutdown never runs: the 2026-11-16 instances stopped mid-prune (pids 4663, 15799) logged no
+`orchestrator_stop`, handed off no merge and released no slot. Once 2a makes the pass async the
+handler runs, but a pass still in flight keeps spawning deletes and holds the process open.
+
+**Approach.**
+- The two purges accept an optional `AbortSignal`: once it aborts, no further delete starts and
+  each running delete child is killed (`spawn`'s `signal` option); the purge resolves with what it
+  counted so far. Ids already handled stay in the resume record, so the next pass resumes there
+  (part 1/2).
+- `RetentionPruner` owns an `AbortController`; a new `stop()` aborts it and returns `whenIdle()`.
+  The file/ledger-line passes do not run after an abort (they would trim lines whose sessions the
+  aborted pass never reached).
+- The orchestrator's graceful-shutdown path (src/orchestrator/orchestrator.ts, the drain before
+  the `orchestrator_stop` event) calls `retentionPruner.stop()` and awaits it, bounded by the
+  existing shutdown window.
+
+**Acceptance criteria.**
+- With a stub `codex` that sleeps 30 s per delete and several expired ids, `stop()` resolves
+  within a couple of seconds, no stub process is left running, and the maintenance marker file is
+  gone.
+- After a stopped pass, ids it handled are in the resume record and a fresh `RetentionPruner` does
+  not delete them again.
+- An orchestrator stopped (via its stop signal) while such a prune is in flight logs
+  `orchestrator_stop` within its shutdown window.
+
+### Fast session cleanup, part 2c/2: the cleanup alert reads as informational and rows keep their normal phase (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; requires Fast session cleanup part 2a/2 landed; touches src/ui/team-alert-status.ts src/ui/status-model.ts src/ui/gui/gui-client-model.ts test/team-alert-status.test.ts test/status-model.test.ts)
+
+Sibling of "Fast session cleanup part 2a/2" (background deletes) and 2b/2 (stop abandons).
+
+**Goal.** Once 2a runs the prune in the background, the blue maintenance alert's title
+"Cleaning up expired sessions — roles start when it finishes" and the idle rows' `held: session
+cleanup` phase describe a hold that no longer exists.
+
+**Approach.**
+- `pushMaintenanceAlert` (src/ui/team-alert-status.ts) keeps its blue tone, detail line and empty
+  actions; its title becomes `Cleaning up expired sessions in the background`.
+- Remove the `sessionCleanupHeld` branch from `rolePhase` (src/ui/status-model.ts) and whatever
+  feeds it, so an idle row shows its normal phase (`next run in …` and the other gates) while the
+  marker stands; drop the now-dead `"held: session cleanup"` mapping in
+  src/ui/gui/gui-client-model.ts. Update the comments that describe the prune as blocking the
+  poll loop in these files.
+
+**Acceptance criteria.**
+- With a maintenance marker in the snapshot, the alert's title is `Cleaning up expired sessions
+  in the background`, tone blue, with the same progress detail as before.
+- With the marker present, an idle role row shows the same phase it shows without the marker;
+  no row reads `held: session cleanup`.
+- `grep -rn "held: session cleanup" src` finds nothing.
 
 ### Remove the TUI, part 4a/5: src/ui comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/ui/ (comments only))
 
