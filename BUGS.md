@@ -79,25 +79,6 @@ Overlaying those endings on the pmset sleep intervals shows 85–95% of each one
 - An open tool call silent across a recorded sleep is neither stall-warned nor stall-killed until its awake silence crosses the bound.
 - A sampler that returns empty samples leaves every existing pi-watchdogs.test.ts and runner-quiet-watchdog.test.ts case passing unchanged.
 
-### Host sleep, part 3/3: a model check whose probe window held a host sleep fails the pair and holds every role, instead of retrying (found by an operator session 2026-11-19, split 2026-11-21 by the plan role)
-
-Siblings: "Host sleep, part 1/3: the quiet and stall clock…" (evidence and sleep measure) and "Host sleep, part 2/3: the run deadline…". This is separate from the open "The model check fails a pair on queue position…" entry, which covers server admission while the host is awake.
-
-On 11-19, during the lid-closed stretch, five `model check failed: … gave no reply` warnings fired, at 07:06, 11:54, 13:25, 13:52 and 14:59. Each held all 29 runners. Each handed back the runs waiting on a reply, which then ended `aborted` after 7–145 minutes: feature, bugfix, qa, organize, selfcheck, bugfix-2, plan, bugfix-3, and some of them more than once.
-
-**Cause.** `runModelCheck` in src/model-check/model-check-probe.ts runs one probe capped at `MODEL_CHECK_TIMEOUT_S` (300 s) and returns `judgeModelReply`'s verdict. A probe that slept through its window reads as `no reply` like a dead backend.
-
-**Fix.**
-- Give `runModelCheck` an optional `sampleSleep: SleepSampler = sampleSleepClock` parameter, the build check's seam shape (`runBuildCheck`, src/build/build-check.ts). Sample sleep before and after the probe.
-- When the verdict is `{ ok: false, reason: "no reply" }` and `sleptMsBetween` reports at least `SLEEP_SPAN_TOLERANCE_MS`, run the probe once more and return the second verdict, whatever it is. Any other verdict, or a window with no measured sleep, returns as today.
-- Do not retry a second time: a host that sleeps through two probes in a row gets the second verdict.
-
-**Acceptance criteria** (test/model-check-probe.test.ts, fake pi shim and a scripted sampler):
-- A first probe that gives no reply inside a window holding a recorded sleep, followed by a probe that answers correctly, yields an `ok` verdict.
-- A no-reply probe with no recorded sleep yields the `no reply` verdict without a second probe. The shim is invoked once.
-- A probe that answers wrong (`reason` other than `no reply`) inside a sleep window is not retried.
-- Two consecutive no-reply probes, both across sleeps, yield `no reply` after exactly two invocations.
-
 ### An extra instance that is never admitted keeps its staged claim, so a higher backlog entry waits while a lower-index sibling takes a later one (found by an operator session 2026-11-19)
 
 **Needs review 2026-11-21 by feature: too large for one run.** The three fix directions each touch a different scheduler seam: claim staging (`scope.ts`), admission ordering (`orderForAdmission` / `admissionHolds`, `skip.ts`), and a claim transfer between runners. Picking one is a design choice the plan role should split out before any single run can land it.

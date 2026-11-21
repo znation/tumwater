@@ -13,6 +13,8 @@ import type { ResolvedModelConfig } from "../config/config-views.js";
 import { seamPairName } from "../config/config-views.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { runAgent } from "../agent/agent-run.js";
+import { SLEEP_SPAN_TOLERANCE_MS } from "../build/build-check-events.js";
+import { sampleSleepClock, sleptMsBetween, type SleepSampler } from "../build/host-sleep.js";
 import { ensureDir, removeTree } from "../files/files.js";
 import {
   MODEL_CHECK_RUN_NAME,
@@ -93,12 +95,27 @@ function pairSlug(pair: string): string {
  * every role run takes) in a scratch dir under `.tumwater`, with a fresh session that is
  * removed afterwards, and judge the reply. The probe's transcript lands in
  * `.tumwater/log/_model-check.pi.jsonl` beside the roles' own. Never throws: a run that could
- * not start reads as `no reply` with its error. */
+ * not start reads as `no reply` with its error. A host that sleeps through the probe's window
+ * reads as `no reply` too, so runModelCheck samples the sleep clock around it (see there). */
 export async function runModelCheck(
   root: string,
   seam: ResolvedModelConfig,
   signal: AbortSignal,
+  sampleSleep: SleepSampler = sampleSleepClock,
 ): Promise<ModelCheckVerdict> {
+  const sleepOpened = await sampleSleep();
+  const first = await probeOnce(root, seam, signal);
+  if (first.ok !== false || first.reason !== "no reply") return first;
+  // A no-reply probe that spanned a host sleep is no evidence about the pair: the host slept,
+  // the backend did not fail. Probe once more and return that verdict whatever it is, so a host
+  // that sleeps through two probes in a row gets the second verdict and no third probe is made.
+  const slept = sleptMsBetween(sleepOpened, await sampleSleep());
+  if (slept === undefined || slept < SLEEP_SPAN_TOLERANCE_MS) return first;
+  return probeOnce(root, seam, signal);
+}
+
+/** One probe of the seam, judged; see runModelCheck. */
+async function probeOnce(root: string, seam: ResolvedModelConfig, signal: AbortSignal): Promise<ModelCheckVerdict> {
   const pair = seamPairName(seam);
   const sessionDir = modelCheckSessionDir(root, `${pairSlug(pair)}-${Date.now()}`);
   try {
