@@ -203,12 +203,8 @@ never has to wait a parked check out.
   count the deferral uses. `tumwater status` and the dashboard name each instance's assigned entry
   while it is idle or merging, `tumwater logs` renders the `claim` assigned/released events, and
   `tumwater doctor`'s `parallel instances` check warns on an assignment whose entry is gone or stale.
-  When a project declares no check, the plan and feature roles close the gap themselves: the plan role
-  writes a `## Planned` entry declaring one (marked `**Declares the project check**`) and the feature
-  role implements it — a `test`/`typecheck`/`build` npm script, or `check.command` through the staged
-  config request — so a merely-planned declaration keeps `tumwater doctor`'s `check` row
-  warning, deliberately, until the
-  declaration is live.
+  When a project declares no check, the orchestrator queues the director one automatic request to
+  declare one; the plan and feature roles are never asked to plan or build the declaration.
   While a claim names an entry no longer listed, or has sat idle past `CLAIM_IDLE_MAX_MS`,
   `tumwater doctor`'s `parallel instances` row warns on it; it clears when the scheduler's
   next poll releases the claim.

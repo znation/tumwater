@@ -139,7 +139,7 @@ function buildDirectorRunPrompt(
 /** Build a non-director role's prompt from its queued request and state: the catalog/custom
  * resolution and unknown-role throw, the role-prompt dequeue and marker strip, the
  * observer evidence blocks, the notes and their backlog state, the plan target, and the
- * and flaky notes, feeding the single buildRunPrompt call. Never null — a role always
+ * flaky note, feeding the single buildRunPrompt call. Never null — a role always
  * has a prompt to run on. Each stage is read by one named helper below, so the body is the
  * ordered calls and the single buildRunPrompt call. */
 function buildRoleRunPrompt(
