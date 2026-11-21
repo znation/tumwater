@@ -31,6 +31,15 @@ async function mergeRefSha(root: string, role: string): Promise<string | null> {
   return (await refSha(root, mergeRefName(role))) ?? (await refSha(root, legacyLandingRefName(role)));
 }
 
+/** The directory retire acts on for `role`: the pool resolver's checkout (slots-state.ts), so a
+ * retired role's pinned slot is found too. `roleWorktreeDir` returns only usable legacy worktrees,
+ * so an unusable legacy directory (the half-state the rails must catch) is recovered from the raw
+ * legacy path when it still exists. */
+async function retireCheckoutDir(root: string, role: string): Promise<string | null> {
+  const legacy = worktreePath(root, role);
+  return (await roleWorktreeDir(root, role)) ?? (fs.existsSync(legacy) ? legacy : null);
+}
+
 /** The id gate for ids no config names (a lowered `instances`, a removed custom role): the id is
  * well-formed (CUSTOM_NAME_RE keeps `..` and `/` out of the paths retire builds), is not the
  * director, and still has its branch or merge ref. Read-only. */
@@ -62,12 +71,7 @@ export interface RetireStatus {
 /** Collect what exists today for `role`, with every probe tolerant of partial state — a retired
  * role's leftovers are exactly the messy half-state this command exists to clean up. */
 export async function collectRetire(root: string, role: string): Promise<RetireStatus> {
-  // The role's checkout comes from the pool resolver (slots-state.ts), so a retired role's
-  // pinned slot is found too. `roleWorktreeDir` returns only usable legacy worktrees, so an
-  // unusable legacy directory (the half-state the rails must catch) is recovered from the raw
-  // legacy path when it still exists.
-  const legacy = worktreePath(root, role);
-  const wt = (await roleWorktreeDir(root, role)) ?? (fs.existsSync(legacy) ? legacy : null);
+  const wt = await retireCheckoutDir(root, role);
   const present = wt !== null && fs.existsSync(wt);
   const usable = present && wt !== null && (await isUsableWorktree(wt));
   const config = loadConfigSafe(root);
@@ -155,8 +159,7 @@ export async function retireRole(root: string, role: string, { force }: { force?
   // else the legacy worktree — and not by gating on `worktreePresent`: a pinned slot whose
   // directory is already gone has worktreePresent false, and the old gate left its pin behind,
   // so the dead dir resolved this role's checkout forever and the slot could never be reused.
-  const legacy = worktreePath(root, status.role);
-  const wt = (await roleWorktreeDir(root, status.role)) ?? (fs.existsSync(legacy) ? legacy : null);
+  const wt = await retireCheckoutDir(root, status.role);
   const slot = wt !== null ? slotForDir(root, wt) : undefined;
   if (slot !== undefined) {
     updateSlotsState(root, (state) => {
