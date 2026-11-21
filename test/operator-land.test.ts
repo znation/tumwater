@@ -45,6 +45,20 @@ test("land fast-forwards main when main is behind the ref", async () => {
   assert.equal(sh(root, "git", "show", "main:feat.txt"), "feat");
 });
 
+test("land moves a local branch that is checked out nowhere to the landed tip", async () => {
+  const root = makeRepo(tmpdir());
+  const { feat } = repoWithFeat(root);
+  seedCommit(feat, "feat.txt", "feat\n", "feat edit");
+  const featTip = sh(root, "git", "rev-parse", "feat");
+  seedCommit(root, "main.txt", "main\n", "main edit"); // diverge: the land replays, so the landed tip is a new commit
+  sh(root, "git", "worktree", "remove", feat); // leave `feat` a local branch with no checkout anywhere
+  const result = await steerToMain(root, "feat");
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if (result.ok) assert.match(result.refNote, /the feat branch was moved to it$/);
+  assert.notEqual(mainSha(root), featTip);
+  assert.equal(sh(root, "git", "rev-parse", "refs/heads/feat"), mainSha(root));
+});
+
 test("land replays the ref's commits onto a moved main when the two have diverged", async () => {
   const root = makeRepo(tmpdir());
   const { feat } = repoWithFeat(root);
