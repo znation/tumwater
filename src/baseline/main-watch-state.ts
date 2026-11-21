@@ -53,7 +53,7 @@ export function newMainWatchState(): MainWatchState {
 }
 
 /** Count a head as watched and clear the suspended full check (Hourly full check, part 2b/4):
- * the five paths that settle a head without a full verdict all advance to that head and leave
+ * the paths that settle a head without a full verdict all advance to that head and leave
  * no suspended check, so they share this instead of re-spelling the three assignments. Two
  * sites cannot use it and keep the assignments spelled: the skipped-interval plan sets a
  * due time (not a clear), and the settled-verdict site must read the base before clearing.

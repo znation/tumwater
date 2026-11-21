@@ -5,6 +5,16 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A full check that the host slept through marks main's head watched, so a code head goes without a verdict until main moves again (found by an operator session 2026-11-19) — fixed 2026-11-21 by the bugfix role
+
+Bugfix's 6c9b25b6 (a `src/` change) merged at 11-19 11:29. The `_main-full` mirror's baseline failed with `sleptMs: 140544` (18 tests), and its clean retry failed with `sleptMs: 182225` (34 tests) at 12:01. Both were correctly not cached red: `runBaselineOnce` returns `unverified`. Then nothing re-ran. There was no `main_check` for 6c9b25b6. The next full check ran only when da13f613 merged at 16:02, 4.5 h later, although the hourly interval (`check.fullIntervalMinutes`, default 60) had long passed. The cause is in `fullPass` (src/baseline/main-watch-full.ts). On a run with no verdict it calls `markWatched(state, tip)`, which sets `lastWatched` to the tip and clears `fullCheckDueAt`. The poll in src/baseline/main-watch.ts then sees `mainHead === state.lastWatched` with nothing due, and never retries. This contradicts runBaselineOnce's own comment: "nothing is cached — the next consult re-runs". A red main that lands just before a sleep therefore goes unseen until someone else merges. Fix direction: after an unverified or skipped full run, leave the head due, for example by setting `fullCheckDueAt` to now plus a short backoff instead of clearing it. Keep the existing rule that a run with no verdict is never cached.
+
+**Reproduce.** In events.jsonl, find the two `build_check` `scope: "baseline"` events at 11:36:49 and 12:01:02 with `sleptMs` > 0. No `main_check` follows until 16:08:02.
+
+**Fix.** A full run that makes no verdict (a skip or a sleep-spanned run) no longer clears `fullCheckDueAt`: `fullPass` now counts the head as watched but leaves the full check due after `FULL_RETRY_BACKOFF_MS` (5 min), keeping the covered-range anchor for the run that settles it. A run with no verdict is still never cached.
+
+**Validation gap:** no-fake — the watch cannot inject a sleep sampler, so the sleep-spanned shape was stood in for by a `timeoutSeconds: 1` timeout, which takes the same no-verdict path.
+
 ### A shutdown or restart that waits on a post-merge review names no role: "waiting on the merge in progress for " (found by an operator session 2026-11-19) — fixed 2026-11-21 by the bugfix role
 
 The feed logged `shutdown waiting on the merge in progress for ` at 11-19 05:20:09 and `restart waiting on the merge in progress for  (deadline 360s)` at 16:38:04. In both, the role list was empty: `startPostReview` (src/merge/merge-post-review-drain.ts) built the review's `InFlightMerge` with `roles: []`. Fix: the review task now carries its commit's author role (`entry.role`), as a queued merge task already does, so the restart and shutdown wording names it. The same role now reaches `tumwater abort --role` through `consumeAbortRequests`; an aborted review keeps its entry and counts no failure (settlePostReviewOutcome returns on `aborted`). Regression test: test/post-merge-review-permit.test.ts, "a post-merge review task carries its author role…" — it failed with `roles` = `[]` before the fix and passes after.

@@ -31,6 +31,12 @@ import { headOf, markWatched, type MainWatchState } from "./main-watch-state.js"
  * `_main-full` mirror on its own queue, so the per-head rules pass and a gate's main-tip verdict
  * in `_gate-main` never wait behind it. */
 
+/** How long a full run that made no verdict (a skip, or an unverified sleep-spanned run) waits
+ * before the same head is due again. Short, so a host sleep over main's newest head cannot hold
+ * its verdict for an hour, and long enough that a check which keeps timing out is not re-run on
+ * every poll. */
+export const FULL_RETRY_BACKOFF_MS = 5 * 60_000;
+
 /** The interval in milliseconds the full check's due decision measures against: the config's
  * `check.fullIntervalMinutes`, the default 60 when absent or a torn slice, or 0 — one full run
  * per new code head — when the operator set it to 0 (Hourly full check, part 2b/4). */
@@ -138,11 +144,15 @@ export async function fullPass(
     const started = Date.now();
     const { check, ran } = await runBaselineCheck(root, wt, config);
     const baseline = check.baseline;
-    // A skipped or sleep-spanned run made no verdict: the head still counts as watched, so the
-    // next poll does not start another run for it. The diff rules still run on this tip, in
-    // the rules pass.
+    // A skipped or sleep-spanned run made no verdict, and nothing is cached for it (the next
+    // consult re-runs). The head still counts as watched, so the diff rules do not re-judge it
+    // every poll, but the full check stays due after a short backoff: clearing the due time here
+    // would leave main's head unchecked until main moves again. The diff rules still run on this
+    // tip, in the rules pass. The covered range is kept for the run that finally settles it.
     if (!baseline) {
-      markWatched(state, tip);
+      state.lastWatched = tip;
+      state.fullCheckDueAt = now() + FULL_RETRY_BACKOFF_MS;
+      state.fullCheckBase = state.fullCheckBase ?? previous;
       return;
     }
     state.lastWatched = baseline.sha;

@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { createMainWatch } from "../src/baseline/main-watch.js";
+import { FULL_RETRY_BACKOFF_MS } from "../src/baseline/main-watch-full.js";
 import { mainTipVerdict, queueCulpritHeal } from "../src/baseline/main-red.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { quarantineTests } from "../src/review/known-flakes.js";
@@ -409,6 +410,29 @@ test("after the interval passes, the full check covers every commit above the an
   const checks = eventsOfType(root, "main_check");
   assert.equal(checks.length, 2);
   assert.equal(checks[1]?.covered, 1, "the check covers the code commit above the anchor");
+});
+
+test("a full run that makes no verdict leaves the head due, so it is checked after the retry backoff", async () => {
+  // A run the harness timed out (a host sleep is the same no-verdict shape in production) records
+  // no verdict. The head must not count as settled: the full check is due again after the short
+  // backoff, without waiting for main to move.
+  const slow = path.join(tmpdir(), "slow");
+  const { root } = baselineFixture("improve", `if [ -f ${slow} ]; then sleep 5; fi; echo ok`);
+  const clock = clockAt();
+  const config = { ...defaultConfig(), check: { fullIntervalMinutes: 60, timeoutSeconds: 1 } as CheckConfig };
+  const watch = createMainWatch(root, "main", undefined, clock.now);
+  fs.writeFileSync(slow, "");
+  await watchAtWith(watch, root, config); // the run times out: no verdict, so no main_check
+  assert.equal(eventsOfType(root, "main_check").length, 0, "a run with no verdict records none");
+  fs.rmSync(slow);
+  await watchAtWith(watch, root, config); // the same head, before the backoff: still nothing runs
+  assert.equal(eventsOfType(root, "main_check").length, 0, "no retry before the backoff passes");
+  clock.advance(FULL_RETRY_BACKOFF_MS);
+  await watchAtWith(watch, root, config); // the backoff has passed: the head is checked now
+  const checks = eventsOfType(root, "main_check");
+  assert.equal(checks.length, 1, "the head is checked once the backoff passes");
+  assert.equal(checks[0]?.status, "passed");
+  assert.equal(checks[0]?.sha, headSha(root));
 });
 
 test("fullIntervalMinutes 0 restores one full run per new code head", async () => {
