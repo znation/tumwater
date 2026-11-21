@@ -4639,11 +4639,14 @@ throttle allows. The marker is gone once the pass ends, including when a half th
 maintenance.json while it deletes and removes it after" and "RetentionPruner: a throw part-way
 through the pass still removes the marker".
 
-### INV-BQ7: each prune half with work logs a maintenance_start/maintenance_done pair
+### INV-BQ7: each prune half that reports progress logs a maintenance_start/maintenance_done pair
 
-**Guarantee.** A half of a prune pass that has work logs one `maintenance_start` (with its task,
-backend and total) and one `maintenance_done` (with what it handled and its span); a pass with
-nothing to handle logs neither, and both names stay out of the legacy-event table.
+**Guarantee.** A half of a prune pass that reports progress per id — today the Codex and OpenCode
+session halves — logs one `maintenance_start` (with its task, backend and total) and one
+`maintenance_done` (with what it handled and its span); a pass with nothing to handle logs
+neither, and both names stay out of the legacy-event table. The file, ledger-line and salvage half
+has no per-id reporter, so it logs neither name: `backend: "files"` reaches a reader only through
+the marker (INV-BQ6), never through this pair.
 
 **Binds.** `src/orchestrator/retention.ts` (`SessionPruneMarker.onProgress` and `endHalf`) and
 `src/agent/session-ledger.ts` (the `onProgress` option in `pruneCodexSessions` and
