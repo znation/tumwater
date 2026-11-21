@@ -176,9 +176,10 @@ never has to wait a parked check out.
   own `.tumwater/worktrees/director`, the merge step's `_merge`, the review gate's `_gate-main`,
   the main watch's full-check mirror `_main-full`, and the update mirror and witness (`_main`,
   `_build`). Size the disk for about `worktreeSlots` + 3 warm checkouts of the project.
-- **Parallel work instances.** `roles.feature.instances` and `roles.bugfix.instances` (1–8)
-  run that many instances of the role — `feature`, `feature-2`, … (shown as `feature #2`) — each
-  with its own branch and state. The scheduler assigns each due instance one eligible backlog
+- **Parallel work instances.** `roles.feature.instances` and `roles.bugfix.instances` (1–8,
+  default 3; set 1 for a single runner) run that many instances of the role — `feature`,
+  `feature-2`, … (shown as `feature #2`) — each with its own branch and state. An idle extra
+  costs nothing: it is skipped without a run while no unassigned entry is eligible (below). The scheduler assigns each due instance one eligible backlog
   entry and holds it until the entry merges, the instance gives it up, or it sits idle past 24 h;
   two instances never work the same entry. `instances` is the number of runs writing code at
   once: above 1 tumwater keeps up to twice as many runners, and a runner whose change waits in
@@ -193,7 +194,7 @@ never has to wait a parked check out.
   message or a resume still runs; a `start --once` round settles a skipped instance as
   `no free entry`. A bugfix instance does the same while BUGS.md has open bugs but none is
   eligible (with no open bugs at all it keeps searching for latent bugs). The plan role keeps
-  `instances(feature) + 1` eligible plans ahead so every feature instance has something to
+  `instances(feature) + 1` eligible plans ahead (4 at the default) so every feature instance has something to
   take (a due plan run defers while that many are waiting and none is marked needs-review).
   Both counts read `## Planned` as it will be once every unmerged change merges — the merge
   pins and the role branches, never the merge queue — so a plan already waiting to merge stops
