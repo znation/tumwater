@@ -109,11 +109,11 @@ export interface LeftoverContext {
  *   the run ends `queued` exactly like a fresh changed run (part 3e/7) and the poll's drain
  *   merges the pin;
  * - `already_queued`: the role already has a live change the drain settles on its own — either
- *   a legacy queue entry (the interlock relief admits it — runner-run.ts's `already_queued` arm
- *   falls through to author for every role) or, since 2026-11-16 (BUGS.md 2026-11-15
- *   recovery-spin), a pre-existing pin ahead of main whose sha the role's stash names under
- *   the conflict cap: the pin is left untouched and no ref is re-pinned, so the run authors on
- *   its normal schedule while the merge takes the pin (a commit held beside that pin diverts
+ *   a legacy queue entry (the interlock relief admits it — runner-leftover-recovery.ts's
+ *   `already_queued` arm falls through to author for every role) or, since 2026-11-16 (BUGS.md
+ *   2026-11-15 recovery-spin), a pre-existing pin ahead of main whose sha the role's stash names
+ *   under the conflict cap: the pin is left untouched and no ref is re-pinned, so the run authors
+ *   on its normal schedule while the merge takes the pin (a commit held beside that pin diverts
  *   this arm to `relief_wait`). Neither kind is enqueued twice; a kept pin at the cap is a
  *   distinct `handback`/`discarded` outcome.
  * - `relief_wait`: the role already has a merge waiting — a legacy queue entry, or a live pin
