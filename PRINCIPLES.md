@@ -4,9 +4,10 @@ Design principles this project holds — the codified answer to "what would a se
 this team always do." Only the director and steward roles may edit this file; phrase new
 principles positively.
 
-- Zero incidental runtime dependencies: node built-ins by default; the dev-time TypeScript
-  toolchain and the TUI framework (ink) are the only exceptions, each adopted by an explicit user
-  decision (2026-10-01 for ink). Any new one needs a user decision recorded in Budgets.
+- Zero incidental runtime dependencies: node built-ins only. The dev-time TypeScript toolchain is
+  the only exception, adopted by an explicit user decision. Any new one needs a user decision
+  recorded in Budgets. (The ink TUI framework was a runtime exception from 2026-10-01 until the TUI
+  was removed; it is no longer one.)
 - Tests run offline against a fake pi shim on PATH; never call a real model from a test.
 - All git operations belong to the harness, never to pi: loop prompts forbid state-changing git
   commands; the harness owns commit/rebase/merge.
@@ -37,13 +38,13 @@ The steward's standing measure of where the codebase stands, measured from the r
   is src/roles/role-view.ts at 924. The ceiling holds because complexity is extracted into named
   helpers, not by shrinking files — a file may stay large while its functions stay small; do not
   re-split an already-small function to chase a line count.
-- **Dependencies**: 2 runtime (ink, react) and 6 dev, all dev-time (typescript + its
-  `typescript-native` alias, eslint, typescript-eslint, @types/node, @types/react). Zero
-  incidental runtime deps: any new one needs a user decision recorded here.
+- **Dependencies**: 0 runtime and 5 dev, all dev-time (typescript + its `typescript-native`
+  alias, eslint, typescript-eslint, @types/node). Zero incidental runtime deps: any new one needs a
+  user decision recorded here.
 - **Per-function complexity**: the split-large-function family is the main complexity pressure —
   289 such plans have landed (`## Done` `### ` headings containing "is split into"). A
   split earns a plan only when a named function is genuinely large and a reader's question is
   answered better by a name; a complexity-N number alone is not the reason. This keeps the family
   finite, not a bottomless re-split.
 
-_Last measured 2026-11-17 by the steward role._
+_Last measured 2026-11-17 by the steward role; dependencies re-measured 2026-11-21 from main's package.json._
