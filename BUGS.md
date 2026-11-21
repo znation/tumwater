@@ -128,10 +128,6 @@ The claim is released only by the 24 h stale sweep (`CLAIM_IDLE_MAX_MS`), or whe
 
 **Required behavior.** A full e2e step must not carry a red from a 150 s wall-clock wait the host starved after admission. Options the class has already sketched, none landed: drive the run-start-marker wait on the fake clock the watchdog tests use, or re-sample the host during the wait and skip when it crosses the bar mid-wait. The 150 s bound itself is not the lever (the 2026-10-25/26 entries record the ceiling, not a bound).
 
-### post-merge review of 54a4a07f never reached a verdict (found by the review role 2026-11-19)
-
-The post-merge review of commit `54a4a07f9d57a0fd649376ecbe00fa8d349e47ac` (Name checkpoint aborts in the no-change diagnosis, not ceiling cut-offs) never reached a verdict: timed out after 7200s while still making progress — session and worktree edits preserved for resume. It stays on main as ordinary unreviewed backlog work. To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would lift the note.
-
 ### the stage self-check finding "added lines name paths that do not exist in the tree: src/cli/cli-land-command.js, src/operator/operator-land.js, src/c…" was not closed by the fix-up turn and re-fires each run (filed by tumwater 2026-11-20)
 
 - **Symptom:** the pre-queue self-check raised this finding on the run's change; the one-turn fix-up could not close it and reverted the whole change instead, so the run ended `no_change` (`selfCheckReverted`) and the finding lived only in the run's warning event.
