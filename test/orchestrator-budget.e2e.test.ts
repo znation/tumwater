@@ -24,6 +24,7 @@ import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { awaitSettledRun, fastConfig, runRepoOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { mergeWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, logFlagsTo, readRunLines, recordingFakePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
+import { readCapture } from "./helpers/read-capture.js";
 import { awaitQuietHost, recheckQuietHost, sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
@@ -376,7 +377,7 @@ test("a free fallback whose runs keep failing is demoted to a pause, then probed
   });
   const clean = () => loadRunnerState(repo, "clean");
   const runFor = (runNumber: number): string => {
-    const log = fs.existsSync(argsFile) ? fs.readFileSync(argsFile, "utf8") : "";
+    const log = readCapture(argsFile);
     return log.split("\n").find((l) => l.includes(`session=tumwater-clean-${runNumber}`)) ?? "";
   };
   try {

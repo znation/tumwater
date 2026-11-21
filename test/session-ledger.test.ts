@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+
+import { readCapture } from "./helpers/read-capture.js";
 import {
   latestSession,
   pruneOpencodeSessions,
@@ -202,7 +204,7 @@ test("pruneOpencodeSessions deletes expired opencode sessions and prunes old spi
 
   const deleted = await pruneOpencodeSessions(root, 7, { bin: path.join(bin, "opencode"), env: { OPENCODE_DB: "/x.db" }, spillDir: spill });
   assert.equal(deleted, 1, "only the expired opencode session is deleted");
-  const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
+  const log = readCapture(capture);
   assert.ok(log.includes("session delete ses-old --standalone"), `old session deleted: ${log}`);
   assert.ok(!log.includes("ses-fresh"), `fresh session left alone: ${log}`);
   assert.ok(!log.includes("id-pi"), `a non-opencode record never reaches the delete hook: ${log}`);

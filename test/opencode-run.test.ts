@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { withCwd } from "./helpers/env.js";
+import { readCapture } from "./helpers/read-capture.js";
 import { runAgent } from "../src/agent/agent-run.js";
 import { opencodeBackend } from "../src/agent/opencode/opencode-backend.js";
 import { writeOpencodeCache } from "../src/agent/opencode/opencode-catalog.js";
@@ -216,7 +217,7 @@ test("a hang the quiet watchdog kills never runs the export and leaves the resul
     const result = await runAgent(run);
     assert.equal(result.ok, false, "the killed run is a failure");
     assert.match(result.errorMessage ?? "", /killed as hung/);
-    const exports = fs.existsSync(fake.exportsFile) ? fs.readFileSync(fake.exportsFile, "utf8") : "";
+    const exports = readCapture(fake.exportsFile);
     assert.equal(exports, "", "a killed run never invokes the export");
     assert.equal(result.transientBackend, false, "no classifier overrides a killed run");
     assert.equal(result.configError, false);

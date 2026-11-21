@@ -11,6 +11,7 @@ import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { record } from "./fakes/session-record.js";
 import { writeScript } from "./fakes/fake-commands.js";
+import { readCapture } from "./helpers/read-capture.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 /** Unit tests for src/orchestrator/retention.ts — the session-retention prune gate (moved here
@@ -137,7 +138,7 @@ test("RetentionPruner: an idle role's expired codex session is purged before its
   } finally {
     delete process.env.TUMWATER_CODEX_BIN;
   }
-  const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
+  const log = readCapture(capture);
   assert.ok(log.includes(`delete --force ${id}`), `idle codex session purged: ${log}`);
   assert.equal(fs.existsSync(ledger), false, "the stale ledger itself is still aged out by the file pass");
   assert.match(
@@ -403,7 +404,7 @@ test("RetentionPruner: an unavailable config never unlinks rollouts from the inh
     delete process.env.CODEX_HOME;
   }
   assert.equal(
-    fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "",
+    readCapture(capture),
     "",
     "no codex delete without a resolvable config",
   );
@@ -435,7 +436,7 @@ test("RetentionPruner: an idle role's expired opencode session is purged before 
   } finally {
     delete process.env.TUMWATER_OPENCODE_BIN;
   }
-  const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
+  const log = readCapture(capture);
   assert.ok(log.includes("session delete ses-idle --standalone"), `idle opencode session purged: ${log}`);
   assert.equal(fs.existsSync(ledger), false, "the stale ledger itself is still aged out by the file pass");
 });
@@ -499,7 +500,7 @@ test("RetentionPruner: a codex id an interrupted pass already handled is not del
   } finally {
     delete process.env.TUMWATER_CODEX_BIN;
   }
-  const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
+  const log = readCapture(capture);
   assert.equal(log.includes(id), false, `an id the record lists is not deleted again: ${log}`);
   assert.equal(fs.existsSync(resume), false, "the resume record is cleared once the ledger lines are trimmed");
 });

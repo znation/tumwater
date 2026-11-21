@@ -13,6 +13,7 @@ import {
 } from "../src/agent/session-ledger.js";
 import { skipIfRoot, tmpdir } from "./fixtures/repo-fixtures.js";
 import { errnoError, withReadOnlyDir, withThrowingFs } from "./helpers/fs-faults.js";
+import { readCapture } from "./helpers/read-capture.js";
 import { record } from "./fakes/session-record.js";
 import { writeScript } from "./fakes/fake-commands.js";
 
@@ -150,7 +151,7 @@ test("pruneCodexSessions deletes each expired codex session with --force and kee
 
   const deleted = await pruneCodexSessions(root, 7, { bin: path.join(bin, "codex"), env: { CODEX_HOME: home } });
   assert.equal(deleted, 1);
-  const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
+  const log = readCapture(capture);
   assert.match(log, /delete --force c7b3e2a1-0000-4000-8000-000000000001\n/);
   assert.ok(!log.includes(freshId), "fresh session got no delete");
   assert.equal(fs.existsSync(rollout), false, "expired session's rollout gone");
@@ -282,7 +283,7 @@ test("pruneCodexSessions spares a session whose id was resumed fresh within the 
   writeScript(path.join(bin, "codex"), `printf '%s\\n' "$*" >> ${capture}`);
 
   assert.equal(await pruneCodexSessions(root, 7, { bin: path.join(bin, "codex"), env: { CODEX_HOME: home } }), 0);
-  const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
+  const log = readCapture(capture);
   assert.equal(log, "", "resumed session got no delete");
   assert.equal(fs.existsSync(rollout), true, "resumed session's rollout untouched");
 });
