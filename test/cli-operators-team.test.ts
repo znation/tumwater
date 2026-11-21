@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { initProject } from "../src/init/init.js";
 import { loadConfig } from "../src/config/config.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
+import { runnerIds } from "../src/roles/runner-ids.js";
 import { pausedPath, pausedRolesPath, scheduledStopPath, orchestratorStatePath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { signalOrchestrator, pidAlive } from "../src/process/process.js";
 import { seedCounters } from "./fixtures/runner-fixtures.js";
@@ -128,13 +129,18 @@ test("reset-counters zeroes counters in every role's state file and writes the t
     assert.equal(s.peakContextTokens, 0, `${role} per-run peak ctx cleared`);
   }
 
-  // The marker a running team consumes lists every role in the config.
+  // The marker a running team consumes lists every configured role and every runner id, so the
+  // instance rows (feature-2, …) the dashboards show are zeroed too.
   const marker = readJson(resetRequestPath(repo)) as {
     at: number;
     roles: string[];
   };
   assert.ok(marker.at > 0);
-  assert.deepEqual([...marker.roles].sort(), Object.keys(loadConfig(repo).roles).sort());
+  const config = loadConfig(repo);
+  assert.deepEqual(
+    [...marker.roles].sort(),
+    [...new Set([...Object.keys(config.roles), ...runnerIds(config)])].sort(),
+  );
 });
 
 test("reset-counters --role targets one role; unknown or missing role fails without side effects", async () => {

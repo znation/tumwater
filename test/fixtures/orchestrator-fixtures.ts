@@ -132,6 +132,10 @@ export function fastConfig(roles: string[], model?: string): TumwaterConfig {
   const c = defaultConfig();
   if (model) c.model = model;
   c.minRunIntervalSeconds = 0;
+  // A declared check stops the orchestrator queuing the director its automatic check-declaration
+  // prompt (src/prompt/check-declaration-request.ts), which would give every director a
+  // run the test did not ask for.
+  c.check = { command: "true" };
   // Most of these e2e tests drive a role through a review held in flight; the retired
   // review.afterMerge tier is gone (part 3d/3), so there is no list to opt out of.
   // The disk floor reads the host's real free space (sampleFreeBytes), and the defaults
