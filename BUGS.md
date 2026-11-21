@@ -92,28 +92,77 @@ The BUGS-FIXED entry "A checkpoint-caused abort is indistinguishable from a cont
 
 **Suspected cause.** `src/pi-extension/checkpoint.ts` requests the compaction and returns its tool result before pi has run the summarization, and pi ends the run when the aborted turn settles. Settling it means keeping the run alive until `compaction_end` arrives (or writing the compaction entry directly), a design decision that belongs with the plan role, not a parser correction. The sibling fix (this file’s Fixed entry) only stops the harness from claiming a compaction that was never written.
 
-### Host sleep counts as model silence: the run watchdogs, the model check and the run and review wall budgets kill or hand back work the host slept through (found by an operator session 2026-11-19)
+### Host sleep, part 1/3: the quiet and stall clock counts host sleep as model silence, so it quiet-kills runs and warns "model request unanswered" across a sleep (found by an operator session 2026-11-19, split 2026-11-21 by the plan role)
 
-**Needs review 2026-11-21 by feature: too large for one run** — it bundles three separate mechanisms that each need their own sleep-aware change and test: (1) the quiet/stall clock in src/pi/pi-watchdogs.ts, which is a synchronous interval reading `Date.now()` against `lastActivityAt`, `pending.since` and `lastProgressAt`, and would need an async-sampled sleep measure folded in; (2) the model-check probe's 300 s budget in src/model-check/model-check-probe.ts, which needs a "retry, don't fail" path when its window held a sleep; (3) the run and post-merge-review wall timeouts, which sit elsewhere again. Split it into those three entries, each cross-referencing the others, so each can be picked up on its own.
+Siblings: "Host sleep, part 2/3: the run deadline…" (run and post-merge review wall budgets) and "Host sleep, part 3/3: a model check whose probe window held a host sleep…". Each fixes its own mechanism and lands on its own.
 
-On 11-19 the host was lid-closed from about 05:20 to 15:41 PST. `pmset -g log` shows it asleep 37–61 minutes of every hour, with short maintenance DarkWakes in between. Every watchdog that judges a run measures on the wall clock, so that sleep read as a backend that stopped answering:
+On 11-19 the host was lid-closed from about 05:20 to 15:41 PST. `pmset -g log` shows it asleep 37–61 minutes of every hour, with short maintenance DarkWakes in between. Every watchdog that judges a run measures on the wall clock, so that sleep read as a backend that stopped answering. This part's share of that day:
 - 75 `model request unanswered … no reply for 5m–20m` warnings. There were none before 05:20.
-- Five `model check failed: … gave no reply` warnings, at 07:06, 11:54, 13:25, 13:52 and 14:59. Each held all 29 runners.
-- Each check failure handed back the runs waiting on a reply. These ended `aborted` after 7–145 minutes: feature, bugfix, qa, organize, selfcheck, bugfix-2, plan, bugfix-3, and some of them more than once.
 - Three runs were `quiet_killed` with "killed as hung: no agent progress for over 1800s": bugfix-3 #136, perf #562 and plan #2689.
-- Feature #3013 was killed with "timed out after 14400s while still making progress".
-- Four post-merge reviews timed out "after 7200s" or "after 14400s": 99ebf171, d3352500, c4fb62f2 and 1fc125aa.
 
-Overlaying each of those 22 endings on the pmset sleep intervals shows that 85–95% of each one's wall time was host sleep. Feature #3013 ran 242 minutes and was asleep for 223 of them. 1fc125aa's review ran 240 minutes and was asleep for 201. Each post-merge review timeout also counts toward `POST_REVIEW_FAILURE_LIMIT`, so sleep alone can push a commit toward being dropped unreviewed. The open entry above, "A post-merge review that times out … restarts from scratch", covers why that limit hurts.
+Overlaying those endings on the pmset sleep intervals shows 85–95% of each one's wall time was host sleep.
 
-**Reproduce.** Write `pmset -g log | grep 'Entering Sleep state'` to a file. Parse each line's timestamp and its trailing `N secs` into an interval. For every `run_end` with result `aborted` or `quiet_killed`, and every "post-merge review of … timed out" warning in `.tumwater/log/events.jsonl` since 11-19 05:00, sum the sleep that falls inside `[ts − durationMs, ts]`.
+**Reproduce.** Write `pmset -g log | grep 'Entering Sleep state'` to a file. Parse each line's timestamp and its trailing `N secs` into an interval. For every `run_end` with result `quiet_killed`, and every `model request unanswered` warning, in `.tumwater/log/events.jsonl` since 11-19 05:00, sum the sleep that falls inside the silence it reports.
 
-**Suspected cause / fix direction.** Build checks already measure host sleep: `sleptMs` in src/build/host-sleep.ts, through `SLEEP_SPAN_TOLERANCE_MS` and `unverifiedTreeOutcome`. None of the following use that measurement:
-- The quiet and stall clock in src/pi/pi-watchdogs.ts (`startQuietWatch`, whose `waitedMs = Date.now() - pending.since` feeds the unanswered warning).
-- The zero-byte 30-minute bound and the run and review timeouts.
-- The model-check probe's 300 s budget (`MODEL_CHECK_TIMEOUT_S`, src/model-check/model-check-probe.ts).
+**Cause.** `startQuietWatch` in src/pi/pi-watchdogs.ts reads every silence as `Date.now() - <start>`: the quiet kill (`lastProgressAt` against `allowedSilenceMs()`, which includes the zero-byte 30-minute bound), the per-call stall kill and stall warning (`call.lastActivityAt`), and `warnUnansweredReply` (`pending.since`). Its interval cannot fire while the host is suspended, so the first tick after wake sees the whole sleep as silence. Its own comment calls checking "against the wall clock, so it also fires promptly after a machine sleep" a feature. Build checks already measure sleep with `sampleSleepClock` / `sleptMsBetween` (src/build/host-sleep.ts) and `SLEEP_SPAN_TOLERANCE_MS` (src/build/build-check-events.ts). The quiet watch does not use them.
 
-One fix is to subtract measured host sleep from each silence or budget before acting on it. Another is to treat a window that spans a sleep as no evidence, the way an unverified build check is treated: re-arm the timer and do not count a failure. A probe whose window held a sleep should be retried, not failed. This entry is separate from the open "A model check run while the only local server is saturated…" entry. That one is about server admission while the host is awake. This one is about the host being asleep.
+**Fix.** Count only awake time in every silence the quiet watch judges:
+- Add `sampleSleep?: SleepSampler` to `PiWatchdogDeps`, defaulting to `sampleSleepClock`. Part 2/3 adds the same field; if it is already there, reuse it.
+- Take a sleep sample when the watch starts. On each tick, compare `Date.now()` with the previous tick's. A suspended host leaves a gap longer than the tick period, so only when the gap exceeds the period by more than `SLEEP_SPAN_TOLERANCE_MS`, sample again without blocking the tick. Then record `sleptMsBetween(previous, current)` as a sleep span `{ endAt, ms }` when it is at least `SLEEP_SPAN_TOLERANCE_MS`, and keep the new sample as the baseline. Gating on the gap keeps the per-tick cost at zero on an awake host. On macOS each sample execs two `sysctl` calls.
+- Replace each `Date.now() - t` silence reading in `startQuietWatch` with an awake-time reading: the wall time since `t`, minus the part of each recorded span that falls after `t`.
+- An empty sample (a platform with no sleep clock, or a failed read) records no span, which is today's behaviour. Update the `startQuietWatch` comment and the matching docs/invariants.md text in the same change.
+
+**Acceptance criteria** (test/pi-watchdogs.test.ts, driven through a scripted `sampleSleep` and a clock the test controls, never a real suspend):
+- A run whose only silence is a recorded 40-minute sleep, with no awake silence past its quiet window, is not quiet-killed. It has made progress, `quietMs` is 30 minutes, and the next progress arrives right after wake.
+- The same run with no sleep recorded, silent for the same wall time, is still quiet-killed.
+- A pending model reply whose wait is 25 wall minutes, 22 of them a recorded sleep, raises no `model request unanswered` warning at a 5-minute threshold. At 25 awake minutes it warns, and the warning's duration reads the awake minutes.
+- An open tool call silent across a recorded sleep is neither stall-warned nor stall-killed until its awake silence crosses the bound.
+- A sampler that returns empty samples leaves every existing pi-watchdogs.test.ts and runner-quiet-watchdog.test.ts case passing unchanged.
+
+### Host sleep, part 2/3: the run deadline fires on wall time, so a run or post-merge review that slept through most of its budget is killed as timed out (found by an operator session 2026-11-19, split 2026-11-21 by the plan role)
+
+Siblings: "Host sleep, part 1/3: the quiet and stall clock…" (the evidence and the sleep measure are described there) and "Host sleep, part 3/3: a model check whose probe window held a host sleep…". Each lands on its own.
+
+On 11-19, during the lid-closed stretch:
+- Feature #3013 was killed with "timed out after 14400s while still making progress". It ran 242 minutes and was asleep for 223 of them.
+- Four post-merge reviews timed out "after 7200s" or "after 14400s": 99ebf171, d3352500, c4fb62f2 and 1fc125aa. 1fc125aa's ran 240 minutes and was asleep for 201.
+
+Each post-merge review timeout counts toward `POST_REVIEW_FAILURE_LIMIT` (src/merge/merge-post-review-drain.ts), so sleep alone can push a commit toward being dropped unreviewed.
+
+**Reproduce.** Use part 1/3's pmset interval file. For every `run_end` whose detail starts "timed out after", and every "post-merge review of … timed out" warning, since 11-19 05:00, sum the sleep inside `[ts − durationMs, ts]`.
+
+**Cause.** `startDeadlineWatch` in src/pi/pi-watchdogs.ts arms `setTimeout(fireDeadline, deps.runTimeoutMs)`. Its one-time extension and its 250 ms progress grace re-arm the same way. When `fireDeadline` decides to kill, it never asks whether the window held a sleep. Authoring runs, gate runs and reviewers all settle through it (`timed out after …` in `settleErrorMessage`, src/agent/agent-settle.ts).
+
+**Fix.**
+- Add `sampleSleep?: SleepSampler` to `PiWatchdogDeps`, defaulting to `sampleSleepClock`. Part 1/3 adds the same field; if it is already there, reuse it.
+- Take a sleep sample whenever a deadline is armed. Where `fireDeadline` would otherwise set `timedOut` and kill, first sample again. When `sleptMsBetween` reports at least `SLEEP_SPAN_TOLERANCE_MS`, re-arm the deadline for that many ms, re-sample as the new baseline, and return without killing. The run's awake budget is then what is enforced. A host that keeps sleeping re-arms only for the time it slept, so the wait stays bounded by awake time.
+- An empty sample re-arms nothing, which is today's behaviour.
+- `timeoutBudgetMs` and the `timed out after <budget>s` wording stay the configured budget. Record each re-arm as a warning through the existing `onStallWarning` dep, worded with the build check's `sleptPhrase` (src/build/build-check-events.ts).
+
+**Acceptance criteria** (test/pi-watchdogs.test.ts, scripted sampler and test clock):
+- A run with a 60-minute budget whose deadline fires after a recorded 45-minute sleep is not killed at the first firing. It is killed as timed out only once 60 awake minutes have passed, with `timeoutBudgetMs` still 60 minutes.
+- The same run with no sleep recorded is killed at the first firing, as today.
+- The extension and grace paths keep their current outcomes when the sampler returns empty samples. The existing pi-watchdogs.test.ts deadline cases pass unchanged.
+- A re-arm leaves one warning naming the slept duration.
+
+### Host sleep, part 3/3: a model check whose probe window held a host sleep fails the pair and holds every role, instead of retrying (found by an operator session 2026-11-19, split 2026-11-21 by the plan role)
+
+Siblings: "Host sleep, part 1/3: the quiet and stall clock…" (evidence and sleep measure) and "Host sleep, part 2/3: the run deadline…". This is separate from the open "The model check fails a pair on queue position…" entry, which covers server admission while the host is awake.
+
+On 11-19, during the lid-closed stretch, five `model check failed: … gave no reply` warnings fired, at 07:06, 11:54, 13:25, 13:52 and 14:59. Each held all 29 runners. Each handed back the runs waiting on a reply, which then ended `aborted` after 7–145 minutes: feature, bugfix, qa, organize, selfcheck, bugfix-2, plan, bugfix-3, and some of them more than once.
+
+**Cause.** `runModelCheck` in src/model-check/model-check-probe.ts runs one probe capped at `MODEL_CHECK_TIMEOUT_S` (300 s) and returns `judgeModelReply`'s verdict. A probe that slept through its window reads as `no reply` like a dead backend.
+
+**Fix.**
+- Give `runModelCheck` an optional `sampleSleep: SleepSampler = sampleSleepClock` parameter, the build check's seam shape (`runBuildCheck`, src/build/build-check.ts). Sample sleep before and after the probe.
+- When the verdict is `{ ok: false, reason: "no reply" }` and `sleptMsBetween` reports at least `SLEEP_SPAN_TOLERANCE_MS`, run the probe once more and return the second verdict, whatever it is. Any other verdict, or a window with no measured sleep, returns as today.
+- Do not retry a second time: a host that sleeps through two probes in a row gets the second verdict.
+
+**Acceptance criteria** (test/model-check-probe.test.ts, fake pi shim and a scripted sampler):
+- A first probe that gives no reply inside a window holding a recorded sleep, followed by a probe that answers correctly, yields an `ok` verdict.
+- A no-reply probe with no recorded sleep yields the `no reply` verdict without a second probe. The shim is invoked once.
+- A probe that answers wrong (`reason` other than `no reply`) inside a sleep window is not retried.
+- Two consecutive no-reply probes, both across sleeps, yield `no reply` after exactly two invocations.
 
 ### An extra instance that is never admitted keeps its staged claim, so a higher backlog entry waits while a lower-index sibling takes a later one (found by an operator session 2026-11-19)
 
