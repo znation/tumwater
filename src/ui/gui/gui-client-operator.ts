@@ -127,6 +127,8 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     return blocks.map((block) => blockLinesHtml(block)).join("") + chainLinesHtml(chain);
   }
   function blockLinesHtml(block) {
+    // A subscription with no window reported yet: name it, so the card never reads as free.
+    if (block.windows.length === 0) return "<span class='side-card-value window-line'>" + esc(block.label + " · usage not reported yet") + "</span>";
     const hours = (w) => {
       const m = /^(\d+)([hdw])$/.exec(windowLabel(w.type));
       return m ? Number(m[1]) * (m[2] === "h" ? 1 : m[2] === "d" ? 24 : 168) : Infinity;

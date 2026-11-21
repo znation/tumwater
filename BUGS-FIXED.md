@@ -5,6 +5,30 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Until its first run reports a usage window, a Claude subscription team reads "Free models" in the GUI spend card and `budget: n/a` in `tumwater status`, as if usage were unlimited (found by the director role 2026-11-21) — fixed 2026-11-21 by the bugfix role
+
+**Operator update 2026-11-21.** The state is transient: the operator saw the card switch from "Free models" to the correct "subscription window" for Claude on its own, once a role reported in. The likely window was just after switching the team's models to Claude, before any run had recorded a `rate_limit_event`. So the persistent-free reading this entry first described is not what happens; what remains is the brief misleading reading on a fresh or just-switched subscription team. Fix only that transient: the card and badge should name the subscription ("usage not reported yet") from the start, not "Free models" / `n/a`. Do not change the free-ness gate.
+
+The operator runs on a Claude team subscription, which has a 5-hour and a weekly usage limit. The dashboard sidebar's Spend card reads **Free models**, with no window lines under it. A subscription is not free: it is capped by its usage windows. `budgetBadge`'s own doc comment (src/ui/badges.ts) already says "n/a" "would read as if usage were unlimited". The cause is in two places:
+
+- `teamModelsFree` / `seamFree` (src/pi/pi-models.ts) count a claude or codex seam billed by a subscription as free (zero marginal cost). That is correct for the budget gate and the fallback, so leave it alone.
+- `windowBlocks` (src/status/status-budget.ts) skips any subscription backend whose account has no windows (`windowEntries(account).length === 0`). The display then has nothing subscription-shaped to show. `budgetCardHtml` (src/ui/gui/gui-client-operator.ts) falls through to `b.free` and renders "Free models". `budgetBadge` (src/ui/badges.ts) prints ` · budget: n/a`.
+
+So a subscription account file with `billing: "subscription"` but an empty `windows` object reads as free. That happens before any run reports a `rate_limit_event`, after an account file is rewritten without one, or when the plan never reports a window. The test `test/gui-client.test.ts` currently pins this wrong behavior. In its `budgetCardHtml` case, the `onlyFree` assertion says "an all-free subscription-only team still reads the Free models spend card".
+
+**Fix direction.** Keep `free` for the gate. Make the display say "subscription" whenever a seam in use bills a subscription:
+
+- `windowBlocks` still emits a block for a subscription backend with no windows yet, with `windows: []`. Make `primary` optional, or add a separate `subscriptionBackends` list beside `blocks`, whichever touches fewer readers.
+- The GUI card then reads `subscription window` with a line like `Claude · usage not reported yet`, instead of "Free models".
+- `budgetBadge` prints the same backend-named fragment instead of `budget: n/a`.
+- "Free models" / `n/a` stays only for a team whose seams are all genuinely free: zero-priced pi pairs and free opencode models.
+- Update the `onlyFree` assertion to match. Add a case where an account has `billing: "subscription"` and `windows: {}`: the card must not match `/Free models/`, and the badge must not contain `n/a`.
+- Check docs/backends.md "Free-ness" and docs/invariants.md for wording that promises "Free models" for a subscription team.
+
+**Reproduce.** Configure a claude-backend team (`"model": {"default": {"backend": "claude", …}}`) and write `.tumwater/state/claude-account.json` as `{"billing":"subscription","observedAt":<now>,"windows":{}}`. Then open the dashboard, or call `budgetCardHtml({free:true,…}, [], true)` as the `gui-client.test.ts` case does. The card reads "Free models".
+
+**Validation gap:** none — the existing gui-client suite pinned the "Free models" card for a subscription team, so the wrong reading was reproduced directly; the fix needed new assertions only.
+
 ### the stage self-check finding "added lines carry garbled rename wording (reword them; a rote word swap such as "tick" → "run" reads wrong here or leav…" was not closed by the fix-up turn and re-fires each run (filed by tumwater 2026-11-20) — fixed 2026-11-21 by the bugfix role
 
 - **Symptom:** the pre-queue self-check raised this finding on the run's change; the one-turn fix-up could not close it and reverted the whole change instead, so the run ended `no_change` (`selfCheckReverted`) and the finding lived only in the run's warning event.

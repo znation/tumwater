@@ -23,6 +23,15 @@ test("budgetBadge renders the standing daily-cost rule in every cap state", () =
 
 // The cost n/a fallback model (plans/fallback-model.md): while it carries the team the badge
 // names it, and the roles keep their ordinary state cells — they are working, not stopped.
+test("a subscription team with no window reported yet reads its subscription, not n/a", () => {
+  // billing: subscription with windows: {} — free for the gate, but the badge must not say n/a
+  // (which reads as unlimited usage). The block names the backend and that usage is pending.
+  const pending = [{ backend: "claude", label: "Claude", windows: [] }];
+  const badge = budgetBadge({ spentUsd: 0, capUsd: 50, capHitAt: null, free: true, fallback: null }, undefined, pending, true, 0);
+  assert.equal(badge, " · Claude · usage not reported yet", "the subscription stands in place of the free spend");
+  assert.doesNotMatch(badge, /n\/a/);
+});
+
 test("budgetBadge names the fallback model only while it is carrying the team", () => {
   const fallback = { provider: "omlx", model: "local-free" };
   assert.equal(

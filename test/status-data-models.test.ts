@@ -71,7 +71,7 @@ test("snapshot carries the subscription windows and classifies paying seams", as
   const snap = await snapshot(repo, modelsFile);
   assert.deepEqual(snap.subscriptionWindows!.map((b) => b.backend), ["claude"], "one claude block");
   assert.equal(snap.subscriptionWindows![0]!.label, "Claude");
-  assert.equal(snap.subscriptionWindows![0]!.primary.utilization, 0.64);
+  assert.equal(snap.subscriptionWindows![0]!.primary?.utilization, 0.64);
   assert.equal(snap.subscriptionOnly, true, "every paying seam is subscription claude");
   // The payload carries the raw blocks and the preformatted badge folds the window in.
   const payload = (await statusPayload(repo)) as {

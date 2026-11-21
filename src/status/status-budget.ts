@@ -48,7 +48,8 @@ interface BudgetSlice {
 /** The subscription-window blocks and the team-global free-ness answer for a poll (see
  * StatusSnapshot.subscriptionWindows / subscriptionOnly): one `SubscriptionWindowBlock` per
  * distinct non-`pi` subscription backend the enabled seams (roles, review, resolver) route to
- * whose `accounts(backend)` reads subscription billing with at least one window. `only` is true
+ * whose `accounts(backend)` reads subscription billing (a window-less one too, `windows: []`
+ * until its first report). `only` is true
  * exactly when every paying seam is free (judged by its own backend's account or pi pair
  * price), so the display knows whether the windows replace or merely join the daily spend. The
  * blocks sort most-constrained-first by the same comparator windowEntries uses for one
@@ -69,11 +70,17 @@ function windowBlocks(
   )) {
     const account = accounts(backend);
     if (account?.billing !== "subscription") continue;
+    // A subscription with no window reported yet keeps its block (windows: []), so the display
+    // names the subscription instead of reading the team as free.
     const windows = windowEntries(account);
-    if (windows.length === 0) continue;
-    blocks.push({ backend, label: backendDisplayName(backend), windows, primary: windows[0]! });
+    const primary = windows[0];
+    blocks.push({ backend, label: backendDisplayName(backend), windows, ...(primary ? { primary } : {}) });
   }
-  blocks.sort((a, b) => compareWindowEntries(a.primary, b.primary) || a.backend.localeCompare(b.backend));
+  // Blocks with a window lead (most-constrained first); a pending block follows, by backend.
+  blocks.sort((a, b) => {
+    if (!a.primary || !b.primary) return (a.primary ? 0 : 1) - (b.primary ? 0 : 1) || a.backend.localeCompare(b.backend);
+    return compareWindowEntries(a.primary, b.primary) || a.backend.localeCompare(b.backend);
+  });
   return { blocks, only: !seams.some((s) => !seamFree(providers, s, accounts, catalog)) };
 }
 

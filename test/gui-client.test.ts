@@ -554,8 +554,16 @@ test("the spend card renders the subscription window in place of or beside the d
   assert.match(only, /Claude 5h · 64% · resets in 4h 12m/);
 
   const onlyFree = scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: true, fallback: null }, [], true);
-  assert.match(onlyFree, /Free models/, "an all-free subscription-only team still reads the Free models spend card, not an empty window card");
+  assert.match(onlyFree, /Free models/, "a team with no subscription seam (zero-priced pi pairs only) still reads the Free models spend card");
   assert.doesNotMatch(onlyFree, /subscription window/, "no window block, no empty window card");
+
+  // A subscription account with no window reported yet (billing: subscription, windows: {}) is
+  // not free: the card names the subscription and says usage is not reported yet.
+  const noWindows = { backend: "claude", label: "Claude", windows: [] };
+  const pending = scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: true, fallback: null }, [noWindows], true);
+  assert.doesNotMatch(pending, /Free models/, "a subscription seam with no window yet must not read as free models");
+  assert.match(pending, /subscription window/);
+  assert.match(pending, /Claude · usage not reported yet/);
 
   const mixed = scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null }, [block], false);
   assert.match(mixed, /id='budgetbadge'/, "a mixed team keeps the spend editor");

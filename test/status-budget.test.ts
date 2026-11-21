@@ -140,12 +140,12 @@ test("collectBudget carries one subscription-window block per subscription backe
   const codex = got.subscriptionWindows[0]!;
   assert.equal(codex.label, "Codex", "the block labels the backend by its display name");
   assert.deepEqual(codex.windows.map((w) => w.type), ["five_hour", "seven_day"], "every window, tightest first");
-  assert.equal(codex.primary.status, "rejected");
+  assert.equal(codex.primary?.status, "rejected");
   assert.equal("heldUntil" in codex, false, "no window holds a seam, so the block names no hold");
   const claude = got.subscriptionWindows[1]!;
   assert.equal(claude.backend, "claude");
   assert.equal(claude.label, "Claude");
-  assert.equal(claude.primary.utilization, 0.64);
+  assert.equal(claude.primary?.utilization, 0.64);
 });
 
 test("a codex-only subscription team reads every seam free and carries its window block", async () => {
@@ -162,6 +162,18 @@ test("a codex-only subscription team reads every seam free and carries its windo
   const snap = await snapshot(repo, modelsFile, now);
   assert.equal(snap.subscriptionOnly, true, "a subscription codex seam is free, so every seam is");
   assert.deepEqual(snap.subscriptionWindows?.map((b) => b.label), ["Codex"]);
+});
+
+test("a subscription account with no window yet still carries its block, so the display does not read free", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "status pending windows");
+  writeConfig(repo, { backend: "claude", model: "claude-sonnet-5-5" });
+  const modelsFile = writeModelsFile(tmpdir("status-pending-"), LOCAL_FREE_MODELS_JSON);
+  const now = new Date(2026, 9, 1, 12, 0, 0).getTime();
+  writeClaudeAccount(repo, { billing: "subscription", observedAt: now, windows: {} });
+  const snap = await snapshot(repo, modelsFile, now);
+  assert.equal(snap.subscriptionOnly, true, "a subscription claude seam is free for the gate");
+  assert.deepEqual(snap.subscriptionWindows?.map((b) => [b.label, b.windows.length]), [["Claude", 0]], "the block is kept with no windows yet");
 });
 
 test("snapshot carries the orchestrator's chain block only while it is alive", async () => {

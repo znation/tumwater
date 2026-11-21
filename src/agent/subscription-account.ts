@@ -78,14 +78,17 @@ type SubscriptionWindowEntry = SubscriptionWindow & { type: string };
 /** One subscription backend's window block on a status poll (part 3a/9): the backend's display
  * name and its windows most-constrained-first, with `primary` the one the header badge shows.
  * Display only: since Subtract part 5u/6 no window holds or moves a seam, so the block carries
- * no hold deadline — a rejected window simply reads `limited` until it resets. */
+ * no hold deadline — a rejected window simply reads `limited` until it resets. A subscription
+ * account that has reported no window yet still gets a block, with `windows: []` and no
+ * `primary`, so the display reads "usage not reported yet" rather than free. */
 export interface SubscriptionWindowBlock {
   /** The backend id (`"claude"`, `"codex"` …). */
   backend: string;
   /** Its display name (backendDisplayName): `"Claude"`, `"Codex"`. */
   label: string;
   windows: SubscriptionWindowEntry[];
-  primary: SubscriptionWindowEntry;
+  /** Absent while `windows` is empty. */
+  primary?: SubscriptionWindowEntry;
 }
 
 /** Status severity for ordering: a rejected window limits, an allowed_warning nears its limit,

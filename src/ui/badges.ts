@@ -206,6 +206,8 @@ function untilReset(resetsAt: number, now: number): string {
 function subscriptionWindowBadge(blocks: SubscriptionWindowBlock[], now: number): string {
   const block = blocks[0]!;
   const w = block.primary;
+  // A subscription that has reported no window yet names itself rather than reading as n/a.
+  if (!w) return ` · ${block.label} · usage not reported yet`;
   const parts = [`${block.label} ${windowLabel(w.type)}`];
   parts.push(typeof w.utilization === "number" ? `${utilizationPct(w.utilization)}%` : windowStatusWord(w.status));
   if (w.isUsingOverage === true) parts.push("overage");
@@ -220,8 +222,9 @@ function subscriptionWindowBadge(blocks: SubscriptionWindowBlock[], now: number)
  * (`blocks[0]`), so a multi-backend team's tone follows its tightest window. */
 export function subscriptionWindowTone(blocks: SubscriptionWindowBlock[] | undefined): "red" | "yellow" | undefined {
   if (!blocks || blocks.length === 0) return undefined;
-  if (blocks[0]!.primary.status === "rejected") return "red";
-  if (blocks[0]!.primary.status === "allowed_warning") return "yellow";
+  const status = blocks[0]!.primary?.status;
+  if (status === "rejected") return "red";
+  if (status === "allowed_warning") return "yellow";
   return undefined;
 }
 
