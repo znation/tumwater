@@ -17,8 +17,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   let promptTarget = "director";
   let targetKey = "";
   const drafts = {}; // each target keeps its own unsent draft
-  // Recall of recently sent prompts, the composer's mirror of the TUI prompt line's
-  // tui-prompt-history.ts: Up steps back through the prompts you have sent, Down steps
+  // Recall of recently sent prompts: Up steps back through the prompts you have sent, Down steps
   // forward and restores the live draft you were typing. promptHistory holds the text of
   // each successfully sent prompt, oldest first; recallIndex is null while the live draft
   // is shown, an index while browsing history; recallDraft saves the live draft when the
@@ -72,7 +71,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   function setTarget(t) {
     if (t === promptTarget) return;
     // Mid-recall the box holds a recalled entry, not the draft; hand the saved draft to the
-    // old target's slot (the TUI's settlePromptRecall swaps the same way) so no unsent draft
+    // old target's slot so no unsent draft
     // is lost, then end recall.
     drafts[promptTarget] = recallIndex !== null ? recallDraft : promptInput.value;
     promptTarget = t;
@@ -122,7 +121,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   // one older while it can and holds the oldest end. Down steps newer; past the newest it
   // restores the saved live draft and ends recall. Down while already live is a no-op. On a
   // change the recalled text is set ready to send, sized, counted, and the cursor put at the
-  // end. The composer's mirror of the TUI's recallPromptHistory.
+  // end.
   function recallSentPrompt(step) {
     if (step === -1) {
       if (promptHistory.length === 0) return false;

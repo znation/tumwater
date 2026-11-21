@@ -63,26 +63,6 @@ cleanup` phase describe a hold that no longer exists.
   no row reads `held: session cleanup`.
 - `grep -rn "held: session cleanup" src` finds nothing.
 
-### Remove the TUI, part 4f/5: src/ui/gui/ comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/ui/gui/ (comments only))
-
-One of the independent parts split from part 4/5; see part 4a/5 for the goal. `grep -rniwc tui`
-counts 22 lines in six files under src/ui/gui/: gui-client-team.ts (7), gui-client-operator.ts
-(4), gui-client-composer.ts (4), gui-client-settings.ts (3), gui-client-model.ts (2) and
-gui-client-backlog.ts (2). These are the GUI's browser-side modules, so a comment that calls a
-GUI control "the TUI's twin" or cites a TUI key should describe the GUI control on its own, or
-name the server-side helper it mirrors (for example in src/ui/status-model.ts) where that is the
-real pairing.
-
-**Approach.** As in part 4a/5: rewrite each comment sentence under src/ui/gui/ that names the
-TUI, a `ui/tui/` path or a TUI key, drop "twin of the TUI's …" cross-references, change comments
-only (a code change found along the way, such as a key handler kept only for TUI parity, becomes
-its own BUGS.md entry), and keep comment lines within 100 columns.
-
-**Acceptance criteria.**
-- `grep -rniw tui src/ui/gui` matches nothing.
-- `git diff -U0 -- src/ui` adds and removes only comment lines, under src/ui/gui/.
-- test/comment-width.test.ts passes.
-
 ### GitHub issues, part 2/5: the orchestrator scans a project's open GitHub issues on a clock and records which ones no backlog entry mirrors (planned 2026-11-21 by the operator; requires GitHub issues part 1/5 landed; touches src/github/issue-scan.ts src/github/issue-mirrors.ts src/github/github-issues-state.ts src/paths.ts src/orchestrator/orchestrator-poll.ts src/events/events.ts test/github-issue-scan.test.ts test/github-issue-mirrors.test.ts test/fakes/fake-gh.ts)
 
 **Goal.** A running team reads the project's open GitHub issues about once an hour through the

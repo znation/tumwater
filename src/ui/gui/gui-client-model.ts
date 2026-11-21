@@ -91,7 +91,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // last error the role recorded.
   const resultWhy = (l) => l.lastSummary || (PROBLEM_RESULTS.includes(l.lastResult) || l.phase === "failing" ? l.lastError || "" : "");
   // role-sort:start
-  // Role order — status-model.ts's roleRank/sortRolesByState, the TUI's order too: the running
+  // Role order — status-model.ts's roleRank/sortRolesByState, the order here too: the running
   // director first (its own live work, outside the maxConcurrent cap it bypasses — BUGS.md
   // 2026-10-06), then live work (working, reviewing, merge), then work waiting in the pipeline,
   // then roles that need attention (failing), then
@@ -125,8 +125,8 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // holders (rank 0) and the pipeline waiters (rank 1, labeled "Waiting to start") keep
   // sharing In progress (BUGS.md 2026-10-06).
   const ROLE_GROUPS = [["Director", -1], ["In progress", 0, 1], ["Needs attention", 2], ["Paused", 3], ["Idle", 4]];
-  // The payload's alerts (team-alerts.ts teamAlerts — the TUI's attention lines use the same
-  // list), plus the one only the page can know: that its server stopped answering.
+  // The payload's alerts (team-alerts.ts teamAlerts — the status-render attention lines
+  // use the same list), plus the one only the page can know: that its server stopped answering.
   const OFFLINE_ALERT = { key: "offline", tone: "red", title: "Lost contact with the dashboard server",
     detail: "Retrying every second. Everything below is the last state it reported.", actions: [] };
   function pageAlerts(d, offline) {

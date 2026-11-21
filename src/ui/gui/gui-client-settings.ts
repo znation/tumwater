@@ -40,7 +40,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     ["maxDailyCostUsd", "Daily spend cap (USD)"],
     ["maxConcurrent", "Max concurrent runs"],
     // The two instance roles' counts (roles.feature/bugfix.instances, 1–8): how many
-    // feature/bugfix runs may run at once — the role drawer and TUI edit the same fields.
+    // feature/bugfix runs may run at once — the role drawer and config-set edit the same fields.
     ["roles.feature.instances", "Feature role instances"],
     ["roles.bugfix.instances", "Bugfix role instances"],
     ["maxConcurrentChecks", "Max concurrent checks"],
@@ -305,7 +305,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   }
   const retireLeftoversSlot = confirmSlot(paintRetireLeftoversButton);
   async function retireLeftoversClick() {
-    // The news override's none-left fallback matches the none-left sentence the TUI Health key
+    // The news override's none-left fallback matches the none-left sentence the Health action
     // flashes when nothing is retirable: the shared leftoverRetireLines join is empty when
     // nothing is retirable, so the button falls back to that same sentence.
     await postConfirmedHealthAction(retireLeftoversSlot, "retire-leftovers", paintRetireLeftoversButton, "Retiring every disabled role's leftovers…", "/api/doctor-retire-leftovers",
@@ -357,8 +357,8 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   }
   // The plain-numeric team rows: for these the browser's JSON.parse below would read an
   // exponent spelling ("2e0" → 2, "1e2" → 100) past the key's numeric check before it ever
-  // leaves the browser — the same silent misread the config-set CLI path, the TUI editors,
-  // and the GUI drawers refuse — so refuse it here, naming the row and leaving the field as
+  // leaves the browser — the same silent misread the config-set CLI path and
+  // the GUI drawers refuse — so refuse it here, naming the row and leaving the field as
   // typed. A non-exponent invalid still goes to the server, whose validateConfig names the
   // key. (The server's own exponent guard cannot see the misread on these rows: by the time
   // the value re-enters setConfigKey it has already been re-encoded from the parsed number.)

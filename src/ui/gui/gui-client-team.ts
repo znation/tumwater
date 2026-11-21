@@ -75,7 +75,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       }
       // A self-redeploy holding new runs: its own row, so a held team says what it waits on
       // (the payload's preformatted restartHoldBadge — badges.ts's restartHoldText, the sentence
-      // the TUI header's build badge ends with) instead of leaving it in the tooltip above.
+      // the status header's build badge ends with) instead of leaving it in the tooltip above.
       if (d.restartHoldBadge) {
         rows += row("blue", icon("clock"), esc(capitalize(d.restartHoldBadge)),
           "No new run starts until the update is checked, compiled and swapped in; runs already under way finish first.");
@@ -102,7 +102,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       }
       // The ci parity row (the full suite's glance verdict): the payload's preformatted
       // ciParityBadge/ciParityTone, upcased for the row's label style like the other badges —
-      // the same answer the TUI/status header carries, so the two surfaces cannot drift —
+      // the same answer the status header carries, so the two surfaces cannot drift —
       // toned by the shared ciParityTone map (current→green, failed→red, stale→blue).
       if (d.ciParityBadge) {
         rows += row(d.ciParityTone, icon("check"),
@@ -113,7 +113,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       }
       // The remote-CI row (the hosted CI's verdict on what was pushed, plans/remote-ci.md
       // "Surfaces"): the payload's preformatted remoteCiBadge/remoteCiTone, upcased for the
-      // row's label style — the same answer the TUI/status header carries, so the two
+      // row's label style — the same answer the status header carries, so the two
       // surfaces cannot drift — toned by the shared remoteCiTone map (passed→green,
       // failed→red, running→blue). Absent without a remote-CI record or for an
       // unavailable one (the badge is empty), so the panel stays byte-identical.
@@ -126,7 +126,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       }
       // The disk floor (plans/disk-floor.md, part 4/4): the sidebar row renders the payload's
       // preformatted diskBadge (upcased for the row's label style) — the same facts the
-      // TUI/status header carries, so the two surfaces cannot drift — and names the free space,
+      // status header carries, so the two surfaces cannot drift — and names the free space,
       // and the hold there.
       if (d.diskBadge) {
         const held = Boolean(d.disk && d.disk.held);
@@ -141,7 +141,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       }
       // The permit pool (plans/provider-concurrency.md §8): the payload's preformatted
       // permitsBadge — running 5 of 8 — upcased for the row's label style, the same reading
-      // the TUI/status header carries, so the two surfaces cannot drift. Present for any
+      // the status header carries, so the two surfaces cannot drift. Present for any
       // team with a published permit snapshot.
       if (d.permitsBadge) {
         const tok = String(d.permitsBadge).replace(/^ · /, "");
@@ -169,7 +169,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       }
       // The configured quiet-hours window ("Quiet hours … part 2/2"): the schedule as
       // standing information, amber while the local clock is inside it — the same
-      // inside/outside wording the TUI/status header's quietBadge carries, derived from the
+      // inside/outside wording the status header's quietBadge carries, derived from the
       // payload's raw quietHours/inQuietHours fields (the active case also raises the
       // team-alerts quiet alert above).
       if (d.quietHours) {
@@ -179,7 +179,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
           "Quiet hours — roles start no new runs during this local-time window; the director keeps running your messages");
       }
       // New-project bootstrap (plans/work-ratio.md, part 2/2): the payload's preformatted
-      // bootstrapBadge, upcased for the row's label style — the same reading the TUI/status
+      // bootstrapBadge, upcased for the row's label style — the same reading the status
       // header carries, so the surfaces cannot drift.
       if (d.bootstrapBadge) {
         rows += row("blue", icon("info"),

@@ -3,7 +3,7 @@ import { PAUSE_REASON_MAX } from "../../team/team-state.js";
 /** The dashboard's team-wide operator controls, browser-side, all living in the sidebar so
  * they are in reach from every view: the daily spend badge — today's spend against the cap
  * with a meter, a button that opens a small editor for the cap (POST /api/budget, the same
- * setter as the TUI's Ctrl+B) — the pause control, a menu of timed pauses with an
+ * setter `tumwater config set` uses) — the pause control, a menu of timed pauses with an
  * optional reason (POST /api/pause with `forSeconds` and `reason`, the CLI's
  * `pause --for`/`--reason`) that turns into a Resume button with the countdown while the
  * team is paused. Neither keeps optimistic state: after a successful
@@ -66,7 +66,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   // The subscription usage window (plans/agent-backends.md §8, PLANS.md part 6d/7): the
   // sidebar's spend card renders it beside the daily spend, or in its place for a
   // subscription-only team. The label/status/clock rules mirror badges.ts's
-  // window badge — the preformatted header fragment the TUI uses cannot be reused here
+  // window badge — the preformatted header fragment cannot be reused here
   // because the card lists EVERY window of EVERY block, not just the most constrained one.
   function windowLabel(type) {
     const m = /^(\w+)_(hour|day|week)$/.exec(String(type));
@@ -199,7 +199,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     input.focus({ preventScroll: true });
     input.select();
   }
-  // The cap editor's plain-decimal rule, the same one the TUI's Ctrl+B editor applies: empty
+  // The cap editor's plain-decimal rule, the same one the budget setter applies: empty
   // means no cap, otherwise a plain decimal of 0 or more, at most Number.MAX_SAFE_INTEGER.
   // Number() alone would read hex ("0x10" → 16) and finite exponent notation ("1e2" → 100) as
   // dollar amounts no operator meant, and a long digit run stays finite (1e24) yet is no longer
@@ -209,8 +209,8 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     const t = String(raw).trim();
     if (t === "") return { ok: true, value: 0 };
     const n = Number(t);
-    // The two rejections are genuinely different rules, so they name their own one, mirroring
-    // the TUI's parseBudgetInput: the shape rejection (a fine number like "1e2" or "0x10"
+    // The two rejections are genuinely different rules, so they name their own one: the shape
+    // rejection (a fine number like "1e2" or "0x10"
     // that is within the bound but that no one means as USD) names the plain-decimal rule,
     // while the bounds rejection names the bound because a 25-digit run IS "a number of 0 or
     // more". A single message would mislead: "1e2" is rejected as shape, yet would be told

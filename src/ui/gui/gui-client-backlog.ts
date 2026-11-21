@@ -53,8 +53,8 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
     if (on) store("backlog-held", "");
     if (backlogStatus) renderBacklog(backlogStatus);
   }
-  // The Held only toggle: the inverse of Ready only, the browser twin of tumwater backlog
-  // --held and the TUI's Held-only stop. It shows only the rows a hold keeps from being
+  // The Held only toggle: the inverse of Ready only, the browser side of tumwater backlog
+  // --held. It shows only the rows a hold keeps from being
   // picked, remembered like the Search text; turning it on clears the Ready only toggle the
   // same way (and forgets its stored value).
   function setBacklogHeld(on) {
@@ -143,7 +143,7 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
     let shown = 0;
     let html;
     // Held only inverts even an empty tab: with no held entry it paints the held empty state
-    // rather than the plain one, matching the TUI's Held-only stop and the documented promise.
+    // rather than the plain one, matching the documented promise.
     if (!list.length) html = "<div class='empty'><strong>" +
       esc(heldOnly ? "No held " + (key === "plans" ? "plans" : "bugs") : emptyTitle) + "</strong>" +
       esc(heldOnly ? "No entry is held." : emptyText) + "</div>";
