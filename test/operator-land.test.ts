@@ -185,6 +185,7 @@ test("land skips a range commit whose change main already carries, and lands the
   const root = makeRepo(tmpdir());
   const { feat } = repoWithFeat(root);
   seedCommit(feat, "feat.txt", "feat\n", "feat edit"); // A -> feat: feat.txt
+  seedCommit(feat, "rest.txt", "rest\n", "rest edit"); // the range's next commit: replayed after the skip
   seedCommit(root, "feat.txt", "feat\n", "same edit on main"); // A -> main: the same change, a different commit
   seedCommit(root, "main.txt", "main\n", "main edit"); // main moves on: the replay is not a fast-forward
   const result = await steerToMain(root, "feat");
@@ -193,6 +194,7 @@ test("land skips a range commit whose change main already carries, and lands the
   // The already-applied change is skipped (git empties the pick); main keeps its content.
   assert.equal(sh(root, "git", "show", "main:feat.txt"), "feat");
   assert.equal(sh(root, "git", "show", "main:main.txt"), "main");
+  assert.equal(sh(root, "git", "show", "main:rest.txt"), "rest"); // the commit after the skip still lands
 });
 
 test("land refuses a merge commit in the range, leaving main unchanged", async () => {
