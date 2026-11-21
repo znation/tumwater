@@ -24,7 +24,7 @@ import path from "node:path";
 import { withLock, withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { loadConfigSafe } from "../config/config.js";
 import { logEventBestEffort, TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
-import { readTextIfExists, readTextOrNull, writeTextAtomic } from "../files/files.js";
+import { readDirTextOrEmpty, readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { changeBaseRev, currentBranch, fileContentAt, headOf, targetBranch } from "../git/git.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { commitOnlyArgs, git, gitTry } from "../git/git-run.js";
@@ -361,7 +361,7 @@ function planArchiveAll(root: string, keep: number): { spec: FinishedArchive; mo
 export function liveFinishedHistory(root: string): { file: string; section: string; archive: string; entries: number; bytes: number }[] {
   const out: { file: string; section: string; archive: string; entries: number; bytes: number }[] = [];
   for (const { spec, move } of planArchiveAll(root, 0)) {
-    const live = readTextOrNull(path.join(root, spec.file)) ?? "";
+    const live = readDirTextOrEmpty(root, spec.file);
     out.push({
       file: spec.file,
       section: spec.section,
