@@ -159,8 +159,8 @@ async function archiveFindings(wt: string, mainBranch: string, files: string[]):
   const findings: string[] = [];
   for (const spec of FINISHED_ARCHIVES) {
     if (baseRev === undefined || !(files.includes(spec.file) || files.includes(spec.archive))) continue;
+    const at = (f: string) => fileContentAt(wt, baseRev, f);
     const duplicates = await (async () => {
-      const at = async (f: string) => (await fileContentAt(wt, baseRev, f)) ?? "";
       return finishedDuplicateFindings(
         spec,
         { head: worktreeText(wt, spec.file), base: await at(spec.file) },
@@ -176,7 +176,7 @@ async function archiveFindings(wt: string, mainBranch: string, files: string[]):
         // whose done copy is already on the other side is not re-read as a new finished entry.
         const keyed = (md: string) =>
           parseEntryDetails(md, section).map((e) => ({ ...e, key: finishedKey(e.title, FINISHED_PLAN_RE) }));
-        const seen = new Set(keyed((await fileContentAt(wt, baseRev, f)) ?? "").map((e) => e.key));
+        const seen = new Set(keyed(await at(f)).map((e) => e.key));
         return keyed(worktreeText(wt, f)).filter((e) => !seen.has(e.key));
       };
       const entries = [...(await finished(spec.file, spec.section)), ...(await finished(spec.archive, spec.section))];
