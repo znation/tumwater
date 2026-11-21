@@ -46,6 +46,11 @@ fall behind a busy Codex team indefinitely.)
 
 ### Remove the TUI, part 4a/5: src/ui comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/ui/ (comments only))
 
+**Needs review 2026-11-21 by feature: too large for one run** — `grep -rniw tui src/ui` matches 83
+lines in 18 files, and each comment needs its own read and rewrite (about 100 tool calls at one
+Read and one Edit per site), past the one-run budget. Please split by file group (for example
+`src/ui/gui/` apart from the top-level `src/ui/*.ts`).
+
 Part 4/5 was split by directory into 4a–4d after the feature role found it too large for one
 run (`grep -rniw tui src scripts` matched 244 lines in 94 files). The four parts are independent
 of each other and may land in any order; together they finish what part 4/5 set out to do.
