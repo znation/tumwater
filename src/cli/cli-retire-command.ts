@@ -41,8 +41,7 @@ async function retireTargetRole(root: string, args: string[]): Promise<string> {
 /** Render one line per artifact an inventory holds and one per skipped artifact — the same
  * wording both the `--dry-run` preview and the committed run go through, so the two cannot
  * drift on the removed / `nothing to remove` phrasing. `verb` distinguishes the preview's
- * `would remove` from the committed `removed`. The `nothing to remove for role` no-ops line
- * stays in the caller (only the committed run carries it). */
+ * `would remove` from the committed `removed`. */
 function sayRemoveInventory(removed: readonly string[], skipped: readonly string[], verb: string, role: string): void {
   for (const name of removed) say(`${verb} ${artifactPhrase(name, role)}`);
   for (const name of skipped) say(`nothing to remove: ${artifactPhrase(name, role)}`);
@@ -81,6 +80,4 @@ export async function cmdRetire(root: string, args: string[]): Promise<void> {
     return;
   }
   sayRemoveInventory(result.removed, result.skipped, "removed", role);
-  if (result.removed.length === 0 && result.skipped.length === 0)
-    say(`nothing to remove for role ${role}`);
 }
