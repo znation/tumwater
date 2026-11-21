@@ -4939,8 +4939,8 @@ ledger whose newest exercise is older than `QA_COVERAGE_STALE_MS`; an empty ledg
 file, or a project that never ran qa — is not a stall, mirroring `ciParityStalled`'s rule for a
 missing parity record.
 
-**Binds.** `src/observer/qa-coverage.ts` (`qaCoverageStalled`, `QA_COVERAGE_STALE_MS`),
-`src/doctor/doctor-project-checks.ts` (`checkQaCoverage`).
+**Binds.** `src/observer/qa-coverage.ts` (`newestExercise`, `qaCoverageStalled`,
+`QA_COVERAGE_STALE_MS`), `src/doctor/doctor-project-checks.ts` (`checkQaCoverage`).
 
 **Pinned by.** `test/qa-coverage.test.ts` — the `qaCoverageStalled` cases (empty false, boundary
 false, one past true, mixed fresh+old false, malformed-only reads empty); `test/doctor-checks.test.ts`

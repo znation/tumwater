@@ -39,7 +39,7 @@ import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { readCiParity, currentCiParityState, parityIsCurrent, ciParityStalled, CI_PARITY_STALE_MS } from "../observer/ci-parity.js";
 import { githubTarget, readRemoteCi, type RemoteCiEntry, remoteCiStalled, remoteCiTarget } from "../observer/remote-ci.js";
 import { ghReadiness, ghRunner, ghUnreadableSentence, type GhRunner } from "../github/gh.js";
-import { readQaCoverage, qaCoverageStalled, QA_COVERAGE_STALE_MS } from "../observer/qa-coverage.js";
+import { newestExercise, readQaCoverage, qaCoverageStalled, QA_COVERAGE_STALE_MS } from "../observer/qa-coverage.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
 /** .tumwater writable — absent is fine (created on first run); present, prove it by writing
@@ -564,24 +564,16 @@ export async function checkGithubIssues(
  * .tumwater/. */
 export function checkQaCoverage(root: string, now: number = Date.now()): CheckOutcome {
   const coverage = readQaCoverage(root);
-  const entries = Object.entries(coverage);
-  if (entries.length === 0)
+  const newest = newestExercise(coverage);
+  if (newest === null)
     return okOutcome("no qa flow coverage recorded yet — the qa role has not completed a flow");
-  let newestFlow = entries[0]![0];
-  let newestAt = entries[0]![1].lastRunAt;
-  for (const [name, entry] of entries) {
-    if (entry.lastRunAt > newestAt) {
-      newestAt = entry.lastRunAt;
-      newestFlow = name;
-    }
-  }
-  const age = shortSpanPhrase(Math.max(0, now - newestAt));
+  const age = shortSpanPhrase(Math.max(0, now - newest.lastRunAt));
   if (qaCoverageStalled(coverage, now)) {
     return warnOutcome(
-      `the newest exercised flow ${newestFlow} ran ${age} ago — no qa flow has been exercised in over ${QA_COVERAGE_STALE_MS / DAY_MS} days, so the qa role is disabled, paused, or unable to record`,
+      `the newest exercised flow ${newest.flow} ran ${age} ago — no qa flow has been exercised in over ${QA_COVERAGE_STALE_MS / DAY_MS} days, so the qa role is disabled, paused, or unable to record`,
     );
   }
-  return okOutcome(`newest flow coverage: ${newestFlow} exercised ${age} ago`);
+  return okOutcome(`newest flow coverage: ${newest.flow} exercised ${age} ago`);
 }
 
 /** How far back the `main diff rules` row looks — one day, the same 24 h trailing-day convention
