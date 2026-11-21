@@ -289,7 +289,7 @@ const tails = new Map<string, TailState<TranscriptValue>>();
  * each other's renderer. */
 const promptTails = new Map<string, TailState<TranscriptValue>>();
 /** How many rendered entries to keep per file. Hot callers ask for at most ~50 (the GUI
- * panel polls with n=50, a terminal view its line budget), so the cap bounds memory while
+ * panel polls with n=50), so the cap bounds memory while
  * keeping any such request exact; a caller asking for more gets the newest MAX_ENTRIES. */
 const MAX_ENTRIES = 200;
 

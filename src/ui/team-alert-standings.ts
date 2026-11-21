@@ -3,8 +3,8 @@
  * config-problem alert. One of the per-domain builders split out of
  * src/ui/team-alerts.ts; the shared types and wording helpers live in team-alert-shared.ts.
  *
- * These seven are the standing amber alerts docs/cli.md promises on `tumwater status`, the
- * dashboard and `tumwater status` — the always-on twins of their doctor rows. (An over-cap
+ * These seven are the standing amber alerts docs/cli.md promises on `tumwater status` and the
+ * dashboard — the always-on twins of their doctor rows. (An over-cap
  * PRINCIPLES.md raises none: the orchestrator instead queues the director a consolidation
  * prompt — src/prompt/principles-consolidation.ts — while the `principlesTruncated` key and
  * the doctor `principles` row stay the diagnostic.) The snapshot carries
