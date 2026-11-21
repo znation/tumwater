@@ -262,6 +262,12 @@ test("a bare feature run that moves a plan stages no claim and leaves the next p
   const { ctx } = makeCtx(root, wt, state, {
     role: "feature",
     mainBranch: "main",
+    // Pinned to one instance: stagedMovedEntries only runs for a base with configuredInstances
+    // above 1, so at the shipped default this base WOULD take a claim — this test is the
+    // single-runner half of that rule.
+    config: (c) => {
+      c.roles.feature!.instances = 1;
+    },
     finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
   });
 

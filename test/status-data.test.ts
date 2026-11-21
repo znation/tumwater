@@ -98,6 +98,12 @@ test("snapshot resolves a per-role quiet window through the base role for instan
 test("snapshot survives a broken tumwater.json and recovers when it is fixed", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
+  // Both instance roles pinned to one instance: at the shipped default the snapshot also lists
+  // each base's extra runners, which would change the baseline this states.
+  const pinned = loadConfig(repo);
+  pinned.roles.feature!.instances = 1;
+  pinned.roles.bugfix!.instances = 1;
+  saveConfig(repo, pinned);
   // Baseline: every catalog role but the opt-in selfcheck and feedback enabled by default.
   assert.equal((await snapshot(repo)).roles.length, allRoleIds().length - 2);
 

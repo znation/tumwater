@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clientScope } from "./helpers/gui-client-scope.js";
+import { DEFAULT_INSTANCES } from "../src/roles/runner-ids.js";
 
 // The dashboard's view routing (src/ui/gui/gui-client-boot.ts's view-routing region): the
 // #fragment-driven switchView/route pair the page's tabs, Back/Forward buttons, and
@@ -686,7 +687,7 @@ test("instances-edit opens the editor, instances-save posts the count (empty inp
   assert.deepEqual(posts[0], ["/api/role-instances", { role: "feature", instances: 3 }]);
   assert.deepEqual(flashes[0], "feature: instances set to 3");
   assert.deepEqual(events.slice(-2), ["load feature", "feature: instances set to 3"]);
-  // An empty input posts null (the server clears the count back to the default 1).
+  // An empty input posts null (the server clears the count back to the default DEFAULT_INSTANCES).
   field.value = "  ";
   posts.length = 0;
   scope.runAct("instances-save", "feature");
@@ -698,7 +699,7 @@ test("instances-edit opens the editor, instances-save posts the count (empty inp
   field.validity.badInput = true;
   scope.runAct("instances-save", "feature");
   assert.deepEqual(posts, []);
-  assert.deepEqual(flashes, ["error: the instances must be an integer from 1 to 8 — leave it empty for the default 1"]);
+  assert.deepEqual(flashes, [`error: the instances must be an integer from 1 to 8 — leave it empty for the default ${DEFAULT_INSTANCES}`]);
   // A type=number input accepts exponent spellings the browser parses ("2e0" → 2), so badInput
   // is false — the plain-decimal shape guard must reject it, not silently save 2.
   flashes.length = 0;
@@ -707,7 +708,7 @@ test("instances-edit opens the editor, instances-save posts the count (empty inp
   field.value = "2e0";
   scope.runAct("instances-save", "feature");
   assert.deepEqual(posts, [], "an exponent spelling is not posted");
-  assert.deepEqual(flashes, ["error: the instances must be a plain integer like 2 — no +/-, exponent, or hex notation — leave it empty for the default 1 (got \"2e0\")"]);
+  assert.deepEqual(flashes, [`error: the instances must be a plain integer like 2 — no +/-, exponent, or hex notation — leave it empty for the default ${DEFAULT_INSTANCES} (got "2e0")`]);
   // instances-discard closes the editor, posting nothing.
   events.length = 0;
   scope.runAct("instances-discard", "feature");

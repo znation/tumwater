@@ -556,12 +556,18 @@ test("an invalid customRoles file keeps the team-visible contract: loadConfigSaf
 test("customRoleNames, isCustomRole, and knownRoleIds are the one source of truth for custom ids", () => {
   const config = defaultConfig();
   config.customRoles = [{ name: "docs-auditor", task: "t" }];
+  // Pinned to one instance each: at the shipped default knownRoleIds also carries the instance
+  // ids, which would bury what this test is about — the customs join exactly once.
+  config.roles.feature!.instances = 1;
+  config.roles.bugfix!.instances = 1;
   assert.deepEqual(customRoleNames(config), ["docs-auditor"]);
   assert.equal(isCustomRole(config, "docs-auditor"), true);
   assert.equal(isCustomRole(config, "feature"), false);
   // Catalog first, customs appended — the same order as config.roles.
   assert.deepEqual(knownRoleIds(config), [...allRoleIds(), "docs-auditor"]);
   const empty = defaultConfig();
+  empty.roles.feature!.instances = 1;
+  empty.roles.bugfix!.instances = 1;
   assert.deepEqual(customRoleNames(empty), []);
   assert.deepEqual(knownRoleIds(empty), allRoleIds());
 });
@@ -578,9 +584,13 @@ test("knownRoleIds carries a multi-instance role's ids (part 5b/7)", () => {
 test("knownRoleIdsCached is the one home of the read-only fallback rule", () => {
   // No config: the built-in catalog, without touching loadConfigCached's cache contract.
   assert.deepEqual(knownRoleIdsCached(tmpdir()), allRoleIds());
-  // A config with customs: catalog plus the user-defined roles.
+  // A config with customs: catalog plus the user-defined roles. Both instance roles pinned to 1
+  // so the ids listed are the catalog plus the custom, not the shipped default's instances too.
   const withCustom = tmpdir();
-  writeConfig(withCustom, { customRoles: [{ name: "docs-auditor", task: "t" }] });
+  writeConfig(withCustom, {
+    customRoles: [{ name: "docs-auditor", task: "t" }],
+    roles: { feature: { instances: 1 }, bugfix: { instances: 1 } },
+  });
   assert.deepEqual(knownRoleIdsCached(withCustom), [...allRoleIds(), "docs-auditor"]);
   // A transiently broken tumwater.json must not take a read-only view down: it falls back to
   // the built-in catalog rather than refusing every id.

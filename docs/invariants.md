@@ -3099,6 +3099,22 @@ with no runner, are removed.
 still removes the marker", "consumeAbortRequests silently clears a marker for an idle role" and
 "consumeAbortRequests clears a marker for a role with no runner at all".
 
+### INV-AQ5: the dashboard's all-roles default names the configured base ids, exactly as the CLI's does
+
+**Guarantee.** `POST /api/wake` and `POST /api/reset-counters` with a `{}` body target exactly
+`tumwater.json`'s `roles` keys — the base ids, a custom role included, never an instance id — which
+is what bare `tumwater wake` / `tumwater reset-counters` target (cli-operator-commands.ts's
+targetRoles). A base id in the marker still reaches every instance of it while the team is live.
+A broken tumwater.json answers with the built-in catalog and never throws out of the endpoint.
+
+**Binds.** `src/gui/gui-args.ts` (`configuredRoleIds`); callers `src/gui/gui-team-commands.ts`
+(`handleWake`) and `src/gui/gui-operator-commands.ts` (`handleResetCounters`).
+
+**Pinned by.** `test/gui-args.test.ts` — "configuredRoleIds is the configured role list, not the
+instance ids validRoleIds adds"; `test/gui-operator.test.ts` — "POST /api/wake writes the same
+state as `tumwater wake` and rejects bad bodies" and "POST /api/wake with inSeconds schedules the
+wake like `tumwater wake --in`".
+
 ## Retire: a role's leftovers go only when nothing unmerged or in use goes with them
 
 `tumwater retire --role <id>` (`src/operator/operator-retire.ts`) deletes a role's worktree, branch and merge

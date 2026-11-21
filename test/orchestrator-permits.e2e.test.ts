@@ -116,6 +116,9 @@ test("a work-role run that becomes due later jumps ahead of maintenance waiters 
   await initProject(repo, "cross-poll tier test");
   const base = fastConfig(["clean", "dedupe", "bugfix"]);
   base.maxConcurrent = 1;
+  // One runner per work role: at the shipped default (instances 3) the work tier's second start
+  // is any of bugfix … bugfix-6, so the tier-ordering assertion below could name a sibling.
+  base.roles.bugfix!.instances = 1;
   saveConfig(repo, base);
   // bugfix must become due again ~1s after its first no_change run; with an empty BUGS.md
   // `## Open` it defers like a maintenance role instead (deferRun), so the open bug keeps it

@@ -188,6 +188,12 @@ test("team diff on a missing baseline degrades to the per-role line, exit 0", as
 
 test("team diff --json prints the roster: one entry per known role, no patch fields", async () => {
   const { repo } = await seededFeatureRepo();
+  // Pinned to one instance each: at the shipped default the roster also carries each base's
+  // instance ids, which would change the allRoleIds() baseline this states.
+  const cfg = loadConfig(repo);
+  cfg.roles.feature!.instances = 1;
+  cfg.roles.bugfix!.instances = 1;
+  writeConfig(repo, cfg);
   const r = await cli(repo, "diff", "--json");
   assert.equal(r.code, 0);
   const payload = JSON.parse(r.stdout) as {

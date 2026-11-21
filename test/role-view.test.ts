@@ -18,6 +18,7 @@ import { PI_DIALECT } from "../src/prompt/dialect.js";
 import { pausedRolesPath, roleLessonsPath, roleNotesPath } from "../src/paths.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readmeTemplate } from "../src/brief/brief.js";
+import { DEFAULT_INSTANCES } from "../src/roles/runner-ids.js";
 import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
@@ -279,8 +280,12 @@ test("an unknown role throws the shared unknownRoleMessage wording", () => {
 });
 
 test("an instance id the config does not run throws unknownRoleMessage", () => {
-  assert.throws(() => rolePayload(root(), "feature-9", NO_MODELS), /unknown role: feature-9 \(valid ids: /);
-  assert.throws(() => rolePayload(root(), "feature-9", NO_MODELS), /did you mean `feature`/);
+  // Pinned to one instance each: at the shipped default `feature-2` is a valid id, so the
+  // nearest id to a mistyped `feature-9` is `feature-2`, not the bare role this asserts on.
+  const bare = root();
+  writeConfig(bare, { roles: { feature: { instances: 1 }, bugfix: { instances: 1 } } });
+  assert.throws(() => rolePayload(bare, "feature-9", NO_MODELS), /unknown role: feature-9 \(valid ids: /);
+  assert.throws(() => rolePayload(bare, "feature-9", NO_MODELS), /did you mean `feature`/);
   const dir = root();
   writeConfig(dir, { roles: { feature: { enabled: true, instances: 2 } } });
   assert.ok(rolePayload(dir, "feature-4", NO_MODELS));
@@ -563,7 +568,8 @@ test("the plan payload resolves the stop target without leaking a template", () 
   const p = rolePayload(dir, "plan", NO_MODELS);
   assert.ok(p.find);
   assert.ok(!p.find.includes("{{"), "the find text carries no unresolved placeholder");
-  assert.match(p.nextPrompt ?? "", /2 or more eligible plans/);
+  // The shipped target: one eligible plan per default instance, plus one.
+  assert.match(p.nextPrompt ?? "", new RegExp(`${DEFAULT_INSTANCES + 1} or more eligible plans`));
 });
 
 test("agent labels: a claude model job names the backend, pi stays byte-identical", () => {

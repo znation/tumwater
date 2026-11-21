@@ -1249,7 +1249,12 @@ test("checkWorkInstances names each claim by its file and counts plans and bugs 
 // not running.
 test("checkWorkInstances does not warn about a disabled instance role's pool", () => {
   const root = readyRepo();
-  writeConfig(root, { roles: { feature: { enabled: false, instances: 2 } }, worktreeSlots: 1 });
+  // bugfix pinned to 1: at the shipped default it runs 3 instances and would itself raise the
+  // pool clause, hiding what this test is about — the DISABLED feature role must stay silent.
+  writeConfig(root, {
+    roles: { feature: { enabled: false, instances: 2 }, bugfix: { instances: 1 } },
+    worktreeSlots: 1,
+  });
   assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claimed plans or bugs" });
 });
 
@@ -1260,20 +1265,32 @@ test("checkWorkInstances does not warn about a disabled instance role's pool", (
 // worktreeSlots is unset (default maxConcurrent + 1), or for a disabled instance role.
 test("smallPoolProblems returns the row's pool-mismatch clause", () => {
   const root = readyRepo();
-  writeConfig(root, { roles: { feature: { instances: 2 } }, worktreeSlots: 1 });
+  // Every fixture pins bugfix to 1 so the clause names feature alone; the default (unset =
+  // DEFAULT_INSTANCES 3) makes both instance roles contend, checked by the last case.
+  writeConfig(root, { roles: { feature: { instances: 2 }, bugfix: { instances: 1 } }, worktreeSlots: 1 });
   const small = smallPoolProblems(loadConfig(root)!);
   assert.equal(small.length, 1);
   assert.match(small[0]!, /feature run instances but worktreeSlots 1 is below maxConcurrent 6/);
 
   // worktreeSlots unset (default maxConcurrent + 1) and at/above maxConcurrent: no problem.
-  writeConfig(root, { roles: { feature: { instances: 2 } } });
+  writeConfig(root, { roles: { feature: { instances: 2 }, bugfix: { instances: 1 } } });
   assert.deepEqual(smallPoolProblems(loadConfig(root)!), []);
-  writeConfig(root, { roles: { feature: { instances: 2 } }, worktreeSlots: 8 });
+  writeConfig(root, { roles: { feature: { instances: 2 }, bugfix: { instances: 1 } }, worktreeSlots: 8 });
   assert.deepEqual(smallPoolProblems(loadConfig(root)!), []);
 
   // A disabled instance role runs none of its instances, so it never contends.
-  writeConfig(root, { roles: { feature: { enabled: false, instances: 2 } }, worktreeSlots: 1 });
+  writeConfig(root, {
+    roles: { feature: { enabled: false, instances: 2 }, bugfix: { instances: 1 } },
+    worktreeSlots: 1,
+  });
   assert.deepEqual(smallPoolProblems(loadConfig(root)!), []);
+
+  // An unset count means DEFAULT_INSTANCES: with both instance roles left at the default, a
+  // small pool names both, in config.roles order.
+  writeConfig(root, { worktreeSlots: 1 });
+  const both = smallPoolProblems(loadConfig(root)!);
+  assert.equal(both.length, 1);
+  assert.match(both[0]!, /feature, bugfix run instances but worktreeSlots 1 is below maxConcurrent 6/);
 });
 
 // claude transcript disk (plans/agent-backends.md "Sessions" retention, part 4e/7): doctor
@@ -1979,7 +1996,9 @@ test("checkLeftoverRoleBranches names disabled roles' branches and unknown ones,
   sh(root, "git", "branch", "tumwater/feature-2");
   writeConfig(root, { roles: { feature: { instances: 2 } } });
   assert.doesNotMatch((await checkLeftoverRoleBranches(root, loadConfig(root))).detail, /feature-2/);
-  writeConfig(root, {});
+  // Pinned to instances: 1 — at the shipped default the config DOES run feature-2, so it is no
+  // leftover; only a count that leaves the id unrunned makes it one.
+  writeConfig(root, { roles: { feature: { instances: 1 } } });
   assert.match((await checkLeftoverRoleBranches(root, loadConfig(root))).detail, /feature-2/);
   assert.deepEqual(await checkLeftoverRoleBranches(root, null), { level: "ok", detail: "no readable tumwater.json — nothing to verify" });
 });

@@ -31,6 +31,9 @@ import { sleep, waitFor } from "./helpers/wait.js";
 test("runs on the engaged fallback feed the breaker: three dead-backend errors demote it", async () => {
   const repo = await makeFastRepo("fallback breaker unit test", ["feature"]);
   const cfg = fastConfig(["feature"]);
+  // Pinned to one feature instance: at the shipped default the base role also runs feature-2 …
+  // feature-6, so several runners feed the breaker at once and it trips past failureLimit.
+  cfg.roles.feature!.instances = 1;
   cfg.maxDailyCostUsd = 10;
   cfg.fallbackModel = { provider: "free", model: "qwen-free" };
   const cfgPath = path.join(repo, "tumwater.json");

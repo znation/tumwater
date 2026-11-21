@@ -23,7 +23,7 @@ import { previewRevert, revertFollowUp, revertMergedCommit } from "../operator/o
 import { acceptPostReviewBySha, type AcceptPostReviewByShaOutcome } from "../review/post-merge-review-accept.js";
 import { shortSha } from "../text/format.js";
 import { editBriefText } from "../brief/brief-edit.js";
-import { requireStringField, validRoleIds } from "./gui-args.js";
+import { requireStringField, configuredRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
 import { errorMessage, gotSuffix } from "../text/text.js";
 import { readPostBody, readRoleBody, readShaBody, sendRequestResult } from "./gui-endpoint-common.js";
@@ -54,13 +54,13 @@ async function runLinesAction<Rep>(
 
 /** Handle POST /api/reset-counters: the dashboard's counter reset — the same marker-writing
  * core `tumwater reset-counters` calls (requestResetCounters). Same body discipline and
- * `{}` → every configured role default as /api/wake. */
+ * `{}` → every configured role default as /api/wake (configuredRoleIds). */
 export async function handleResetCounters(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readRoleBody(req, res, '{"role": "feature"}', root, true);
   if (!body) return;
   sendJson(res, 200, {
     ok: true,
-    message: requestResetCounters(root, body.role === undefined ? validRoleIds(root) : [body.role as string]),
+    message: requestResetCounters(root, body.role === undefined ? configuredRoleIds(root) : [body.role as string]),
   });
 }
 

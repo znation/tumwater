@@ -8,12 +8,12 @@
  * HTTP-argument adaptation — each helper either returns the parsed value or sends the 400
  * itself and returns null/false, so a handler is one guard line per argument.
  */
-import { knownRoleIdsCached } from "../config/config.js";
+import { knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
 import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../events/event-window.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { queueFileNameProblem } from "../inbox/inbox-cancel.js";
-import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { allRoleIds, DIRECTOR_ROLE } from "../roles/roles.js";
 import { oneOfMessage, typoSuffix } from "../text/suggest.js";
 import { gotSuffix, parseNonNegativeInt, parsePositiveInt, splitCommaListUnique } from "../text/text.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
@@ -26,6 +26,21 @@ import type http from "node:http";
  * drift. */
 export function validRoleIds(root: string): string[] {
   return knownRoleIdsCached(root);
+}
+
+/** The all-roles default of the dashboard's write-side operator endpoints (POST /api/wake and
+ * /api/reset-counters with a `{}` body): the ids tumwater.json's `roles` section names — the base
+ * ids, never their instance ids — which is exactly what `tumwater wake` and
+ * `tumwater reset-counters` target with no `--role` (cli-operator-commands.ts's targetRoles).
+ * A marker naming a base role reaches every instance of it when the team is live
+ * (operator-requests.ts's roleRequestTargets matches on baseRole), and an immediate wake also
+ * clears each named id's state file — so listing the extras there would only create sleep state
+ * for runners that never ran. Unlike validRoleIds this is deliberately the WRITER's list, not the
+ * read-only accepted-id list; a broken tumwater.json has no configured list to write, so it
+ * answers with the built-in catalog (loadConfigSafe, never a throw out of the endpoint). */
+export function configuredRoleIds(root: string): string[] {
+  const { config } = loadConfigSafe(root);
+  return config ? Object.keys(config.roles) : allRoleIds();
 }
 
 /** Validate one request's role-targeting role against validRoleIds, sending the shared 400 on

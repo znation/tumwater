@@ -33,10 +33,19 @@ test("a fresh role is eligible at startup", () => {
 });
 
 test("eligibility follows the base role, and an extra instance stays off until part 5/7", () => {
+  // Pinned to one feature instance: at the shipped default the base role runs extra instances,
+  // so this test states the single-runner config it is about.
+  const one = defaultConfig();
+  one.roles.feature = { ...(one.roles.feature ?? { enabled: true }), instances: 1 };
+  assert.equal(
+    isEligible(makeRoleRunner(makeRepo(), "feature-2", one), Date.now(), "abc", 0).run,
+    false,
+    "instances: 1 means feature-2 is not admitted",
+  );
   assert.equal(
     isEligible(runner("feature-2"), Date.now(), "abc", 0).run,
-    false,
-    "no configured instances means feature-2 is not admitted",
+    true,
+    "the default instance count admits feature-2",
   );
   const disabled = defaultConfig();
   disabled.roles.feature = { ...(disabled.roles.feature ?? { enabled: true }), enabled: false };

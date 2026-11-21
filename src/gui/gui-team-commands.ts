@@ -8,7 +8,7 @@
 import { baseRoleOf, INSTANCE_ROLES } from "../roles/runner-ids.js";
 import { normalizePauseReason, pauseTeam, pauseRole, resumeTeam, resumeRole } from "../team/team-state.js";
 import { cancelWakes, PAUSE_FOR_MAX_MS, requestWake } from "../operator/operator-intent.js";
-import { requirePausedFlag, validRoleIds } from "./gui-args.js";
+import { requirePausedFlag, configuredRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
 import { gotSuffix } from "../text/text.js";
 import { durationLabel } from "../text/duration.js";
@@ -108,7 +108,8 @@ export function wakeInSecondsMs(res: http.ServerResponse, body: Record<string, u
 /** Handle POST /api/wake: the dashboard's per-row wake control — the same marker-writing
  * core `tumwater wake` calls (requestWake), so the CLI and the GUI cannot drift on the
  * state-file edits or the marker. `{}`/a missing role targets every configured role (the
- * CLI's all-roles default); a given role validates exactly like /api/transcript. Same body
+ * CLI's all-roles default, configuredRoleIds — the base ids the file names, not their instance
+ * ids); a given role validates exactly like /api/transcript. Same body
  * discipline as /api/pause (readJsonObject → 400 malformed/non-object, 413 oversized). An
  * optional `inSeconds` schedules the wake for later, like `tumwater wake --in` (same
  * 90-day cap). */
@@ -119,7 +120,7 @@ export async function handleWake(req: http.IncomingMessage, res: http.ServerResp
   if (inMs === null) return;
   sendJson(res, 200, {
     ok: true,
-    message: requestWake(root, body.role === undefined ? validRoleIds(root) : [body.role as string], inMs),
+    message: requestWake(root, body.role === undefined ? configuredRoleIds(root) : [body.role as string], inMs),
   });
 }
 

@@ -19,6 +19,7 @@ test("the team view lists custom roles and parallel instances after the catalog,
   const cfg = loadConfig(repo);
   cfg.customRoles = [{ name: "docs-bot", task: "keep docs fresh" }];
   cfg.roles.feature = { ...defaultConfig().roles.feature!, instances: 2 };
+  cfg.roles.bugfix = { ...defaultConfig().roles.bugfix!, instances: 1 }; // pinned: only feature is split here
   writeConfig(repo, cfg);
   for (const id of ["docs-bot", "feature-2"]) {
     const wt = await ensureWorktree(repo, id, "main");

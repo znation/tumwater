@@ -19,7 +19,14 @@ import { defaultConfig } from "../src/config/config.js";
 import { makeRepo, commitIn, headSha, sh } from "./fixtures/repo-fixtures.js";
 import { gitTry } from "../src/git/git-run.js";
 
-const CFG = defaultConfig();
+// Pinned to one feature instance: these tests stop-count at two projected entries, and
+// planBacklogTarget is DEFAULT_INSTANCES + 1, so they state their own runner count instead of
+// tracking the shipped default (the default-count target is pinned in claims.test.ts).
+const CFG = (() => {
+  const c = defaultConfig();
+  c.roles.feature!.instances = 1;
+  return c;
+})();
 const PLANS = (entries: string[]): string => `# Plans\n\n## Planned\n\n${entries.join("\n")}\n## Done\n\n_None yet._\n`;
 const entry = (title: string, note = ""): string => `### ${title} (planned 2026-01-01 by plan)\n${note}Body.\n`;
 

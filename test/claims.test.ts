@@ -14,6 +14,7 @@ import {
   listedKeys,
   movedOutEntries,
   planBacklogFull,
+  planBacklogTarget,
   stagedMovedEntries,
   workReserveCount,
   withdrawnWorkWarning,
@@ -25,6 +26,7 @@ import { buildAssignmentNote } from "../src/prompt/gate-notes.js";
 import { refreshPendingPlans } from "../src/backlog/backlog-pending.js";
 import { makeRepo, commitIn, headSha, sh } from "./fixtures/repo-fixtures.js";
 import { eligibleEntries } from "../src/backlog/backlog-eligibility.js";
+import { DEFAULT_INSTANCES } from "../src/roles/runner-ids.js";
 
 const PLANNED = [
   "# Plans",
@@ -322,23 +324,29 @@ test("planBacklogFull: eligible plans reach the target and no plan is marked", (
     return repo;
   };
   const cfg = defaultConfig();
+  // The stop count is the config's own: planBacklogTarget is DEFAULT_INSTANCES + 1, so these
+  // fixtures build exactly the target's worth of eligible entries plus the one marked entry
+  // under test, instead of a hard-coded two.
+  const target = planBacklogTarget(cfg);
+  assert.equal(target, DEFAULT_INSTANCES + 1, "the default target feeds every instance plus one");
   const entry = (title: string, note = "") => `### ${title} (planned 2026-01-01 by plan)\n${note}\nBody.\n`;
-  assert.equal(planBacklogFull(plans(entry("A"), entry("B")), cfg), true);
-  assert.equal(planBacklogFull(plans(entry("A")), cfg), false);
+  const free = (n: number) => Array.from({ length: n }, (_, i) => entry(`free ${i + 1}`));
+  assert.equal(planBacklogFull(plans(...free(target)), cfg), true, "the target's worth of eligible plans stops the plan role");
+  assert.equal(planBacklogFull(plans(...free(target - 1)), cfg), false, "one short of the target keeps it running");
   assert.equal(
-    planBacklogFull(plans(entry("A"), entry("B"), entry("C", "**Needs review 2026-01-02 by feature: too large for one run**\n")), cfg),
+    planBacklogFull(plans(...free(target), entry("C", "**Needs review 2026-01-02 by feature: too large for one run**\n")), cfg),
     false,
     "a needs-review mark keeps the plan role running",
   );
   assert.equal(
-    planBacklogFull(plans(entry("A"), entry("B", "**Refused 2026-01-02 by feature: no**\n")), cfg),
+    planBacklogFull(plans(...free(target - 1), entry("B", "**Refused 2026-01-02 by feature: no**\n")), cfg),
     false,
     "a refused plan does not count",
   );
   assert.equal(
     planBacklogFull(
       plans(
-        entry("A"),
+        ...free(target - 1),
         entry("B", "**Needs review 2026-01-02 by feature: too large for one run (held 3)**\n"),
         entry("C"),
       ),
@@ -350,7 +358,7 @@ test("planBacklogFull: eligible plans reach the target and no plan is marked", (
   assert.equal(
     planBacklogFull(
       plans(
-        entry("A"),
+        ...free(target - 1),
         entry("B, part 1/2: x", "**Refused 2026-01-02 by feature: no**\n"),
         `### B, part 2/2: x (planned 2026-01-01 by plan; requires part 1/2 landed)\nBody.\n`,
       ),
@@ -369,7 +377,10 @@ test("planBacklogFull reads the projection, not main alone", async () => {
     fs.writeFileSync(path.join(repo, "PLANS.md"), `# Plans\n\n## Planned\n\n${entries.join("\n")}\n## Done\n\n_None yet._\n`);
     commitIn(repo, "plans");
   };
+  // Pinned to one feature instance: this test is about WHERE the count is read (main plus the
+  // projection), not about the shipped target, so it states its own two-entry target.
   const cfg = defaultConfig();
+  cfg.roles.feature!.instances = 1;
   write([entry("A")]);
   await refreshPendingPlans(repo, "main");
   assert.equal(planBacklogFull(repo, cfg), false, "one eligible entry, target two");

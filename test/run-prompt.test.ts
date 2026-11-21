@@ -7,6 +7,7 @@ import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { entryKey } from "../src/backlog/backlog-parts.js";
 import { defaultConfig } from "../src/config/config.js";
+import { DEFAULT_INSTANCES } from "../src/roles/runner-ids.js";
 import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles/roles.js";
 import { briefTemplate, readmeTemplate } from "../src/brief/brief.js";
 import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.js";
@@ -960,12 +961,13 @@ test("the plan charter's stop target scales with feature.instances", () => {
   const config = defaultConfig();
   const atDefault = promptFor(dir, "plan", { config });
   assert.ok(atDefault);
-  assert.match(atDefault.prompt, /2 or more eligible plans/);
+  // At the shipped default the target is one eligible plan per instance, plus one.
+  assert.match(atDefault.prompt, new RegExp(`${DEFAULT_INSTANCES + 1} or more eligible plans`));
   assert.doesNotMatch(atDefault.prompt, /\{\{/);
-  config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
+  config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 5 };
   const scaled = promptFor(dir, "plan", { config });
   assert.ok(scaled);
-  assert.match(scaled.prompt, /4 or more eligible plans/);
+  assert.match(scaled.prompt, /6 or more eligible plans/);
 });
 
 test("the plan stop-target note counts the projection, naming unmerged entries", async () => {

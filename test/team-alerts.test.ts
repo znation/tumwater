@@ -365,6 +365,7 @@ test("the standing amber alerts raise from the snapshot's raw flags, worded like
   };
   const pool = withPool((c) => {
     c.roles["feature"] = { enabled: true, instances: 3 };
+    c.roles["bugfix"] = { enabled: true, instances: 1 }; // pinned: this clause is about feature's pool
     c.worktreeSlots = 3; // below maxConcurrent 6
   }).find((a) => a.key === "instance-pool");
   assert.ok(pool, "a small pool with a multi-instance role raises the standing instance-pool alert");
@@ -372,8 +373,14 @@ test("the standing amber alerts raise from the snapshot's raw flags, worded like
   assert.match(pool?.detail ?? "", /feature run instances but worktreeSlots 3 is below maxConcurrent 6/);
   // The default pool (unset worktreeSlots = maxConcurrent + 1) never contends.
   assert.ok(!withPool((c) => { c.roles["feature"] = { enabled: true, instances: 3 }; }).some((a) => a.key === "instance-pool"), "a default pool raises nothing");
-  // A single-instance role never contends, however small the pool.
-  assert.ok(!withPool((c) => { c.worktreeSlots = 3; }).some((a) => a.key === "instance-pool"), "no multi-instance role: nothing");
+  // A single-instance role never contends, however small the pool. An UNSET count is
+  // DEFAULT_INSTANCES (3), so at the default both instance roles contend for a small pool.
+  assert.ok(!withPool((c) => { c.worktreeSlots = 3; c.roles["feature"] = { enabled: true, instances: 1 }; c.roles["bugfix"] = { enabled: true, instances: 1 }; }).some((a) => a.key === "instance-pool"), "no multi-instance role: nothing");
+  assert.match(
+    withPool((c) => { c.worktreeSlots = 3; }).find((a) => a.key === "instance-pool")?.detail ?? "",
+    /feature, bugfix run instances but worktreeSlots 3 is below maxConcurrent 6/,
+    "the default counts make both instance roles contend for a small pool",
+  );
 
   // principlesTruncated: an over-cap PRINCIPLES.md truncates every role's <principles> block,
   // but raises no standing alert — the orchestrator queues the director a consolidation prompt

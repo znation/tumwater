@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  configuredRoleIds,
   rejectBadRole,
   rejectBadQueueFileName,
   intQuery,
@@ -10,8 +11,11 @@ import {
 } from "../src/gui/gui-args.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
-import { DIRECTOR_ROLE } from "../src/roles/roles.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { allRoleIds, DIRECTOR_ROLE } from "../src/roles/roles.js";
+import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { loadConfig, knownRoleIdsCached } from "../src/config/config.js";
+import { writeJsonAtomic } from "../src/files/json-files.js";
+import { configPath } from "../src/paths.js";
 import { fakeRes } from "./fakes/fake-res.js";
 
 // The dashboard's request-argument validators (src/gui/gui-args.ts), exercised at the unit
@@ -85,6 +89,33 @@ test("rejectBadRole rejects an explicit null even under allowMissing", () => {
   assert.equal(stopped, true);
   assert.equal(captured.status, 400);
   assert.match(captured.body, /role required/);
+});
+
+// The write-side all-roles default (POST /api/wake and /api/reset-counters with a `{}` body) must
+// be the config's own role list — the base ids a custom role joins — never the instance ids the
+// read-only accepted-id list adds. A marker naming a base role already reaches every instance of
+// it while the team is live (operator-requests.ts's roleRequestTargets matches on baseRole).
+test("configuredRoleIds is the configured role list, not the instance ids validRoleIds adds", () => {
+  const root = tmpdir();
+  writeConfig(root, { customRoles: [{ name: "docs-auditor", task: "t" }] });
+  const expected = Object.keys(loadConfig(root).roles);
+  assert.deepEqual(configuredRoleIds(root), expected, "exactly tumwater.json's roles section");
+  assert.ok(expected.includes("docs-auditor"), "a custom role is a configured role");
+  // The shipped default runs feature-2 … feature-6, and the read-only list accepts them; this
+  // writer's list names none of them.
+  assert.ok(loadConfig(root).roles.feature!.instances === undefined);
+  assert.ok(configuredRoleIds(root).every((id) => !id.startsWith("feature-")), "no instance ids");
+  assert.ok(
+    configuredRoleIds(root).length < knownRoleIdsCached(root).length,
+    "the accepted-id list is the wider one",
+  );
+  // A hand-written count changes nothing about the shape: still base ids only.
+  writeJsonAtomic(configPath(root), { roles: { feature: { instances: 3 }, bugfix: { instances: 1 } } });
+  assert.deepEqual(configuredRoleIds(root), expected.filter((id) => id !== "docs-auditor"));
+  assert.ok(configuredRoleIds(root).every((id) => !id.startsWith("feature-")));
+  // A broken tumwater.json has no configured list: the built-in catalog, never a throw.
+  writeMalformedJson(configPath(root));
+  assert.deepEqual(configuredRoleIds(root), allRoleIds());
 });
 
 test("intQuery falls back when absent and requires the parameter when no fallback is given", () => {
