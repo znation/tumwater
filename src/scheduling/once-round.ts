@@ -31,13 +31,14 @@ export class OnceRound {
 
   /** The runner's pre-round run baseline. Snapshotted at construction for the startup
    * runners — and at FIRST SIGHT for a runner appended later: the live config reload
-   * (src/config/config-live.ts) creates a runner for a role enabled mid-round and pushes it onto
-   * the same array this round watches, carrying persisted runs from earlier rounds. The
-   * first isSettled call happens in that same poll's runner pass, before the runner can
-   * start a run, so first sight is a pre-round baseline. Without it the missing entry read
-   * as 0, so a role with history counted as already settled and the round exited without
-   * ever running it (BUGS.md 2026-09-25). Roles are unique across the array — the reload
-   * only appends an id no runner has — so the map is keyed by role safely. */
+   * (src/orchestrator/config-live.ts) creates a runner for a role enabled mid-round and
+   * pushes it onto the same array this round watches, carrying persisted runs from
+   * earlier rounds. The first isSettled call happens in that same poll's runner
+   * pass, before the runner can start a run, so first sight is a pre-round baseline.
+   * Without it the missing entry read as 0, so a role with history counted as already
+   * settled and the round exited without ever running it (BUGS.md 2026-09-25). Roles
+   * are unique across the array — the reload only appends an id no runner has — so
+   * the map is keyed by role safely. */
   private snapshotOf(runner: RoleRunner): number {
     const known = this.runSnapshots.get(runner.role);
     if (known !== undefined) return known;

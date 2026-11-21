@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
-import { newLiveConfigReload } from "../src/config/config-live.js";
+import { newLiveConfigReload } from "../src/orchestrator/config-live.js";
 import { readEvents } from "../src/events/event-read.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";

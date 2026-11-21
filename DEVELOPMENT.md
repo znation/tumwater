@@ -266,7 +266,9 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   recovery above), and `runner-request-timeouts.ts` the capped-config idiom the two
   `--continue` follow-up turns share.
 - `src/orchestrator/orchestrator.ts`: the scheduler; `src/orchestrator/orchestrator-launch.ts`
-  holds its launch pass (admitting due roles to their runs).
+  holds its launch pass (admitting due roles to their runs), and `config-live.ts` the live
+  reload of tumwater.json (it starts runners for newly enabled roles, so it lives here, not in
+  the config layer that the runner depends on).
 - `src/agent/`: the backend-neutral agent runner (`agent-run.ts` — the spawn, the
   `tumwater_run` marker, watchdogs, abort, stderr capture, and the live feed), its post-run
   settlement (`agent-settle.ts` — spawn-error result, exit orphan sweep, and close-time
@@ -278,7 +280,7 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   (`pi-args.ts`, `pi-stream.ts`, `pi-event-line.ts`, `pi-run-result.ts`, `pi-models.ts`,
   `pi-watchdogs.ts`).
 - `src/config/config.ts`: the config core (load, defaults, per-role views) beside its
-  plumbing (`config-schema.ts`, `config-validation.ts`, `config-write.ts`, `config-live.ts`,
+  plumbing (`config-schema.ts`, `config-validation.ts`, `config-write.ts`,
   `config-views.ts`, `config-example.ts`, `config-editable-keys.ts`, `config-field-checks.ts`),
   with the `config` CLI command body beside it in `src/cli/cli-config-commands.ts`.
 - `src/git/git-run.ts`: the git execution layer (spawn, GitError, commit identity).

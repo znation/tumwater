@@ -1143,7 +1143,7 @@ in FIFO order".
 below the in-use count stops nothing already in flight and grants nothing until releases drain under
 the cap. Repeated resizes leave the counts whole, and capacity is fully restored after a burst.
 
-**Binds.** `src/concurrency/semaphore.ts` (`setCapacity`), `src/config/config-live.ts`.
+**Binds.** `src/concurrency/semaphore.ts` (`setCapacity`), `src/orchestrator/config-live.ts`.
 
 **Pinned by.** `test/semaphore.test.ts` — "growing capacity wakes queued acquirers up to the new
 headroom, never beyond it", "shrinking below current in-use admits no new work until releases drain
@@ -5011,7 +5011,7 @@ model instead of throwing", "a failed catalog write warns and still returns the 
 did not, starts one catalog refresh per root per process. That refresh never blocks or throws out of
 `poll()`, and a failed fetch warns through the reload's event log.
 
-**Binds.** `src/config/config-live.ts` (`newLiveConfigReload`); `src/gates/startup-gates.ts`
+**Binds.** `src/orchestrator/config-live.ts` (`newLiveConfigReload`); `src/gates/startup-gates.ts`
 (`seedOpencodeCatalog`).
 
 **Pinned by.** `test/config-live.test.ts` — "a live edit routing a seam to opencode seeds the models

@@ -6,7 +6,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { publishInfoFields, type OrchestratorInfo } from "../team/team-orchestrator-info.js";
 import { configuredInstances, runnerEnabled } from "../roles/runner-ids.js";
-import type { newLiveConfigReload } from "../config/config-live.js";
+import type { newLiveConfigReload } from "./config-live.js";
 import type { FallbackBreakerPolicy } from "../budget/fallback-breaker.js";
 import { reviewHoldKey, reviewPairKey, pollDeferralInputs, pollRunnerReasons } from "./orchestrator-scheduling.js";
 import { seamPairName } from "../config/config-views.js";
@@ -192,7 +192,7 @@ export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): 
   // pollStallForPoll reads that as "the poll has stopped").
   stampHeartbeat(root);
   // Live-reload tumwater.json — the single reload point shared by all roles.
-  // src/config/config-live.ts owns the last-known-good retention and the edge-triggered
+  // src/orchestrator/config-live.ts owns the last-known-good retention and the edge-triggered
   // warnings/events around it.
   const liveConfig = ctx.liveReload.poll();
   // The notify command rides the same last-known-good reload (src/events/event-notify.ts): a live

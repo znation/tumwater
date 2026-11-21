@@ -1,7 +1,7 @@
-import type { TumwaterConfig } from "./config-schema.js";
-import { changedConfigKeys, loadConfigCached } from "./config.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import { changedConfigKeys, loadConfigCached } from "../config/config.js";
 import { runnerIds } from "../roles/runner-ids.js";
-import { configForRole, teamModelLabel, modelSelectorField } from "./config-views.js";
+import { configForRole, teamModelLabel, modelSelectorField } from "../config/config-views.js";
 import { bestEffortEventLogger, TUMWATER_SOURCE } from "../events/events.js";
 import { RoleRunner } from "../runner/runner.js";
 import { configPath } from "../paths.js";

@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { readOrchestratorInfo, writeOrchestratorInfo, type OrchestratorInfo } from "../team/team-orchestrator-info.js";
 import { runnerIds } from "../roles/runner-ids.js";
-import { newLiveConfigReload } from "../config/config-live.js";
+import { newLiveConfigReload } from "./config-live.js";
 import {
   FALLBACK_BREAKER_POLICY,
   type FallbackBreakerPolicy,
@@ -395,7 +395,7 @@ function buildOrchestratorRuntime(setup: OrchestratorSetup, opts: RunOptions): O
   // the latest poll's hold verdict rather than the poll that created them.
   const gateStates: TeamGateStates = newTeamGateStates(config);
   // The live config the last successful reload produced (last-known-good while the file is
-  // broken or missing). The reload bookkeeping itself lives in src/config/config-live.ts.
+  // broken or missing). The reload bookkeeping itself lives in src/orchestrator/config-live.ts.
   const liveReload = newLiveConfigReload({ root, config, mainBranch, runnerSignal: roleSignal, runners, semaphore, roleFilter: opts.roleFilter });
 
   // Need-based deferral: whether qualifying work has merged
