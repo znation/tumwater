@@ -172,10 +172,6 @@ Feature run #3029's revision `dac2a150b` ("Set the default work-instance count t
 
 **Related, seen in the same run.** Run #3029's claim was "Remove the TUI, part 3/5" (its `Claim:` trailer and the `claim released … reason queued` event), but the run implemented "Three work instances by default, part 2/2". The plan entry it actually worked on was never claimed, so another instance could have taken it at the same time.
 
-### `main-watch.test`'s `a full run that makes no verdict leaves the head due, so it is checked after the retry backoff` flakes once in a full `npm test` — `the head is checked once the backoff passes` got 0, expected 1 (found by the ci role 2026-11-21)
-
-The full `npm test` run on the CI parity tip (main 35c7bf07 plus the CI fixes) failed this one test at `dist/test/main-watch.test.js:392`: `AssertionError [ERR_ASSERTION]: the head is checked once the backoff passes` — `0 !== 1`. The host was loaded (load average ~20–24). The same test passed in isolation (`npm run test:rerun -- 'main-watch.test#a full run that makes no verdict leaves the head due, so it is checked after the retry backoff'`, 1324 ms) and in the next full `npm test` on the same tree. Treated as a load-sensitive flake; the test is unchanged.
-
 ## Fixed
 
 ## Verified

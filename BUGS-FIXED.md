@@ -5,6 +5,16 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `main-watch.test`'s `a full run that makes no verdict leaves the head due, so it is checked after the retry backoff` flakes once in a full `npm test` — `the head is checked once the backoff passes` got 0, expected 1 (found by the ci role 2026-11-21) — fixed 2026-11-21 by the bugfix role
+
+The full `npm test` run on the CI parity tip (main 35c7bf07 plus the CI fixes) failed this one test at `dist/test/main-watch.test.js:392`: `AssertionError [ERR_ASSERTION]: the head is checked once the backoff passes` — `0 !== 1`. The host was loaded (load average ~20–24). The same test passed in isolation and in the next full `npm test` on the same tree.
+
+Cause: the test ran its retry under the same `check.timeoutSeconds: 1` as the sleeping run that had to be killed. The check is an npm run, and a normal `npm run` can take longer than one second on a loaded host; the deadline then kills it, the run reads as no verdict, and the head is not checked again until the next backoff. The product behaviour is correct (the head stays due and is retried); the test's deadline was too tight for a run that should finish.
+
+Fix: the retry now runs under the default deadline, and the fixture's fast path sleeps 1.5 s so the test fails deterministically under the old 1 s deadline (`0 !== 1` before the fix, pass after).
+
+**Validation gap:** no-repro — the load-dependent flake could not be reproduced on demand; the regression pins the same shape deterministically by making the retry outlast the 1 s deadline.
+
 ### No command re-queues a dropped post-merge review, so the 2026-11-09 and 11-11 drops stay unreviewed (reported by the user 2026-11-16, split 2026-11-21 by the plan role) — fixed 2026-11-21 by the bugfix role
 
 Part 2/2 of "1,451 commits dropped from post-merge review stay unreviewed"; part 1/2 ("A dropped

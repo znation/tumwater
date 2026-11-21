@@ -417,7 +417,7 @@ test("a full run that makes no verdict leaves the head due, so it is checked aft
   // no verdict. The head must not count as settled: the full check is due again after the short
   // backoff, without waiting for main to move.
   const slow = path.join(tmpdir(), "slow");
-  const { root } = baselineFixture("improve", `if [ -f ${slow} ]; then sleep 5; fi; echo ok`);
+  const { root } = baselineFixture("improve", `if [ -f ${slow} ]; then sleep 5; else sleep 1.5; fi; echo ok`);
   const clock = clockAt();
   const config = { ...defaultConfig(), check: { fullIntervalMinutes: 60, timeoutSeconds: 1 } as CheckConfig };
   const watch = createMainWatch(root, "main", undefined, clock.now);
@@ -427,8 +427,12 @@ test("a full run that makes no verdict leaves the head due, so it is checked aft
   fs.rmSync(slow);
   await watchAtWith(watch, root, config); // the same head, before the backoff: still nothing runs
   assert.equal(eventsOfType(root, "main_check").length, 0, "no retry before the backoff passes");
+  // The retry runs under the default deadline: the 1 s one above exists only to kill the
+  // sleeping run, and a normal npm run can exceed it on a loaded host, which would read as
+  // another no-verdict run.
+  const retryConfig = { ...defaultConfig(), check: { fullIntervalMinutes: 60 } as CheckConfig };
   clock.advance(FULL_RETRY_BACKOFF_MS);
-  await watchAtWith(watch, root, config); // the backoff has passed: the head is checked now
+  await watchAtWith(watch, root, retryConfig); // the backoff has passed: the head is checked now
   const checks = eventsOfType(root, "main_check");
   assert.equal(checks.length, 1, "the head is checked once the backoff passes");
   assert.equal(checks[0]?.status, "passed");
