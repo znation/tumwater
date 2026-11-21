@@ -248,9 +248,16 @@ function renameOriginPaths(entries: NameStatusEntry[]): Set<string> {
   return oldPaths;
 }
 
+/** Whether a path names a staged file. A `.js` path also names its `.ts` source here: this tree
+ * is TypeScript, and the ESM import convention spells a module `.js` while the file is `.ts`. */
+function namesStagedFile(p: string, staged: Set<string>): boolean {
+  return staged.has(p) || (p.endsWith(".js") && staged.has(`${p.slice(0, -".js".length)}.ts`));
+}
+
 /** The path-shaped tokens an added line names that are absent from the staged tree: a token whose
  * first segment is a tracked top-level directory, not a rename origin or deleted path, not
- * already staged, and not already seen. Each returned token is added to `seen` as it goes. */
+ * already staged (namesStagedFile), and not already seen. Each returned token is added to `seen`
+ * as it goes. */
 function missingPathTokens(
   line: string,
   staged: Set<string>,
@@ -261,7 +268,7 @@ function missingPathTokens(
   const found: string[] = [];
   for (const p of pathTokens(line.slice(1))) {
     const top = p.slice(0, p.indexOf("/"));
-    if (!topDirs.has(top) || oldPaths.has(p) || staged.has(p) || seen.has(p)) continue;
+    if (!topDirs.has(top) || oldPaths.has(p) || namesStagedFile(p, staged) || seen.has(p)) continue;
     seen.add(p);
     found.push(p);
   }

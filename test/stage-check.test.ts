@@ -409,6 +409,34 @@ test("a source line naming the same absent path still yields the finding", async
   assert.ok(findings[0]!.includes(absent));
 });
 
+test("an added line naming a staged module by its .js specifier yields no finding", async () => {
+  // In this TypeScript tree a `.js` specifier names its `.ts` source, so `src/keep.js` is not a
+  // missing path while `src/keep.ts` is staged.
+  const keep = ["src", "keep.ts"].join("/");
+  const { wt } = await repoWith({
+    [keep]: "export const keep = 1;\n",
+    "src/notes.ts": "export const note = 1;\n",
+  });
+  fs.writeFileSync(path.join(wt, "src", "notes.ts"), 'export const note = "src/keep.js";\n');
+
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
+});
+
+test("an added line naming a .js path with no .ts source still yields a finding", async () => {
+  const keep = ["src", "keep.ts"].join("/");
+  const absent = ["src", "x", "a.js"].join("/");
+  const { wt } = await repoWith({
+    [keep]: "export const keep = 1;\n",
+    "src/notes.ts": "export const note = 1;\n",
+  });
+  fs.writeFileSync(path.join(wt, "src", "notes.ts"), `export const note = "${absent}";\n`);
+
+  const findings = await stageCheckFindings(wt, "main", "feature");
+
+  assert.equal(findings.length, 1);
+  assert.ok(findings[0]!.includes(absent));
+});
+
 test("an added line outside test/ naming a nonexistent path still yields a finding", async () => {
   const keep = ["src", "keep.ts"].join("/");
   const testFile = ["test", "existing.test.ts"].join("/");

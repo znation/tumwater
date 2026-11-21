@@ -5,6 +5,18 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### the stage self-check finding "added lines name paths that do not exist in the tree: src/cli/cli-land-command.js, src/operator/operator-land.js, src/c…" was not closed by the fix-up turn and re-fires each run (filed by tumwater 2026-11-20) — fixed 2026-11-21 by the bugfix role
+
+- **Symptom:** the pre-queue self-check raised this finding on the run's change; the one-turn fix-up could not close it and reverted the whole change instead, so the run ended `no_change` (`selfCheckReverted`) and the finding lived only in the run's warning event.
+- **Finding:** `added lines name paths that do not exist in the tree: src/cli/cli-land-command.js, src/operator/operator-land.js, src/cli/cli-retire-command.js, src/report/report-types.js, src/agent/agent-args.js, src/agent/agent-backend.js, src/agent/agent-git-config.js, src/agent/agent-run.js, src/agent/agent-se…`
+- **Reproduce:** author a change that trips a pre-queue self-check finding the fix-up resolves by reverting the whole change (clean tree); the run ends `no_change` with only the self-check warning carrying the finding.
+- **Cause:** a finding the fix-up could not close was never filed to BUGS.md, so the same finding re-burned the same authoring each run instead of becoming bugfix work.
+- **Fix sketch:** fix the finding's cause — the file and line it names, or the check that raised it — and move this entry to Fixed with a Fix paragraph showing the finding gone.
+
+**Fix:** the finding named `.js` specifiers such as `src/cli/cli-land-command.js`. This TypeScript tree spells every module `.js` in its ESM imports while the file is `.ts`, so each of the named paths has a `.ts` sibling in the tree (`src/cli/cli-land-command.ts`, `src/agent/agent-args.ts`, and so on). The path check in `src/stage/stage-path-checks.ts` now counts a `.js` path as present when its `.ts` source is staged (`namesStagedFile`). The new test in `test/stage-check.test.ts` ("an added line naming a staged module by its .js specifier yields no finding") failed before the change with the finding naming `src/keep.js`, and passes after it; the sibling test with no `.ts` source still yields the finding.
+
+**Validation gap:** no-repro — the change that raised the finding was reverted and is not on disk, so the finding was rebuilt from its text and a unit test rather than replayed through the fix-up turn.
+
 ### post-merge review of 54a4a07f never reached a verdict (found by the review role 2026-11-19) — fixed 2026-11-21 by the bugfix role
 
 The post-merge review of commit `54a4a07f9d57a0fd649376ecbe00fa8d349e47ac` (Name checkpoint aborts in the no-change diagnosis, not ceiling cut-offs) timed out after 7200s, so nothing was settled. Settled by reading that commit's diff on main (`src/verdict/no-change.ts`, `test/no-change.test.ts`) and by re-running the suites that cover it.
