@@ -33,9 +33,9 @@ export type FileTopOutcome = TopOutcome | { status: "already_first" };
  * stripVanishedImageReferences dropping any already-gone reference) — and one `prompt_topped`
  * event is logged under the role. Returns { status: "gone" } when the file disappears between
  * the caller's listing and the read here (a concurrent pop is a normal race, never an
- * error), sharing the store's takeQueuedFile convention. A failed write of the new queue file
- * moves the attachments back and rethrows, so the prompt stays queued at its old position with
- * its images. */
+ * error), sharing the store's takeQueuedFile convention. A failed write of the new queue file,
+ * or a failed removal of the old one, takes the new copy back out, moves the attachments back,
+ * and rethrows, so the prompt stays queued once, at its old position, with its images. */
 function moveFileToTop(root: string, role: string, file: string): TopOutcome {
   const text = readTextIfExists(file);
   if (text === null) return { status: "gone" }; // Dequeued or cancelled mid-listing.
