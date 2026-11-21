@@ -171,7 +171,7 @@ never has to wait a parked check out.
   minutes, naming the number to raise `worktreeSlots` above. A workspace pinned longer than a
   day by a run that never resumed is the doctor's `worktree pool` row's stale-pin clause,
   cleared by resuming the role or retiring its leftovers. While every workspace is leased,
-  `tumwater status`, the TUI header and the dashboard's team panel show `workspaces
+  `tumwater status`, the status header and the dashboard's team panel show `workspaces
   <leased>/<worktreeSlots>`, plus `, <n> waiting` when runs queue for one. Outside the pool sit the director's
   own `.tumwater/worktrees/director`, the merge step's `_merge`, the review gate's `_gate-main`,
   the main watch's full-check mirror `_main-full`, and the update mirror and witness (`_main`,
@@ -200,7 +200,7 @@ never has to wait a parked check out.
   pins and the role branches, never the merge queue — so a plan already waiting to merge stops
   the plan role instead of being re-planned (plans/duplicate-plans.md "Decision" 1). The
   plan run's prompt gives both the target and the current count, the same
-  count the deferral uses. `tumwater status`, the TUI and the dashboard name each instance's assigned entry
+  count the deferral uses. `tumwater status` and the dashboard name each instance's assigned entry
   while it is idle or merging, `tumwater logs` renders the `claim` assigned/released events, and
   `tumwater doctor`'s `parallel instances` check warns on an assignment whose entry is gone or stale.
   When a project declares no check, the plan and feature roles close the gap themselves: the plan role
@@ -247,7 +247,7 @@ never has to wait a parked check out.
   waitedMs, and the checks holding the slots and the cap when it parked), and `tumwater doctor`'s "check contention" row sums the last 24 h, names what the waits sat behind (merge, gate or batch checks, or the main baseline), and warns at
   10 minutes, naming `maxConcurrentChecks` to raise. `tumwater report` and the dashboard's Report
   tab show the per-day median of those waits as "Check wait median" (team scope only).
-  While a check runs or waits, `tumwater status`, the TUI header and the dashboard's team panel
+  While a check runs or waits, `tumwater status`, the status header and the dashboard's team panel
   show `checks <running>/<cap>`, plus `, <n> waiting` when checks are queued.
 - A bug that bugfix cannot reproduce once it has made the failure message name the cause is
   handed to the director before it is parked for the user: the bugfix run records a Progress note
@@ -288,11 +288,11 @@ never has to wait a parked check out.
   deferral, once per failing set (not per red commit); that queued prompt no-ops (a "verify
   green" clause) if main turned green before it ran. Separately, the
   `ci` role runs the workflow's own full suite and e2e at main's tip on its own clock and records what
-  it covered in the CI-parity ledger. The main-check line on `tumwater status`, the TUI header and the
+  it covered in the CI-parity ledger. The main-check line on `tumwater status`, the status header and the
   dashboard's team panel carries a `CI: covered <sha> <age> ago` badge as the glance surface (its tone
   follows the verdict) so an operator can tell whether the expensive verification behind a green main has
   actually run on this tip, while `tumwater doctor`'s `ci parity` row (and the dashboard Health card
-  and TUI Health tab that render the same rows) is the exact surface answering "is main verified by
+  that renders the same rows) is the exact surface answering "is main verified by
   CI?" — `current` when the last green run covered the current tip and lock, `stale` while main has since
   moved (still ok, since the ci role runs on its own clock), a `warn` when the last run failed, and a
   `warn` when a `stale` verdict has stayed stale past the stall window — the full suite has silently
@@ -304,14 +304,14 @@ never has to wait a parked check out.
   `roles.ci.remote` is not false): its prompt ends with a Remote CI block naming the repo, the
   branch and the `gh run list` command, its reply carries a `REMOTE:` line just before the `CI:`
   line, and the harness records the verdict in the remote-CI ledger (`.tumwater/state/remote-ci.json`):
-  the main-check line on `tumwater status`, the TUI header and the dashboard's team panel carry a
+  the main-check line on `tumwater status`, the status header and the dashboard's team panel carry a
   `github: passed|failed|running at <sha7> <age> ago` badge beside the ci parity badge (its tone
   follows the verdict) so a red push shows at a glance without opening doctor — the badge is empty
   without a record and for an `unavailable` one (no GitHub remote or `gh`), where the doctor
   `remote CI` row is the surface that names the state. When a recorded verdict turns `failed` for
   a commit not already recorded failed, the harness logs a `remote_ci_failed` event that pages the
   operator (one page per commit), and `tumwater doctor`'s `remote CI` row — beside the `ci parity`
-  row in the Health card and TUI Health tab — answers "is GitHub CI green on what I pushed?" from
+  row in the Health card — answers "is GitHub CI green on what I pushed?" from
   the same ledger: ok while the record is fresh and green or still running, a warn on a `failed`
   record and when no check has been recorded for over three days (the one `remoteCiStalled`
   predicate), and ok information when the ci role could not read GitHub Actions at all
@@ -344,7 +344,7 @@ never has to wait a parked check out.
   the newest full green and re-running only the failing tests at each candidate (Hourly full check
   part 3a/4), so an hour's worth of commits names its breaker instead of the newest head — logging
   a `main_culprit` event with the culprit, its merging runner and the failing tests. Every
-  surface that shows main's verdict — the `tumwater status`/TUI header badge, the dashboard's
+  surface that shows main's verdict — the `tumwater status` badge, the dashboard's
   `Main` row and `status --json` — says which SHA the full verdict covers, how long ago it ran,
   and when the next full run is due: ` · full check green at abc1234, 23m ago · next in 37m`,
   read from the newest full check's checked time (its settle stamp) and
@@ -454,7 +454,7 @@ the watch's confirming re-run each add the failing tests that passed on the re-r
   review on, a failed or still-checking reviewer pair parks only the post-merge review drain —
   no role start, verify or landing waits on the reviewer, so every role on another pair keeps
   running. The failure logs one
-  warning quoting the reply, raises a red alert on the dashboard and TUI, and shows on doctor's
+  warning quoting the reply, raises a red alert on the dashboard, and shows on doctor's
   `model check` row; the `over-cap model` row then says whether the fallback answered instead of
   "serving not verified". At the cap, a fallback step that failed is skipped like a demoted one.
   The pair is checked again after 1 minute, then at doubling intervals up to 30 minutes. Once it
@@ -468,7 +468,7 @@ the watch's confirming re-run each add the failing tests that passed on the re-r
   next runs use its tier's resolved `fallback` pair while the primary is probed. Once the
   5-minute cooldown elapses, the next run uses the primary as the probe — a real run, not a
   separate canary request — and an answering probe returns the role to the primary. The episode
-  is per role and never moves the director; `tumwater status`, the TUI, the dashboard, and
+  is per role and never moves the director; `tumwater status`, the dashboard, and
   `tumwater role <id>` name the off-model pair, its start, and the tripping reason.
 - `quietHours` (default off; absent or empty) is a daily local-time window, `"HH:MM-HH:MM"`,
   during which roles start no new runs — a run due inside the window starts at window
@@ -505,7 +505,7 @@ the watch's confirming re-run each add the failing tests that passed on the re-r
   role keeps running, and the director is not exempt — its inbox messages simply wait.
   `pause --for <duration>` (e.g. `2h`) lifts itself when the deadline passes, so a paused team
   resumes without you. A team pause may carry `--reason <text>` — the why behind the pause,
-  surfaced on `status`, the TUI, and the dashboard (a per-role pause carries no reason). The
+  surfaced on `status` and the dashboard (a per-role pause carries no reason). The
   dashboard's per-role pause button also offers timed pauses (the same choices as the team menu,
   matching `pause --role <id> --for`), and a timed role pause shows its auto-resume countdown on
   the role's row and drawer.
@@ -533,7 +533,7 @@ conflict markers, and hunks git cannot place arrive in the prompt to apply by ha
 resolves both like any conflict. Edits nothing gives back (ones a run chose to discard, or a
 check's scratch files) are saved directly under `.tumwater/salvage/` for you to read. Those kept
 patches are surfaced until session retention prunes them: a doctor `salvage patches` row and the
-standing amber `salvage-patches` alert on `tumwater status`, the dashboard and the TUI name them
+standing amber `salvage-patches` alert on `tumwater status`, the dashboard names them
 (capped, with a count of the rest), so work a run left behind is never silently discarded. Both
 kinds are deleted with the session store by the `sessionRetentionDays` pass, which also ages out
 each role's pi session files, its session ledgers and the full-output files kept for oversized
@@ -652,13 +652,13 @@ the whole file, opening it in `$VISUAL`/`$EDITOR` or taking its replacement from
 of those writes go through the same lock, validation, and atomic write, so you never have to
 hand-edit the file — even a bulk multi-key edit is validated the way a load does before it lands. A broken or missing
 `tumwater.json` while the team runs keeps the last good config, logs the load warning, and
-raises the standing amber `config-problem` alert on `tumwater status`, the dashboard and the
-TUI (with the load error or the missing-file sentence as the status `configProblem` field)
+raises the standing amber `config-problem` alert on `tumwater status`, the dashboard
+(with the load error or the missing-file sentence as the status `configProblem` field)
 until a valid file loads again — so a live edit gone bad never silently leaves the team on
 stale settings.
 
 - **Custom roles:** add `customRoles` entries by hand or by prompting the director ("add a role
-  named X that does Y"). The TUI marks them with `*`, the web dashboard with a `custom` tag.
+  named X that does Y"). The web dashboard marks them with a `custom` tag.
 - **Backend binary:** each backend resolves its own: `TUMWATER_<ID>_BIN`, then `backends.<id>.bin`
   (pi also reads the legacy top-level `agentBin`), then the backend's default binary (`pi` or
   `claude`) on PATH.
@@ -686,7 +686,7 @@ stale settings.
   the events the card carries, and an active picker or Search filter also searches the log's
   recent slice through `/api/logs` (well past the events a status poll carries), persisted like
   the Notable/All choice (which culls routine bookkeeping via `eventKind(it) !== "routine"` —
-  the same rule `tumwater logs --notable` and the TUI Activity pane's Ctrl+O notable stop use).
+  the same rule `tumwater logs --notable` uses).
   A Window picker (last hour / 6 hours / day) shows that trailing
   window's events through `/api/logs?sinceMs=`, the twin of `tumwater logs --since`, refreshing
   when a new event arrives. Its ◀ Earlier / Later ▶ buttons step that window back by its own length through
@@ -699,9 +699,9 @@ stale settings.
   answer` does. The Backlog card's Plans and Bugs tabs each carry a Ready only toggle that
   keeps only the entries an operator could pick — hiding their held/`Blocked (n)` section while
   every entry action still addresses the whole-file position — the browser twin of `tumwater
-  backlog --ready` and the TUI Backlog pane's Ctrl+O Ready-only stop — and a Held only toggle
+  backlog --ready`, and a Held only toggle
   beside it that inverts the view to just the rows a hold keeps from being picked, the twin of
-  `tumwater backlog --held` and the TUI's Held-only stop; the two are mutually exclusive and
+  `tumwater backlog --held`; the two are mutually exclusive and
   each is remembered across reloads like the Search box. Clicking a role opens its details — its notes and next run's prompt included — and, for the
   `qa` role, its flow-coverage ledger (each flow it exercises with its last exercise age and
   result, the same rows `tumwater role qa` prints) — and
@@ -735,127 +735,6 @@ stale settings.
   paused marker, each with what `tumwater retire` would remove and a two-click Retire button; a
   role the safety rails object to shows the objections and the `--force` command instead,
   because the dashboard never forces.
-- The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
-  cycles Activity, each role's Transcript, Backlog, Usage, Failures, History, Pending,
-  Inbox, Health (the same checks `tumwater doctor` prints, re-run on each entry), and Brief (the
-  brief `tumwater brief` prints, read-only). On Health, `Ctrl+U` is the terminal twin of
-  `tumwater doctor --resync-install` — the dashboard Health card's Re-sync install button and the
-  repair for the `install` amber alert. Activity keeps the live tail and `PgUp`/`PgDn` page
-  it back through a fixed 200-event tail, the bottom of the page resuming the live tail; `Ctrl+G`
-  scopes the feed to the team or one raw roster id (the same exact-role scopes History uses) and
-  `/` on an empty prompt line opens a free-text search over the same loaded tail. Both filters
-  match through the rules `tumwater logs --grep` and the dashboard Activity view use — `eventRole`
-  for the role and `eventMatchesGrep`'s case-insensitive type-plus-rendered-line haystack for the
-  text — and the hint line names the active scope and pattern. Above the feed a dim tally line
-  counts each present event type most-frequent first with ties in type-name order; `Ctrl+O`
-  selects one of the types it counts.
-  On History, `Ctrl+S` cycles the pane's trailing window (default, 1h, 6h, 1d, 7d) through the
-  same collector and sparse-window note `tumwater history --since` uses.
-  With the trail off, `Ctrl+P` steps that window back by its own length through the same
-  `readRunRowsSince` bound `tumwater history --since --until` uses; the header names it
-  `window: between X and Y ago`, and `Ctrl+S` returns to the trailing window.
-  `Ctrl+O` cycles the pane's outcome filter (all, merged, none, refused, problems) through the same
-  `historyClass` buckets and an emptied filter's `no runs with result` wording
-  `tumwater history --result` uses, with the hint line naming the active class (`result: all` or
-  `result: <class>`).
-  `Ctrl+G` cycles the pane's exact-role scope through the team and each raw roster id — an
-  instance id is its own scope, the same one `tumwater history --role` and the dashboard picker
-  take; the hint line names it (`scope: team` or `scope: <id>`) and a scoped pane prefixes its
-  body with `role: <id>`.
-  `/` on the History pane with an empty prompt line opens a free-text search; Enter filters the
-  rows through the same `runRowGrepHaystack` haystack and case-insensitive substring rule
-  `tumwater history --grep` and the dashboard's History search use, the pane's `search:` header
-  and the hint line name the active pattern, and Esc cancels.
-  `Ctrl+N` swaps the pane for the newest completed run's full event trail — the newest among the
-  pane's rows (its `Ctrl+G` scope, window, result and search) — rendered from the same
-  `readRunDetail`/`renderRunDetail` pair `tumwater history <role> --last` and the dashboard's
-  History drill-down use, then the run commit's per-file stat footer (`tumwater history <role>
-  <n> --stat`'s text, loaded async so the trail shows at once); the tab strip reads `Run` and
-  `Ctrl+N` again returns to the rows. `Ctrl+P` on a trail steps to the next older run among those same rows, wrapping to the newest after the oldest. `Ctrl+R` on a trail adds the run's agent transcript, then the transcript with each agent run's prompt, then hides it again (the text of `history <role> <n> --transcript [--prompt]`). `Ctrl+W` adds the run's commit patch below the stat through `runDetailPatch`, the text `history <role> <n> --patch` prints.
-  On a trailing window, the dashboard History toolbar's ◀ Earlier / Later ▶ buttons step that window back by its own length, through `/api/history?sinceMs=&untilMs=`, the twin of `history --since --until`. The dashboard Usage and Failures toolbars carry the same buttons on their 1h/6h/1d windows, through `/api/report` and `/api/failures` `?sinceMs=&untilMs=`, the twin of `report [--failures] --since --until`.
-  The dashboard's History drill-down adds a "Revert this change…" button on a run whose change is on
-  the base branch: it previews through `previewRevert`, then reverts through `revertMergedCommit`,
-  the two cores `tumwater revert` uses (`POST /api/revert`).
-  Its "Show patch" button loads the run's commit patch on demand through `GET /api/run?…&patch=1`,
-  the same `runDetailPatch` text `tumwater history <role> <n> --patch` prints.
-  Its "Show transcript" button loads the run's agent transcript through `GET /api/run?…&transcript=1`,
-  the same `runTranscriptLines` text that `tumwater history <role> <n> --transcript` prints.
-  Once it is open, a "Show prompts" button reloads it through `GET /api/run?…&transcript=1&prompt=1`
-  with each agent run's prompt, the text `tumwater history <role> <n> --transcript --prompt` prints.
-  Its search box (applied on Enter) reloads it through `GET /api/run?…&transcript=1&grep=<text>`, keeping
-  only the entries containing the text, the text `tumwater history <role> <n> --transcript --grep`
-  prints; toggling prompts clears it.
-  `GET /api/run?role=<id>&last=1` serves the role's newest completed run instead of a numbered one,
-  and `&result=<class>[,...]` / `&model=<selector>[,...]` narrow it to the newest run in those outcome
-  classes or on those models, the run `tumwater history <role> --last [--result] [--model]` opens
-  (`newestRunRow`, shared). Without `role`, `GET /api/run?last=1` serves the newest completed run of
-  any role, the run bare `tumwater history --last` opens, with the same `result`/`model` narrowing.
-  `GET /api/history?result=<class>[,...]` keeps only the runs in those outcome classes, after `grep`
-  and before `model`, the rows `tumwater history --result` lists.
-  A Newest failure button opens the newest failing run of any role through `GET /api/run?last=1&result=problems`, the run `tumwater history --last --result problems` opens, as a card above the table.
-  The Pending pane shows the post-merge review queue above the pending-change roster, reading
-  and rendering it through the same `readPostReviews`/`renderPostReviews` pair `tumwater
-  reviews` uses, so the queue's order, age, and wording match the CLI. The block follows the
-  pane's Ctrl+G role scope below. Ctrl+O narrows the same block to one state — all, waiting,
-  failing, rejected — the `tumwater reviews --status` / dashboard State-picker twin (composing
-  with the Ctrl+G role scope in the header's `--role <id> --status <state>` filter text), each
-  kept entry staying under its whole-queue position; its arm is routed ahead of History's on
-  the Pending view, so it never moves the History pane's outcome filter.
-  Below the roster it lists the files two or more roles' pending changes touch, through the same
-  `collectChangeOverlaps`/`renderChangeOverlaps` pair `tumwater diff --overlaps` prints.
-  Ctrl+N steps through those files, showing each holding role's change limited to the file (the
-  `tumwater diff --role <ids> --path <path>` view); the press after the last one returns to the pane.
-  Ctrl+G cycles the list through each holding role and back to all, keeping only the files that role holds (the `tumwater diff --overlaps --role <id>` view, through the same `scopeChangeOverlaps`); the same scope also narrows the post-merge review block to that role's entries, each under its whole-queue position (the `tumwater reviews --role <id>` view, through the same `scopePostReviews`), and the cycle leads with the review roles before the overlap holders; Ctrl+N then steps through only those files.
-  The Inbox pane lists every role's queued prompts, reading through the same queue traversal
-  and renderer `tumwater prompt --list` uses, so the two surfaces cannot drift on order,
-  per-role numbering, or the queued-age/send-later countdown suffix. Up/Down select a queued
-  prompt and show its full text under a header naming its role and position, `Ctrl+X`
-  cancels the selected one through the same per-role `cancelRolePrompt` path
-  `tumwater prompt --cancel` uses, and `Ctrl+E` rewrites the selected one in place through the
-  same `readQueuedPromptBody`/`editQueuedFile` pair the dashboard's Inbox tab Edit uses
-  (`tumwater prompt --edit` at the CLI), carrying the entry's position, enqueue stamp,
-  send-later marker, and attached images over the rewrite; Esc returns to the list. `/` keeps only
-  the queued prompts whose text contains the typed text, each under its unfiltered per-role number
-  (the `tumwater prompt --list --grep` filter); an empty line clears it.
-  `Ctrl+F` on an unpaused team opens a one-line pause editor (`[duration] [reason]`, e.g.
-  `2h deploy freeze`; empty pauses until resumed; Enter pauses, Esc cancels) and on a paused
-  team resumes at once, through the same marker `tumwater pause --for/--reason`/`resume`
-  write: roles start no new runs, in-flight runs finish, and the director still runs your
-  prompts — so you can hold or release the team from the terminal you are watching without a
-  second one. `Ctrl+Q` (quit later) opens a duration editor (`2h`; empty is refused, so the
-  key never means "stop now") that schedules a graceful team stop through the marker
-  `tumwater stop --in` writes, and cancels the pending stop at once when one is scheduled. On the
-  Usage and Failures panes, `Ctrl+G` cycles the base-role report scope through the team and each
-  base role, the same scope `tumwater report --role` and the dashboard's Usage/Failures views
-  take; the tab strip names it (`Usage: <role>`) and the hint line shows the current scope
-  (`scope: team` or `scope: <role>`). `Ctrl+E` cycles a session-only trailing window for the
-  Usage and Failures panes (default, 1h, 6h, 1d, 7d) through the same collectors `tumwater report
-  --since` and `tumwater report --failures --since` use, with the hint line naming it
-  (`window: default` or `window: <window>`). `Ctrl+P` steps that window back by its own length
-  through the same `--until` bound `tumwater report --since --until` uses; the body's window
-  line names the span, and `Ctrl+E` returns to the trailing window. The Failures pane also lists
-  the current flake quarantine below the digest, the read twin of `tumwater quarantine`.
-- In the TUI, viewing a role's transcript puts that role's controls on the hint line: `Ctrl+P`
-  on an unpaused role opens a duration editor (empty pauses until resumed, Esc cancels) that
-  writes the same `pauseRole` marker `tumwater pause --role --for` does — the deadline is the
-  paused-roles marker's one shared field, as with the CLI — and on a paused role resumes it at
-  once, `Ctrl+A` stops its in-flight run, `Ctrl+W` opens a wake editor (empty wakes it now, a
-  duration like `2h` schedules the wake, `cancel` drops its scheduled wakes), `Ctrl+N` cycles the
-  pane live transcript → notes → change and back: the notes step shows the role's notes and next
-  run's assembled prompt, and `Ctrl+X` pressed twice there clears the notes (as `tumwater role <id>
-  --clear-notes` does) (the same two things the dashboard drawer shows; the tab strip reads
-  Notes and PgUp/PgDn page it), and the change step shows the role's collected unmerged work —
-  branch, commits ahead of main, the ahead-of-main patch, and its dirty files and uncommitted
-  patch — the same `collectRoleChange`/`renderRoleChange` view `tumwater diff --role <id>` prints
-  and the dashboard drawer's Pending change section shows (the tab strip reads Change, and the
-  pane says `(loading pending change…)` until the collector resolves), and `Ctrl+R` opens the
-  role-prompt editor that queues a prompt for that role's next run (Enter sends it; Esc or
-  `Ctrl+R` again cancels and restores the draft). The prompt line names who Enter sends to, and
-  Up/Down recall this session's submitted prompts — director and role alike — readline-style,
-  with a half-typed draft saved and restored around the walk; the editor also takes readline's
-  kill keys — `Alt+Backspace` kills the word before the cursor, `Ctrl+U` from the line start,
-  `Ctrl+K` to the line end. Each keypress flashes its outcome for a few seconds. The prompt line
-  only ever sends now — a later prompt is queued with `tumwater prompt --at`.
 - Review runs show as `── review @ <ts> ──` in role transcripts.
 - Runtime state lives in `.tumwater/` (gitignored). Durable state lives in tracked markdown and
   `tumwater.json`.

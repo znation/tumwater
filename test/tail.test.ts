@@ -195,7 +195,7 @@ test("withTail reseeds when the file is truncated in place (same inode)", () => 
 });
 
 test("withTail bounds its tail cache: seeding many files never grows it unbounded", () => {
-  // Long-lived observers (TUI/GUI) poll one log per root; short-lived roots (tests, scratch
+  // Long-lived observers (GUI) poll one log per root; short-lived roots (tests, scratch
   // repos) must not accumulate a tail entry each. The cap evicts on seed — assert the
   // contract (bounded), not the exact constant.
   const dir = tmpdir();

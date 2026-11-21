@@ -5,6 +5,37 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Remove the TUI, part 5/5: tests and docs stop describing a TUI (planned 2026-11-16 by the operator; requires Remove the TUI parts 1/5, 2/5, 3/5 landed; touches test/ (comments and test titles only) docs/invariants.md DEVELOPMENT.md README.md docs/how-it-works.md docs/feature-doctor.md docs/backends.md docs/glossary.md docs/feature-per-role-spending.md docs/implementation-per-role-spending.md docs/implementation-model-fallback.md docs/code-metrics.md) — done 2026-11-21 by the feature role
+
+**Goal.** Outside the deleted TUI tests, about 70 test files mention the TUI some 480 times, in
+comments and in test titles such as "matches the TUI's …". Several docs still describe TUI panes
+and keys as current. Once the TUI is gone, these mislead whoever reads them next.
+
+**Approach.**
+- test/: rewrite comments and test titles that name the TUI, a `ui/tui/` path or a TUI key for
+  the surfaces that remain. Change no assertion. When a renamed title is cited in
+  docs/invariants.md (a `**Pinned by.**` line quotes it), update the citation in the same change.
+- DEVELOPMENT.md: "Checking rendered output by hand" says diff-check compares the
+  `tumwater status` table and the GUI payload, not "TUI status-table strings"; the src/ layout
+  list drops `src/ui/tui/`; drop other TUI mentions.
+- docs/: rewrite each live description of a TUI pane, key or surface (how-it-works,
+  feature-doctor, backends, glossary, the per-role-spending and model-fallback docs, and
+  code-metrics' TUI key-handler complexity rows) for its GUI or CLI equivalent, or delete it
+  where there is none. README.md's "observable by gui/tui/log. GUI/TUI also gives user a main
+  prompt" becomes gui/log and GUI.
+- Leave history alone: plans/*.md, PLANS-DONE.md, BUGS-FIXED.md and earlier release-note
+  sections record what was true at the time.
+
+**Acceptance criteria.**
+- `grep -rniw tui test` matches only the tombstone tests for the removed `--tui` flag and `tumwater tui` command (test/cli-args, cli-start-guards, cli-help-unknown), which assert that removed input is still rejected; renaming them would change what they test, so the criterion was corrected to allow them. `grep -rniw tui docs README.md DEVELOPMENT.md
+  PRINCIPLES.md` matches only sentences saying that the TUI was removed.
+- No test assertion changes: `git diff -U0 -- test` touches only comments and test-title
+  strings.
+- test/docs-links.test.ts, test/invariants-doc.test.ts and test/comment-width.test.ts pass.
+
+**Tests.** None new. Run the project's gate, plus
+`npm run test:rerun -- docs-links.test invariants-doc.test comment-width.test`.
+
 ### Fast session cleanup, part 1/2: the session prune skips placeholder and already-gone Codex sessions, walks the rollout tree once, and resumes where a restart stopped it (planned 2026-11-16 by the operator; requires Visible session cleanup part 2/3 landed; touches src/agent/session-ledger.ts src/agent/codex/codex-rollout.ts src/agent/codex/codex-backend.ts src/orchestrator/retention.ts src/ui/team-alert-status.ts test/session-ledger-prune.test.ts test/retention.test.ts test/team-alert-status.test.ts) — done 2026-11-21 by the feature role
 
 **Goal.** Visibility explains a long prune; this makes it short and restart-safe. On 2026-11-16

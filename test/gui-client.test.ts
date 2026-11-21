@@ -139,7 +139,7 @@ test("the page's role order is status-model's, rank by rank", () => {
     "held", "timed", "capped", "broke", "bootstrapped", // paused, newest run first
     "queued-z", "sleepy", "never-ran", // idle
   ]);
-  // Lockstep with the TUI/status comparator and its rank function.
+  // Lockstep with the status comparator and its rank function.
   assert.deepEqual(sortRolesByState(roles.map((l) => ({ ...l }))).map((l) => l.role), order);
   for (const l of roles) assert.equal(model.roleRank(l.phase), roleRank(l.phase), l.phase);
   // Ties break on the name, and the input is left alone.
@@ -801,7 +801,7 @@ test("the browser stall check matches the silent-run text inFlightDetail renders
 
 // The sidebar's main-check row (gui-client-team.ts's renderSidebar, marks its own `sidebar`
 // regions — the dashboard card the Hourly full check part 4/4 surfaces): it renders the
-// payload's preformatted mainCheckBadge — the same string badges.ts builds for the TUI/status
+// payload's preformatted mainCheckBadge — the same string badges.ts builds for the status
 // header — so the card cannot re-derive (or drift from) the covered sha, the verdict age and
 // the next due.
 function sidebarScope(): { renderSidebar: (d: unknown) => void; panels: Record<string, string> } {

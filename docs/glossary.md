@@ -1,6 +1,6 @@
 # Glossary
 
-The plain terms tumwater uses in everything you read: CLI output, help, the dashboard, the TUI,
+The plain terms tumwater uses in everything you read: CLI output, help, the dashboard,
 notifications and agent prompts. This page also maps every older word and machine name to its
 current one, so history, old logs and old scripts stay readable.
 
@@ -60,7 +60,6 @@ current one, so history, old logs and old scripts stay readable.
 | estimated spend | Cost computed from token counts, not billed. |
 | main's check is failing | The check fails on main. |
 | send later | Hold a message until a chosen time (`prompt --at`). |
-| TUI | The terminal interface. "Observer" names the qa, selfcheck, feedback and ci role group. |
 
 ## In the code
 
@@ -121,7 +120,6 @@ Identifiers follow the glossary: fleet → team, loop → runner, tick → run, 
 | quiet kill | stall ("Stalled, resumed") | n/a (prose) |
 | "while the project is quiet" | "while there is nothing to do" | n/a (prose) |
 | "quiet" (for idleness) | quiet means only quiet hours | n/a (prose) |
-| observer TUI | TUI | n/a (prose) |
 | seam(s), "claude seams", "strong seams", `routing: seam selector backend` | model jobs; header `job · model · backend` | n/a (prose) |
 | drain, draining | finish current work, then stop; finishing up | n/a (prose) |
 | backoff, backing off, backed-off | sleeping ("sleeping — next check in 12m"), "Wake sleeping roles" | n/a (prose) |

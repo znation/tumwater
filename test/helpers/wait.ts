@@ -20,7 +20,7 @@ const realSetTimeout = globalThis.setTimeout;
 
 /** A plain real-time sleep — the one home for the suite's sleeps: every test or fixture that
  * pauses in real time calls this instead of hand-rolling `new Promise((r) => setTimeout(r, ms))`.
- * Zero-delay `setTimeout(r, 0)` yields in gui-report.test.ts and tui-keys.test.ts stay. It
+ * Zero-delay `setTimeout(r, 0)` yields in gui-report.test.ts stay. It
  * always uses the captured real setTimeout, so it keeps sleeping in real time under a test
  * that mocks the timer APIs instead. Deliberately not sleeps, and left as-is: the
  * value-resolving timeout promises in semaphore.test.ts and cli-operators-team.test.ts (they
@@ -33,7 +33,7 @@ export const sleep = (ms: number): Promise<void> => new Promise((resolve) => rea
  * queued, so continuations a promise chain scheduled — a woken semaphore waiter, an ink effect
  * mounted or torn down at unmount — have run by the time this resolves. The suite's one home
  * for the flush idiom: the semaphore, check-permit and redeploy-escalation tests await it after
- * queueing work, and the TUI tests await it to let ink settle. Deliberately not this helper:
+ * queueing work. Deliberately not this helper:
  * test/pi.test.ts's
  * setImmediate callbacks, which schedule work instead of awaiting a flush. */
 export const flushImmediate = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));

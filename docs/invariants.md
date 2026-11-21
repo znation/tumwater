@@ -1468,7 +1468,7 @@ predates the cutoff" and "a missing or empty log reads as no rows over a covered
 
 ## Status polls: an observer never throws, and shows only what is still true
 
-`tumwater status`, `tumwater doctor`, the TUI and the GUI read the cached readers
+`tumwater status`, `tumwater doctor`, the GUI read the cached readers
 in `src/status/status-polls.ts` (the main-check reader, `src/status/status-main-check.ts`, was
 split out of it) every second, in a process separate from the orchestrator. Every
 reader must therefore tolerate a torn, foreign or stale file, and show only what is still true.
@@ -2936,7 +2936,7 @@ closed) when npm is missing from PATH".
 
 ## Queue-file names: a file-addressed request names a plain .md basename inside its role's inbox, or nothing is touched
 
-The dashboard and the TUI address a queued prompt by its file name so a stale snapshot cannot hit
+The dashboard addresses a queued prompt by its file name so a stale snapshot cannot hit
 the wrong entry. The name is joined onto the role's inbox directory, so one guard decides which
 names are safe.
 
@@ -3036,7 +3036,7 @@ git could not start".
 
 ## Operator requests: a marker reaches exactly the roles it names, and the poll always acknowledges it
 
-The orchestrator's poll consumes the request markers that the CLI, GUI and TUI drop
+The orchestrator's poll consumes the request markers that the CLI and GUI drop
 (`src/operator/operator-requests.ts`). The poll body has no catch, so a consumer must not throw out
 of it.
 
@@ -3182,7 +3182,7 @@ and "previewRetire lists a paused marker and leaves it in place".
 
 ## Prompt submission: a prompt is capped, gated and queued in one step, or nothing is queued
 
-`src/inbox/inbox-submit.ts` is the one submit pipeline the TUI, GUI and CLI share: the length cap,
+`src/inbox/inbox-submit.ts` is the one submit pipeline the GUI and CLI share: the length cap,
 the image gate and the enqueue.
 
 ### INV-AS1: an over-cap prompt is refused before anything is queued or logged
@@ -3229,7 +3229,7 @@ image-carrying prompt submitted with notBeforeMs is queued deferred" (image path
 ## Backlog release and reorder: a release lifts one hold from one entry, and a refused write leaves the file as it was
 
 `src/backlog/backlog-release.ts` holds the writers behind `tumwater plan|bug --release <n>` and
-`--top <n>`, and the non-exiting `try…` twins the TUI and dashboard call.
+`--top <n>`, and the non-exiting `try…` twins the dashboard calls.
 
 ### INV-AT1: a release lifts every Refused or Needs-review note, Refused first, from the addressed entry only
 
@@ -3280,7 +3280,7 @@ and leave the file byte-identical".
 ## Role change view: every known role answers, degraded rather than failing, with a bounded patch
 
 `src/change/change-data.ts` collects what `tumwater diff`, `tumwater diff --role <id>` and the
-dashboard's diff endpoint show: `collectRoleChange` for one role, `collectTeamChanges` for all. `tumwater diff --overlaps`, the dashboard's `GET /api/diff?overlaps=1` and the TUI's Pending pane list files held by two or more roles (`collectChangeOverlaps`); `diff --overlaps --role <ids>` and `GET /api/diff?overlaps=1&role=<ids>` filter the computed overlaps to entries naming a listed role (`scopeChangeOverlaps`). `diff --role <id> --path <path>` scopes `collectRoleChange` to one file or directory through a literal pathspec, and so does the dashboard's `GET /api/diff?role=<id>&path=<path>`, both normalising the path through `normalizeDiffPath`. `GET /api/diff?role=<id>&stat=1` serves `collectRoleChange(…, { stat: true })`. The TUI Pending pane's Ctrl+N drill-down reads `collectRoleChange` with `{ path }` and renders through `renderRoleChanges`.
+dashboard's diff endpoint show: `collectRoleChange` for one role, `collectTeamChanges` for all. `tumwater diff --overlaps`, the dashboard's `GET /api/diff?overlaps=1` and the dashboard's Pending pane list files held by two or more roles (`collectChangeOverlaps`); `diff --overlaps --role <ids>` and `GET /api/diff?overlaps=1&role=<ids>` filter the computed overlaps to entries naming a listed role (`scopeChangeOverlaps`). `diff --role <id> --path <path>` scopes `collectRoleChange` to one file or directory through a literal pathspec, and so does the dashboard's `GET /api/diff?role=<id>&path=<path>`, both normalising the path through `normalizeDiffPath`. `GET /api/diff?role=<id>&stat=1` serves `collectRoleChange(…, { stat: true })`. The dashboard's Pending drill-down reads `collectRoleChange` with `{ path }` and renders through `renderRoleChanges`.
 
 ### INV-AU1: a role query never fails on a degraded team
 
@@ -4170,7 +4170,7 @@ warns and records nothing instead of throwing".
 `markQuarantineFiled`, and `releaseQuarantine` when it actually releases — holds the
 `quarantine.lock` for its whole read-and-rewrite, so a writer in the orchestrator (the main-watch
 settlement or the review gate) and a writer in a separate `tumwater quarantine --release` process
-(CLI, TUI, GUI) can never interleave: no release is overwritten back into the list, and no newly
+(CLI, GUI) can never interleave: no release is overwritten back into the list, and no newly
 quarantined flake is dropped by a last-writer overwrite. An update a write cannot land is still
 warned (INV-BI5), never silently lost. `releaseQuarantine` makes its release DECISION without the
 lock, so a steady-state poll (nothing releasable) takes no lock at all; the decision is a pure

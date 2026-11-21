@@ -7,8 +7,8 @@ import { checkMinRunInterval } from "../src/config/config-keys.js";
 // end-to-end through `config set` and the GUI; `checkMinRunInterval` is the one with no test of
 // its own. It is the single home of the rule that decides whether an interval value is acceptable:
 // a finite number of 0 or more, at most MAX_DURATION_SECONDS (the ×1000 setTimeout bound the
-// config duration rules share). Both write surfaces that name a min-run-interval key — the TUI
-// interval editor and the dashboard role-interval endpoint — run it, and a value that fails is
+// config duration rules share). Both write surfaces that name a min-run-interval key — the CLI and
+// the dashboard role-interval endpoint — run it, and a value that fails is
 // flashed to the user with the returned message, so that message wording is the observable
 // contract. These drive the function in isolation and pin each branch as the exact string it
 // returns, so a dropped rule or a wording drift is caught.
@@ -72,7 +72,7 @@ test("checkMinRunInterval: a non-number is rejected naming the JSON-quoted value
 
 test("checkMinRunInterval: an explicit key leads the message", () => {
   // A per-role override passes roles.<id>.minRunIntervalSeconds so a rejected entry names the
-  // key actually set, matching what the dashboard endpoint and the TUI editor flash.
+  // key actually set, matching what the dashboard endpoint flashes.
   assert.equal(
     checkMinRunInterval(-1, "roles.feature.minRunIntervalSeconds"),
     "roles.feature.minRunIntervalSeconds must be a number of 0 or more, at most 2147483 (got -1)",

@@ -581,7 +581,7 @@ test("the bugfix role bounds its latent-bug hunt and demands a reproduction", ()
   assert.match(find, /if nothing concrete surfaces within that budget, there is nothing to do/);
 });
 test("the director investigates only enough to route", () => {
-  const prompt = oneLine(buildDirectorPrompt("the tui flickers"));
+  const prompt = oneLine(buildDirectorPrompt("the gui flickers"));
   assert.match(prompt, /Investigate only as much as routing precisely needs/);
   assert.match(prompt, /never a survey of the codebase, and never the implementation itself/);
 });

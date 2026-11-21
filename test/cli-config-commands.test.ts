@@ -161,7 +161,7 @@ test("set of an exponent spelling of a dollar key fails without writing", async 
   // "1e2" is itself the JSON number 100 — a cap no one means when typing a USD amount — so
   // `config set maxDailyCostUsd 1e2` must not write 100 past checkDailyBudgetUsd's
   // non-negative check; the dollar-typed keys share the guard (the team-wide cap and the
-  // per-role maxDailyCostUsdPerRole.<id> map entries). The TUI Ctrl+B budget editor, the
+  // per-role maxDailyCostUsdPerRole.<id> map entries). The
   // CLI's `role --cap`, and the GUI cap drawer already refuse the shape; `config set` and
   // the GUI /api/config-set (which rides setConfigKey) now do too.
   const before = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");

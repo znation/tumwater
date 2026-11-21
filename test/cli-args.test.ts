@@ -532,7 +532,7 @@ test("durationLabel phrases a parsed duration back in the parser's vocabulary", 
   assert.equal(durationLabel(90 * 60_000 + 3_500), "5403500ms");
 });
 
-// --- parseDurationMs (the `<n><unit>` duration grammar the CLI flags, TUI send-later and GUI
+// --- parseDurationMs (the `<n><unit>` duration grammar the CLI flags, send-later and GUI
 // prompt defer all validate through — pinned here directly, not only via its callers) ---
 
 test("parseDurationMs accepts single-unit and descending-order composites as exact ms totals", () => {

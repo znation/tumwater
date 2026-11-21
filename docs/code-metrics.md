@@ -180,7 +180,7 @@ Claude's share of `src/ui/` is largely CSS and small render helpers.
   maximum of 31 for Tumwater. Claude has 3 core functions above complexity 20; Tumwater has 14.
 - **The most complex functions are joint work.** 16 of the 24 functions above complexity 20 have
   no author with 90% of their lines, and the largest are mostly Tumwater's: `runOrchestrator` is
-  70% Tumwater, `cli.ts` `main` 78%, `reviewAheadOfMain` 66%, and the TUI key handler 93%. The
+  70% Tumwater, `cli.ts` `main` 78%, `reviewAheadOfMain` 66%. The
   largest Claude-majority function is `eventMessage` (53% Claude), a flat switch.
 - **Casts separate the two authors most clearly.** Tumwater uses about four times Claude's rate
   of `as` casts in core production code (5.8 vs 1.4 per 1,000 lines) and twice it in tests (12.4

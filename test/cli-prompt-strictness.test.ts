@@ -9,8 +9,7 @@ import { cli } from "./helpers/cli-harness.js";
 // (only double-dash tokens are flags; single-dash ones are free-form content) and --at's value
 // arity. Split out of cli-arg-strictness.test.ts, which keeps the parser-wide unknown-argument
 // and flag-value gates, so node --test runs each command's strictness cases in parallel
-// processes. The question boundary cases live in cli-questions-strictness.test.ts and the tui
-// dispatch guards in cli-tui-strictness.test.ts.
+// processes. The question boundary cases live in cli-questions-strictness.test.ts.
 test("prompt rejects unknown double-dash flags instead of baking them into content", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli prompt unknown flag");

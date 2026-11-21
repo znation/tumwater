@@ -251,7 +251,7 @@ test("a role row marks a model pi's own saved default", () => {
   assert.doesNotMatch(cells({ role: "feature", phase: "sleeping", runs: 2, commits: 1, model: "prov-a/model-a" }), /\(pi default\)/);
 });
 
-// PLANS.md "Stop showing leased worktree slots in the TUI and GUI": the payload keeps
+// The leased-worktree-slot change: the payload keeps
 // slot/slotPinned, but a role row renders no leased/pinned worktree tag.
 test("a row hides the pooled worktree slot and its pin", () => {
   const name = roleCells({ role: "clean", phase: "sleeping", slot: "_slot-3", slotPinned: true,

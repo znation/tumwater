@@ -6,7 +6,7 @@ import path from "node:path";
 import { projectName } from "../src/project-name.js";
 
 // Unit seam for project-name.ts — the one derivation of the project's display name. The
-// dashboards' title (the status payload's `project` field), the TUI/status header, and init's
+// dashboards' title (the status payload's `project` field), the status header, and init's
 // brief heading all render through it, so the resolve-then-basename rule is load-bearing: a
 // trailing separator or a relative root must yield the same name as its absolute form.
 

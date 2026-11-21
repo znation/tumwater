@@ -70,7 +70,7 @@ test("run --gui --once fails before boot with the rival-shapes message", async (
 // refusal fires before cmdStart parses anything, so no team boots. No tombstone message.
 test("start --tui fails before boot as an unknown flag", async () => {
   const repo = makeRepo();
-  await initProject(repo, "cli start tui");
+  await initProject(repo, "cli start flag");
   await withPi("exit 0", async () => {
     const r = await cli(repo, "start", "--tui");
     assert.equal(r.code, 1);

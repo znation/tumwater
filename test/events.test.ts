@@ -219,7 +219,7 @@ function referenceTail(root: string, limit: number) {
 
 // The windowed path must return exactly the last `limit` lines at every log size past the
 // whole-read threshold — including mid-size logs where limit < total line count (the case a
-// grown event log spends most of its life in, polled every second by the TUI and GUI).
+// grown event log spends most of its life in, polled every second by the GUI).
 test("readEvents matches a full-file read on logs past the tail-scan threshold", () => {
   for (const [count, minBytes] of [
     [100, 8 * 1024], // just over the threshold: window smaller than the file

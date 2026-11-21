@@ -1183,7 +1183,7 @@ test("handleConfigSet/Unset round-trip the instance-role counts and refuse out-o
 
 test("handleBudget refuses a finite-but-unrepresentable cap with the shared screen's message", async () => {
   // BUGS.md 2026-10-02: /api/budget is the browser surface for the same one-zero typo the
-  // TUI's parseBudgetInput guards — 1e24 is finite, so the old checkDailyBudgetUsd admitted
+  // budget-input guards refuse — 1e24 is finite, so the old checkDailyBudgetUsd admitted
   // it and the write made the daily spend cap effectively uncapped.
   const root = tmpdir();
   const { captured } = await captureJson((res) => handleBudget(fakeReq(JSON.stringify({ maxDailyCostUsd: 1e24 })), res, root));

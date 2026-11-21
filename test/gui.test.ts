@@ -446,7 +446,7 @@ test("the dashboard page's inline script is syntactically valid JavaScript", asy
   assert.doesNotMatch(scripts.join("\n"), /AudioContext/, "the dashboard plays no sound");
 });
 
-test("the GUI last run cell shows absolute time plus relative age, mirroring the TUI", async () => {
+test("the GUI last run cell shows absolute time plus relative age", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   const { lastRunCell } = await import("../src/ui/status-render.js");
 
@@ -489,7 +489,7 @@ test("the GUI last run cell shows absolute time plus relative age, mirroring the
   const day3 = dayKey(t3d).slice(5); // MM-DD, dropped from the raw-parts day key.
   assert.equal(fmtLastRun(t3d), `${day3} ${abs(t3d)} · 3d ago`);
 
-  // The whole cell — absolute stamp and age bucketing — must stay byte-identical to the TUI's
+  // The whole cell — absolute stamp and age bucketing — must stay byte-identical to the
   // lastRunCell, so a drift in either surface fails here.
   for (const ts of [t45, t190, t2h, t3d]) assert.equal(fmtLastRun(ts), lastRunCell(ts));
 });
@@ -876,7 +876,7 @@ test("the dashboard page reloads itself when the serving build sha changes", asy
   );
 });
 
-test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
+test("the GUI next run cell follows the nextRunCell rules", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   const { nextRunCell } = await import("../src/ui/status-render.js");
   const { freshRunnerState } = await import("../src/runner/runner-state.js");
@@ -903,7 +903,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
     (l: { phase: string; nextRunAt: number; backoffSeconds: number; yieldMultiplier?: number }, teamRunning: boolean) => string;
 
   const now = Date.now();
-  // Each case pins the TUI helper and the GUI twin to the same output, so the two copies
+  // Each case pins the expected output, so the two copies
   // cannot drift (the sortRoles/fmtLastRun lockstep precedent).
   const cases: Array<{
     state: Partial<RunnerState>;
@@ -917,7 +917,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
     { state: { nextRunAt: now + 180_000, backoffSeconds: 0, running: true }, phase: "working 3m", team: true, want: "-" },
     { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "merging 1m · checking", team: true, want: "-" },
     // A parked waiter: reserved (running) but holding no permit, rendered "waiting to start" —
-    // an INACTIVE phase prefix, so the phase-prefix check alone misclassifies it. The TUI
+    // an INACTIVE phase prefix, so the phase-prefix check alone misclassifies it. The check
     // catches it via s.running; the GUI copy must too, or a parked role reads "1h" (or
     // "backoff 1h") while it is actually queued behind a slot and may run at any moment.
     { state: { nextRunAt: now + 3_600_000, backoffSeconds: 0, running: true, parkedSince: now - 5_000 }, phase: "waiting to start 5s", team: true, want: "-" },
@@ -931,7 +931,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   for (const c of cases) {
     const s = { ...freshRunnerState("clean"), ...c.state } as RunnerState;
     const label = `${c.phase} / team ${c.team ? "running" : "stopped"}`;
-    assert.equal(nextRunCell(s, c.phase, now, c.team), c.want, `TUI: ${label}`);
+    assert.equal(nextRunCell(s, c.phase, now, c.team), c.want, `nextRunCell: ${label}`);
     assert.equal(
       fmtNextRun({ phase: c.phase, nextRunAt: s.nextRunAt, backoffSeconds: s.backoffSeconds, yieldMultiplier: yieldMultiplierFor(s) }, c.team),
       c.want,

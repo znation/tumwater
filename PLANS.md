@@ -68,37 +68,6 @@ looks for code that does not exist, or keeps two surfaces in step when there is 
 
 **Tests.** None new. Run the project's gate, plus `npm run test:rerun -- comment-width.test`.
 
-### Remove the TUI, part 5/5: tests and docs stop describing a TUI (planned 2026-11-16 by the operator; requires Remove the TUI parts 1/5, 2/5, 3/5 landed; touches test/ (comments and test titles only) docs/invariants.md DEVELOPMENT.md README.md docs/how-it-works.md docs/feature-doctor.md docs/backends.md docs/glossary.md docs/feature-per-role-spending.md docs/implementation-per-role-spending.md docs/implementation-model-fallback.md docs/code-metrics.md)
-
-**Goal.** Outside the deleted TUI tests, about 70 test files mention the TUI some 480 times, in
-comments and in test titles such as "matches the TUI's …". Several docs still describe TUI panes
-and keys as current. Once the TUI is gone, these mislead whoever reads them next.
-
-**Approach.**
-- test/: rewrite comments and test titles that name the TUI, a `ui/tui/` path or a TUI key for
-  the surfaces that remain. Change no assertion. When a renamed title is cited in
-  docs/invariants.md (a `**Pinned by.**` line quotes it), update the citation in the same change.
-- DEVELOPMENT.md: "Checking rendered output by hand" says diff-check compares the
-  `tumwater status` table and the GUI payload, not "TUI status-table strings"; the src/ layout
-  list drops `src/ui/tui/`; drop other TUI mentions.
-- docs/: rewrite each live description of a TUI pane, key or surface (how-it-works,
-  feature-doctor, backends, glossary, the per-role-spending and model-fallback docs, and
-  code-metrics' TUI key-handler complexity rows) for its GUI or CLI equivalent, or delete it
-  where there is none. README.md's "observable by gui/tui/log. GUI/TUI also gives user a main
-  prompt" becomes gui/log and GUI.
-- Leave history alone: plans/*.md, PLANS-DONE.md, BUGS-FIXED.md and earlier release-note
-  sections record what was true at the time.
-
-**Acceptance criteria.**
-- `grep -rniw tui test` matches nothing. `grep -rniw tui docs README.md DEVELOPMENT.md
-  PRINCIPLES.md` matches only sentences saying that the TUI was removed.
-- No test assertion changes: `git diff -U0 -- test` touches only comments and test-title
-  strings.
-- test/docs-links.test.ts, test/invariants-doc.test.ts and test/comment-width.test.ts pass.
-
-**Tests.** None new. Run the project's gate, plus
-`npm run test:rerun -- docs-links.test invariants-doc.test comment-width.test`.
-
 ### GitHub issues, part 2/5: the orchestrator scans a project's open GitHub issues on a clock and records which ones no backlog entry mirrors (planned 2026-11-21 by the operator; requires GitHub issues part 1/5 landed; touches src/github/issue-scan.ts src/github/issue-mirrors.ts src/github/github-issues-state.ts src/paths.ts src/orchestrator/orchestrator-poll.ts src/events/events.ts test/github-issue-scan.test.ts test/github-issue-mirrors.test.ts test/fakes/fake-gh.ts)
 
 **Goal.** A running team reads the project's open GitHub issues about once an hour through the

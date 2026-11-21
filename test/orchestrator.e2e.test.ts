@@ -285,7 +285,7 @@ test("a main move and a queued prompt each log exactly one wake event with their
     await awaitSettledRun(repo, "clean", 1, "the startup run to finish");
 
     // The world changed: advance main with a real commit. The next poll must wake clean
-    // early and log why — the TUI/GUI/logs surface this as `woke (main moved)`.
+    // early and log why — the GUI/logs surface this as `woke (main moved)`.
     fs.writeFileSync(path.join(repo, "world.txt"), "changed\n");
     sh(repo, "git", "add", "-A");
     sh(repo, "git", "commit", "-m", "advance main");

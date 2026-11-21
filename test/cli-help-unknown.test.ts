@@ -46,17 +46,17 @@ test("--help does not rescue an unknown command", async () => {
 test("a free-form text command carrying a --help token files the text, not the help topic", async () => {
   // The <command> --help interception answers a flag-shaped help request, but the free-form
   // position commands (init, prompt, bug, plan) read their positionals as operator text — a
-  // text containing a standalone --help/-h token (`tumwater bug the TUI mishandles --help
+  // text containing a standalone --help/-h token (`tumwater bug the GUI mishandles --help
   // output`) used to be swallowed whole: the topic printed, exit 0, the text gone with no
   // trace. When such a command carries any non-flag token (real text), the interception must
   // stand down and let the command read the text; with only flags present (`tumwater bug
   // --help`, `prompt --role qa --help`) the topic still answers.
   const dir = tmpdir();
   await initProject(dir, "test team");
-  const filed = await cli(dir, "bug", "the", "TUI", "mishandles", "--help", "output");
+  const filed = await cli(dir, "bug", "the", "GUI", "mishandles", "--help", "output");
   assert.equal(filed.code, 0, `bug --help text: ${filed.stderr}`);
   assert.doesNotMatch(filed.stdout, /Usage:/);
-  assert.match(fs.readFileSync(path.join(dir, "BUGS.md"), "utf8"), /the TUI mishandles --help output/);
+  assert.match(fs.readFileSync(path.join(dir, "BUGS.md"), "utf8"), /the GUI mishandles --help output/);
 
   const prompted = await cli(dir, "prompt", "fix", "the", "--help", "flag");
   // prompt (and init) read flag values, so a help token beside text is ambiguous there —

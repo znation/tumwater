@@ -44,7 +44,7 @@ Planned features, written by the plan loop and implemented by the feature loop.
 
 ## Planned
 
-### Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)
+### Show open bugs and planned features in the GUI (planned 2026-08-24)
 
 **Goal:** The dashboard surfaces project status.
 Body text that must not leak into titles — **bold**, \`code\`, lists, everything.
@@ -470,7 +470,7 @@ test("the entry readers return title + body pairs in file order; missing file yi
   fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
   assert.deepEqual(plannedPlanEntries(root), [
     {
-      title: "Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)",
+      title: "Show open bugs and planned features in the GUI (planned 2026-08-24)",
       body: "**Goal:** The dashboard surfaces project status.\nBody text that must not leak into titles — **bold**, `code`, lists, everything.",
     },
     { title: "Timestamp of last result (planned 2026-08-21, refined 2026-08-25)", body: "" },
@@ -503,7 +503,7 @@ test("an unchanged file is served from the stat-keyed cache without re-reading",
   assert.equal(plannedPlans(root).length, 2); // populates the cache
   await withCountedReads((reads) => {
     assert.deepEqual(plannedPlans(root), [
-      "Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)",
+      "Show open bugs and planned features in the GUI (planned 2026-08-24)",
       "Timestamp of last result (planned 2026-08-21, refined 2026-08-25)",
     ]);
     assert.equal(reads(), 0); // unchanged since the first read — no file I/O at all
@@ -515,7 +515,7 @@ test("an unchanged file is served from the stat-keyed cache without re-reading",
 });
 
 test("repeated entry reads of an unchanged file re-parse nothing (stat-keyed cache hit)", async () => {
-  // The GUI's /api/backlog endpoint and the TUI's browse both go through these readers; while
+  // The GUI's /api/backlog endpoint and the CLI's listing both go through these readers; while
   // a panel is open they are called every second, so an unchanged file must cost one stat per
   // call — never a re-read or re-parse of markdown that grows without bound.
   const root = tmpdir();

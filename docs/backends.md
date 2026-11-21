@@ -29,9 +29,9 @@ out and pi's own default applies:
 ```
 
 The role rows then name that default — read from pi's `settings.json` beside its models catalog —
-marked `pi default`, so `tumwater status`, the TUI and the dashboard still show which model each
+marked `pi default`, so `tumwater status` and the dashboard still show which model each
 role runs. That marking only appears when `tumwater.json` resolves no model at all, so the two
-never disagree about where a model name came from. When every role runs that same default, `tumwater status` and the TUI name it once under the table
+never disagree about where a model name came from. When every role runs that same default, `tumwater status` names it once under the table
 instead of on each row; the dashboard keeps showing it per row.
 
 `fallback` names the free model roles switch to when the primary cannot carry the work:

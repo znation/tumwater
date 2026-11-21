@@ -1005,7 +1005,7 @@ test("backlogCommitLines names each committed and failed file and the skip sente
     "your checkout is not on main; nothing committed",
   ]);
   assert.deepEqual(backlogCommitLines({ base: "main", committed: [], failed: [], skipped: null }), []);
-  // backlogCommitMessage shares the same wording the dashboard handler and the TUI flash use:
+  // backlogCommitMessage shares the same wording the dashboard handler and the CLI print:
   // the lines joined with "; ", or the nothing-to-commit sentence when the lists are empty and
   // there was no skip sentence.
   assert.equal(backlogCommitMessage(report), "committed PLANS.md on main; could not commit BUGS.md — commit it by hand");

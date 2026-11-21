@@ -1,5 +1,5 @@
 // Tests for src/config/config-write.ts's budget setter (setDailyBudgetUsd),
-// the shared setter behind the TUI's Ctrl+B editor and the GUI's /api/budget endpoint.
+// the shared setter behind the GUI's /api/budget endpoint.
 // The key-editing engine lives in test/config-write.test.ts.
 
 import test from "node:test";
@@ -12,7 +12,7 @@ import { skipIfRoot, tmpdir } from "./fixtures/repo-fixtures.js";
 import { setDailyBudgetUsd } from "../src/config/config-write.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 
-// setDailyBudgetUsd — the shared setter behind the TUI's Ctrl+B editor and the GUI's
+// setDailyBudgetUsd — the shared setter behind the GUI's
 // /api/budget endpoint: fresh read-modify-write of ONE key, atomic (tmp + rename), errors as
 // strings so both surfaces can flash them without try/catch plumbing.
 test("setDailyBudgetUsd persists only the cap, atomically, and rejects invalid values", () => {

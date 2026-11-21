@@ -289,7 +289,7 @@ test("rolePhase flags a stalled reviewer run after five minutes of silence", () 
 
 // duration()'s hours bucket (>= 1h): every elapsed fixture above stays under an hour, so the
 // `XhYm` branch — what operators actually see for long runs and long silences in the status
-// table, TUI, and GUI — was untested. The review-gate label is the purest read of it (no log
+// table and GUI — was untested. The review-gate label is the purest read of it (no log
 // tail involved); the stall flag covers its second call site.
 
 test("elapsed labels bucket into hours once a run passes an hour", (t) => {
@@ -483,7 +483,7 @@ test("rolePhase reads paused for idle roles while the team is user-paused", () =
 });
 
 // The timed per-role pause countdown (PLANS.md 2026-10-16): `pause --role <id> --for` writes a
-// deadline that the CLI/TUI/`status --json` phase — all derived through rolePhase — shows as
+// deadline that the CLI/`status --json` phase — all derived through rolePhase — shows as
 // `paused · resumes in <s>`, mirroring the GUI role-list's phaseDetail so the operator can tell
 // when the role comes back without dropping to the browser.
 test("rolePhase appends the per-role pause resume countdown only for a live deadline", () => {
@@ -510,7 +510,7 @@ test("rolePhase appends the per-role pause resume countdown only for a live dead
   );
 
   // The timed phase stays grouped with the other paused states on every surface: it must not
-  // fall through ROLE_RANK_RULES to idle rank 4 (which would reorder the CLI/TUI/dashboard
+  // fall through ROLE_RANK_RULES to idle rank 4 (which would reorder the CLI/dashboard
   // tables) or lose the paused yellow tone that phaseTone derives from that rank.
   const pausedRank = ROLE_RANK_RULES.find((r) =>
     (r.phases ?? []).includes("paused") || (r.prefixes ?? []).includes("paused"),

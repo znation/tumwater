@@ -1,7 +1,7 @@
 /** The prompt queues' event logging is best-effort (src/events/events.ts's
  * logEventBestEffort). Submitting, cancelling, and editing a queued prompt each perform their
  * durable effect — the queue write, the queue-file removal, the in-place rewrite — before they
- * log their event, and the operator-facing surfaces (TUI, GUI, CLI) report the durable effect's
+ * log their event, and the operator-facing surfaces (GUI, CLI) report the durable effect's
  * outcome. An unwritable events feed (ENOSPC, EACCES, the path replaced) must not make a
  * completed submit/cancel/edit look failed, or the operator's retry duplicates the prompt (or
  * believes a cancel that did happen did not). The fault is injected by putting a directory

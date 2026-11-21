@@ -96,7 +96,7 @@ test("truncate never splits a surrogate pair (no lone surrogates in clipped labe
 test("truncate never returns a string longer than max (the display-width invariant)", () => {
   // Every consumer sizes its column budget off this: progress work items (60), transcript
   // lines (120) and thinking (80), tool-call details (32). A result over max would wrap in
-  // the TUI/GUI and break the one-logical-line-per-visual-line invariant. Sweep realistic
+  // the GUI and break the one-logical-line-per-visual-line invariant. Sweep realistic
   // label shapes — including whitespace at every possible cut position — across all max.
   const samples = [
     "hello world",

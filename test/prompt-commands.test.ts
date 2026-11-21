@@ -57,7 +57,7 @@ test("prompt --list --json reports every role's queue with per-role positions an
   for (const p of payload.prompts) {
     assert.ok(p.queuedAtMs !== null && p.queuedAtMs <= now && now - p.queuedAtMs < 60_000);
     // The row also carries the queue-file basename that addresses it, the address the
-    // dashboard's Edit and the TUI Queued pane's Ctrl+E write through.
+    // dashboard's Edit writes through.
     assert.match(p.file, /^[^/\\]+\.md$/, "the row carries its queue-file basename");
   }
 });
@@ -77,7 +77,7 @@ test("prompt --list prose groups by role, restarts numbering, and stamps the que
   assert.match(lines[4]!, /^2\. clean two \(queued \S+ ago\)$/);
 });
 
-test("queuedListRows/renderQueuedList is the list-shaped view the TUI Queued pane shares", () => {
+test("queuedListRows/renderQueuedList is the list-shaped view of the queued prompts", () => {
   const root = makeRoot();
   enqueueRolePrompt(root, DIRECTOR_ROLE, "director note");
   enqueueRolePrompt(root, "clean", "clean one");

@@ -168,7 +168,7 @@ test("the header names the running build and flags a stale one", () => {
   assert.match(
     headerOf(renderStatus("/tmp/x", { ...stale, build: { ...pending, restartHold: { stage: "checking", since: Date.now() } } })),
     /build aaaaaaaa — update available \(7 commits behind\) — holding new runs: checking main bbbbbbbb before restarting \(0s\)/,
-    "the TUI/status header carries the hold",
+    "the status header carries the hold",
   );
   // A cooldown-deferred restart is the plan's whole point: the redeploy waits, the team does
   // not — the badge says "work continues" and keeps the deadline, while a genuinely blocked

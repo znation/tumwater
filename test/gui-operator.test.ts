@@ -52,7 +52,7 @@ test("status payload carries the daily budget while enabled and null when disabl
   let payload = (await atNoon()) as { budget: { spentUsd: number; capUsd: number; capHitAt: number | null; free: boolean; fallback: { provider?: string; model?: string } | null } | null; budgetBadge: string };
   // No provider/model configured (pi's own default) — the team cannot be verified as free.
   assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, capHitAt: null, free: false, fallback: null, tiers: null }, "enabled by default with no spend yet");
-  assert.equal(payload.budgetBadge, " · budget: $0.00/$50 today", "the preformatted badge matches the TUI header string");
+  assert.equal(payload.budgetBadge, " · budget: $0.00/$50 today", "the preformatted badge matches the status header string");
 
   // Today's spend is summed from the roles' persisted daily windows (a stale stamp reads $0).
   const s = freshRunnerState("clean");
@@ -200,7 +200,7 @@ test("a paused team's idle roles read waiting: budget spent in the phase payload
 });
 
 // POST /api/budget — the dashboard badge editor's save path: one shared setter with the
-// TUI's Ctrl+B, so both surfaces write tumwater.json identically and the running orchestrator
+// CLI's config set, so both surfaces write tumwater.json identically and the running orchestrator
 // picks the change up on its next ~2 s poll.
 
 test("POST /api/budget persists a valid cap and rejects invalid bodies without touching the file", async () => {

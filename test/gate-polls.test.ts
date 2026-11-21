@@ -382,7 +382,7 @@ test("pollTeamGates: a low disk holds new work; recovery and a live floor edit l
   );
 });
 
-// Part 4/4: the same poll publishes what it measured, so observers (status, TUI, GUI) do not
+// Part 4/4: the same poll publishes what it measured, so observers (status, GUI) do not
 // call statfs themselves. One decimal for freeGB, the configured knobs, the hold verdict; an
 // unmeasurable sample publishes nothing so the surfaces render exactly as before.
 test("pollTeamGates publishes the measured disk state for observers", () => {

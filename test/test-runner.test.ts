@@ -75,13 +75,13 @@ test("an explicit filter selects e2e files too, so the tier is one `npm test e2e
 });
 
 test("filters substring-match the source-style name and are ORed together", () => {
-  const dir = fakeDistDir("merge.test.js", "runner.test.js", "runner-2.test.js", "tui.test.js");
+  const dir = fakeDistDir("merge.test.js", "runner.test.js", "runner-2.test.js", "view.test.js");
   // A short stem selects every file it occurs in (both runner files).
   assert.deepEqual(selectTestFiles(["runner"], dir).names, ["runner-2.test.ts", "runner.test.ts"]);
   // The full source-style name matches too — a filter copied from the error listing works.
   assert.deepEqual(selectTestFiles(["merge.test.ts"], dir).names, ["merge.test.ts"]);
   // Multiple filters are ORed; order follows the sorted file list, not the filter order.
-  assert.deepEqual(selectTestFiles(["tui", "merge"], dir).names, ["merge.test.ts", "tui.test.ts"]);
+  assert.deepEqual(selectTestFiles(["view", "merge"], dir).names, ["merge.test.ts", "view.test.ts"]);
 });
 
 test("matching is a plain substring: case-sensitive, no regex metacharacters", () => {
@@ -95,7 +95,7 @@ test("matching is a plain substring: case-sensitive, no regex metacharacters", (
 });
 
 test("a #name part filters the tests inside the selected files, as one escaped-literal pattern", () => {
-  const dir = fakeDistDir("runner.test.js", "tui.test.js", "runner.e2e.test.js");
+  const dir = fakeDistDir("runner.test.js", "view.test.js", "runner.e2e.test.js");
   // The file part selects like a bare filter (e2e included — naming a file is deliberate).
   const sel = selectTestFiles(["runner#hangs"], dir);
   assert.equal(sel.error, undefined);
@@ -104,17 +104,17 @@ test("a #name part filters the tests inside the selected files, as one escaped-l
   assert.deepEqual(sel.nameFilters, ["hangs"], "the raw typed name is kept for the announcement");
   // The name parts OR together and are regex-escaped, so node --test's matcher sees the
   // literal substring typed — the same no-regex rule the file part follows.
-  const two = selectTestFiles(["runner#one", "tui#x.y"], dir);
+  const two = selectTestFiles(["runner#one", "view#x.y"], dir);
   assert.equal(two.error, undefined);
   assert.equal(two.namePattern, "one|x\\.y");
   assert.deepEqual(two.nameFilters, ["one", "x.y"], "raw names, not the escaped alternation");
   // A bare #name filter searches the whole suite — the unfiltered gating set, e2e excluded.
   const bare = selectTestFiles(["#only"], dir);
   assert.equal(bare.error, undefined);
-  assert.deepEqual(bare.names, ["runner.test.ts", "tui.test.ts"]);
+  assert.deepEqual(bare.names, ["runner.test.ts", "view.test.ts"]);
   assert.equal(bare.namePattern, "only");
   // A filter with no name part still selects without a pattern, as before.
-  assert.equal(selectTestFiles(["tui"], dir).namePattern, undefined);
+  assert.equal(selectTestFiles(["view"], dir).namePattern, undefined);
   // A bare `#` would mean "run nothing" — rejected with the syntax shown.
   const empty = selectTestFiles(["runner#"], dir);
   assert.match(empty.error ?? "", /a "#" must be followed by the test name to run/);
@@ -134,14 +134,14 @@ test("noNameMatchReason reads the run's TAP side-channel: all-file ok lines mean
   };
   // node --test names a file whose tests all miss the pattern by the file itself; matched
   // tests and their parent describes carry their own names.
-  assert.match(noNameMatchReason(tap("ok 1 - runner.test.js\nok 2 - tui.test.js\n")) ?? "", /no test name matches/);
+  assert.match(noNameMatchReason(tap("ok 1 - runner.test.js\nok 2 - view.test.js\n")) ?? "", /no test name matches/);
   // The typed name parts are echoed so a multi-name run need not reread its command line.
   assert.match(
     noNameMatchReason(tap("ok 1 - runner.test.js\n"), ["resume", "wake"]) ?? "",
     /no test name matches "resume" or "wake"/,
   );
   assert.equal(noNameMatchReason(tap("ok 1 - resume hangs\nok 2 - runner.test.js\n")), null);
-  assert.equal(noNameMatchReason(tap("ok 1 - resume # SKIP later\nok 2 - tui.test.js\n")), null, "a directive suffix is not the name");
+  assert.equal(noNameMatchReason(tap("ok 1 - resume # SKIP later\nok 2 - view.test.js\n")), null, "a directive suffix is not the name");
   assert.equal(noNameMatchReason(tap("not ok 1 - a failed test\nok 2 - runner.test.js\n")), null, "a failed match still matched");
   // No TAP (a crashed run) is not evidence: the exit code already reports that.
   assert.equal(noNameMatchReason(path.join(tmpdir(), "absent-tap.out")), null);
@@ -149,13 +149,13 @@ test("noNameMatchReason reads the run's TAP side-channel: all-file ok lines mean
 });
 
 test("no match reports every available name so one edit fixes it", () => {
-  const dir = fakeDistDir("merge.test.js", "tui.test.js");
+  const dir = fakeDistDir("merge.test.js", "view.test.js");
   const sel = selectTestFiles(["nosuch"], dir);
-  assert.match(sel.error ?? "", /no test file matches "nosuch" — available: merge\.test\.ts, tui\.test\.ts/);
+  assert.match(sel.error ?? "", /no test file matches "nosuch" — available: merge\.test\.ts, view\.test\.ts/);
 });
 
 test("a near-miss filter names the file it probably meant", () => {
-  const dir = fakeDistDir("runner.test.js", "tui.test.js");
+  const dir = fakeDistDir("runner.test.js", "view.test.js");
   // A one-letter slip of the stem (`runer` for `runner`) gets the shared did-you-mean an
   // unknown value elsewhere in the harness prints, while the listing still follows it.
   const stem = selectTestFiles(["runer"], dir);
@@ -198,7 +198,7 @@ test("splitCoverageArgv lifts --coverage out of the filters wherever it appears"
   assert.deepEqual(splitCoverageArgv(["--coverage"]), { filters: [], coverage: true });
   // Either position, and composed with filters and #name parts alike.
   assert.deepEqual(splitCoverageArgv(["--coverage", "runner"]), { filters: ["runner"], coverage: true });
-  assert.deepEqual(splitCoverageArgv(["runner", "--coverage", "tui"]), { filters: ["runner", "tui"], coverage: true });
+  assert.deepEqual(splitCoverageArgv(["runner", "--coverage", "view"]), { filters: ["runner", "view"], coverage: true });
   assert.deepEqual(splitCoverageArgv(["--coverage", "runner#resume"]), { filters: ["runner#resume"], coverage: true });
   assert.deepEqual(splitCoverageArgv(["runner"]), { filters: ["runner"], coverage: false });
 });

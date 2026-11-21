@@ -457,7 +457,7 @@ test("backlogHolds caches an unchanged stat pair without re-running the readers,
   assert.deepEqual(backlogHolds(dir), { plans: [null], bugs: [null] });
 
   // A repeat poll with unchanged files must be served from the holds cache without re-running
-  // either reader — the 1-second /api/status poll and every TUI frame hit this path. Both
+  // either reader — the 1-second /api/status poll and every status repaint hit this path. Both
   // readers are themselves stat-cached, so the only way the holds cache's win shows is by
   // counting whether the derivation re-invokes them at all on an unchanged stat pair.
   let planCalls = 0;

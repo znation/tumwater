@@ -174,7 +174,7 @@ test("the other backlog tabs render unchanged alongside the queued age", () => {
 });
 
 // Every tab's rows carry the same markup as before when an entry is eligible: the hold tag
-// (PLANS.md "Show backlog entry eligibility holds in the GUI and TUI backlog lists") rides
+// (the eligibility holds the GUI backlog lists show) rides
 // beside the title only when the payload's parallel planHolds/bugHolds names one.
 
 test("the Plans and Bugs tabs append each held entry's eligibility tag beside its title", () => {
@@ -1461,7 +1461,7 @@ test("the doctor-band control disappears when the feed empties", () => {
 // The remote-CI row (plans/remote-ci.md "Surfaces"): the dashboard's team panel carries the
 // hosted CI's verdict on the pushed main beside the ci parity row — the payload's
 // preformatted remoteCiBadge/remoteCiTone, upcased for the row's label style, toned by the
-// shared remoteCiTone map — so the panel cannot drift from the TUI/status header. Without a
+// shared remoteCiTone map — so the panel cannot drift from the status header. Without a
 // record or for an `unavailable` one the badge is empty and the panel stays byte-identical.
 test("the team panel carries the remote-CI row after the ci parity row, absent without a record", () => {
   const panels: Record<string, string> = {};

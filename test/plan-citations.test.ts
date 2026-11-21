@@ -131,12 +131,12 @@ test("planEntries reads the heading and Done-bullet titles and cuts each one's s
     "**Goal.** …",
     "## Done",
     "- Robust conflict landing, part 2/2: a conflict goes back to its author (planned 2026-10-07, done 2026-10-07; commit 0f7aca27)",
-    "- The TUI moves to ink, part 2a/3: extract the key handler (planned 2026-10-06, done 2026-10-06; commit 15ff6a8d)",
+    "- The dashboard moves to ink, part 2a/3: extract the key handler (planned 2026-10-06, done 2026-10-06; commit 15ff6a8d)",
   ].join("\n");
   const entries = planEntries(md);
   assert.ok(entries.includes("Role notebook: carry a note across ticks"), "a heading keeps its colon clause");
   assert.ok(entries.includes("Robust conflict landing, part 2/2"), "a Done bullet cuts its gloss");
-  assert.ok(entries.includes("The TUI moves to ink, part 2a/3"), "and keeps the leading article");
+  assert.ok(entries.includes("The dashboard moves to ink, part 2a/3"), "and keeps the leading article");
   assert.ok(!entries.some((e) => e.includes("(planned")), "no status text leaks into a title");
 });
 

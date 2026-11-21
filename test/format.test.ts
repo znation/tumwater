@@ -83,7 +83,7 @@ test("usd always keeps two decimals; usdCap drops a whole-dollar .00", () => {
   assert.equal(usd(0), "$0.00");
   assert.equal(usdCap(50), "$50"); // whole dollars stay bare
   assert.equal(usdCap(12.34), "$12.34"); // fractional keeps its cents
-  assert.equal(usdCap(25), "$25"); // the TUI's `budget set to $25` flash
+  assert.equal(usdCap(25), "$25"); // the `budget set to $25` flash message
 });
 
 // tokenWindowLabel is the single home of the context-window label the doctor's codex and

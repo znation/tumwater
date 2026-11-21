@@ -440,7 +440,7 @@ test("the lazily built Usage/Failures heads carry their blurbs — a dropped blu
 });
 
 test("the Usage sparse-window note is the shared SPARSE_WINDOW_NOTE, verbatim", async () => {
-  // The note the CLI and TUI renders print when older events may have rotated out is
+  // The note the CLI renders print when older events may have rotated out is
   // events/event-window.ts's SPARSE_WINDOW_NOTE; the page's Usage caption must carry that
   // same sentence rather than a re-typed copy, so the three surfaces cannot drift.
   const els: Record<string, { dataset: Record<string, string>; innerHTML: string; addEventListener(): void }> = {};
@@ -542,7 +542,7 @@ test("the scoped Usage render drops the team-only tiles and prints the scope lin
 test("the report Role picker offers base roles only, so an instance id never labels another scope's body", async () => {
   // The scoped collectors fold an instance id (`feature-2`) into its base role, so offering the
   // instance would collect `feature`'s whole body under `feature-2`'s name — the GUI twin of
-  // the TUI Ctrl+G bug. syncRoles paints rolePickerOptions(reportBaseRoles(roles)), so the
+  // the Ctrl+G role-picker bug. syncRoles paints rolePickerOptions(reportBaseRoles(roles)), so the
   // picker offers one `feature` option and no `feature-2`, and a persisted instance scope falls
   // back to All roles instead of collecting the base body under the instance's name.
   const els: Record<string, { dataset: Record<string, string>; innerHTML: string; value?: string; addEventListener(): void }> = {};

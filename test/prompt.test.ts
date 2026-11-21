@@ -580,7 +580,7 @@ test("every run, director, conflict, and review prompt states the given date exa
   assert.ok(role);
   const rolePrompts = [
     buildRunPrompt({ role, today }),
-    buildDirectorPrompt("the tui flickers", undefined, undefined, undefined, today),
+    buildDirectorPrompt("the gui flickers", undefined, undefined, undefined, today),
   ];
   const review = buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, undefined, today);
   const gatePrompts = [buildConflictPrompt("bugfix", ["a.txt"], undefined, undefined, today), review];

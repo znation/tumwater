@@ -1,5 +1,5 @@
 /** Disable one role in the repo's tumwater.json in place — the setup the retire tests (and the
- * TUI/GUI retire paths) need so retire's enabled-role rail does not object. */
+ * GUI retire paths) need so retire's enabled-role rail does not object. */
 import fs from "node:fs";
 import path from "node:path";
 

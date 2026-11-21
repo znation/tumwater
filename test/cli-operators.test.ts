@@ -3,7 +3,7 @@
 // disk (.tumwater/abort-<role>.json, the pause marker, the reset/wake request markers), so
 // they are all testable with no harness running; the team-side consumption of each marker
 // is pinned in test/orchestrator.e2e.test.ts. Split out of test/cli.test.ts, which keeps
-// the remaining CLI surface (prompt, status, tui, doctor, report, run, gui).
+// the remaining CLI surface (prompt, status, doctor, report, run, gui).
 //
 // Every test here spawns the CLI, so the operator commands are split by command and topic to
 // keep each file well inside the gate's 30 s budget (DEVELOPMENT.md "The gate runs the nearest

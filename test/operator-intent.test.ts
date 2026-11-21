@@ -33,7 +33,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
 
 /** src/operator/operator-intent.ts's own tests: the marker-writing cores are shared by the CLI, the
- * dashboard's POST routes, and the TUI, so their confirmations and on-disk effects are pinned
+ * dashboard's POST routes, so their confirmations and on-disk effects are pinned
  * here once instead of trusting each surface's manual check. */
 
 /** A state dir with no orchestrator info: every liveness check reads false. */

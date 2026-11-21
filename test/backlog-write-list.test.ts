@@ -463,7 +463,7 @@ test("a --show in --grep's value slot is the pattern, so plan|bug --list --grep 
     [
       "# Bugs", "", "## Open", "",
       "### grepable bug (reported by the operator 2026-10-02)", "",
-      "the TUI --show half never paints", "",
+      "the CLI --show half never paints", "",
       "## Fixed", "", "_None yet._", "",
     ].join("\n"),
   );

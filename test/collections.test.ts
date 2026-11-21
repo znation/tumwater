@@ -234,13 +234,13 @@ test("topAndHidden respects the cap exactly at the boundary", () => {
   assert.equal(hidden, 0);
 });
 
-// distinctOrdered is the one home of the "keep the first occurrence of each distinct element,
-// in the order first seen, dropping later repeats" step its ~19 call sites share (the TUI panes'
+// distinctOrdered is the one home of the "keep the first occurrence of each distinct element, in
+// the order first seen, dropping later repeats" step its ~19 call sites share (the removed panes'
 // role lists, the startup gates' in-use agents, the doctor descendant/pid lists, the baseline
-// known-failure list, the CLI command/key/path-flag lists, and the text comma-list + token
-// lists). Its siblings in the file are each pinned above; this is the one with no direct unit
-// pin. These pin the two facts its doc comment claims: a repeated element does not leak through,
-// and the surviving elements keep the order in which they were first seen.
+// known-failure list, the CLI command/key/path-flag lists, and the text comma-list + token lists).
+// Its siblings in the file are each pinned above; this is the one with no direct unit pin. These
+// pin the two facts its doc comment claims: a repeated element does not leak through, and the
+// surviving elements keep the order in which they were first seen.
 
 test("distinctOrdered drops a repeat, keeping the first occurrence in place", () => {
   const items = ["a", "b", "a", "c"];

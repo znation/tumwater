@@ -21,8 +21,7 @@ Three sequenced stages; each lands green independently.
 1. `report`: add a per-role section to the text report (sorted by cost desc) and
    `rows` under a `perRole` key for `--json`. Add `--role <id>` filtering that
    scopes all report sections to one role.
-2. Dashboard: add per-role cost to the existing roles listing (GUI column and TUI
-   row detail), fed by the same ledger read used by `report`.
+2. Dashboard: add per-role cost to the existing roles listing (GUI column and row detail), fed by the same ledger read used by `report`.
 3. CLI help text updated for the new flag.
 
 ## Stage 3 — Per-role daily cap
@@ -45,7 +44,7 @@ Three sequenced stages; each lands green independently.
 - Report module: section + `--role` flag plumbing (CLI arg parsing → report data)
 - Budget/budget-gates module: cap check at tick start
 - Config schema + validation: new optional key
-- GUI/TUI role rows: cost cell
+- GUI role rows: cost cell
 - Tests: ledger rollup, report rows (text + json), cap trigger/pause/clear paths,
   schema validation, backward-compat (no new key ⇒ identical behavior)
 

@@ -373,7 +373,7 @@ test("logs -f prints the current window and follows newly appended events", asyn
   const repo = makeRepo();
   await initProject(repo, "cli logs follow");
 
-  // Seed one real event through the same path the TUI/GUI/CLI use.
+  // Seed one real event through the same path the GUI/CLI use.
   submitPrompt(repo, "first prompt");
 
   const s = spawnCli(repo, ["logs", "-f"]);

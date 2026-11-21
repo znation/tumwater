@@ -151,7 +151,7 @@ test("status payload combines persisted + live token metrics for running roles o
 });
 
 // Part 3c/… — a role whose resolved seam declares a window carries a preformatted peak-ctx
-// share (`peakCtxLabel`), so the GUI and `status --json` print the same `NN%` the TUI table
+// share (`peakCtxLabel`), so the GUI and `status --json` print the same `NN%` the status table
 // shows; a role without a declared window carries no label at all, leaving the shape unchanged.
 test("a role with a declared window carries peakCtxLabel", async () => {
   const repo = makeRepo();
@@ -210,7 +210,7 @@ test("status payload carries the current work item for running roles only", asyn
 
 // The per-role today spend on the GUI surface: /api/status
 // carries todayUsd per role — the daily budget window, 0 while its stamp is stale or missing,
-// same helper and semantics as the TUI's `today` column — and the page renders its cell
+// same helper and semantics as the `today` column — and the page renders its cell
 // client-side from that field.
 
 test("status payload carries todayUsd per role from its daily window", async () => {
@@ -240,7 +240,7 @@ test("status payload carries todayUsd per role from its daily window", async () 
 test("status payload carries the consecutive no-change streak per role", async () => {
   const repo = makeRepo();
   await initProject(repo, "payload no-change test");
-  // A streak on the state file rides the payload for the TUI/GUI to read.
+  // A streak on the state file rides the payload for the GUI to read.
   const streaked = freshRunnerState("clean");
   streaked.noChangeStreak = 4;
   streaked.cutOffStreak = 3;
@@ -269,7 +269,7 @@ test("status payload carries planned plans and open bugs, fresh per poll", async
   writeBacklogFile(repo, "PLANS.md", [
     {
       heading: "## Planned",
-      body: "### Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)\n\n**Goal:** The dashboard surfaces project status.",
+      body: "### Show open bugs and planned features in the GUI (planned 2026-08-24)\n\n**Goal:** The dashboard surfaces project status.",
     },
     { heading: "## Done" },
   ]);
@@ -281,12 +281,12 @@ test("status payload carries planned plans and open bugs, fresh per poll", async
     { heading: "## Fixed" },
   ]);
   payload = (await statusPayload(repo)) as { plans: string[]; bugs: string[] };
-  assert.deepEqual(payload.plans, ["Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)"]);
+  assert.deepEqual(payload.plans, ["Show open bugs and planned features in the GUI (planned 2026-08-24)"]);
   assert.deepEqual(payload.bugs, ["A routine merge conflict logs a warning (reported 2026-08-25)"]);
 });
 
-// The eligibility holds beside those titles (PLANS.md "Show backlog entry eligibility holds in
-// the GUI and TUI backlog lists"): planHolds/bugHolds are index-for-index parallel, with an
+// The eligibility holds beside those titles (the eligibility-hold change in
+// the GUI backlog lists): planHolds/bugHolds are index-for-index parallel, with an
 // eligible entry rendered as the empty string so a client appends a present-or-empty mark.
 
 test("status payload carries planHolds and bugHolds parallel to plans and bugs", async () => {
@@ -420,7 +420,7 @@ test("status payload carries queued prompt previews, fresh per poll", async () =
 });
 
 // The build badge on the GUI surface: /api/status carries it pre-formatted through
-// badges.ts's buildBadge — the same string the TUI header renders — so the page cannot
+// badges.ts's buildBadge — the same string the status header renders — so the page cannot
 // re-derive (and drift from) the multi-branch text client-side.
 
 test("status payload carries the build badge pre-formatted by buildBadge", async () => {
@@ -645,7 +645,7 @@ test("the status payload carries capPaused; a held idle role's phase reads waiti
 
 // The disk floor's published block (plans/disk-floor.md, part 4/4): the payload ships the raw
 // facts for `status --json` and the preformatted badge the dashboard renders — the same string
-// the TUI/status header builds — so both surfaces say the same thing.
+// the status header builds — so both surfaces say the same thing.
 test("status payload ships the disk block and its preformatted badge", async () => {
   const repo = makeRepo();
   await initProject(repo, "payload disk test");
@@ -665,7 +665,7 @@ test("status payload ships the disk block and its preformatted badge", async () 
 });
 
 // The remote-CI ledger's glance surface (plans/remote-ci.md "Surfaces"): the payload carries
-// the preformatted badge/tone the dashboard row and the TUI/status header share, the same
+// the preformatted badge/tone the dashboard row and the status header share, the same
 // string the header renders, so both say the same thing. Without a record, or for an
 // `unavailable` one, the badge is empty and the row renders exactly as before.
 test("status payload ships the remote-CI badge beside the ci parity badge, absent without a record", async () => {

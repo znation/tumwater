@@ -197,7 +197,7 @@ test("helpTopicForArgs stands down for a free-form command carrying prose", () =
   // The embedded --help is content: the command must read the text, not print a topic. prompt
   // has a help topic, so without the prose stand-down this would answer help instead.
   assert.equal(helpTopicForArgs("prompt", ["fix", "the", "--help", "output"]), null);
-  assert.equal(helpTopicForArgs("bug", ["the", "TUI", "mishandles", "--help", "output"]), null);
+  assert.equal(helpTopicForArgs("bug", ["the", "GUI", "mishandles", "--help", "output"]), null);
   assert.equal(helpTopicForArgs("plan", ["Fix", "-v"]), null); // no help flag at all
 });
 

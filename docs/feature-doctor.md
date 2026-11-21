@@ -2,7 +2,7 @@
 
 `tumwater doctor` is the operator's audit of the whole team: a read-only pre-flight that
 runs ~80 named checks against `.tumwater/` and the git repo, prints a report the operator can
-read in the terminal, the TUI Health pane or the dashboard, and offers five repair flags for
+read in the terminal, the dashboard, and offers five repair flags for
 the findings it can fix. It is the command an operator reaches for to find out what is wrong
 with a team that will not start or will not land. (Terms here follow the
 [glossary](glossary.md).)

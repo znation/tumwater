@@ -13,7 +13,7 @@ const PLANS_MD = `# Plans
 
 ## Planned
 
-### Show open bugs in the TUI (planned 2026-09-25)
+### Show open bugs in the GUI (planned 2026-09-25)
 
 **Goal.** The dashboard surfaces project status.
 
@@ -69,7 +69,7 @@ test("renderBacklogMarkdown lists the three sections with verbatim titles and in
   assert.ok(md.indexOf("## Planned features") < md.indexOf("## Open bugs"));
   assert.ok(md.indexOf("## Open bugs") < md.indexOf("## Open questions"));
   // Titles verbatim, including the (planned …)/(reported …) suffix the dashboards show.
-  assert.match(md, /^### Show open bugs in the TUI \(planned 2026-09-25\)$/m);
+  assert.match(md, /^### Show open bugs in the GUI \(planned 2026-09-25\)$/m);
   assert.match(md, /^### Timestamp of last result \(planned 2026-09-24\)$/m);
   assert.match(md, /^### Logs rotate too often \(reported 2026-09-25\)$/m);
   // Bodies verbatim but indented two spaces under their heading.
@@ -136,7 +136,7 @@ test("tumwater backlog --json prints the three entry arrays the Markdown view re
   assert.deepEqual(payload.plans, [
     {
       position: 1,
-      title: "Show open bugs in the TUI (planned 2026-09-25)",
+      title: "Show open bugs in the GUI (planned 2026-09-25)",
       body: "**Goal.** The dashboard surfaces project status.\n\n**Approach.**\n- read PLANS.md\n- render it",
     },
     { position: 2, title: "Timestamp of last result (planned 2026-09-24)", body: "" },
@@ -175,13 +175,13 @@ test("renderBacklogMarkdown appends holds to headings; no holds leaves the docum
     ...payload,
     holds: { plans: [{ blockedBy: ["Prereq 1/2"] }, "needs-review"], bugs: ["refused"] },
   });
-  assert.match(held, /^### Show open bugs in the TUI \(planned 2026-09-25\) \[blocked: requires Prereq 1\/2\]$/m);
+  assert.match(held, /^### Show open bugs in the GUI \(planned 2026-09-25\) \[blocked: requires Prereq 1\/2\]$/m);
   assert.match(held, /^### Timestamp of last result \(planned 2026-09-24\) \[blocked: needs review\]$/m);
   assert.match(held, /^### Logs rotate too often \(reported 2026-09-25\) \[blocked: refused\]$/m);
   // The payload alone (no holds) renders the same document as a view whose holds are absent.
   const plain = renderBacklogMarkdown(payload);
   assert.equal(plain, renderBacklogMarkdown({ ...payload }));
-  assert.match(plain, /^### Show open bugs in the TUI \(planned 2026-09-25\)$/m);
+  assert.match(plain, /^### Show open bugs in the GUI \(planned 2026-09-25\)$/m);
   assert.ok(!plain.includes("[blocked"), "a no-holds render carries no hold marks");
 });
 
@@ -262,7 +262,7 @@ test("renderBacklogMarkdown puts the working-on-it mark after the hold mark", ()
     inProgress: { plans: [null, "feature-2"], bugs: [null] },
   });
   assert.match(md, /^### Timestamp of last result \(planned 2026-09-24\) \[blocked: needs review\] \[working on it: feature #2\]$/m);
-  assert.match(md, /^### Show open bugs in the TUI \(planned 2026-09-25\)$/m);
+  assert.match(md, /^### Show open bugs in the GUI \(planned 2026-09-25\)$/m);
 });
 
 test("tumwater backlog shows the working-on-it mark and --json carries inProgress arrays", async () => {
@@ -271,10 +271,10 @@ test("tumwater backlog shows the working-on-it mark and --json carries inProgres
   fs.writeFileSync(path.join(root, "BUGS.md"), BUGS_MD);
   saveRunnerState(root, {
     ...loadRunnerState(root, "feature-2"),
-    claim: { file: "PLANS.md", key: "show open bugs in the tui", title: "Show open bugs in the TUI", at: 1, source: "assigned" },
+    claim: { file: "PLANS.md", key: "show open bugs in the gui", title: "Show open bugs in the GUI", at: 1, source: "assigned" },
   });
   const md = await runCli(root, "backlog");
-  assert.match(md.out, /^### Show open bugs in the TUI \(planned 2026-09-25\) \[working on it: feature #2\]$/m);
+  assert.match(md.out, /^### Show open bugs in the GUI \(planned 2026-09-25\) \[working on it: feature #2\]$/m);
   const doc = JSON.parse((await runCli(root, "backlog", "--json")).out) as {
     plans: unknown[];
     bugs: unknown[];

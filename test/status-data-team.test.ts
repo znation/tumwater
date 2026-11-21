@@ -118,7 +118,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   assert.deepEqual(mergeDone!.counts, { tests: 10, pass: 9, fail: 0, skipped: 1 });
   assert.equal(mergeDone!.at, base + 1000);
   // The JSON payload carries the raw block plus its preformatted badge (GUI parity with the
-  // TUI header — the badge is built once in status-model, both surfaces render it).
+  // status header — the badge is built once in status-model, both surfaces render it).
   const payload = (await statusPayload(repo)) as { mainCheck: unknown; mainCheckBadge: string; mainCounts: string };
   assert.deepEqual(payload.mainCheck, mergeDone);
   assert.match(payload.mainCheckBadge, / · full check green at a{8}, .* ago · (next in|due now)/, "the badge carries the covered sha, the verdict age and the due");
@@ -227,7 +227,7 @@ test("snapshot carries the running orchestrator's published providerHolds", asyn
 // The orchestrator info file's nested fields sit behind a hand-editable boundary: a foreign
 // `fallbackDemotions` (a scalar, not the pair-keyed record) must read as "no demotions" rather
 // than throw out of the every-second snapshot — `modelPairName(p) in publishedDemotions` throws
-// `Cannot use 'in' operator` on a string/number — which the TUI, GUI and `tumwater status` all
+// `Cannot use 'in' operator` on a string/number — which the GUI and `tumwater status` all
 // poll.
 test("snapshot tolerates a foreign fallbackDemotions shape in orchestrator.json", async () => {
   const repo = makeRepo();

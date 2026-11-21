@@ -14,7 +14,7 @@ let operators control spend at the role level.
   - `tumwater report` prints a per-role table (ticks, tokens, cost) alongside the
     fleet totals; `--json` exposes the same rows as data.
   - `tumwater report --role <id>` scopes the whole report to one role.
-  - Dashboard (GUI/TUI) shows a per-role cost breakdown view and/or per-role cost
+  - Dashboard (GUI) shows a per-role cost breakdown view and/or per-role cost
     column where roles are already listed.
 - **Budget gates (operator controls).**
   - A **daily per-role cap** (`maxDailyCostUsdPerRole`) — optional; a role that hits

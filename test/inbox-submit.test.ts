@@ -9,7 +9,7 @@ import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { setEnv } from "./helpers/env.js";
 
 // The submission pipeline (src/inbox/inbox-submit.ts): the shared length cap and the submit
-// wrappers the TUI, GUI, and CLI go through. The queue store's mechanics are pinned in
+// wrappers the GUI and CLI go through. The queue store's mechanics are pinned in
 // test/inbox.test.ts; the image side in test/inbox-attachments.test.ts.
 
 test("submitPrompt trims, enqueues, and logs a prompt_enqueued event", () => {

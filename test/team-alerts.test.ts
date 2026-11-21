@@ -22,7 +22,7 @@ type StandingFlags = Pick<
 >;
 
 // team-alerts.ts's teamAlerts: what needs the operator, phrased once for the dashboard's alert
-// banners and the TUI's attention lines.
+// banners and the status command's attention lines.
 
 type Snap = Parameters<typeof teamAlerts>[0];
 const base: Snap = {
@@ -34,7 +34,7 @@ const base: Snap = {
 test("a red doctor orphan scan raises the standing amber orphans alert naming the count", () => {
   // The alert-feed half (refreshOrphanAlert) supplies the doctor-row sentence; here we pin that
   // teamAlerts renders it as a standing amber banner, so a red `orphans` row is never silent on
-  // the dashboard or TUI again (BUGS.md 2026-10-28).
+  // the dashboard again (BUGS.md 2026-10-28).
   const orphan = { count: 2, pids: [11, 12], firstSeenAt: Date.now() - 2 * 3_600_000, detail: "2 orphaned processes (PPID 1): pid 11 (age 01:00, cpu 0:41.20) node run.js — nothing reaps these; `tumwater doctor --kill-orphans` kills each with its descendants" };
   const alerts = teamAlerts(base, [], [], Date.now(), undefined, orphan);
   const o = alerts.find((a) => a.key === "orphans");
@@ -238,8 +238,8 @@ test("a fallback names its provider or nothing; a plain stale build asks for a m
   assert.match(unnamed[0]?.detail ?? "", /^The fallback carries them/);
 });
 
-// The dashboard colors phases and results in its own tones; the TUI in the terminal's. Both
-// must tell the same story: what the page shows blue/violet/orange/indigo (work in progress)
+// The dashboard colors phases and results in its own tones; the status table in the terminal's.
+// Both must tell the same story: what the page shows blue/violet/orange/indigo (work in progress)
 // the terminal shows blue, and so on down the families.
 test("the terminal's tones and the dashboard's tell the same story", () => {
   const { phaseInfo, resultInfo } = clientScope<{
@@ -308,10 +308,10 @@ test("refused entries raise a standing indigo question alert right after the que
   assert.deepEqual(teamAlerts(base, [], [], now), []);
 });
 
-// The standing doctor-twin alerts (docs/cli.md's `tumwater status` row): a snapshot whose raw
-// flag stands raises the standing amber alert on the one shared source — the status banner, the
-// dashboard and the TUI all render it from teamAlerts. Pre-fix the raw --json key stood with no
-// rendered alert on any surface (BUGS.md 2026-10-31).
+// The standing doctor-twin alerts (docs/cli.md's `tumwater status` row): a snapshot whose raw flag
+// stands raises the standing amber alert on the one shared source — the status banner, the
+// dashboard and the status command all render it from teamAlerts. Pre-fix the raw --json key stood
+// with no rendered alert on any surface (BUGS.md 2026-10-31).
 test("the standing amber alerts raise from the snapshot's raw flags, worded like their doctor rows", () => {
   const root = makeRepo();
   const config = defaultConfig();

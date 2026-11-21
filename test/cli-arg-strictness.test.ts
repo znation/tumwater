@@ -14,7 +14,7 @@ import { readScheduledWakes } from "./helpers/json-read.js";
 // regression class is parser-wide, not command-local. The sibling flag-value gate (a value
 // malformed or missing) lives in cli-flag-value-errors.test.ts, and each command's own
 // flag/positional boundary cases live in its surface file (cli-prompt-strictness.test.ts,
-// cli-questions-strictness.test.ts, cli-questions-list.test.ts, cli-tui-strictness.test.ts).
+// cli-questions-strictness.test.ts, cli-questions-list.test.ts).
 // Spawned via the CLI so node --test can run them in parallel processes.
 test("commands reject unknown arguments instead of silently ignoring them", async () => {
   const repo = makeRepo();

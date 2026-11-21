@@ -205,7 +205,7 @@ test("createTranscriptRenderer still parses non-compact JSON shapes (fast-path f
 });
 
 test("formatTranscript ignores structurally valid but malformed events without failing", () => {
-  // pi's JSONL log is an external stream consumed by long-lived observers (the TUI, the GUI
+  // pi's JSONL log is an external stream consumed by long-lived observers (the GUI
   // panel, logs -f) that poll it every second; a single line whose shape deviates from what
   // the renderer expects must render nothing — not crash the observer or corrupt its
   // pending-separator state. Torn and non-JSON lines are pinned above; this pins the guards

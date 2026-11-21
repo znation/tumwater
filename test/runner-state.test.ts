@@ -477,7 +477,7 @@ test("readOrchestratorInfo and orchestratorAlive handle missing, valid, dead-pid
     assert.equal(orchestratorAlive(dir), alive);
   }
 
-  // A torn write must not crash observers (TUI/GUI poll this every second).
+  // A torn write must not crash observers (the GUI polls this every second).
   writeMalformedJson(file);
   assert.equal(readOrchestratorInfo(dir), null);
   assert.equal(orchestratorAlive(dir), false);

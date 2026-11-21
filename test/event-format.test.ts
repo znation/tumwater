@@ -182,7 +182,7 @@ test("formatEvent keeps the role column aligned when a role name holds a wide ch
 });
 
 test("formatEvent renders wake reasons and warning messages operators rely on", () => {
-  // These are the diagnostic lines read in logs/TUI/GUI when figuring out why a role woke or
+  // These are the diagnostic lines read in logs/GUI when figuring out why a role woke or
   // what went wrong: the reason and message payloads must survive formatting.
   const wake = formatEvent({ ts: 0, source: "clean", type: "wake", reason: "main moved" } as never);
   assert.match(wake, /woke \(main moved\)/, `wake line must carry its reason: ${wake}`);
@@ -282,7 +282,7 @@ test("formatEvent renders counters_reset plainly, naming all roles when several 
   assert.match(multi, /tumwater\s+counters reset for feature, bugfix \(runs, merges, tokens, cost\)/);
 });
 
-// The review-gate lines are what operators read in logs/TUI/GUI when a merge stalls on the
+// The review-gate lines are what operators read in logs/GUI when a merge stalls on the
 // gate: head is truncated to 8 chars, only the first rejection reason shows, and the optional
 // payloads (approval reason, reasons list) must degrade instead of printing "undefined".
 test("formatEvent renders the review-gate events with truncated heads and safe fallbacks", () => {
@@ -399,7 +399,7 @@ test("formatEvent names the after-merge tier on the review lines", () => {
 // The questions-outbox feature emits question_posted alongside merged (emission is pinned in
 // test/merge-to-main.test.ts and test/runner.test.ts); this pins what operators actually read in
 // logs,
-// the TUI activity pane, and the GUI feed: the new Open heading verbatim on a plain line —
+// the logs, and the GUI feed: the new Open heading verbatim on a plain line —
 // routine operation, not a warning.
 test("formatEvent renders question_posted with the posted heading and no warning prefix", () => {
   const line = formatEvent({
@@ -558,7 +558,7 @@ test("formatEvent renders per-run usage on run_end after result, summary, and er
 
 // The user-abort feature's events (PLANS.md, abort plan item (f)): when the orchestrator
 // consumes a role's abort marker it logs run_aborted under that role, and the killed run
-// ends with result "user_aborted". These are the lines an operator reads in logs/TUI/GUI to
+// ends with result "user_aborted". These are the lines an operator reads in logs/GUI to
 // see that their `tumwater abort` landed — routine state changes, not warnings.
 test("formatEvent renders run_aborted plainly under its role", () => {
   const line = formatEvent({ ts: 0, source: "feature", type: "run_aborted" } as never);
@@ -901,7 +901,7 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
 
 // eventResult — the activity feeds' outcome key: a run's result, else a merge's or build
 // check's status, else undefined. Single-homes the extraction the status payload's eventItem
-// and the TUI's eventTone both render through, so the two surfaces cannot key differently.
+// and the GUI's eventTone both render through, so the two surfaces cannot key differently.
 test("eventResult takes a run's result, else a merge's or build check's status, else undefined", () => {
   assert.equal(eventResult({ ts: 0, source: "x", type: "run_end", result: "changed" }), "changed");
   assert.equal(eventResult({ ts: 0, source: "x", type: "merge_done", status: "merged" }), "merged");
@@ -934,11 +934,11 @@ test("formatEvent renders a corrupt outcome as ?, never undefined", () => {
   assert.match(build, /check \(merge\): test \?$/);
 });
 
-// Every free-text payload eventMessage interpolates must survive a torn or hand-edited line:
-// a missing field renders textOr's "?" (and a missing sha shortSha's) rather than the literal
-// "undefined" that String(undefined) would print, and a foreign value (object/array) renders
-// the same placeholder rather than String(...)'s "[object Object]". Both reach the feed, the
-// TUI, and the GUI through formatEvent/eventMessage.
+// Every free-text payload eventMessage interpolates must survive a torn or hand-edited line: a
+// missing field renders textOr's "?" (and a missing sha shortSha's) rather than the literal
+// "undefined" that String(undefined) would print, and a foreign value (object/array) renders the
+// same placeholder rather than String(...)'s "[object Object]". Both reach the feed and the GUI
+// through formatEvent/eventMessage.
 test("formatEvent never renders undefined or [object Object] for corrupt event fields", () => {
   const corrupt: HarnessEvent[] = [
     { ts: 0, source: "clean", type: "merged", commit: "abcdef1234567890" } as never,

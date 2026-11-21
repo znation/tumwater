@@ -118,7 +118,7 @@ test("worktreeIdleReclaimHours accepts 0 or a positive number and rejects a nega
 test("maxDailyCostUsd rejects a finite-but-unrepresentable cap past MAX_SAFE_INTEGER", () => {
   // BUGS.md 2026-10-02: 1e24 is finite, so the old NON_NEGATIVE_OR_DISABLED rule admitted
   // it, and `config set`/the GUI's /api/config-set wrote an effectively uncapped budget
-  // from a one-zero typo — the same boundary the TUI's parseBudgetInput and
+  // from a one-zero typo — the same boundary the budget parser and
   // checkDailyBudgetUsd now enforce.
   assert.match(
     validationError({ ...defaultConfig(), maxDailyCostUsd: 1e24 }),

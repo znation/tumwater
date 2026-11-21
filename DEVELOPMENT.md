@@ -174,7 +174,7 @@ Two scripts run the compiled build against a seeded fake team rather than throug
 suite, for a change whose point is that the dashboards should look identical:
 
 - `scripts/diff-check.mjs` renders one fixture through the baseline build and the working
-  build at three widths (default, 120, 60) and compares the TUI status-table strings and the
+  build at three widths (default, 120, 60) and compares the `tumwater status` table and the
   GUI `/api/status` payloads exactly — the safety net for a refactor of
   `src/status/status-data.ts`, `src/ui/status-render.ts`, or the status payload. Stage the
   baseline once from a clean main checkout, then rebuild the worktree after your change:
@@ -183,7 +183,7 @@ suite, for a change whose point is that the dashboards should look identical:
       npm run build && rm -rf "$TW/tw-baseline" && mkdir -p "$TW/tw-baseline" && cp -R dist "$TW/tw-baseline/"   # from a clean main checkout
       npm run build && node scripts/diff-check.mjs                                                         # from the worktree
 
-  It prints `DIFF-CHECK PASS`, or the mismatching TUI lines and GUI fields, and exits
+  It prints `DIFF-CHECK PASS`, or the mismatching status lines and GUI fields, and exits
   nonzero on any difference.
 - `scripts/bench-live.mjs` times one dashboard frame (`snapshot` + `renderStatus`) over the
   same fixture, best of three runs; run it before and after a change to the status read or
@@ -334,7 +334,7 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   bodies in `src/cli/cli-backlog.ts` (the writing shells: file, cancel, release, top, edit) and
   `src/cli/cli-backlog-view.ts` (the read-only `--list`/`--show` shells), over their domain core
   in `src/backlog/`.
-- `src/status/`: the `status` collector behind the status table, TUI, and dashboard
+- `src/status/`: the `status` collector behind the status table and dashboard
   (`status-data.ts` — a thin composer over the per-domain collectors `status-roles.ts`,
   `status-inbox.ts` and `status-budget.ts`) and its per-poll cached readers; rendering lives
   in `src/ui/status-render.ts`.
@@ -371,12 +371,11 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/inbox/`: the inbox — the director's and per-role inboxes, image attachments,
   submit/edit/cancel, and the inbox-backed `prompt` command body.
 - `src/operator/`: the layer for your commands, shared by the
-  `pause`/`resume`/`wake`/`abort`/`stop`/`retire` CLI commands, the dashboard's POST routes,
-  and the TUI's controls.
+  `pause`/`resume`/`wake`/`abort`/`stop`/`retire` CLI commands, the dashboard's POST routes.
 - `src/backlog/`: the BUGS/PLANS/QUESTIONS markdown — the stat-cached readers, the text
   reader/writer, its structure, its renderer, and its eligibility marks; the QUESTIONS.md
   reader/writer core (`backlog-question-answer.ts`) sits here, shared by the CLI's `questions` command
-  body, the TUI's answer box, and the dashboard's POST route.
+  body, the dashboard's POST route.
 - `src/brief/`: the project brief — the managed prompt/status sections, reading the
   brief back out (`brief.ts`), and the shared writer that replaces it under the primary lock
   (`brief-edit.ts`).

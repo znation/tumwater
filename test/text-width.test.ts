@@ -4,7 +4,7 @@ import { clipToWidth, displayWidth, padToWidth } from "../src/text/text-width.js
 import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 // text-width.ts is the single home of terminal-column geometry — the wcwidth table and the
-// displayWidth/padToWidth/clipToWidth clippers every aligned table and TUI line relies on.
+// displayWidth/padToWidth/clipToWidth clippers every aligned table and status line relies on.
 // These tests pin the documented contract directly instead of only through one indirect case
 // per consumer.
 

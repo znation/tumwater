@@ -89,7 +89,7 @@ test("orchestratorAlive is false with no info and reflects pid liveness otherwis
 // must read as absent rather than be trusted because the annotation says so. A scalar
 // `fallbackDemotions` throws `Cannot use 'in' operator` in the snapshot's `usable`, and a
 // `disk` whose numbers are missing throws `undefined.toFixed` in `formatGB`; both are polled
-// every second by the TUI, GUI and `tumwater status`. `build` is included too, so the module's
+// every second by the GUI and `tumwater status`. `build` is included too, so the module's
 // "each known field is validated" read has one test pinning all five.
 test("readOrchestratorInfo drops nested fields with a foreign shape and keeps well-formed ones", () => {
   const root = tmpdir();

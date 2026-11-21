@@ -24,8 +24,8 @@ test("salvagePatchAt refuses a below-1 or past-the-list position with the shared
     { position: 1, file: "a.patch", savedAt: 1000, bytes: 3 },
     { position: 2, file: "b.patch", savedAt: 2000, bytes: 5 },
   ];
-  // The message is the wording every salvage surface (CLI --show/--drop/--apply, the TUI
-  // Health apply and drop arms, the dashboard apply/drop endpoints) shows for a bad number,
+  // The message is the wording every salvage surface (CLI --show/--drop/--apply, the dashboard
+  // apply/drop endpoints) shows for a bad number,
   // so it is pinned exactly here.
   for (const bad of [0, 3]) {
     const out = salvagePatchAt(patches, bad);

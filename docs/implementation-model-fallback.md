@@ -49,7 +49,7 @@ records outcomes at tick end.
 ### Stage 3 — Surfaces
 
 1. `tumwater role <id>` output gains effective-model info ("on fallback since …").
-2. GUI/TUI role rows show a fallback badge while active.
+2. GUI role rows show a fallback badge while active.
 3. `tumwater report --json` optionally tags fallback-window ticks (by joining event
    timestamps) so cost analysis can separate them.
 
