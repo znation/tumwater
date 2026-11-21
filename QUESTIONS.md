@@ -6,20 +6,6 @@ director). Loops never block on their own questions; they check here at the star
 
 ## Open
 
-### Delete the archived 'never reached a verdict' entries for re-queued dropped reviews? (asked by the plan role 2026-11-21)
-
-The 1,451 post-merge reviews kde-macos8.6-theme dropped on 2026-11-09 and 11-11 will be re-queued
-by `tumwater reviews --requeue-dropped` (BUGS.md "No command re-queues a dropped post-merge
-review…"). If that project's BUGS-FIXED.md holds per-commit "post-merge review of … never reached
-a verdict" entries for those commits, they read as fixed although the commits were never reviewed.
-(This repo's BUGS-FIXED.md holds 18 such entries, none dated 2026-11-09 to 11-11.)
-
-Options: (a) keep them — they record what happened, and a re-queued review that fails again files
-a fresh entry; (b) delete them by hand in that project once the re-queue has run.
-
-Recommendation: (a) keep them; nothing reads the archive as review coverage, and the re-queue
-plus the post-merge queue are the live record.
-
 ### Should a change to a widely read default run more than the budgeted gate? (asked by the plan role 2026-11-21)
 
 On 2026-11-20 `dac2a150b` flipped `DEFAULT_INSTANCES` 1 → 3 in src/roles/runner-ids.ts, a one-line constant read across scheduling, GUI and doctor paths. `npm run test:gate` (`--affected --budget=20`) passed it on 28 tests in 8.2 s. `npm test` at that commit fails 23 tests, and main stayed red for about 3.5 hours. The gate works as designed: test/affected-tests.ts ranks tests by import distance, `fitBudget` keeps the nearest that fit 20 s, and its header accepts that "a test this leaves out costs a red main that the watch finds and ci heals forward". The author's own declared-red RISK line, the other half of the report, is BUGS.md's "A change whose own commit message says it leaves tests failing still merges…", and that bug alone would have stopped this commit.
@@ -247,3 +233,19 @@ The user reported the dashboard's amber banner — "N refused entries wait on yo
 Recommendation: A, with the hybrid — it reuses the existing indigo Question surface, keeps `Refused = the user's call` coherent, and is a small change (retire the amber banner, route refusals through the Question alert); B alone is a larger, riskier auto-mutation of the backlog files. (Recorded 2026-11-15 by the director role.)
 
 **Answered 2026-11-15 by the user:** Let's go with Option A, surface it as a question. But make sure to make the question itself coherent and clear to the user -- don't get bogged down by the details of the refused entry. It should be surfaced to the user just like other questions are, and the system should take care of reconciling the user's answer with the refused entry.
+
+### Delete the archived 'never reached a verdict' entries for re-queued dropped reviews? (asked by the plan role 2026-11-21)
+
+The 1,451 post-merge reviews kde-macos8.6-theme dropped on 2026-11-09 and 11-11 will be re-queued
+by `tumwater reviews --requeue-dropped` (BUGS.md "No command re-queues a dropped post-merge
+review…"). If that project's BUGS-FIXED.md holds per-commit "post-merge review of … never reached
+a verdict" entries for those commits, they read as fixed although the commits were never reviewed.
+(This repo's BUGS-FIXED.md holds 18 such entries, none dated 2026-11-09 to 11-11.)
+
+Options: (a) keep them — they record what happened, and a re-queued review that fails again files
+a fresh entry; (b) delete them by hand in that project once the re-queue has run.
+
+Recommendation: (a) keep them; nothing reads the archive as review coverage, and the re-queue
+plus the post-merge queue are the live record.
+
+**Answered 2026-11-21 by the user:** Let's go with your recommendation.
