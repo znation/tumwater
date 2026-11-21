@@ -1,25 +1,61 @@
-/** The repaint loop tumwater's repainting `-f/--follow` views share — `status -f`,
- * `report -f`, `prompt --list -f`, and the rest all drive it (grep for `followView`);
- * `logs -f` and `history -f` stream new rows instead. Render once, then repaint on a
- * fixed interval until Ctrl+C or the process that started the command exits. Lifted out of
- * cli-query-commands.ts when `report -f` landed so the follow views have one leaf home instead
- * of a per-command copy. It writes the raw terminal (process.stdout) and stops on the parent's
- * death, so it is not a pure text helper; and the domain commands (history, report, inbox) drive
- * it too, so it sits at the source root beside terminal.ts rather than inside the command layer
- * cli/: a core module importing it reaches sideways into a leaf, not up into the commands. */
+/** The two `-f/--follow` mechanisms tumwater's live views share, in one leaf module. The
+ * repainting half — `followView` — drives `status -f`, `report -f`, `prompt --list -f` and the
+ * rest (grep for `followView`): render once, then repaint on a fixed interval until Ctrl+C or
+ * the process that started the command exits. The streaming half — `followUntilParentGone` —
+ * drives `logs -f` and `history -f`: read the append-only log from a byte offset and hand over
+ * each appended line until the same two endings. Both ended at the parent's death for the same
+ * reason (a `-f` leaked to PPID 1 that polled for days), so both arm
+ * `startParentDeathWatch` here.
+ *
+ * `followView` was lifted out of cli-query-commands.ts when `report -f` landed, and
+ * `followUntilParentGone` out of cli-log-commands.ts, so the follow machinery has one leaf home
+ * instead of a per-command copy. `followView` writes the raw terminal (process.stdout) and
+ * `followUntilParentGone` reads a file, so neither is a pure text helper; and the domain
+ * commands (history, report, inbox) drive them too, so they sit at the source root beside
+ * terminal.ts rather than inside the command layer cli/: a core module importing them reaches
+ * sideways into a leaf, not up into the commands. */
 
+import { followFile } from "./files/tail.js";
 import { expectedSupervisorPid, startParentDeathWatch } from "./process/supervisor.js";
 import { stripTerminalControls } from "./text/text.js";
 
 /** The default repaint interval for a follow view — a fixed cadence, no knob. */
 const FOLLOW_VIEW_INTERVAL_MS = 2000;
 
-/** Test seams for a follow view's repaint interval and parent-death watch, so a test can
- * drive the repaint and its end without waiting on real seconds or a real TTY. */
-export interface FollowViewSeams {
+/** Test seams for a follow's parent-death watch: they exist so a test can drive it without
+ * reparenting a real process or waiting on real seconds. The repainting views' seams extend it
+ * with the frame-shape seam below. */
+export interface FollowSeams {
   ppid?: () => number;
   intervalMs?: number;
+}
+
+/** Test seams for a follow view's repaint interval and parent-death watch, so a test can
+ * drive the repaint and its end without waiting on real seconds or a real TTY. */
+export interface FollowViewSeams extends FollowSeams {
   tty?: boolean;
+}
+
+/** Follow `file` until Ctrl+C or until the process that started this one is gone (the shape of
+ * a `logs -f` leaked to PPID 1 that polled for days). Resolves once the parent is gone. */
+export function followUntilParentGone(
+  file: string,
+  offset: number,
+  onLines: (lines: string[]) => void,
+  seams: FollowSeams,
+): Promise<void> {
+  const expected = expectedSupervisorPid();
+  const stop = followFile(file, offset, onLines);
+  return new Promise((resolve) => {
+    startParentDeathWatch(() => {
+      stop();
+      resolve();
+    }, {
+      ...(expected !== undefined ? { expectedPpid: expected } : {}),
+      ...(seams.ppid ? { ppid: seams.ppid } : {}),
+      ...(seams.intervalMs !== undefined ? { intervalMs: seams.intervalMs } : {}),
+    });
+  });
 }
 
 /** A follow view's live loop: render once, then repaint on an interval until Ctrl+C or the

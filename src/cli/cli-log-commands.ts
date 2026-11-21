@@ -14,9 +14,8 @@ import type { HarnessEvent } from "../events/events.js";
 import { eventMatchesGrep, eventResult, formatEvent } from "../events/event-format.js";
 import { canonicalEventType } from "../events/event-legacy.js";
 import { EVENT_TYPE_LABELS, eventTypeLabel } from "../events/event-labels.js";
-import { followFile } from "../files/tail.js";
 import { roleInScope } from "../roles/runner-ids.js";
-import { expectedSupervisorPid, startParentDeathWatch } from "../process/supervisor.js";
+import { followUntilParentGone, type FollowSeams } from "../follow.js";
 import { typoSuffix } from "../text/suggest.js";
 import { splitCommaList } from "../text/text.js";
 import { createTranscriptFilter, createTranscriptRenderer } from "../ui/transcript.js";
@@ -30,7 +29,8 @@ import { eventsLogPath, piLogPath } from "../paths.js";
  * each role's agent transcript. It lives beside the other CLI command bodies (history.ts,
  * cli/cli-query-commands.ts, cli-operator-commands.ts), which may import the ui/ rendering
  * layer they drive — here the event formatter and the transcript renderer — while src/ui/
- * itself stays off src/ module boundaries it does not own. */
+ * itself stays off src/ module boundaries it does not own. Its `logs -f` streaming follow comes
+ * from followUntilParentGone (src/follow.ts), shared with `history -f`. */
 
 /** Print one event as the feed line: formatEvent's rendered line, or — in `--json` mode — the
  * raw HarnessEvent serialized exactly as stored in the log. The one home of the
@@ -96,36 +96,6 @@ function typeEmpty(type: string, pieces: string[]): string {
   const hint = bad === undefined ? "" : typoSuffix(bad, Object.keys(EVENT_TYPE_LABELS));
   return `no events matching "${type}"${hint}`;
 }
-
-/** Test seams for the follow's parent-death watch: they exist so a test can drive it without
- * reparenting a real process. */
-export interface FollowSeams {
-  ppid?: () => number;
-  intervalMs?: number;
-}
-
-/** Follow `file` until Ctrl+C or until the process that started this one is gone (the shape of
- * a `logs -f` leaked to PPID 1 that polled for days). Resolves once the parent is gone. */
-export function followUntilParentGone(
-  file: string,
-  offset: number,
-  onLines: (lines: string[]) => void,
-  seams: FollowSeams,
-): Promise<void> {
-  const expected = expectedSupervisorPid();
-  const stop = followFile(file, offset, onLines);
-  return new Promise((resolve) => {
-    startParentDeathWatch(() => {
-      stop();
-      resolve();
-    }, {
-      ...(expected !== undefined ? { expectedPpid: expected } : {}),
-      ...(seams.ppid ? { ppid: seams.ppid } : {}),
-      ...(seams.intervalMs !== undefined ? { intervalMs: seams.intervalMs } : {}),
-    });
-  });
-}
-
 
 /** The `-n` ceiling for the event-log dump (`tumwater logs -n <count>`): a terminal tail has
  * no use for more than this many scanned events, and bounding it keeps an accidental

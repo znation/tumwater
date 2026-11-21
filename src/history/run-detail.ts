@@ -7,7 +7,7 @@
  * same trail through followView's shared loop instead of exiting after one render. */
 import { fail, say, sayJson } from "../terminal.js";
 import { parseCountFlag } from "../cli/cli-args.js";
-import { followView, type FollowViewSeams } from "../follow-view.js";
+import { followView, type FollowViewSeams } from "../follow.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, historyClass, readRunRows, runRowsOnModels, type HistoryResultClass, type RunRow } from "./history-data.js";
 import { parseHistoryModelList, parseHistoryResultList } from "./history.js";
@@ -196,7 +196,7 @@ function runDetailNumberMiss(role: string, runNumber: number, json: boolean): vo
  * between frames and a run whose merge finishes shows its verdict in the next frame. A run that
  * disappears from the scanned window mid-follow (rotation) paints the one-shot not-found line
  * for that frame instead of throwing. The read is synchronous unless --stat or --patch is set
- * (those run git plumbing): the sync path is the shape follow-view documents for each tick to
+ * (those run git plumbing): the sync path is the shape src/follow.ts documents for each tick to
  * paint exactly one frame, the deterministic shape the mock-clock follow tests rely on. */
 function runDetailFrame(
   root: string,

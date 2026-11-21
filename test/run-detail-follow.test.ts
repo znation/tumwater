@@ -2,7 +2,7 @@ import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { cmdRunDetail } from "../src/history/run-detail.js";
-import type { FollowViewSeams } from "../src/follow-view.js";
+import type { FollowViewSeams } from "../src/follow.js";
 import type { HarnessEvent } from "../src/events/events.js";
 import { eventsLogPath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";

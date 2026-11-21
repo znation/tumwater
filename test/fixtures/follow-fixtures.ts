@@ -21,7 +21,7 @@
  * drain one in-flight frame — keeps its own bespoke body and does not route through this. */
 import assert from "node:assert/strict";
 import type { TestContext } from "node:test";
-import type { FollowViewSeams } from "../../src/follow-view.js";
+import type { FollowViewSeams } from "../../src/follow.js";
 import { captureStdout } from "../helpers/exit-capture.js";
 import { sleep } from "../helpers/wait.js";
 

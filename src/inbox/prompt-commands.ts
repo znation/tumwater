@@ -31,7 +31,7 @@ import { editInEditor } from "../editor.js";
 import { listWideScope, queuedAgeSuffix, queuedFileAtPosition, promptPreview, queuedListRows, queuedRowsMatching, renderQueuedList } from "./inbox.js";
 import { durationLabel } from "../text/duration.js";
 import { failFollowJsonRival, parseRoleListFlag } from "../cli/cli-args.js";
-import { followView, type FollowViewSeams } from "../follow-view.js";
+import { followView, type FollowViewSeams } from "../follow.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { errorMessage, stripTerminalControls } from "../text/text.js";
 import { plural, validPositionRange } from "../text/phrases.js";

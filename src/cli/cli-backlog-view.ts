@@ -7,7 +7,7 @@ import { fail, say, sayJson } from "../terminal.js";
 import { validPositionRange } from "../text/phrases.js";
 import { failFollowJsonRival, parseCountFlag, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { FOLLOW_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
-import { followView, type FollowViewSeams } from "../follow-view.js";
+import { followView, type FollowViewSeams } from "../follow.js";
 import {
   type BacklogEntry,
   DONE_DATE_RE,

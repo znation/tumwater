@@ -17,7 +17,7 @@ import {
 } from "./cli-flag-specs.js";
 import { DOCTOR_CHECK_NAMES, type DoctorCheckName } from "../doctor/doctor-check-names.js";
 import { fail, say, sayJson, sayJsonOrRender } from "../terminal.js";
-import { followView, type FollowViewSeams } from "../follow-view.js";
+import { followView, type FollowViewSeams } from "../follow.js";
 import { loadConfigSafe } from "../config/config.js";
 import { failFollowJsonRival, peelPositionals } from "./cli-args.js";
 import { typoSuffix } from "../text/suggest.js";

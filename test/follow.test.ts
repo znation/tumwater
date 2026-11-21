@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { followView } from "../src/follow-view.js";
+import { followView } from "../src/follow.js";
 import { captureStdout } from "./helpers/exit-capture.js";
 import { followSeams } from "./fixtures/follow-fixtures.js";
 
