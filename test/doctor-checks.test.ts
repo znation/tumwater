@@ -2224,14 +2224,14 @@ function codexRowFixture(overrides: Record<string, unknown> = {}): { root: strin
 test("checkCodexVersion fails below the floor and passes at it", async () => {
   const { root } = codexRowFixture();
   const bin = tmpdir("doctor-codex-version-");
-  writeScript(path.join(bin, "codex"), 'echo "0.162.9"');
+  writeScript(path.join(bin, "codex"), 'echo "0.169.1"');
   const old = (await checkCodexVersion(root, bin))!;
   assert.equal(old.level, "fail");
-  assert.match(old.detail, /codex 0\.162\.9 is older than 0\.163\.0 — upgrade the codex CLI/);
-  writeScript(path.join(bin, "codex"), 'echo "0.163.0"');
+  assert.match(old.detail, /codex 0\.169\.1 is older than 0\.170\.0 — upgrade the codex CLI/);
+  writeScript(path.join(bin, "codex"), 'echo "0.170.0"');
   const ok = (await checkCodexVersion(root, bin))!;
   assert.equal(ok.level, "ok");
-  assert.match(ok.detail, /codex 0\.163\.0 \(>= 0\.163\.0\)/);
+  assert.match(ok.detail, /codex 0\.170\.0 \(>= 0\.170\.0\)/);
   writeScript(path.join(bin, "codex"), "exit 3");
   const unreadable = (await checkCodexVersion(root, bin))!;
   assert.equal(unreadable.level, "warn");

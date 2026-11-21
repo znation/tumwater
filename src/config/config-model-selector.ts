@@ -78,13 +78,15 @@ const BACKEND_DEFAULT_MODELS: Record<BackendId, Partial<Record<ModelTier, string
   // applies, exactly as pi's does. The free model is a time-limited promotion, so its id
   // belongs in tumwater.json, not in code.
   opencode: {},
-  // codex's tier defaults (plans/codex-backend.md decision 4), from the catalog's own
-  // descriptions (design finding 14): strong is `gpt-6.1-sol`, default and small are
-  // `gpt-6-luna`. The director runs the strong tier, as on claude.
+  // codex's tier defaults (plans/codex-default-models.md decision 2): strong is `gpt-6.2-sol`,
+  // default and small are `gpt-6-luna` (no newer Luna has shipped). GPT-6.2 Sol replaces 6.1
+  // Sol, and keeps the 2026-10-28 choice of one step down the lineup rather than Astra
+  // (plans/codex-backend.md "Tier defaults", plans/codex-default-models.md finding 5). The
+  // director runs the strong tier, as on claude.
   codex: {
     small: "gpt-6-luna",
     default: "gpt-6-luna",
-    strong: "gpt-6.1-sol",
+    strong: "gpt-6.2-sol",
   },
 };
 

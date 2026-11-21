@@ -10,7 +10,9 @@
 //
 // Every check prints a named PASS/FAIL and the script exits nonzero on the FIRST failure.
 // `--help` (or `--dry-run`) lists every step without spawning codex. Run the compiled build
-// first: `npm run build && npm run smoke:codex`.
+// first: `npm run build && npm run smoke:codex`. `--tier <small|default|strong>` (default
+// `default`) picks which tier's default model the run smokes, so a hand check can drive the
+// strong tier without editing the script (plans/codex-default-models.md hand steps H4–H5).
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -27,7 +29,7 @@ const { runAgent } = await import("../dist/src/agent/agent-run.js");
 const { defaultConfig } = await import("../dist/src/config/config.js");
 const { routeModel } = await import("../dist/src/config/config-model-selector.js");
 const { readSessions } = await import("../dist/src/agent/session-ledger.js");
-const { codexBackend } = await import("../dist/src/agent/codex/codex-backend.js");
+const { codexBackend, CODEX_MIN_VERSION } = await import("../dist/src/agent/codex/codex-backend.js");
 const { findRollout } = await import("../dist/src/agent/codex/codex-rollout.js");
 const { codexHome } = await import("../dist/src/agent/codex/codex-catalog.js");
 
@@ -56,6 +58,26 @@ function compareVersions(a, b) {
 
 const DRY_RUN = process.argv.slice(2).includes("--help") || process.argv.slice(2).includes("--dry-run");
 
+/** The tiers `--tier` accepts — the same three `MODEL_TIERS` names the config's `model` map takes. */
+const TIERS = ["small", "default", "strong"];
+
+/** The tier whose default model this run smokes: `--tier <small|default|strong>`, defaulting to
+ * `default`. An unknown value exits 2 naming the three, before any temp dir or child process,
+ * so the flag is checkable on a machine with no codex installed
+ * (plans/codex-default-models.md hand step H5). */
+function parseTier(args) {
+  const i = args.indexOf("--tier");
+  if (i === -1) return "default";
+  const value = args[i + 1];
+  if (!TIERS.includes(value)) {
+    console.error(`--tier takes one of ${TIERS.join(", ")}${value === undefined ? " (none given)" : `: ${value}`}`);
+    process.exit(2);
+  }
+  return value;
+}
+
+const TIER = parseTier(process.argv.slice(2));
+
 const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "tw-smoke-codex-"));
 const REPO = path.join(ROOT, "repo");
 fs.mkdirSync(REPO);
@@ -66,8 +88,8 @@ spawnSync("git", ["init", "-q"], { cwd: REPO });
 const CWD = fs.realpathSync(REPO);
 const SESSIONS = path.join(ROOT, ".tumwater", "sessions");
 fs.mkdirSync(SESSIONS, { recursive: true });
-// The default tier model, read from the same routing a seam uses instead of listed again.
-const MODEL = routeModel(undefined, undefined, "codex", "default").model;
+// The tier's model, read from the same routing a seam uses instead of listed again.
+const MODEL = routeModel(undefined, undefined, "codex", TIER).model;
 const BASE = { ...defaultConfig(), agent: "codex", model: MODEL };
 
 let logSeq = 0;
@@ -100,13 +122,13 @@ try {
   const steps = [];
   const step = (name, run) => steps.push({ name, run });
 
-  step("codex CLI present (>= 0.163.0)", async () => {
+  step(`codex CLI present (>= ${CODEX_MIN_VERSION})`, async () => {
     const resolved = codexBackend.resolveBin(BASE);
     const versionOut = spawnSync(resolved.bin, ["--version"], { encoding: "utf8", timeout: 30_000 });
     const version = /(\d+\.\d+\.\d+)/.exec(versionOut.stdout ?? "")?.[1];
     check(
-      "codex CLI present (>= 0.163.0)",
-      version !== undefined && compareVersions(version, "0.163.0") >= 0,
+      `codex CLI present (>= ${CODEX_MIN_VERSION})`,
+      version !== undefined && compareVersions(version, CODEX_MIN_VERSION) >= 0,
       versionOut.error?.message ?? `version=${version ?? versionOut.stdout?.trim() ?? "<none>"}`,
     );
   });
@@ -369,7 +391,7 @@ try {
   });
 
   if (DRY_RUN) {
-    console.log("smoke:codex dry run — no codex spawned. Steps:");
+    console.log(`smoke:codex dry run (tier ${TIER}, model ${MODEL}) — no codex spawned. Steps:`);
     for (const s of steps) console.log(`  ${s.name}`);
     console.log("SMOKE DRY RUN");
   } else {

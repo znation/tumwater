@@ -45,7 +45,7 @@ test("a second codexHookTrust with the same version and definition starts no app
     // The cache hit spawns no app-server: exactly one start line.
     assert.equal(fs.readFileSync(fake.callsFile, "utf8").trim().split("\n").length, 1);
     const cached = JSON.parse(fs.readFileSync(codexHookTrustPath(root), "utf8"))[
-      `0.163.0${JSON.stringify(def)}`
+      `0.170.0${JSON.stringify(def)}`
     ];
     assert.equal(cached.key, first.key);
     assert.equal(cached.hash, first.hash);

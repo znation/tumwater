@@ -50,7 +50,8 @@ smoke:opencode` is the same live check for the opencode backend, driving the rea
 against its free DeepSeek tier; it needs an OpenCode V2 install (`brew install opencode`) and is
 also outside `npm test`. `npm run smoke:codex` is the same live check for the codex backend,
 driving the real `codex` CLI against a logged-in ChatGPT subscription; it needs a Codex install
-and is also outside `npm test`.
+and is also outside `npm test`. `npm run smoke:codex -- --tier strong` runs that check on the
+strong tier's default model instead of the default tier's.
 
 ## How you work with tumwater
 
@@ -141,11 +142,11 @@ first inherits `default`):
 | `pi` | its saved default | its saved default (`pi default` in `tumwater status`) | its saved default |
 | `claude` | `claude-haiku-5-5` | `claude-haiku-5-5` | `claude-opus-5-5` |
 | `opencode` | its own default | its own default | its own default |
-| `codex` | `gpt-6-luna` | `gpt-6-luna` | `gpt-6.1-sol` |
+| `codex` | `gpt-6-luna` | `gpt-6-luna` | `gpt-6.2-sol` |
 
 pi and OpenCode carry no tier defaults of their own, so their own saved/default model applies
 when a job names no model; the others resolve the concrete model shown. The director runs the
-strong tier, so with no model configured it is `claude-opus-5-5` on claude and `gpt-6.1-sol` on
+strong tier, so with no model configured it is `claude-opus-5-5` on claude and `gpt-6.2-sol` on
 codex.
 
 **Mixing providers:** `model` says which model, `backend` says which program runs it (`pi`, the
@@ -166,7 +167,7 @@ The default tier runs on pi through Hugging Face, the strong model jobs (the dir
 role, the reviewer, and the conflict resolver) run on the claude CLI's included usage, and the fallback runs on pi through
 oMLX — all concurrently, under the team's `maxConcurrent` cap. An OpenCode tier is
 `{ "backend": "opencode", "model": "deepseek-v4.1-flash-free" }`, so its free tier can sit beside pi
-and claude in one config; a codex tier is `{ "backend": "codex", "model": "gpt-6.1-sol" }`, so a ChatGPT
+and claude in one config; a codex tier is `{ "backend": "codex", "model": "gpt-6.2-sol" }`, so a ChatGPT
 subscription can cover the team's default tier beside pi and claude. A Claude model that should stay on pi (billed per token) is the plain
 `anthropic/claude-…` selector. See [plans/agent-backends.md §3](plans/agent-backends.md).
 

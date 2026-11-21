@@ -134,7 +134,7 @@ export function codexEffort(thinking: string, levels?: readonly string[]): strin
  * §2). Throws on an unknown effort, as claudeArgs does — every `-c` key here was proved against
  * `--strict-config` on Codex 0.163.0 (finding 20). */
 export interface CodexArgOptions {
-  /** The resolved concrete model id, e.g. `gpt-6.1-sol`. */
+  /** The resolved concrete model id, e.g. `gpt-6.2-sol`. */
   model: string;
   /** The resolved `model_reasoning_effort` (see `codexEffort`); omitted leaves Codex's default. */
   effort?: string;

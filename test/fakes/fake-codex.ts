@@ -172,7 +172,7 @@ function fakeCodexReplay(
   const rolloutTemplate = path.join(dir, "rollout-template.jsonl");
   fs.writeFileSync(rolloutTemplate, opts.cannedRollout ?? DEFAULT_ROLLOUT);
   const appScript = path.join(dir, "app-server.js");
-  fs.writeFileSync(appScript, appServerJs({ callsFile: serverCallsFile, pidFile, version: "0.163.0", mismatch: false, hang: false }));
+  fs.writeFileSync(appScript, appServerJs({ callsFile: serverCallsFile, pidFile, version: "0.170.0", mismatch: false, hang: false }));
   const exitTail = opts.exitCode !== undefined ? `exit ${opts.exitCode}` : `cat "$streamFile"`;
   const body = [
     `argvFile="${argvFile}"`,
@@ -199,7 +199,7 @@ function fakeCodexReplay(
     exitTail,
     `    ;;`,
     `  --version)`,
-    `    printf '%s\\n' "0.163.0"`,
+    `    printf '%s\\n' "0.170.0"`,
     `    ;;`,
     `  -c)`,
     `    exec node "$appScript" "$@"`,
@@ -296,7 +296,7 @@ export function fakeCodexAppServer(opts: FakeCodexServerOptions = {}): FakeCodex
   const callsFile = path.join(dir, "server.calls");
   const pidFile = path.join(dir, "server.pid");
   const identityFile = path.join(dir, "server.identity");
-  const version = opts.version ?? "0.163.0";
+  const version = opts.version ?? "0.170.0";
   const script = path.join(dir, "app-server.js");
   fs.writeFileSync(script, appServerJs({ callsFile, pidFile, version, mismatch: opts.mismatch === true, hang: opts.hang === true, errorReply: opts.errorReply, noise: opts.noise, exitEarly: opts.exitEarly, versionHang: opts.versionHang, resultData: opts.resultData }));
   // The pid is stamped by the shell BEFORE node starts, so the timeout test can read it the
