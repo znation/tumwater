@@ -492,5 +492,5 @@ async function settleFailedReviewerFix(ctx: MergePipelineContext, entry: PostRev
     return;
   }
   warnEventBestEffort(ctx.root, entry.role, `the post-merge fix of ${shortSha(entry.commit)} could not merge (${result}); it stays queued for the next poll`);
-  settlePostReview(ctx.root, entry.commit, { ...entry, failures, lastFailure: `fix did not merge: ${result}` });
+  settlePostReview(ctx.root, entry.commit, { ...entry, failures, lastFailure: `fix did not merge: ${result}`, resume: undefined });
 }
