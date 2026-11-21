@@ -112,6 +112,7 @@ export interface HarnessEvent {
     | "subscription_window_reset" // the subscription window hold reached resetsAt and lifted; the subscription's seams run again; carries backend (the subscription account's backend, "claude" today); once per window
     | "max_concurrent_changed" // a live tumwater.json edit resized the concurrency cap (from → to)
     | "retention_changed" // a live tumwater.json edit changed sessionRetentionDays (from → to)
+    | "github_issues_unavailable" // the GitHub issues scan found gh missing, logged out or unable to list the issues, after it was usable (plans/github-issues.md part 2/5); carries repo, gh and reason — one per outage, not one per scan
     | "config_changed" // a live tumwater.json edit changed other settings (keys)
     | "model_changed" // a live tumwater.json edit changed the team's model wiring; carries from/to (teamModelLabel of the previous/next config) and roles (the per-role selector diffs) when a roles.<id> model override changed
     | "backend_binary" // a live tumwater.json edit newly routed a seam to a backend the previous config did not use; carries agent and found (the resolved binary was present) — the binary check's verdict, logged so a newly added backend is verified like startup would

@@ -63,57 +63,6 @@ cleanup` phase describe a hold that no longer exists.
   no row reads `held: session cleanup`.
 - `grep -rn "held: session cleanup" src` finds nothing.
 
-### GitHub issues, part 2/5: the orchestrator scans a project's open GitHub issues on a clock and records which ones no backlog entry mirrors (planned 2026-11-21 by the operator; requires GitHub issues part 1/5 landed; touches src/github/issue-scan.ts src/github/issue-mirrors.ts src/github/github-issues-state.ts src/paths.ts src/orchestrator/orchestrator-poll.ts src/events/events.ts test/github-issue-scan.test.ts test/github-issue-mirrors.test.ts test/fakes/fake-gh.ts)
-
-**Goal.** A running team reads the project's open GitHub issues about once an hour through the
-operator's `gh`. It records in `.tumwater/state/github-issues.json` whether `gh` worked, which
-issues are open and trusted, and which of them no backlog entry mirrors yet. Parts 3–5 read
-that ledger. This part only reads GitHub, and writes nothing to the backlog or to GitHub.
-
-**Approach.** Follow plans/github-issues.md "Decisions" 3–5 and "State".
-- src/github/issue-mirrors.ts, pure: `mirroredIssueNumbers(text): Set<number>` parses every
-  `mirrors GitHub issue #<n>` and `mirrors GitHub issues #<a>, #<b>` occurrence in headings,
-  matching `#\d+` as a whole number. `mirrorStates(files)` reads BUGS.md, PLANS.md,
-  BUGS-FIXED.md and PLANS-DONE.md at the base branch's tip with `fileContentAt` and maps each
-  number to its entries `{ file, section, heading, retired }`. Sections and entries are
-  located with `sectionSpan` / `actionableEntryRanges` (src/backlog/), never with new heading
-  parsing.
-- src/github/github-issues-state.ts: the ledger type, `readGithubIssues(root)` (missing or
-  malformed returns null), and `writeGithubIssues(root, …)` through `writeJsonAtomic`.
-  `githubIssuesPath(root)` lives in src/paths.ts.
-- src/github/issue-scan.ts: `scanGithubIssues(root, config, run = defaultGhRunner)`.
-  - Return early when `enabled` is false or `githubTarget` is null.
-  - When `ghReadiness` is not `ok`, record `gh` and the reason and return.
-  - Otherwise run `gh api -X GET repos/<repo>/issues -f state=open -f per_page=100
-    --paginate` and stop after 5 pages. Drop items that carry `pull_request`.
-  - Mark `trusted` per decision 4 (author_association OWNER/MEMBER/COLLABORATOR, the
-    `mirrorLabel` label, or `authors: "anyone"`).
-  - Keep `bodyExcerpt` to 2,500 characters, and only for trusted issues.
-  - Record `checkedAt`. A non-zero exit or unparsable JSON records `gh: "error"` with the
-    stderr's first line and keeps the previous `open` list.
-- src/orchestrator/orchestrator-poll.ts: `pollGithubIssues` sits beside `pollOrphanReap` and
-  takes the same shape: a `state.lastGithubScanAt` stamp, `dueForGithubScan(last, now,
-  intervalMs)`, and a first scan 60 s after team start. It awaits the scan inside the poll's
-  error boundary, so a throw logs one warning and never fails the poll.
-- src/events/events.ts: add a `github_issues_unavailable` event that fires only when `gh` turns
-  from ok (or unknown) to not-ok, with repo and reason, so the log gets one line per outage
-  rather than one per hour.
-- test/fakes/fake-gh.ts: answers `api repos/<repo>/issues` with a configured list.
-
-**Acceptance criteria.**
-- `mirroredIssueNumbers` finds 1 and 12 in `(mirrors GitHub issue #1; …)` plus
-  `(mirrors GitHub issues #12, #3)`, finds 3 too, and never reads `#12` as 1. A heading without
-  the phrase yields nothing.
-- `mirrorStates` places an entry under `## Fixed` in BUGS-FIXED.md as finished, and an entry
-  with the `retired` stamp in PLANS-DONE.md as retired.
-- With the fake gh answering three issues (an OWNER bug, a NONE-association issue, a NONE issue
-  labeled `tumwater`) and one PR, the ledger lists three open issues. Two are trusted, the PR is
-  absent, and the untrusted one has no `bodyExcerpt`.
-- Scheduling: a second scan inside the interval makes zero gh calls, and one after it makes the
-  listing call. `enabled: false` makes zero calls ever.
-- gh logged out → `gh: "unauthenticated"`, and exactly one `github_issues_unavailable` event
-  across two consecutive scans.
-
 ### GitHub issues, part 3/5: the GUI warns when a project has a GitHub remote but `gh` is missing or logged out, and shows issues waiting to be mirrored (planned 2026-11-21 by the operator; requires GitHub issues part 2/5 landed; touches src/status/status-data.ts src/ui/team-alert-status.ts test/status-data.test.ts test/team-alert-status.test.ts)
 
 **Goal.** The operator sees in the dashboard, without running doctor, that tumwater cannot read

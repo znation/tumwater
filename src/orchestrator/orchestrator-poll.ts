@@ -54,6 +54,7 @@ import { workReserveCount } from "../scheduling/claims.js";
 import type { ModelCheckGate } from "../model-check/model-check-gate.js";
 import { requestPrinciplesConsolidation } from "../prompt/principles-consolidation.js";
 import { requestCheckDeclaration } from "../prompt/check-declaration-request.js";
+import { newIssueScanClock, pollGithubIssues, type IssueScanClock } from "../github/issue-scan.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { heartbeatPath } from "../paths.js";
 
@@ -119,10 +120,21 @@ export interface PollState {
   /** The last poll at which the orphan reap ran (src/doctor/doctor-orphans.ts's
    * reapAttributableOrphans), 0 before the first reap so the first poll reaps immediately. */
   lastOrphanReapAt: number;
+  /** The GitHub issues scan's clock (src/github/issue-scan.ts): when the next hourly read of the
+   * project's open issues is due, and whether one is still running. */
+  githubScan: IssueScanClock;
 }
 
 export function newPollState(): PollState {
-  return { restart: false, holdForRestart: false, diskHeld: false, warnedBranchDivergence: false, lastReserve: 0, lastOrphanReapAt: 0 };
+  return {
+    restart: false,
+    holdForRestart: false,
+    diskHeld: false,
+    warnedBranchDivergence: false,
+    lastReserve: 0,
+    lastOrphanReapAt: 0,
+    githubScan: newIssueScanClock(),
+  };
 }
 
 /** The start gate every reserved run passes the moment its permit is granted
@@ -208,6 +220,10 @@ export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): 
   // each listed orphan old enough that no live run can still own it, at most once per
   // interval. This await holds the poll step, so a slow scan cannot overlap the next poll's.
   await pollOrphanReap(root, state);
+  // The GitHub issues scan (src/github/issue-scan.ts): an hourly read of the project's open issues
+  // through the operator's gh. The clock keeps it to one scan per interval, and a failed scan only
+  // warns.
+  await pollGithubIssues(root, liveConfig, state.githubScan, ctx.warn);
   // A missing or stale opencode catalog is refetched at most once an hour while opencode is routed.
   ctx.opencodeCatalogRefresh.poll(liveConfig);
 

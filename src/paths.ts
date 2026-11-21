@@ -190,6 +190,14 @@ export function heartbeatPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "heartbeat.json");
 }
 
+/** The GitHub issues ledger (src/github/github-issues-state.ts): what the hourly scan last read
+ * from the project's open issues — whether `gh` worked, which issues are open and trusted, and
+ * which of them no backlog entry mirrors (plans/github-issues.md). Runtime state under
+ * .tumwater/state/, never committed; absent until the first scan has run. */
+export function githubIssuesPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "github-issues.json");
+}
+
 /** The images column `tumwater doctor` last read from `pi --list-models`, keyed provider/model.
  * Runtime state under .tumwater/state/, never committed. */
 export function piListedModelsPath(root: string): string {

@@ -10,6 +10,11 @@ export function configEventMessage(e: HarnessEvent): string {
       // Routine state change, like counters_reset — no warning prefix.
       return `maxConcurrent changed: ${textOr(e.from)} → ${textOr(e.to)}`;
     }
+    case "github_issues_unavailable": {
+      // The GitHub issues scan could not read the project's issues; nothing new is mirrored until
+      // gh works again. It is logged once per outage, not once per scan.
+      return `GitHub issues unavailable for ${textOr(e.repo)} (${textOr(e.gh)}): ${textOr(e.reason)}`;
+    }
     case "retention_changed": {
       // Routine state change, like its maxConcurrent sibling — no warning prefix.
       return `sessionRetentionDays changed: ${textOr(e.from)} → ${textOr(e.to)}`;
