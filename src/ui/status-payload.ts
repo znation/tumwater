@@ -175,10 +175,9 @@ function roleScheduleFields(s: RoleState) {
     yieldMultiplier: yieldMultiplierFor(s),
     // The consecutive no-change streak (run-apply.ts applyRunOutcome's noChangeStreak, an
     // observational counter): how many completed runs in a row returned nothing to do. The
-    // The status table reads it off the rendered label; the GUI's phaseDetailBase
-    // re-derives the ` · no change ×N` suffix from this number (its row and drawer share
-    // noChangeStreak) so its JS twin applies the same display rule without re-parsing the phase
-    // text.
+    // status table reads it off the rendered label; the GUI's phaseDetailBase re-derives the
+    // ` · no change ×N` suffix from this number (its row and drawer share noChangeStreak) so
+    // its JS twin applies the same display rule without re-parsing the phase text.
     noChangeStreak: s.noChangeStreak ?? 0,
     // The consecutive cut-off streak (run-apply.ts applyRunOutcome's cutOffStreak, an
     // observational counter parallel to noChangeStreak): how many completed runs in a row
