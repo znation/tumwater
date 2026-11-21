@@ -403,7 +403,7 @@ export function describeArchivedFile(f: ArchivedFile): string {
 }
 
 /** What archiveFinishedOnMain did. `skipped` names why nothing was written. Exported so the
- * GUI handler and the TUI Health pane can name it. */
+ * GUI handler can name it. */
 export type ArchiveOnMainOutcome =
   | { status: "nothing" }
   | { status: "archived"; commit: string; moved: ArchivedFile[] }

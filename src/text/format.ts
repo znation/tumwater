@@ -33,8 +33,8 @@ export function prependPromptNote(prompt: string, note: string): string {
 /** A list joined into one string when it holds anything, else a fallback sentence — the single
  * home of the `lines.length ? lines.join(sep) : empty` fold the operator surfaces all repeat:
  * the change diff's `no pending changes` (change-render.ts), the backlog-commit flash's
- * nothing-to-commit line (doctor-backlog.ts), and the TUI Health pane's `no broken pins to
- * drop` / `no leftover roles to retire` flashes (tui-pane-health.ts). One place so the
+ * nothing-to-commit line (doctor-backlog.ts), and the `no broken pins to drop` /
+ * `no leftover roles to retire` wording. One place so the
  * separator and the empty-wording cannot drift per consumer. */
 export function joinOr(lines: readonly string[], sep: string, empty: string): string {
   return lines.length > 0 ? lines.join(sep) : empty;
@@ -96,9 +96,9 @@ export function usd(n: number): string {
 }
 
 /** A USD cap for display: whole dollars stay bare ($50), fractional ones keep their cents
- * ($12.34) — the budget badge reads `· budget: $12.34/$50 today`, and the TUI's cap-edit
+ * ($12.34) — the budget badge reads `· budget: $12.34/$50 today`, and the cap-edit
  * confirmation reads `budget set to $25`. The single home of the drop-`.00` rule, shared by
- * badges.ts's `budgetBadge` and the TUI's budget-edit flash so the two cannot drift (the
+ * badges.ts's `budgetBadge` and the budget-edit flash so the two cannot drift (the
  * GUI renders the same rule from its own JS copy in gui-client.ts: a separate runtime that
  * cannot import TypeScript). */
 export function usdCap(n: number): string {

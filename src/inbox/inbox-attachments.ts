@@ -141,7 +141,7 @@ export function promptImagesProblem(images: unknown): string | null {
 }
 
 /** Read and validate an on-disk `--attach` path list into the GUI's image input shape — the
- * throwing core the CLI's `readPromptImages` and the TUI's prompt-line image attach share, so
+ * throwing core the CLI's `readPromptImages` and the dashboard's image attach share, so
  * both surfaces validate from one home. It applies the same cheap path-only rules first — the
  * shared count cap before any file is read (so a glob that expanded past it is rejected
  * without reading or base64-encoding dozens of files), then each path's extension,

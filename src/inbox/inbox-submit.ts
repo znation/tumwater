@@ -18,11 +18,11 @@ import { roleLabel } from "../roles/role-labels.js";
 /** The user-facing submission pipeline for the prompt queues (the store's mechanics —
  * listing, peeking, dequeuing, cancelling, and their race policy — live in src/inbox/inbox.ts,
  * and the image side of a submission in src/inbox/inbox-attachments.ts): the shared length cap,
- * the validation, and the submit wrappers the TUI, GUI, and CLI all go through. */
+ * the validation, and the submit wrappers the GUI and CLI all go through. */
 
 /** Cap on a submitted prompt's length: the same ceiling for every role's queue, director and
  * role alike, because every prompt rides into its target run's prefill — a megabyte pasted
- * into the TUI, a GUI POST, or a shell-mistaken `tumwater prompt $(cat …)` would otherwise
+ * into a prompt, a GUI POST, or a shell-mistaken `tumwater prompt $(cat …)` would otherwise
  * ride into the next run's context wholesale. submitPrompt and submitRolePrompt reject
  * over-long text before it is queued, so no surface can enqueue it. */
 export const DIRECTOR_PROMPT_MAX_CHARS = BRIEF_TEXT_MAX_CHARS;
@@ -72,7 +72,7 @@ export function imagePromptGuidance(root: string, role: string): { refusal?: str
   };
 }
 
-/** A user submits a new prompt for one role (TUI, GUI, or CLI): enqueue it there and record it
+/** A user submits a new prompt for one role (GUI or CLI): enqueue it there and record it
  * in the event log under that role, best-effort — the queue write is the durable effect the
  * caller asked for, so an unwritable feed must not report the submit as failed. Returns the
  * trimmed prompt that was queued. The logged

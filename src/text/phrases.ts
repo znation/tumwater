@@ -375,7 +375,7 @@ export function describeToolCall(toolName: string, args: unknown): string {
  * so the four cannot drift on the spacing or the parenthesized form. The other remainder
  * phrasings keep their own wording: the failure digest's bare `+N more` role list and its `_+N
  * more …_` lines (failure/failure-render.ts), doctor's `and N more` (doctor/doctor-orphans.ts),
- * the TUI alert pointer (ui/tui/tui-frame.ts), and the review-reject reasons, whose extra clause
+ * the alert pointer, and the review-reject reasons, whose extra clause
  * sits inside the parentheses (events/event-format-review.ts). */
 export function moreSuffix(count: number): string {
   return count > 0 ? ` (+${count} more)` : "";
@@ -394,8 +394,8 @@ export function validPositionRange(count: number): string {
 
 /** The success flash for a config write that found the key already unset and, on an empty
  * line, had nothing to clear: `<subject> is not set in tumwater.json, so nothing was cleared`.
- * One home for the sentence's bytes, shared by the seven no-op clear sites in the TUI editors
- * (ui/tui: interval, config, instances, quiet, instructions), the CLI's per-role write
+ * One home for the sentence's bytes, shared by the seven no-op clear sites in the editors
+ * (interval, config, instances, quiet, instructions), the CLI's per-role write
  * (cli/cli-role-command.ts), and the dashboard's role-key write (gui/gui-config-commands.ts),
  * so the wording cannot drift between the surfaces that report it. `<subject>` is what was
  * named to the operator (a config key, `min run interval`-style noun, or a role's field);
@@ -406,7 +406,7 @@ export function configClearedNoopFlash(subject: string): string {
 
 /** The success flash for a config write whose value was already in place (an unchanged set):
  * `<subject> is already <value>, so tumwater.json was not written`. One home for the sentence's
- * bytes, shared by the ten no-op set sites in the TUI editors (ui/tui: interval, config,
+ * bytes, shared by the ten no-op set sites in the editors (interval, config,
  * instances, quiet, budget), the CLI (cli/cli-config-commands.ts's `config set`,
  * cli/cli-role-command.ts's per-role write), and the dashboard (gui/gui-config-commands.ts's
  * min-run-interval and instances role writes); `value` renders through string interpolation,

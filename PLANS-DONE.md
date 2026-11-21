@@ -5,6 +5,22 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Remove the TUI, part 4b/5: src/backlog, src/text, src/inbox and src/config comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/backlog/ src/text/ src/inbox/ src/config/ (comments only)) — done 2026-11-21 by the feature role
+
+One of four independent parts split from part 4/5; see part 4a/5 for the goal. These four
+directories hold about 57 matching lines in 23 files.
+
+**Approach.** As in part 4a/5, for comments under src/backlog/, src/text/, src/inbox/ and
+src/config/: rewrite each sentence that names the TUI, a `ui/tui/` path or a TUI key for the
+surfaces that remain, drop "twin of the TUI's …" cross-references, change comments only (a code
+change found along the way becomes its own BUGS.md entry), and keep comment lines within 100
+columns.
+
+**Acceptance criteria.**
+- `grep -rniw tui src/backlog src/text src/inbox src/config` matches nothing.
+- `git diff -U0 -- src/backlog src/text src/inbox src/config` adds and removes only comment lines.
+- test/comment-width.test.ts passes.
+
 ### Self-declared check, part 2/3: the no-check alert becomes a blue info message saying tumwater is declaring a check (planned 2026-11-21 by the director role; "requires part 1/3 landed"; touches src/doctor/doctor-project-checks.ts src/ui/team-alert-standings.ts test/doctor-checks.test.ts test/team-alerts.test.ts docs/invariants.md docs/feature-doctor.md) — done 2026-11-21 by the feature role
 
 **Goal.** The operator asked on 2026-11-21 that this condition be an info message, not a

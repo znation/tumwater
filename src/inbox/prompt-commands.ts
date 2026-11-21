@@ -159,7 +159,7 @@ function sayTopOutcome(position: number, role: string, outcome: TopOutcome, labe
  * shared throwing core both surfaces use (readPromptImageFiles in inbox-attachments.ts), with
  * each failure exiting through `fail` with the same messages the enqueue branch always
  * raised — so the enqueue and `--edit` forms share one definition and cannot drift from the
- * TUI's prompt-line attach. */
+ * dashboard's image attach. */
 function readPromptImages(paths: readonly string[]): PromptImageInput[] {
   try {
     return readPromptImageFiles(paths);

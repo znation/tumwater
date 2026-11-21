@@ -14,8 +14,8 @@ export type { BacklogEntry } from "./backlog-md.js";
  * append-only durable memory). Any write invalidates it via dev/ino/mtime/size
  * (stat-cache.cachedByStat, same freshness check as files/tail.ts's incremental log readers). The
  * pure markdown parsing underneath lives in src/backlog/backlog-md.ts — this module owns only
- * reading and caching. Each dashboard formats this data for its own surface (the TUI's lines live
- * in tui.tsx; the GUI renders HTML in gui-page.ts). The open-question count shown in the status
+ * reading and caching. Each dashboard formats this data for its own surface (the GUI renders
+ * HTML in gui-page.ts). The open-question count shown in the status
  * headers is just `openQuestions(root).length`, so the badge and the list always come from one
  * parse. */
 
@@ -281,7 +281,7 @@ export function openQuestions(root: string): string[] {
   return sectionEntries(root, "QUESTIONS.md", "Open").map((e) => e.title);
 }
 
-/** Planned features as full entries (title + body), in file order — the TUI's project-status
+/** Planned features as full entries (title + body), in file order — the project-status
  * browse and the GUI's /api/backlog endpoint read these. Missing or unreadable → []. */
 export function plannedPlanEntries(root: string): BacklogEntry[] {
   return sectionEntries(root, "PLANS.md", "Planned");

@@ -6,7 +6,7 @@ import { HOUR_MS, DAY_MS, boundedWindowLine, sinceWindowLine } from "./datetime.
  * keep their own literals as there is no shared MINUTE_MS/SECOND_MS constant to fold onto.
  * The one home for the duration grammar, shared by the CLI parser (cli/cli-args.ts's
  * parseDurationFlag) and every surface that echoes a duration back in the same vocabulary —
- * a pause confirmation, a wake/stop notice, a report window, a TUI input echo — so the
+ * a pause confirmation, a wake/stop notice, a report window, an input echo — so the
  * parser's acceptance and the renders' phrasing cannot drift. */
 const UNIT_MS = { s: 1_000, m: 60_000, h: HOUR_MS, d: DAY_MS } as const;
 
@@ -68,7 +68,7 @@ export function durationLabel(ms: number): string {
 }
 
 /** The human phrase for a two-ended time window — `between 2h and 1h ago` — the shape
- * `--since/--until` windows share with the history TUI and `history`'s bounded empties.
+ * `--since/--until` windows share with the history view and `history`'s bounded empties.
  * Unbounded windows keep their own "last …"/"in …" phrasing; only the two-ended form is
  * folded here so the sites cannot drift. The two bounds are labeled in caller order (older
  * before newer at every current site), and each is run through durationLabel, so a phrase

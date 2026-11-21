@@ -1,5 +1,5 @@
 /** Harness-mediated config WRITES — the four operator-editor mutators behind the operator
- * surfaces (the TUI's Ctrl+B editor, the GUI's /api/budget endpoint, `tumwater config
+ * surfaces (the GUI's /api/budget endpoint, `tumwater config
  * set`/`unset`), addressed by key through config-keys.ts. The shared write MACHINERY these
  * verbs run on — the load → validate → atomic-write idiom, the cross-process lock, and the
  * raw/preserve-role helpers — lives in config-write-core.ts, which the director's staged
@@ -93,7 +93,7 @@ export function setDailyBudgetUsd(
  * POSITIVE_INTEGER checks, config-validation.ts): the run-concurrency knobs plus the legacy
  * merge batch cap. For these, an exponent spelling like "4e1" is itself a JSON number (40)
  * that setConfigKey's JSON.parse would read past validateConfig's integer check and silently
- * write — the same silent misread the per-role instances/interval guards, the TUI team-key
+ * write — the same silent misread the per-role instances/interval guards, the team-key
  * editors, and the GUI Settings rows refuse — so setConfigKey refuses it, naming the key and
  * writing nothing. */
 const PLAIN_INTEGER_TOP_LEVEL_KEYS = new Set([
@@ -109,7 +109,7 @@ const PLAIN_INTEGER_TOP_LEVEL_KEYS = new Set([
  * `idleBackoff.initialSeconds`/`maxSeconds`) and the per-role
  * `roles.<id>.minRunIntervalSeconds`. For these, an exponent spelling like "1e2" is itself a
  * JSON number (100) that setConfigKey's JSON.parse would read past validateConfig's numeric
- * check and silently write as the misread — the same silent misread the TUI Ctrl+S interval
+ * check and silently write as the misread — the same silent misread the interval
  * editor, the CLI's `role --min-run-interval` and the GUI interval drawer refuse — so
  * setConfigKey refuses it, naming the key and writing nothing. `idleBackoff.factor` is a
  * multiplier, not a second count, so it is not in this set. */
@@ -149,7 +149,7 @@ function isPlainIntegerKey(
 /** The duration-typed keys: a top-level second-count knob, the section fields a dotted
  * key names (review/check's timeoutSeconds, idleBackoff's second counts), or the
  * per-role minRunIntervalSeconds. They take plain decimals, not integers, so the
- * refusal says "plain second count" — the wording the TUI interval editor, the CLI's
+ * refusal says "plain second count" — the wording the interval editor, the CLI's
  * `role --min-run-interval`, and the GUI drawer all use for the same misread. */
 function isPlainDurationKey(parsed: ReturnType<typeof parseConfigKey>): boolean {
   return (
@@ -174,7 +174,7 @@ function isPlainDollarKey(parsed: ReturnType<typeof parseConfigKey>): boolean {
 // The shape screen that stops setConfigKey's JSON.parse from silently writing an exponent
 // spelling ("4e1" → 40, "1e2" → 100) past a plain-integer, plain-second-count or
 // plain-dollar key's numeric check: each family's refusal names the key and writes
-// nothing — the twin of the per-role guards, the TUI team-key and budget editors, and the
+// nothing — the twin of the per-role guards, the team-key and budget editors, and the
 // GUI Settings rows and cap drawer. A blank or non-exponent spelling passes through to
 // the parse below (a non-exponent invalid is left for validateConfig's own message).
 function exponentRefusal(
@@ -440,7 +440,7 @@ export function setConfigKey(
   // (`maxDailyCostUsd`, the `maxDailyCostUsdPerRole.<role>` map entry): refuse an exponent
   // spelling ("4e1" → 40, "1e2" → 100) that JSON.parse would read past the key's numeric
   // check and silently write, naming the key and writing nothing — the twin of the per-role
-  // guards, the TUI team-key and budget editors, and the GUI Settings rows and cap drawer.
+  // guards, the team-key and budget editors, and the GUI Settings rows and cap drawer.
   // A non-exponent invalid falls through for validateConfig (whose message names the key).
   // Empty clears the key below.
   const trimmed = rawValue.trim();

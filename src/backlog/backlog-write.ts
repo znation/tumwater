@@ -612,8 +612,8 @@ export type RetireEntryOutcome =
   | { status: "gone" }
   | { status: "moved"; title: string };
 
-/** The shared lock-and-locate half of the title-checked plan/bug retire the dashboard and the
- * TUI call: tryRetirePlan's move, but the nth-entry lookup and the heading comparison both run
+/** The shared lock-and-locate half of the title-checked plan/bug retire the dashboard
+ * calls: tryRetirePlan's move, but the nth-entry lookup and the heading comparison both run
  * inside the lock (withLocatedEntry, like tryCancelEntry) — so a list that shifted since the
  * poll answers gone/moved as data and an out-of-range position never reaches readEntryLines'
  * fail(), which would exit the serving process. The kind's own sections are passed in
@@ -635,7 +635,7 @@ function tryRetireEntry(
   }));
 }
 
-/** `tumwater plan --retire` and its dashboard/TUI twins, title-checked: tryRetireEntry over
+/** `tumwater plan --retire` and its dashboard twin, title-checked: tryRetireEntry over
  * PLANS.md's Planned→Done, so a shifted ## Planned answers gone/moved as data. */
 export function tryRetirePlan(root: string, n: number, expectedTitle: string): RetireEntryOutcome {
   const { fileName, sectionTitle } = backlogTarget("plan");
@@ -643,7 +643,7 @@ export function tryRetirePlan(root: string, n: number, expectedTitle: string): R
 }
 
 /** The title-checked bug twin of tryRetirePlan: the same locked move over BUGS.md's Open→Fixed,
- * so the dashboard Bugs drawer and the TUI's Ctrl+Y retire an open bug with the same
+ * so the dashboard Bugs drawer retires an open bug with the same
  * gone/moved refusals and the same retired record `tumwater bug --retire` leaves. */
 export function tryRetireBug(root: string, n: number, expectedTitle: string): RetireEntryOutcome {
   const { fileName, sectionTitle } = backlogTarget("bug");

@@ -302,7 +302,7 @@ export function stillHeldNote(hold: EntryHold): string {
 /** The holds' shape, derived from two files so it needs a stat key spanning both. */
 interface BacklogHolds { plans: EntryHold[]; bugs: EntryHold[] }
 
-/** `/api/status` polls the holds on the 1-second dashboard poll and the TUI recomputes them each
+/** `/api/status` polls the holds on the 1-second dashboard poll and recomputes them each
  * frame while PLANS.md/BUGS.md change only when a role merges an edit. The file reads beneath are
  * already stat-cached (plannedPlanEntries/openBugEntries), but the per-entry eligibility walk
  * (entryHoldAgainst's body scan + heading clause) is pure CPU re-derived on every call, growing
@@ -361,14 +361,14 @@ export function backlogHolds(root: string): BacklogHolds {
 }
 
 /** The mark for each planned plan and open bug, two arrays parallel to the entries the
- * observer surfaces list (backlogPayload's `plans`/`bugs`, the TUI's list and entry modes):
+ * observer surfaces list (backlogPayload's `plans`/`bugs`):
  * the eligibility hold (holdMark) then the working-on-it mark (inProgressMark), the order
  * `tumwater backlog` prints. A surface derives its marks from the one hold decision and the
  * one claim lookup rather than re-walking the entries. An eligible entry nobody is working on
  * renders as the empty string, so a client can append the mark without a separate check.
  * Questions carry no holds. backlogHolds alone still drives the allocator. A caller that
  * already resolved the claim lookup (for the same poll's marks AND its own parallel checks,
- * e.g. statusPayload's `working` or the TUI's `runners`) passes it as `working` so the claims
+ * e.g. statusPayload's `working` or the status `runners`) passes it as `working` so the claims
  * walk is done once, not re-run inside both calls — the same shared single read the module's
  * other single-home polls observe. */
 export function backlogMarks(

@@ -34,7 +34,7 @@ export function markdownTable(
  * (prompt/gate-notes.ts), `tumwater questions`' open-question list
  * (backlog/backlog-question-answer.ts) and `tumwater wake --list`'s wake lines
  * (operator/operator-intent.ts `renderWakeList`), so the numbering shape cannot drift between
- * those surfaces (the TUI queued-prompt rows and the merge queue rows number their own
+ * those surfaces (the queued-prompt rows and the merge queue rows number their own
  * lines). `empty` is returned verbatim when `items` is empty
  * (the reasons sites
  * pass `(no reasons recorded)`; the others keep the default empty string). */

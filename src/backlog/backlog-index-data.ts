@@ -6,7 +6,7 @@
  * (stranded plans, duplicate and readded headings, the new-plan-under-Done gate) and this one
  * holds what the multiple index readers share — the role prompt's index block
  * (backlog-index.ts), the eligibility and claims readers, the archive, write and release
- * paths, and the status/tui surfaces all ask for the same section walk of the same file, so
+ * paths, and the status surfaces all ask for the same section walk of the same file, so
  * the stat-cached range walk (actionableEntryRangesFor) is the one shared helper. The walk
  * and series grouping are pure markdown reading — no pi, no git. Rendering of the block
  * lives in backlog-index.ts; this module holds only the data the surfaces share. */

@@ -2,7 +2,7 @@
  * lift an entry's Refused or Needs-review note, or move
  * it to the head of its open
  * section. Each comes as an exiting writer (the CLI) and a non-exiting `try…` core that refuses as
- * data (the TUI and dashboard); entry lookup and the section's file target are
+ * data (the dashboard); entry lookup and the section's file target are
  * backlog-write.ts's. */
 import { backlogTarget, findEntry, readEntryLines, withLocatedEntry } from "./backlog-write.js";
 import type { ActionableEntryRange } from "./backlog-index-data.js";
@@ -17,7 +17,7 @@ import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 export type LiftableHold = "refused" | "needs-review";
 
 /** The prose naming the note kind a release removed — plural, since a release lifts every line
- * of the chosen kind — shared by the CLI, TUI and the exit-announcers so their released lines
+ * of the chosen kind — shared by the CLI and the exit-announcers so their released lines
  * cannot drift. */
 export function liftedNotePhrase(lifted: LiftableHold): string {
   return lifted === "refused"

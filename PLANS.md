@@ -134,22 +134,6 @@ along the way becomes its own BUGS.md entry. Keep comment lines within the 100-c
 - `git diff -U0 -- src/ui` adds and removes only comment lines.
 - test/comment-width.test.ts passes.
 
-### Remove the TUI, part 4b/5: src/backlog, src/text, src/inbox and src/config comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/backlog/ src/text/ src/inbox/ src/config/ (comments only))
-
-One of four independent parts split from part 4/5; see part 4a/5 for the goal. These four
-directories hold about 57 matching lines in 23 files.
-
-**Approach.** As in part 4a/5, for comments under src/backlog/, src/text/, src/inbox/ and
-src/config/: rewrite each sentence that names the TUI, a `ui/tui/` path or a TUI key for the
-surfaces that remain, drop "twin of the TUI's …" cross-references, change comments only (a code
-change found along the way becomes its own BUGS.md entry), and keep comment lines within 100
-columns.
-
-**Acceptance criteria.**
-- `grep -rniw tui src/backlog src/text src/inbox src/config` matches nothing.
-- `git diff -U0 -- src/backlog src/text src/inbox src/config` adds and removes only comment lines.
-- test/comment-width.test.ts passes.
-
 ### Remove the TUI, part 4c/5: src/cli, src/status, src/operator, src/doctor, src/team, src/history and top-level src/*.ts comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/cli/ src/status/ src/operator/ src/doctor/ src/team/ src/history/ src/notes-cli.ts src/collections.ts src/paths.ts src/project-name.ts (comments only))
 
 One of four independent parts split from part 4/5; see part 4a/5 for the goal. These paths hold

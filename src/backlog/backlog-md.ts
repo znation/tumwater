@@ -44,7 +44,7 @@ export const BACKLOG_FILES = new Set([
 /** One backlog entry as parsed from a markdown section: the full `### ` heading text (kept
  * verbatim, including any `(planned …)`/`(reported …)` suffix) plus the entry's body — the
  * trimmed lines between its heading and the next `### `/`## ` line (empty string for a bare
- * heading). The dashboards' list views show titles only; the TUI/GUI browse surfaces render
+ * heading). The dashboards' list views show titles only; the GUI browse surface renders
  * the full body in place. */
 export interface BacklogEntry {
   title: string;

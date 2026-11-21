@@ -14,14 +14,14 @@ import { typoSuffix } from "../text/suggest.js";
 import { MAX_DURATION_SECONDS, show } from "./config-field-checks.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
 
-/** One definition of "a valid daily budget cap" (the TUI's Ctrl+B editor and the GUI's
- * /api/budget endpoint both run their input through it): a finite number of 0 or more —
+/** One definition of "a valid daily budget cap" (the GUI's
+ * /api/budget endpoint runs their input through it): a finite number of 0 or more —
  * 0 disables the gate, fractional dollars allowed (the badge renders cents). Returns an
  * actionable error message for anything else so both surfaces can flash it without
  * try/catch plumbing. A value past Number.MAX_SAFE_INTEGER is rejected too: it stays
  * finite ("9"×25 → 1e24), so only this screen stands between a one-zero typo in the
  * browser's budget editor and an effectively uncapped budget (BUGS.md 2026-10-02, the
- * same rule the TUI's parseBudgetInput applies). `key` names the config key in the error,
+ * same rule the budget input parser applies). `key` names the config key in the error,
  * defaulting to the team-wide `maxDailyCostUsd`; the per-role map passes
  * `maxDailyCostUsdPerRole.<id>` so a rejected entry names the key actually set. */
 export function checkDailyBudgetUsd(value: unknown, key = "maxDailyCostUsd"): string | null {
@@ -37,7 +37,7 @@ export function checkDailyBudgetUsd(value: unknown, key = "maxDailyCostUsd"): st
 
 /** One definition of "a valid quietHours window" (src/scheduling/quiet-hours.ts owns the format):
  * "HH:MM-HH:MM" in local time, wrapping permitted, empty means off. parseQuietHours's
- * message is the one wording every surface (validateConfig, `config set`, the TUI/GUI
+ * message is the one wording every surface (validateConfig, `config set`, the GUI
  * editors) shows, so they cannot drift apart on what a valid window is. `key` names the
  * config key in the error, defaulting to the team-wide `quietHours`; the per-role map passes
  * `quietHoursPerRole.<id>` so a rejected entry names the key actually set. */

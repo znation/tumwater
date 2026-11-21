@@ -4,7 +4,7 @@ import { groupBlockedSeries, partsLabel } from "./backlog-index-data.js";
 import { holdMark, inProgressMark, type EntryHold } from "./backlog-eligibility.js";
 
 /** The terminal's view of the project backlog — the same three open sections the GUI's
- * /api/backlog endpoint and the TUI's project-status browse show, rendered as Markdown for
+ * /api/backlog endpoint and the project-status browse show, rendered as Markdown for
  * `tumwater backlog`. The renderer consumes the payload backlogPayload collects — the three
  * backlog.ts entry readers with their cache behavior, placeholder skipping, and Done/Fixed
  * exclusion the dashboards rely on — so the terminal view cannot drift from the dashboard

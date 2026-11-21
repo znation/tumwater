@@ -233,14 +233,14 @@ export function queuedRolePromptEntries(root: string, role: string): QueuedPromp
 
 /** The role order a list-wide position (`--cancel`/`--edit` with no `--role`) resolves across:
  * the director first, then the remaining cached catalog ids — the per-role sections `prompt
- * --list` and the TUI Queued pane print, each numbered from 1. The single home of that scope,
+ * --list` and the queued list print, each numbered from 1. The single home of that scope,
  * shared by the cancel and edit branches so neither can drift from what the list showed. */
 export function listWideScope(root: string): string[] {
   return [DIRECTOR_ROLE, ...knownRoleIdsCached(root).filter((r) => r !== DIRECTOR_ROLE)];
 }
 
-/** One row of the list-shaped queue view (`prompt --list`'s prose and --json, the TUI Queued
- * pane): `position` is the 1-based per-role number the prose prints and `--cancel` consumes;
+/** One row of the list-shaped queue view (`prompt --list`'s prose and --json, the queued
+ * list): `position` is the 1-based per-role number the prose prints and `--cancel` consumes;
  * `text` is the full verbatim prompt; `queuedAtMs` is the enqueue stamp parsed from the queue
  * filename (null for a hand-placed name), which the prose turns into a `queued <age> ago`
  * suffix; `notBeforeMs` is the prompt's not-before time parsed from its queue file's marker
@@ -249,8 +249,8 @@ export function listWideScope(root: string): string[] {
 export interface QueuedListRow {
   role: string;
   position: number;
-  /** The queue-file basename that addresses this entry, so a list-shaped surface (the TUI
-   * Queued pane's Ctrl+E edit) can read and rewrite the exact file the row names instead of
+  /** The queue-file basename that addresses this entry, so a list-shaped surface (the queued
+   * list's edit) can read and rewrite the exact file the row names instead of
    * a position a concurrent dequeue could invalidate — the same file-addressed policy the
    * dashboard's Edit uses. `renderQueuedList` ignores it; `--json` carries it additively. */
   file: string;
@@ -302,18 +302,18 @@ export function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number |
 
 /** Keep the rows whose prompt text contains `grep`, case-insensitively, each row still carrying
  * its unfiltered per-role `position`. A null grep keeps every row. The one filter `prompt --list
- * --grep` and the TUI Inbox pane's `/` search share. */
+ * --grep` and the inbox view's `/` search share. */
 export function queuedRowsMatching(rows: readonly QueuedListRow[], grep: string | null): QueuedListRow[] {
   if (grep === null) return [...rows];
   const needle = grep.toLowerCase();
   return rows.filter((row) => row.text.toLowerCase().includes(needle));
 }
 
-/** Render the list-shaped queue view as the prose `prompt --list` prints and the TUI Queued
- * pane shows: consecutive rows grouped by role, one `<role>:` section per role holding
+/** Render the list-shaped queue view as the prose `prompt --list` prints and the queued
+ * list shows: consecutive rows grouped by role, one `<role>:` section per role holding
  * `"<position>. <text><queuedAgeSuffix>"` lines, sections joined by `\n`. Empty rows render
  * the empty string, so each surface keeps its own empty-state note. One renderer so the CLI
- * and the TUI cannot drift on order, numbering, or the age/countdown wording. */
+ * and the dashboard cannot drift on order, numbering, or the age/countdown wording. */
 export function renderQueuedList(rows: readonly QueuedListRow[], now: number): string {
   const sections: string[] = [];
   let currentRole: string | null = null;
