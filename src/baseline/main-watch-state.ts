@@ -12,9 +12,10 @@ export interface MainWatchState {
   /** The newest head settled by a full verdict or counted as watched by a pass that makes no
    * verdict. The `lastWatched` cursor the poll's early-return and the full pass's due rule read. */
   lastWatched: string | undefined;
-  /** While a full check is suspended for the interval (part 2b/4), the clock time it becomes
-   * due again. `lastWatched` still advances to the tip, so repeat polls of the same head do
-   * nothing until this time passes — no duplicate diff-rule warnings every poll — and the poll
+  /** While a full check is suspended for the interval (part 2b/4), or backed off after a full
+   * run that made no verdict (FULL_RETRY_BACKOFF_MS), the clock time it becomes due again.
+   * `lastWatched` still advances to the tip, so repeat polls of the same head do nothing until
+   * this time passes — no duplicate diff-rule warnings every poll — and the poll
    * that crosses it starts the full check on the latest tip. */
   fullCheckDueAt: number | undefined;
   /** The anchor a suspended full check must cover from: the newest full verdict the interval is
@@ -54,9 +55,10 @@ export function newMainWatchState(): MainWatchState {
 
 /** Count a head as watched and clear the suspended full check (Hourly full check, part 2b/4):
  * the paths that settle a head without a full verdict all advance to that head and leave
- * no suspended check, so they share this instead of re-spelling the three assignments. Two
- * sites cannot use it and keep the assignments spelled: the skipped-interval plan sets a
- * due time (not a clear), and the settled-verdict site must read the base before clearing.
+ * no suspended check, so they share this instead of re-spelling the three assignments. Three
+ * sites cannot use it and keep the assignments spelled: the skipped-interval plan and the
+ * no-verdict full run set a due time (not a clear), and the settled-verdict site must read the
+ * base before clearing.
  */
 export function markWatched(state: MainWatchState, head: string): void {
   state.lastWatched = head;
