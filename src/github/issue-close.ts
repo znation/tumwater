@@ -10,7 +10,7 @@ import { gitLines, subjectOfCommit } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { githubTarget } from "../observer/remote-ci.js";
 import type { GhRunner } from "./gh.js";
-import { readGithubIssues, writeGithubIssues, type GithubIssuesLedger } from "./github-issues-state.js";
+import { isReopened, readGithubIssues, writeGithubIssues, type GithubIssuesLedger } from "./github-issues-state.js";
 import { isFinishedMirror, mirrorsAtTip, type MirrorEntry } from "./issue-mirrors.js";
 
 /** The finished archives whose commits record a fix: the commit that moved a mirror into one is the
@@ -42,8 +42,7 @@ export function closeCandidates(
   const verdict: CloseVerdict = { close: [], retiredOnly: [] };
   for (const row of ledger.open) {
     const key = String(row.number);
-    const closed = ledger.closed?.[key];
-    if (closed && Date.parse(row.updatedAt) <= closed.at) continue;
+    if (ledger.closed?.[key] !== undefined && !isReopened(ledger, row)) continue;
     if (ledger.fixedIn?.[key]) {
       verdict.close.push(row.number);
       continue;

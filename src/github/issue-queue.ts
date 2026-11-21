@@ -7,7 +7,7 @@
 
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../inbox/inbox-submit.js";
 import { cutSplitsSurrogatePair } from "../text/text.js";
-import type { GithubIssuesLedger, GithubIssueRow } from "./github-issues-state.js";
+import { isReopened, type GithubIssuesLedger, type GithubIssueRow } from "./github-issues-state.js";
 
 /** How long a queued-issue record holds: a poll does not re-queue the same issue for a day, so
  * an issue sits in the director's queue (and survives a cancel) without being offered again
@@ -62,9 +62,7 @@ export function nextIssuePrompt(
   for (const row of ledger.open) {
     if (!row.trusted) continue;
     const key = String(row.number);
-    const closedAt = ledger.closed?.[key]?.at;
-    const reopened = closedAt !== undefined && Date.parse(row.updatedAt) > closedAt;
-    if (mirrors.has(row.number) && !reopened) continue;
+    if (mirrors.has(row.number) && !isReopened(ledger, row)) continue;
     const queued = ledger.queued?.[key];
     if (queued !== undefined && now - queued.at < QUEUED_RECHECK_MS) continue;
     const declinedAt = ledger.declined?.[key]?.updatedAt;

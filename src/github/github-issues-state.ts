@@ -92,6 +92,16 @@ export function githubIssuesSummary(ledger: GithubIssuesLedger, mirrorLabel: str
   };
 }
 
+/** Whether issue `row` (an entry of `ledger.open`) is a genuine reopen: tumwater closed it, and
+ * the issue's current `updatedAt` is later than that close — a GitHub edit after the close is
+ * the reopen signal (decision 8). The queue (issue-queue.ts: a reopened issue is treated as
+ * unmirrored and re-offered) and the closer (issue-close.ts: a reopened issue is not skipped)
+ * both read it, so the `>` boundary cannot drift between them. */
+export function isReopened(ledger: GithubIssuesLedger, row: GithubIssueRow): boolean {
+  const closedAt = ledger.closed?.[String(row.number)]?.at;
+  return closedAt !== undefined && Date.parse(row.updatedAt) > closedAt;
+}
+
 /** The ledger on disk, or null when no scan has written one yet (or the file is unreadable). */
 export function readGithubIssues(root: string): GithubIssuesLedger | null {
   return readJsonFile<GithubIssuesLedger>(githubIssuesPath(root));
