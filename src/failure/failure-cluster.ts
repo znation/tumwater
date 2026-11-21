@@ -103,6 +103,10 @@ const RUN_TIMEOUT_PROGRESSING_KEY =
 // attempt re-reviews from scratch. Same cause, same knob (review.timeoutSeconds), one row.
 const RUN_TIMEOUT_PROGRESSING_REVIEW_KEY =
   "timed out after <dur> while still making progress — the commit is kept; the next attempt reviews it from scratch";
+// The post-merge review's rewording of a progressing timeout (BUGS.md 2026-11-18): its session is
+// kept and the next run continues it. Same cause, same knob, one row.
+const RUN_TIMEOUT_PROGRESSING_SESSION_KEPT_KEY =
+  "timed out after <dur> while still making progress — the session is kept; the next attempt resumes it";
 
 /** The known progressing-timeout wordings and the key each pools under. The review
  * wording names one cause on one knob (review.timeoutSeconds): a still-making-progress kill
@@ -113,6 +117,7 @@ const RUN_TIMEOUT_PROGRESSING_REVIEW_KEY =
 const TIMEOUT_POOL = new Map<string, string>([
   [RUN_TIMEOUT_PROGRESSING_KEY, RUN_TIMEOUT_KEY],
   [RUN_TIMEOUT_PROGRESSING_REVIEW_KEY, RUN_TIMEOUT_KEY],
+  [RUN_TIMEOUT_PROGRESSING_SESSION_KEPT_KEY, RUN_TIMEOUT_KEY],
 ]);
 
 /** The cluster key a normalized error clusters under: the pooled wordings above map to their

@@ -138,7 +138,7 @@ async function settlePostReviewOutcome(
 ): Promise<void> {
   if (aborted) return; // a shutdown: the entry stays for the next generation
   if (outcome.kind === "approve") settlePostReview(root, entry.commit, null);
-  else if (outcome.kind === "reject") settlePostReview(root, entry.commit, { ...entry, rejected: outcome.reasons });
+  else if (outcome.kind === "reject") settlePostReview(root, entry.commit, { ...entry, rejected: outcome.reasons, resume: undefined });
   else if (outcome.kind === "fixed") await mergeReviewerFix(ctx, entry, outcome.fix, author.state);
   else if (outcome.kind === "exhausted") {
     // A self-fix chain at the backstop: reviewMergedCommit has already recorded the surviving
@@ -175,7 +175,12 @@ async function settlePostReviewOutcome(
       warnEventBestEffort(root, entry.role, `dropping the post-merge review of ${shortSha(entry.commit)} after ${failures} failed runs; it stays on main unreviewed`);
       await fileDroppedReview(ctx, entry, outcome.detail);
       settlePostReview(root, entry.commit, null);
-    } else settlePostReview(root, entry.commit, { ...entry, failures, lastFailure: outcome.detail, consecutiveTransientFailures: 0 });
+    } else {
+      // The count still brakes a review that never finishes; a progressing timeout's kept session
+      // lets each attempt continue the last instead of restarting (BUGS.md 2026-11-18).
+      const resume = outcome.resumable === true ? true : undefined;
+      settlePostReview(root, entry.commit, { ...entry, failures, lastFailure: outcome.detail, consecutiveTransientFailures: 0, resume });
+    }
   }
 }
 

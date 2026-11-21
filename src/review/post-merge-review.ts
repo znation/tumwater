@@ -68,10 +68,21 @@ export interface PostReview {
    * (approve / reject / fixed) and `settlePostReview(null)` leave it or drop it, but a settled
    * entry is never re-selected, so a counter riding a settled record is inert. */
   consecutiveTransientFailures?: number;
+  /** The most recent run timed out while still making progress, so its session is kept: the next
+   * run continues that session (continueSession) instead of starting fresh, and a review longer
+   * than its budget carries its progress from one attempt to the next (BUGS.md 2026-11-18). Set
+   * only by a progressing timeout and cleared by any other settle. */
+  resume?: boolean;
 }
 
 /** A commit's review is dropped, with a warning, after this many runs with no verdict. */
 export const POST_REVIEW_FAILURE_LIMIT = 3;
+
+/** The wording agent-settle.ts gives a run that timed out while still making progress, and the
+ * reworded tail a post-merge review reports for the same timeout: its session is kept and the next
+ * run continues it, but its worktree is reset to the reviewed commit (BUGS.md 2026-11-18). */
+const PRESERVED_EDITS_WORDING = " — session and worktree edits preserved for resume";
+const SESSION_KEPT_WORDING = " — the session is kept; the next attempt resumes it";
 
 /** A role's trailing-day total of post-merge `review_rejected` events, one entry per role with
  * at least one, sorted by count descending then role id ascending so the churn row's phrase is
@@ -145,7 +156,7 @@ const postReviewCache = new Map<string, StatKeyedValue<PostReview[]>>();
  * `PostReview` fields list them. */
 function parsePostReview(raw: unknown): PostReview | null {
   if (!isJsonObject(raw)) return null;
-  const { commit, role, summary, body, failures, lastFailure, rejected, enqueuedAt, fixed, notBeforeMs, consecutiveTransientFailures } = raw;
+  const { commit, role, summary, body, failures, lastFailure, rejected, enqueuedAt, fixed, notBeforeMs, consecutiveTransientFailures, resume } = raw;
   if (typeof commit !== "string" || typeof role !== "string" || typeof summary !== "string") return null;
   if (rejected !== undefined && !Array.isArray(rejected)) return null;
   const entry: PostReview = { commit, role, summary };
@@ -157,6 +168,7 @@ function parsePostReview(raw: unknown): PostReview | null {
   if (typeof enqueuedAt === "number" && Number.isFinite(enqueuedAt) && enqueuedAt >= 0) entry.enqueuedAt = enqueuedAt;
   if (typeof notBeforeMs === "number" && Number.isFinite(notBeforeMs) && notBeforeMs >= 0) entry.notBeforeMs = notBeforeMs;
   if (typeof consecutiveTransientFailures === "number" && Number.isInteger(consecutiveTransientFailures) && consecutiveTransientFailures >= 0) entry.consecutiveTransientFailures = consecutiveTransientFailures;
+  if (resume === true) entry.resume = true;
   return entry;
 }
 export function readPostReviews(root: string): PostReview[] {
@@ -213,7 +225,7 @@ export type PostReviewOutcome =
    * failure) rather than a content failure: the drain keeps the commit queued, never counts
    * it toward POST_REVIEW_FAILURE_LIMIT, and never files a product bug (BUGS.md: a Codex
    * quota wall converted ~820 merged commits into fake entries). */
-  | { kind: "failed"; detail: string; infrastructure?: boolean; retryAfterSeconds?: number }
+  | { kind: "failed"; detail: string; infrastructure?: boolean; retryAfterSeconds?: number; resumable?: boolean }
   /** A self-fix chain reached REVISION_BACKSTOP: the reviewer stops fixing, records the
    * surviving findings and clears the entry (Forward never back 2/6). The answered plan needs
    * no hold — it was archived to PLANS-DONE.md when its implementation landed. */
@@ -392,6 +404,9 @@ export async function reviewMergedCommit(
         config: reviewCfg,
         sessionDir: reviewRunSessionDir(root, role, `post-${shortSha(commit)}`),
         sessionName: `tumwater-review-${role}-post-${shortSha(commit)}`,
+        // A review whose last run timed out while still making progress continues that run's
+        // session (BUGS.md 2026-11-18); every other run starts a fresh one.
+        continueSession: entry.resume === true,
         rawLogFile: piLogPath(root, role),
         nativeLogFile: nativeLogPath(root, role, reviewCfg.agent ?? "pi"),
         label: "review",
@@ -410,10 +425,16 @@ export async function reviewMergedCommit(
           pi.transientBackend ||
           pi.transientServerTimeout ||
           pi.transientPiCrash;
+        // A timeout on a progressing run keeps its session for the next run to continue. The next
+        // run's worktree reset discards the edits, so the detail names the session and not the
+        // edits (the wording src/agent/agent-settle.ts gives a timed-out run, reworded here).
+        const resumable = pi.timedOutProgressing;
+        const detail = pi.errorMessage ?? "no parseable VERDICT line in the reviewer's reply";
         return {
           kind: "failed",
-          detail: pi.errorMessage ?? "no parseable VERDICT line in the reviewer's reply",
+          detail: resumable ? detail.replace(PRESERVED_EDITS_WORDING, SESSION_KEPT_WORDING) : detail,
           ...(infrastructure ? { infrastructure: true, retryAfterSeconds: pi.retryAfterSeconds } : {}),
+          ...(resumable ? { resumable: true } : {}),
         };
       }
       const durationMs = Date.now() - startedAt;

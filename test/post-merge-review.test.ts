@@ -469,6 +469,44 @@ test("a not-free post-merge reviewer keeps the pre-floor budget, below the fallb
   assert.equal(outcome.kind, "approve", "the review still settles on the approving verdict");
 });
 
+test("a post-merge review that timed out while still making progress resumes its session on the next run (regression, BUGS.md 2026-11-18)", async () => {
+  // The 2026-11-17 waste: every progressing timeout restarted the review in a fresh session, so the
+  // next run re-read the same files and timed out again until the drop limit. The kept session is
+  // continued instead, so the progress of one attempt carries into the next.
+  const { root, ctx, runner } = setup("VERDICT: approve\n1. fine");
+  const continued: boolean[] = [];
+  (runner as { runGatePi: RoleRunner["runGatePi"] }).runGatePi = async (opts) => {
+    continued.push(opts.continueSession === true);
+    return piRunResult({
+      ok: false,
+      timedOut: true,
+      timedOutProgressing: true,
+      errorMessage: "timed out after 7200s while still making progress — session and worktree edits preserved for resume",
+    });
+  };
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  const after = readPostReviews(root)[0];
+  assert.equal(after?.failures, 1, "the timed-out run still counts toward the drop limit");
+  assert.equal(after?.resume, true, "the entry records that its session is kept");
+  assert.equal(after?.lastFailure?.includes("worktree edits preserved"), false, "the message no longer claims the worktree edits are kept");
+  const p2 = newMergePipeline();
+  drainPostReviews(ctx, p2);
+  await p2.postReview!.promise;
+  assert.deepEqual(continued, [false, true], "the second run continues the first run's session");
+});
+
+test("a post-merge review that timed out without progress does not mark its entry for resume", async () => {
+  const { root, ctx, runner } = setup("VERDICT: approve\n1. fine");
+  (runner as { runGatePi: RoleRunner["runGatePi"] }).runGatePi = async () =>
+    piRunResult({ ok: false, timedOut: true, timedOutProgressing: false, errorMessage: "timed out after 7200s" });
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(readPostReviews(root)[0]?.resume, undefined, "a timeout with no progress keeps no session");
+});
+
 test("a post-merge review git could not start keeps its entry without counting a failed run", async () => {
   // A spawn failure says nothing about the commit: counted, a wedge as long as 2026-10-21's
   // reached POST_REVIEW_FAILURE_LIMIT and dropped the review, leaving the commit unreviewed.

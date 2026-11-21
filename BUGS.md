@@ -50,21 +50,6 @@ message describes (821 in 20 min) were cleaned up or only moved to BUGS-FIXED.md
 history). Run it once for 2026-11-09 to 11-11 when the review provider has quota. Decide whether
 the matching BUGS-FIXED.md entries should be deleted rather than kept as "fixed".
 
-### A post-merge review that times out "while still making progress" restarts from scratch every attempt and counts toward the drop limit, so a review longer than its budget can never finish (found by an operator session 2026-11-18)
-
-When a post-merge review hits its wall budget while progressing, the warning reads "the post-merge review of <sha> failed (timed out after 7200s while still making progress — session and worktree edits preserved for resume)". Nothing on the post-merge path resumes:
-- `reviewMergedCommit` (src/review/post-merge-review.ts) calls `ensureDetachedWorktree`, which hard-resets the post-review worktree to the commit, and resets the review-fix ref to the commit.
-- It then starts `runGatePi` without `continueSession`, so pi opens a new session file.
-- `settlePostReviewOutcome` (src/merge/merge-post-review-drain.ts) counts the timeout as an ordinary failed run toward `POST_REVIEW_FAILURE_LIMIT` (3). The third timeout drops the commit unreviewed and files a "never reached a verdict" entry.
-
-The pre-merge gate had the same wording bug, fixed on 10-01 (BUGS-FIXED.md, "A timed-out review is reported as 'session and worktree edits preserved for resume'…"). That fix rewrote the message only in src/review/review.ts. The post-merge drain reports `pi.errorMessage` unchanged.
-
-**Seen live.** On 11-17 every failed post-merge review hit the 7200 s cap: f6e2431a, 7734f02f, 54a4a07f, ff1a8d34, 620887d8 and 1fc125aa. That is about 12 slot-hours on the local Qwen. The day had 15 post-merge review starts and 8 verdicts. 54a4a07f's second attempt (`_review/bugfix/post-54a4a07f/2026-11-18T07-48-57-952Z_*.jsonl`) is a new session that re-reads the same files the first one had read. It timed out again at 11-18 01:48:57 PST. ff1a8d34 and 54a4a07f are now at 2 of 3 failures, so one more timeout each drops them unreviewed.
-
-**Reproduce.** `ls .tumwater/sessions/_review/bugfix/post-54a4a07f/` shows two session files, one per attempt. `sessions.jsonl` there records two starts with the same session name. The events log pairs each `review_start` (`afterMerge: true`) with a timeout warning exactly 7200 s later.
-
-**Suspected cause / fix direction.** The post-merge path was built on the gate's fresh-session design and never got either remedy. At minimum, reword the message for this path as review.ts does, keeping the failure-cluster pooling in src/failure/failure-cluster.ts. The fix that ends the waste is to continue the timed-out reviewer's own session on the same commit without resetting the worktree or the fix ref. Alternatively, do not count a progressing timeout toward the drop limit while each attempt keeps making progress. Without one of those, a review that needs more than one budget has no way to finish.
-
 ### A model check run while the only local server is saturated fails on queue position, holding every role and handing back runs to "a pair that answers" that does not exist (found by an operator session 2026-11-18)
 
 The team runs every role on one local pair, `qwenrunner/Qwen3.8-27B-MLX-Serve-4bit` (Splash 1.6.1, `--max-concurrent 4`). On 11-17 the model check failed four times ("gave no reply (no answer within 300s) — runs on it wait (feature, bugfix, plan, …, +13 more)"), each time holding all 19 runners. The Splash log (`~/qwenrunner/logs/splash.8090.log`) shows that the server was answering, not down:

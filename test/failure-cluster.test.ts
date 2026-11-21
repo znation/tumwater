@@ -116,6 +116,13 @@ test("poolTimeoutKey pools the progressing-timeout variant into the plain key", 
   );
   assert.notEqual(reviewProgressing, plain);
   assert.equal(poolTimeoutKey(reviewProgressing), RUN_TIMEOUT_KEY);
+  // The post-merge review's rewording (BUGS.md 2026-11-18), whose session is kept for the next
+  // run, pools into the same row.
+  const sessionKept = normalizeClusterKey(
+    "timed out after 7200s while still making progress — the session is kept; the next attempt resumes it",
+  );
+  assert.notEqual(sessionKept, plain);
+  assert.equal(poolTimeoutKey(sessionKept), RUN_TIMEOUT_KEY);
   assert.equal(poolTimeoutKey("some other cause"), "some other cause");
 });
 

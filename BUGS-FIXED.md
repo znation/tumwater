@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A post-merge review that times out "while still making progress" restarts from scratch every attempt and counts toward the drop limit, so a review longer than its budget can never finish (found by an operator session 2026-11-18) — fixed 2026-11-21 by the bugfix role
+
+When a post-merge review hits its wall budget while progressing, the warning reads "the post-merge review of <sha> failed (timed out after 7200s while still making progress — session and worktree edits preserved for resume)". Nothing on the post-merge path resumes:
+- `reviewMergedCommit` (src/review/post-merge-review.ts) calls `ensureDetachedWorktree`, which hard-resets the post-review worktree to the commit, and resets the review-fix ref to the commit.
+- It then starts `runGatePi` without `continueSession`, so pi opens a new session file.
+- `settlePostReviewOutcome` (src/merge/merge-post-review-drain.ts) counts the timeout as an ordinary failed run toward `POST_REVIEW_FAILURE_LIMIT` (3). The third timeout drops the commit unreviewed and files a "never reached a verdict" entry.
+
+The pre-merge gate had the same wording bug, fixed on 10-01 (BUGS-FIXED.md, "A timed-out review is reported as 'session and worktree edits preserved for resume'…"). That fix rewrote the message only in src/review/review.ts. The post-merge drain reports `pi.errorMessage` unchanged.
+
+**Seen live.** On 11-17 every failed post-merge review hit the 7200 s cap: f6e2431a, 7734f02f, 54a4a07f, ff1a8d34, 620887d8 and 1fc125aa. That is about 12 slot-hours on the local Qwen. The day had 15 post-merge review starts and 8 verdicts. 54a4a07f's second attempt (`_review/bugfix/post-54a4a07f/2026-11-18T07-48-57-952Z_*.jsonl`) is a new session that re-reads the same files the first one had read. It timed out again at 11-18 01:48:57 PST. ff1a8d34 and 54a4a07f are now at 2 of 3 failures, so one more timeout each drops them unreviewed.
+
+**Reproduce.** `ls .tumwater/sessions/_review/bugfix/post-54a4a07f/` shows two session files, one per attempt. `sessions.jsonl` there records two starts with the same session name. The events log pairs each `review_start` (`afterMerge: true`) with a timeout warning exactly 7200 s later.
+
+**Suspected cause / fix direction.** The post-merge path was built on the gate's fresh-session design and never got either remedy. At minimum, reword the message for this path as review.ts does, keeping the failure-cluster pooling in src/failure/failure-cluster.ts. The fix that ends the waste is to continue the timed-out reviewer's own session on the same commit without resetting the worktree or the fix ref. Alternatively, do not count a progressing timeout toward the drop limit while each attempt keeps making progress. Without one of those, a review that needs more than one budget has no way to finish.
+
+**Fix.** A progressing post-merge timeout now keeps its session. `PostReview` gains `resume` (read back by `parsePostReview`), set by `settlePostReviewOutcome`'s failed arm only when the run's `timedOutProgressing` is true, and cleared on a rejection. `reviewMergedCommit` passes `continueSession` to the reviewer's run when the entry carries it, so pi continues the session the timed-out run wrote. The timed-out run still counts toward `POST_REVIEW_FAILURE_LIMIT`, so a review that never finishes still drops after three runs. The worktree is still reset to the reviewed commit on each run, so the timed-out run's uncommitted edits are discarded; its detail now says the session is kept, not the edits. `failure-cluster.ts` pools the new wording with the run-timeout row. Regression tests: `test/post-merge-review.test.ts` (a progressing timeout resumes on the next run; a plain timeout does not mark the entry) and `test/failure-cluster.test.ts` (the pooling). The resume test failed before the fix (`resume` read back `undefined`) and passes after.
+
+**Validation gap:** no-observability — the restart left no trace beyond a new session file and a timeout warning, so nothing asserted which session a re-run continued until the regression test here.
+
 ### Five root-walk tests fail on a shared host once a stale `.tumwater` dir sits at the system temp root (found by the bugfix role 2026-11-16) — fixed 2026-11-20 by the review role
 
 Found while verifying a fix: a full `npm test` reded on exactly five tests, all in the `.tumwater`-root-walk family — `findTeamRoot` / `nearestTumwaterRoot` / `writeFullOutput` (test/check-slots.test.ts, test/paths.test.ts, test/full-output.test.ts) — and they pass in isolation on a clean host. The five are `findTeamRoot finds the ancestor holding .tumwater/state`, `writeFullOutput returns null when no ancestor has .tumwater/`, `findTumwaterRoot walks up to the harness root`, and the two `nearestTumwaterRoot` cases.
