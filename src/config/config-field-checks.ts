@@ -111,7 +111,7 @@ export const NON_NEGATIVE_OR_DISABLED: NumberRule = {
 /** maxDailyCostUsd's rule: like NON_NEGATIVE_OR_DISABLED plus the MAX_SAFE_INTEGER bound
  * checkDailyBudgetUsd applies (BUGS.md 2026-10-02) — a finite-but-unrepresentable cap
  * ("9"×25 → 1e24) is an effectively uncapped budget, so `config set` and the GUI's
- * /api/config-set are refused at the same boundary the editors enforce. */
+ * /api/config-set are refused at the same boundary checkDailyBudgetUsd enforces. */
 export const DOLLAR_CAP: NumberRule = {
   ok: (n) => n >= 0 && n <= Number.MAX_SAFE_INTEGER,
   what: `a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER} (0 disables)`,

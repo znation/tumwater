@@ -14,7 +14,7 @@ import { commitOnlyArgs, gitTry } from "../git/git-run.js";
  * working-tree content and leaves other staged or dirty paths alone. */
 export async function commitOperatorBacklogEdit(root: string, file: string, subject: string): Promise<boolean> {
   try {
-    // Yield first: a synchronous caller (a key handler) may write again right after this
+    // Yield first: a synchronous caller may write again right after this
     // call, and that write takes the same lock synchronously — a lock already held across our
     // awaits would block its event loop until the lock times out.
     await new Promise<void>((resolve) => setImmediate(resolve));

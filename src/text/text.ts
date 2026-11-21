@@ -27,7 +27,7 @@ export function collapseWhitespace(s: string): string {
  * (U+0080–U+009F, which includes the single-byte CSI introducer U+009B). ESC (U+001B) is
  * removed with the rest, so an OSC 52 clipboard write, a CSI cursor/title sequence, or a bare
  * carriage-return overwrite cannot survive. Applied at the terminal display boundaries — the
- * CLI's say() and the final composed frame — never to data (event JSON, statusPayload),
+ * CLI's say() and fail() — never to data (event JSON, statusPayload),
  * so machine-readable output stays byte-exact. */
 export function stripTerminalControls(s: string): string {
   return s.replace(/[\u0000-\u0008\u000b-\u001f\u007f\u0080-\u009f]/g, "");
@@ -83,7 +83,7 @@ export function firstTrimmedLineStartingWith(body: string, prefix: string): stri
  * the value's debug form, wrapped in the established parenthetical. The human-facing
  * validation errors that echo back a rejected value with this suffix — the CLI flag
  * parsers (cli/cli-args, cli/cli-command-args), the GUI's request validators (gui/gui-args,
- * gui/gui-endpoint-commands), quiet-hours' window checks, and the budget input — append
+ * gui/gui-endpoint-commands), and quiet-hours' window checks — append
  * this one helper, so the "got" wording and its quoting cannot drift between surfaces.
  * (Deliberately different suffixes: config-field-checks's show() truncates long config values
  * before the parenthetical, and cli/cli-args.ts's duration cap renders the value through
@@ -280,16 +280,15 @@ export function parseNonNegativeInt(raw: string): number | null {
  * surface refuses it — JSON.parse would silently read it past an integer validator — while
  * the plain-decimal rule above admits only the literal spelling. The two shapes are mutually
  * exclusive (a plain decimal has no `e`), so the plain-decimal exclusion is kept here as the
- * shape's honest statement: one home for the predicate the config writer, the team-key
- * editor, the per-role instances editor, and the CLI role writes' local helper each
- * hand-rolled. */
+ * shape's honest statement: one home for the predicate the config writer and the CLI role
+ * writes' local helper each hand-rolled. */
 /** Whether a string is a plain decimal literal — a run of digits with an optional
  * fractional part (`25`, `12.34`, `.5`, `300`), at least one digit. The one home of the
  * shape rule behind parseDecimalInt's plain-decimal policy: `Number()` would otherwise also
  * read hex (`0x10` → 16) and exponent (`1e2` → 100) spellings as numbers no operator
  * means when typing a count or dollar amount, so every numeric-write surface (the CLI role
- * writes' plainDecimalToJson, the budget and min-run-interval editors, the GUI budget
- * and interval drawers) admits only this literal spelling. Returns false for an empty
+ * writes' plainDecimalToJson, the GUI budget and interval drawers) admits only this literal
+ * spelling. Returns false for an empty
  * string and for notation outside the literal rule (signs, exponent, hex, whitespace). */
 export function isPlainDecimal(raw: string): boolean {
   return /^\d*\.?\d+$/.test(raw);
@@ -301,8 +300,8 @@ export function isPlainDecimal(raw: string): boolean {
  * surface refuses it — JSON.parse would silently read it past an integer validator — while
  * the plain-decimal rule above admits only the literal spelling. The two shapes are mutually
  * exclusive (a plain decimal has no `e`), so the plain-decimal exclusion builds on
- * isPlainDecimal: one home for the predicate the config writer, the team-key editor,
- * the per-role instances editor, and the CLI role writes each apply. */
+ * isPlainDecimal: one home for the predicate the config writer and the CLI role
+ * writes each apply. */
 export function isExponentSpelling(raw: string): boolean {
   return !isPlainDecimal(raw) && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(raw);
 }

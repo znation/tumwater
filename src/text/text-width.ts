@@ -2,8 +2,8 @@
  * padding to a column budget. Split from text.ts, whose other helpers budget by UTF-16 code
  * units (truncate's character count) — a different unit than the display column this module
  * measures, kept apart so the two meanings of "width" cannot be confused. Consumers: the event
- * log's aligned table (event-format.ts), the CLI tables (status-render.ts, history.ts), and the
- * terminal line rendering. Presentation only:
+ * log's aligned table (event-format.ts) and the CLI tables (status-render.ts, history.ts).
+ * Presentation only:
  * depends on node built-ins alone. */
 
 /** East Asian Wide/Fullwidth and common emoji code-point ranges that render two terminal
@@ -55,7 +55,7 @@ export function padToWidth(text: string, width: number): string {
  * whole. Widths ≤ 1 leave no room for an ellipsis, so they clip bare — a leading run of
  * single-column characters up to the budget, possibly nothing when the text opens with a wide
  * character. A non-positive width fits nothing and yields the empty string. Shared by the
- * status table (status-render.ts) and the backlog entry body. */
+ * status table (status-render.ts) and the main-red notice (baseline/main-red.ts). */
 export function clipToWidth(text: string, width: number): string {
   if (width <= 0) return ""; // A non-positive width fits nothing.
   if (displayWidth(text) <= width) return text;

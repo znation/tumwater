@@ -158,8 +158,7 @@ function sayTopOutcome(position: number, role: string, outcome: TopOutcome, labe
 /** Read and validate an `--attach <path>` list into the GUI's image input shape, through the
  * shared throwing core both surfaces use (readPromptImageFiles in inbox-attachments.ts), with
  * each failure exiting through `fail` with the same messages the enqueue branch always
- * raised — so the enqueue and `--edit` forms share one definition and cannot drift from the
- * dashboard's image attach. */
+ * raised — so the enqueue and `--edit` forms share one definition and cannot drift. */
 function readPromptImages(paths: readonly string[]): PromptImageInput[] {
   try {
     return readPromptImageFiles(paths);

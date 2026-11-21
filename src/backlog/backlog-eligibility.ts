@@ -302,8 +302,8 @@ export function stillHeldNote(hold: EntryHold): string {
 /** The holds' shape, derived from two files so it needs a stat key spanning both. */
 interface BacklogHolds { plans: EntryHold[]; bugs: EntryHold[] }
 
-/** `/api/status` polls the holds on the 1-second dashboard poll and recomputes them each
- * frame while PLANS.md/BUGS.md change only when a role merges an edit. The file reads beneath are
+/** `/api/status` polls the holds on the 1-second dashboard poll while PLANS.md/BUGS.md change
+ * only when a role merges an edit. The file reads beneath are
  * already stat-cached (plannedPlanEntries/openBugEntries), but the per-entry eligibility walk
  * (entryHoldAgainst's body scan + heading clause) is pure CPU re-derived on every call, growing
  * with the append-only backlog. Cache the derived holds keyed on both files' stat identities — the
