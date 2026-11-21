@@ -6,9 +6,10 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-### Codex runs default to the operator's own `~/.codex`, filling it with team sessions (reported by the user 2026-11-16)
+### Codex runs default to the operator's own `~/.codex`, filling it with team sessions, part 1/2: `codexHome` falls back to `~/.codex` when `backends.codex.configDir` is unset (reported by the user 2026-11-16, split 2026-11-21 by the plan role)
 
-**Needs review 2026-11-21 by feature: too large for one run**
+Sibling: part 2/2 (below) fixes the doctor row and the retention comment for whatever home
+resolution exists, so the two are independent and land in either order.
 
 `codexHome` (src/agent/codex/codex-catalog.ts) falls back to `~/.codex` when the Codex backend has
 no `configDir`. kde-macos8.6-theme's `tumwater.json` has `"backends": {}`, so every tumwater Codex
@@ -17,20 +18,87 @@ home: `~/.codex` is 2.9 GB, `~/.codex/sessions` 701 MB, `state_5.sqlite` 557 MB,
 operator's own history is buried under thousands of `tumwater-review-*` threads. Each real
 `codex delete --force` took about 1 s during the 2026-11-16 prune (about 53 a minute; a delete of
 an unknown UUID returns in 0.19 s); the shared, bloated state DB is the likely reason, not a
-measured one. The Codex half of `RetentionPruner.prune` (src/orchestrator/retention.ts) also says
-CODEX_HOME is set "so the inherited CODEX_HOME never reaches the purge (its rollout fallback would
-otherwise unlink the operator's own home)" — with the default config the resolved team home *is*
-the operator's home. The fallback unlinks only rollouts the ledger recorded, so it is safe in
-practice, but the comment's guarantee is not real.
+measured one.
 
 **Reproduce.** Observed. Any team with Codex enabled and no `backends.codex.configDir`: run one
 Codex role and its rollout appears under `~/.codex/sessions/`.
 
 **Suspected cause.** The default was chosen so a known home always exists. Fix: default the Codex
-home to a per-team directory (e.g. `.tumwater/codex-home/`, seeded with `auth.json`/`config.toml`
-the way the codex-account seed and the isolated OpenCode DB work), and use `~/.codex` only when
-the config asks for it. Add a `tumwater doctor` row that warns about an unisolated Codex home, and
-fix the retention comment either way.
+home to a per-team directory (`.tumwater/codex-home/` under the team root, so every workspace
+worktree of one root shares one home — the same per-root scoping `opencodeDbPath` uses), and use
+`~/.codex` only when the config asks for it. The design's home-of-its-own section
+(plans/codex-backend.md §4) already requires one `CODEX_HOME=<dir> codex login --device-auth` in
+the team home and never copying `auth.json` between homes (tokens rotate and log each other out),
+so this part only changes the default path; the login fields are a per-run setup step, not a seed
+to write.
+
+**Approach.**
+- `codexHome(config, root)` (src/agent/codex/codex-catalog.ts): a second `root` argument, the team
+  root resolved from the run's session dir (`nearestTumwaterRoot`, src/paths.ts, the same
+  derivation opencode's db cache uses). When `configDir` is unset it defaults to
+  `.tumwater/codex-home/` under that resolved root instead of `~/.codex`. `~/.codex` is still
+  reachable when the config names it (a leading `~` expands as today). The function stays pure
+  (it already is: no fs, no subprocess), so every caller keeps its current call shape plus the
+  root. The `codexCheckBase` caller in doctor-codex-checks.ts and `seamContextWindow`/`codexSeamContextWindow`
+  in src/pi/pi-models.ts already hold a root; the adapter callers
+  (src/agent/codex/codex-backend.ts `invocation`, `prepare`, `afterRun`, `imageInput`, `resumable`)
+  resolve it from `run.sessionDir`/the team root, never defaulting a bare `~/.codex`.
+- The `CODEX_HOME` set path (src/agent/codex/codex-env.ts) is unchanged: callers now always pass a
+  resolved home, so every run environment carries `CODEX_HOME` pointing at the team home.
+
+**Acceptance criteria.**
+- `codexHome(config, root)` with `configDir` unset returns `<root>/.tumwater/codex-home` (after
+  tilde substitution where the config names it), not `~/.codex`, and with `configDir:
+  "~/team"` still returns `<homedir>/team`.
+- A codex role run under a team root with no `backends.codex.configDir` writes its session
+  rollouts under `<root>/.tumwater/codex-home/sessions/`, never under `~/.codex/sessions` (
+  test/codex-run.test.ts: build a run with `backends: {}` under a temp root and assert the
+  rollout lands under the team home).
+- With `configDir` unset, `seamContextWindow` (src/pi/pi-models.ts) reads the catalog from the
+  team home rather than the operator's default, and the doctor `codex home` row reports the team
+  home as set.
+
+### Codex runs default to the operator's own `~/.codex`, part 2/2: `tumwater doctor` has no row that catches an unisolated Codex home, and retention's comment promises more isolation than the code delivers (reported by the user 2026-11-16, split 2026-11-21 by the plan role)
+
+Sibling: part 1/2 (above) re-points the default home; this part's wording updates to match
+whichever home resolution exists then, so it is independent and lands on its own.
+
+Two gaps around an unisolated Codex home: (a) `tumwater doctor` has no row that catches it, and
+(b) the Codex half of `RetentionPruner.prune` (src/orchestrator/retention.ts) says CODEX_HOME is
+set "so the inherited CODEX_HOME never reaches the purge (its rollout fallback would otherwise
+unlink the operator's own home)" — with the default config the resolved team home *is* the
+operator's home. The fallback unlinks only rollouts the ledger recorded, so it is safe in
+practice, but the comment's guarantee is not real.
+
+**Reproduce.** Run `tumwater doctor` on a team with Codex enabled and no `backends.codex.configDir`:
+no row names the home resolution at all, and the retention comment reads as if the team were
+isolated.
+
+**Suspected cause.** (a) The doctor's codex home row warns only when the resolved home is unset in
+configuration (src/doctor/doctor-codex-checks.ts `checkCodexHome` — it warns on unset
+`configDir`, but with the `~/.codex` fallback the home still resolves to the operator's dir, and
+its `{ config, home }` base resolves from `codexHome` without ever comparing it to the operator's
+home). (b) The retention comment was written for the configured-home path and was never true for
+the fallback path.
+
+**Approach.**
+- src/doctor/doctor-codex-checks.ts `checkCodexHome`: when the resolved home is exactly the
+  operator's personal home (`~/.codex` after tilde expansion), warn that team sessions and trust
+  entries share the operator's home — the check keeps the current unset-configDir warning, and
+  warns on a resolved-home-equals-personal-home instead (or additionally, whichever reads true),
+  so an unisolated home is a visible doctor row, not a silent default.
+- src/orchestrator/retention.ts `pruneCodexHalf`: fix the comment so it states what is actually
+  guaranteed — the purge's `CODEX_HOME` is set to the resolved home (part 1/2's default or the
+  configured dir), and the rollout fallback deletes only rollouts the ledger recorded, never the
+  operator's files — rather than claiming an isolation the code does not provide.
+
+**Acceptance criteria.**
+- `tumwater doctor` on a team whose resolved codex home equals the operator's `~/.codex` reports a
+  warning row naming the unisolated home; a team with `backends.codex.configDir` set reports the
+  team home as today. (test/doctor-checks.test.ts `checkCodexHome` case: drop a real home into
+  view and assert the warning fires.)
+- The retention comment names what is guaranteed (resolved-home + ledger-recorded-only
+  fallback) and no longer claims the operator's home is untouched-by-construction.
 
 ### Busy model check, part 2/2: a probe that gets no reply while the team's runs on the same pair are being answered fails the pair and holds every role (requires Busy model check part 1/2 landed) (found by the bugfix role 2026-11-21, split 2026-11-21 by the plan role)
 
