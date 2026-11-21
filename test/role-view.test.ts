@@ -11,7 +11,7 @@ import path from "node:path";
 import { dayKey } from "../src/text/datetime.js";
 import { projectCapHit } from "../src/budget/budget.js";
 import { rolePayload } from "../src/roles/role-view.js";
-import { inspectMarkdownLines, renderRoleMarkdown } from "../src/roles/role-render.js";
+import { renderRoleMarkdown } from "../src/roles/role-render.js";
 import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { contextBudgetRule } from "../src/prompt/prompt.js";
 import { PI_DIALECT } from "../src/prompt/dialect.js";
@@ -35,6 +35,11 @@ function root(): string {
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "README.md"), readmeTemplate("proj", "Build a tiny thing.\n"));
   return dir;
+}
+
+/** The first `count` lines of a rendered document from `heading` on. */
+function blockLines(md: string, heading: string, count: number): string[] {
+  return md.slice(md.indexOf(heading)).split("\n").slice(0, count);
 }
 
 function pauseRoles(dir: string, roles: string[]): void {
@@ -330,25 +335,24 @@ test("with several prompts queued, the next-run block discloses that only the ol
   ); // run-prompt dequeues exactly one per run — the block says so rather than reading as a contradiction
 });
 
-test("inspectMarkdownLines carries the notes and next-run blocks renderRoleMarkdown splices in place", () => {
+test("renderRoleMarkdown carries the notes and next-run blocks in place", () => {
   const dir = root();
   const notes = roleNotesPath(dir, "feature");
   writeFileDeep(notes, "the scheduler lives in team.ts\n");
   enqueueRolePrompt(dir, "feature", "cover the empty-input case");
   enqueueRolePrompt(dir, "feature", "also test the NaN path");
   const p = rolePayload(dir, "feature", NO_MODELS);
-  const lines = inspectMarkdownLines(p);
+  const md = renderRoleMarkdown(p);
   // The Notes block is verbatim and fenced, then the Next run prompt block, then the
   // "more waits" disclosure when several prompts are queued.
-  assert.deepEqual(lines.slice(0, 5), ["## Notes", "", "```", "the scheduler lives in team.ts", "```"]);
-  assert.ok(lines.includes("## Next run's prompt"));
+  assert.deepEqual(blockLines(md, "## Notes", 5), ["## Notes", "", "```", "the scheduler lives in team.ts", "```"]);
+  assert.ok(md.includes("## Next run's prompt"));
   assert.match(
-    lines.join("\n"),
+    md,
     /_\(the next run's prompt embeds the oldest inbox message — one is taken per run; 1 more waits?\)_/,
   );
-  // The extraction is in place: the full document still shows Find text before Notes
-  // before Next run prompt, with the same fenced notes body.
-  const md = renderRoleMarkdown(p);
+  // The Find text section sits before Notes, which sits before Next run prompt, with the same
+  // fenced notes body.
   const findAt = md.indexOf("## Find text");
   const notesAt = md.indexOf("## Notes");
   const nextAt = md.indexOf("## Next run's prompt");
@@ -424,8 +428,7 @@ test("the Lessons section renders above the note, and a lesson-less role renders
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.lessons, "- L1 (2026-11-12): the scheduler lives in team.ts");
   const md = renderRoleMarkdown(p);
-  const lines = inspectMarkdownLines(p);
-  assert.deepEqual(lines.slice(0, 5), ["## Lessons", "", "```", "- L1 (2026-11-12): the scheduler lives in team.ts", "```"]);
+  assert.deepEqual(blockLines(md, "## Lessons", 5), ["## Lessons", "", "```", "- L1 (2026-11-12): the scheduler lives in team.ts", "```"]);
   const lessonsAt = md.indexOf("## Lessons");
   const notesAt = md.indexOf("## Notes");
   assert.ok(lessonsAt >= 0 && notesAt > lessonsAt, "the Lessons section sits above the note");
@@ -702,7 +705,6 @@ test("the role view names the fallback step a live orchestrator moved the role's
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.chainStep?.step, 2);
   assert.match(renderRoleMarkdown(p), /- Running on fallback 2 of 3 \(window used up, resets 17:40\)/);
-  assert.match(inspectMarkdownLines(p)[0] ?? "", /^- Running on fallback 2 of 3/);
 
   // A model-check move names the failed primary at step 1, and the unverified step past it.
   writeOrchestratorMarker(dir, [], { chain: { default: { pair: "p/m", step: 1, of: 2, reason: "model-check" } } });

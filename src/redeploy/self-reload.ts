@@ -7,14 +7,14 @@ import { startParentDeathWatch } from "../process/supervisor.js";
 import { liveNodeBin } from "../process/node-bin.js";
 import { parsePositiveInt } from "../text/text.js";
 
-/** Auto-reload for the user-launched dashboards (`tumwater tui`, `tumwater gui`).
+/** Auto-reload for the user-launched dashboard (`tumwater gui`).
  *
  * Unlike the orchestrator — which the supervisor respawns onto a fresh build — a dashboard is
  * started by hand and, without this, keeps serving its startup code until the operator
- * restarts it. When the team redeploys itself (redeploy.ts swaps `dist/`) the TUI keeps
- * rendering old modules and the GUI keeps serving old page JS. This module watches for a
- * newer compiled tree on disk and hands itself to a fresh copy of the same command (a supervised
- * respawn, not a nested wrapper), so both surfaces come back on the new code within a poll.
+ * restarts it. When the team redeploys itself (redeploy.ts swaps `dist/`) it keeps serving old
+ * page JS. This module watches for a newer compiled tree on disk and hands itself to a fresh
+ * copy of the same command (a supervised respawn, not a nested wrapper), so the dashboard comes
+ * back on the new code within a poll.
  *
  * The in-memory startup stamp is the only correct reference for "am I stale": after a redeploy
  * swap the on-disk stamp already reads as fresh and the new orchestrator's BuildStatus flips
@@ -57,8 +57,8 @@ export type ReloadSpawn = (
 export const DASHBOARD_CHILD_ENV = "TUMWATER_DASHBOARD_CHILD";
 
 /** How often a supervised dashboard child checks that its reload supervisor still lives (ms):
- * the reload watch's own cadence, so a TUI orphaned on the operator's terminal hands it back
- * within a second, and a GUI frees its port as fast. */
+ * the reload watch's own cadence, so an orphaned dashboard child hands it back within a second,
+ * and a GUI frees its port as fast. */
 const SUPERVISOR_POLL_MS = 1000;
 
 /** watchReloadSupervisor's injectable seams: the environment carrying the child mark, the
@@ -73,7 +73,7 @@ export interface SupervisorWatchSeams {
 /** For a dashboard running as reexecSelf's child, run `onGone` once its reload supervisor is
  * gone — the dashboard twin of the run generation's startParentDeathWatch. The supervisor
  * forwards nothing when it dies outright (SIGKILL, a crash), so without this the child serves
- * its port, or draws on a terminal the shell has taken back, for good. The mark names the
+ * its port for good. The mark names the
  * supervisor's pid, so one that died before this watch started still counts as gone. Returns
  * the stop; a no-op for a dashboard that is not a supervised child. */
 export function watchReloadSupervisor(onGone: () => void, seams: SupervisorWatchSeams = {}): () => void {
@@ -93,7 +93,7 @@ export function watchReloadSupervisor(onGone: () => void, seams: SupervisorWatch
 }
 
 /** Hand this process's dashboard duty to a fresh copy of itself (`process.argv.slice(1)` re-runs
- * the same CLI entry point, e.g. `dist/src/cli.js tui`) and stay alive as its thin supervisor,
+ * the same CLI entry point, e.g. `dist/src/cli.js gui`) and stay alive as its thin supervisor,
  * respawning a sibling each time the child exits RESTART_EXIT_CODE — the run supervisor's shape.
  * Node has no exec(), so spawning a child and waiting would leave this process as a wrapper on
  * the chain, and the child (which arms the same watch) would wrap another on its own reload:
@@ -111,8 +111,8 @@ export function reexecSelf(spawnImpl: ReloadSpawn = spawn): void {
   const supervise = (): void => {
     const child = startChild();
     child.on("exit", (code) => {
-      // The child closed its own server/terminal before asking; a sibling picks up on the new
-      // build with the port (or tty) free.
+      // The child closed its own server before asking; a sibling picks up on the new build
+      // with the port free.
       if (code === RESTART_EXIT_CODE) supervise();
       else process.exit(code ?? 1);
     });

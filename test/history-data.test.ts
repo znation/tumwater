@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
-import { readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel, runRowCells, runRowGrepHaystack, runRows, runRowsOnModels, type HistorySummaryRow, type RunRow } from "../src/history/history-data.js";
+import { readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel, runRowCells, runRows, runRowsMatchingGrep, runRowsOnModels, type HistorySummaryRow, type RunRow } from "../src/history/history-data.js";
 import { renderSummary } from "../src/history/history-render.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
@@ -30,11 +30,12 @@ function startEvent(over: Partial<HarnessEvent>): HarnessEvent {
   return { ts: 0, source: "feature", type: "run_start", run: 1, ...over } as HarnessEvent;
 }
 
-test("runRowGrepHaystack is the canonical unpadded row line, run_end-prefixed", () => {
+test("runRowsMatchingGrep matches the canonical unpadded row line, run_end-prefixed", () => {
   // The shared haystack `tumwater history --grep` and the dashboard's /api/history?grep both
   // filter through: the row exactly as renderRow prints it when it is the widest row in each
   // column (padToWidth is the identity), with the raw event type in front so `run_end` is
-  // greppable the way logs --grep's haystack carries e.type.
+  // greppable the way logs --grep's haystack carries e.type. A pattern is matched as a
+  // substring of that line, so the whole line matching pins its exact text.
   const row: RunRow = {
     ts: 1,
     time: "2026-10-10 12:00:00",
@@ -48,14 +49,14 @@ test("runRowGrepHaystack is the canonical unpadded row line, run_end-prefixed", 
     usage: "1234 tok · $0.50",
     detail: "added a widget",
   };
-  assert.equal(
-    runRowGrepHaystack(row),
-    "run_end 2026-10-10 12:00:00  feature  #7  merged  acme/m1  45s  1234 tok · $0.50  added a widget feature changed",
-  );
+  const line = "run_end 2026-10-10 12:00:00  feature  #7  merged  acme/m1  45s  1234 tok · $0.50  added a widget feature changed";
+  assert.equal(runRowsMatchingGrep([row], line).length, 1);
+  assert.equal(runRowsMatchingGrep([row], `${line}x`).length, 0);
   // A row whose run_end lost its start keeps the em dash the renderer shows — not a
   // fabricated duration; the trailing empty cells trim away exactly as renderRow's trimEnd does.
   const unpaired: RunRow = { ...row, durationMs: null, usage: "", detail: "" };
-  assert.equal(runRowGrepHaystack(unpaired), "run_end 2026-10-10 12:00:00  feature  #7  merged  acme/m1  — feature changed");
+  assert.equal(runRowsMatchingGrep([unpaired], "run_end 2026-10-10 12:00:00  feature  #7  merged  acme/m1  — feature changed").length, 1);
+  assert.equal(runRowsMatchingGrep([unpaired], "45s").length, 0);
 });
 
 test("a corrupt event's role renders as ? like the reports", () => {
@@ -144,7 +145,7 @@ test("runRows names the model its run_start carried, or none when the start is a
   const row = rows[0]!;
   assert.equal(row.model, "acme/m1");
   assert.equal(runRowCells(row).model, "acme/m1");
-  assert.match(runRowGrepHaystack(row), /acme\/m1/);
+  assert.equal(runRowsMatchingGrep([row], "acme/m1").length, 1);
   // A run_end whose start is absent (rotation cut it) names no model — an empty cell, never
   // a fabricated selector.
   const unpaired = runRows([endEvent({ ts: 5000, run: 2, result: "skipped" })], 20, null);
@@ -245,8 +246,8 @@ test("runRows carries a run's context cut-off and marks its result cell", () => 
   assert.equal(rows[1]!.cutOff, true);
   assert.equal(runRowCells(rows[0]!).result, "no change");
   assert.equal(runRowCells(rows[1]!).result, "no change (cut off)");
-  assert.doesNotMatch(runRowGrepHaystack(rows[0]!), /cut off/);
-  assert.match(runRowGrepHaystack(rows[1]!), /cut off/);
+  assert.equal(runRowsMatchingGrep([rows[0]!], "cut off").length, 0);
+  assert.equal(runRowsMatchingGrep([rows[1]!], "cut off").length, 1);
 });
 
 test("runRows collapses and truncates the detail to keep the row one line", () => {

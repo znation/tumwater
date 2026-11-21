@@ -5,6 +5,54 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Remove the TUI, part 2/5: delete what is left in src/ only for tests now that the TUI is gone (planned 2026-11-16 by the operator; requires Remove the TUI part 1/5 landed; touches src/history/history-data.ts src/inbox/inbox.ts src/review/quarantine-render.ts src/roles/role-render.ts src/ui/status-render.ts src/redeploy/self-reload.ts test/history*.test.ts test/inbox*.test.ts test/quarantine*.test.ts test/role-view.test.ts test/status-render*.test.ts test/self-reload*.test.ts) — done 2026-11-21 by the feature role
+
+**Goal.** After part 1/5, some exports in src/ are used by nothing in src/ except their own
+module; only tests still import them. test/exports.test.ts counts a test as a user, so it does
+not flag them, but they are dead code with tests pinning them in place. As of 2026-11-16 they are
+`runRowGrepHaystack` (src/history/history-data.ts), `enqueuePrompt` (src/inbox/inbox.ts),
+`renderQuarantineSection` (src/review/quarantine-render.ts), `inspectMarkdownLines`
+(src/roles/role-render.ts) and `renderStatusSpans` (src/ui/status-render.ts). The self-reload
+watch (src/redeploy/self-reload.ts) also still carries reasoning written for an orphaned TUI on
+the operator's terminal.
+
+**Approach.**
+- Re-derive the list on the tree as it stands: for each exported symbol in src/, collect the
+  files outside its own module that use it. A symbol whose only such users are under test/ is a
+  candidate.
+- From the candidates, take only those that a TUI file imported before part 1/5
+  (`git show <part 1/5's parent>:src/ui/tui/…`). Other test-only exports are not this part's
+  business.
+- For each one: if its own module still calls it, drop the `export` and rewrite its tests to go
+  through the exported function that calls it. Otherwise delete it, along with any helper only it
+  used and the tests that only pinned it.
+- src/redeploy/self-reload.ts: the dashboards it reloads are now `tumwater gui` alone. Delete any
+  branch, option or state that only a TUI process exercised (`reloadDisabled` was passed only by
+  the hosted TUI), and reword the module's doc comment. Keep the GUI's reload behaviour exactly.
+
+**Acceptance criteria.**
+- Nothing on the list keeps an `export` that only tests use.
+- `tumwater gui` still reloads itself after a self-redeploy swaps `dist/`. The self-reload tests
+  that cover the GUI pass unchanged, apart from deleted TUI-only options.
+- No behaviour visible through the CLI or the GUI changes.
+
+**Tests.** Removed tests are those that only pinned a deleted symbol. Tests of a now-unexported
+helper move to its exported caller with the same expected values. Then the project's gate, plus
+`npm run test:rerun -- exports.test`.
+
+**Resolved 2026-11-21 by feature** — the TUI-only exports and their tests are gone or unexported:
+`renderQuarantineSection` and its two section tests are deleted (`quarantineViewRows` keeps the
+card's detail text, and the long-name no-squash pin moved to its test); `inspectMarkdownLines` is
+deleted, and test/role-view.test.ts (where it was pinned, not role-render*.test.ts) now reads
+`renderRoleMarkdown` for the same blocks; `runRowGrepHaystack` is unexported and its tests go
+through `runRowsMatchingGrep`. `renderStatusSpans` was already unexported when part 1/5 landed,
+so nothing changed there. `reloadDisabled` was already gone from self-reload.ts with the TUI;
+its module comments are reworded to describe `tumwater gui` alone and no code path changed.
+Not done, on purpose: `enqueuePrompt` (src/inbox/inbox.ts) is named in the Goal but no TUI file
+imported it before part 1/5, so the Approach's filter leaves it out; its test callers span
+files outside this entry's touches list (runner-5, gui, orchestrator-redeploy e2e, and others),
+so it stays exported. The plan role should decide whether to retire that wrapper separately.
+
 ### A staging self-check flags a comment block the change duplicated verbatim beside its original, so a comment move that left two copies — the shape three Fixed bugs and this week's re-point runs show — is caught on the authoring turn instead of surviving as prose that reads twice (planned 2026-11-19 by the steward role; promotes the recurring `no-observability` validation gap, cited below) — done 2026-11-21 by the feature role
 
 **Gap being retired.** `no-observability` is the third-largest validation-gap tag across BUGS.md and

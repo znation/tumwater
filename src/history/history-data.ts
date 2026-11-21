@@ -267,10 +267,10 @@ export function runRowLine(
  * --grep's haystack carries `e.type`, and followed by the raw role id and result code, which
  * the row shows as `feature #2` and `no change`, so a script's grep on the code still
  * matches. Built per row because the filter runs before the widths of the rows actually shown
- * are known, and shared by `tumwater history --grep` and the dashboard's
- * /api/history?grep so the two cannot disagree on the rule. The row's cells and column order
- * come from runRowCells and runRowLine, the one home for each. */
-export function runRowGrepHaystack(row: RunRow): string {
+ * are known, and reached only through runRowsMatchingGrep below, which `tumwater history --grep`
+ * and the dashboard's /api/history?grep both apply, so the two cannot disagree on the rule. The
+ * row's cells and column order come from runRowCells and runRowLine, the one home for each. */
+function runRowGrepHaystack(row: RunRow): string {
   return `run_end ${runRowLine(row)} ${row.role} ${row.result}`;
 }
 

@@ -97,42 +97,18 @@ export function renderQuarantine(rows: readonly QuarantineRow[], now: number): s
   return lines.join("\n");
 }
 
-/** The Markdown section the TUI's Failures pane appends below the failure digest — no longer
- * reachable from the dashboard, whose Failures view paints the structured { warning, rows }
- * card (quarantineViewRows) with a Release button per row instead. It reads the same
- * `quarantineRows` rule as `tumwater quarantine` (and shares its `quarantineWarning` phrase
- * when one fires), so the CLI and the TUI cannot disagree. Empty for an empty list, so a
- * window with a digest but a clean quarantine adds nothing. Pure over its inputs (no I/O, no
- * clock). */
-export function renderQuarantineSection(rows: readonly QuarantineRow[], now: number): string {
-  if (rows.length === 0) return "";
-  const lines = ["## Flake quarantine", ""];
-  const warning = quarantineWarning(rows, now);
-  if (warning !== null) lines.push(warning, "");
-  for (const r of quarantineViewRows(rows, now)) {
-    // The test name is NOT squashed: the Failures Ctrl+X release editor matches the exact
-    // path the list shows (releaseQuarantinedTest(session.root, test)), so truncating here
-    // would make a title over the bound impossible to release. `tumwater quarantine` keeps
-    // its own numbered squash because --release <n> never needs the full name.
-    lines.push(`- ${r.test} — ${r.detail}`);
-  }
-  return lines.join("\n");
-}
-
 /** One structured quarantine row the dashboard's Failures view paints: position and test ride
- * straight off the shared `quarantineRows` sort, and `detail` is exactly what
- * `renderQuarantineSection` prints after the test (`first seen …, last seen …, <N flakes> —
- * filed: <bug>` / `not filed`), so the digest's Markdown and the structured card cannot drift
- * on wording, order or escaping. Pure over its inputs (no I/O, no clock). */
+ * straight off the shared `quarantineRows` sort, and `detail` is the text shown after the test
+ * (`first seen …, last seen …, <N flakes> — filed: <bug>` / `not filed`). Pure over its inputs
+ * (no I/O, no clock). */
 export interface QuarantineViewRow {
   position: number;
   test: string;
   detail: string;
 }
 
-/** Build the structured rows for the dashboard's quarantine card: `quarantineViewRows` over the
- * sorted `rows`, each `detail` the exact per-row text `renderQuarantineSection` prints after the
- * test. */
+/** Build the structured rows for the dashboard's quarantine card: one row per entry of the
+ * sorted `rows`, each `detail` the per-row text shown after the test. */
 export function quarantineViewRows(rows: readonly QuarantineRow[], now: number): QuarantineViewRow[] {
   return rows.map((r) => {
     const filed = r.bug ? `filed: ${squash(r.bug, 80)}` : "not filed";

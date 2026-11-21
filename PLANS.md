@@ -164,41 +164,6 @@ fall behind a busy Codex team indefinitely.)
 - The maintenance alert reads as informational and idle rows show their normal phase while the
   marker stands.
 
-### Remove the TUI, part 2/5: delete what is left in src/ only for tests now that the TUI is gone (planned 2026-11-16 by the operator; requires Remove the TUI part 1/5 landed; touches src/history/history-data.ts src/inbox/inbox.ts src/review/quarantine-render.ts src/roles/role-render.ts src/ui/status-render.ts src/redeploy/self-reload.ts test/history*.test.ts test/inbox*.test.ts test/quarantine*.test.ts test/role-render*.test.ts test/status-render*.test.ts test/self-reload*.test.ts)
-
-**Goal.** After part 1/5, some exports in src/ are used by nothing in src/ except their own
-module; only tests still import them. test/exports.test.ts counts a test as a user, so it does
-not flag them, but they are dead code with tests pinning them in place. As of 2026-11-16 they are
-`runRowGrepHaystack` (src/history/history-data.ts), `enqueuePrompt` (src/inbox/inbox.ts),
-`renderQuarantineSection` (src/review/quarantine-render.ts), `inspectMarkdownLines`
-(src/roles/role-render.ts) and `renderStatusSpans` (src/ui/status-render.ts). The self-reload
-watch (src/redeploy/self-reload.ts) also still carries reasoning written for an orphaned TUI on
-the operator's terminal.
-
-**Approach.**
-- Re-derive the list on the tree as it stands: for each exported symbol in src/, collect the
-  files outside its own module that use it. A symbol whose only such users are under test/ is a
-  candidate.
-- From the candidates, take only those that a TUI file imported before part 1/5
-  (`git show <part 1/5's parent>:src/ui/tui/…`). Other test-only exports are not this part's
-  business.
-- For each one: if its own module still calls it, drop the `export` and rewrite its tests to go
-  through the exported function that calls it. Otherwise delete it, along with any helper only it
-  used and the tests that only pinned it.
-- src/redeploy/self-reload.ts: the dashboards it reloads are now `tumwater gui` alone. Delete any
-  branch, option or state that only a TUI process exercised (`reloadDisabled` was passed only by
-  the hosted TUI), and reword the module's doc comment. Keep the GUI's reload behaviour exactly.
-
-**Acceptance criteria.**
-- Nothing on the list keeps an `export` that only tests use.
-- `tumwater gui` still reloads itself after a self-redeploy swaps `dist/`. The self-reload tests
-  that cover the GUI pass unchanged, apart from deleted TUI-only options.
-- No behaviour visible through the CLI or the GUI changes.
-
-**Tests.** Removed tests are those that only pinned a deleted symbol. Tests of a now-unexported
-helper move to its exported caller with the same expected values. Then the project's gate, plus
-`npm run test:rerun -- exports.test`.
-
 ### Remove the TUI, part 4/5: source comments stop describing a TUI (planned 2026-11-16 by the operator; requires Remove the TUI parts 1/5, 2/5, 3/5 landed; touches src/ (comments only) scripts/diff-check.mjs scripts/live-fixture.mjs)
 
 **Goal.** Before part 1/5, about 100 files under src/ (outside `src/ui/tui/`) mentioned the TUI

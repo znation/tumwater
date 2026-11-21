@@ -36,16 +36,6 @@ function fencedOrNone(label: string, text: string | null, noneNote = "none"): st
   return [`## ${label}`, "", fence, text.replace(/\n+$/, ""), fence, ""];
 }
 
-/** The Notes and Next run prompt blocks and the "more waits" disclosure, as Markdown
- * lines — the read-only inspection the TUI's notes view and `tumwater role <id>` share,
- * so the terminal and the CLI show one role's notes and assembled prompt identically.
- * `renderRoleMarkdown` splices these at the same position, so the extracted function and the
- * full document cannot drift. */
-export function inspectMarkdownLines(p: RoleViewPayload, now = Date.now()): string[] {
-  const running = chainStepLine(p);
-  return [...(running ? [running, ""] : []), ...inspectBodyLines(p, now)];
-}
-
 /** The notes, prompt and disclosure blocks alone — what renderRoleMarkdown splices after
  * its own Team lines, which already carry the fallback-step bullet. Each optional section
  * renders through its own helper; the body is the ordered concatenation. */

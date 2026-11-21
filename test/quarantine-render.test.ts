@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { grepQuarantineRows, quarantineEntryAt, quarantineRows, quarantineViewRows, renderQuarantine, renderQuarantineDetail, renderQuarantineSection } from "../src/review/quarantine-render.js";
+import { grepQuarantineRows, quarantineEntryAt, quarantineRows, quarantineViewRows, renderQuarantine, renderQuarantineDetail } from "../src/review/quarantine-render.js";
 import { QUARANTINE_AGE_MS, QUARANTINE_WARN_COUNT } from "../src/baseline/main-guardrails.js";
 import type { QuarantineEntry } from "../src/review/known-flakes.js";
 
@@ -136,7 +136,7 @@ test("renderQuarantine headers and numbers the filtered rows exactly as any othe
 
 test("quarantineViewRows positions and details each entry", () => {
   // The dashboard card's structured rows: position and test ride off the shared sort, and each
-  // detail is exactly the per-row text renderQuarantineSection prints after the test.
+  // detail is the per-row text shown after the test.
   const rows = quarantineRows([
     entry({ test: "test/a.test.ts", firstSeen: now - 2 * 24 * 3_600_000, lastSeen: now - 3_600_000, count: 3, bug: "A hidden flake" }),
     entry({ test: "test/b.test.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "" }),
@@ -151,35 +151,16 @@ test("quarantineViewRows positions and details each entry", () => {
   );
   assert.equal(view[0]!.detail, "first seen 2d ago, last seen 1h ago, 3 flakes — filed: A hidden flake");
   assert.equal(view[1]!.detail, "first seen 1h ago, last seen 0s ago, 1 flake — not filed");
-  // The detail is exactly what the Markdown section prints after the test, so the digest and
-  // the structured card cannot drift on wording.
   assert.deepEqual(quarantineViewRows([], now), []);
 });
 
-test("renderQuarantineSection is empty for an empty list and a Markdown section otherwise", () => {
-  assert.equal(renderQuarantineSection([], now), "");
-  // One old enough for quarantineWarning to fire, one fresh; the first names its test, ages,
-  // flake count and "not filed", the second ends "filed: …".
-  const rows = quarantineRows([
-    entry({ test: "test/not-filed.test.ts", firstSeen: now - QUARANTINE_AGE_MS - 1, lastSeen: now - 3_600_000, count: 2, bug: "" }),
-    entry({ test: "test/filed.test.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "A filed flake" }),
-  ]);
-  const text = renderQuarantineSection(rows, now);
-  assert.match(text, /^## Flake quarantine\n/);
-  assert.match(text, /quarantine holds 1 test over 3 days:/, "the shared warning phrase appears when it fires");
-  const bullets = text.split("\n").filter((l) => l.startsWith("- "));
-  assert.equal(bullets.length, 2, "exactly two bullets");
-  assert.match(bullets[0]!, /^- test\/not-filed\.test\.ts — first seen 3d ago, last seen 1h ago, 2 flakes — not filed$/);
-  assert.match(bullets[1]!, /^- test\/filed\.test\.ts — first seen 1h ago, last seen 0s ago, 1 flake — filed: A filed flake$/);
-});
-
-test("renderQuarantineSection shows a test name over 80 chars in full, not squashed", () => {
-  // The Failures Ctrl+X release editor matches the exact path the list shows, so a long
-  // title must render untruncated or it could never be released. `renderQuarantine` keeps
-  // its own numbered squash because --release <n> never needs the full name.
+test("quarantineViewRows shows a test name over 80 chars in full, not squashed", () => {
+  // The Failures Ctrl+X release editor matches the exact path the card shows, so a long title
+  // must render untruncated or it could never be released. `renderQuarantine` keeps its own
+  // numbered squash because --release <n> never needs the full name.
   const long = `test/${"a".repeat(120)}.test.ts`;
   const rows = quarantineRows([entry({ test: long, firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "" })]);
-  assert.match(renderQuarantineSection(rows, now), new RegExp(`- ${long} —`));
+  assert.equal(quarantineViewRows(rows, now)[0]!.test, long);
 });
 
 test("renderQuarantineDetail prints a bare entry's header, ages and filed line", () => {
