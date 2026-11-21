@@ -114,7 +114,7 @@ export type ProgressRunKind = PiRunKind;
  * the progress accumulated from everything read so far — one accumulator per run kind
  * (ProgressRunKind), since a gate run's `session` event must not reset the author run's
  * counts. Bounded by the number of distinct log paths observed in this process
- * (one root × its roles for a TUI/GUI). */
+ * (one root × its roles for the GUI). */
 const tails = new Map<string, TailState<RoleLogTail>>();
 
 /** The tail state for one role log: per-kind accumulators plus the current run kind (`cur`),
@@ -460,7 +460,7 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
  * slot, what the reviewing cell shows), or null when there is no log yet. The raw log is
  * append-only while pi runs and every run starts with a `tumwater_run` marker
  * (src/agent/agent-spawn.ts), so after seeding from the tail window once we only read and parse
- * bytes appended since the last poll — observers that call this every second (TUI, GUI) stop
+ * bytes appended since the last poll — observers that call this every second (the GUI) stop
  * rescanning up to TAIL_BYTES
  * of JSON per role per poll. */
 export function readLiveProgress(root: string, role: string, kind: ProgressRunKind = "author"): LiveProgress | null {

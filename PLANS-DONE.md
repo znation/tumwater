@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Remove the TUI, part 4e/5: the other top-level src/ui/*.ts comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/ui/badges.ts src/ui/transcript.ts src/ui/alert-feeds.ts src/ui/team-alerts.ts src/ui/run-progress-model.ts src/ui/progress-data.ts src/ui/tone.ts src/ui/team-alert-standings.ts src/ui/team-alert-shared.ts (comments only)) — done 2026-11-21 by the feature role
+
+One of the independent parts split from part 4/5; see part 4a/5 for the goal. `grep -rniwc tui`
+counts 24 lines in these nine files: src/ui/badges.ts (9), src/ui/transcript.ts (3),
+src/ui/alert-feeds.ts (3), src/ui/team-alerts.ts (2), src/ui/run-progress-model.ts (2),
+src/ui/progress-data.ts (2), src/ui/tone.ts (1), src/ui/team-alert-standings.ts (1) and
+src/ui/team-alert-shared.ts (1).
+
+**Approach.** As in part 4a/5: rewrite each comment sentence in these files that names the TUI,
+a `ui/tui/` path or a TUI key for the surfaces that remain (`tumwater status`, the GUI,
+`status --json`), drop "twin of the TUI's …" cross-references, change comments only (a code
+change found along the way becomes its own BUGS.md entry), and keep comment lines within 100
+columns.
+
+**Acceptance criteria.**
+- `grep -niw tui` over the nine files above matches nothing.
+- `git diff -U0 -- src/ui` adds and removes only comment lines, in those nine files.
+- test/comment-width.test.ts passes.
+
 ### Fast session cleanup, part 2a/2: session deletes run as a background task, so roles keep running during cleanup (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; requires Fast session cleanup part 1/2 landed; touches src/agent/session-ledger.ts src/orchestrator/retention.ts test/session-ledger-prune.test.ts test/session-ledger.test.ts test/retention.test.ts) — done 2026-11-21 by the feature role
 
 Part 2/2 was split into 2a, 2b and 2c after the feature role found it too large for one run.

@@ -96,7 +96,7 @@ export function mainCountsFragment(counts: TestCounts | undefined): string {
 /** One home for the main-check status → display mapping the observer surfaces share:
  * passed→green (check glyph), failed→red (fail glyph), and a skipped/unverified check reads
  * its raw status word with `fallbackTone` for color — callers pick the tone their palette
- * uses (the TUI's status header renders yellow, the GUI sidebar amber). The verdict word
+ * uses (`tumwater status` header renders yellow, the GUI sidebar amber). The verdict word
  * never reads green for an unverified tree. Readers: mainCheckBadge (below) and the header
  * badge tone in status-render.ts. The GUI sidebar's status row (gui-client-team.ts) ships
  * its own copy of the mapping — it is browser-side JS spliced into gui-client.ts and cannot
@@ -201,7 +201,7 @@ function untilReset(resetsAt: number, now: number): string {
  * most-constrained block (`blocks[0]`, already most-constrained-first), rendering under that
  * backend's own display label. A rejected window says only that it is limited and when it
  * resets: nothing holds or moves a seam on it (Subtract part 5u/6), so the badge makes no
- * claim about jobs waiting. The one home of the string, so the TUI header and the payload's
+ * claim about jobs waiting. The one home of the string, so the status header and the payload's
  * preformatted badge cannot drift. */
 function subscriptionWindowBadge(blocks: SubscriptionWindowBlock[], now: number): string {
   const block = blocks[0]!;
@@ -258,7 +258,7 @@ export function chainBadge(chain: StatusSnapshot["chain"]): string {
  * cannot be reached — and no priced model means no daily spend to count, hence no "today"
  * — checked first, in every cap state), `· budget: $X.XX/$Y today` while enabled with
  * priced models, and `· budget: $X today · no cap` when disabled. One
- * home for the rule — renderStatus renders it in the TUI/status header and status-payload.ts
+ * home for the rule — renderStatus renders it in the status header and status-payload.ts
  * ships its output preformatted as `budgetBadge`, so the GUI page cannot drift from this
  * string.
  * While a burn-rate forecast stands (the snapshot's `capHitAt`, budget.ts's projectCapHit —
@@ -318,7 +318,7 @@ export function budgetBadge(
 /** The header's merge queue fragment (plans/merge-queue.md 4/5): `· merge queue: N` while any
  * merge is queued or in flight, empty when the queue is idle — so an idle team keeps
  * every existing header byte intact. One home for the rule, like buildBadge and budgetBadge:
- * renderStatus renders it in the TUI/status header and status-payload.ts ships its output
+ * renderStatus renders it in the status header and status-payload.ts ships its output
  * preformatted, so the GUI page cannot drift from this string. */
 export function mergeBadge(mergeQueue: { depth: number }): string {
   return mergeQueue.depth > 0 ? ` · merge queue: ${mergeQueue.depth}` : "";
@@ -345,7 +345,7 @@ export function ciParityBadge(parity: StatusSnapshot["ciParity"], now: number): 
   return ` · CI: stale — covered ${sha} ${age}`;
 }
 
-/** The one state→tone map for the ci parity badge, shared by the CLI/TUI header and the
+/** The one state→tone map for the ci parity badge, shared by the CLI header and the
  * browser sidebar row so a `current` badge is green, `failed` red, `stale` blue, and an
  * absent one renders with no tone (and, per the badge, no text at all). */
 export function ciParityTone(parity: StatusSnapshot["ciParity"]): "green" | "red" | "blue" | undefined {
@@ -373,7 +373,7 @@ export function remoteCiBadge(remote: StatusSnapshot["remoteCi"], now: number): 
   return ` · github: running at ${sha} ${age}`;
 }
 
-/** The one result→tone map for the remote-CI badge, shared by the CLI/TUI header and the
+/** The one result→tone map for the remote-CI badge, shared by the CLI header and the
  * browser sidebar row so a `passed` badge is green, `failed` red, `pending` (in flight)
  * blue, and an absent or `unavailable` one renders with no tone (and, per the badge, no
  * text at all — the row simply does not render). */
@@ -426,7 +426,7 @@ export function roleWakeMarker(
  * or already-expired deadline renders nothing — the read side treats an expired marker as
  * unpaused, so the badge never claims a countdown that is over. The duration goes through
  * pauseCountdown, the one home of that guard and rounding. renderStatus renders it in
- * the TUI/status header after the budget badge; the GUI recomputes the counting-down number
+ * the status header after the budget badge; the GUI recomputes the counting-down number
  * client-side from the payload's raw `pausedUntil` (status-payload.ts) using its own
  * humanSeconds copy, pinned against this one by test. `reason` (the operator's
  * `pause --reason <text>` note) rides after the countdown — and makes the untimed pause
@@ -464,7 +464,7 @@ export function pauseCountdown(pausedUntil: number | undefined, now: number): st
  * byte-identical. The window end comes from quiet-hours.ts's quietWindowEnd — read back out of
  * the window string, not re-parsed into minutes — so the badge renders the operator's own
  * spelling.
- * renderStatus renders it in the TUI/status header after the pause badge; the GUI page
+ * renderStatus renders it in the status header after the pause badge; the GUI page
  * renders its sidebar chip from the payload's raw fields and its active indicator from
  * team-alerts' quiet alert, so both dashboards say the same thing. */
 export function quietBadge(quietHours: string | undefined, inQuietHours: boolean): string {
@@ -479,7 +479,7 @@ export function quietBadge(quietHours: string | undefined, inQuietHours: boolean
  * information here; it surfaces as a `disk_reclaim` item in the Activity log's Notable feed.
  * Empty when the snapshot carries no disk block (an older orchestrator, or an unmeasurable
  * volume) and space is comfortable. One home for the rule, like budgetBadge: renderStatus
- * renders it in the TUI/status header and status-payload.ts ships it preformatted. */
+ * renders it in the status header and status-payload.ts ships it preformatted. */
 export function diskBadge(disk: StatusSnapshot["disk"]): string {
   if (!disk) return "";
   const free = `${formatGB(disk.freeGB)} free`;

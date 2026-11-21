@@ -45,7 +45,7 @@ export function inFlightLabel(s: RunnerState, label: string): string {
  * run, so quietMs can never exceed the run's own age and the honest quiet measure survives.
  * Applied by every progress reader (workingDetail, the reviewing branch of rolePhase, the
  * token metrics, roleRowCells' precomputed tail) and by status-render's state cell via
- * runProgress, so the TUI, the GUI payload, and the alert cannot drift apart. A state with
+ * runProgress, so the status view, the GUI payload, and the alert cannot drift apart. A state with
  * no recorded start (a stale `running` flag after a crash) cannot be judged and keeps the
  * tail as before. `p` may be undefined (the caller's "no tail fetched" sentinel) or null
  * ("no log"); both read as no progress. */
@@ -107,7 +107,7 @@ export function inFlightDetail(head: string, p: LiveProgress | null): string {
 /** Which pi run kind (progress-data.ts's ProgressRunKind) a role's in-flight cells should read:
  * the review gate's reviewer run ("gate") while the run is under review — its `session`
  * event is the log's newest and its counts are what "reviewing" describes — the author's
- * own run ("author") for every other in-flight phase. One home for the rule so the TUI
+ * own run ("author") for every other in-flight phase. One home for the rule so the status
  * table and the GUI payload cannot drift (the precomputed `live` tail must name the same
  * run the phase label does). status-model's roleRowCells is its only reader. */
 export function progressKind(s: RunnerState): ProgressRunKind {

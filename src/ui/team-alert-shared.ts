@@ -20,7 +20,7 @@ export function entryListDetail(titles: readonly string[]): string {
 
 /** Something that needs the operator — or that they should know — about the team as a whole,
  * phrased once for both observer surfaces: the dashboard's alert banners (shipped in the status
- * payload as `alerts`) and the TUI's attention lines. `tone` ranks it (red and amber ask for
+ * payload as `alerts`) and the status attention lines. `tone` ranks it (red and amber ask for
  * action, indigo asks a question, blue and gray inform); `actions` are the dashboard's buttons
  * (`act` names a page action — open a role, a view, the cap editor…). */
 export interface TeamAlert {

@@ -276,7 +276,7 @@ export function formatTranscript(lines: string[], opts?: { includePrompts?: bool
 
 /** Per-file accumulated value for readTranscript: the incremental renderer and the rendered
  * entries it has produced so far (ring buffer capped at MAX_ENTRIES). Bounded by the number
- * of distinct log paths observed in this process (one root × its roles for a TUI/GUI). */
+ * of distinct log paths observed in this process (one root × its roles for the GUI). */
 interface TranscriptValue {
   renderer: TranscriptRenderer;
   /** Rendered entries so far (ring buffer capped at MAX_ENTRIES). */
@@ -289,8 +289,8 @@ const tails = new Map<string, TailState<TranscriptValue>>();
  * each other's renderer. */
 const promptTails = new Map<string, TailState<TranscriptValue>>();
 /** How many rendered entries to keep per file. Hot callers ask for at most ~50 (the GUI
- * panel polls with n=50, the TUI its line budget), so the cap bounds memory while keeping any
- * such request exact; a caller asking for more gets the newest MAX_ENTRIES. */
+ * panel polls with n=50, a terminal view its line budget), so the cap bounds memory while
+ * keeping any such request exact; a caller asking for more gets the newest MAX_ENTRIES. */
 const MAX_ENTRIES = 200;
 
 /** Fold one raw log line into a transcript's accumulated value. */
@@ -307,7 +307,7 @@ function feedEntries(value: TranscriptValue, line: string): void {
  * The raw log is append-only while pi runs and rotates at `logMaxBytes` (default 16MB), so
  * after parsing the current file once per observation (first poll or rotation) only bytes
  * appended since the previous call are read and parsed — observers that call this every
- * second (the TUI's transcript view, the GUI panel) stop rescanning up to 16MB of JSON per
+ * second (the GUI panel) stop rescanning up to 16MB of JSON per
  * role per poll. A torn trailing line is left unconsumed until its newline lands.
  *
  * `opts.grep` (lowercased, non-empty) keeps only the entries containing it, via

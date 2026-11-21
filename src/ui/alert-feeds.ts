@@ -6,7 +6,7 @@ import { type ProcessProbe, systemProcessProbe } from "../process/process-table.
  * data-sourcing function lives here, a
  * sibling of the src/ui/team-alert-*.ts builders that turn them into banners. status-payload.ts
  * stays the one status-document builder, importing these feeds and folding each feed's result
- * into the `alerts` field; status-render.ts reads the feeds directly for the TUI. The stale
+ * into the `alerts` field; status-render.ts reads the feeds directly for status. The stale
  * questions, plan dependencies, stalled entries, stranded plans, duplicated headings, live
  * finished history, validation gaps and false fixes feeds moved to `tumwater doctor` rows
  * (Subtract part 1e/6), so the only feed left is the orphan alert. */
@@ -54,12 +54,12 @@ const ORPHAN_ALERT_REFRESH_MS = 60_000;
 let orphanCache: { value: OrphanAlert | null; at: number } | null = null;
 let orphanLoading = false;
 
-/** The synchronous orphan feed the always-on surfaces (status-payload, status-render, the TUI)
+/** The synchronous orphan feed the always-on surfaces (status-payload, status-render, status)
  * read each frame: the last scan's value while it is fresher than ORPHAN_ALERT_REFRESH_MS, else a
  * background refresh is kicked (one at a time) and the previous value — null on the first ever
  * read — is returned until that scan lands. The refresh runs off the render path, so a slow host
- * scan never stalls a status frame. Per-process: each long-lived surface (the GUI server, the
- * TUI) and the CLI each run their own throttled scan against the same doctor rule. */
+ * scan never stalls a status frame. Per-process: each long-lived surface (the GUI server)
+ * and the CLI each run their own throttled scan against the same doctor rule. */
 export function getOrphanAlert(
   root: string,
   probe: ProcessProbe = systemProcessProbe,

@@ -63,25 +63,6 @@ cleanup` phase describe a hold that no longer exists.
   no row reads `held: session cleanup`.
 - `grep -rn "held: session cleanup" src` finds nothing.
 
-### Remove the TUI, part 4e/5: the other top-level src/ui/*.ts comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/ui/badges.ts src/ui/transcript.ts src/ui/alert-feeds.ts src/ui/team-alerts.ts src/ui/run-progress-model.ts src/ui/progress-data.ts src/ui/tone.ts src/ui/team-alert-standings.ts src/ui/team-alert-shared.ts (comments only))
-
-One of the independent parts split from part 4/5; see part 4a/5 for the goal. `grep -rniwc tui`
-counts 24 lines in these nine files: src/ui/badges.ts (9), src/ui/transcript.ts (3),
-src/ui/alert-feeds.ts (3), src/ui/team-alerts.ts (2), src/ui/run-progress-model.ts (2),
-src/ui/progress-data.ts (2), src/ui/tone.ts (1), src/ui/team-alert-standings.ts (1) and
-src/ui/team-alert-shared.ts (1).
-
-**Approach.** As in part 4a/5: rewrite each comment sentence in these files that names the TUI,
-a `ui/tui/` path or a TUI key for the surfaces that remain (`tumwater status`, the GUI,
-`status --json`), drop "twin of the TUI's …" cross-references, change comments only (a code
-change found along the way becomes its own BUGS.md entry), and keep comment lines within 100
-columns.
-
-**Acceptance criteria.**
-- `grep -niw tui` over the nine files above matches nothing.
-- `git diff -U0 -- src/ui` adds and removes only comment lines, in those nine files.
-- test/comment-width.test.ts passes.
-
 ### Remove the TUI, part 4f/5: src/ui/gui/ comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/ui/gui/ (comments only))
 
 One of the independent parts split from part 4/5; see part 4a/5 for the goal. `grep -rniwc tui`
