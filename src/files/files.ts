@@ -152,9 +152,9 @@ export function readRegularTextOrNull(file: string): string | null {
  * (a symlink holds no text of its own and its target could point out of the worktree), so a
  * hostile entry at the path reads as empty rather than pulling an outside host file's text
  * into the verdict — the same lstat policy INV-G3 pins for the change-head readers
- * (backlog-structure's heading gate, fix-claim's false-fix guard, and the staging prose
- * checks) and readRegularTextOrNull for the prompt-input readers. Equivalent to
- * `readRegularTextOrNull(f) ?? ""`. */
+ * (backlog-structure's heading gate, fix-claim's false-fix guard, the staging prose
+ * checks, and merge-git's conflicted-file hunks) and readRegularTextOrNull for the
+ * prompt-input readers. Equivalent to `readRegularTextOrNull(f) ?? ""`. */
 export function readRegularTextOrEmpty(file: string): string {
   return readRegularTextOrNull(file) ?? "";
 }

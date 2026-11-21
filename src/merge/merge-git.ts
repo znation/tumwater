@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { GitError, committerIdentArgs, git, gitCouldNotStart, gitTry, runGit } from "../git/git-run.js";
-import { readTextOrNull, writeBytesAtomic } from "../files/files.js";
+import { readRegularTextOrEmpty, writeBytesAtomic } from "../files/files.js";
 import { currentBranch, gitLines, headOf } from "../git/git.js";
 import { treeDiffFiles, unquotePorcelainPath } from "../git/git-diff.js";
 import { errCode, isErrAbsent } from "../errno.js";
@@ -212,15 +212,9 @@ export function conflictHunkRanges(text: string): Array<{ start: number; end: nu
  * file counts, backlog or code; a deleted, unreadable or binary (NUL-bearing) file lists none. */
 export function conflictedFileHunks(wt: string, files: readonly string[]): ConflictedFile[] {
   return files.map((f) => {
-    // Deleted or unreadable reads as empty: no ranges to name. A symlink is never followed
-    // out of the worktree (it holds no text of its own), so it too reads as empty.
-    let full = path.join(wt, f);
-    try {
-      if (!fs.lstatSync(full).isFile()) return { path: f, hunks: [], more: 0 };
-    } catch {
-      return { path: f, hunks: [], more: 0 };
-    }
-    const text = readTextOrNull(full) ?? "";
+    // Deleted, unreadable or non-regular (symlinked) reads as empty: no ranges to name. The
+    // lstat policy (readRegularTextOrEmpty) never follows a symlink out of the worktree.
+    const text = readRegularTextOrEmpty(path.join(wt, f));
     const all = text.includes("\0") ? [] : conflictHunkRanges(text);
     const { visible: hunks, hidden: more } = topAndHidden(all, MAX_LISTED_HUNKS);
     return { path: f, hunks, more };
