@@ -169,7 +169,7 @@ function saveQuarantine(root: string, entries: readonly QuarantineEntry[]): void
 
 /** The one home of a quarantine-store read-modify-write: the list's writers span processes
  * (the orchestrator's main-watch settlement and review-gate flake recording, and the separate
- * `tumwater quarantine --release` process behind the CLI, TUI and GUI), and an unguarded
+ * `tumwater quarantine --release` process behind the CLI and GUI), and an unguarded
  * last-writer overwrite drops one side's update — the same mkdir-and-pid mutex slots.json's
  * read-modify-writes take (slotsLockPath). The section is a single synchronous file RMW, so the
  * sync lock's busy-wait adds nothing measurable. */

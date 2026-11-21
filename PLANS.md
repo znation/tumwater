@@ -134,29 +134,6 @@ along the way becomes its own BUGS.md entry. Keep comment lines within the 100-c
 - `git diff -U0 -- src/ui` adds and removes only comment lines.
 - test/comment-width.test.ts passes.
 
-### Remove the TUI, part 4d/5: the remaining src/ directories and scripts/ stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/report/ src/process/ src/scheduling/ src/gui/ src/events/ src/review/ src/orchestrator/ src/roles/ src/failure/ src/prompt/ src/merge/ src/git/ src/runner/ src/observer/ src/files/ src/brief/ (comments only) scripts/diff-check.mjs scripts/live-fixture.mjs)
-
-One of four independent parts split from part 4/5; see part 4a/5 for the goal. These paths hold
-about 41 matching lines in 27 files.
-
-**Approach.**
-- As in part 4a/5, for comments under src/report/, src/process/, src/scheduling/, src/gui/,
-  src/events/, src/review/, src/orchestrator/, src/roles/, src/failure/, src/prompt/,
-  src/merge/, src/git/, src/runner/, src/observer/, src/files/ and src/brief/: rewrite each
-  sentence that names the TUI, a `ui/tui/` path or a TUI key for the surfaces that remain, drop
-  "twin of the TUI's …" cross-references, change comments only (a code change found along the
-  way becomes its own BUGS.md entry), and keep comment lines within 100 columns.
-- scripts/diff-check.mjs compares the `renderStatus` table (the `tumwater status` view) and the
-  GUI's `/api/status` payload; say so instead of "TUI table strings", and relabel its two
-  `TUI …` console messages (`TUI MISMATCH at width=…`, `TUI width=…: identical`) for the status
-  table. Fix the TUI mention in scripts/live-fixture.mjs.
-
-**Acceptance criteria.**
-- `grep -rniw tui` over the src/ directories above and scripts/ matches nothing.
-- In src/, `git diff -U0` adds and removes only comment lines; in scripts/diff-check.mjs the only
-  non-comment lines changed are the two console messages.
-- test/comment-width.test.ts passes.
-
 ### GitHub issues, part 2/5: the orchestrator scans a project's open GitHub issues on a clock and records which ones no backlog entry mirrors (planned 2026-11-21 by the operator; requires GitHub issues part 1/5 landed; touches src/github/issue-scan.ts src/github/issue-mirrors.ts src/github/github-issues-state.ts src/paths.ts src/orchestrator/orchestrator-poll.ts src/events/events.ts test/github-issue-scan.test.ts test/github-issue-mirrors.test.ts test/fakes/fake-gh.ts)
 
 **Goal.** A running team reads the project's open GitHub issues about once an hour through the

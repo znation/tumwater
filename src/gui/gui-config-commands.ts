@@ -21,7 +21,7 @@ import type http from "node:http";
 
 /** Handle POST /api/budget: the dashboard's budget-badge editor saves the daily cost cap —
  * same body discipline as /api/prompt (readJsonObject), and the same shared validation rule +
- * atomic setter the TUI's Ctrl+B uses, so both surfaces write tumwater.json identically and
+ * atomic setter in src/config/config-write.ts, so the cap is written the same from any caller and
  * the running orchestrator picks the change up on its next ~2 s poll. A cap already in place
  * answers `unchanged: true` and writes nothing. */
 export async function handleBudget(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {

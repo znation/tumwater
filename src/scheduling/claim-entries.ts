@@ -4,7 +4,7 @@
  * section (its instance is stuck on an entry that moved), and a claim idle longer than
  * `CLAIM_IDLE_MAX_MS` (the scheduler releases these, so seeing one means the reader's view
  * and the scheduler's disagree). Classified once here so the doctor row and the `tumwater
- * status` / dashboard / TUI alert cannot drift on the rule. Pure: reads runner state and the
+ * status` / dashboard alert cannot drift on the rule. Pure: reads runner state and the
  * backlog through `loadRunnerState` / `listedKeys`, never mutates. */
 
 import { loadRunnerState } from "../runner/runner-state-load.js";

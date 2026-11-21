@@ -280,8 +280,7 @@ export function teamDownEvent(down: TeamDown, diagnosis: string | null): Harness
  * SUPERVISOR_PID_ENV naming this supervisor so the child's own parent-death watch fires even if
  * this process is killed before the child reads its first ppid. `env` carries extra marks, e.g.
  * RUN_WINDOW_START_ENV for a `--for` window. `stdio` defaults to `"inherit"` (the child's
- * event stream is what a plain `run` operator sees); `run --tui` passes silent stdio instead,
- * because the observer TUI owns the terminal and the child must not paint over its render. */
+ * event stream is what a plain `run` operator sees). */
 export function spawnStartChild(
   signal: AbortSignal,
   extraArgs: string[] = [],
@@ -307,9 +306,7 @@ export function spawnStartChild(
 
 /** The production dashboard spawner for `run --gui`: a `tumwater gui` child (on its defaults, or
  * on `--port <n>` when `extraArgs` carries the port), stdio shared so a terminal Ctrl+C reaches
- * it exactly as it reaches the orchestrator child — unless `--tui` is hosted, when the caller
- * passes silent stdio so the dashboard's `tumwater gui at http://…` banner cannot paint over the
- * observer TUI's full-screen render.
+ * it exactly as it reaches the orchestrator child.
  * `env` carries the caller's mark — in production DASHBOARD_CHILD_ENV naming this supervisor's
  * pid — so the child's own reload watch (src/redeploy/self-reload.ts) both exits
  * RESTART_EXIT_CODE for a fresh generation on a redeploy and exits on its own if this supervisor

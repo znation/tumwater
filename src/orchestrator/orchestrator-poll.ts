@@ -145,7 +145,7 @@ export function mergeStartHeld(held: boolean, reviewHeld: boolean, role?: string
 
 /** The team's standing self-heal sweep (PLANS.md 2026-11-11): at most once per interval, kill
  * the orphans the doctor row already reports that are old enough that no live run can still own
- * them — the automatic counterpart to the human click `doctor --kill-orphans`/dashboard/TUI
+ * them — the automatic counterpart to the human click `doctor --kill-orphans`/dashboard
  * makes. The time is stamped before the await, so a slow scan cannot overlap the next poll's
  * reap (this is the running team's only caller). A stopped team never runs the sweep — nothing
  * polls — so it never calls this; the dashboards and status read the standing alert's show-rule
@@ -336,7 +336,7 @@ export function pollGatesAndHolds(
   // (plans/disk-floor.md, part 1/4).
   state.diskHeld = gates.diskHeld;
   // Publish the permit pool's live state (plans/provider-concurrency.md §8): observers
-  // (status, TUI, GUI) read one file instead of coupling to this Semaphore, and the team
+  // (status, GUI) read one file instead of coupling to this Semaphore, and the team
   // line shows the team total. Written only when it changes, like budget and disk. The
   // check-permit pool rides along, so status can show checks
   // running and waiting while merges stall. The workspace pool's live state rides along too:

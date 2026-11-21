@@ -182,7 +182,7 @@ export class RetentionPruner {
       // A change to a positive window prunes immediately even inside the daily window — an
       // operator tightening the window wants it applied now, not at tomorrow's pass. Every
       // distinct value change logs one event (like its maxConcurrent sibling) so live edits
-      // are visible in logs/TUI/GUI even when nothing was pruned; pruning itself still runs
+      // are visible in logs/GUI even when nothing was pruned; pruning itself still runs
       // only for a positive window.
       if (retentionDays !== this.lastRetention) {
         logEventBestEffort(root, {

@@ -239,7 +239,7 @@ const liveClaimCache = new Map<string, StatKeyedValue<{ role: string; key: strin
  * changes whenever any state file is added, removed or renamed (a claim write's atomic
  * tmp+rename bumps it too), so it subsumes the per-file stat walk allLiveClaims would otherwise
  * redo on every call. A team poll calls allLiveClaims several times (eligibleEntries per claim
- * base, workReserveCount) and a status/TUI render calls it through backlogMarks and
+ * base, workReserveCount) and a status render calls it through backlogMarks and
  * backlogInProgress; without this each call re-stat-ed every role and instance state file (~400µs
  * of syscalls here, 2–3× per poll). cachedByStat keys on dev/ino/mtime/size, so an unchanged
  * steady state serves the whole map from one stat per call; bounded like the other caches. */

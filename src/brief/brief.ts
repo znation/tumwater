@@ -268,7 +268,7 @@ export function readBrief(root: string): { file: string; prompt: string } | null
 }
 
 /** The brief's plain-text form: its file name, then the brief text — what `tumwater brief`
- * prints and the TUI's Brief tab shows, so the two cannot drift. */
+ * prints and the Brief tab shows, so the two cannot drift. */
 export function renderBrief(brief: { file: string; prompt: string }): string {
   return `${brief.file}\n${brief.prompt}`;
 }

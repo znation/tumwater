@@ -2,7 +2,7 @@
  * The one write path for a role's notes, shared by every surface that touches it: the
  * `tumwater-notes` command (src/notes-cli.ts), `tumwater role --notes-file` /
  * `--clear-notes` (cli-role-command.ts), the dashboard drawer (gui-operator-commands.ts)
- * and the TUI editors (tui-editor-notes.ts, tui-pane-transcript.ts). Kept backend-neutral —
+ * and the notes editors. Kept backend-neutral —
  * no pi, claude or opencode types — so every surface quotes the SAME 4 KB cap, the SAME
  * validation, and the SAME validate-then-atomic-write execution, and cannot drift on what
  * a valid note is or what a rejected write does.

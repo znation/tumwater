@@ -199,7 +199,7 @@ export async function handleArchiveBacklog(
 }
 
 /** Handle POST /api/doctor-resync-install: the dashboard Health card's Re-sync install button —
- * the terminal twin of `tumwater doctor --resync-install` and the TUI's Ctrl+U, all reached
+ * the terminal twin of `tumwater doctor --resync-install`, both reached
  * through the same resyncRootInstall. It answers the same lines the CLI prints
  * (rootInstallResyncLines, joined with "; "), its `ok` matching the report so the card can
  * repaint. Same body discipline as /api/kill-orphans; `resync` is injectable so a test need not

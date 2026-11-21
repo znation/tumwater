@@ -288,7 +288,7 @@ async function acquire(
   }
 }
 
-/** The pool's live state for observers (status, TUI, dashboard): slots leased by this process out
+/** The pool's live state for observers (status, dashboard): slots leased by this process out
  * of the configured budget, and the leases waiting for one. A lease held by another pid is dead
  * (see `SlotLease`), so it is not counted. The leased count rides the stat cache (see below);
  * `wakeWaiters` empties the waiter set before woken waiters re-register, so `waiting` can read
@@ -301,7 +301,7 @@ async function acquire(
 // stat-keyed reader (status-polls.ts's slotsForPoll caches the same file for the dashboards).
 const poolStateCache = new Map<string, StatKeyedValue<number>>();
 
-/** The pool's live state for observers (status, TUI, dashboard): slots leased by this process out
+/** The pool's live state for observers (status, dashboard): slots leased by this process out
  * of the configured budget, and the leases waiting for one. A lease held by another pid is dead
  * (see `SlotLease`), so it is not counted. The leased count rides the stat cache (see above);
  * `wakeWaiters` empties the waiter set before woken waiters re-register, so `waiting` can read

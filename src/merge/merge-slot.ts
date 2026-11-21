@@ -96,7 +96,7 @@ export interface MergeChange {
 /** The in-flight merge marker (plans/merge-queue.md 4/5): which changes are merging right
  * now, since when, and which stage each is in. The pipeline adds a change's record when its
  * verification starts and removes it after its outcome, so the separate-process observers (status,
- * TUI, GUI) can show the merges without depending on the scheduler module — the OrchestratorInfo
+ * GUI) can show the merges without depending on the scheduler module — the OrchestratorInfo
  * precedent. snapshot() cross-checks it with matching queue entries and the orchestrator's
  * liveness, so a stale marker from any crash ordering never displays. `stage` rides the same
  * file rather than a second one — the marker is the one cross-process surface both dashboards
@@ -127,7 +127,7 @@ export function writeMergeMarker(root: string, marker: MergeInFlight & { stage: 
 }
 
 // Per-root in-flight-marker cache (stat-cache.cachedByStat), keyed by state-file path: the
-// status observers (status/TUI/GUI) poll the marker every second, and the pipeline rewrites it
+// status observers (status/GUI) poll the marker every second, and the pipeline rewrites it
 // atomically (tmp+rename) at each merge stage and per-change status transition, so an unchanged
 // marker serves every poll from one stat instead of a full read + JSON parse per observer per
 // second. An atomic write changes dev/ino/mtime/size, so it invalidates exactly like every other

@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Remove the TUI, part 4d/5: the remaining src/ directories and scripts/ stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/report/ src/process/ src/scheduling/ src/gui/ src/events/ src/review/ src/orchestrator/ src/roles/ src/failure/ src/prompt/ src/merge/ src/git/ src/runner/ src/observer/ src/files/ src/brief/ (comments only) scripts/diff-check.mjs scripts/live-fixture.mjs) — done 2026-11-21 by the feature role
+
+One of four independent parts split from part 4/5; see part 4a/5 for the goal. These paths hold
+about 41 matching lines in 27 files.
+
+**Approach.**
+- As in part 4a/5, for comments under src/report/, src/process/, src/scheduling/, src/gui/,
+  src/events/, src/review/, src/orchestrator/, src/roles/, src/failure/, src/prompt/,
+  src/merge/, src/git/, src/runner/, src/observer/, src/files/ and src/brief/: rewrite each
+  sentence that names the TUI, a `ui/tui/` path or a TUI key for the surfaces that remain, drop
+  "twin of the TUI's …" cross-references, change comments only (a code change found along the
+  way becomes its own BUGS.md entry), and keep comment lines within 100 columns.
+- scripts/diff-check.mjs compares the `renderStatus` table (the `tumwater status` view) and the
+  GUI's `/api/status` payload; say so instead of "TUI table strings", and relabel its two
+  `TUI …` console messages (`TUI MISMATCH at width=…`, `TUI width=…: identical`) for the status
+  table. Fix the TUI mention in scripts/live-fixture.mjs.
+
+**Acceptance criteria.**
+- `grep -rniw tui` over the src/ directories above and scripts/ matches nothing.
+- In src/, `git diff -U0` adds and removes only comment lines; in scripts/diff-check.mjs the only
+  non-comment lines changed are the two console messages.
+- test/comment-width.test.ts passes.
+
 ### Remove the TUI, part 4c/5: src/cli, src/status, src/operator, src/doctor, src/team, src/history and top-level src/*.ts comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/cli/ src/status/ src/operator/ src/doctor/ src/team/ src/history/ src/notes-cli.ts src/collections.ts src/paths.ts src/project-name.ts (comments only)) — done 2026-11-21 by the feature role
 
 One of four independent parts split from part 4/5; see part 4a/5 for the goal. These paths hold

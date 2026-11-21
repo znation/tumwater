@@ -1,7 +1,7 @@
 /** The usage report's shapes: `ReportDay`, `ReportTotals`, `ReportData` (the per-day window) and
  * `SinceReport` (the trailing-window totals). Produced by the collectors in
  * src/report/report-data.ts and read by the Markdown render in src/report/report-render.ts and
- * by the dashboard/TUI report views; kept apart so the render and its consumers depend on the
+ * by the dashboard report views; kept apart so the render and its consumers depend on the
  * shapes without importing the collection code. */
 /** One day of a usage report: the local calendar day key plus what the team did on it.
  * `runsByRole` counts run_end events per role id (role ids — works for custom roles too);

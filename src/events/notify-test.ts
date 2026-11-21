@@ -68,7 +68,7 @@ export function runNotifyHook(
 /** What one notify test run came to: no hook configured, or the hook ran and `message` is the
  * outcome line the CLI prints (`passed` only on exit 0). `exitCode` is the hook's own code —
  * `null` when the timeout killed it, in which case `timedOut` is true — so the CLI's `--json`
- * acknowledgement can name the hook's exit machine-readably. The dashboard and the TUI read
+ * acknowledgement can name the hook's exit machine-readably. The dashboard reads
  * only `status`, `passed` and `message`. */
 type NotifyTestOutcome =
   | { status: "not_configured" }

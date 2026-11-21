@@ -55,7 +55,7 @@ export function postReviewMatchesGrep(entry: PostReview, text: string): boolean 
 }
 
 /** The bracketed status suffix one post-merge review entry carries on every observer surface
- * (`tumwater reviews`, the dashboard's Post-merge reviews card, and the TUI Pending pane's
+ * (`tumwater reviews`, the dashboard's Post-merge reviews card, and the Pending pane's
  * review block): the reviewer's recorded rejected reasons when `rejected` is set — or just
  * `[rejected]` when the recorded list is empty, so a rejection with no reasons never renders
  * a dangling `rejected — `; else the
@@ -64,7 +64,7 @@ export function postReviewMatchesGrep(entry: PostReview, text: string): boolean 
  * Reasons are squashed to 60 as `tumwater reviews` has always printed them, and the failure
  * detail to 80. Branches on `postReviewState` so the label and the `--status` filter share one
  * state definition; extracted so the
- * CLI, the dashboard and the TUI share one status wording and cannot drift. */
+ * CLI and the dashboard share one status wording and cannot drift. */
 export function postReviewStatusLabel(entry: PostReview): string {
   switch (postReviewState(entry)) {
     case "fixed":

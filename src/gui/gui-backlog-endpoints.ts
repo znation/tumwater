@@ -69,8 +69,8 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
 }
 /** Handle GET /api/backlog-match?grep=<text>: for each /api/backlog `file`, the ascending
  * indexes (the ones /api/backlog?file=…&index=N addresses) whose entry heading or body contains
- * the trimmed text, case-insensitively — the match `tumwater backlog --grep` and the TUI's `/`
- * use — so the dashboard's Search can find text bodies hold without bodies riding the status
+ * the trimmed text, case-insensitively — the match `tumwater backlog --grep` uses — so the
+ * dashboard's Search can find text bodies hold without bodies riding the status
  * poll. A `queued` key adds the queued messages whose full text (not only the 80-character
  * preview) contains the text, as `{ role, file }` with the queue-file basename, director first —
  * the match `tumwater prompt --list --grep` uses. Missing or blank grep → 400. */

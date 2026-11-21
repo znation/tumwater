@@ -1,5 +1,5 @@
 /** The usage report's Markdown render: turn a collected `ReportData` (src/report/report-types.ts)
- * into the bounded Markdown the CLI prints and the TUI usage pane reuses (pure function of the
+ * into the bounded Markdown the CLI prints and the usage pane reuses (pure function of the
  * data — no I/O, no clock reads — so the bounds argued at collection hold here unchanged). The
  * command half (cmdReport) lives in report.ts, alongside it in src/report/. report-render.ts
  * sits beside src/failure/failure-render.ts — the failure digest's Markdown render of the same
@@ -528,7 +528,7 @@ function pushReportTail(lines: string[], data: ReportData): void {
   if (!data.coversFullWindow) lines.push("", SPARSE_WINDOW_NOTE);
 }
 
-/** Render a report as Markdown — the pinned shape the CLI prints and the TUI usage pane
+/** Render a report as Markdown — the pinned shape the CLI prints and the usage pane
  * (report 3/3) reuses; the GUI tab (report 2/3) renders its own SVG charts from the same
  * ReportData instead. Pure function of ReportData: no I/O, no clock reads. */
 export function renderReportMarkdown(data: ReportData): string {

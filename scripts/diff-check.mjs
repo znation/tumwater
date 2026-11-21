@@ -1,5 +1,5 @@
 // Throwaway behavior check: render the same fixture through the baseline (HEAD) build and the
-// modified build; TUI table strings and GUI /api/status payloads must match exactly.
+// modified build; renderStatus table strings and GUI /api/status payloads must match exactly.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -85,14 +85,14 @@ for (const width of [undefined, 120, 60]) {
     const outB = curRender(a, current.snapshot(a), width);
     if (outA !== outB) {
       failures++;
-      console.log(`TUI MISMATCH at width=${width}`);
+      console.log(`STATUS MISMATCH at width=${width}`);
       for (let i = 0; i < Math.max(outA.split("\n").length, outB.split("\n").length); i++) {
         const la = outA.split("\n")[i] ?? "<missing>";
         const lb = outB.split("\n")[i] ?? "<missing>";
         if (la !== lb) console.log(`  line ${i}:\n    base: ${JSON.stringify(la)}\n    new:  ${JSON.stringify(lb)}`);
       }
     } else {
-      console.log(`TUI width=${width}: identical`);
+      console.log(`STATUS width=${width}: identical`);
     }
 
     const pa = JSON.parse(JSON.stringify(basePayload(a)));

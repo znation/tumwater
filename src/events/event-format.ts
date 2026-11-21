@@ -30,7 +30,7 @@ import { checkWaitEventMessage } from "./event-format-check-wait.js";
 import { warningEventMessage } from "./event-format-warning.js";
 export { usageText, gigabytes, untilClockSuffix, windowSuffix, windowResetPhrase, backendLabel, eventResult, outcomeText, deferredReasonText };
 
-/** Human one-liner for an event, shared by `logs`, `run` output, and the TUI activity pane:
+/** Human one-liner for an event, shared by `logs`, `run` output, and the activity pane:
  * the local `YYYY-MM-DD HH:MM:SS` stamp (formatTimestamp — the same zero-padded, locale-
  * independent phrasing the history table and transcript run separators print, not
  * toLocaleTimeString's locale-dependent "3:05:12 PM"), the role padded to a column, then the

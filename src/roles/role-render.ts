@@ -225,7 +225,7 @@ function chainStepLine(p: RoleViewPayload): string | null {
 }
 
 /** One recent run outcome as a Markdown bullet line — `<time> · <result> · <span> —
- * <summary>` — so `tumwater role <id>` and the TUI notes view read a role's discrete
+ * <summary>` — so `tumwater role <id>` and the notes view read a role's discrete
  * outcomes at a glance. `time` is the same local `YYYY-MM-DD HH:MM:SS` stamp the model-
  * fallback `since` prints (formatTimestamp); `span` is the same short-duration phrasing
  * shortSpanPhrase renders for holdPhrase and the event feed's countdowns; the summary is

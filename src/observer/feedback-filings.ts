@@ -26,7 +26,7 @@ interface FeedbackFiling {
 
 /** One row of the operator read of the `feedback` filing ledger: the issue number, title, and
  * when it was filed, ordered newest-first by `filingRows`. The single ordering the prompt
- * block, `tumwater role feedback`, the TUI notes view and the dashboard drawer all share, so
+ * block, `tumwater role feedback`, the notes view and the dashboard drawer all share, so
  * none of them can drift on what was filed. */
 export interface FilingRow {
   issue: number;

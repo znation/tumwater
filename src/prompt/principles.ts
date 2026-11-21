@@ -18,7 +18,7 @@ export function readPrinciples(root: string): string {
   return truncateWithNote(readRegularTextOrNull(file)?.trim() ?? "", PRINCIPLES_MAX_CHARS, "PRINCIPLES.md");
 }
 
-// Per-root stat cache (stat-cache.cachedTextByStat): the TUI and GUI call this predicate on
+// Per-root stat cache (stat-cache.cachedTextByStat): the status and GUI call this predicate on
 // every per-second snapshot() poll, but PRINCIPLES.md changes only on the rare
 // director/steward edit, a fresh init, or a clone — so an unchanged file serves each poll
 // from one stat instead of re-listating and re-reading it whole. Any write invalidates
@@ -28,7 +28,7 @@ const principlesOverCapCache = new Map<string, StatKeyedValue<boolean>>();
 
 /** True when PRINCIPLES.md's trimmed text exceeds the prompt cap, so every run's <principles>
  * block carries only its head plus a truncation marker — the always-on amber twin of the doctor
- * `principles` row's over-cap warn, surfaced on `tumwater status`, the dashboard and the TUI
+ * `principles` row's over-cap warn, surfaced on `tumwater status`, the dashboard
  * without a doctor run. Uses the doctor row's own predicate (raw.trim().length >
  * PRINCIPLES_MAX_CHARS), so the alert and the doctor row cannot disagree. Missing, unreadable
  * (the directory-in-place case readPrinciples degrades to "") and at-or-under-cap files are all

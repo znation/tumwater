@@ -1,6 +1,6 @@
 /** The trailing-window half of the usage report's Markdown render: turn a collected `SinceReport`
  * (src/report/report-since-data.ts) into the bounded Markdown the CLI's `report --since` and the
- * TUI usage pane print. Split out of src/report/report-render.ts (which keeps the per-day
+ * usage pane print. Split out of src/report/report-render.ts (which keeps the per-day
  * `ReportData` renderer), mirroring the collection split (report-data.ts / report-since-data.ts),
  * so each window's renderer owns its own `pushSince*`/`pushReport*` assembly. The shared
  * formatting voice — the ranked lines, the totals/notional/scope summary, the cost-per-commit

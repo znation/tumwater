@@ -319,7 +319,7 @@ interface FailureDigestEntry {
 }
 
 /** Bounded memo of whole failure digests, keyed by root and day count. The dashboard's Failures
- * tab, the TUI's Ctrl+T pane, and every selfcheck run re-request the same digest, and the
+ * tab and every selfcheck run re-request the same digest, and the
  * collector re-reads and re-parses up to 2× the window's log bytes each time (~4 MB on this
  * repo's own log, growing toward the rotation cap). An unchanged log and window cost one stat
  * and return the prior result; any change — an append, a rotation, or a new local day —

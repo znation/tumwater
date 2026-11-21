@@ -1,4 +1,4 @@
-/** The one ordering the prose `tumwater logs --count` tally and the TUI Activity pane's
+/** The one ordering the prose `tumwater logs --count` tally and the Activity pane's
  * tally line share: count each present event type, most-frequent first with ties in
  * type-name order, one `[type, count]` pair per present type. Hoisting the sort here keeps
  * `sayTally` and the pane from drifting on which types win or how ties break. The dashboard
