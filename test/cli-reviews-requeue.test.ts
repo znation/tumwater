@@ -92,3 +92,25 @@ test("requeue-dropped refuses a missing or malformed --since and a combined mode
 
   assert.equal(fs.existsSync(postReviewPath(repo)), false, "a refused invocation writes no queue");
 });
+
+test("requeue-dropped judges a commit named twice once, at its first mention", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "requeue twice test");
+  const today = dayKey(Date.now());
+  const fixed = commitOnMain(repo, "fix the parser");
+  writeEvents(repo, [
+    { ts: Date.now(), source: "clean", type: "review_dropped", commit: fixed, summary: "fix the parser" },
+    { ts: Date.now(), source: "improve", type: "warning", message: `dropping the post-merge review of ${fixed.slice(0, 8)} after 3 failed runs; it stays on main unreviewed` },
+  ]);
+
+  const r = await cli(repo, "reviews", "--requeue-dropped", "--since", today, "--json");
+  assert.equal(r.code, 0, r.stderr);
+  const out = JSON.parse(r.stdout) as { queued: number; skipped: Record<string, number> };
+  assert.equal(out.queued, 1, "the commit is queued once");
+  assert.deepEqual(out.skipped, { alreadyQueued: 0, notOnMain: 0, unresolved: 0 }, "the second mention is not counted as a skip");
+  assert.deepEqual(
+    readPostReviews(repo).map((e) => ({ commit: e.commit, role: e.role })),
+    [{ commit: fixed, role: "clean" }],
+    "the first mention's role wins",
+  );
+});
