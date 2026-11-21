@@ -1,7 +1,8 @@
 # Default models — move codex's strong tier to GPT-6.2 Sol; claude stays as it is
 
 Planned 2026-11-20 · requested by user · audited against main `681e18378` · PLANS.md "Codex
-default models".
+default models". Amended the same day after a catalog check on Codex CLI 0.170.0 (findings 4, 9
+and 10).
 
 ## Goal
 
@@ -27,10 +28,18 @@ With no `model` configured, each agent backend runs the newest released model fo
 3. **No newer Luna.** The changelog names no Luna model after `gpt-6-luna`. `codex debug models`
    on the installed 0.163.0 lists `gpt-6-luna` as the only current Luna. Default and small stay
    on it.
-4. **The installed CLI is too old.** The host has codex 0.163.0 (Homebrew), which is also
-   `CODEX_MIN_VERSION` (src/agent/codex/codex-backend.ts). Its catalog does not list any GPT-6.2
-   model. The newest `~/.codex/models_cache.json` (written 2026-10-29 by a 0.165.0 client) does
-   not list one either.
+4. **0.170.0 is the floor, not 0.171.0.**
+   - The host had codex 0.163.0, which is also `CODEX_MIN_VERSION`
+     (src/agent/codex/codex-backend.ts). It is a global npm package (`@openai/codex`, linked into
+     /opt/homebrew/bin), not a Homebrew cask.
+   - On 0.163.0, `codex debug models` lists no GPT-6.2 model. Neither does the newest
+     `~/.codex/models_cache.json` (written 2026-10-29 by a 0.165.0 client).
+   - Upgraded to 0.170.0 on 2026-11-20, `codex debug models` lists `gpt-6.2-sol` with visibility
+     `list`: a 500k window (95% effective, so 475,000), reasoning levels low through max plus
+     `ultra`, default `low`, text and image input. The description reads "Fast, go-to model for
+     coding and everyday work". `gpt-6.2-astra` is listed beside it at 272k.
+   - That listing printed while the catalog refresh was failing (finding 9), so it is the
+     catalog bundled with 0.170.0.
 5. **The strong tier was turned down one step on purpose.** On 2026-10-28 the operator moved
    codex's strong tier from Astra to Sol (plans/codex-backend.md "Tier defaults"). So the
    successor is `gpt-6.2-sol`, not `gpt-6.2-astra`.
@@ -44,14 +53,25 @@ With no `model` configured, each agent backend runs the newest released model fo
 8. **Claude.** The newest models in each line are Opus 5.5, Sonnet 5.5 (2026-09-28) and Haiku 5.5
    (2026-10-07). The only newer release is Claude Fable 5.2 (2026-11-09), a separate, more capable
    line at $8/$40 per MTok, against Opus 5.5's $4/$20.
+9. **The live run is still unconfirmed.** A one-word `codex exec -m gpt-6.2-sol` on 0.170.0
+   (with the `~/.codex` login) failed: "The 'gpt-6.2-sol' model is not supported when using Codex
+   with a ChatGPT account". The same probe on today's default, `gpt-6.1-sol`, failed the same way.
+   The catalog refresh returned 401 `token_expired`. So the login token had expired, and the probe
+   says nothing about GPT-6.2 itself. `codex login status` still printed "Logged in using
+   ChatGPT", because it reads only the local auth file.
+10. **The company npm registry lags.** `~/.npmrc` points at npm.registries.huggingface.tech. On
+    2026-11-20 it served `@openai/codex` up to 0.170.0, while npmjs.org already had 0.171.0
+    (released that day). The floor must be a version the registry serves, which is one more
+    reason for 0.170.0.
 
 ## Design
 
 - `BACKEND_DEFAULT_MODELS.codex.strong` becomes `gpt-6.2-sol`. Update the comment above it: it
   should cite this plan and finding 5.
-- `CODEX_MIN_VERSION` becomes `0.171.0`, the first CLI whose catalog carries GPT-6.2 (finding 2).
-  It stays one floor for every codex model, not a floor per model the way claude has one.
-  - Upgrading is a single `brew upgrade codex`.
+- `CODEX_MIN_VERSION` becomes `0.170.0`, the oldest CLI confirmed to list GPT-6.2 in its catalog
+  (finding 4). It stays one floor for every codex model, not a floor per model the way claude
+  has one.
+  - Upgrading is a single `npm install -g @openai/codex@<version>`.
   - Doctor's `codex version` row already stands down when no seam routes to codex.
   - A floor per model would mean generalizing claude's floor helpers in
     src/doctor/doctor-claude-checks.ts, and pinning `gpt-6.1-sol` on an old CLI does not justify
@@ -59,7 +79,7 @@ With no `model` configured, each agent backend runs the newest released model fo
 - scripts/smoke-codex.mjs reads its floor from `CODEX_MIN_VERSION` (from dist) instead of the
   hard-coded `"0.163.0"`. It also takes `--tier <small|default|strong>` (default `default`) to
   pick the model through `routeModel`, so hand step H4 can smoke the new strong default.
-- The fake codex (test/fakes/fake-codex.ts) reports `0.171.0` by default, so fakes stay at the
+- The fake codex (test/fakes/fake-codex.ts) reports `0.170.0` by default, so fakes stay at the
   floor.
 - Docs:
   - README.md: the tier-defaults table, the strong-tier sentence and the mixing example;
@@ -77,14 +97,18 @@ With no `model` configured, each agent backend runs the newest released model fo
 ## Hand steps
 
 - **H4: confirm GPT-6.2 Sol live, after the part merges.** (H1–H3 are plans/codex-backend.md's.)
-  1. Run `brew upgrade codex` and check that `codex --version` is 0.171.0 or newer.
-  2. Run `CODEX_HOME=<team home> codex debug models`. Check that `gpt-6.2-sol` is listed with
-     visibility `list`, and note its context window and reasoning levels. If the id is spelled
-     differently, file a bug quoting the catalog entry.
-  3. Run `npm run build && npm run smoke:codex -- --tier strong`, then `npm run smoke:codex`. Both
+  1. `codex --version` reads 0.170.0 or newer. It was installed 2026-11-20 with
+     `npm install -g @openai/codex@0.170.0`.
+  2. Run `codex login` (and `CODEX_HOME=<team home> codex login --device-auth` for a team home)
+     to replace the expired token (finding 9).
+  3. Run a one-word `codex exec -m gpt-6.2-sol` and check that the turn completes.
+     - If it still says the model "is not supported when using Codex with a ChatGPT account"
+       while `gpt-6.1-sol` now works, the plan has not reached this subscription yet.
+     - Revert the strong default to `gpt-6.1-sol` until it does. The floor can stay at 0.170.0.
+  4. Run `npm run build && npm run smoke:codex -- --tier strong`, then `npm run smoke:codex`. Both
      must pass. A failure in a step that passed on 0.163.0 means a CLI change between 0.163.0 and
-     0.171.0 (flags, stream or rollout shape). File it as a bug, quoting the failing step.
-  4. Run `tumwater doctor`. The `codex version` and `codex models` rows should read ok on a config
+     0.170.0 (flags, stream or rollout shape). File it as a bug, quoting the failing step.
+  5. Run `tumwater doctor`. The `codex version` and `codex models` rows should read ok on a config
      that routes a seam to codex.
 
 ## Parts
@@ -93,11 +117,12 @@ With no `model` configured, each agent backend runs the newest released model fo
 
 ## Risks
 
-- **The id is unverified until H4.** It is inferred from the catalog's naming scheme and
-  OpenRouter's listing (finding 2). Codex is not in the team's live tumwater.json today (it runs
-  pi), so a wrong id surfaces in doctor and H4 before any team run uses it.
-- **CLI drift across eight releases.** The adapter's flags were verified live on 0.163.0 (H1).
-  H4's smoke runs are the check for 0.171.0.
+- **Whether the subscription can run it is unverified until H4.** The id, window and levels are
+  confirmed from the 0.170.0 catalog (finding 4), but no run completed (finding 9). Codex is not
+  in the team's live tumwater.json today (it runs pi), so a refusal surfaces in H4 before any team
+  run uses it.
+- **CLI drift across seven releases.** The adapter's flags were verified live on 0.163.0 (H1).
+  H4's smoke runs are the check for 0.170.0.
 - **Subscription allowance.** GPT-6.2 Sol may use the 5-hour and weekly windows at a different
   rate than 6.1 Sol. The window readings already show it per run. Re-read them after a day if
   codex carries a tier (plans/codex-backend.md H3).
@@ -106,6 +131,7 @@ With no `model` configured, each agent backend runs the newest released model fo
 
 - Codex changelog: <https://learn.chatgpt.com/docs/changelog> (0.171.0, 2026-11-20).
 - OpenRouter listing: <https://openrouter.ai/openai/gpt-6.2-sol-20261117>.
-- `codex debug models` on the installed 0.163.0, and `~/.codex/models_cache.json` (fetched
+- `codex debug models` on 0.163.0 and on 0.170.0, and `~/.codex/models_cache.json` (fetched
   2026-10-29).
+- Live probes on 0.170.0, 2026-11-20 (finding 9).
 - The claude-api skill's model table (cached 2026-11-03) for the Claude lineup and prices.
