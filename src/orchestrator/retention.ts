@@ -65,8 +65,8 @@ type MaintenanceBackend = MaintenanceMarker["backend"];
 /** The marker's whole write policy for one prune pass: it opens the marker when the pass starts,
  * rewrites it under the throttle above as each backend's deletes come in, logs one
  * `maintenance_start`/`maintenance_done` pair per half that had work, and removes it when the
- * pass ends. Every write is best-effort: this runs inside the poll loop, where a throw ends the
- * team, so a full disk or an unwritable state dir costs the marker, never the prune. */
+ * pass ends. Every write is best-effort: a throw would fail the whole background pass, so a full
+ * disk or an unwritable state dir costs the marker, never the prune. */
 class SessionPruneMarker {
   private readonly file: string;
   private readonly startedAt = Date.now();
@@ -270,8 +270,8 @@ async function pruneOpencodeHalf(root: string, days: number, marker: SessionPrun
   try {
     ensureParentDir(dbPath);
   } catch {
-    // The directory cannot be created, so no OpenCode DB is there to delete from; this pass
-    // runs in the poll loop, where a throw ends the team. Skip only the session deletes.
+    // The directory cannot be created, so no OpenCode DB is there to delete from; a throw
+    // here would fail the whole pass. Skip only the session deletes.
     bin = undefined;
   }
   const deleted = await pruneOpencodeSessions(sessionsRootDir(root), days, {
