@@ -106,9 +106,9 @@ function pauseTargetRoles(root: string, args: string[]): string[] | null {
   return distinctOrdered(roles);
 }
 
-/** The role(s) a marker command targets: the `--role <id>[,<id>...]` value when given,
- * otherwise every role in the config. reset-counters and wake share the same all-roles
- * default, so it lives here once instead of drifting between their bodies. */
+/** The role(s) wake targets: the `--role <id>[,<id>...]` value when given, otherwise every
+ * role in the config. reset-counters' bare form also reaches the instance runners
+ * (resetTargetRoles). */
 function targetRoles(root: string, args: string[]): string[] {
   return namedRoleList(root, args) ?? Object.keys(loadConfig(root).roles);
 }
