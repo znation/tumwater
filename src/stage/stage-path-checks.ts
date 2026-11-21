@@ -24,7 +24,12 @@ import {
   isRecordProse,
 } from "./stage-checks-shared.js";
 import { movedNameFindings, staleNameFindings } from "./stage-name-checks.js";
-import { detachedDocFindings, garbledWordingFindings, newlineFindings } from "./stage-prose-checks.js";
+import {
+  detachedDocFindings,
+  duplicatedCommentFindings,
+  garbledWordingFindings,
+  newlineFindings,
+} from "./stage-prose-checks.js";
 
 /** How many nonexistent added paths one finding names before it stops. */
 const MAX_MISSING_PATHS = 10;
@@ -75,6 +80,7 @@ export async function gitLevelFindings(wt: string, mainBranch: string): Promise<
     findings.push(...newlineFindings(diff));
     findings.push(...garbledWordingFindings(diff));
     findings.push(...(await detachedDocFindings(wt, diff)));
+    findings.push(...(await duplicatedCommentFindings(wt, diff)));
     findings.push(...(await staleNameFindings(wt, diff)));
     findings.push(...(await movedSourceFindings(wt, diff, entries)));
     findings.push(...(await movedNameFindings(wt, diff)));

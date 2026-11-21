@@ -43,6 +43,10 @@
  * not after `-`, `.` or `/`, "that that" and "had had" excepted). Like the path checks, the gate
  * does not run it.
  *
+ * An eighth check, `duplicatedCommentFindings`, reads the same `-U0` diff for a comment block of
+ * at least three lines that the change left twice in one file, with one copy wholly in added
+ * lines: a move that duplicated its prose beside the original. The gate does not run it either.
+ *
  * The backlog-record findings named below (`planDependencyFinding`,
  * `finishedDuplicateFindings`, `strayPlaceholderFinding`) live in stage-backlog-checks.ts, which
  * also holds the claim-move findings run-stage.ts uses.

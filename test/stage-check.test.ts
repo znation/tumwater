@@ -1358,3 +1358,56 @@ test("stageCheckFindings names a duplicate of a plan main gained while the chang
     "the finding names the plan main gained during the run",
   );
 });
+
+// PLANS.md "A staging self-check flags a comment block the change duplicated verbatim beside its
+// original": the (f) check over the -U0 diff, one copy of a repeated comment block wholly added.
+
+const DUP_HIT = "appears twice in one file";
+const ALPHA_BLOCK = "// Alpha holds the first value.\n// Beta holds the second value.\n// Gamma holds the third value.\n// Delta holds the fourth value.\n";
+
+async function duplicatedFindings(files: Record<string, string>, edits: Record<string, string>): Promise<string[]> {
+  const { wt } = await repoWith(files);
+  for (const [file, content] of Object.entries(edits)) {
+    writeFileDeep(path.join(wt, file), content);
+  }
+  return stageCheckFindings(wt, "main", "feature");
+}
+
+test("a move that leaves two adjacent identical comment blocks yields one finding naming both sites", async () => {
+  const findings = await duplicatedFindings(
+    { "src/a.ts": "export const a = 1;\n" },
+    { "src/a.ts": `${ALPHA_BLOCK}${ALPHA_BLOCK}export const a = 1;\n` },
+  );
+  const hits = findings.filter((f) => f.includes(DUP_HIT));
+
+  assert.equal(hits.length, 1);
+  assert.match(hits[0]!, /src\/a\.ts:1 and src\/a\.ts:5/);
+});
+
+test("a single copy of a comment block yields no duplicated-comment finding", async () => {
+  const findings = await duplicatedFindings(
+    { "src/a.ts": "export const a = 1;\n" },
+    { "src/a.ts": `${ALPHA_BLOCK}export const a = 1;\n` },
+  );
+
+  assert.deepEqual(findings.filter((f) => f.includes(DUP_HIT)), []);
+});
+
+test("a two-line comment repeat yields no duplicated-comment finding", async () => {
+  const pair = "// Alpha holds the first value.\n// Beta holds the second value.\n";
+  const findings = await duplicatedFindings(
+    { "src/a.ts": "export const a = 1;\n" },
+    { "src/a.ts": `${pair}export const a = 1;\n${pair}` },
+  );
+
+  assert.deepEqual(findings.filter((f) => f.includes(DUP_HIT)), []);
+});
+
+test("a comment repeat both of whose copies the change left untouched yields no finding", async () => {
+  const findings = await duplicatedFindings(
+    { "src/a.ts": `${ALPHA_BLOCK}${ALPHA_BLOCK}export const a = 1;\n` },
+    { "src/a.ts": `${ALPHA_BLOCK}${ALPHA_BLOCK}export const a = 1;\nexport const b = 2;\n` },
+  );
+
+  assert.deepEqual(findings.filter((f) => f.includes(DUP_HIT)), []);
+});

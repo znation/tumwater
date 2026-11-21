@@ -1,8 +1,9 @@
 /** The diff-format and prose findings of the dormant staging self-check: how a change's text
  * reads and is shaped — a lost final newline, the garbled or doubled wording a rote word-swap
- * rename leaves, and a doc comment the change detached from its declaration. Split from
+ * rename leaves, a doc comment the change detached from its declaration, and a comment block a
+ * move left duplicated beside its original. Split from
  * stage-path-checks.ts, the module that gathers the whole git-level finding family under
- * `gitLevelFindings`; this module holds the three prose/format checks and their parsing
+ * `gitLevelFindings`; this module holds the four prose/format checks and their parsing
  * helpers, sharing the staged diff/index reading helpers and `isRecordProse` with the path and
  * name sibling check modules. The gate does not run any of them. */
 
@@ -327,4 +328,118 @@ export function garbledWordingFindings(diff: string): string[] {
   if (hits.length === 0) return [];
   const lead = 'added lines carry garbled rename wording (reword them; a rote word swap such as "tick" → "run" reads wrong here or leaves a word doubled): '; // vocabulary-ok: quotes the retired word
   return [lead + cappedList(hits, MAX_STALE_HITS)];
+}
+
+/** How many `file:line` pairs one duplicated-comment finding names before it stops. */
+const MAX_DUPLICATED_DOCS = 10;
+/** The shortest comment block the duplicated-comment check reads: a repeat of two lines is too
+ * common to be a move's leftover. */
+const MIN_DUP_BLOCK_LINES = 3;
+
+/** A comment-only line that says something: trimmed, it opens with a comment marker, and it
+ * carries a letter, so a bare `//` or `*` separator never counts as prose. */
+function isCommentLine(line: string): boolean {
+  const t = line.trim();
+  return /^(?:\/\/|\/\*|\*|#)/.test(t) && /[A-Za-z]/.test(t);
+}
+
+/** The 1-based new-side line numbers each file's hunks add, read from the `-U0` hunk headers. */
+function addedLinesByFile(diff: string): Map<string, Set<number>> {
+  const byFile = new Map<string, Set<number>>();
+  let added: Set<number> | null = null;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+++ ")) {
+      const p = diffPlusPath(line);
+      added = null;
+      if (p !== "/dev/null") {
+        added = new Set();
+        byFile.set(p, added);
+      }
+      continue;
+    }
+    const m = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (m && added !== null) {
+      const c = Number(m[1]);
+      const d = m[2] === undefined ? 1 : Number(m[2]);
+      for (let k = 0; k < d; k++) added.add(c + k);
+    }
+  }
+  return byFile;
+}
+
+/** A repeated comment block: the 0-based start lines of its two copies and its length. */
+interface DupBlock {
+  a: number;
+  b: number;
+  len: number;
+}
+
+/** The repeated comment blocks in one file's lines. Every pair of equal, comment-only windows of
+ * MIN_DUP_BLOCK_LINES that do not overlap is extended while the copies keep matching, and a pair
+ * the previous line already extends is skipped, so each repeated run is reported once from its
+ * first line. */
+function duplicatedBlocks(lines: string[]): DupBlock[] {
+  const trimmed = lines.map((l) => l.trim());
+  const comment = lines.map(isCommentLine);
+  const same = (i: number, j: number): boolean => comment[i] === true && comment[j] === true && trimmed[i] === trimmed[j];
+  const windows = new Map<string, number[]>();
+  for (let i = 0; i + MIN_DUP_BLOCK_LINES <= lines.length; i++) {
+    const run = Array.from({ length: MIN_DUP_BLOCK_LINES }, (_, k) => i + k);
+    if (!run.every((k) => comment[k])) continue;
+    const key = run.map((k) => trimmed[k]).join("\n");
+    const starts = windows.get(key);
+    if (starts) starts.push(i);
+    else windows.set(key, [i]);
+  }
+  const blocks: DupBlock[] = [];
+  for (const starts of windows.values()) {
+    for (let x = 0; x < starts.length; x++) {
+      for (let y = x + 1; y < starts.length; y++) {
+        const a = starts[x]!;
+        const b = starts[y]!;
+        if (b - a < MIN_DUP_BLOCK_LINES) continue;
+        if (a > 0 && b > 0 && same(a - 1, b - 1)) continue;
+        let len = MIN_DUP_BLOCK_LINES;
+        while (a + len < b && b + len < lines.length && same(a + len, b + len)) len++;
+        blocks.push({ a, b, len });
+      }
+    }
+  }
+  return blocks;
+}
+
+/** True when every line of the copy starting at `start` (0-based) is one the change added. */
+function copyFullyAdded(start: number, len: number, added: Set<number>): boolean {
+  for (let k = 0; k < len; k++) if (!added.has(start + k + 1)) return false;
+  return true;
+}
+
+/** A comment block the change left duplicated verbatim beside its original, read from the
+ * `-U0` diff and the post-change text of each file. A repeated block is reported only when one of
+ * its copies lies wholly in lines the change added, so two untouched copies stay silent. Markdown
+ * and record prose are skipped: a `*` or `#` line there is a bullet or a heading, not a comment. */
+export async function duplicatedCommentFindings(wt: string, diff: string): Promise<string[]> {
+  const sites: string[] = [];
+  for (const [file, added] of addedLinesByFile(diff)) {
+    if (file.endsWith(".md") || isRecordProse(file)) continue;
+    // lstat, not stat: a symlink is never followed out of the worktree, as detachedDocFindings
+    // and the INV-G4 secret-leak policy both require.
+    const full = path.join(wt, file);
+    let isFile = false;
+    try {
+      isFile = fs.lstatSync(full).isFile();
+    } catch {
+      isFile = false;
+    }
+    const text = isFile ? readTextOrNull(full) : null;
+    if (text === null) continue;
+    for (const blk of duplicatedBlocks(text.split("\n"))) {
+      if (!copyFullyAdded(blk.a, blk.len, added) && !copyFullyAdded(blk.b, blk.len, added)) continue;
+      sites.push(`${file}:${blk.a + 1} and ${file}:${blk.b + 1}`);
+    }
+  }
+  if (sites.length === 0) return [];
+  return [
+    `a comment block the change added now appears twice in one file, so one copy reads twice: ${cappedList(sites, MAX_DUPLICATED_DOCS)} — keep one copy, or make the two copies say different things`,
+  ];
 }
