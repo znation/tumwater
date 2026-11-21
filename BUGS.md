@@ -169,6 +169,21 @@ The post-merge review of commit `54a4a07f9d57a0fd649376ecbe00fa8d349e47ac` (Name
 - **Cause:** a finding the fix-up could not close was never filed to BUGS.md, so the same finding re-burned the same authoring each run instead of becoming bugfix work.
 - **Fix sketch:** fix the finding's cause — the file and line it names, or the check that raised it — and move this entry to Fixed with a Fix paragraph showing the finding gone.
 
+### A change whose own commit message says it leaves tests failing still merges, because the budgeted gate runs none of the tests it breaks (reported by the user 2026-11-20)
+
+Feature run #3029's revision `dac2a150b` ("Set the default work-instance count to 3; rewrap its doc comment") merged on 2026-11-20 at 15:43 PST. Its own RISK line said "the change is NOT complete — the flip leaves the suite red: `npm run test:rerun` fails 22 tests in claims, backlog-pending, run-prompt, role-view, doctor-checks, status-data, team-alerts, config, cli-diff, change-data-scope, gui-client-boot, gui-operator, scheduling, run-stage". Its VERIFIED line said the change "is not suite-green as it stands". Nothing stopped it:
+- Its only pre-merge check was `npm run test:gate`. In events.jsonl that `build_check` passed with `counts.tests` 28 in 8.2 s, and none of the 22 failing tests was among them. The edit was a one-line constant change in src/roles/runner-ids.ts (`DEFAULT_INSTANCES` 1 → 3), which is read by almost every scheduling, GUI and doctor path, so the tests it broke were too far away for the 20 s budget.
+- The first attempt (`4e884e68`) was rejected only for two 101-column comment lines. The revision fixed those and merged on the gate.
+- The main watch flagged `dac2a150b` as culprit (`main_culprit`) at 15:50. Main stayed red until the ci role's `ccdfe746b` merged at 19:18, about 3.5 hours later. An operator cutting 0.9.0 found main red mid-cut and could not release until the fix landed.
+
+**Reproduce.** At `dac2a150b`, `npm run test:gate` passes and `npm test` fails 23 tests (the 22 named plus `orchestrator-fallback`'s breaker test), and `npm run test:e2e` fails one more (an orchestrator-permits test where a sibling instance takes the freed permit).
+
+**Suspected cause / fix direction.** Two separate gaps:
+- The merge path never reads the commit's own declaration. A RISK or VERIFIED line saying the suite is red, "NOT complete", or "not suite-green" is a statement from the author that it should not merge. The stage self-check (src/stage/) could refuse such a summary on the authoring turn, or the merge could hold it for a full check instead of the budgeted gate.
+- The budgeted gate ranks tests by import distance, so a change to a widely read constant or default selects few of its dependents. A change that alters an exported default value (as opposed to adding code) could force a wider selection, or route to the full check the main watch already runs.
+
+**Related, seen in the same run.** Run #3029's claim was "Remove the TUI, part 3/5" (its `Claim:` trailer and the `claim released … reason queued` event), but the run implemented "Three work instances by default, part 2/2". The plan entry it actually worked on was never claimed, so another instance could have taken it at the same time.
+
 ## Fixed
 
 ## Verified
