@@ -50,6 +50,8 @@ part 2's ledger and never runs `gh` (plans/github-issues.md invariant 2).
 
 ### GitHub issues, part 4/5: each unmirrored, trusted open issue goes to the director, which files it in BUGS.md or PLANS.md tagged `mirrors GitHub issue #<n>` (planned 2026-11-21 by the operator; requires GitHub issues part 2/5 landed; touches src/github/issue-queue.ts src/orchestrator/orchestrator-poll.ts src/prompt/prompt.ts src/roles/role-guidance.ts src/verdict/reply-contract.ts src/runner/runner-run.ts src/events/events.ts test/github-issue-queue.test.ts test/reply-contract.test.ts test/role-guidance.test.ts test/orchestrator-director.test.ts)
 
+**Needs review 2026-11-21 by feature: too large for one run**
+
 **Goal.** Every trusted open issue on the project's GitHub repo ends up as a backlog entry the
 team works on. A defect becomes a BUGS.md `## Open` bug, and a request becomes a PLANS.md
 `## Planned` plan (or a series). An issue an existing entry already covers gets the phrase added
