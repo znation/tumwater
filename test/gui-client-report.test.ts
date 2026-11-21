@@ -536,8 +536,11 @@ test("the Usage render chain gates the Post-merge rejections by role chart right
   // The ordering above is a prefix `indexOf`, so it pins nothing about the Rejections by role
   // term's OWN tip argument — the entry's acceptance criteria name both tip calls, so both are
   // pinned here, and the tipped-call total pins that no other chart gained a fourth argument.
+  // The total must match ANY fourth argument, not one named *TIP: a chart tipped with a
+  // differently named constant or a literal string would slip past a TIP-suffixed pattern and
+  // leave this criterion ("no other block(...) call passes a fourth argument") unpinned.
   assert.equal((chain.match(/block\("Rejections by role", chartRejectionsByRole\(d\), undefined, REJECTIONS_TIP\)/g) || []).length, 1, "the Rejections by role term passes REJECTIONS_TIP");
-  assert.equal((chain.match(/block\("[^"]+", chart[A-Za-z0-9_]+\(d\), undefined, [A-Z][A-Z_]*TIP\)/g) || []).length, 2, "only the two rejection charts pass a tip");
+  assert.equal((chain.match(/block\("[^"]+", chart[A-Za-z0-9_]+\(d\), (?:undefined|"[^"]*"), (?:[A-Za-z_$][A-Za-z0-9_$]*|"[^"]*")\)/g) || []).length, 2, "only the two rejection charts pass a tip");
 });
 
 test("the Usage render chain gates the Estimated spend by backend chart right after Estimated spend by provider", () => {
