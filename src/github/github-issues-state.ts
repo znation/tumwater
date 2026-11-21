@@ -40,6 +40,39 @@ export interface GithubIssuesLedger {
   open: GithubIssueRow[];
 }
 
+/** The ledger folded to the counts the status snapshot and its alerts read (plans/github-issues.md,
+ * part 3/5). Carries no issue text, so the snapshot stays small. */
+export interface GithubIssuesSummary {
+  repo: string;
+  gh: GhState;
+  reason?: string;
+  checkedAt: number;
+  /** Open trusted issues that no backlog entry mirrors yet — the director has not taken them. */
+  unmirrored: number;
+  /** Open issues from outside the maintainers that no backlog entry mirrors. */
+  untrusted: number;
+  /** Trusted issues queued for a mirror push. Stays 0 until part 5 writes it. */
+  waitingPush: number;
+  /** The label that lets an outside issue in, named by the alerts. */
+  mirrorLabel: string;
+}
+
+/** Fold a ledger to its summary. Pure: the caller supplies the configured mirror label. */
+export function githubIssuesSummary(ledger: GithubIssuesLedger, mirrorLabel: string): GithubIssuesSummary {
+  const unmirrored = ledger.open.filter((issue) => issue.trusted && !issue.mirrored).length;
+  const untrusted = ledger.open.filter((issue) => !issue.trusted && !issue.mirrored).length;
+  return {
+    repo: ledger.repo,
+    gh: ledger.gh,
+    ...(ledger.reason !== undefined ? { reason: ledger.reason } : {}),
+    checkedAt: ledger.checkedAt,
+    unmirrored,
+    untrusted,
+    waitingPush: 0,
+    mirrorLabel,
+  };
+}
+
 /** The ledger on disk, or null when no scan has written one yet (or the file is unreadable). */
 export function readGithubIssues(root: string): GithubIssuesLedger | null {
   return readJsonFile<GithubIssuesLedger>(githubIssuesPath(root));

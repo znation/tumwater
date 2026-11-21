@@ -11,6 +11,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { maintenanceForPoll, pollStallForPoll, snapshot } from "../src/status/status-data.js";
 import { heartbeatPath, maintenancePath } from "../src/paths.js";
+import { writeGithubIssues, type GithubIssueRow } from "../src/github/github-issues-state.js";
 import { runnerStateForPoll } from "../src/status/status-polls.js";
 import { quietHoursStatus } from "../src/scheduling/quiet-hours.js";
 import { statusPayload } from "../src/ui/status-payload.js";
@@ -312,4 +313,40 @@ test("a standing maintenance pass suppresses the stall, which the blue banner ex
   const now = Date.UTC(2026, 10, 21, 22, 40, 0);
   writeHeartbeat(repo, { pid: 4242, lastPollAt: now - 4 * 60_000 });
   assert.equal(pollStallForPoll(repo, 4242, true, now), undefined);
+});
+
+test("snapshot folds the GitHub issues ledger to its counts and omits it when absent or disabled", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  assert.equal((await snapshot(repo)).githubIssues, undefined);
+
+  const issue = (number: number, trusted: boolean, mirrored: boolean): GithubIssueRow => ({
+    number,
+    title: `issue ${number}`,
+    url: `https://github.com/acme/widgets/issues/${number}`,
+    author: "someone",
+    trusted,
+    mirrored,
+    labels: [],
+    updatedAt: "2026-11-21T00:00:00Z",
+  });
+  writeGithubIssues(repo, {
+    repo: "acme/widgets",
+    branch: "main",
+    checkedAt: 1000,
+    gh: "ok",
+    open: [issue(1, true, false), issue(2, true, false), issue(3, false, false), issue(4, true, true)],
+  });
+  assert.deepEqual((await snapshot(repo)).githubIssues, {
+    repo: "acme/widgets",
+    gh: "ok",
+    checkedAt: 1000,
+    unmirrored: 2,
+    untrusted: 1,
+    waitingPush: 0,
+    mirrorLabel: "tumwater",
+  });
+
+  writeConfig(repo, { githubIssues: { enabled: false } });
+  assert.equal((await snapshot(repo)).githubIssues, undefined);
 });

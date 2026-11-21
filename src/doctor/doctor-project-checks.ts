@@ -38,7 +38,7 @@ import { roleLabel } from "../roles/role-labels.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { readCiParity, currentCiParityState, parityIsCurrent, ciParityStalled, CI_PARITY_STALE_MS } from "../observer/ci-parity.js";
 import { githubTarget, readRemoteCi, type RemoteCiEntry, remoteCiStalled, remoteCiTarget } from "../observer/remote-ci.js";
-import { ghReadiness, ghRunner, type GhRunner } from "../github/gh.js";
+import { ghReadiness, ghRunner, ghUnreadableSentence, type GhRunner } from "../github/gh.js";
 import { readQaCoverage, qaCoverageStalled, QA_COVERAGE_STALE_MS } from "../observer/qa-coverage.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
@@ -549,14 +549,7 @@ export async function checkGithubIssues(
   const target = await githubTarget(root, config);
   if (target === null) return null;
   const readiness = await ghReadiness(run);
-  if (readiness === "missing")
-    return warnOutcome(
-      `gh is missing — install GitHub CLI (https://cli.github.com) so tumwater can read ${target.repo}'s issues, or set githubIssues.enabled to false`,
-    );
-  if (readiness === "unauthenticated")
-    return warnOutcome(
-      `gh is not logged in — run \`gh auth login\` so tumwater can read ${target.repo}'s issues, or set githubIssues.enabled to false`,
-    );
+  if (readiness !== "ok") return warnOutcome(ghUnreadableSentence(readiness, target.repo));
   return okOutcome(`gh ready — tumwater mirrors ${target.repo}'s open issues`);
 }
 

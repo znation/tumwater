@@ -9,45 +9,6 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 ## Planned
 
-### GitHub issues, part 3/5: the GUI warns when a project has a GitHub remote but `gh` is missing or logged out, and shows issues waiting to be mirrored (planned 2026-11-21 by the operator; requires GitHub issues part 2/5 landed; touches src/status/status-data.ts src/ui/team-alert-status.ts test/status-data.test.ts test/team-alert-status.test.ts)
-
-**Goal.** The operator sees in the dashboard, without running doctor, that tumwater cannot read
-the project's GitHub issues and what to do about it. They also see when trusted issues are
-waiting to be mirrored, and when outside issues need a maintainer's label. The GUI only reads
-part 2's ledger and never runs `gh` (plans/github-issues.md invariant 2).
-
-**Approach.**
-- src/status/status-data.ts: add `githubIssues?: GithubIssuesSummary` to `StatusSnapshot`.
-  Read it fresh from `readGithubIssues(root)` and fold it to
-  `{ repo, gh, reason, checkedAt, unmirrored, untrusted, waitingPush }`. `waitingPush` stays
-  0 until part 5 writes it. It is absent when there is no ledger or the config disables the
-  feature.
-- src/ui/team-alert-status.ts, three alerts:
-  - amber, key `github-gh`, when `gh` is `missing` or `unauthenticated`. Title `Can't read
-    GitHub issues for <repo>`. Detail is part 1's doctor text for the case ("gh is missing —
-    install GitHub CLI …" / "gh is not logged in — run `gh auth login` …"). Both the row and
-    the alert take the sentence from one exported helper in src/github/gh.ts, so they cannot
-    drift.
-  - gray, key `github-error`, when `gh` is `error`. Title `Last GitHub issue scan failed`,
-    with the reason and the scan's age.
-  - blue, key `github-mirror`, when `unmirrored > 0` or `untrusted > 0`. Detail like `2 open
-    issues on <repo> are waiting for the director to mirror them · 3 from outside
-    collaborators are not mirrored — add the label \`tumwater\` to let one in`. Leave out
-    whichever clause is 0, and name the configured `mirrorLabel`.
-- Order: amber with the other actionable alerts; gray and blue after the backlog alerts.
-
-**Acceptance criteria.**
-- A snapshot whose ledger reads `gh: "unauthenticated"` raises exactly the amber alert, and its
-  detail equals the doctor row's warn sentence for that case. `missing` does the same with the
-  missing sentence.
-- `gh: "ok"` with `unmirrored: 0, untrusted: 0` raises none of the three.
-- Counts 2 and 3 produce the blue detail above with the configured label, and 2 and 0 drop the
-  outside-collaborators clause.
-- No ledger and `githubIssues.enabled: false` both raise nothing.
-- Manual check: on a scratch clone with a github.com remote, set `GH_CONFIG_DIR` to an empty
-  directory for the team so gh reads as logged out. Within one scan after start, the dashboard
-  shows the amber banner naming the repo and `gh auth login`.
-
 ### GitHub issues, part 4/5: each unmirrored, trusted open issue goes to the director, which files it in BUGS.md or PLANS.md tagged `mirrors GitHub issue #<n>` (planned 2026-11-21 by the operator; requires GitHub issues part 2/5 landed; touches src/github/issue-queue.ts src/orchestrator/orchestrator-poll.ts src/prompt/prompt.ts src/roles/role-guidance.ts src/verdict/reply-contract.ts src/runner/runner-run.ts src/events/events.ts test/github-issue-queue.test.ts test/reply-contract.test.ts test/role-guidance.test.ts test/orchestrator-director.test.ts)
 
 **Needs review 2026-11-21 by feature: too large for one run**

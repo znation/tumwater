@@ -4,6 +4,8 @@
  * src/ui/team-alerts.ts; the shared types and wording helpers live in team-alert-shared.ts. */
 
 import { POLL_STALL_MS, type StatusSnapshot } from "../status/status-data.js";
+import type { GithubIssuesSummary } from "../github/github-issues-state.js";
+import { ghUnreadableSentence } from "../github/gh.js";
 import {
   openRoleActions, listRoles, listRoleIds, stuckDetail,
   type TeamAlert, type AlertRole,
@@ -17,7 +19,7 @@ import { joinWithMore } from "../text/text.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { STALL_RE } from "./run-progress-model.js";
 import { modelCheckFault } from "../model-check/model-check.js";
-import { formatClock } from "../text/datetime.js";
+import { formatClock, humanAgo } from "../text/datetime.js";
 
 interface StatusAlertsInput {
   snap: Pick<
@@ -30,6 +32,7 @@ interface StatusAlertsInput {
     | "modelChecks"
     | "maintenance"
     | "pollStalled"
+    | "githubIssues"
   >;
   roles: readonly AlertRole[];
 }
@@ -218,12 +221,28 @@ function pushStuckRoleAlert(out: TeamAlert[], roles: readonly AlertRole[]): void
   }
 }
 
+// gh cannot read the project's GitHub issues (plans/github-issues.md, part 3/5): the mirror is
+// off until the operator installs or logs in to gh, so the banner carries the same sentence the
+// doctor's `github issues` row prints. Amber: an operator fix is needed.
+function pushGithubGhAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
+  const gh = snap.githubIssues;
+  if (gh && (gh.gh === "missing" || gh.gh === "unauthenticated")) {
+    out.push({
+      key: "github-gh",
+      tone: "amber",
+      title: `Can't read GitHub issues for ${gh.repo}`,
+      detail: ghUnreadableSentence(gh.gh, gh.repo),
+      actions: [],
+    });
+  }
+}
+
 /** The status and role-phase alerts, in emission order: the background session-prune pass, a
- * spent budget (chain/fallback/budget), a failed model check, disk, and install, roles failing
- * run after run or stuck. Extracted from teamAlerts (part 1/5 of the teamAlerts split) so the
- * shared module stays small; the input names exactly the fields this run reads. The caller
- * pushes the returned alerts at the position this run used to occupy, so the emitted key order
- * is unchanged. */
+ * spent budget (chain/fallback/budget), a failed model check, disk, and install, gh unable to
+ * read GitHub issues, roles failing run after run or stuck. Extracted from teamAlerts (part 1/5
+ * of the teamAlerts split) so the shared module stays small; the input names exactly the fields
+ * this run reads. The caller pushes the returned alerts at the position this run used to occupy,
+ * so the emitted key order is unchanged. */
 export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
   const { snap, roles } = input;
   const out: TeamAlert[] = [];
@@ -234,7 +253,59 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
   pushModelCheckAlert(out, snap);
   pushDiskAlert(out, snap);
   pushInstallDriftAlert(out, snap);
+  pushGithubGhAlert(out, snap);
   pushFailingStreakAlert(out, roles);
   pushStuckRoleAlert(out, roles);
+  return out;
+}
+
+// A scan that failed for a reason other than gh's readiness (plans/github-issues.md, part 3/5):
+// gray, since the mirror retries on its next scan and nothing is asked of the operator. The
+// reason and the scan's age say what failed and how stale the ledger is.
+function pushGithubErrorAlert(out: TeamAlert[], gh: GithubIssuesSummary, now: number): void {
+  if (gh.gh === "error") {
+    out.push({
+      key: "github-error",
+      tone: "gray",
+      title: "Last GitHub issue scan failed",
+      detail: `${gh.reason ?? "gh could not list the issues"} · checked ${humanAgo(gh.checkedAt, now)}`,
+      actions: [],
+    });
+  }
+}
+
+// Issues waiting on the director (plans/github-issues.md, part 3/5): trusted open issues no entry
+// mirrors yet, and outside issues the maintainers have not labelled. Blue: it informs, since the
+// director takes them on its own clock. Each clause drops out when its count is zero.
+function pushGithubMirrorAlert(out: TeamAlert[], gh: GithubIssuesSummary): void {
+  const clauses: string[] = [];
+  if (gh.unmirrored > 0)
+    clauses.push(
+      `${plural(gh.unmirrored, "open issue", "open issues")} on ${gh.repo} ${agree(gh.unmirrored, "is", "are")} waiting for the director to mirror ${gh.unmirrored === 1 ? "it" : "them"}`,
+    );
+  if (gh.untrusted > 0)
+    clauses.push(
+      `${gh.untrusted} from outside collaborators ${agree(gh.untrusted, "is", "are")} not mirrored — add the label \`${gh.mirrorLabel}\` to let one in`,
+    );
+  if (clauses.length > 0) {
+    out.push({
+      key: "github-mirror",
+      tone: "blue",
+      title: "GitHub issues are waiting to be mirrored",
+      detail: clauses.join(" · "),
+      actions: [],
+    });
+  }
+}
+
+/** The GitHub issue alerts that follow the backlog alerts: the gray scan-failure banner and the
+ * blue mirror-waiting banner (the amber `github-gh` banner rides buildStatusAlerts). Empty when
+ * the snapshot carries no ledger summary. */
+export function buildGithubScanAlerts(input: { snap: Pick<StatusSnapshot, "githubIssues">; now: number }): TeamAlert[] {
+  const gh = input.snap.githubIssues;
+  if (!gh) return [];
+  const out: TeamAlert[] = [];
+  pushGithubErrorAlert(out, gh, input.now);
+  pushGithubMirrorAlert(out, gh);
   return out;
 }

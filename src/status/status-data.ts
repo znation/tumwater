@@ -39,6 +39,7 @@ import { briefStatus } from "../brief/brief.js";
 import { principlesBlockOverCap } from "../prompt/principles.js";
 import type { MaintenanceMarker } from "../orchestrator/retention.js";
 import { heartbeatPath, maintenancePath } from "../paths.js";
+import { type GithubIssuesSummary, githubIssuesSummary, readGithubIssues } from "../github/github-issues-state.js";
 import { readJsonFile } from "../files/json-files.js";
 
 /** Status data collection: one fresh snapshot of the team for observers (`tumwater
@@ -431,6 +432,12 @@ export interface StatusSnapshot {
    * role's id and its note's length in characters, sorted newest-char-count first; present
    * only when non-empty, so the surfaces render exactly as before. */
   roleNotesOverCap?: RoleNoteOverCap[];
+  /** The GitHub issues ledger folded to its counts (github-issues-state.ts's githubIssuesSummary),
+   * read fresh per poll: the amber `github-gh` alert when gh cannot read the repo, the gray
+   * `github-error` alert when the last scan failed, and the blue `github-mirror` alert when
+   * issues wait to be mirrored. Absent when no scan has written a ledger or the config sets
+   * `githubIssues.enabled: false`, so the surfaces render exactly as before. */
+  githubIssues?: GithubIssuesSummary;
   /** Every operator-kept workspace patch under `.tumwater/salvage/` (src/status/status-salvage.ts's
    * collectSalvagePatches), the doctor `salvage patches` row's warning state raised as a standing
    * amber alert on `tumwater status`, the dashboard — so a run's kept leftovers are
@@ -626,7 +633,17 @@ function snapshotHealthFields(
     ...(roleNotesOverCap.length > 0 ? { roleNotesOverCap } : {}),
     ...(salvagePatches.length > 0 ? { salvagePatches } : {}),
     principlesTruncated: principlesBlockOverCap(root) ? true : undefined,
+    ...githubIssuesForPoll(root, cfg),
   };
+}
+
+/** The GitHub issues ledger as the snapshot's `githubIssues` field (part 3/5): read fresh from
+ * the scan's ledger, never from `gh`, and absent when the feature is off or no ledger exists. */
+function githubIssuesForPoll(root: string, cfg: ReturnType<typeof configForStatus>): Pick<StatusSnapshot, "githubIssues"> {
+  if (cfg.githubIssues?.enabled === false) return {};
+  const ledger = readGithubIssues(root);
+  if (ledger === null) return {};
+  return { githubIssues: githubIssuesSummary(ledger, cfg.githubIssues?.mirrorLabel ?? "tumwater") };
 }
 
 /** The value of one running-only orchestrator-info field: present only while a live team

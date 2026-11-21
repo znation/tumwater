@@ -21,7 +21,7 @@ import type { OrphanAlert } from "./status-payload.js";
 import type { RefusedEntry } from "../backlog/backlog-eligibility.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { AlertRole, TeamAlert } from "./team-alert-shared.js";
-import { buildStatusAlerts } from "./team-alert-status.js";
+import { buildGithubScanAlerts, buildStatusAlerts } from "./team-alert-status.js";
 import { buildBacklogAlerts } from "./team-alert-backlog.js";
 import { buildStandingAlerts } from "./team-alert-standings.js";
 import { buildTailAlerts } from "./team-alert-tail.js";
@@ -61,10 +61,11 @@ export function teamAlerts(
     | "modelChecks"
     | "maintenance"
     | "pollStalled"
+    | "githubIssues"
   >,
   questions: readonly string[],
   roles: readonly AlertRole[],
-  _now: number,
+  now: number,
   refused: readonly RefusedEntry[] = [],
   orphans: OrphanAlert | null = null,
   standings: StandingAlertInputs | null = null,
@@ -73,6 +74,7 @@ export function teamAlerts(
   out.push(...buildStatusAlerts({ snap, roles }));
   if (standings) out.push(...buildStandingAlerts(standings));
   out.push(...buildBacklogAlerts({ questions, refused }));
+  out.push(...buildGithubScanAlerts({ snap, now }));
   out.push(...buildTailAlerts({ snap, orphans }));
 
   return out;

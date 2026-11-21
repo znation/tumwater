@@ -29,3 +29,12 @@ export async function ghReadiness(run: GhRunner): Promise<"ok" | "missing" | "un
   if (auth?.code !== 0) return "unauthenticated";
   return "ok";
 }
+
+/** The sentence for a `gh` that cannot read the project's issues — the doctor `github issues`
+ * row's warn text and the GUI's amber `github-gh` alert both take it here, so the two cannot
+ * drift apart. */
+export function ghUnreadableSentence(readiness: "missing" | "unauthenticated", repo: string): string {
+  if (readiness === "missing")
+    return `gh is missing — install GitHub CLI (https://cli.github.com) so tumwater can read ${repo}'s issues, or set githubIssues.enabled to false`;
+  return `gh is not logged in — run \`gh auth login\` so tumwater can read ${repo}'s issues, or set githubIssues.enabled to false`;
+}

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildStatusAlerts } from "../src/ui/team-alert-status.js";
+import { buildGithubScanAlerts, buildStatusAlerts } from "../src/ui/team-alert-status.js";
 import { formatClock } from "../src/text/datetime.js";
 import type { ModelCheckInfo } from "../src/team/team-orchestrator-info.js";
 import type { StatusSnapshot } from "../src/status/status-data.js";
@@ -125,4 +125,82 @@ test("a stalled poll loop raises an amber alert naming the threshold and the las
 test("no stalled poll raises no poll-stall alert", () => {
   const alerts = buildStatusAlerts({ snap: base, roles: [] });
   assert.equal(alerts.some((a) => a.key === "pollStalled"), false);
+});
+
+// The GitHub issues alerts (plans/github-issues.md, part 3/5): the amber gh banner rides the
+// status builder; the gray scan-failure and blue mirror banners follow the backlog alerts.
+const ghSnap = (githubIssues: NonNullable<StatusSnapshot["githubIssues"]>) => ({ ...base, githubIssues });
+const ghSummary = (over: Partial<NonNullable<StatusSnapshot["githubIssues"]>>) => ({
+  repo: "acme/widgets",
+  gh: "ok" as const,
+  checkedAt: Date.UTC(2026, 10, 21, 10, 0, 0),
+  unmirrored: 0,
+  untrusted: 0,
+  waitingPush: 0,
+  mirrorLabel: "tumwater",
+  ...over,
+});
+
+test("an unauthenticated gh raises one amber github-gh alert with the doctor's sentence", () => {
+  const alerts = buildStatusAlerts({ snap: ghSnap(ghSummary({ gh: "unauthenticated" })), roles: [] });
+  const [alert] = alerts.filter((a) => a.key === "github-gh");
+  assert.equal(alerts.length, 1);
+  assert.equal(alert?.tone, "amber");
+  assert.equal(alert?.title, "Can't read GitHub issues for acme/widgets");
+  assert.equal(
+    alert?.detail,
+    "gh is not logged in — run `gh auth login` so tumwater can read acme/widgets's issues, or set githubIssues.enabled to false",
+  );
+});
+
+test("a missing gh raises the amber alert with the missing-gh sentence", () => {
+  const [alert] = buildStatusAlerts({ snap: ghSnap(ghSummary({ gh: "missing" })), roles: [] });
+  assert.equal(alert?.key, "github-gh");
+  assert.equal(
+    alert?.detail,
+    "gh is missing — install GitHub CLI (https://cli.github.com) so tumwater can read acme/widgets's issues, or set githubIssues.enabled to false",
+  );
+});
+
+test("a healthy gh with nothing waiting raises none of the GitHub alerts", () => {
+  const snap = ghSnap(ghSummary({}));
+  assert.deepEqual(buildStatusAlerts({ snap, roles: [] }), []);
+  assert.deepEqual(buildGithubScanAlerts({ snap, now: Date.UTC(2026, 10, 21, 10, 5, 0) }), []);
+});
+
+test("two unmirrored and three untrusted issues name the configured label in one blue alert", () => {
+  const alerts = buildGithubScanAlerts({ snap: ghSnap(ghSummary({ unmirrored: 2, untrusted: 3 })), now: 0 });
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0]?.key, "github-mirror");
+  assert.equal(alerts[0]?.tone, "blue");
+  assert.equal(
+    alerts[0]?.detail,
+    "2 open issues on acme/widgets are waiting for the director to mirror them · 3 from outside collaborators are not mirrored — add the label `tumwater` to let one in",
+  );
+});
+
+test("a zero count drops its clause from the blue alert", () => {
+  const [alert] = buildGithubScanAlerts({ snap: ghSnap(ghSummary({ unmirrored: 2, mirrorLabel: "ship-it" })), now: 0 });
+  assert.equal(
+    alert?.detail,
+    "2 open issues on acme/widgets are waiting for the director to mirror them",
+  );
+  const [outside] = buildGithubScanAlerts({ snap: ghSnap(ghSummary({ untrusted: 1, mirrorLabel: "ship-it" })), now: 0 });
+  assert.equal(
+    outside?.detail,
+    "1 from outside collaborators is not mirrored — add the label `ship-it` to let one in",
+  );
+});
+
+test("a failed scan raises the gray error alert with its reason and age", () => {
+  const now = Date.UTC(2026, 10, 21, 10, 5, 0);
+  const [alert] = buildGithubScanAlerts({
+    snap: ghSnap(ghSummary({ gh: "error", reason: "gh api failed: rate limit exceeded" })),
+    now,
+  });
+  assert.equal(alert?.key, "github-error");
+  assert.equal(alert?.tone, "gray");
+  assert.equal(alert?.title, "Last GitHub issue scan failed");
+  assert.ok(alert?.detail.startsWith("gh api failed: rate limit exceeded · checked "));
+  assert.ok(alert?.detail.endsWith(" ago"));
 });
