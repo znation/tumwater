@@ -42,33 +42,86 @@ fall behind a busy Codex team indefinitely.)
 - The maintenance alert reads as informational and idle rows show their normal phase while the
   marker stands.
 
-### Remove the TUI, part 4/5: source comments stop describing a TUI (planned 2026-11-16 by the operator; requires Remove the TUI parts 1/5, 2/5, 3/5 landed; touches src/ (comments only) scripts/diff-check.mjs scripts/live-fixture.mjs)
+### Remove the TUI, part 4a/5: src/ui comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/ui/ (comments only))
 
-**Needs review 2026-11-21 by feature: too large for one run.** `grep -rniw tui src scripts` matches 244 lines in 94 files; each sentence needs its own rewrite, which is more than one run can finish. Splitting by directory (for example src/ui, src/config+src/backlog+src/inbox, the rest, scripts) would fit.
+Part 4/5 was split by directory into 4a–4d after the feature role found it too large for one
+run (`grep -rniw tui src scripts` matched 244 lines in 94 files). The four parts are independent
+of each other and may land in any order; together they finish what part 4/5 set out to do.
 
 **Goal.** Before part 1/5, about 100 files under src/ (outside `src/ui/tui/`) mentioned the TUI
 some 315 times. Most of those mentions are comments that call a piece of code "the TUI's twin",
 cite a `src/ui/tui/…` path, name a TUI key (Ctrl+…), or list the TUI among the surfaces that read
-a file. Part 1/5 removes only the user-facing ones. A reader, human or model, who follows the rest
-looks for code that does not exist, or keeps two surfaces in step when there is only one.
+a file. A reader, human or model, who follows them looks for code that does not exist, or keeps
+two surfaces in step when there is only one. src/ui/ holds the largest share: about 83 matching
+lines in 18 files.
 
-**Approach.**
-- Wherever a comment in src/ or scripts/ names the TUI, a `ui/tui/` path or a TUI key, rewrite
-  the sentence for the surfaces that remain (the CLI, the GUI, `tumwater status`). Drop "twin of
-  the TUI's …" cross-references outright. Change comments only; any code change found along the
-  way becomes its own BUGS.md entry. Keep comment lines within the 100-column limit
-  (test/comment-width.test.ts).
-- scripts/diff-check.mjs compares the `renderStatus` table (the `tumwater status` view) and the
-  GUI's `/api/status` payload; say so instead of "TUI table strings". Fix the TUI mentions in
-  scripts/live-fixture.mjs.
+**Approach.** Wherever a comment under src/ui/ names the TUI, a `ui/tui/` path or a TUI key,
+rewrite the sentence for the surfaces that remain (the CLI, the GUI, `tumwater status`). Drop
+"twin of the TUI's …" cross-references outright. Change comments only; any code change found
+along the way becomes its own BUGS.md entry. Keep comment lines within the 100-column limit
+(test/comment-width.test.ts).
 
 **Acceptance criteria.**
-- `grep -rniw tui src scripts` matches nothing.
-- No source line other than a comment changes: `git diff -U0 -- src scripts` adds and removes
-  only comment lines.
+- `grep -rniw tui src/ui` matches nothing.
+- `git diff -U0 -- src/ui` adds and removes only comment lines.
 - test/comment-width.test.ts passes.
 
-**Tests.** None new. Run the project's gate, plus `npm run test:rerun -- comment-width.test`.
+### Remove the TUI, part 4b/5: src/backlog, src/text, src/inbox and src/config comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/backlog/ src/text/ src/inbox/ src/config/ (comments only))
+
+One of four independent parts split from part 4/5; see part 4a/5 for the goal. These four
+directories hold about 57 matching lines in 23 files.
+
+**Approach.** As in part 4a/5, for comments under src/backlog/, src/text/, src/inbox/ and
+src/config/: rewrite each sentence that names the TUI, a `ui/tui/` path or a TUI key for the
+surfaces that remain, drop "twin of the TUI's …" cross-references, change comments only (a code
+change found along the way becomes its own BUGS.md entry), and keep comment lines within 100
+columns.
+
+**Acceptance criteria.**
+- `grep -rniw tui src/backlog src/text src/inbox src/config` matches nothing.
+- `git diff -U0 -- src/backlog src/text src/inbox src/config` adds and removes only comment lines.
+- test/comment-width.test.ts passes.
+
+### Remove the TUI, part 4c/5: src/cli, src/status, src/operator, src/doctor, src/team, src/history and top-level src/*.ts comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/cli/ src/status/ src/operator/ src/doctor/ src/team/ src/history/ src/notes-cli.ts src/collections.ts src/paths.ts src/project-name.ts (comments only))
+
+One of four independent parts split from part 4/5; see part 4a/5 for the goal. These paths hold
+about 63 matching lines in 24 files.
+
+**Approach.** As in part 4a/5, for comments under src/cli/, src/status/, src/operator/,
+src/doctor/, src/team/, src/history/ and in src/notes-cli.ts, src/collections.ts, src/paths.ts
+and src/project-name.ts: rewrite each sentence that names the TUI, a `ui/tui/` path or a TUI key
+for the surfaces that remain, drop "twin of the TUI's …" cross-references, change comments only
+(a code change found along the way becomes its own BUGS.md entry), and keep comment lines within
+100 columns.
+
+**Acceptance criteria.**
+- `grep -rniw tui src/cli src/status src/operator src/doctor src/team src/history src/notes-cli.ts
+  src/collections.ts src/paths.ts src/project-name.ts` matches nothing.
+- `git diff -U0` over those paths adds and removes only comment lines.
+- test/comment-width.test.ts passes.
+
+### Remove the TUI, part 4d/5: the remaining src/ directories and scripts/ stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/report/ src/process/ src/scheduling/ src/gui/ src/events/ src/review/ src/orchestrator/ src/roles/ src/failure/ src/prompt/ src/merge/ src/git/ src/runner/ src/observer/ src/files/ src/brief/ (comments only) scripts/diff-check.mjs scripts/live-fixture.mjs)
+
+One of four independent parts split from part 4/5; see part 4a/5 for the goal. These paths hold
+about 41 matching lines in 27 files.
+
+**Approach.**
+- As in part 4a/5, for comments under src/report/, src/process/, src/scheduling/, src/gui/,
+  src/events/, src/review/, src/orchestrator/, src/roles/, src/failure/, src/prompt/,
+  src/merge/, src/git/, src/runner/, src/observer/, src/files/ and src/brief/: rewrite each
+  sentence that names the TUI, a `ui/tui/` path or a TUI key for the surfaces that remain, drop
+  "twin of the TUI's …" cross-references, change comments only (a code change found along the
+  way becomes its own BUGS.md entry), and keep comment lines within 100 columns.
+- scripts/diff-check.mjs compares the `renderStatus` table (the `tumwater status` view) and the
+  GUI's `/api/status` payload; say so instead of "TUI table strings", and relabel its two
+  `TUI …` console messages (`TUI MISMATCH at width=…`, `TUI width=…: identical`) for the status
+  table. Fix the TUI mention in scripts/live-fixture.mjs.
+
+**Acceptance criteria.**
+- `grep -rniw tui` over the src/ directories above and scripts/ matches nothing.
+- In src/, `git diff -U0` adds and removes only comment lines; in scripts/diff-check.mjs the only
+  non-comment lines changed are the two console messages.
+- test/comment-width.test.ts passes.
 
 ### GitHub issues, part 2/5: the orchestrator scans a project's open GitHub issues on a clock and records which ones no backlog entry mirrors (planned 2026-11-21 by the operator; requires GitHub issues part 1/5 landed; touches src/github/issue-scan.ts src/github/issue-mirrors.ts src/github/github-issues-state.ts src/paths.ts src/orchestrator/orchestrator-poll.ts src/events/events.ts test/github-issue-scan.test.ts test/github-issue-mirrors.test.ts test/fakes/fake-gh.ts)
 
