@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { HandBackCause, RunOutcome } from "../run/run-outcome.js";
+import type { HandBackCause, RunOutcome, RunResult } from "../run/run-outcome.js";
 import type { RunnerState } from "./runner-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { branchExists, headOf } from "../git/git.js";
@@ -44,12 +44,15 @@ import {
   extractCiResult,
   extractFlow,
   extractFiled,
+  extractIssueOutcome,
   extractRemoteResult,
   type CiResult,
   type FiledResult,
   type FlowResult,
+  type IssueOutcome,
   type RemoteResult,
 } from "../verdict/reply-contract.js";
+import { recordIssueOutcome } from "../github/issue-outcome.js";
 import { remoteCiTarget } from "../observer/remote-ci.js";
 import { recoverLeftoversForRun } from "./runner-leftover-recovery.js";
 import { applyConflictHandback, applyRevisionOrReject, resendHandoffNote } from "./runner-apply.js";
@@ -495,10 +498,24 @@ async function runWithWorktreePhase(
 
   prompt = (await resendHandoffNote(ctx, plan, wt, prompt)).prompt;
 
-  const { pi, flow, filed, ci, remote } = await authorRun(ctx, plan, cfg, wt, prompt);
+  const { pi, flow, filed, ci, remote, issueOutcome } = await authorRun(ctx, plan, cfg, wt, prompt);
 
-  return handlePiResultPhase(ctx, pi, plan.userPrompt, revisionRound, wt, flow, filed, ci, remote, piStartedAt, cfg);
+  const outcome = await handlePiResultPhase(ctx, pi, plan.userPrompt, revisionRound, wt, flow, filed, ci, remote, piStartedAt, cfg);
+  // The director's ISSUE line is recorded only when the run succeeded (plans/github-issues.md
+  // part 4b/5): a refused, failed, or interrupted run must not record a verdict it never finished.
+  if (issueOutcome && DIRECTOR_SUCCESS_RESULTS.has(outcome.result)) {
+    try {
+      await recordIssueOutcome(ctx.root, issueOutcome, ctx.mainBranch, ctx.role);
+    } catch (err) {
+      ctx.warn(`GitHub issue verdict not recorded: ${errorMessage(err)}`);
+    }
+  }
+  return outcome;
 }
+
+/** The run results a director's ISSUE line may be recorded under: the work was done (changed,
+ * queued for merge) or there was nothing to do. A refusal, error or abort records nothing. */
+const DIRECTOR_SUCCESS_RESULTS = new Set<RunResult>(["changed", "queued", "no_change"]);
 
 /** How does the run's pi session author? Run the authoring session over the prepared worktree
  * and prompt, fold any commit the agent made into the run's one commit (INV-H1), warn about a
@@ -517,6 +534,7 @@ async function authorRun(
   filed: FiledResult | null;
   ci: CiResult | null;
   remote: RemoteResult | null;
+  issueOutcome: IssueOutcome | null;
 }> {
   const s = ctx.state;
   const runBase = await headOf(wt, "HEAD");
@@ -568,5 +586,8 @@ async function authorRun(
       if (target) remote = { repo: target.repo, ...line };
     }
   }
-  return { pi, flow, filed, ci, remote };
+  // The director's reply ends with a result-carrying `ISSUE:` line (plans/github-issues.md part
+  // 4b/5). Extracted once here, recorded by runWithWorktreePhase only on a successful run.
+  const issueOutcome = ctx.baseRole === DIRECTOR_ROLE ? extractIssueOutcome(pi.finalText) : null;
+  return { pi, flow, filed, ci, remote, issueOutcome };
 }

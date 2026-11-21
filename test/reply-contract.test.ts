@@ -6,6 +6,7 @@ import {
   extractCiResult,
   extractFiled,
   extractFlow,
+  extractIssueOutcome,
   extractRefusal,
   extractRemoteResult,
   fixLine,
@@ -441,4 +442,23 @@ test("isFixLine matches the FIX line's shape on a single line only", () => {
   assert.equal(isFixLine("I considered FIX: a.ts but did not edit it"), false); // mid-sentence
   assert.equal(isFixLine("- FIX: a.ts"), false); // a list item, not the contract line
   assert.equal(isFixLine("FIXME: a.ts"), false);
+});
+
+test("extractIssueOutcome parses a declined and a fixed ISSUE line", () => {
+  assert.deepEqual(extractIssueOutcome("done\nISSUE: #12 — declined: duplicate of #9"), {
+    issue: 12,
+    declined: "duplicate of #9",
+  });
+  assert.deepEqual(extractIssueOutcome("ISSUE: #12 — fixed in abc1234"), { issue: 12, fixedIn: "abc1234" });
+});
+
+test("extractIssueOutcome returns null for a bare number, a bad sha, or an empty reason", () => {
+  assert.equal(extractIssueOutcome("ISSUE: 12 — declined: x"), null); // no #
+  assert.equal(extractIssueOutcome("ISSUE: #12 — fixed in zz"), null); // not hex
+  assert.equal(extractIssueOutcome("ISSUE: #12 — fixed in abc12"), null); // under 7 digits
+  assert.equal(extractIssueOutcome("ISSUE: #12 — declined:"), null); // no reason
+});
+
+test("extractIssueOutcome ignores mid-sentence mentions", () => {
+  assert.equal(extractIssueOutcome("I will mark ISSUE: #12 — declined: x later"), null);
 });

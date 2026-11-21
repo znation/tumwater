@@ -314,6 +314,32 @@ export function extractFiled(text: string): FiledResult | null {
   return { issue: Number(match[1]), title };
 }
 
+/** A director's verdict on one GitHub issue, as its reply's `ISSUE:` line states it: declined
+ * with a reason, or fixed by the named commit (plans/github-issues.md part 4b/5). */
+export type IssueOutcome = { issue: number; declined: string } | { issue: number; fixedIn: string };
+
+/** A fix sha as the director names it: 7 to 40 lowercase hex digits, a short or full commit id. */
+const FIX_SHA = /^[0-9a-f]{7,40}$/;
+
+/** Extract the director's `ISSUE: #<n> — declined: <reason>` or `ISSUE: #<n> — fixed in <sha>` line
+ * (plans/github-issues.md part 4b/5); null when absent or malformed. Built on `labeledLine`, so the
+ * label is anchored at line start and a mid-sentence mention is ignored. The `#` is required (a
+ * bare `ISSUE: 12` is not a verdict), a decline needs a non-empty reason, and a fix needs a sha of
+ * 7 to 40 hex digits, so a truncated or prose `fixed in zz` records nothing. */
+export function extractIssueOutcome(text: string): IssueOutcome | null {
+  const value = labeledLine(text, "ISSUE");
+  if (!value) return null;
+  const match = /^#(\d+)\s*[—-]\s*(?:declined:\s*(.+)|fixed in\s+(\S+))$/.exec(value);
+  if (!match?.[1]) return null;
+  const issue = Number(match[1]);
+  if (match[2] !== undefined) {
+    const reason = match[2].trim();
+    return reason ? { issue, declined: reason } : null;
+  }
+  const sha = match[3] ?? "";
+  return FIX_SHA.test(sha) ? { issue, fixedIn: sha } : null;
+}
+
 // The review gate's verdict line as stated in buildReviewPrompt (prompt.ts): the reviewer
 // ends with exactly `VERDICT: approve` or `VERDICT: reject`. Anchored at line start so prose
 // that merely mentions "VERDICT:" mid-sentence cannot set the outcome, but leading horizontal

@@ -46,6 +46,9 @@ export interface GithubIssuesLedger {
   waitingPush?: Record<string, string[]>;
   /** Director-reported fixes (part 4/5), each with the sha that fixed it. */
   fixedIn?: Record<string, { sha: string; at: number }>;
+  /** Director-declined issues (part 4b/5), by issue number: when declined, the issue's `updatedAt`
+   * at that time (the queue offers the issue again only once GitHub's copy changes), and why. */
+  declined?: Record<string, { at: number; updatedAt: string; reason: string }>;
 }
 
 /** The ledger folded to the counts the status snapshot and its alerts read (plans/github-issues.md,

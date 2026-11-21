@@ -9,42 +9,6 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 ## Planned
 
-### GitHub issues, part 4b/5: a director reply's `ISSUE: #<n> — declined: …` or `— fixed in <sha>` line is recorded in the issues ledger (planned 2026-11-21 by the operator, split 2026-11-21 by the plan role; requires GitHub issues part 2/5 landed; touches src/verdict/reply-contract.ts src/runner/runner-run.ts src/github/github-issues-state.ts src/events/events.ts test/reply-contract.test.ts)
-
-Split from part 4/5 (too large for one run). Siblings: part 4a/5 (director prompt text) and part
-4c/5 (the queue, which reads what this part records). It does not depend on 4a/5.
-
-**Goal.** The director's result line for an issue it will not mirror lands in
-`.tumwater/state/github-issues.json`. Then the queue in 4c/5 never offers that issue again:
-- `declined` holds until the issue's `updatedAt` changes;
-- `fixedIn` holds permanently. Part 5/5's close step already reads it.
-
-**Approach.**
-- src/verdict/reply-contract.ts: add `extractIssueOutcome(text)`, built on
-  `labeledLine(text, "ISSUE")` the way `extractFiled` is. It returns
-  `{ issue, declined: reason }` or `{ issue, fixedIn: sha }`. It returns null when the line is
-  absent or malformed, or when the sha is not 7–40 hex digits.
-- src/github/github-issues-state.ts `GithubIssuesLedger`: add
-  `declined?: Record<string, { at; updatedAt; reason }>`. `fixedIn` already exists.
-- src/runner/runner-run.ts: on director runs, extract the outcome next to the `filed`/`flow`
-  extractions and record it only at the success returns, as those are. A decline writes
-  `declined` with the issue's current ledger `updatedAt`. A fix writes `fixedIn` only when
-  `git merge-base --is-ancestor <sha> <base>` holds; otherwise nothing is written. If there is
-  no ledger, or the issue is not in `open`, nothing is written.
-- src/events/events.ts: a `github_issue_declined` event (issue, repo, reason), logged on a
-  recorded decline.
-
-**Acceptance criteria.**
-- `extractIssueOutcome` parses `ISSUE: #12 — declined: duplicate of #9` and
-  `ISSUE: #12 — fixed in abc1234`. It returns null for `ISSUE: 12 — declined: x` (no `#`),
-  `ISSUE: #12 — fixed in zz`, and an `ISSUE:` mention mid-sentence.
-- After a successful director run whose reply declines open issue #12, the ledger's `declined`
-  records #12 with its ledger `updatedAt` and the reason, and a `github_issue_declined` event is
-  logged.
-- A `fixed in <sha>` naming a commit on the base branch is recorded in `fixedIn`. A sha that is
-  not an ancestor of the base branch leaves `fixedIn` unchanged.
-- A failed or interrupted director run records nothing.
-
 ### GitHub issues, part 4c/5: the orchestrator queues each unmirrored, trusted open issue to the director, one at a time (planned 2026-11-21 by the operator, split 2026-11-21 by the plan role; requires GitHub issues parts 4a/5 and 4b/5 landed; touches src/github/issue-queue.ts src/github/issue-scan.ts src/github/github-issues-state.ts src/events/events.ts test/github-issue-queue.test.ts test/orchestrator-director.test.ts)
 
 Split from part 4/5 (too large for one run). It requires part 4a/5, so the director knows how to

@@ -20,6 +20,11 @@ export function configEventMessage(e: HarnessEvent): string {
       // outcome, so no warning prefix.
       return `closed GitHub issue #${textOr(e.issue)} on ${textOr(e.repo)}, citing ${Array.isArray(e.shas) ? e.shas.map((sha) => String(sha).slice(0, 8)).join(", ") : textOr(e.shas)}`;
     }
+    case "github_issue_declined": {
+      // A director declined an open issue: a routine outcome of a run that succeeded, so no warning
+      // prefix. The reason is the director's own line, shown as written.
+      return `declined GitHub issue #${textOr(e.issue)} on ${textOr(e.repo)}: ${textOr(e.reason)}`;
+    }
     case "retention_changed": {
       // Routine state change, like its maxConcurrent sibling — no warning prefix.
       return `sessionRetentionDays changed: ${textOr(e.from)} → ${textOr(e.to)}`;
