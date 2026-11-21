@@ -1425,6 +1425,20 @@ test("a move that leaves two adjacent identical comment blocks yields one findin
   assert.match(hits[0]!, /src\/a\.ts:1 and src\/a\.ts:5/);
 });
 
+test("a move that copies a pre-existing comment block elsewhere and keeps the original names both sites", async () => {
+  // Base: block at lines 1-4, `a` at 5, `b` at 6. The change inserts a copy at lines 6-9 between
+  // two untouched lines, so only those four lines are added: reading them a line early or late
+  // misses the copy.
+  const findings = await duplicatedFindings(
+    { "src/a.ts": `${ALPHA_BLOCK}export const a = 1;\nexport const b = 2;\n` },
+    { "src/a.ts": `${ALPHA_BLOCK}export const a = 1;\n${ALPHA_BLOCK}export const b = 2;\n` },
+  );
+  const hits = findings.filter((f) => f.includes(DUP_HIT));
+
+  assert.equal(hits.length, 1);
+  assert.match(hits[0]!, /src\/a\.ts:1 and src\/a\.ts:6/);
+});
+
 test("a single copy of a comment block yields no duplicated-comment finding", async () => {
   const findings = await duplicatedFindings(
     { "src/a.ts": "export const a = 1;\n" },
