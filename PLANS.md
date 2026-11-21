@@ -11,6 +11,8 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 ### Fast session cleanup, part 2/2: session deletes run off the poll loop, so roles keep running during cleanup (planned 2026-11-16 by the operator; requires Fast session cleanup part 1/2 landed; touches src/agent/session-ledger.ts src/orchestrator/retention.ts src/orchestrator/orchestrator.ts src/orchestrator/orchestrator-poll.ts src/ui/team-alert-status.ts src/ui/status-model.ts test/session-ledger-prune.test.ts test/retention.test.ts test/team-alert-status.test.ts test/status-model.test.ts)
 
+**Needs review 2026-11-21 by feature: too large for one run**
+
 **Goal.** Even short, a synchronous prune holds every role for its whole length, at startup and
 once a day. Running the CLI deletes asynchronously lets scheduling continue during cleanup. (A
 per-pass delete cap was the other option; it was not chosen because a daily pass with a cap can
