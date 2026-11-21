@@ -122,6 +122,7 @@ export const STATE_CHANGE_EXCLUDED_TYPES = new Set<string>([
   "question_posted",
   "issue_filed",
   "remote_ci_failed",
+  "github_issues_unavailable",
   "entry_refused",
   "prompt_enqueued",
   "prompt_cancelled",
