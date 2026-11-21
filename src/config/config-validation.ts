@@ -13,6 +13,7 @@ import { expandHomeTilde } from "../files/files.js";
 import os from "node:os";
 import path from "node:path";
 import { isNonBlankString, tooLongMessage } from "../text/text.js";
+import { typoSuffix } from "../text/suggest.js";
 import { PREFILL_REASON } from "../text/phrases.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
 import { isBackendId } from "./config-model-selector.js";
@@ -285,8 +286,13 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       checkBoolean(o, "githubIssues.", "enabled");
       checkBoolean(o, "githubIssues.", "close");
       checkNumber(o, "githubIssues.", "scanIntervalMinutes", SCAN_INTERVAL_MINUTES);
-      if ("authors" in o && o.authors !== "collaborators" && o.authors !== "anyone")
-        problems.push(`githubIssues.authors must be "collaborators" or "anyone" (got ${show(o.authors)})`);
+      if ("authors" in o && o.authors !== "collaborators" && o.authors !== "anyone") {
+        const authorsValues = ["collaborators", "anyone"];
+        const typo = typeof o.authors === "string" ? typoSuffix(o.authors, authorsValues) : "";
+        problems.push(
+          `githubIssues.authors must be "collaborators" or "anyone" (got ${show(o.authors)})${typo}`,
+        );
+      }
       checkString(o, "githubIssues.", "mirrorLabel", false);
       if (typeof o.mirrorLabel === "string" && o.mirrorLabel.includes(","))
         problems.push(`githubIssues.mirrorLabel must not contain a comma (got ${show(o.mirrorLabel)})`);

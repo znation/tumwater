@@ -64,6 +64,17 @@ test("validateConfig rejects a githubIssues authors value other than collaborato
   assert.doesNotThrow(() => validateConfig({ githubIssues: { authors: "anyone" } }));
 });
 
+test("validateConfig suggests the closest githubIssues authors value for a near miss", () => {
+  assert.throws(
+    () => validateConfig({ githubIssues: { authors: "collaborator" } }),
+    /githubIssues\.authors must be "collaborators" or "anyone" \(got "collaborator"\) — did you mean `collaborators`\?/,
+  );
+  assert.throws(
+    () => validateConfig({ githubIssues: { authors: "banana" } }),
+    (err: Error) => !err.message.includes("did you mean"),
+  );
+});
+
 test("validateConfig rejects a blank or comma-bearing githubIssues mirrorLabel", () => {
   assert.throws(() => validateConfig({ githubIssues: { mirrorLabel: "  " } }), /githubIssues\.mirrorLabel must not be empty/);
   assert.throws(
