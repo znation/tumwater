@@ -87,6 +87,19 @@ test("validateConfig guards the tier-map and tier-name forms of model", () => {
     validationError({ roles: { plan: { enabled: true, model: "smal" } } }),
     /did you mean `small`\?/,
   );
+  // A tier-map entry's thinking typo gets the same suggestion as the role-level thinking check.
+  assert.match(
+    validationError({
+      model: { default: "prov/a", strong: { backend: "claude", model: "claude-opus-5-5", thinking: "hig" } },
+    }),
+    /model\.strong\.thinking must be one of .* \(got "hig"\) — did you mean `high`\?/,
+  );
+  assert.doesNotMatch(
+    validationError({
+      model: { default: "prov/a", strong: { backend: "claude", model: "claude-opus-5-5", thinking: "banana" } },
+    }),
+    /did you mean/,
+  );
   for (const model of ["prov/strnog", "gpt-5", "sonnet"])
     assert.doesNotThrow(() => validateConfig({ roles: { plan: { enabled: true, model } } }));
   assert.doesNotThrow(() =>

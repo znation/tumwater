@@ -18,6 +18,7 @@ import {
   TIER_MAP_KEYS,
 } from "./config-schema.js";
 import { isJsonObject } from "../files/json-object.js";
+import { typoSuffix } from "../text/suggest.js";
 import { isNonBlankString } from "../text/text.js";
 import {
   checkKnownKeys,
@@ -86,7 +87,9 @@ export function validateModelBlock(
       checkString(sel, `${at}.`, "model", false);
       const t = sel.thinking;
       if (t !== undefined && !(isNonBlankString(t) && THINKING_LEVELS.has(t)))
-        problems.push(`${at}.thinking must be one of ${[...THINKING_LEVELS].join(", ")} (got ${show(t)})`);
+        problems.push(
+          `${at}.thinking must be one of ${[...THINKING_LEVELS].join(", ")} (got ${show(t)})${typeof t === "string" ? typoSuffix(t, [...THINKING_LEVELS]) : ""}`,
+        );
       checkEntryBackend(sel, at, problems);
       checkSelectorValue(`${at}.model`, sel.model, undefined, problems);
       checkRetiredSelector(`${at}.model`, sel.model, typeof sel.backend === "string" ? sel.backend : topBackend, problems);
