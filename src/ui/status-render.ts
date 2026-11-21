@@ -173,7 +173,7 @@ function toneLine(text: string, width: number, tone?: StatusSpan["tone"]): Statu
  * the detail — at most `max` of them, the rest counted on a last line. This is the banner
  * block `tumwater status` pushes under its header, its wording drawn from the one shared alert
  * source (team-alerts.ts). */
-function alertLines(alerts: readonly TeamAlert[], width: number, max = 3): StatusLine[] {
+export function alertLines(alerts: readonly TeamAlert[], width: number, max = 3): StatusLine[] {
   const shown = alerts.length > max ? alerts.slice(0, max - 1) : alerts;
   const lines = shown.map((a) => {
     const { mark, tone } = ALERT_MARKS[a.tone];
