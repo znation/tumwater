@@ -1232,6 +1232,9 @@ test("a fix whose landing fails keeps the entry and leaves main unmoved", async 
   // Dirty the primary checkout's x.txt so the fix's fast-forward is refused: main stays put and
   // the entry is kept (failure recorded) for the next poll's retry.
   fs.writeFileSync(path.join(root, "x.txt"), "local\n");
+  // The entry carries a kept session from an earlier progressing timeout: this run reached a
+  // verdict, so the retry must start a fresh review, not continue the finished session.
+  fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: [{ commit, role: "improve", summary: "add x", resume: true }] }));
   const p = newMergePipeline();
   drainPostReviews(ctx, p);
   await p.postReview!.promise;
@@ -1241,6 +1244,7 @@ test("a fix whose landing fails keeps the entry and leaves main unmoved", async 
   assert.equal(kept.length, 1);
   assert.equal(kept[0]!.fixed, undefined, "no fix is recorded on a failed landing");
   assert.match(kept[0]!.lastFailure ?? "", /fix did not merge/);
+  assert.equal(kept[0]!.resume, undefined, "a verdict-reaching run drops the kept session");
   assert.ok(eventsOfType(root, "warning").some((e) => String(e.message).includes("could not merge")), "the failed landing warns");
 });
 
