@@ -293,12 +293,13 @@ async function pruneOpencodeHalf(root: string, days: number, marker: SessionPrun
  * unavailable config skips the deletes rather than guessing at a binary and home: a bare
  * `codex` under the operator's inherited CODEX_HOME could act on the wrong home (review
  * objection 2). CODEX_HOME is always set explicitly — to the resolved team home (the
- * `~/.codex` default or the configured dir, whichever `codexHome` resolves), or undefined when
- * the config is absent — so the inherited CODEX_HOME never reaches the purge. The purge is
- * safe to a team home that is the operator's own: the rollout fallback unlinks only a home the
- * prune pass saw, and only a session the ledger recorded as expired, so it never deletes the
- * operator's files. With the default config the resolved team home *is* the operator's `~/.codex`,
- * so the team is not isolated from it (doctor's codex-home row warns that case). */
+ * `<root>/.tumwater/codex-home` default when the config is unset, or the configured dir,
+ * whichever `codexHome` resolves), or undefined when the config is absent — so the inherited
+ * CODEX_HOME never reaches the purge. The purge is safe to a team home that is the operator's
+ * own: the rollout fallback unlinks only a home the prune pass saw, and only a session the
+ * ledger recorded as expired, so it never deletes the operator's files. Only an explicitly
+ * configured dir that resolves there makes the team home the operator's own `~/.codex`, so the
+ * team is not isolated from it (doctor's codex-home row warns that case). */
 async function pruneCodexHalf(root: string, days: number, marker: SessionPruneMarker, signal: AbortSignal): Promise<void> {
   marker.beginHalf("codex");
   const { config } = loadConfigSafe(root);

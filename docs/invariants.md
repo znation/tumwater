@@ -5096,11 +5096,11 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 
 ### INV-CE2: the doctor's codex-home row warns whenever the resolved team home is the operator's own `~/.codex`
 
-**Guarantee.** `checkCodexHome` compares the resolved team home (the `~/.codex` default when `backends.codex.configDir` is unset, or the expanded configured dir) against the operator's personal `~/.codex`. An equal home warns naming the shared trust entries, sessions, skills and `AGENTS.md`, whether the equality came from the unset default or an explicitly configured dir that resolves there; any other home reads ok naming it. An unisolated team home is thus a visible doctor row, never a silent default.
+**Guarantee.** `checkCodexHome` compares the resolved team home (the `<root>/.tumwater/codex-home` default when `backends.codex.configDir` is unset, or the expanded configured dir) against the operator's personal `~/.codex`. An equal home (only ever an explicitly configured dir that resolves there, since the unset default is the team's own home) warns naming the shared trust entries, sessions, skills and `AGENTS.md`; any other home reads ok naming it. An unisolated team home is thus a visible doctor row, never a silent default.
 
 **Binds.** `src/doctor/doctor-codex-checks.ts` (`checkCodexHome`), `src/agent/codex/codex-catalog.ts` (`codexHome`).
 
-**Pinned by.** `test/doctor-checks.test.ts` — "checkCodexHome warns on unset configDir and names the team home when set" and "checkCodexHome warns when a configured configDir resolves to the operator's own ~/.codex".
+**Pinned by.** `test/doctor-checks.test.ts` — "checkCodexHome defaults unset configDir to the team home and names it when set" and "checkCodexHome warns when a configured configDir resolves to the operator's own ~/.codex".
 
 ## Quarantine filing: a landed filing is never repeated
 

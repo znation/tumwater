@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `this repo's docs/invariants.md is honest` failed, then passed on the same tree (quarantined by tumwater 2026-11-21) — fixed 2026-11-21 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+The honest check flags a `**Pinned by.**` title that no test in the cited file carries. INV-CE2's citation named "checkCodexHome warns on unset configDir and names the team home when set", but the prior bugfix run (default codex home to per-team `<root>/.tumwater/codex-home` when configDir unset) had retitled the test to "checkCodexHome defaults unset configDir to the team home and names it when set" and reversed the semantics — the unset default is now the team's own home, not the operator's `~/.codex`. Fixed INV-CE2's guarantee text, its Pinned-by citation, and the stale `checkCodexHome` doc comment in `src/doctor/doctor-codex-checks.ts`.
+
+~~~~
+✖ this repo's docs/invariants.md is honest (235.226875ms)
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/invariants-doc.test.js:342:12)
+at Test.runInAsyncScope (node:async_hooks:226:14)
+generatedMessage: true,
+code: 'ERR_ASSERTION',
+actual: [ 'INV-CE2 (entry 299): cited test title not found in test/doctor-checks.test.ts: "checkCodexHome warns on unset configDir and names the team home when set"' ],
+expected: [],
+operator: 'deepStrictEqual',
+diff: 'simple'
+}
+lint: clean
+~~~~
+
+**Validation gap:** none — the honesty check reproduced the stale INV-CE2 citation and confirmed the fix against the actual test title; nothing was missing.
+
 ### Codex runs default to the operator's own `~/.codex`, filling it with team sessions, part 1/2: `codexHome` falls back to `~/.codex` when `backends.codex.configDir` is unset (reported by the user 2026-11-16, split 2026-11-21 by the plan role) — fixed 2026-11-21 by the bugfix role
 
 **Validation gap:** none — the codex-run regression test reproduced the `~/.codex` fail-under and confirmed the team-home fix.

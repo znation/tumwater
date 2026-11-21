@@ -114,10 +114,11 @@ export async function checkCodexAuth(
 }
 
 /** codex home readiness (plans/codex-backend.md §4): warns when the resolved team codex home
- * is the operator's own `~/.codex` — the default when `backends.codex.configDir` is unset, or
- * a configured dir that resolves there — naming the shared trust entries, team sessions in the
- * `codex resume` picker, any skills and a global `AGENTS.md`. A home of the team's own reads
- * ok, naming the resolved home. Stands down when no seam routes to codex. */
+ * is the operator's own `~/.codex` — when an explicitly configured dir resolves there (an unset
+ * `backends.codex.configDir` defaults to the team's own `<root>/.tumwater/codex-home`) — naming
+ * the shared trust entries, team sessions in the `codex resume` picker, any skills and a global
+ * `AGENTS.md`. A home of the team's own reads ok, naming the resolved home. Stands down when no
+ * seam routes to codex. */
 export async function checkCodexHome(root: string): Promise<CheckOutcome | null> {
   const base = codexCheckBase(root);
   if (base === null || "level" in base) return base;
