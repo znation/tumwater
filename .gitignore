@@ -1,6 +1,6 @@
 .tumwater/
 tumwater.json
-node_modules/
+node_modules
 dist/
 .eslintcache
 coverage/
