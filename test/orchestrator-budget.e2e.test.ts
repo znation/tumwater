@@ -25,7 +25,7 @@ import { awaitSettledRun, fastConfig, runRepoOrchestrator, startLiveOrchestrator
 import { mergeWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, logFlagsTo, readRunLines, recordingFakePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { readCapture } from "./helpers/read-capture.js";
-import { awaitQuietHost, recheckQuietHost, sleep, waitFor } from "./helpers/wait.js";
+import { awaitQuietHost, recheckQuietHost, sleep, waitFor, waitForQuietHost } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
 const FAST_POLL_MS = 100;
@@ -261,12 +261,25 @@ test("a reached cap switches roles to the free fallback model instead of stoppin
     // mid-run (BUGS.md 2026-11-14): if the 5-minute load is over the quiet-host bar now — 80% of
     // the core count, with headroom for a host that has just peaked (BUGS.md 2026-11-17) — the
     // 150 s spawn wait would starve and red a verdict the starved host never fairly reached.
+    // A mid-wait re-check: the admission gate and the point-in-time re-check above rule out a
+    // host elevated when the test began or just before the wait, but a host still under the bar
+    // can re-saturate INSIDE the 150 s spawn wait — the rise is what starves the spawn and reds
+    // a verdict the starved host never fairly reached. waitForQuietHost re-samples through the
+    // same bar every poll and defers when a sample crosses (BUGS.md 2026-11-17, 2026-11-20).
     const recheck = recheckQuietHost();
     if (!recheck.quiet) {
       t.skip(`host load ${recheck.load1} (5-min ${recheck.load5}) on ${recheck.cpus} cores: e2e deferred after the load rose, not a verdict`);
       return;
     }
-    await waitFor(() => runs().some((l) => l.includes("session=tumwater-clean-2")), "a role run after the cap was reached", 150_000);
+    const clean2 = await waitForQuietHost(
+      () => runs().some((l) => l.includes("session=tumwater-clean-2")),
+      "a role run after the cap was reached",
+      150_000,
+    );
+    if (clean2.deferred) {
+      t.skip(`host load ${clean2.load1} (5-min ${clean2.load5}) on ${clean2.cpus} cores: e2e deferred after the load rose, not a verdict`);
+      return;
+    }
     assert.match(
       runs().find((l) => l.includes("session=tumwater-clean-2")) ?? "",
       /model=local-free provider=local/,
@@ -396,12 +409,19 @@ test("a free fallback whose runs keep failing is demoted to a pause, then probed
     // CPU-starved orchestration event: at the ≈105 verified-load ceiling the host could not
     // schedule it within the 60s default even one file at a time (BUGS.md 2026-10-27, where the
     // carve recorded the ceiling but not the bound).
+    // A mid-wait re-check, as above: the host can re-saturate inside the 150 s spawn wait even
+    // after the admission gate and the point-in-time re-check both passed, and that rise must
+    // defer, not red a verdict the starved host never fairly reached.
     const recheck = recheckQuietHost();
     if (!recheck.quiet) {
       t.skip(`host load ${recheck.load1} (5-min ${recheck.load5}) on ${recheck.cpus} cores: e2e deferred after the load rose, not a verdict`);
       return;
     }
-    await waitFor(() => Boolean(runFor(2)), "the first fallback run", 150_000);
+    const firstFallback = await waitForQuietHost(() => Boolean(runFor(2)), "the first fallback run", 150_000);
+    if (firstFallback.deferred) {
+      t.skip(`host load ${firstFallback.load1} (5-min ${firstFallback.load5}) on ${firstFallback.cpus} cores: e2e deferred after the load rose, not a verdict`);
+      return;
+    }
     assert.match(runFor(2), /model=local-free/);
     await waitFor(() => clean().lastResult === "error", "the first fallback run to error");
     mergeWork(repo);

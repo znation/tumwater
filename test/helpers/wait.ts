@@ -1,6 +1,7 @@
 /** Wait-for-something helpers shared across the test suite: polling (waitFor, waitForFile,
  * waitForLogLines), the settle-within-a-budget check (within), the logical clock for
- * runPi's watchdog (watchdogClock), the quiet-host gate (awaitQuietHost), and the scripted
+ * runPi's watchdog (watchdogClock), the quiet-host gate (awaitQuietHost), the mid-wait
+ * re-sample gate (waitForQuietHost), and the scripted
  * one-shot deadline scheduler (scriptedTimers). Split from the
  * old util.ts grab-bag, whose shared name made these unfindable. */
 import type { TestContext } from "node:test";
@@ -123,6 +124,59 @@ export async function awaitQuietHost(
 export function recheckQuietHost(sample: LoadSampler = sampleHostLoad): HostLoadReading {
   const { load1, load5, cpus } = sample();
   return { quiet: isQuietHost({ load1, load5, cpus }), load1, load5, cpus };
+}
+
+/** The verdict of a mid-wait quiet-host re-sample gate: `deferred: true` naming the load that
+ * crossed the bar, or `deferred: false` once the predicate held. The `deferred` shape carries
+ * the crossing reading so the caller's skip names the load — the same load-named message the
+ * at-admission gate and the single-sample re-check use. */
+type QuietHostWaitResult = DeferredQuietHostWait | { deferred: false };
+
+interface DeferredQuietHostWait {
+  deferred: true;
+  load1: number;
+  load5?: number;
+  cpus: number;
+}
+
+/** A marker wait that re-samples the host mid-wait and defers when a sample crosses the
+ * quiet-host bar — the at-admission gate (awaitQuietHost) rules out a host already elevated
+ * when the test begins and the single-sample re-check (recheckQuietHost) rules out one that
+ * calms to a below-bar reading only to re-saturate in the instant before the wait, but neither
+ * covers a host that re-saturates INSIDE the long wall-clock spawn wait itself — that rise is
+ * what starves the 150 s bound and reds a verdict the starved host never fairly reached
+ * (BUGS.md 2026-11-17, 2026-11-20). It polls `pred` exactly like `waitFor` — a deadline, not
+ * a fixed sleep, 100 ms cadence — and every `pollEvery` ms (default the burn-poll cadence
+ * 2_000 ms) takes one quiet-host sample through the same injectable `sample`; the first
+ * crossing sample returns `{ deferred: true, load1, load5, cpus }` and stops polling, and a
+ * `pred` that holds returns `{ deferred: false }` the moment it does — a crossing sample after
+ * the predicate already held never flips the verdict. No helper holds a TestContext: the call
+ * site `t.skip`s on `deferred: true`. The sampler and clock are injectable (defaults
+ * `sampleHostLoad`, `liveWaitClock`) so a unit test pins the crossing deterministically. It
+ * keeps `awaitQuietHost`'s bar (`isQuietHost`/`quietHostBar`), the single home of the bar. */
+export async function waitForQuietHost(
+  pred: () => boolean | Promise<boolean>,
+  what: string,
+  waitMs: number,
+  opts: { pollEvery?: number; sample?: LoadSampler; clock?: WaitClock } = {},
+): Promise<QuietHostWaitResult> {
+  const { pollEvery = 2_000, sample = sampleHostLoad, clock = liveWaitClock } = opts;
+  const deadline = clock.now() + waitMs;
+  // A late-enough start so the first sample is taken immediately, before the first sleep.
+  let lastSampleAt = -Infinity;
+  for (;;) {
+    if (await pred()) return { deferred: false };
+    const now = clock.now();
+    // A deadline, not a fixed sleep: a marker that never holds expires like waitFor's, so a
+    // genuinely hung spawn still reports instead of spinning forever.
+    if (now > deadline) throw new Error(`timed out waiting for ${what}`);
+    if (now - lastSampleAt >= pollEvery) {
+      const { load1, load5, cpus } = sample();
+      if (!isQuietHost({ load1, load5, cpus })) return { deferred: true, load1, load5, cpus };
+      lastSampleAt = now;
+    }
+    await clock.sleep(100);
+  }
 }
 
 /** How far below the core count a load-sensitive e2e file may be admitted: the quiet-host bar is

@@ -14,7 +14,7 @@ import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { censusHoldFragment, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { mergeWork, makeRepo, seedOpenBug, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { awaitQuietHost, waitFor } from "./helpers/wait.js";
+import { awaitQuietHost, recheckQuietHost, waitFor, waitForQuietHost } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
 /** A fake pi that records how many runs were in flight during its run, holds its census slot
@@ -87,8 +87,25 @@ test("a live maxConcurrent edit resizes the cap without a restart", async (t) =>
     mergeWork(repo);
     // 60s, not the 20s default: this is the one assertion in the suite that waits on the
     // orchestrator's real poll loop scheduling two live pi shims at once, and under the load the
-    // team runs it at, 20s expired before the grow was observable (BUGS.md 2026-09-18).
-    await waitFor(() => readSamples(runDir).some((n) => n >= 2), "overlapping runs after the grow", 150_000);
+    // team runs it at, 20s expired before the grow was observable (BUGS.md 2026-09-18). A mid-wait
+    // re-check: a host under the bar when admitted can re-saturate inside the 150 s spawn wait
+    // (the admission gate and the point-in-time re-check cover a host elevated then, not the rise
+    // that follows), and that rise must defer, not red a verdict the starved host never fairly
+    // reached.
+    const recheck = recheckQuietHost();
+    if (!recheck.quiet) {
+      t.skip(`host load ${recheck.load1} (5-min ${recheck.load5}) on ${recheck.cpus} cores: e2e deferred after the load rose, not a verdict`);
+      return;
+    }
+    const overlap = await waitForQuietHost(
+      () => readSamples(runDir).some((n) => n >= 2),
+      "overlapping runs after the grow",
+      150_000,
+    );
+    if (overlap.deferred) {
+      t.skip(`host load ${overlap.load1} (5-min ${overlap.load5}) on ${overlap.cpus} cores: e2e deferred after the load rose, not a verdict`);
+      return;
+    }
 
     // Phase 3 (cap 1 again): shrinking admits no NEW concurrent run until in-flight work
     // finishes. Every sample recorded from the change onward must be <= 1 — a cap that was

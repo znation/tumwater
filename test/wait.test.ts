@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { awaitQuietHost, recheckQuietHost, waitFor, waitForFile } from "./helpers/wait.js";
+import { awaitQuietHost, recheckQuietHost, waitFor, waitForFile, waitForQuietHost } from "./helpers/wait.js";
 import { fakeClock } from "./fakes/time.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -115,4 +115,67 @@ test("awaitQuietHost defers a near-bar host for the whole bounded wait instead o
   assert.ok(!result.quiet, "a near-bar host must defer at admission, not run and starve");
   assert.ok(clock.now() >= 100_000, `the bounded wait must elapse; saw ${clock.now()}`);
   assert.equal(result.load5, 17.63);
+});
+
+test("waitForQuietHost defers the moment a mid-wait sample crosses, without living the wait", async () => {
+  // The flake (BUGS.md 2026-11-17, 2026-11-20): a host under the bar at admission and at the
+  // point-in-time re-check re-saturates INSIDE the 150 s spawn wait. The sampler is quiet until
+  // clock.now() crosses 60 s, then reads 0.9 x cpus — over the 0.8 x cpus bar (3.2 on 4 cores,
+  // so 3.6 crosses). The predicate never holds, so the first post-cross sample defers.
+  const clock = fakeClock();
+  const result = await waitForQuietHost(
+    () => false,
+    "never true",
+    120_000,
+    {
+      clock,
+      sample: () => (clock.now() < 60_000 ? { load1: 1, load5: 1, cpus: 4 } : { load1: 3.6, load5: 3.6, cpus: 4 }),
+    },
+  );
+  assert.equal(result.deferred, true, "a crossing sample mid-wait defers, never a verdict");
+  assert.ok(clock.now() <= 120_000, `deferred without living the wait; saw ${clock.now()}`);
+  if (result.deferred) {
+    assert.equal(result.load1, 3.6);
+    assert.equal(result.load5, 3.6);
+    assert.equal(result.cpus, 4);
+  }
+});
+
+test("waitForQuietHost returns deferred:false once the predicate holds and reports no crossing", async () => {
+  // A host that stays under the bar the whole wait: the predicate turning true at 60 s wins
+  // before any sample reports a crossing, so the wait completes exactly as today and skips nothing.
+  const clock = fakeClock();
+  const result = await waitForQuietHost(
+    () => clock.now() >= 60_000,
+    "a predicate that turns true",
+    120_000,
+    { clock, sample: () => ({ load1: 1, load5: 1, cpus: 4 }) },
+  );
+  assert.equal(result.deferred, false, "a quiet host with a satisfied predicate completes the wait");
+  assert.ok(clock.now() >= 60_000 && clock.now() <= 120_000, `completes when the predicate holds; saw ${clock.now()}`);
+});
+
+test("waitForQuietHost does not flip the verdict on a crossing sample after the predicate held", async () => {
+  // The predicate holds from the start (first poll checks it before any sample), so a sampler
+  // that would cross on every reading never outranks the satisfied predicate.
+  const clock = fakeClock();
+  const result = await waitForQuietHost(
+    () => true,
+    "a predicate that already holds",
+    120_000,
+    { clock, sample: () => ({ load1: 3.6, load5: 3.6, cpus: 4 }) },
+  );
+  assert.equal(result.deferred, false, "a crossing after the predicate held must not flip the verdict");
+  assert.equal(clock.now(), 0, "an already-held predicate returns before any wait or sample");
+});
+
+test("waitForQuietHost expires a hung marker under the injected clock's deadline", async () => {
+  // The deadline half: a marker that never holds and a host under the bar the whole wait expires
+  // like waitFor's, instead of spinning forever — a genuinely hung spawn still reports.
+  const clock = fakeClock();
+  await assert.rejects(
+    waitForQuietHost(() => false, "a hung marker", 1_000, { clock, sample: () => ({ load1: 1, load5: 1, cpus: 4 }) }),
+    /timed out waiting for a hung marker/,
+  );
+  assert.ok(clock.now() > 1_000, `the injected clock crossed the budget; saw ${clock.now()}`);
 });
