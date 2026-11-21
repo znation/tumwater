@@ -2716,7 +2716,9 @@ test("backlog 400s name the offending value, and stay terse when the field is mi
   const serve = (body: unknown) => captureJson((res) => handleBacklogCancel(fakeReq(JSON.stringify(body)), res, root));
 
   const badKind = await serve({ kind: "todo", position: 1, title: "x" });
-  assert.match((badKind.data as { error: string }).error, /kind must be "bug" or "plan" \(got "todo"\)/);
+  assert.match((badKind.data as { error: string }).error, /kind must be "bug" or "plan" \(got "todo"\)$/);
+  const nearKind = await serve({ kind: "bugs", position: 1, title: "x" });
+  assert.match((nearKind.data as { error: string }).error, /kind must be "bug" or "plan" \(got "bugs"\) — did you mean `bug`\?$/);
   const badPosition = await serve({ kind: "bug", position: 0, title: "x" });
   assert.match((badPosition.data as { error: string }).error, /position must be a positive integer \(got 0\)/);
   const badTitle = await serve({ kind: "bug", position: 1, title: "" });

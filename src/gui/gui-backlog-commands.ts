@@ -20,6 +20,7 @@ import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { requestWake, submitRolePromptAndWake, wakeQuestionAsker } from "../operator/operator-intent.js";
 import { badRequest, okGone, sendJson } from "./gui-http-body.js";
 import { collapseWhitespace, errorMessage, gotSuffix } from "../text/text.js";
+import { typoSuffix } from "../text/suggest.js";
 import { readPostBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
 
@@ -29,7 +30,7 @@ import type http from "node:http";
 function checkedBacklogKind(res: http.ServerResponse, body: Record<string, unknown>): "bug" | "plan" | null {
   const kind = body.kind;
   if (kind !== "bug" && kind !== "plan") {
-    badRequest(res, `kind must be "bug" or "plan"${gotSuffix(kind)}`);
+    badRequest(res, `kind must be "bug" or "plan"${gotSuffix(kind)}${typeof kind === "string" ? typoSuffix(kind, ["bug", "plan"]) : ""}`);
     return null;
   }
   return kind;
