@@ -67,7 +67,8 @@ export function didYouMean(suggestion: string | null): string {
  * `input` against `candidates`, the empty string when nothing is close enough to suggest. The
  * unknown-X error sites (roles.ts's unknownRoleMessage, config-write.ts's
  * unknownConfigKeyError and its role-field error, config-field-checks.ts's checkKnownKeys,
- * checkKnownRoleId and its thinking-level problem, config-validation-agents.ts's backend problem,
+ * checkKnownRoleId and its thinking-level problem, config-validation-model.ts's tier-map
+ * thinking-level problem, config-validation-agents.ts's backend problem,
  * gui/gui-args.ts's rejectBadRole, init-templates.ts's
  * unknownTemplateError) render the hint
  * through this one composition so the two-step pairing cannot drift; callers still print the
@@ -85,7 +86,7 @@ export function typoSuffix(input: string, candidates: readonly string[]): string
  * and the GUI's `result=` class query (gui-history-endpoints.ts) and config-key validator
  * (gui-args.ts) — cannot let the wording or the pairing drift. (config-validation's
  * thinking/backend problems stay separate: they differ in phrasing, use the truncating
- * show() stringifier, and carry no did-you-mean.) */
+ * show() stringifier, and append their did-you-mean through typoSuffix.) */
 export function oneOfMessage(candidates: readonly string[]): (v: unknown) => string {
   const list = candidates.join(", ");
   return (v: unknown) =>
