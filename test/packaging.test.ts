@@ -94,7 +94,7 @@ test("the README's prose outside the brief appendix steers, and its steering sec
   assert.ok(section.includes("`tumwater guide`"), "names tumwater guide");
   assert.match(section, /your own agent/i, "puts the operator's own agent first");
   // A first-time reader must not learn hands-off is the design.
-  assert.ok(!/only write (the brief|the initial prompt)/.test(outside), "no hands-off framing");
+  assert.ok(!/(only write|write only) (the brief|the initial prompt)/.test(outside), "no hands-off framing");
   assert.ok(!outside.includes("always-on specialists"), "no hands-off framing");
 });
 
