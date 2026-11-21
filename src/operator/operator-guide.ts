@@ -98,7 +98,7 @@ ${GAP_TAGS.slice(4).map((t) => `\`${t}\``).join(", ")}.
 
 For one entry at a time, the write commands commit on main under the team's lock:
 
-- \`tumwater plan "<title>" [body…]\` and \`tumwater bug "<symptom>" [body…]\`, each also reading
+- \`tumwater plan "<title>" [body…]\` and \`tumwater bug "<symptom>"\`, each also reading
   its text with \`--file <path>\`;
 - \`tumwater plan --edit <n> --file <path>\` (\`--edit <n>\` alone opens \`$EDITOR\`), \`--top <n>\`,
   \`--cancel <n>\`, \`--retire <n>\`, \`--release <n>\` — \`tumwater bug\` takes the same verbs;
