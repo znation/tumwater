@@ -22,9 +22,28 @@ import { formatClock } from "../text/datetime.js";
 interface StatusAlertsInput {
   snap: Pick<
     StatusSnapshot,
-    "budget" | "chain" | "disk" | "rootInstallDrift" | "budgetPausedRoles" | "modelChecks"
+    "budget" | "chain" | "disk" | "rootInstallDrift" | "budgetPausedRoles" | "modelChecks" | "maintenance"
   >;
   roles: readonly AlertRole[];
+}
+
+// The session-prune pass blocking the poll loop (retention.ts's marker, read by status-data.ts):
+// no role starts until it finishes, so this banner leads the status alerts and says how far it
+// has got, when it will finish and what a restart would throw away. Blue: it informs, there is
+// nothing to do, so it carries no action.
+function pushMaintenanceAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
+  const m = snap.maintenance;
+  if (m) {
+    const noun = m.backend === "files" ? "session files" : `${m.backend} sessions`;
+    const eta = m.etaMs === undefined ? "" : ` · about ${Math.max(1, Math.round(m.etaMs / 60_000))} min left`;
+    out.push({
+      key: "maintenance",
+      tone: "blue",
+      title: "Cleaning up expired sessions — roles start when it finishes",
+      detail: `deleting expired ${noun}: ${m.done.toLocaleString("en-US")} / ${m.total.toLocaleString("en-US")}${eta} · started ${formatClock(m.startedAt)}. Restarting tumwater starts this over.`,
+      actions: [],
+    });
+  }
 }
 
 function pushChainAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
@@ -176,15 +195,16 @@ function pushStuckRoleAlert(out: TeamAlert[], roles: readonly AlertRole[]): void
   }
 }
 
-/** The status and role-phase alerts, in emission order: a spent budget
- * (chain/fallback/budget), a failed model check, disk, and install, roles failing run after
- * run or stuck. Extracted from teamAlerts (part 1/5 of the teamAlerts split)
+/** The status and role-phase alerts, in emission order: the session-prune pass blocking the poll
+ * loop, a spent budget (chain/fallback/budget), a failed model check, disk, and install, roles
+ * failing run after run or stuck. Extracted from teamAlerts (part 1/5 of the teamAlerts split)
  * so the shared module stays small; the input names exactly the fields this run reads. The
  * caller pushes the returned alerts at the position this run used to occupy, so the emitted key
  * order is unchanged. */
 export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
   const { snap, roles } = input;
   const out: TeamAlert[] = [];
+  pushMaintenanceAlert(out, snap);
   pushChainAlert(out, snap);
   pushSpentBudgetAlert(out, snap);
   pushModelCheckAlert(out, snap);

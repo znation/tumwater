@@ -43,10 +43,9 @@ const MARKER_PROGRESS_MS = 1000;
  * blocking housekeeping pass runs: which process is blocking its poll loop, on which task and
  * backend, and how far it has got. `total` is known up front because the expired-id set is built
  * before the delete loop; `startedAt` is the whole pass, `updatedAt` this half's last rewrite.
- * Written by `SessionPruneMarker` below, and absent whenever no such pass is running. Not
- * exported: nothing outside this file names the shape yet — part 2/3's reader exports it when it
- * has a user. */
-interface MaintenanceMarker {
+ * Written by `SessionPruneMarker` below, and absent whenever no such pass is running. Exported
+ * for the status snapshot's reader (status-data.ts), which reads it fresh each poll. */
+export interface MaintenanceMarker {
   /** The orchestrator process that wrote the marker. */
   pid: number;
   task: "session-prune";

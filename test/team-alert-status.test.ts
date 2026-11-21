@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { buildStatusAlerts } from "../src/ui/team-alert-status.js";
 import { formatClock } from "../src/text/datetime.js";
 import type { ModelCheckInfo } from "../src/team/team-orchestrator-info.js";
+import type { StatusSnapshot } from "../src/status/status-data.js";
 
 // team-alert-status.ts's buildStatusAlerts: the status and role-phase alerts build the
 // per-domain alert list this run reads. The chain/budget/disk/install/failing/stuck arms are
@@ -63,4 +64,46 @@ test("verified and checking pairs raise nothing; an absent modelChecks block rai
     "only a failed status raises the alert",
   );
   assert.deepEqual(buildStatusAlerts({ snap: base, roles: [] }), [], "no modelChecks block: nothing");
+});
+
+// The session-prune banner (team-alert-status.ts pushMaintenanceAlert): blue, first in the list,
+// with the progress, the ETA when there is one, the start time and the restart warning.
+const pruneSnap = (maintenance: NonNullable<StatusSnapshot["maintenance"]>) => ({ ...base, maintenance });
+
+test("a session-prune pass raises a blue banner that leads the status alerts", () => {
+  const startedAt = Date.UTC(2026, 10, 21, 22, 38, 0);
+  const alerts = buildStatusAlerts({
+    snap: {
+      ...pruneSnap({ pid: 4242, task: "session-prune", backend: "codex", done: 1204, total: 3944, startedAt, updatedAt: startedAt + 1, etaMs: 48 * 60_000 }),
+      modelChecks: [{ pair: "DeepSeek-V4-Flash", status: "failed", seams: ["default"], reason: "no reply", probeAt: startedAt, failures: 2 }],
+    },
+    roles: [],
+  });
+  assert.equal(alerts[0]?.key, "maintenance", "the banner explains every other symptom, so it sorts first");
+  assert.equal(alerts[1]?.key, "modelcheck");
+  const [banner] = alerts;
+  assert.equal(banner?.tone, "blue");
+  assert.equal(banner?.title, "Cleaning up expired sessions — roles start when it finishes");
+  assert.equal(
+    banner?.detail,
+    `deleting expired codex sessions: 1,204 / 3,944 · about 48 min left · started ${formatClock(startedAt)}. Restarting tumwater starts this over.`,
+  );
+  assert.deepEqual(banner?.actions, [], "the banner offers no action");
+});
+
+test("a session-prune pass with no ETA yet omits the ETA clause and names session files", () => {
+  const startedAt = Date.UTC(2026, 10, 21, 22, 38, 0);
+  const [banner] = buildStatusAlerts({
+    snap: pruneSnap({ pid: 4242, task: "session-prune", backend: "files", done: 3, total: 40, startedAt, updatedAt: startedAt }),
+    roles: [],
+  });
+  assert.equal(
+    banner?.detail,
+    `deleting expired session files: 3 / 40 · started ${formatClock(startedAt)}. Restarting tumwater starts this over.`,
+  );
+});
+
+test("no session-prune marker raises no maintenance banner", () => {
+  const alerts = buildStatusAlerts({ snap: base, roles: [] });
+  assert.equal(alerts.some((a) => a.key === "maintenance"), false);
 });

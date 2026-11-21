@@ -5,6 +5,51 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Visible session cleanup, part 2/3: the GUI and TUI show a session-cleanup banner with progress and an ETA, and idle rows read `held: session cleanup` (planned 2026-11-16 by the operator; requires Visible session cleanup part 1/3 landed; touches src/status/status-data.ts src/ui/team-alert-status.ts src/ui/status-model.ts test/status-data.test.ts test/team-alert-status.test.ts test/team-alerts.test.ts test/status-model.test.ts) — done 2026-11-21 by the feature role
+
+**Goal.** Whenever the prune blocks scheduling, the dashboard says so, shows progress and
+estimates when it will finish, instead of a healthy-looking team doing nothing. The prune blocks
+the whole poll loop, not one role, so it is a team alert banner (the `TeamAlert` model,
+src/ui/team-alerts.ts), which the GUI banners and the TUI's attention lines both render. The roles
+table changes too: otherwise its rows show their last-known phase (`idle`, overdue `next run in …`
+countdowns), which is the misleading part.
+
+**Approach.**
+- src/status/status-data.ts: add `maintenance?: MaintenanceMarker & { etaMs?: number }` to
+  `StatusSnapshot`, read fresh on every poll like the pause marker (no cache). Treat it as absent
+  when its `pid` is not the live orchestrator pid: a SIGKILLed orchestrator skips the `finally`,
+  and its stale marker must not hold the banner up forever.
+- `etaMs = (updatedAt − startedAt) / done × (total − done)`, left out until `done ≥ 10` so the
+  first noisy samples give no silly ETA.
+- New alert in src/ui/team-alert-status.ts, emitted early in the order because it explains every
+  other symptom: `key: "maintenance"`, `tone: "blue"` (it informs; there is nothing to do), title
+  `Cleaning up expired sessions — roles start when it finishes`, detail like
+  `deleting expired codex sessions: 1,204 / 3,944 · about 48 min left · started 22:38`, with the
+  suffix `Restarting tumwater starts this over.` (that line is what would have prevented the three
+  restarts; Fast session cleanup part 1/2 drops it). No actions: a "skip for now" button would need
+  the blocked orchestrator to read a request.
+- `rolePhase` (src/ui/status-model.ts) takes one more team-wide hold argument beside `restartHold`
+  and returns `held: session cleanup` for every row that is not in flight. A run already in flight
+  when a daily in-poll prune starts keeps its working label, because its agent process is still
+  running. Its one call site derives it from the snapshot (src/ui/status-model.ts, where
+  `restartHoldRolePhase(snap.build)` is passed), so the GUI and TUI rows both pick it up.
+- The TUI gets the alert through `alertLines` and the row cell through the shared `rolePhase`, with
+  no TUI-specific change.
+
+**Acceptance criteria.**
+- A marker whose pid differs from the live orchestrator pid reads as absent; no marker file reads
+  as absent; the ETA is absent below 10 deletes and present from 10.
+- The maintenance alert's title, detail (count with thousands separators, ETA, start time) and
+  restart suffix match the text above, and it sorts ahead of the other status alerts.
+- `rolePhase` returns `held: session cleanup` for an idle row and for a row with an overdue next
+  run while the hold is set, and keeps the working label for an in-flight row.
+- Manual check: about 4,000 expired Codex ledger records and a stub `codex` that sleeps 1 s.
+  Start the team and open the GUI. Within one GUI poll the blue banner shows
+  `deleting expired codex sessions: n / N` with a rising count and, after 10 deletes, an ETA;
+  every idle row reads `held: session cleanup`; the event log has a `maintenance_start` line.
+  SIGKILL the orchestrator: the banner goes once the GUI sees the pid gone, and the stopped-team
+  alert replaces it.
+
 ### Self-declared check, part 1/3: when a project declares no check, the orchestrator queues the director to declare one (planned 2026-11-21 by the director role; touches src/prompt/check-declaration-request.ts src/orchestrator/orchestrator-poll.ts src/paths.ts test/check-declaration-request.test.ts docs/invariants.md) — done 2026-11-21 by the feature role
 
 **Goal.** The operator asked on 2026-11-21 that the amber "No build check declared" warning

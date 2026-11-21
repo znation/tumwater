@@ -9,7 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { snapshot } from "../src/status/status-data.js";
+import { maintenanceForPoll, snapshot } from "../src/status/status-data.js";
+import { maintenancePath } from "../src/paths.js";
 import { runnerStateForPoll } from "../src/status/status-polls.js";
 import { quietHoursStatus } from "../src/scheduling/quiet-hours.js";
 import { statusPayload } from "../src/ui/status-payload.js";
@@ -231,4 +232,41 @@ test("snapshot rows carry the custom flag matching the config", async () => {
   fs.writeFileSync(path.join(repo, "tumwater.json"), "{ still editing");
   snap = await snapshot(repo);
   assert.ok(snap.roles.some((l) => l.role === "nightly" && l.custom), "broken file keeps last-known-good customs");
+});
+
+// The session-prune marker's snapshot reader (status-data.ts maintenanceForPoll): present only
+// while the live orchestrator wrote it, and carrying an ETA only once ten deletes have landed.
+function writeMaintenance(root: string, marker: object): void {
+  const file = maintenancePath(root);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(marker));
+}
+
+const pruneMarker = (over: object = {}) => ({
+  pid: 4242,
+  task: "session-prune",
+  backend: "codex",
+  done: 10,
+  total: 110,
+  startedAt: 0,
+  updatedAt: 10_000,
+  ...over,
+});
+
+test("maintenanceForPoll reads the marker only for the live orchestrator's pid", () => {
+  const repo = makeRepo();
+  assert.equal(maintenanceForPoll(repo, 4242), undefined, "no marker file reads as absent");
+  writeMaintenance(repo, pruneMarker());
+  assert.equal(maintenanceForPoll(repo, 999), undefined, "a marker another pid wrote reads as absent");
+  assert.equal(maintenanceForPoll(repo, undefined), undefined, "no live orchestrator reads as absent");
+  assert.equal(maintenanceForPoll(repo, 4242)?.done, 10);
+});
+
+test("the maintenance ETA is linear over the progress so far, and absent below ten deletes", () => {
+  const repo = makeRepo();
+  writeMaintenance(repo, pruneMarker({ done: 9 }));
+  assert.equal(maintenanceForPoll(repo, 4242)?.etaMs, undefined, "nine deletes give no ETA");
+  writeMaintenance(repo, pruneMarker({ done: 10 }));
+  // (10,000 ms elapsed − 0) ÷ 10 deletes = 1,000 ms each, × 100 left = 100,000 ms.
+  assert.equal(maintenanceForPoll(repo, 4242)?.etaMs, 100_000);
 });

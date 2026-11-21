@@ -37,6 +37,9 @@ import { collectBudget } from "./status-budget.js";
 import { collectRootInstallDrift } from "./status-install.js";
 import { briefStatus } from "../brief/brief.js";
 import { principlesBlockOverCap } from "../prompt/principles.js";
+import type { MaintenanceMarker } from "../orchestrator/retention.js";
+import { maintenancePath } from "../paths.js";
+import { readJsonFile } from "../files/json-files.js";
 
 /** Status data collection: one fresh snapshot of the team for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers
@@ -349,6 +352,12 @@ export interface StatusSnapshot {
    * orchestrator runs, its build predates the field, or statfs could not measure the volume —
    * every surface then renders exactly as before. */
   disk?: DiskStatus;
+  /** The session-prune pass blocking the poll loop right now (`.tumwater/state/maintenance.json`,
+   * retention.ts's marker), with `etaMs` — the linear estimate of the time left, absent until ten
+   * deletes so the first samples give no silly figure. Absent unless the live orchestrator wrote
+   * the marker (maintenanceForPoll): a SIGKILLed orchestrator never removes its marker, so a
+   * marker naming a dead pid must not hold the banner up. Fresh per poll, like `paused`. */
+  maintenance?: MaintenanceMarker & { etaMs?: number };
   /** The standing per-provider failure holds (src/team/team-hold.ts `standingHolds`), read
    * from the running orchestrator's info file: a provider storm's hold, so the dashboards and
    * `tumwater status` name why a provider's roles sit idle. Absent while none stands or the
@@ -626,6 +635,20 @@ function liveInfoField<T>(running: boolean, field: T | undefined): T | undefined
   return running && field !== undefined ? field : undefined;
 }
 
+/** The session-prune marker the live orchestrator (pid `livePid`) is writing, read fresh per poll
+ * (no cache, like the paused markers). A marker naming another pid — a SIGKILLed orchestrator
+ * never removed its own — or no live orchestrator at all reads as absent. `etaMs` is the linear
+ * estimate `(updatedAt − startedAt) / done × (total − done)`, withheld until ten deletes so the
+ * first noisy samples give no silly figure. */
+export function maintenanceForPoll(root: string, livePid: number | undefined): StatusSnapshot["maintenance"] {
+  if (livePid === undefined) return undefined;
+  const marker = readJsonFile<MaintenanceMarker>(maintenancePath(root));
+  if (marker?.pid !== livePid || !Number.isFinite(marker.done)) return undefined;
+  const { done, startedAt, updatedAt } = marker;
+  const etaMs = done >= 10 ? ((updatedAt - startedAt) / done) * (marker.total - done) : undefined;
+  return { ...marker, ...(etaMs === undefined ? {} : { etaMs }) };
+}
+
 /** The running-only resource fields of the snapshot (disk floor, install drift, permits and
  * the run stop deadlines). */
 function snapshotResourceFields(
@@ -654,6 +677,8 @@ function snapshotResourceFields(
     // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
     runStopsAt: running ? earliestStop(info?.stopsAt, stopAt) : undefined,
     scheduledStopAt: running ? stopAt : undefined,
+    // The live orchestrator's pid, so a marker a dead orchestrator left behind reads as absent.
+    maintenance: maintenanceForPoll(root, running ? info?.pid : undefined),
   };
 }
 

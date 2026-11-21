@@ -4661,6 +4661,24 @@ the marker (INV-BQ6), never through this pair.
 maintenance_start and one maintenance_done for that half, and a prune with none logs neither";
 `test/event-legacy.test.ts` — "the session-cleanup pair is a current name, not a legacy rewrite".
 
+### INV-BQ8: the snapshot shows a prune marker only while the live orchestrator wrote it
+
+**Guarantee.** The status snapshot's `maintenance` field is the marker of INV-BQ6, read fresh each
+poll, and present only when its `pid` is the live orchestrator's pid: no marker, a marker another
+pid wrote (a SIGKILLed orchestrator never removes its own), or no live orchestrator reads as
+absent. Its `etaMs` is `(updatedAt − startedAt) / done × (total − done)` and is absent below ten
+deletes. While it is present, the team alert leads the status alerts in blue, and every idle role
+row reads `held: session cleanup`; an in-flight row keeps its working label.
+
+**Binds.** `src/status/status-data.ts` (`maintenanceForPoll`), `src/ui/team-alert-status.ts`
+(`pushMaintenanceAlert`) and `src/ui/status-model.ts` (`rolePhase`'s `sessionCleanupHeld`).
+
+**Pinned by.** `test/status-data.test.ts` — "maintenanceForPoll reads the marker only for the live
+orchestrator's pid" and "the maintenance ETA is linear over the progress so far, and absent below
+ten deletes"; `test/team-alert-status.test.ts` — "a session-prune pass raises a blue banner that
+leads the status alerts"; `test/status-model.test.ts` — "a session-prune hold replaces an idle
+row's countdown but not a running row's label".
+
 ## Runner state in the poll loop: a failed save costs only that save
 
 ### INV-BR1: a skip-reason or claim-release save that fails warns and the poll goes on

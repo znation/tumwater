@@ -912,3 +912,21 @@ test("roleRowCells pauses only the role pausedRunners names, not its sibling ins
   assert.match(expected, /paused/);
   assert.doesNotMatch(cellsFor("feature-2"), /paused/);
 });
+
+// The session-prune hold (status-model.ts rolePhase's sessionCleanupHeld, the last argument):
+// every row that is not in flight reads `held: session cleanup`, an in-flight row keeps its label.
+test("a session-prune hold replaces an idle row's countdown but not a running row's label", () => {
+  const root = tmpdir();
+  writePiLog(root, "feature", [SESSION, assistantLine("working", { tokens: 3_000 })]);
+  // The positional arguments up to the hold: no budget/cap/quiet/disk/bootstrap/quota/pause/
+  // restart.
+  const plain = (s: ReturnType<typeof freshRunnerState>) => rolePhase(s, true, root, false, null, false, null, false, undefined, false, false, undefined, undefined, undefined);
+  const idle = freshRunnerState("feature");
+  idle.nextRunAt = Date.now() - 60_000; // an overdue next run: the countdown the hold replaces
+  assert.notEqual(plain(idle), "held: session cleanup", "without the hold the idle row reads its own phase");
+  assert.equal(rolePhase(idle, true, root, false, null, false, null, false, undefined, false, false, undefined, undefined, undefined, true), "held: session cleanup");
+  const running = freshRunnerState("feature");
+  running.running = true;
+  running.lastRunStartedAt = Date.now() - 5_000;
+  assert.match(rolePhase(running, true, root, false, null, false, null, false, undefined, false, false, undefined, undefined, undefined, true), /^working /);
+});

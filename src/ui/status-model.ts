@@ -115,6 +115,7 @@ export function rolePhase(
   maintenanceQuotaHold?: string,
   pausedUntilMs?: number,
   restartHold?: string,
+  sessionCleanupHeld = false,
 ): string {
   if (!orchestratorRunning) return "stopped";
   // The merge cell: the marker-driven merge label, the in-flight merging/stage/stage-since
@@ -211,6 +212,11 @@ export function rolePhase(
     // while the whole team stands still (2026-10-30). Ranked after the disk floor: that one
     // needs the operator, this one ends on its own.
     if (restartHold) return restartHold;
+    // A session-prune pass blocking the poll loop (status-data.ts's maintenance marker): no role
+    // starts until it finishes, so an idle row says so instead of showing a stale `next run in`
+    // countdown. Ranked beside the restart hold — both end on their own, neither needs the
+    // operator.
+    if (sessionCleanupHeld) return "held: session cleanup";
     // New-project bootstrap (plans/work-ratio.md, part 2/2): the idle role is held until enough
     // plans are Done. The literal label names the reason, like the gates above.
     if (bootstrapHeld) return "waiting: bootstrap";
@@ -369,6 +375,9 @@ export function roleRowCells(
     // The self-redeploy's hold (BuildStatus.restartHold): an idle role reads `waiting: update —
     // <step>` while no new run may start.
     restartHoldRolePhase(snap.build),
+    // The session-prune pass (status/status-data.ts maintenance): every idle row reads
+    // `held: session cleanup` while it runs; an in-flight row keeps its working label above.
+    snap.maintenance !== undefined,
   );
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }
