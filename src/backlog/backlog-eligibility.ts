@@ -1,8 +1,8 @@
 /** Backlog eligibility: which PLANS.md / BUGS.md entries a work role may take now (plans,
  * parallel-work-instances, part 2/7). An entry is held when its body carries a **Refused …**
  * or **Needs review …** note, or when
- * its heading's trailing parenthetical
- * (or a parenthetical left open by a wrapped heading) names a prerequisite (`requires parts
+ * its heading's parentheticals — every top-level group, plus one left open by a wrapped
+ * heading — name a prerequisite (`requires parts
  * 1/5–3/5 landed`) that is itself still listed under `## Planned`. The parsers are pure over
  * markdown text; `eligibleEntries` is the stat-backed reader for a caller that wants the list.
  * The backlog index marks every held entry so a role
@@ -241,8 +241,8 @@ export function waitingPartRanges(root: string, title: string): EligibleEntry[] 
  * `**Refused …` line (refused), a Needs-review line (needs-review), or a prerequisite
  * `(series, part)` still among `planned` ({ blockedBy }). Series compare case-insensitively;
  * part tokens compare verbatim.
- * Bodies mentioning "requires" are never consulted — only the heading's trailing or
- * still-open parenthetical. */
+ * Bodies mentioning "requires" are never consulted — only the heading's parentheticals,
+ * every top-level group and one left open by a wrapped heading. */
 export function entryHold(entry: BacklogEntry, planned: readonly BacklogEntry[]): EntryHold {
   return entryHoldAgainst(entry, plannedPartKeys(planned));
 }
