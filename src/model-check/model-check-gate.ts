@@ -13,6 +13,7 @@ import {
   pairOverrides,
   resolverConfig,
   reviewConfig,
+  roleSeamTier,
   seamPairName,
   withModelOverrides,
   type ResolvedModelConfig,
@@ -191,7 +192,7 @@ export class ModelCheckGate {
       if (pair === null) continue;
       this.suspect(pair);
       if (this.failed(pair) && r.handBackRun("model-check")) {
-        const resume = this.answersElsewhere(pair) ? "a pair that answers" : "this pair once it answers again";
+        const resume = this.answersElsewhere(pair, roleSeamTier(r.config, r.role)) ? "a pair that answers" : "this pair once it answers again";
         warnEventBestEffort(
           this.root,
           r.role,
@@ -201,10 +202,14 @@ export class ModelCheckGate {
     }
   }
 
-  /** Whether some pair other than `pair` answered its last probe: the only case in which a
-   * handed-back run has another pair to resume on. With none, the run waits for `pair` itself. */
-  private answersElsewhere(pair: string): boolean {
-    return Object.keys(this.checks).some((other) => other !== pair && this.verified(other));
+  /** Whether a pair of `tier`'s own chain other than `pair` (a fallback step, or the primary
+   * a check move left) answered its last probe: the only case in which a handed-back run has
+   * another pair to resume on — the reviewer's or another tier's pair is not one. With none,
+   * the run waits for `pair` itself. */
+  private answersElsewhere(pair: string, tier: ModelTier): boolean {
+    const onTier = (label: string): boolean =>
+      label === `fallback:${tier}` || label.startsWith(`fallback:${tier}#`) || label === `primary:${tier}`;
+    return [...this.uses].some(([other, use]) => other !== pair && use.seams.some(onTier) && this.verified(other));
   }
 
   /** Abort the probes in flight and wait for them to settle — the shutdown's last step, so no

@@ -107,7 +107,7 @@ The hand-back cancelled dedupe's run at 14:08:59 (aborted after 2.0 h) and clean
 - Or reserve headroom for the probe, for example by lowering the team's concurrency by one while a check is due.
 - Either way, the hand-back warning should not promise another pair when the tier has none.
 
-**Fix.** The hand-back warning now names the pair that failed when no other pair answered its last probe: "the run resumes on this pair once it answers again". "A pair that answers" stays only for a run that has another verified pair in use (`answersElsewhere`, src/model-check/model-check-gate.ts). The test `a request left unanswered past the stall threshold re-checks its pair, and a failed pair hands the run back` (test/model-check-unanswered.test.ts) runs one pair and pins the new wording; it fails with the old wording.
+**Fix.** The hand-back warning now names the pair that failed when no other pair answered its last probe: "the run resumes on this pair once it answers again". "A pair that answers" stays only for a run whose own tier has another verified pair (a fallback step or a moved-from primary; `answersElsewhere`, src/model-check/model-check-gate.ts) — the reviewer's or another tier's pair does not count. The test `a request left unanswered past the stall threshold re-checks its pair, and a failed pair hands the run back` (test/model-check-unanswered.test.ts) runs one pair and pins the new wording; test/model-check.test.ts pins it with a verified pair on another tier, and pins "a pair that answers" when the run's tier has a verified fallback.
 
 The queue-position half (the probe that never starts on a saturated server, and the roles it holds) is not fixed here; it is split out as its own open entry, "The model check fails a pair on queue position".
 
