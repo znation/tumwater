@@ -232,6 +232,54 @@ test("RetentionPruner: a throw part-way through the pass still removes the marke
   );
 });
 
+test("RetentionPruner: a pass that throws frees the slot, so the next due poll starts a new pass", async () => {
+  const root = tmpdir();
+  const dir = path.join(sessionsRootDir(root), "feature");
+  const home = tmpdir("codex-failed-home-");
+  writeConfig(root, { backends: { codex: { configDir: home } } });
+  const bin = tmpdir("codex-failed-bin-");
+  const capture = path.join(tmpdir("codex-failed-capture-"), "deleted.log");
+  fs.mkdirSync(path.dirname(capture), { recursive: true });
+  writeScript(path.join(bin, "codex"), `printf '%s\\n' "$*" >> ${capture}`);
+  // An expired codex session with its rollout in the team home; each pass deletes what it finds.
+  const expire = (id: string): void => {
+    recordSession(dir, record({ agent: "codex", id, at: Date.now() - 30 * 24 * 3600 * 1000 }));
+    const rollout = path.join(home, "sessions", "2026", "09", "30", `rollout-2026-09-30T00-00-00-000-${id}.jsonl`);
+    fs.mkdirSync(path.dirname(rollout), { recursive: true });
+    fs.writeFileSync(rollout, "{}\n");
+  };
+  const first = "c7b3e2a1-0000-4000-8000-0000000000f1";
+  const second = "c7b3e2a1-0000-4000-8000-0000000000f2";
+  expire(first);
+  // The first pass throws in its file half (the codex half has already run), so the pass ends
+  // in the `.catch` that logs one warning and clears the in-flight slot.
+  const salvage = salvageDir(root);
+  const undo = patchFsMethod("existsSync", (orig) => (p: unknown) => {
+    if (String(p) === salvage) throw errnoError("EIO");
+    return orig(p);
+  });
+  process.env.TUMWATER_CODEX_BIN = path.join(bin, "codex");
+  try {
+    const pruner = new RetentionPruner(root, 7);
+    await pruner.whenIdle();
+    undo();
+    assert.match(
+      eventsOfType(root, "warning").map((e) => String(e.message)).join("\n"),
+      /session cleanup pass failed: .*EIO/,
+    );
+    // A window change makes a pass due at once. Had the failed pass left its slot set, this
+    // poll would skip and the second id would never be deleted.
+    expire(second);
+    pruner.poll(root, 1);
+    await pruner.whenIdle();
+  } finally {
+    undo();
+    delete process.env.TUMWATER_CODEX_BIN;
+  }
+  const deleted = fs.readFileSync(capture, "utf8").trim().split("\n");
+  assert.ok(deleted.some((line) => line.includes(second)), "the poll after the failed pass ran a new pass");
+});
+
 test("RetentionPruner: a second poll while a pass is in flight starts no second pass", async () => {
   const root = tmpdir();
   const dir = path.join(sessionsRootDir(root), "feature");
