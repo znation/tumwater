@@ -415,14 +415,14 @@ export interface StatusSnapshot {
    * the marker-less file, the unreadable candidate, or a marked block with no text
    * (src/brief/brief.ts's briefStatus.missing) — the doctor `brief` row's marker-less,
    * unreadable and empty-block warning state. Present only in that state, so the always-on
-   * amber `no-brief` alert surfaces the silent state on `tumwater status`, the dashboard; absent
+   * amber `no-brief` alert surfaces the silent state on `tumwater status` and the dashboard; absent
    * otherwise (including the bare pre-init repo), so the surfaces render
    * exactly as before. */
   noBrief?: boolean;
   /** True when the resolved brief block exceeds the read cap (src/brief/brief.ts's
    * briefStatus.overCap) — the doctor `brief` row's over-cap warning state, the warning tune
    * extractPrompt truncates every run's prompt with. Present only in that state (the
-   * always-on amber `brief-truncated` alert surfaces it on `tumwater status`, the dashboard);
+   * always-on amber `brief-truncated` alert surfaces it on `tumwater status` and the dashboard);
    * absent otherwise (at-cap, under-cap, empty and marker-less-keep-
    * `no-brief`'s), so the surfaces render exactly as before. */
   briefTruncated?: boolean;
@@ -440,7 +440,7 @@ export interface StatusSnapshot {
   githubIssues?: GithubIssuesSummary;
   /** Every operator-kept workspace patch under `.tumwater/salvage/` (src/status/status-salvage.ts's
    * collectSalvagePatches), the doctor `salvage patches` row's warning state raised as a standing
-   * amber alert on `tumwater status`, the dashboard — so a run's kept leftovers are
+   * amber alert on `tumwater status` and the dashboard — so a run's kept leftovers are
    * not silently pruned by session retention. Each entry is the patch's position in the
    * oldest-first list (the number the doctor row and `tumwater salvage` print, which
    * `salvage --show <n>` / `--drop <n>` address), its file name, save time and byte size;

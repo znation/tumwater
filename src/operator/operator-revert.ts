@@ -174,7 +174,7 @@ export async function revertMergedCommit(
   ref: string,
 ): Promise<{ ok: true; headSha: string; beforeSha: string; subject: string } | { ok: false; error: string }> {
   try {
-    // Yield first: a synchronous caller (an input handler) may write again right after this
+    // Yield first: a caller may synchronously write again right after this
     // call, and that write takes the same lock synchronously — a lock already held across our
     // awaits would block its event loop until the lock times out.
     await new Promise<void>((resolve) => setImmediate(resolve));

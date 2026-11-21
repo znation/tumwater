@@ -415,12 +415,12 @@ export function timedPauseBits(
   };
 }
 
-/** The per-role pause confirmation `tumwater pause --role` prints (one literal, so the wording
- * cannot drift from resume's; the same single-writer discipline requestWake's wording already
- * follows). `changed` is pauseRole's return: false reports the
+/** The per-role pause confirmation `tumwater pause --role` prints — one literal, the same
+ * single-writer discipline requestWake's wording already follows. `changed` is pauseRole's
+ * return: false reports the
  * idempotent no-op in the CLI's own words instead of a fresh confirmation. `timed` is the
- * deadline this command's `--for` set, echoed back with its wall-clock resume time; a surface
- * that cannot pass a deadline omits it and keeps the plain wording. */
+ * deadline this command's `--for` set, echoed back with its wall-clock resume time; without
+ * `--for` it is omitted and the plain wording stands. */
 export function rolePauseMessage(
   root: string,
   role: string,
@@ -482,7 +482,7 @@ type ReclaimAck =
       durationMs: number;
     };
 
-/** One manual reclaim, shared by `tumwater reclaim`, the dashboard's POST /api/reclaim:
+/** One manual reclaim, shared by `tumwater reclaim` and the dashboard's POST /api/reclaim:
  * with a live team the pass is requested through the marker the
  * orchestrator consumes (so in-use worktrees are respected); with none running it runs
  * in-process, since nothing is in use. Returns the prose confirmation and its `--json`

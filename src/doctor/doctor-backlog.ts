@@ -401,7 +401,7 @@ export async function commitUncommittedBacklog(root: string, config: TumwaterCon
 }
 
 /** The committed/failed/skip wording the CLI and the dashboard handler all share
- * for a BacklogCommitReport, so the three surfaces cannot drift: one `committed <file> on
+ * for a BacklogCommitReport, so the two surfaces cannot drift: one `committed <file> on
  * <base>` line per committed file, one `could not commit <file> — commit it by hand` line per
  * failed file, then the skipped sentence when set. `[]` when the report committed nothing,
  * failed nothing, and carried no skip sentence. `tumwater doctor --commit-backlog`
