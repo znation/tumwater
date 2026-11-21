@@ -11,6 +11,7 @@ import { roleNotesPath, salvageDir } from "../src/paths.js";
 import { PRINCIPLES_MAX_CHARS } from "../src/prompt/principles.js";
 import { BRIEF_TEXT_MAX_CHARS, PROMPT_END, PROMPT_START } from "../src/brief/brief.js";
 import { renderStatus } from "../src/ui/status-render.js";
+import { checkBuildCheck } from "../src/doctor/doctor-project-checks.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { snapshotWith } from "./fixtures/status-fixtures.js";
 import type { StatusSnapshot } from "../src/status/status-data.js";
@@ -321,11 +322,12 @@ test("the standing amber alerts raise from the snapshot's raw flags, worded like
   };
   const has = (flags: StandingFlags, key: string) => raise(flags).find((a) => a.key === key);
 
-  // no-check: a fresh repo declares no build check — the doctor row's warn is the alert's detail.
+  // no-check: a fresh repo declares no build check — blue info, worded as the check row's detail.
   const noCheck = has({ noDeclaredCheck: true }, "no-check");
   assert.ok(noCheck, "a noDeclaredCheck snapshot raises the standing no-check alert");
-  assert.equal(noCheck?.tone, "amber");
-  assert.match(noCheck?.detail ?? "", /plan role will plan this project's check and the feature role declare it/);
+  assert.equal(noCheck?.tone, "blue");
+  assert.equal(noCheck?.title, "Declaring a build check");
+  assert.equal(noCheck?.detail, checkBuildCheck(root).detail);
   assert.ok(!has({}, "no-check"), "a check-declared snapshot raises nothing");
 
   // no-brief: a marker-less README is the silent state doctor warns on.
@@ -418,8 +420,8 @@ test("the standing amber alerts raise from the snapshot's raw flags, worded like
 test("tumwater status prints the standing no-check banner from the snapshot's flag", () => {
   const root = makeRepo();
   const flagged = { ...snapshotWith([{ role: "clean" }]), noDeclaredCheck: true };
-  assert.match(renderStatus(root, flagged as StatusSnapshot), /No build check declared/);
-  assert.doesNotMatch(renderStatus(root, snapshotWith([{ role: "clean" }])), /No build check declared/);
+  assert.match(renderStatus(root, flagged as StatusSnapshot), /Declaring a build check/);
+  assert.doesNotMatch(renderStatus(root, snapshotWith([{ role: "clean" }])), /Declaring a build check/);
 });
 
 test("root install drift raises one amber install alert naming up to five packages", () => {

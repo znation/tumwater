@@ -263,18 +263,19 @@ export function checkDurationPhrase(events: readonly HarnessEvent[]): string | u
 /** Declared project check — names what the review gate's deterministic pre-check, the
  * red-main baseline, and redeploy's green check will run, without running it: a configured
  * `check.command` (plans/portability.md §6/7), else the npm auto-detection. None declared is
- * a warn, not informational (the 2026-09-05 stance predates non-npm targets being supported,
- * when a warn would have been noise no operator could act on — with `check.command` available
- * the warning is actionable): the three gates degrade to "no check" and a silently absent
- * safety layer is the failure this check exists to surface. Warn does not fail the exit code
- * (the fallback check's precedent, doctor-fallback-checks.ts's checkFallbackModel). */
+ * an ok row, not a warn, by the operator's 2026-11-21 request: a project with no check is a
+ * state tumwater settles on its own — the orchestrator queues the director to declare one
+ * (src/prompt/check-declaration-request.ts) — so nothing is left for the operator to act on.
+ * The row still says the three gates are off until that declaration merges, so the silent
+ * absence stays visible in the detail; the `no-check` status alert names the same state as
+ * blue information (team-alert-standings.ts). */
 export function checkBuildCheck(
   root: string,
   config?: CheckConfigSlice | null,
 ): CheckOutcome {
   const check = detectBuildCheck(root, config ?? undefined);
   if (!check)
-    return warnOutcome("none declared — the review gate's build pre-check, the red-main baseline, and redeploy's green check are all off (set `check.command` in tumwater.json for a non-npm repo); the plan role will plan this project's check and the feature role declare it, a test/typecheck/build npm script or check.command");
+    return okOutcome("none declared yet — tumwater is declaring one: the director finds this project's test, typecheck or build command and declares it, and the review gate's build pre-check, the red-main baseline and redeploy's green check turn on once it merges");
   // The in-lock command from mergeCommandOf (absent mergeCommand falls back to the gate
   // command): the row names which command the merge lock runs and where the full check lands,
   // facts a reader cannot get from detectBuildCheck alone. The after-merge roles are not named

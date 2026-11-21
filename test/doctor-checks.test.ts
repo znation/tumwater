@@ -968,11 +968,11 @@ test("checkMergeLock classifies absent, live (with and without pid), and stale l
 
 test("checkBuildCheck names the declared script and walks up from a worktree to the installed root", () => {
   const none = checkBuildCheck(makeRepo());
-  // The no-check case is a warn naming the consequence (plans/portability.md §6/7): the three
-  // gates degrade to "no check" and a silently absent safety layer is what doctor must surface.
+  // The no-check case is an ok row (2026-11-21): tumwater declares the check itself
+  // (check-declaration-request.ts), so the row says the gates stay off until that merges.
   assert.deepEqual(none, {
-    level: "warn",
-    detail: "none declared — the review gate's build pre-check, the red-main baseline, and redeploy's green check are all off (set `check.command` in tumwater.json for a non-npm repo); the plan role will plan this project's check and the feature role declare it, a test/typecheck/build npm script or check.command",
+    level: "ok",
+    detail: "none declared yet — tumwater is declaring one: the director finds this project's test, typecheck or build command and declares it, and the review gate's build pre-check, the red-main baseline and redeploy's green check turn on once it merges",
   });
 
   const root = makeRepo();

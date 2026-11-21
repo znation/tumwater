@@ -45,10 +45,11 @@ interface StandingAlertsInput {
   root: string;
 }
 
-// Each arm is gated by the snapshot's raw flag (the `--json` twin). The six arms whose
-// trigger is a doctor row raise their amber alert through pushDoctorTwinAlert — whose doc
+// Each arm is gated by the snapshot's raw flag (the `--json` twin). The amber arms whose
+// trigger is a doctor row raise their alert through pushDoctorTwinAlert — whose doc
 // states how the row's warn level is the trigger and its warn sentence the detail — so the
-// alert and the row stay twins by construction. The instance-pool arm reads the
+// alert and the row stay twins by construction. The no-check arm is the one blue info alert
+// (its row reads ok by design) and keeps its own body. The instance-pool arm reads the
 // smallPoolProblems selector instead of a doctor row and keeps its own body.
 
 /** Push one standing amber alert off a doctor row that reads `warn`: the row's detail is the
@@ -56,8 +57,9 @@ interface StandingAlertsInput {
  * construction — a row that reads ok is a state the snapshot flag's own read could not see
  * (a concurrent write between the flag's read and the row's), and it raises nothing. `key`
  * and `title` are the arm's own; the tone is fixed amber and the actions empty, as every
- * doctor-twin standing alert is. The five arms that read a CheckOutcome use it: no-check,
- * no-brief, brief-truncated, role-notes-truncated and salvage-patches.
+ * doctor-twin standing alert is. The four amber arms that read a CheckOutcome use it: no-brief,
+ * brief-truncated, role-notes-truncated and salvage-patches. no-check does not: its row reads ok
+ * (a declaration is on its way), so it raises blue info whatever the row says.
  * instance-pool is not one — it reads the smallPoolProblems selector, not a doctor row, so it
  * keeps its own arm. */
 function pushDoctorTwinAlert(out: TeamAlert[], row: CheckOutcome, key: string, title: string): void {
@@ -65,13 +67,12 @@ function pushDoctorTwinAlert(out: TeamAlert[], row: CheckOutcome, key: string, t
   out.push({ key, tone: "amber", title, detail: row.detail, actions: [] });
 }
 
+// The no-check state settles itself: the orchestrator queues the director to declare a check
+// (check-declaration-request.ts), so this is information, not an amber action. The detail is the
+// `check` row's own sentence, read whole, so the alert and the row cannot drift.
 function pushNoCheckAlert(out: TeamAlert[], config: TumwaterConfig, root: string): void {
-  pushDoctorTwinAlert(
-    out,
-    checkBuildCheck(root, config.check ? { check: config.check } : null),
-    "no-check",
-    "No build check declared",
-  );
+  const row = checkBuildCheck(root, config.check ? { check: config.check } : null);
+  out.push({ key: "no-check", tone: "blue", title: "Declaring a build check", detail: row.detail, actions: [] });
 }
 
 function pushNoBriefAlert(out: TeamAlert[], root: string): void {
@@ -139,7 +140,7 @@ function pushSalvagePatchesAlert(out: TeamAlert[], root: string): void {
   );
 }
 
-/** The standing doctor-twin alerts, in emission order: no-check, no-brief,
+/** The standing doctor-twin alerts, in emission order: no-check (blue), no-brief,
  * brief-truncated, role-notes-truncated, salvage-patches, instance-pool, config-problem.
  * The caller pushes the returned alerts at the position this run used to
  * occupy, so the emitted key order is unchanged. */

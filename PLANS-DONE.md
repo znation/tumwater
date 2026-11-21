@@ -5,6 +5,48 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Self-declared check, part 2/3: the no-check alert becomes a blue info message saying tumwater is declaring a check (planned 2026-11-21 by the director role; "requires part 1/3 landed"; touches src/doctor/doctor-project-checks.ts src/ui/team-alert-standings.ts test/doctor-checks.test.ts test/team-alerts.test.ts docs/invariants.md docs/feature-doctor.md) — done 2026-11-21 by the feature role
+
+**Goal.** The operator asked on 2026-11-21 that this condition be an info message, not a
+warning, saying the project will get a gate check, because part 1/3 now creates one
+automatically. Under PRINCIPLES.md ("raise a UI warning only for what the operator must act
+on"), a state the system settles on its own is not amber.
+
+**Approach.**
+- `checkBuildCheck` (src/doctor/doctor-project-checks.ts): when no check is declared, return
+  `okOutcome` instead of `warnOutcome`, with this detail: `none declared yet — tumwater is
+  declaring one: the director finds this project's test, typecheck or build command and
+  declares it, and the review gate's build pre-check, the red-main baseline and redeploy's
+  green check turn on once it merges`. Rewrite the function's doc comment: it currently
+  argues the warn level, and its 2026-09-05 rationale is superseded by the operator's
+  2026-11-21 request.
+- `pushNoCheckAlert` (src/ui/team-alert-standings.ts) stops using `pushDoctorTwinAlert`
+  (which raises only on a warn row). It pushes `{ key: "no-check", tone: "blue", title:
+  "Declaring a build check", detail: <the row's detail>, actions: [] }` whenever it is called.
+  `buildStandingAlerts` already calls it only under the snapshot's `noDeclaredCheck` flag.
+  Update `pushDoctorTwinAlert`'s doc comment, which lists no-check among its users.
+- docs/invariants.md INV-T6: no-check leaves the "standing amber alerts" list. It is now the
+  one standing blue alert, still gated by `noDeclaredCheck` and still worded by
+  checkBuildCheck's detail. docs/feature-doctor.md: update the `check` row's description if
+  it says "warn".
+
+**Acceptance criteria.**
+- test/doctor-checks.test.ts: with no check, the `check` row has level `ok` and the new
+  detail (its existing exact-text case is updated, since this sentence is the row's
+  contract).
+- test/team-alerts.test.ts: under `noDeclaredCheck` the `no-check` alert has tone `blue`,
+  title "Declaring a build check", and detail equal to `checkBuildCheck`'s detail. The old
+  `plan role will plan this project's check` match is gone. Without the flag there is no
+  `no-check` alert. "tumwater status prints the standing no-check banner from the snapshot's
+  flag" now matches the new title.
+- No source or test file still contains the old sentence "set `check.command` in tumwater.json
+  for a non-npm repo" (checked by grep).
+
+**Changed beyond the touches list.** docs/cli.md (the `status` row's no-check wording),
+comments in src/status/status-data.ts and src/config/config-editable-keys.ts, and the
+team-alerts.test.ts import of checkBuildCheck. docs/feature-doctor.md names the `check` row
+without its level, so it is unchanged.
+
 ### Self-declared check, part 3/3: retire the plan/feature no-check notes, so the director's automatic request is the one way a check gets declared (planned 2026-11-21 by the director role; "requires part 1/3 landed"; touches src/prompt/gate-notes.ts src/run/run-prompt.ts src/prompt/prompt.ts src/backlog/backlog.ts src/roles/role-guidance.ts src/roles/role-catalog.ts test/gate-notes.test.ts test/run-prompt.test.ts docs/invariants.md) — done 2026-11-21 by the feature role
 
 **Goal.** "Prefer one sensible way." After part 1/3, a missing check has two cures: the

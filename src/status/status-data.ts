@@ -399,9 +399,9 @@ export interface StatusSnapshot {
   remoteCi?: RemoteCiStatus;
   /** True when no deterministic build check is declared — `detectBuildCheck(root, config)`
    * returned null (no `check.command` and no qualifying npm `package.json` on the walked-up
-   * root) — the doctor `check` row's warning state (src/doctor/doctor-project-checks.ts's
-   * checkBuildCheck). Present only in that state, so the always-on amber `no-check` alert
-   * surfaces the silent state on `tumwater status`, the dashboard and the TUI; absent
+   * root) — the doctor `check` row's undeclared state (src/doctor/doctor-project-checks.ts's
+   * checkBuildCheck). Present only in that state, so the always-on blue `no-check` info alert
+   * surfaces the state on `tumwater status`, the dashboard and the TUI; absent
    * otherwise, so the surfaces render exactly as before. */
   noDeclaredCheck?: boolean;
   /** The reason the live tumwater.json did not load (a validation or parse error's text, or

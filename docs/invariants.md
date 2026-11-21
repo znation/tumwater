@@ -1557,13 +1557,15 @@ stat-keyed cache without re-reading" (it pins the cache hit and the per-poll cop
 
 ### INV-T6: each standing doctor-twin alert is gated by its snapshot flag and worded by its doctor row
 
-**Guarantee.** The seven standing amber alerts — no-check, no-brief, brief-truncated,
+**Guarantee.** The seven standing doctor-twin alerts — no-check, no-brief, brief-truncated,
 role-notes-truncated, salvage-patches, instance-pool, config-problem — are
 raised by `buildStandingAlerts` (team-alert-standings.ts) only when their snapshot flag stands
 (`noDeclaredCheck`, `noBrief`, `briefTruncated`, a non-empty `roleNotesOverCap`, a non-empty
 `salvagePatches`, or a non-empty `configProblem`; instance-pool by the
-configured pool itself, `smallPoolProblems`), and each alert's detail is the warn sentence of the
-doctor row it twins (checkBuildCheck, checkBrief, checkRoleNotes, checkSalvagePatches,
+configured pool itself, `smallPoolProblems`). Six are amber. no-check is the one blue info alert
+(titled "Declaring a build check"): its row reads ok while tumwater declares the check itself, so
+its detail is checkBuildCheck's ok sentence, whole. The amber detail is the warn sentence of the
+doctor row it twins (checkBrief, checkRoleNotes, checkSalvagePatches,
 smallPoolProblems; config-problem phrases the `init` row's config-validity
 failure from the `configProblem` string, with the remedy) — so the rendered alert and the
 `tumwater doctor` row cannot disagree on the trigger, the caps, or the remedy, and both

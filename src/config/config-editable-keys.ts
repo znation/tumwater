@@ -42,6 +42,6 @@ export const EDITABLE_CONFIG_KEYS = [
   // edited here as JSON. The CLI's dotted `backends.<id>.bin`/`.args` merge one field at a time.
   "backends",
   // The declared check (plans/portability.md §6/7, the no-check row): its Settings row is the
-  // surfaced remedy for the amber `no-check` alert — set `check.command` and the alert clears.
+  // surfaced remedy for the `no-check` info alert — set `check.command` and the alert clears.
   "check",
 ] as const;
