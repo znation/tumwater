@@ -222,38 +222,6 @@ fall behind a busy Codex team indefinitely.)
 - The maintenance alert reads as informational and idle rows show their normal phase while the
   marker stands.
 
-### Operator steering, part 4/5: The README says up front that you steer tumwater, mainly from your own agent (planned 2026-11-16 by the operator; requires Operator steering part 3/5 landed; touches README.md)
-
-**Goal.** A first-time reader learns from the README's opening that tumwater is meant to be
-steered, not run hands-off, and that the primary way is their own interactive agent editing the
-backlog.
-
-_Amended 2026-11-16 by the operator: no longer names the TUI, which the Remove the TUI series
-deletes._
-
-**Approach.**
-- Rewrite the intro paragraph after the token warning. Keep what it says about roles, small reviewed
-  commits and local-only git state. Replace "It came from wanting to write only the brief and let
-  a team of always-on specialists do the rest" with: the team does the volume work, and you steer
-  it, mainly by curating PLANS.md and BUGS.md with a strong model in your own interactive harness
-  (claude, codex, omp).
-- Add a short `## How you work with tumwater` section between Install and Status: the three ways
-  to steer (your own agent, primary; the director prompt; answering questions), the one-line loop
-  ("start the team, open your agent in the repo, tell it to run `tumwater guide`"), and a link to
-  docs/steering.md.
-- In Usage, the paragraph starting "From another terminal" leads with your agent and `tumwater
-  guide` before the browser dashboard, `status` and `logs`.
-- Leave the warning, the `tumwater:status` markers and the brief appendix between the
-  `tumwater:prompt` markers untouched; the brief is the operator's to change.
-
-**Acceptance criteria.**
-- The README no longer says you only write the brief anywhere outside the brief appendix.
-- The new section exists between Install and Status, links docs/steering.md, and names `tumwater
-  guide`.
-- The status and prompt marker blocks are byte-identical to before.
-
-**Tests.** The project's gate.
-
 ### Operator steering, part 5/5: Seeded files, help and package text stop describing a hands-off team (planned 2026-11-16 by the operator; requires Operator steering part 2/5 landed; touches src/init/init-templates.ts src/cli/cli-init.ts src/cli/cli-help-text.ts package.json docs/glossary.md PLANS.md)
 
 **Goal.** The text a new user meets outside the README matches the steered use. Today the seeded

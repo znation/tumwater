@@ -21,12 +21,13 @@ Then open http://127.0.0.1:7180 to watch the team work. Requires Node 20.3+ on m
 > fast. Set `maxDailyCostUsd` before you start, and watch actual spend with `tumwater report`
 > and `tumwater status`.
 
-tumwater is an opinionated autonomous development team running on a pluggable agent
+tumwater is an opinionated development team running on a pluggable agent
 backend — [pi](https://github.com/badlogic/pi-mono) is the default, and Claude Code, OpenCode
-and Codex are selectable with `backend`. You write a short project brief, and a team of
-roles (feature, bugfix, planning, tests, cleanup, docs, and more) builds the project
-one small, reviewed commit at a time. It came from wanting to write only the brief and let a team
-of always-on specialists do the rest: each role owns one concern, merges one change per run,
+and Codex are selectable with `backend`. A team of roles (feature, bugfix, planning, tests,
+cleanup, docs, and more) does the volume work, one small, reviewed commit at a time, and you
+steer it: mainly by curating the backlog in `PLANS.md` and `BUGS.md` with a strong model in your
+own interactive harness (`claude`, `codex`, or `omp`) — see [docs/steering.md](docs/steering.md).
+Each role owns one concern, merges one change per run,
 sleeps when it has nothing to do, and wakes when main moves. All project state lives in the
 local git repo, and no remote is ever touched. The words used here (team, role, run, merge) are
 defined in [docs/glossary.md](docs/glossary.md).
@@ -50,6 +51,28 @@ against its free DeepSeek tier; it needs an OpenCode V2 install (`brew install o
 also outside `npm test`. `npm run smoke:codex` is the same live check for the codex backend,
 driving the real `codex` CLI against a logged-in ChatGPT subscription; it needs a Codex install
 and is also outside `npm test`.
+
+## How you work with tumwater
+
+The team does the volume work; you decide what it works on. There are three ways to steer, in the
+order they are worth doing:
+
+1. **Your own agent — the primary way.** Open `claude`, `codex`, or `omp` in the repo in a second
+   terminal and have it work the backlog: file, sharpen, reorder, and retire entries in `PLANS.md`
+   and `BUGS.md`. It has your conversation, your judgment, and the whole repo.
+2. **The director prompt** — `tumwater prompt "<text>"`, or the dashboard's prompt box, puts a
+   message in the director's inbox and the director acts on it in its next run. Good for a quick
+   nudge without leaving the UI.
+3. **Answering questions** — `tumwater questions` lists the forks the roles would not guess at;
+   `tumwater questions answer <n> "<text>"` records your answer and wakes the role that asked.
+
+The loop in one line: start the team, open your agent in the repo, tell it to run
+`tumwater guide` first.
+
+Running hands-off works (`tumwater start --for 2h`, `tumwater start --once`) — it is how you try a
+project or run a scheduled round — but a backlog you wrote is where tumwater does its best work.
+[docs/steering.md](docs/steering.md) is the full guide: what makes a good entry, and how to land
+your own hand-made commit on main with `tumwater land`.
 
 ## Status
 
@@ -77,9 +100,10 @@ tumwater start --once           # one round of runs for cron/CI; exits 3 if a ru
 A fresh or empty project is seeded with `"bootstrap": {"untilPlansDone": 5}`, which holds the
 maintenance roles until 5 plans are done; remove it from `tumwater.json` to end that early.
 
-From another terminal, `tumwater guide` prints the working rules for an interactive agent —
-your own claude, codex, or omp — steering the backlog in `PLANS.md` and `BUGS.md`; the browser
-dashboard watches the team, `tumwater status`
+From another terminal, steer with your own agent: run `tumwater guide` and hand its output to your
+claude, codex, or omp sitting in the repo, so it can work the backlog in `PLANS.md` and `BUGS.md`
+([docs/steering.md](docs/steering.md)). To watch and nudge the team yourself, the browser
+dashboard watches it, `tumwater status`
 and `tumwater logs -f` check it, `tumwater brief --file <path>` replaces the brief,
 `tumwater prompt "<text>"` sends a message to the director's inbox, `tumwater plan` and
 `tumwater bug` file backlog entries, `tumwater land` puts your own hand-made commit on main

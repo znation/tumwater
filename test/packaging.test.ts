@@ -67,6 +67,27 @@ test("the README leads with the token warning", () => {
   );
 });
 
+test("the README's prose outside the brief appendix steers, and its steering section sits between Install and Status", () => {
+  const readme = fs.readFileSync(new URL("../../README.md", import.meta.url), "utf8");
+  // Everything the README says outside the brief the operator owns.
+  const outside = readme.slice(0, readme.indexOf("<!-- tumwater:prompt:start -->"));
+  const install = outside.indexOf("\n## Install\n");
+  const steering = outside.indexOf("\n## How you work with tumwater\n");
+  const status = outside.indexOf("\n## Status\n");
+  assert.ok(install > -1 && status > -1, "README must carry an Install and a Status section");
+  assert.ok(
+    steering > install && steering < status,
+    "the steering section must sit between Install and Status",
+  );
+  const section = outside.slice(steering, status);
+  assert.ok(section.includes("[docs/steering.md](docs/steering.md)"), "links the steering guide");
+  assert.ok(section.includes("`tumwater guide`"), "names tumwater guide");
+  assert.match(section, /your own agent/i, "puts the operator's own agent first");
+  // A first-time reader must not learn hands-off is the design.
+  assert.ok(!/only write (the brief|the initial prompt)/.test(outside), "no hands-off framing");
+  assert.ok(!outside.includes("always-on specialists"), "no hands-off framing");
+});
+
 test("every release prepends the token warning and the hand-written notes", () => {
   const yml = fs.readFileSync(
     new URL("../../.github/workflows/release.yml", import.meta.url),
