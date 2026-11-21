@@ -142,8 +142,9 @@ export type LeftoverRecovery =
 /** The recovery arms that end the run through the recovery-finishing phase (runner-recovery.ts
  * `finishRecoveryRunPhase`): `pinned`, `relief_wait`, and `unpinned`. The other
  * three arms never reach it — `handback` and `discarded` are resolved inline before the phase
- * (runner-run.ts), and `already_queued` falls through to authoring — so their exclusion from the
- * parameter type is stated once here and shared by the three `finishRecoveryRun` declarations. */
+ * (runner-leftover-recovery.ts), and `already_queued` falls through to authoring — so their
+ * exclusion from the parameter type is stated once here and shared by the three
+ * `finishRecoveryRun` declarations. */
 export type FinishableRecovery = Exclude<
   LeftoverRecovery,
   { kind: "discarded" } | { kind: "handback" } | { kind: "already_queued" }
