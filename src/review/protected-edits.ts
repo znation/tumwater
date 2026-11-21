@@ -1,6 +1,6 @@
 import path from "node:path";
 import { promptBlockOf } from "../brief/brief.js";
-import { readTextOrNull } from "../files/files.js";
+import { readDirTextOrEmpty } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { briefCandidates } from "../paths.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
@@ -29,7 +29,7 @@ export async function briefEditReason(
     for (const file of briefs) {
       const base = promptBlockOf(await fileContentAt(wt, baseRev, file));
       if (base === null) continue;
-      const head = promptBlockOf(readTextOrNull(path.join(wt, file)) ?? "");
+      const head = promptBlockOf(readDirTextOrEmpty(wt, file));
       if (head !== base)
         return `${file} changes the brief between the tumwater:prompt markers — only you edit it (tumwater brief); restore the block`;
     }

@@ -4,7 +4,6 @@
  * problem this change adds is reported. All are staging-only: the review gate does not run
  * them (see stage-check.ts for why each is left out of the gate). */
 
-import path from "node:path";
 import { finishedTitle, readdedHeadings } from "../backlog/backlog-structure.js";
 import {
   fenceAwareHeadingLines,
@@ -14,7 +13,7 @@ import {
   type FinishedArchive,
 } from "../backlog/backlog-md.js";
 import { FINISHED_PLAN_RE, FIXED_DATE_RE, isRetiredTitle } from "../backlog/backlog.js";
-import { readTextOrNull } from "../files/files.js";
+import { readDirTextOrEmpty } from "../files/files.js";
 import { commitExists, isMergedInto } from "../git/git.js";
 import type { PendingPlanChange } from "../backlog/backlog-pending.js";
 import { refusalNote } from "../backlog/backlog-eligibility.js";
@@ -359,7 +358,7 @@ const finishedKeyOf = (title: string): string => finishedKey(title, FINISHED_PLA
 function retireSurvivorKeys(wt: string, head: string): string[] {
   return [
     ...parseEntryDetails(head, "Planned").map((e) => finishedKeyOf(e.title)),
-    ...parseEntryDetails(readTextOrNull(path.join(wt, "PLANS-DONE.md")) ?? "", "Done")
+    ...parseEntryDetails(readDirTextOrEmpty(wt, "PLANS-DONE.md"), "Done")
       .filter((e) => !isRetiredTitle(e.title))
       .map((e) => finishedKeyOf(e.title)),
   ];

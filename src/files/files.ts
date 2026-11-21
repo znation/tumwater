@@ -122,6 +122,13 @@ export function readTextOrNull(file: string): string | null {
   }
 }
 
+/** `file` under `dir`, read as text, or "" when it is missing or unreadable: the blank default
+ * the worktree gates read a change's files with, so a file the change lacks compares as empty
+ * rather than throwing. Callers that must tell missing from empty use readTextOrNull. */
+export function readDirTextOrEmpty(dir: string, file: string): string {
+  return readTextOrNull(path.join(dir, file)) ?? "";
+}
+
 /** Read a text file whole, but only when it is a regular file: a symlink (or directory,
  * gitlink, FIFO) is never followed, so a hostile entry that points out of the worktree cannot
  * pull an arbitrary host file's text into whatever reads it (the same lstat policy INV-G3 and
