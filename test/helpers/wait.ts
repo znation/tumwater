@@ -226,7 +226,7 @@ export function within(p: Promise<unknown>, ms = 1_000): Promise<boolean> {
 export function watchdogClock(
   t: TestContext,
   opts: { timeouts?: boolean } = {},
-): { advance(ms: number): void; release(): void } {
+): { advance(ms: number): void; suspend(ms: number): void; release(): void } {
   t.mock.timers.enable({
     apis: opts.timeouts ? ["Date", "setInterval", "setTimeout"] : ["Date", "setInterval"],
     now: Date.now(),
@@ -238,6 +238,9 @@ export function watchdogClock(
     advance: (ms) => {
       for (let left = ms; left > 0; left -= 250) t.mock.timers.tick(Math.min(250, left)); // retired-name-ok: node:test mock clock
     },
+    // One host sleep: a single tick jumps the clock across the span, so the first check after
+    // it sees the whole gap and the checks it skipped see none — how a suspended host resumes.
+    suspend: (ms) => t.mock.timers.tick(ms), // retired-name-ok: node:test mock clock
     release: () => t.mock.timers.reset(),
   };
 }

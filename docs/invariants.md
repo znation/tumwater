@@ -164,6 +164,25 @@ header names a release build by its npm version and a checkout build by its sha"
 `test/cli-start.test.ts` — "the start banner names a release build by its version, a checkout
 build by its sha, and none at all without a stamp".
 
+### INV-A9: the quiet watch reads every silence in awake time, and a host sleep is never silence
+
+**Guarantee.** The pi run's quiet watch (`startQuietWatch`) measures each silence it judges — the
+quiet kill against the last progress, the per-call stall kill and stall warning against a tool
+call's last activity, and the unanswered-model warning against the request's start — in awake
+time: the wall time since that mark, less the part of each recorded host-sleep span that fell
+after it. A check that comes late by more than its period plus `SLEEP_SPAN_TOLERANCE_MS` is a
+suspended host; it samples the sleep clocks, and no silence is judged until that sample's span is
+recorded. A platform with no readable sleep clock records no span and keeps the wall-clock reading.
+
+**Binds.** `src/pi/pi-watchdogs.ts` (`startQuietWatch`, `sampleHostSleep`, `awakeMsSince`),
+`src/build/host-sleep.ts` (`sampleSleepClock`, `sleptMsBetween`),
+`src/build/build-check-events.ts` (`SLEEP_SPAN_TOLERANCE_MS`).
+
+**Pinned by.** `test/pi-watchdogs.test.ts` — "a run silent only across a recorded host sleep is
+not quiet-killed", "the same silence with no host sleep recorded is still quiet-killed", "a model
+reply waited across a host sleep warns on its awake wait only" and "an open tool call silent
+across a host sleep is warned on its awake silence only".
+
 ## Reader and writer over a persisted or appended file
 
 A file that one process appends to or persists and another reads has two ends to agree on: the

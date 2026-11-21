@@ -5,6 +5,35 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Host sleep, part 1/3: the quiet and stall clock counts host sleep as model silence, so it quiet-kills runs and warns "model request unanswered" across a sleep (found by an operator session 2026-11-19, split 2026-11-21 by the plan role) — fixed 2026-11-21 by the bugfix role
+
+Siblings: "Host sleep, part 2/3: the run deadline…" (run and post-merge review wall budgets) and "Host sleep, part 3/3: a model check whose probe window held a host sleep…". Each fixes its own mechanism and lands on its own.
+
+On 11-19 the host was lid-closed from about 05:20 to 15:41 PST. `pmset -g log` shows it asleep 37–61 minutes of every hour, with short maintenance DarkWakes in between. Every watchdog that judges a run measures on the wall clock, so that sleep read as a backend that stopped answering. This part's share of that day:
+- 75 `model request unanswered … no reply for 5m–20m` warnings. There were none before 05:20.
+- Three runs were `quiet_killed` with "killed as hung: no agent progress for over 1800s": bugfix-3 #136, perf #562 and plan #2689.
+
+Overlaying those endings on the pmset sleep intervals shows 85–95% of each one's wall time was host sleep.
+
+**Reproduce.** Write `pmset -g log | grep 'Entering Sleep state'` to a file. Parse each line's timestamp and its trailing `N secs` into an interval. For every `run_end` with result `quiet_killed`, and every `model request unanswered` warning, in `.tumwater/log/events.jsonl` since 11-19 05:00, sum the sleep that falls inside the silence it reports.
+
+**Cause.** `startQuietWatch` in src/pi/pi-watchdogs.ts reads every silence as `Date.now() - <start>`: the quiet kill (`lastProgressAt` against `allowedSilenceMs()`, which includes the zero-byte 30-minute bound), the per-call stall kill and stall warning (`call.lastActivityAt`), and `warnUnansweredReply` (`pending.since`). Its interval cannot fire while the host is suspended, so the first tick after wake sees the whole sleep as silence. Its own comment calls checking "against the wall clock, so it also fires promptly after a machine sleep" a feature. Build checks already measure sleep with `sampleSleepClock` / `sleptMsBetween` (src/build/host-sleep.ts) and `SLEEP_SPAN_TOLERANCE_MS` (src/build/build-check-events.ts). The quiet watch does not use them.
+
+**Fix.** Count only awake time in every silence the quiet watch judges:
+- Add `sampleSleep?: SleepSampler` to `PiWatchdogDeps`, defaulting to `sampleSleepClock`. Part 2/3 adds the same field; if it is already there, reuse it.
+- Take a sleep sample when the watch starts. On each tick, compare `Date.now()` with the previous tick's. A suspended host leaves a gap longer than the tick period, so only when the gap exceeds the period by more than `SLEEP_SPAN_TOLERANCE_MS`, sample again without blocking the tick. Then record `sleptMsBetween(previous, current)` as a sleep span `{ endAt, ms }` when it is at least `SLEEP_SPAN_TOLERANCE_MS`, and keep the new sample as the baseline. Gating on the gap keeps the per-tick cost at zero on an awake host. On macOS each sample execs two `sysctl` calls.
+- Replace each `Date.now() - t` silence reading in `startQuietWatch` with an awake-time reading: the wall time since `t`, minus the part of each recorded span that falls after `t`.
+- An empty sample (a platform with no sleep clock, or a failed read) records no span, which is today's behaviour. Update the `startQuietWatch` comment and the matching docs/invariants.md text in the same change.
+
+**Acceptance criteria** (test/pi-watchdogs.test.ts, driven through a scripted `sampleSleep` and a clock the test controls, never a real suspend):
+- A run whose only silence is a recorded 40-minute sleep, with no awake silence past its quiet window, is not quiet-killed. It has made progress, `quietMs` is 30 minutes, and the next progress arrives right after wake.
+- The same run with no sleep recorded, silent for the same wall time, is still quiet-killed.
+- A pending model reply whose wait is 25 wall minutes, 22 of them a recorded sleep, raises no `model request unanswered` warning at a 5-minute threshold. At 25 awake minutes it warns, and the warning's duration reads the awake minutes.
+- An open tool call silent across a recorded sleep is neither stall-warned nor stall-killed until its awake silence crosses the bound.
+- A sampler that returns empty samples leaves every existing pi-watchdogs.test.ts and runner-quiet-watchdog.test.ts case passing unchanged.
+
+**Validation gap:** no-fake — the quiet watch had no host-sleep seam, so the scripted sampler and the single-tick `watchdogClock.suspend` jump the regression tests needed were new; no existing fake modeled a suspend.
+
 ### A change whose own commit message says it leaves tests failing still merges, because nothing reads the author's declared-red RISK or VERIFIED line (reported by the user 2026-11-20, split 2026-11-21 by the plan role) — fixed 2026-11-21 by the bugfix role
 
 The report held two gaps. This entry is the first, the declared-red reply. The second, the budgeted gate selecting too few dependents of a widely read default, reverses the gate's documented trade-off ("a test this leaves out costs a red main that the watch finds and ci heals forward", test/affected-tests.ts's header). That makes it the operator's call, so it is QUESTIONS.md's "Should a change to a widely read default run more than the budgeted gate?" and not a bug here.

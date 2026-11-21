@@ -10,7 +10,7 @@
 import { callBuffersOutput, stallThresholdMs } from "./command-shape.js";
 import type { OpenToolCall, PendingReply } from "./pi-event-line.js";
 import { SLEEP_SPAN_TOLERANCE_MS, sleptPhrase } from "../build/build-check-events.js";
-import { sleptMsBetween, type SleepSample, type SleepSampler } from "../build/host-sleep.js";
+import { sampleSleepClock, sleptMsBetween, type SleepSample, type SleepSampler } from "../build/host-sleep.js";
 
 interface PiWatchdogDeps {
   /** The parser's forward-progress counter, read live at each check. */
@@ -50,9 +50,11 @@ interface PiWatchdogDeps {
    * wait ends (the model answered, or the run settled with the request still open). The model
    * check acts on it (src/model-check/model-check-gate.ts); the warning text stays for people. */
   onUnansweredReply?: (waiting: boolean) => void;
-  /** Reads the host's sleep clocks (src/build/host-sleep.ts). The deadline samples whenever it
-   * is armed and again before it kills: a window that held a measured sleep re-arms for the
-   * slept time instead, so the budget counts awake time (BUGS.md host sleep part 2/3). Absent
+  /** Reads the host's sleep clocks (src/build/host-sleep.ts); a test's script stands in for a
+   * host it cannot suspend. The deadline samples whenever it is armed and again before it
+   * kills: a window that held a measured sleep re-arms for the slept time instead, so the
+   * budget counts awake time (BUGS.md host sleep part 2/3). The quiet watch reads every
+   * silence through the same sampler, judging it in awake time across a host sleep. Absent
    * means no sampling, and the deadline kills synchronously as it always did. The production
    * wiring passes sampleSleepClock. */
   sampleSleep?: SleepSampler;
@@ -105,6 +107,16 @@ interface WatchdogState {
   /** The start (PendingReply.since) of the unanswered stretch the warning last named, until
    * that stretch ends; undefined when none is open. */
   replyWaitSince?: number;
+  /** The host's sleep clocks at the last sample (the watch's start, or the last gap): the
+   * baseline the next gap is measured from. Undefined until the first sample lands. */
+  sleepBaseline?: SleepSample;
+  /** The detection time of a host-sleep gap whose sample is still in flight: no silence is
+   * judged until that sample's span, if any, is recorded. */
+  pendingGapAt?: number;
+  /** The host sleep the quiet watch measured: each span ended at `endAt` and lasted `ms`. */
+  sleepSpans: { endAt: number; ms: number }[];
+  /** Epoch ms of the quiet watch's previous check; the gap since it reveals a host sleep. */
+  lastCheckAt: number;
   checkpoint?: ReturnType<typeof setTimeout>;
   timeout?: ReturnType<typeof setTimeout>;
   quietCheck?: ReturnType<typeof setInterval>;
@@ -237,6 +249,37 @@ function startDeadlineWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
   armDeadline(deps.runTimeoutMs);
 }
 
+/** Sample the host's sleep clocks and record the host sleep since the previous sample as a span
+ * ending at `gapAt`, the check that found the gap. Called with no `gapAt`, it only takes the
+ * baseline the first gap is measured from. An empty sample (no clock on this platform, or a
+ * failed read) records no span, so that platform keeps the wall-clock reading (BUGS.md
+ * 2026-11-21). */
+function sampleHostSleep(state: WatchdogState, deps: PiWatchdogDeps, gapAt?: number): void {
+  const sampler = deps.sampleSleep ?? sampleSleepClock;
+  if (gapAt !== undefined) state.pendingGapAt = gapAt;
+  void sampler()
+    .catch((): SleepSample => ({}))
+    .then((sample) => {
+      const previous = state.sleepBaseline;
+      state.sleepBaseline = sample;
+      const sleptMs = previous ? sleptMsBetween(previous, sample) : undefined;
+      if (gapAt !== undefined && sleptMs !== undefined && sleptMs >= SLEEP_SPAN_TOLERANCE_MS)
+        state.sleepSpans.push({ endAt: gapAt, ms: sleptMs });
+      if (gapAt !== undefined) state.pendingGapAt = undefined;
+    });
+}
+
+/** The awake milliseconds since `t`: the wall time since then, less the part of each recorded
+ * host-sleep span that fell after `t`. A host sleep is not silence from a model or a tool. */
+function awakeMsSince(state: WatchdogState, t: number): number {
+  let sleptMs = 0;
+  for (const span of state.sleepSpans) {
+    const from = Math.max(t, span.endAt - span.ms);
+    if (span.endAt > from) sleptMs += span.endAt - from;
+  }
+  return Math.max(0, Date.now() - t - sleptMs);
+}
+
 /** Whole minutes read cleaner in the feed; sub-minute thresholds stay in seconds. */
 function silenceLabel(ms: number): string {
   return ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`;
@@ -251,10 +294,11 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
   // tool (an interactive command waiting for input) or a zombie stream (a dead generation
   // whose connection drips content-free keepalive updates for hours) that would otherwise
   // burn the whole run timeout. Raw output bytes deliberately do NOT reset the clock:
-  // keepalives are bytes without progress. Checked on an interval against the wall clock,
-  // so it also fires promptly after a machine sleep rather than pausing with a suspended
-  // timer. The stall warning below rides the same interval: it needs no kill of its own,
-  // only a periodic look at which open tool calls have gone silent.
+  // keepalives are bytes without progress. Checked on an interval, and every silence it judges
+  // is measured in awake time (awakeMsSince): a host sleep is not model silence, and a suspended
+  // interval would otherwise read the whole sleep as a hang on the first tick after wake
+  // (BUGS.md 2026-11-21). The stall warning below rides the same interval: it needs no kill of
+  // its own, only a periodic look at which open tool calls have gone silent.
   // A run that has not yet produced progress is starting, not hung: process creation and
   // model connect are legitimately slow on a loaded machine (a full test suite, a busy
   // team), and charging that startup latency as pi silence quiet-kills runs that never
@@ -315,7 +359,7 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
   const killStalledCallCheck = () => {
     if (stallKillMs <= 0 || !state.sawOutput || state.quietKilled || state.stallKilled) return;
     for (const call of deps.openToolCalls()) {
-      const ageMs = Date.now() - call.lastActivityAt;
+      const ageMs = awakeMsSince(state, call.lastActivityAt);
       if (ageMs >= stallKillMs) {
         state.stallKilled = true;
         state.stallKilledLabel = call.label;
@@ -347,7 +391,7 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
       // classification, where only a piped or redirected command is buffered.
       const thresholdMs = stallThresholdMs(deps.agent, call, deps.stallMs);
       if (callBuffersOutput(deps.agent, call.command || call.label)) {
-        const openMs = Date.now() - call.lastActivityAt;
+        const openMs = awakeMsSince(state, call.lastActivityAt);
         if (openMs >= thresholdMs) {
           warnedStalledCalls.add(call.id);
           deps.onStallWarning?.(
@@ -356,7 +400,7 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
         }
         continue;
       }
-      const silentMs = Date.now() - call.lastActivityAt;
+      const silentMs = awakeMsSince(state, call.lastActivityAt);
       if (silentMs >= thresholdMs) {
         warnedStalledCalls.add(call.id);
         deps.onStallWarning?.(`tool call stalled: ${call.label} — no output for ${silenceLabel(silentMs)}`);
@@ -379,7 +423,7 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
       deps.onUnansweredReply?.(false);
     }
     if (!pending || pending.since === state.replyWaitSince) return;
-    const waitedMs = Date.now() - pending.since;
+    const waitedMs = awakeMsSince(state, pending.since);
     // A per-model threshold (config unansweredStallSeconds) decides for this target when a
     // long wait is a hang: a slow local model's prefill of a large context is legitimate and
     // far outlives the tool-call stall default, while a cloud model stays on it. 0 disables
@@ -394,32 +438,39 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
     deps.onUnansweredReply?.(true);
   };
   const checkEveryMs = deps.quietMs > 0 ? deps.quietMs : deps.stallMs;
-  state.quietCheck =
-    checkEveryMs > 0
-      ? setInterval(
-          () => {
-            if (deps.progressCount() > state.lastProgressCount) {
-              state.lastProgressCount = deps.progressCount();
-              state.lastProgressAt = Date.now();
-            } else if (
-              deps.quietMs > 0 &&
-              !state.stallKilled &&
-              Date.now() - state.lastProgressAt > allowedSilenceMs()
-            ) {
-              state.quietKilled = true;
-              deps.kill();
-            }
-            if (deps.quietMs > 0) {
-              killStalledCallCheck();
-            }
-            if (deps.stallMs > 0) {
-              warnStalledToolCalls();
-              warnUnansweredReply();
-            }
-          },
-          Math.min(Math.max(checkEveryMs / 2, 250), 30_000),
-        )
-      : undefined;
+  if (checkEveryMs <= 0) return;
+  const periodMs = Math.min(Math.max(checkEveryMs / 2, 250), 30_000);
+  // The first sample is the baseline every later gap is measured from.
+  sampleHostSleep(state, deps);
+  state.quietCheck = setInterval(() => {
+    const now = Date.now();
+    // A suspended host runs no timers, so a check that comes late by more than the tolerance
+    // means the host slept: sample the clocks now, without blocking this check. The silence
+    // readings below wait for that sample, so the sleep is subtracted before it is judged.
+    const gapMs = now - state.lastCheckAt;
+    state.lastCheckAt = now;
+    if (state.sleepBaseline && state.pendingGapAt === undefined && gapMs > periodMs + SLEEP_SPAN_TOLERANCE_MS)
+      sampleHostSleep(state, deps, now);
+    if (state.pendingGapAt !== undefined) return;
+    if (deps.progressCount() > state.lastProgressCount) {
+      state.lastProgressCount = deps.progressCount();
+      state.lastProgressAt = now;
+    } else if (
+      deps.quietMs > 0 &&
+      !state.stallKilled &&
+      awakeMsSince(state, state.lastProgressAt) > allowedSilenceMs()
+    ) {
+      state.quietKilled = true;
+      deps.kill();
+    }
+    if (deps.quietMs > 0) {
+      killStalledCallCheck();
+    }
+    if (deps.stallMs > 0) {
+      warnStalledToolCalls();
+      warnUnansweredReply();
+    }
+  }, periodMs);
 }
 
 /** Start one pi run's two watchdog clocks: the run deadline (kills the process tree when it
@@ -437,6 +488,8 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
     quietKilled: false,
     stallKilled: false,
     timeoutBudgetMs: deps.runTimeoutMs,
+    sleepSpans: [],
+    lastCheckAt: Date.now(),
   };
 
   // Each watchdog owns its own timer and the rule it enforces: the deadline/extension rule

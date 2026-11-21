@@ -14,7 +14,8 @@ import { startPiWatchdogs } from "../src/pi/pi-watchdogs.js";
 import { defaultConfig } from "../src/config/config.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
-import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
+import { flushImmediate, waitForLogLines, watchdogClock } from "./helpers/wait.js";
+import type { SleepSample } from "../src/build/host-sleep.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 import { runPiFixture } from "./helpers/pi-run-harness.js";
@@ -464,5 +465,136 @@ test("the total-silence quiet kill fires first and the stall-kill does not overr
   assert.equal(wd.quietKilled, true, "a run that stops progressing is quiet-killed");
   assert.equal(wd.stallKilled, false, "the quiet kill wins; the stall-kill never overrides it");
   assert.equal(killed, true);
+  wd.stop();
+});
+
+// BUGS.md 2026-11-21 (part 1/3): the quiet watch judges every silence in awake time. A host sleep
+// is not model or tool silence, so a run silent only across a recorded sleep is not quiet-killed,
+// and a wait on a model reply or an open call restarts from the wake. The host is scripted: its
+// wall clock runs through a suspend and its monotonic clock does not — the pair sleptMsBetween
+// reads on Linux (src/build/host-sleep.ts) — so no real machine ever suspends.
+function scriptedHost(clock: ReturnType<typeof watchdogClock>) {
+  let asleepMs = 0;
+  return {
+    sampleSleep: async (): Promise<SleepSample> => ({
+      bootMs: Date.now(),
+      monoNs: BigInt((Date.now() - asleepMs) * 1_000_000),
+    }),
+    suspend(ms: number): void {
+      asleepMs += ms;
+      clock.suspend(ms);
+    },
+  };
+}
+
+test("a run silent only across a recorded host sleep is not quiet-killed", async (t) => {
+  const clock = watchdogClock(t);
+  const host = scriptedHost(clock);
+  let progress = 0;
+  let killed = false;
+  const wd = startPiWatchdogs({
+    progressCount: () => progress,
+    openToolCalls: () => [],
+    runTimeoutMs: 3 * 3_600_000,
+    quietMs: 30 * 60_000,
+    stallMs: 0,
+    sampleSleep: host.sampleSleep,
+    kill: () => {
+      killed = true;
+    },
+  });
+  await flushImmediate(); // the baseline sample lands
+  progress = 1;
+  clock.advance(30_000); // the first check sees the progress
+  host.suspend(40 * 60_000); // the lid closes for 40 minutes: the first check after the wake
+  await flushImmediate(); // the sample that records the sleep lands
+  assert.equal(killed, false, "a 40-minute sleep is not 40 minutes of silence");
+  clock.advance(30_000); // 30 awake seconds since the progress: under the 30-minute window
+  assert.equal(killed, false);
+  progress = 2; // the next progress arrives right after wake
+  clock.advance(30_000);
+  assert.equal(killed, false);
+  assert.equal(wd.quietKilled, false);
+  wd.stop();
+});
+
+test("the same silence with no host sleep recorded is still quiet-killed", async (t) => {
+  const clock = watchdogClock(t);
+  const host = scriptedHost(clock);
+  let progress = 0;
+  let killed = false;
+  const wd = startPiWatchdogs({
+    progressCount: () => progress,
+    openToolCalls: () => [],
+    runTimeoutMs: 3 * 3_600_000,
+    quietMs: 30 * 60_000,
+    stallMs: 0,
+    sampleSleep: host.sampleSleep,
+    kill: () => {
+      killed = true;
+    },
+  });
+  await flushImmediate();
+  progress = 1;
+  clock.advance(30_000);
+  clock.advance(40 * 60_000); // 40 awake minutes with no progress
+  assert.equal(killed, true, "40 awake minutes of silence is a hang");
+  assert.equal(wd.quietKilled, true);
+  wd.stop();
+});
+
+test("a model reply waited across a host sleep warns on its awake wait only", async (t) => {
+  const clock = watchdogClock(t);
+  const host = scriptedHost(clock);
+  const warnings: string[] = [];
+  const since = Date.now();
+  const wd = startPiWatchdogs({
+    progressCount: () => 0,
+    openToolCalls: () => [],
+    pendingReply: () => ({ since, target: "p/m", attempts: 1 }),
+    runTimeoutMs: 3 * 3_600_000,
+    quietMs: 0,
+    stallMs: 5 * 60_000,
+    sampleSleep: host.sampleSleep,
+    kill: () => {},
+    onStallWarning: (message) => warnings.push(message),
+  });
+  await flushImmediate();
+  clock.advance(3 * 60_000); // 3 awake minutes of wait: under the 5-minute threshold
+  host.suspend(22 * 60_000); // 22 minutes asleep inside the same wait
+  await flushImmediate();
+  clock.advance(30_000);
+  assert.deepEqual(warnings, [], "25 wall minutes, 22 of them asleep, is 3 awake minutes");
+  clock.advance(90_000); // 5 awake minutes
+  assert.deepEqual(warnings, ["model request unanswered: p/m — no reply for 5m"]);
+  wd.stop();
+});
+
+test("an open tool call silent across a host sleep is warned on its awake silence only", async (t) => {
+  const clock = watchdogClock(t);
+  const host = scriptedHost(clock);
+  const warnings: string[] = [];
+  const lastActivityAt = Date.now();
+  const wd = startPiWatchdogs({
+    progressCount: () => 1,
+    openToolCalls: () => [{ id: "c1", label: "bash sleep 999", command: "sleep 999", lastActivityAt }],
+    runTimeoutMs: 3 * 3_600_000,
+    quietMs: 30 * 60_000,
+    stallMs: 5 * 60_000,
+    sampleSleep: host.sampleSleep,
+    kill: () => {},
+    onStallWarning: (message) => warnings.push(message),
+  });
+  wd.noteByte(); // the run has begun, so the per-call stall-kill is armed too
+  await flushImmediate();
+  clock.advance(3 * 60_000); // 3 awake minutes of silence: under the 5-minute threshold
+  host.suspend(22 * 60_000); // 22 minutes asleep with the call still open
+  await flushImmediate();
+  clock.advance(30_000);
+  assert.deepEqual(warnings, [], "25 wall minutes, 22 of them asleep, is 3 awake minutes of silence");
+  assert.equal(wd.stallKilled, false);
+  clock.advance(90_000); // 5 awake minutes
+  assert.deepEqual(warnings, ["tool call stalled: bash sleep 999 — no output for 5m"]);
+  assert.equal(wd.stallKilled, false, "one warned bound is not the two-window stall kill");
   wd.stop();
 });
