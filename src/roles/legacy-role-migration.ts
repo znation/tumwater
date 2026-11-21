@@ -5,6 +5,7 @@ import { deleteRefIfAt, refSha } from "../git/git.js";
 import { runGit } from "../git/git-run.js";
 import { branchName, mergeRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleLessonsPath, roleNotesPath, sessionDir, statePath } from "../paths.js";
 import type { MigrationNotes } from "../orchestrator/startup-migrations.js";
+import { parseJsonObject } from "../files/json-object.js";
 import { errorMessage } from "../text/text.js";
 import { LEGACY_ROLE_IDS } from "./legacy-role-ids.js";
 
@@ -14,10 +15,8 @@ import { LEGACY_ROLE_IDS } from "./legacy-role-ids.js";
  * migration must not keep its old id inside or it would be saved back to the retired file. */
 function rewriteStateRole(file: string, role: string): void {
   try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
-    const rec = parsed as Record<string, unknown>;
-    if (rec.role === role) return;
+    const rec = parseJsonObject(fs.readFileSync(file, "utf8"));
+    if (rec === null || rec.role === role) return;
     rec.role = role;
     // writeJsonAtomic, not a plain writeFileSync like every other production state writer
     // (INV-AF4): the rewritten file is a role's runner state, and a tmp+rename keeps a crash
