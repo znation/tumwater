@@ -4,7 +4,9 @@ Every `tumwater` command and the main flags it takes. `tumwater help` lists ever
 flag; `tumwater help <command>` shows one command's usage; `tumwater help --grep <text>`
 prints the usage stanzas containing the text, case-insensitively (no ready repo needed, like
 the topic form). The README's Usage section has the short version, and [config.md](config.md)
-covers the settings in `tumwater.json`.
+covers the settings in `tumwater.json`. [steering.md](steering.md) is the prose around these
+commands: the three ways to steer a running team, the loop you work in, and how your own edit gets
+onto main.
 
 ## Start the team
 

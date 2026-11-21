@@ -222,44 +222,6 @@ fall behind a busy Codex team indefinitely.)
 - The maintenance alert reads as informational and idle rows show their normal phase while the
   marker stands.
 
-### Operator steering, part 3/5: docs/steering.md says how an operator runs tumwater with their own agent (planned 2026-11-16 by the operator; requires Operator steering parts 1/5, 2/5 landed; touches docs/steering.md docs/how-it-works.md docs/cli.md)
-
-**Goal.** The docs describe the intended way to use tumwater, and that way is not hands-off. The
-team does the volume work; the operator steers it, and the primary way to steer is a strong model
-in the operator's own interactive harness (claude, codex, omp) editing PLANS.md and BUGS.md. Today
-no doc says so; the knowledge an operator's agent needs lived only outside the repo.
-
-_Amended 2026-11-16 by the operator: no longer names the TUI, which the Remove the TUI series
-deletes._
-
-**Approach.** Write docs/steering.md for a human reader, in plain terms (docs/glossary.md):
-- **The three ways to steer**, in order: your own agent in the repo (the primary one); the
-  director prompt (dashboard, `tumwater prompt`) for quick steering without leaving the UI;
-  answering the questions the team raises (`tumwater questions`). Running hands-off works (`start
-  --for`, `--once`), but it is not where tumwater does its best work.
-- **The loop.** Start the team; in a second terminal open your agent in the repo and tell it to
-  run `tumwater guide` first; have it read `tumwater status`, `history --result problems` and the
-  backlog lists; ask it to investigate and to file, sharpen, reorder or retire entries; watch what
-  merges.
-- **What makes a good entry**, briefly, pointing at `tumwater guide` for the full rules rather than
-  repeating them.
-- **Landing direct edits** with `tumwater land`, and why a plain `git merge` on main can collide
-  with a team merge.
-- **What the director is for** compared with your own agent: the director lives in the team and
-  runs on the team's strong tier; your agent has your conversation, your judgment and the whole
-  repo, and is where design decisions get made.
-- Link it from docs/how-it-works.md's Setup section (one sentence after `tumwater start`) and from
-  docs/cli.md's opening paragraph.
-
-**Acceptance criteria.**
-- docs/steering.md exists, names `tumwater guide` and `tumwater land`, and lists the three ways to
-  steer in the order above.
-- docs/how-it-works.md and docs/cli.md each link to docs/steering.md.
-- Every `tumwater` command the new doc names exists in `tumwater help`.
-- No README change in this part (part 4/5 owns it).
-
-**Tests.** The project's gate (the docs-drift checks cover links and command names).
-
 ### Operator steering, part 4/5: The README says up front that you steer tumwater, mainly from your own agent (planned 2026-11-16 by the operator; requires Operator steering part 3/5 landed; touches README.md)
 
 **Goal.** A first-time reader learns from the README's opening that tumwater is meant to be

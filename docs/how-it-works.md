@@ -23,7 +23,9 @@ round — every enabled role runs at most once, every commit that round produced
 then exits, for cron and CI and for trying one round before committing to a team. It exits 3
 when a role that ran ended in `error`, `review_error`, `merge_conflict`, or
 `merge_blocked`, so a failing round is distinguishable from a quiet one. `--for <duration>` runs the
-team for that long and then stops it.
+team for that long and then stops it. What you do from here — steering the team through the backlog
+from your own interactive agent, which is how tumwater is meant to be run — is in
+[steering.md](steering.md).
 
 ## A run
 
