@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { MERGE_CONFLICT_LIMIT, hasUnmergedPin, pinnedMergeEntry, pinnedRetrySha, recoverLeftover, type LeftoverContext } from "../src/runner/runner-leftover.js";
-import { commitTrailer } from "../src/git/commit-message.js";
+import { commitTrailer } from "../src/run/commit-message.js";
 import { readEvents } from "../src/events/event-read.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { enqueueMerge, queuedMerges } from "../src/merge/merge-queue.js";

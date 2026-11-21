@@ -26,7 +26,7 @@ import { loadConfigSafe } from "../config/config.js";
 import { logEventBestEffort, TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
 import { readDirTextOrEmpty, readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { changeBaseRev, currentBranch, fileContentAt, headOf, targetBranch } from "../git/git.js";
-import { stampedSubject } from "../git/commit-message.js";
+import { stampedSubject } from "../run/commit-message.js";
 import { commitOnlyArgs, git, gitTry } from "../git/git-run.js";
 import { mergeLockDir } from "../paths.js";
 import { plural } from "../text/phrases.js";

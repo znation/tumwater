@@ -15,7 +15,7 @@ import {
   parseCommitMetadata,
   claimOf,
   priorReviewOf,
-} from "../src/git/commit-message.js";
+} from "../src/run/commit-message.js";
 
 test("summaryOverCap reports the untruncated length only past the 100-character cap", () => {
   assert.equal(summaryOverCap("no summary here"), null);

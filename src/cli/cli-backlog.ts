@@ -21,7 +21,7 @@ import { editInEditor } from "../editor.js";
 import { requestWake, submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
-import { stampedSubject } from "../git/commit-message.js";
+import { stampedSubject } from "../run/commit-message.js";
 import { type FiledEntry, showEntry, splitEntryFile } from "../backlog/backlog-write.js";
 import { renderShownEntry } from "./cli-backlog-view.js";
 import { archiveFinishedOnMain, describeArchivedFile, previewArchiveOnMain } from "../backlog/backlog-archive.js";

@@ -18,7 +18,7 @@ import { gotSuffix, parsePositiveInt } from "../text/text.js";
 import { validPositionRange } from "../text/phrases.js";
 import { typoSuffix } from "../text/suggest.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
-import { stampedSubject } from "../git/commit-message.js";
+import { stampedSubject } from "../run/commit-message.js";
 import { wakeQuestionAsker } from "../operator/operator-intent.js";
 import { answeredQuestionAt, answeredQuestionCount, answeredQuestionList, answeredQuestionPayload, openQuestionAt, openQuestionList, questionListPayload, renderShownQuestion, type AnswerOutcome, UNCLOSED_FENCE_MESSAGE, tryAnswerQuestion } from "../backlog/backlog-question-answer.js";
 import { bodyStructureProblem, normalizeEntryBody } from "../backlog/backlog-write.js";

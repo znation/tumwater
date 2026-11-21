@@ -15,7 +15,7 @@ import type { CiResult, FlowResult, FiledResult, RemoteResult } from "../verdict
 import { mergeToMain } from "../merge/merge-to-main.js";
 import { MERGE_LOCK_WAIT_MS } from "../paths.js";
 import { resolveRunVerdict } from "../run/run-verdict.js";
-import { modelTrailerLine } from "../git/commit-message.js";
+import { modelTrailerLine } from "../run/commit-message.js";
 import { seamAgent } from "../config/config-model-selector.js";
 import { stageRunMerge } from "../run/run-stage.js";
 import { stageCheckFindings } from "../stage/stage-check.js";

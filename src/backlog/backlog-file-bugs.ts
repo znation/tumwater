@@ -7,7 +7,7 @@ import path from "node:path";
 import { withLock, withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { commitOnlyArgs, git, gitTry } from "../git/git-run.js";
-import { stampedSubject } from "../git/commit-message.js";
+import { stampedSubject } from "../run/commit-message.js";
 import { mergeLockDir } from "../paths.js";
 import { plural } from "../text/phrases.js";
 import { collapseWhitespace, errorFirstLine, trimTrailingBlankLines } from "../text/text.js";

@@ -16,7 +16,7 @@ import { listWideScope, queuedListRows, type QueuedListRow } from "../inbox/inbo
 import { deliverableAt } from "../inbox/prompt-not-before.js";
 import { currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
-import { stampedSubject } from "../git/commit-message.js";
+import { stampedSubject } from "../run/commit-message.js";
 import { fixedBugEntries, isRetiredTitle, type BacklogEntry } from "../backlog/backlog.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { briefFile } from "../brief/brief.js";

@@ -3,7 +3,7 @@ Subtract pin queue, part 1b/3 — The merge drain merges pins, not queue files; 
 What landed:
 - src/merge/merge-drain.ts: the drain now begins at the kept-pin scan. Removed the torn-head repair call, the `queuedMergeFiles` loop (its `notBefore`/already-merged dedupe + `dropMerge` warning), and the `queuedMergeRoles` skip. The only `startMerge` call passes `null` for the queue file. In the pin loop, when a present ref yields null from `pinnedRetrySha` (stale/dangling pin just dropped, or a pin at the conflict limit), call `removeMergeChange` first so a dropped waiting change leaves no `merging` marker. A queue file an older build left starts nothing.
 - Deleted the torn-head repair module (its torn-head-drop and merged-into-main helpers lose their last callers).
-- src/runner/runner-leftover.ts + src/git/commit-message.ts: doc comments that named the torn-head re-queue path (its module and drop helper) updated (no behaviour change).
+- src/runner/runner-leftover.ts + src/run/commit-message.ts: doc comments that named the torn-head re-queue path (its module and drop helper) updated (no behaviour change).
 - docs/invariants.md: INV-AG5 deleted. docs/how-it-works.md: the two queue-head / legacy-queue-merges sentences reworded to say a queue file an older build left starts no merge.
 
 Gate (exports.test) required two follow-ups the plan's file list did not anticipate — deleting the torn-head repair module orphaned symbols whose only external user was it:

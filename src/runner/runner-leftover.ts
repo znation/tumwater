@@ -1,5 +1,5 @@
 import { aheadOfMain, commitExists, commitMessage, deleteRef, deleteRefIfAt, headOf, isMergedInto, refSha, setRef } from "../git/git.js";
-import { commitRunOf, parseCommitMetadata, type CommitMetadata } from "../git/commit-message.js";
+import { commitRunOf, parseCommitMetadata, type CommitMetadata } from "../run/commit-message.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { mergePinSha } from "../merge/merge-pins.js";
 import { queuedMerges, type MergeEntry } from "../merge/merge-queue.js";

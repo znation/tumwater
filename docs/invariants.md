@@ -3828,7 +3828,7 @@ allowance's in-flight headroom starts at most one of two due maintenance roles p
 
 ## Commit messages: the harness's stamps and trailers read back only in their exact stamped form
 
-`src/git/commit-message.ts` builds every run commit message, and the harness reads it back later:
+`src/run/commit-message.ts` builds every run commit message, and the harness reads it back later:
 leftover recovery calls `parseCommitMetadata`, a rejection's round counter calls `revisionRoundOf`, and
 `revertFollowUp` calls `stampedRole`.
 
@@ -3839,7 +3839,7 @@ then the harness trailer, with each part a separate paragraph. The trailer's Mod
 after Run; the Claim and Prior-review lines, when stamped, come after Friction; and Revision comes
 last.
 
-**Binds.** `src/git/commit-message.ts` (`buildCommitMessage`, `commitTrailer`, `stampedSubject`).
+**Binds.** `src/run/commit-message.ts` (`buildCommitMessage`, `commitTrailer`, `stampedSubject`).
 
 **Pinned by.** `test/commit-message.test.ts` — "buildCommitMessage assembles subject, body, and
 trailer as separate paragraphs", "commitTrailer appends a sibling Friction line only when flagged
@@ -3852,7 +3852,7 @@ high-friction", "commitTrailer puts the Model line right after Run, with Revisio
 a body cannot flag friction, claim a round, or be read as a backlog claim or a prior review.
 Leftover recovery gets the round, claim, and prior review back from the trailers.
 
-**Binds.** `src/git/commit-message.ts` (`hasFrictionTrailer`, `revisionRoundOf`, `claimOf`,
+**Binds.** `src/run/commit-message.ts` (`hasFrictionTrailer`, `revisionRoundOf`, `claimOf`,
 `priorReviewOf`, `parseCommitMetadata`).
 
 **Pinned by.** `test/commit-message.test.ts` — "hasFrictionTrailer matches only the
@@ -3869,7 +3869,7 @@ rebuilds a revision's round from its commit trailer"; `test/commit-message-stamp
 line's end. `stampedRole` and `commitSubject` read only the first line, and a hand-made subject
 passes through whole.
 
-**Binds.** `src/git/commit-message.ts` (`stampedRole`, `commitSubject`).
+**Binds.** `src/run/commit-message.ts` (`stampedRole`, `commitSubject`).
 
 **Pinned by.** `test/commit-message.test.ts` — "commitSubject returns the message's first line with
 the harness stamp stripped"; `test/operator-revert.test.ts` — "stampedRole reads the role of a

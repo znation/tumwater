@@ -7,7 +7,7 @@ import { resolveBacklogInsertConflicts } from "../merge/merge-backlog-conflicts.
 import { conflictedFiles } from "../merge/merge-git.js";
 import { formatDate } from "../text/datetime.js";
 import { errorMessage } from "../text/text.js";
-import { stampedSubject } from "../git/commit-message.js";
+import { stampedSubject } from "../run/commit-message.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { entryKey } from "../backlog/backlog-parts.js";
 import { actionableEntryRanges } from "../backlog/backlog-index-data.js";

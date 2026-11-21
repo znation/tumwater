@@ -12,7 +12,7 @@ import { entryKey, plansReleasedBy, releasedPartsNote } from "../backlog/backlog
 import { plannedPlanEntries } from "../backlog/backlog.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
-import { stampedSubject } from "../git/commit-message.js";
+import { stampedSubject } from "../run/commit-message.js";
 import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry, tryRetireBug, tryRetirePlan, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome, type RetireEntryOutcome } from "../backlog/backlog-write.js";
 import { tryMoveEntryToTop, tryReleaseEntry, type MoveEntryOutcome, type ReleaseEntryOutcome } from "../backlog/backlog-release.js";
 import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../backlog/backlog-question-answer.js";

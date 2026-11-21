@@ -17,7 +17,7 @@ import { mergeRefName } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { POST_REVIEW_FAILURE_LIMIT } from "../src/review/post-merge-review.js";
 import { shortSpanPhrase } from "../src/text/phrases.js";
-import { stampedSubject } from "../src/git/commit-message.js";
+import { stampedSubject } from "../src/run/commit-message.js";
 import { makeRepo, seedCommit, sh, tmpdir, headSha } from "./fixtures/repo-fixtures.js";
 import { execFileSync } from "node:child_process";
 import { vanishOnReadFile } from "./helpers/fs-faults.js";

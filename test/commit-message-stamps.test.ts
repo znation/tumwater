@@ -8,7 +8,7 @@ import {
   revisionRoundOf,
   stampedRole,
   stampedSubject,
-} from "../src/git/commit-message.js";
+} from "../src/run/commit-message.js";
 
 test("revisionRoundOf reads only a whole harness Revision line, and parseCommitMetadata carries it", () => {
   const msg = buildCommitMessage("tumwater(feature): x", { why: "w" }, commitTrailer("feature", 7, 3, 100, undefined, 2));

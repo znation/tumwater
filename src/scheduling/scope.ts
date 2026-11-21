@@ -5,7 +5,7 @@
  * memo, reasons map). Parts 2/3 and 3/3 lift the loop's skip and admit halves against this
  * scope. */
 import { increment } from "../collections.js";
-import { claimOf } from "../git/commit-message.js";
+import { claimOf } from "../run/commit-message.js";
 import type { RoleRunner } from "../runner/runner.js";
 import type { OnceRound } from "./once-round.js";
 import type { WorkMergedCache } from "./work-merged-cache.js";

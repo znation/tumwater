@@ -14,7 +14,7 @@ import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { piLogPath, rejectedRefName, sessionDir, mergeRefName } from "../src/paths.js";
 import { recordSession } from "../src/agent/session-ledger.js";
 import { setRef } from "../src/git/git.js";
-import { revisionRoundOf } from "../src/git/commit-message.js";
+import { revisionRoundOf } from "../src/run/commit-message.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeRoleRunner, roleWt } from "./fixtures/runner-fixtures.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";

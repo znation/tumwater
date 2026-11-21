@@ -17,7 +17,7 @@ import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
  * follow-up prompts that pick a session back up — the resume bridge, the missing-summary
  * recovery, and the fresh-run cut-off note — live in prompt-followup.ts. The merge gate's
  * pi runs (conflict resolution, build fix, review) build their prompts in gate-prompts.ts;
- * assembling a reply into the run's commit message lives in git/commit-message.ts.
+ * assembling a reply into the run's commit message lives in run/commit-message.ts.
  *
  * The prose is tuned for the team's models (2026-10-01): the primary GLM-5.3-Flash (an 18B-active
  * MoE behind a ~1M window) and the budget fallback's local Qwen3.8-27B (~127k window). Both follow

@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { headSha, makeRepo, seedCommit, sh, writeConfig } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { stampedRole } from "../src/git/commit-message.js";
+import { stampedRole } from "../src/run/commit-message.js";
 import { previewRevert, revertFollowUp, revertMergedCommit, runRevertSha } from "../src/operator/operator-revert.js";
 import type { RunDetail } from "../src/history/run-detail-data.js";
 

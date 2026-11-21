@@ -2,7 +2,7 @@ import { loadConfigSafe } from "../config/config.js";
 import { withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { currentBranch, headOf, isMergedInto, targetBranch } from "../git/git.js";
 import { GitError, commitOnlyArgs, gitTry, runGit } from "../git/git-run.js";
-import { stampedRole, stampedSubject } from "../git/commit-message.js";
+import { stampedRole, stampedSubject } from "../run/commit-message.js";
 import { shortSha } from "../text/format.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { RunDetail } from "../history/run-detail-data.js";

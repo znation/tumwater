@@ -19,7 +19,7 @@ import { applyConfigRequest } from "../config/config-request.js";
 import { applyDirectorRequest } from "../inbox/director-request.js";
 import { diagnoseNoChange, extractNoChangeAnswer } from "../verdict/no-change.js";
 import { handleRefusal, refusalContradiction } from "../verdict/refusal.js";
-import { extractSummary } from "../git/commit-message.js";
+import { extractSummary } from "./commit-message.js";
 import { errorMessage } from "../text/text.js";
 import { recordParity } from "../observer/ci-parity.js";
 import { resetWorktreeToMain } from "../git/worktree.js";

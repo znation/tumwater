@@ -1,6 +1,6 @@
 import { commitExists, refSha, refsUnder } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
-import { commitRunOf, commitSubject } from "../git/commit-message.js";
+import { commitRunOf, commitSubject } from "../run/commit-message.js";
 import { mergeRefName } from "../paths.js";
 
 /** The ref prefix every merge pin lives under (paths.ts `mergeRefName` joins it to a role id).

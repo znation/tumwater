@@ -23,7 +23,7 @@ import { stageRunMerge } from "../src/run/run-stage.js";
 import { queuedMerges } from "../src/merge/merge-queue.js";
 import { settleMergeOutcome } from "../src/merge/merge-pipeline.js";
 import { recoverLeftover } from "../src/runner/runner-leftover.js";
-import { buildCommitMessage, commitTrailer, stampedSubject, revisionRoundOf } from "../src/git/commit-message.js";
+import { buildCommitMessage, commitTrailer, stampedSubject, revisionRoundOf } from "../src/run/commit-message.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { readmeTemplate } from "../src/brief/brief.js";

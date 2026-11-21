@@ -20,7 +20,7 @@ import { buildReviewPrompt } from "../prompt/gate-prompts.js";
 import { shortSha } from "../text/format.js";
 import { DAY_MS } from "../text/datetime.js";
 import { errorMessage } from "../text/text.js";
-import { revisionRoundOf } from "../git/commit-message.js";
+import { revisionRoundOf } from "../run/commit-message.js";
 import { REVISION_BACKSTOP } from "../runner/runner-revision.js";
 import { eventRole } from "../events/event-read.js";
 import { baseRoleOf } from "../roles/runner-ids.js";

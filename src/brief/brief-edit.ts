@@ -4,7 +4,7 @@ import { BRIEF_TEXT_MAX_CHARS, PROMPT_END, PROMPT_START, briefPath, replaceBrief
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 import { writeTextAtomic } from "../files/files.js";
-import { stampedSubject } from "../git/commit-message.js";
+import { stampedSubject } from "../run/commit-message.js";
 import { PREFILL_REASON } from "../text/phrases.js";
 import { tooLongMessage } from "../text/text.js";
 

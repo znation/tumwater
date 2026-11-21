@@ -18,7 +18,7 @@ import {
   appendSelfCheckNotes,
   formatCommitBody,
   stampedSubject,
-} from "../git/commit-message.js";
+} from "./commit-message.js";
 import type { StagedDescription } from "../prompt/gate-prompts.js";
 import { logEventBestEffort } from "../events/events.js";
 import type { PriorReview } from "../merge/merge-queue.js";

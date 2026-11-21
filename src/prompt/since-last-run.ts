@@ -170,7 +170,7 @@ function renderBlock(
   if (commits.length === 0) {
     return `Nothing has changed on ${main} since your last run — every file you read last time is still the current one.`;
   }
-  // Every instance of a base role commits as `tumwater(<base>):` (git/commit-message.ts
+  // Every instance of a base role commits as `tumwater(<base>):` (run/commit-message.ts
   // stampedSubject), so a `feature-2` run marks a `tumwater(feature):` commit its own — all
   // instances share the base-role prefix. baseRoleOf is the identity for a non-instance id, so
   // a bare `feature` behaves as before.

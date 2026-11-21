@@ -15,7 +15,7 @@ import {
   extractSummary,
   summaryOverCap,
   fallbackSummary,
-} from "../git/commit-message.js";
+} from "./commit-message.js";
 import { plural } from "../text/phrases.js";
 import type { RunStageContext } from "./run-stage.js";
 

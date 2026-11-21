@@ -299,7 +299,8 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   on top of the git plumbing in `src/merge/merge-git.ts` (rebase, conflict inspection,
   fast-forward).
 - `src/run/`: the per-run pipeline (`run-stage.ts` — the stage/commit phase, `run-summary-recovery.ts`
-  — the SUMMARY-recovery layer `run-stage.ts` feeds, `run-prompt.ts`, `run-timing.ts`,
+  — the SUMMARY-recovery layer `run-stage.ts` feeds, `commit-message.ts` — assembling each run's
+  commit message from pi's reply and parsing it back — `run-prompt.ts`, `run-timing.ts`,
   `run-usage.ts`, `run-verdict.ts`, `run-finalize.ts`, `run-apply.ts`, `run-resume.ts`,
   `run-outcome.ts`).
 - `src/stage/`: the run's pre-queue self-check family — the merge-gate and staging-only checks a

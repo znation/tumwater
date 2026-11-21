@@ -16,7 +16,7 @@ import { readFeedbackFilings } from "../src/observer/feedback-filings.js";
 import { qaCoveragePath, feedbackFilingsPath, remoteCiPath } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { queueDepth } from "../src/merge/merge-queue.js";
-import { claimOf, priorReviewOf, revisionRoundOf } from "../src/git/commit-message.js";
+import { claimOf, priorReviewOf, revisionRoundOf } from "../src/run/commit-message.js";
 import { setRef, refSha } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
 import type { RunOutcome } from "../src/run/run-outcome.js";

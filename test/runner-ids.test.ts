@@ -24,7 +24,7 @@ import { errorMessage } from "../src/text/text.js";
 import { dailyCost } from "../src/budget/budget.js";
 import { newRoleCapGateState, pollRoleCapGate } from "../src/gates/role-cap-gates.js";
 import { readEvents } from "../src/events/event-read.js";
-import { commitTrailer, stampedSubject } from "../src/git/commit-message.js";
+import { commitTrailer, stampedSubject } from "../src/run/commit-message.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { spentRunnerState } from "./fixtures/runner-fixtures.js";
 

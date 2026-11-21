@@ -10,7 +10,7 @@ import { entryKey, plannedPartKeys } from "../backlog/backlog-parts.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { changedFiles } from "../git/git-diff.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
-import { buildCommitMessage, commitTrailer, stampedSubject } from "../git/commit-message.js";
+import { buildCommitMessage, commitTrailer, stampedSubject } from "../run/commit-message.js";
 import { errorMessage } from "../text/text.js";
 import { labeledLine } from "./reply-contract.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
