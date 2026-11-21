@@ -1192,6 +1192,49 @@ test("a runner with a revision is admitted before a free runner when one place i
   assert.equal(reasons.has(feature2), false, "the free runner waits for another place");
 });
 
+test("a claimed-but-never-admitted runner is admitted before free siblings when one place is open", async () => {
+  const root = await initializedRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), fourPlansDoc());
+  const config = twoFeatureInstances();
+  const [feature, feature2, feature3, feature4] = featureRunners(config) as [RoleRunner, RoleRunner, RoleRunner, RoleRunner];
+  feature.state.running = true;
+  feature.state.claim = claimFor("alpha");
+  feature4.state.claim = claimFor("beta");
+  const providers = new Map(["feature", "feature-2", "feature-3", "feature-4"].map((id) => [id, undefined]));
+  const reasons = await pollRunnerReasons(schedulingCtx(root, [feature, feature2, feature3, feature4], providers));
+  // The claimed higher-index sibling wins the open place a lower-index free runner would
+  // otherwise take, so its held entry does not wait on the stale sweep.
+  assert.equal(reasons.has(feature4), true, "the claimed runner takes the open place");
+  assert.equal(feature4.state.claim?.key, "beta", "its claim is kept");
+  assert.equal(reasons.has(feature2), false, "a free runner does not outrun the claim");
+  assert.equal(feature2.state.skipReason, "instances-full");
+  assert.equal(feature3.state.skipReason, "instances-full");
+  assert.equal(feature2.state.claim, undefined, "no sibling gained a claim");
+  assert.equal(feature3.state.claim, undefined, "no sibling gained a claim");
+  const assigned = eventsOfType(root, "claim").filter((e) => e.action === "assigned");
+  assert.equal(assigned.length, 0, "no new claim assigned event is logged");
+});
+
+test("the runner whose claim is higher in PLANS.md is admitted even at a higher index", async () => {
+  const root = await initializedRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), fourPlansDoc());
+  const config = twoFeatureInstances();
+  const [feature, feature2, feature3, feature4] = featureRunners(config) as [RoleRunner, RoleRunner, RoleRunner, RoleRunner];
+  feature.state.running = true;
+  feature.state.claim = claimFor("delta");
+  feature4.state.claim = claimFor("alpha");
+  feature3.state.claim = claimFor("gamma");
+  const providers = new Map(["feature", "feature-2", "feature-3", "feature-4"].map((id) => [id, undefined]));
+  const reasons = await pollRunnerReasons(schedulingCtx(root, [feature, feature2, feature3, feature4], providers));
+  // Alpha (index 0) is earlier in PLANS.md than Gamma (index 2), so feature-4 is admitted
+  // ahead of feature-3 despite its higher runner index.
+  assert.equal(reasons.has(feature4), true, "the higher-in-file claim is admitted");
+  assert.equal(reasons.has(feature3), false, "the lower-in-file claim waits for another place");
+  assert.equal(reasons.has(feature2), false, "the free runner waits too");
+  assert.equal(feature3.state.skipReason, "instances-full");
+  assert.equal(feature2.state.skipReason, "instances-full");
+});
+
 test("a skip reason that cannot be saved warns and leaves the poll running", async () => {
   const root = tmpdir("tumwater-scheduling-skip-save-fails-");
   fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);

@@ -388,15 +388,34 @@ function ownsOutstandingWork(
 }
 
 /** Admission order: a runner of a multi-runner base with a pending revision or conflict
- * hand-back comes first (its change came back; it holds no new claim), then the rest in runner
- * order, so the lowest-index free runner takes new work. Other roles keep their place. */
+ * hand-back comes first (its change came back; it holds no new claim), then runners whose base
+ * has a claim group and whose claim is set — the earlier one in the base's eligible list first
+ * (a key that is not eligible sorts after the eligible ones, in runner order), so a
+ * claimed-but-not-yet-admitted sibling wins a place ahead of a later free lower-index runner —
+ * and only then everyone else in runner order. Other roles (and unclaimed runners) keep their
+ * relative place. */
 function orderForAdmission(
   runners: readonly RoleRunner[],
   claimGroups: Map<string, ClaimGroup>,
 ): RoleRunner[] {
+  // The claimed-tier sort key: the index of the runner's claim key in its base's eligible list.
+  // A claimed runner whose key is no longer eligible sorts after every eligible one; a runner
+  // outside a claim group (or unclaimed) is not in the tier at all.
+  const claimedKeyIndex = (r: RoleRunner): number => {
+    const group = claimGroups.get(baseRoleOf(r.role));
+    const key = r.state.claim?.key;
+    if (group === undefined || key === undefined) return group?.eligible.length ?? 0;
+    const index = group.eligible.findIndex((e) => e.key === key);
+    return index === -1 ? group.eligible.length : index;
+  };
+  const isClaimedOfGroup = (r: RoleRunner): boolean =>
+    claimGroups.has(baseRoleOf(r.role)) && r.state.claim !== undefined;
   return [
     ...runners.filter((r) => ownsOutstandingWork(r, claimGroups)),
-    ...runners.filter((r) => !ownsOutstandingWork(r, claimGroups)),
+    ...runners
+      .filter((r) => !ownsOutstandingWork(r, claimGroups) && isClaimedOfGroup(r))
+      .sort((a, b) => claimedKeyIndex(a) - claimedKeyIndex(b)),
+    ...runners.filter((r) => !ownsOutstandingWork(r, claimGroups) && !isClaimedOfGroup(r)),
   ];
 }
 
