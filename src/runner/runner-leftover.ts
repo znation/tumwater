@@ -68,7 +68,7 @@ export async function pinnedRetrySha(
   state: Pick<RunnerState, "mergeConflicts">,
 ): Promise<string | null> {
   const ref = mergeRefName(role);
-  const sha = await refSha(root, ref).catch(() => null);
+  const sha = await mergePinSha(root, role);
   if (!sha) return null;
   if (await dropDanglingPin(root, role, ref, sha)) return null;
   if (await dropStalePin(root, ref, sha, mainBranch)) return null;
@@ -205,7 +205,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     return { kind: "already_queued", entry: queued };
   }
   const ref = mergeRefName(ctx.role);
-  let sha = await refSha(ctx.root, ref).catch(() => null);
+  let sha = await mergePinSha(ctx.root, ctx.role);
   if (sha) {
     if (await dropDanglingPin(ctx.root, ctx.role, ref, sha)) {
       // The pin's in-flight marker names a merge no process is running (the drain that left
