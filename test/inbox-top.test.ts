@@ -140,6 +140,34 @@ test("movePromptToTop whose queue-file write fails moves the image back and leav
   assert.equal(eventsOfType(root, "prompt_topped").length, 0);
 });
 
+test("movePromptToTop whose old queue file cannot be removed takes the new copy back out, so the prompt is not queued twice", () => {
+  const root = tmpdir();
+  enqueueRolePrompt(root, "feature", "first");
+  const second = enqueueRolePrompt(root, "feature", "second");
+  const oldStem = path.basename(second, ".md");
+  const oldImage = path.join(roleInboxDir(root, "feature"), `${oldStem}.png`);
+  fs.writeFileSync(oldImage, "png-bytes");
+  fs.writeFileSync(second, `second\n\n[image attached: ${oldImage}]`);
+  const before = fs.readdirSync(roleInboxDir(root, "feature")).sort();
+  const textBefore = fs.readFileSync(second, "utf8");
+
+  // Only the old file's removal fails; the new copy's write succeeds before it.
+  const undo = patchFsMethod("rmSync", (orig) => (target, ...rest) => {
+    if (path.basename(String(target)) === path.basename(second)) throw errnoError("EBUSY");
+    return orig(target, ...rest);
+  });
+  try {
+    assert.throws(() => movePromptToTop(root, "feature", 2), /EBUSY/);
+  } finally {
+    undo();
+  }
+
+  assert.deepEqual(fs.readdirSync(roleInboxDir(root, "feature")).sort(), before, "no second copy and the image is back under the old stem");
+  assert.equal(fs.readFileSync(second, "utf8"), textBefore);
+  assert.equal(queuedFiles(root, "feature").length, 2);
+  assert.equal(eventsOfType(root, "prompt_topped").length, 0);
+});
+
 /** A prompt's --at deferral rides in its text; the rename must keep it, or a deferred prompt
  * moved to the front would be delivered early. */
 test("movePromptToTop preserves a --at deferral: a future prompt is still not deliverable early", () => {

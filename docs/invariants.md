@@ -5064,13 +5064,13 @@ index, rather than skipping the preserve".
 
 ## Prompt move-to-top: a failed write leaves the prompt and its images where they were
 
-### INV-CJ1: a move-to-top whose new queue file cannot be written renames every moved attachment back, rethrows, and logs no prompt_topped
+### INV-CJ1: a move-to-top whose new queue file cannot be written, or whose old one cannot be removed, renames every moved attachment back, rethrows, and logs no prompt_topped
 
-**Guarantee.** `moveFileToTop` moves the prompt's images to the new stem before writing the new queue file. When that write throws, it renames each image back (one failed rename does not stop the others), rethrows the write error, and neither removes the old queue file nor logs `prompt_topped`, so the prompt stays queued at its old position with its images.
+**Guarantee.** `moveFileToTop` moves the prompt's images to the new stem before writing the new queue file. When the write throws, or the old queue file's removal throws after it, it removes the new copy (best effort), renames each image back (one failed rename does not stop the others), rethrows the error, and logs no `prompt_topped`, so the prompt stays queued once, at its old position, with its images.
 
 **Binds.** `src/inbox/inbox-top.ts` (`moveFileToTop`), `src/inbox/inbox-attachments.ts` (`movePromptImages`'s `moves`).
 
-**Pinned by.** `test/inbox-top.test.ts` — "movePromptToTop whose queue-file write fails moves the image back and leaves the queue as it was".
+**Pinned by.** `test/inbox-top.test.ts` — "movePromptToTop whose queue-file write fails moves the image back and leaves the queue as it was"; "movePromptToTop whose old queue file cannot be removed takes the new copy back out, so the prompt is not queued twice".
 
 ## Refusal: a failed PLANS.md strip never fails the refusal
 

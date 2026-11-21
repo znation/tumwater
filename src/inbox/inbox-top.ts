@@ -55,19 +55,26 @@ function moveFileToTop(root: string, role: string, file: string): TopOutcome {
   const carried = stripVanishedImageReferences(moved.text).text;
   try {
     writeTextAtomic(newFile, carried);
+    removeQueueFile(file);
   } catch (err) {
-    // Put the attachments back under the old stem, so the prompt still queued there keeps its
-    // images; one failed rename must not stop the others or mask the write error.
+    // Undo the whole move, so the prompt is never queued twice: when the old file cannot be
+    // removed, the new copy is taken back out, and the attachments go back under the old stem
+    // so the prompt still queued there keeps its images. Each step is best effort — one failure
+    // must not stop the others or mask the error the caller sees.
+    try {
+      removeQueueFile(newFile);
+    } catch {
+      // Best effort: the original error is the one the caller sees.
+    }
     for (const m of moved.moves) {
       try {
         renameSync(m.to, m.from);
       } catch {
-        // Best effort: the write error is the one the caller sees.
+        // Best effort: the original error is the one the caller sees.
       }
     }
     throw err;
   }
-  removeQueueFile(file);
   logEventBestEffort(root, { source: role, type: "prompt_topped", preview: promptPreview(carried) });
   return { status: "topped", preview: promptPreview(carried) };
 }
