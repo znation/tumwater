@@ -643,6 +643,9 @@ test("the floor grants through the reserve, and the reserve still withholds a se
   assert.equal(sem.canLeaseAtOnce(1), true, "the open floor admits a maintenance arrival through the reserve");
   const maint = await sem.acquireLease(1); // resolves at once: the floor ignores the reserve
   assert.equal(sem.snapshot().inUse, 3, "the floor took the reserved permit");
+  maint.pause(); // the floor reopens with only the reserved permit free
+  await maint.resume(); // resolves at once: a resume takes the floor through the reserve too
+  assert.equal(sem.snapshot().inUse, 3, "the resumed lease took the reserved permit back");
 
   w1.release(); // one permit free again, and maintenance now holds the floor
   let secondGranted = false;
