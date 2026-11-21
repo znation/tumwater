@@ -32,27 +32,77 @@ the way the codex-account seed and the isolated OpenCode DB work), and use `~/.c
 the config asks for it. Add a `tumwater doctor` row that warns about an unisolated Codex home, and
 fix the retention comment either way.
 
-### 1,451 commits dropped from post-merge review on 2026-11-09 and 11-11 stay unreviewed, and nothing can re-queue them (reported by the user 2026-11-16)
+### A dropped post-merge review leaves only a free-text warning with a short SHA, so nothing can find the commits it dropped (reported by the user 2026-11-16, split 2026-11-21 by the plan role)
 
-**Needs review 2026-11-21 by feature: too large for one run** — it bundles three parts: emitting a `review_dropped` event on every drop (src/merge/merge-post-review-drain.ts), a `tumwater review --requeue-dropped [--since <date>]` command that reads both the events and the legacy `dropping the post-merge review` warnings, and the one-time re-queue run once the provider has quota. Split it into those parts, and have the user decide whether the matching BUGS-FIXED.md entries are deleted or kept.
+Part 1/2 of "1,451 commits dropped from post-merge review stay unreviewed"; part 2/2 ("No command
+re-queues a dropped post-merge review") is independent and reads the event this part adds, using
+the event shape fixed here.
 
 Before 4120526fe the review provider's quota wall made each commit's post-merge review fail three
-times and get dropped ("dropping the post-merge review of … after 3 failed runs; it stays on main
-unreviewed"): 821 drops on 2026-11-09 and 630 on 2026-11-11 in kde-macos8.6-theme. Those commits
-are on main and were never reviewed. `state/post-review.json` holds 395 entries, none unreviewed,
-so they are not queued anywhere, and no command or role re-queues a review dropped because of a
-provider failure.
+times and get dropped: 821 drops on 2026-11-09 and 630 on 2026-11-11 in kde-macos8.6-theme. The
+only record of a drop is a `warning` event whose message names the commit by `shortSha` — at
+both drop sites in src/merge/merge-post-review-drain.ts: `settlePostReviewOutcome` ("dropping the
+post-merge review of … after N failed runs; it stays on main unreviewed") and
+`settleFailedReviewerFix` ("… after N failed fix merges; the fix stays unreviewed"). A short SHA
+can be ambiguous, and a warning is not a type a reader can select.
 
-**Reproduce.** Observed: count the `dropping the post-merge review` warnings in that project's
-`log/events.jsonl` for those days and compare against `state/post-review.json`. BUGS-FIXED.md
-mentions "never reached a verdict" 240 times; check whether the per-commit entries 4120526fe's
-message describes (821 in 20 min) were cleaned up or only moved to BUGS-FIXED.md.
+**Fix.** At both drop sites, also log (`logEventBestEffort`) one `review_dropped` event with
+`source` the entry's role, `commit` the full SHA being dropped, `summary` the entry's summary, and
+`reason` the failure detail (`outcome.detail` for failed runs; for fix merges the same
+`fix did not merge: …` text `fileDroppedReview` receives). Keep the existing warning text unchanged (part 2/2 reads it for history). Add
+`review_dropped` to the `EventType` union in src/events/events.ts with its comment, and give it a
+one-line rendering in src/events/event-format-review.ts next to `review_rejected`.
 
-**Suspected cause.** A drop is terminal, and its only record is a warning. Fix: emit an explicit
-`review_dropped` event (commit, role, reason) on every drop, and add a way to re-queue them, e.g.
-`tumwater review --requeue-dropped [--since <date>]`, reading the events (and the old warnings for
-history). Run it once for 2026-11-09 to 11-11 when the review provider has quota. Decide whether
-the matching BUGS-FIXED.md entries should be deleted rather than kept as "fixed".
+**Acceptance.**
+- After a review fails `POST_REVIEW_FAILURE_LIMIT` times (the existing drop test in
+  test/post-merge-review.test.ts), the event log holds exactly one `review_dropped` event whose
+  `commit` equals the full reviewed SHA and whose `source` is the entry's role; the
+  "dropping the post-merge review of" warning is still logged.
+- The failed-fix-merge drop test likewise finds one `review_dropped` event for its commit.
+- A failure that does not reach the limit, or a transient (`infrastructure`) failure, logs no
+  `review_dropped` event.
+- `tumwater logs` renders a `review_dropped` event as one readable line naming the short SHA and
+  the reason.
+
+### No command re-queues a dropped post-merge review, so the 2026-11-09 and 11-11 drops stay unreviewed (reported by the user 2026-11-16, split 2026-11-21 by the plan role)
+
+Part 2/2 of "1,451 commits dropped from post-merge review stay unreviewed"; part 1/2 ("A dropped
+post-merge review leaves only a free-text warning…") adds the `review_dropped` event this part
+reads. The two are independent: this part's tests write their own fixture events.
+
+`state/post-review.json` in kde-macos8.6-theme holds no entry for the 1,451 commits dropped on
+2026-11-09 and 11-11, and no command or role re-queues a review once it is dropped.
+
+**Fix.** Add `tumwater reviews --requeue-dropped --since <YYYY-MM-DD>` as a mode of `cmdReviews`
+in src/cli/cli-review-commands.ts (routed like `--show`/`--accept`; `--since` is required and
+names a local calendar day; `--json` prints the result object). It reads the event log from that
+day on (rotated files included — `readWindowEvents` in src/events/event-window.ts) and collects
+dropped commits from two shapes: `review_dropped` events (`commit` full SHA, `source` role,
+`summary`) and legacy `warning` events whose message starts "dropping the post-merge review of
+<short sha>" (its `source` is the role; the short SHA is resolved with `git rev-parse --verify
+<sha>^{commit}` in the root, the summary read from `git log -1 --format=%s`). Each distinct commit
+is queued with `addPostReview` (src/review/post-merge-review.ts) unless it is already in the queue,
+is not an ancestor of main, or its short SHA does not resolve to exactly one commit. It prints one
+line per skip reason count and the number queued. Re-running it queues nothing new.
+
+**Acceptance.**
+- With fixture events holding one `review_dropped` event and one legacy drop warning for two
+  commits on main, `reviews --requeue-dropped --since <that day>` leaves both in
+  `readPostReviews` with the dropping role and the commit's subject as summary, and reports 2
+  queued.
+- Running it a second time reports 0 queued and leaves the queue unchanged.
+- A drop dated before `--since` is not queued; a drop naming a commit not on main, or a short SHA
+  that resolves to nothing, is skipped and counted in the output, not queued.
+- Missing `--since`, or a value that is not a `YYYY-MM-DD` date, fails with a usage message and
+  changes nothing; `--requeue-dropped` combined with `--role`, `--status`, `--grep`, `--show` or
+  `--accept` is refused.
+- docs/cli.md's `tumwater reviews` section names the new mode and its `--since` flag.
+
+**Operator step after it merges** (not part of the code change): run `tumwater reviews
+--requeue-dropped --since 2026-11-09` in kde-macos8.6-theme once its review provider has quota;
+the re-queued reviews drain at the normal one-at-a-time pace. Whether that project's matching
+"never reached a verdict" BUGS-FIXED.md entries are deleted is QUESTIONS.md "Delete the archived
+'never reached a verdict' entries for re-queued dropped reviews?".
 
 ### The model check fails a pair on queue position: a probe that never starts on a saturated local server reads as "no answer" and holds every role (split from the 2026-11-18 model-check entry in Fixed; found by the bugfix role 2026-11-21)
 

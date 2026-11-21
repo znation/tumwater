@@ -6,7 +6,19 @@ director). Loops never block on their own questions; they check here at the star
 
 ## Open
 
-_None yet._
+### Delete the archived 'never reached a verdict' entries for re-queued dropped reviews? (asked by the plan role 2026-11-21)
+
+The 1,451 post-merge reviews kde-macos8.6-theme dropped on 2026-11-09 and 11-11 will be re-queued
+by `tumwater reviews --requeue-dropped` (BUGS.md "No command re-queues a dropped post-merge
+review…"). If that project's BUGS-FIXED.md holds per-commit "post-merge review of … never reached
+a verdict" entries for those commits, they read as fixed although the commits were never reviewed.
+(This repo's BUGS-FIXED.md holds 18 such entries, none dated 2026-11-09 to 11-11.)
+
+Options: (a) keep them — they record what happened, and a re-queued review that fails again files
+a fresh entry; (b) delete them by hand in that project once the re-queue has run.
+
+Recommendation: (a) keep them; nothing reads the archive as review coverage, and the re-queue
+plus the post-merge queue are the live record.
 
 ## Answered
 
