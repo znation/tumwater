@@ -597,4 +597,139 @@ in `pollGithubIssues`, and only when `githubIssues.close` is not false and `gh` 
   Y.
 - `#1`'s finished entry never triggers a close of `#12`.
 
+### Self-declared check, part 1/3: when a project declares no check, the orchestrator queues the director to declare one (planned 2026-11-21 by the director role; touches src/prompt/check-declaration-request.ts src/orchestrator/orchestrator-poll.ts src/paths.ts test/check-declaration-request.test.ts docs/invariants.md)
+
+**Goal.** The operator asked on 2026-11-21 that the amber "No build check declared" warning
+become self-healing on any project: tumwater declares a check itself instead of telling
+the operator what to do. Today the fix needs two runs and two merges: a plan run writes the
+declaration entry (`buildNoCheckNote`, src/prompt/gate-notes.ts), then a feature run builds it.
+In this part, the orchestrator's poll queues the director one automatic prompt, the same way
+`requestPrinciplesConsolidation` (src/prompt/principles-consolidation.ts) handles an over-cap
+PRINCIPLES.md. The director inspects the repo and declares the check in one run. It can use
+any language or build tool because it is a model reading the repo, not a fixed detection table.
+Part 2/3 changes the alert's wording and tone. Part 3/3 retires the plan/feature path.
+
+**Approach.**
+- New src/prompt/check-declaration-request.ts, modelled on principles-consolidation.ts:
+  - `CHECK_DECLARATION_LEAD = "[automatic] This project declares no deterministic check; declare one:"`.
+  - `checkDeclarationPrompt(): string`, the lead line followed by these rules:
+    - Find the command that verifies this repo, such as its test suite, typecheck or build
+      (`cargo test`, `go test ./...`, `pytest`, `make test`, `npm test`, …), by reading its
+      manifests, CI workflows and README. Do not guess from the language alone.
+    - Declare it by one route. (1) When the walked-up install root's package.json lacks a
+      `test`/`typecheck`/`build` script, add one there. (2) Otherwise write
+      `{ "check": { "command": "…" } }` to `.tumwater-config-request.json` at the worktree
+      root. Never edit tumwater.json. tumwater runs the request green before it applies it.
+    - Pick a command that passes on the tree as it is. A check that is red on main is worse
+      than none.
+    - If there is nothing to verify yet (no source, no runnable tests), change nothing and
+      end with TUMWATER_NOTHING_TO_DO.
+    - Add no PLANS.md or BUGS.md entry for this work.
+  - `requestCheckDeclaration(root, config, opts)` returns `{ requested, error? }` and uses the
+    same seams as `requestPrinciplesConsolidation`: `directorBusy`, `hasPin`, `submit`, plus
+    `now` and `mainHead`. It returns `requested: false` in each of these cases:
+    - `buildCheckForPoll(root, config)` (src/status/status-polls.ts) is non-null;
+    - a queued prompt starts with the lead (`queuedPrompts`);
+    - the director is busy or holds an unmerged pin;
+    - the last attempt's record says not to retry yet (next bullet).
+    Otherwise it submits the prompt and writes the attempt record. An enqueue that throws is
+    caught into `error`.
+  - Retry gate, so a project with nothing to verify does not get a director run on every
+    poll: `checkDeclarationStatePath(root)` (src/paths.ts) is `.tumwater/check-declaration.json`
+    and holds `{ at, head }`, written when a prompt is submitted. Request again only when
+    main's head differs from `head` and at least 24 hours (`CHECK_DECLARATION_RETRY_MS`) have
+    passed since `at`. A missing or unreadable record means request now. This is one fixed
+    default, not a config knob.
+- src/orchestrator/orchestrator-poll.ts: call `requestCheckDeclaration(root, liveConfig, {
+  directorBusy: ctx.directorInFlight.size > 0, mainHead })` next to the consolidation call.
+  An `error` only warns through `ctx.warn`, as the consolidation call does.
+- docs/invariants.md: add an entry beside the principles-consolidation guarantee covering
+  one request at a time, the retry gate, and never requesting with a check declared, pinned
+  by the new tests.
+- This part leaves the existing plan/feature no-check notes alone. Both paths can run until
+  part 3/3. Only one declaration can merge: once one merges, `detectBuildCheck` finds it and
+  both paths go quiet.
+
+**Acceptance criteria.** All in test/check-declaration-request.test.ts, using a temp repo and
+injected seams; no real model.
+- A repo with no package.json scripts and no `check.command`: the first call submits exactly
+  one prompt that starts with `CHECK_DECLARATION_LEAD`. A second call at once submits nothing
+  (already queued).
+- With `check.command` set, or a package.json `test` script, nothing is submitted.
+- `directorBusy: true` submits nothing. A `hasPin` resolving true submits nothing.
+- After an attempt record `{ at: T, head: "a" }`:
+  - same head at T+25h: nothing;
+  - head "b" at T+1h: nothing;
+  - head "b" at T+25h: one prompt.
+  - An unparsable record file: one prompt.
+- A `submit` that throws returns `{ requested: false, error }` and writes no record.
+- `checkDeclarationPrompt()` names `.tumwater-config-request.json` and `TUMWATER_NOTHING_TO_DO`,
+  and does not name tumwater.json as a file to edit.
+
+### Self-declared check, part 2/3: the no-check alert becomes a blue info message saying tumwater is declaring a check (planned 2026-11-21 by the director role; "requires part 1/3 landed"; touches src/doctor/doctor-project-checks.ts src/ui/team-alert-standings.ts test/doctor-checks.test.ts test/team-alerts.test.ts docs/invariants.md docs/feature-doctor.md)
+
+**Goal.** The operator asked on 2026-11-21 that this condition be an info message, not a
+warning, saying the project will get a gate check, because part 1/3 now creates one
+automatically. Under PRINCIPLES.md ("raise a UI warning only for what the operator must act
+on"), a state the system settles on its own is not amber.
+
+**Approach.**
+- `checkBuildCheck` (src/doctor/doctor-project-checks.ts): when no check is declared, return
+  `okOutcome` instead of `warnOutcome`, with this detail: `none declared yet — tumwater is
+  declaring one: the director finds this project's test, typecheck or build command and
+  declares it, and the review gate's build pre-check, the red-main baseline and redeploy's
+  green check turn on once it merges`. Rewrite the function's doc comment: it currently
+  argues the warn level, and its 2026-09-05 rationale is superseded by the operator's
+  2026-11-21 request.
+- `pushNoCheckAlert` (src/ui/team-alert-standings.ts) stops using `pushDoctorTwinAlert`
+  (which raises only on a warn row). It pushes `{ key: "no-check", tone: "blue", title:
+  "Declaring a build check", detail: <the row's detail>, actions: [] }` whenever it is called.
+  `buildStandingAlerts` already calls it only under the snapshot's `noDeclaredCheck` flag.
+  Update `pushDoctorTwinAlert`'s doc comment, which lists no-check among its users.
+- docs/invariants.md INV-T6: no-check leaves the "standing amber alerts" list. It is now the
+  one standing blue alert, still gated by `noDeclaredCheck` and still worded by
+  checkBuildCheck's detail. docs/feature-doctor.md: update the `check` row's description if
+  it says "warn".
+
+**Acceptance criteria.**
+- test/doctor-checks.test.ts: with no check, the `check` row has level `ok` and the new
+  detail (its existing exact-text case is updated, since this sentence is the row's
+  contract).
+- test/team-alerts.test.ts: under `noDeclaredCheck` the `no-check` alert has tone `blue`,
+  title "Declaring a build check", and detail equal to `checkBuildCheck`'s detail. The old
+  `plan role will plan this project's check` match is gone. Without the flag there is no
+  `no-check` alert. "tumwater status prints the standing no-check banner from the snapshot's
+  flag" now matches the new title.
+- No source or test file still contains the old sentence "set `check.command` in tumwater.json
+  for a non-npm repo" (checked by grep).
+
+### Self-declared check, part 3/3: retire the plan/feature no-check notes, so the director's automatic request is the one way a check gets declared (planned 2026-11-21 by the director role; "requires part 1/3 landed"; touches src/prompt/gate-notes.ts src/run/run-prompt.ts src/prompt/prompt.ts src/backlog/backlog.ts src/roles/role-guidance.ts src/roles/role-catalog.ts test/gate-notes.test.ts test/run-prompt.test.ts docs/invariants.md)
+
+**Goal.** "Prefer one sensible way." After part 1/3, a missing check has two cures: the
+director's single-run request, and the slower route where a plan run writes a marked entry
+and a feature run builds it. Retire the second, so a plan run is never spent writing a
+declaration the director is already making.
+
+**Approach.**
+- Delete `buildNoCheckNote` (src/prompt/gate-notes.ts) and the `noCheck` note it feeds in
+  src/run/run-prompt.ts (the `declaration`/`noCheck` block and its field on the returned
+  notes) and src/prompt/prompt.ts (the no-check note slot and its rendering).
+- Delete `declarationPlanEntry` (src/backlog/backlog.ts) and `CHECK_DECLARATION_MARKER`
+  (src/roles/role-guidance.ts), plus the role-catalog.ts charter sentences that cite them
+  (the plan charter's "write the declaration entry before anything else" and the feature
+  charter's `<no-check>` sentence). Grep `CHECK_DECLARATION_MARKER|declarationPlanEntry|
+  buildNoCheckNote|<no-check>` across src, test and docs, and remove or reword every hit.
+- Delete their tests in test/gate-notes.test.ts and test/run-prompt.test.ts. Keep or add one
+  run-prompt case showing that a plan or feature prompt for a project with no check contains
+  no `<no-check>` block.
+- docs/invariants.md: remove or reword any guarantee that pins the plan/feature no-check
+  notes.
+
+**Acceptance criteria.**
+- A grep for `CHECK_DECLARATION_MARKER`, `declarationPlanEntry`, `buildNoCheckNote` and
+  `<no-check>` over src/ and test/ finds nothing.
+- test/run-prompt.test.ts: a plan prompt and a feature prompt built for a repo with no
+  declared check contain no `<no-check>` block.
+- The project's check passes.
+
 ## Done
