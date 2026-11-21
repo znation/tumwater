@@ -43,6 +43,7 @@ import {
   checkMainDiffRules,
   checkPostMergeChurn,
   checkQaCoverage,
+  checkGithubIssues,
   checkRemoteCi,
   checkStateDir,
 } from "./doctor-project-checks.js";
@@ -232,6 +233,9 @@ function doctorSteps(
     // with no GitHub remote or workflow file, or with roles.ci.remote false — the way
     // checkFeedbackFiling omits its row.
     { name: "remote CI", run: () => checkRemoteCi(root, config) },
+    // The GitHub issues mirror's read check (plans/github-issues.md, part 1/5): null omits the
+    // row when the project has no GitHub remote or githubIssues is disabled, and no gh runs then.
+    { name: "github issues", run: () => checkGithubIssues(root, config, pathEnv) },
     { name: "qa coverage", run: () => checkQaCoverage(root, Date.now()) },
     // The role-notes read gap (plans/role-notes): every operator surface reads a role's notes
     // file whole while the run prompt truncates it at ROLE_NOTES_MAX_BYTES; this row surfaces the

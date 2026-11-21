@@ -3,6 +3,7 @@ import {
   BACKOFF_KEYS,
   BOOTSTRAP_KEYS,
   CHECK_KEYS,
+  GITHUB_ISSUES_KEYS,
   REVIEW_KEYS,
   TOP_LEVEL_KEYS,
 } from "./config-schema.js";
@@ -50,6 +51,13 @@ import {
   validateModelBlock,
 } from "./config-validation-model.js";
 import { validateRolesAndCrossField } from "./config-validation-roles.js";
+
+/** The GitHub issues mirror's scan clock (githubIssues.scanIntervalMinutes): a whole number of
+ * minutes, at least 15, so the mirror never polls GitHub faster than the clock allows. */
+const SCAN_INTERVAL_MINUTES: NumberRule = {
+  ok: (n) => Number.isInteger(n) && n >= 15,
+  what: "a whole number of minutes, at least 15",
+};
 
 /** Schema validation for tumwater.json: validateConfig, the gate every load and save passes
  * through (config.ts's load/save, config-write.ts's budget editing and
@@ -267,6 +275,23 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       checkNumber(o, "bootstrap.", "untilPlansDone", POSITIVE_INTEGER);
     });
   };
+  // The GitHub issues mirror (plans/github-issues.md): an absent section means the defaults.
+  // `scanIntervalMinutes` is a whole number of minutes, at least 15, so a scan never runs
+  // faster than the clock allows; `authors` is one of the two values the mirror knows; and
+  // `mirrorLabel` is a non-empty label with no comma, since GitHub's label list is comma-split.
+  const checkGithubIssues = (): void => {
+    checkObjectSection(r, "githubIssues", problems, (o) => {
+      checkKnownKeys(o, GITHUB_ISSUES_KEYS, "githubIssues", problems);
+      checkBoolean(o, "githubIssues.", "enabled");
+      checkBoolean(o, "githubIssues.", "close");
+      checkNumber(o, "githubIssues.", "scanIntervalMinutes", SCAN_INTERVAL_MINUTES);
+      if ("authors" in o && o.authors !== "collaborators" && o.authors !== "anyone")
+        problems.push(`githubIssues.authors must be "collaborators" or "anyone" (got ${show(o.authors)})`);
+      checkString(o, "githubIssues.", "mirrorLabel", false);
+      if (typeof o.mirrorLabel === "string" && o.mirrorLabel.includes(","))
+        problems.push(`githubIssues.mirrorLabel must not contain a comma (got ${show(o.mirrorLabel)})`);
+    });
+  };
   // Quiet hours (src/scheduling/quiet-hours.ts): the value is off when empty or absent, and
   // otherwise must parse as "HH:MM-HH:MM" — parseQuietHours's message is the one actionable
   // wording, so validateConfig and `config set` cannot drift apart on what a valid window is.
@@ -363,6 +388,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   checkCheckSection();
   checkIdleBackoff();
   checkReview();
+  checkGithubIssues();
 
   validateFallbackBlock(r, problems, {
     checkModelTriple,

@@ -153,6 +153,16 @@ export function defaultConfig(): ResolvedModelConfig {
     // to exempt. Removing it also closes the path where a director run could merge a mixed
     // doc-plus-config diff unreviewed.
     review: { enabled: true, exemptPaths: ["*.md", "docs/**"] },
+    // The GitHub issues mirror (plans/github-issues.md): on by default, scanning hourly. Authors
+    // default to collaborators so a stranger's issue never reaches the director unvetted; the
+    // mirror label names the issues tumwater has taken, so the operator can find them on GitHub.
+    githubIssues: {
+      enabled: true,
+      close: true,
+      scanIntervalMinutes: 60,
+      authors: "collaborators",
+      mirrorLabel: "tumwater",
+    },
     customRoles: [],
     roles,
   };
@@ -192,6 +202,7 @@ export function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfi
     ...cfg,
     idleBackoff: { ...base.idleBackoff, ...(cfg.idleBackoff ?? {}) },
     review: { ...base.review, ...(cfg.review ?? {}) },
+    githubIssues: { ...base.githubIssues, ...(cfg.githubIssues ?? {}) },
     piArgs: cfg.piArgs ?? base.piArgs,
     // Clone each backend entry (and its args array) so the result owns its data like every
     // other section. The legacy agentBin/piArgs stay beside it; resolvedBackendConfig picks
@@ -289,6 +300,7 @@ function cloneConfig(c: TumwaterConfig): TumwaterConfig {
     backends: cloneBackends(c.backends),
     idleBackoff: { ...c.idleBackoff },
     review: { ...c.review },
+    ...(c.githubIssues ? { githubIssues: { ...c.githubIssues } } : {}),
     ...(c.fallbackModel ? { fallbackModel: { ...c.fallbackModel } } : {}),
     customRoles: c.customRoles.map((cl) => ({ ...cl })),
     roles: Object.fromEntries(Object.entries(c.roles).map(([id, rc]) => [id, { ...rc }])),

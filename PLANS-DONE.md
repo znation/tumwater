@@ -5,6 +5,65 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### GitHub issues, part 1/5: detect a project's GitHub repo, probe `gh`, add the `githubIssues` config and a doctor `github issues` row (planned 2026-11-21 by the operator; touches src/observer/remote-ci.ts src/github/gh.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-project-checks.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts src/config/config-schema.ts src/config/config.ts src/config/config-validation.ts docs/config.md docs/feature-doctor.md test/remote-ci.test.ts test/doctor-checks.test.ts test/config.test.ts test/fakes/fake-gh.ts) — done 2026-11-21 by the feature role
+
+**Goal.** This is the base the other four parts build on (design: plans/github-issues.md). It
+works on any project tumwater runs on, not only tumwater's own repo. Tumwater learns which
+GitHub repo a project pushes to and whether the operator's `gh` can read it. `tumwater doctor`
+says so, with the fix, whenever the project has a GitHub remote and `gh` is missing or logged
+out. This part makes no GitHub API call and changes no team behavior.
+
+**Approach.**
+- src/observer/remote-ci.ts: split `remoteCiTarget` in two. A new exported
+  `githubTarget(root, config)` returns `{ repo, branch }` from the base branch's remote, using
+  the same `branch.<base>.remote` → `remote.<name>.url` → `githubRepoOf` path and the same
+  never-throws contract. `remoteCiTarget` keeps its own `roles.ci.remote` and workflow-file
+  gates and then calls `githubTarget`. Its behavior is unchanged.
+- New src/github/gh.ts holds the one injectable `gh` runner, `GhRunner = (args) =>
+  Promise<{ code, stdout } | null>`. The default builds on `boundedProbe("gh", …,
+  childEnv({ PATH }), …)` exactly as `checkFeedbackFiling` does today. Add
+  `ghReadiness(run): Promise<"ok" | "missing" | "unauthenticated">`, which checks
+  `gh --version` and then `gh auth status --hostname github.com`. `checkFeedbackFiling`
+  (src/doctor/doctor-model-checks.ts) calls `ghReadiness`, and its three messages stay
+  byte-identical.
+- Config: add `githubIssues?: { enabled?: boolean; close?: boolean; scanIntervalMinutes?:
+  number; authors?: "collaborators" | "anyone"; mirrorLabel?: string }` to
+  `TumwaterConfig` (src/config/config-schema.ts). Defaults in src/config/config.ts:
+  `{ enabled: true, close: true, scanIntervalMinutes: 60, authors: "collaborators",
+  mirrorLabel: "tumwater" }`. Validation in src/config/config-validation.ts:
+  `scanIntervalMinutes` is an integer ≥ 15, `authors` is one of the two values, and
+  `mirrorLabel` is a non-empty string with no comma. Document each key in docs/config.md.
+- Doctor row `github issues`, in src/doctor/doctor-project-checks.ts, wired into doctor.ts and
+  doctor-check-names.ts:
+  - skipped (`no GitHub remote`) when `githubTarget` is null, or when
+    `githubIssues.enabled` is false (`turned off in tumwater.json`);
+  - warn `gh is missing — install GitHub CLI (https://cli.github.com) so tumwater can read
+    <repo>'s issues, or set githubIssues.enabled to false`;
+  - warn `gh is not logged in — run \`gh auth login\` so tumwater can read <repo>'s issues, or
+    set githubIssues.enabled to false`;
+  - otherwise ok `gh ready — tumwater mirrors <repo>'s open issues`.
+  The probe is the injectable runner.
+- Extend test/fakes/fake-gh.ts so its recorder accepts any args vector. Answers for `api` and
+  `issue close` are added in parts 2 and 5.
+
+**Acceptance criteria.**
+- `githubTarget` returns `{ repo: "o/r", branch }` for https, scp and ssh:// github.com
+  remotes, and null for a gitlab.com remote, no remote, or an unreadable config. A project
+  without `.github/workflows/` still gets a target, and `remoteCiTarget` still returns null for
+  it.
+- With a fake github.com remote and the fake gh:
+  - gh missing → the row warns with the "gh is missing" text;
+  - auth failing → it warns with the "not logged in" text;
+  - both passing → ok, naming `o/r`.
+- With no remote, a non-GitHub remote, or `githubIssues.enabled: false`, the row is skipped and
+  the fake gh records zero calls.
+- The `feedback filing` row's three outcomes are unchanged, pinned by the existing
+  test/doctor-checks.test.ts cases.
+- Config: defaults read back as listed; `scanIntervalMinutes: 5` and `authors: "everyone"` are
+  each rejected with a message naming the key.
+
+Implemented 2026-11-21 by the feature role: src/github/gh.ts (GhRunner, ghRunner, ghReadiness) with checkFeedbackFiling calling ghReadiness and its three messages unchanged; githubTarget split out of remoteCiTarget; the githubIssues config (schema, defaults, merge, validation, docs/config.md row); the `github issues` row, which is omitted (null) like the remote CI row when there is no GitHub remote or githubIssues is disabled, rather than shown as a skipped line. Two deviations from the files-touched list: test/doctor.test.ts is touched too, since its fixed row list excludes the conditional github issues row the way it excludes remote CI; and the feedback filing probe now sends `auth status --hostname github.com`, so its call assertions in test/doctor-checks.test.ts changed to match. Pinned by test/remote-ci.test.ts, test/doctor-checks.test.ts and test/config.test.ts.
+
 ### Visible session cleanup, part 2/3: the GUI and TUI show a session-cleanup banner with progress and an ETA, and idle rows read `held: session cleanup` (planned 2026-11-16 by the operator; requires Visible session cleanup part 1/3 landed; touches src/status/status-data.ts src/ui/team-alert-status.ts src/ui/status-model.ts test/status-data.test.ts test/team-alert-status.test.ts test/team-alerts.test.ts test/status-model.test.ts) — done 2026-11-21 by the feature role
 
 **Goal.** Whenever the prune blocks scheduling, the dashboard says so, shows progress and

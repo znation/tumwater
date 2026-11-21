@@ -119,12 +119,27 @@ export function recordRemoteCi(
   return prev;
 }
 
+/** The GitHub repo the project's base branch pushes to, or null when there is none: null when
+ * the base branch's remote URL is unreadable or not on github.com. The branch is the base
+ * branch (`targetBranch`, as `currentCiParityState` resolves it); the remote is
+ * `branch.<branch>.remote`, defaulting to `origin`. Needs no workflow file, so the GitHub
+ * issues mirror (plans/github-issues.md) can use it on any project. A failed git read returns
+ * null and never throws — detection runs at the start of a run and must not fail it. */
+export async function githubTarget(
+  root: string,
+  config: TumwaterConfig,
+): Promise<{ repo: string; branch: string } | null> {
+  const branch = targetBranch(config.baseBranch, currentBranchFromHeadFile(root));
+  const remote = (await gitTry(root, "config", "--get", `branch.${branch}.remote`))?.trim() || "origin";
+  const url = (await gitTry(root, "config", "--get", `remote.${remote}.url`))?.trim();
+  if (!url) return null;
+  const repo = githubRepoOf(url);
+  return repo ? { repo, branch } : null;
+}
+
 /** The hosted-CI target the ci role checks, or null when there is nothing to check: null
  * when `roles.ci.remote` is false, when `.github/workflows/` holds no `*.yml`/`*.yaml` file,
- * or when the base branch's remote URL is unreadable or not on GitHub. The branch is the
- * base branch (`targetBranch`, as `currentCiParityState` resolves it); the remote is
- * `branch.<branch>.remote`, defaulting to `origin`. A failed git read returns null and never
- * throws — detection runs at the start of a ci run and must not fail the run. */
+ * or when githubTarget finds no GitHub remote. */
 export async function remoteCiTarget(
   root: string,
   config: TumwaterConfig,
@@ -138,12 +153,7 @@ export async function remoteCiTarget(
     return null;
   }
   if (!names.some((n) => n.endsWith(".yml") || n.endsWith(".yaml"))) return null;
-  const branch = targetBranch(config.baseBranch, currentBranchFromHeadFile(root));
-  const remote = (await gitTry(root, "config", "--get", `branch.${branch}.remote`))?.trim() || "origin";
-  const url = (await gitTry(root, "config", "--get", `remote.${remote}.url`))?.trim();
-  if (!url) return null;
-  const repo = githubRepoOf(url);
-  return repo ? { repo, branch } : null;
+  return githubTarget(root, config);
 }
 
 /** True when no remote-CI check has been recorded within the stall window — the ledger is

@@ -33,6 +33,7 @@ import {
   checkMainDiffRules,
   checkPostMergeChurn,
   checkQaCoverage,
+  checkGithubIssues,
   checkRemoteCi,
   checkStateDir,
 } from "../src/doctor/doctor-project-checks.js";
@@ -373,7 +374,7 @@ test("checkFeedbackFiling omits its row when feedback is disabled, ok when gh is
   const ok = await checkFeedbackFiling(enabled, envPath(), okGh.probe);
   assert.equal(ok?.level, "ok");
   assert.match(ok!.detail, /gh present and authenticated/);
-  assert.deepEqual(okGh.calls, [["--version"], ["auth", "status"]]);
+  assert.deepEqual(okGh.calls, [["--version"], ["auth", "status", "--hostname", "github.com"]]);
 });
 
 test("checkFeedbackFiling fails with actionable text when gh is missing or unauthenticated", async () => {
@@ -391,7 +392,59 @@ test("checkFeedbackFiling fails with actionable text when gh is missing or unaut
   const authOutcome = await checkFeedbackFiling(enabled, envPath(), unauth.probe);
   assert.equal(authOutcome?.level, "fail");
   assert.match(authOutcome!.detail, /gh auth login/);
-  assert.deepEqual(unauth.calls, [["--version"], ["auth", "status"]]);
+  assert.deepEqual(unauth.calls, [["--version"], ["auth", "status", "--hostname", "github.com"]]);
+});
+
+/** The `github issues` row's config: the defaults, with the mirror switched off when asked. */
+function githubConfig(enabled = true): TumwaterConfig {
+  const config = defaultConfig() as TumwaterConfig;
+  config.githubIssues = { ...config.githubIssues, enabled };
+  return config;
+}
+
+test("checkGithubIssues is omitted with no GitHub remote or a non-GitHub remote, and calls no gh", async () => {
+  const noRemote = readyRepo();
+  const noRemoteGh = fakeGh();
+  assert.equal(await checkGithubIssues(noRemote, defaultConfig() as TumwaterConfig, envPath(), noRemoteGh.probe), null);
+  assert.deepEqual(noRemoteGh.calls, []);
+
+  const gitlab = readyRepo();
+  sh(gitlab, "git", "remote", "add", "origin", "https://gitlab.com/znation/tumwater.git");
+  const gitlabGh = fakeGh();
+  assert.equal(await checkGithubIssues(gitlab, defaultConfig() as TumwaterConfig, envPath(), gitlabGh.probe), null);
+  assert.deepEqual(gitlabGh.calls, []);
+});
+
+test("checkGithubIssues is omitted when githubIssues.enabled is false, and calls no gh", async () => {
+  const repo = githubRepoFixture();
+  const gh = fakeGh();
+  assert.equal(await checkGithubIssues(repo, githubConfig(false), envPath(), gh.probe), null);
+  assert.deepEqual(gh.calls, []);
+});
+
+test("checkGithubIssues warns when gh is missing, naming the repo and the way out", async () => {
+  const repo = githubRepoFixture();
+  const missing = fakeGh({ version: false });
+  const outcome = await checkGithubIssues(repo, githubConfig(), envPath(), missing.probe);
+  assert.equal(outcome?.level, "warn");
+  assert.match(outcome!.detail, /^gh is missing — install GitHub CLI \(https:\/\/cli\.github\.com\) so tumwater can read znation\/tumwater's issues, or set githubIssues\.enabled to false$/);
+  assert.deepEqual(missing.calls, [["--version"]]);
+});
+
+test("checkGithubIssues warns when gh is not logged in", async () => {
+  const repo = githubRepoFixture();
+  const unauth = fakeGh({ auth: false });
+  const outcome = await checkGithubIssues(repo, githubConfig(), envPath(), unauth.probe);
+  assert.equal(outcome?.level, "warn");
+  assert.match(outcome!.detail, /^gh is not logged in — run `gh auth login` so tumwater can read znation\/tumwater's issues, or set githubIssues\.enabled to false$/);
+});
+
+test("checkGithubIssues is ok naming the repo when gh is present and logged in", async () => {
+  const repo = githubRepoFixture();
+  const gh = fakeGh();
+  const outcome = await checkGithubIssues(repo, githubConfig(), envPath(), gh.probe);
+  assert.deepEqual(outcome, { level: "ok", detail: "gh ready — tumwater mirrors znation/tumwater's open issues" });
+  assert.deepEqual(gh.calls, [["--version"], ["auth", "status", "--hostname", "github.com"]]);
 });
 
 test("checkInit carries the config error verbatim — invalid JSON and validation problems alike", () => {

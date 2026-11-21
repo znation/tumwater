@@ -38,6 +38,40 @@ test("the shipped run budget clears the longest legitimate observed run", () => 
   );
 });
 
+test("defaultConfig reads back the githubIssues defaults", () => {
+  assert.deepEqual(defaultConfig().githubIssues, {
+    enabled: true,
+    close: true,
+    scanIntervalMinutes: 60,
+    authors: "collaborators",
+    mirrorLabel: "tumwater",
+  });
+});
+
+test("validateConfig rejects a githubIssues scan interval under 15 minutes, and names the key", () => {
+  assert.throws(
+    () => validateConfig({ githubIssues: { scanIntervalMinutes: 5 } }),
+    /githubIssues\.scanIntervalMinutes must be a whole number of minutes, at least 15 \(got 5\)/,
+  );
+  assert.doesNotThrow(() => validateConfig({ githubIssues: { scanIntervalMinutes: 15 } }));
+});
+
+test("validateConfig rejects a githubIssues authors value other than collaborators or anyone", () => {
+  assert.throws(
+    () => validateConfig({ githubIssues: { authors: "everyone" } }),
+    /githubIssues\.authors must be "collaborators" or "anyone" \(got "everyone"\)/,
+  );
+  assert.doesNotThrow(() => validateConfig({ githubIssues: { authors: "anyone" } }));
+});
+
+test("validateConfig rejects a blank or comma-bearing githubIssues mirrorLabel", () => {
+  assert.throws(() => validateConfig({ githubIssues: { mirrorLabel: "  " } }), /githubIssues\.mirrorLabel must not be empty/);
+  assert.throws(
+    () => validateConfig({ githubIssues: { mirrorLabel: "a,b" } }),
+    /githubIssues\.mirrorLabel must not contain a comma/,
+  );
+});
+
 test("defaultConfig enables every role including director, except the opt-in selfcheck and feedback", () => {
   const config = defaultConfig();
   for (const id of allRoleIds()) {

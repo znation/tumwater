@@ -55,14 +55,16 @@ test("runDoctor composes the full report — fixed check order, not-running head
   );
   // funes is absent: the fake PATH has no funes. The feedback filing row is conditional
   // on `roles.feedback.enabled`, off by default; the remote CI row on a hosted-CI target
-  // (a GitHub remote plus a workflow file, absent in the fixture); and the seven codex rows
-  // on a codex seam, absent here — so they are omitted too.
+  // (a GitHub remote plus a workflow file, absent in the fixture); the github issues row on a
+  // GitHub remote (absent in the fixture too); and the seven codex rows on a codex seam, absent
+  // here — so they are omitted too.
   assert.deepEqual(
     DOCTOR_CHECK_NAMES.filter(
       (n) =>
         n !== "funes" &&
         n !== "feedback filing" &&
         n !== "remote CI" &&
+        n !== "github issues" &&
         n !== "codex version" &&
         n !== "codex login" &&
         n !== "codex home" &&

@@ -190,6 +190,19 @@ interface BootstrapConfig {
   untilPlansDone?: number;
 }
 
+/** The GitHub issues mirror's settings (plans/github-issues.md). `enabled` turns the mirror
+ * and its doctor row off; `close` lets a finished mirrored entry close its GitHub issue;
+ * `scanIntervalMinutes` is the clock between scans, at least 15; `authors` says whose issues
+ * are mirrored — the repo's collaborators, or anyone; `mirrorLabel` is the label the mirror
+ * stamps on the issues it has taken. */
+interface GithubIssuesConfig {
+  enabled?: boolean;
+  close?: boolean;
+  scanIntervalMinutes?: number;
+  authors?: "collaborators" | "anyone";
+  mirrorLabel?: string;
+}
+
 /** The project's declared verification command (plans/portability.md §6/7) — a property of
  * the target repo, not of the machine running tumwater, which is why it is a project key in
  * the shareable config rather than a host setting. */
@@ -453,6 +466,10 @@ export interface TumwaterConfig {
    * Absent means no bootstrap, so existing configs are unaffected. Removing it ends bootstrap
    * early. */
   bootstrap?: BootstrapConfig;
+  /** The GitHub issues mirror (plans/github-issues.md): which open issues on the project's
+   * GitHub repo tumwater mirrors into PLANS.md and how. Absent or partial takes the defaults
+   * (overlayDefaults). */
+  githubIssues?: GithubIssuesConfig;
   /** Adversarial pre-merge review gate (see src/review/review.ts). */
   review: ReviewConfig;
   /** User-defined roles (plans/user-defined-loops.md): each entry is merged into `roles` at
@@ -508,6 +525,7 @@ export const TOP_LEVEL_KEYS = [
   "autoRestart",
   "bootstrap",
   "review",
+  "githubIssues",
   "customRoles",
   "roles",
 ];
@@ -549,6 +567,9 @@ export const CODEX_BACKEND_KEYS = [...BACKEND_KEYS, "configDir"];
 
 /** The keys tumwater.json's `bootstrap` section may hold. */
 export const BOOTSTRAP_KEYS = ["untilPlansDone"];
+
+/** The keys tumwater.json's `githubIssues` section may hold. */
+export const GITHUB_ISSUES_KEYS = ["enabled", "close", "scanIntervalMinutes", "authors", "mirrorLabel"];
 
 export const ROLE_ENTRY_KEYS = [
   "enabled",

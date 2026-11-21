@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   githubRepoOf,
+  githubTarget,
   readRemoteCi,
   recordRemoteCi,
   remoteCiTarget,
@@ -81,6 +82,39 @@ test("remoteCiTarget returns null when origin is on another host", async () => {
   fs.writeFileSync(path.join(workflows, "ci.yml"), "name: ci\n");
   sh(repo, "git", "remote", "add", "origin", "https://gitlab.com/znation/tumwater.git");
   assert.equal(await remoteCiTarget(repo, defaultConfig() as TumwaterConfig), null);
+});
+
+// --- githubTarget: the GitHub repo the base branch pushes to, with no workflow file needed.
+
+function remoteFixture(url: string | null): string {
+  const repo = makeRepo();
+  if (url !== null) sh(repo, "git", "remote", "add", "origin", url);
+  return repo;
+}
+
+test("githubTarget reads the repo from the https, scp and ssh forms", async () => {
+  const config = defaultConfig() as TumwaterConfig;
+  for (const url of [
+    "https://github.com/znation/tumwater.git",
+    "git@github.com:znation/tumwater.git",
+    "ssh://git@github.com/znation/tumwater",
+  ]) {
+    assert.deepEqual(await githubTarget(remoteFixture(url), config), { repo: "znation/tumwater", branch: "main" }, url);
+  }
+});
+
+test("githubTarget returns null for a non-GitHub remote, no remote, or a directory that is not a repo", async () => {
+  const config = defaultConfig() as TumwaterConfig;
+  assert.equal(await githubTarget(remoteFixture("https://gitlab.com/znation/tumwater.git"), config), null);
+  assert.equal(await githubTarget(remoteFixture(null), config), null);
+  assert.equal(await githubTarget(tmpdir(), config), null);
+});
+
+test("githubTarget still returns the target with no workflow file, where remoteCiTarget does not", async () => {
+  const repo = remoteFixture("https://github.com/znation/tumwater.git");
+  const config = defaultConfig() as TumwaterConfig;
+  assert.deepEqual(await githubTarget(repo, config), { repo: "znation/tumwater", branch: "main" });
+  assert.equal(await remoteCiTarget(repo, config), null);
 });
 
 // --- the ledger: a missing, torn or wrong-shaped file reads as null.

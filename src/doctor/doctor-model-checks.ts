@@ -1,5 +1,5 @@
-import { childEnv } from "../process/process.js";
-import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./doctor-probe.js";
+import { ghReadiness, ghRunner, type GhRunner } from "../github/gh.js";
+import { AUTH_CHECK_TIMEOUT_MS } from "./doctor-probe.js";
 import { defaultConfig, loadConfigSafe } from "../config/config.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { cacheReadUnpriced, piModelsPath, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
@@ -458,27 +458,17 @@ export async function checkTierModels(
 export async function checkFeedbackFiling(
   root: string,
   pathEnv: string = envPath(),
-  probe: (
-    args: string[],
-  ) => Promise<{ code: number | null; stdout: string } | null> = (args) =>
-    boundedProbe(
-      "gh",
-      args,
-      childEnv({ PATH: pathEnv }),
-      AUTH_CHECK_TIMEOUT_MS,
-      AUTH_CHECK_MAX_OUTPUT_BYTES,
-    ),
+  probe: GhRunner = ghRunner(pathEnv),
 ): Promise<CheckOutcome | null> {
   const config = loadConfigForCheck(root);
   if ("level" in config) return config;
   if (!config.roles.feedback?.enabled) return null;
-  const version = await probe(["--version"]);
-  if (version?.code !== 0)
+  const readiness = await ghReadiness(probe);
+  if (readiness === "missing")
     return failOutcome(
       "gh is missing or unusable — install GitHub CLI (https://cli.github.com) so the feedback role can file issues as your login",
     );
-  const auth = await probe(["auth", "status"]);
-  if (auth?.code !== 0)
+  if (readiness === "unauthenticated")
     return failOutcome(
       "gh is not authenticated — run `gh auth login` — the feedback role files issues as your GitHub login",
     );

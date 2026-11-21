@@ -1,9 +1,9 @@
-/** A fake `gh` for the doctor's `feedback filing` check (checkFeedbackFiling): the check probes
- * `gh --version` and `gh auth status`, so this fake answers those two and records every
- * invocation, with switches to simulate a missing binary and an unauthenticated install. The
- * same probe shape is what a filing run's `gh issue create`/`gh issue list` would exercise, so
- * the recorder keeps every args vector for part 2's contract tests. No test reaches a real gh
- * (see PRINCIPLES.md). */
+/** A fake `gh` for the doctor's `feedback filing` check (checkFeedbackFiling) and the `github
+ * issues` row (checkGithubIssues): ghReadiness probes `gh --version` and
+ * `gh auth status --hostname github.com`, so this fake answers those two and records every
+ * invocation, with switches to simulate a missing binary and an unauthenticated install. Any
+ * other args vector is answered with exit 0 and recorded too, so a test can assert that a row
+ * made no gh call at all (an empty `calls`). No test reaches a real gh (see PRINCIPLES.md). */
 
 interface FakeGhProbe {
   /** The probe to pass to checkFeedbackFiling: runs `gh <args>` and answers --version/auth

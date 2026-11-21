@@ -17,7 +17,7 @@ import type { CheckConfigSlice, TumwaterConfig } from "../config/config-schema.j
 import { detectBuildCheck, mergeCommandOf } from "../build/build-check-detect.js";
 import { isPassingFullCheck } from "../build/build-check-events.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
-import { dirEntryNames, statOrNull } from "../files/files.js";
+import { dirEntryNames, envPath, statOrNull } from "../files/files.js";
 import { refSha } from "../git/git.js";
 import { resolvedGitBin } from "../git/git-run.js";
 import { errCode } from "../errno.js";
@@ -37,7 +37,8 @@ import { POST_MERGE_REJECT_WINDOW_MS, postMergeChurn } from "../review/post-merg
 import { roleLabel } from "../roles/role-labels.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { readCiParity, currentCiParityState, parityIsCurrent, ciParityStalled, CI_PARITY_STALE_MS } from "../observer/ci-parity.js";
-import { readRemoteCi, type RemoteCiEntry, remoteCiStalled, remoteCiTarget } from "../observer/remote-ci.js";
+import { githubTarget, readRemoteCi, type RemoteCiEntry, remoteCiStalled, remoteCiTarget } from "../observer/remote-ci.js";
+import { ghReadiness, ghRunner, type GhRunner } from "../github/gh.js";
 import { readQaCoverage, qaCoverageStalled, QA_COVERAGE_STALE_MS } from "../observer/qa-coverage.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
@@ -529,6 +530,33 @@ export async function checkRemoteCi(
       `no remote CI check recorded in over ${CI_PARITY_STALE_MS / DAY_MS} days — the ci role is disabled, paused, or not reporting its REMOTE line`,
     );
   return remoteCiResultOutcome(entry, now);
+}
+
+/** The doctor's `github issues` row (plans/github-issues.md, part 1/5): can the operator's `gh`
+ * read the project's GitHub repo, the read the issues mirror makes on its clock? Omitted (null)
+ * when the project pushes to no GitHub repo (githubTarget is null) or `githubIssues.enabled` is
+ * false — the way the remote CI row omits itself — and no gh call is made then. A missing or
+ * logged-out gh is a warn naming the fix, or turning the mirror off; otherwise ok naming the
+ * repo. Reads only the local gh install and its login (ghReadiness): no GitHub API call. */
+export async function checkGithubIssues(
+  root: string,
+  config: TumwaterConfig | undefined,
+  pathEnv: string = envPath(),
+  run: GhRunner = ghRunner(pathEnv),
+): Promise<CheckOutcome | null> {
+  if (!config || config.githubIssues?.enabled === false) return null;
+  const target = await githubTarget(root, config);
+  if (target === null) return null;
+  const readiness = await ghReadiness(run);
+  if (readiness === "missing")
+    return warnOutcome(
+      `gh is missing — install GitHub CLI (https://cli.github.com) so tumwater can read ${target.repo}'s issues, or set githubIssues.enabled to false`,
+    );
+  if (readiness === "unauthenticated")
+    return warnOutcome(
+      `gh is not logged in — run \`gh auth login\` so tumwater can read ${target.repo}'s issues, or set githubIssues.enabled to false`,
+    );
+  return okOutcome(`gh ready — tumwater mirrors ${target.repo}'s open issues`);
 }
 
 /** The doctor's `qa coverage` row: has the `qa` observer — the team's only flow-level
