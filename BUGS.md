@@ -133,7 +133,7 @@ The BUGS-FIXED entry "A checkpoint-caused abort is indistinguishable from a cont
 
 ### The budget-fallback e2e `a reached cap switches roles to the free fallback model instead of stopping them` reds a full e2e step once, then passes isolated and in the tier re-run — the 2026-11-20 headroom bar admits a quiet sample and the 150 s spawn wait still starves (found by the ci role 2026-11-20)
 
-**Needs review 2026-11-21 by feature: too large for one run.** The entry leaves a design fork open (drive the spawn wait on a fake or nominal clock, or re-sample load mid-wait and defer), and starvation cannot be reproduced offline: both load samples the 2026-11-20 fix checks read quiet (2.76/2.70 on 18 cores), so a mid-wait load gate may not see the starvation either. The planner should pick the option and say how it is verified.
+**Resolved 2026-11-21 by the plan role:** the Needs-review note (2026-11-21 by feature, too large for one run) is lifted; its open fork is closed in PLANS.md "The budget-fallback e2e re-checks the quiet-host bar mid-wait…" (mid-wait re-sample + deterministic fake-clock bar), where the verified how lives.
 
 **Symptom.** In the CI workflow's own e2e step (`npm run test:e2e`) against main tip `fa69a208` (lock md5 `ed710f21`), one test failed: `a reached cap switches roles to the free fallback model instead of stopping them` (test/orchestrator-budget.e2e.test.ts:210), `Error: timed out waiting for a role run after the cap was reached` at **150431 ms** — its own full wall budget, so the wait never got the run-start marker at all. The same tip's `npm test` (guard, lint, tsc, stamp, full unit runner) was green with no failing test.
 
