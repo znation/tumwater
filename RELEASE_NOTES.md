@@ -2,6 +2,14 @@
 
 ## Highlights
 
+- Feature and bugfix now default to 3 parallel instances, and the plan role keeps 4 eligible
+  plans ahead instead of 2. An idle extra instance costs nothing: it is skipped while no
+  unclaimed entry is eligible. **Upgrade note:** a team with no `instances` in tumwater.json
+  goes from one to three feature and bugfix runners on its first redeploy. Set
+  `roles.feature.instances` / `roles.bugfix.instances` to 1 (`tumwater role feature
+  --instances 1`, the Settings card or the role drawer) to keep the old behavior. A local-model
+  team should check `maxConcurrent` against its server's parallel slots.
+
 - A release install names its npm version everywhere it names the build: the `tumwater status`
   header, the `tumwater start` banner, `doctor`, and the dashboard's Version row (the commit
   stays beside it, and in the tooltip, for bug reports).
@@ -46,9 +54,9 @@
 ## Build and tests
 
 - Small cleanups: one home for the team-hold backoff ladder, the run-start→model pairing rule,
-  and the default instance count (still 1).
+  and the default instance count.
 - New tests pin the session ledger's kind guard, the merge-claim shape guard, the post-merge
   review backoff, the session-cleanup progress and event wording, and the release-version
   stamp.
 
-226 files changed, +4686 / −26369 over 54 commits since v0.8.2
+242 files changed, +4890 / −26416 over 57 commits since v0.8.2
