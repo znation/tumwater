@@ -24,7 +24,7 @@ import { restartHoldRolePhase } from "./badges.js";
  * data (status/status-data.ts) and shared by BOTH observer surfaces: the terminal table
  * (status-render.ts's renderStatus/stateCell) and the JSON/GUI payload (status-payload.ts).
  * Kept apart from status-render.ts so the GUI payload depends on the shared model, not on the
- * TUI table module — "what to show" (here) is separate from "how a terminal lays it out"
+ * status table module — "what to show" (here) is separate from "how a terminal lays it out"
  * (status-render.ts). Depends on status/status-data.ts one way: deriving reads the snapshot
  * and never collects team state itself (live run detail is display-only). */
 
@@ -312,7 +312,7 @@ export function rolePhase(
 }
 
 /** One rendered role-table row's sort key: the role name, its rendered phase label
- * (rolePhase), and its last run end. Both the TUI/status table and the GUI page's browser
+ * (rolePhase), and its last run end. Both the status table and the GUI page's browser
  * copy carry these three fields. */
 interface RoleSortRow {
   role: string;
@@ -409,7 +409,7 @@ export function isActivePhase(phase: string): boolean {
  * awaiting a permit; 2 needs attention — failing;
  * 3 paused — by the operator, by the budget, or by the role's own
  * per-role cap; 4 everything else (idle: sleeping, queued, the director waiting for prompts, a
- * stopped team). The dashboard groups its role table by these ranks; the TUI/status table
+ * stopped team). The dashboard groups its role table by these ranks; the status table
  * orders by them.
  *
  * The rank → phase mapping is ROLE_RANK_RULES, one home for the phase literals so the
@@ -446,7 +446,7 @@ export function roleRank(phase: string): number {
 /** The role tables' shared row order: by roleRank (live work, then work waiting in the
  * pipeline, then roles that need attention, then paused, then idle); within a rank by last run
  * most-recent-first, a row for a role that has never run (null) after any timestamp, ties
- * broken by role ascending. This is the TUI/status table's comparator; the GUI page's browser copy
+ * broken by role ascending. This is the status table's comparator; the GUI page's browser copy
  * (gui-client-model.ts) cannot import TS, so test/gui.test.ts cross-checks the two over the
  * same fixtures to keep them in lockstep. /api/status and `status --json` keep
  * their payload (config) order — only the rendered tables sort. */

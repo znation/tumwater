@@ -132,13 +132,13 @@ function roleTallyFields(s: RoleState, generated: number, peakCtx: number) {
     generated,
     peakCtx,
     // The preformatted peak-ctx share of the role's declared window (part 3c): shipped
-    // beside `peakCtx` so `status --json` and the GUI carry the label the TUI prints without
-    // re-resolving the window. Present only where a window is declared, so a window-less
+    // beside `peakCtx` so `status --json` and the GUI carry the label the status table prints
+    // without re-resolving the window. Present only where a window is declared, so a window-less
     // role's payload shape is unchanged.
     ...(s.contextWindow !== undefined ? { peakCtxLabel: contextShareLabel(peakCtx, s.contextWindow) } : {}),
     costUsd: s.totalCostUsd,
     // The role's spend for the local day (the daily budget window): 0 while its stamp
-    // is stale or missing — same helper and semantics as the TUI's `today` column.
+    // is stale or missing — same helper and semantics as the status table's `today` column.
     todayUsd: dailyCost(s),
   };
 }
@@ -175,9 +175,10 @@ function roleScheduleFields(s: RoleState) {
     yieldMultiplier: yieldMultiplierFor(s),
     // The consecutive no-change streak (run-apply.ts applyRunOutcome's noChangeStreak, an
     // observational counter): how many completed runs in a row returned nothing to do. The
-    // TUI reads it off the rendered label; the GUI's phaseDetailBase re-derives the ` · no
-    // change ×N` suffix from this number (its row and drawer share noChangeStreak) so its
-    // JS twin applies the same display rule without re-parsing the phase text.
+    // The status table reads it off the rendered label; the GUI's phaseDetailBase
+    // re-derives the ` · no change ×N` suffix from this number (its row and drawer share
+    // noChangeStreak) so its JS twin applies the same display rule without re-parsing the phase
+    // text.
     noChangeStreak: s.noChangeStreak ?? 0,
     // The consecutive cut-off streak (run-apply.ts applyRunOutcome's cutOffStreak, an
     // observational counter parallel to noChangeStreak): how many completed runs in a row
@@ -190,11 +191,12 @@ function roleScheduleFields(s: RoleState) {
 
 /** The per-role rows (status-payload.ts's field-group split): roleRows assembles each role's
  * fields from `snap.roles` — the same single-home roleRowCells/onErrorStreak/metrics reads the
- * TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot drift apart. */
+ * status table (status-render.ts's renderStatus) repeats, so the two surfaces cannot drift
+ * apart. */
 function roleRows(snap: StatusSnapshot, root: string) {
   return snap.roles.map((s) => {
     // roleRowCells single-homes the per-role tail read + metrics + phase derivation the
-    // TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot
+    // status table (status-render.ts's renderStatus) repeats, so the two surfaces cannot
     // drift apart.
     const { live, generated, peakCtx, phase } = roleRowCells(snap, root, s);
     return {
@@ -239,9 +241,9 @@ function headerFields(root: string, snap: StatusSnapshot, now: number) {
     // harness runs or its dist carries no stamp — machine-readable for `status --json`.
     build: snap.build,
     // The header's build badge pre-formatted through badges.ts's buildBadge — the same
-    // string the TUI/status table renders. Sent display-ready (like phase and events) because
+    // string the status table renders. Sent display-ready (like phase and events) because
     // the page is browser JS that cannot import TypeScript, and this multi-branch text must
-    // not be re-derived client-side where it could drift from the TUI header.
+    // not be re-derived client-side where it could drift from the status header.
     buildBadge: buildBadge(snap.build, now),
     // The version an operator reads, pre-formatted through build-info.ts's buildLabel — the npm
     // release version for a release build, the short commit otherwise. Shipped display-ready like
@@ -254,18 +256,18 @@ function headerFields(root: string, snap: StatusSnapshot, now: number) {
     // with the reason buried in the version row's tooltip (2026-10-30).
     restartHoldBadge: restartHoldText(snap.build, now),
     // The header's daily-cost-budget badge preformatted through badges.ts's budgetBadge —
-    // the same string the TUI/status table renders (n/a for an all-free team; `· no cap`
+    // the same string the status table renders (n/a for an all-free team; `· no cap`
     // when disabled). Sent display-ready like buildBadge so the page cannot re-derive it.
     budgetBadge: budgetBadge(snap.budget, snap.chain, snap.subscriptionWindows, snap.subscriptionOnly, now),
     // The disk floor (plans/disk-floor.md, part 4/4): the raw block is machine-readable for
     // `status --json`, and the header badge is preformatted through badges.ts's diskBadge —
-    // the same string the TUI/status header renders. Omitted (not null) when no orchestrator
+    // the same string the status header renders. Omitted (not null) when no orchestrator
     // has published one — the same omit-undefined idiom as pausedUntil.
     ...(snap.disk ? { disk: snap.disk } : {}),
     diskBadge: diskBadge(snap.disk),
     // The permit pool (plans/provider-concurrency.md §8): raw block machine-readable for
     // `status --json`, plus the display-ready header badge — the same `slots 5/8 · omlx 3/3`
-    // string the TUI/status header renders. Omitted when no orchestrator has published one.
+    // string the status header renders. Omitted when no orchestrator has published one.
     ...(snap.permits ? { permits: snap.permits } : {}),
     permitsBadge: permitsBadge(snap.permits),
     ...(snap.checkPermits ? { checkPermits: snap.checkPermits } : {}),
@@ -309,27 +311,27 @@ function mergeAndCheckFields(root: string, snap: StatusSnapshot, now: number) {
     mergeQueueLabels: (snap.mergeQueue.entries ?? []).map((e) => queueEntryMergeLabel(e.sha, snap.mergeQueue.inFlight, now)),
     // Main's newest merge-scope check: the
     // raw block is machine-readable for `status --json`, and the header badge is
-    // preformatted through badges.ts's mainCheckBadge — the same string the TUI/status
+    // preformatted through badges.ts's mainCheckBadge — the same string the status
     // header renders — so the page cannot re-derive the verdict client-side. Omitted (not
     // null) before any merge-scope check has run — the same omit-undefined idiom as
     // pausedUntil.
     ...(snap.mainCheck ? { mainCheck: snap.mainCheck } : {}),
     mainCheckBadge: mainCheckBadge(snap.mainCheck, now),  // the age and next due read the poll clock
     // The ci parity badge and its tone, preformatted through badges.ts's ciParityBadge/
-    // ciParityTone — the same string and state→tone the TUI/status header renders — so the
+    // ciParityTone — the same string and state→tone the status header renders — so the
     // page's sidebar row carries the full suite's glance verdict verbatim and cannot
     // re-derive (or drift from) it. Empty string/no tone without a parity record, so the
     // panel renders exactly as before.
     ciParityBadge: ciParityBadge(snap.ciParity, now),
     // The remote-CI badge and its tone, preformatted through badges.ts's remoteCiBadge/
-    // remoteCiTone — the same string and result→tone the TUI/status header renders — so the
+    // remoteCiTone — the same string and result→tone the status header renders — so the
     // page's sidebar row carries the hosted CI's glance verdict verbatim and cannot
     // re-derive (or drift from) it. Empty string/no tone without a record or for an
     // `unavailable` one, so the panel renders exactly as before.
     remoteCiBadge: remoteCiBadge(snap.remoteCi, now),
     // The raw machine-readable twin of the amber `no-check` alert (present only when no
     // deterministic check is declared, so `tumwater status --json` scripts can read the same
-    // state before the dashboard/TUI render it as an alert). Omitted (absent) when a check is
+    // state before the dashboard renders it as an alert). Omitted (absent) when a check is
     // declared, the same omit-undefined idiom as ciParity.
     ...(snap.noDeclaredCheck ? { noDeclaredCheck: true } : {}),
     // The raw machine-readable twin of the amber `no-brief` alert (present only when a brief
@@ -457,7 +459,7 @@ function budgetAndPauseFields(snap: StatusSnapshot) {
     maintenanceQuota: snap.maintenanceQuota,
     // The new-project bootstrap (plans/work-ratio.md, part 2/2): the raw progress and held set
     // are machine-readable for `status --json` beside capPaused, and the preformatted badge
-    // drives the TUI/status header and the GUI sidebar — the badges.ts one-home rule.
+    // drives the status header and the GUI sidebar — the badges.ts one-home rule.
     ...(snap.bootstrap ? { bootstrap: snap.bootstrap } : {}),
     bootstrapHeld: snap.bootstrapHeld,
     bootstrapBadge: bootstrapBadge(snap.bootstrap),
@@ -484,7 +486,7 @@ function budgetAndPauseFields(snap: StatusSnapshot) {
     // in-window flag are machine-readable for `status --json` and drive the GUI sidebar's
     // chip; absent (undefined drops from the JSON) when no window is configured or the
     // value is malformed, matching the snapshot's omit-when-not-held rule. The header badge
-    // is preformatted through badges.ts's quietBadge — the same string the TUI/status
+    // is preformatted through badges.ts's quietBadge — the same string the status
     // header renders — so the page cannot re-derive it.
     ...(snap.quietHours ? { quietHours: snap.quietHours } : {}),
     inQuietHours: snap.inQuietHours,
@@ -547,11 +549,12 @@ function backlogFields(
 }
 
 /** What needs the operator (status-payload.ts's field-group split): team-alerts.ts's
- * teamAlerts, phrased once for the dashboard's alert banners and the TUI's attention lines. */
+ * teamAlerts, phrased once for the dashboard's alert banners and the `tumwater status`
+ * attention lines. */
 function alertFields(root: string, snap: StatusSnapshot, questions: ReturnType<typeof openQuestions>, roles: ReturnType<typeof roleRows>, now: number) {
   return {
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
-    // the TUI's attention lines, phrased once.
+    // the `tumwater status` attention lines, phrased once.
     alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), orphanAlertVisible(root, getOrphanAlert(root), now),
       { snap, config: configForStatus(root), root }),
   };
@@ -563,7 +566,7 @@ function alertFields(root: string, snap: StatusSnapshot, questions: ReturnType<t
  * other field is shared, so the dashboard and the CLI can never drift apart. Assembled here —
  * not in gui/gui-server.ts — because it is shared data collection for observers, not part of
  * serving HTTP: snapshot() supplies the core state, and the per-role phase/metrics fields come
- * from the same status-model helpers the TUI table uses.
+ * from the same status-model helpers the status table uses.
  *
  * `now` pins the poll's clock for the time-derived fields (see snapshot's seam of the same
  * name) — spend stamp-check, burn-rate projection, disk badge, and the pause countdown — so a

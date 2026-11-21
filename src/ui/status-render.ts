@@ -21,8 +21,8 @@ import { openQuestions } from "../backlog/backlog.js";
 import { refusedEntries } from "../backlog/backlog-eligibility.js";
 import { getOrphanAlert, orphanAlertVisible } from "./alert-feeds.js";
 
-/** The status RENDER layer: time/token cell formatters and the width-aware table shared by
- * `tumwater status` and the TUI. The labels, badges, and metrics it draws come from the shared
+/** The status RENDER layer: time/token cell formatters and the width-aware table
+ * `tumwater status` prints. The labels, badges, and metrics it draws come from the shared
  * display model (status-model.ts); this module decides column widths and layout. Depends on
  * status/status-data.ts one way — rendering reads the snapshot; it never collects team state
  * itself (live run detail is display-only). */
@@ -119,7 +119,7 @@ const COLUMN_GAP = 2;
 
 /** A run of text on a status line, with the tone it may be drawn in (tone.ts's Tone, or
  * "brand" / "bold" for the header's name and the totals). Plain renderings join the text and
- * ignore the tone; the TUI colors each toned span. */
+ * ignore the tone. */
 interface StatusSpan {
   text: string;
   tone?: Tone | "brand" | "bold";
@@ -154,8 +154,8 @@ function clipSpans(line: readonly StatusSpan[], width: number): StatusSpan[] {
   return out;
 }
 
-/** The attention line's mark and tone, per alert tone — shared by the TUI and `tumwater
- * status` (status-render.ts alertLines), so the two surfaces draw the same banner glyphs. */
+/** The attention line's mark and tone, per alert tone — the glyphs `tumwater status` draws for
+ * each banner (status-render.ts alertLines). */
 const ALERT_MARKS: Record<TeamAlert["tone"], { mark: string; tone: Tone | undefined }> = {
   red: { mark: "!", tone: "red" },
   amber: { mark: "!", tone: "yellow" },
@@ -171,8 +171,8 @@ function toneLine(text: string, width: number, tone?: StatusSpan["tone"]): Statu
 
 /** The attention lines under a header: one per alert — its mark and title in its tone, then
  * the detail — at most `max` of them, the rest counted on a last line. This is the banner
- * block the TUI draws under its header and `tumwater status` pushes under its own, so the two
- * surfaces render the same wording from the one shared alert source (team-alerts.ts). */
+ * block `tumwater status` pushes under its header, its wording drawn from the one shared alert
+ * source (team-alerts.ts). */
 function alertLines(alerts: readonly TeamAlert[], width: number, max = 3): StatusLine[] {
   const shown = alerts.length > max ? alerts.slice(0, max - 1) : alerts;
   const lines = shown.map((a) => {
@@ -185,7 +185,7 @@ function alertLines(alerts: readonly TeamAlert[], width: number, max = 3): Statu
 }
 
 /** A header badge (" · merge queue: 2", ", build abc…") as a plain separator plus its toned
- * words, so the TUI colors the words and not the dots. Empty badges add nothing. */
+ * words, so a colored render tones the words and not the dots. Empty badges add nothing. */
 function badgeSpans(badge: string, tone?: StatusSpan["tone"]): StatusSpan[] {
   if (!badge) return [];
   const sep = /^(?: · |, )/.exec(badge)?.[0] ?? "";
@@ -206,7 +206,7 @@ function budgetTone(
   return share >= 1 ? "red" : share >= 0.85 ? "yellow" : undefined;
 }
 
-/** The role facts one status render computed, for callers that build more on them (the TUI's
+/** The role facts one status render computed, for callers that build more on them (the
  * attention lines): each role's rendered phase, whether its own failure streak is at the
  * alarm threshold (onErrorStreak — the red "failing run after run" alert keys on this, not
  * the phase, so it stays up while a streak stands behind a `working` label; BUGS.md
@@ -224,7 +224,7 @@ interface StatusRoleRow {
 type SnapshotRole = StatusSnapshot["roles"][number];
 
 /** One role's metric inputs for its status row, captured once per render so the header
- * badges, the per-role rows, the totals row and the TUI's attention lines all read the same
+ * badges, the per-role rows, the totals row and the attention lines all read the same
  * numbers (roleRowCells single-homes the per-role live-tail read the GUI payload repeats). */
 interface StatusRowMetric {
   s: SnapshotRole;
@@ -533,7 +533,7 @@ function statusLineFormatter(widths: readonly number[]): (r: StatusSpan[][], ton
   };
 }
 
-/** Status stage — the per-role facts the caller builds more on (the TUI's attention lines):
+/** Status stage — the per-role facts the caller builds more on (the attention lines):
  * the StatusRoleRow array (rendered phase, error streak, in-flight, image-input surface). */
 function statusRoleSummaries(withMetrics: readonly StatusRowMetric[]): StatusRoleRow[] {
   return withMetrics.map(({ s, phase, live }) => ({
@@ -544,7 +544,7 @@ function statusRoleSummaries(withMetrics: readonly StatusRowMetric[]): StatusRol
     ...(live?.quietMs !== undefined ? { stuckMs: live.quietMs } : {}),
     ...(s.lastError ? { lastError: s.lastError } : {}),
     // The role's image-input surface (plans/image-input.md "Surfaces", part 5/5): always
-    // present, so the TUI's images attention line keys on it like the dashboard's.
+    // present, so the images attention line keys on it like the dashboard's.
     imageInput: s.imageInput,
     imageReroute: s.imageRerouteLabel,
   }));
@@ -602,20 +602,19 @@ function renderStatusSpans(
 }
 
 
-/** Render the status table shared by `tumwater status` and the TUI as plain text (see
+/** Render the status table `tumwater status` prints as plain text (see
  * renderStatusSpans). When `maxWidth` is given, wide cells are clipped so no line exceeds it
  * (terminal rows never wrap). */
 export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number, scoped = false): string {
   const { lines, roles } = renderStatusSpans(root, snap, maxWidth, scoped);
   // The team-attention banners (team-alerts.ts) drop under the header's blank line here, on
-  // the CLI-only plain-text surface — the same spelled-out banners the dashboard and TUI draw,
-  // from the one shared source, so the CLI/GUI/TUI cannot drift on wording. One QUESTIONS.md
+  // the CLI-only plain-text surface — the same spelled-out banners the dashboard draws,
+  // from the one shared source, so the CLI and GUI cannot drift on wording. One QUESTIONS.md
   // read (openQuestions) for the pending-questions alert — the dashboard's cadence. The CLI
   // omits the not-running banner: the header's first line already spells out the team's state,
   // so a `status` run on a stopped team does not lead with a banner that duplicates it.
-  // Composed here, NOT inside renderStatusSpans: the TUI re-slices that function's shared
-  // `lines` (lines[0], its own attention block, then lines.slice(1)), so a banner embedded
-  // there would render twice in the TUI.
+  // Composed here, NOT inside renderStatusSpans, so that function's `lines` stay the header,
+  // the role table and their notes, with the banners added on this plain-text surface only.
   const alerts = teamAlerts(
     snap,
     openQuestions(root),

@@ -5,6 +5,40 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Remove the TUI, part 4a/5: src/ui/status-payload.ts, status-render.ts and status-model.ts comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/ui/status-payload.ts src/ui/status-render.ts src/ui/status-model.ts (comments only)) — done 2026-11-21 by the feature role
+
+Part 4/5 was split by directory into 4a–4d after the feature role found it too large for one
+run (`grep -rniw tui src scripts` matched 244 lines in 94 files). src/ui/ (part 4a/5) was then
+still too large (83 matching lines in 18 files), so it was split again on 2026-11-21 by file
+group: this part takes the three status modules, part 4e/5 the other top-level `src/ui/*.ts`
+files, and part 4f/5 `src/ui/gui/`. Parts 4a–4f are independent of each other and may land in
+any order; together they finish what part 4/5 set out to do.
+
+**Goal.** Before part 1/5, about 100 files under src/ (outside `src/ui/tui/`) mentioned the TUI
+some 315 times. Most of those mentions are comments that call a piece of code "the TUI's twin",
+cite a `src/ui/tui/…` path, name a TUI key (Ctrl+…), or list the TUI among the surfaces that read
+a file. A reader, human or model, who follows them looks for code that does not exist, or keeps
+two surfaces in step when there is only one. The three status modules hold the densest share:
+`grep -rniwc tui` counts 19 lines in src/ui/status-payload.ts, 14 in src/ui/status-render.ts and
+4 in src/ui/status-model.ts.
+
+**Approach.** Wherever a comment in these three files names the TUI, a `ui/tui/` path or a TUI
+key, rewrite the sentence for the surfaces that remain (the CLI's `tumwater status`, the GUI, and
+`status --json`): "the TUI/status table" becomes "the status table", "the TUI's attention lines"
+becomes the `tumwater status` attention lines, and "shared by `tumwater status` and the TUI"
+names `tumwater status` alone. Drop "twin of the TUI's …" cross-references outright. Where a
+comment justifies a code shape only by the TUI (for example the note in status-render.ts's
+`renderStatus` on why the banners are composed outside `renderStatusSpans`), reword it to the
+reason that still holds or drop the TUI clause; if the code itself now has no reason to exist,
+leave it and record that as its own BUGS.md entry. Change comments only. Keep comment lines
+within the 100-column limit (test/comment-width.test.ts).
+
+**Acceptance criteria.**
+- `grep -niw tui src/ui/status-payload.ts src/ui/status-render.ts src/ui/status-model.ts`
+  matches nothing.
+- `git diff -U0 -- src/ui` adds and removes only comment lines, in those three files.
+- test/comment-width.test.ts passes.
+
 ### Remove the TUI, part 4d/5: the remaining src/ directories and scripts/ stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/report/ src/process/ src/scheduling/ src/gui/ src/events/ src/review/ src/orchestrator/ src/roles/ src/failure/ src/prompt/ src/merge/ src/git/ src/runner/ src/observer/ src/files/ src/brief/ (comments only) scripts/diff-check.mjs scripts/live-fixture.mjs) — done 2026-11-21 by the feature role
 
 One of four independent parts split from part 4/5; see part 4a/5 for the goal. These paths hold
