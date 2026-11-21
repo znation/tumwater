@@ -184,6 +184,26 @@ Feature run #3029's revision `dac2a150b` ("Set the default work-instance count t
 
 **Related, seen in the same run.** Run #3029's claim was "Remove the TUI, part 3/5" (its `Claim:` trailer and the `claim released … reason queued` event), but the run implemented "Three work instances by default, part 2/2". The plan entry it actually worked on was never claimed, so another instance could have taken it at the same time.
 
+### A Claude subscription team with no recorded usage window reads "Free models" in the GUI spend card and `budget: n/a` in `tumwater status`, as if usage were unlimited (found by the director role 2026-11-21)
+
+The operator runs on a Claude team subscription, which has a 5-hour and a weekly usage limit. The dashboard sidebar's Spend card reads **Free models**, with no window lines under it. A subscription is not free: it is capped by its usage windows. `budgetBadge`'s own doc comment (src/ui/badges.ts) already says "n/a" "would read as if usage were unlimited". The cause is in two places:
+
+- `teamModelsFree` / `seamFree` (src/pi/pi-models.ts) count a claude or codex seam billed by a subscription as free (zero marginal cost). That is correct for the budget gate and the fallback, so leave it alone.
+- `windowBlocks` (src/status/status-budget.ts) skips any subscription backend whose account has no windows (`windowEntries(account).length === 0`). The display then has nothing subscription-shaped to show. `budgetCardHtml` (src/ui/gui/gui-client-operator.ts) falls through to `b.free` and renders "Free models". `budgetBadge` (src/ui/badges.ts) prints ` · budget: n/a`.
+
+So a subscription account file with `billing: "subscription"` but an empty `windows` object reads as free. That happens before any run reports a `rate_limit_event`, after an account file is rewritten without one, or when the plan never reports a window. The test `test/gui-client.test.ts` currently pins this wrong behavior. In its `budgetCardHtml` case, the `onlyFree` assertion says "an all-free subscription-only team still reads the Free models spend card".
+
+**Fix direction.** Keep `free` for the gate. Make the display say "subscription" whenever a seam in use bills a subscription:
+
+- `windowBlocks` still emits a block for a subscription backend with no windows yet, with `windows: []`. Make `primary` optional, or add a separate `subscriptionBackends` list beside `blocks`, whichever touches fewer readers.
+- The GUI card then reads `subscription window` with a line like `Claude · usage not reported yet`, instead of "Free models".
+- `budgetBadge` prints the same backend-named fragment instead of `budget: n/a`.
+- "Free models" / `n/a` stays only for a team whose seams are all genuinely free: zero-priced pi pairs and free opencode models.
+- Update the `onlyFree` assertion to match. Add a case where an account has `billing: "subscription"` and `windows: {}`: the card must not match `/Free models/`, and the badge must not contain `n/a`.
+- Check docs/backends.md "Free-ness" and docs/invariants.md for wording that promises "Free models" for a subscription team.
+
+**Reproduce.** Configure a claude-backend team (`"model": {"default": {"backend": "claude", …}}`) and write `.tumwater/state/claude-account.json` as `{"billing":"subscription","observedAt":<now>,"windows":{}}`. Then open the dashboard, or call `budgetCardHtml({free:true,…}, [], true)` as the `gui-client.test.ts` case does. The card reads "Free models".
+
 ## Fixed
 
 ## Verified
