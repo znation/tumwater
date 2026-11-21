@@ -13,7 +13,9 @@ import { roleCommitGrep } from "./legacy-role-ids.js";
 export const DECOMPOSITION_GUIDANCE = `Before recording a plan or bug, check whether it decomposes
 into independent subparts (separate features, or separate bugs). If it does, record each part as
 its own PLANS.md/BUGS.md entry that cross-references its siblings, so roles can pick them up
-independently; if the parts are not truly independent, keep a single entry.`;
+independently; if the parts are not truly independent, keep a single entry. A heading that carries
+\`mirrors GitHub issue #<n>\` passes that phrase to every part it is split into, and to the survivor
+of a duplicate retire.`;
 
 /** Shared instruction for closing a backlog entry (the feature role moving a plan to Done,
  * the bugfix role moving a bug to Fixed). Written against the observed failure (PLANS.md
