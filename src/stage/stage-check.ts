@@ -97,6 +97,10 @@ const PLANS_ARCHIVE = finishedArchiveOf("PLANS.md").archive;
 const baseFileText = (wt: string, mainBranch: string, file: string): Promise<string | undefined> =>
   changeBaseRev(wt, mainBranch).then((rev) => fileContentAt(wt, rev, file)).catch(() => undefined);
 
+/** `file`'s worktree text, or "" when the change does not have it: the blank default the staging
+ * reads in this module take, so a missing file compares as empty rather than throwing. */
+const worktreeText = (wt: string, file: string): string => readTextOrNull(path.join(wt, file)) ?? "";
+
 /** `file`'s worktree text and its text at the change's merge-base with `mainBranch`, fetched in
  * one call: every ordering finding that compares a backlog file's head to its base reads both the
  * same way, so the pair is read together rather than re-stated at each call site. `base` is
@@ -107,7 +111,7 @@ async function headAndBase(
   file: string,
 ): Promise<{ head: string; base: string | undefined }> {
   return {
-    head: readTextOrNull(path.join(wt, file)) ?? "",
+    head: worktreeText(wt, file),
     base: await baseFileText(wt, mainBranch, file),
   };
 }
@@ -127,7 +131,7 @@ async function plansFindings(wt: string, mainBranch: string, pending: readonly P
   const { head, base } = await headAndBase(wt, mainBranch, "PLANS.md");
   // Finished plans are archived in PLANS-DONE.md (plans/backlog-archive.md): a requires clause
   // naming a merged part resolves there, on both sides of the comparison alike.
-  const archived = parseEntryDetails(readTextOrNull(path.join(wt, PLANS_ARCHIVE)) ?? "", "Done").map((e) => e.title);
+  const archived = parseEntryDetails(worktreeText(wt, PLANS_ARCHIVE), "Done").map((e) => e.title);
   if (base === undefined) return [];
   // The duplicate finding's known set is main's tip at staging, not the merge-base: a plan a
   // sibling merged while this run worked is on main but not in the run's base, and is exactly
@@ -156,12 +160,11 @@ async function archiveFindings(wt: string, mainBranch: string, files: string[]):
   for (const spec of FINISHED_ARCHIVES) {
     if (baseRev === undefined || !(files.includes(spec.file) || files.includes(spec.archive))) continue;
     const duplicates = await (async () => {
-      const read = (f: string) => readTextOrNull(path.join(wt, f)) ?? "";
       const at = async (f: string) => (await fileContentAt(wt, baseRev, f)) ?? "";
       return finishedDuplicateFindings(
         spec,
-        { head: read(spec.file), base: await at(spec.file) },
-        { head: read(spec.archive), base: await at(spec.archive) },
+        { head: worktreeText(wt, spec.file), base: await at(spec.file) },
+        { head: worktreeText(wt, spec.archive), base: await at(spec.archive) },
       );
     })().catch(() => []);
     findings.push(...duplicates);
@@ -174,7 +177,7 @@ async function archiveFindings(wt: string, mainBranch: string, files: string[]):
         const keyed = (md: string) =>
           parseEntryDetails(md, section).map((e) => ({ ...e, key: finishedKey(e.title, FINISHED_PLAN_RE) }));
         const seen = new Set(keyed((await fileContentAt(wt, baseRev, f)) ?? "").map((e) => e.key));
-        return keyed(readTextOrNull(path.join(wt, f)) ?? "").filter((e) => !seen.has(e.key));
+        return keyed(worktreeText(wt, f)).filter((e) => !seen.has(e.key));
       };
       const entries = [...(await finished(spec.file, spec.section)), ...(await finished(spec.archive, spec.section))];
       // A retired plan was never built, so its acceptance greps are expected to fail: it is
