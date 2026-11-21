@@ -74,6 +74,8 @@ The BUGS-FIXED entry "A checkpoint-caused abort is indistinguishable from a cont
 
 ### Host sleep counts as model silence: the run watchdogs, the model check and the run and review wall budgets kill or hand back work the host slept through (found by an operator session 2026-11-19)
 
+**Needs review 2026-11-21 by feature: too large for one run** — it bundles three separate mechanisms that each need their own sleep-aware change and test: (1) the quiet/stall clock in src/pi/pi-watchdogs.ts, which is a synchronous interval reading `Date.now()` against `lastActivityAt`, `pending.since` and `lastProgressAt`, and would need an async-sampled sleep measure folded in; (2) the model-check probe's 300 s budget in src/model-check/model-check-probe.ts, which needs a "retry, don't fail" path when its window held a sleep; (3) the run and post-merge-review wall timeouts, which sit elsewhere again. Split it into those three entries, each cross-referencing the others, so each can be picked up on its own.
+
 On 11-19 the host was lid-closed from about 05:20 to 15:41 PST. `pmset -g log` shows it asleep 37–61 minutes of every hour, with short maintenance DarkWakes in between. Every watchdog that judges a run measures on the wall clock, so that sleep read as a backend that stopped answering:
 - 75 `model request unanswered … no reply for 5m–20m` warnings. There were none before 05:20.
 - Five `model check failed: … gave no reply` warnings, at 07:06, 11:54, 13:25, 13:52 and 14:59. Each held all 29 runners.
