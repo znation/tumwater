@@ -210,9 +210,16 @@ test("createRedeployer composes the production Redeployer from the running build
   assert.equal(await r.poll(head, IDLE, true), "none");
   assert.equal(await r.poll(head, IDLE, true), "none", "the inert verdict is not a one-poll accident");
   assert.deepEqual(events, [], "no build_stale, no restart events");
+  // A build stamped from its release tag also carries `release` (Release version display, part
+  // 1/3), so the expected status names it exactly when the running stamp does.
+  const stamp = readBuildInfo();
   assert.deepEqual(
     r.status(),
-    { sha: r.build.sha, builtAt: r.build.builtAt },
+    {
+      sha: r.build.sha,
+      builtAt: r.build.builtAt,
+      ...(stamp?.release !== undefined ? { release: stamp.release } : {}),
+    },
     "no staleness verdict is ever computed for a foreign repo",
   );
   assert.equal(bootAsks, 0, "the successor's startup gate is asked only on a restart decision");
