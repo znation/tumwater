@@ -83,6 +83,26 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   assert.equal(r.code, 0);
 });
 
+// Each marker command's flag table (cli-marker-commands.ts's perCommandFlags) admits only its own
+// flags; a flag borrowed from a sibling command must fail at the argument gate, before the repo
+// gate and before any marker is written.
+test("a marker command rejects a flag that only a sibling marker command takes", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli marker flags");
+  const cases: Array<[string[], string]> = [
+    [["resume", "--for", "5m"], "--for"],
+    [["pause", "--dry-run"], "--dry-run"],
+    [["abort", "--in", "5m"], "--in"],
+    [["reclaim", "--role", "feature"], "--role"],
+    [["restart", "--role", "feature"], "--role"],
+  ];
+  for (const [args, flag] of cases) {
+    const r = await cli(repo, ...args);
+    assert.equal(r.code, 1, `${args.join(" ")} must fail`);
+    assert.match(r.stderr, new RegExp(`unknown argument: ${flag}\\b`), args.join(" "));
+  }
+});
+
 test("wake --cancel keeps its optional position across the argument gate", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli wake cancel optional value");
