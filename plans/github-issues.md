@@ -152,7 +152,7 @@ atomically by the scan, the queue step and the close step:
 1. **Detection, readiness, config, doctor row.**
 2. **The scan and the ledger** (requires 1).
 3. **GUI alerts** (requires 2).
-4. **Mirroring through the director** (requires 2).
+4. **Mirroring through the director** (requires 2), split into 4a (director prompt text), 4b (recording the `ISSUE:` result) and 4c (the queue, requires 4a and 4b).
 5. **Closing on the fix** (requires 2; reads part 4's `fixedIn` when present).
 
 Parts 3, 4 and 5 are independent of one another. The PLANS.md entries carry each part's files
