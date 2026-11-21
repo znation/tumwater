@@ -23,8 +23,6 @@ considered and set aside on purpose, and every state change is dated so stalenes
 - `waitForQuietHost` keeps `awaitQuietHost`'s bar (`quietHostBar`, 80% of cores) — a single home of the bar, so the mid-wait gate and the admission gate can never disagree.
 - docs/invariants.md INV-F2 (the e2e tier's quiet-host bar) is updated in the same commit: the guarantee's re-check half grows the mid-wait re-sample (`waitForQuietHost`) alongside the single-sample re-check, and the Binds and Pinned-by lines name the new helper and its test/wait.test.ts cases.
 
-## Done
-
 ### Busy model check, part 1/2: the runner records when a team run's model request on a pair was last answered, so the model check can tell a busy server from a dead one (planned 2026-11-21 by the plan role, split from the BUGS.md entry "The model check fails a pair on queue position…" found by the bugfix role 2026-11-21)
 
 Sibling: BUGS.md "Busy model check, part 2/2: a probe that gets no reply while the team's runs on the same pair are being answered…" uses this signal and is held until this part lands. **Direction picked 2026-11-21 by the plan role:** a verdict-level rule (part 2/2), not reserving a concurrency slot. On 11-17 the server kept starting the team's cache-hit follow-ups ahead of the probe's uncached request under memory pressure. One fewer team run does not change that admission order, and the team's runner count is not the server's `--max-concurrent`.
@@ -42,4 +40,8 @@ Sibling: BUGS.md "Busy model check, part 2/2: a probe that gets no reply while t
 
 **Acceptance criteria.**
 - test/pi-event-line.test.ts (where `PiStreamParser` is already exercised): feeding an assistant `message_start` and then a content-bearing `message_update` fires the answered callback once. A content-free `message_update` does not fire it. A `message_end` with `stopReason: "error"` does not fire it. A later non-failed `message_end` on the same open request fires it. A `message_end` with no open request does not fire it again.
-- A runner test using the fake pi shim: after an authoring run whose scripted reply streams content on pair P, `lastAnsweredAt(P)` is a time within the run's start and end. `lastAnsweredAt` of a pair the run did not use is null. The value is still readable after the run has ended. — done 2026-11-21 by the feature role
+- A runner test using the fake pi shim: after an authoring run whose scripted reply streams content on pair P, `lastAnsweredAt(P)` is a time within the run's start and end. `lastAnsweredAt` of a pair the run did not use is null. The value is still readable after the run has ended.
+
+## Done
+
+_None yet._
