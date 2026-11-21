@@ -368,7 +368,9 @@ and keys as current. Once the TUI is gone, these mislead whoever reads them next
 
 **Acceptance criteria.**
 - `grep -rniw tui test` matches only the tombstone tests for the removed `--tui` flag and `tumwater tui` command (test/cli-args, cli-start-guards, cli-help-unknown), which assert that removed input is still rejected; renaming them would change what they test, so the criterion was corrected to allow them. `grep -rniw tui docs README.md DEVELOPMENT.md
-  PRINCIPLES.md` matches only sentences saying that the TUI was removed.
+  PRINCIPLES.md` matches only sentences saying that the TUI was removed, plus README.md's
+  brief line ("observable by gui/tui/log"), left as the operator's own text: the brief changes
+  through `tumwater brief`, not a role's run.
 - No test assertion changes: `git diff -U0 -- test` touches only comments and test-title
   strings.
 - test/docs-links.test.ts, test/invariants-doc.test.ts and test/comment-width.test.ts pass.

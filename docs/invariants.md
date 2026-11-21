@@ -1468,7 +1468,7 @@ predates the cutoff" and "a missing or empty log reads as no rows over a covered
 
 ## Status polls: an observer never throws, and shows only what is still true
 
-`tumwater status`, `tumwater doctor`, the GUI read the cached readers
+`tumwater status`, `tumwater doctor` and the GUI read the cached readers
 in `src/status/status-polls.ts` (the main-check reader, `src/status/status-main-check.ts`, was
 split out of it) every second, in a process separate from the orchestrator. Every
 reader must therefore tolerate a torn, foreign or stale file, and show only what is still true.

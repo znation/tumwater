@@ -629,8 +629,8 @@ test("the role name cell names pi's own default and marks it", () => {
   assert.doesNotMatch(rowOf(text, "clean"), /pi default\)/);
 });
 
-// The pooled worktree slot no longer rides the status state cell (the leased-slot change;
-// worktree slots in the GUI): the payload keeps slot/slotPinned, but the dashboards
+// The pooled worktree slot no longer rides the status state cell (the leased-worktree-slot
+// change): the payload keeps slot/slotPinned, but the dashboards
 // stop rendering them.
 test("the state cell hides the pooled worktree slot and its pin", () => {
   const snap = snapshotWith([{ role: "clean", slot: "_slot-3", slotPinned: true } as never]);

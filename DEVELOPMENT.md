@@ -373,11 +373,11 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/inbox/`: the inbox — the director's and per-role inboxes, image attachments,
   submit/edit/cancel, and the inbox-backed `prompt` command body.
 - `src/operator/`: the layer for your commands, shared by the
-  `pause`/`resume`/`wake`/`abort`/`stop`/`retire` CLI commands, the dashboard's POST routes.
+  `pause`/`resume`/`wake`/`abort`/`stop`/`retire` CLI commands and the dashboard's POST routes.
 - `src/backlog/`: the BUGS/PLANS/QUESTIONS markdown — the stat-cached readers, the text
   reader/writer, its structure, its renderer, and its eligibility marks; the QUESTIONS.md
   reader/writer core (`backlog-question-answer.ts`) sits here, shared by the CLI's `questions` command
-  body, the dashboard's POST route.
+  body and the dashboard's POST route.
 - `src/brief/`: the project brief — the managed prompt/status sections, reading the
   brief back out (`brief.ts`), and the shared writer that replaces it under the primary lock
   (`brief-edit.ts`).

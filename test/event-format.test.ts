@@ -398,8 +398,8 @@ test("formatEvent names the after-merge tier on the review lines", () => {
 
 // The questions-outbox feature emits question_posted alongside merged (emission is pinned in
 // test/merge-to-main.test.ts and test/runner.test.ts); this pins what operators actually read in
-// logs,
-// the logs, and the GUI feed: the new Open heading verbatim on a plain line —
+// logs
+// and the GUI feed: the new Open heading verbatim on a plain line —
 // routine operation, not a warning.
 test("formatEvent renders question_posted with the posted heading and no warning prefix", () => {
   const line = formatEvent({

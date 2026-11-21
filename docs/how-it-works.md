@@ -533,7 +533,7 @@ conflict markers, and hunks git cannot place arrive in the prompt to apply by ha
 resolves both like any conflict. Edits nothing gives back (ones a run chose to discard, or a
 check's scratch files) are saved directly under `.tumwater/salvage/` for you to read. Those kept
 patches are surfaced until session retention prunes them: a doctor `salvage patches` row and the
-standing amber `salvage-patches` alert on `tumwater status`, the dashboard names them
+standing amber `salvage-patches` alert on `tumwater status` and the dashboard name them
 (capped, with a count of the rest), so work a run left behind is never silently discarded. Both
 kinds are deleted with the session store by the `sessionRetentionDays` pass, which also ages out
 each role's pi session files, its session ledgers and the full-output files kept for oversized
@@ -652,7 +652,7 @@ the whole file, opening it in `$VISUAL`/`$EDITOR` or taking its replacement from
 of those writes go through the same lock, validation, and atomic write, so you never have to
 hand-edit the file — even a bulk multi-key edit is validated the way a load does before it lands. A broken or missing
 `tumwater.json` while the team runs keeps the last good config, logs the load warning, and
-raises the standing amber `config-problem` alert on `tumwater status`, the dashboard
+raises the standing amber `config-problem` alert on `tumwater status` and the dashboard
 (with the load error or the missing-file sentence as the status `configProblem` field)
 until a valid file loads again — so a live edit gone bad never silently leaves the team on
 stale settings.
