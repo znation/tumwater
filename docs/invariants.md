@@ -647,7 +647,8 @@ file only when lstat shows it is a regular file; a symlink (or directory/gitlink
 unreadable path) is left to the pi resolver, never followed out of the worktree. The backlog-
 structure heading gate (backlog-structure.ts) and the false-fix heading guard (fix-claim.ts) read
 a changed backlog file's head only when lstat shows it is a regular file, so a symlinked
-BUGS.md/PLANS.md/BUGS-FIXED.md cannot pull an outside file's headings into either verdict.
+BUGS.md/PLANS.md/BUGS-FIXED.md cannot pull an outside file's headings into either verdict,
+both reading through files.ts's readRegularTextOrEmpty.
 The prompt readers for PRINCIPLES.md (prompt/principles.ts), a role's notes (run/run-
 prompt.ts), and a role's lessons (roles/role-notes-write.ts's readRoleLessons) hold the same
 line, and so do their operator readers (doctor/doctor-principles.ts, status/status-role-

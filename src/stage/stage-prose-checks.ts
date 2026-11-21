@@ -7,9 +7,8 @@
  * helpers, sharing the staged diff/index reading helpers and `isRecordProse` with the path and
  * name sibling check modules. The gate does not run any of them. */
 
-import fs from "node:fs";
 import path from "node:path";
-import { readTextOrNull } from "../files/files.js";
+import { readRegularTextOrEmpty, readRegularTextOrNull } from "../files/files.js";
 import {
   JS_FILE,
   MAX_STALE_HITS,
@@ -106,20 +105,11 @@ export async function detachedDocFindings(wt: string, diff: string): Promise<str
       // lstat, not stat: a symlink among the changed files is never followed out of the
       // worktree (a change that adds a symlink writes no content of its own — the same
       // policy secret-leaks/INV-G4 pins), so it contributes no lines to analyze.
-      const full = path.join(wt, file);
-      let isFile = false;
-      try {
-        isFile = fs.lstatSync(full).isFile();
-      } catch {
-        isFile = false;
-      }
-      if (isFile) {
-        const text = readTextOrNull(full);
-        if (text !== null) {
-          const sites = docHunkSites(file, hunks, text.split("\n"));
-          inserted.push(...sites.inserted);
-          deleted.push(...sites.deleted);
-        }
+      const text = readRegularTextOrEmpty(path.join(wt, file));
+      if (text !== "") {
+        const sites = docHunkSites(file, hunks, text.split("\n"));
+        inserted.push(...sites.inserted);
+        deleted.push(...sites.deleted);
       }
     }
     file = null;
@@ -424,14 +414,7 @@ export async function duplicatedCommentFindings(wt: string, diff: string): Promi
     if (file.endsWith(".md") || isRecordProse(file)) continue;
     // lstat, not stat: a symlink is never followed out of the worktree, as detachedDocFindings
     // and the INV-G4 secret-leak policy both require.
-    const full = path.join(wt, file);
-    let isFile = false;
-    try {
-      isFile = fs.lstatSync(full).isFile();
-    } catch {
-      isFile = false;
-    }
-    const text = isFile ? readTextOrNull(full) : null;
+    const text = readRegularTextOrNull(path.join(wt, file));
     if (text === null) continue;
     for (const blk of duplicatedBlocks(text.split("\n"))) {
       if (!copyFullyAdded(blk.a, blk.len, added) && !copyFullyAdded(blk.b, blk.len, added)) continue;

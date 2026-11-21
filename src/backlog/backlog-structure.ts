@@ -1,7 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
 import { increment } from "../collections.js";
-import { readTextOrNull } from "../files/files.js";
+import { readRegularTextOrEmpty } from "../files/files.js";
 import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import {
   BACKLOG_FILES,
@@ -442,18 +441,11 @@ export async function backlogStructureReason(
   if (touched.length === 0) return undefined;
   const baseRev = await changeBaseRev(wt, mainBranch);
   for (const file of touched) {
-    // A deleted file reads as empty: every heading the base had is gone — rule (b).
-    const full = path.join(wt, file);
-    // A symlink is never followed out of the worktree (it holds no heading of its own — the
-    // same lstat policy the backlog-conflict resolver and the false-fix guard pin, INV-G3), so
-    // it too reads as empty rather than bringing an arbitrary host file's headings into this
-    // gate's verdict.
-    let head = "";
-    try {
-      if (fs.lstatSync(full).isFile()) head = readTextOrNull(full) ?? "";
-    } catch {
-      head = "";
-    }
+    // A deleted or symlinked file reads as empty (readRegularTextOrEmpty never follows a
+    // symlink out of the worktree — the same lstat policy the backlog-conflict resolver and
+    // the false-fix guard pin, INV-G3): a deleted BUGS.md reads as every heading gone (rule
+    // (b)), and a hostile symlink cannot pull an outside file's headings into this verdict.
+    const head = readRegularTextOrEmpty(path.join(wt, file));
     const base = await fileContentAt(wt, baseRev, file);
     const headCounts = sectionTitleCounts(head);
     const baseCounts = sectionTitleCounts(base);

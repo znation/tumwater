@@ -147,6 +147,18 @@ export function readRegularTextOrNull(file: string): string | null {
   }
 }
 
+/** Read a text file whole, or "" when it is missing, unreadable, or not a regular file — the
+ * lstat-guarded empty-default read the worktree-head readers use. A symlink is never followed
+ * (a symlink holds no text of its own and its target could point out of the worktree), so a
+ * hostile entry at the path reads as empty rather than pulling an outside host file's text
+ * into the verdict — the same lstat policy INV-G3 pins for the change-head readers
+ * (backlog-structure's heading gate, fix-claim's false-fix guard, and the staging prose
+ * checks) and readRegularTextOrNull for the prompt-input readers. Equivalent to
+ * `readRegularTextOrNull(f) ?? ""`. */
+export function readRegularTextOrEmpty(file: string): string {
+  return readRegularTextOrNull(file) ?? "";
+}
+
 /** Read a text file whole, or null only when it does not exist (ENOENT) — for the paths that
  * must never mistake an unreadable file for an absent one. A permission or I/O failure (EACCES,
  * EISDIR, EMFILE) is rethrown so the caller fails loudly instead of treating the file as gone:

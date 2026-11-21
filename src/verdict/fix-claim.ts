@@ -51,10 +51,10 @@
  * backed when it names a commit in the repository (withoutKnownCommits); a made-up one is still
  * rejected. */
 
-import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { extname, join } from "node:path";
-import { readTextOrNull, statOrNull, walkFiles } from "../files/files.js";
+import { readRegularTextOrEmpty, readTextOrNull, statOrNull, walkFiles } from "../files/files.js";
 import {
   fenceTracker,
   finishedArchiveOf,
@@ -371,15 +371,7 @@ export function missingSymbolNames(missing: string[]): string {
  * backlogStructureReason pin under INV-G3), so a head is read only when lstat shows a regular
  * file; ENOENT and symlinks both read as empty. */
 function readFixedHeads(wt: string): string[] {
-  return ["BUGS.md", BUGS_ARCHIVE].map((f) => {
-    const full = join(wt, f);
-    try {
-      if (!lstatSync(full).isFile()) return "";
-    } catch {
-      return "";
-    }
-    return readTextOrNull(full) ?? "";
-  });
+  return ["BUGS.md", BUGS_ARCHIVE].map((f) => readRegularTextOrEmpty(join(wt, f)));
 }
 
 /** The base Fixed section bodies the diff's own merge-base holds, keyed by normalized heading.
