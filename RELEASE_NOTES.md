@@ -15,6 +15,8 @@
   stays beside it, and in the tooltip, for bug reports).
 - The terminal dashboard is gone, so the browser dashboard is the one place to watch and steer
   the team (see CLI).
+- The README, `tumwater init`, `help` and the glossary now say up front that you steer tumwater
+  through its backlog, mainly from your own interactive agent (see `tumwater guide`).
 - While a maintenance role (clean, coverage, dedupe, improve, …) waits for a permit, work runs
   leave it the next free one (up to a third of the team: 2 permits at the default cap of 6), so
   a busy feature or bugfix tier no longer starves maintenance.
@@ -50,6 +52,8 @@
 - Project-root discovery is pinned against a stray `.tumwater` in the OS temp directory.
 - The e2e tier defers on a host near its load bar instead of starting and starving.
 - The `sessionRetentionDays` setting describes everything the cleanup now removes.
+- The dashboard's wake-all and reset-counters actions target the configured roles, as the CLI
+  does, rather than listing every instance id.
 
 ## Build and tests
 
@@ -59,4 +63,4 @@
   review backoff, the session-cleanup progress and event wording, and the release-version
   stamp.
 
-242 files changed, +4890 / −26416 over 57 commits since v0.8.2
+267 files changed, +5402 / −26613 over 69 commits since v0.8.2
