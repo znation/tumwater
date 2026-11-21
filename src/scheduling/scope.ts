@@ -22,9 +22,9 @@ import {
 import { MERGE_CONFLICT_LIMIT } from "../runner/runner-leftover.js";
 import { queuedMerges } from "../merge/merge-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
-import { commitExists, commitMessage, isMergedInto, refSha } from "../git/git.js";
+import { commitExists, commitMessage, isMergedInto } from "../git/git.js";
+import { mergePinSha } from "../merge/merge-pins.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
-import { mergeRefName } from "../paths.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
 import {
   CLAIM_IDLE_MAX_MS,
@@ -210,7 +210,7 @@ async function queuedMergeClaimKeys(root: string, runners: readonly RoleRunner[]
   const queuedRoles = queuedMergeRoles(root);
   for (const r of runners) {
     if (queuedRoles.has(r.role) || !INSTANCE_ROLES.has(baseRoleOf(r.role))) continue;
-    const sha = await refSha(root, mergeRefName(r.role)).catch(() => null);
+    const sha = await mergePinSha(root, r.role);
     if (!sha) continue;
     const message = await commitMessage(root, sha).catch(() => null);
     const claim = message === null ? undefined : claimOf(message);
@@ -434,7 +434,7 @@ function orderForAdmission(
  * exists to serve. Its legacy queue-file loop is trimmed by part 6/6 (the deletion). */
 async function directorPinOwedRun(ctx: SchedulingPassCtx): Promise<boolean> {
   const { root, runners, mainBranch } = ctx;
-  const sha = await refSha(root, mergeRefName(DIRECTOR_ROLE)).catch(() => null);
+  const sha = await mergePinSha(root, DIRECTOR_ROLE);
   if (sha === null) return false; // no pin at all: the director owes no run
   const streak = runners.find((r) => r.role === DIRECTOR_ROLE)?.state.mergeConflicts;
   const attempts = conflictAttempts(streak, sha);

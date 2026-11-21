@@ -1,6 +1,7 @@
 import { aheadOfMain, commitExists, commitMessage, deleteRef, deleteRefIfAt, headOf, isMergedInto, refSha, setRef } from "../git/git.js";
 import { commitRunOf, parseCommitMetadata, type CommitMetadata } from "../git/commit-message.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
+import { mergePinSha } from "../merge/merge-pins.js";
 import { queuedMerges, type MergeEntry } from "../merge/merge-queue.js";
 import { removeMergeChange } from "../merge/merge-slot.js";
 import { mergeRefName, withdrawnRefName } from "../paths.js";
@@ -164,7 +165,7 @@ async function heldBesidePin(wt: string, mainBranch: string, pinSha: string): Pr
 /** Whether the role holds a kept merge pin — the ref `recoverLeftover` reads. Ref presence is the
  * whole answer: a pin main already holds is left to `recoverLeftover`, which deletes it. */
 export async function hasUnmergedPin(root: string, role: string): Promise<boolean> {
-  return (await refSha(root, mergeRefName(role)).catch(() => null)) !== null;
+  return (await mergePinSha(root, role)) !== null;
 }
 
 /** Re-pin a commit a previous run left unmerged and log it for the drain. Entry condition: the

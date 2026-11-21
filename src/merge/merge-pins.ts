@@ -84,6 +84,14 @@ async function commitDateOrMessage(root: string, sha: string): Promise<{ date: n
   };
 }
 
+/** A role's merge pin sha, or null when the role holds no pin or the ref could not be read. The
+ * one home of the `refSha(root, mergeRefName(role))` read that the pin reader, the scheduler's
+ * pin checks, the leftover recovery and the director's owed-run check all make, so they agree
+ * on what a pin is and how an unreadable ref is treated. */
+export async function mergePinSha(root: string, role: string): Promise<string | null> {
+  return refSha(root, mergeRefName(role)).catch(() => null);
+}
+
 /** The live pins to build, as `{ role, sha }` pairs: the given roles' resolved refs, or every
  * ref under the merge prefix when no roles are named. A role whose ref is absent is left out
  * (it contributes nothing); `refSha` settles that absence from the ref files without a spawn. */
@@ -91,7 +99,7 @@ async function livePins(root: string, roleIds?: readonly string[]): Promise<Arra
   if (roleIds && roleIds.length > 0) {
     const pins: Array<{ role: string; sha: string }> = [];
     for (const role of roleIds) {
-      const sha = await refSha(root, mergeRefName(role)).catch(() => null);
+      const sha = await mergePinSha(root, role);
       if (sha !== null) pins.push({ role, sha });
     }
     return pins;
