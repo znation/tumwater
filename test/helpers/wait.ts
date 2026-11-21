@@ -96,7 +96,7 @@ const QUIET_HOST_WAIT_MS = 300_000;
  * seam) so a test can pin it offline; the wait is real time by default, but a test may inject
  * `test/fakes/time.ts`'s `fakeClock` to make the bounded deferral deterministic. A sampler that
  * reports no 5-minute average (the doctor's and build check's seams predate it) is judged on the
- * 1-minute reading alone, so those callers keep today's bar. */
+ * 1-minute reading alone, against the same headroom bar. */
 export async function awaitQuietHost(
   waitMs = QUIET_HOST_WAIT_MS,
   sample: LoadSampler = sampleHostLoad,
