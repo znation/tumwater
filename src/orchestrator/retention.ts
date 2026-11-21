@@ -292,9 +292,13 @@ async function pruneOpencodeHalf(root: string, days: number, marker: SessionPrun
  * sessions from the ledger BEFORE the file pass below ages it out. Like the OpenCode twin, an
  * unavailable config skips the deletes rather than guessing at a binary and home: a bare
  * `codex` under the operator's inherited CODEX_HOME could act on the wrong home (review
- * objection 2). CODEX_HOME is always set explicitly — to the resolved team home, or to
- * undefined when the config is absent — so the inherited CODEX_HOME never reaches the purge
- * (its rollout fallback would otherwise unlink the operator's own home). */
+ * objection 2). CODEX_HOME is always set explicitly — to the resolved team home (the
+ * `~/.codex` default or the configured dir, whichever `codexHome` resolves), or undefined when
+ * the config is absent — so the inherited CODEX_HOME never reaches the purge. The purge is
+ * safe to a team home that is the operator's own: the rollout fallback unlinks only a home the
+ * prune pass saw, and only a session the ledger recorded as expired, so it never deletes the
+ * operator's files. With the default config the resolved team home *is* the operator's `~/.codex`,
+ * so the team is not isolated from it (doctor's codex-home row warns that case). */
 async function pruneCodexHalf(root: string, days: number, marker: SessionPruneMarker, signal: AbortSignal): Promise<void> {
   marker.beginHalf("codex");
   const { config } = loadConfigSafe(root);

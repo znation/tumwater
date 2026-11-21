@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { childEnv } from "../process/process.js";
 import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./doctor-probe.js";
@@ -111,19 +112,23 @@ export async function checkCodexAuth(
   return warnOutcome("could not check — `codex login status` reply was unreadable");
 }
 
-/** codex home readiness (plans/codex-backend.md §4): unset `backends.codex.configDir` warns
- * that team runs share the operator's `~/.codex` — the trust entries, team sessions in the
- * `codex resume` picker, any skills and a global `AGENTS.md`. Set, it reads the team home.
- * Stands down when no seam routes to codex. */
+/** codex home readiness (plans/codex-backend.md §4): warns when the resolved team codex home
+ * is the operator's own `~/.codex` — the default when `backends.codex.configDir` is unset, or
+ * a configured dir that resolves there — naming the shared trust entries, team sessions in the
+ * `codex resume` picker, any skills and a global `AGENTS.md`. A home of the team's own reads
+ * ok, naming the resolved home. Stands down when no seam routes to codex. */
 export async function checkCodexHome(root: string): Promise<CheckOutcome | null> {
   const base = codexCheckBase(root);
   if (base === null || "level" in base) return base;
+  const { home } = base;
   const configDir = resolvedBackendConfig(base.config, "codex").configDir;
-  if (configDir === undefined)
+  if (home === path.join(os.homedir(), ".codex"))
     return warnOutcome(
-      "backends.codex.configDir is unset — team runs share the user's ~/.codex (trust entries, team sessions in the resume picker, skills, a global AGENTS.md); set backends.codex.configDir to a home of the team's own",
+      configDir === undefined
+        ? "backends.codex.configDir is unset — the team codex home resolves to the user's own ~/.codex, so trust entries, team sessions in the resume picker, skills and a global AGENTS.md are shared, not isolated; set backends.codex.configDir to a home of the team's own"
+        : `team codex home ${home} is the user's own ~/.codex — trust entries, team sessions in the resume picker, skills and a global AGENTS.md are shared, not isolated; set backends.codex.configDir to a home of the team's own`,
     );
-  return okOutcome(`team codex home: ${codexHome({ configDir })}`);
+  return okOutcome(`team codex home: ${home}`);
 }
 
 /** codex model readiness (plans/codex-backend.md §7): every codex-routed model must be in the

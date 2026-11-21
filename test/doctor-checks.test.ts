@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
@@ -2329,6 +2330,16 @@ test("checkCodexHome warns on unset configDir and names the team home when set",
   const set = (await checkCodexHome(root))!;
   assert.equal(set.level, "ok");
   assert.equal(set.detail, `team codex home: ${home}`);
+});
+
+test("checkCodexHome warns when a configured configDir resolves to the operator's own ~/.codex", async () => {
+  const root = readyRepo();
+  const personal = path.join(os.homedir(), ".codex");
+  writeConfig(root, { backend: "codex", model: "gpt-6-luna", backends: { codex: { configDir: personal } } });
+  const shared = (await checkCodexHome(root))!;
+  assert.equal(shared.level, "warn");
+  assert.match(shared.detail, /user's own ~\/\.codex/);
+  assert.match(shared.detail, /shared, not isolated/);
 });
 
 test("checkCodexModels warns a missing catalog model and a dropped thinking level", async () => {

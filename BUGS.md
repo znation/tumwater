@@ -58,47 +58,6 @@ to write.
   team home rather than the operator's default, and the doctor `codex home` row reports the team
   home as set.
 
-### Codex runs default to the operator's own `~/.codex`, part 2/2: `tumwater doctor` has no row that catches an unisolated Codex home, and retention's comment promises more isolation than the code delivers (reported by the user 2026-11-16, split 2026-11-21 by the plan role)
-
-Sibling: part 1/2 (above) re-points the default home; this part's wording updates to match
-whichever home resolution exists then, so it is independent and lands on its own.
-
-Two gaps around an unisolated Codex home: (a) `tumwater doctor` has no row that catches it, and
-(b) the Codex half of `RetentionPruner.prune` (src/orchestrator/retention.ts) says CODEX_HOME is
-set "so the inherited CODEX_HOME never reaches the purge (its rollout fallback would otherwise
-unlink the operator's own home)" — with the default config the resolved team home *is* the
-operator's home. The fallback unlinks only rollouts the ledger recorded, so it is safe in
-practice, but the comment's guarantee is not real.
-
-**Reproduce.** Run `tumwater doctor` on a team with Codex enabled and no `backends.codex.configDir`:
-no row names the home resolution at all, and the retention comment reads as if the team were
-isolated.
-
-**Suspected cause.** (a) The doctor's codex home row warns only when the resolved home is unset in
-configuration (src/doctor/doctor-codex-checks.ts `checkCodexHome` — it warns on unset
-`configDir`, but with the `~/.codex` fallback the home still resolves to the operator's dir, and
-its `{ config, home }` base resolves from `codexHome` without ever comparing it to the operator's
-home). (b) The retention comment was written for the configured-home path and was never true for
-the fallback path.
-
-**Approach.**
-- src/doctor/doctor-codex-checks.ts `checkCodexHome`: when the resolved home is exactly the
-  operator's personal home (`~/.codex` after tilde expansion), warn that team sessions and trust
-  entries share the operator's home — the check keeps the current unset-configDir warning, and
-  warns on a resolved-home-equals-personal-home instead (or additionally, whichever reads true),
-  so an unisolated home is a visible doctor row, not a silent default.
-- src/orchestrator/retention.ts `pruneCodexHalf`: fix the comment so it states what is actually
-  guaranteed — the purge's `CODEX_HOME` is set to the resolved home (part 1/2's default or the
-  configured dir), and the rollout fallback deletes only rollouts the ledger recorded, never the
-  operator's files — rather than claiming an isolation the code does not provide.
-
-**Acceptance criteria.**
-- `tumwater doctor` on a team whose resolved codex home equals the operator's `~/.codex` reports a
-  warning row naming the unisolated home; a team with `backends.codex.configDir` set reports the
-  team home as today. (test/doctor-checks.test.ts `checkCodexHome` case: drop a real home into
-  view and assert the warning fires.)
-- The retention comment names what is guaranteed (resolved-home + ledger-recorded-only
-  fallback) and no longer claims the operator's home is untouched-by-construction.
 
 ### Busy model check, part 2/2: a probe that gets no reply while the team's runs on the same pair are being answered fails the pair and holds every role (requires Busy model check part 1/2 landed) (found by the bugfix role 2026-11-21, split 2026-11-21 by the plan role)
 

@@ -5093,6 +5093,14 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 
 **Pinned by.** `test/doctor.test.ts` — "runDoctorCheck turns a throwing or rejecting check into a fail row and passes other outcomes through".
 
+### INV-CE2: the doctor's codex-home row warns whenever the resolved team home is the operator's own `~/.codex`
+
+**Guarantee.** `checkCodexHome` compares the resolved team home (the `~/.codex` default when `backends.codex.configDir` is unset, or the expanded configured dir) against the operator's personal `~/.codex`. An equal home warns naming the shared trust entries, sessions, skills and `AGENTS.md`, whether the equality came from the unset default or an explicitly configured dir that resolves there; any other home reads ok naming it. An unisolated team home is thus a visible doctor row, never a silent default.
+
+**Binds.** `src/doctor/doctor-codex-checks.ts` (`checkCodexHome`), `src/agent/codex/codex-catalog.ts` (`codexHome`).
+
+**Pinned by.** `test/doctor-checks.test.ts` — "checkCodexHome warns on unset configDir and names the team home when set" and "checkCodexHome warns when a configured configDir resolves to the operator's own ~/.codex".
+
 ## Quarantine filing: a landed filing is never repeated
 
 ### INV-CF1: a quarantined test whose entry is already under ## Open is not filed again
