@@ -145,21 +145,6 @@ Feature run #3029's revision `dac2a150b` ("Set the default work-instance count t
 
 **Related, seen in the same run.** Run #3029's claim was "Remove the TUI, part 3/5" (its `Claim:` trailer and the `claim released … reason queued` event), but the run implemented "Three work instances by default, part 2/2". The plan entry it actually worked on was never claimed, so another instance could have taken it at the same time.
 
-### Offline `tumwater reset-counters` with no `--role` zeroes only base roles, so a `feature #2` (or any instance) keeps its counters (found by the qa role 2026-11-21)
-
-With no team running, a bare `tumwater reset-counters` is documented as zeroing "the per-role counters the dashboards show", and the dashboards show one row per instance (`feature #2`, `feature #3`, …). It does not reach the instance rows. The cause is in `targetRoles` (src/cli/cli-operator-commands.ts), which defaults to `Object.keys(loadConfig(root).roles)`, the base role ids only, not `runnerIds(config)`. `requestResetCounters` (src/operator/operator-intent.ts) then zeroes the state file of exactly those ids when no team is live. The live path matches `r.baseRole` (src/operator/operator-requests.ts `roleRequestTargets`), so a running team does reset instances. Only the offline path misses them.
-
-**Reproduce** (scratch dir, never the team's own `.tumwater`):
-1. `mktemp -d`, `git init -b main`, `tumwater init "<brief>"`.
-2. Seed `.tumwater/state/feature-2.json` with `"runs":7,"commits":2,"totalCostUsd":1.5` (the other fields as `tumwater` wrote them).
-3. `tumwater status`: row `feature #2` shows runs 7, commits 2, cost $1.50.
-4. `tumwater reset-counters` prints `counters reset for feature, bugfix, …` (no instance ids).
-5. `feature-2.json` still reads `runs 7 commits 2 cost 1.5`; `status` still shows `feature #2` at 7 / 2 / $1.50.
-
-Control: `tumwater reset-counters --role feature-2` zeroes it (status then shows 0 / 0 / $0.00), so the explicit path works.
-
-**Expected.** The bare form resolves the same runner ids the team would run (`runnerIds`, including the `-N` instances of enabled instance roles), so every counter row the dashboards show is zeroed, and the `--json` `roles` array lists them. **Fix direction:** make `targetRoles` default to the runner ids (or have `requestResetCounters` expand base roles through `runnerIds`), and add a test that seeds an instance state file and asserts it is zeroed by the bare offline form.
-
 ## Fixed
 
 ## Verified

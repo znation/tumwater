@@ -20,6 +20,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { PAUSE_REASON_MAX, scheduleStop } from "../src/team/team-state.js";
 import { writeJsonAtomic, writeJsonFile } from "../src/files/json-files.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
+import { runnerIds } from "../src/roles/runner-ids.js";
 import { configPath } from "../src/paths.js";
 import { ROLE_VALUE_ERROR } from "../src/cli/cli-args.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
@@ -88,12 +89,26 @@ test("cmdResetCounters with --role zeroes that role's counters and preserves its
 
 test("cmdResetCounters without --role targets every role in the config", async () => {
   const root = tmpdir();
-  const roles = Object.keys(defaultConfig().roles);
+  const roles = [...new Set([...Object.keys(defaultConfig().roles), ...runnerIds(defaultConfig())])];
   saveRunnerState(root, { ...freshRunnerState("coverage"), runs: 5 });
   const { stdout } = await expectOk(() => cmdResetCounters(root, []));
   assert.deepEqual(readJson<Record<string, unknown>>(resetRequestPath(root))["roles"], roles);
   assert.equal(loadRunnerState(root, "coverage").runs, 0);
   assert.ok(stdout.startsWith("counters reset for "));
+});
+
+test("bare cmdResetCounters offline zeroes an instance runner's counters too", async () => {
+  const root = tmpdir();
+  // feature-2 is an instance runner: the dashboards show it as its own row, so the bare form
+  // must reach its state file, not only the base role's.
+  saveRunnerState(root, { ...freshRunnerState("feature-2"), runs: 7, commits: 2, totalCostUsd: 1.5 });
+  await expectOk(() => cmdResetCounters(root, []));
+  const after = loadRunnerState(root, "feature-2");
+  assert.equal(after.runs, 0);
+  assert.equal(after.commits, 0);
+  assert.equal(after.totalCostUsd, 0);
+  const roles = readJson<Record<string, unknown>>(resetRequestPath(root))["roles"] as string[];
+  assert.ok(roles.includes("feature-2"));
 });
 
 // --- wake ---
@@ -923,14 +938,14 @@ test("cmdResetCounters --json prints one acknowledgement naming the resolved rol
 
 test("bare cmdResetCounters --json names every configured role", async () => {
   const root = tmpdir();
-  // A fresh tmpdir has no tumwater.json, so loadConfig resolves the defaults — every
-  // configured role, the same list targetRoles yields.
-  const keys = Object.keys(defaultConfig().roles);
+  // A fresh tmpdir has no tumwater.json, so loadConfig resolves the defaults — every configured
+  // role id, then the instance runner ids (feature-2, …) the team would run.
+  const keys = [...new Set([...Object.keys(defaultConfig().roles), ...runnerIds(defaultConfig())])];
   const { stdout } = await expectOk(() => cmdResetCounters(root, ["--json"]));
   const ack = JSON.parse(stdout) as { command: string; roles: string[]; status: string };
   assert.equal(ack.command, "reset-counters");
   assert.equal(ack.status, "reset");
-  // The bare form resolves every role in the config — the same list targetRoles yields.
+  // The bare form resolves every role id and every runner id in the config.
   assert.deepEqual(ack.roles, keys);
   assert.deepEqual(readJson<Record<string, unknown>>(resetRequestPath(root))["roles"], keys);
 });

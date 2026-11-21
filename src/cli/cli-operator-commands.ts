@@ -6,7 +6,7 @@ import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR } from "./cli-flag-specs.js
 import { ROLE_VALUE_ERROR } from "./cli-args.js";
 import { distinctOrdered } from "../collections.js";
 import { agree, plural, teamResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
-import { INSTANCE_ROLES } from "../roles/runner-ids.js";
+import { INSTANCE_ROLES, runnerIds } from "../roles/runner-ids.js";
 import { allRoleIds } from "../roles/roles.js";
 import {
   cancelScheduledStop,
@@ -113,6 +113,20 @@ function targetRoles(root: string, args: string[]): string[] {
   return namedRoleList(root, args) ?? Object.keys(loadConfig(root).roles);
 }
 
+/** The bare `reset-counters` target list: every configured role id plus every runner id the team
+ * would run (`feature-2`, …), so the instance rows the dashboards show are zeroed too. The base
+ * ids stay in so a disabled role's counters still reset; `--role` resolves as namedRoleList does.
+ * `targetRoles` (wake's default) is left as it is. */
+function resetTargetRoles(root: string, args: string[]): string[] {
+  return namedRoleList(root, args) ?? allConfiguredRunners(loadConfig(root));
+}
+
+/** Every configured role id, then every runner id: the one bare-form list both reset-counters and
+ * its acknowledgement name, so the two cannot drift. */
+function allConfiguredRunners(config: ReturnType<typeof loadConfig>): string[] {
+  return distinctOrdered([...Object.keys(config.roles), ...runnerIds(config)]);
+}
+
 /** `tumwater reset-counters [--role <id>[,<id>...]] [--json]`: zero the per-role counters
  * shown in the dashboards so a fresh observation window can begin. Scheduling fields and pi
  * session continuity are untouched: roles keep sleeping/waking exactly as before. `--json`
@@ -125,7 +139,7 @@ export async function cmdResetCounters(root: string, args: string[]): Promise<vo
   // Resolve once, before any marker or state write: an unknown --role fails here (via
   // namedRoleList) so a bad id writes nothing. requestResetCounters runs in BOTH modes (the
   // zeroing and the marker write); only the output branches.
-  const roles = targetRoles(root, args);
+  const roles = resetTargetRoles(root, args);
   const message = requestResetCounters(root, roles);
   if (args.includes("--json")) sayJson({ command: "reset-counters", roles, status: "reset" });
   else say(message);

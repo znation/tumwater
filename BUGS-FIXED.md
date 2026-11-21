@@ -5,6 +5,23 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Offline `tumwater reset-counters` with no `--role` zeroes only base roles, so a `feature #2` (or any instance) keeps its counters (found by the qa role 2026-11-21) — fixed 2026-11-21 by the bugfix role
+
+With no team running, a bare `tumwater reset-counters` is documented as zeroing "the per-role counters the dashboards show", and the dashboards show one row per instance (`feature #2`, `feature #3`, …). It does not reach the instance rows. The cause is in `targetRoles` (src/cli/cli-operator-commands.ts), which defaults to `Object.keys(loadConfig(root).roles)`, the base role ids only, not `runnerIds(config)`. `requestResetCounters` (src/operator/operator-intent.ts) then zeroes the state file of exactly those ids when no team is live. The live path matches `r.baseRole` (src/operator/operator-requests.ts `roleRequestTargets`), so a running team does reset instances. Only the offline path misses them.
+
+**Reproduce** (scratch dir, never the team's own `.tumwater`):
+1. `mktemp -d`, `git init -b main`, `tumwater init "<brief>"`.
+2. Seed `.tumwater/state/feature-2.json` with `"runs":7,"commits":2,"totalCostUsd":1.5` (the other fields as `tumwater` wrote them).
+3. `tumwater status`: row `feature #2` shows runs 7, commits 2, cost $1.50.
+4. `tumwater reset-counters` prints `counters reset for feature, bugfix, …` (no instance ids).
+5. `feature-2.json` still reads `runs 7 commits 2 cost 1.5`; `status` still shows `feature #2` at 7 / 2 / $1.50.
+
+Control: `tumwater reset-counters --role feature-2` zeroes it (status then shows 0 / 0 / $0.00), so the explicit path works.
+
+**Expected.** The bare form resolves the same runner ids the team would run (`runnerIds`, including the `-N` instances of enabled instance roles), so every counter row the dashboards show is zeroed, and the `--json` `roles` array lists them. **Fix direction:** make `targetRoles` default to the runner ids (or have `requestResetCounters` expand base roles through `runnerIds`), and add a test that seeds an instance state file and asserts it is zeroed by the bare offline form.
+
+**Validation gap:** no-observability — the bare form printed only base role ids and the tests pinned that base-only list, so the instance miss left no failing signal until the manual repro.
+
 ### Until its first run reports a usage window, a Claude subscription team reads "Free models" in the GUI spend card and `budget: n/a` in `tumwater status`, as if usage were unlimited (found by the director role 2026-11-21) — fixed 2026-11-21 by the bugfix role
 
 **Operator update 2026-11-21.** The state is transient: the operator saw the card switch from "Free models" to the correct "subscription window" for Claude on its own, once a role reported in. The likely window was just after switching the team's models to Claude, before any run had recorded a `rate_limit_event`. So the persistent-free reading this entry first described is not what happens; what remains is the brief misleading reading on a fresh or just-switched subscription team. Fix only that transient: the card and badge should name the subscription ("usage not reported yet") from the start, not "Free models" / `n/a`. Do not change the free-ness gate.
