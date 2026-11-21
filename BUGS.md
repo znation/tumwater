@@ -32,46 +32,6 @@ the way the codex-account seed and the isolated OpenCode DB work), and use `~/.c
 the config asks for it. Add a `tumwater doctor` row that warns about an unisolated Codex home, and
 fix the retention comment either way.
 
-### No command re-queues a dropped post-merge review, so the 2026-11-09 and 11-11 drops stay unreviewed (reported by the user 2026-11-16, split 2026-11-21 by the plan role)
-
-Part 2/2 of "1,451 commits dropped from post-merge review stay unreviewed"; part 1/2 ("A dropped
-post-merge review leaves only a free-text warning…") adds the `review_dropped` event this part
-reads. The two are independent: this part's tests write their own fixture events.
-
-`state/post-review.json` in kde-macos8.6-theme holds no entry for the 1,451 commits dropped on
-2026-11-09 and 11-11, and no command or role re-queues a review once it is dropped.
-
-**Fix.** Add `tumwater reviews --requeue-dropped --since <YYYY-MM-DD>` as a mode of `cmdReviews`
-in src/cli/cli-review-commands.ts (routed like `--show`/`--accept`; `--since` is required and
-names a local calendar day; `--json` prints the result object). It reads the event log from that
-day on (rotated files included — `readWindowEvents` in src/events/event-window.ts) and collects
-dropped commits from two shapes: `review_dropped` events (`commit` full SHA, `source` role,
-`summary`) and legacy `warning` events whose message starts "dropping the post-merge review of
-<short sha>" (its `source` is the role; the short SHA is resolved with `git rev-parse --verify
-<sha>^{commit}` in the root, the summary read from `git log -1 --format=%s`). Each distinct commit
-is queued with `addPostReview` (src/review/post-merge-review.ts) unless it is already in the queue,
-is not an ancestor of main, or its short SHA does not resolve to exactly one commit. It prints one
-line per skip reason count and the number queued. Re-running it queues nothing new.
-
-**Acceptance.**
-- With fixture events holding one `review_dropped` event and one legacy drop warning for two
-  commits on main, `reviews --requeue-dropped --since <that day>` leaves both in
-  `readPostReviews` with the dropping role and the commit's subject as summary, and reports 2
-  queued.
-- Running it a second time reports 0 queued and leaves the queue unchanged.
-- A drop dated before `--since` is not queued; a drop naming a commit not on main, or a short SHA
-  that resolves to nothing, is skipped and counted in the output, not queued.
-- Missing `--since`, or a value that is not a `YYYY-MM-DD` date, fails with a usage message and
-  changes nothing; `--requeue-dropped` combined with `--role`, `--status`, `--grep`, `--show` or
-  `--accept` is refused.
-- docs/cli.md's `tumwater reviews` section names the new mode and its `--since` flag.
-
-**Operator step after it merges** (not part of the code change): run `tumwater reviews
---requeue-dropped --since 2026-11-09` in kde-macos8.6-theme once its review provider has quota;
-the re-queued reviews drain at the normal one-at-a-time pace. Whether that project's matching
-"never reached a verdict" BUGS-FIXED.md entries are deleted is QUESTIONS.md "Delete the archived
-'never reached a verdict' entries for re-queued dropped reviews?".
-
 ### The model check fails a pair on queue position: a probe that never starts on a saturated local server reads as "no answer" and holds every role (split from the 2026-11-18 model-check entry in Fixed; found by the bugfix role 2026-11-21)
 
 **Needs review 2026-11-21 by feature: too large for one run** — the fix direction is a design choice with two parts. Part 1: a verdict-level rule in src/model-check/model-check-gate.ts settle() for a timed-out "no reply" while the team's own runs on that pair are answering; that needs a live-reply signal the runner does not expose today (RoleRunner.replyWait in src/runner/runner.ts only reports waiting toggles), and a retry schedule for the no-evidence case so a first probe does not re-fire on every poll. Part 2: reserving one concurrency slot while a check is due, which touches the orchestrator's permit accounting. Pick one direction in the plan, then split.

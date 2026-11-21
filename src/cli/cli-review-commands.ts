@@ -4,10 +4,10 @@
  * `readPostReviews` reads a missing, torn or hand-edited file as the well-formed subset (or `[]`),
  * so the command prints the empty line in any directory. Read-only except the one destructive
  * `--accept <n>` mode, which removes the Nth entry the operator deliberately accepts unreviewed
- * (the action the doctor's at-risk post-review row's advice names); that mode adds no new
- * ready-repo requirement to
- * the read path and gates the write with `requireReadyRepo`; the
- * read case still writes no file. */
+ * (the action the doctor's at-risk post-review row's advice names), and the `--requeue-dropped
+ * --since <day>` mode, which queues again the dropped reviews the event log names. Those two
+ * write paths gate with `requireReadyRepo`, so the read path adds no ready-repo requirement;
+ * the read case still writes no file. */
 
 import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, modeNamed, rejectUnknownArgs, grepFlagSpec, statusFlagSpec } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "../follow.js";
@@ -16,6 +16,9 @@ import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { failFollowJsonRival, parseGrepFlag, parseRoleListScope, parseStatusFlag, scanPositionArgs } from "./cli-args.js";
 import { readPostReviews, type PostReview } from "../review/post-merge-review.js";
 import { acceptPostReview, type AcceptPostReviewOutcome } from "../review/post-merge-review-accept.js";
+import { requeueDroppedReviews } from "../review/post-merge-review-requeue.js";
+import { loadConfigSafe } from "../config/config.js";
+import { currentBranch, targetBranch } from "../git/git.js";
 import {
   POST_REVIEW_STATES,
   postReviewMatchesGrep,
@@ -62,6 +65,12 @@ function parseReviewStatusList(raw: string): PostReviewState[] {
  * started it exits, so a backgrounded follow does not outlive its parent (the same rule
  * `queue -f` uses). */
 export async function cmdReviews(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
+  // `--requeue-dropped` is checked first, so an invocation that names it alongside --show or
+  // --accept is refused by the requeue branch's own wording.
+  if (modeNamed(args, "--requeue-dropped")) {
+    await cmdReviewsRequeueDropped(root, args);
+    return;
+  }
   // `tumwater reviews --show <n>` and `--accept <n>` are the read-only command's edge modes:
   // route them to their own branches before the read gate, so neither leaks into the view
   // parsing. --show is checked first so an invocation that names both refuses --accept by
@@ -145,6 +154,45 @@ export async function cmdReviews(root: string, args: string[], seams: FollowView
     ...entry,
   }));
   sayJsonOrRender(rest, { pending: positioned }, () => renderPostReviews(entries, scope, Date.now()));
+}
+
+/** Whether `day` is a real calendar date written YYYY-MM-DD (so 2026-02-30 is refused). */
+function isCalendarDay(day: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (match === null) return false;
+  const [year, month, date] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const probe = new Date(year, month - 1, date);
+  return probe.getFullYear() === year && probe.getMonth() === month - 1 && probe.getDate() === date;
+}
+
+/** The `tumwater reviews --requeue-dropped --since <YYYY-MM-DD>` branch (BUGS.md): queue again the
+ * post-merge reviews the event log records as dropped from `since` (a local calendar day) on, for
+ * commits on main that the queue does not hold. `--since` is required and validated before any
+ * write; `--json` prints the result object. The modes that scope or address a read or another
+ * mode are refused by name, so a mixed invocation changes nothing. */
+async function cmdReviewsRequeueDropped(root: string, args: string[]): Promise<void> {
+  const json = args.includes("--json");
+  const sinceAt = args.indexOf("--since");
+  const since = sinceAt >= 0 ? args[sinceAt + 1] : undefined;
+  const usage = "usage: tumwater reviews --requeue-dropped --since <YYYY-MM-DD>";
+  if (since === undefined) fail(`--requeue-dropped needs --since <YYYY-MM-DD> (${usage})`);
+  if (!isCalendarDay(since)) fail(`--since needs a YYYY-MM-DD day, got "${since}" (${usage})`);
+  const rest = args.filter((arg, i) => arg !== "--requeue-dropped" && arg !== "--json" && i !== sinceAt && i !== sinceAt + 1);
+  if (["--role", "--status", "--grep", "--show", "--accept"].some((flag) => rest.includes(flag)))
+    fail("reviews --requeue-dropped does not combine with --role, --status, --grep, --show or --accept");
+  rejectUnknownArgs("reviews", rest, []);
+  await requireReadyRepo(root);
+  const loaded = loadConfigSafe(root);
+  const mainBranch = targetBranch(loaded.config?.baseBranch, await currentBranch(root));
+  const result = await requeueDroppedReviews(root, since, mainBranch);
+  if (json) {
+    sayJson(result);
+    return;
+  }
+  say(`queued ${result.queued} dropped post-merge reviews from ${since}`);
+  say(`skipped ${result.skipped.alreadyQueued} already in the queue`);
+  say(`skipped ${result.skipped.notOnMain} not on main`);
+  say(`skipped ${result.skipped.unresolved} with an unresolved short sha`);
 }
 
 /** The `tumwater reviews --accept <n>` branch (PLANS.md): remove the Nth pending post-merge

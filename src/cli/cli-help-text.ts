@@ -307,6 +307,11 @@ Usage:
                                    the list; --json prints the entry object unsquashed for
                                    scripts (no header text) — the same object, plus the
                                    \`position\` its list row carries
+  tumwater reviews --requeue-dropped --since <YYYY-MM-DD> [--json]
+                                   Queue again the post-merge reviews the event log records as
+                                   dropped on or after that local day, for commits on main the
+                                   queue does not already hold; --json prints the counts. Refused
+                                   with --role, --status, --grep, --show and --accept.
   tumwater backlog [--ready] [--held] [--grep <text>] [-f/--follow] [--json]
                                    Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable
