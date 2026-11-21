@@ -112,6 +112,16 @@ test("land replays the ref's commits onto a moved main and says so", async () =>
   assert.notEqual(headSha(repo), sh(repo, "git", "rev-parse", "feat"), "the replay made a new commit");
 });
 
+test("land --dry-run on a commit that touches no files says so without an empty path list", async () => {
+  const { repo, feat } = await rootWithFeat("cli land empty commit");
+  sh(feat, "git", "commit", "--allow-empty", "-m", "empty edit");
+
+  const r = await cli(repo, "land", "feat", "--dry-run");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /^  touches 0 file\(s\)$/m);
+  assert.match(r.stdout, /^applies cleanly; nothing was written$/m);
+});
+
 test("land refuses a flag-shaped token and a second positional, writing nothing", async () => {
   const { repo, feat } = await rootWithFeat("cli land refusals");
   seedCommit(feat, "feat.txt", "feat\n", "feat edit");
