@@ -40,22 +40,22 @@ function staleFile(dir: string, name: string): string {
   return file;
 }
 
-test("RetentionPruner: construction runs the startup prune at a positive window", () => {
+test("RetentionPruner: construction runs the startup prune at a positive window", async () => {
   const root = tmpdir();
   const session = staleFile(sessionsRootDir(root), "session.jsonl");
   const toolOut = staleFile(toolOutputDir(root), "tool-out.txt");
-  new RetentionPruner(root, 7);
+  await new RetentionPruner(root, 7).whenIdle();
   assert.equal(fs.existsSync(session), false);
   assert.equal(fs.existsSync(toolOut), false);
 });
 
-test("RetentionPruner: salvaged workspace patches past the window are pruned, waiting or kept", () => {
+test("RetentionPruner: salvaged workspace patches past the window are pruned, waiting or kept", async () => {
   const root = tmpdir();
   const kept = staleFile(salvageDir(root), "2026-09-01-000000-_slot-1-docs.patch");
   const waiting = staleFile(salvagePendingDir(root, "feature"), "2026-09-01-000000-_slot-2-feature.patch");
   const fresh = path.join(salvageDir(root), "2026-10-22-000000-_slot-3-docs.patch");
   fs.writeFileSync(fresh, "x");
-  new RetentionPruner(root, 7);
+  await new RetentionPruner(root, 7).whenIdle();
   assert.equal(fs.existsSync(kept), false);
   assert.equal(fs.existsSync(waiting), false);
   assert.equal(fs.existsSync(fresh), true, "a patch inside the window stays");
@@ -65,7 +65,7 @@ test("RetentionPruner: salvaged workspace patches past the window are pruned, wa
   );
 });
 
-test("RetentionPruner: retention 0 disables the startup prune", () => {
+test("RetentionPruner: retention 0 disables the startup prune", async () => {
   const root = tmpdir();
   const session = staleFile(sessionsRootDir(root), "session.jsonl");
   new RetentionPruner(root, 0);
@@ -73,24 +73,26 @@ test("RetentionPruner: retention 0 disables the startup prune", () => {
   assert.equal(eventsOfType(root, "retention_changed").length, 0);
 });
 
-test("RetentionPruner: poll re-prunes immediately on a window change and logs one event", () => {
+test("RetentionPruner: poll re-prunes immediately on a window change and logs one event", async () => {
   const root = tmpdir();
   const pruner = new RetentionPruner(root, 7);
   const session = staleFile(sessionsRootDir(root), "session.jsonl");
   // A window change prunes right away even inside the once-per-day window…
   pruner.poll(root, 1);
+  await pruner.whenIdle();
   assert.equal(fs.existsSync(session), false);
   // …and every distinct value change logs exactly one retention_changed event, even when
   // nothing was pruned.
   pruner.poll(root, 1);
   pruner.poll(root, 1);
+  await pruner.whenIdle();
   const changes = eventsOfType(root, "retention_changed");
   assert.equal(changes.length, 1);
   assert.equal(changes[0]?.from, 7);
   assert.equal(changes[0]?.to, 1);
 });
 
-test("RetentionPruner: a window change and a prune survive an unwritable events feed", () => {
+test("RetentionPruner: a window change and a prune survive an unwritable events feed", async () => {
   const root = tmpdir();
   // Put a directory where events.jsonl belongs: every logEvent under `root` throws EISDIR,
   // exactly as it would on a full disk or a feed path replaced by a directory.
@@ -102,10 +104,11 @@ test("RetentionPruner: a window change and a prune survive an unwritable events 
   // The window change logs retention_changed and then prunes; both writes are best-effort, so
   // the throw must not skip the prune itself.
   assert.doesNotThrow(() => pruner.poll(root, 7));
+  await pruner.whenIdle();
   assert.equal(fs.existsSync(toolOut), false);
 });
 
-test("RetentionPruner: an idle role's expired codex session is purged before its ledger ages out", () => {
+test("RetentionPruner: an idle role's expired codex session is purged before its ledger ages out", async () => {
   const root = tmpdir();
   const dir = path.join(sessionsRootDir(root), "feature");
   const now = Date.now();
@@ -130,7 +133,7 @@ test("RetentionPruner: an idle role's expired codex session is purged before its
   writeScript(path.join(bin, "codex"), `printf '%s\\n' "$*" >> ${capture}`);
   process.env.TUMWATER_CODEX_BIN = path.join(bin, "codex");
   try {
-    new RetentionPruner(root, 7);
+    await new RetentionPruner(root, 7).whenIdle();
   } finally {
     delete process.env.TUMWATER_CODEX_BIN;
   }
@@ -152,11 +155,12 @@ function expiredCodexIds(n: number): { id: string; at: number }[] {
   }));
 }
 
-test("RetentionPruner: the prune pass publishes maintenance.json while it deletes and removes it after", () => {
+test("RetentionPruner: the prune pass publishes maintenance.json while it deletes and removes it after", async () => {
   const root = tmpdir();
   const dir = path.join(sessionsRootDir(root), "feature");
-  // Past the 25-id throttle, so a later delete must see a marker whose `done` has risen.
-  const ids = expiredCodexIds(26);
+  // Past two 25-id throttle rewrites: with four deletes in flight, a delete started after the
+  // first rewrite reads a marker whose `done` has risen.
+  const ids = expiredCodexIds(60);
   for (const { id, at } of ids) recordSession(dir, record({ agent: "codex", id, at }));
 
   // Each id has a rollout in the home, or the pass skips its delete as already gone.
@@ -168,46 +172,43 @@ test("RetentionPruner: the prune pass publishes maintenance.json while it delete
   }
   writeConfig(root, { backends: { codex: { configDir: home } } });
   const bin = tmpdir("codex-marker-bin-");
-  const marker = path.join(tmpdir("codex-marker-capture-"), "marker.log");
-  fs.mkdirSync(path.dirname(marker), { recursive: true });
-  // The fake delete is the observer inside the blocked pass: it dumps the marker file (with
-  // the pretty-printer's spaces and newlines stripped, so each line is one JSON object), or
-  // MISSING when the marker it should be reading is not there.
+  // The fake delete is the observer inside the pass: it dumps the marker file (with the
+  // pretty-printer's spaces and newlines stripped, so one JSON object), or MISSING when the
+  // marker it should be reading is not there. Deletes run four at a time, so each one writes a
+  // read file of its own rather than sharing one that concurrent reads would interleave in.
+  const reads = tmpdir("codex-marker-reads-");
+  fs.mkdirSync(reads, { recursive: true });
   const markerFile = maintenancePath(root);
   writeScript(
     path.join(bin, "codex"),
-    `if [ -f ${markerFile} ]; then tr -d ' \\n' < ${markerFile} >> ${marker}; printf '\\n' >> ${marker}; else printf 'MISSING\\n' >> ${marker}; fi`,
+    `if [ -f ${markerFile} ]; then tr -d ' \\n' < ${markerFile} > ${reads}/$$.json; else printf 'MISSING' > ${reads}/$$.json; fi`,
   );
   process.env.TUMWATER_CODEX_BIN = path.join(bin, "codex");
   try {
-    new RetentionPruner(root, 7);
+    await new RetentionPruner(root, 7).whenIdle();
   } finally {
     delete process.env.TUMWATER_CODEX_BIN;
   }
   assert.equal(fs.existsSync(markerFile), false, "the marker is gone once the pass ends");
 
-  const lines = fs.readFileSync(marker, "utf8").trim().split("\n");
-  assert.equal(lines.length, 26, "one marker read per delete, none MISSING");
-  const seen = lines.map((l) => JSON.parse(l) as { pid: number; task: string; backend: string; done: number; total: number });
+  const contents = fs.readdirSync(reads).map((f) => fs.readFileSync(path.join(reads, f), "utf8"));
+  assert.equal(contents.length, 60, "one marker read per delete");
+  assert.ok(!contents.includes("MISSING"), "every delete found the marker");
+  const seen = contents.map((c) => JSON.parse(c) as { pid: number; task: string; backend: string; done: number; total: number });
   for (const m of seen) {
     assert.equal(m.pid, process.pid, "the marker names the orchestrator that wrote it");
     assert.equal(m.task, "session-prune");
     assert.equal(m.backend, "codex");
-    assert.equal(m.total, 26, "total is known up front");
+    assert.equal(m.total, 60, "total is known up front");
+    // A delete that is running has not been handled yet, so at most 59 can be handled when
+    // any read happens.
+    assert.ok(m.done <= 59, `a marker read claims ${m.done} handled while one delete still runs`);
   }
-  assert.equal(seen[0]?.done, 0, "the first delete sees a marker that has handled nothing yet");
-  seen.forEach((m, j) => {
-    // The marker never runs ahead of the pass (the id-throttle bounds how far behind it
-    // lags), and it is never further behind than the throttle allows — widen the id bound
-    // and this is what reports it. `j` deletes have happened when the delete after them
-    // reads the marker, so a persisted `done` sits in [j - 24, j].
-    assert.ok(m.done <= j, `marker read ${j} claims ${m.done} handled of ${j} so far`);
-    assert.ok(m.done >= j - 24, `marker read ${j} lags to ${m.done} while ${j} are handled`);
-  });
-  assert.ok((seen[25]?.done ?? -1) > 0, "done rises during the pass, not only at its end");
+  assert.ok(seen.some((m) => m.done === 0), "the first deletes see a marker that has handled nothing yet");
+  assert.ok(seen.some((m) => m.done > 0), "done rises during the pass, not only at its end");
 });
 
-test("RetentionPruner: a throw part-way through the pass still removes the marker", () => {
+test("RetentionPruner: a throw part-way through the pass still removes the marker", async () => {
   const root = tmpdir();
   const dir = path.join(sessionsRootDir(root), "feature");
   recordSession(dir, record({ agent: "codex", id: "c7b3e2a1-0000-4000-8000-0000000000c1", at: Date.now() - 30 * 24 * 3600 * 1000 }));
@@ -219,21 +220,87 @@ test("RetentionPruner: a throw part-way through the pass still removes the marke
     return orig(p);
   });
   try {
-    assert.throws(() => new RetentionPruner(root, 7));
+    // The pass throws part-way, so the team keeps running and the throw is logged as a warning.
+    await new RetentionPruner(root, 7).whenIdle();
   } finally {
     undo();
   }
   assert.equal(fs.existsSync(maintenancePath(root)), false, "the finally still removes the marker");
+  assert.match(
+    eventsOfType(root, "warning").map((e) => String(e.message)).join("\n"),
+    /session cleanup pass failed: .*EIO/,
+  );
 });
 
-test("RetentionPruner: a prune with work logs one maintenance_start and one maintenance_done for that half, and a prune with none logs neither", () => {
+test("RetentionPruner: a second poll while a pass is in flight starts no second pass", async () => {
+  const root = tmpdir();
+  const dir = path.join(sessionsRootDir(root), "feature");
+  const ids = expiredCodexIds(3);
+  for (const { id, at } of ids) recordSession(dir, record({ agent: "codex", id, at }));
+  const home = tmpdir("codex-inflight-home-");
+  for (const { id } of ids) {
+    const rollout = path.join(home, "sessions", "2026", "09", "30", `rollout-2026-09-30T00-00-00-000-${id}.jsonl`);
+    fs.mkdirSync(path.dirname(rollout), { recursive: true });
+    fs.writeFileSync(rollout, "{}\n");
+  }
+  writeConfig(root, { backends: { codex: { configDir: home } } });
+  const bin = tmpdir("codex-inflight-bin-");
+  const capture = path.join(tmpdir("codex-inflight-capture-"), "deleted.log");
+  fs.mkdirSync(path.dirname(capture), { recursive: true });
+  // Each delete holds for a moment, so the pass is still in flight when the polls land. A window
+  // change makes a pass due, which is the case a second pass would otherwise start in.
+  writeScript(path.join(bin, "codex"), `sleep 0.2; printf '%s\\n' "$*" >> ${capture}`);
+  process.env.TUMWATER_CODEX_BIN = path.join(bin, "codex");
+  try {
+    const pruner = new RetentionPruner(root, 7);
+    pruner.poll(root, 1);
+    pruner.poll(root, 1);
+    await pruner.whenIdle();
+  } finally {
+    delete process.env.TUMWATER_CODEX_BIN;
+  }
+  const log = fs.readFileSync(capture, "utf8").trim().split("\n");
+  assert.equal(log.length, ids.length, "the stub sees each id once");
+  for (const { id } of ids) assert.equal(log.filter((line) => line.includes(id)).length, 1, `${id} deleted once`);
+});
+
+test("RetentionPruner: the constructor returns before the first delete finishes", async () => {
+  const root = tmpdir();
+  const dir = path.join(sessionsRootDir(root), "feature");
+  // More ids than the pool runs at once, each delete slow enough that the pass is still going.
+  const ids = expiredCodexIds(8);
+  for (const { id, at } of ids) recordSession(dir, record({ agent: "codex", id, at }));
+  const home = tmpdir("codex-async-home-");
+  for (const { id } of ids) {
+    const rollout = path.join(home, "sessions", "2026", "09", "30", `rollout-2026-09-30T00-00-00-000-${id}.jsonl`);
+    fs.mkdirSync(path.dirname(rollout), { recursive: true });
+    fs.writeFileSync(rollout, "{}\n");
+  }
+  writeConfig(root, { backends: { codex: { configDir: home } } });
+  const bin = tmpdir("codex-async-bin-");
+  const capture = path.join(tmpdir("codex-async-capture-"), "deleted.log");
+  fs.mkdirSync(path.dirname(capture), { recursive: true });
+  writeScript(path.join(bin, "codex"), `sleep 0.5; printf '%s\\n' "$*" >> ${capture}`);
+  process.env.TUMWATER_CODEX_BIN = path.join(bin, "codex");
+  try {
+    const pruner = new RetentionPruner(root, 7);
+    assert.equal(fs.existsSync(capture), false, "no delete has finished when the constructor returns");
+    await pruner.whenIdle();
+  } finally {
+    delete process.env.TUMWATER_CODEX_BIN;
+  }
+  const log = fs.readFileSync(capture, "utf8").trim().split("\n");
+  assert.equal(log.length, ids.length, "the pass deletes every id once whenIdle resolves");
+});
+
+test("RetentionPruner: a prune with work logs one maintenance_start and one maintenance_done for that half, and a prune with none logs neither", async () => {
   const root = tmpdir();
   const dir = path.join(sessionsRootDir(root), "feature");
   // No binary configured: the CLI delete is skipped but the half still has work to handle, so
   // the pair must still be logged — it explains the blocked loop, not the delete's outcome.
   recordSession(dir, record({ agent: "codex", id: "c7b3e2a1-0000-4000-8000-0000000000d1", at: Date.now() - 30 * 24 * 3600 * 1000 }));
   recordSession(dir, record({ agent: "codex", id: "c7b3e2a1-0000-4000-8000-0000000000d2", at: Date.now() - 30 * 24 * 3600 * 1000 }));
-  new RetentionPruner(root, 7);
+  await new RetentionPruner(root, 7).whenIdle();
 
   const starts = eventsOfType(root, "maintenance_start");
   const dones = eventsOfType(root, "maintenance_done");
@@ -250,12 +317,12 @@ test("RetentionPruner: a prune with work logs one maintenance_start and one main
   // A pass with nothing past the window logs neither half of the pair.
   const quiet = tmpdir();
   recordSession(path.join(sessionsRootDir(quiet), "feature"), record({ agent: "codex", id: "c7b3e2a1-0000-4000-8000-0000000000d3" }));
-  new RetentionPruner(quiet, 7);
+  await new RetentionPruner(quiet, 7).whenIdle();
   assert.equal(eventsOfType(quiet, "maintenance_start").length, 0);
   assert.equal(eventsOfType(quiet, "maintenance_done").length, 0);
 });
 
-test("RetentionPruner: an unavailable config never unlinks rollouts from the inherited CODEX_HOME", () => {
+test("RetentionPruner: an unavailable config never unlinks rollouts from the inherited CODEX_HOME", async () => {
   const root = tmpdir();
   const dir = path.join(sessionsRootDir(root), "feature");
   const now = Date.now();
@@ -282,7 +349,7 @@ test("RetentionPruner: an unavailable config never unlinks rollouts from the inh
   process.env.TUMWATER_CODEX_BIN = path.join(bin, "codex");
   process.env.CODEX_HOME = inheritedHome;
   try {
-    new RetentionPruner(root, 7);
+    await new RetentionPruner(root, 7).whenIdle();
   } finally {
     delete process.env.TUMWATER_CODEX_BIN;
     delete process.env.CODEX_HOME;
@@ -295,7 +362,7 @@ test("RetentionPruner: an unavailable config never unlinks rollouts from the inh
   assert.ok(fs.existsSync(inheritedRollout), "the operator's inherited CODEX_HOME rollout is untouched");
 });
 
-test("RetentionPruner: an idle role's expired opencode session is purged before its ledger ages out", () => {
+test("RetentionPruner: an idle role's expired opencode session is purged before its ledger ages out", async () => {
   const root = tmpdir();
   const dir = path.join(sessionsRootDir(root), "feature");
   const now = Date.now();
@@ -316,7 +383,7 @@ test("RetentionPruner: an idle role's expired opencode session is purged before 
   writeScript(path.join(bin, "opencode"), `printf '%s\\n' "$*" >> ${capture}`);
   process.env.TUMWATER_OPENCODE_BIN = path.join(bin, "opencode");
   try {
-    new RetentionPruner(root, 7);
+    await new RetentionPruner(root, 7).whenIdle();
   } finally {
     delete process.env.TUMWATER_OPENCODE_BIN;
   }
@@ -325,7 +392,7 @@ test("RetentionPruner: an idle role's expired opencode session is purged before 
   assert.equal(fs.existsSync(ledger), false, "the stale ledger itself is still aged out by the file pass");
 });
 
-test("RetentionPruner: an OpenCode DB dir that cannot be created skips the session deletes and still prunes the rest", () => {
+test("RetentionPruner: an OpenCode DB dir that cannot be created skips the session deletes and still prunes the rest", async () => {
   const root = tmpdir();
   // A regular file where the DB's directory belongs: the mkdir throws EEXIST.
   const dbDir = path.dirname(opencodeDbPath(root));
@@ -341,12 +408,13 @@ test("RetentionPruner: an OpenCode DB dir that cannot be created skips the sessi
   writeScript(path.join(bin, "opencode"), `printf '%s\\n' "$*" >> ${capture}`);
   process.env.TUMWATER_OPENCODE_BIN = path.join(bin, "opencode");
   try {
-    assert.doesNotThrow(() => new RetentionPruner(root, 7));
+    await new RetentionPruner(root, 7).whenIdle();
     assert.equal(fs.existsSync(toolOut), false);
     assert.equal(fs.existsSync(capture), false, "no session delete was attempted");
     const again = staleFile(toolOutputDir(root), "tool-out-2.txt");
     const pruner = new RetentionPruner(root, 0);
     assert.doesNotThrow(() => pruner.poll(root, 7));
+    await pruner.whenIdle();
     assert.equal(fs.existsSync(again), false);
     assert.equal(fs.existsSync(capture), false, "no session delete was attempted by poll");
   } finally {
@@ -354,7 +422,7 @@ test("RetentionPruner: an OpenCode DB dir that cannot be created skips the sessi
   }
 });
 
-test("RetentionPruner: a codex id an interrupted pass already handled is not deleted again, and the resume record is cleared", () => {
+test("RetentionPruner: a codex id an interrupted pass already handled is not deleted again, and the resume record is cleared", async () => {
   const root = tmpdir();
   const dir = path.join(sessionsRootDir(root), "feature");
   const now = Date.now();
@@ -379,7 +447,7 @@ test("RetentionPruner: a codex id an interrupted pass already handled is not del
   writeScript(path.join(bin, "codex"), `printf '%s\\n' "$*" >> ${capture}`);
   process.env.TUMWATER_CODEX_BIN = path.join(bin, "codex");
   try {
-    new RetentionPruner(root, 7);
+    await new RetentionPruner(root, 7).whenIdle();
   } finally {
     delete process.env.TUMWATER_CODEX_BIN;
   }

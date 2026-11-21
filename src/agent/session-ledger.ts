@@ -9,7 +9,7 @@
  * it needs. `id` is backend-specific: claude mints a UUID before its spawn, pi leaves it as the
  * session name because pi has no separate id to hand out ahead of the run. */
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { daysAgoMs, dirEntryNames, ensureParentDir, readTextOrNull, statOrNull, terminateTornTail, walkFiles, writeTextAtomic } from "../files/files.js";
@@ -255,25 +255,58 @@ export function clearPruneResume(file: string): void {
 const SESSION_DELETE_TIMEOUT_MS = 10_000;
 
 /** Run one bounded headless CLI session delete (`bin args…`) under `env`, best-effort: a
- * spawn that throws (a missing binary, an unwritable env) returns false without throwing, so
- * a failed delete never fails the prune. Shared by the OpenCode and Codex session purges below
- * so neither drift on the 10 s bound, the status-0 success rule, or the swallow policy. */
+ * spawn that throws (a missing binary, an unwritable env) resolves false without rejecting, so
+ * a failed delete never fails the prune. The child is killed at the bound and counts as failed.
+ * Shared by the OpenCode and Codex session purges below so neither drift on the 10 s bound, the
+ * status-0 success rule, or the swallow policy. */
 function sessionDeleteSucceeds(
   bin: string,
   args: readonly string[],
   env: NodeJS.ProcessEnv | undefined,
-): boolean {
-  try {
-    const res = spawnSync(bin, args, {
-      env,
-      timeout: SESSION_DELETE_TIMEOUT_MS,
-      stdio: "ignore",
-    });
-    return res.status === 0;
-  } catch {
-    // Best effort: an unwritable env or a missing binary must not fail the prune.
-    return false;
-  }
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      const child = spawn(bin, args, {
+        env,
+        timeout: SESSION_DELETE_TIMEOUT_MS,
+        stdio: "ignore",
+      });
+      child.on("error", () => resolve(false));
+      child.on("close", (status) => resolve(status === 0));
+    } catch {
+      // Best effort: an unwritable env or a missing binary must not fail the prune.
+      resolve(false);
+    }
+  });
+}
+
+/** How many session deletes run at once: a pass over a busy team can hold many expired ids, and
+ * each delete is a child process, so the pass runs a few at a time rather than one per id. */
+const SESSION_DELETE_CONCURRENCY = 4;
+
+/** Run `fn` over `items` with at most `limit` calls in flight, resolving once every started call
+ * has settled. A call that throws stops the pool from starting another item; the first such
+ * error is rethrown once the calls already in flight have settled. */
+async function forEachLimited<T>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  let failure: { error: unknown } | undefined;
+  const worker = async (): Promise<void> => {
+    while (failure === undefined && next < items.length) {
+      const item = items[next] as T;
+      next += 1;
+      try {
+        await fn(item);
+      } catch (error) {
+        if (failure === undefined) failure = { error };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  if (failure !== undefined) throw failure.error;
 }
 
 /** The options the retention pass resolves for the OpenCode session purge (part 7/7): the
@@ -304,14 +337,15 @@ interface OpencodePruneOptions {
  * out of the generic `pruneSessionLedgers` line pass: it returns the session-deletes that
  * reported success, and prunes spill files with the same window. The caller (retention) runs
  * this BEFORE pruneSessionLedgers trims the lines, so the full ledger is still in view. */
-export function pruneOpencodeSessions(
+export async function pruneOpencodeSessions(
   sessionsRoot: string,
   days: number,
   opts: OpencodePruneOptions & { spillDir?: string },
-): number {
+): Promise<number> {
   const cutoff = daysAgoMs(days);
   let deleted = 0;
   if (opts.bin !== undefined) {
+    const bin = opts.bin;
     // The expired ids are gathered before the delete loop so `total` is known up front — the
     // progress reporter's contract (part 1/3). The ledgers are not written by this pass, so
     // gathering first sees exactly what the old inline walk saw.
@@ -327,10 +361,12 @@ export function pruneOpencodeSessions(
     });
     const total = expired.length;
     if (total > 0) opts.onProgress?.(0, total);
-    expired.forEach((id, i) => {
-      if (sessionDeleteSucceeds(opts.bin!, ["session", "delete", id, "--standalone"], opts.env)) deleted += 1;
+    let handled = 0;
+    await forEachLimited(expired, SESSION_DELETE_CONCURRENCY, async (id) => {
+      if (await sessionDeleteSucceeds(bin, ["session", "delete", id, "--standalone"], opts.env)) deleted += 1;
       recordPruneResume(opts.resumePath, id);
-      opts.onProgress?.(i + 1, total);
+      handled += 1;
+      opts.onProgress?.(handled, total);
     });
   }
   const spill = opts.spillDir;
@@ -380,11 +416,11 @@ interface CodexPruneOptions {
  * session's own rollout file is removed as the fallback (the OpenCode spill-file fallback's
  * twin), so the ledger line and rollout do not outlive the window. The caller (retention) runs
  * this BEFORE pruneSessionLedgers trims the lines, so the full ledger is still in view. */
-export function pruneCodexSessions(
+export async function pruneCodexSessions(
   sessionsRoot: string,
   days: number,
   opts: CodexPruneOptions,
-): number {
+): Promise<number> {
   const cutoff = daysAgoMs(days);
   let deleted = 0;
   // Codex reuses a resumed session's UUID, so one id can carry several ledger records — each
@@ -414,10 +450,12 @@ export function pruneCodexSessions(
   // rollout to check, so each candidate is deleted as it always was.
   const home = opts.env?.CODEX_HOME;
   const rollouts = home !== undefined && total > 0 ? indexRollouts(home) : undefined;
-  candidates.forEach((id, i) => {
+  const bin = opts.bin;
+  let handled = 0;
+  await forEachLimited(candidates, SESSION_DELETE_CONCURRENCY, async (id) => {
     const rollout = rollouts?.get(id);
     const gone = rollouts !== undefined && rollout === undefined;
-    if (!gone && opts.bin !== undefined && sessionDeleteSucceeds(opts.bin, ["delete", "--force", id], opts.env))
+    if (!gone && bin !== undefined && (await sessionDeleteSucceeds(bin, ["delete", "--force", id], opts.env)))
       deleted += 1;
     // Fallback: unlink the home's rollout for this session so neither the ledger line nor
     // its file outlives the window. A real `codex delete` removes the rollout itself, so a
@@ -431,7 +469,8 @@ export function pruneCodexSessions(
       }
     }
     recordPruneResume(opts.resumePath, id);
-    opts.onProgress?.(i + 1, total);
+    handled += 1;
+    opts.onProgress?.(handled, total);
   });
   return deleted;
 }

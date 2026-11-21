@@ -8,6 +8,7 @@
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { DAY_MS } from "../text/datetime.js";
 import { plural } from "../text/phrases.js";
+import { errorMessage } from "../text/text.js";
 import { ensureParentDir, pruneOldFiles, removeQuiet } from "../files/files.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { clearPruneResume, pruneSessionLedgers, pruneOpencodeSessions, pruneCodexSessions } from "../agent/session-ledger.js";
@@ -33,9 +34,9 @@ const MAINTENANCE_TASK = "session-prune";
 
 /** How many handled ids may pass between two marker rewrites, and the wall-clock gap between
  * them — whichever comes first rewrites it, plus one rewrite for the final id. The bound is the
- * point: each rewrite is a synchronous atomic write inside the poll loop the pass is already
- * blocking, and the pass that motivated this (3,944 expired Codex sessions) would otherwise add
- * thousands of writes to its own 75 minutes. */
+ * point: each rewrite is a synchronous atomic write on the event loop the poll loop shares with
+ * the background pass, and the pass that motivated this (3,944 expired Codex sessions) would
+ * otherwise add thousands of writes to its own 75 minutes. */
 const MARKER_PROGRESS_IDS = 25;
 const MARKER_PROGRESS_MS = 1000;
 
@@ -166,53 +167,74 @@ class SessionPruneMarker {
  * re-prunes at startup regardless. */
 export class RetentionPruner {
   private lastRetention: number;
-  private lastPruneAt: number | null;
+  private lastPruneAt: number | null = null;
+  /** The prune pass in flight, or null. A pass runs as a background task so the poll loop keeps
+   * scheduling while its session deletes run (PLANS.md "Fast session cleanup" part 2a/2). */
+  private pass: Promise<void> | null = null;
 
   constructor(root: string, retentionDays: number) {
     this.lastRetention = retentionDays;
-    this.lastPruneAt = retentionDays > 0 ? Date.now() : null;
     // 0 disables pruning — the same convention as quietTimeoutSeconds. (With a positive N,
     // pruneOldFiles deletes everything older than N days; JSON has no "keep forever" value, so
     // 0 is the off switch rather than "delete all sessions now".)
-    if (retentionDays > 0) this.prune(root, retentionDays);
+    if (retentionDays > 0) this.startPrune(root, retentionDays);
   }
 
   /** Apply a (possibly live-reloaded) retention window: a mid-run edit re-prunes immediately;
    * independently of edits, an unchanged team prunes at most once per day so a never-restarted
    * team still honors its window. Both paths log the startup warning shape only when files
-   * were actually deleted — quiet polls stay silent. */
+   * were actually deleted — quiet polls stay silent. A due pass that finds one still in flight
+   * waits for a later poll, so no two passes overlap. */
   poll(root: string, retentionDays: number): void {
-    if (retentionDays !== this.lastRetention || dueForPrune(this.lastPruneAt, Date.now(), retentionDays)) {
-      // A change to a positive window prunes immediately even inside the daily window — an
-      // operator tightening the window wants it applied now, not at tomorrow's pass. Every
-      // distinct value change logs one event (like its maxConcurrent sibling) so live edits
+    if (retentionDays !== this.lastRetention) {
+      // Every distinct value change logs one event (like its maxConcurrent sibling) so live edits
       // are visible in logs/GUI even when nothing was pruned; pruning itself still runs
       // only for a positive window.
-      if (retentionDays !== this.lastRetention) {
-        logEventBestEffort(root, {
-          source: TUMWATER_SOURCE,
-          type: "retention_changed",
-          from: this.lastRetention,
-          to: retentionDays,
-        });
-      }
-      if (retentionDays > 0) {
-        this.lastPruneAt = Date.now();
-        this.prune(root, retentionDays);
-      }
+      logEventBestEffort(root, {
+        source: TUMWATER_SOURCE,
+        type: "retention_changed",
+        from: this.lastRetention,
+        to: retentionDays,
+      });
       this.lastRetention = retentionDays;
+      // A change to a positive window prunes at once, even inside the daily window — an
+      // operator tightening the window wants it applied now, not at tomorrow's pass. Clearing
+      // the last-prune time makes that pass due until one starts.
+      this.lastPruneAt = null;
     }
+    if (this.pass === null && retentionDays > 0 && dueForPrune(this.lastPruneAt, Date.now(), retentionDays)) {
+      this.startPrune(root, retentionDays);
+    }
+  }
+
+  /** Resolves once no prune pass is in flight (at once when none is). Tests await it; the
+   * orchestrator never does, so the poll loop is never held by a pass. */
+  async whenIdle(): Promise<void> {
+    while (this.pass !== null) await this.pass;
+  }
+
+  /** Start one prune pass in the background. A pass that throws logs one warning and clears the
+   * in-flight slot, so the team keeps running and the next due poll starts a new pass. */
+  private startPrune(root: string, days: number): void {
+    this.lastPruneAt = Date.now();
+    this.pass = this.prune(root, days)
+      .catch((err: unknown) => {
+        warnEventBestEffort(root, TUMWATER_SOURCE, `session cleanup pass failed: ${errorMessage(err)}`);
+      })
+      .finally(() => {
+        this.pass = null;
+      });
   }
 
   /** One prune pass, in its fixed pass order (INV-BQ3): both backend session purges read the
    * ledgers before the file pass can age them out, then the file, ledger-line and salvage
    * passes. The whole pass is wrapped in the progress marker (PLANS.md "Visible session
    * cleanup" part 1/3), which is removed in the `finally` even when a half throws. */
-  private prune(root: string, days: number): void {
+  private async prune(root: string, days: number): Promise<void> {
     const marker = new SessionPruneMarker(root);
     try {
-      pruneOpencodeHalf(root, days, marker);
-      pruneCodexHalf(root, days, marker);
+      await pruneOpencodeHalf(root, days, marker);
+      await pruneCodexHalf(root, days, marker);
       pruneFileHalves(root, days, marker);
     } finally {
       marker.finish();
@@ -225,7 +247,7 @@ export class RetentionPruner {
  * files from the ledger BEFORE the file pass ages it out — an idle role's whole ledger file is
  * deleted once its mtime passes the window, so only reading it first hands every expired
  * OpenCode session id to `opencode session delete`. Each half warns its own unit. */
-function pruneOpencodeHalf(root: string, days: number, marker: SessionPruneMarker): void {
+async function pruneOpencodeHalf(root: string, days: number, marker: SessionPruneMarker): Promise<void> {
   marker.beginHalf("opencode");
   const { config } = loadConfigSafe(root);
   let bin = config !== undefined ? opencodeBackend.resolveBin(config).bin : undefined;
@@ -237,7 +259,7 @@ function pruneOpencodeHalf(root: string, days: number, marker: SessionPruneMarke
     // runs in the poll loop, where a throw ends the team. Skip only the session deletes.
     bin = undefined;
   }
-  const deleted = pruneOpencodeSessions(sessionsRootDir(root), days, {
+  const deleted = await pruneOpencodeSessions(sessionsRootDir(root), days, {
     bin,
     env: { ...process.env, OPENCODE_DB: dbPath },
     spillDir: opencodeSpillDir(root),
@@ -257,12 +279,12 @@ function pruneOpencodeHalf(root: string, days: number, marker: SessionPruneMarke
  * objection 2). CODEX_HOME is always set explicitly — to the resolved team home, or to
  * undefined when the config is absent — so the inherited CODEX_HOME never reaches the purge
  * (its rollout fallback would otherwise unlink the operator's own home). */
-function pruneCodexHalf(root: string, days: number, marker: SessionPruneMarker): void {
+async function pruneCodexHalf(root: string, days: number, marker: SessionPruneMarker): Promise<void> {
   marker.beginHalf("codex");
   const { config } = loadConfigSafe(root);
   const codexBin = config !== undefined ? codexBackend.resolveBin(config).bin : undefined;
   const codexHomeDir = config !== undefined ? codexHome(resolvedBackendConfig(config, "codex")) : undefined;
-  const deletedCodex = pruneCodexSessions(sessionsRootDir(root), days, {
+  const deletedCodex = await pruneCodexSessions(sessionsRootDir(root), days, {
     bin: codexBin,
     env: { ...process.env, CODEX_HOME: codexHomeDir },
     resumePath: sessionPruneResumePath(root, "codex"),

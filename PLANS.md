@@ -9,48 +9,6 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 ## Planned
 
-### Fast session cleanup, part 2a/2: session deletes run as a background task, so roles keep running during cleanup (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; requires Fast session cleanup part 1/2 landed; touches src/agent/session-ledger.ts src/orchestrator/retention.ts test/session-ledger-prune.test.ts test/session-ledger.test.ts test/retention.test.ts)
-
-Part 2/2 was split into 2a, 2b and 2c after the feature role found it too large for one run.
-2a moves the deletes off the poll loop; 2b ("Fast session cleanup part 2b/2") lets a stop
-abandon an in-flight pass; 2c ("Fast session cleanup part 2c/2") rewords the alert and drops the
-row hold. 2b and 2c each require 2a landed and are independent of each other.
-
-**Goal.** Even short, a synchronous prune holds every role for its whole length, at startup and
-once a day: `sessionDeleteSucceeds` (src/agent/session-ledger.ts) calls `spawnSync` once per
-expired id, inside `RetentionPruner`'s constructor and `poll()`. Running the CLI deletes
-asynchronously lets scheduling continue during cleanup. (A per-pass delete cap was the other
-option; it was not chosen because a daily pass with a cap can fall behind a busy Codex team
-indefinitely.)
-
-**Approach.**
-- `sessionDeleteSucceeds` becomes async on `spawn`, keeping the 10 s `SESSION_DELETE_TIMEOUT_MS`
-  bound (the child is killed at the bound and counts as failed), the status-0 success rule, and
-  the swallow-every-error policy. `pruneCodexSessions` and `pruneOpencodeSessions` return
-  `Promise<number>` and run their candidates through one small shared pool of at most 4 deletes at
-  a time. Progress still rises monotonically to `total`, and each id is recorded in the resume
-  file after its own delete settles. The rollout and spill-file fallbacks are unchanged.
-- `RetentionPruner.prune` becomes async and keeps its pass order (INV-BQ3 in docs/invariants.md:
-  both session purges, then the file, ledger-line and salvage passes, marker removed in its
-  `finally`). The constructor and `poll()` start it as a background task held in a private field
-  and never await it; `poll()` starts no pass while one is in flight (a due pass waits for the
-  next poll after it ends; a window change still logs `retention_changed` at once). A rejected
-  task logs one warning event and clears the field instead of ending the team. Add
-  `whenIdle(): Promise<void>` (resolves when no pass is in flight) for tests and part 2b.
-- Existing callers in tests gain `await`; retention tests await `whenIdle()` before asserting.
-- Update INV-BQ3's wording in docs/invariants.md if it says the pass blocks the poll.
-
-**Acceptance criteria.**
-- With a stub `codex` on PATH that sleeps 1 s per delete and 50 expired thread ids, `new
-  RetentionPruner(...)` returns before the first delete finishes, and the pass deletes all 50 once
-  `whenIdle()` resolves.
-- A stub that records its concurrent invocations (e.g. a counter file) never sees more than 4
-  deletes running at once.
-- A second `poll()` while a pass is in flight starts no second pass (the stub sees each id once).
-- A stub that sleeps past the timeout counts as not deleted and the pass still finishes.
-- A pass whose purge throws leaves a warning event, removes the maintenance marker, and a later
-  due `poll()` starts a new pass.
-
 ### Fast session cleanup, part 2b/2: stopping the orchestrator abandons an in-flight session prune (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; requires Fast session cleanup part 2a/2 landed; touches src/agent/session-ledger.ts src/orchestrator/retention.ts src/orchestrator/orchestrator.ts test/retention.test.ts)
 
 Sibling of "Fast session cleanup part 2a/2" (background deletes) and 2c/2 (alert wording).

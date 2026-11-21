@@ -176,7 +176,7 @@ test("pruneSessionLedgers drops lines past the window and keeps the recent ones"
   assert.equal(pruneSessionLedgers(path.join(root, "nope"), 7), 0);
 });
 
-test("pruneOpencodeSessions deletes expired opencode sessions and prunes old spill files", () => {
+test("pruneOpencodeSessions deletes expired opencode sessions and prunes old spill files", async () => {
   const root = tmpdir();
   const dir = path.join(root, "feature");
   const now = Date.now();
@@ -200,7 +200,7 @@ test("pruneOpencodeSessions deletes expired opencode sessions and prunes old spi
   const oldTime = new Date(now - 30 * day);
   fs.utimesSync(oldSpill, oldTime, oldTime);
 
-  const deleted = pruneOpencodeSessions(root, 7, { bin: path.join(bin, "opencode"), env: { OPENCODE_DB: "/x.db" }, spillDir: spill });
+  const deleted = await pruneOpencodeSessions(root, 7, { bin: path.join(bin, "opencode"), env: { OPENCODE_DB: "/x.db" }, spillDir: spill });
   assert.equal(deleted, 1, "only the expired opencode session is deleted");
   const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
   assert.ok(log.includes("session delete ses-old --standalone"), `old session deleted: ${log}`);

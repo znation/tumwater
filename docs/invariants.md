@@ -4611,14 +4611,19 @@ change and logs one event".
 ### INV-BQ3: the OpenCode and Codex purges read a ledger before the file pass can age it out
 
 **Guarantee.** The OpenCode and Codex session purges run before the file pass, so an idle role's
-ledger is read before its file ages out.
+ledger is read before its file ages out. The pass runs as one background task, so the constructor
+and `poll()` return before its session deletes finish, and `poll()` starts no pass while one is in
+flight.
 
-**Binds.** `src/orchestrator/retention.ts` (`RetentionPruner.prune`, order of its passes).
+**Binds.** `src/orchestrator/retention.ts` (`RetentionPruner.prune`, order of its passes, and
+`RetentionPruner.startPrune`, the background task).
 
 **Pinned by.** `test/retention.test.ts` — "RetentionPruner: an idle role's expired opencode session is
 purged before its ledger ages out", "RetentionPruner: an idle role's expired codex session is
-purged before its ledger ages out" and "RetentionPruner: an unavailable config never unlinks
-rollouts from the inherited CODEX_HOME".
+purged before its ledger ages out", "RetentionPruner: an unavailable config never unlinks
+rollouts from the inherited CODEX_HOME", "RetentionPruner: the constructor returns before the
+first delete finishes" and "RetentionPruner: a second poll while a pass is in flight starts no
+second pass".
 
 ### INV-BQ4: a prune pass never throws
 
