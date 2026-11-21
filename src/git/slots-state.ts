@@ -29,7 +29,7 @@ interface SlotLease {
 
 /** One pooled slot's durable record. `lastRole` and `lastReleasedAt` drive the pool's
  * most-recently-released affinity when the slot is free. */
-interface SlotRecord {
+export interface SlotRecord {
   dir: string;
   lease: SlotLease | null;
   pinnedFor: string | null;
@@ -46,7 +46,7 @@ interface SlotRecord {
 }
 
 /** The whole persisted pool. */
-interface SlotsState {
+export interface SlotsState {
   slots: SlotRecord[];
 }
 

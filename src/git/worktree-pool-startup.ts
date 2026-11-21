@@ -11,7 +11,7 @@ import path from "node:path";
 import { worktreesDir, isCanonicalSlotDir } from "../paths.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { updateSlotsState } from "./slots-state.js";
+import { updateSlotsState, type SlotRecord, type SlotsState } from "./slots-state.js";
 import { removeWorktreeDir } from "./worktree.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
@@ -56,18 +56,12 @@ export async function retireLegacyRoleWorktrees(
         );
         if (owned !== undefined) {
           // The resume happens in the owned slot: drop the legacy record and remove its dir.
-          if (owned.dir !== legacyDir) {
-            state.slots = state.slots.filter((slot) => slot.dir !== legacyDir);
-            toRemove.add(legacyDir);
-          }
-          if (owned.pinnedFor !== role) owned.pinnedAt = Date.now();
-          owned.pinnedFor = role;
+          pinOwnedSlot(state, owned, legacyDir, role, toRemove);
         } else if (ownRecord !== undefined) {
           // Already migrated (a restart before the resume ran): keep it pinned and inert,
           // preserving the pin's original age for the doctor's stuck-pin warning.
           ownRecord.lease = null;
-          if (ownRecord.pinnedFor !== role) ownRecord.pinnedAt = Date.now();
-          ownRecord.pinnedFor = role;
+          pinSlotTo(ownRecord, role);
           ownRecord.lastRole = null;
           ownRecord.lastReleasedAt = null;
         } else {
@@ -107,6 +101,29 @@ export async function retireLegacyRoleWorktrees(
       );
     }
   }
+}
+
+/** Resume a role in the slot it already owns: a legacy record beside that slot is dropped (its
+ * dir queued for removal), then the owned slot is pinned to the role. */
+function pinOwnedSlot(
+  state: SlotsState,
+  owned: SlotRecord,
+  legacyDir: string,
+  role: string,
+  toRemove: Set<string>,
+): void {
+  if (owned.dir !== legacyDir) {
+    state.slots = state.slots.filter((slot) => slot.dir !== legacyDir);
+    toRemove.add(legacyDir);
+  }
+  pinSlotTo(owned, role);
+}
+
+/** Pin a slot to `role`. The pin's age is restamped only when the role changes, so a slot already
+ * pinned to it keeps the age the doctor's stuck-pin warning reads. */
+function pinSlotTo(slot: SlotRecord, role: string): void {
+  if (slot.pinnedFor !== role) slot.pinnedAt = Date.now();
+  slot.pinnedFor = role;
 }
 
 /** Startup pass for runs the previous process died in (crash, kill -9, power loss): such a run's
