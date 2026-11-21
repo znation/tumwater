@@ -5,7 +5,7 @@
  * the ordering each test pins is exact and crossing a window costs nothing. The runPi wiring
  * these drive — spawn, stream decoding, stall warnings, session lifecycle, and stderr
  * classification — stays in test/pi.test.ts. */
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -280,6 +280,94 @@ test("a deadline whose checkpoint read the same drained count resumes a run that
     true,
     "a run that proved progress in the grace is resumed, not discarded",
   );
+});
+
+// BUGS.md host sleep part 2/3: the run deadline counts wall time, so a host that slept through
+// most of the budget used the budget up without the run doing any work and was killed as timed
+// out. A deadline that fires after a measured sleep re-arms for the slept time instead, so the
+// budget is spent on awake time. The host's sleep is scripted: the wall clock (Date.now) runs
+// through it, while the boottime clock advances and the monotonic clock does not, which is how
+// sleptMsBetween measures a sleep on Linux.
+const MIN_MS = 60_000;
+
+function sleepingHost(t: TestContext) {
+  const clock = watchdogClock(t, { timeouts: true });
+  const t0 = Date.now();
+  let sleptTotal = 0; // the cumulative sleep the scripted host has taken so far
+  const sampleSleep = async () => {
+    const wall = Date.now() - t0;
+    return { bootMs: 1_000 + wall, monoNs: BigInt(wall - sleptTotal) * 1_000_000n };
+  };
+  return {
+    clock,
+    sampleSleep,
+    sleep(ms: number) {
+      sleptTotal += ms;
+      clock.advance(ms);
+    },
+  };
+}
+
+// The sampler's promise settles in microtasks the mocked clock does not drive, so a test lets
+// them run before it reads the kill decision.
+const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+test("a run deadline that fires after a 45-minute host sleep is re-armed, and killed only after 60 awake minutes (BUGS.md host sleep part 2/3)", async (t) => {
+  const host = sleepingHost(t);
+  let killed = false;
+  const warnings: string[] = [];
+  const wd = startPiWatchdogs({
+    progressCount: () => 0,
+    openToolCalls: () => [],
+    runTimeoutMs: 60 * MIN_MS,
+    quietMs: 0,
+    stallMs: 0,
+    extendOnProgress: false,
+    sampleSleep: host.sampleSleep,
+    onStallWarning: (message) => warnings.push(message),
+    kill: () => {
+      killed = true;
+    },
+  });
+  host.clock.advance(15 * MIN_MS); // 15 awake minutes
+  host.sleep(45 * MIN_MS); // the lid is closed: the deadline fires at wall 60 with 45 asleep
+  await settle();
+  assert.equal(killed, false, "a deadline that fires after a host sleep is not a kill");
+  assert.equal(wd.timedOut, false, "the run is not flagged timed out at the first firing");
+  assert.equal(wd.timeoutBudgetMs, 60 * MIN_MS, "the budget stays the configured 60 minutes");
+  assert.equal(warnings.length, 1, "one re-arm leaves one warning");
+  assert.match(warnings[0] ?? "", /ran while the host slept 2700s/, "the warning names the slept duration");
+  host.clock.advance(44 * MIN_MS); // wall 104: 59 awake minutes
+  await settle();
+  assert.equal(killed, false, "the run is not killed before its 60 awake minutes");
+  host.clock.advance(1 * MIN_MS); // wall 105: 60 awake minutes
+  await settle();
+  assert.equal(killed, true, "the run is killed once its 60 awake minutes have passed");
+  assert.equal(wd.timedOut, true, "the kill is reported as a run timeout");
+  assert.equal(wd.timeoutBudgetMs, 60 * MIN_MS, "the kill message's budget is still 60 minutes");
+  wd.stop();
+});
+
+test("a run deadline with no host sleep recorded is killed at its first firing, as before (BUGS.md host sleep part 2/3)", async (t) => {
+  const host = sleepingHost(t);
+  let killed = false;
+  const wd = startPiWatchdogs({
+    progressCount: () => 0,
+    openToolCalls: () => [],
+    runTimeoutMs: 60 * MIN_MS,
+    quietMs: 0,
+    stallMs: 0,
+    extendOnProgress: false,
+    sampleSleep: host.sampleSleep,
+    kill: () => {
+      killed = true;
+    },
+  });
+  host.clock.advance(60 * MIN_MS);
+  await settle();
+  assert.equal(killed, true, "an awake deadline kills at its first firing");
+  assert.equal(wd.timedOut, true);
+  wd.stop();
 });
 
 // The per-call stall-kill (PLANS.md 2026-11-11, the user's Option A): a single tool call

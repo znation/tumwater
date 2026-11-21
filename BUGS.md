@@ -79,32 +79,6 @@ Overlaying those endings on the pmset sleep intervals shows 85–95% of each one
 - An open tool call silent across a recorded sleep is neither stall-warned nor stall-killed until its awake silence crosses the bound.
 - A sampler that returns empty samples leaves every existing pi-watchdogs.test.ts and runner-quiet-watchdog.test.ts case passing unchanged.
 
-### Host sleep, part 2/3: the run deadline fires on wall time, so a run or post-merge review that slept through most of its budget is killed as timed out (found by an operator session 2026-11-19, split 2026-11-21 by the plan role)
-
-Siblings: "Host sleep, part 1/3: the quiet and stall clock…" (the evidence and the sleep measure are described there) and "Host sleep, part 3/3: a model check whose probe window held a host sleep…". Each lands on its own.
-
-On 11-19, during the lid-closed stretch:
-- Feature #3013 was killed with "timed out after 14400s while still making progress". It ran 242 minutes and was asleep for 223 of them.
-- Four post-merge reviews timed out "after 7200s" or "after 14400s": 99ebf171, d3352500, c4fb62f2 and 1fc125aa. 1fc125aa's ran 240 minutes and was asleep for 201.
-
-Each post-merge review timeout counts toward `POST_REVIEW_FAILURE_LIMIT` (src/merge/merge-post-review-drain.ts), so sleep alone can push a commit toward being dropped unreviewed.
-
-**Reproduce.** Use part 1/3's pmset interval file. For every `run_end` whose detail starts "timed out after", and every "post-merge review of … timed out" warning, since 11-19 05:00, sum the sleep inside `[ts − durationMs, ts]`.
-
-**Cause.** `startDeadlineWatch` in src/pi/pi-watchdogs.ts arms `setTimeout(fireDeadline, deps.runTimeoutMs)`. Its one-time extension and its 250 ms progress grace re-arm the same way. When `fireDeadline` decides to kill, it never asks whether the window held a sleep. Authoring runs, gate runs and reviewers all settle through it (`timed out after …` in `settleErrorMessage`, src/agent/agent-settle.ts).
-
-**Fix.**
-- Add `sampleSleep?: SleepSampler` to `PiWatchdogDeps`, defaulting to `sampleSleepClock`. Part 1/3 adds the same field; if it is already there, reuse it.
-- Take a sleep sample whenever a deadline is armed. Where `fireDeadline` would otherwise set `timedOut` and kill, first sample again. When `sleptMsBetween` reports at least `SLEEP_SPAN_TOLERANCE_MS`, re-arm the deadline for that many ms, re-sample as the new baseline, and return without killing. The run's awake budget is then what is enforced. A host that keeps sleeping re-arms only for the time it slept, so the wait stays bounded by awake time.
-- An empty sample re-arms nothing, which is today's behaviour.
-- `timeoutBudgetMs` and the `timed out after <budget>s` wording stay the configured budget. Record each re-arm as a warning through the existing `onStallWarning` dep, worded with the build check's `sleptPhrase` (src/build/build-check-events.ts).
-
-**Acceptance criteria** (test/pi-watchdogs.test.ts, scripted sampler and test clock):
-- A run with a 60-minute budget whose deadline fires after a recorded 45-minute sleep is not killed at the first firing. It is killed as timed out only once 60 awake minutes have passed, with `timeoutBudgetMs` still 60 minutes.
-- The same run with no sleep recorded is killed at the first firing, as today.
-- The extension and grace paths keep their current outcomes when the sampler returns empty samples. The existing pi-watchdogs.test.ts deadline cases pass unchanged.
-- A re-arm leaves one warning naming the slept duration.
-
 ### Host sleep, part 3/3: a model check whose probe window held a host sleep fails the pair and holds every role, instead of retrying (found by an operator session 2026-11-19, split 2026-11-21 by the plan role)
 
 Siblings: "Host sleep, part 1/3: the quiet and stall clock…" (evidence and sleep measure) and "Host sleep, part 2/3: the run deadline…". This is separate from the open "The model check fails a pair on queue position…" entry, which covers server admission while the host is awake.

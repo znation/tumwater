@@ -26,6 +26,7 @@ import { runOnAbort, terminateChild } from "../process/process.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
 import type { PiStreamParser } from "../pi/pi-stream.js";
 import { startPiWatchdogs } from "../pi/pi-watchdogs.js";
+import { sampleSleepClock } from "../build/host-sleep.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { DEFAULT_BACKEND, backendById, registerAgentBackend, type AgentBackend, type AgentInvocation, type AgentRunSpec, type StreamTranslator } from "./agent-backend.js";
 import { errorMessage } from "../text/text.js";
@@ -372,6 +373,9 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       // deadline stays right for them.
       extendOnProgress: opts.kind === "gate",
       kill: () => terminateChild(child),
+      // A host sleep inside the run's window is not run time: the deadline re-arms for it
+      // (src/pi/pi-watchdogs.ts, BUGS.md host sleep part 2/3).
+      sampleSleep: sampleSleepClock,
       onStallWarning: opts.onStallWarning,
       onUnansweredReply: opts.onUnansweredReply,
     });

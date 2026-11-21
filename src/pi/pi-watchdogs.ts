@@ -9,6 +9,8 @@
  * notification path is needed when events land. */
 import { callBuffersOutput, stallThresholdMs } from "./command-shape.js";
 import type { OpenToolCall, PendingReply } from "./pi-event-line.js";
+import { SLEEP_SPAN_TOLERANCE_MS, sleptPhrase } from "../build/build-check-events.js";
+import { sleptMsBetween, type SleepSample, type SleepSampler } from "../build/host-sleep.js";
 
 interface PiWatchdogDeps {
   /** The parser's forward-progress counter, read live at each check. */
@@ -48,6 +50,12 @@ interface PiWatchdogDeps {
    * wait ends (the model answered, or the run settled with the request still open). The model
    * check acts on it (src/model-check/model-check-gate.ts); the warning text stays for people. */
   onUnansweredReply?: (waiting: boolean) => void;
+  /** Reads the host's sleep clocks (src/build/host-sleep.ts). The deadline samples whenever it
+   * is armed and again before it kills: a window that held a measured sleep re-arms for the
+   * slept time instead, so the budget counts awake time (BUGS.md host sleep part 2/3). Absent
+   * means no sampling, and the deadline kills synchronously as it always did. The production
+   * wiring passes sampleSleepClock. */
+  sampleSleep?: SleepSampler;
 }
 
 /** The flags the run's close handler and finish() read back, plus the feed and teardown
@@ -100,6 +108,8 @@ interface WatchdogState {
   checkpoint?: ReturnType<typeof setTimeout>;
   timeout?: ReturnType<typeof setTimeout>;
   quietCheck?: ReturnType<typeof setInterval>;
+  /** The run settled (stop ran): a sleep-sample read still in flight must not kill it. */
+  stopped?: boolean;
 }
 
 /** The run-deadline clock: kills the process tree when it fires, after giving a
@@ -146,12 +156,46 @@ function startDeadlineWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
   // (see the deadline comment below: a run reaches this branch at most once, so per-run and
   // per-deadline scope grant the same single short re-check)
   state.timeoutBudgetMs = deps.runTimeoutMs;
+
+  // The sleep sample the current deadline was armed with: a promise, since the real clock reads
+  // the host through a subprocess. Set only when the deps carry a sampler. Every arming takes a
+  // fresh one, so a window is measured from the instant its deadline was set.
+  let sleepBaseline: Promise<SleepSample> | undefined;
+  const armDeadline = (ms: number, baseline = deps.sampleSleep?.()) => {
+    sleepBaseline = baseline;
+    state.timeout = setTimeout(fireDeadline, ms);
+  };
+
+  const killRun = () => {
+    state.timedOut = true;
+    state.timedOutProgressing = deps.progressCount() > 0 && deps.progressCount() > checkpointProgress;
+    deps.kill();
+  };
+
+  // The kill decision once the sleep samples are read. A window that held a measured sleep
+  // re-arms the deadline for the slept time, so the budget runs out on awake time only; the
+  // fresh sample is the next baseline. An empty or awake window kills as it always did.
+  const settleAfterSleep = async (baseline: Promise<SleepSample>, sample: Promise<SleepSample>) => {
+    const now = await sample;
+    const slept = sleptMsBetween(await baseline, now);
+    if (state.stopped) return; // the run settled while the samples were read: nothing to kill
+    if (slept === undefined || slept < SLEEP_SPAN_TOLERANCE_MS) {
+      killRun();
+      return;
+    }
+    armCheckpoint(slept);
+    deps.onStallWarning?.(
+      sleptPhrase("the run", slept, "its deadline is re-armed for the slept time, so only awake time counts"),
+    );
+    armDeadline(slept, Promise.resolve(now));
+  };
+
   const fireDeadline = () => {
     if (deps.extendOnProgress && !extended && deps.progressCount() > checkpointProgress) {
       extended = true;
       state.timeoutBudgetMs = deps.runTimeoutMs * 2;
       armCheckpoint(deps.runTimeoutMs); // the extended deadline gets its own progress window
-      state.timeout = setTimeout(fireDeadline, deps.runTimeoutMs); // one more slice; the next firing is final
+      armDeadline(deps.runTimeoutMs); // one more slice; the next firing is final
       return;
     }
     // A deadline that fires on a run still making progress killed a slow run, not a hung
@@ -180,11 +224,17 @@ function startDeadlineWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
       state.timeout = setTimeout(fireDeadline, progressGraceMs);
       return;
     }
-    state.timedOut = true;
-    state.timedOutProgressing = deps.progressCount() > 0 && deps.progressCount() > checkpointProgress;
-    deps.kill();
+    // Only a run the host did not sleep through is killed for its budget: the window's sleep
+    // is sampled first, so a deadline that fired after a sleep re-arms instead (BUGS.md host
+    // sleep part 2/3). Without a sampler the kill stays synchronous.
+    const baseline = sleepBaseline;
+    if (!deps.sampleSleep || !baseline) {
+      killRun();
+      return;
+    }
+    void settleAfterSleep(baseline, deps.sampleSleep());
   };
-  state.timeout = setTimeout(fireDeadline, deps.runTimeoutMs);
+  armDeadline(deps.runTimeoutMs);
 }
 
 /** Whole minutes read cleaner in the feed; sub-minute thresholds stay in seconds. */
@@ -424,6 +474,7 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
       state.lastProgressAt = Date.now();
     },
     stop() {
+      state.stopped = true;
       clearTimeout(state.timeout);
       clearTimeout(state.checkpoint);
       if (state.quietCheck) clearInterval(state.quietCheck);
