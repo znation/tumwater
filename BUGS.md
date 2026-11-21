@@ -130,6 +130,8 @@ The claim is released only by the 24 h stale sweep (`CLAIM_IDLE_MAX_MS`), or whe
 
 ### A change whose own commit message says it leaves tests failing still merges, because the budgeted gate runs none of the tests it breaks (reported by the user 2026-11-20)
 
+**Needs review 2026-11-21 by feature: too large for one run** — it holds two independent gaps, each needing a design choice first: (a) where a declared-red RISK/VERIFIED line is refused (stage self-check in src/stage/ versus a merge hold in src/merge/merge-core.ts); (b) whether a change to an exported default widens the budgeted gate's selection or routes to the full check. Split into one BUGS.md entry per gap, then take each separately.
+
 Feature run #3029's revision `dac2a150b` ("Set the default work-instance count to 3; rewrap its doc comment") merged on 2026-11-20 at 15:43 PST. Its own RISK line said "the change is NOT complete — the flip leaves the suite red: `npm run test:rerun` fails 22 tests in claims, backlog-pending, run-prompt, role-view, doctor-checks, status-data, team-alerts, config, cli-diff, change-data-scope, gui-client-boot, gui-operator, scheduling, run-stage". Its VERIFIED line said the change "is not suite-green as it stands". Nothing stopped it:
 - Its only pre-merge check was `npm run test:gate`. In events.jsonl that `build_check` passed with `counts.tests` 28 in 8.2 s, and none of the 22 failing tests was among them. The edit was a one-line constant change in src/roles/runner-ids.ts (`DEFAULT_INSTANCES` 1 → 3), which is read by almost every scheduling, GUI and doctor path, so the tests it broke were too far away for the 20 s budget.
 - The first attempt (`4e884e68`) was rejected only for two 101-column comment lines. The revision fixed those and merged on the gate.
