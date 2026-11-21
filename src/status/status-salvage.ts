@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { salvageDir } from "../paths.js";
+import { dirEntryNames } from "../files/files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { validPositionRange } from "../text/phrases.js";
 
@@ -37,13 +38,10 @@ export interface SalvagePatch {
 const salvageDirCache = new Map<string, StatKeyedValue<SalvagePatch[]>>();
 
 /** The kept-patch walk, unbounded — the load half of collectSalvagePatches's stat cache. */
-function collectSalvagePatchesUncached(dir: string): SalvagePatch[] | null {
-  let names: string[];
-  try {
-    names = fs.readdirSync(dir);
-  } catch {
-    return null;
-  }
+function collectSalvagePatchesUncached(dir: string): SalvagePatch[] {
+  // A missing or unreadable salvage dir reads [] (dirEntryNames' missing-is-empty policy) —
+  // the same "no kept patches" degrade collectSalvagePatches's cachedByStat arm returns.
+  const names = dirEntryNames(dir);
   const patches: SalvagePatch[] = [];
   for (const name of names) {
     if (!name.endsWith(".patch")) continue;

@@ -10,8 +10,8 @@
  * and degrades to "no data" on any missing or malformed file — an observer must never fail a
  * run on bookkeeping (the same policy as ci-parity.ts). */
 
-import * as fs from "node:fs";
 import path from "node:path";
+import { dirEntryNames } from "../files/files.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { gitTry } from "../git/git-run.js";
@@ -146,12 +146,7 @@ export async function remoteCiTarget(
 ): Promise<{ repo: string; branch: string } | null> {
   if (config.roles?.ci?.remote === false) return null;
   const dir = path.join(root, ".github", "workflows");
-  let names: string[];
-  try {
-    names = fs.readdirSync(dir);
-  } catch {
-    return null;
-  }
+  const names = dirEntryNames(dir); // missing or unreadable workflows dir: nothing to check
   if (!names.some((n) => n.endsWith(".yml") || n.endsWith(".yaml"))) return null;
   return githubTarget(root, config);
 }

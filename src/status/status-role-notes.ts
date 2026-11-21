@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { readRegularTextOrNull } from "../files/files.js";
+import { dirEntryNames, readRegularTextOrNull } from "../files/files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { roleLessonsPath, roleNotesPath } from "../paths.js";
 import { ROLE_LESSONS_MAX_BYTES, ROLE_LESSONS_MAX_COUNT, ROLE_NOTES_MAX_BYTES } from "../roles/role-notes-write.js";
@@ -110,12 +110,9 @@ interface RoleLessonOverCap {
  * cannot be read is skipped rather than counted. Never throws, like every check's reads. */
 export function readRoleLessonsOverCap(root: string): RoleLessonOverCap[] {
   const lessonsDir = path.dirname(roleLessonsPath(root, "role"));
-  let names: string[];
-  try {
-    names = fs.readdirSync(lessonsDir);
-  } catch {
-    return []; // no lessons dir: nothing recorded yet
-  }
+  // A missing or unreadable lessons dir reads [] — the same "nothing recorded yet" the
+  // notes arm reads via cachedByStat (dirEntryNames' missing-is-empty policy).
+  const names = dirEntryNames(lessonsDir);
   const over: RoleLessonOverCap[] = [];
   for (const name of names) {
     if (!name.endsWith(".md")) continue;

@@ -26,7 +26,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { ensureDir, writeTextAtomic } from "../files/files.js";
+import { dirEntryNames, ensureDir, writeTextAtomic } from "../files/files.js";
 import { conflictedFiles } from "../merge/merge-git.js";
 import { salvageDir, salvagePendingDir } from "../paths.js";
 import { errorMessage } from "../text/text.js";
@@ -167,12 +167,7 @@ export async function salvageSlotLeftovers(
  * order). Empty when none wait or the directory cannot be read. */
 function pendingPatches(root: string, role: string): string[] {
   const dir = salvagePendingDir(root, role);
-  let names: string[];
-  try {
-    names = fs.readdirSync(dir);
-  } catch {
-    return [];
-  }
+  const names = dirEntryNames(dir); // missing or unreadable pending dir: nothing waiting
   return names
     .filter((name) => name.endsWith(".patch"))
     .sort()
