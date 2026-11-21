@@ -191,13 +191,20 @@ export class ModelCheckGate {
       if (pair === null) continue;
       this.suspect(pair);
       if (this.failed(pair) && r.handBackRun("model-check")) {
+        const resume = this.answersElsewhere(pair) ? "a pair that answers" : "this pair once it answers again";
         warnEventBestEffort(
           this.root,
           r.role,
-          `run handed back: its model request to ${pair} is unanswered and the pair failed its model check — the run resumes on a pair that answers`,
+          `run handed back: its model request to ${pair} is unanswered and the pair failed its model check — the run resumes on ${resume}`,
         );
       }
     }
+  }
+
+  /** Whether some pair other than `pair` answered its last probe: the only case in which a
+   * handed-back run has another pair to resume on. With none, the run waits for `pair` itself. */
+  private answersElsewhere(pair: string): boolean {
+    return Object.keys(this.checks).some((other) => other !== pair && this.verified(other));
   }
 
   /** Abort the probes in flight and wait for them to settle — the shutdown's last step, so no

@@ -52,21 +52,13 @@ message describes (821 in 20 min) were cleaned up or only moved to BUGS-FIXED.md
 history). Run it once for 2026-11-09 to 11-11 when the review provider has quota. Decide whether
 the matching BUGS-FIXED.md entries should be deleted rather than kept as "fixed".
 
-### A model check run while the only local server is saturated fails on queue position, holding every role and handing back runs to "a pair that answers" that does not exist (found by an operator session 2026-11-18)
+### The model check fails a pair on queue position: a probe that never starts on a saturated local server reads as "no answer" and holds every role (split from the 2026-11-18 model-check entry in Fixed; found by the bugfix role 2026-11-21)
 
-The team runs every role on one local pair, `qwenrunner/Qwen3.8-27B-MLX-Serve-4bit` (Splash 1.6.1, `--max-concurrent 4`). On 11-17 the model check failed four times ("gave no reply (no answer within 300s) — runs on it wait (feature, bugfix, plan, …, +13 more)"), each time holding all 19 runners. The Splash log (`~/qwenrunner/logs/splash.8090.log`) shows that the server was answering, not down:
-- At 14:08:57 and 14:20:00 PST the probe's requests (input 1,420 tokens, 0 cached) were `Cancelled` with output 0 and never `Started`. The server was memory-starved ("Memory: growth paused; waiting=1") and kept starting cache-hit follow-ups from the sessions already running, while new uncached requests waited.
-- In the same minutes the running sessions' requests finished at 30–48 tok/s.
-- dedupe's request (input 50,031, 0 cached) had waited unstarted since about 13:43.
+The team runs every role on one local pair, `qwenrunner/Qwen3.8-27B-MLX-Serve-4bit` (Splash 1.6.1, `--max-concurrent 4`). On 11-17 the model check failed four times ("no answer within 300s"), each time holding all 19 runners. The Splash log shows the server answering: the probe's uncached requests were `Cancelled` with output 0 and never `Started` while the server was memory-starved and kept starting cache-hit follow-ups for the running sessions. The probe competes for the same slots and memory as the runs it judges, and a request that never started is read the same as a model that does not answer.
 
-The hand-back cancelled dedupe's run at 14:08:59 (aborted after 2.0 h) and clean's at 14:27:18 (after 1.75 h). Each warning says "the run resumes on a pair that answers", but no other pair is configured. Once clean's request was cancelled, the next probe started at once and answered in 3 s (`model_check_passed` at 14:27:20). So the check measured the probe's place in a saturated server's admission queue, and the hand-back is what made the next probe pass.
+**Reproduce.** In `~/qwenrunner/logs/splash.8090.log`, 11-17 section, filter 14:02–14:28 to `Started|Done|Cancelled`. Compare with the `warning` events in `.tumwater/log/events.jsonl` at 14:08:57–14:27:20 and the `model_check_passed` event at 14:27:20.
 
-**Reproduce.** In the Splash log's 11-17 section (after the 23:59→00:00 rollover near line 600823), filter 14:02–14:28 to `Started|Done|Cancelled`. Compare with `.tumwater/log/events.jsonl` `warning` events at 14:08:57–14:27:20 and the `model_check_passed` event at 14:27:20.
-
-**Suspected cause / fix direction.** The probe (src/model-check/model-check-probe.ts, `MODEL_CHECK_TIMEOUT_S` = 300) competes for the same server slots and memory as the runs it judges. A request that never started is read the same as a model that does not answer. Part of this is Splash's admission behavior under memory pressure, which tumwater cannot fix. On the harness side, options are:
-- Don't treat "no answer" as a failed pair while the team's own runs on that pair are getting replies in the same window.
-- Or reserve headroom for the probe, for example by lowering the team's concurrency by one while a check is due.
-- Either way, the hand-back warning should not promise another pair when the tier has none.
+**Suspected cause / fix direction.** Splash's admission under memory pressure is outside tumwater. On the harness side: don't treat "no answer" as a failed pair while the team's own runs on that pair are getting replies in the same window; or reserve headroom for the probe by lowering concurrency by one while a check is due.
 
 ### An accepted checkpoint still leaves the session uncompacted: pi’s fire-and-forget `compact()` never reaches its `compaction_end` (found by the bugfix role 2026-11-19)
 

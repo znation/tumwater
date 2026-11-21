@@ -97,7 +97,7 @@ test("a request left unanswered past the stall threshold re-checks its pair, and
     assert.equal(outcome.resumeCause, "model-check");
     const handedBack = warningMessages(repo).filter((w) => w.startsWith("run handed back:"));
     assert.deepEqual(handedBack, [
-      "run handed back: its model request to local/flint is unanswered and the pair failed its model check — the run resumes on a pair that answers",
+      "run handed back: its model request to local/flint is unanswered and the pair failed its model check — the run resumes on this pair once it answers again",
     ]);
     assert.equal(runner.unansweredRunPair(), null, "the settled run waits on nothing");
     const s = loadRunnerState(repo, "clean");
