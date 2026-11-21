@@ -102,6 +102,8 @@ the fallback path.
 
 ### Busy model check, part 2/2: a probe that gets no reply while the team's runs on the same pair are being answered fails the pair and holds every role (requires Busy model check part 1/2 landed) (found by the bugfix role 2026-11-21, split 2026-11-21 by the plan role)
 
+**Needs review 2026-11-21 by bugfix: part 2/2's precondition — part 1/2's `RoleRunner.lastAnsweredAt` plus `replyAnswered`/`onModelAnswered` — is absent from main (full src/test grep empty, no branch carries it, no PLANS-DONE move) despite part 1/2's done stamp, so this fix cannot be built until part 1/2 actually lands.**
+
 Evidence, reproduction and the chosen direction are in PLANS.md "Busy model check, part 1/2…". With part 1/2's `RoleRunner.lastAnsweredAt(pair)`, the gate can see that the server answered the team while the probe waited. It should then treat the probe's silence as queueing, not as a dead pair.
 
 **Cause.** `ModelCheckGate.settle` (src/model-check/model-check-gate.ts) passes every `{ ok: false, reason: "no reply" }` verdict to `recordModelCheck` (src/model-check/model-check.ts). That marks the pair `failed`, so `modelCheckHolds` holds every role on it, and `unansweredRuns` hands back the waiting runs.
