@@ -2,7 +2,7 @@
 
 Planned 2026-11-20 · requested by user · audited against main `681e18378` · PLANS.md "Codex
 default models". Amended the same day after a catalog check on Codex CLI 0.170.0 (findings 4, 9
-and 10).
+and 10), and on 2026-11-21 after re-probing on a fresh login (finding 9).
 
 ## Goal
 
@@ -53,12 +53,23 @@ With no `model` configured, each agent backend runs the newest released model fo
 8. **Claude.** The newest models in each line are Opus 5.5, Sonnet 5.5 (2026-09-28) and Haiku 5.5
    (2026-10-07). The only newer release is Claude Fable 5.2 (2026-11-09), a separate, more capable
    line at $8/$40 per MTok, against Opus 5.5's $4/$20.
-9. **The live run is still unconfirmed.** A one-word `codex exec -m gpt-6.2-sol` on 0.170.0
-   (with the `~/.codex` login) failed: "The 'gpt-6.2-sol' model is not supported when using Codex
-   with a ChatGPT account". The same probe on today's default, `gpt-6.1-sol`, failed the same way.
-   The catalog refresh returned 401 `token_expired`. So the login token had expired, and the probe
-   says nothing about GPT-6.2 itself. `codex login status` still printed "Logged in using
-   ChatGPT", because it reads only the local auth file.
+9. **The live run is still unconfirmed: the probes ran on a free-plan login.**
+   - 2026-11-20: a one-word `codex exec -m gpt-6.2-sol` on 0.170.0 failed with "The 'gpt-6.2-sol'
+     model is not supported when using Codex with a ChatGPT account". The same probe on
+     `gpt-6.1-sol` failed the same way, and the catalog refresh returned 401 `token_expired`.
+   - 2026-11-21, after a fresh `codex login`: the 401 was gone, but both Sol models were still
+     refused with the same message. Each run first warned "Model metadata for `<model>` not
+     found".
+   - The cause is the account. The new login's id token has `chatgpt_plan_type: free`, and its
+     catalog identity differs from the 2026-10-29 cache's. The refreshed `models_cache.json` for
+     that account lists only `gpt-6-luna`, `gpt-5.6-terra` and `gpt-5.6-luna`, plus hidden
+     models. It has no Sol and no Astra, so today's default `gpt-6.1-sol` is unavailable on it
+     too.
+   - `gpt-6-luna` answered "OK" on the same login, so the login itself works.
+   - Whether a Plus account can run GPT-6.2 Sol is untested. The codex backend was built and
+     probed on a Plus login (plans/codex-backend.md).
+   - `codex login status` reads only the local auth file. It printed "Logged in using ChatGPT"
+     even with the expired token, and it does not show the plan.
 10. **The company npm registry lags.** `~/.npmrc` points at npm.registries.huggingface.tech. On
     2026-11-20 it served `@openai/codex` up to 0.170.0, while npmjs.org already had 0.171.0
     (released that day). The floor must be a version the registry serves, which is one more
@@ -99,8 +110,11 @@ With no `model` configured, each agent backend runs the newest released model fo
 - **H4: confirm GPT-6.2 Sol live, after the part merges.** (H1–H3 are plans/codex-backend.md's.)
   1. `codex --version` reads 0.170.0 or newer. It was installed 2026-11-20 with
      `npm install -g @openai/codex@0.170.0`.
-  2. Run `codex login` (and `CODEX_HOME=<team home> codex login --device-auth` for a team home)
-     to replace the expired token (finding 9).
+  2. Log in with the ChatGPT **Plus** account: `codex login`, and
+     `CODEX_HOME=<team home> codex login --device-auth` for a team home. A free-plan login's
+     catalog has no Sol model at all (finding 9). To check the plan, decode the id token in
+     `$CODEX_HOME/auth.json` and read `chatgpt_plan_type`, or check that `codex debug models`
+     lists `gpt-6.1-sol`.
   3. Run a one-word `codex exec -m gpt-6.2-sol` and check that the turn completes.
      - If it still says the model "is not supported when using Codex with a ChatGPT account"
        while `gpt-6.1-sol` now works, the plan has not reached this subscription yet.
@@ -133,5 +147,5 @@ With no `model` configured, each agent backend runs the newest released model fo
 - OpenRouter listing: <https://openrouter.ai/openai/gpt-6.2-sol-20261117>.
 - `codex debug models` on 0.163.0 and on 0.170.0, and `~/.codex/models_cache.json` (fetched
   2026-10-29).
-- Live probes on 0.170.0, 2026-11-20 (finding 9).
+- Live probes on 0.170.0, 2026-11-20 and 2026-11-21 (finding 9).
 - The claude-api skill's model table (cached 2026-11-03) for the Claude lineup and prices.
