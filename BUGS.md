@@ -32,15 +32,26 @@ the way the codex-account seed and the isolated OpenCode DB work), and use `~/.c
 the config asks for it. Add a `tumwater doctor` row that warns about an unisolated Codex home, and
 fix the retention comment either way.
 
-### The model check fails a pair on queue position: a probe that never starts on a saturated local server reads as "no answer" and holds every role (split from the 2026-11-18 model-check entry in Fixed; found by the bugfix role 2026-11-21)
+### Busy model check, part 2/2: a probe that gets no reply while the team's runs on the same pair are being answered fails the pair and holds every role (requires Busy model check part 1/2 landed) (found by the bugfix role 2026-11-21, split 2026-11-21 by the plan role)
 
-**Needs review 2026-11-21 by feature: too large for one run** — the fix direction is a design choice with two parts. Part 1: a verdict-level rule in src/model-check/model-check-gate.ts settle() for a timed-out "no reply" while the team's own runs on that pair are answering; that needs a live-reply signal the runner does not expose today (RoleRunner.replyWait in src/runner/runner.ts only reports waiting toggles), and a retry schedule for the no-evidence case so a first probe does not re-fire on every poll. Part 2: reserving one concurrency slot while a check is due, which touches the orchestrator's permit accounting. Pick one direction in the plan, then split.
+Evidence, reproduction and the chosen direction are in PLANS.md "Busy model check, part 1/2…". With part 1/2's `RoleRunner.lastAnsweredAt(pair)`, the gate can see that the server answered the team while the probe waited. It should then treat the probe's silence as queueing, not as a dead pair.
 
-The team runs every role on one local pair, `qwenrunner/Qwen3.8-27B-MLX-Serve-4bit` (Splash 1.6.1, `--max-concurrent 4`). On 11-17 the model check failed four times ("no answer within 300s"), each time holding all 19 runners. The Splash log shows the server answering: the probe's uncached requests were `Cancelled` with output 0 and never `Started` while the server was memory-starved and kept starting cache-hit follow-ups for the running sessions. The probe competes for the same slots and memory as the runs it judges, and a request that never started is read the same as a model that does not answer.
+**Cause.** `ModelCheckGate.settle` (src/model-check/model-check-gate.ts) passes every `{ ok: false, reason: "no reply" }` verdict to `recordModelCheck` (src/model-check/model-check.ts). That marks the pair `failed`, so `modelCheckHolds` holds every role on it, and `unansweredRuns` hands back the waiting runs.
 
-**Reproduce.** In `~/qwenrunner/logs/splash.8090.log`, 11-17 section, filter 14:02–14:28 to `Started|Done|Cancelled`. Compare with the `warning` events in `.tumwater/log/events.jsonl` at 14:08:57–14:27:20 and the `model_check_passed` event at 14:27:20.
+**Fix.**
+- `launch` records the probe's start time per pair.
+- `settle` checks whether any runner's `lastAnsweredAt(pair)` is at or after that start time. This needs the runners from the latest `poll`, kept on the gate. If so, and the verdict is `no reply` on a pair whose previous status is `verified` or `checking`, it does not fail the pair. It records a new pure transition in model-check.ts, `busyModelCheck(map, pair, now, policy)`, instead:
+  - a `verified` pair stays `verified`, with `probeAt: null`, `probing: false` and `checkedAt: now`. `suspectModelCheck`'s `suspectMinMs` rate limit then spaces the next suspicion re-check, so the probe does not re-fire every poll.
+  - a `checking` pair stays `checking`, with `probeAt: now + policy.retryMs`, `probing: false`, and `failures` and `retryMs` unchanged.
+- It logs one informational event (not a warning) naming the pair and saying its runs were answered while the probe waited.
+- A pair already `failed`, a `wrong answer` verdict, and a `no reply` with no answer since the probe started all behave as today.
 
-**Suspected cause / fix direction.** Splash's admission under memory pressure is outside tumwater. On the harness side: don't treat "no answer" as a failed pair while the team's own runs on that pair are getting replies in the same window; or reserve headroom for the probe by lowering concurrency by one while a check is due.
+**Acceptance criteria** (test/model-check.test.ts for the transition, test/model-check-unanswered.test.ts (which builds a `ModelCheckGate` with fake runners) for the rest, with a fake prober and fake runners exposing `lastAnsweredAt`):
+- On a verified pair, a `no reply` probe while a runner on the pair reports an answer after the probe started leaves the pair verified. `held` stays empty for its roles, no `model check failed` warning is logged, and no due probe exists on the next poll at the same clock.
+- The same input with the runner's last answer before the probe started fails the pair as today: the roles are held and the warning is logged.
+- On a `checking` pair with an answer inside the window, the pair stays `checking` and its next probe is due exactly `policy.retryMs` later, not at once.
+- A `wrong answer` verdict with an answer inside the window still fails the pair.
+- An already `failed` pair with an answer inside the window keeps today's doubled back-off.
 
 ### An accepted checkpoint still leaves the session uncompacted: pi’s fire-and-forget `compact()` never reaches its `compaction_end` (found by the bugfix role 2026-11-19)
 
