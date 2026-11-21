@@ -913,22 +913,23 @@ test("roleRowCells pauses only the role pausedRunners names, not its sibling ins
   assert.doesNotMatch(cellsFor("feature-2"), /paused/);
 });
 
-// The session-prune hold (status-model.ts rolePhase's sessionCleanupHeld, the last argument):
-// every row that is not in flight reads `held: session cleanup`, an in-flight row keeps its label.
-test("a session-prune hold replaces an idle row's countdown but not a running row's label", () => {
+// The session-prune pass runs in the background (PLANS.md "Fast session cleanup" part 2a/2 and
+// 2c/2): roles keep scheduling while it deletes, so the marker leaves every row's phase as it is
+// without it, and no row reads a cleanup hold.
+test("a session-prune marker leaves each row's phase unchanged", () => {
   const root = tmpdir();
   writePiLog(root, "feature", [SESSION, assistantLine("working", { tokens: 3_000 })]);
-  // The positional arguments up to the hold: no budget/cap/quiet/disk/bootstrap/quota/pause/
-  // restart.
-  const plain = (s: ReturnType<typeof freshRunnerState>) => rolePhase(s, true, root, false, null, false, null, false, undefined, false, false, undefined, undefined, undefined);
+  const marker = { pid: 4242, task: "session-prune" as const, backend: "codex" as const, done: 10, total: 40, startedAt: Date.now() - 60_000, halfStartedAt: Date.now() - 60_000, updatedAt: Date.now() };
   const idle = freshRunnerState("feature");
-  idle.nextRunAt = Date.now() - 60_000; // an overdue next run: the countdown the hold replaces
-  assert.notEqual(plain(idle), "held: session cleanup", "without the hold the idle row reads its own phase");
-  assert.equal(rolePhase(idle, true, root, false, null, false, null, false, undefined, false, false, undefined, undefined, undefined, true), "held: session cleanup");
+  idle.nextRunAt = Date.now() - 60_000; // an overdue next run: the countdown a hold would replace
+  const snap = snapshotWith([{ role: "feature" }]);
+  snap.running = true;
+  const withoutMarker = roleRowCells(snap, root, idle).phase;
+  snap.maintenance = marker;
+  assert.equal(roleRowCells(snap, root, idle).phase, withoutMarker, "an idle row shows the phase it shows without the marker");
+  assert.notEqual(roleRowCells(snap, root, idle).phase, "held: session cleanup");
   const running = freshRunnerState("feature");
   running.running = true;
   running.lastRunStartedAt = Date.now() - 5_000;
-  assert.match(rolePhase(running, true, root, false, null, false, null, false, undefined, false, false, undefined, undefined, undefined, true), /^working /);
-  // The held row groups with the other team holds (rank 3, beside `waiting: update — …`), not Idle.
-  assert.equal(roleRank("held: session cleanup"), 3);
+  assert.match(roleRowCells(snap, root, running).phase, /^working /);
 });

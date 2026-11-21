@@ -42,10 +42,6 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     // String.raw template, so a backtick would end the template and break the parse.)
     if (p.startsWith("waiting: update — ")) return { key: "update", label: "Waiting", tone: "amber", live: false, detail: "update: " + p.slice(18) };
     if (p === "waiting: bootstrap") return { key: "bootstrap", label: "Waiting", tone: "amber", live: false, detail: "bootstrap" };
-    // The session-prune pass blocking the poll loop (status-model.ts rolePhase's
-    // sessionCleanupHeld): amber like the other waiting holds, the banner above says what it
-    // is waiting on.
-    if (p === "held: session cleanup") return { key: "maintenance", label: "Waiting", tone: "amber", live: false, detail: "session cleanup" };
     if (p === "waiting: model check") return { key: "modelcheck", label: "Waiting", tone: "amber", live: false, detail: "model check" };
     if (p.startsWith("waiting: maintenance allowance spent")) return { key: "quota", label: "Waiting", tone: "amber", live: false, detail: "maintenance allowance spent this poll" };
     if (p.startsWith("waiting: maintenance allowance used")) return { key: "quota", label: "Waiting", tone: "amber", live: false, detail: "maintenance " + after(35) };

@@ -4684,17 +4684,16 @@ maintenance_start and one maintenance_done for that half, and a prune with none 
 poll, and present only when its `pid` is the live orchestrator's pid: no marker, a marker another
 pid wrote (a SIGKILLed orchestrator never removes its own), or no live orchestrator reads as
 absent. Its `etaMs` is `(updatedAt − halfStartedAt) / done × (total − done)` — the current half's
-rate, since `done`/`total` reset each half — and is absent below ten deletes. While it is present, the team alert leads the status alerts in blue, and every idle role
-row reads `held: session cleanup`; an in-flight row keeps its working label.
+rate, since `done`/`total` reset each half — and is absent below ten deletes. While it is present, the team alert leads the status alerts in blue, titled `Cleaning up expired sessions in the background`; no role row is held by it, so every row keeps the phase it shows without the marker.
 
 **Binds.** `src/status/status-data.ts` (`maintenanceForPoll`), `src/ui/team-alert-status.ts`
-(`pushMaintenanceAlert`) and `src/ui/status-model.ts` (`rolePhase`'s `sessionCleanupHeld`).
+(`pushMaintenanceAlert`) and `src/ui/status-model.ts` (`roleRowCells`, which no longer reads the marker).
 
 **Pinned by.** `test/status-data.test.ts` — "maintenanceForPoll reads the marker only for the live
 orchestrator's pid" and "the maintenance ETA is linear over the progress so far, and absent below
 ten deletes"; `test/team-alert-status.test.ts` — "a session-prune pass raises a blue banner that
-leads the status alerts"; `test/status-model.test.ts` — "a session-prune hold replaces an idle
-row's countdown but not a running row's label".
+leads the status alerts"; `test/status-model.test.ts` — "a session-prune marker leaves each row's
+phase unchanged".
 
 ### INV-BQ9: a stalled poll loop shows an amber alert only while no prune pass explains it
 

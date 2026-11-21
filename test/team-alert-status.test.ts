@@ -83,7 +83,7 @@ test("a session-prune pass raises a blue banner that leads the status alerts", (
   assert.equal(alerts[1]?.key, "modelcheck");
   const [banner] = alerts;
   assert.equal(banner?.tone, "blue");
-  assert.equal(banner?.title, "Cleaning up expired sessions — roles start when it finishes");
+  assert.equal(banner?.title, "Cleaning up expired sessions in the background");
   assert.equal(
     banner?.detail,
     `deleting expired codex sessions: 1,204 / 3,944 · about 48 min left · started ${formatClock(startedAt)}.`,

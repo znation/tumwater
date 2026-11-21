@@ -39,30 +39,6 @@ handler runs, but a pass still in flight keeps spawning deletes and holds the pr
 - An orchestrator stopped (via its stop signal) while such a prune is in flight logs
   `orchestrator_stop` within its shutdown window.
 
-### Fast session cleanup, part 2c/2: the cleanup alert reads as informational and rows keep their normal phase (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; requires Fast session cleanup part 2a/2 landed; touches src/ui/team-alert-status.ts src/ui/status-model.ts src/ui/gui/gui-client-model.ts test/team-alert-status.test.ts test/status-model.test.ts)
-
-Sibling of "Fast session cleanup part 2a/2" (background deletes) and 2b/2 (stop abandons).
-
-**Goal.** Once 2a runs the prune in the background, the blue maintenance alert's title
-"Cleaning up expired sessions — roles start when it finishes" and the idle rows' `held: session
-cleanup` phase describe a hold that no longer exists.
-
-**Approach.**
-- `pushMaintenanceAlert` (src/ui/team-alert-status.ts) keeps its blue tone, detail line and empty
-  actions; its title becomes `Cleaning up expired sessions in the background`.
-- Remove the `sessionCleanupHeld` branch from `rolePhase` (src/ui/status-model.ts) and whatever
-  feeds it, so an idle row shows its normal phase (`next run in …` and the other gates) while the
-  marker stands; drop the now-dead `"held: session cleanup"` mapping in
-  src/ui/gui/gui-client-model.ts. Update the comments that describe the prune as blocking the
-  poll loop in these files.
-
-**Acceptance criteria.**
-- With a maintenance marker in the snapshot, the alert's title is `Cleaning up expired sessions
-  in the background`, tone blue, with the same progress detail as before.
-- With the marker present, an idle role row shows the same phase it shows without the marker;
-  no row reads `held: session cleanup`.
-- `grep -rn "held: session cleanup" src` finds nothing.
-
 ### GitHub issues, part 3/5: the GUI warns when a project has a GitHub remote but `gh` is missing or logged out, and shows issues waiting to be mirrored (planned 2026-11-21 by the operator; requires GitHub issues part 2/5 landed; touches src/status/status-data.ts src/ui/team-alert-status.ts test/status-data.test.ts test/team-alert-status.test.ts)
 
 **Goal.** The operator sees in the dashboard, without running doctor, that tumwater cannot read
