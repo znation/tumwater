@@ -193,12 +193,13 @@ test("nearestTumwaterRoot does not read a non-directory .tumwater entry as a roo
 // a stale .tumwater at os.tmpdir() as a team root (BUGS.md 2026-11-16). It compares the resolved
 // temp root (realpath'd, so macOS /var <-> /private/var agree) against the resolved candidate
 // directory, likewise realpath'd: the resolved temp root itself matches, its children do not.
-// The walk-level pin for the same rule (BUGS.md 2026-11-16): the in-process poison variants
-// removed in f85f56e5 were fragile because they built the poison with a raw mkdtempSync under
-// os.tmpdir() (tripping the tmpdir() convention guard) and asserted `undefined`, which a SECOND
-// stale .tumwater above the redirected temp root decides. This one poisons a tmpdir() child (the
-// per-run root sweeps it), redirects TMPDIR onto it so it IS the temp root, and asserts only what
-// the guard promises: the temp root itself is never claimed, and a real root below it still is.
+// The walk-level pin for the same rule (BUGS.md 2026-11-16). A poison built with a raw
+// mkdtempSync under os.tmpdir() trips the tmpdir() convention guard — that is what f85f56e5
+// removed from the two sibling walk files — and an assertion on bare `undefined` is decided by a
+// SECOND stale .tumwater above the redirected temp root, not by this guard. So this one poisons
+// a tmpdir() child (the per-run root sweeps it), redirects TMPDIR onto it so it IS the temp
+// root, and asserts only what the guard promises: the temp root itself is never claimed, and a
+// real root below it still is.
 test("nearestTumwaterRoot never claims a stale .tumwater at the OS temp root", () => {
   const poison = tmpdir("temp-root-poison-");
   fs.mkdirSync(path.join(poison, ".tumwater"));
