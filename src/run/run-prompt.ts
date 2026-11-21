@@ -12,11 +12,11 @@ import { briefFile } from "../brief/brief.js";
 import { buildDirectorPrompt, buildRunPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
-import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildMergedPrerequisitesNote, buildNoCheckNote, buildRejectedReviewNote, buildWaitingPartsNote } from "../prompt/gate-notes.js";
+import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildMergedPrerequisitesNote, buildRejectedReviewNote, buildWaitingPartsNote } from "../prompt/gate-notes.js";
 import { eligibleEntries, mergedPrerequisiteRanges, waitingPartRanges } from "../backlog/backlog-eligibility.js";
 import { notesBacklogBlock } from "../prompt/notes-backlog.js";
 import { collectSinceLastRun } from "../prompt/since-last-run.js";
-import { donePlans, openBugEntries, plannedPlanEntries, declarationPlanEntry } from "../backlog/backlog.js";
+import { donePlans, openBugEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { detectBuildCheck, gateCommandOf, type BuildCheck } from "../build/build-check-detect.js";
 import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
 import { readEventsSince } from "../events/event-window.js";
@@ -139,7 +139,7 @@ function buildDirectorRunPrompt(
 /** Build a non-director role's prompt from its queued request and state: the catalog/custom
  * resolution and unknown-role throw, the role-prompt dequeue and marker strip, the
  * observer evidence blocks, the notes and their backlog state, the plan target, and the
- * flaky/no-check notes, feeding the single buildRunPrompt call. Never null — a role always
+ * and flaky notes, feeding the single buildRunPrompt call. Never null — a role always
  * has a prompt to run on. Each stage is read by one named helper below, so the body is the
  * ordered calls and the single buildRunPrompt call. */
 function buildRoleRunPrompt(
@@ -169,7 +169,7 @@ function buildRoleRunPrompt(
   // block; only the file ordering depends on the claim — a run holding one leads the file list
   // with its entry's own touched files, the most likely to have moved under the merge.
   const sinceLastRun = collectSinceLastRun(root, role, config, state);
-  const { planTargetNote, flakyChecks, noCheck } = collectRoleDirectives(root, config, base, check);
+  const { planTargetNote, flakyChecks } = collectRoleDirectives(root, config, base);
   const pendingPlans = collectPendingPlansBlock(root, base);
   // A run holding a claim with no queued request is assigned its one entry (the assignment
   // note below). Such a run reads that entry first, so the backlog index — what an unassigned
@@ -195,7 +195,6 @@ function buildRoleRunPrompt(
     sinceLastRun,
     planTargetNote,
     flakyChecks,
-    noCheck,
     pendingPlans,
     extraInstructions: config.roles[base]?.instructions,
     check,
@@ -389,9 +388,9 @@ function readPromptNotes(
   return { notes, lessons, notesSavedDay, notesBacklog, lessonsSeeding };
 }
 
-/** The directive notes a run may carry: the plan charter's stop target, the bugfix flake
- * tally, and the plan/feature no-check note — each exactly as it stood inline. */
-function collectRoleDirectives(root: string, config: TumwaterConfig, base: string, check: BuildCheck | undefined): { planTargetNote: string | undefined; flakyChecks: string | undefined; noCheck: string | undefined } {
+/** The directive notes a run may carry: the plan charter's stop target and the bugfix flake
+ * tally — each exactly as it stood inline. */
+function collectRoleDirectives(root: string, config: TumwaterConfig, base: string): { planTargetNote: string | undefined; flakyChecks: string | undefined } {
   // The plan charter's stop threshold is derived from config (plans/parallel-work-
   // instances.md "…keeping the plan role ahead", part 5c/7). The catalog text stays a
   // config-free description of the rule; this note supplies the concrete eligible-plan count
@@ -412,24 +411,7 @@ function collectRoleDirectives(root: string, config: TumwaterConfig, base: strin
             : ""}.`
       : undefined;
   const flakyChecks = base === "bugfix" ? flakyChecksNote(root) : undefined;
-  // The no-check note: when the project declares no deterministic check and the team is
-  // closing the gap itself, the plan note tells the plan role to write the declaration entry
-  // (no marker entry waits yet) and the feature note tells the feature role to implement the
-  // marker entry that does wait. Decided by CHECK_DECLARATION_MARKER (declarationPlanEntry)
-  // rather than prose, so a feature run never invents a declaration the plan role never wrote
-  // and a plan run cannot stack a second declaration on one already waiting. Any other role,
-  // or a declared check, gets neither note — byte-unchanged prompts.
-  const declaration = (base === "plan" || base === "feature") && check === undefined ? declarationPlanEntry(root) : undefined;
-  // Whole declaration drives the decision: `declarationPlanEntry` returns null (not
-  // undefined) when no marker entry waits, so a truthy test selects the feature note and a
-  // falsy one the plan note.
-  const noCheck =
-    check === undefined && (base === "plan" || base === "feature")
-      ? (declaration
-          ? (base === "feature" ? buildNoCheckNote(base) : undefined)
-          : (base === "plan" ? buildNoCheckNote(base) : undefined))
-      : undefined;
-  return { planTargetNote, flakyChecks, noCheck };
+  return { planTargetNote, flakyChecks };
 }
 
 function appendAssignmentNotes(

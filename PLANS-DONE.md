@@ -5,6 +5,39 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Self-declared check, part 3/3: retire the plan/feature no-check notes, so the director's automatic request is the one way a check gets declared (planned 2026-11-21 by the director role; "requires part 1/3 landed"; touches src/prompt/gate-notes.ts src/run/run-prompt.ts src/prompt/prompt.ts src/backlog/backlog.ts src/roles/role-guidance.ts src/roles/role-catalog.ts test/gate-notes.test.ts test/run-prompt.test.ts docs/invariants.md) — done 2026-11-21 by the feature role
+
+**Goal.** "Prefer one sensible way." After part 1/3, a missing check has two cures: the
+director's single-run request, and the slower route where a plan run writes a marked entry
+and a feature run builds it. Retire the second, so a plan run is never spent writing a
+declaration the director is already making.
+
+**Approach.**
+- Delete `buildNoCheckNote` (src/prompt/gate-notes.ts) and the `noCheck` note it feeds in
+  src/run/run-prompt.ts (the `declaration`/`noCheck` block and its field on the returned
+  notes) and src/prompt/prompt.ts (the no-check note slot and its rendering).
+- Delete `declarationPlanEntry` (src/backlog/backlog.ts) and `CHECK_DECLARATION_MARKER`
+  (src/roles/role-guidance.ts), plus the role-catalog.ts charter sentences that cite them
+  (the plan charter's "write the declaration entry before anything else" and the feature
+  charter's `<no-check>` sentence). Grep `CHECK_DECLARATION_MARKER|declarationPlanEntry|
+  buildNoCheckNote|<no-check>` across src, test and docs, and remove or reword every hit.
+- Delete their tests in test/gate-notes.test.ts and test/run-prompt.test.ts. Keep or add one
+  run-prompt case showing that a plan or feature prompt for a project with no check contains
+  no `<no-check>` block.
+- docs/invariants.md: remove or reword any guarantee that pins the plan/feature no-check
+  notes.
+
+**Acceptance criteria.**
+- A grep for `CHECK_DECLARATION_MARKER`, `declarationPlanEntry`, `buildNoCheckNote` and
+  `<no-check>` over src/ and test/ finds nothing.
+- test/run-prompt.test.ts: a plan prompt and a feature prompt built for a repo with no
+  declared check contain no `<no-check>` block.
+- The project's check passes.
+
+**As built.** `buildNoCheckNote`, `declarationPlanEntry`, `CHECK_DECLARATION_MARKER` and the `noCheck` directive are gone from src/ and test/, and the plan and feature charters no longer cite the marker or the `<no-check>` block. test/run-prompt.test.ts asserts that a plan and a feature prompt for a repo with no check carry no no-check block.
+The doctor `check` row and its `no-check` alert still say the plan role will plan the check and the feature role declare it. That wording is part 2/3's: it rewrites the same detail in the same files, so it was left to that entry rather than collided with.
+docs/invariants.md has no guarantee pinning the removed notes, so it is unchanged.
+
 ### Remove the TUI, part 5/5: tests and docs stop describing a TUI (planned 2026-11-16 by the operator; requires Remove the TUI parts 1/5, 2/5, 3/5 landed; touches test/ (comments and test titles only) docs/invariants.md DEVELOPMENT.md README.md docs/how-it-works.md docs/feature-doctor.md docs/backends.md docs/glossary.md docs/feature-per-role-spending.md docs/implementation-per-role-spending.md docs/implementation-model-fallback.md docs/code-metrics.md) — done 2026-11-21 by the feature role
 
 **Goal.** Outside the deleted TUI tests, about 70 test files mention the TUI some 480 times, in

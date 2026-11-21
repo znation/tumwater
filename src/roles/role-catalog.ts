@@ -8,7 +8,6 @@
 import {
   backlogMoveGuidance,
   BUGFIX_WAIT_QUIET_DAYS,
-  CHECK_DECLARATION_MARKER,
   CONVERGENCE_HOLD_MARKER,
   DECOMPOSITION_GUIDANCE,
   NEEDS_REVIEW_NOTE,
@@ -69,11 +68,6 @@ export const ROLES: Role[] = [
     tier: "default",
     title: "feature implementer",
     find: `Implement the SINGLE most valuable planned feature in PLANS.md that is not yet implemented.
-   A \`<no-check>\` block in your prompt names the \`## Planned\` entry marked ${CHECK_DECLARATION_MARKER}
-   — that project-check declaration outranks every other planned entry: implement it so a merge
-   makes it live (the doctor's \`check\` row ok, \`tumwater status --json\` with no \`noDeclaredCheck\`),
-   then mark it done. Do not chase an in-run re-read: while unmerged both still reflect the
-   pre-declaration state, so the merge confirms it.
 
    1. The prompt's <backlog-index> block lists PLANS.md's \`## Planned\` entries with each
       entry's line range; read the one you pick by that range.
@@ -167,13 +161,6 @@ within that budget, there is nothing to do.`,
       and never plan the same change again while it waits to merge. An entry it removes or edits
       is being handled by that change: never split, replan, retire or refuse it — the split, lift
       or correction it carries is what the entry's hold is for.
-      - A \`<no-check>\` block in your prompt (this project declares no check and no declaration
-        plan waits) is this run's task over adding another plan: write the declaration entry it
-        names, headed \`### Declare the project's deterministic check\` and marked on its own line
-        with ${CHECK_DECLARATION_MARKER}, before anything else — the eligible-plan stop below
-        yields to it within an admitted run (a full plan backlog can still defer the plan role
-        before this prompt is built). A Needs-review lift and an assigned claim still
-        come first.
       - A plan carrying a ${NEEDS_REVIEW_NOTE} note outranks adding another plan: split it into
         independently mergeable sub-plans that cross-reference each other (per PLAN_SIZING below,
         each with its own acceptance criteria), then remove the note. That split is this run's task.

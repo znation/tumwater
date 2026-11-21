@@ -415,12 +415,6 @@ interface RunPromptInput {
   /** The bugfix run's flake tally, rendered by run-prompt.ts; omitted for every other role and
    * when no flake was excused in the window. */
   flakyChecks?: string;
-  /** The no-check note (buildNoCheckNote, gate-notes.ts), rendered right after the run charter's
-   * task text: what the plan or feature run must do when this project declares no deterministic
-   * check and the team is closing the gap itself — the plan role writes the declaration entry,
-   * the feature role implements it. Omitted: a check is declared, or this is not the
-   * plan/feature turn the marker picks. */
-  noCheck?: string;
   /** A per-role prompt the user queued for this role's next run (`tumwater prompt --role <id>`),
    * rendered as a labeled block near the top of the task text.
    * The role still owns find-something-to-do: the request steers, the role's rules and the
@@ -572,11 +566,10 @@ function runNotesBlocks(input: RunPromptInput, day: string): string[] {
   return parts;
 }
 
-/** The task text and its optional noCheck/plan-target/flake/extra notes. */
+/** The task text and its optional plan-target/flake/extra notes. */
 function runTaskBlocks(input: RunPromptInput): string[] {
   const parts: string[] = [];
   parts.push(`Your task this run:\n${input.role.find.trim()}`);
-  if (input.noCheck) parts.push(input.noCheck.trim());
   if (input.planTargetNote) parts.push(input.planTargetNote.trim());
   if (input.flakyChecks) parts.push(input.flakyChecks.trim());
   if (input.extraInstructions)

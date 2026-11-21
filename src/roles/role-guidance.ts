@@ -242,15 +242,6 @@ export const PLAN_DEFECT_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: 
  * ${PLAN_DEFECT_NOTE} is shared by the feature and plan charters. */
 export const RETIRED_NOTE = `**Retired <YYYY-MM-DD> by <role>: <evidence>**`;
 
-/** The literal marker the plan role writes as its own line under the PLANS.md `## Planned` entry
- * that declares this project's deterministic check, and the feature role reads as that entry's
- * identity. It is the one decision point between the two no-check notes (gate-notes.ts
- * buildNoCheckNote): no marker → the plan note (write the declaration entry); marker → the
- * feature note (implement it). Defined once so the marker the plan note names, the one
- * declarationPlanEntry recognizes (src/backlog/backlog.ts), and the catalog texts interpolate stay
- * identical. */
-export const CHECK_DECLARATION_MARKER = `**Declares the project check**`;
-
 /** How a role with no backlog (organize, clean, dedupe, perf, security, robustness, improve) finds
  * its one task, as numbered steps. Written against the observed failure: with nothing to point
  * at, a local model reads the codebase file by file — thirty whole-file reads, ~300 KB of tool

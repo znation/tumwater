@@ -311,33 +311,5 @@ on"), a state the system settles on its own is not amber.
 - No source or test file still contains the old sentence "set `check.command` in tumwater.json
   for a non-npm repo" (checked by grep).
 
-### Self-declared check, part 3/3: retire the plan/feature no-check notes, so the director's automatic request is the one way a check gets declared (planned 2026-11-21 by the director role; "requires part 1/3 landed"; touches src/prompt/gate-notes.ts src/run/run-prompt.ts src/prompt/prompt.ts src/backlog/backlog.ts src/roles/role-guidance.ts src/roles/role-catalog.ts test/gate-notes.test.ts test/run-prompt.test.ts docs/invariants.md)
-
-**Goal.** "Prefer one sensible way." After part 1/3, a missing check has two cures: the
-director's single-run request, and the slower route where a plan run writes a marked entry
-and a feature run builds it. Retire the second, so a plan run is never spent writing a
-declaration the director is already making.
-
-**Approach.**
-- Delete `buildNoCheckNote` (src/prompt/gate-notes.ts) and the `noCheck` note it feeds in
-  src/run/run-prompt.ts (the `declaration`/`noCheck` block and its field on the returned
-  notes) and src/prompt/prompt.ts (the no-check note slot and its rendering).
-- Delete `declarationPlanEntry` (src/backlog/backlog.ts) and `CHECK_DECLARATION_MARKER`
-  (src/roles/role-guidance.ts), plus the role-catalog.ts charter sentences that cite them
-  (the plan charter's "write the declaration entry before anything else" and the feature
-  charter's `<no-check>` sentence). Grep `CHECK_DECLARATION_MARKER|declarationPlanEntry|
-  buildNoCheckNote|<no-check>` across src, test and docs, and remove or reword every hit.
-- Delete their tests in test/gate-notes.test.ts and test/run-prompt.test.ts. Keep or add one
-  run-prompt case showing that a plan or feature prompt for a project with no check contains
-  no `<no-check>` block.
-- docs/invariants.md: remove or reword any guarantee that pins the plan/feature no-check
-  notes.
-
-**Acceptance criteria.**
-- A grep for `CHECK_DECLARATION_MARKER`, `declarationPlanEntry`, `buildNoCheckNote` and
-  `<no-check>` over src/ and test/ finds nothing.
-- test/run-prompt.test.ts: a plan prompt and a feature prompt built for a repo with no
-  declared check contain no `<no-check>` block.
-- The project's check passes.
 
 ## Done
