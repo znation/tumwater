@@ -6,10 +6,14 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { envPath } from "../files/files.js";
+import { queuedPrompts } from "../inbox/inbox.js";
+import { submitRolePrompt } from "../inbox/inbox-submit.js";
 import { githubTarget } from "../observer/remote-ci.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { closeFixedIssues } from "./issue-close.js";
 import { ghReadiness, ghRunner, type GhRunner } from "./gh.js";
 import { mirrorsAtTip } from "./issue-mirrors.js";
+import { nextIssuePrompt, type QueuedIssue } from "./issue-queue.js";
 import {
   readGithubIssues,
   writeGithubIssues,
@@ -129,6 +133,7 @@ function toRow(
     labels,
     updatedAt: raw.updated_at,
   };
+  if (raw.author_association !== undefined) row.authorAssociation = raw.author_association;
   if (trusted) row.bodyExcerpt = Array.from(raw.body ?? "").slice(0, BODY_EXCERPT_MAX_CHARS).join("");
   return row;
 }
@@ -191,9 +196,51 @@ export async function scanGithubIssues(
   return ledger;
 }
 
+/** One queue attempt: pick the next issue and enqueue it. Make no `gh` call — the scan already
+ * wrote the ledger — and enqueue through the same seam a user's prompt uses (which validates the
+ * length cap and logs the `prompt_enqueued` event). Records the issue in the ledger so it is not
+ * re-offered for 24 h (decision 5) and logs one `github_issue_queued` event. Null when no issue is
+ * due (nothing mirrored, queued within 24 h, declined at its current updatedAt, or fixed). */
+export async function queueOneIssue(
+  root: string,
+  config: TumwaterConfig,
+  now: number = Date.now(),
+): Promise<QueuedIssue | null> {
+  const ledger = readGithubIssues(root);
+  const target = await githubTarget(root, config);
+  if (ledger?.gh !== "ok" || !target) return null;
+  const mirrors = await mirrorsAtTip(root, target.branch);
+  const picked = nextIssuePrompt(
+    ledger,
+    new Set(mirrors.keys()),
+    queuedPrompts(root),
+    now,
+  );
+  if (!picked) return null;
+  submitRolePrompt(root, DIRECTOR_ROLE, picked.text);
+  ledger.queued = {
+    ...ledger.queued,
+    [String(picked.issue)]: { at: now, updatedAt: currentUpdatedAt(ledger, picked.issue) },
+  };
+  writeGithubIssues(root, ledger);
+  logEventBestEffort(root, {
+    source: TUMWATER_SOURCE,
+    type: "github_issue_queued",
+    repo: ledger.repo,
+    issue: picked.issue,
+  });
+  return picked;
+}
+
+/** The current `updatedAt` of an open issue, used to record what the queue saw. */
+function currentUpdatedAt(ledger: GithubIssuesLedger, number: number): string {
+  return ledger.open.find((row) => row.number === number)?.updatedAt ?? "";
+}
+
 /** The orchestrator's trigger, awaited by each poll: when the clock says a scan is due and the
- * feature is on, move the clock to the next interval and run one scan. A failed scan warns and
- * never fails the poll. */
+ * feature is on, move the clock to the next interval and run one scan, and on every poll (due or
+ * not) offer the next unmirrored issue to the director. A failed scan or queue warns and never
+ * fails the poll. */
 export async function pollGithubIssues(
   root: string,
   config: TumwaterConfig,
@@ -202,10 +249,12 @@ export async function pollGithubIssues(
   run: GhRunner = ghRunner(envPath()),
   now: number = Date.now(),
 ): Promise<void> {
-  if (config.githubIssues?.enabled === false || !dueForIssueScan(clock.nextAt, now)) return;
-  const minutes = config.githubIssues?.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES;
-  clock.nextAt = now + minutes * MS_PER_MINUTE;
+  if (config.githubIssues?.enabled === false) return;
   try {
+    await queueOneIssue(root, config, now);
+    if (!dueForIssueScan(clock.nextAt, now)) return;
+    const minutes = config.githubIssues?.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES;
+    clock.nextAt = now + minutes * MS_PER_MINUTE;
     const ledger = await scanGithubIssues(root, config, run, now);
     if (ledger?.gh === "ok" && config.githubIssues?.close !== false) {
       await closeFixedIssues(root, config, run, warn, now);

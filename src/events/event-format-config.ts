@@ -25,6 +25,10 @@ export function configEventMessage(e: HarnessEvent): string {
       // prefix. The reason is the director's own line, shown as written.
       return `declined GitHub issue #${textOr(e.issue)} on ${textOr(e.repo)}: ${textOr(e.reason)}`;
     }
+    case "github_issue_queued": {
+      // A poll sent an unmirrored issue to the director: a routine outcome, so no warning prefix.
+      return `queued GitHub issue #${textOr(e.issue)} on ${textOr(e.repo)} for the director`;
+    }
     case "retention_changed": {
       // Routine state change, like its maxConcurrent sibling — no warning prefix.
       return `sessionRetentionDays changed: ${textOr(e.from)} → ${textOr(e.to)}`;

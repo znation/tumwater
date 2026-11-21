@@ -54,6 +54,9 @@ import { refAbsentFromFiles, setRef } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
 import { pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { ownerAliveSh } from "./fixtures/victim-fixture.js";
+import { queueOneIssue, scanGithubIssues } from "../src/github/issue-scan.js";
+import { readGithubIssues } from "../src/github/github-issues-state.js";
+import { fakeGh } from "./fakes/fake-gh.js";
 
 // A failed review retries in place (src/review/review.ts); the pause between tries is not tested.
 process.env.TUMWATER_REVIEW_RETRY_DELAY_MS = "0";
@@ -318,5 +321,54 @@ test("restart hand-off: an in-flight merge outliving its deadline is aborted, no
   } finally {
     await stop();
     restore();
+  }
+});
+
+test("github issues: a poll queues one unmirrored issue to the director, one at a time", async () => {
+  const repo = await makeFastRepo("github-issue-queue director e2e test", ["director"]);
+  // A GitHub remote so the scan and the queue's githubTarget resolve (plans/github-issues.md).
+  try {
+    sh(repo, "git", "remote", "remove", "origin");
+  } catch {
+    // no origin yet
+  }
+  sh(repo, "git", "remote", "add", "origin", "https://github.com/o/r.git");
+  // A fake gh answering one trusted unmirrored open issue; the real scan writes the ledger from
+  // it, and the queue reads that ledger without another gh call.
+  const gh = fakeGh({
+    issues: [[
+      {
+        number: 1,
+        title: "Crash on start",
+        html_url: "https://github.com/o/r/issues/1",
+        body: "The GUI crashes at startup.",
+        updated_at: "2026-11-20T00:00:00Z",
+        author_association: "OWNER",
+        user: { login: "maintainer" },
+        labels: [],
+      },
+    ]],
+  });
+  // The scan is what a due poll runs; the queue then runs on every poll. Run the scan once to
+  // write the ledger, then let the poll's per-poll queue step (queueOneIssue) offer it.
+  await scanGithubIssues(repo, loadConfig(repo), gh.probe, Date.now());
+  // The fake director idles on every run; the queue event itself is what this test pins.
+  const restore = fakePiIdle();
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    // The poll's queue step enqueues the issue for the director (one at a time) and logs it,
+    // and records it in the ledger so an idle echo of the queue offers nothing new.
+    await waitFor(
+      () => eventsOfType(repo, "github_issue_queued").length >= 1,
+      "the poll to queue issue #1 for the director",
+    );
+    const queued = eventsOfType(repo, "github_issue_queued");
+    assert.equal(queued[0]?.issue, 1);
+    assert.ok(readGithubIssues(repo)?.queued?.["1"], "issue 1 is recorded as queued");
+    // While the prompt sits in the director's queue, the next queue attempt offers nothing new.
+    assert.equal(await queueOneIssue(repo, loadConfig(repo), Date.now() + 60_000), null, "one issue at a time");
+    assert.equal(eventsOfType(repo, "github_issue_queued").length, queued.length, "no second queue event");
+  } finally {
+    await stopOrchestrator(orch, restore);
   }
 });

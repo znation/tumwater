@@ -22,6 +22,10 @@ export interface GithubIssueRow {
   /** A maintainer stands behind it: author association OWNER, MEMBER or COLLABORATOR, or the
    * mirror label, or `githubIssues.authors` set to "anyone". */
   trusted: boolean;
+  /** The author's GitHub association (OWNER, MEMBER, COLLABORATOR…), shown in a director prompt's
+   * preamble so the director knows who reported the issue. Absent for an issue GitHub did not
+   * name one for. */
+  authorAssociation?: string;
   /** Some backlog entry, open or finished, carries `mirrors GitHub issue #<n>` for it. */
   mirrored: boolean;
   labels: string[];
@@ -49,6 +53,10 @@ export interface GithubIssuesLedger {
   /** Director-declined issues (part 4b/5), by issue number: when declined, the issue's `updatedAt`
    * at that time (the queue offers the issue again only once GitHub's copy changes), and why. */
   declined?: Record<string, { at: number; updatedAt: string; reason: string }>;
+  /** Issues whose director prompt was queued (part 4c/5), by issue number: when it was queued, and
+   * the issue's `updatedAt` then. The queue offers the issue again once this record is 24 h old
+   * (decision 5). */
+  queued?: Record<string, { at: number; updatedAt: string }>;
 }
 
 /** The ledger folded to the counts the status snapshot and its alerts read (plans/github-issues.md,
