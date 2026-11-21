@@ -184,7 +184,7 @@ export class Semaphore {
     const resume = async (): Promise<void> => {
       if (closed || !paused || parkedResume !== null) return;
       this.grantAheadOf(tier);
-      if (this.inUse < this.capacity - this.reserveFor(tier)) {
+      if (this.inUse < this.capacity - this.withheldAtOnce(tier)) {
         this.takePermit(tier, true);
         paused = false;
         return;
@@ -201,7 +201,7 @@ export class Semaphore {
     const lease: SemaphoreLease = { release, pause, resume };
 
     this.grantAheadOf(tier);
-    if (this.inUse < this.capacity - this.reserveFor(tier)) {
+    if (this.inUse < this.capacity - this.withheldAtOnce(tier)) {
       this.takePermit(tier, true);
       return lease;
     }
@@ -264,7 +264,9 @@ export class Semaphore {
       if (inUse >= this.capacity - this.reserveFor(effective)) return false;
       inUse += 1;
     }
-    return inUse < this.capacity - this.reserveFor(tier);
+    // With no floor waiter parked, the loop granted only tier ≤ 0 waiters, so the floor a tier ≥ 1
+    // arrival would take through the reserve is still exactly as open as it is now.
+    return inUse < this.capacity - (floorWaiter === null ? this.withheldAtOnce(tier) : this.reserveFor(tier));
   }
 
   /** Hand every parked waiter a permit it can take in one pass. The one home of the permit
@@ -330,6 +332,14 @@ export class Semaphore {
       if (best === null || (w.since ?? 0) < (best.since ?? 0)) best = w;
     }
     return best;
+  }
+
+  /** The permits a lease's fast path must leave free for a fresh `tier` arrival: the reserve,
+   * except for a tier ≥ 1 arrival while the floor is open — after grantAheadOf no other tier ≥ 1
+   * waiter can take a free permit, so the arrival is the floor's waiter and the reserve does not
+   * apply to it, exactly as drive would grant it once parked. */
+  private withheldAtOnce(tier: number): number {
+    return tier >= 1 && this.maintenanceInUse < this.floor ? 0 : this.reserveFor(tier);
   }
 
   /** The permits withheld from `tier`: `reserve` for tier ≥ 1 (maintenance), 0 for every tier

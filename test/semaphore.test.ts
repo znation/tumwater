@@ -632,26 +632,33 @@ test("a held maintenance permit fills the floor, so the next free one goes to th
 });
 
 test("the floor grants through the reserve, and the reserve still withholds a second maintenance waiter", async () => {
-  // Reserve 1, floor 1, cap 2: one work holder, so the only permit is reserved for work. A
-  // maintenance waiter parks, and the release grants it anyway — the floor ignores the reserve.
-  const sem = new Semaphore(2);
+  // Reserve 1, floor 1, cap 3: two work holders leave one permit, reserved for work. The open
+  // floor admits a maintenance arrival through the reserve at once — a free permit never sits
+  // idle while the floor waiter parks — and once the floor is filled the reserve applies again.
+  const sem = new Semaphore(3);
   sem.setFloor(1);
   sem.setReserve(1);
-  const holder = await sem.acquireLease(0); // in-use 1 == capacity - reserve: no tier-1 headroom
-  let maintGranted = false;
-  const maint = sem.acquireLease(1).then((lease) => {
-    maintGranted = true;
+  const w1 = await sem.acquireLease(0);
+  const w2 = await sem.acquireLease(0); // in-use 2 == capacity - reserve: no tier-1 headroom
+  assert.equal(sem.canLeaseAtOnce(1), true, "the open floor admits a maintenance arrival through the reserve");
+  const maint = await sem.acquireLease(1); // resolves at once: the floor ignores the reserve
+  assert.equal(sem.snapshot().inUse, 3, "the floor took the reserved permit");
+
+  w1.release(); // one permit free again, and maintenance now holds the floor
+  let secondGranted = false;
+  const second = sem.acquireLease(1).then((lease) => {
+    secondGranted = true;
     return lease;
   });
   await flushImmediate();
-  assert.equal(maintGranted, false, "the reserve withholds the free permit from the maintenance waiter");
-  assert.equal(sem.canLeaseAtOnce(0), false, "a fresh work arrival cannot barge the floor waiter's fast path");
+  assert.equal(secondGranted, false, "the filled floor leaves the reserve withholding the second waiter");
+  assert.equal(sem.canLeaseAtOnce(0), true, "a work arrival still finds the reserved permit");
 
-  holder.release();
+  maint.release(); // the floor reopens, and the second waiter takes the freed permit
   await flushImmediate();
-  assert.equal(maintGranted, true, "the floor waiter takes the reserved permit");
-
-  (await maint).release();
+  assert.equal(secondGranted, true, "the reopened floor admits the parked maintenance waiter");
+  (await second).release();
+  w2.release();
   assert.equal(sem.snapshot().inUse, 0, "no permit leaked through the floor grant");
 });
 
