@@ -90,6 +90,12 @@ export class RoleRunner {
    * it when the agent run settles; the orchestrator's model check reads it through
    * unansweredRunPair. Transient, never persisted. */
   private waitingPair?: string;
+  /** The latest time (epoch ms) an authoring agent run's model request on each pair was last
+   * answered (PiRunOptions.onModelAnswered → the parser's onAnswered close). Transient, never
+   * persisted, and it outlives the run: a run that was answered and then ended inside a probe's
+   * window is still evidence for the model check's busy-vs-dead distinction (plans/model-check.md
+   * busy part 1/2). */
+  private readonly lastAnswered = new Map<string, number>();
   /** Whether the budget gate currently has the team on its free fallback pairs (src/gates/
    * budget-gates.ts onFallback, set alongside `config` by the orchestrator's poll): an
    * image reroute may then look only among the free fallback pairs, never a priced primary
@@ -137,6 +143,9 @@ export class RoleRunner {
       sleep: this.sleep,
       replyWait: (pair, waiting) => {
         this.waitingPair = waiting ? pair : undefined;
+      },
+      replyAnswered: (pair) => {
+        this.lastAnswered.set(pair, Date.now());
       },
     });
     // A persisted running flag means the previous process died mid-run WITHOUT the
@@ -210,6 +219,14 @@ export class RoleRunner {
    * it, and hands the run back once the pair fails (src/model-check/model-check-gate.ts). */
   unansweredRunPair(): string | null {
     return this.state.running ? (this.waitingPair ?? null) : null;
+  }
+
+  /** The latest epoch-ms time this role's authoring agent runs had a model request on `pair`
+   * (seamPairName) answered — null when no answer was ever recorded. It outlives the run, so
+   * the model check's probe can distinguish a server that is busy answering the team's runs
+   * from a dead one (plans/model-check.md busy part 1/2). */
+  lastAnsweredAt(pair: string): number | null {
+    return this.lastAnswered.get(pair) ?? null;
   }
 
   /** The provider/model pair the in-flight run is running on (null when idle): the

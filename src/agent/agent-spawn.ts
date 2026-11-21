@@ -269,7 +269,9 @@ export function spawnPiRun(
         blind.terminate?.();
       }
     },
-  });
+  },
+  opts.onModelAnswered,
+);
   // The run's cross-group attribution mark, minted before the spawn so the environment can carry
   // it and the exit sweep can name it. When the session sits under a team root, the mark is
   // stamped with that root's token so a dead-marked orphan can be attributed to this checkout

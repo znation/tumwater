@@ -129,6 +129,12 @@ export interface PiRunOptions {
    * wait ends — the reply arrived, or the run settled. Authoring runs wire it to the model
    * check's re-check (src/runner/runner-pi.ts). */
   onUnansweredReply?: (waiting: boolean) => void;
+  /** Authoring runs wire this to the parser's answered callback: called once each time an open
+   * model request was answered (a content-bearing `message_update` or a non-failed assistant
+   * `message_end` closed it), so the runner can keep the latest answer time per pair — the
+   * model check's signal for a busy server rather than a dead one (plans/model-check.md busy
+   * part 1/2). */
+  onModelAnswered?: () => void;
   /** Called once after the end-of-run sweep when a run tumwater did not kill left marked
    * processes running, with the warning naming the run kind and the count signaled. */
   onLeftoversSwept?: (message: string) => void;

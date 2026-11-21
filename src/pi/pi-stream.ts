@@ -359,6 +359,11 @@ export class PiStreamParser {
        * a picture it never saw. */
       onBlindRead?: (path: string) => void;
     } = {},
+    /** Called each time `pendingReply` goes from open to closed — a content-bearing
+     * `message_update` or a non-failed assistant `message_end` answered the model request after
+     * a `message_start` opened it. The runner keeps the timestamp so the model check can tell a
+     * busy server from a dead one (plans/model-check.md busy part 1/2). */
+    private readonly onAnswered?: () => void,
   ) {}
 
   /** Apply a translator-supplied `tumwaterKind`, trusted before the text regexes. An unknown
@@ -503,7 +508,7 @@ export class PiStreamParser {
     if (event.type === "billing" && (event.billing === "subscription" || event.billing === "api"))
       this.billing = event.billing;
     this.countProgress(event);
-    this.pendingReply = foldPendingReply(this.pendingReply, event);
+    this.closePendingReply(event);
     this.applyToolExecution(event);
     if (event.type !== "message_end" || event.message?.role !== "assistant") return;
     this.applyAssistantMessage(event.message);
@@ -520,10 +525,22 @@ export class PiStreamParser {
     if (piEventType(line) === "message_update") {
       const hasContent = messageUpdateHasContent(parseJsonObject(line));
       if (hasContent) this.progressCount += 1;
-      this.pendingReply = foldPendingReply(this.pendingReply, { type: "message_update" }, { hasContent });
+      this.closePendingReply({ type: "message_update" }, hasContent);
       return true;
     }
     return false;
+  }
+
+  /** Fold an event into pendingReply and, when an open request closes because the model
+   * answered, fire the `onAnswered` callback (once per open→closed transition): the callback
+   * is the runner's record that a reply arrived, distinct from the unanswered-wait toggles
+   * the watchdogs emit (plans/model-check.md busy part 1/2). Only a close that actually
+   * resolves an open request counts — a closed-then-closed event (a stray update or end with
+   * no matching start) fires nothing. */
+  private closePendingReply(event: Parameters<typeof foldPendingReply>[1], hasContent = false): void {
+    const wasOpen = this.pendingReply !== undefined;
+    this.pendingReply = foldPendingReply(this.pendingReply, event, { hasContent });
+    if (wasOpen && this.pendingReply === undefined) this.onAnswered?.();
   }
 
   private applyErrorTexts(event: PiStreamEvent): void {

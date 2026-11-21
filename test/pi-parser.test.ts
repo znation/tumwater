@@ -832,6 +832,58 @@ test("a run_usage with the full token split replaces the summed prompt/output fi
   assert.equal(parser.peakContextTokens, beforePeak, "the split's cumulative sum is not a per-request peak");
 });
 
+test("parser fires onAnswered once per open request that is answered (busy-vs-dead signal)", () => {
+  // plans/model-check.md busy part 1/2: the runner records when a request was last answered, so
+  // the model check can tell a busy server from a dead one. An assistant message_start opens a
+  // request; a content-bearing message_update or a non-failed assistant message_end answers it.
+  const start = JSON.stringify({
+    type: "message_start",
+    message: { role: "assistant", provider: "qwenrunner", model: "Q" },
+  });
+  const update = (delta: string) =>
+    JSON.stringify({
+      type: "message_update",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: {} },
+      assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta },
+    });
+  const countAnswered = () => {
+    const box = { count: 0 };
+    const parser = new PiStreamParser(undefined, {}, () => (box.count += 1));
+    return { parser, count: () => box.count };
+  };
+
+  // A content-bearing message_update after an open start answers once.
+  const { parser: p1, count: c1 } = countAnswered();
+  p1.feed(start + "\n");
+  assert.equal(c1(), 0);
+  p1.feed(update("hello") + "\n");
+  assert.equal(c1(), 1);
+  p1.feed(update("more") + "\n");
+  assert.equal(c1(), 1, "a second update on an already-closed request does not fire again");
+
+  // A content-free message_update does not answer an open request.
+  const { parser: p2, count: c2 } = countAnswered();
+  p2.feed(start + "\n");
+  p2.feed(update("") + "\n");
+  assert.equal(c2(), 0, "a content-free keepalive does not close the request");
+  p2.feed(update("  ") + "\n");
+  assert.equal(c2(), 0);
+
+  // A message_end with stopReason "error" keeps the request open; a later non-failed end on
+  // that same open request answers it once.
+  const { parser: p3, count: c3 } = countAnswered();
+  p3.feed(start + "\n");
+  p3.feed(JSON.stringify({ type: "message_end", message: { role: "assistant", stopReason: "error" } }) + "\n");
+  assert.equal(c3(), 0, "a failed end does not answer");
+  p3.feed(assistantLine("final", { stopReason: "stop" }) + "\n");
+  assert.equal(c3(), 1, "the non-failed end on the same open request answers once");
+
+  // A message_end with no open request fires nothing.
+  const { parser: p4, count: c4 } = countAnswered();
+  p4.feed(assistantLine("final", { stopReason: "stop" }) + "\n");
+  assert.equal(c4(), 0, "no open request means nothing to answer");
+});
+
 test("a run_usage carrying only outputTokens (claude) still replaces just the output", () => {
   const parser = new PiStreamParser();
   parser.feed(

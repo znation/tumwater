@@ -114,6 +114,10 @@ interface RunnerPiHost {
    * has waited toolCallStallSeconds for its reply (`waiting` true), or that wait ended (false):
    * the runner keeps it for the orchestrator's model check (RoleRunner.unansweredRunPair). */
   replyWait?(pair: string, waiting: boolean): void;
+  /** An authoring agent run's model request on `pair` was just answered (the parser's
+   * onAnswered callback): the runner keeps the latest answer time per pair so the model check
+   * can tell a busy server from a dead one (plans/model-check.md busy part 1/2). */
+  replyAnswered?(pair: string): void;
 }
 
 /** The pi-invocation plumbing of one role's runner, extracted from RoleRunner
@@ -176,7 +180,14 @@ export class RunnerPi {
       // own authoring runs report it — a merge or review run is not this run's evidence, and the
       // merge slot runs them outside any run.
       ...(kind === "author"
-        ? { onUnansweredReply: (waiting: boolean) => this.host.replyWait?.(seamPairName(resolved), waiting) }
+        ? {
+            onUnansweredReply: (waiting: boolean) => this.host.replyWait?.(seamPairName(resolved), waiting),
+            // The partner of replyWait: each time an open model request is actually answered, the
+            // runner keeps the timestamp (RoleRunner.lastAnsweredAt) so the model check can tell
+            // a busy server from a dead one (plans/model-check.md busy part 1/2). Same authoring-
+            // only gate — a merge/review run is not this run's evidence.
+            onModelAnswered: () => this.host.replyAnswered?.(seamPairName(resolved)),
+          }
         : {}),
       onLeftoversSwept: (message) => this.host.warn(message),
       // The translator's unmapped-native-type and cost_unknown warnings reach the event feed
