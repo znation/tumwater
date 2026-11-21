@@ -202,8 +202,8 @@ test("the seeded PLANS.md and BUGS.md leads name you, not only the roles", async
   // A fresh project carries the steered leads: the plan role is not the only named author.
   const plans = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
   const bugs = fs.readFileSync(path.join(repo, "BUGS.md"), "utf8");
-  assert.ok(plans.includes(PLANS_TEMPLATE.split("\n")[1]!), "seeded PLANS.md carries the template lead");
-  assert.ok(bugs.includes(BUGS_TEMPLATE.split("\n")[1]!), "seeded BUGS.md carries the template lead");
+  assert.ok(plans.includes(PLANS_TEMPLATE.split("\n")[2]!), "seeded PLANS.md carries the template lead");
+  assert.ok(bugs.includes(BUGS_TEMPLATE.split("\n")[2]!), "seeded BUGS.md carries the template lead");
   assert.doesNotMatch(plans, /written by the plan role and/, "no hands-off lead survives");
   assert.doesNotMatch(bugs, /recorded by any role and/, "no hands-off bug lead survives");
 });
