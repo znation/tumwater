@@ -140,6 +140,7 @@ export const STATE_CHANGE_EXCLUDED_TYPES = new Set<string>([
   "maintenance_start",
   "maintenance_done",
   "image_blind",
+  "github_issues_unavailable",
   // State-adjacent but not self-decisions.
   "state_migrated",
   "restart_forced",
