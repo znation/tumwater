@@ -81,8 +81,6 @@ Overlaying those endings on the pmset sleep intervals shows 85–95% of each one
 
 ### An extra instance that is never admitted keeps its staged claim, so a higher backlog entry waits while a lower-index sibling takes a later one (found by an operator session 2026-11-19)
 
-**Needs review 2026-11-21 by feature: too large for one run.** The three fix directions each touch a different scheduler seam: claim staging (`scope.ts`), admission ordering (`orderForAdmission` / `admissionHolds`, `skip.ts`), and a claim transfer between runners. Picking one is a design choice the plan role should split out before any single run can land it.
-
 With `roles.bugfix.instances: 3`, tumwater keeps six bugfix runner ids (`RUNNERS_PER_INSTANCE` = 2, src/roles/runner-ids.ts). It admits a runner only while fewer than 3 are writing (`admissionHolds`, src/scheduling/skip.ts). `orderForAdmission` (src/scheduling/scope.ts) prefers the lowest index, but every idle instance can be handed a claim. On 11-19 this caused two inversions:
 - **Bugs.** At 09:46:35 bugfix-2, bugfix-3 and bugfix-4 were assigned BUGS.md's top three open entries. bugfix-4 holds "Five root-walk tests fail on a shared host…" (line 53) and has not started a run since 11-09 (`skipReason: "instances-full"` in `.tumwater/state/bugfix-4.json`). At 11:55 bugfix, freed when its change merged, took the next entry instead: "`a corrupted cache entry is ignored…`" (line 61). It ran that entry at 13:33. The root-walk bug is still unworked 7.5 h after it was claimed.
 - **Plans.** At 15:44 feature-4 was assigned "Operator steering, part 2/5" (PLANS.md line 264) and has never run. After the 16:39 restart, feature took "Remove the TUI, part 1/5" (line 426) and started it at once.
@@ -91,10 +89,15 @@ The claim is released only by the 24 h stale sweep (`CLAIM_IDLE_MAX_MS`), or whe
 
 **Reproduce.** In `.tumwater/log/events.jsonl`, pair each `claim` `assigned` event with that runner's next `run_start`. Since 11-19, bugfix-4's and feature-4's claims have no `run_start` at all, while siblings' later claims start within 0–219 minutes. `tumwater backlog` shows both entries as being worked.
 
-**Suspected cause / fix direction.** Claim staging and admission disagree about who will run next. Options:
-- Stage claims only on runners that admission would let in.
-- Have admission prefer the runner that holds the highest-placed backlog entry, rather than the lowest index.
-- When a lower-index runner becomes free while a higher-index sibling's claim is still waiting, move that claim to it.
+**Cause.** `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts) walks `scope.ordered` and gives each open place to the first due runner. `orderForAdmission` puts runners with outstanding work (a revision or conflict hand-back) first and then sorts the rest by runner index. When a place opens, a free, unclaimed lower-index runner reaches `admissionHolds` first. `assignClaim` (src/scheduling/admit.ts) then hands it the next free entry, and it takes the place. The claimed higher-index sibling is checked after it and hits `instances-full` again.
+
+**Fix (decided 2026-11-21 by the plan role; one seam, so no split).** Change admission order only. Do not change claim staging, and do not add claim transfer. Staging only on admissible runners would still let a later free runner outrun a claim made in an earlier poll. Transferring a claim adds a second claim-move path to keep consistent with the stale sweep and the Claim trailer. In `orderForAdmission` (src/scheduling/scope.ts), order runners of a claim-group base in three tiers: runners with outstanding work first, as now; then runners whose `state.claim` is set, sorted by the claim key's position in that base's `claimGroups.get(base).eligible`, with a key that is not eligible placed after the eligible ones in runner order; then everyone else in runner order. Roles with no claim group keep their place. Update the function's doc comment to describe the new order.
+
+**Acceptance.**
+- In `test/orchestrator-scheduling.test.ts` (alongside "a runner with a revision is admitted before a free runner when one place is open"), set up four feature runners with two instances. `feature` is running. `feature-4` holds a claim on an eligible entry. `feature-2` and `feature-3` are free and unclaimed. One poll admits `feature-4`, and `feature-2` and `feature-3` get `skipReason` `"instances-full"`. Neither of them gains a claim, and no new `claim` `assigned` event is logged.
+- With two claimed waiting runners and one open place, the runner whose claim is higher in PLANS.md is admitted, even if its runner index is higher (for example, `feature-4` holds "Alpha" and `feature-3` holds "Gamma").
+- The existing test "a runner with a revision is admitted before a free runner when one place is open" still passes: outstanding work still comes before a claim.
+- `test/orchestrator-scheduling.test.ts` passes under the project's check.
 
 ### The budget-fallback e2e `a reached cap switches roles to the free fallback model instead of stopping them` reds a full e2e step once, then passes isolated and in the tier re-run — the 2026-11-20 headroom bar admits a quiet sample and the 150 s spawn wait still starves (found by the ci role 2026-11-20)
 
