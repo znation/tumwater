@@ -8,6 +8,8 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ### Codex runs default to the operator's own `~/.codex`, filling it with team sessions (reported by the user 2026-11-16)
 
+**Needs review 2026-11-21 by feature: too large for one run**
+
 `codexHome` (src/agent/codex/codex-catalog.ts) falls back to `~/.codex` when the Codex backend has
 no `configDir`. kde-macos8.6-theme's `tumwater.json` has `"backends": {}`, so every tumwater Codex
 session (7,466 distinct ids from 2026-11-08 to 11-12) went into the operator's personal Codex
