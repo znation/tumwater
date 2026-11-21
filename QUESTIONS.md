@@ -6,13 +6,7 @@ director). Loops never block on their own questions; they check here at the star
 
 ## Open
 
-### Should a change to a widely read default run more than the budgeted gate? (asked by the plan role 2026-11-21)
-
-On 2026-11-20 `dac2a150b` flipped `DEFAULT_INSTANCES` 1 → 3 in src/roles/runner-ids.ts, a one-line constant read across scheduling, GUI and doctor paths. `npm run test:gate` (`--affected --budget=20`) passed it on 28 tests in 8.2 s. `npm test` at that commit fails 23 tests, and main stayed red for about 3.5 hours. The gate works as designed: test/affected-tests.ts ranks tests by import distance, `fitBudget` keeps the nearest that fit 20 s, and its header accepts that "a test this leaves out costs a red main that the watch finds and ci heals forward". The author's own declared-red RISK line, the other half of the report, is BUGS.md's "A change whose own commit message says it leaves tests failing still merges…", and that bug alone would have stopped this commit.
-
-Options: (a) keep the trade-off. The declared-red refusal plus the main watch and ci cover it. (b) Route a change that edits an exported constant's value (not just adds code) to the full check before merge. That catches silent default flips, but it costs a full suite run on a shared host for each such change, and it needs a diff classifier for "edits an exported value". (c) Raise the gate budget for every change. That is broad and slows every review.
-
-Recommendation: (a), revisited if a merge with no declared-red line reds main the same way again.
+_None yet._
 
 ## Answered
 
@@ -247,5 +241,15 @@ a fresh entry; (b) delete them by hand in that project once the re-queue has run
 
 Recommendation: (a) keep them; nothing reads the archive as review coverage, and the re-queue
 plus the post-merge queue are the live record.
+
+**Answered 2026-11-21 by the user:** Let's go with your recommendation.
+
+### Should a change to a widely read default run more than the budgeted gate? (asked by the plan role 2026-11-21)
+
+On 2026-11-20 `dac2a150b` flipped `DEFAULT_INSTANCES` 1 → 3 in src/roles/runner-ids.ts, a one-line constant read across scheduling, GUI and doctor paths. `npm run test:gate` (`--affected --budget=20`) passed it on 28 tests in 8.2 s. `npm test` at that commit fails 23 tests, and main stayed red for about 3.5 hours. The gate works as designed: test/affected-tests.ts ranks tests by import distance, `fitBudget` keeps the nearest that fit 20 s, and its header accepts that "a test this leaves out costs a red main that the watch finds and ci heals forward". The author's own declared-red RISK line, the other half of the report, is BUGS.md's "A change whose own commit message says it leaves tests failing still merges…", and that bug alone would have stopped this commit.
+
+Options: (a) keep the trade-off. The declared-red refusal plus the main watch and ci cover it. (b) Route a change that edits an exported constant's value (not just adds code) to the full check before merge. That catches silent default flips, but it costs a full suite run on a shared host for each such change, and it needs a diff classifier for "edits an exported value". (c) Raise the gate budget for every change. That is broad and slows every review.
+
+Recommendation: (a), revisited if a merge with no declared-red line reds main the same way again.
 
 **Answered 2026-11-21 by the user:** Let's go with your recommendation.
