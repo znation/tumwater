@@ -42,6 +42,13 @@ export async function committerIdentArgs(cwd: string): Promise<string[]> {
   return ["-c", `user.name=${name}`, "-c", `user.email=${email}`];
 }
 
+/** The argv of a harness commit of just `paths`: the committer identity, the pinned author, and
+ * `--only` with a pathspec, so the commit takes those paths' working-tree content and leaves
+ * other staged or dirty paths alone. The result is the args to pass after `git` or `gitTry`. */
+export async function commitOnlyArgs(cwd: string, subject: string, paths: string[]): Promise<string[]> {
+  return [...(await committerIdentArgs(cwd)), "commit", ...commitAuthorArgs(), "--only", "-m", subject, "--", ...paths];
+}
+
 import { spawn, type PromiseWithChild } from "node:child_process";
 import { findOnPath } from "../files/files.js";
 import { realGitFromXcrun } from "./xcrun-git.js";

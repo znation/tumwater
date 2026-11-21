@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { withLock, withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
-import { commitAuthorArgs, committerIdentArgs, git, gitTry } from "../git/git-run.js";
+import { commitOnlyArgs, git, gitTry } from "../git/git-run.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { mergeLockDir } from "../paths.js";
 import { plural } from "../text/phrases.js";
@@ -171,7 +171,7 @@ async function commitFiling(
   );
   try {
     await git(root, "add", "--", "BUGS.md");
-    await git(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "--only", "-m", commitSubject, "--", "BUGS.md");
+    await git(root, ...(await commitOnlyArgs(root, commitSubject, ["BUGS.md"])));
   } catch (err) {
     await restoreBugsFile(root, file, before);
     return { status: "skipped", reason: `the commit failed: ${errorFirstLine(err)}` };

@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { withLock, withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
-import { commitAuthorArgs, committerIdentArgs, git, gitTry } from "../git/git-run.js";
+import { commitOnlyArgs, git, gitTry } from "../git/git-run.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { mergeLockDir } from "../paths.js";
 import { plural } from "../text/phrases.js";
@@ -151,7 +151,7 @@ export async function closeQuietBugWaitsOnMain(
           writeTextAtomic(path.join(root, spec.archive), closed.archive);
           writeTextAtomic(path.join(root, spec.file), closed.bugs);
           await git(root, "add", "--", ...files);
-          await git(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "--only", "-m", subject, "--", ...files);
+          await git(root, ...(await commitOnlyArgs(root, subject, files)));
         } catch (err) {
           await restore();
           return { status: "skipped", reason: `the close could not be written or committed: ${errorFirstLine(err)}` };

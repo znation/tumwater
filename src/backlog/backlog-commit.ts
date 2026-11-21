@@ -1,7 +1,7 @@
 import { loadConfigSafe } from "../config/config.js";
 import { withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { currentBranch, targetBranch } from "../git/git.js";
-import { commitAuthorArgs, committerIdentArgs, gitTry } from "../git/git-run.js";
+import { commitOnlyArgs, gitTry } from "../git/git-run.js";
 
 /** Commit one operator-written backlog file on main, so the entry reaches the worktrees that
  * branch from main and the primary checkout stays clean for the next fast-forward. Runs under
@@ -23,7 +23,7 @@ export async function commitOperatorBacklogEdit(root: string, file: string, subj
       let committed =
         primary !== null &&
         targetBranch(loadConfigSafe(root).config?.baseBranch, primary) === primary &&
-        (await gitTry(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "--only", "-m", subject, "--", file)) !== null;
+        (await gitTry(root, ...(await commitOnlyArgs(root, subject, [file])))) !== null;
       if (!committed) {
         // The write landed in the working tree but could not be committed to the base branch:
         // roll the file back to its committed state (HEAD) so the primary checkout stays clean

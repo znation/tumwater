@@ -1,7 +1,7 @@
 import { loadConfigSafe } from "../config/config.js";
 import { withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { currentBranch, headOf, isMergedInto, targetBranch } from "../git/git.js";
-import { GitError, commitAuthorArgs, committerIdentArgs, gitTry, runGit } from "../git/git-run.js";
+import { GitError, commitOnlyArgs, gitTry, runGit } from "../git/git-run.js";
 import { stampedRole, stampedSubject } from "../git/commit-message.js";
 import { shortSha } from "../text/format.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -37,7 +37,7 @@ async function revertCommitIn(
   const pathsSpec = ((await gitTry(wt, "diff", "--cached", "--name-only", "--no-renames")) ?? "")
     .split("\n")
     .filter((p) => p.length > 0);
-  if ((await gitTry(wt, ...(await committerIdentArgs(wt)), "commit", ...commitAuthorArgs(), "--only", "-m", message, "--", ...pathsSpec)) === null) {
+  if ((await gitTry(wt, ...(await commitOnlyArgs(wt, message, pathsSpec)))) === null) {
     await gitTry(wt, "revert", "--abort");
     return { ok: false, error: `the revert of ${shortSha(sha)} did not commit; nothing was committed` };
   }
