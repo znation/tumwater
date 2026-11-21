@@ -151,8 +151,8 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   function budgetCardHtml(b, blocks, only, chain) {
     // A subscription-only team has no priced spend for a cap to bind, so the window card
     // stands in place of the spend card and carries no editor — but only while a window block
-    // actually exists; an all-free subscription-only team (only and free, no windows) falls
-    // through to the "Free models" spend card below so it never renders an empty window card.
+    // actually exists (a subscription with no window reported yet still has one); a team with
+    // no subscription seam falls through to the spend card below, never an empty window card.
     if (only && blocks && blocks.length > 0) {
       return "<div class='side-card' title='Subscription usage windows — how much of each window the team has used, and when it resets'>" +
         "<span class='side-card-label'>" + icon("clock") + "subscription window</span>" + windowLinesHtml(blocks, only, chain) + "</div>";
