@@ -147,6 +147,17 @@ test("land exits 1 with a nothing-to-land message when the ref is already on mai
   assert.equal(sh(repo, "git", "rev-parse", "main"), mainBefore);
 });
 
+test("land --dry-run on a ref already on main exits 1 with the refusal, and prints no preview", async () => {
+  const { repo } = await rootWithFeat("cli land dry run nothing");
+  const mainBefore = sh(repo, "git", "rev-parse", "main");
+
+  const r = await cli(repo, "land", "main", "--dry-run");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /nothing to land: [0-9a-f]{7,} is already on main/);
+  assert.doesNotMatch(r.stdout, /would land/, "a refused preview prints no commit list");
+  assert.equal(sh(repo, "git", "rev-parse", "main"), mainBefore);
+});
+
 test("land refuses a dirty checkout before it writes, and names the uncommitted changes", async () => {
   const { repo, feat } = await rootWithFeat("cli land dirty");
   seedCommit(feat, "feat.txt", "feat\n", "feat edit");
