@@ -147,7 +147,7 @@ function cmdShow(flag: string | undefined): number {
     return refuse(`could not read the note: ${errorMessage(err)}`);
   }
   // The lessons are model-authored text, so strip terminal controls at this display
-  // boundary — the same treatment say()/fail()/the TUI frame give every untrusted
+  // boundary — the same treatment say()/fail() give every untrusted
   // string, so a prompt-injected lesson with an ANSI escape (cursor move, title set,
   // OSC 52 clipboard write, carriage-return overwrite) cannot drive the operator's
   // terminal when they run `tumwater-notes show`.

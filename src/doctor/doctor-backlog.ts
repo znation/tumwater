@@ -270,10 +270,10 @@ function staleQueuedPromptRows(root: string, now: number): Array<QueuedListRow &
 }
 
 /** Stale queued prompts — a prompt queued for a role (`tumwater prompt --role <id>`, the
- * dashboard composer, the TUI, a `--at` delay whose time has now passed) that has waited more
+ * dashboard composer, a `--at` delay whose time has now passed) that has waited more
  * than a day for that role to dequeue it. A role that is paused, disabled, or failing never
  * reaches the run that would dequeue the prompt, so it waits indefinitely and only the Inbox
- * views (`tumwater prompt --list`, the dashboard Inbox tab, the TUI Inbox pane) show its age —
+ * views (`tumwater prompt --list`, the dashboard Inbox tab) show its age —
  * and only when the operator looks. This names the oldest due-but-undelivered prompt, its role,
  * and the deliver-or-drop commands. Reads the queue through the shared `staleQueuedPromptRows`
  * traversal (no new reader in src/inbox/), keeping only
@@ -400,13 +400,13 @@ export async function commitUncommittedBacklog(root: string, config: TumwaterCon
   return { base: d.base, committed, failed, skipped: null };
 }
 
-/** The committed/failed/skip wording the CLI, the dashboard handler and the TUI flash all share
+/** The committed/failed/skip wording the CLI and the dashboard handler all share
  * for a BacklogCommitReport, so the three surfaces cannot drift: one `committed <file> on
  * <base>` line per committed file, one `could not commit <file> — commit it by hand` line per
  * failed file, then the skipped sentence when set. `[]` when the report committed nothing,
  * failed nothing, and carried no skip sentence. `tumwater doctor --commit-backlog`
  * (src/cli/cli-doctor-command.ts), the dashboard Health card's Commit backlog
- * (handleCommitBacklog) and the TUI Health tab's Ctrl+A all render from this one source. */
+ * (handleCommitBacklog) render from this one source. */
 export function backlogCommitLines(report: BacklogCommitReport): string[] {
   const lines = [
     ...report.committed.map((file) => `committed ${file} on ${report.base}`),
@@ -419,8 +419,8 @@ export function backlogCommitLines(report: BacklogCommitReport): string[] {
 /** The single-line message a surface flashes or answers for a BacklogCommitReport: the shared
  * backlogCommitLines joined with "; ", or the nothing-to-commit sentence when the report
  * committed nothing, failed nothing and carried no skip sentence. Lives here beside
- * backlogCommitLines so the dashboard Health card's Commit backlog handler and the TUI Health
- * tab's Ctrl+A flash cannot drift from each other. */
+ * backlogCommitLines so the dashboard Health card's Commit backlog handler and the CLI's
+ * lines cannot drift from each other. */
 export function backlogCommitMessage(report: BacklogCommitReport): string {
   return joinOr(backlogCommitLines(report), "; ", "nothing to commit — every watched backlog or brief file is committed");
 }

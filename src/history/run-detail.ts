@@ -2,7 +2,7 @@
  * `--transcript` forms: the read-only command body that resolves which run to open, validates
  * it, and prints the rendered trail (or the not-found line). The payload is collected by
  * run-detail-data.ts (runCommitSha / runMergedSha beside it) and rendered by
- * run-detail-render.ts, so the CLI, the TUI's History drill-down, and the GUI's /api/run serve
+ * run-detail-render.ts, so the CLI and the GUI's /api/run serve
  * the same text. Read-only over the event log, stdout only. The -f/--follow form repaints the
  * same trail through followView's shared loop instead of exiting after one render. */
 import { fail, say, sayJson } from "../terminal.js";

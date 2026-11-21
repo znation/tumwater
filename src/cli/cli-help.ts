@@ -94,7 +94,7 @@ const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
  * or no topic — and cli.ts dispatches normally (an unknown argument is still named).
  * Intercepted from here because the flag must not collide with a command's real flags and
  * every command gains the convention at once, `help` included; a free-form text command's
- * positionals are operator prose, so a `--help` among them (`tumwater bug the TUI mishandles
+ * positionals are operator prose, so a `--help` among them (`tumwater bug the GUI mishandles
  * --help output`) is content, not a request — any non-flag token stands the interception
  * down, while a flag-only invocation (`prompt --role qa --help`) still answers help. */
 export function helpTopicForArgs(command: string | undefined, args: readonly string[]): string | null {

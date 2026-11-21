@@ -548,7 +548,7 @@ export async function reapPreviousTeamOrphans(
 /** How long an orphan must have been running before the automatic reap may kill it: a young
  * orphan may still be a live run's process that findOrphans read as parentless mid-hand-off,
  * and ten minutes is far longer than any such attribution would hold. The operator's
- * `--kill-orphans`/dashboard/TUI click bypasses this — doctors judge with their eyes. */
+ * `--kill-orphans`/dashboard click bypasses this — doctors judge with their eyes. */
 const ORPHAN_REAP_MIN_AGE_MS = 10 * 60_000;
 /** How often the orchestrator's poll loop stands down the orphan reap — a once-per-interval
  * throttle so a slow process-table scan never runs on the busy per-poll hot path. The reap's

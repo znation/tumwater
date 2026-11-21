@@ -49,7 +49,7 @@ const CAP_SPEC = { names: ["--cap"], value: true, valueName: "<usd>" };
 /** A plain-decimal count like `.5`, `05` or `00.5` that Number() reads but JSON.parse cannot
  * (JSON forbids a leading dot and a leading zero), so a `role` numeric write must spell it back
  * in JSON form (`0.5` for `00.5`) before setConfigKey, whose JSON.parse fallback would
- * otherwise store the literal string. The same plain-decimal rule the TUI's and GUI's editors
+ * otherwise store the literal string. The same plain-decimal rule the GUI's editors
  * apply (`Number()`), so the terminal admits exactly the spellings they do. Returns null for
  * text that is not a plain decimal, so the caller leaves it untouched (the config validator
  * owns the rest). */
@@ -448,7 +448,7 @@ function writeQuietHours(root: string, id: string, rest: string[], clearQuiet: b
 
 /** `tumwater role <id>`'s daily-cap write: the terminal twin of `config set
  * maxDailyCostUsdPerRole.<base> <usd>`, the two remaining per-role holds' write the
- * dashboard and the TUI already own. The value lands in maxDailyCostUsdPerRole.<base>
+ * dashboard already owns. The value lands in maxDailyCostUsdPerRole.<base>
  * through the same setConfigKey/unsetConfigKey core `config set`/`config unset` use, so
  * checkDailyBudgetUsd (with the typed key as its label) and validateConfig own validation
  * and the write is atomic. The director is exempt — it has no cap, like the notes and
@@ -464,7 +464,7 @@ function writeDailyCap(root: string, id: string, rest: string[], clearCap: boole
   // would still read as a non-negative USD amount (an exponent like "1e2" → 100) would
   // otherwise sail past both plainDecimalToJson (which only rewrites JSON-unparseable
   // spellings like `05`) and checkDailyBudgetUsd's non-negative check and silently write
-  // the misread — the same silent misread the TUI Ctrl+B budget editor and the GUI cap
+  // the misread — the same silent misread the GUI cap
   // drawer now reject. Every non-exponent spelling JSON reads as a non-negative USD is
   // already a plain decimal, so the exponent form is exactly the silent-write set; hex,
   // negative and non-numeric spellings fall through to the write path, whose
@@ -491,7 +491,7 @@ function writeMinRunInterval(root: string, id: string, rest: string[], clearInte
   // would still read as a non-negative second count (an exponent like "1e2" → 100) would
   // otherwise sail past both plainDecimalToJson (which only rewrites JSON-unparseable
   // spellings like `05`) and validateConfig's non-negative check and silently write the
-  // misread — the same silent misread the TUI Ctrl+S editor and the GUI interval drawer
+  // misread — the same silent misread the GUI interval drawer
   // now reject. Every non-exponent spelling JSON reads as a non-negative count is already a
   // plain decimal, so the exponent form is exactly the silent-write set; hex, negative and
   // non-numeric spellings fall through to the write path, whose validateConfig message

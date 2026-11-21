@@ -37,7 +37,7 @@ export const HISTORY_RESULT_CLASSES = ["changes", "none", "refused", "problems"]
 /** One outcome class, derived from the list above so the two cannot disagree. */
 export type HistoryResultClass = (typeof HISTORY_RESULT_CLASSES)[number];
 
-/** The spelling each class has on `--result` and in the TUI filter: `changes` reads `merged`. */
+/** The spelling each class has on `--result`: `changes` reads `merged`. */
 export const HISTORY_RESULT_FLAG_NAMES: Readonly<Record<HistoryResultClass, string>> = { changes: "merged", none: "none", refused: "refused", problems: "problems" };
 
 /** Parse a `--result` value: a flag name, or a class name (so `changes` stays a hidden alias). */
@@ -212,8 +212,8 @@ export interface RunRow {
 }
 
 /** The five unpadded cell strings of one run row, the one home for the column values. The CLI
- * table (history-render.ts's renderRow, which pads) and the TUI History pane (tui-history.ts) both
- * build their lines from these; runRowGrepHaystack below joins them too, so the surfaces that
+ * table (history-render.ts's renderRow, which pads) builds its lines from these;
+ * runRowGrepHaystack below joins them too, so the surfaces that
  * render or search a run row cannot disagree about what a row's fields say. `run` is the
  * unpadded number (the caller adds the `#` prefix), and a null `durationMs` (the run's start
  * sits outside the scanned window) shows the em dash rather than a fabricated duration. */
@@ -275,8 +275,8 @@ function runRowGrepHaystack(row: RunRow): string {
 }
 
 /** The shared run-grep rule: a case-insensitive substring match over runRowGrepHaystack.
- * Four call sites apply it — `tumwater history --grep`, /api/history's window and count
- * shapes, and the TUI History search — so the three surfaces cannot disagree on what a match
+ * Applied by `tumwater history --grep` and /api/history's window and count
+ * shapes, so the surfaces cannot disagree on what a match
  * means. The pattern is lowercased once here, not per row. */
 export function runRowsMatchingGrep(rows: RunRow[], pattern: string): RunRow[] {
   const needle = pattern.toLowerCase();
@@ -285,9 +285,8 @@ export function runRowsMatchingGrep(rows: RunRow[], pattern: string): RunRow[] {
 
 /** The shared model filter: keeps the rows whose run_start named exactly one of `models`
  * (case-sensitive, the strings `history --summary --by model` prints); a null-model row never
- * matches. Four call sites apply it — `tumwater history --model`, /api/history?model, the TUI
- * History model selector, and newestRunRow's `--last` model filter — so the surfaces cannot
- * disagree on what a model selector matches. */
+ * matches. Applied by `tumwater history --model`, /api/history?model, and newestRunRow's
+ * `--last` model filter, so the surfaces cannot disagree on what a model selector matches. */
 export function runRowsOnModels(rows: RunRow[], models: string[]): RunRow[] {
   return rows.filter((r) => r.model !== null && models.includes(r.model));
 }

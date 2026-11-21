@@ -178,7 +178,7 @@ export function renderWakeList(wakes: { roles: string[]; atMs: number }[], now: 
 }
 
 /** The string-returning confirmation of `wake [--in <duration>]`, kept for the surfaces that
- * print prose: the dashboard's POST /api/wake flash, the TUI's wake editor, and the backlog
+ * print prose: the dashboard's POST /api/wake flash and the backlog
  * role-wake. It is a thin wrapper over `requestWakeOutcome` (the marker-writing core beside
  * it) that returns only the message, so every surface's wording is one read and the `--json`
  * acknowledgement cannot drift from it. */
@@ -187,7 +187,7 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
 }
 
 /** The marker-writing core of `wake [--in <duration>]`, shared with the GUI's POST /api/wake
- * and the TUI through `requestWake`: clear the named roles' backoff and pull nextRunAt to now
+ * and `requestWake`'s callers: clear the named roles' backoff and pull nextRunAt to now
  * (touching ONLY the schedule — counters, wake tracking, and session continuity are
  * untouched), and drop the marker a running team consumes within one poll. With a positive
  * `inMs` (`wake --in`'s parsed duration) the wake is SCHEDULED: only the marker is written,
@@ -325,7 +325,7 @@ function requestReclaim(root: string): string {
 }
 
 /** Queue a prompt for one role and wake that role — the one workflow `tumwater prompt
- * --role`, the dashboard's POST /api/prompt-role, and the TUI's Ctrl+R submit all share:
+ * --role` and the dashboard's POST /api/prompt-role all share:
  * submitRolePrompt enqueues into the role's own queue (length-capped by the shared rule)
  * and logs under the role, then requestWake's single-role marker brings a live team's
  * role in within one poll instead of whenever its backoff next expires (and is safe with
@@ -415,12 +415,12 @@ export function timedPauseBits(
   };
 }
 
-/** The per-role pause confirmation `tumwater pause --role` prints and the TUI's Ctrl+P
- * flashes — one literal so the two surfaces cannot drift (the same single-writer discipline
- * requestWake's wording already follows). `changed` is pauseRole's return: false reports the
+/** The per-role pause confirmation `tumwater pause --role` prints (one literal, so the wording
+ * cannot drift from resume's; the same single-writer discipline requestWake's wording already
+ * follows). `changed` is pauseRole's return: false reports the
  * idempotent no-op in the CLI's own words instead of a fresh confirmation. `timed` is the
- * deadline this command's `--for` set, echoed back with its wall-clock resume time; the TUI
- * (which cannot pass a deadline) omits it and keeps the plain wording. */
+ * deadline this command's `--for` set, echoed back with its wall-clock resume time; a surface
+ * that cannot pass a deadline omits it and keeps the plain wording. */
 export function rolePauseMessage(
   root: string,
   role: string,
@@ -437,8 +437,8 @@ export function rolePauseMessage(
   return `role ${role} paused${forPhrase} — it starts no new runs${when} (current runs finish; the rest of the team is unaffected)${note}${disabledNote}${tail}`;
 }
 
-/** The per-role resume confirmation, shared between `tumwater resume --role` and the TUI's
- * Ctrl+P for the same no-drift reason. Carries the team-pause interplay note cmdResume
+/** The per-role resume confirmation, kept beside rolePauseMessage so the pair cannot
+ * drift. Carries the team-pause interplay note cmdResume
  * phrases: the team pause is the stronger gate, so with its marker present a freshly
  * resumed role still starts no runs (the director is exempt from that gate, so its
  * resumption is real) — saying nothing would promise running the scheduler then deny, the
@@ -482,11 +482,11 @@ type ReclaimAck =
       durationMs: number;
     };
 
-/** One manual reclaim, shared by `tumwater reclaim`, the dashboard's POST /api/reclaim and the
- * TUI's Health Ctrl+E: with a live team the pass is requested through the marker the
+/** One manual reclaim, shared by `tumwater reclaim`, the dashboard's POST /api/reclaim:
+ * with a live team the pass is requested through the marker the
  * orchestrator consumes (so in-use worktrees are respected); with none running it runs
  * in-process, since nothing is in use. Returns the prose confirmation and its `--json`
- * acknowledgement together, never failing, so a server or TUI can show the prose and a CLI can
+ * acknowledgement together, never failing, so a server can show the prose and a CLI can
  * print the data from one call. */
 export async function runManualReclaimOutcome(root: string): Promise<{ message: string; payload: ReclaimAck }> {
   if (markerApplyNote(root).live) {
@@ -510,7 +510,7 @@ export async function runManualReclaimOutcome(root: string): Promise<{ message: 
 }
 
 /** The prose confirmation of a manual reclaim (runManualReclaimOutcome's message): the line
- * `tumwater reclaim`'s text form, the dashboard's POST /api/reclaim and the TUI's Health Ctrl+E
+ * `tumwater reclaim`'s text form, the dashboard's POST /api/reclaim
  * all print verbatim. Kept as a one-line wrapper so those callers are unchanged. */
 export async function runManualReclaim(root: string): Promise<string> {
   return (await runManualReclaimOutcome(root)).message;

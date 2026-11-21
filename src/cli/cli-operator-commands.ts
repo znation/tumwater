@@ -47,7 +47,7 @@ import {
  * via a request marker, so it lives beside them in src/cli/cli-retire-command.ts. The
  * marker-writing cores and shared confirmations they print live in
  * src/operator/operator-intent.ts (shared with the
- * dashboard and TUI); the team-side consumer half is src/operator/operator-requests.ts;
+ * dashboard); the team-side consumer half is src/operator/operator-requests.ts;
  * the `prompt` command, which drives the durable per-role queues rather than the marker
  * protocol, lives beside them in src/inbox/prompt-commands.ts, and the `config` command,
  * which reads and writes tumwater.json directly rather than touching team state, in
@@ -363,8 +363,8 @@ function pauseRoleGroup(root: string, roles: string[], forMs: number | undefined
       "pause --reason states why the whole team is paused — a per-role pause carries no reason (drop --role, or run bare `tumwater pause --reason <text>`)",
     );
   // Per-role branch: pauseRole in src/team/team-state.ts is the single writer of the role
-  // marker (the TUI's Ctrl+P and the dashboard's /api/pause-role toggle call it too), so
-  // the CLI, TUI, and GUI cannot drift on format or idempotence; a false return means the
+  // marker (the dashboard's /api/pause-role toggle calls it too), so
+  // the CLI and GUI cannot drift on format or idempotence; a false return means the
   // role was already in the set, which rolePauseMessage words — unless a `--for` stands,
   // which overwrites the deadline and reports the fresh confirmation.
   const statuses: string[] = [];

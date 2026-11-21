@@ -29,14 +29,14 @@ export interface ChainTierInfo {
 /** The running orchestrator's info file (.tumwater/state/orchestrator.json): who is driving the
  * team, since when, with which roles, and what its most recent poll published about the world
  * (build staleness, the daily budget, engaged fallback demotions, the disk floor). The
- * orchestrator writes it (writeOrchestratorInfo); the separate-process observers — status, TUI,
+ * orchestrator writes it (writeOrchestratorInfo); the separate-process observers — status,
  * GUI, doctor, and the second-team refusal — read it here so they never depend on the scheduler
  * module itself. The operator pause markers are the other team-state domain and live beside
  * this one in team-state.ts; this module owns the info file alone. */
 
 /** The permit pool's published state (plans/provider-concurrency.md §8): the team total's
  * in-use/cap and the maintenance reserve. The orchestrator publishes it through the info
- * file so observers (status, TUI, GUI) render the same facts without coupling to the
+ * file so observers (status, GUI) render the same facts without coupling to the
  * scheduler's Semaphore. */
 export interface PermitSnapshot {
   inUse: number;
@@ -92,7 +92,7 @@ export interface DiskStatus {
 
 /** The running orchestrator's info file (.tumwater/state/orchestrator.json): who is driving
  * the team, since when, and with which roles. Written by runOrchestrator; read here so
- * observers (status, TUI, GUI) never depend on the scheduler module itself. */
+ * observers (status, GUI) never depend on the scheduler module itself. */
 export interface OrchestratorInfo {
   pid: number;
   startedAt: number;
@@ -201,13 +201,13 @@ export function publishInfoFields(
 
 /** Read the running orchestrator's info file; null when it is missing or unreadable.
  * Never throws — a torn write (e.g. a crash mid-write) must not take down observers
- * that poll this every second (TUI, GUI, status). The nested fields cross the same
+ * that poll this every second (GUI, status). The nested fields cross the same
  * hand-editable boundary as the file body, so each known field is validated here rather than
  * trusted because the `OrchestratorInfo` annotation says so: a foreign shape (a scalar
  * `fallbackDemotions`, a `disk` missing its numbers) would otherwise throw out of a render —
  * `modelPairName(p) in publishedDemotions` or `formatGB(undefined)` — on every second's
  * poll. An unreadable field is dropped, so observers read it as absent. The value is served
- * from a stat-keyed cache (infoCache): the TUI, GUI and `tumwater status` poll snapshot every
+ * from a stat-keyed cache (infoCache): the GUI and `tumwater status` poll snapshot every
  * second, but the orchestrator writes the info file only at start and whenever a published
  * field (build, budget, disk, permits) changes — between writes it sits unchanged for minutes.
  * An unchanged file costs one stat syscall per poll instead of re-reading, re-parsing, and

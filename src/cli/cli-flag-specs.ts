@@ -168,7 +168,7 @@ export const LOGS_TRANSCRIPT_FLAG: FlagSpec = {
  * uninitialized directory names the cap instead of the not-initialized hint — the same
  * precedence the shape error already follows. An optional `hint` rides into that gate-level
  * cap message, exactly as the body's own check phrases it, so the wording cannot differ by
- * which check fired. The bodies keep their own cap checks: the GUI's and TUI's pause paths
+ * which check fired. The bodies keep their own cap checks: the GUI's pause paths
  * reach the writers without this CLI gate and still need the bound beside them. */
 export function durationFlagSpec(label: string, hint?: string): FlagSpec {
   return {

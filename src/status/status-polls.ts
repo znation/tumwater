@@ -153,7 +153,7 @@ export function queueInFlight(root: string, entries: readonly MergeEntry[], runn
 }
 
 // The last config each root loaded successfully. snapshot is polled every second by the
-// TUI and GUI, where a throw would kill (or blind) the observer — but tumwater.json can be
+// GUI, where a throw would kill (or blind) the observer — but tumwater.json can be
 // transiently broken while a user edits it live-reload style. On failure we keep showing
 // the team with the last known-good role set; the orchestrator does the same in its own
 // reload poll and surfaces the error as a warning event visible in `tumwater logs`.
@@ -187,7 +187,7 @@ export function configForStatus(root: string): TumwaterConfig {
   return configStateForStatus(root).config;
 }
 
-// Per-poll runner-state cache (stat-cache.cachedByStat): the TUI and GUI poll snapshot every
+// Per-poll runner-state cache (stat-cache.cachedByStat): the GUI polls snapshot every
 // second, but a role's state file changes only at its run boundaries (start/end) — between runs
 // it sits unchanged for minutes. Serve an unchanged file from the stat-keyed cache: one stat
 // syscall per file per poll instead of re-reading and re-parsing JSON that hasn't moved.
@@ -248,7 +248,7 @@ const maintenanceCounters = new Map<string, ReturnType<typeof newMaintenanceWind
  * plus the enabled maintenance roles currently in flight (running a role run, so the `used`
  * figure matches the gate's). `held` names the enabled maintenance role ids the scheduler holds
  * while `used >= allowance`. Pure read — unlike the gate it logs nothing and keeps no hold edge,
- * so it can run in the TUI/GUI process every second. */
+ * so it can run in the GUI process every second. */
 export function maintenanceQuotaForPoll(
   root: string,
   perWorkMerge: number,

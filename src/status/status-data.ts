@@ -42,7 +42,7 @@ import { heartbeatPath, maintenancePath } from "../paths.js";
 import { readJsonFile } from "../files/json-files.js";
 
 /** Status data collection: one fresh snapshot of the team for observers (`tumwater
- * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers
+ * status`, GUI). Rendering lives in status-render.ts; the per-poll cached readers
  * snapshot() reads through live in status/status-polls.ts and status/status-main-check.ts — the
  * main-check scan, the last-known-good config, the runner-state stat cache, the pooled slots, the
  * declared check, the ci and remote-CI ledgers, the merge-in-flight marker and the maintenance
@@ -401,7 +401,7 @@ export interface StatusSnapshot {
    * returned null (no `check.command` and no qualifying npm `package.json` on the walked-up
    * root) — the doctor `check` row's undeclared state (src/doctor/doctor-project-checks.ts's
    * checkBuildCheck). Present only in that state, so the always-on blue `no-check` info alert
-   * surfaces the state on `tumwater status`, the dashboard and the TUI; absent
+   * surfaces the state on `tumwater status` and the dashboard; absent
    * otherwise, so the surfaces render exactly as before. */
   noDeclaredCheck?: boolean;
   /** The reason the live tumwater.json did not load (a validation or parse error's text, or
@@ -414,26 +414,26 @@ export interface StatusSnapshot {
    * the marker-less file, the unreadable candidate, or a marked block with no text
    * (src/brief/brief.ts's briefStatus.missing) — the doctor `brief` row's marker-less,
    * unreadable and empty-block warning state. Present only in that state, so the always-on
-   * amber `no-brief` alert surfaces the silent state on `tumwater status`, the dashboard and
-   * the TUI; absent otherwise (including the bare pre-init repo), so the surfaces render
+   * amber `no-brief` alert surfaces the silent state on `tumwater status`, the dashboard; absent
+   * otherwise (including the bare pre-init repo), so the surfaces render
    * exactly as before. */
   noBrief?: boolean;
   /** True when the resolved brief block exceeds the read cap (src/brief/brief.ts's
    * briefStatus.overCap) — the doctor `brief` row's over-cap warning state, the warning tune
    * extractPrompt truncates every run's prompt with. Present only in that state (the
-   * always-on amber `brief-truncated` alert surfaces it on `tumwater status`, the dashboard
-   * and the TUI); absent otherwise (at-cap, under-cap, empty and marker-less-keep-
+   * always-on amber `brief-truncated` alert surfaces it on `tumwater status`, the dashboard);
+   * absent otherwise (at-cap, under-cap, empty and marker-less-keep-
    * `no-brief`'s), so the surfaces render exactly as before. */
   briefTruncated?: boolean;
   /** Every role whose notes file runs past the read bound — the doctor `role notes` row's
    * over-bound warning state (src/doctor/doctor-role-notes.ts's checkRoleNotes), raised as a
-   * standing amber alert on `tumwater status`, the dashboard and the TUI. Each entry is the
+   * standing amber alert on `tumwater status` and the dashboard. Each entry is the
    * role's id and its note's length in characters, sorted newest-char-count first; present
    * only when non-empty, so the surfaces render exactly as before. */
   roleNotesOverCap?: RoleNoteOverCap[];
   /** Every operator-kept workspace patch under `.tumwater/salvage/` (src/status/status-salvage.ts's
    * collectSalvagePatches), the doctor `salvage patches` row's warning state raised as a standing
-   * amber alert on `tumwater status`, the dashboard and the TUI — so a run's kept leftovers are
+   * amber alert on `tumwater status`, the dashboard — so a run's kept leftovers are
    * not silently pruned by session retention. Each entry is the patch's position in the
    * oldest-first list (the number the doctor row and `tumwater salvage` print, which
    * `salvage --show <n>` / `--drop <n>` address), its file name, save time and byte size;
@@ -859,10 +859,9 @@ export function snapshotForStatus(root: string, modelsPath = piModelsPath(), now
  * {@link snapshotForStatus} returns. This part's body is still fully synchronous (the
  * pin-sourced `mergeQueue` read that makes it genuinely async lands in the next part, where
  * it becomes `await readMergePins(...)`), so the `async` here is the signature the surfaces
- * convert to — the GUI's `/api/status` and the CLI `await` it. The TUI deliberately reads
- * `snapshotForStatus` synchronously: a keypress must re-render in the same turn, which an
- * awaited read cannot do, and the test harness (stubs the 1s poller) reads frames without
- * flushing a microtask. When the read becomes genuinely async, the TUI moves to this form.
+ * convert to — the GUI's `/api/status` and the CLI `await` it. `tumwater status -f` reads
+ * `snapshotForStatus` synchronously: its first paint must land in the tick that scheduled it.
+ * When the read becomes genuinely async, that follow loop moves to this form.
  */
 export async function snapshot(root: string, modelsPath = piModelsPath(), now = Date.now()): Promise<StatusSnapshot> {
   return snapshotForStatus(root, modelsPath, now);

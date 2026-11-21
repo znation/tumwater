@@ -102,8 +102,7 @@ interface RevertPreview {
 }
 
 /** The commit a run's merge put on main, or the CLI's refusal: the run did not merge, or merged
- * but the event log no longer names its commit. Shared by `tumwater revert <role> <n>` and the
- * TUI History trail's Ctrl+V so the two cannot drift. */
+ * but the event log no longer names its commit. Used by `tumwater revert <role> <n>`. */
 export function runRevertSha(
   role: string,
   run: number,
@@ -175,7 +174,7 @@ export async function revertMergedCommit(
   ref: string,
 ): Promise<{ ok: true; headSha: string; beforeSha: string; subject: string } | { ok: false; error: string }> {
   try {
-    // Yield first: a synchronous caller (the TUI key handler) may write again right after this
+    // Yield first: a synchronous caller (an input handler) may write again right after this
     // call, and that write takes the same lock synchronously — a lock already held across our
     // awaits would block its event loop until the lock times out.
     await new Promise<void>((resolve) => setImmediate(resolve));

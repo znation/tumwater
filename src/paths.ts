@@ -174,7 +174,7 @@ export function sessionPruneResumePath(root: string, backend: "codex" | "opencod
 
 /** The blocking-housekeeping progress marker (src/orchestrator/retention.ts, the session
  * retention prune): one orchestrator's long synchronous pass, written while it runs and removed
- * when it ends, so the separate (responsive) GUI and TUI processes can say what the blocked poll
+ * when it ends, so the separate (responsive) GUI process can say what the blocked poll
  * loop is doing (PLANS.md "Visible session cleanup, part 1/3"). Runtime state under
  * .tumwater/state/, never committed; absent whenever no such pass is running. */
 export function maintenancePath(root: string): string {
@@ -247,7 +247,7 @@ export function roleLessonsPath(root: string, role: string): string {
 
 /** The in-flight merge marker (merge queue 4/5): the orchestrator's drain task
  * writes it (merge-slot.ts, merge queue 4/5) and removes it after every outcome — the observers
- * (`status`, TUI, GUI) are separate processes that cannot see the drain's in-memory promise,
+ * (`status`, GUI) are separate processes that cannot see the drain's in-memory promise,
  * but they can read this file (plans/merge-queue.md). */
 export function mergeStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "merging.json");
@@ -293,7 +293,7 @@ export function quarantinePath(root: string): string {
 
 /** The cross-process lock serializing read-modify-write updates of quarantine.json (INV-BI6):
  * the orchestrator's main-watch settlement and review-gate flake recording and the separate
- * `tumwater quarantine --release` process (CLI, TUI, GUI) each read the list then rewrite it,
+ * `tumwater quarantine --release` process (CLI, GUI) each read the list then rewrite it,
  * and an unguarded last-writer overwrite drops one side's update — a released test re-enters
  * the list, or a newly quarantined flake is lost and its later failures are no longer
  * excused. Same mkdir-and-pid mutex as slotsLockPath. */
@@ -394,7 +394,7 @@ export function pausedRolesLockPath(root: string): string {
  * report headers name as their source, so a renamed log cannot leave either half behind. */
 export const EVENTS_LOG_BASENAME = "events.jsonl";
 
-/** The append-only harness event log (events.ts); the CLI, TUI, and status payload read it. */
+/** The append-only harness event log (events.ts); the CLI, GUI, and status payload read it. */
 export function eventsLogPath(root: string): string {
   return path.join(tumwaterDir(root), "log", EVENTS_LOG_BASENAME);
 }
@@ -408,7 +408,7 @@ export function eventsArchivePath(root: string, generation = 1): string {
   return eventsLogPath(root) + "." + generation;
 }
 
-/** A role's raw pi transcript log (.tumwater/log/<role>.pi.jsonl); tailed by the GUI/TUI. */
+/** A role's raw pi transcript log (.tumwater/log/<role>.pi.jsonl); tailed by the GUI. */
 export function piLogPath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "log", `${role}.pi.jsonl`);
 }

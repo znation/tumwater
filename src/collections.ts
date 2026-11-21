@@ -18,16 +18,14 @@ export function groupBy<T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T
 }
 
 /** The distinct items of an iterable, in first-seen order — the single home of the
- * `seen.includes -> push` dedupe, shared by the pending pane's scope lists
- * (postReviewRoles, overlapHolders in ui/tui/tui-pane-pending.ts), the
- * session pane's scope cycle (ui/tui/tui-pane-session.ts's scopeCycle), the report
+ * `seen.includes -> push` dedupe, shared by the report
  * scope fold (report/report-fold.ts's scopeBases), and the rest of the harness's
  * `[...new Set(...)]` dedupes (cli-completion.ts's commands/config keys, cli-operator-commands.ts's
  * role lists, text.ts's splitCommaListUnique/pathTokens, startup-gates.ts's backendsInUse,
  * failure-data.ts's delta roles, doctor-backlog.ts's watched set, doctor-orphans.ts's pid
- * list, main-known-failures.ts's knownMainFailures, cli-help.ts's suggestCommand candidates, and
- * tui-pane-activity.ts's present types), so those sites cannot drift on how a repeat is
- * skipped. Returns a fresh array; the input is never mutated. (The dashboard's
+ * list, main-known-failures.ts's knownMainFailures, cli-help.ts's suggestCommand candidates),
+ * so those sites cannot drift on how a repeat is skipped. Returns a fresh array; the input
+ * is never mutated. (The dashboard's
  * role-scope builder in ui/gui/gui-client-report.ts keeps its own copy by design: it runs
  * in the browser, where harness modules cannot be imported.) */
 export function distinctOrdered<T>(items: Iterable<T>): T[] {

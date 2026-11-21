@@ -17,7 +17,7 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
  * operator's pause stands, null when absent/unreadable/expired. Snapshot-style callers that
  * need both "is the team paused" and its deadline read this once instead of paying two
  * full marker reads (isTeamPaused + pausedUntil each re-read the same file) per poll —
- * the TUI and GUI poll snapshot every second. Never throws (a missing .tumwater/ reads
+ * the GUI polls snapshot every second. Never throws (a missing .tumwater/ reads
  * null). Lives here beside the read-half wrappers below: one module, one marker, one read
  * per poll per observer. */
 export function standingTeamPause(root: string): PauseMarker | null {

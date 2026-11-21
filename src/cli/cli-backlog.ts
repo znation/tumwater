@@ -134,7 +134,7 @@ export async function fileAndAnnounce(
     return;
   }
   // peelPositionals cannot serve this command: bug/plan's text is operator prose, and a
-  // standalone --help/-h token inside it ("the TUI mishandles --help output") is content —
+  // standalone --help/-h token inside it ("the GUI mishandles --help output") is content —
   // the dispatcher's help interception stands down for text-carrying invocations (cli.ts),
   // so a help token that reaches here is always prose, and scanProseFlags keeps it in the
   // positionals rather than flag-shaping it into rest for rejectUnknownArgs to refuse.

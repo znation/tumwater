@@ -204,7 +204,7 @@ function parseLogsFilters(root: string, args: string[]): Pick<LogsFeed, "rest" |
 function parseLogsOutputModes(rest: string[], type: string | null): Pick<LogsFeed, "notable" | "json" | "count" | "follow"> {
   // `--notable` culls routine bookkeeping events the way the dashboard Activity feed's Notable
   // choice does (src/ui/tone.ts eventKind): only non-routine rows pass the feed. One harness-side
-  // rule (isNotableEvent) shared with the TUI Activity pane, so the CLI feed and the pane cannot
+  // rule (isNotableEvent) shared with the GUI Activity feed, so the CLI feed and the GUI cannot
   // disagree about what a notable filter hides. It composes with --since, --grep, --type, --role,
   // -n, -f, --count and --json, and — like --json/--count/--type/--since — is a rival only of the
   // --transcript transcript view.

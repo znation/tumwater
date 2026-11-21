@@ -92,8 +92,8 @@ export function collectSalvagePatches(root: string): SalvagePatch[] {
 /** Resolve a 1-based `position` into a kept-patch list (collectSalvagePatches's output): the
  * patch at that position when it is in range, or the standard out-of-range refusal sentence
  * when it is below 1 or past the list. The single home of the position rule every salvage
- * surface applies — `tumwater salvage --show/--drop/--apply`, the TUI Health Ctrl+G apply and
- * Ctrl+Y drop arms, and the dashboard's /api/salvage-apply and /api/salvage-drop — so the
+ * surface applies — `tumwater salvage --show/--drop/--apply`, the dashboard's
+ * /api/salvage-apply and /api/salvage-drop — so the
  * out-of-range wording and the 1-based indexing cannot drift between them. `patch` and
  * `message` are mutually exclusive: a caller tests `"message" in` the result, and a branch that
  * ends in a `never`-returning fail or a plain return narrows it to `patch`. The message names
