@@ -96,7 +96,7 @@ export function runnerEnabled(config: TumwaterConfig, id: string): boolean {
  * custom roles stay bare — only feature and bugfix may split. The one
  * answer to "which runners should exist", so the orchestrator (part 5b/7) and live reload
  * enumerate the same set. At the default instance count each enabled feature/bugfix role holds
- * twice DEFAULT_INSTANCES plus one ids (`feature`, `feature-2` … `feature-6`); a role with
+ * twice DEFAULT_INSTANCES ids (`feature`, `feature-2` … `feature-6`); a role with
  * `instances: 1` contributes only its bare id. */
 export function runnerIds(config: TumwaterConfig): string[] {
   const ids: string[] = [];
