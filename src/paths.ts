@@ -158,6 +158,13 @@ export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }
 
+/** The orchestrator's self-declared-check attempt record (src/prompt/check-declaration-request.ts):
+ * `{ at, head }`, written when a declaration prompt is queued the director, so the retry gate can
+ * tell a fresh attempt from a stale one. Runtime state under .tumwater/, never committed. */
+export function checkDeclarationStatePath(root: string): string {
+  return path.join(tumwaterDir(root), "check-declaration.json");
+}
+
 /** The blocking-housekeeping progress marker (src/orchestrator/retention.ts, the session
  * retention prune): one orchestrator's long synchronous pass, written while it runs and removed
  * when it ends, so the separate (responsive) GUI and TUI processes can say what the blocked poll

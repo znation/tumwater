@@ -53,6 +53,7 @@ import { heldProviders, heldPairs, heldStarts, windowHeldProviders } from "../te
 import { workReserveCount } from "../scheduling/claims.js";
 import type { ModelCheckGate } from "../model-check/model-check-gate.js";
 import { requestPrinciplesConsolidation } from "../prompt/principles-consolidation.js";
+import { requestCheckDeclaration } from "../prompt/check-declaration-request.js";
 
 /** The setup's constants and collaborators, fixed for the whole run. */
 export interface PollContext {
@@ -238,6 +239,18 @@ export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): 
     });
     if (!consolidation.requested && consolidation.error) {
       ctx.warn(`could not queue the PRINCIPLES.md consolidation: ${consolidation.error}`);
+    }
+  }
+  // No deterministic check declared: the orchestrator queues the director one declaration prompt
+  // (src/prompt/check-declaration-request.ts) instead of leaving the operator the amber warning.
+  // The retry gate keeps a project with nothing to verify to one director run a day per main head.
+  {
+    const declaration = await requestCheckDeclaration(root, liveConfig, {
+      directorBusy: ctx.directorInFlight.size > 0,
+      mainHead,
+    });
+    if (!declaration.requested && declaration.error) {
+      ctx.warn(`could not queue the check declaration: ${declaration.error}`);
     }
   }
   return { liveConfig, mainHead, now: Date.now() };

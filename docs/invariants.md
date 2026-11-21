@@ -1573,7 +1573,11 @@ them (the pre-alert rendering), never a false one. An over-cap PRINCIPLES.md rai
 seven: the `principlesTruncated` snapshot key and the doctor `principles` row stay the diagnostic,
 and the orchestrator instead queues the director a one-shot consolidation prompt
 (`requestPrinciplesConsolidation`, `src/prompt/principles-consolidation.ts`) — one at a time, gated
-so an over-cap episode never repeats the assignment.
+so an over-cap episode never repeats the assignment. The same poll covers a project that declares
+no deterministic check: `requestCheckDeclaration` (`src/prompt/check-declaration-request.ts`) queues
+the director one declaration prompt, at most one at a time, never while a check is declared, and
+retries only when main's head has moved and at least 24 hours have passed since the last attempt
+(`.tumwater/check-declaration.json`).
 
 **Binds.** `src/ui/team-alert-standings.ts` (`buildStandingAlerts`),
 `src/ui/team-alerts.ts` (`teamAlerts`' `standings` argument),
@@ -1589,7 +1593,8 @@ no `principles-truncated` alert) and "tumwater status prints the standing no-che
 banner from the snapshot's flag"; `test/status-payload.test.ts` — the raw-flag suites (they
 assert the `principlesTruncated` key stands while no `principles-truncated` alert accompanies
 it); `test/principles-consolidation.test.ts` — the one-assignment-at-a-time gate over an
-over-cap file.
+over-cap file; `test/check-declaration-request.test.ts` — one declaration request at a time, the
+retry gate, and no request while a check is declared.
 
 ## Runner ids: only feature and bugfix split, and everything about a role resolves through its base
 
