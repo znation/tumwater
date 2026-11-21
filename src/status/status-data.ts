@@ -38,7 +38,7 @@ import { collectRootInstallDrift } from "./status-install.js";
 import { briefStatus } from "../brief/brief.js";
 import { principlesBlockOverCap } from "../prompt/principles.js";
 import type { MaintenanceMarker } from "../orchestrator/retention.js";
-import { maintenancePath } from "../paths.js";
+import { heartbeatPath, maintenancePath } from "../paths.js";
 import { readJsonFile } from "../files/json-files.js";
 
 /** Status data collection: one fresh snapshot of the team for observers (`tumwater
@@ -358,6 +358,11 @@ export interface StatusSnapshot {
    * the marker (maintenanceForPoll): a SIGKILLed orchestrator never removes its marker, so a
    * marker naming a dead pid must not hold the banner up. Fresh per poll, like `paused`. */
   maintenance?: MaintenanceMarker & { etaMs?: number };
+  /** The live orchestrator's poll loop has not stamped its heartbeat for over POLL_STALL_MS, and
+   * no maintenance marker stands to explain it (pollStallForPoll). `lastPollAt` is the last stamp.
+   * Absent for a stopped team, a team whose build predates the heartbeat, and any stall a
+   * maintenance pass explains. Fresh per poll, like `maintenance`. */
+  pollStalled?: { lastPollAt: number };
   /** The standing per-provider failure holds (src/team/team-hold.ts `standingHolds`), read
    * from the running orchestrator's info file: a provider storm's hold, so the dashboards and
    * `tumwater status` name why a provider's roles sit idle. Absent while none stands or the
@@ -649,6 +654,32 @@ export function maintenanceForPoll(root: string, livePid: number | undefined): S
   return { ...marker, ...(etaMs === undefined ? {} : { etaMs }) };
 }
 
+/** How long the poll heartbeat may go unstamped before observers call the poll loop stalled.
+ * Not measured on a live team. Chosen above every synchronous step the poll runs without a
+ * marker: the poll's git reads are short spawnSync calls, the merge check runs as a child
+ * process the poll does not wait on, and the session prune — the one known long pass — writes
+ * its own marker (maintenance.json) and is excluded by pollStallForPoll. A stall past this
+ * with no marker is a step nothing has named yet, which is what the alert is for. */
+export const POLL_STALL_MS = 3 * 60_000;
+
+/** The poll heartbeat's reader (src/orchestrator/orchestrator-poll.ts stampHeartbeat), read fresh
+ * per poll. Stalled means: the live orchestrator (pid `livePid`) wrote the heartbeat, its last
+ * stamp is more than POLL_STALL_MS old, and no maintenance marker stands for the pass that would
+ * explain it (`maintenanceStands`). No live orchestrator, a heartbeat another pid wrote (a dead
+ * predecessor's), or no heartbeat file at all (a team started by an older build) reads as absent:
+ * a dead pid is the stopped-team alert's case, not this one. */
+export function pollStallForPoll(
+  root: string,
+  livePid: number | undefined,
+  maintenanceStands: boolean,
+  now: number,
+): StatusSnapshot["pollStalled"] {
+  if (livePid === undefined || maintenanceStands) return undefined;
+  const beat = readJsonFile<{ pid: number; lastPollAt: number }>(heartbeatPath(root));
+  if (beat?.pid !== livePid || !Number.isFinite(beat.lastPollAt)) return undefined;
+  return now - beat.lastPollAt > POLL_STALL_MS ? { lastPollAt: beat.lastPollAt } : undefined;
+}
+
 /** The running-only resource fields of the snapshot (disk floor, install drift, permits and
  * the run stop deadlines). */
 function snapshotResourceFields(
@@ -662,6 +693,8 @@ function snapshotResourceFields(
   // marker file (a second stat per poll), like the paused markers above. Only while running:
   // a stopped team's marker must not speak for it (each field was already `running`-gated).
   const stopAt = running ? scheduledStopAt(root) : undefined;
+  const livePid = running ? info?.pid : undefined;
+  const maintenance = maintenanceForPoll(root, livePid);
   return {
     // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
     // orchestrator runs and only when the last poll could measure the volume (liveInfoField).
@@ -678,7 +711,10 @@ function snapshotResourceFields(
     runStopsAt: running ? earliestStop(info?.stopsAt, stopAt) : undefined,
     scheduledStopAt: running ? stopAt : undefined,
     // The live orchestrator's pid, so a marker a dead orchestrator left behind reads as absent.
-    maintenance: maintenanceForPoll(root, running ? info?.pid : undefined),
+    maintenance,
+    // The heartbeat's stall check: a standing maintenance marker explains a quiet poll, so the
+    // stall reads as absent and the blue maintenance banner is the only one shown.
+    pollStalled: pollStallForPoll(root, livePid, maintenance !== undefined, Date.now()),
   };
 }
 

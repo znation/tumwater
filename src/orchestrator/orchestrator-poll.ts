@@ -54,6 +54,8 @@ import { workReserveCount } from "../scheduling/claims.js";
 import type { ModelCheckGate } from "../model-check/model-check-gate.js";
 import { requestPrinciplesConsolidation } from "../prompt/principles-consolidation.js";
 import { requestCheckDeclaration } from "../prompt/check-declaration-request.js";
+import { writeJsonAtomic } from "../files/json-files.js";
+import { heartbeatPath } from "../paths.js";
 
 /** The setup's constants and collaborators, fixed for the whole run. */
 export interface PollContext {
@@ -168,12 +170,27 @@ interface PollInputs {
   now: number;
 }
 
+/** Stamp the poll heartbeat (src/paths.ts heartbeatPath): this pid and the poll's start time, so
+ * an observer can tell a poll loop that has stopped from one that is merely idle. A small file,
+ * rewritten each poll, rather than a rewrite of the larger orchestrator.json. Best-effort: a
+ * failed write costs the heartbeat, never the poll. */
+export function stampHeartbeat(root: string, now: number = Date.now()): void {
+  try {
+    writeJsonAtomic(heartbeatPath(root), { pid: process.pid, lastPollAt: now });
+  } catch {
+    // Best-effort, like the maintenance marker: a full disk must not end the team.
+  }
+}
+
 /** Live-reload, notify/retention/launchservices, CLI request markers, abort settling, the
  * branch-divergence watch, and the over-cap PRINCIPLES.md consolidation request (one assignment
  * at a time; the doctor `principles` row and the `principlesTruncated` key stay the diagnostic).
  * Writes state.warnedBranchDivergence. */
 export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): Promise<PollInputs> {
   const { root, mainBranch, runners } = ctx;
+  // The heartbeat first, so a pass below that blocks the loop leaves it stale (status-data.ts
+  // pollStallForPoll reads that as "the poll has stopped").
+  stampHeartbeat(root);
   // Live-reload tumwater.json — the single reload point shared by all roles.
   // src/config/config-live.ts owns the last-known-good retention and the edge-triggered
   // warnings/events around it.

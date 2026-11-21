@@ -60,6 +60,7 @@ export function teamAlerts(
     | "budgetPausedRoles"
     | "modelChecks"
     | "maintenance"
+    | "pollStalled"
   >,
   questions: readonly string[],
   roles: readonly AlertRole[],

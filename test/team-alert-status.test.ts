@@ -107,3 +107,22 @@ test("no session-prune marker raises no maintenance banner", () => {
   const alerts = buildStatusAlerts({ snap: base, roles: [] });
   assert.equal(alerts.some((a) => a.key === "maintenance"), false);
 });
+
+// The poll-stall alert (team-alert-status.ts pushPollStallAlert): amber, no action, titled with
+// the stall threshold in minutes, and it names the last stamp so the operator can see the age.
+test("a stalled poll loop raises an amber alert naming the threshold and the last stamp", () => {
+  const lastPollAt = Date.UTC(2026, 10, 21, 22, 36, 0);
+  const alerts = buildStatusAlerts({ snap: { ...base, pollStalled: { lastPollAt } }, roles: [] });
+  assert.equal(alerts.length, 1);
+  const [alert] = alerts;
+  assert.equal(alert?.key, "pollStalled");
+  assert.equal(alert?.tone, "amber");
+  assert.equal(alert?.title, "Orchestrator hasn't polled for 3m — it may be blocked");
+  assert.equal(alert?.detail, `last poll stamped at ${formatClock(lastPollAt)}; no role is scheduled until it resumes.`);
+  assert.deepEqual(alert?.actions, [], "the alert offers no action");
+});
+
+test("no stalled poll raises no poll-stall alert", () => {
+  const alerts = buildStatusAlerts({ snap: base, roles: [] });
+  assert.equal(alerts.some((a) => a.key === "pollStalled"), false);
+});

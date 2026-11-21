@@ -9,8 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { maintenanceForPoll, snapshot } from "../src/status/status-data.js";
-import { maintenancePath } from "../src/paths.js";
+import { maintenanceForPoll, pollStallForPoll, snapshot } from "../src/status/status-data.js";
+import { heartbeatPath, maintenancePath } from "../src/paths.js";
 import { runnerStateForPoll } from "../src/status/status-polls.js";
 import { quietHoursStatus } from "../src/scheduling/quiet-hours.js";
 import { statusPayload } from "../src/ui/status-payload.js";
@@ -269,4 +269,43 @@ test("the maintenance ETA is linear over the progress so far, and absent below t
   writeMaintenance(repo, pruneMarker({ done: 10 }));
   // (10,000 ms elapsed − 0) ÷ 10 deletes = 1,000 ms each, × 100 left = 100,000 ms.
   assert.equal(maintenanceForPoll(repo, 4242)?.etaMs, 100_000);
+});
+
+// The poll heartbeat's stall reader (status-data.ts pollStallForPoll): stalled only for the live
+// orchestrator's own heartbeat, older than POLL_STALL_MS, with no maintenance pass explaining it.
+function writeHeartbeat(root: string, beat: object): void {
+  const file = heartbeatPath(root);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(beat));
+}
+
+test("a live orchestrator's heartbeat four minutes old, with no marker, reads as stalled", () => {
+  const repo = makeRepo();
+  const now = Date.UTC(2026, 10, 21, 22, 40, 0);
+  writeHeartbeat(repo, { pid: 4242, lastPollAt: now - 4 * 60_000 });
+  assert.deepEqual(pollStallForPoll(repo, 4242, false, now), { lastPollAt: now - 4 * 60_000 });
+});
+
+test("a heartbeat one minute old is fresh, not stalled", () => {
+  const repo = makeRepo();
+  const now = Date.UTC(2026, 10, 21, 22, 40, 0);
+  writeHeartbeat(repo, { pid: 4242, lastPollAt: now - 60_000 });
+  assert.equal(pollStallForPoll(repo, 4242, false, now), undefined);
+});
+
+test("a stale heartbeat reads as absent for a dead pid, another pid, or a missing file", () => {
+  const repo = makeRepo();
+  const now = Date.UTC(2026, 10, 21, 22, 40, 0);
+  assert.equal(pollStallForPoll(repo, 4242, false, now), undefined, "no heartbeat file reads as absent");
+  writeHeartbeat(repo, { pid: 999, lastPollAt: now - 4 * 60_000 });
+  assert.equal(pollStallForPoll(repo, 4242, false, now), undefined, "a heartbeat another pid wrote reads as absent");
+  writeHeartbeat(repo, { pid: 4242, lastPollAt: now - 4 * 60_000 });
+  assert.equal(pollStallForPoll(repo, undefined, false, now), undefined, "no live orchestrator reads as absent");
+});
+
+test("a standing maintenance pass suppresses the stall, which the blue banner explains instead", () => {
+  const repo = makeRepo();
+  const now = Date.UTC(2026, 10, 21, 22, 40, 0);
+  writeHeartbeat(repo, { pid: 4242, lastPollAt: now - 4 * 60_000 });
+  assert.equal(pollStallForPoll(repo, 4242, true, now), undefined);
 });

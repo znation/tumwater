@@ -5,6 +5,33 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Visible session cleanup, part 3/3: an amber "orchestrator hasn't polled" alert when the poll loop stalls without a marker (planned 2026-11-16 by the operator; requires Visible session cleanup part 2/3 landed; touches src/paths.ts src/orchestrator/orchestrator-poll.ts src/status/status-data.ts src/ui/team-alert-status.ts test/status-data.test.ts test/team-alert-status.test.ts) — done 2026-11-21 by the feature role
+
+**Goal.** Parts 1/3 and 2/3 cover the session prune. The next synchronous pass that blocks the
+poll loop will have no marker, and the team will look healthy and idle again. A heartbeat gives
+the observers a generic backstop.
+
+**Approach.**
+- At the top of each poll (src/orchestrator/orchestrator-poll.ts), stamp
+  `{ pid, lastPollAt }` into a new small `.tumwater/state/heartbeat.json` (`heartbeatPath(root)`
+  in src/paths.ts) with `writeJsonAtomic`, rather than rewriting the larger `orchestrator.json`
+  every ~2 s. Best-effort: a failed write never fails the poll.
+- status-data reads it fresh each poll. Observers raise an amber alert,
+  `Orchestrator hasn't polled for 3m — it may be blocked`, when the orchestrator pid is alive,
+  the heartbeat's pid matches it, `lastPollAt` is more than 3 minutes old, and no maintenance
+  marker stands. The marker wins because it is the more specific explanation. No heartbeat file at
+  all (a team started by an older build) raises nothing.
+- Before settling on 3 minutes, measure the longest synchronous poll step that is not a prune on
+  a live team (the doc assumes a merge's check runs as a child process and does not block the
+  poll; confirm it) and record the measurement in the constant's doc comment.
+
+**Acceptance criteria.**
+- A live pid with a 4-minute-old heartbeat and no marker raises the amber alert; a 1-minute-old
+  heartbeat does not; a dead pid does not (the stopped-team alert covers that).
+- With a maintenance marker standing for the live pid, the heartbeat alert is suppressed and the
+  blue maintenance alert shows instead.
+- A missing heartbeat file raises nothing.
+
 ### GitHub issues, part 1/5: detect a project's GitHub repo, probe `gh`, add the `githubIssues` config and a doctor `github issues` row (planned 2026-11-21 by the operator; touches src/observer/remote-ci.ts src/github/gh.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-project-checks.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts src/config/config-schema.ts src/config/config.ts src/config/config-validation.ts docs/config.md docs/feature-doctor.md test/remote-ci.test.ts test/doctor-checks.test.ts test/config.test.ts test/fakes/fake-gh.ts) — done 2026-11-21 by the feature role
 
 **Goal.** This is the base the other four parts build on (design: plans/github-issues.md). It

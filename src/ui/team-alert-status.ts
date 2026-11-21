@@ -3,7 +3,7 @@
  * run or stuck. One of the per-domain builders split out of
  * src/ui/team-alerts.ts; the shared types and wording helpers live in team-alert-shared.ts. */
 
-import type { StatusSnapshot } from "../status/status-data.js";
+import { POLL_STALL_MS, type StatusSnapshot } from "../status/status-data.js";
 import {
   openRoleActions, listRoles, listRoleIds, stuckDetail,
   type TeamAlert, type AlertRole,
@@ -22,7 +22,14 @@ import { formatClock } from "../text/datetime.js";
 interface StatusAlertsInput {
   snap: Pick<
     StatusSnapshot,
-    "budget" | "chain" | "disk" | "rootInstallDrift" | "budgetPausedRoles" | "modelChecks" | "maintenance"
+    | "budget"
+    | "chain"
+    | "disk"
+    | "rootInstallDrift"
+    | "budgetPausedRoles"
+    | "modelChecks"
+    | "maintenance"
+    | "pollStalled"
   >;
   roles: readonly AlertRole[];
 }
@@ -41,6 +48,22 @@ function pushMaintenanceAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"])
       tone: "blue",
       title: "Cleaning up expired sessions — roles start when it finishes",
       detail: `deleting expired ${noun}: ${m.done.toLocaleString("en-US")} / ${m.total.toLocaleString("en-US")}${eta} · started ${formatClock(m.startedAt)}. Restarting tumwater starts this over.`,
+      actions: [],
+    });
+  }
+}
+
+// The poll loop has stopped stamping its heartbeat with no maintenance pass to explain it
+// (status-data.ts pollStallForPoll): a step nothing has named is blocking the loop, so no role is
+// scheduled until it returns. Amber: something may need a look, but no action is offered.
+function pushPollStallAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
+  const stalled = snap.pollStalled;
+  if (stalled) {
+    out.push({
+      key: "pollStalled",
+      tone: "amber",
+      title: `Orchestrator hasn't polled for ${Math.round(POLL_STALL_MS / 60_000)}m — it may be blocked`,
+      detail: `last poll stamped at ${formatClock(stalled.lastPollAt)}; no role is scheduled until it resumes.`,
       actions: [],
     });
   }
@@ -205,6 +228,7 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
   const { snap, roles } = input;
   const out: TeamAlert[] = [];
   pushMaintenanceAlert(out, snap);
+  pushPollStallAlert(out, snap);
   pushChainAlert(out, snap);
   pushSpentBudgetAlert(out, snap);
   pushModelCheckAlert(out, snap);

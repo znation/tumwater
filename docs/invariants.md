@@ -4679,6 +4679,24 @@ ten deletes"; `test/team-alert-status.test.ts` — "a session-prune pass raises 
 leads the status alerts"; `test/status-model.test.ts` — "a session-prune hold replaces an idle
 row's countdown but not a running row's label".
 
+### INV-BQ9: a stalled poll loop shows an amber alert only while no prune pass explains it
+
+**Guarantee.** The orchestrator stamps `{ pid, lastPollAt }` into `.tumwater/state/heartbeat.json`
+(`heartbeatPath`) at the top of each poll. The status snapshot's `pollStalled` is set only when the
+live orchestrator's pid wrote the heartbeat, its last stamp is more than `POLL_STALL_MS` old, and no
+maintenance marker stands (INV-BQ8). No heartbeat file, a dead pid, or another pid's heartbeat
+reads as absent. While it is set, the team alert is amber, carries no action, and names the last
+stamp.
+
+**Binds.** `src/status/status-data.ts` (`pollStallForPoll`, `POLL_STALL_MS`),
+`src/ui/team-alert-status.ts` (`pushPollStallAlert`) and `src/orchestrator/orchestrator-poll.ts`
+(`stampHeartbeat`).
+
+**Pinned by.** `test/status-data.test.ts` — "a live orchestrator's heartbeat four minutes old, with
+no marker, reads as stalled" and "a heartbeat one minute old is fresh, not stalled";
+`test/team-alert-status.test.ts` — "a stalled poll loop raises an amber alert naming the threshold
+and the last stamp".
+
 ## Runner state in the poll loop: a failed save costs only that save
 
 ### INV-BR1: a skip-reason or claim-release save that fails warns and the poll goes on

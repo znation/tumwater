@@ -9,33 +9,6 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 ## Planned
 
-### Visible session cleanup, part 3/3: an amber "orchestrator hasn't polled" alert when the poll loop stalls without a marker (planned 2026-11-16 by the operator; requires Visible session cleanup part 2/3 landed; touches src/paths.ts src/orchestrator/orchestrator-poll.ts src/status/status-data.ts src/ui/team-alert-status.ts test/status-data.test.ts test/team-alert-status.test.ts)
-
-**Goal.** Parts 1/3 and 2/3 cover the session prune. The next synchronous pass that blocks the
-poll loop will have no marker, and the team will look healthy and idle again. A heartbeat gives
-the observers a generic backstop.
-
-**Approach.**
-- At the top of each poll (src/orchestrator/orchestrator-poll.ts), stamp
-  `{ pid, lastPollAt }` into a new small `.tumwater/state/heartbeat.json` (`heartbeatPath(root)`
-  in src/paths.ts) with `writeJsonAtomic`, rather than rewriting the larger `orchestrator.json`
-  every ~2 s. Best-effort: a failed write never fails the poll.
-- status-data reads it fresh each poll. Observers raise an amber alert,
-  `Orchestrator hasn't polled for 3m — it may be blocked`, when the orchestrator pid is alive,
-  the heartbeat's pid matches it, `lastPollAt` is more than 3 minutes old, and no maintenance
-  marker stands. The marker wins because it is the more specific explanation. No heartbeat file at
-  all (a team started by an older build) raises nothing.
-- Before settling on 3 minutes, measure the longest synchronous poll step that is not a prune on
-  a live team (the doc assumes a merge's check runs as a child process and does not block the
-  poll; confirm it) and record the measurement in the constant's doc comment.
-
-**Acceptance criteria.**
-- A live pid with a 4-minute-old heartbeat and no marker raises the amber alert; a 1-minute-old
-  heartbeat does not; a dead pid does not (the stopped-team alert covers that).
-- With a maintenance marker standing for the live pid, the heartbeat alert is suppressed and the
-  blue maintenance alert shows instead.
-- A missing heartbeat file raises nothing.
-
 ### Fast session cleanup, part 1/2: the session prune skips placeholder and already-gone Codex sessions, walks the rollout tree once, and resumes where a restart stopped it (planned 2026-11-16 by the operator; requires Visible session cleanup part 2/3 landed; touches src/agent/session-ledger.ts src/agent/codex/codex-rollout.ts src/agent/codex/codex-backend.ts src/orchestrator/retention.ts src/ui/team-alert-status.ts test/session-ledger-prune.test.ts test/retention.test.ts test/team-alert-status.test.ts)
 
 **Goal.** Visibility explains a long prune; this makes it short and restart-safe. On 2026-11-16

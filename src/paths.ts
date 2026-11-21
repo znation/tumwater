@@ -174,6 +174,15 @@ export function maintenancePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "maintenance.json");
 }
 
+/** The orchestrator's poll heartbeat (src/orchestrator/orchestrator-poll.ts stamps it at the top
+ * of every poll: `{ pid, lastPollAt }`). A small file of its own, rewritten every poll, so the
+ * observers can tell a poll loop that has stalled without a marker (status-data.ts
+ * pollStallForPoll). Runtime state under .tumwater/state/, never committed; absent until a
+ * build that writes it has polled. */
+export function heartbeatPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "heartbeat.json");
+}
+
 /** The images column `tumwater doctor` last read from `pi --list-models`, keyed provider/model.
  * Runtime state under .tumwater/state/, never committed. */
 export function piListedModelsPath(root: string): string {
