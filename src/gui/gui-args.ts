@@ -30,8 +30,8 @@ export function validRoleIds(root: string): string[] {
 
 /** The all-roles default of the dashboard's write-side operator endpoints (POST /api/wake and
  * /api/reset-counters with a `{}` body): the ids tumwater.json's `roles` section names — the base
- * ids, never their instance ids — which is exactly what `tumwater wake` and
- * `tumwater reset-counters` target with no `--role` (cli-operator-commands.ts's targetRoles).
+ * ids, never their instance ids — which is exactly what `tumwater wake` targets with no `--role`
+ * (cli-operator-commands.ts's targetRoles; bare `tumwater reset-counters` adds the runner ids).
  * A marker naming a base role reaches every instance of it when the team is live
  * (operator-requests.ts's roleRequestTargets matches on baseRole), and an immediate wake also
  * clears each named id's state file — so listing the extras there would only create sleep state
