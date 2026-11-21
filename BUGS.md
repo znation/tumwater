@@ -53,6 +53,25 @@ The BUGS-FIXED entry "A checkpoint-caused abort is indistinguishable from a cont
 
 **Required behavior.** A full e2e step must not carry a red from a 150 s wall-clock wait the host starved after admission. Options the class has already sketched, none landed: drive the run-start-marker wait on the fake clock the watchdog tests use, or re-sample the host during the wait and skip when it crosses the bar mid-wait. The 150 s bound itself is not the lever (the 2026-10-25/26 entries record the ceiling, not a bound).
 
+### `this repo's docs/invariants.md is honest` failed, then passed on the same tree (quarantined by tumwater 2026-11-21)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ this repo's docs/invariants.md is honest (235.226875ms)
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/invariants-doc.test.js:342:12)
+at Test.runInAsyncScope (node:async_hooks:226:14)
+generatedMessage: true,
+code: 'ERR_ASSERTION',
+actual: [ 'INV-CE2 (entry 299): cited test title not found in test/doctor-checks.test.ts: "checkCodexHome warns on unset configDir and names the team home when set"' ],
+expected: [],
+operator: 'deepStrictEqual',
+diff: 'simple'
+}
+lint: clean
+~~~~
+
 ## Fixed
 
 ## Verified
