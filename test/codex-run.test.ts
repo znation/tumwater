@@ -112,6 +112,45 @@ test("a real codex run warms the write guard trust once per build", async () => 
   });
 });
 
+test("an unset backends.codex.configDir defaults the run's sessions to the team home, not ~/.codex", async () => {
+  // Part 1/2 (BUGS.md): a run with no `backends.codex.configDir` used to inherit the
+  // operator's `~/.codex`, burying team sessions there. The default is now the per-root team
+  // home `<root>/.tumwater/codex-home`; the fake writes its rollout under `$CODEX_HOME`, so
+  // the rollout's landing spot and the recorded env prove which home the run env pointed Codex
+  // at. Point HOME at a temp dir so an `~/.codex` default would land there, never the operator's.
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  const run: PiRunOptions = {
+    ...codexRun(dir),
+    config: { ...defaultConfig(), agent: "codex", model: "gpt-6-luna", backends: {} },
+  };
+  const realHome = process.env.HOME;
+  process.env.HOME = tmpdir("codex-run-empty-home-");
+  try {
+    await withCodexReplay(codexCaptures.editRun, async (fake) => {
+      const result = await runAgent(run);
+      assert.equal(result.ok, true, `${result.errorMessage}`);
+      const thread = readSessions(run.sessionDir)[1]!.id;
+      const teamHome = path.join(dir, ".tumwater", "codex-home");
+      const rollout = path.join(teamHome, "sessions", "2026-10-21", `rollout-0000-${thread}.jsonl`);
+      assert.ok(fs.existsSync(rollout), "the fresh run's rollout lands under the team home");
+      assert.ok(
+        !fs.existsSync(path.join(process.env.HOME!, ".codex", "sessions", "2026-10-21", `rollout-0000-${thread}.jsonl`)),
+        "no rollout under the old default ~/.codex",
+      );
+      const env = fs.readFileSync(fake.envFile, "utf8");
+      assert.match(env, new RegExp(`^CODEX_HOME=${escaped(teamHome)}$`, "m"), "the run env sets CODEX_HOME to the team home");
+    });
+  } finally {
+    process.env.HOME = realHome;
+  }
+});
+
+/** Regex-escape a path fragment for a `new RegExp` string. */
+function escaped(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$" + "&");
+}
+
 test("a fresh and a resumed run carry the write guard's hook and trust, and never bypass hook trust (part 6/9)", async () => {
   // Part 6/9: `invocation` turns the trust `prepare` warmed into two `-c` values (finding 1
   // and 2), so every real codex run's argv carries the hook and its trust together, with the

@@ -50,7 +50,7 @@ function codexCheckBase(
   const config = loadConfigForCheck(root);
   if ("level" in config) return config;
   if (!codexSeamsInUse(config)) return null;
-  return { config, home: codexHome(resolvedBackendConfig(config, "codex")) };
+  return { config, home: codexHome(resolvedBackendConfig(config, "codex"), root) };
 }
 
 /** One bounded probe of the resolved `codex` binary under the scrubbed run environment a real
@@ -64,9 +64,10 @@ function codexProbe(
   args: string[],
   pathEnv: string,
   timeoutMs: number,
+  root?: string,
 ): Promise<{ code: number | null; stdout: string } | null> {
   const resolved = codexBackend.resolveBin(config);
-  const home = codexHome(resolvedBackendConfig(config, "codex"));
+  const home = codexHome(resolvedBackendConfig(config, "codex"), root);
   const env = codexEnv(childEnv({ PATH: pathEnv }), { home });
   return boundedProbe(resolved.bin, args, env, timeoutMs, AUTH_CHECK_MAX_OUTPUT_BYTES);
 }
@@ -83,7 +84,7 @@ export async function checkCodexVersion(
 ): Promise<CheckOutcome | null> {
   const base = codexCheckBase(root);
   if (base === null || "level" in base) return base;
-  const result = await codexProbe(base.config, ["--version"], pathEnv, timeoutMs);
+  const result = await codexProbe(base.config, ["--version"], pathEnv, timeoutMs, root);
   const found = versionFromProbe(result);
   return minVersionOutcome("codex", found, CODEX_MIN_VERSION, "upgrade the codex CLI");
 }
@@ -102,7 +103,7 @@ export async function checkCodexAuth(
   const base = codexCheckBase(root);
   if (base === null || "level" in base) return base;
   const { home } = base;
-  const result = await codexProbe(base.config, ["login", "status"], pathEnv, timeoutMs);
+  const result = await codexProbe(base.config, ["login", "status"], pathEnv, timeoutMs, root);
   if (result?.code !== 0) return probeUnreadableWarning("codex login status");
   const status = parseCodexLoginStatus(result.stdout);
   if (status === "subscription") return okOutcome("logged in using ChatGPT — billing: subscription");
@@ -128,7 +129,9 @@ export async function checkCodexHome(root: string): Promise<CheckOutcome | null>
         ? "backends.codex.configDir is unset — the team codex home resolves to the user's own ~/.codex, so trust entries, team sessions in the resume picker, skills and a global AGENTS.md are shared, not isolated; set backends.codex.configDir to a home of the team's own"
         : `team codex home ${home} is the user's own ~/.codex — trust entries, team sessions in the resume picker, skills and a global AGENTS.md are shared, not isolated; set backends.codex.configDir to a home of the team's own`,
     );
-  return okOutcome(`team codex home: ${home}`);
+  return configDir === undefined
+    ? okOutcome(`team codex home: ${home} (unset backends.codex.configDir defaults to the team home)`)
+    : okOutcome(`team codex home: ${home}`);
 }
 
 /** codex model readiness (plans/codex-backend.md §7): every codex-routed model must be in the

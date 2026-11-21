@@ -144,8 +144,9 @@ export const codexBackend: AgentBackend = {
     // command on PATH, so codex configures no MCP server for notes.
     const base = backendRunEnv(run);
     // A team home of its own (`CODEX_HOME`) keeps team sessions and trust entries out of the
-    // operator's `~/.codex` (design §4, finding 10); unset leaves the operator's home.
-    const home = codexHome(resolvedBackendConfig(run.config, "codex"));
+    // operator's `~/.codex` (design §4, finding 10); unset `configDir` defaults to the team
+    // home under the run's root instead (`codexHome`), so every run's env points at it.
+    const home = codexHome(resolvedBackendConfig(run.config, "codex"), teamRootOf(run.sessionDir));
     const env = codexEnv(base, { home });
     const { sessionId, resumed } = resolveCodexSession(run, home);
     const thinking = run.config.thinking;
@@ -188,10 +189,10 @@ export const codexBackend: AgentBackend = {
     // invocation later reads was looked up under the run's own config. It never throws a run
     // away: a failed lookup records `off` (and warns once) and the run continues without the
     // guard's trust.
-    const base = backendRunEnv(run);
-    const home = codexHome(resolvedBackendConfig(run.config, "codex"));
-    const env = codexEnv(base, { home });
     const root = nearestTumwaterRoot(run.sessionDir);
+    const base = backendRunEnv(run);
+    const home = codexHome(resolvedBackendConfig(run.config, "codex"), root);
+    const env = codexEnv(base, { home });
     const definition = codexWriteGuardDefinition();
     const key = writeGuardKey(home, definition);
     // Single-flight per (home, definition): a run whose key is being resolved (or already
@@ -243,7 +244,7 @@ export const codexBackend: AgentBackend = {
     if (model === undefined) return false;
     const root = teamRootOf(process.cwd());
     const { config } = loadConfigSafe(root);
-    const home = codexHome(resolvedBackendConfig(config ?? {}, "codex"));
+    const home = codexHome(resolvedBackendConfig(config ?? {}, "codex"), root);
     if (home === undefined) return false;
     return readCodexCatalog(home).get(model)?.images === true;
   },
@@ -253,14 +254,14 @@ export const codexBackend: AgentBackend = {
     if (record === null || !THREAD_ID_RE.test(record.id)) return false;
     const root = teamRootOf(dir);
     const { config } = loadConfigSafe(root);
-    const home = codexHome(resolvedBackendConfig(config ?? {}, "codex"));
+    const home = codexHome(resolvedBackendConfig(config ?? {}, "codex"), root);
     if (home === undefined) return false;
     return findRollout(home, record.id) !== null;
   },
 
   afterRun(run: AgentRunSpec, invocation: AgentInvocation, translator: CodexStreamTranslator): string[] {
     const ct = translator;
-    const home = codexHome(resolvedBackendConfig(run.config, "codex"));
+    const home = codexHome(resolvedBackendConfig(run.config, "codex"), teamRootOf(run.sessionDir));
     const id = invocation.sessionId ?? ct.sessionId?.();
     const fresh = invocation.sessionId === undefined;
     // The rollout is authoritative, so its loss is worth one warning: a fresh run keeps the

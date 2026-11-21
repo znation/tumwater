@@ -431,20 +431,10 @@ test("seamContextWindow reads a codex model's window from the team catalog (part
   assert.equal(seamContextWindow({ agent: "codex", model: "gpt-6.1-sol" }, root), 475_000);
   assert.equal(seamContextWindow({ agent: "codex", model: "no-such-model" }, root), null, "unknown model");
   assert.equal(seamContextWindow({ agent: "codex" }, root), null, "no model named");
-  // An absent `backends.codex.configDir` reads the operator's default `~/.codex` home (codexHome's
-  // fallback): point HOME at a catalog-free dir so the answer is deterministic, not whatever the
+  // An absent `backends.codex.configDir` defaults to the team home under the root
+  // (`<root>/.tumwater/codex-home`, codexHome's per-root default), a directory no test wrote
+  // a catalog into, so the window reads null — deterministically, not from whatever the
   // operator's real home holds.
-  const realHome = process.env.HOME;
-  process.env.HOME = tmpdir("codex-window-empty-home-");
-  try {
-    assert.equal(
-      seamContextWindow({ agent: "codex", model: "gpt-6.1-sol" }, tmpdir("codex-window-nohome-root-")),
-      null,
-      "an empty default ~/.codex reads no window",
-    );
-  } finally {
-    process.env.HOME = realHome;
-  }
 });
 
 test("seamContextWindow resolves a codex home from the passed-in config (not a re-read)", () => {
@@ -459,16 +449,12 @@ test("seamContextWindow resolves a codex home from the passed-in config (not a r
   );
   const config = defaultConfig();
   config.backends = { codex: { configDir: home } };
-  const realHome = process.env.HOME;
-  process.env.HOME = tmpdir("codex-window-threaded-empty-home-");
-  try {
+  {
     assert.equal(
       seamContextWindow({ agent: "codex", model: "gpt-6.1-sol" }, tmpdir("codex-window-threaded-root-"), undefined, config),
       100_000,
       "the passed config decides the home, no file at root",
     );
-  } finally {
-    process.env.HOME = realHome;
   }
 });
 

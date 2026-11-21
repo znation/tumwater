@@ -34,15 +34,25 @@ export interface CodexCatalogEntry {
   images: boolean;
 }
 
-/** The team's Codex home for a run: `backends.codex.configDir`, a leading `~` expanded, else
- * the CLI's default `~/.codex` — a run with no configured home keeps the operator's
- * `CODEX_HOME`, which is exactly Codex's own default home, so the catalog and the sessions
- * live there too and a known home always exists. Pure. Shared by the adapter, pi's
+/** The team's Codex home for a run: `backends.codex.configDir`, a leading `~` expanded, else —
+ * when `root` is given — tumwater's own per-team home under that root
+ * (`<root>/.tumwater/codex-home`, codexHomeDir), so a run with no configured home never lands
+ * in the operator's personal `~/.codex`. Only a config that names `~/.codex` still reaches it.
+ * With neither a configDir nor a root (a caller with no team root at hand), the CLI's own
+ * default `~/.codex` is kept so a known home always exists. Pure. Shared by the adapter, pi's
  * seamContextWindow and the codex-account seed, so all three read one home. */
-export function codexHome(config: { configDir?: string }): string {
+export function codexHome(config: { configDir?: string }, root?: string): string {
   const dir = config.configDir;
-  if (dir === undefined) return path.join(os.homedir(), ".codex");
+  if (dir === undefined) return root === undefined ? path.join(os.homedir(), ".codex") : codexHomeDir(root);
   return expandHomeTilde(dir, os.homedir());
+}
+
+/** The per-team Codex home directory for a team root: `<root>/.tumwater/codex-home`. One
+ * home per root, the same per-root scoping opencode's db uses, so every worktree of one team
+ * root shares one `$CODEX_HOME` (and one catalog, trust set and sessions tree) while an
+ * unset `backends.codex.configDir` never buries team sessions in the operator's `~/.codex`. */
+export function codexHomeDir(root: string): string {
+  return path.join(root, ".tumwater", "codex-home");
 }
 
 /** Where a home's model catalog lives: `$CODEX_HOME/models_cache.json`. */

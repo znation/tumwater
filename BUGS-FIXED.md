@@ -5,6 +5,60 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Codex runs default to the operator's own `~/.codex`, filling it with team sessions, part 1/2: `codexHome` falls back to `~/.codex` when `backends.codex.configDir` is unset (reported by the user 2026-11-16, split 2026-11-21 by the plan role) — fixed 2026-11-21 by the bugfix role
+
+**Validation gap:** none — the codex-run regression test reproduced the `~/.codex` fail-under and confirmed the team-home fix.
+
+Sibling: part 2/2 (below) fixes the doctor row and the retention comment for whatever home
+resolution exists, so the two are independent and land in either order.
+
+`codexHome` (src/agent/codex/codex-catalog.ts) falls back to `~/.codex` when the Codex backend has
+no `configDir`. kde-macos8.6-theme's `tumwater.json` has `"backends": {}`, so every tumwater Codex
+session (7,466 distinct ids from 2026-11-08 to 11-12) went into the operator's personal Codex
+home: `~/.codex` is 2.9 GB, `~/.codex/sessions` 701 MB, `state_5.sqlite` 557 MB, and the
+operator's own history is buried under thousands of `tumwater-review-*` threads. Each real
+`codex delete --force` took about 1 s during the 2026-11-16 prune (about 53 a minute; a delete of
+an unknown UUID returns in 0.19 s); the shared, bloated state DB is the likely reason, not a
+measured one.
+
+**Reproduce.** Observed. Any team with Codex enabled and no `backends.codex.configDir`: run one
+Codex role and its rollout appears under `~/.codex/sessions/`.
+
+**Suspected cause.** The default was chosen so a known home always exists. Fix: default the Codex
+home to a per-team directory (`.tumwater/codex-home/` under the team root, so every workspace
+worktree of one root shares one home — the same per-root scoping `opencodeDbPath` uses), and use
+`~/.codex` only when the config asks for it. The design's home-of-its-own section
+(plans/codex-backend.md §4) already requires one `CODEX_HOME=<dir> codex login --device-auth` in
+the team home and never copying `auth.json` between homes (tokens rotate and log each other out),
+so this part only changes the default path; the login fields are a per-run setup step, not a seed
+to write.
+
+**Approach.**
+- `codexHome(config, root)` (src/agent/codex/codex-catalog.ts): a second `root` argument, the team
+  root resolved from the run's session dir (`nearestTumwaterRoot`, src/paths.ts, the same
+  derivation opencode's db cache uses). When `configDir` is unset it defaults to
+  `.tumwater/codex-home/` under that resolved root instead of `~/.codex`. `~/.codex` is still
+  reachable when the config names it (a leading `~` expands as today). The function stays pure
+  (it already is: no fs, no subprocess), so every caller keeps its current call shape plus the
+  root. The `codexCheckBase` caller in doctor-codex-checks.ts and `seamContextWindow`/`codexSeamContextWindow`
+  in src/pi/pi-models.ts already hold a root; the adapter callers
+  (src/agent/codex/codex-backend.ts `invocation`, `prepare`, `afterRun`, `imageInput`, `resumable`)
+  resolve it from `run.sessionDir`/the team root, never defaulting a bare `~/.codex`.
+- The `CODEX_HOME` set path (src/agent/codex/codex-env.ts) is unchanged: callers now always pass a
+  resolved home, so every run environment carries `CODEX_HOME` pointing at the team home.
+
+**Acceptance criteria.**
+- `codexHome(config, root)` with `configDir` unset returns `<root>/.tumwater/codex-home` (after
+  tilde substitution where the config names it), not `~/.codex`, and with `configDir:
+  "~/team"` still returns `<homedir>/team`.
+- A codex role run under a team root with no `backends.codex.configDir` writes its session
+  rollouts under `<root>/.tumwater/codex-home/sessions/`, never under `~/.codex/sessions` (
+  test/codex-run.test.ts: build a run with `backends: {}` under a temp root and assert the
+  rollout lands under the team home).
+- With `configDir` unset, `seamContextWindow` (src/pi/pi-models.ts) reads the catalog from the
+  team home rather than the operator's default, and the doctor `codex home` row reports the team
+  home as set.
+
 ### Codex runs default to the operator's own `~/.codex`, part 2/2: `tumwater doctor` has no row that catches an unisolated Codex home, and retention's comment promises more isolation than the code delivers (reported by the user 2026-11-16, split 2026-11-21 by the plan role) — fixed 2026-11-21 by the bugfix role
 
 Sibling: part 1/2 (above) re-points the default home; this part's wording updates to match

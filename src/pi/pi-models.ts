@@ -199,7 +199,7 @@ function codexSeamContextWindow(
   // tumwater.json on every poll; a standalone caller with no config handle falls back to
   // the uncached safe load, exactly as before.
   const resolved = config ?? loadConfigSafe(projectRoot).config ?? {};
-  const home = codexHome(resolvedBackendConfig(resolved, "codex"));
+  const home = codexHome(resolvedBackendConfig(resolved, "codex"), projectRoot);
   if (home === undefined) return null;
   return declaredWindow(readCodexCatalog(home).get(seam.model)?.contextWindow);
 }

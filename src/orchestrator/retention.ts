@@ -303,7 +303,7 @@ async function pruneCodexHalf(root: string, days: number, marker: SessionPruneMa
   marker.beginHalf("codex");
   const { config } = loadConfigSafe(root);
   const codexBin = config !== undefined ? codexBackend.resolveBin(config).bin : undefined;
-  const codexHomeDir = config !== undefined ? codexHome(resolvedBackendConfig(config, "codex")) : undefined;
+  const codexHomeDir = config !== undefined ? codexHome(resolvedBackendConfig(config, "codex"), root) : undefined;
   const deletedCodex = await pruneCodexSessions(sessionsRootDir(root), days, {
     bin: codexBin,
     env: { ...process.env, CODEX_HOME: codexHomeDir },

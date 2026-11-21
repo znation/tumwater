@@ -2318,12 +2318,13 @@ test("checkCodexAuth: ChatGPT passes, an API key and a logged-out home fail", as
   assert.match(unreadable.detail, /reply was unreadable/);
 });
 
-test("checkCodexHome warns on unset configDir and names the team home when set", async () => {
+test("checkCodexHome defaults unset configDir to the team home and names it when set", async () => {
   const root = readyRepo();
   writeConfig(root, { backend: "codex", model: "gpt-6-luna" });
   const unset = (await checkCodexHome(root))!;
-  assert.equal(unset.level, "warn");
-  assert.match(unset.detail, /configDir is unset/);
+  assert.equal(unset.level, "ok", "an unset configDir is isolated under the team home, not the operator's ~/.codex");
+  assert.match(unset.detail, /unset/);
+  assert.match(unset.detail, /codex-home/);
   const home = tmpdir("doctor-codex-home-");
   fs.mkdirSync(home, { recursive: true });
   writeConfig(root, { backend: "codex", model: "gpt-6-luna", backends: { codex: { configDir: home } } });

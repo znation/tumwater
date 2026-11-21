@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { codexHome, codexModelsPath, readCodexCatalog } from "../src/agent/codex/codex-catalog.js";
+import { codexHome, codexHomeDir, codexModelsPath, readCodexCatalog } from "../src/agent/codex/codex-catalog.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { readJson } from "./helpers/json-read.js";
@@ -93,10 +93,14 @@ test("readCodexCatalog re-reads a rewritten models_cache.json (stat-keyed cache 
   assert.equal(after.get("new")?.images, true);
 });
 
-test("codexHome expands a leading tilde against the home dir and defaults to ~/.codex", () => {
-  assert.equal(codexHome({}), path.join(os.homedir(), ".codex"));
+test("codexHome expands a leading tilde, and defaults to the team home under a root, else ~/.codex", () => {
+  const root = tmpdir("codex-home-root-");
+  assert.equal(codexHome({}, root), path.join(root, ".tumwater", "codex-home"));
+  assert.equal(codexHome({}, undefined), path.join(os.homedir(), ".codex"));
   assert.equal(codexHome({ configDir: "/plain/path" }), "/plain/path");
   assert.equal(codexHome({ configDir: "~/team" }), path.join(os.homedir(), "team"));
+  assert.equal(codexHome({ configDir: "/plain/path" }, root), "/plain/path", "a configured home wins over the root default");
+  assert.equal(codexHomeDir(root), path.join(root, ".tumwater", "codex-home"));
 });
 
 test("readCodexCatalog deep-copies entries so callers own their result", () => {

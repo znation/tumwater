@@ -75,7 +75,7 @@ export function seedCodexAccount(
   // named remedy, `codex login --device-auth`) clears the refusal on the next startup instead
   // of a stale file refusing forever.
   if (existing !== null && existing.billing !== "api") return existing;
-  const billing = seedBilling(config);
+  const billing = seedBilling(config, root);
   if (billing === null) {
     // A re-probe that cannot decide must not fail open: without an existing answer it seeds
     // nothing, but a stale api answer keeps refusing — the persisted api file stays and the
@@ -122,8 +122,8 @@ export function codexApiKeyRefusalMessage(home: string): string {
 }
 
 /** The billing the login probe names, or null when it cannot be decided. */
-function seedBilling(config: TumwaterConfig): CodexBilling | null {
-  const status = probeLoginStatus(config);
+function seedBilling(config: TumwaterConfig, root: string): CodexBilling | null {
+  const status = probeLoginStatus(config, root);
   if (status === null) return null;
   if (status === "api") return "api";
   if (status === "subscription") return "subscription";
@@ -133,9 +133,9 @@ function seedBilling(config: TumwaterConfig): CodexBilling | null {
 /** Run `codex login status` under the same scrubbed environment a real run gets (a team
  * config dir's login is what it reports), bounded by a short deadline. Null when the probe
  * could not run or its stdout was unreadable. */
-function probeLoginStatus(config: TumwaterConfig): CodexLoginStatus {
+function probeLoginStatus(config: TumwaterConfig, root: string): CodexLoginStatus {
   const resolved = codexBackend.resolveBin(config);
-  const home = codexHome(resolvedBackendConfig(config, "codex"));
+  const home = codexHome(resolvedBackendConfig(config, "codex"), root);
   const env = codexEnv(process.env, home !== undefined ? { home } : {});
   try {
     const result = spawnSync(resolved.bin, ["login", "status"], {
