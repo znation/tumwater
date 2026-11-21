@@ -38,6 +38,7 @@ import { collectRootInstallDrift } from "./status-install.js";
 import { briefStatus } from "../brief/brief.js";
 import { principlesBlockOverCap } from "../prompt/principles.js";
 import type { MaintenanceMarker } from "../orchestrator/retention.js";
+import { githubCloseForStatus } from "../github/github-issues-state.js";
 import { heartbeatPath, maintenancePath } from "../paths.js";
 import { type GithubIssuesSummary, githubIssuesSummary, readGithubIssues } from "../github/github-issues-state.js";
 import { readJsonFile } from "../files/json-files.js";
@@ -364,6 +365,10 @@ export interface StatusSnapshot {
    * Absent for a stopped team, a team whose build predates the heartbeat, and any stall a
    * maintenance pass explains. Fresh per poll, like `maintenance`. */
   pollStalled?: { lastPollAt: number };
+  /** The GitHub issues the team fixed but has not closed yet (github-issues-state.ts
+   * githubCloseForStatus): fixes waiting for a push to `repo`, and open issues whose every entry
+   * was retired. Absent when neither holds. Fresh per poll. */
+  githubClose?: { repo: string; waitingPush: number; retiredOnly: number };
   /** The standing per-provider failure holds (src/team/team-hold.ts `standingHolds`), read
    * from the running orchestrator's info file: a provider storm's hold, so the dashboards and
    * `tumwater status` name why a provider's roles sit idle. Absent while none stands or the
@@ -733,6 +738,8 @@ function snapshotResourceFields(
     // The heartbeat's stall check: a standing maintenance marker explains a quiet poll, so the
     // stall reads as absent and the blue maintenance banner is the only one shown.
     pollStalled: pollStallForPoll(root, livePid, maintenance !== undefined, Date.now()),
+    // The GitHub issues awaiting a close or a push (part 5/5); absent when none does.
+    githubClose: githubCloseForStatus(root),
   };
 }
 

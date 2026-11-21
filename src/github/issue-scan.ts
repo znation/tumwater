@@ -6,10 +6,10 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { envPath } from "../files/files.js";
-import { fileContentAt } from "../git/git.js";
 import { githubTarget } from "../observer/remote-ci.js";
+import { closeFixedIssues } from "./issue-close.js";
 import { ghReadiness, ghRunner, type GhRunner } from "./gh.js";
-import { mirrorStates } from "./issue-mirrors.js";
+import { mirrorsAtTip } from "./issue-mirrors.js";
 import {
   readGithubIssues,
   writeGithubIssues,
@@ -28,9 +28,6 @@ const MAX_ISSUE_PAGES = 5;
 
 /** The most characters of a trusted issue's body the ledger keeps (decision 5). */
 export const BODY_EXCERPT_MAX_CHARS = 2500;
-
-/** The backlog files a mirror can sit in: the open lists and their finished archives. */
-const MIRROR_FILES = ["BUGS.md", "PLANS.md", "BUGS-FIXED.md", "PLANS-DONE.md"];
 
 const MS_PER_MINUTE = 60_000;
 const DEFAULT_SCAN_INTERVAL_MINUTES = 60;
@@ -136,13 +133,6 @@ function toRow(
   return row;
 }
 
-/** The issue numbers any backlog file mirrors at the base branch's tip. */
-async function mirroredAtTip(root: string, branch: string): Promise<Set<number>> {
-  const files: Record<string, string> = {};
-  for (const file of MIRROR_FILES) files[file] = await fileContentAt(root, branch, file);
-  return new Set(mirrorStates(files).keys());
-}
-
 /** One scan: when enabled and the project has a GitHub remote, probe `gh`, list the open issues,
  * and rewrite the ledger. A scan whose `gh` cannot read the issues keeps the previous open list
  * and records why. The record of an outage is one `github_issues_unavailable` event, logged when
@@ -171,7 +161,7 @@ export async function scanGithubIssues(
     if (listed.ok) {
       const authors = config.githubIssues?.authors ?? "collaborators";
       const mirrorLabel = config.githubIssues?.mirrorLabel ?? "tumwater";
-      const mirrored = await mirroredAtTip(root, target.branch);
+      const mirrored = new Set((await mirrorsAtTip(root, target.branch)).keys());
       open = listed.issues.map((raw) => toRow(raw, authors, mirrorLabel, mirrored));
     } else {
       gh = "error";
@@ -216,7 +206,10 @@ export async function pollGithubIssues(
   const minutes = config.githubIssues?.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES;
   clock.nextAt = now + minutes * MS_PER_MINUTE;
   try {
-    await scanGithubIssues(root, config, run, now);
+    const ledger = await scanGithubIssues(root, config, run, now);
+    if (ledger?.gh === "ok" && config.githubIssues?.close !== false) {
+      await closeFixedIssues(root, config, run, warn, now);
+    }
   } catch (err) {
     warn(`could not scan the GitHub issues: ${err instanceof Error ? err.message : String(err)}`);
   }

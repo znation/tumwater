@@ -6,17 +6,26 @@
 
 import { isRetiredTitle } from "../backlog/backlog.js";
 import { actionableEntryRanges } from "../backlog/backlog-index-data.js";
+import { fileContentAt } from "../git/git.js";
 
 /** The `## ` sections a mirror can sit in, open lists and finished archives alike. */
-const MIRROR_SECTIONS = ["Planned", "Open", "Done", "Fixed"];
+const MIRROR_SECTIONS = ["Planned", "Open", "Done", "Fixed", "Verified"];
+
+/** The backlog files a mirror can sit in: the open lists and their finished archives. */
+const MIRROR_FILES = ["BUGS.md", "PLANS.md", "BUGS-FIXED.md", "PLANS-DONE.md"];
 
 /** Where one mirroring entry sits: its backlog file, its `## ` section, its heading, and whether it
  * carries a retired stamp (a retired entry never closes its issue; part 5). */
-interface MirrorEntry {
+export interface MirrorEntry {
   file: string;
   section: string;
   heading: string;
   retired: boolean;
+}
+
+/** Whether a mirroring entry is finished: in a `## Done`, `## Fixed` or `## Verified` section. */
+export function isFinishedMirror(entry: MirrorEntry): boolean {
+  return ["Done", "Fixed", "Verified"].includes(entry.section);
 }
 
 /** The issue numbers one heading mirrors, from its text after `### `. Numbers are compared as
@@ -55,4 +64,11 @@ export function mirrorStates(files: Readonly<Record<string, string>>): Map<numbe
     }
   }
   return byIssue;
+}
+
+/** The mirror entries of the backlog at the base branch's tip, keyed by issue number. */
+export async function mirrorsAtTip(root: string, branch: string): Promise<Map<number, MirrorEntry[]>> {
+  const files: Record<string, string> = {};
+  for (const file of MIRROR_FILES) files[file] = await fileContentAt(root, branch, file);
+  return mirrorStates(files);
 }

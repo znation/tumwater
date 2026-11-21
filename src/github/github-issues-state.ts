@@ -38,6 +38,14 @@ export interface GithubIssuesLedger {
   /** Why `gh` is not `ok`, when it is not. */
   reason?: string;
   open: GithubIssueRow[];
+  /** Open issues whose every mirroring entry was retired: listed, never closed (part 5/5). */
+  retiredOnly?: number[];
+  /** Issues tumwater closed, by issue number: when, and the fix shas the close cited. */
+  closed?: Record<string, { at: number; shas: string[] }>;
+  /** Issues whose fix is on main but not yet on GitHub's base branch, with the shas waiting. */
+  waitingPush?: Record<string, string[]>;
+  /** Director-reported fixes (part 4/5), each with the sha that fixed it. */
+  fixedIn?: Record<string, { sha: string; at: number }>;
 }
 
 /** The ledger folded to the counts the status snapshot and its alerts read (plans/github-issues.md,
@@ -76,6 +84,19 @@ export function githubIssuesSummary(ledger: GithubIssuesLedger, mirrorLabel: str
 /** The ledger on disk, or null when no scan has written one yet (or the file is unreadable). */
 export function readGithubIssues(root: string): GithubIssuesLedger | null {
   return readJsonFile<GithubIssuesLedger>(githubIssuesPath(root));
+}
+
+/** The GitHub figures the status surfaces show: how many fixes wait for a push to GitHub and how
+ * many open issues had only retired entries. Undefined when neither holds, or no ledger exists. */
+export function githubCloseForStatus(
+  root: string,
+): { repo: string; waitingPush: number; retiredOnly: number } | undefined {
+  const ledger = readGithubIssues(root);
+  if (!ledger) return undefined;
+  const waitingPush = Object.keys(ledger.waitingPush ?? {}).length;
+  const retiredOnly = ledger.retiredOnly?.length ?? 0;
+  if (waitingPush === 0 && retiredOnly === 0) return undefined;
+  return { repo: ledger.repo, waitingPush, retiredOnly };
 }
 
 /** Rewrite the ledger atomically. */

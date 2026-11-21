@@ -5,6 +5,61 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### GitHub issues, part 5/5: when every entry mirroring an issue is finished and the fix is on GitHub's base branch, tumwater closes the issue citing the fix commit (planned 2026-11-21 by the operator; requires GitHub issues part 2/5 landed; touches src/github/issue-close.ts src/orchestrator/orchestrator-poll.ts src/status/status-data.ts src/ui/team-alert-status.ts src/events/events.ts test/github-issue-close.test.ts test/team-alert-status.test.ts test/fakes/fake-gh.ts) — done 2026-11-21 by the feature role
+
+**Goal.** An issue that tumwater mirrored and fixed does not stay open on GitHub. When the fix
+is on the branch GitHub serves, tumwater closes the issue as the operator's `gh` login. The
+comment cites the fix commit(s) and the backlog entry, for example: `Fixed on main in 1a2b3c4d
+("tumwater(bugfix): Cap the GUI's history read …"). Closed by tumwater, which mirrored this
+issue as BUGS.md entry "Heap OOM 12 s after run --gui starts".` Fixes not pushed yet wait, and
+the GUI says so.
+
+**Approach.** Follow plans/github-issues.md decisions 6–8. The step runs right after each scan
+in `pollGithubIssues`, and only when `githubIssues.close` is not false and `gh` is `ok`.
+- src/github/issue-close.ts: `closeCandidates(ledger, mirrorStates)` is pure. It returns each
+  open issue where either:
+  - every phrase-carrying entry is finished and at least one is not retired; or
+  - the ledger has a `fixedIn` sha for it.
+  It skips issues `closed` at or after their current `updatedAt`, unless decision 8's reopen
+  applies.
+- `fixCommits(root, base, n, since?)` runs `git log --format=%H%x00%s --pickaxe-regex
+  -S'<phrase regex for n>' <base> -- BUGS-FIXED.md PLANS-DONE.md BUGS.md PLANS.md`. It keeps
+  the commits that increased the phrase's count in a finished section, newer than `since` (the
+  previous close), plus any `fixedIn` sha.
+- For each candidate's shas, run `gh api repos/<repo>/compare/<sha>...<branch> --jq .status`.
+  If any is not `ahead`/`identical`, record `waitingPush[n] = shas` and stop. Otherwise run
+  `gh issue close <n> --repo <repo> --reason completed --comment <text>`. On exit 0, record
+  `closed[n] = { at, shas }`, clear `waitingPush[n]`, and log `github_issue_closed` (issue,
+  repo, shas). On failure, log a warning and leave the ledger as it was, so the next scan
+  retries.
+- An issue whose entries are all retired is listed as `retiredOnly` and never closed.
+- status-data folds `waitingPush` and `retiredOnly` counts. src/ui/team-alert-status.ts adds a
+  blue alert, key `github-close`, e.g. `1 GitHub issue is fixed on main and closes when you
+  push main to <repo>`, and when retired-only is non-zero, `· 1 mirrored issue's entries were
+  all retired — close or re-file it on GitHub`.
+- test/fakes/fake-gh.ts: answers `api …/compare/…` per configured ancestry and records
+  `issue close` calls with their args.
+
+**Acceptance criteria.** All in a fixture repo with a fake github.com remote and the fake gh.
+- A bug mirrored as `#1` is moved to BUGS-FIXED.md in commit X, and the fake compare answers
+  `ahead`. The next scan closes #1 exactly once. The recorded comment contains X's short sha,
+  X's subject and the entry heading, `--reason completed` is passed, and a
+  `github_issue_closed` event names X.
+- The same with compare answering `behind`: no close call is made, `waitingPush` names X, and
+  the blue alert says 1 issue closes on push. Then compare answers `ahead` and the issue closes.
+- A plan split into parts 1/2 and 2/2, both mirroring `#4`, with only 1/2 done → #4 stays open.
+  Once both are done, the close cites both commits.
+- A mirror whose only entry was retired is never closed and is counted retired-only.
+- `githubIssues.close: false` makes zero `issue close` calls with a finished mirror on main.
+- After tumwater closes #1, the ledger shows it open again with a newer `updatedAt` and a new
+  live entry mirrors it → no close. When that entry is fixed in commit Y, the close cites only
+  Y.
+- `#1`'s finished entry never triggers a close of `#12`.
+
+Implemented 2026-11-21 by the feature role: src/github/issue-close.ts (`closeCandidates`, the pure verdict; `fixCommits`, the `git log -S` over the finished archives; `closeFixedIssues`, which pollGithubIssues runs after each `ok` scan unless `githubIssues.close` is false). `mirrorsAtTip` moved from issue-scan.ts into issue-mirrors.ts, and `Verified` joined the mirror sections. The ledger gains `closed`, `waitingPush`, `retiredOnly` and the read of `fixedIn` (github-issues-state.ts), and `githubCloseForStatus` feeds the `githubClose` status field and the blue `github-close` alert (team-alert-status.ts). The event is `github_issue_closed` (events.ts, event-labels.ts, event-format.ts, event-format-config.ts). test/fakes/fake-gh.ts answers `compare` per sha. orchestrator-poll.ts is unchanged, since pollGithubIssues already carries the step.
+Deviations: the fix-commit search runs over BUGS-FIXED.md and PLANS-DONE.md only, not all four files, because a commit that files a live entry would be cited as a fix. A finished entry hand-moved into a live file's `## Fixed` or `## Done` has no archive commit, so its issue is skipped, not closed. A compare that answers anything but `ahead` or `identical`, including the error for an unpushed sha, records `waitingPush`, and that issue alone waits. Nothing writes `fixedIn` until part 4/5 merges.
+Pinned by test/github-issue-close.test.ts (the pure verdicts, and a fixture repo with the fake gh for the close, the wait for a push, and `close: false`) and test/team-alert-status.test.ts.
+
 ### GitHub issues, part 3/5: the GUI warns when a project has a GitHub remote but `gh` is missing or logged out, and shows issues waiting to be mirrored (planned 2026-11-21 by the operator; requires GitHub issues part 2/5 landed; touches src/status/status-data.ts src/ui/team-alert-status.ts test/status-data.test.ts test/team-alert-status.test.ts) — done 2026-11-21 by the feature role
 
 **Goal.** The operator sees in the dashboard, without running doctor, that tumwater cannot read

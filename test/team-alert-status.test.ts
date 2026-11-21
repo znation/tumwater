@@ -122,6 +122,33 @@ test("a stalled poll loop raises an amber alert naming the threshold and the las
   assert.deepEqual(alert?.actions, [], "the alert offers no action");
 });
 
+// The GitHub close alert (team-alert-status.ts pushGithubCloseAlert): blue, no action, and one
+// sentence per count: a fix waiting for a push, and an issue whose entries were all retired.
+test("a fix waiting for a push raises a blue alert naming the repo; retired-only issues add a clause", () => {
+  const waiting = buildStatusAlerts({
+    snap: { ...base, githubClose: { repo: "o/r", waitingPush: 1, retiredOnly: 0 } },
+    roles: [],
+  });
+  assert.equal(waiting.length, 1);
+  assert.equal(waiting[0]?.key, "github-close");
+  assert.equal(waiting[0]?.tone, "blue");
+  assert.equal(waiting[0]?.title, "1 GitHub issue is fixed on main and closes when you push main to o/r");
+  assert.deepEqual(waiting[0]?.actions, [], "the alert offers no action");
+
+  const both = buildStatusAlerts({
+    snap: { ...base, githubClose: { repo: "o/r", waitingPush: 1, retiredOnly: 1 } },
+    roles: [],
+  });
+  assert.equal(
+    both[0]?.title,
+    "1 GitHub issue is fixed on main and closes when you push main to o/r · 1 mirrored issue's entries were all retired — close or re-file it on GitHub",
+  );
+});
+
+test("no GitHub close figures raise no GitHub close alert", () => {
+  assert.equal(buildStatusAlerts({ snap: base, roles: [] }).some((a) => a.key === "github-close"), false);
+});
+
 test("no stalled poll raises no poll-stall alert", () => {
   const alerts = buildStatusAlerts({ snap: base, roles: [] });
   assert.equal(alerts.some((a) => a.key === "pollStalled"), false);

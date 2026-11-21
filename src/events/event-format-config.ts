@@ -15,6 +15,11 @@ export function configEventMessage(e: HarnessEvent): string {
       // gh works again. It is logged once per outage, not once per scan.
       return `GitHub issues unavailable for ${textOr(e.repo)} (${textOr(e.gh)}): ${textOr(e.reason)}`;
     }
+    case "github_issue_closed": {
+      // tumwater closed a mirrored issue because its fix is on GitHub's base branch: a routine
+      // outcome, so no warning prefix.
+      return `closed GitHub issue #${textOr(e.issue)} on ${textOr(e.repo)}, citing ${Array.isArray(e.shas) ? e.shas.map((sha) => String(sha).slice(0, 8)).join(", ") : textOr(e.shas)}`;
+    }
     case "retention_changed": {
       // Routine state change, like its maxConcurrent sibling — no warning prefix.
       return `sessionRetentionDays changed: ${textOr(e.from)} → ${textOr(e.to)}`;

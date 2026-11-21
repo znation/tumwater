@@ -140,7 +140,8 @@ atomically by the scan, the queue step and the close step:
   declined: { "<n>": { at, updatedAt, reason } }, // director said not actionable
   fixedIn:  { "<n>": { sha, at } },              // director said already fixed
   closed:   { "<n>": { at, shas } },             // tumwater closed it
-  waitingPush: { "<n>": shas } }                 // finished on main, not on GitHub yet
+  waitingPush: { "<n>": shas },                  // finished on main, not on GitHub yet
+  retiredOnly: [n] }                             // open, every entry retired: listed, never closed
 ```
 
 `bodyExcerpt` is at most 2,500 characters so the composed director prompt stays under

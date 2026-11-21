@@ -33,8 +33,32 @@ interface StatusAlertsInput {
     | "maintenance"
     | "pollStalled"
     | "githubIssues"
+    | "githubClose"
   >;
   roles: readonly AlertRole[];
+}
+
+// The GitHub issues tumwater fixed but has not closed (src/github/issue-close.ts): a fix on local
+// main closes its issue once main is pushed to GitHub, and an issue whose every entry was retired
+// waits for the operator. Blue: it informs; GitHub does the closing, so no action is offered.
+function pushGithubCloseAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
+  const g = snap.githubClose;
+  if (!g) return;
+  const parts: string[] = [];
+  if (g.waitingPush > 0) {
+    const one = g.waitingPush === 1;
+    parts.push(
+      `${g.waitingPush} GitHub ${one ? "issue is" : "issues are"} fixed on main and ${one ? "closes" : "close"} when you push main to ${g.repo}`,
+    );
+  }
+  if (g.retiredOnly > 0) {
+    const one = g.retiredOnly === 1;
+    parts.push(
+      `${g.retiredOnly} mirrored ${one ? "issue's entries were" : "issues' entries were"} all retired — close or re-file ${one ? "it" : "them"} on GitHub`,
+    );
+  }
+  if (parts.length === 0) return;
+  out.push({ key: "github-close", tone: "blue", title: parts.join(" · "), detail: "", actions: [] });
 }
 
 // The session-prune pass running in the background (retention.ts's marker, read by status-data.ts):
@@ -248,6 +272,7 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
   pushMaintenanceAlert(out, snap);
   pushPollStallAlert(out, snap);
+  pushGithubCloseAlert(out, snap);
   pushChainAlert(out, snap);
   pushSpentBudgetAlert(out, snap);
   pushModelCheckAlert(out, snap);

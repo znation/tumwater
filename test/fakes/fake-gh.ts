@@ -20,7 +20,16 @@ interface FakeGhProbe {
  * issue objects each `gh api` page returns, one array per page; `apiFail: true` makes every
  * `gh api` call exit 1. */
 export function fakeGh(
-  opts: { auth?: boolean; version?: boolean; issues?: unknown[][]; apiFail?: boolean } = {},
+  opts: {
+    auth?: boolean;
+    version?: boolean;
+    issues?: unknown[][];
+    apiFail?: boolean;
+    /** The status each `api repos/<repo>/compare/<sha>...<branch>` answers, by sha, read on every
+     * call so a test can change it between scans. A sha not listed is unknown to GitHub: the call
+     * fails, as the real API does for a commit that was never pushed. */
+    compare?: Record<string, string>;
+  } = {},
 ): FakeGhProbe {
   const calls: string[][] = [];
   const authenticated = opts.auth ?? true;
@@ -40,6 +49,11 @@ export function fakeGh(
     }
     if (args[0] === "api") {
       if (opts.apiFail) return { code: 1, stdout: "" };
+      const compare = /\/compare\/([0-9a-f]+)\.\.\./.exec(args[1] ?? "")?.[1];
+      if (compare !== undefined) {
+        const status = opts.compare?.[compare];
+        return status === undefined ? { code: 1, stdout: "" } : { code: 0, stdout: `${status}\n` };
+      }
       const page = Number(/[?&]page=(\d+)/.exec(args[1] ?? "")?.[1] ?? 1);
       return { code: 0, stdout: JSON.stringify(pages[page - 1] ?? []) };
     }
