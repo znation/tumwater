@@ -5,6 +5,15 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### the stage self-check finding "added lines carry garbled rename wording (reword them; a rote word swap such as "tick" → "run" reads wrong here or leav…" was not closed by the fix-up turn and re-fires each run (filed by tumwater 2026-11-20) — fixed 2026-11-21 by the bugfix role
+
+- **Symptom:** the pre-queue self-check raised this finding on the run's change; the one-turn fix-up could not close it and reverted the whole change instead, so the run ended `no_change` (`selfCheckReverted`) and the finding lived only in the run's warning event.
+- **Finding:** `added lines carry garbled rename wording (reword them; a rote word swap such as "tick" → "run" reads wrong here or leaves a word doubled): .scratch/cov.log:858 "run runs", .scratch/cov.log:9204 "run runs", .scratch/cov.log:9770 "run's run"`
+- **Reproduce:** the cited `.scratch/cov.log` is not tracked anywhere in the repo, so the trigger was rebuilt with a stand-in: an untracked `.scratch/cov.log` holding `run runs` in a stage-check worktree. Before the fix the check reported `.scratch/cov.log:2 "run runs"`; the new test "a run's .scratch log stays out of the staged change, so its wording is never checked" failed with that finding.
+- **Cause:** the stage check stages the change with `git add -A`, and `.scratch/` (a run's scratch output) was neither tracked nor ignored, so its lines entered the change and their garbled wording was reported as the run's own.
+- **Fix:** `.gitignore` now ignores `.scratch/`, so `git add -A` leaves a run's scratch output out of the staged change. With the rule in place the same test passes.
+- **Validation gap:** no-repro — the cited scratch log is absent from the repo, so the exact trigger was reproduced with a stand-in scratch file in a stage-check test.
+
 ### the stage self-check finding "added lines name paths that do not exist in the tree: src/cli/cli-land-command.js, src/operator/operator-land.js, src/c…" was not closed by the fix-up turn and re-fires each run (filed by tumwater 2026-11-20) — fixed 2026-11-21 by the bugfix role
 
 - **Symptom:** the pre-queue self-check raised this finding on the run's change; the one-turn fix-up could not close it and reverted the whole change instead, so the run ended `no_change` (`selfCheckReverted`) and the finding lived only in the run's warning event.

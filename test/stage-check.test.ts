@@ -536,6 +536,19 @@ test("garbled wording already on the base is not reported", async () => {
   assert.deepEqual(findings.filter((f) => f.includes("garbled rename wording")), []);
 });
 
+test("a run's .scratch log stays out of the staged change, so its wording is never checked", async () => {
+  // The project's own .gitignore: the stage check stages with `git add -A`, so an untracked run
+  // scratch log is staged unless the ignore rule keeps it out.
+  const projectGitignore = fs.readFileSync(new URL("../../.gitignore", import.meta.url), "utf8");
+  const { wt } = await repoWith({ "src/a.ts": "export const a = 1;\n", ".gitignore": projectGitignore });
+  fs.mkdirSync(path.join(wt, ".scratch"), { recursive: true });
+  fs.writeFileSync(path.join(wt, ".scratch/cov.log"), "a coverage line\n" + "run " + "runs\n");
+
+  const findings = await stageCheckFindings(wt, "main", "feature");
+
+  assert.deepEqual(findings.filter((f) => f.includes("garbled rename wording")), []);
+});
+
 test("a file whose base already lacked a final newline yields no finding", async () => {
   const { wt } = await repoWith({ "src/a.ts": "export const a = 1;" });
   fs.writeFileSync(path.join(wt, "src/a.ts"), "export const a = 2;");
