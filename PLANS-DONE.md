@@ -5,6 +5,58 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast session cleanup, part 1/2: the session prune skips placeholder and already-gone Codex sessions, walks the rollout tree once, and resumes where a restart stopped it (planned 2026-11-16 by the operator; requires Visible session cleanup part 2/3 landed; touches src/agent/session-ledger.ts src/agent/codex/codex-rollout.ts src/agent/codex/codex-backend.ts src/orchestrator/retention.ts src/ui/team-alert-status.ts test/session-ledger-prune.test.ts test/retention.test.ts test/team-alert-status.test.ts) — done 2026-11-21 by the feature role
+
+**Goal.** Visibility explains a long prune; this makes it short and restart-safe. On 2026-11-16
+half of the 3,944 expired Codex ids had no rollout left (earlier, interrupted passes had already
+deleted them) yet each still cost about 1 s of `codex delete`. And because ledger lines are
+trimmed only after the whole pass, every restart started the 75-minute pass over.
+
+_Amended 2026-11-16 by the operator: added the placeholder-id skip and the single rollout walk,
+from bugs found while diagnosing the same stall._
+
+**Approach.**
+- In `pruneCodexSessions`, skip every id that is not a Codex thread UUID before any lookup or
+  spawn. A fresh Codex run's pre-spawn ledger record carries the session *name* as its id
+  (src/agent/agent-spawn.ts, `invocation.sessionId ?? opts.sessionName`; the streamed UUID is a
+  second record), and `codex delete --force <name>` always refuses (`--force requires a session
+  UUID`). On 2026-11-16, 5,488 of 11,003 Codex records were placeholders and 875 of the expired
+  ids were names. Move `THREAD_ID_RE` out of src/agent/codex/codex-backend.ts into
+  codex-rollout.ts (which session-ledger already imports, so no import cycle) and use it in both
+  places. The placeholder lines are still trimmed by `pruneSessionLedgers` as today. (Resume is
+  already safe: `resolveCodexSession` and `resumable` accept only `THREAD_ID_RE` ids.)
+- Build one `id → rollout path` index from a single walk of `$CODEX_HOME/sessions` at the start
+  of the pass and look ids up in it, instead of calling `findRollout` per id: `findRollout`
+  walks the whole tree on every call and never stops at the first match (about 4,000 ids ×
+  3,800 entries per prune), and its comment claiming the walk "stays small" is wrong; fix the
+  comment too.
+- Then look up each id's rollout in that index before spawning, and skip
+  `codex delete` when the rollout is already gone (count it handled, not deleted). Keep the
+  existing rollout-unlink fallback for a failed delete.
+- Make progress durable: after each handled id, record it so a restart does not redo it. Either
+  trim that id's ledger lines as it goes, or append it to a resume file under `.tumwater/state/`
+  that the next pass subtracts from the expired set and that is removed once the ledger trim
+  runs. Pick whichever keeps the ledger writer single-homed (`pruneSessionLedgers`), and say which
+  in the commit.
+- Apply both to `pruneOpencodeSessions` (skip an id OpenCode no longer has, if its CLI or DB can
+  tell cheaply; otherwise only the resume half).
+- Note: the "(bounded)" in both functions' doc comments means the 10 s per-delete timeout
+  (`SESSION_DELETE_TIMEOUT_MS`), not a cap on deletes per pass; reword it so it is not misread.
+- Drop the `Restarting tumwater starts this over.` suffix from the maintenance alert (part 2/3),
+  since it is no longer true.
+
+**Acceptance criteria.**
+- An expired non-UUID Codex id (a session name) is never passed to the `codex` binary, and its
+  ledger lines are still trimmed by the line pass.
+- One prune pass walks `$CODEX_HOME/sessions` once, however many ids are expired.
+- An expired Codex id whose rollout is already absent is never passed to the `codex` binary (a
+  stub binary that records its argv sees only ids that still have a rollout).
+- A prune interrupted after k of N ids (stub delete that throws or the test stops it) and run
+  again spawns deletes only for the remaining N − k ids.
+- The maintenance alert no longer carries the restart suffix.
+
+_Landed 2026-11-21 by the feature role: the Codex prune skips a non-UUID id and an id whose rollout is already absent before any spawn, and builds its rollout index once per pass (`indexRollouts`; `THREAD_ID_RE` moved to codex-rollout.ts). Each handled id is appended to `.tumwater/state/session-prune-<backend>.txt` (`sessionPruneResumePath`, src/paths.ts); the next pass subtracts those ids, and retention clears the records after `pruneSessionLedgers` trims, so that function stays the one ledger writer. The OpenCode half takes the resume record only: its CLI cannot tell a gone session cheaply, so it skips no id. Also touched beyond the list: src/paths.ts and docs/invariants.md (INV-BP3)._
+
 ### Visible session cleanup, part 3/3: an amber "orchestrator hasn't polled" alert when the poll loop stalls without a marker (planned 2026-11-16 by the operator; requires Visible session cleanup part 2/3 landed; touches src/paths.ts src/orchestrator/orchestrator-poll.ts src/status/status-data.ts src/ui/team-alert-status.ts test/status-data.test.ts test/team-alert-status.test.ts) — done 2026-11-21 by the feature role
 
 **Goal.** Parts 1/3 and 2/3 cover the session prune. The next synchronous pass that blocks the

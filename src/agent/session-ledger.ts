@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { daysAgoMs, dirEntryNames, ensureParentDir, readTextOrNull, statOrNull, terminateTornTail, walkFiles, writeTextAtomic } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
-import { findRollout } from "./codex/codex-rollout.js";
+import { THREAD_ID_RE, indexRollouts } from "./codex/codex-rollout.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
 
 /** The ledger file name every session dir holds. Deliberately a `.jsonl` name so it sits beside
@@ -219,6 +219,37 @@ export function pruneSessionLedgers(sessionsRoot: string, days: number): number 
   return pruned;
 }
 
+/** The ids one backend's prune pass already handled before it was interrupted (paths.ts
+ * sessionPruneResumePath). A pass records each id as it handles it, so the next pass skips
+ * those rather than redoing them; the retention pass clears the record once the ledger lines
+ * are trimmed, so `pruneSessionLedgers` stays the one ledger writer. A missing record is none
+ * handled. */
+function readPruneResume(file: string | undefined): Set<string> {
+  if (file === undefined) return new Set();
+  return new Set((readTextOrNull(file) ?? "").split("\n").filter((line) => line !== ""));
+}
+
+/** Append one handled id to the resume record. Best effort: a record that cannot be written
+ * only means a restart redoes that id, and must not fail the prune. */
+function recordPruneResume(file: string | undefined, id: string): void {
+  if (file === undefined) return;
+  try {
+    ensureParentDir(file);
+    fs.appendFileSync(file, `${id}\n`);
+  } catch {
+    // Best effort: an unwritable record only means a restart redoes this id.
+  }
+}
+
+/** Remove a backend's resume record once the ledger lines it covers have been trimmed. */
+export function clearPruneResume(file: string): void {
+  try {
+    fs.rmSync(file, { force: true });
+  } catch {
+    // Best effort: a record left behind only makes the next pass skip ids it already handled.
+  }
+}
+
 /** How long one `opencode session delete <id> --standalone` may take before it gives up: the
  * session export measured 0.18 s live, so 10 s is a generous bound on a slow or wedged CLI. */
 const SESSION_DELETE_TIMEOUT_MS = 10_000;
@@ -259,12 +290,16 @@ interface OpencodePruneOptions {
    * this pass handles, so `done` rises monotonically to `total`. The purge stays free of path
    * knowledge — the caller owns the marker the report feeds. */
   onProgress?: (done: number, total: number) => void;
+  /** The resume record this pass reads and appends to (paths.ts sessionPruneResumePath), so an
+   * interrupted pass's handled ids are not deleted again on the next one. */
+  resumePath?: string;
 }
 
 /** Delete each OpenCode session the ledger records as expired, with one
- * `opencode session delete <id> --standalone` each (bounded), plus the spill files older than
- * the window in the team's shell spill dir. The session's spill files and server state live
- * OUTSIDE `.tumwater/` (finding 17), so trimming the ledger line alone would orphan them; the
+ * `opencode session delete <id> --standalone` each (capped at SESSION_DELETE_TIMEOUT_MS), plus
+ * the spill files older than the window in the team's shell spill dir. The session's spill files
+ * and server state live OUTSIDE `.tumwater/` (finding 17), so trimming the ledger line alone would
+ * orphan them; the
  * CLI's `session delete` is the one way to reach them. Best-effort and backend-specific, kept
  * out of the generic `pruneSessionLedgers` line pass: it returns the session-deletes that
  * reported success, and prunes spill files with the same window. The caller (retention) runs
@@ -280,11 +315,13 @@ export function pruneOpencodeSessions(
     // The expired ids are gathered before the delete loop so `total` is known up front — the
     // progress reporter's contract (part 1/3). The ledgers are not written by this pass, so
     // gathering first sees exactly what the old inline walk saw.
+    // An id an interrupted pass already handled is spared (readPruneResume).
+    const done = readPruneResume(opts.resumePath);
     const expired: string[] = [];
     walkFiles(sessionsRoot, (file) => {
       if (!file.endsWith(SESSION_LEDGER_FILE)) return;
       for (const record of readSessions(path.dirname(file))) {
-        if (record.agent !== "opencode" || record.at >= cutoff) continue;
+        if (record.agent !== "opencode" || record.at >= cutoff || done.has(record.id)) continue;
         expired.push(record.id);
       }
     });
@@ -292,6 +329,7 @@ export function pruneOpencodeSessions(
     if (total > 0) opts.onProgress?.(0, total);
     expired.forEach((id, i) => {
       if (sessionDeleteSucceeds(opts.bin!, ["session", "delete", id, "--standalone"], opts.env)) deleted += 1;
+      recordPruneResume(opts.resumePath, id);
       opts.onProgress?.(i + 1, total);
     });
   }
@@ -325,19 +363,23 @@ interface CodexPruneOptions {
   /** Progress reporter, the OpenCode twin's shape: `done = 0` once the delete candidates are
    * built and only when there are any, then after each candidate handled. */
   onProgress?: (done: number, total: number) => void;
+  /** The resume record this pass reads and appends to (paths.ts sessionPruneResumePath). */
+  resumePath?: string;
 }
 
 /** Delete each Codex session the ledger records as expired, with one
- * `codex delete --force <id>` each (bounded), plus the rollout-file fallback. Codex's sessions
- * live under `CODEX_HOME` (part 8/9), OUTSIDE `.tumwater/` and outside the session dirs this
- * pass walks, so trimming the ledger line alone would orphan them; the CLI's `delete --force`
- * is the one way to reach them headless (design finding 21: without `--force` Codex refuses to
- * delete without a terminal). Best-effort and backend-specific, kept out of the generic
- * `pruneSessionLedgers` line pass: it returns the deletes that reported success. Whether or not
- * a delete succeeded the session's own rollout file is removed as the fallback (the OpenCode
- * spill-file fallback's twin), so the ledger line and rollout do not outlive the window. The
- * caller (retention) runs this BEFORE pruneSessionLedgers trims the lines, so the full ledger
- * is still in view. */
+ * `codex delete --force <id>` each (capped at SESSION_DELETE_TIMEOUT_MS), plus the rollout-file
+ * fallback. Codex's sessions live under `CODEX_HOME` (part 8/9), OUTSIDE `.tumwater/` and outside
+ * the session dirs this pass walks, so trimming the ledger line alone would orphan them; the CLI's
+ * `delete --force` is the one way to reach them headless (design finding 21: without `--force`
+ * Codex refuses to delete without a terminal). Best-effort and backend-specific, kept out of
+ * the generic `pruneSessionLedgers` line pass: it returns the deletes that reported success. An
+ * id that is not a thread UUID (a session name from a pre-spawn record) is never passed to the
+ * CLI, and an id whose rollout is already gone is not either: `codex delete` has nothing left to
+ * act on, so the id is counted handled, not deleted. Whether or not a delete succeeded the
+ * session's own rollout file is removed as the fallback (the OpenCode spill-file fallback's
+ * twin), so the ledger line and rollout do not outlive the window. The caller (retention) runs
+ * this BEFORE pruneSessionLedgers trims the lines, so the full ledger is still in view. */
 export function pruneCodexSessions(
   sessionsRoot: string,
   days: number,
@@ -361,27 +403,34 @@ export function pruneCodexSessions(
   });
   // A resumed id is spared, so the reporter's `total` counts what this loop actually handles —
   // `done` still rises monotonically to `total` and a run with nothing to do reports nothing.
-  const candidates = [...expired].filter((id) => !live.has(id));
+  // A placeholder (a session name, not a thread UUID) is spared too: `codex delete --force`
+  // refuses a name, and its ledger lines are trimmed by the line pass all the same. An id an
+  // interrupted pass already handled is spared by the resume record.
+  const done = readPruneResume(opts.resumePath);
+  const candidates = [...expired].filter((id) => THREAD_ID_RE.test(id) && !live.has(id) && !done.has(id));
   const total = candidates.length;
   if (total > 0) opts.onProgress?.(0, total);
+  // One walk of the home's rollout tree serves every candidate. With no home in view there is no
+  // rollout to check, so each candidate is deleted as it always was.
+  const home = opts.env?.CODEX_HOME;
+  const rollouts = home !== undefined && total > 0 ? indexRollouts(home) : undefined;
   candidates.forEach((id, i) => {
-    if (opts.bin !== undefined && sessionDeleteSucceeds(opts.bin, ["delete", "--force", id], opts.env))
+    const rollout = rollouts?.get(id);
+    const gone = rollouts !== undefined && rollout === undefined;
+    if (!gone && opts.bin !== undefined && sessionDeleteSucceeds(opts.bin, ["delete", "--force", id], opts.env))
       deleted += 1;
     // Fallback: unlink the home's rollout for this session so neither the ledger line nor
     // its file outlives the window. A real `codex delete` removes the rollout itself, so a
-    // successful delete has nothing left to unlink; a failed or skipped delete does, and
-    // this is what trims it.
-    const home = opts.env?.CODEX_HOME;
-    if (home !== undefined) {
-      const rollout = findRollout(home, id);
-      if (rollout !== null) {
-        try {
-          fs.unlinkSync(rollout);
-        } catch {
-          // Best effort: a vanished or unwritable rollout is not a failure.
-        }
+    // successful delete has nothing left to unlink (the unlink is then a no-op); a failed or
+    // skipped delete does, and this is what trims it.
+    if (rollout !== undefined) {
+      try {
+        fs.unlinkSync(rollout);
+      } catch {
+        // Best effort: a vanished or unwritable rollout is not a failure.
       }
     }
+    recordPruneResume(opts.resumePath, id);
     opts.onProgress?.(i + 1, total);
   });
   return deleted;

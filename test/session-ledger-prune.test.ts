@@ -184,8 +184,8 @@ test("pruneCodexSessions reports progress once up front and once per candidate i
   const root = tmpdir();
   const dir = path.join(root, "feature");
   fs.mkdirSync(dir);
-  for (const n of ["0a", "0b", "0c"]) {
-    recordSession(dir, record({ agent: "codex", id: `c7b3e2a1-0000-4000-8000-00000000${n}`, at: Date.now() - 30 * DAY }));
+  for (const n of ["1", "2", "3"]) {
+    recordSession(dir, record({ agent: "codex", id: `c7b3e2a1-0000-4000-8000-00000000000${n}`, at: Date.now() - 30 * DAY }));
   }
   // No binary: the CLI deletes are skipped but the rollout fallback still handles every
   // candidate, so the reporter must still see each one — `total` counts what the loop handles.
@@ -262,4 +262,137 @@ test("pruneCodexSessions spares a session whose id was resumed fresh within the 
   const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
   assert.equal(log, "", "resumed session got no delete");
   assert.equal(fs.existsSync(rollout), true, "resumed session's rollout untouched");
+});
+
+/** A codex home with one rollout per id, all under one day dir, so a walk of its sessions tree
+ * reads four directories (sessions, year, month, day). */
+function codexHomeWithRollouts(ids: string[]): { home: string; rollouts: Map<string, string> } {
+  const home = tmpdir("codex-home-");
+  const dayDir = path.join(home, "sessions", "2026", "09", "30");
+  fs.mkdirSync(dayDir, { recursive: true });
+  const rollouts = new Map<string, string>();
+  for (const id of ids) {
+    const file = path.join(dayDir, `rollout-2026-09-30T00-00-00-000-${id}.jsonl`);
+    fs.writeFileSync(file, "{}\n");
+    rollouts.set(id, file);
+  }
+  return { home, rollouts };
+}
+
+/** A stub codex that appends each call's argv as one line to `capture`. */
+function codexStub(): { bin: string; capture: string } {
+  const bin = tmpdir("codex-bin-");
+  const capture = path.join(tmpdir("codex-capture-"), "argv.log");
+  fs.mkdirSync(path.dirname(capture), { recursive: true });
+  writeScript(path.join(bin, "codex"), `printf '%s\\n' "$*" >> ${capture}`);
+  return { bin: path.join(bin, "codex"), capture };
+}
+
+/** The thread ids the codex stub was handed, in call order. */
+function codexDeletedIds(capture: string): string[] {
+  if (!fs.existsSync(capture)) return [];
+  return fs
+    .readFileSync(capture, "utf8")
+    .split("\n")
+    .filter((line) => line !== "")
+    .map((line) => line.replace(/^delete --force /, ""));
+}
+
+test("pruneCodexSessions never passes a session name to codex, and the line pass still trims it", () => {
+  const root = tmpdir();
+  const dir = path.join(root, "feature");
+  fs.mkdirSync(dir);
+  recordSession(dir, record({ agent: "codex", id: "feature-run-1", at: Date.now() - 30 * DAY }));
+  const { bin, capture } = codexStub();
+  const { home } = codexHomeWithRollouts([]);
+
+  assert.equal(pruneCodexSessions(root, 7, { bin, env: { CODEX_HOME: home } }), 0);
+  assert.deepEqual(codexDeletedIds(capture), [], "a session name is never handed to codex");
+  assert.equal(pruneSessionLedgers(root, 7), 1, "its expired ledger line is still trimmed");
+});
+
+test("pruneCodexSessions skips codex delete for an expired id whose rollout is already gone", () => {
+  const root = tmpdir();
+  const dir = path.join(root, "feature");
+  fs.mkdirSync(dir);
+  const withRollout = "c7b3e2a1-0000-4000-8000-0000000000b1";
+  const alreadyGone = "c7b3e2a1-0000-4000-8000-0000000000b2";
+  recordSession(dir, record({ agent: "codex", id: withRollout, at: Date.now() - 30 * DAY }));
+  recordSession(dir, record({ agent: "codex", id: alreadyGone, at: Date.now() - 30 * DAY }));
+  const { home, rollouts } = codexHomeWithRollouts([withRollout]);
+  const { bin, capture } = codexStub();
+  const progress = progressLog();
+
+  assert.equal(pruneCodexSessions(root, 7, { bin, env: { CODEX_HOME: home }, onProgress: progress.onProgress }), 1);
+  assert.deepEqual(codexDeletedIds(capture), [withRollout], "only the id with a rollout reaches codex");
+  assert.deepEqual(progress.calls.at(-1), [2, 2], "the gone id is still counted as handled");
+  assert.equal(fs.existsSync(rollouts.get(withRollout) as string), false, "the delivered id's rollout is gone");
+});
+
+test("pruneCodexSessions walks the rollout tree once per pass, however many ids are expired", () => {
+  const root = tmpdir();
+  const dir = path.join(root, "feature");
+  fs.mkdirSync(dir);
+  const ids = [1, 2, 3, 4].map((n) => `c7b3e2a1-0000-4000-8000-00000000000${n}`);
+  for (const id of ids) recordSession(dir, record({ agent: "codex", id, at: Date.now() - 30 * DAY }));
+  const { home } = codexHomeWithRollouts(ids);
+  const { bin } = codexStub();
+  const sessionsDir = path.join(home, "sessions");
+  const reads: string[] = [];
+  const realReaddir = fs.readdirSync;
+  fs.readdirSync = ((dirPath: fs.PathLike, options?: unknown) => {
+    if (String(dirPath).startsWith(sessionsDir)) reads.push(String(dirPath));
+    return (realReaddir as (...args: unknown[]) => unknown)(dirPath, options);
+  }) as unknown as typeof fs.readdirSync;
+  try {
+    pruneCodexSessions(root, 7, { bin, env: { CODEX_HOME: home } });
+  } finally {
+    fs.readdirSync = realReaddir;
+  }
+  // One walk visits sessions, 2026, 09 and 30 once each; a per-id lookup would read 16 times.
+  assert.equal(reads.length, 4);
+});
+
+test("pruneCodexSessions resumes an interrupted pass without deleting an id it already handled", () => {
+  const root = tmpdir();
+  const dir = path.join(root, "feature");
+  fs.mkdirSync(dir);
+  const ids = [1, 2, 3].map((n) => `c7b3e2a1-0000-4000-8000-00000000000${n}`);
+  for (const id of ids) recordSession(dir, record({ agent: "codex", id, at: Date.now() - 30 * DAY }));
+  const { bin, capture } = codexStub();
+  const resumePath = path.join(tmpdir("prune-resume-"), "state", "session-prune-codex.txt");
+
+  // The pass is stopped once two ids are handled: the reporter throws after the second.
+  assert.throws(
+    () => pruneCodexSessions(root, 7, { bin, resumePath, onProgress: (done) => { if (done === 2) throw new Error("stopped"); } }),
+    /stopped/,
+  );
+  assert.equal(codexDeletedIds(capture).length, 2);
+
+  // The next pass spawns a delete only for the one id left.
+  assert.equal(pruneCodexSessions(root, 7, { bin, resumePath }), 1);
+  assert.deepEqual(codexDeletedIds(capture).sort(), [...ids].sort(), "each id deleted exactly once");
+});
+
+test("pruneOpencodeSessions resumes an interrupted pass without deleting an id it already handled", () => {
+  const root = tmpdir();
+  const dir = path.join(root, "feature");
+  fs.mkdirSync(dir);
+  const ids = ["ses_r1", "ses_r2", "ses_r3"];
+  for (const id of ids) recordSession(dir, record({ agent: "opencode", id, at: Date.now() - 30 * DAY }));
+  const bin = tmpdir("opencode-bin-");
+  const capture = path.join(tmpdir("opencode-capture-"), "argv.log");
+  fs.mkdirSync(path.dirname(capture), { recursive: true });
+  writeScript(path.join(bin, "opencode"), `printf '%s\\n' "$*" >> ${capture}`);
+  const resumePath = path.join(tmpdir("prune-resume-"), "state", "session-prune-opencode.txt");
+  const opencode = path.join(bin, "opencode");
+
+  assert.throws(
+    () => pruneOpencodeSessions(root, 7, { bin: opencode, resumePath, onProgress: (done) => { if (done === 2) throw new Error("stopped"); } }),
+    /stopped/,
+  );
+  assert.equal(pruneOpencodeSessions(root, 7, { bin: opencode, resumePath }), 1);
+  const log = fs.readFileSync(capture, "utf8").split("\n").filter((line) => line !== "");
+  assert.equal(log.length, 3, "three deletes in all, one per id");
+  for (const id of ids) assert.equal(log.filter((line) => line.includes(id)).length, 1, `${id} deleted once`);
 });

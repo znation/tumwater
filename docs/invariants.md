@@ -4558,18 +4558,28 @@ exited 0; a missing or failing binary costs nothing but the count. A Codex delet
 missing one) still has its rollout file unlinked under CODEX_HOME, so no expired session's rollout
 outlives the window while that team home is in view. On an unavailable config no team home is in
 view, so the purge acts on nothing — it never runs the inherited CODEX_HOME, and the operator's own
-rollouts are left untouched (never unlinked).
+rollouts are left untouched (never unlinked). A Codex id that is not a thread UUID (a session name)
+is never passed to the CLI, and an id whose rollout is already absent is not passed either: it is
+counted handled, not deleted. One pass walks the Codex sessions tree once. Each handled id is
+appended to the backend's resume record, so an interrupted pass's next run deletes none of them
+again; the retention pass clears those records once the ledger lines are trimmed.
 
 **Binds.** `src/agent/session-ledger.ts` (`pruneSessionLedgers`, `pruneOpencodeSessions`,
-`pruneCodexSessions`).
+`pruneCodexSessions`) and `src/agent/codex/codex-rollout.ts` (`indexRollouts`).
 
 **Pinned by.** `test/session-ledger-prune.test.ts` — "pruneSessionLedgers leaves a ledger it cannot
 rewrite as it was and counts nothing for it", "pruneSessionLedgers does not rewrite a ledger with
 nothing past the window", "pruneSessionLedgers empties a fully stale ledger in place and ages out a
 non-numeric stamp", "pruneOpencodeSessions counts only deletes that succeeded and never throws",
 "pruneCodexSessions deletes each expired codex session with --force and keeps the fresh one",
-"pruneCodexSessions removes the rollout when the delete fails" and
-"pruneCodexSessions spares a session whose id was resumed fresh within the window";
+"pruneCodexSessions removes the rollout when the delete fails", "pruneCodexSessions spares a session
+whose id was resumed fresh within the window", "pruneCodexSessions never passes a session name to
+codex, and the line pass still trims it", "pruneCodexSessions skips codex delete for an expired id
+whose rollout is already gone", "pruneCodexSessions walks the rollout tree once per pass, however
+many ids are expired", "pruneCodexSessions resumes an interrupted pass without deleting an id it
+already handled" and "pruneOpencodeSessions resumes an interrupted pass without deleting an id it
+already handled"; `test/retention.test.ts` — "RetentionPruner: a codex id an interrupted pass
+already handled is not deleted again, and the resume record is cleared";
 `test/session-ledger.test.ts` — "pruneSessionLedgers drops lines past the window and keeps the recent
 ones" and "pruneOpencodeSessions deletes expired opencode sessions and prunes old spill files".
 

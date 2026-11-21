@@ -165,6 +165,13 @@ export function checkDeclarationStatePath(root: string): string {
   return path.join(tumwaterDir(root), "check-declaration.json");
 }
 
+/** One backend's session-prune resume record (src/agent/session-ledger.ts): the ids an
+ * interrupted prune pass already handled, one per line, so the next pass skips them. Cleared by
+ * the retention pass once its ledger-line trim has run. Runtime state under .tumwater/state/. */
+export function sessionPruneResumePath(root: string, backend: "codex" | "opencode"): string {
+  return path.join(tumwaterDir(root), "state", `session-prune-${backend}.txt`);
+}
+
 /** The blocking-housekeeping progress marker (src/orchestrator/retention.ts, the session
  * retention prune): one orchestrator's long synchronous pass, written while it runs and removed
  * when it ends, so the separate (responsive) GUI and TUI processes can say what the blocked poll

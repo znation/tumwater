@@ -86,7 +86,7 @@ test("a session-prune pass raises a blue banner that leads the status alerts", (
   assert.equal(banner?.title, "Cleaning up expired sessions — roles start when it finishes");
   assert.equal(
     banner?.detail,
-    `deleting expired codex sessions: 1,204 / 3,944 · about 48 min left · started ${formatClock(startedAt)}. Restarting tumwater starts this over.`,
+    `deleting expired codex sessions: 1,204 / 3,944 · about 48 min left · started ${formatClock(startedAt)}.`,
   );
   assert.deepEqual(banner?.actions, [], "the banner offers no action");
 });
@@ -99,7 +99,7 @@ test("a session-prune pass with no ETA yet omits the ETA clause and names sessio
   });
   assert.equal(
     banner?.detail,
-    `deleting expired session files: 3 / 40 · started ${formatClock(startedAt)}. Restarting tumwater starts this over.`,
+    `deleting expired session files: 3 / 40 · started ${formatClock(startedAt)}.`,
   );
 });
 

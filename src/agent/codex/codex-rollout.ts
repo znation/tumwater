@@ -7,8 +7,9 @@
  * `turn_context` (the model that actually ran). This module reads just that block: what the
  * stream lacks — this run's own usage, the billing and the two usage windows.
  *
- * Pure over text (plus one filesystem walk for `findRollout`): no spawn, no billing math, no
- * session state. Part 7/9's adapter wires the lines into the canonical stream in `afterRun`.
+ * Pure over text (plus one filesystem walk for `findRollout` or `indexRollouts`): no spawn,
+ * no billing math, no session state. Part 7/9's adapter wires the lines into the canonical stream
+ * in `afterRun`.
  */
 
 import fs from "node:fs";
@@ -18,6 +19,12 @@ import { isJsonObject, nonNegativeNumber, objectOrEmpty, optionalString, parseJs
 import { windowTypeName } from "./codex-stream.js";
 
 type Json = Record<string, unknown>;
+
+/** A codex thread id (a UUID format, e.g. `01a15c9d-6762-7931-814e-a3e6e64c1b51`). The
+ * stream mints it in `thread.started`; the pre-spawn ledger record carries the session name
+ * instead, so this regex is what tells a resume that a record holds a real, stream-minted id
+ * worth resuming (design §4), and what tells a prune that a record is a thread it can delete. */
+export const THREAD_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function finite(value: unknown): number | undefined {
   return nonNegativeNumber(value, undefined);
@@ -232,18 +239,36 @@ export function rolloutLines(text: string, opts: { sinceTurnStart?: string; requ
 /** Locate the rollout file of `$CODEX_HOME` that names the session `id`: the first
  * `sessions/…/rollout-*-<id>.jsonl` under `home`, or null. It takes no start date and does no
  * date math — the id match alone decides (finding 5: Codex's rollout name carries local time,
- * so a UTC-derived bound can miss the file; the sessions tree is one directory per active day,
- * so the walk stays small). */
+ * so a UTC-derived bound can miss the file). One id per call walks the whole tree; a caller that
+ * looks up many ids builds `indexRollouts` once instead. */
 export function findRollout(home: string, id: string): string | null {
   const sessionsRoot = path.join(home, "sessions");
   if (!fs.existsSync(sessionsRoot)) return null;
   const suffix = `-${id}.jsonl`;
   let found: string | null = null;
   // The walk-and-swallow recursion is files.ts's walkFiles (an unreadable dir is no match);
-  // the id match alone decides, so only the one id's rollout can win. The sessions tree is one
-  // directory per active day, so walking it whole to the first match stays small.
+  // the id match alone decides, so only the one id's rollout can win.
   walkFiles(sessionsRoot, (file, entry) => {
     if (found === null && entry.name.startsWith("rollout-") && entry.name.endsWith(suffix)) found = file;
   });
   return found;
+}
+
+/** The rollout file name's trailing thread id: `rollout-<local time>-<id>.jsonl`. */
+const ROLLOUT_NAME_ID_RE = /-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
+
+/** One walk of `$CODEX_HOME/sessions` mapping each rollout's thread id to its file, so a prune
+ * pass looks ids up in memory instead of walking the tree once per id (`findRollout`). When an
+ * id has several rollouts the first one the walk meets wins, as `findRollout` does. An absent
+ * sessions dir maps to nothing. */
+export function indexRollouts(home: string): Map<string, string> {
+  const index = new Map<string, string>();
+  const sessionsRoot = path.join(home, "sessions");
+  if (!fs.existsSync(sessionsRoot)) return index;
+  walkFiles(sessionsRoot, (file, entry) => {
+    if (!entry.name.startsWith("rollout-")) return;
+    const id = ROLLOUT_NAME_ID_RE.exec(entry.name)?.[1];
+    if (id !== undefined && !index.has(id)) index.set(id, file);
+  });
+  return index;
 }

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { RetentionPruner, dueForPrune } from "../src/orchestrator/retention.js";
-import { maintenancePath, sessionsRootDir, toolOutputDir, eventsLogPath, opencodeDbPath, salvageDir, salvagePendingDir } from "../src/paths.js";
+import { maintenancePath, sessionPruneResumePath, sessionsRootDir, toolOutputDir, eventsLogPath, opencodeDbPath, salvageDir, salvagePendingDir } from "../src/paths.js";
 import { recordSession, sessionLedgerPath } from "../src/agent/session-ledger.js";
 import { backdate } from "./helpers/backdate.js";
 import { patchFsMethod, errnoError } from "./helpers/fs-faults.js";
@@ -159,7 +159,13 @@ test("RetentionPruner: the prune pass publishes maintenance.json while it delete
   const ids = expiredCodexIds(26);
   for (const { id, at } of ids) recordSession(dir, record({ agent: "codex", id, at }));
 
+  // Each id has a rollout in the home, or the pass skips its delete as already gone.
   const home = tmpdir("codex-marker-home-");
+  for (const { id } of ids) {
+    const rollout = path.join(home, "sessions", "2026", "09", "30", `rollout-2026-09-30T00-00-00-000-${id}.jsonl`);
+    fs.mkdirSync(path.dirname(rollout), { recursive: true });
+    fs.writeFileSync(rollout, "{}\n");
+  }
   writeConfig(root, { backends: { codex: { configDir: home } } });
   const bin = tmpdir("codex-marker-bin-");
   const marker = path.join(tmpdir("codex-marker-capture-"), "marker.log");
@@ -346,4 +352,38 @@ test("RetentionPruner: an OpenCode DB dir that cannot be created skips the sessi
   } finally {
     delete process.env.TUMWATER_OPENCODE_BIN;
   }
+});
+
+test("RetentionPruner: a codex id an interrupted pass already handled is not deleted again, and the resume record is cleared", () => {
+  const root = tmpdir();
+  const dir = path.join(sessionsRootDir(root), "feature");
+  const now = Date.now();
+  const day = 24 * 3600 * 1000;
+  const id = "c7b3e2a1-0000-4000-8000-0000000000ad";
+  recordSession(dir, record({ agent: "codex", id, at: now - 30 * day }));
+
+  // The id has a rollout in the team home, so only the resume record keeps codex from being
+  // handed it.
+  const home = tmpdir("codex-resume-home-");
+  const rollout = path.join(home, "sessions", "2026", "09", "30", `rollout-2026-09-30T00-00-00-000-${id}.jsonl`);
+  fs.mkdirSync(path.dirname(rollout), { recursive: true });
+  fs.writeFileSync(rollout, "{}\n");
+  writeConfig(root, { backends: { codex: { configDir: home } } });
+  const resume = sessionPruneResumePath(root, "codex");
+  fs.mkdirSync(path.dirname(resume), { recursive: true });
+  fs.writeFileSync(resume, `${id}\n`);
+
+  const bin = tmpdir("codex-resume-bin-");
+  const capture = path.join(tmpdir("codex-resume-capture-"), "deleted.log");
+  fs.mkdirSync(path.dirname(capture), { recursive: true });
+  writeScript(path.join(bin, "codex"), `printf '%s\\n' "$*" >> ${capture}`);
+  process.env.TUMWATER_CODEX_BIN = path.join(bin, "codex");
+  try {
+    new RetentionPruner(root, 7);
+  } finally {
+    delete process.env.TUMWATER_CODEX_BIN;
+  }
+  const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
+  assert.equal(log.includes(id), false, `an id the record lists is not deleted again: ${log}`);
+  assert.equal(fs.existsSync(resume), false, "the resume record is cleared once the ledger lines are trimmed");
 });

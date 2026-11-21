@@ -39,14 +39,8 @@ import { codexArgs, codexEffort } from "./codex-args.js";
 import { codexEnv } from "./codex-env.js";
 import { codexHookTrust } from "./codex-hook-trust.js";
 import { codexHookArg, codexHookTrustArg, codexWriteGuardDefinition } from "./codex-write-guard.js";
-import { findRollout, rolloutLines } from "./codex-rollout.js";
+import { THREAD_ID_RE, findRollout, rolloutLines } from "./codex-rollout.js";
 import { codexTranslator, type CodexStreamTranslator } from "./codex-stream.js";
-
-/** A codex thread id (a UUID format, e.g. `01a15c9d-6762-7931-814e-a3e6e64c1b51`). The
- * stream mints it in `thread.started`; the pre-spawn ledger record carries the session name
- * instead, so this regex is what tells a resume that a record holds a real, stream-minted id
- * worth resuming (design §4). */
-const THREAD_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** The oldest codex CLI the team targets, the sibling of `OPENCODE_MIN_VERSION`
  * (src/agent/opencode/opencode-backend.ts) and `CLAUDE_MIN_VERSION`

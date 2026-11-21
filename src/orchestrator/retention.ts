@@ -10,13 +10,13 @@ import { DAY_MS } from "../text/datetime.js";
 import { plural } from "../text/phrases.js";
 import { ensureParentDir, pruneOldFiles, removeQuiet } from "../files/files.js";
 import { writeJsonAtomic } from "../files/json-files.js";
-import { pruneSessionLedgers, pruneOpencodeSessions, pruneCodexSessions } from "../agent/session-ledger.js";
+import { clearPruneResume, pruneSessionLedgers, pruneOpencodeSessions, pruneCodexSessions } from "../agent/session-ledger.js";
 import { loadConfigSafe } from "../config/config.js";
 import { resolvedBackendConfig } from "../config/config-views.js";
 import { opencodeBackend, opencodeSpillDir } from "../agent/opencode/opencode-backend.js";
 import { codexBackend } from "../agent/codex/codex-backend.js";
 import { codexHome } from "../agent/codex/codex-catalog.js";
-import { maintenancePath, opencodeDbPath, salvageDir, sessionsRootDir, toolOutputDir } from "../paths.js";
+import { maintenancePath, opencodeDbPath, salvageDir, sessionPruneResumePath, sessionsRootDir, toolOutputDir } from "../paths.js";
 
 /** Is a once-per-day session prune due? Due when retention is enabled (> 0) and a full day
  * has passed since the last prune (or no prune has run yet). */
@@ -237,6 +237,7 @@ function pruneOpencodeHalf(root: string, days: number, marker: SessionPruneMarke
     bin,
     env: { ...process.env, OPENCODE_DB: dbPath },
     spillDir: opencodeSpillDir(root),
+    resumePath: sessionPruneResumePath(root, "opencode"),
     onProgress: marker.onProgress,
   });
   marker.endHalf();
@@ -260,6 +261,7 @@ function pruneCodexHalf(root: string, days: number, marker: SessionPruneMarker):
   const deletedCodex = pruneCodexSessions(sessionsRootDir(root), days, {
     bin: codexBin,
     env: { ...process.env, CODEX_HOME: codexHomeDir },
+    resumePath: sessionPruneResumePath(root, "codex"),
     onProgress: marker.onProgress,
   });
   marker.endHalf();
@@ -284,6 +286,9 @@ function pruneFileHalves(root: string, days: number, marker: SessionPruneMarker)
   const prunedLines = pruneSessionLedgers(sessions, days);
   if (prunedLines > 0)
     warnEventBestEffort(root, TUMWATER_SOURCE, `pruned ${plural(prunedLines, "stale session ledger line")}`);
+  // The ledger lines the resume records cover are trimmed now, so the records have done their job.
+  clearPruneResume(sessionPruneResumePath(root, "codex"));
+  clearPruneResume(sessionPruneResumePath(root, "opencode"));
   const prunedPatches = pruneOldFiles(salvageDir(root), days);
   if (prunedPatches > 0)
     warnEventBestEffort(root, TUMWATER_SOURCE, `pruned ${plural(prunedPatches, "old salvaged workspace patch", "old salvaged workspace patches")}`);

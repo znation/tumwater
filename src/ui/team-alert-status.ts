@@ -47,7 +47,7 @@ function pushMaintenanceAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"])
       key: "maintenance",
       tone: "blue",
       title: "Cleaning up expired sessions — roles start when it finishes",
-      detail: `deleting expired ${noun}: ${m.done.toLocaleString("en-US")} / ${m.total.toLocaleString("en-US")}${eta} · started ${formatClock(m.startedAt)}. Restarting tumwater starts this over.`,
+      detail: `deleting expired ${noun}: ${m.done.toLocaleString("en-US")} / ${m.total.toLocaleString("en-US")}${eta} · started ${formatClock(m.startedAt)}.`,
       actions: [],
     });
   }
