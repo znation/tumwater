@@ -254,6 +254,9 @@ const DROPPED_REVIEW_CLOSE =
  * never prevents the entry from being dropped and never throws out of the drain. */
 async function fileDroppedReview(ctx: MergePipelineContext, entry: PostReview, failure: string): Promise<void> {
   const root = ctx.root;
+  // The machine-readable record of the drop: the warning names the commit by short SHA only, so a
+  // reader cannot select or match it. Logged before the filing, so a filing failure keeps it too.
+  logEventBestEffort(root, { source: entry.role, type: "review_dropped", commit: entry.commit, summary: entry.summary, reason: failure });
   try {
     const outcome = await fileBugsOnMain(
       root,

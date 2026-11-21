@@ -86,7 +86,7 @@ const EVENT_MESSAGE_FAMILY: Record<HarnessEvent["type"], EventMessageFamily> = {
   // merge family (mergeEventMessage)
   merged: mergeEventMessage, merge_queued: mergeEventMessage, merge_cancelled: mergeEventMessage, merge_topped: mergeEventMessage, merge_done: mergeEventMessage, merge_failed: mergeEventMessage, conflict_handback: mergeEventMessage, operator_revert: mergeEventMessage, main_check: mergeEventMessage, main_culprit: mergeEventMessage, main_red_hold: mergeEventMessage,
   // review family (reviewEventMessage)
-  review_start: reviewEventMessage, review_verdict: reviewEventMessage, review_rejected: reviewEventMessage, review_failed: reviewEventMessage, revision: reviewEventMessage,
+  review_start: reviewEventMessage, review_verdict: reviewEventMessage, review_rejected: reviewEventMessage, review_failed: reviewEventMessage, review_dropped: reviewEventMessage, revision: reviewEventMessage,
   // inbox family (inboxEventMessage)
   prompt_enqueued: inboxEventMessage, prompt_cancelled: inboxEventMessage, prompt_edited: inboxEventMessage, prompt_topped: inboxEventMessage, prompt_taken: inboxEventMessage, question_posted: inboxEventMessage, entry_refused: inboxEventMessage, issue_filed: inboxEventMessage, remote_ci_failed: inboxEventMessage,
   // budget family (budgetEventMessage)

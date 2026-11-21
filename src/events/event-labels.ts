@@ -37,6 +37,7 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   review_verdict: "review approved",
   review_rejected: "review rejected",
   review_failed: "review failed",
+  review_dropped: "review dropped",
   revision: "revision round",
   conflict_handback: "sent back to resolve",
   build_check: "check ran",

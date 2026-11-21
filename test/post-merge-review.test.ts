@@ -1404,6 +1404,63 @@ test("a conflicting fix whose resolver soundly merges main's edit now lands (rec
   assert.ok(settled.some((e) => e.commit === tip), "the landed fix is re-queued for its own review");
 });
 
+test("a verdict-less review dropped at the limit logs one review_dropped event naming its full commit", async () => {
+  // The warning names the commit by short SHA only; the event carries the full SHA so a reader
+  // can select the dropped review (BUGS.md, "A dropped post-merge review leaves only free text").
+  const { root, runner, ctx } = setup("");
+  fs.appendFileSync(path.join(root, "x.txt"), "more\n");
+  sh(root, "git", "add", "--", "x.txt");
+  sh(root, "git", "commit", "-m", "more");
+  const commit = headSha(root);
+  countReviews(runner);
+  fs.writeFileSync(
+    postReviewPath(root),
+    JSON.stringify({ pending: [{ commit, role: "improve", summary: "more", failures: POST_REVIEW_FAILURE_LIMIT - 1 }] }),
+  );
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  const dropped = eventsOfType(root, "review_dropped");
+  assert.equal(dropped.length, 1, "exactly one review_dropped event for the dropped review");
+  assert.equal(dropped[0]?.commit, commit, "the event carries the full reviewed SHA");
+  assert.equal(dropped[0]?.source, "improve", "the event's source is the entry's role");
+  assert.equal(dropped[0]?.summary, "more", "the event carries the entry's summary");
+  assert.ok(String(dropped[0]?.reason ?? "").length > 0, "the event carries the failure detail");
+  assert.ok(
+    eventsOfType(root, "warning").some((e) => String(e.message).includes("dropping the post-merge review of")),
+    "the drop warning is still logged",
+  );
+});
+
+test("a failed fix merge dropped at the limit logs one review_dropped event for its commit", async () => {
+  const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+  (ctx as { runners: RoleRunner[] }).runners = [fixingRunner("improve")];
+  fs.writeFileSync(path.join(root, "x.txt"), "local\n"); // every landing is refused fast-forward
+  for (let i = 0; i < POST_REVIEW_FAILURE_LIMIT; i++) {
+    const p = newMergePipeline();
+    drainPostReviews(ctx, p);
+    await p.postReview!.promise;
+  }
+  const dropped = eventsOfType(root, "review_dropped");
+  assert.equal(dropped.length, 1, "exactly one review_dropped event for the dropped fix");
+  assert.equal(dropped[0]?.commit, commit);
+  assert.equal(dropped[0]?.source, "improve");
+  assert.match(String(dropped[0]?.reason), /fix did not merge/);
+});
+
+test("a transient provider failure past the limit logs no review_dropped event", async () => {
+  const { root, commit, ctx, runner } = setup("VERDICT: approve\n1. fine");
+  (runner as { runGatePi: RoleRunner["runGatePi"] }).runGatePi = async () =>
+    piRunResult({ ok: true, transientRateLimit: true });
+  fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: [{ commit, role: "improve", summary: "add x" }] }));
+  for (let i = 0; i < POST_REVIEW_FAILURE_LIMIT + 1; i++) {
+    const p = newMergePipeline();
+    drainPostReviews(ctx, p);
+    if (p.postReview) await p.postReview.promise;
+  }
+  assert.equal(eventsOfType(root, "review_dropped").length, 0, "a transient failure never drops, so it logs no drop");
+});
+
 test("a fix whose landing keeps failing is dropped at POST_REVIEW_FAILURE_LIMIT", async () => {
   const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract");
   (ctx as { runners: RoleRunner[] }).runners = [fixingRunner("improve")];

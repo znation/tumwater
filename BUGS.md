@@ -32,38 +32,6 @@ the way the codex-account seed and the isolated OpenCode DB work), and use `~/.c
 the config asks for it. Add a `tumwater doctor` row that warns about an unisolated Codex home, and
 fix the retention comment either way.
 
-### A dropped post-merge review leaves only a free-text warning with a short SHA, so nothing can find the commits it dropped (reported by the user 2026-11-16, split 2026-11-21 by the plan role)
-
-Part 1/2 of "1,451 commits dropped from post-merge review stay unreviewed"; part 2/2 ("No command
-re-queues a dropped post-merge review") is independent and reads the event this part adds, using
-the event shape fixed here.
-
-Before 4120526fe the review provider's quota wall made each commit's post-merge review fail three
-times and get dropped: 821 drops on 2026-11-09 and 630 on 2026-11-11 in kde-macos8.6-theme. The
-only record of a drop is a `warning` event whose message names the commit by `shortSha` — at
-both drop sites in src/merge/merge-post-review-drain.ts: `settlePostReviewOutcome` ("dropping the
-post-merge review of … after N failed runs; it stays on main unreviewed") and
-`settleFailedReviewerFix` ("… after N failed fix merges; the fix stays unreviewed"). A short SHA
-can be ambiguous, and a warning is not a type a reader can select.
-
-**Fix.** At both drop sites, also log (`logEventBestEffort`) one `review_dropped` event with
-`source` the entry's role, `commit` the full SHA being dropped, `summary` the entry's summary, and
-`reason` the failure detail (`outcome.detail` for failed runs; for fix merges the same
-`fix did not merge: …` text `fileDroppedReview` receives). Keep the existing warning text unchanged (part 2/2 reads it for history). Add
-`review_dropped` to the `EventType` union in src/events/events.ts with its comment, and give it a
-one-line rendering in src/events/event-format-review.ts next to `review_rejected`.
-
-**Acceptance.**
-- After a review fails `POST_REVIEW_FAILURE_LIMIT` times (the existing drop test in
-  test/post-merge-review.test.ts), the event log holds exactly one `review_dropped` event whose
-  `commit` equals the full reviewed SHA and whose `source` is the entry's role; the
-  "dropping the post-merge review of" warning is still logged.
-- The failed-fix-merge drop test likewise finds one `review_dropped` event for its commit.
-- A failure that does not reach the limit, or a transient (`infrastructure`) failure, logs no
-  `review_dropped` event.
-- `tumwater logs` renders a `review_dropped` event as one readable line naming the short SHA and
-  the reason.
-
 ### No command re-queues a dropped post-merge review, so the 2026-11-09 and 11-11 drops stay unreviewed (reported by the user 2026-11-16, split 2026-11-21 by the plan role)
 
 Part 2/2 of "1,451 commits dropped from post-merge review stay unreviewed"; part 1/2 ("A dropped

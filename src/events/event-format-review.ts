@@ -33,6 +33,9 @@ export function reviewEventMessage(e: HarnessEvent): string {
           : "";
       return `review rejected ${shortSha(e.head)}${afterMergeSuffix(e)} — ${firstReason(reasons)}${more}${elapsed(e.durationMs)}`;
     }
+    case "review_dropped":
+      // A post-merge review given up at the failure limit: the commit stays on main unreviewed.
+      return `review dropped for ${shortSha(e.commit)} after repeated failures: ${textOr(e.reason)} (commit stays on main unreviewed)`;
     case "review_failed":
       return `review failed for ${shortSha(e.head)}: ${textOr(e.message)} (commit kept for re-review)${elapsed(e.durationMs)}`;
     case "revision":
