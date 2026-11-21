@@ -10,7 +10,6 @@
     "outDir": "dist",
     "rootDir": ".",
     "strict": true,
-    "jsx": "react-jsx",
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "noUnusedLocals": true,
@@ -28,5 +27,5 @@
     // needs. typescript-eslint's 5.x program reads the same list.
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }

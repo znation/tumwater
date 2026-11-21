@@ -5,6 +5,44 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Remove the TUI, part 3/5: drop ink and react, so tumwater has no runtime dependencies (planned 2026-11-16 by the operator; requires Remove the TUI part 1/5 landed; touches package.json package-lock.json tsconfig.json eslint.config.js scripts/stamp-build.mjs test/stamp-build.test.ts PRINCIPLES.md docs/code-metrics.md) — done 2026-11-20 by the feature role
+
+**Goal.** ink and react, plus the `@types/react` dev dependency, were adopted for the TUI alone
+(the ink decision of 2026-10-01 in PRINCIPLES.md). With the TUI gone, nothing imports them, and
+removing them returns tumwater to zero runtime dependencies. That means a smaller install and no
+JSX toolchain settings.
+
+**Approach.**
+- `npm uninstall ink react @types/react`, so package.json and package-lock.json change together.
+  The team re-syncs the primary tree's node_modules from the lockfile after its own merge.
+- tsconfig.json: drop `"jsx": "react-jsx"` and the `src/**/*.tsx` include.
+- eslint.config.js: drop the `src/**/*.tsx` globs.
+- scripts/stamp-build.mjs: no source is `.tsx` any more, so a `.js` output's source is its `.ts`
+  alone. Drop the `.tsx` branch and its comment, and update test/stamp-build.test.ts to match.
+- PRINCIPLES.md: the dependency rule no longer names ink as an exception (the TypeScript
+  toolchain stays the only one), and the **Dependencies** line reads 0 runtime.
+  docs/code-metrics.md: the dependencies bullet says the same.
+
+**Acceptance criteria.**
+- `npm ls --omit=dev --depth=0` shows no dependencies, and package.json names neither ink nor
+  react.
+- `npm run build` succeeds from a clean `dist/`, and no `.tsx` file exists under src/.
+- The built CLI starts: `node dist/src/cli.js help` exits 0.
+
+**Tests.** test/stamp-build.test.ts as above. Then the project's gate, plus
+`npm run test:rerun -- stamp-build.test`.
+
+**What landed, and the one leg that stayed.** All of the touched list landed except PRINCIPLES.md,
+which this role cannot change: INV-G1 (`src/review/protected-edits.ts`) rejects a PRINCIPLES.md
+edit by any role but director or steward. The steward's own Budgets refresh carries that leg — the
+rule's "the TUI framework (ink) … (2026-10-01 for ink)" exception and the **Dependencies** line's
+"2 runtime (ink, react) and 6 dev" become no runtime exception, 0 runtime, 5 dev. Verified here:
+`npm ls --omit=dev --depth=0 --package-lock-only` prints `(empty)` and package.json has no
+`dependencies` key (the plain form lists the primary tree's now-unpinned copies as `extraneous`, a
+worktree borrowing `../../../node_modules` until the team re-syncs after the merge); the lockfile
+lost its 539-line ink/react subgraph; `npm run build` from a clean `dist/` exits 0, no `.tsx`
+source exists, and `node dist/src/cli.js help` exits 0.
+
 ### Three work instances by default, part 2/2: feature and bugfix default to 3 instances (planned 2026-11-19 by the operator; requires Three work instances by default part 1/2 and Maintenance permit floor part 1/1 landed; touches src/roles/runner-ids.ts test/ docs/config.md docs/how-it-works.md docs/glossary.md README.md RELEASE_NOTES.md) — done 2026-11-20 by the operator
 
 **Goal.** A team with no `instances` in tumwater.json runs up to three feature and three bugfix

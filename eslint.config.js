@@ -55,7 +55,7 @@ import tseslint from "typescript-eslint";
 export default tseslint.config(
   { ignores: ["dist/**", "node_modules/**", ".tumwater/**", ".claude/**"] },
   {
-    files: ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"],
+    files: ["src/**/*.ts", "test/**/*.ts"],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
@@ -106,7 +106,7 @@ export default tseslint.config(
     // values whose order is intentionally lexicographic. Scoping here keeps the rule's signal
     // on the code that ships without demanding a comparator on every fixture sort. The rule's
     // default ignoreStringArrays already exempts arrays whose elements are all strings.
-    files: ["src/**/*.ts", "src/**/*.tsx"],
+    files: ["src/**/*.ts"],
     rules: {
       "@typescript-eslint/require-array-sort-compare": "error",
       // Production code only: tests wield assertions deliberately (a fixture cast that pins a

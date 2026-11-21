@@ -248,33 +248,6 @@ the operator's terminal.
 helper move to its exported caller with the same expected values. Then the project's gate, plus
 `npm run test:rerun -- exports.test`.
 
-### Remove the TUI, part 3/5: drop ink and react, so tumwater has no runtime dependencies (planned 2026-11-16 by the operator; requires Remove the TUI part 1/5 landed; touches package.json package-lock.json tsconfig.json eslint.config.js scripts/stamp-build.mjs test/stamp-build.test.ts PRINCIPLES.md docs/code-metrics.md)
-
-**Goal.** ink and react, plus the `@types/react` dev dependency, were adopted for the TUI alone
-(the ink decision of 2026-10-01 in PRINCIPLES.md). With the TUI gone, nothing imports them, and
-removing them returns tumwater to zero runtime dependencies. That means a smaller install and no
-JSX toolchain settings.
-
-**Approach.**
-- `npm uninstall ink react @types/react`, so package.json and package-lock.json change together.
-  The team re-syncs the primary tree's node_modules from the lockfile after its own merge.
-- tsconfig.json: drop `"jsx": "react-jsx"` and the `src/**/*.tsx` include.
-- eslint.config.js: drop the `src/**/*.tsx` globs.
-- scripts/stamp-build.mjs: no source is `.tsx` any more, so a `.js` output's source is its `.ts`
-  alone. Drop the `.tsx` branch and its comment, and update test/stamp-build.test.ts to match.
-- PRINCIPLES.md: the dependency rule no longer names ink as an exception (the TypeScript
-  toolchain stays the only one), and the **Dependencies** line reads 0 runtime.
-  docs/code-metrics.md: the dependencies bullet says the same.
-
-**Acceptance criteria.**
-- `npm ls --omit=dev --depth=0` shows no dependencies, and package.json names neither ink nor
-  react.
-- `npm run build` succeeds from a clean `dist/`, and no `.tsx` file exists under src/.
-- The built CLI starts: `node dist/src/cli.js help` exits 0.
-
-**Tests.** test/stamp-build.test.ts as above. Then the project's gate, plus
-`npm run test:rerun -- stamp-build.test`.
-
 ### Remove the TUI, part 4/5: source comments stop describing a TUI (planned 2026-11-16 by the operator; requires Remove the TUI parts 1/5, 2/5, 3/5 landed; touches src/ (comments only) scripts/diff-check.mjs scripts/live-fixture.mjs)
 
 **Goal.** Before part 1/5, about 100 files under src/ (outside `src/ui/tui/`) mentioned the TUI

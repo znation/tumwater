@@ -79,8 +79,8 @@ Comment share is comment lines divided by comment plus code lines.
 - **Markdown:** 114k words across 25 files. 93% of the words are backlog and planning:
   BUGS.md 49k, `plans/` 45k, PLANS.md 13k, and QUESTIONS.md. User-facing prose is 7.7k words:
   README, DEVELOPMENT.md, PRINCIPLES.md, LICENSE and `docs/`.
-- **Dependencies:** two runtime dependencies — ink and react, the TUI framework adopted by
-  an explicit user decision (2026-10-01, per PRINCIPLES.md); five dev dependencies.
+- **Dependencies:** no runtime dependencies — the pair adopted for the terminal dashboard went
+  with it; five dev dependencies.
 - **Tests:** the unit tier runs 2,427 tests. The e2e tier is separate and isn't counted here.
 - **Imports:** 162 modules with 785 import edges and no runtime import cycles (three cycles are
   type-only). The most-imported module is `src/text/text.ts` (grouped with its format siblings
