@@ -105,33 +105,77 @@ cleanup` phase describe a hold that no longer exists.
   no row reads `held: session cleanup`.
 - `grep -rn "held: session cleanup" src` finds nothing.
 
-### Remove the TUI, part 4a/5: src/ui comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/ui/ (comments only))
-
-**Needs review 2026-11-21 by feature: too large for one run** — `grep -rniw tui src/ui` matches 83
-lines in 18 files, and each comment needs its own read and rewrite (about 100 tool calls at one
-Read and one Edit per site), past the one-run budget. Please split by file group (for example
-`src/ui/gui/` apart from the top-level `src/ui/*.ts`).
+### Remove the TUI, part 4a/5: src/ui/status-payload.ts, status-render.ts and status-model.ts comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/ui/status-payload.ts src/ui/status-render.ts src/ui/status-model.ts (comments only))
 
 Part 4/5 was split by directory into 4a–4d after the feature role found it too large for one
-run (`grep -rniw tui src scripts` matched 244 lines in 94 files). The four parts are independent
-of each other and may land in any order; together they finish what part 4/5 set out to do.
+run (`grep -rniw tui src scripts` matched 244 lines in 94 files). src/ui/ (part 4a/5) was then
+still too large (83 matching lines in 18 files), so it was split again on 2026-11-21 by file
+group: this part takes the three status modules, part 4e/5 the other top-level `src/ui/*.ts`
+files, and part 4f/5 `src/ui/gui/`. Parts 4a–4f are independent of each other and may land in
+any order; together they finish what part 4/5 set out to do.
 
 **Goal.** Before part 1/5, about 100 files under src/ (outside `src/ui/tui/`) mentioned the TUI
 some 315 times. Most of those mentions are comments that call a piece of code "the TUI's twin",
 cite a `src/ui/tui/…` path, name a TUI key (Ctrl+…), or list the TUI among the surfaces that read
 a file. A reader, human or model, who follows them looks for code that does not exist, or keeps
-two surfaces in step when there is only one. src/ui/ holds the largest share: about 83 matching
-lines in 18 files.
+two surfaces in step when there is only one. The three status modules hold the densest share:
+`grep -rniwc tui` counts 19 lines in src/ui/status-payload.ts, 14 in src/ui/status-render.ts and
+4 in src/ui/status-model.ts.
 
-**Approach.** Wherever a comment under src/ui/ names the TUI, a `ui/tui/` path or a TUI key,
-rewrite the sentence for the surfaces that remain (the CLI, the GUI, `tumwater status`). Drop
-"twin of the TUI's …" cross-references outright. Change comments only; any code change found
-along the way becomes its own BUGS.md entry. Keep comment lines within the 100-column limit
-(test/comment-width.test.ts).
+**Approach.** Wherever a comment in these three files names the TUI, a `ui/tui/` path or a TUI
+key, rewrite the sentence for the surfaces that remain (the CLI's `tumwater status`, the GUI, and
+`status --json`): "the TUI/status table" becomes "the status table", "the TUI's attention lines"
+becomes the `tumwater status` attention lines, and "shared by `tumwater status` and the TUI"
+names `tumwater status` alone. Drop "twin of the TUI's …" cross-references outright. Where a
+comment justifies a code shape only by the TUI (for example the note in status-render.ts's
+`renderStatus` on why the banners are composed outside `renderStatusSpans`), reword it to the
+reason that still holds or drop the TUI clause; if the code itself now has no reason to exist,
+leave it and record that as its own BUGS.md entry. Change comments only. Keep comment lines
+within the 100-column limit (test/comment-width.test.ts).
 
 **Acceptance criteria.**
-- `grep -rniw tui src/ui` matches nothing.
-- `git diff -U0 -- src/ui` adds and removes only comment lines.
+- `grep -niw tui src/ui/status-payload.ts src/ui/status-render.ts src/ui/status-model.ts`
+  matches nothing.
+- `git diff -U0 -- src/ui` adds and removes only comment lines, in those three files.
+- test/comment-width.test.ts passes.
+
+### Remove the TUI, part 4e/5: the other top-level src/ui/*.ts comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/ui/badges.ts src/ui/transcript.ts src/ui/alert-feeds.ts src/ui/team-alerts.ts src/ui/run-progress-model.ts src/ui/progress-data.ts src/ui/tone.ts src/ui/team-alert-standings.ts src/ui/team-alert-shared.ts (comments only))
+
+One of the independent parts split from part 4/5; see part 4a/5 for the goal. `grep -rniwc tui`
+counts 24 lines in these nine files: src/ui/badges.ts (9), src/ui/transcript.ts (3),
+src/ui/alert-feeds.ts (3), src/ui/team-alerts.ts (2), src/ui/run-progress-model.ts (2),
+src/ui/progress-data.ts (2), src/ui/tone.ts (1), src/ui/team-alert-standings.ts (1) and
+src/ui/team-alert-shared.ts (1).
+
+**Approach.** As in part 4a/5: rewrite each comment sentence in these files that names the TUI,
+a `ui/tui/` path or a TUI key for the surfaces that remain (`tumwater status`, the GUI,
+`status --json`), drop "twin of the TUI's …" cross-references, change comments only (a code
+change found along the way becomes its own BUGS.md entry), and keep comment lines within 100
+columns.
+
+**Acceptance criteria.**
+- `grep -niw tui` over the nine files above matches nothing.
+- `git diff -U0 -- src/ui` adds and removes only comment lines, in those nine files.
+- test/comment-width.test.ts passes.
+
+### Remove the TUI, part 4f/5: src/ui/gui/ comments stop describing a TUI (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; touches src/ui/gui/ (comments only))
+
+One of the independent parts split from part 4/5; see part 4a/5 for the goal. `grep -rniwc tui`
+counts 22 lines in six files under src/ui/gui/: gui-client-team.ts (7), gui-client-operator.ts
+(4), gui-client-composer.ts (4), gui-client-settings.ts (3), gui-client-model.ts (2) and
+gui-client-backlog.ts (2). These are the GUI's browser-side modules, so a comment that calls a
+GUI control "the TUI's twin" or cites a TUI key should describe the GUI control on its own, or
+name the server-side helper it mirrors (for example in src/ui/status-model.ts) where that is the
+real pairing.
+
+**Approach.** As in part 4a/5: rewrite each comment sentence under src/ui/gui/ that names the
+TUI, a `ui/tui/` path or a TUI key, drop "twin of the TUI's …" cross-references, change comments
+only (a code change found along the way, such as a key handler kept only for TUI parity, becomes
+its own BUGS.md entry), and keep comment lines within 100 columns.
+
+**Acceptance criteria.**
+- `grep -rniw tui src/ui/gui` matches nothing.
+- `git diff -U0 -- src/ui` adds and removes only comment lines, under src/ui/gui/.
 - test/comment-width.test.ts passes.
 
 ### GitHub issues, part 2/5: the orchestrator scans a project's open GitHub issues on a clock and records which ones no backlog entry mirrors (planned 2026-11-21 by the operator; requires GitHub issues part 1/5 landed; touches src/github/issue-scan.ts src/github/issue-mirrors.ts src/github/github-issues-state.ts src/paths.ts src/orchestrator/orchestrator-poll.ts src/events/events.ts test/github-issue-scan.test.ts test/github-issue-mirrors.test.ts test/fakes/fake-gh.ts)
