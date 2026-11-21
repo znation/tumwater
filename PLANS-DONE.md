@@ -5,6 +5,41 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast session cleanup, part 2b/2: stopping the orchestrator abandons an in-flight session prune (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; requires Fast session cleanup part 2a/2 landed; touches src/agent/session-ledger.ts src/orchestrator/retention.ts src/orchestrator/orchestrator.ts test/retention.test.ts) — done 2026-11-21 by the feature role
+
+Sibling of "Fast session cleanup part 2a/2" (background deletes) and 2c/2 (alert wording).
+
+**Goal.** Today a SIGTERM during the prune cannot reach the JS handler while `spawnSync` blocks,
+so shutdown never runs: the 2026-11-16 instances stopped mid-prune (pids 4663, 15799) logged no
+`orchestrator_stop`, handed off no merge and released no slot. Once 2a makes the pass async the
+handler runs, but a pass still in flight keeps spawning deletes and holds the process open.
+
+**Approach.**
+- The two purges accept an optional `AbortSignal`: once it aborts, no further delete starts and
+  each running delete child is killed (`spawn`'s `signal` option); the purge resolves with what it
+  counted so far. Ids already handled stay in the resume record, so the next pass resumes there
+  (part 1/2).
+- `RetentionPruner` owns an `AbortController`; a new `stop()` aborts it and returns `whenIdle()`.
+  The file/ledger-line passes do not run after an abort (they would trim lines whose sessions the
+  aborted pass never reached).
+- The orchestrator's graceful-shutdown path (src/orchestrator/orchestrator.ts, the drain before
+  the `orchestrator_stop` event) calls `retentionPruner.stop()` and awaits it, bounded by the
+  existing shutdown window.
+
+**Acceptance criteria.**
+- With a stub `codex` that sleeps 30 s per delete and several expired ids, `stop()` resolves
+  within a couple of seconds, no stub process is left running, and the maintenance marker file is
+  gone.
+- After a stopped pass, ids it handled are in the resume record and a fresh `RetentionPruner` does
+  not delete them again.
+- An orchestrator stopped (via its stop signal) while such a prune is in flight logs
+  `orchestrator_stop` within its shutdown window.
+
+Done note: the shutdown path (`shutDownOrchestrator` in src/orchestrator/orchestrator.ts) awaits `retentionPruner.stop()`
+raced against the hand-off window, so a delete child that ignores SIGTERM cannot hold the shutdown open. Bullet 3 is not
+pinned by a test: no orchestrator e2e test stops an orchestrator mid-prune. The 2026-11-21 change also settles a killed
+delete on `close`, not `error`, so `stop()` returns only once the child has exited.
+
 ### Fast session cleanup, part 2c/2: the cleanup alert reads as informational and rows keep their normal phase (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; requires Fast session cleanup part 2a/2 landed; touches src/ui/team-alert-status.ts src/ui/status-model.ts src/ui/gui/gui-client-model.ts test/team-alert-status.test.ts test/status-model.test.ts) — done 2026-11-21 by the feature role
 
 Sibling of "Fast session cleanup part 2a/2" (background deletes) and 2b/2 (stop abandons).

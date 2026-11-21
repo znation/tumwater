@@ -503,3 +503,91 @@ test("RetentionPruner: a codex id an interrupted pass already handled is not del
   assert.equal(log.includes(id), false, `an id the record lists is not deleted again: ${log}`);
   assert.equal(fs.existsSync(resume), false, "the resume record is cleared once the ledger lines are trimmed");
 });
+
+/** Writes the rollout file a codex session id has under the team home (the layout the codex
+ * rollout index reads). */
+function writeRollout(home: string, id: string): void {
+  const rollout = path.join(home, "sessions", "2026", "09", "30", `rollout-2026-09-30T00-00-00-000-${id}.jsonl`);
+  fs.mkdirSync(path.dirname(rollout), { recursive: true });
+  fs.writeFileSync(rollout, "{}\n");
+}
+
+/** Polls `done` until it holds or five seconds pass; the stubs signal start via a file. */
+async function waitUntil(done: () => boolean): Promise<void> {
+  const deadline = Date.now() + 5000;
+  while (!done() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+}
+
+test("RetentionPruner: stop() kills the running codex deletes, resolves promptly, and clears the marker", async () => {
+  const root = tmpdir();
+  const dir = path.join(sessionsRootDir(root), "feature");
+  const now = Date.now();
+  const day = 24 * 3600 * 1000;
+  const ids = ["c7b3e2a1-0000-4000-8000-0000000000e1", "c7b3e2a1-0000-4000-8000-0000000000e2", "c7b3e2a1-0000-4000-8000-0000000000e3", "c7b3e2a1-0000-4000-8000-0000000000e4", "c7b3e2a1-0000-4000-8000-0000000000e5"];
+  for (const id of ids) recordSession(dir, record({ agent: "codex", id, at: now - 30 * day }));
+  const home = tmpdir("codex-stop-home-");
+  writeConfig(root, { backends: { codex: { configDir: home } } });
+  // A rollout per id: a candidate with no rollout in the home is counted handled, not deleted.
+  for (const id of ids) writeRollout(home, id);
+
+  // Each delete records its pid and sleeps 30 s; `exec` makes the sleep the child itself, so the
+  // pid is the process a kill must reach.
+  const bin = tmpdir("codex-stop-bin-");
+  const pidsFile = path.join(tmpdir("codex-stop-pids-"), "pids.log");
+  fs.mkdirSync(path.dirname(pidsFile), { recursive: true });
+  writeScript(path.join(bin, "codex"), `echo $$ >> ${pidsFile}; exec sleep 30`);
+  process.env.TUMWATER_CODEX_BIN = path.join(bin, "codex");
+  let elapsed = 0;
+  try {
+    const pruner = new RetentionPruner(root, 7);
+    await waitUntil(() => fs.existsSync(pidsFile));
+    const began = Date.now();
+    await pruner.stop();
+    elapsed = Date.now() - began;
+  } finally {
+    delete process.env.TUMWATER_CODEX_BIN;
+  }
+  assert.ok(elapsed < 2000, `stop resolves within a couple of seconds: ${elapsed}ms`);
+  const started = fs.readFileSync(pidsFile, "utf8").trim().split("\n").map(Number);
+  assert.ok(started.length < ids.length, `no delete starts after the stop: ${started.length} of ${ids.length}`);
+  for (const pid of started) assert.throws(() => process.kill(pid, 0), `stub ${pid} is no longer running`);
+  assert.equal(fs.existsSync(maintenancePath(root)), false, "the progress marker is removed by the stopped pass");
+});
+
+test("RetentionPruner: a stopped pass keeps the ids it handled, and a fresh pass does not delete them again", async () => {
+  const root = tmpdir();
+  const dir = path.join(sessionsRootDir(root), "feature");
+  const now = Date.now();
+  const day = 24 * 3600 * 1000;
+  const handled = "c7b3e2a1-0000-4000-8000-0000000000f1";
+  const killed = ["c7b3e2a1-0000-4000-8000-0000000000f2", "c7b3e2a1-0000-4000-8000-0000000000f3"];
+  for (const id of [handled, ...killed]) recordSession(dir, record({ agent: "codex", id, at: now - 30 * day }));
+  const home = tmpdir("codex-stop-resume-home-");
+  writeConfig(root, { backends: { codex: { configDir: home } } });
+  for (const id of [handled, ...killed]) writeRollout(home, id);
+  const resume = sessionPruneResumePath(root, "codex");
+
+  const bin = tmpdir("codex-stop-resume-bin-");
+  const capture = path.join(tmpdir("codex-stop-resume-capture-"), "deleted.log");
+  fs.mkdirSync(path.dirname(capture), { recursive: true });
+  // The first pass's stub finishes `handled` at once and sleeps on every other id, so the stop
+  // lands with `handled` recorded and the other two never delete.
+  writeScript(path.join(bin, "codex"), `case "$3" in ${handled}) printf '%s\\n' "$*" >> ${capture} ;; *) exec sleep 30 ;; esac`);
+  process.env.TUMWATER_CODEX_BIN = path.join(bin, "codex");
+  try {
+    const pruner = new RetentionPruner(root, 7);
+    await waitUntil(() => fs.existsSync(resume) && fs.readFileSync(resume, "utf8").includes(handled));
+    await pruner.stop();
+    assert.equal(fs.readFileSync(resume, "utf8").includes(handled), true, "the handled id is in the resume record");
+    for (const id of killed) assert.equal(fs.readFileSync(resume, "utf8").includes(id), false, "a killed delete is not recorded as handled");
+
+    // A fresh pass deletes the two unhandled ids once each and never the handled one again.
+    writeScript(path.join(bin, "codex"), `printf '%s\\n' "$*" >> ${capture}`);
+    await new RetentionPruner(root, 7).whenIdle();
+  } finally {
+    delete process.env.TUMWATER_CODEX_BIN;
+  }
+  const lines = fs.readFileSync(capture, "utf8").trim().split("\n");
+  assert.equal(lines.filter((line) => line.includes(handled)).length, 1, `the handled id is deleted once, by the stopped pass: ${lines}`);
+  for (const id of killed) assert.equal(lines.filter((line) => line.includes(id)).length, 1, `the killed id is deleted once, by the fresh pass: ${lines}`);
+});

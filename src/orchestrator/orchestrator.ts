@@ -485,7 +485,14 @@ async function shutDownOrchestrator(
   stopCause: "restart" | "once" | "signal" | "error",
 ): Promise<void> {
   const { setup, ctx, state, modelCheck } = runtime;
-  const { root, infoFile, internalStop } = setup;
+  const { root, infoFile, internalStop, retentionPruner } = setup;
+  // A session prune in flight would keep spawning deletes and hold the process open, so it is
+  // stopped first. The wait is bounded by the same window as the drain: a delete child that
+  // ignores SIGTERM cannot hold the shutdown open past it.
+  await Promise.race([
+    retentionPruner.stop(),
+    new Promise<void>((resolve) => setTimeout(resolve, opts.handoffMergeWindowMs ?? HANDOFF_MERGE_WINDOW_MS).unref()),
+  ]);
   await drainInFlightWork(
     root,
     ctx.roleInFlight,

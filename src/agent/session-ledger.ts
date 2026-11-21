@@ -263,15 +263,22 @@ function sessionDeleteSucceeds(
   bin: string,
   args: readonly string[],
   env: NodeJS.ProcessEnv | undefined,
+  signal: AbortSignal | undefined,
 ): Promise<boolean> {
   return new Promise((resolve) => {
     try {
+      // An abort kills the running delete (spawn's `signal`), which then resolves false. The
+      // kill's `error` arrives before the child has exited, so a spawned child settles on `close`
+      // alone: the caller's stop waits for the process to be gone, not just signalled.
       const child = spawn(bin, args, {
         env,
         timeout: SESSION_DELETE_TIMEOUT_MS,
         stdio: "ignore",
+        signal,
       });
-      child.on("error", () => resolve(false));
+      child.on("error", () => {
+        if (child.pid === undefined) resolve(false);
+      });
       child.on("close", (status) => resolve(status === 0));
     } catch {
       // Best effort: an unwritable env or a missing binary must not fail the prune.
@@ -286,16 +293,18 @@ const SESSION_DELETE_CONCURRENCY = 4;
 
 /** Run `fn` over `items` with at most `limit` calls in flight, resolving once every started call
  * has settled. A call that throws stops the pool from starting another item; the first such
- * error is rethrown once the calls already in flight have settled. */
+ * error is rethrown once the calls already in flight have settled. An abort in `signal` stops it
+ * from starting any more items. */
 async function forEachLimited<T>(
   items: readonly T[],
   limit: number,
   fn: (item: T) => Promise<void>,
+  signal: AbortSignal | undefined,
 ): Promise<void> {
   let next = 0;
   let failure: { error: unknown } | undefined;
   const worker = async (): Promise<void> => {
-    while (failure === undefined && next < items.length) {
+    while (failure === undefined && next < items.length && !signal?.aborted) {
       const item = items[next] as T;
       next += 1;
       try {
@@ -326,6 +335,10 @@ interface OpencodePruneOptions {
   /** The resume record this pass reads and appends to (paths.ts sessionPruneResumePath), so an
    * interrupted pass's handled ids are not deleted again on the next one. */
   resumePath?: string;
+  /** Aborts the pass (PLANS.md "Fast session cleanup" part 2b/2): no further delete starts, each
+   * running delete is killed, and its id is left unrecorded so the next pass redoes it. The
+   * pass then resolves with what it counted so far. */
+  signal?: AbortSignal;
 }
 
 /** Delete each OpenCode session the ledger records as expired, with one
@@ -362,15 +375,23 @@ export async function pruneOpencodeSessions(
     const total = expired.length;
     if (total > 0) opts.onProgress?.(0, total);
     let handled = 0;
-    await forEachLimited(expired, SESSION_DELETE_CONCURRENCY, async (id) => {
-      if (await sessionDeleteSucceeds(bin, ["session", "delete", id, "--standalone"], opts.env)) deleted += 1;
-      recordPruneResume(opts.resumePath, id);
-      handled += 1;
-      opts.onProgress?.(handled, total);
-    });
+    await forEachLimited(
+      expired,
+      SESSION_DELETE_CONCURRENCY,
+      async (id) => {
+        const ok = await sessionDeleteSucceeds(bin, ["session", "delete", id, "--standalone"], opts.env, opts.signal);
+        // An aborted delete was killed, so its id is not handled: the next pass redoes it.
+        if (opts.signal?.aborted) return;
+        if (ok) deleted += 1;
+        recordPruneResume(opts.resumePath, id);
+        handled += 1;
+        opts.onProgress?.(handled, total);
+      },
+      opts.signal,
+    );
   }
   const spill = opts.spillDir;
-  if (spill !== undefined && spill !== "") {
+  if (spill !== undefined && spill !== "" && !opts.signal?.aborted) {
     // Walk and delete files older than the window in the team's spill dir. walkFiles never
     // throws (it swallows a vanished/unreadable dir), and each unlink is best-effort, so this
     // whole half of the purge cannot fail the prune.
@@ -401,6 +422,8 @@ interface CodexPruneOptions {
   onProgress?: (done: number, total: number) => void;
   /** The resume record this pass reads and appends to (paths.ts sessionPruneResumePath). */
   resumePath?: string;
+  /** Aborts the pass, the OpenCode twin's semantics (see OpencodePruneOptions.signal). */
+  signal?: AbortSignal;
 }
 
 /** Delete each Codex session the ledger records as expired, with one
@@ -455,8 +478,10 @@ export async function pruneCodexSessions(
   await forEachLimited(candidates, SESSION_DELETE_CONCURRENCY, async (id) => {
     const rollout = rollouts?.get(id);
     const gone = rollouts !== undefined && rollout === undefined;
-    if (!gone && bin !== undefined && (await sessionDeleteSucceeds(bin, ["delete", "--force", id], opts.env)))
+    if (!gone && bin !== undefined && (await sessionDeleteSucceeds(bin, ["delete", "--force", id], opts.env, opts.signal)))
       deleted += 1;
+    // An aborted delete was killed, so its id is not handled: the next pass redoes it.
+    if (opts.signal?.aborted) return;
     // Fallback: unlink the home's rollout for this session so neither the ledger line nor
     // its file outlives the window. A real `codex delete` removes the rollout itself, so a
     // successful delete has nothing left to unlink (the unlink is then a no-op); a failed or
@@ -471,6 +496,6 @@ export async function pruneCodexSessions(
     recordPruneResume(opts.resumePath, id);
     handled += 1;
     opts.onProgress?.(handled, total);
-  });
+  }, opts.signal);
   return deleted;
 }

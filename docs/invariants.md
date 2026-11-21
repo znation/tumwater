@@ -4564,7 +4564,9 @@ rollouts are left untouched (never unlinked). A Codex id that is not a thread UU
 is never passed to the CLI, and an id whose rollout is already absent is not passed either: it is
 counted handled, not deleted. One pass walks the Codex sessions tree once. Each handled id is
 appended to the backend's resume record, so an interrupted pass's next run deletes none of them
-again; the retention pass clears those records once the ledger lines are trimmed.
+again; the retention pass clears those records once the ledger lines are trimmed. An aborted pass
+(`RetentionPruner.stop()` at shutdown) starts no further delete, kills each running one and leaves
+its id unrecorded, so the next pass redoes it; the file passes do not run after an abort.
 
 **Binds.** `src/agent/session-ledger.ts` (`pruneSessionLedgers`, `pruneOpencodeSessions`,
 `pruneCodexSessions`) and `src/agent/codex/codex-rollout.ts` (`indexRollouts`).
@@ -4581,7 +4583,9 @@ whose rollout is already gone", "pruneCodexSessions walks the rollout tree once 
 many ids are expired", "pruneCodexSessions resumes an interrupted pass without deleting an id it
 already handled" and "pruneOpencodeSessions resumes an interrupted pass without deleting an id it
 already handled"; `test/retention.test.ts` — "RetentionPruner: a codex id an interrupted pass
-already handled is not deleted again, and the resume record is cleared";
+already handled is not deleted again, and the resume record is cleared", "RetentionPruner: stop()
+kills the running codex deletes, resolves promptly, and clears the marker" and "RetentionPruner: a
+stopped pass keeps the ids it handled, and a fresh pass does not delete them again";
 `test/session-ledger.test.ts` — "pruneSessionLedgers drops lines past the window and keeps the recent
 ones" and "pruneOpencodeSessions deletes expired opencode sessions and prunes old spill files".
 

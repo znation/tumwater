@@ -171,6 +171,8 @@ export class RetentionPruner {
   /** The prune pass in flight, or null. A pass runs as a background task so the poll loop keeps
    * scheduling while its session deletes run (PLANS.md "Fast session cleanup" part 2a/2). */
   private pass: Promise<void> | null = null;
+  /** Aborted by `stop()`: it cuts the pass in flight and starts no later one. */
+  private readonly abort = new AbortController();
 
   constructor(root: string, retentionDays: number) {
     this.lastRetention = retentionDays;
@@ -213,9 +215,17 @@ export class RetentionPruner {
     while (this.pass !== null) await this.pass;
   }
 
+  /** Stop for shutdown: abort the pass in flight (no further delete starts, running deletes are
+   * killed, the file passes do not run) and resolve once it has settled. No later pass starts. */
+  async stop(): Promise<void> {
+    this.abort.abort();
+    await this.whenIdle();
+  }
+
   /** Start one prune pass in the background. A pass that throws logs one warning and clears the
    * in-flight slot, so the team keeps running and the next due poll starts a new pass. */
   private startPrune(root: string, days: number): void {
+    if (this.abort.signal.aborted) return;
     this.lastPruneAt = Date.now();
     this.pass = this.prune(root, days)
       .catch((err: unknown) => {
@@ -231,10 +241,15 @@ export class RetentionPruner {
    * passes. The whole pass is wrapped in the progress marker (PLANS.md "Visible session
    * cleanup" part 1/3), which is removed in the `finally` even when a half throws. */
   private async prune(root: string, days: number): Promise<void> {
+    const signal = this.abort.signal;
     const marker = new SessionPruneMarker(root);
     try {
-      await pruneOpencodeHalf(root, days, marker);
-      await pruneCodexHalf(root, days, marker);
+      await pruneOpencodeHalf(root, days, marker, signal);
+      if (signal.aborted) return;
+      await pruneCodexHalf(root, days, marker, signal);
+      // The file passes trim ledger lines and clear the resume records; after an abort they must
+      // not run, or the sessions this pass never reached would lose their lines.
+      if (signal.aborted) return;
       pruneFileHalves(root, days, marker);
     } finally {
       marker.finish();
@@ -247,7 +262,7 @@ export class RetentionPruner {
  * files from the ledger BEFORE the file pass ages it out — an idle role's whole ledger file is
  * deleted once its mtime passes the window, so only reading it first hands every expired
  * OpenCode session id to `opencode session delete`. Each half warns its own unit. */
-async function pruneOpencodeHalf(root: string, days: number, marker: SessionPruneMarker): Promise<void> {
+async function pruneOpencodeHalf(root: string, days: number, marker: SessionPruneMarker, signal: AbortSignal): Promise<void> {
   marker.beginHalf("opencode");
   const { config } = loadConfigSafe(root);
   let bin = config !== undefined ? opencodeBackend.resolveBin(config).bin : undefined;
@@ -265,6 +280,7 @@ async function pruneOpencodeHalf(root: string, days: number, marker: SessionPrun
     spillDir: opencodeSpillDir(root),
     resumePath: sessionPruneResumePath(root, "opencode"),
     onProgress: marker.onProgress,
+    signal,
   });
   marker.endHalf();
   if (deleted > 0)
@@ -279,7 +295,7 @@ async function pruneOpencodeHalf(root: string, days: number, marker: SessionPrun
  * objection 2). CODEX_HOME is always set explicitly — to the resolved team home, or to
  * undefined when the config is absent — so the inherited CODEX_HOME never reaches the purge
  * (its rollout fallback would otherwise unlink the operator's own home). */
-async function pruneCodexHalf(root: string, days: number, marker: SessionPruneMarker): Promise<void> {
+async function pruneCodexHalf(root: string, days: number, marker: SessionPruneMarker, signal: AbortSignal): Promise<void> {
   marker.beginHalf("codex");
   const { config } = loadConfigSafe(root);
   const codexBin = config !== undefined ? codexBackend.resolveBin(config).bin : undefined;
@@ -289,6 +305,7 @@ async function pruneCodexHalf(root: string, days: number, marker: SessionPruneMa
     env: { ...process.env, CODEX_HOME: codexHomeDir },
     resumePath: sessionPruneResumePath(root, "codex"),
     onProgress: marker.onProgress,
+    signal,
   });
   marker.endHalf();
   if (deletedCodex > 0)

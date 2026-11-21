@@ -9,36 +9,6 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 ## Planned
 
-### Fast session cleanup, part 2b/2: stopping the orchestrator abandons an in-flight session prune (planned 2026-11-16 by the operator, split 2026-11-21 by the plan role; requires Fast session cleanup part 2a/2 landed; touches src/agent/session-ledger.ts src/orchestrator/retention.ts src/orchestrator/orchestrator.ts test/retention.test.ts)
-
-Sibling of "Fast session cleanup part 2a/2" (background deletes) and 2c/2 (alert wording).
-
-**Goal.** Today a SIGTERM during the prune cannot reach the JS handler while `spawnSync` blocks,
-so shutdown never runs: the 2026-11-16 instances stopped mid-prune (pids 4663, 15799) logged no
-`orchestrator_stop`, handed off no merge and released no slot. Once 2a makes the pass async the
-handler runs, but a pass still in flight keeps spawning deletes and holds the process open.
-
-**Approach.**
-- The two purges accept an optional `AbortSignal`: once it aborts, no further delete starts and
-  each running delete child is killed (`spawn`'s `signal` option); the purge resolves with what it
-  counted so far. Ids already handled stay in the resume record, so the next pass resumes there
-  (part 1/2).
-- `RetentionPruner` owns an `AbortController`; a new `stop()` aborts it and returns `whenIdle()`.
-  The file/ledger-line passes do not run after an abort (they would trim lines whose sessions the
-  aborted pass never reached).
-- The orchestrator's graceful-shutdown path (src/orchestrator/orchestrator.ts, the drain before
-  the `orchestrator_stop` event) calls `retentionPruner.stop()` and awaits it, bounded by the
-  existing shutdown window.
-
-**Acceptance criteria.**
-- With a stub `codex` that sleeps 30 s per delete and several expired ids, `stop()` resolves
-  within a couple of seconds, no stub process is left running, and the maintenance marker file is
-  gone.
-- After a stopped pass, ids it handled are in the resume record and a fresh `RetentionPruner` does
-  not delete them again.
-- An orchestrator stopped (via its stop signal) while such a prune is in flight logs
-  `orchestrator_stop` within its shutdown window.
-
 ### GitHub issues, part 3/5: the GUI warns when a project has a GitHub remote but `gh` is missing or logged out, and shows issues waiting to be mirrored (planned 2026-11-21 by the operator; requires GitHub issues part 2/5 landed; touches src/status/status-data.ts src/ui/team-alert-status.ts test/status-data.test.ts test/team-alert-status.test.ts)
 
 **Goal.** The operator sees in the dashboard, without running doctor, that tumwater cannot read
