@@ -44,6 +44,8 @@ fall behind a busy Codex team indefinitely.)
 
 ### Remove the TUI, part 4/5: source comments stop describing a TUI (planned 2026-11-16 by the operator; requires Remove the TUI parts 1/5, 2/5, 3/5 landed; touches src/ (comments only) scripts/diff-check.mjs scripts/live-fixture.mjs)
 
+**Needs review 2026-11-21 by feature: too large for one run.** `grep -rniw tui src scripts` matches 244 lines in 94 files; each sentence needs its own rewrite, which is more than one run can finish. Splitting by directory (for example src/ui, src/config+src/backlog+src/inbox, the rest, scripts) would fit.
+
 **Goal.** Before part 1/5, about 100 files under src/ (outside `src/ui/tui/`) mentioned the TUI
 some 315 times. Most of those mentions are comments that call a piece of code "the TUI's twin",
 cite a `src/ui/tui/…` path, name a TUI key (Ctrl+…), or list the TUI among the surfaces that read
