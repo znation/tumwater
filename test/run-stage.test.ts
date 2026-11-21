@@ -1304,3 +1304,93 @@ test("a run with no waiting change pins its commit as the waiting state and writ
   assert.equal(calls.pins[0]!.sha, outcome.commit);
   assert.equal(queueDepth(root), 0, "a changed fresh run writes no queue file");
 });
+
+// ── The author's declared red (BUGS.md 2026-11-20) ──
+// A RISK or VERIFIED line that declares the change incomplete or the suite red gets one fix-up
+// turn; a declaration that survives the turn reverts the change instead of queuing it.
+
+const DECLARED_RED_RISK = "the change is NOT complete — the flip leaves the suite red";
+
+test("a declared-red RISK gets one fix-up naming its phrase; a reply that clears it is queued", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: `SUMMARY: add the feature\nRISK: ${DECLARED_RED_RISK}\n`,
+    stageFix: okPi({ finalText: "RISK: none; the suite passes\nVERIFIED: ran the suite, green\n" }),
+  });
+
+  const outcome = await stageRunMerge(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(calls.stageFixRequests.length, 1, "exactly one follow-up run");
+  assert.equal(calls.stageFixRequests[0]!.findings.length, 1);
+  assert.match(calls.stageFixRequests[0]!.findings[0]!, /"NOT complete"/);
+  assert.equal(calls.pins.length, 1, "the cleared change is pinned as today");
+  assert.equal(queueDepth(root), 0, "a changed fresh run writes no queue file");
+});
+
+test("a declared-red change whose fix-up reply still declares red is reverted and filed, not queued", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: `SUMMARY: add the feature\nRISK: ${DECLARED_RED_RISK}\n`,
+    stageFix: okPi({ finalText: "RISK: still NOT complete; the suite is red in claims\n" }),
+  });
+
+  const outcome = await stageRunMerge(ctx);
+
+  assert.equal(outcome.result, "no_change");
+  assert.equal(outcome.selfCheckReverted, true);
+  assert.equal(calls.pins.length, 0, "no merge ref is pinned");
+  assert.equal(queueDepth(root), 0, "no merge is queued");
+  assert.equal(fs.existsSync(path.join(wt, "feature.ts")), false, "the change is reset off the worktree");
+  assert.equal(sh(wt, "git", "status", "--porcelain"), "", "the worktree is clean");
+  const bugs = sh(root, "git", "show", "HEAD:BUGS.md");
+  assert.match(bugs, /^## Open$/m);
+  assert.match(bugs, /^### the stage self-check finding .*NOT complete/m, "the finding is filed as open work");
+});
+
+test("a declared-red change with no fix-up reply is reverted, the authored declaration standing", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: `SUMMARY: add the feature\nRISK: ${DECLARED_RED_RISK}\n`,
+  });
+
+  const outcome = await stageRunMerge(ctx);
+
+  assert.equal(calls.stageFixRequests.length, 1);
+  assert.equal(outcome.result, "no_change");
+  assert.equal(outcome.selfCheckReverted, true);
+  assert.equal(calls.pins.length, 0);
+  assert.equal(queueDepth(root), 0);
+});
+
+test("a VERIFIED line the fix-up reply leaves out still stands as authored", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "SUMMARY: add the feature\nVERIFIED: not suite-green\n",
+    stageFix: okPi({ finalText: "RISK: fixed the default\n" }),
+  });
+
+  const outcome = await stageRunMerge(ctx);
+
+  assert.equal(outcome.result, "no_change", "the authored VERIFIED is committed, so it must not queue");
+  assert.equal(outcome.selfCheckReverted, true);
+  assert.equal(calls.pins.length, 0);
+});
+
+test("a conditional RISK gets no declared-red finding and no fix-up turn", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "SUMMARY: add the feature\nRISK: a wrong field would make the status test fail\n",
+  });
+
+  const outcome = await stageRunMerge(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(calls.stageFixRequests.length, 0, "no finding, so no follow-up turn");
+  assert.equal(calls.pins.length, 1);
+});

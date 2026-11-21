@@ -9,6 +9,7 @@ import type { RunOutcome } from "./run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { commitAll, headOf, isDirty } from "../git/git.js";
+import { resetWorktreeToMain } from "../git/worktree.js";
 import {
   buildCommitMessage,
   commitTrailer,
@@ -31,6 +32,7 @@ import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner
 import { stagedMovedEntries } from "../scheduling/claims.js";
 import { entryKey } from "../backlog/backlog-parts.js";
 import { assignedMovedFinding, heldMovedFinding } from "../stage/stage-backlog-checks.js";
+import { declaredRedPhrase } from "../stage/stage-declared-red.js";
 import { archiveNewFinishedEntries } from "../backlog/backlog-archive.js";
 import { fileBugsOnMain } from "../backlog/backlog-file-bugs.js";
 import {
@@ -136,11 +138,17 @@ function revisionFields(ctx: RunStageContext): { revisionRound: number | undefin
   return { revisionRound, priorReview };
 }
 
+/** The finding a change whose own RISK or VERIFIED line declares it incomplete or the suite red
+ * gets: it quotes the declaring phrase and asks the author to make the tests pass or revert. */
+function declaredRedFinding(phrase: string): string {
+  return `the change's own RISK or VERIFIED declares it "${phrase}": make the failing tests pass, or revert the change, before it is queued`;
+}
+
 /** Run the gate's remaining checks before the commit, giving the author's session
  * one bounded fix-up turn, and end the run `no_change` (flagged `selfCheckReverted`) when the
- * fix-up reverts the whole change (leaving nothing to commit). Returns an outcome only when the
- * run must end early; otherwise mutates `desc.summary`/`desc.body` with any fix-up recovery,
- * exactly as the inline block did. */
+ * fix-up reverts the whole change (leaving nothing to commit) or its declared-red survives the
+ * turn. Returns an outcome only when the run must end early; otherwise mutates
+ * `desc.summary`/`desc.body` with any fix-up recovery, exactly as the inline block did. */
 async function runStageSelfCheck(
   ctx: RunStageContext,
   desc: StagedCommitDescription,
@@ -154,8 +162,12 @@ async function runStageSelfCheck(
   const movedFindings = recordStagedClaims(ctx, moved);
   const findings = await ctx.stageCheck(ctx.wt);
   findings.push(...movedFindings);
+  // The author's own RISK/VERIFIED declaring the change incomplete or the suite red (BUGS.md
+  // 2026-11-20) is a finding too: the fix-up turn must close it, or the change is reverted.
+  const red = declaredRedPhrase(desc.body ?? {});
+  if (red !== null) findings.push(declaredRedFinding(red));
   if (findings.length === 0) return undefined;
-  return applyStageFixUp(ctx, desc, findings);
+  return applyStageFixUp(ctx, desc, findings, red);
 }
 
 /** Decide whether this is a claim-staging run and, if so, read the backlog entries its diff moved
@@ -217,19 +229,24 @@ function recordStagedClaims(
 /** Run the author's one bounded fix-up turn over the stage findings, fold its commits, recover
  * `desc.summary`/`desc.body` from the reply, and end the run `no_change` flagged
  * `selfCheckReverted` when the follow-up left the worktree clean; otherwise stage-check again and
- * log the outcome warning. Returns an outcome only when it ends the run early, else `undefined`. */
+ * log the outcome warning. A declared-red change (`red`, the phrase its own RISK/VERIFIED
+ * declared) whose declaration survives the turn is reverted and filed instead of queued. Returns
+ * an outcome only when it ends the run early, else `undefined`. */
 async function applyStageFixUp(
   ctx: RunStageContext,
   desc: StagedCommitDescription,
   findings: string[],
+  red: string | null,
 ): Promise<RunOutcome | undefined> {
   const before = findings.length;
+  const authored = desc.body;
   const fixBase = await headOf(ctx.wt, "HEAD");
   const fixUp = await ctx.requestStageFix(ctx.wt, findings, {
     summary: desc.summaryDerived ? null : desc.summary,
     body: desc.body ? formatCommitBody(desc.body) : "",
   });
   await foldAgentCommitsSince(ctx, ctx.wt, fixBase);
+  const fixBody = fixUp ? extractCommitBody(fixUp.finalText) : null;
   if (fixUp) {
     if (fixUp.aborted) return ctx.finishAbortedRun();
     // The fix-up reply answers the findings, not the change, so it never replaces the
@@ -237,7 +254,7 @@ async function applyStageFixUp(
     // derived from the paths, and its RISK/VERIFIED are appended as self-check notes.
     const fixSummary = desc.summaryDerived ? extractSummary(fixUp.finalText) : null;
     if (fixSummary !== null) desc.summary = fixSummary;
-    desc.body = appendSelfCheckNotes(desc.body, extractCommitBody(fixUp.finalText));
+    desc.body = appendSelfCheckNotes(desc.body, fixBody);
   }
   // A fix-up turn may resolve its findings by reverting the whole change. With nothing left
   // in the worktree there is nothing to commit or queue: end the run no_change here instead
@@ -256,6 +273,25 @@ async function applyStageFixUp(
     // A finding the one-turn fix-up could not close would otherwise live only in the warning
     // event above, so it never reaches BUGS.md and re-burns the same authoring next run
     // (BUGS.md 2026-11-08). File it as open work before the no_change ends the run.
+    await fileUnclosedSelfCheckFindings(ctx, findings);
+    return { result: "no_change", selfCheckReverted: true };
+  }
+  // A declaration the change still makes after the turn is never queued: the author's RISK or
+  // VERIFIED says the change is incomplete or leaves the suite red, and merging it turns main red
+  // (BUGS.md 2026-11-20). The reply's line is what the turn now says; a line the reply leaves
+  // out stands as authored, since the commit keeps it. The change is reverted to main and filed
+  // as open work, the same ending as a fix-up that reverts the whole change.
+  const surviving = declaredRedPhrase({
+    risk: fixBody?.risk ?? authored?.risk,
+    verified: fixBody?.verified ?? authored?.verified,
+  });
+  if (red !== null && surviving !== null) {
+    await resetWorktreeToMain(ctx.wt, ctx.mainBranch ?? "HEAD");
+    logSelfCheckOutcome(
+      ctx,
+      `stage self-check: the change still declares itself "${surviving}" after the follow-up turn; reverted, not queued`,
+      findings,
+    );
     await fileUnclosedSelfCheckFindings(ctx, findings);
     return { result: "no_change", selfCheckReverted: true };
   }

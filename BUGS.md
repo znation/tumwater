@@ -104,27 +104,6 @@ Overlaying those endings on the pmset sleep intervals shows 85–95% of each one
 
 **Required behavior.** A full e2e step must not carry a red from a 150 s wall-clock wait the host starved after admission. Options the class has already sketched, none landed: drive the run-start-marker wait on the fake clock the watchdog tests use, or re-sample the host during the wait and skip when it crosses the bar mid-wait. The 150 s bound itself is not the lever (the 2026-10-25/26 entries record the ceiling, not a bound).
 
-### A change whose own commit message says it leaves tests failing still merges, because nothing reads the author's declared-red RISK or VERIFIED line (reported by the user 2026-11-20, split 2026-11-21 by the plan role)
-
-The report held two gaps. This entry is the first, the declared-red reply. The second, the budgeted gate selecting too few dependents of a widely read default, reverses the gate's documented trade-off ("a test this leaves out costs a red main that the watch finds and ci heals forward", test/affected-tests.ts's header). That makes it the operator's call, so it is QUESTIONS.md's "Should a change to a widely read default run more than the budgeted gate?" and not a bug here.
-
-Feature run #3029's revision `dac2a150b` ("Set the default work-instance count to 3; rewrap its doc comment") merged on 2026-11-20 at 15:43 PST. Its own RISK line said "the change is NOT complete — the flip leaves the suite red: `npm run test:rerun` fails 22 tests in claims, backlog-pending, run-prompt, role-view, doctor-checks, status-data, team-alerts, config, cli-diff, change-data-scope, gui-client-boot, gui-operator, scheduling, run-stage". Its VERIFIED line said the change "is not suite-green as it stands". Its gate `build_check` passed (28 tests in 8.2 s, none of the 22) and it merged. The main watch flagged it `main_culprit` at 15:50, and main stayed red until the ci role's `ccdfe746b` at 19:18, blocking an operator's 0.9.0 cut.
-
-**Reproduce.** `git show -s dac2a150b` shows the RISK and VERIFIED lines above. The run's staging (`stageRunMerge`, src/run/run-stage.ts) never reads either line: `runStageSelfCheck` gets its findings only from `ctx.stageCheck` (the tree checks in src/stage/stage-check.ts) and the moved-entry checks.
-
-**Fix direction (chosen by the plan role).** Refuse it at the authoring turn, in the self-check this file already uses, not at merge time:
-- A pure detector over the staged description's `risk` and `verified` text (the `StagedCommitDescription.body` that `resolveCommitDescription` returns) reports whether the author declared the change incomplete or the suite red. It matches, case-insensitively, the incident's forms: "not complete", "incomplete", "not suite-green", and "leaves the suite red" / "the suite (is|stays) red". It does not fire on a conditional risk ("a wrong field would make the status test fail"), nor on a line that blames main's known-red tests ("main already fails …", "known red").
-- `runStageSelfCheck` adds one finding when the detector fires. The finding quotes the declaring phrase and asks the author to make the failing tests pass or revert the change. It goes through the existing `applyStageFixUp` turn.
-- After that turn, the detector runs again over the fix-up reply's RISK/VERIFIED, or over the original lines when the reply gives none. If the declaration survives, the change is not queued. The worktree is reset, `fileUnclosedSelfCheckFindings` files the finding, and the run ends `no_change` flagged `selfCheckReverted`, the same ending a fix-up that reverts the whole change gets today.
-
-**Acceptance.**
-- A run whose reply's RISK reads "the change is NOT complete — the flip leaves the suite red" gets one fix-up turn whose findings name that phrase. A run whose RISK reads "a wrong field would make the status test fail" gets no such finding.
-- If the fix-up reply's RISK/VERIFIED no longer declares red (and the stage checks pass), the change is committed and pinned as today.
-- If the fix-up reply still says "not suite-green", no merge ref is pinned, no merge is queued, the worktree is clean, BUGS.md gains the filed finding, and the outcome is `no_change` with `selfCheckReverted: true`.
-- Tests: the detector's positive and negative forms in its own unit test, and the three staging outcomes in test/run-stage.test.ts using its existing fake `stageCheck`/`requestStageFix` context.
-
-**Related, seen in the same run.** Run #3029's claim was "Remove the TUI, part 3/5", but it implemented "Three work instances by default, part 2/2". The plan entry it actually worked on was never claimed, so another instance could have taken it at the same time.
-
 ## Fixed
 
 ## Verified

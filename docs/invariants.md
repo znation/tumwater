@@ -4336,6 +4336,25 @@ the worktree.
 throwing", "the git-level check leaves the index clean, so change detection still sees the
 worktree" and "a clean change yields no findings".
 
+### INV-BK3: a change whose own RISK or VERIFIED declares it incomplete or the suite red is never queued
+
+**Guarantee.** A RISK or VERIFIED line that says "not complete", "incomplete", "not suite-green",
+"leaves the suite red", or "the suite is/stays red" (case-insensitive) adds one self-check finding
+that quotes the phrase, so the fix-up turn runs. A line that blames main's known-red tests
+("main already fails", "known red") or states a conditional risk does not fire. When the
+declaration survives the turn, the worktree is reset to main, the finding is filed in BUGS.md,
+and the run ends `no_change` flagged `selfCheckReverted`; nothing is pinned or queued. A line the
+fix-up reply leaves out keeps its authored text for this check.
+
+**Binds.** `src/stage/stage-declared-red.ts` (`declaredRedPhrase`) and `src/run/run-stage.ts`
+(`runStageSelfCheck`, `applyStageFixUp`).
+
+**Pinned by.** `test/stage-declared-red.test.ts` — "a RISK line that declares the change incomplete
+or the suite red is detected", "a line that blames main's known-red tests does not fire the
+detector" and "a conditional risk does not fire the detector"; `test/run-stage.test.ts` — "a
+declared-red change whose fix-up reply still declares red is reverted and filed, not queued" and
+"a VERIFIED line the fix-up reply leaves out still stands as authored".
+
 ## Run timing: a drain sample counts only a run's own work, and a restart's hand-off waits on every merge task for at most two windows
 
 ### INV-BL1: a run's drain sample is its own work
