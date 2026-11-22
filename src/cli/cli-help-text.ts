@@ -359,7 +359,7 @@ Usage:
                                    {released: {position, test}} in place of the prose
                                    acknowledgement; --show <n> --json prints that entry's
                                    object
-  tumwater issues [--show <n>] [--grep <text>] [--json]
+  tumwater issues [-f/--follow] [--show <n>] [--grep <text>] [--json]
                                    List what the GitHub-issues mirror last saw — the open issues
                                    of the project's GitHub remote and what tumwater did about
                                    each, read from its ledger (.tumwater/state/github-issues.json)
@@ -383,7 +383,11 @@ Usage:
                                    tumwater's state for it (queued, declined with its reason, fixed
                                    by a sha, closed, waiting for a push, or every mirroring entry
                                    retired) and the body excerpt when the ledger holds one;
-                                   read-only, needing no ready repo and no gh
+                                   read-only, needing no ready repo and no gh; -f/--follow
+                                   repaints this read every couple of seconds until Ctrl+C or the
+                                   process that started it exits, re-reading the ledger each frame
+                                   so a scan that lands while it runs shows in the next repaint;
+                                   --json refuses -f/--follow
   tumwater salvage [-f/--follow] [--grep <text>] [--show <n>] [--drop <n>] [--apply <n> [--dry-run]] [--json]
                                    List the workspace patches kept for you under
                                    .tumwater/salvage/ — a settled run's discarded edits or a
