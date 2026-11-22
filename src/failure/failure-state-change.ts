@@ -151,7 +151,6 @@ export const STATE_CHANGE_EXCLUDED_TYPES = new Set<string>([
   "backend_binary",
   "opencode_free_model_billed",
   "image_reroute",
-  "github_issues_unavailable",
 ]);
 
 /** The Team state changes section's caps: newest N transitions, each line's payload capped at
