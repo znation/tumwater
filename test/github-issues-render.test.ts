@@ -102,6 +102,26 @@ test("the header counts the closed rows the ledger holds, and a foreign closedRo
   assert.equal(issuesHeader(foreign).closedCount, 0);
 });
 
+test("the header's counts are the ledger's, so a filtered frame restates nothing", () => {
+  // `--grep` filters rows but numbers them by their whole-list position, and `-f/--follow`
+  // re-renders each frame over a fresh read. So the header's two counts come from the ledger, and
+  // a frame that kept one of the two lists cannot mix it with the other. The ledger here holds two
+  // open issues (#10, #2) and one closed row (#9); the filter keeps only #10.
+  const l = ledger({
+    closedRows: [{ ...ledger().open[0]!, number: 9, title: "Closed nine" }],
+  });
+  const kept = grepIssueRows(issueRows(l), "TEN");
+  assert.deepEqual(kept.map((r) => [r.position, r.number]), [[2, 10]], "the kept row keeps its whole-list position");
+  const text = renderIssues(kept, issuesHeader(l), NOW);
+  assert.match(
+    text,
+    /^github issues — znation\/proj \(main\): 2 open, 1 closed by tumwater, checked 0s ago$/m,
+    "the filtered frame names the ledger's open count, not its kept-row count",
+  );
+  assert.match(text, /^2\. #10 — Ten — trusted, not mirrored, updated 0s ago$/m, "the kept row is listed");
+  assert.ok(!(text.includes("Two")) && !(text.includes("Closed nine")), "the filtered-out issues never appear");
+});
+
 test("issueRows numbers the open list ascending by issue number and folds every state map in", () => {
   const rows = issueRows(
     ledger({

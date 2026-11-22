@@ -5595,7 +5595,7 @@ automatic rewrite"; `test/run-usage.test.ts` —
 `test/claude-stream.test.ts` — "retries and compaction translate to the canonical events the
 transcript renders".
 
-## The GitHub issues mirror: its scan-stall and re-offer holds each have one home
+## The GitHub issues mirror: its scan-stall and re-offer holds each have one home, and its read's counts are the ledger's
 
 ### INV-DE1: githubScanStalled is the one home of the issues-scan stall decision
 
@@ -5676,6 +5676,29 @@ back to 24 h" and "a queued issue is not re-offered within 24 h, then is offered
 issue waits for its updatedAt; a fixed issue is never offered"; `test/github-issue-outcome.test.ts`
 — "an unsettled director run releases the 24 h hold to one retry interval, and the queue
 re-offers" and "a non-issue prompt, a missing record, and no ledger all release nothing".
+
+### INV-DE3: the issues read's counts are the ledger's, so a filtered or following frame restates them
+
+**Guarantee.** `issuesHeader` (src/github/github-issues-render.ts) takes both of the list header's
+counts from the ledger it was handed — `openCount` from `open`, `closedCount` from `closedRows` —
+and `renderIssues` prints those, never a count of the rows it was given. The rows and the counts
+can legitimately differ: `--grep` hands the renderer only its kept rows while each row keeps its
+whole-list position, and `-f/--follow` renders a fresh read per frame. A count taken from the rows
+would therefore report a filter's subset as the whole mirror (a frame reading `0 open, 1 closed by
+tumwater` over a mirror with two open issues), and a follow's frames would disagree with each other
+whenever the filter or the scan changed between them. `tumwater issues --show <n>`'s out-of-range
+refusal follows the same rule in the other direction: it counts the whole positioned list, which
+holds the issues tumwater closed as well as the open ones, and says `holds <N> issues`, never
+`open issues`, because position N addresses both kinds.
+
+**Binds.** `src/github/github-issues-render.ts` (`issuesHeader`, `IssuesHeader`, `renderIssues`),
+`src/cli/cli-query-commands.ts` (`cmdIssues`, `cmdIssuesShow`).
+
+**Pinned by.** `test/github-issues-render.test.ts` — "the header's counts are the ledger's, so a
+filtered frame restates nothing"; `test/cli-issues.test.ts` — "issues lists the issues tumwater
+closed after the open ones, under a header counting them" and "issues --show <n> past the end fails
+with the quarantine detail's wording"; `test/cli-issues-follow.test.ts` — "issues -f --grep keeps
+the whole-list numbering and repaints its no-match line".
 
 ## Once rounds: every starting hold settles its runner, so a held team still exits
 

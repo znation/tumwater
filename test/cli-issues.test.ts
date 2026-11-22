@@ -216,12 +216,12 @@ test("issues --show <n> past the end fails with the quarantine detail's wording"
   const before = fs.readFileSync(githubIssuesPath(repo), "utf8");
   const r = await cli(repo, "issues", "--show", "4");
   assert.equal(r.code, 1);
-  assert.ok(r.stderr.includes("no GitHub issue at position 4 (github issues mirror holds 3 open issues) — valid: 1-3"), r.stderr);
+  assert.ok(r.stderr.includes("no GitHub issue at position 4 (github issues mirror holds 3 issues) — valid: 1-3"), r.stderr);
   assert.equal(fs.readFileSync(githubIssuesPath(repo), "utf8"), before, "the ledger is byte-unchanged");
   const empty = await issuesRepo("issues show empty test");
   const e = await cli(empty, "issues", "--show", "1");
   assert.equal(e.code, 1, "no ledger degrades to an empty mirror, so position 1 is past the end");
-  assert.ok(e.stderr.includes("no GitHub issue at position 1 (github issues mirror holds 0 open issues)"), e.stderr);
+  assert.ok(e.stderr.includes("no GitHub issue at position 1 (github issues mirror holds 0 issues)"), e.stderr);
   assert.ok(!e.stderr.includes("valid: 1-"), "an empty mirror names no range");
 });
 
@@ -341,8 +341,22 @@ test("issues lists the issues tumwater closed after the open ones, under a heade
   const grepLines = grep.stdout.trimEnd().split("\n");
   assert.equal(grepLines.length, 2, "header plus the one kept row");
   assert.match(grepLines[1]!, /^3\. #9 — A closed request/, "the kept row keeps its whole-list position");
+  assert.match(
+    grepLines[0]!,
+    /^github issues — znation\/proj \(main\): 2 open, 1 closed by tumwater, checked \d+[smhd] ago$/,
+    "a filtered frame restates the ledger's own counts, not its kept rows",
+  );
   const none = await cli(repo, "issues", "--grep", "nothing-here");
   assert.equal(none.stdout.trim(), 'no GitHub issues match "nothing-here"');
+
+  // The list holds closed rows too, so a position past its end counts them without calling them
+  // open: the refusal says what the list holds, not what GitHub holds.
+  const past = await cli(repo, "issues", "--show", "4");
+  assert.equal(past.code, 1, past.stdout);
+  assert.ok(
+    past.stderr.includes("no GitHub issue at position 4 (github issues mirror holds 3 issues) — valid: 1-3"),
+    past.stderr,
+  );
 });
 
 test("issues reads a ledger with no closedRows key, and one whose closedRows holds junk", async () => {
@@ -408,7 +422,7 @@ test("issues drops a malformed row out of a hand-edited ledger instead of failin
   const past = await cli(repo, "issues", "--show", "2");
   assert.equal(past.code, 1);
   assert.ok(
-    past.stderr.includes("github issues mirror holds 1 open issue) — valid: 1-1"),
+    past.stderr.includes("github issues mirror holds 1 issue) — valid: 1-1"),
     past.stderr,
   );
 });

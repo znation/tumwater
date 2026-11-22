@@ -184,7 +184,7 @@ test("issues -f --grep keeps the whole-list numbering and repaints its no-match 
     const frames = cap.out();
     assert.ok((frames.match(/1\. #7 — Reclaim leaves a stale lock/g) ?? []).length >= 2, "the kept row repaints");
     assert.doesNotMatch(frames, /#9/, "the filtered-out issue never appears");
-    assert.match(frames, /github issues — znation\/proj \(main\): 1 open/, "the header counts kept rows");
+    assert.match(frames, /github issues — znation\/proj \(main\): 2 open/, "the header names the mirror's own open count, not the kept rows");
     stop();
   });
   await withIssuesFollow(seed, ["-f", "--grep", "nomatch"], 5, false, async ({ cap, stop }) => {

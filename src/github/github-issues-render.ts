@@ -52,6 +52,8 @@ export interface IssuesHeader {
   checkedAt: number;
   gh: GithubIssuesLedger["gh"];
   reason?: string;
+  /** How many issues the ledger lists as open (`open`), whatever the frame's rows keep. */
+  openCount: number;
   /** How many issues tumwater closed the ledger keeps rows for (`closedRows`). */
   closedCount: number;
 }
@@ -115,15 +117,17 @@ export function issueRowAt(ledger: GithubIssuesLedger, position: number): IssueR
   return issueRows(ledger)[position - 1] ?? null;
 }
 
-/** The header a command prints for a ledger: its repo, branch, scan time and `gh` gate state,
- * with the probe's reason only when the probe was not ok (a ledger that carries a reason while
- * `gh` is ok names nothing extra). */
+/** The header a command prints for a ledger: its repo, branch, scan time and `gh` gate state, its
+ * two row-list counts, and the probe's reason only when the probe was not ok (a ledger that
+ * carries a reason while `gh` is ok names nothing extra). The counts are the ledger's own, so a
+ * `--grep` frame and a follow's frame restate the same numbers as the unfiltered list. */
 export function issuesHeader(ledger: GithubIssuesLedger): IssuesHeader {
   return {
     repo: ledger.repo,
     branch: ledger.branch,
     checkedAt: ledger.checkedAt,
     gh: ledger.gh,
+    openCount: (Array.isArray(ledger.open) ? ledger.open : []).length,
     closedCount: (Array.isArray(ledger.closedRows) ? ledger.closedRows : []).length,
     ...(ledger.gh !== "ok" && ledger.reason ? { reason: ledger.reason } : {}),
   };
@@ -137,15 +141,17 @@ export function issuesHeader(ledger: GithubIssuesLedger): IssuesHeader {
  * naming that state (and its reason when present), since that is why a scan found nothing when
  * GitHub was unreachable — the read itself never depends on a working `gh`. */
 export function renderIssues(rows: readonly IssueRow[], header: IssuesHeader, now: number): string {
-  // The open count names the open rows only: a closed row is listed but never counted as open. When
-  // the ledger holds no closed rows the segment is nothing at all, so a list without closes keeps
-  // its header exactly as it read before closed rows existed.
-  const openCount = rows.filter((r) => r.wasClosed !== true).length;
+  // Both counts come from the ledger, never from `rows`: `--grep` hands this function its kept
+  // rows while `-f/--follow` repaints over a fresh read each frame, so a frame that kept one of
+  // the two lists would otherwise report it as the whole mirror — a filtered frame reading
+  // "0 open, 1 closed by tumwater" over a mirror holding two open issues. A closed row is listed
+  // but never counted as open. When the ledger holds no closed rows the segment is nothing at all,
+  // so a list without closes keeps its header exactly as it read before closed rows existed.
   const lines = [
     `github issues — ${header.repo} (${header.branch}): ` +
       // plural's `many` form stays "open": the count qualifies the adjective, so the plural
       // marker would land on the noun the header leaves implicit ("3 open issues").
-      plural(openCount, "open", "open") +
+      plural(header.openCount, "open", "open") +
       (header.closedCount > 0 ? `, ${plural(header.closedCount, "closed by tumwater", "closed by tumwater")}` : "") +
       `, checked ${humanAgo(header.checkedAt, now)}`,
   ];
