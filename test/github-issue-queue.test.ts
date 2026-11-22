@@ -61,6 +61,27 @@ test("a queued issue is not re-offered within 24 h, then is offered again; a dec
   assert.equal(nextIssuePrompt({ ...base, fixedIn: { "7": { sha: "aaaa", at: NOW } } }, new Set(), [], NOW), null);
 });
 
+test("isDeclinedHold is the queue's only decline gate: a decline stamped with a foreign updatedAt never holds", () => {
+  // The queue and the status fold share one gate (github-issues-state.ts `isDeclinedHold`), so the
+  // banner and the prompt cannot disagree about a declined issue. The comparison is exact string
+  // equality, so a decline whose recorded `updatedAt` matches nothing GitHub carries — a
+  // hand-edited or foreign-generation ledger — fails open and the issue is offered again.
+  const base = ledgerWith([row(7)]);
+  assert.equal(
+    nextIssuePrompt({ ...base, declined: { "7": { at: NOW, updatedAt: "2026-11-20T00:00:00Z", reason: "dup" } } }, new Set(), [], NOW),
+    null,
+  );
+  assert.equal(
+    nextIssuePrompt({ ...base, declined: { "7": { at: NOW, updatedAt: "not a timestamp", reason: "dup" } } }, new Set(), [], NOW)?.issue,
+    7,
+  );
+  // A decline recorded for another issue holds nothing here.
+  assert.equal(
+    nextIssuePrompt({ ...base, declined: { "8": { at: NOW, updatedAt: "2026-11-20T00:00:00Z", reason: "dup" } } }, new Set(), [], NOW)?.issue,
+    7,
+  );
+});
+
 test("an unsettled run's shortened hold re-offers the issue next interval, and a broken value falls back to 24 h", () => {
   const base = ledgerWith([row(7)]);
   // The hold a director run leaves behind when it never settled the issue: one scan interval.

@@ -678,8 +678,9 @@ stale settings.
 - The web dashboard opens on Team: alerts for whatever needs you — a spent budget, a failing or
   stuck role, a stopped team, disk and install drift, orphaned processes, open questions, refused
   entries, running on the fallback chain, a model that failed its model check, a stalled poll
-  loop, the GitHub-issues mirror family (no `gh`, a failed scan, a scan gone quiet, issues waiting
-  to be mirrored, fixes waiting on a push), the background maintenance pass, and the standing doctor
+  loop, the GitHub-issues mirror family (no `gh`, a failed scan, a scan gone quiet, issues the
+  director has not declined and has not mirrored, fixes waiting on a push), the background
+  maintenance pass, and the standing doctor
   twins `no-check`, `no-brief`, `brief-truncated`, `role-notes-truncated`, `salvage-patches`,
   `instance-pool` and `config-problem` (`teamAlerts` in `src/ui/team-alerts.ts` and its per-domain
   builders; `tumwater status` renders the same set). Main's newest check verdict is not an alert:

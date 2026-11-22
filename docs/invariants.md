@@ -5726,6 +5726,33 @@ closed after the open ones, under a header counting them" and "issues --show <n>
 with the quarantine detail's wording"; `test/cli-issues-follow.test.ts` — "issues -f --grep keeps
 the whole-list numbering and repaints its no-match line".
 
+### INV-DE4: the mirror counts a declined issue as settled, so its standing banner clears
+
+**Guarantee.** `isDeclinedHold` (src/github/github-issues-state.ts) is the one gate deciding when a
+director-declined issue still holds its row: true exactly when the ledger's `declined` record for the
+row's number carries an `updatedAt` equal (exact string equality, never `Date.parse`) to the row's own
+`updatedAt` — a GitHub edit is the signal that the issue is worth another look, and a record stamped
+with a string GitHub never carries matches nothing, so it fails open and the issue is offered again.
+Both readers ask it: `githubIssuesSummary`'s `unmirrored` fold drops such a row, and
+`nextIssuePrompt` (src/github/issue-queue.ts) skips it. So the standing blue `github-mirror` banner —
+titled `GitHub issues are waiting to be mirrored`, whose clause counts `unmirrored` — can never keep
+telling the operator that the director still owes work on an issue tumwater has already refused, while
+an issue merely inside its `queued` hold still counts as waiting. The fold's other fields
+(`untrusted`, `waitingPush`, `mirrorLabel`, `gh`, `reason`) are untouched, so the gray/amber scan
+banners and the amber `github-gh` banner cannot move with this change.
+
+**Binds.** `src/github/github-issues-state.ts` (`isDeclinedHold`, `githubIssuesSummary`,
+`GithubIssuesSummary.unmirrored`), `src/github/issue-queue.ts` (`nextIssuePrompt`),
+`src/ui/team-alert-status.ts` (`pushGithubMirrorAlert`).
+
+**Pinned by.** `test/status-data.test.ts` — "the snapshot's unmirrored count spares a
+director-declined issue and still counts a queued one"; `test/github-issue-queue.test.ts` — "a queued
+issue is not re-offered within 24 h, then is offered again; a declined issue waits for its
+updatedAt; a fixed issue is never offered" and "isDeclinedHold is the queue's only decline gate: a
+decline stamped with a foreign updatedAt never holds"; `test/team-alert-status.test.ts` —
+"two unmirrored and three untrusted issues name the configured label in one blue alert" and
+"a zero count drops its clause from the blue alert".
+
 ## Once rounds: every starting hold settles its runner, so a held team still exits
 
 A `tumwater start --once` round ends when `OnceRound.exitReady` sees a settle (a run or a skip

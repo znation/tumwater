@@ -11,7 +11,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { maintenanceForPoll, pollStallForPoll, snapshot } from "../src/status/status-data.js";
 import { githubIssuesPath, heartbeatPath, maintenancePath } from "../src/paths.js";
-import { writeGithubIssues, type GithubIssueRow } from "../src/github/github-issues-state.js";
+import { writeGithubIssues, type GithubIssueRow, type GithubIssuesLedger } from "../src/github/github-issues-state.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { runnerStateForPoll } from "../src/status/status-polls.js";
 import { quietHoursStatus } from "../src/scheduling/quiet-hours.js";
@@ -350,6 +350,76 @@ test("snapshot folds the GitHub issues ledger to its counts and omits it when ab
 
   writeConfig(repo, { githubIssues: { enabled: false } });
   assert.equal((await snapshot(repo)).githubIssues, undefined);
+});
+
+test("the snapshot's unmirrored count spares a director-declined issue and still counts a queued one", async () => {
+  // The standing blue banner reads this fold, but the queue will not offer a declined issue again
+  // until GitHub's copy moves — so a declined issue must not keep the banner standing, while an
+  // issue merely queued 2 h ago still is waiting (isDeclinedHold, INV-DE4).
+  const now = Date.UTC(2026, 10, 21, 10, 0, 0);
+  const updatedAt = "2026-11-21T00:00:00Z";
+  const declinedAt = now - 2 * 60 * 60 * 1000;
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  const row = (number: number, rowUpdatedAt: string): GithubIssueRow => ({
+    number,
+    title: `issue ${number}`,
+    url: `https://github.com/acme/widgets/issues/${number}`,
+    author: "someone",
+    trusted: true,
+    mirrored: false,
+    labels: [],
+    updatedAt: rowUpdatedAt,
+  });
+  const writeDeclinedMirror = (declined?: GithubIssuesLedger["declined"]): void => {
+    writeGithubIssues(repo, {
+      repo: "acme/widgets",
+      branch: "main",
+      checkedAt: now,
+      gh: "ok",
+      open: [row(1, updatedAt), row(2, updatedAt)],
+      queued: { "1": { at: declinedAt, updatedAt } },
+      ...(declined === undefined ? {} : { declined }),
+    });
+  };
+
+  // #2 declined at its own updatedAt: settled, so only #1 — queued, never settled — is waiting.
+  writeDeclinedMirror({ "2": { at: declinedAt, updatedAt, reason: "dup" } });
+  assert.deepEqual((await snapshot(repo, undefined, now)).githubIssues, {
+    repo: "acme/widgets",
+    gh: "ok",
+    checkedAt: now,
+    unmirrored: 1,
+    untrusted: 0,
+    waitingPush: 0,
+    mirrorLabel: "tumwater",
+  });
+  const [declinedBanner] = (await statusPayload(repo, now)).alerts.filter((a) => a.key === "github-mirror");
+  assert.equal(
+    declinedBanner?.detail,
+    "1 open issue on acme/widgets is waiting for the director to mirror it",
+  );
+
+  // GitHub edited #2 after the decline: its updatedAt no longer matches, so it waits again.
+  writeGithubIssues(repo, {
+    repo: "acme/widgets",
+    branch: "main",
+    checkedAt: now,
+    gh: "ok",
+    open: [row(1, updatedAt), row(2, "2026-11-22T00:00:00Z")],
+    queued: { "1": { at: declinedAt, updatedAt } },
+    declined: { "2": { at: declinedAt, updatedAt, reason: "dup" } },
+  });
+  assert.equal((await snapshot(repo, undefined, now)).githubIssues?.unmirrored, 2);
+  const [editedBanner] = (await statusPayload(repo, now)).alerts.filter((a) => a.key === "github-mirror");
+  assert.equal(
+    editedBanner?.detail,
+    "2 open issues on acme/widgets are waiting for the director to mirror them",
+  );
+
+  // No `declined` record at all: the fold is what it always was.
+  writeDeclinedMirror();
+  assert.equal((await snapshot(repo, undefined, now)).githubIssues?.unmirrored, 2);
 });
 
 test("the snapshot serves the GitHub issues ledger from the stat-keyed cache without re-reading", async () => {

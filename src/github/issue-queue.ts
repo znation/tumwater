@@ -8,6 +8,7 @@
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../inbox/inbox-submit.js";
 import { cutSplitsSurrogatePair } from "../text/text.js";
 import {
+  isDeclinedHold,
   isReopened,
   issueQueueHoldMs,
   type GithubIssuesLedger,
@@ -75,8 +76,9 @@ export function nextIssuePrompt(
     if (queued !== undefined && now - queued.at < issueQueueHoldMs(queued, QUEUED_RECHECK_MS)) {
       continue;
     }
-    const declinedAt = ledger.declined?.[key]?.updatedAt;
-    if (declinedAt !== undefined && declinedAt === row.updatedAt) continue;
+    // The same gate the status fold counts with, so a declined issue never holds the standing
+    // banner while the queue is not offering it (github-issues-state.ts `isDeclinedHold`).
+    if (isDeclinedHold(ledger, row)) continue;
     if (ledger.fixedIn?.[key]) continue;
     return { issue: row.number, text: composePrompt(ledger, row) };
   }

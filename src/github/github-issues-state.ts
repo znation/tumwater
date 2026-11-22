@@ -81,7 +81,8 @@ export interface GithubIssuesSummary {
   gh: GhState;
   reason?: string;
   checkedAt: number;
-  /** Open trusted issues that no backlog entry mirrors yet — the director has not taken them. */
+  /** Open trusted issues that no backlog entry mirrors yet and the director has not declined at
+   * their current `updatedAt` — the ones the director still owes a look at. */
   unmirrored: number;
   /** Open issues from outside the maintainers that no backlog entry mirrors. */
   untrusted: number;
@@ -94,7 +95,11 @@ export interface GithubIssuesSummary {
 
 /** Fold a ledger to its summary. Pure: the caller supplies the configured mirror label. */
 export function githubIssuesSummary(ledger: GithubIssuesLedger, mirrorLabel: string): GithubIssuesSummary {
-  const unmirrored = ledger.open.filter((issue) => issue.trusted && !issue.mirrored).length;
+  // A declined issue is settled, not waiting: the queue will not offer it again until GitHub's
+  // copy moves, so the standing banner must not keep asking (isDeclinedHold is the one gate).
+  const unmirrored = ledger.open.filter(
+    (issue) => issue.trusted && !issue.mirrored && !isDeclinedHold(ledger, issue),
+  ).length;
   const untrusted = ledger.open.filter((issue) => !issue.trusted && !issue.mirrored).length;
   return {
     repo: ledger.repo,
@@ -116,6 +121,18 @@ export function githubIssuesSummary(ledger: GithubIssuesLedger, mirrorLabel: str
 export function isReopened(ledger: GithubIssuesLedger, row: GithubIssueRow): boolean {
   const closedAt = ledger.closed?.[String(row.number)]?.at;
   return closedAt !== undefined && Date.parse(row.updatedAt) > closedAt;
+}
+
+/** Whether issue `row` (an entry of `ledger.open`) is declined and still held: the director
+ * turned it down, and GitHub's copy has not changed since — the issue is offered again only once
+ * someone edits it on GitHub. The comparison is exact string equality on `updatedAt`, never a
+ * `Date.parse` one: a decline whose recorded string matches nothing GitHub carries then fails
+ * open and the issue is offered, which is the safe direction. Both the queue's skip
+ * (issue-queue.ts `nextIssuePrompt`) and the summary's `unmirrored` fold read it, so the banner
+ * and the prompt cannot drift on what a declined issue owes. */
+export function isDeclinedHold(ledger: GithubIssuesLedger, row: GithubIssueRow): boolean {
+  const declinedAt = ledger.declined?.[String(row.number)]?.updatedAt;
+  return declinedAt !== undefined && declinedAt === row.updatedAt;
 }
 
 /** Whether `value` carries the declared `GithubIssueRow` fields with the declared types — the
