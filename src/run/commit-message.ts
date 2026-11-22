@@ -7,7 +7,7 @@ import type { PriorReview } from "../merge/merge-queue.js";
 // The trailer-line shapes are owned by the merge queue: reusing its fail-closed validators here
 // (the same ones its queue-file reader applies) keeps the commit-trailer and queue-file readers
 // agreeing on what a well-formed Claim / Prior-review value is, instead of spelling the check
-// twice. merge-queue imports nothing from the git layer, so this adds no cycle.
+// twice. merge-queue imports nothing from the run layer, so this adds no cycle.
 import { isMergeClaim, isPriorReview } from "../merge/merge-queue.js";
 
 /** Assembling run commit messages from pi's final reply: the SUMMARY line becomes the
