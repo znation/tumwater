@@ -1,4 +1,4 @@
-import { commitExists, refSha, refsUnder } from "../git/git.js";
+import { refSha, refsUnder } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { commitRunOf, commitSubject } from "../run/commit-message.js";
 import { mergeRefName } from "../paths.js";
@@ -35,7 +35,10 @@ interface MergePinEntry {
  * roles — the doctor, which must not read a config it already reports on — still sees every pin.
  * Each resolved pin is read with one `git log` call (its committer date and its message), and the
  * entry takes its `summary` from the commit's subject and its `run` from the commit's `Run:`
- * trailer. Returns `{ entries, unreadable }` in the `readMergeQueue` shape. */
+ * trailer. That one call also settles whether the pinned object is a commit the repository
+ * holds: the rev is passed as `<sha>^{commit}`, which fails for a dangling ref exactly as
+ * `git cat-file -e <sha>^{commit}` does, so no separate existence probe rides along.
+ * Returns `{ entries, unreadable }` in the `readMergeQueue` shape. */
 export async function readMergePins(
   root: string,
   roleIds?: readonly string[],
@@ -46,11 +49,13 @@ export async function readMergePins(
   for (const { role, sha } of pins) {
     // A dangling pin — the ref names a commit the repository no longer holds — cannot build an
     // entry and cannot merge: count it `unreadable`, the pin analog of the queue's skipped file.
-    if (!(await commitExists(root, sha).catch(() => false))) {
+    // The pin's one `git log` read decides this (it peels to a commit and fails otherwise), so
+    // the probe costs no extra spawn.
+    const { date, message, readable } = await commitDateOrMessage(root, sha);
+    if (!readable) {
       unreadable++;
       continue;
     }
-    const { date, message } = await commitDateOrMessage(root, sha);
     const subject = message === null ? undefined : commitSubject(message);
     const entry: MergePinEntry = {
       role,
@@ -70,17 +75,24 @@ export async function readMergePins(
 }
 
 /** The pinned commit's committer date (epoch ms, `git %ct` is unix seconds) and its full message
- * (`git %B`) in one `git log` call. `date` is null when the commit or its date cannot be read;
- * `message` is null when the commit has no readable message. */
-async function commitDateOrMessage(root: string, sha: string): Promise<{ date: number | null; message: string | null }> {
-  const out = await gitTry(root, "log", "-1", `--format=%ct${SEP}%B`, sha).catch(() => null);
-  if (out === null) return { date: null, message: null };
+ * (`git %B`) in one `git log` call. `readable` is whether the rev resolves to a commit the
+ * repository holds: `^{commit}` peels the pinned object and git exits nonzero when it is missing
+ * or is not a commit, the same verdict `commitExists` gives with its `cat-file -e` probe — the
+ * check this reader used to pay a second spawn for. `date` is null when the commit or its date
+ * cannot be read; `message` is null when the commit has no readable message. */
+async function commitDateOrMessage(
+  root: string,
+  sha: string,
+): Promise<{ date: number | null; message: string | null; readable: boolean }> {
+  const out = await gitTry(root, "log", "-1", `--format=%ct${SEP}%B`, `${sha}^{commit}`).catch(() => null);
+  if (out === null) return { date: null, message: null, readable: false };
   const [dateStr = "", ...rest] = out.split(SEP);
   const message = rest.join(SEP).trim();
   const secs = Number(dateStr.trim());
   return {
     date: Number.isFinite(secs) ? secs * 1000 : null,
     message: message === "" ? null : message,
+    readable: true,
   };
 }
 

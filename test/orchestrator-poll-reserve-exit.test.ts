@@ -31,19 +31,20 @@ function ctx(root: string, active: boolean, semaphore = new Semaphore(1)): PollC
   } as unknown as PollContext;
 }
 
-/** The two `readMergePins`-reachable subprocesses a no-roles-named read spawns: the ref
- * listing (a `for-each-ref` under the merge prefix) and, per resolved pin, a `cat-file -e`.
- * The pin's `git log` rides along but is not the signal under test. */
-function spawnCount(logFile: string): { list: number; catFile: number } {
+/** The two `readMergePins`-reachable subprocesses a no-roles-named read spawns: the ref listing
+ * (a `for-each-ref` under the merge prefix) and, per resolved pin, one `git log -1` that peels
+ * the pinned rev to a commit (`<sha>^{commit}`) and reads its date and message in the same call.
+ * `pinRead` is the per-pin read, so a poll that probed existence separately would count 2. */
+function spawnCount(logFile: string, pinSha: string): { list: number; pinRead: number } {
   const lines = readCapture(logFile).trimEnd().split("\n").filter((l) => l !== "");
   let list = 0;
-  let catFile = 0;
+  let pinRead = 0;
   for (const line of lines) {
     const args = line.split(/\s+/);
     if (args[0] === "for-each-ref" && args.includes("refs/tumwater/merge/")) list++;
-    if (args[0] === "cat-file") catFile++;
+    if (args[0] === "log" && args[1] === "-1" && args.includes(`${pinSha}^{commit}`)) pinRead++;
   }
-  return { list, catFile };
+  return { list, pinRead };
 }
 
 test("a daemon poll never spawns to count merge pins (exit unreachable)", async () => {
@@ -57,9 +58,9 @@ test("a daemon poll never spawns to count merge pins (exit unreachable)", async 
     const state = newPollState();
     const inputs = { liveConfig: defaultConfig(), mainHead: headSha(root), now: Date.now() };
     assert.equal(await pollReserveAndExit(c, state, inputs), false, "a daemon round never exits");
-    const spawns = spawnCount(logFile);
+    const spawns = spawnCount(logFile, headSha(root));
     assert.equal(spawns.list, 0, "no for-each-ref over the merge pins in a daemon poll");
-    assert.equal(spawns.catFile, 0, "no cat-file for the pin in a daemon poll");
+    assert.equal(spawns.pinRead, 0, "no read of the pin in a daemon poll");
   } finally {
     restorePath();
   }
@@ -76,9 +77,9 @@ test("a once poll spawns to count its merge pins (the exit is live)", async () =
     const inputs = { liveConfig: defaultConfig(), mainHead: headSha(root), now: Date.now() };
     // One quiet poll records the idle streak; it must still have counted the pin.
     assert.equal(await pollReserveAndExit(c, state, inputs), false, "one quiet poll is not yet exit-ready");
-    const spawns = spawnCount(logFile);
+    const spawns = spawnCount(logFile, headSha(root));
     assert.equal(spawns.list, 1, "a once poll lists the merge pins");
-    assert.ok(spawns.catFile >= 1, "a once poll reads the pin's commit");
+    assert.equal(spawns.pinRead, 1, "a once poll reads the pin's commit exactly once");
   } finally {
     restorePath();
   }

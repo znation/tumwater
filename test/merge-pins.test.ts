@@ -34,7 +34,8 @@ function pinCommit(
 
 /** Pin `sha` under the merge prefix so the ref names a commit the repo does not hold — a
  * dangling pin. git itself refuses `update-ref` to a nonexistent object, so the ref file is
- * written directly (the shape `for-each-ref` would list and `cat-file -e` would reject). */
+ * written directly (the shape `for-each-ref` would list and the pin reader's `<sha>^{commit}`
+ * peel would reject). */
 function pinDangling(root: string, role: string): void {
   const ref = path.join(root, ".git", "refs", "tumwater", "merge", role);
   fs.mkdirSync(path.dirname(ref), { recursive: true });
