@@ -180,8 +180,9 @@ recorded. A platform with no readable sleep clock records no span and keeps the 
 
 **Pinned by.** `test/pi-watchdogs.test.ts` — "a run silent only across a recorded host sleep is
 not quiet-killed", "the same silence with no host sleep recorded is still quiet-killed", "a model
-reply waited across a host sleep warns on its awake wait only" and "an open tool call silent
-across a host sleep is warned on its awake silence only".
+reply waited across a host sleep warns on its awake wait only", "an open tool call silent
+across a host sleep is warned on its awake silence only" and "a sleep sampler that reads no sleep
+clock keeps the wall-clock quiet kill".
 
 ## Reader and writer over a persisted or appended file
 

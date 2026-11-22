@@ -543,6 +543,36 @@ test("the same silence with no host sleep recorded is still quiet-killed", async
   wd.stop();
 });
 
+// The entry's last acceptance criterion: an empty sample (a platform with no sleep clock, or a
+// failed read) records no span, so the watch keeps today's wall-clock reading. A detected gap
+// must never be read as sleep without measured evidence: the same 40-minute gap a recorded sleep
+// forgives is a quiet kill when the sampler reads nothing.
+test("a sleep sampler that reads no sleep clock keeps the wall-clock quiet kill", async (t) => {
+  const clock = watchdogClock(t);
+  let progress = 0;
+  let killed = false;
+  const wd = startPiWatchdogs({
+    progressCount: () => progress,
+    openToolCalls: () => [],
+    runTimeoutMs: 3 * 3_600_000,
+    quietMs: 30 * 60_000,
+    stallMs: 0,
+    sampleSleep: async () => ({}),
+    kill: () => {
+      killed = true;
+    },
+  });
+  await flushImmediate(); // the empty baseline sample lands
+  progress = 1;
+  clock.advance(30_000); // the first check sees the progress
+  clock.suspend(40 * 60_000); // the gap a host sleep would leave, with no clock to measure it
+  await flushImmediate(); // the empty gap sample lands: no span is recorded
+  clock.advance(30_000); // 40 wall minutes, none of them measured sleep
+  assert.equal(killed, true, "an unmeasured gap is silence, not sleep");
+  assert.equal(wd.quietKilled, true);
+  wd.stop();
+});
+
 test("a model reply waited across a host sleep warns on its awake wait only", async (t) => {
   const clock = watchdogClock(t);
   const host = scriptedHost(clock);
