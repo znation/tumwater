@@ -11,7 +11,8 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 /** The operator pause markers: the team-wide pause (`tumwater pause`/`resume`) and the
  * per-role pause set (`pause --role <id>`/`resume --role <id>`), their writers and read-side
  * wrappers together so producer (CLI, GUI) and every consumer read one module. The running
- * orchestrator's info file is the other team-state domain and lives in orchestrator-info.ts. */
+ * orchestrator's info file is the other team-state domain and lives in
+ * team-orchestrator-info.ts. */
 
 /** The team pause marker read once as the standing pause it represents: non-null while the
  * operator's pause stands, null when absent/unreadable/expired. Snapshot-style callers that

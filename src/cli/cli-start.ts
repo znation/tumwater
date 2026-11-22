@@ -1,8 +1,9 @@
 /** `tumwater start`'s implementation, with its supervisor half
  * (src/cli/cli-start-supervisor.ts) and its exit-summary half (src/cli/cli-start-summary.ts).
  * cli.ts stays the pure dispatcher; `tumwater init` lives in cli/cli-init.ts and every other
- * command it dispatches delegates to its own module (operator/operator-commands.ts,
- * prompt-commands.ts, cli-config-commands.ts, cli-log-commands.ts, doctor.ts, …). */
+ * command it dispatches delegates to its own module (cli-operator-commands.ts,
+ * inbox/prompt-commands.ts, cli-config-commands.ts, cli-log-commands.ts,
+ * cli-doctor-command.ts, …). */
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { baseRoleOf, runnerIds } from "../roles/runner-ids.js";
 import { knownRoleIds } from "../config/config.js";

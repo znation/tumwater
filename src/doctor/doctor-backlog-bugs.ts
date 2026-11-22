@@ -73,7 +73,7 @@ export function checkStaleBugs(root: string): CheckOutcome {
 }
 
 /** Held bugs — BUGS.md `## Open` has entries but every one is held (a Needs-review or Refused
- * note, or a prerequisite still planned), so the bugfix role skips every run (scheduling-admit.ts
+ * note, or a prerequisite still planned), so the bugfix role skips every run (admit.ts's
  * standDownForNoWork) and does not hunt for latent bugs either, which it does only when `## Open`
  * is empty. checkStaleBugs and checkStalledEntries both leave out the bugfix role's own
  * wait-for-the-next-failure notes, so without this row a backlog of them idles every bugfix

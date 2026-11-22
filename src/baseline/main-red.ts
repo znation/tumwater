@@ -31,7 +31,7 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
  * newly-discovered red SHA) and its own
  * event contract; what it borrows from the role is identity and the role's worktree, and it
  * consumes
- * build/build-check.ts's checkMainBaseline machinery (detection + execution + per-SHA cache),
+ * main-baseline.ts's checkMainBaseline machinery (detection + execution + per-SHA cache),
  * which stays unaware of runs. */
 
 /** The last main SHA for which this process logged a red-main hold event (the baseline check): one

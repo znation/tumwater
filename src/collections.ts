@@ -226,12 +226,11 @@ export function sortByValueDesc<K extends string, Rest extends unknown[]>(
 
 /** Sort `[key, …]` entry pairs by their string key ascending — the single home of the
  * `entries.sort(([a], [b]) => a.localeCompare(b))` step, shared by the budget check's
- * capped-role rows (doctor-holds.ts's checkBudget), the permit pool's provider fragment
- * (ui/badges.ts's permitsBadge), and the doctor's rate-limit standing-holds rows
- * (doctor-holds.ts's checkRateLimitHolds), so those sites cannot drift on how a possibly
+ * capped-role rows (doctor-holds.ts's checkBudget) and the doctor's provider standing-holds
+ * rows (doctor-holds.ts's checkProviderHolds), so those sites cannot drift on how a possibly
  * `undefined` key (a rate-limit hold recorded with no provider) orders. A missing key sorts
- * first, matching the `(a ?? "")` guard the hold site alone needed; on a defined string the
- * guard is a no-op, so the comparator is identical for the other two. Returns a fresh sorted
+ * first: the `(a ?? "")` guard exists for the holds site alone, and on a defined string it is
+ * a no-op, so the budget site orders identically. Returns a fresh sorted
  * array; the input is never mutated. (Deliberately unlike the value-descending `sortByValueDesc`
  * and the count-then-key `rankCountEntries` above, which sort by a different axis. Also used to
  * stabilize a Map's insertion order before an assertion in test/once-round.test.ts.) */
@@ -244,9 +243,9 @@ export function sortEntriesByKey<K extends string | undefined, T>(
 /** Sort objects with a `role` string field ascending by role — the single home of the
  * `(a, b) => a.role.localeCompare(b.role)` step that just-sorts by role alone, shared by the
  * runner-state rows (doctor-holds.ts's loadRunnerStates) and the per-role prompt summary
- * (failure-data.ts's failurePerRolePromptTable), so those sites cannot drift on how roles
- * order. This is the plain single-key form; the multi-key comparators that carry role as a
- * secondary tiebreak (status-model.ts's sortRolesByState, failure-data.ts's failureRows, and
+ * (failure-data.ts's promptStatsFor), so those sites cannot drift on how roles order. This
+ * is the plain single-key form; the multi-key comparators that carry role as a secondary
+ * tiebreak (status-model.ts's sortRolesByState, failure-data.ts's deltaRows, and
  * the GUI page's browser copy gui-client-model.ts) sort by a different axis and are
  * deliberately not routed through it. Returns a fresh sorted array; the input is never mutated. */
 export function sortByRoleAscending<T extends { role: string }>(rows: readonly T[]): T[] {
