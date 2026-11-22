@@ -9,7 +9,8 @@ untracked and gitignored, so it is the one seeded file the commit leaves behind.
 README.md's `tumwater:prompt` markers instead. A `TUMWATER.md` with the same markers takes
 precedence over README.md, so an existing project's README can stay untouched. A brief
 missing a usable marker block (markers missing, or no text between them), or one past the
-read cap, is surfaced by `tumwater doctor`'s `brief` row rather than a banner, so a hand edit
+read cap, is surfaced by `tumwater doctor`'s `brief` row, which also raises its standing twin in
+the alerts band (`no-brief`, `brief-truncated` — `src/ui/team-alert-standings.ts`), so a hand edit
 that strips the prompt cannot run the team silently without its project brief. Pointed at an
 existing repo whose README.md has no markers, init adopts it: the brief goes in `TUMWATER.md`,
 README.md and any existing backlog files are left byte-identical, and only the missing files are
@@ -674,13 +675,20 @@ stale settings.
   every role's sleep so they run within one poll.
 - `gui --all-interfaces` has no authentication unless you pass `--token <secret>`. Clients send the
   token as `Authorization: Bearer <token>` or `?token=`.
-- The web dashboard opens on Team: alerts for whatever needs you (a failing or stuck role, a
-  failing check on main, a spent budget, open questions, refused entries). Anything the team
-  could warn about on its own — stale questions, a stalled entry, a broken plan dependency
-  clause, a stranded plan, a duplicated heading, finished history, a bad Validation gap trace,
-  a false Fix, a stale build, capacity contention, a stale claim, a regressed fix, a missing or
-  over-cap brief, the no-check, an over-cap role note or PRINCIPLES.md, a pause, quiet hours,
-  maintenance, or a provider hold — lives in `tumwater doctor` instead, one row each. The
+- The web dashboard opens on Team: alerts for whatever needs you — a spent budget, a failing or
+  stuck role, a stopped team, disk and install drift, orphaned processes, open questions, refused
+  entries, running on the fallback chain, a model that failed its model check, a stalled poll
+  loop, the GitHub-issues mirror family (no `gh`, a failed scan, a scan gone quiet, issues waiting
+  to be mirrored, fixes waiting on a push), the background maintenance pass, and the standing doctor
+  twins `no-check`, `no-brief`, `brief-truncated`, `role-notes-truncated`, `salvage-patches`,
+  `instance-pool` and `config-problem` (`teamAlerts` in `src/ui/team-alerts.ts` and its per-domain
+  builders; `tumwater status` renders the same set). Main's newest check verdict is not an alert:
+  it is the sidebar's `Main` row and the header badge. What stays in the report rather than the
+  band — one `tumwater doctor` row each — includes stale questions, a stalled entry, a broken plan
+  dependency clause, a stranded plan, a duplicated heading, finished history, a bad Validation gap
+  trace, a false Fix, a stale claim, a regressed fix, an over-cap PRINCIPLES.md, and a provider
+  hold; a stale build, a pause and quiet hours ride in the header badges and their own doctor rows
+  (`update`, `pause`, `quiet hours`) instead. The
   band names the same `needsYou` count the tab's badge and the page title carry, and — while it
   has alerts — shows one `Open Health check` control next to it that routes through the existing
   view/hash path to the Settings view's Health check card (`#doctorcard`), which keeps each
