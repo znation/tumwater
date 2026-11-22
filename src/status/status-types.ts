@@ -298,6 +298,13 @@ export interface StatusSnapshot {
    * githubCloseForStatus): fixes waiting for a push to `repo`, and open issues whose every entry
    * was retired. Absent when neither holds. Fresh per poll. */
   githubClose?: { repo: string; waitingPush: number; retiredOnly: number };
+  /** The mirror's scan has gone quiet: the ledger's `checkedAt` sits past `GITHUB_ISSUES_STALE_MS`
+   * (github-issues-state.ts's `githubScanStalled`), so the team has stopped mirroring the
+   * operator's issue tracker even though `gh` may read fine. The doctor's `GitHub issues` warn row
+   * and the dashboards' amber `github-scan-stalled` banner both raise it from this field's own
+   * predicate and the one shared sentence. Absent for a fresh scan, no ledger, an unreadable
+   * ledger, a ledger with no `checkedAt`, or `githubIssues.enabled: false`. Fresh per poll. */
+  githubScanStall?: { repo: string; checkedAt: number };
   /** The standing per-provider failure holds (src/team/team-hold.ts `standingHolds`), read
    * from the running orchestrator's info file: a provider storm's hold, so the dashboards and
    * `tumwater status` name why a provider's roles sit idle. Absent while none stands or the

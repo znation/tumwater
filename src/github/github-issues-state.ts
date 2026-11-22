@@ -8,7 +8,7 @@ import { ensureParentDir } from "../files/files.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { githubIssuesPath } from "../paths.js";
-import { DAY_MS } from "../text/datetime.js";
+import { DAY_MS, humanAgo } from "../text/datetime.js";
 
 /** What the last scan learned from `gh`: `ok` when it read the issues, `missing` or
  * `unauthenticated` from the readiness probe, `error` when the listing itself failed. */
@@ -176,14 +176,26 @@ export const GITHUB_ISSUES_STALE_MS = 3 * DAY_MS;
  * (`now - checkedAt > GITHUB_ISSUES_STALE_MS`). A null ledger — never scanned, or an unreadable
  * file — and a ledger whose `checkedAt` is not a number (a hand-edited file) are both false, the
  * empty-ledger rule `qaCoverageStalled` and `ciParityStalled` keep: a ledger this predicate cannot
- * read is never a stall, and the call never throws. The doctor's `github issues` row
- * (`checkGithubIssues`) is the decision's only consumer. */
+ * read is never a stall, and the call never throws. Two consumers read it: the doctor's
+ * `github issues` row (`checkGithubIssues`) and the status poll's `githubScanStall` field, which
+ * both dashboards raise the standing banner from. */
 export function githubScanStalled(ledger: GithubIssuesLedger | null, now: number): boolean {
   return (
     ledger !== null &&
     typeof ledger.checkedAt === "number" &&
     now - ledger.checkedAt > GITHUB_ISSUES_STALE_MS
   );
+}
+
+/** The one clause that names a stalled scan — what the doctor's `GitHub issues` warn line appends
+ * after its `gh ready — but ` prefix, and what the dashboards' `github-scan-stalled` alert prints
+ * as its whole detail, so the two surfaces cannot drift on how a quiet mirror is phrased. Reads
+ * the same `checkedAt` and window as `githubScanStalled`: the scan age is `humanAgo` of that
+ * instant, and the `over <n> days ago` clause spells `GITHUB_ISSUES_STALE_MS` in the units the
+ * config row prints it in. Call it only for a stalled ledger — a `checkedAt` that is not a number
+ * prints `checked NaN ago`. */
+export function githubScanStalledSentence(repo: string, checkedAt: number, now: number): string {
+  return `the last scan checked ${repo} ${humanAgo(checkedAt, now)}, over ${GITHUB_ISSUES_STALE_MS / DAY_MS} days ago, so tumwater is not mirroring its open issues`;
 }
 
 /** The shortest hold one issue's `queued` record may impose: one scan interval. A director run

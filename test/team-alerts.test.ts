@@ -56,6 +56,31 @@ test("the gh banner rides the actionable alerts and the scan banners follow the 
   assert.equal(failed[0]?.detail, "gh api failed · checked 5m ago");
 });
 
+test("the scan-stall banner rides the scan alerts, after the backlog ones", () => {
+  // The ordered-banner list with all three GitHub scan states at once: the gray failure, the new
+  // amber stall, then the blue mirror-waiting banner — and no `github-gh` banner, since the ledger
+  // reads gh ok.
+  const now = Date.UTC(2026, 10, 21, 10, 0, 0);
+  const stalled = {
+    ...base,
+    githubIssues: {
+      repo: "acme/widgets",
+      gh: "error" as const,
+      reason: "gh api failed",
+      checkedAt: now - 4 * 86_400_000,
+      unmirrored: 1,
+      untrusted: 0,
+      waitingPush: 0,
+      mirrorLabel: "tumwater",
+    },
+    githubScanStall: { repo: "acme/widgets", checkedAt: now - 4 * 86_400_000 },
+  };
+  assert.deepEqual(
+    teamAlerts(stalled, [], [], now).map((a) => [a.key, a.tone]),
+    [["github-error", "gray"], ["github-scan-stalled", "amber"], ["github-mirror", "blue"]],
+  );
+});
+
 test("a red doctor orphan scan raises the standing amber orphans alert naming the count", () => {
   // The alert-feed half (refreshOrphanAlert) supplies the doctor-row sentence; here we pin that
   // teamAlerts renders it as a standing amber banner, so a red `orphans` row is never silent on

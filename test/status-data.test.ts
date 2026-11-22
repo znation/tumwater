@@ -443,3 +443,68 @@ test("the snapshot counts only the well-formed rows of a ledger holding a malfor
     mirrorLabel: "tumwater",
   });
 });
+
+// The mirror's stall onto the snapshot (the standing-banner plan): the poll decides it where the
+// ledger is already open, so both dashboards render a banner instead of leaving the quiet mirror to
+// `tumwater doctor`.
+const stallLedger = (repo: string, checkedAt: number): void => {
+  writeGithubIssues(repo, {
+    repo: "a/b",
+    branch: "main",
+    checkedAt,
+    gh: "ok",
+    open: [],
+  });
+};
+
+test("the snapshot carries githubScanStall only past the stall window", async () => {
+  const now = Date.UTC(2026, 10, 21, 10, 0, 0);
+  const DAY_MS = 86_400_000;
+
+  // Four days old: past the three-day window, so the field names the repo and the stamp the alert
+  // renders its age from.
+  const stale = makeRepo();
+  await initProject(stale, "test project");
+  stallLedger(stale, now - 4 * DAY_MS);
+  assert.deepEqual((await snapshot(stale, undefined, now)).githubScanStall, { repo: "a/b", checkedAt: now - 4 * DAY_MS });
+
+  // An hour old: a fresh scan, so no field at all — and the ledger field itself is still there.
+  const fresh = makeRepo();
+  await initProject(fresh, "test project");
+  stallLedger(fresh, now - 60 * 60 * 1000);
+  const freshSnap = await snapshot(fresh, undefined, now);
+  assert.equal(freshSnap.githubScanStall, undefined);
+  assert.equal(freshSnap.githubIssues?.repo, "a/b", "the ledger itself still reads");
+
+  // Exactly the window old is not a stall — the predicate's boundary is exclusive.
+  const boundary = makeRepo();
+  await initProject(boundary, "test project");
+  stallLedger(boundary, now - 3 * DAY_MS);
+  assert.equal((await snapshot(boundary, undefined, now)).githubScanStall, undefined);
+});
+
+test("the snapshot omits githubScanStall for no ledger, a foreign shape, or the feature off", async () => {
+  const now = Date.UTC(2026, 10, 21, 10, 0, 0);
+
+  // No ledger file at all (never scanned).
+  const bare = makeRepo();
+  await initProject(bare, "test project");
+  const bareSnap = await snapshot(bare, undefined, now);
+  assert.equal(bareSnap.githubScanStall, undefined);
+  assert.equal(bareSnap.githubIssues, undefined);
+
+  // A hand-edited ledger whose checkedAt is not a number: the fold reads no data at all.
+  const junk = makeRepo();
+  await initProject(junk, "test project");
+  writeJsonFile(githubIssuesPath(junk), { repo: "a/b", branch: "main", checkedAt: "1764000000000", gh: "ok", open: [] });
+  assert.equal((await snapshot(junk, undefined, now)).githubScanStall, undefined);
+
+  // githubIssues.enabled: false — no ledger field, no stall field.
+  const off = makeRepo();
+  await initProject(off, "test project");
+  stallLedger(off, now - 4 * 86_400_000);
+  writeConfig(off, { githubIssues: { enabled: false } });
+  const offSnap = await snapshot(off, undefined, now);
+  assert.equal(offSnap.githubIssues, undefined);
+  assert.equal(offSnap.githubScanStall, undefined);
+});

@@ -62,6 +62,7 @@ export function teamAlerts(
     | "maintenance"
     | "pollStalled"
     | "githubIssues"
+    | "githubScanStall"
   >,
   questions: readonly string[],
   roles: readonly AlertRole[],

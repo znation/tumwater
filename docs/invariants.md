@@ -5601,27 +5601,39 @@ transcript renders".
 
 **Guarantee.** `githubScanStalled` (src/github/github-issues-state.ts) is the single predicate
 deciding when the GitHub issues mirror's hourly scan has gone quiet, read by the doctor
-`github issues` row (`checkGithubIssues`), so the row and the ledger cannot disagree on when a
-quiet mirror is a problem. It is true only for a ledger whose `checkedAt` is a number and whose age
+`github issues` row (`checkGithubIssues`) and by the status poll's `githubScanStall` field
+(`githubIssuesForPoll`), so the row, the snapshot and the ledger cannot disagree on when a quiet
+mirror is a problem. It is true only for a ledger whose `checkedAt` is a number and whose age
 past `GITHUB_ISSUES_STALE_MS` is strictly greater than the window (three days — the same span
 `ciParityStalled` and `remoteCiStalled` read); a null ledger (never scanned, or an unreadable file)
 and a `checkedAt` that is not a number (a hand-edited file) are both false and the call never
-throws, the empty-ledger rule `qaCoverageStalled` and `ciParityStalled` keep. `checkGithubIssues` is
-the decision's only consumer, and it applies the predicate after the `gh` readiness gate — a broken
-`gh` still warns with its own sentence, and a stalled mirror never outranks it. The row's presence
+throws, the empty-ledger rule `qaCoverageStalled` and `ciParityStalled` keep. Its wording has one
+home too — `githubScanStalledSentence` — read by the doctor's warn line and the amber
+`github-scan-stalled` banner both dashboards raise (`buildGithubScanAlerts`), the same sharing
+`ghUnreadableSentence` does for the `gh` banner. Both consumers apply the predicate after the `gh`
+readiness gate — a broken `gh` still warns with its own sentence, and a stalled mirror never
+outranks it there or on the alert surfaces. The row's presence
 conditions (no GitHub remote, or `githubIssues.enabled` false, omits the row with no `gh` call) are
 unchanged, and a not-stalled ledger — including no ledger at all — keeps the ok detail byte-identical
-to the readiness-only row.
+to the readiness-only row, with `githubScanStall` absent so no banner appears.
 
-**Binds.** `src/github/github-issues-state.ts` (`githubScanStalled`, `GITHUB_ISSUES_STALE_MS`),
-`src/doctor/doctor-project-checks.ts` (`checkGithubIssues`).
+**Binds.** `src/github/github-issues-state.ts` (`githubScanStalled`, `githubScanStalledSentence`,
+`GITHUB_ISSUES_STALE_MS`),
+`src/doctor/doctor-project-checks.ts` (`checkGithubIssues`), `src/status/status-data.ts`
+(`githubIssuesForPoll`), `src/ui/team-alert-status.ts` (`buildGithubScanAlerts`).
 
 **Pinned by.** `test/github-issue-scan.test.ts` — "githubScanStalled is true only past the window,
 and false for no ledger or a foreign checkedAt"; `test/doctor-checks.test.ts` —
 "checkGithubIssues warns when the mirror's last scan is past the stall window",
 "checkGithubIssues stays ok at the window boundary and with no ledger file at all",
 "a stalled ledger never outranks an unreadable gh" and
-"the github issues row and githubScanStalled agree on one ledger".
+"the github issues row and githubScanStalled agree on one ledger";
+`test/status-data.test.ts` — "the snapshot carries githubScanStall only past the stall window" and
+"the snapshot omits githubScanStall for no ledger, a foreign shape, or the feature off";
+`test/team-alert-status.test.ts` — "a stalled scan raises one amber github-scan-stalled banner with
+the doctor's sentence", "a failed and stalled scan orders the banners gray, amber, blue",
+"an unreadable gh keeps the stall banner behind it" and
+"no stall field, or no ledger, raises no stall banner".
 
 ### INV-DE2: an unsettled director run returns its issue prompt and shortens the mirror's hold to one retry interval
 

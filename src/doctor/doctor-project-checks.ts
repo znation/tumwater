@@ -39,7 +39,7 @@ import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { readCiParity, currentCiParityState, parityIsCurrent, ciParityStalled, CI_PARITY_STALE_MS } from "../observer/ci-parity.js";
 import { githubTarget, readRemoteCi, type RemoteCiEntry, remoteCiStalled, remoteCiTarget } from "../observer/remote-ci.js";
 import { ghReadiness, ghRunner, ghUnreadableSentence, type GhRunner } from "../github/gh.js";
-import { GITHUB_ISSUES_STALE_MS, githubScanStalled, readGithubIssues } from "../github/github-issues-state.js";
+import { githubScanStalled, githubScanStalledSentence, readGithubIssues } from "../github/github-issues-state.js";
 import { newestExercise, readQaCoverage, qaCoverageStalled, QA_COVERAGE_STALE_MS } from "../observer/qa-coverage.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
@@ -562,9 +562,7 @@ export async function checkGithubIssues(
   // The null guard is this row's own, not the predicate's (a null ledger reads as not stalled);
   // it lets the warn read `checkedAt` without an assertion.
   if (ledger !== null && githubScanStalled(ledger, now)) {
-    return warnOutcome(
-      `gh ready — but the last scan checked ${target.repo} ${humanAgo(ledger.checkedAt, now)}, over ${GITHUB_ISSUES_STALE_MS / DAY_MS} days ago, so tumwater is not mirroring its open issues`,
-    );
+    return warnOutcome(`gh ready — but ${githubScanStalledSentence(target.repo, ledger.checkedAt, now)}`);
   }
   return okOutcome(`gh ready — tumwater mirrors ${target.repo}'s open issues`);
 }

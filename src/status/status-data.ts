@@ -31,7 +31,7 @@ import { principlesBlockOverCap } from "../prompt/principles.js";
 import type { MaintenanceMarker } from "../orchestrator/retention.js";
 import { githubCloseForStatus } from "../github/github-issues-state.js";
 import { heartbeatPath, maintenancePath } from "../paths.js";
-import { githubIssuesSummary, readGithubIssuesForPoll } from "../github/github-issues-state.js";
+import { githubIssuesSummary, githubScanStalled, readGithubIssuesForPoll } from "../github/github-issues-state.js";
 import { readJsonFile } from "../files/json-files.js";
 import type { StatusSnapshot } from "./status-types.js";
 
@@ -182,13 +182,15 @@ function snapshotPauseFields(
 }
 
 /** The merge-queue and doctor health fields of the snapshot (main-check, ci-parity and the
- * build-check/brief/principles flags, plus the role notes over cap). */
+ * build-check/brief/principles flags, plus the role notes over cap). `now` is the poll's clock,
+ * passed through so the GitHub mirror's stall is decided where its ledger is already open. */
 function snapshotHealthFields(
   root: string,
   cfg: ReturnType<typeof configForStatus>,
   mergeQueue: StatusSnapshot["mergeQueue"],
   roleNotesOverCap: RoleNoteOverCap[],
-  configProblem?: string,
+  configProblem: string | undefined,
+  now: number,
 ): Partial<StatusSnapshot> {
   // The brief's two degraded flags from ONE scan/read (brief.briefStatus): the always-on
   // `no-brief` and `brief-truncated` amber alerts, read once per poll rather than twice
@@ -210,19 +212,31 @@ function snapshotHealthFields(
     ...(roleNotesOverCap.length > 0 ? { roleNotesOverCap } : {}),
     ...(salvagePatches.length > 0 ? { salvagePatches } : {}),
     principlesTruncated: principlesBlockOverCap(root) ? true : undefined,
-    ...githubIssuesForPoll(root, cfg),
+    ...githubIssuesForPoll(root, cfg, now),
   };
 }
 
 /** The GitHub issues ledger as the snapshot's `githubIssues` field (part 3/5): read from the
  * scan's ledger through its stat-keyed per-poll cache (github-issues-state.ts's
  * readGithubIssuesForPoll), never from `gh`, and absent when the feature is off, no ledger exists,
- * or the ledger's shape is foreign. */
-function githubIssuesForPoll(root: string, cfg: ReturnType<typeof configForStatus>): Pick<StatusSnapshot, "githubIssues"> {
+ * or the ledger's shape is foreign. The same read decides the `githubScanStall` field — the mirror
+ * stopped scanning past `GITHUB_ISSUES_STALE_MS` — so the stall is settled where the ledger is
+ * already open, not at render time, and both dashboards raise the standing banner from it. Absent
+ * for a fresh scan, a ledger with no readable `checkedAt`, and every case above. */
+function githubIssuesForPoll(
+  root: string,
+  cfg: ReturnType<typeof configForStatus>,
+  now: number,
+): Pick<StatusSnapshot, "githubIssues" | "githubScanStall"> {
   if (cfg.githubIssues?.enabled === false) return {};
   const ledger = readGithubIssuesForPoll(root);
   if (ledger === null) return {};
-  return { githubIssues: githubIssuesSummary(ledger, cfg.githubIssues?.mirrorLabel ?? "tumwater") };
+  return {
+    githubIssues: githubIssuesSummary(ledger, cfg.githubIssues?.mirrorLabel ?? "tumwater"),
+    ...(githubScanStalled(ledger, now)
+      ? { githubScanStall: { repo: ledger.repo, checkedAt: ledger.checkedAt } }
+      : {}),
+  };
 }
 
 /** The value of one running-only orchestrator-info field: present only while a live team
@@ -449,7 +463,7 @@ export function snapshotForStatus(root: string, modelsPath = piModelsPath(), now
       quiet,
       now,
     ),
-    ...snapshotHealthFields(root, cfg, mergeQueue, roleNotesOverCap, problem),
+    ...snapshotHealthFields(root, cfg, mergeQueue, roleNotesOverCap, problem, now),
     ...snapshotResourceFields(root, running, info, rootDrift),
   } as StatusSnapshot;
 }

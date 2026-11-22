@@ -7,6 +7,7 @@ import { POLL_STALL_MS } from "../status/status-data.js";
 import type { StatusSnapshot } from "../status/status-types.js";
 import type { GithubIssuesSummary } from "../github/github-issues-state.js";
 import { ghUnreadableSentence } from "../github/gh.js";
+import { githubScanStalledSentence } from "../github/github-issues-state.js";
 import {
   openRoleActions, listRoles, listRoleIds, stuckDetail,
   type TeamAlert, type AlertRole,
@@ -324,14 +325,43 @@ function pushGithubMirrorAlert(out: TeamAlert[], gh: GithubIssuesSummary): void 
   }
 }
 
-/** The GitHub issue alerts that follow the backlog alerts: the gray scan-failure banner and the
- * blue mirror-waiting banner (the amber `github-gh` banner rides buildStatusAlerts). Empty when
- * the snapshot carries no ledger summary. */
-export function buildGithubScanAlerts(input: { snap: Pick<StatusSnapshot, "githubIssues">; now: number }): TeamAlert[] {
+/** The GitHub issue alerts that follow the backlog alerts: the gray scan-failure banner, the amber
+ * scan-stall banner, and the blue mirror-waiting banner (the amber `github-gh` banner rides
+ * buildStatusAlerts). Empty when the snapshot carries no ledger summary. */
+export function buildGithubScanAlerts(input: {
+  snap: Pick<StatusSnapshot, "githubIssues" | "githubScanStall">;
+  now: number;
+}): TeamAlert[] {
   const gh = input.snap.githubIssues;
   if (!gh) return [];
   const out: TeamAlert[] = [];
   pushGithubErrorAlert(out, gh, input.now);
+  pushGithubScanStallAlert(out, input.snap, input.now);
   pushGithubMirrorAlert(out, gh);
   return out;
+}
+
+// The mirror's scan gone quiet (plans/github-issues.md, the standing-banner plan): the ledger's
+// `checkedAt` sits past the stall window, so the team has stopped mirroring the operator's issue
+// tracker even though `gh` may read fine. Amber: it asks for the operator's look — the fix is the
+// scan's own health (a paused director, a closed-over config), not something tumwater retries.
+// Gated behind `gh`'s readiness, the alert twin of `checkGithubIssues`'s precedence: a project
+// whose `gh` cannot read the repo raises only the `github-gh` banner, which names the cause. The
+// wording is the doctor's, from the one shared sentence.
+function pushGithubScanStallAlert(
+  out: TeamAlert[],
+  snap: Pick<StatusSnapshot, "githubIssues" | "githubScanStall">,
+  now: number,
+): void {
+  const stall = snap.githubScanStall;
+  const gh = snap.githubIssues;
+  if (!stall || !gh) return;
+  if (gh.gh === "missing" || gh.gh === "unauthenticated") return;
+  out.push({
+    key: "github-scan-stalled",
+    tone: "amber",
+    title: "GitHub mirror",
+    detail: githubScanStalledSentence(stall.repo, stall.checkedAt, now),
+    actions: [],
+  });
 }

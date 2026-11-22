@@ -231,3 +231,60 @@ test("a failed scan raises the gray error alert with its reason and age", () => 
   assert.ok(alert?.detail.startsWith("gh api failed: rate limit exceeded · checked "));
   assert.ok(alert?.detail.endsWith(" ago"));
 });
+
+// The mirror's scan gone quiet (the standing-banner plan): the amber `github-scan-stalled` banner
+// rides the scan builder, between the gray failure and the blue mirror-waiting banner, and speaks
+// the doctor's sentence.
+const stallNow = Date.UTC(2026, 10, 21, 10, 0, 0);
+const stalled = (over: Partial<NonNullable<StatusSnapshot["githubScanStall"]>> = {}) => ({
+  repo: "acme/widgets",
+  checkedAt: stallNow - 4 * 86_400_000,
+  ...over,
+});
+
+test("a stalled scan raises one amber github-scan-stalled banner with the doctor's sentence", () => {
+  const snap = { ...ghSnap(ghSummary({})), githubScanStall: stalled() };
+  const alerts = buildGithubScanAlerts({ snap, now: stallNow });
+  assert.equal(alerts.length, 1);
+  const [alert] = alerts;
+  assert.equal(alert?.key, "github-scan-stalled");
+  assert.equal(alert?.tone, "amber");
+  assert.equal(alert?.title, "GitHub mirror");
+  assert.equal(
+    alert?.detail,
+    "the last scan checked acme/widgets 4d ago, over 3 days ago, so tumwater is not mirroring its open issues",
+  );
+});
+
+test("a failed and stalled scan orders the banners gray, amber, blue", () => {
+  const snap = {
+    ...ghSnap(ghSummary({ gh: "error" as const, reason: "gh api failed", unmirrored: 1, untrusted: 1 })),
+    githubScanStall: stalled(),
+  };
+  assert.deepEqual(
+    buildGithubScanAlerts({ snap, now: stallNow }).map((a) => a.key),
+    ["github-error", "github-scan-stalled", "github-mirror"],
+  );
+});
+
+test("an unreadable gh keeps the stall banner behind it", () => {
+  // The alert twin of checkGithubIssues' precedence: the gh banner names the cause, so a stale
+  // ledger on top of it raises nothing extra.
+  for (const gh of ["missing", "unauthenticated"] as const) {
+    const snap = { ...ghSnap(ghSummary({ gh })), githubScanStall: stalled() };
+    const scan = buildGithubScanAlerts({ snap, now: stallNow });
+    assert.deepEqual(scan.map((a) => a.key), [], `no scan banner with gh ${gh}`);
+    const status = buildStatusAlerts({ snap, roles: [] });
+    assert.deepEqual(status.map((a) => a.key), ["github-gh"]);
+  }
+});
+
+test("no stall field, or no ledger, raises no stall banner", () => {
+  // A fresh scan: the ledger is present and current, githubIssuesForPoll leaves the field off.
+  assert.deepEqual(
+    buildGithubScanAlerts({ snap: ghSnap(ghSummary({})), now: stallNow }).map((a) => a.key),
+    [],
+  );
+  // A snapshot with no ledger section at all: the builder returns before the stall arm.
+  assert.deepEqual(buildGithubScanAlerts({ snap: { githubScanStall: stalled() }, now: stallNow }), []);
+});
