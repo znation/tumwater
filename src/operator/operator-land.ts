@@ -68,10 +68,9 @@ async function resolveRef(root: string, ref: string): Promise<{ full: string } |
   return { full };
 }
 
-/** The commits `ref` would land, oldest first, from the merge-base with main — the range the
- * fast-forward or replay applies. */
-async function rangeCommits(root: string, mainSha: string, refSha: string, mainBranch: string): Promise<SteerCommit[]> {
-  const base = (await gitTry(root, "merge-base", mainBranch, refSha)) ?? mainSha;
+/** The commits `ref` would land, oldest first, from `base` — the range the fast-forward or
+ * replay applies. `base` comes from steerRange, which resolves the merge-base once. */
+async function rangeCommits(root: string, base: string, refSha: string): Promise<SteerCommit[]> {
   const out = await git(root, "log", "--reverse", "--format=%H%x1f%s", `${base}..${refSha}`);
   return out
     .split("\n")
@@ -82,9 +81,9 @@ async function rangeCommits(root: string, mainSha: string, refSha: string, mainB
     });
 }
 
-/** The net files the range changes, for the `--dry-run` report and the `.tumwater/` guard. */
-async function rangePaths(root: string, mainSha: string, refSha: string, mainBranch: string): Promise<string[]> {
-  const base = (await gitTry(root, "merge-base", mainBranch, refSha)) ?? mainSha;
+/** The net files the range changes, for the `--dry-run` report and the `.tumwater/` guard.
+ * Takes the same `base` steerRange resolved for rangeCommits. */
+async function rangePaths(root: string, base: string, refSha: string): Promise<string[]> {
   const out = await git(root, "diff", "--name-only", "--no-renames", base, refSha);
   return out.split("\n").filter((p) => p.length > 0);
 }
@@ -104,6 +103,47 @@ async function mergeCommitRefusal(root: string, commits: SteerCommit[]): Promise
     if (parents > 1) return `${shortSha(sha)} is a merge commit with ${parents} parents; tumwater land fast-forwards a linear range only — rebase it onto main first`;
   }
   return null;
+}
+
+/** What a land of `ref` would apply, validated: the resolved ref sha, main's branch and head, and
+ * the range's commits and net paths. */
+interface SteerRange {
+  ok: true;
+  refSha: string;
+  mainBranch: string;
+  mainSha: string;
+  commits: SteerCommit[];
+  paths: string[];
+}
+
+/** The validated range a land of `ref` would apply, or the first refusal that stops it (no such
+ * commit, already on main, an empty range, a path in tumwater's own state dir, a merge commit in
+ * the range). Both `tumwater land` arms read this before they take the merge lock or write
+ * anything, so the live land and its `--dry-run` cannot disagree about what the range holds.
+ *
+ * The merge-base is resolved once here and passed down, so the range's commits and paths are
+ * computed from the same base; computed separately they could straddle a team merge of main. */
+async function steerRange(root: string, ref: string): Promise<SteerRange | SteerError> {
+  const resolved = await resolveRef(root, ref);
+  if ("error" in resolved) return { ok: false, error: resolved.error };
+  const refSha = resolved.full;
+  const mainBranch = await baseBranch(root);
+  const mainSha = await headOf(root, mainBranch);
+
+  if (await isMergedInto(root, refSha, mainBranch))
+    return { ok: false, error: `nothing to land: ${shortSha(refSha)} is already on ${mainBranch}` };
+
+  const base = (await gitTry(root, "merge-base", mainBranch, refSha)) ?? mainSha;
+  const commits = await rangeCommits(root, base, refSha);
+  if (commits.length === 0)
+    return { ok: false, error: `nothing to land: ${shortSha(refSha)} adds no commits beyond ${mainBranch}` };
+
+  const paths = await rangePaths(root, base, refSha);
+  const stateRefusal = await tumwaterPathRefusal(paths);
+  if (stateRefusal !== null) return { ok: false, error: stateRefusal };
+  const mergeRefusal = await mergeCommitRefusal(root, commits);
+  if (mergeRefusal !== null) return { ok: false, error: mergeRefusal };
+  return { ok: true, refSha, mainBranch, mainSha, commits, paths };
 }
 
 /** Cherry-pick one commit from `srcRef` into the temp worktree, or null when it stops on a
@@ -206,24 +246,9 @@ async function repointBranch(root: string, ref: string, tip: string): Promise<st
  * main) under the merge lock. Never throws; every refusal and git failure comes back as
  * `{ ok: false, error }` with main left as it was and the temp worktree removed. */
 export async function steerToMain(root: string, ref = "HEAD"): Promise<SteerOutcome | SteerError> {
-  const resolved = await resolveRef(root, ref);
-  if ("error" in resolved) return { ok: false, error: resolved.error };
-  const refSha = resolved.full;
-  const mainBranch = await baseBranch(root);
-  const mainSha = await headOf(root, mainBranch);
-
-  if (await isMergedInto(root, refSha, mainBranch))
-    return { ok: false, error: `nothing to land: ${shortSha(refSha)} is already on ${mainBranch}` };
-
-  const commits = await rangeCommits(root, mainSha, refSha, mainBranch);
-  if (commits.length === 0)
-    return { ok: false, error: `nothing to land: ${shortSha(refSha)} adds no commits beyond ${mainBranch}` };
-
-  const paths = await rangePaths(root, mainSha, refSha, mainBranch);
-  const stateRefusal = await tumwaterPathRefusal(paths);
-  if (stateRefusal !== null) return { ok: false, error: stateRefusal };
-  const mergeRefusal = await mergeCommitRefusal(root, commits);
-  if (mergeRefusal !== null) return { ok: false, error: mergeRefusal };
+  const range = await steerRange(root, ref);
+  if (!range.ok) return range;
+  const { refSha, mainBranch, mainSha, commits } = range;
   // The working-tree fast-forward inside the merge lock rewrites the primary checkout's files,
   // so a dirty primary would have its uncommitted work clobbered: refuse up front, before any
   // lock is taken, with a reason the operator can act on rather than a confusing merge failure.
@@ -266,22 +291,9 @@ export async function steerToMain(root: string, ref = "HEAD"): Promise<SteerOutc
  * is decided by attempting the replay in a throwaway temp worktree that is removed before the
  * result is returned, so main's sha and the worktree list are both unchanged when it returns. */
 export async function previewSteer(root: string, ref = "HEAD"): Promise<SteerPreview | SteerError> {
-  const resolved = await resolveRef(root, ref);
-  if ("error" in resolved) return { ok: false, error: resolved.error };
-  const refSha = resolved.full;
-  const mainBranch = await baseBranch(root);
-  const mainSha = await headOf(root, mainBranch);
-
-  if (await isMergedInto(root, refSha, mainBranch))
-    return { ok: false, error: `nothing to land: ${shortSha(refSha)} is already on ${mainBranch}` };
-
-  const commits = await rangeCommits(root, mainSha, refSha, mainBranch);
-  if (commits.length === 0) return { ok: false, error: `nothing to land: ${shortSha(refSha)} adds no commits beyond ${mainBranch}` };
-  const paths = await rangePaths(root, mainSha, refSha, mainBranch);
-  const stateRefusal = await tumwaterPathRefusal(paths);
-  if (stateRefusal !== null) return { ok: false, error: stateRefusal };
-  const mergeRefusal = await mergeCommitRefusal(root, commits);
-  if (mergeRefusal !== null) return { ok: false, error: mergeRefusal };
+  const range = await steerRange(root, ref);
+  if (!range.ok) return range;
+  const { refSha, mainSha, commits, paths } = range;
 
   if (await isMergedInto(root, mainSha, refSha))
     return { ok: true, beforeSha: mainSha, commits, paths, replay: false, applies: true };
