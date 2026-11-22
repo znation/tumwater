@@ -10,8 +10,11 @@ import { DAY_MS } from "../src/text/datetime.js";
 import {
   GITHUB_ISSUES_STALE_MS,
   githubScanStalled,
+  isReopened,
+  readGithubIssues,
+  writeGithubIssues,
 } from "../src/github/github-issues-state.js";
-import type { GithubIssuesLedger } from "../src/github/github-issues-state.js";
+import type { GithubIssueRow, GithubIssuesLedger } from "../src/github/github-issues-state.js";
 import {
   BODY_EXCERPT_MAX_CHARS,
   dueForIssueScan,
@@ -21,6 +24,7 @@ import {
   scanGithubIssues,
 } from "../src/github/issue-scan.js";
 import { githubIssuesPath } from "../src/paths.js";
+import { nextIssuePrompt } from "../src/github/issue-queue.js";
 import { fakeGh } from "./fakes/fake-gh.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -262,6 +266,87 @@ test("the poll scans once when due, then waits a full interval", async () => {
     cleanup();
   }
 });
+
+test("a scan keeps a closed issue's row across scans and drops it when the issue is open again", async () => {
+  // The closer wrote #7's row into closedRows and took it out of open. A scan that does not report
+  // #7 must leave that row (number and title intact); a scan that does report #7 open again moves
+  // the issue back to `open`, drops its closed row, and keeps the `closed["7"]` marker so the issue
+  // still reads as a reopen and the queue offers it again.
+  const { dir, config, cleanup } = githubRepo({});
+  try {
+    const closedAt = 5_000;
+    fs.mkdirSync(path.dirname(githubIssuesPath(dir)), { recursive: true });
+    fs.writeFileSync(
+      githubIssuesPath(dir),
+      JSON.stringify({
+        repo: "o/r",
+        branch: "main",
+        checkedAt: 1_000,
+        gh: "ok",
+        open: [],
+        closedRows: [row7(closedAt)],
+        closed: { "7": { at: closedAt, shas: ["abc1234"] } },
+      }),
+    );
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(8)]] }).probe, 2_000);
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(8)]] }).probe, 3_000);
+    let ledger = readGithubIssues(dir)!;
+    assert.deepEqual(ledger.open.map((r) => r.number), [8]);
+    assert.deepEqual(
+      ledger.closedRows?.map((r) => [r.number, r.title]),
+      [[7, "Issue 7"]],
+      "two scans that never saw #7 leave its closed row intact",
+    );
+
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7, { author_association: "OWNER" }), issue(8)]] }).probe, 4_000);
+    ledger = readGithubIssues(dir)!;
+    assert.deepEqual(ledger.open.map((r) => r.number), [7, 8], "#7 is listed as open again");
+    assert.equal(ledger.closedRows?.some((r) => r.number === 7), false, "a closed row for an open issue is gone");
+    assert.deepEqual(ledger.closed?.["7"], { at: closedAt, shas: ["abc1234"] }, "the close marker survives the reopen");
+    assert.equal(isReopened(ledger, ledger.open.find((r) => r.number === 7)!), true, "the row reads as a reopen");
+    // And the queue offers it again, its preamble naming the sha that closed it.
+    const picked = nextIssuePrompt(ledger, new Set([7]), [], 4_000);
+    assert.equal(picked?.issue, 7, "a reopened issue is offered again");
+    assert.match(picked!.text, /it was reopened after tumwater closed it citing abc1234\./);
+  } finally {
+    cleanup();
+  }
+});
+
+test("a scan whose gh cannot list keeps the closed rows it already holds", async () => {
+  // A failed listing keeps the previous `open`; it must keep `closedRows` too, so a gh outage never
+  // silently drops the mirror's record of what it closed.
+  const { dir, config, cleanup } = githubRepo({});
+  try {
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7)]] }).probe, 1_000);
+    // The closer's state: #7 is out of `open` and its row is in `closedRows`.
+    writeGithubIssues(dir, {
+      ...(readGithubIssues(dir) as GithubIssuesLedger),
+      open: [],
+      closedRows: [row7(2_000)],
+      closed: { "7": { at: 2_000, shas: ["abc1234"] } },
+    });
+    const ledger = await scanGithubIssues(dir, config, fakeGh({ auth: false }).probe, 3_000);
+    assert.equal(ledger?.gh, "unauthenticated");
+    assert.deepEqual(ledger?.closedRows?.map((r) => r.number), [7]);
+  } finally {
+    cleanup();
+  }
+});
+
+/** A closed row as the closer writes it, for the scan's own tests. */
+function row7(at: number): GithubIssueRow {
+  return {
+    number: 7,
+    title: "Issue 7",
+    url: "https://github.com/o/r/issues/7",
+    author: "someone",
+    trusted: true,
+    mirrored: true,
+    labels: [],
+    updatedAt: new Date(at).toISOString(),
+  };
+}
 
 /** A minimal ledger for the stall predicate, which reads only `checkedAt`. */
 function ledgerAt(checkedAt: unknown): GithubIssuesLedger {

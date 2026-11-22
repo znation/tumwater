@@ -49,6 +49,12 @@ export interface GithubIssuesLedger {
   retiredOnly?: number[];
   /** Issues tumwater closed, by issue number: when, and the fix shas the close cited. */
   closed?: Record<string, { at: number; shas: string[] }>;
+  /** The rows of the issues tumwater closed, kept beside `closed` so the `tumwater issues` read can
+   * still name what it closed — its `closed` marker alone carries no title, url or body. The closer
+   * writes it (src/github/issue-close.ts `closeOne`), holding its `updatedAt` at the close instant,
+   * and trims it to the newest closes there. Optional: a ledger written before it existed simply
+   * has no closed rows to list. */
+  closedRows?: GithubIssueRow[];
   /** Issues whose fix is on main but not yet on GitHub's base branch, with the shas waiting. */
   waitingPush?: Record<string, string[]>;
   /** Director-reported fixes (part 4/5), each with the sha that fixed it. */
@@ -144,10 +150,19 @@ function isGithubIssueRow(value: unknown): value is GithubIssueRow {
  * decides (`isFoldableLedger` reads it as no data, `issueRows` as an empty mirror). */
 export function readGithubIssues(root: string): GithubIssuesLedger | null {
   const ledger = readJsonFile<GithubIssuesLedger>(githubIssuesPath(root));
-  if (ledger === null || !Array.isArray(ledger.open)) return ledger;
-  const open = (ledger.open as unknown[]).filter(isGithubIssueRow);
-  if (open.length === ledger.open.length) return ledger;
-  return { ...ledger, open };
+  if (ledger === null) return null;
+  let cleaned: GithubIssuesLedger | null = null;
+  // Both row lists pass the same guard, so a hand-edited `closedRows` costs the read a closed row
+  // exactly as a hand-edited `open` costs it an open one.
+  if (Array.isArray(ledger.open)) {
+    const open = (ledger.open as unknown[]).filter(isGithubIssueRow);
+    if (open.length !== ledger.open.length) (cleaned ??= { ...ledger }).open = open;
+  }
+  if (Array.isArray(ledger.closedRows)) {
+    const closedRows = (ledger.closedRows as unknown[]).filter(isGithubIssueRow);
+    if (closedRows.length !== ledger.closedRows.length) (cleaned ??= { ...ledger }).closedRows = closedRows;
+  }
+  return cleaned ?? ledger;
 }
 
 /** The window past which the issues mirror's scan counts as stalled — three days, the same span

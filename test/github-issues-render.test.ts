@@ -16,6 +16,8 @@ import type { GithubIssuesLedger } from "../src/github/github-issues-state.js";
 // and the position rule shared by the list and the detail view.
 
 const T = "2026-11-20T12:00:00.000Z";
+const NOW = Date.parse(T);
+const DAY_MS = 86_400_000;
 
 function ledger(extra: Partial<GithubIssuesLedger> = {}): GithubIssuesLedger {
   return {
@@ -48,6 +50,57 @@ function ledger(extra: Partial<GithubIssuesLedger> = {}): GithubIssuesLedger {
     ...extra,
   };
 }
+
+test("issueRows lists the closed rows last, positioned past the open ones, and flags them", () => {
+  // Closed rows are appended after every open row, so a closed issue keeps its place in the list
+  // however low its number is, and `wasClosed` is what separates it from an open issue that still
+  // carries a stale `closed` marker after a reopen.
+  const closedAt = NOW - 3 * DAY_MS;
+  const l = ledger({
+    open: [ledger().open[0]!],
+    closedRows: [{ ...ledger().open[0]!, number: 9, title: "Closed nine", updatedAt: new Date(closedAt).toISOString() }],
+    closed: { "9": { at: closedAt, shas: ["sha9999"] } },
+  });
+  const rows = issueRows(l);
+  assert.deepEqual(
+    rows.map((r) => [r.position, r.number]),
+    [
+      [1, 10],
+      [2, 9],
+    ],
+    "open first ascending by number, then the closed rows ascending among themselves",
+  );
+  assert.equal(rows[0]!.wasClosed, undefined, "an open row carries no wasClosed");
+  assert.equal(rows[1]!.wasClosed, true);
+  assert.equal(rows[1]!.closed?.at, closedAt, "the closed row keeps the ledger's close marker");
+  const text = renderIssues(rows, issuesHeader(l), NOW);
+  assert.match(text, /^2\. #9 — Closed nine — trusted, not mirrored, closed 3d ago$/m, "a closed row reads as closed");
+  assert.match(text, /^1\. #10 — Ten — trusted, not mirrored, updated 0s ago$/m, "an open row still reads as updated");
+  assert.match(text, /^github issues — znation\/proj \(main\): 1 open, 1 closed by tumwater, checked 0s ago$/m, "the header counts both");
+});
+
+test("an open row whose issue still carries a closed marker is not flagged and reads as updated", () => {
+  // A reopen: the scan lists the issue again, the close marker survives, and the row must not read
+  // as closed — only a row from `closedRows` does.
+  const l = ledger({
+    closed: { "10": { at: NOW - 3 * DAY_MS, shas: ["sha1111"] } },
+  });
+  const row = issueRows(l).find((r) => r.number === 10)!;
+  assert.equal(row.wasClosed, undefined);
+  assert.equal(row.closed?.at, NOW - 3 * DAY_MS);
+  const text = renderIssues(issueRows(l), issuesHeader(l), NOW);
+  assert.match(text, /^2\. #10 — Ten — trusted, not mirrored, updated 0s ago$/m);
+  assert.ok(!(text.includes(", closed by tumwater,")), "no closed rows on record, so the header names none");
+});
+
+test("the header counts the closed rows the ledger holds, and a foreign closedRows counts none", () => {
+  const l = ledger({ closedRows: [{ ...ledger().open[0]!, number: 4 }, { ...ledger().open[0]!, number: 5 }] });
+  assert.equal(issuesHeader(l).closedCount, 2);
+  assert.equal(issuesHeader(ledger()).closedCount, 0, "a ledger with no closedRows key holds none");
+  // A hand-edited closedRows that is not a list reads as no closed rows rather than throwing.
+  const foreign = { ...ledger(), closedRows: "nope" } as unknown as GithubIssuesLedger;
+  assert.equal(issuesHeader(foreign).closedCount, 0);
+});
 
 test("issueRows numbers the open list ascending by issue number and folds every state map in", () => {
   const rows = issueRows(

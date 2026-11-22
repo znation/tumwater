@@ -297,6 +297,71 @@ test("issues reads the ledger with gh nowhere on PATH — the same list, no scan
   assert.ok(!fs.existsSync(calls), "the read never invoked gh");
 });
 
+test("issues lists the issues tumwater closed after the open ones, under a header counting them", async () => {
+  // A ledger whose closedRows holds #9 while #7 and #8 are open: the closed issue is listed last
+  // however low its number, its age segment reads `closed <ago>`, and the header names the closed
+  // count between the open count and the scan age.
+  const repo = await issuesRepo("issues closed rows test");
+  const closedAt = Date.parse("2026-11-10T12:00:00.000Z");
+  writeLedger(repo, {
+    ...REPO_LEDGER,
+    open: [issueRow(7, "Reclaim leaves a stale lock"), issueRow(8, "A newer request")],
+    closedRows: [issueRow(9, "A closed request", { updatedAt: new Date(closedAt).toISOString() })],
+    closed: { "9": { at: closedAt, shas: ["abc1234"] } },
+  });
+  const r = await cli(repo, "issues");
+  assert.equal(r.code, 0, r.stderr);
+  const lines = r.stdout.trimEnd().split("\n");
+  assert.equal(lines.length, 4, "header plus three rows");
+  assert.match(lines[0]!, /^github issues — znation\/proj \(main\): 2 open, 1 closed by tumwater, checked \d+[smhd] ago$/);
+  assert.match(lines[1]!, /^1\. #7 — Reclaim leaves a stale lock — untrusted, not mirrored, updated \d+[smhd] ago$/);
+  assert.match(lines[2]!, /^2\. #8 — A newer request — untrusted, not mirrored, updated \d+[smhd] ago$/);
+  assert.match(lines[3]!, /^3\. #9 — A closed request — untrusted, not mirrored, closed \d+[smhd] ago$/, "the closed row is listed last and reads as closed");
+
+  const shown = await cli(repo, "issues", "--show", "3");
+  assert.equal(shown.code, 0, shown.stderr);
+  assert.ok(shown.stdout.includes("issue 3: #9 — A closed request"), shown.stdout);
+  assert.match(shown.stdout, /closed \d+[smhd] ago: abc1234/, "the detail names the close instant and its sha");
+
+  const json = await cli(repo, "issues", "--json");
+  assert.equal(json.code, 0, json.stderr);
+  const doc = JSON.parse(json.stdout) as { issues: { position: number; number: number; wasClosed?: boolean }[] };
+  assert.deepEqual(
+    doc.issues.map((i) => [i.position, i.number, i.wasClosed === true]),
+    [
+      [1, 7, false],
+      [2, 8, false],
+      [3, 9, true],
+    ],
+    "--json serves the closed row flagged, past the open ones",
+  );
+
+  const grep = await cli(repo, "issues", "--grep", "9");
+  assert.equal(grep.code, 0, grep.stderr);
+  const grepLines = grep.stdout.trimEnd().split("\n");
+  assert.equal(grepLines.length, 2, "header plus the one kept row");
+  assert.match(grepLines[1]!, /^3\. #9 — A closed request/, "the kept row keeps its whole-list position");
+  const none = await cli(repo, "issues", "--grep", "nothing-here");
+  assert.equal(none.stdout.trim(), 'no GitHub issues match "nothing-here"');
+});
+
+test("issues reads a ledger with no closedRows key, and one whose closedRows holds junk", async () => {
+  // A ledger written before closed rows existed has no such key at all: its list and header are
+  // exactly what they were. A hand-edited closedRows holding non-rows degrades to no closed rows
+  // through the same row guard the open list passes, and never fails the read.
+  const repo = await issuesRepo("issues no closedRows key test");
+  writeLedger(repo, REPO_LEDGER);
+  const before = await cli(repo, "issues");
+  assert.equal(before.code, 0, before.stderr);
+  assert.match(before.stdout, /^github issues — znation\/proj \(main\): 3 open, checked \d+[smhd] ago$/m, "no closed-count segment when none are on record");
+
+  const junk = await issuesRepo("issues junk closedRows test");
+  writeLedger(junk, { ...REPO_LEDGER, closedRows: ["not-a-row", null] });
+  const r = await cli(junk, "issues");
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(r.stdout, before.stdout, "junk closed rows cost the read nothing but themselves");
+});
+
 test("issues refuses an unknown flag naming the command and its valid flags", async () => {
   const repo = await issuesRepo("issues unknown flag test");
   writeLedger(repo, REPO_LEDGER);

@@ -2,8 +2,9 @@
  * mirror ledger (.tumwater/state/github-issues.json, written by the post-merge scan in
  * src/github/issue-scan.ts and the closer in src/github/issue-close.ts) records what the last
  * scan saw on GitHub and what tumwater did about each issue; this module turns it into terminal
- * text — a header naming the repo, branch, scan age and open count, then every open issue with
- * its trust, mirror state and age — so an operator can answer "which issues did the team see, and
+ * text — a header naming the repo, branch, scan age, open count and how many issues tumwater
+ * closed, then every open issue with its trust, mirror state and age, ending with the issues
+ * tumwater closed — so an operator can answer "which issues did the team see, and
  * why was this one left alone?" without opening the JSON or calling `gh`
  * (plans/github-issues.md invariant 2: `gh` is called only by the scan and the doctor's check).
  *
@@ -38,6 +39,10 @@ export interface IssueRow extends GithubIssueRow {
   waitingPush?: string[];
   /** Every BUGS.md/PLANS.md entry mirroring this issue is retired. */
   retiredOnly?: boolean;
+  /** The row came from the ledger's `closedRows` list — tumwater closed this issue and it is being
+   * listed as closed. An open issue that still carries a stale `closed` marker after a reopen has
+   * no such flag, which is what tells the two apart, and what `issueAge` reads. */
+  wasClosed?: boolean;
 }
 
 /** The header's facts, taken straight from the ledger. */
@@ -47,21 +52,32 @@ export interface IssuesHeader {
   checkedAt: number;
   gh: GithubIssuesLedger["gh"];
   reason?: string;
+  /** How many issues tumwater closed the ledger keeps rows for (`closedRows`). */
+  closedCount: number;
 }
 
-/** The ledger's open issues as positioned rows: the ledger's `open` list sorted by issue number
- * ascending, numbered 1..N, each with the state the ledger's optional maps hold for its number —
- * `queued`, `declined` (with its reason), `fixedIn` (with its sha), `closed` (with its time and
- * shas), `waitingPush` (with its shas) and membership in `retiredOnly`. Position addressing and
- * the detail view both read this one function, so they can never disagree on which issue
- * position N denotes. */
+/** The ledger's issues as positioned rows: its `open` list sorted by issue number ascending,
+ * numbered 1..N, each with the state the ledger's optional maps hold for its number — `queued`,
+ * `declined` (with its reason), `fixedIn` (with its sha), `closed` (with its time and shas),
+ * `waitingPush` (with its shas) and membership in `retiredOnly` — followed by the ledger's
+ * `closedRows` in the same ascending order, each also carrying `wasClosed: true`. So positions run
+ * across both lists, the closed issues last however low their numbers, and `issueRowAt`, `--grep`
+ * and the detail view read this one function and can never disagree on which issue position N
+ * denotes. */
 export function issueRows(ledger: GithubIssuesLedger): IssueRow[] {
   // A hand-edited or foreign-generation ledger can hold no `open` list at all; the command then
   // reads an empty mirror rather than throwing out of the CLI, the way loadQuarantine reads a
-  // malformed quarantine file as the empty list.
-  return [...(Array.isArray(ledger.open) ? ledger.open : [])]
-    .sort((a, b) => a.number - b.number)
-    .map((row, i) => foldIssueState(row, i + 1, ledger));
+  // malformed quarantine file as the empty list. The closed list follows the same rule.
+  const byNumber = (rows: readonly GithubIssueRow[]): GithubIssueRow[] =>
+    [...rows].sort((a, b) => a.number - b.number);
+  const open = byNumber(Array.isArray(ledger.open) ? ledger.open : []);
+  const closed = byNumber(Array.isArray(ledger.closedRows) ? ledger.closedRows : []);
+  const openRows = open.map((row, i) => foldIssueState(row, i + 1, ledger));
+  const closedRows = closed.map((row, i) => ({
+    ...foldIssueState(row, openRows.length + i + 1, ledger),
+    wasClosed: true,
+  }));
+  return [...openRows, ...closedRows];
 }
 
 function foldIssueState(row: GithubIssueRow, position: number, ledger: GithubIssuesLedger): IssueRow {
@@ -108,21 +124,30 @@ export function issuesHeader(ledger: GithubIssuesLedger): IssuesHeader {
     branch: ledger.branch,
     checkedAt: ledger.checkedAt,
     gh: ledger.gh,
+    closedCount: (Array.isArray(ledger.closedRows) ? ledger.closedRows : []).length,
     ...(ledger.gh !== "ok" && ledger.reason ? { reason: ledger.reason } : {}),
   };
 }
 
-/** The ledger as the `tumwater issues` list: a header naming the repo, branch, open count and how
- * long ago the scan ran, then one line per open issue naming its number, squashed title,
- * trusted/untrusted, mirrored/not mirrored and its age. A ledger whose `gh` probe was not ok adds
- * one line naming that state (and its reason when present), since that is why a scan found nothing
- * when GitHub was unreachable — the read itself never depends on a working `gh`. */
+/** The ledger as the `tumwater issues` list: a header naming the repo, branch, open count, how
+ * many issues tumwater closed the ledger keeps a row for, and how long ago the scan ran, then one
+ * line per issue — every open issue numbered first, then the closed ones — naming its number,
+ * squashed title, trusted/untrusted, mirrored/not mirrored and its age (`updated <ago>` for an
+ * open issue, `closed <ago>` for a closed one). A ledger whose `gh` probe was not ok adds one line
+ * naming that state (and its reason when present), since that is why a scan found nothing when
+ * GitHub was unreachable — the read itself never depends on a working `gh`. */
 export function renderIssues(rows: readonly IssueRow[], header: IssuesHeader, now: number): string {
+  // The open count names the open rows only: a closed row is listed but never counted as open. When
+  // the ledger holds no closed rows the segment is nothing at all, so a list without closes keeps
+  // its header exactly as it read before closed rows existed.
+  const openCount = rows.filter((r) => r.wasClosed !== true).length;
   const lines = [
     `github issues — ${header.repo} (${header.branch}): ` +
       // plural's `many` form stays "open": the count qualifies the adjective, so the plural
       // marker would land on the noun the header leaves implicit ("3 open issues").
-      `${plural(rows.length, "open", "open")}, checked ${humanAgo(header.checkedAt, now)}`,
+      plural(openCount, "open", "open") +
+      (header.closedCount > 0 ? `, ${plural(header.closedCount, "closed by tumwater", "closed by tumwater")}` : "") +
+      `, checked ${humanAgo(header.checkedAt, now)}`,
   ];
   if (header.gh !== "ok") lines.push(`gh ${header.gh}${header.reason ? `: ${squash(header.reason, ISSUE_TITLE_WIDTH)}` : ""}`);
   if (rows.length === 0) return lines.join("\n");
@@ -135,11 +160,14 @@ export function renderIssues(rows: readonly IssueRow[], header: IssuesHeader, no
   return lines.join("\n");
 }
 
-/** The issue's own age, from the `updatedAt` GitHub reported. A ledger row whose timestamp GitHub
- * did not supply (or a hand-edited one that is not a date) has no age to name, so the row says so
- * rather than printing `NaN`. */
-function issueAge(row: GithubIssueRow, now: number): string {
+/** The issue's own age. For an open row, the `updatedAt` GitHub reported; for a row from
+ * `closedRows`, whose `updatedAt` the closer set to the close instant, `closed <ago>` — so the list
+ * never shows a closed issue as if it were live. A ledger row whose timestamp GitHub did not supply
+ * (or a hand-edited one that is not a date) has no age to name, so the row says so rather than
+ * printing `NaN`. */
+function issueAge(row: IssueRow, now: number): string {
   const at = Date.parse(row.updatedAt);
+  if (row.wasClosed === true) return Number.isNaN(at) ? "closed unknown" : `closed ${humanAgo(at, now)}`;
   return Number.isNaN(at) ? "updated unknown" : `updated ${humanAgo(at, now)}`;
 }
 

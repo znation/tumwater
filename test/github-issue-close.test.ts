@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { loadConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { readEvents } from "../src/events/event-read.js";
-import { closeCandidates } from "../src/github/issue-close.js";
+import { closeCandidates, closeFixedIssues } from "../src/github/issue-close.js";
 import {
   githubCloseForStatus,
   readGithubIssues,
@@ -200,6 +200,90 @@ test("a fix that is not on GitHub yet waits for the push, then closes when GitHu
     await pollGithubIssues(repo.dir, repo.config, { nextAt: 0 }, () => {}, gh.probe, NOW + 3_600_000);
     assert.equal(gh.calls.filter((args) => args[0] === "issue").length, 1);
     assert.equal(readGithubIssues(repo.dir)?.waitingPush?.["1"], undefined);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+/** A repo whose single commit moved 62 mirror headings into BUGS-FIXED.md, so each of issues 1..62
+ * has one finished mirroring entry and that one commit as its fix. */
+function sixtyTwoIssueRepo(): { dir: string; config: TumwaterConfig; fix: string; cleanup: () => void } {
+  const repo = githubRepo();
+  try {
+    commitFiles(repo.dir, repo.git, { "BUGS.md": "## Open\n\n", "BUGS-FIXED.md": "## Fixed\n\n" }, "init");
+    const headings = Array.from({ length: 62 }, (_, i) => `### Fix number ${i + 1} (mirrors GitHub issue #${i + 1})`).join("\n\n");
+    const fix = commitFiles(
+      repo.dir,
+      repo.git,
+      { "BUGS.md": "## Open\n\n", "BUGS-FIXED.md": `## Fixed\n\n${headings}\n` },
+      "tumwater(bugfix): Fix sixty-two issues",
+    );
+    return { dir: repo.dir, config: repo.config, fix, cleanup: repo.cleanup };
+  } catch (err) {
+    repo.cleanup();
+    throw err;
+  }
+}
+
+test("a close keeps the closed issue's row, and the next pass never closes that issue again", async () => {
+  const repo = githubRepo();
+  try {
+    commitFiles(repo.dir, repo.git, { "BUGS.md": `## Open\n\n${MIRROR_HEADING}\n\nBody.\n`, "BUGS-FIXED.md": "## Fixed\n\n" }, "init");
+    const fix = commitFiles(
+      repo.dir,
+      repo.git,
+      { "BUGS.md": "## Open\n\n", "BUGS-FIXED.md": `## Fixed\n\n${MIRROR_HEADING}\n\nBody.\n` },
+      FIX_SUBJECT,
+    );
+    writeGithubIssues(repo.dir, ledgerWith([row(1, { title: "Inbox lock survives", bodyExcerpt: "the lock file survives" })]));
+    const gh = fakeGh({ compare: { [fix]: "ahead" } });
+    await closeFixedIssues(repo.dir, repo.config, gh.probe, () => {}, NOW);
+    const ledger = readGithubIssues(repo.dir)!;
+    assert.deepEqual(ledger.closed?.["1"], { at: NOW, shas: [fix] }, "the close marker is what it always was");
+    assert.deepEqual(ledger.open, [], "the row left the open list");
+    assert.equal(ledger.closedRows?.length, 1);
+    const kept = ledger.closedRows?.[0]!;
+    assert.equal(kept.number, 1);
+    assert.equal(kept.title, "Inbox lock survives", "the row is the one the closer replaced");
+    assert.equal(kept.url, "https://github.com/o/r/issues/1");
+    assert.equal(kept.author, "maintainer");
+    assert.equal(kept.bodyExcerpt, "the lock file survives", "--show can still print why the issue existed");
+    assert.equal(kept.updatedAt, new Date(NOW).toISOString(), "its age segment reads the close instant");
+    // The closer's next pass reads the ledger it just wrote: #1 is in neither list as a candidate,
+    // so `gh issue close` runs no second time.
+    await closeFixedIssues(repo.dir, repo.config, gh.probe, () => {}, NOW + 3_600_000);
+    assert.equal(gh.calls.filter((args) => args[0] === "issue").length, 1, "no second close call");
+    assert.equal(readGithubIssues(repo.dir)?.closedRows?.length, 1, "and no second row");
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test("a pass closing more issues than the closed-row cap keeps the 50 rows of the newest closes", async () => {
+  const repo = sixtyTwoIssueRepo();
+  try {
+    writeGithubIssues(repo.dir, ledgerWith(Array.from({ length: 62 }, (_, i) => row(i + 1))));
+    const gh = fakeGh({ compare: { [repo.fix]: "ahead" } });
+    await closeFixedIssues(repo.dir, repo.config, gh.probe, () => {}, NOW);
+    const ledger = readGithubIssues(repo.dir)!;
+    assert.equal(gh.calls.filter((args) => args[0] === "issue").length, 62, "every candidate closed");
+    assert.equal(ledger.closedRows?.length, 50, "the ledger never grows past the cap on kept bodies");
+    // One pass closes at one instant, so the trim's tie breaks toward the closes it made last:
+    // issues 13..62 survive and the ten it closed first are dropped.
+    assert.deepEqual(ledger.closedRows?.map((r) => r.number), Array.from({ length: 50 }, (_, i) => i + 13));
+    assert.deepEqual(ledger.open, [], "no closed row stayed in the open list");
+    // A later pass re-closes one issue GitHub reopened, at a later instant: its row is the newest
+    // close, so it evicts the oldest kept row and the ledger still holds exactly the cap.
+    const reopened = { ...ledger, open: [row(5, { updatedAt: "2026-11-23T00:00:00Z" })] };
+    writeGithubIssues(repo.dir, reopened);
+    await closeFixedIssues(repo.dir, repo.config, gh.probe, () => {}, NOW + 3_600_000);
+    const after = readGithubIssues(repo.dir)!;
+    assert.equal(after.closedRows?.length, 50, "the trim holds at the cap across passes");
+    assert.deepEqual(
+      after.closedRows?.map((r) => r.number),
+      [5, ...Array.from({ length: 49 }, (_, i) => i + 14)],
+      "the reopened issue's new row is kept and the oldest kept row (#13) is dropped",
+    );
   } finally {
     repo.cleanup();
   }

@@ -221,6 +221,13 @@ export async function scanGithubIssues(
   };
   if (reason !== undefined) ledger.reason = reason;
   else delete ledger.reason;
+  // A closed row whose number the fresh listing reports open again is no longer a closed row: the
+  // issue is open, listed in `open`, and `closed[<n>]` survives so `isReopened` still marks it a
+  // reopen and the queue offers it again. A scan that saw no change leaves the list as it was.
+  if (previous?.closedRows !== undefined && previous.closedRows.length > 0) {
+    const openNumbers = new Set(open.map((row) => row.number));
+    ledger.closedRows = previous.closedRows.filter((row) => !openNumbers.has(row.number));
+  }
   if (gh !== "ok" && (previous === null || previous.gh === "ok")) {
     logEventBestEffort(root, {
       source: TUMWATER_SOURCE,
