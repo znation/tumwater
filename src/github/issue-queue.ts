@@ -65,7 +65,10 @@ export function nextIssuePrompt(
   if (queuedDirectorPrompts.some((prompt) => prompt.trimStart().startsWith(QUEUE_BLOCKED_OPENING))) {
     return null;
   }
-  for (const row of ledger.open) {
+  // GitHub lists issues newest-created first, so the ledger's `open` array is newest-first too.
+  // Walk the numbers ascending: an issue number is handed out at creation, so the lowest open
+  // number is the oldest issue (part 4c/5's acceptance: the queue offers the older issue first).
+  for (const row of [...ledger.open].sort((a, b) => a.number - b.number)) {
     if (!row.trusted) continue;
     const key = String(row.number);
     if (mirrors.has(row.number) && !isReopened(ledger, row)) continue;

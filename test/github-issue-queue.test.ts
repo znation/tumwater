@@ -35,14 +35,16 @@ function ledgerWith(open: GithubIssueRow[], extra: Partial<GithubIssuesLedger> =
 }
 
 test("with two trusted unmirrored issues the queue picks only the older, then the second once the first is mirrored and its prompt is gone", () => {
-  const ledger = ledgerWith([row(2), row(5)]);
+  // Listed newest-first, the order `gh api repos/<repo>/issues` returns, so the pick cannot just
+  // take the array's first row.
+  const ledger = ledgerWith([row(5), row(2)]);
   // The older one first; it is not mirrored and not blocked, so it is picked.
   const first = nextIssuePrompt(ledger, new Set(), [], NOW);
   assert.equal(first?.issue, 2);
   // While its prompt sits in the director queue, nothing else is offered.
   assert.equal(nextIssuePrompt(ledger, new Set(), ["dir prompt", "GitHub issue #2 on o/r …"], NOW), null);
   // Once the prompt is gone and the first is mirrored, the second is offered.
-  assert.equal(nextIssuePrompt({ ...ledger, open: [row(2, { mirrored: true }), row(5)] }, new Set([2]), [], NOW)?.issue, 5);
+  assert.equal(nextIssuePrompt({ ...ledger, open: [row(5), row(2, { mirrored: true })] }, new Set([2]), [], NOW)?.issue, 5);
 });
 
 test("a queued issue is not re-offered within 24 h, then is offered again; a declined issue waits for its updatedAt; a fixed issue is never offered", () => {
@@ -170,9 +172,10 @@ function issue(n: number): Record<string, unknown> {
 test("queueOneIssue scans once, then queues one issue and records it; the next attempt queues nothing", async () => {
   const repo = githubRepo();
   try {
-    const gh = fakeGh({ issues: [[issue(1), issue(2)]] });
+    // GitHub lists the newer issue first, so the ledger's open list is newest-first here too.
+    const gh = fakeGh({ issues: [[issue(2), issue(1)]] });
     await scanGithubIssues(repo.dir, repo.config, gh.probe, NOW);
-    // Two trusted unmirrored issues; the queue picks the first (older) only.
+    // Two trusted unmirrored issues; the queue picks the older (#1, the lower number) only.
     const first = await queueOneIssue(repo.dir, repo.config, NOW);
     assert.equal(first?.issue, 1);
     const events = readEvents(repo.dir).filter((e) => e.type === "github_issue_queued");
