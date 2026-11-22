@@ -5620,3 +5620,28 @@ and false for no ledger or a foreign checkedAt"; `test/doctor-checks.test.ts` �
 "checkGithubIssues stays ok at the window boundary and with no ledger file at all",
 "a stalled ledger never outranks an unreadable gh" and
 "the github issues row and githubScanStalled agree on one ledger".
+
+## Once rounds: every starting hold settles its runner, so a held team still exits
+
+A `tumwater start --once` round ends when `OnceRound.exitReady` sees a settle (a run or a skip
+reason) on EVERY runner. A starting hold that declines a run without settling it therefore holds
+the round open: the round cannot report the skip and hand the terminal back.
+
+### INV-DF1: every arm of the scheduling pass's starting-hold run carries a once-mode settle label
+
+**Guarantee.** `onceHoldLabel` names a settle for every hold `heldFromStarting` can decline a run
+on — the self-redeploy hold (`waiting: update`), the disk floor (`waiting: low disk`), the per-role
+and team pause (`paused`), the role's daily cap (`cap paused`), the maintenance allowance
+(`held: maintenance quota <used>/<allowance>`), the bootstrap hold (`held: bootstrap`), the budget
+pause (`budget paused`), the quiet window (`held: quiet hours`), and the team-failure hold
+(`held: provider failure`, covering a provider storm, a model-load pair hold, and the director's
+subscription-window hold). The label order mirrors the gate order, so the reason a `--json`
+consumer reads names the hold that declined the run first, and only the pauses `tumwater resume`
+actually lifts keep bare `paused`. An arm with no label leaves its runner unsettled, and the round
+idle-polls until the deferral cap — or never, on a full volume.
+
+**Binds.** `src/scheduling/skip.ts` (`onceHoldLabel`, `heldFromStarting`, `settleOncePaused`),
+`src/scheduling/once-round.ts` (`exitReady`, `isSettled`).
+
+**Pinned by.** `test/orchestrator-scheduling.test.ts` — "once-mode settles each starting hold with
+its own label, so a held role never reads as paused".

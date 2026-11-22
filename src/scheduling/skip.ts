@@ -101,7 +101,10 @@ function settleOncePaused(scope: SchedulingScope, runner: RoleRunner, demand: bo
  * `--json` consumer sees the same distinction the payload carries; plain `paused` stays only for
  * the holds `tumwater resume` answers (the per-role pause marker and the team pause marker), and
  * the scheduled quiet window — which `resume` does not lift — is named as its own hold. The order
- * mirrors heldFromStarting, so the label names the hold that declines the run first. */
+ * mirrors heldFromStarting, so the label names the hold that declines the run first. Every arm of
+ * that run needs a label: an unlabeled hold leaves the runner unsettled, and OnceRound.exitReady
+ * waits for a settle on EVERY runner, so the round sat idle-polling until the DEFER_MAX_MS cap
+ * (or never, on a full disk) instead of reporting the skip and exiting. */
 function onceHoldLabel(scope: SchedulingScope, runner: RoleRunner, demand: boolean): string | undefined {
   const {
     pausedRoles,
@@ -112,6 +115,12 @@ function onceHoldLabel(scope: SchedulingScope, runner: RoleRunner, demand: boole
     bootstrapHeldNow,
     maintenanceQuotaOverLine,
   } = scope;
+  // The self-redeploy's hold first, as heldFromStarting tests it: `--once` forces the redeployer
+  // null, so this arm cannot stand in a once round today — labeled anyway so the every-arm rule
+  // above holds if that ever changes, and named after the status side's `waiting: update — <step>`
+  // family without the stage phrase (the label reads no build snapshot).
+  if (scope.holdForRestart) return "waiting: update";
+  if (scope.diskHeld) return "waiting: low disk"; // status-model's own wording for the disk floor
   if (runnerPaused(pausedRoles, runner.role)) return "paused"; // `resume --role <id>` answers this one
   if (capPaused.has(runner.role)) return "cap paused"; // lifted by a live config edit or local midnight
   if (maintenanceQuotaOverLine(runner, demand))
@@ -125,6 +134,20 @@ function onceHoldLabel(scope: SchedulingScope, runner: RoleRunner, demand: boole
     if (budgetHolds(runner.role)) return "budget paused";
     if (scope.quietNow || scope.roleQuietHeld.has(runner.role)) return "held: quiet hours";
     return "paused";
+  }
+  // The team-failure hold, last exactly as heldFromStarting runs it last: the role's provider
+  // storm, its pair's model-load hold, or (the director) a subscription window. No status label
+  // names this gate per role — the payload publishes the holds as structured `providerHolds`
+  // entries — so the settle uses the held: family like the bootstrap and quiet-hours holds.
+  if (heldStarts(
+    runner.role,
+    scope.roleProviders.get(runner.role),
+    scope.rolePairs.get(runner.role) ?? "",
+    scope.windowHeldProviders,
+    scope.heldProviders,
+    scope.heldPairs,
+  )) {
+    return "held: provider failure";
   }
   return undefined;
 }

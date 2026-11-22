@@ -833,6 +833,32 @@ test("once-mode settles each starting hold with its own label, so a held role ne
       hold: (ctx, r) => (ctx.modelCheckHeld = new Set([r.role])),
       want: "waiting: model check",
     },
+    // The two starting holds that carried NO settle at all: each left the runner unsettled, and
+    // exitReady needs a settle on every runner, so the round idled while the hold stood — up to
+    // HOLD_CAP_MS (15 min) for a storm, indefinitely on a full disk.
+    {
+      name: "disk floor",
+      hold: (ctx) => (ctx.diskHeld = true),
+      want: "waiting: low disk",
+    },
+    {
+      name: "restart hold",
+      hold: (ctx) => (ctx.holdForRestart = true),
+      want: "waiting: update",
+    },
+    {
+      name: "provider storm",
+      hold: (ctx, r) => (ctx.heldProviders = new Set([ctx.roleProviders.get(r.role)])),
+      want: "held: provider failure",
+    },
+    {
+      name: "model-load pair",
+      hold: (ctx, r) => {
+        ctx.rolePairs = new Map([[r.role, "P/m1"]]);
+        ctx.heldPairs = new Set(["P/m1"]);
+      },
+      want: "held: provider failure",
+    },
   ];
   for (const { name, hold, want } of cases) {
     const root = tmpdir(`tumwater-scheduling-once-label-${name.replace(/ /g, "-")}-`);
