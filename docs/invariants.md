@@ -5882,17 +5882,17 @@ counts at the whole mirror whatever rows arrived, and says an empty mirror in wo
  listing at all, record nothing, so the ledger never claims a loss the scan has no evidence for. A
  number the fresh listing reports open again is dropped from the list, and an issue already held in
  `closedRows` is never recorded, so the two lists stay disjoint and a reopened issue leaves no record
- behind. The list is capped at `UPSTREAM_CLOSED_MAX` records, trimmed to the newest `closedAt` and
- stored ascending by number, the rule `retainClosedRow` keeps for closed rows. Nothing else in the
- ledger is touched by a loss except `waitingPush`: `closed`, `queued` and `declined` records stay
- owed, because they are the read's history and `isReopened`'s clock, while a `waitingPush` record is
- a promise of a future close — the same complete listing drops that issue's `waitingPush` entry, over
- every number its stored `upstreamClosed` list holds (so a ledger written before the drop existed
- self-heals on its next complete scan), and deletes the map when that leaves it empty; a capped,
- failed or absent listing drops none, so on a repo past `MAX_ISSUE_PAGES` the entry stays. Because of
- that drop the surfaces cannot raise the blue `github-close` push banner for a lost issue —
- `githubCloseForStatus` counts exactly that map — and the queue and the close pass iterate `open`, so
- a lost issue is neither offered nor closed. The
+ behind. The list is capped at `ISSUE_ROW_LIST_MAX` records, trimmed to the newest `closedAt` and
+ stored ascending by number, the shared trim `keepNewestIssueRows` applies to it and to the closed
+ rows. Nothing else in the ledger is touched by a loss except `waitingPush`: `closed`, `queued` and
+ `declined` records stay owed, because they are the read's history and `isReopened`'s clock, while a
+ `waitingPush` record is a promise of a future close — the same complete listing drops that issue's
+ `waitingPush` entry, over every number its stored `upstreamClosed` list holds (so a ledger written
+ before the drop existed self-heals on its next complete scan), and deletes the map when that leaves
+ it empty; a capped, failed or absent listing drops none, so on a repo past `MAX_ISSUE_PAGES` the
+ entry stays. Because of that drop the surfaces cannot raise the blue `github-close` push banner for
+ a lost issue — `githubCloseForStatus` counts exactly that map — and the queue and the close pass
+ iterate `open`, so a lost issue is neither offered nor closed. The
  same fold logs one `github_issue_upstream_closed` event per newly recorded loss — repo, issue and
  that row's `updatedAt` — so the operator's log names what the ledger alone only shows as a row; a
  row already carried in `upstreamClosed` logs nothing, so a loss is announced once and not once per
@@ -5907,7 +5907,8 @@ counts at the whole mirror whatever rows arrived, and says an empty mirror in wo
 **Binds.** `src/github/issue-scan.ts` (`listOpenIssues`, `recordUpstreamCloses`,
 `dropLostWaitingPush`, `scanGithubIssues`), `src/github/github-issues-state.ts`
 (`GithubIssueRow.closedAt`, `GithubIssuesLedger.upstreamClosed`, `GithubIssuesLedger.waitingPush`,
-`githubCloseForStatus`, `readGithubIssues`), `src/github/github-issues-render.ts`
+`githubCloseForStatus`, `readGithubIssues`, `ISSUE_ROW_LIST_MAX`, `keepNewestIssueRows`),
+`src/github/issue-close.ts` (`retainClosedRow`), `src/github/github-issues-render.ts`
 (`issueRows`, `issuesHeader`, `issueAge`, `issueStateLines`, `stateIssueRows`, `IssueState`), the
 event sites that give the type its
 line (`src/events/events.ts`, `src/events/event-labels.ts`, `src/events/event-format-config.ts`,

@@ -153,6 +153,30 @@ export function isDeclinedHold(ledger: GithubIssuesLedger, row: GithubIssueRow):
   return declinedAt !== undefined && declinedAt === row.updatedAt;
 }
 
+/** How many rows one of the mirror's growing ledger row lists ever keeps — one cap for both of
+ * them, so the ledger file stays bounded however many issues the mirror closes or loses. Trimmed
+ * where a list grows, never by a reader. */
+export const ISSUE_ROW_LIST_MAX = 50;
+
+/** Merge `additions` into a carried ledger row list and trim the result to `ISSUE_ROW_LIST_MAX`.
+ *
+ * The rule both those lists follow: an issue number an addition carries replaces the
+ * carried row for it, the trim keeps the rows whose `instantOf` (the instant the ledger last
+ * touched the row) reads newest with a tie breaking toward the higher issue number, and the result
+ * comes back sorted ascending by number — the order the ledger stores both lists in. Any further
+ * rule the caller owes the carried list (dropping a reopened issue, for one) stays outside it. */
+export function keepNewestIssueRows<T extends GithubIssueRow>(
+  carried: readonly T[],
+  additions: readonly T[],
+  instantOf: (row: T) => number,
+): T[] {
+  const replaced = new Set(additions.map((row) => row.number));
+  return [...carried.filter((row) => !replaced.has(row.number)), ...additions]
+    .sort((a, b) => instantOf(b) - instantOf(a) || b.number - a.number)
+    .slice(0, ISSUE_ROW_LIST_MAX)
+    .sort((a, b) => a.number - b.number);
+}
+
 /** Whether `value` carries the declared `GithubIssueRow` fields with the declared types — the
  * optional ones checked only when present. `readJsonFile` only checks "a plain object", so a
  * hand-edited or foreign-generation ledger can hold `null`, a string, or a half-written object in

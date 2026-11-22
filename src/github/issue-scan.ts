@@ -15,6 +15,7 @@ import { ghReadiness, ghRunner, type GhRunner } from "./gh.js";
 import { mirrorsAtTip } from "./issue-mirrors.js";
 import { nextIssuePrompt, type QueuedIssue } from "./issue-queue.js";
 import {
+  keepNewestIssueRows,
   readGithubIssues,
   writeGithubIssues,
   type GhState,
@@ -184,19 +185,14 @@ function toRow(
   return row;
 }
 
-/** How many upstream-close records the ledger keeps — the same cap `retainClosedRow` puts on the
- * closed rows beside its own `CLOSED_ROWS_MAX` (src/github/issue-close.ts), so no ledger list in
- * this subsystem grows unbounded. */
-const UPSTREAM_CLOSED_MAX = 50;
-
 /** Record the issues GitHub stopped listing, and keep the records the previous scan carried.
  * One record per row of `previous.open` whose number appears in neither the fresh listing nor the
  * ledger's `closedRows` — so an issue tumwater closed, an issue that merely reopened, and the first
  * scan of a repo (no `previous`) record nothing. A record is that issue's last full row with
  * `closedAt` set to this scan's instant and GitHub's own `updatedAt` kept, so the read can age it
  * both ways. Carried records whose number the listing reports open again are dropped, the same
- * rule the reopen filter above applies to `closedRows`. The trim keeps the `UPSTREAM_CLOSED_MAX`
- * newest `closedAt` (a tie breaking toward the higher number, as `retainClosedRow` does) and stores
+ * rule the reopen filter above applies to `closedRows`. The trim keeps the `ISSUE_ROW_LIST_MAX`
+ * newest `closedAt` (a tie breaking toward the higher number) and stores
  * the list back in ascending number order, the order the read prints. Only a listing known to be
  * complete may call this: a walk cut short at `MAX_ISSUE_PAGES` never saw the issue, so it cannot
  * have missed it. Mutates the ledger; the only other record a loss settles is `waitingPush`, which
@@ -227,17 +223,14 @@ function recordUpstreamCloses(
       updatedAt: row.updatedAt,
     });
   }
-  const rows = [...(previous?.upstreamClosed ?? []).filter((row) => !openNumbers.has(row.number)), ...lost];
+  const carried = (previous?.upstreamClosed ?? []).filter((row) => !openNumbers.has(row.number));
   // Nothing to say: the list is dropped rather than left as whatever the spread carried over, so a
   // lost issue that came back leaves no record behind.
-  if (rows.length === 0) {
+  if (carried.length === 0 && lost.length === 0) {
     delete ledger.upstreamClosed;
     return;
   }
-  ledger.upstreamClosed = rows
-    .sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0) || b.number - a.number)
-    .slice(0, UPSTREAM_CLOSED_MAX)
-    .sort((a, b) => a.number - b.number);
+  ledger.upstreamClosed = keepNewestIssueRows(carried, lost, (row) => row.closedAt ?? 0);
   dropLostWaitingPush(ledger, ledger.upstreamClosed);
 }
 

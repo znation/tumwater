@@ -10,7 +10,7 @@ import { branchHead, gitLines, subjectOfCommit } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { githubTarget } from "../observer/remote-ci.js";
 import type { GhRunner } from "./gh.js";
-import { isReopened, readGithubIssues, writeGithubIssues, type GithubIssueRow, type GithubIssuesLedger } from "./github-issues-state.js";
+import { isReopened, keepNewestIssueRows, readGithubIssues, writeGithubIssues, type GithubIssueRow, type GithubIssuesLedger } from "./github-issues-state.js";
 import { isFinishedMirror, mirrorsAtTip, type MirrorEntry } from "./issue-mirrors.js";
 
 /** The finished archives whose commits record a fix: the commit that moved a mirror into one is the
@@ -142,30 +142,21 @@ async function onGithub(run: GhRunner, repo: string, branch: string, sha: string
   return status === "ahead" || status === "identical";
 }
 
-/** How many closed rows the ledger keeps: the newest closes, so the `tumwater issues` list can name
- * what the mirror closed without the ledger file growing past ~50 kept bodies on top of what
- * `closed` already holds. Trimmed where the list grows (`closeOne`), never by a reader. */
-const CLOSED_ROWS_MAX = 50;
-
 /** Keep the row of the issue just closed, so `tumwater issues` can still name what it closed. The
  * row leaves `open` and joins `closedRows` with its `updatedAt` set to the close instant — that is
  * what makes the list read `closed <ago>` for it — keeping its title, url, author and body excerpt.
- * The list is trimmed to the `CLOSED_ROWS_MAX` newest close instants. Mutates the ledger. */
+ * The list is trimmed to the `ISSUE_ROW_LIST_MAX` newest close instants. Mutates the ledger. */
 function retainClosedRow(ledger: GithubIssuesLedger, n: number, key: string, now: number): void {
   const at = ledger.closed?.[key]?.at ?? now;
   const row = ledger.open.find((r) => r.number === n);
   ledger.open = ledger.open.filter((r) => r.number !== n);
   if (!row) return;
   const kept: GithubIssueRow = { ...row, updatedAt: new Date(at).toISOString() };
-  const rows = [...(ledger.closedRows ?? []).filter((r) => r.number !== n), kept];
   // Newest close first for the trim, then back to ascending number so the file holds the list in
   // the reader's order (the render sorts anyway). A tie in close instant breaks toward the higher
   // issue number, the order a pass closes in, so a pass closing more than the cap keeps its last
   // closes rather than an arbitrary half of them.
-  ledger.closedRows = rows
-    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt) || b.number - a.number)
-    .slice(0, CLOSED_ROWS_MAX)
-    .sort((a, b) => a.number - b.number);
+  ledger.closedRows = keepNewestIssueRows(ledger.closedRows ?? [], [kept], (r) => Date.parse(r.updatedAt));
 }
 
 /** Close one candidate issue, or record that its fix waits for a push. Mutates the ledger; the
