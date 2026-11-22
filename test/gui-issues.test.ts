@@ -245,9 +245,13 @@ test("GET /api/issues counts the ledger's upstream-close records without listing
     [1, 4, false],
     [2, 9, true],
   ]);
-  // The state filter keeps such a row on the open side: only `wasClosed` marks a closed row.
+  // INV-DG1: `stateIssueRows` classifies by `upstreamClosed` first, so the lost row answers
+  // neither `state=open` nor `state=closed` — only `--lost` names it, and the endpoint's state
+  // query stays the --open/--closed pair (INV-DE6).
   const open = await list("?state=open", repo);
-  assert.deepEqual(open.issues!.map((r) => r.number), [4, 9]);
+  assert.deepEqual(open.issues!.map((r) => r.number), [4]);
+  const closed = await list("?state=closed", repo);
+  assert.deepEqual(closed.issues!.map((r) => r.number), []);
 });
 
 test("the live server routes GET /api/issues to the mirror read and refuses POST", async () => {

@@ -51,7 +51,7 @@ test("completionSpec over the real help", () => {
   assert.ok(spec.flags.quarantine?.includes("--follow"), "quarantine offers --follow");
   assert.ok(spec.flags.reviews?.includes("--follow"), "reviews offers --follow");
   assert.ok(spec.flags.issues?.includes("--follow"), "issues offers --follow");
-  for (const f of ["--open", "--closed"]) assert.ok(spec.flags.issues?.includes(f), `issues offers ${f}`);
+  for (const f of ["--open", "--closed", "--lost"]) assert.ok(spec.flags.issues?.includes(f), `issues offers ${f}`);
   assert.deepEqual(spec.subcommands.issues, [], "issues takes no subcommand");
   for (const c of ["gui", "version", "role"]) assert.deepEqual(spec.subcommands[c], [], c);
   for (const c of spec.commands) assert.ok(spec.flags[c]?.includes("--help"), c);

@@ -489,6 +489,10 @@ export const OPEN_FLAG: FlagSpec = { names: ["--open"] };
  * keys, and githubIssuesLedgerViews reads only the open one). */
 export const CLOSED_FLAG: FlagSpec = { names: ["--closed"] };
 
+/** The `--lost` filter flag of `issues`, third of the state triple: it keeps the rows the ledger
+ * records as closed upstream, which neither older state admits. */
+export const LOST_FLAG: FlagSpec = { names: ["--lost"] };
+
 /** The `--status <state>` flag spec of `reviews`' state filter, beside resultFlagSpec: one
  * definition of the flag's spelling and value shape, so the gate's accepted vocabulary cannot
  * drift. The missing-value wording names the command, so the spec is a factory taking it — the

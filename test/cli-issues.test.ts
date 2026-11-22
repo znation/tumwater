@@ -67,6 +67,23 @@ const REPO_LEDGER = {
   ],
 };
 
+/** The ledger the `--lost` tests share: open #7, closedRows #9, and upstreamClosed #8 and #10 —
+ * one issue in each state plus a second loss, so a filter's subset and the header's three counts
+ * can never be confused with each other. `seenAt` stamps the closed row's update and each lost
+ * row's update and `closedAt`. */
+function lostLedger(seenAt: number): Record<string, unknown> {
+  return {
+    ...REPO_LEDGER,
+    open: [issueRow(7, "Reclaim leaves a stale lock")],
+    closedRows: [issueRow(9, "A closed request", { updatedAt: new Date(seenAt).toISOString() })],
+    closed: { "9": { at: seenAt, shas: ["abc1234"] } },
+    upstreamClosed: [
+      issueRow(8, "A lost request", { updatedAt: new Date(seenAt).toISOString(), closedAt: seenAt }),
+      issueRow(10, "Another lost request", { updatedAt: new Date(seenAt).toISOString(), closedAt: seenAt }),
+    ],
+  };
+}
+
 async function issuesRepo(name: string): Promise<string> {
   const repo = makeRepo();
   await initProject(repo, name);
@@ -596,6 +613,127 @@ test("issues lists issues GitHub closed upstream last, under a header counting t
   assert.equal(lost.upstreamClosed, true);
   assert.ok(!("wasClosed" in lost), "and carries no closed-by-tumwater flag");
   assert.ok(doc.issues.some((i) => i.number === 7 && !("upstreamClosed" in i)), "an open row carries neither flag");
+});
+
+test("issues --lost keeps only the upstream-closed rows, at their whole-list positions", async () => {
+  // Four rows: open #7 (1), closedRows #9 (2), upstreamClosed #8 (3) and #10 (4). Each state
+  // filter keeps exactly one group, the header always names the mirror's own three counts, and
+  // the numbering never follows the filter — so `--lost --show 3` names the same #8 the
+  // unfiltered list does. Ages are asserted as a span, since they read off the real clock.
+  const repo = await issuesRepo("issues lost filter test");
+  const seenAt = Date.parse("2026-11-17T12:00:00.000Z");
+  writeLedger(repo, lostLedger(seenAt));
+  const HEADER = /^github issues — znation\/proj \(main\): 1 open, 1 closed by tumwater, 2 closed upstream, checked \d+[smhd] ago$/;
+
+  const lost = await cli(repo, "issues", "--lost");
+  assert.equal(lost.code, 0, lost.stderr);
+  const lines = lost.stdout.trimEnd().split("\n");
+  assert.equal(lines.length, 3, "header plus the two lost rows");
+  assert.match(lines[0]!, HEADER, "the header names the mirror's counts, not the kept rows");
+  assert.match(lines[1]!, /^3\. #8 — A lost request — untrusted, not mirrored, last seen open \d+[smhd] ago$/, "not renumbered to 1");
+  assert.match(lines[2]!, /^4\. #10 — Another lost request — untrusted, not mirrored, last seen open \d+[smhd] ago$/);
+
+  // A lost issue answers neither older filter, and the unfiltered read still prints all four.
+  const open = await cli(repo, "issues", "--open");
+  assert.equal(open.stdout.trimEnd().split("\n").length, 2, "header plus the one open row");
+  assert.match(open.stdout, /^1\. #7 —/m);
+  assert.ok(!open.stdout.includes("#8") && !open.stdout.includes("#10"), "no lost row behind --open");
+  const closed = await cli(repo, "issues", "--closed");
+  assert.equal(closed.stdout.trimEnd().split("\n").length, 2, "header plus the one closed row");
+  assert.match(closed.stdout, /^2\. #9 —/m);
+  assert.ok(!closed.stdout.includes("#8") && !closed.stdout.includes("#10"), "no lost row behind --closed");
+  const all = await cli(repo, "issues");
+  assert.match(all.stdout.trimEnd().split("\n")[0]!, HEADER);
+  assert.equal(all.stdout.trimEnd().split("\n").length, 5, "the unfiltered read keeps every row");
+
+  // --lost narrows --json's array to the lost rows and keeps their whole-list positions, their
+  // upstreamClosed flag and the closedAt instant the loss was recorded, and adds no wasClosed.
+  const json = await cli(repo, "issues", "--lost", "--json");
+  assert.equal(json.code, 0, json.stderr);
+  const doc = JSON.parse(json.stdout) as {
+    read: boolean;
+    issues: { position: number; number: number; upstreamClosed?: boolean; wasClosed?: boolean; closedAt?: number }[];
+  };
+  assert.equal(doc.read, true);
+  assert.deepEqual(
+    doc.issues.map((i) => [i.position, i.number, i.upstreamClosed === true, i.closedAt, "wasClosed" in i]),
+    [
+      [3, 8, true, seenAt, false],
+      [4, 10, true, seenAt, false],
+    ],
+    "the lost subset only, at its whole-list position, carrying closedAt and no wasClosed",
+  );
+});
+
+test("issues --lost composes with --show, --grep, the flag gate and the other states", async () => {
+  const repo = await issuesRepo("issues lost pairs test");
+  const seenAt = Date.parse("2026-11-17T12:00:00.000Z");
+  writeLedger(repo, lostLedger(seenAt));
+
+  // A state flag beside --show is refused by the detail branch's flag-free gate, naming the flag.
+  for (const flags of [["--lost", "--show", "3"], ["--show", "1", "--lost"]]) {
+    const refused = await cli(repo, "issues", ...flags);
+    assert.equal(refused.code, 1, refused.stderr);
+    assert.ok(refused.stderr.includes('takes no arguments (got "--lost")'), refused.stderr);
+  }
+
+  // Each pair of the three states is refused by name, and a repeat of one spelling is stopped by
+  // the flag gate before the pair check runs.
+  const pairs: readonly [string, string][] = [["--open", "--closed"], ["--open", "--lost"], ["--closed", "--lost"]];
+  for (const [a, b] of pairs) {
+    const both = await cli(repo, "issues", a, b);
+    assert.equal(both.code, 1, both.stdout);
+    assert.ok(
+      both.stderr.includes(`${a} and ${b} are mutually exclusive: each keeps the issues the other hides`),
+      both.stderr,
+    );
+  }
+  const repeat = await cli(repo, "issues", "--lost", "--lost");
+  assert.equal(repeat.code, 1, repeat.stdout);
+  assert.ok(repeat.stderr.includes("--lost may only be given once"), repeat.stderr);
+
+  // --grep wins the no-match line even beside --lost, and a state token in --grep's value slot is
+  // pattern text, not the flag — the rule that already holds for --closed.
+  const hit = await cli(repo, "issues", "--lost", "--grep", "lost");
+  assert.equal(hit.code, 0, hit.stderr);
+  assert.match(hit.stdout, /^3\. #8 — A lost request/m);
+  const miss = await cli(repo, "issues", "--lost", "--grep", "7");
+  assert.equal(miss.stdout.trim(), 'no GitHub issues match "7"');
+  const asText = await cli(repo, "issues", "--grep", "--lost");
+  assert.equal(asText.code, 0, asText.stderr);
+  assert.equal(asText.stdout.trim(), 'no GitHub issues match "--lost"');
+
+  // The unknown-flag refusal's valid-flag list carries the new flag, the gate's own vocabulary.
+  const bogus = await cli(repo, "issues", "--bogus");
+  assert.equal(bogus.code, 1, bogus.stdout);
+  assert.ok(bogus.stderr.includes("--lost"), bogus.stderr);
+});
+
+test("issues --lost names an empty loss list in words, and an empty mirror in its header", async () => {
+  // A mirror holding open issues but no upstream-closed rows answers in words, whether the ledger
+  // omits the key or holds it empty — a filter result, not an empty mirror. A mirror with nothing
+  // on record keeps its `0 open` header line, as the older state filters assert.
+  const noKey = await issuesRepo("issues lost no key test");
+  writeLedger(noKey, REPO_LEDGER);
+  const r = await cli(noKey, "issues", "--lost");
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(r.stdout.trim(), "no lost GitHub issues");
+
+  const emptyKey = await issuesRepo("issues lost empty key test");
+  writeLedger(emptyKey, { ...REPO_LEDGER, upstreamClosed: [] });
+  const e = await cli(emptyKey, "issues", "--lost");
+  assert.equal(e.code, 0, e.stderr);
+  assert.equal(e.stdout.trim(), "no lost GitHub issues");
+
+  const bare = await issuesRepo("issues lost bare mirror test");
+  writeLedger(bare, { repo: "znation/proj", branch: "main", checkedAt: REPO_LEDGER.checkedAt, gh: "ok", open: [] });
+  const b = await cli(bare, "issues", "--lost");
+  assert.equal(b.code, 0, b.stderr);
+  assert.match(
+    b.stdout.trim(),
+    /^github issues — znation\/proj \(main\): 0 open, checked \d+[smhd] ago$/,
+    "--lost on an empty mirror prints its header line alone, with no upstream-count segment",
+  );
 });
 
 test("issues degrades a hand-edited upstreamClosed holding a non-row to no upstream rows", async () => {

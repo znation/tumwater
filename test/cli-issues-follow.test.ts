@@ -229,6 +229,39 @@ test("issues -f --closed repaints the closed subset at its whole-list position",
   });
 });
 
+test("issues -f --lost repaints the lost subset at its whole-list position", async () => {
+  // The follow reads the ledger each frame, so the third state filter has to hold across repaints
+  // too: the lost row under its whole-list position 4, never the open or closed rows, and the
+  // header keeps naming the mirror's own three counts, not the kept subset.
+  const seed = (repo: string) => {
+    writeFileDeep(
+      githubIssuesPath(repo),
+      JSON.stringify({
+        repo: "znation/proj",
+        branch: "main",
+        checkedAt: Date.now() - 40_000,
+        gh: "ok",
+        open: [issueRow(7, "Reclaim leaves a stale lock"), issueRow(8, "A newer request")],
+        closedRows: [issueRow(9, "A closed request")],
+        upstreamClosed: [{ ...(issueRow(10, "A lost request") as Record<string, unknown>), closedAt: Date.now() - 40_000 }],
+      }),
+    );
+  };
+  await withIssuesFollow(seed, ["-f", "--lost"], 5, false, async ({ cap, stop }) => {
+    await sleep(60);
+    const frames = cap.out();
+    assert.ok((frames.match(/4\. #10 — A lost request/g) ?? []).length >= 2, "the lost row repaints every frame");
+    assert.match(frames, /last seen open \d+s ago/, "a lost row's age segment reads last seen open");
+    assert.doesNotMatch(frames, /#7|#8|#9/, "no open or closed row appears behind --lost");
+    assert.match(
+      frames,
+      /github issues — znation\/proj \(main\): 2 open, 1 closed by tumwater, 1 closed upstream/,
+      "the header keeps the mirror's own counts",
+    );
+    stop();
+  });
+});
+
 test("issues -f prints the not-read frame until a ledger appears, then the list", async () => {
   await withIssuesFollow(() => {}, ["-f"], 5, false, async ({ cap, repo, stop }) => {
     await sleep(40);

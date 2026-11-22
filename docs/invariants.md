@@ -5836,13 +5836,16 @@ counts at the whole mirror whatever rows arrived, and says an empty mirror in wo
  scan, and a capped, failed or absent listing logs none. The
  read treats the row as neither open nor tumwater-closed: `issueRows` appends the list after
  `closedRows` and flags it `upstreamClosed`, `issuesHeader` counts it separately, `issueAge` answers
- `last seen open <ago>` never `closed <ago>`, and the detail states
- `closed upstream — last seen open <ago>` with no fix sha.
+ `last seen open <ago>` never `closed <ago>`, the detail states
+ `closed upstream — last seen open <ago>` with no fix sha, and `stateIssueRows` classifies a row by
+ `upstreamClosed` before `wasClosed`, so a lost issue answers `--lost` alone and neither `--open`
+ nor `--closed` — listing it as open would show a loss as an issue the mirror still holds.
 
 **Binds.** `src/github/issue-scan.ts` (`listOpenIssues`, `recordUpstreamCloses`,
 `scanGithubIssues`), `src/github/github-issues-state.ts` (`GithubIssueRow.closedAt`,
 `GithubIssuesLedger.upstreamClosed`, `readGithubIssues`), `src/github/github-issues-render.ts`
-(`issueRows`, `issuesHeader`, `issueAge`, `issueStateLines`), the event sites that give the type its
+(`issueRows`, `issuesHeader`, `issueAge`, `issueStateLines`, `stateIssueRows`, `IssueState`), the
+event sites that give the type its
 line (`src/events/events.ts`, `src/events/event-labels.ts`, `src/events/event-format-config.ts`,
 `src/events/event-format.ts`), and `src/failure/failure-state-change.ts`
 (`STATE_CHANGE_EXCLUDED_TYPES`).
@@ -5861,10 +5864,15 @@ excluded";
 `test/github-issues-render.test.ts` — "issueRows appends the upstream rows last, positioned past
 the closed ones, and flags them", "the header counts the upstream rows above zero only, and a
 foreign upstreamClosed counts none", "a lost issue reads as last seen open, never as closed, and
-says so when the instant is foreign", and "the detail of a lost issue names the loss and its
-last-seen instant, with no close line"; `test/cli-issues.test.ts` — "issues lists issues GitHub
-closed upstream last, under a header counting them" and "issues degrades a hand-edited
-upstreamClosed holding a non-row to no upstream rows".
+says so when the instant is foreign", "the detail of a lost issue names the loss and its
+last-seen instant, with no close line", and "stateIssueRows keeps a lost row out of --open and
+--closed and alone under --lost"; `test/cli-issues.test.ts` — "issues lists issues GitHub
+closed upstream last, under a header counting them", "issues degrades a hand-edited
+upstreamClosed holding a non-row to no upstream rows", "issues --lost keeps only the
+upstream-closed rows, at their whole-list positions", "issues --lost composes with --show,
+--grep, the flag gate and the other states", and "issues --lost names an empty loss list in
+words, and an empty mirror in its header"; `test/cli-issues-follow.test.ts` — "issues -f --lost
+repaints the lost subset at its whole-list position".
 
 ## Once rounds: every starting hold settles its runner, so a held team still exits
 

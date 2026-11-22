@@ -213,6 +213,33 @@ test("stateIssueRows splits on wasClosed, not on a stale closed marker, keeping 
   assert.equal(openRows.length + stateIssueRows(rows, "closed").length, rows.length, "and together they are the list");
 });
 
+test("stateIssueRows keeps a lost row out of --open and --closed and alone under --lost", () => {
+  // The third state, and the rule the two older ones now share: a row from `upstreamClosed` is
+  // neither still open nor closed by tumwater, so it answers none of the older filters and its own
+  // alone. The positions come from the whole list — open #10, closed #9, lost #8 and #12 — so
+  // `--lost --show 3` addresses the same issue the unfiltered list numbers 3.
+  const closedAt = NOW - 3 * DAY_MS;
+  const l = ledger({
+    open: [ledger().open[0]!],
+    closedRows: [{ ...ledger().open[1]!, number: 9, title: "Closed nine", updatedAt: new Date(closedAt).toISOString() }],
+    closed: { "9": { at: closedAt, shas: ["abc1234"] } },
+    upstreamClosed: [
+      { ...ledger().open[1]!, number: 8, title: "Lost eight", closedAt },
+      { ...ledger().open[0]!, number: 12, title: "Lost twelve", closedAt },
+    ],
+  });
+  const rows = issueRows(l);
+  const subset = (state: "open" | "closed" | "lost") => stateIssueRows(rows, state).map((r) => [r.position, r.number]);
+  assert.deepEqual(subset("lost"), [[3, 8], [4, 12]], "the lost rows, at their whole-list positions");
+  assert.deepEqual(subset("closed"), [[2, 9]], "a lost row is not a row tumwater closed");
+  assert.deepEqual(subset("open"), [[1, 10]], "and not an issue the mirror still holds");
+  assert.equal(
+    subset("open").length + subset("closed").length + subset("lost").length,
+    rows.length,
+    "the three states are the whole list, disjoint",
+  );
+});
+
 test("renderIssueDetail names only the states the ledger holds and prints the excerpt verbatim", () => {
   const l = ledger({
     declined: { "10": { at: Date.parse(T), updatedAt: T, reason: "already planned" } },

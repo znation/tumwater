@@ -7,7 +7,7 @@
 import { fail, say, sayJson, sayJsonOrRender } from "../terminal.js";
 import { followView, type FollowViewSeams } from "../follow.js";
 import { failFollowJsonRival, flagValue, parseGrepFlag, parseRoleListScope, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
-import { CLOSED_FLAG, DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, HELD_FLAG, JSON_FLAG, OPEN_FLAG, READY_FLAG, grepFlagSpec, modeNamed, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
+import { CLOSED_FLAG, DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, HELD_FLAG, JSON_FLAG, LOST_FLAG, OPEN_FLAG, READY_FLAG, grepFlagSpec, modeNamed, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { scopeSnapshotToRoles, snapshot, snapshotForStatus } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
@@ -333,7 +333,7 @@ async function cmdQuarantineRelease(root: string, args: string[]): Promise<void>
 }
 
 
-/** `tumwater issues [-f/--follow] [--open|--closed] [--show <n>] [--grep <text>] [--json]`:
+/** `tumwater issues [-f/--follow] [--open|--closed|--lost] [--show <n>] [--grep <text>] [--json]`:
  * the GitHub-issues mirror read from its ledger file alone. The mirror series
  * (plans/github-issues.md) scans GitHub
  * after each merge and records what it saw and what tumwater did about each issue in
@@ -344,9 +344,9 @@ async function cmdQuarantineRelease(root: string, args: string[]): Promise<void>
  * and on any branch. `--show <n>`, `--grep <text>` and `--json` follow the shape `cmdQuarantine`
  * established for the same three views. `-f/--follow` repaints this read on the shared follow
  * interval, re-reading the ledger each frame, so an operator can watch a merge's scan and its
- * closes land without rerunning the command. `--open`/`--closed` narrow the rows to one state at
- * the same place `--grep` does, so both filters keep whole-list positions and the header keeps
- * naming the mirror's own counts. */
+ * closes land without rerunning the command. `--open`/`--closed`/`--lost` narrow the rows to one
+ * state at the same place `--grep` does, so all three filters keep whole-list positions and the
+ * header keeps naming the mirror's own counts. */
 export async function cmdIssues(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   // `--show <n>` is routed before the flag gate exactly as cmdQuarantine routes its own detail
   // mode, so the detail branch owns its flag gate and refuses a `--grep` beside it by name. A
@@ -359,21 +359,21 @@ export async function cmdIssues(root: string, args: string[], seams: FollowViewS
   // each kept row still numbered as the full list numbers it, so `--show` addresses the same
   // issue. The missing-value wording is shared by this parser and the flag gate.
   const ISSUES_GREP_VALUE_ERROR = "issues --grep needs text (usage: tumwater issues --grep <text>)";
-  rejectUnknownArgs("issues", args, [JSON_FLAG, FOLLOW_FLAG, grepFlagSpec(ISSUES_GREP_VALUE_ERROR), OPEN_FLAG, CLOSED_FLAG]);
+  rejectUnknownArgs("issues", args, [JSON_FLAG, FOLLOW_FLAG, grepFlagSpec(ISSUES_GREP_VALUE_ERROR), OPEN_FLAG, CLOSED_FLAG, LOST_FLAG]);
   refuseTeamWorkspace(root);
   // -f/--follow and --json scan over `rest` (the pattern token removed), so a flag-shaped
   // pattern like `--grep --json` is the text "--json", not the rival flag. --json is a rival of
   // the follow exactly as it is for `quarantine -f`: the follow is the human's view.
   const { rest, pattern } = parseGrepFlag(args, ISSUES_GREP_VALUE_ERROR);
   // The state filter, read off `rest` for the same reason --json is: `--grep --closed` takes
-  // "--closed" as the pattern, so that token is filter text, not the flag. Each flag keeps the
-  // rows the other hides, so spelling both is a contradiction, worded as `backlog --ready
-  // --held` words its own pair. A repeat of one spelling is stopped earlier, by the flag gate's
+  // "--closed" as the pattern, so that token is filter text, not the flag. Each of the three
+  // flags keeps the rows the others hide, so spelling two is a contradiction, worded as
+  // `backlog --ready --held` words its own pair — one wording per pair, so the refusal names the
+  // two flags actually written. A repeat of one spelling is stopped earlier, by the flag gate's
   // "may only be given once" rule.
-  if (rest.includes("--open") && rest.includes("--closed")) {
-    fail("--open and --closed are mutually exclusive: each keeps the issues the other hides");
-  }
-  const state: IssueState | null = rest.includes("--closed") ? "closed" : rest.includes("--open") ? "open" : null;
+  refuseRivalStates(rest);
+  const state: IssueState | null =
+    rest.includes("--closed") ? "closed" : rest.includes("--lost") ? "lost" : rest.includes("--open") ? "open" : null;
   const follow = hasFollowFlag(rest);
   if (follow && rest.includes("--json")) failFollowJsonRival("issues --json");
   // Each frame re-reads the ledger file, so a scan that lands while the follow runs shows in the
@@ -401,7 +401,9 @@ export async function cmdIssues(root: string, args: string[], seams: FollowViewS
     if (ledger === null) return "the GitHub issues mirror has not been read yet";
     if (kept.length === 0 && full.length > 0) {
       if (pattern !== null) return `no GitHub issues match "${pattern}"`;
-      return state === "closed" ? "no closed GitHub issues" : "no open GitHub issues";
+      // The state's own empty line, named by the flag that asked for it. A bare read (state null)
+      // cannot reach here with nothing kept and a non-empty mirror, so it keeps the open wording.
+      return state === "lost" ? "no lost GitHub issues" : state === "closed" ? "no closed GitHub issues" : "no open GitHub issues";
     }
     const header: IssuesHeader = issuesHeader(ledger);
     return renderIssues(kept, header, Date.now());
@@ -423,6 +425,23 @@ export async function cmdIssues(root: string, args: string[], seams: FollowViewS
     return;
   }
   say(renderIssuesFrame());
+}
+
+/** Refuse two of the three `issues` state flags. Each keeps the rows the other hides, so naming
+ * the written pair is the whole message; the three pairs share one sentence shape, spelled out
+ * rather than generated, so each wording is greppable as the exact line the operator reads. A
+ * repeat of one spelling never reaches here — the flag gate stops it first. */
+function refuseRivalStates(rest: readonly string[]): void {
+  const pairs: readonly [string, string][] = [
+    ["--open", "--closed"],
+    ["--open", "--lost"],
+    ["--closed", "--lost"],
+  ];
+  for (const [a, b] of pairs) {
+    if (rest.includes(a) && rest.includes(b)) {
+      fail(`${a} and ${b} are mutually exclusive: each keeps the issues the other hides`);
+    }
+  }
 }
 
 /** The `tumwater issues --show <n>` branch: print the Nth issue the list prints, in full — the

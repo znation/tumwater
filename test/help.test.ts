@@ -168,11 +168,12 @@ test("quarantine help names the --release --json payload", () => {
 // topic has to say both: the gh-free guarantee is what makes it safe to run anywhere.
 test("issues help names its --json payload and that the read never calls gh", () => {
   const topic = helpTopic("issues")!;
-  assert.match(topic, /^  tumwater issues \[-f\/--follow\] \[--open\|--closed\] \[--show <n>\] \[--grep <text>\] \[--json\]\n/);
+  assert.match(topic, /^  tumwater issues \[-f\/--follow\] \[--open\|--closed\|--lost\] \[--show <n>\] \[--grep <text>\] \[--json\]\n/);
   assert.match(topic, /\{ read, repo, branch, checkedAt, gh, issues: \[\.\.\.\] \}/);
   assert.match(topic, /never by calling gh/);
-  assert.match(topic, /--open and --closed\n\s+each keep one state/);
-  assert.match(topic, /"no open GitHub issues" or "no closed GitHub/);
+  assert.match(topic, /--open, --closed and\n\s+--lost each keep one state/);
+  assert.match(topic, /"no open GitHub issues", "no closed/);
+  assert.match(topic, /or "no lost GitHub issues"/);
 });
 
 // The notes, instructions and enable/disable role writes take --json (the hold writes did so

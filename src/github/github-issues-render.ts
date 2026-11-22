@@ -129,19 +129,26 @@ export function grepIssueRows(rows: readonly IssueRow[], pattern: string): Issue
   return rows.filter((r) => String(r.number).includes(pattern) || r.title.toLowerCase().includes(needle));
 }
 
-/** The state `tumwater issues --open`/`--closed` narrow the read to. */
-export type IssueState = "open" | "closed";
+/** The state `tumwater issues --open`/`--closed`/`--lost` narrow the read to. */
+export type IssueState = "open" | "closed" | "lost";
 
-/** The rows of one state only: `"closed"` keeps the rows `issueRows` marked `wasClosed` (the
- * ledger's `closedRows` list), `"open"` keeps every row that is not. The one place the state
+/** The rows of one state only: `"lost"` keeps the rows `issueRows` marked `upstreamClosed` (the
+ * ledger's `upstreamClosed` list), `"closed"` keeps the rows it marked `wasClosed` (the ledger's
+ * `closedRows` list), and `"open"` keeps every row that is neither. The one place the state
  * filter runs, applied to already-positioned rows, so each kept row keeps its whole-list
  * `position` — the rule `grepIssueRows` keeps, and why `--closed --show <n>` addresses the same
- * issue the unfiltered list does. The dashboard's `GET /api/issues?state=` filter runs here too, so
+ * issue the unfiltered list does. The dashboard’s `GET /api/issues?state=` filter runs here too, so
  * the two front ends cannot divide open from closed differently. A row is told open from closed by
- * `wasClosed`, not by its
- * `closed` marker: an issue reopened after tumwater closed it still carries the marker. */
+ * `wasClosed`, not by its `closed` marker: an issue reopened after tumwater closed it still carries
+ * the marker. A lost row is told by `upstreamClosed` first, so it answers neither older filter —
+ * the issues GitHub stopped listing are neither still open nor closed by tumwater, and listing
+ * one under `--open` would show a loss as if the mirror still held it. */
 export function stateIssueRows(rows: readonly IssueRow[], state: IssueState): IssueRow[] {
-  return rows.filter((r) => (state === "closed" ? r.wasClosed === true : r.wasClosed !== true));
+  return rows.filter((r) => {
+    if (state === "lost") return r.upstreamClosed === true;
+    if (r.upstreamClosed === true) return false;
+    return state === "closed" ? r.wasClosed === true : r.wasClosed !== true;
+  });
 }
 
 /** Resolve what position N names in the ledger, by the same issue-number order `issueRows` uses.
