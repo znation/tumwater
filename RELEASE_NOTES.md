@@ -1,66 +1,76 @@
-# tumwater 0.9.0
+# tumwater 0.10.0
 
 ## Highlights
 
-- Feature and bugfix now default to 3 parallel instances, and the plan role keeps 4 eligible
-  plans ahead instead of 2. An idle extra instance costs nothing: it is skipped while no
-  unclaimed entry is eligible. **Upgrade note:** a team with no `instances` in tumwater.json
-  goes from one to three feature and bugfix runners on its first redeploy. Set
-  `roles.feature.instances` / `roles.bugfix.instances` to 1 (`tumwater role feature
-  --instances 1`, the Settings card or the role drawer) to keep the old behavior. A local-model
-  team should check `maxConcurrent` against its server's parallel slots.
-
-- A release install names its npm version everywhere it names the build: the `tumwater status`
-  header, the `tumwater start` banner, `doctor`, and the dashboard's Version row (the commit
-  stays beside it, and in the tooltip, for bug reports).
-- The terminal dashboard is gone, so the browser dashboard is the one place to watch and steer
-  the team (see CLI).
-- The README, `tumwater init`, `help` and the glossary now say up front that you steer tumwater
-  through its backlog, mainly from your own interactive agent (see `tumwater guide`).
-- While a maintenance role (clean, coverage, dedupe, improve, …) waits for a permit, work runs
-  leave it the next free one (up to a third of the team: 2 permits at the default cap of 6), so
-  a busy feature or bugfix tier no longer starves maintenance.
+- GitHub issues come into the backlog. On a project with a GitHub remote and a logged-in `gh`,
+  tumwater scans open issues hourly. It hands each trusted issue that no backlog entry mirrors
+  yet to the director, one at a time. Once every entry that mirrors an issue is finished and
+  the fix is on GitHub's base branch, it closes the issue and cites the fix commit.
+  **Upgrade note:** the mirror is on by default. It trusts only issues opened by the repo's
+  owners, members and collaborators, plus any issue a maintainer labels `tumwater`. Set
+  `githubIssues.enabled: false` in tumwater.json to turn it off, or `githubIssues.close: false`
+  to keep tumwater from closing issues. `authors`, `mirrorLabel` and `scanIntervalMinutes` are
+  in docs/config.md.
+- A project with no declared check gets one without your help: the orchestrator asks the
+  director to declare one. While that happens, the dashboard shows a blue info message, not an
+  amber warning, and the doctor row reads ok.
+- tumwater has no runtime dependencies again: ink and react went with the terminal dashboard.
+- The Codex strong tier now defaults to `gpt-6.2-sol`, and the minimum Codex CLI is 0.170.0.
+  An older CLI fails doctor's `codex version` row rather than being sent a model it can't list.
+- Codex runs with no `backends.codex.configDir` keep their sessions in a per-team
+  `.tumwater/codex-home`. Before this they filled your own `~/.codex`.
 
 ## CLI
 
-- New `tumwater land [<ref>] [--dry-run] [--json]` puts your own hand-made commit(s) on main
-  under the team's merge lock: a fast-forward, or a replay onto a main that moved meanwhile.
-  `--dry-run` shows the commits, their files and whether they apply, and writes nothing.
-- New `tumwater guide` prints the working rules for an interactive agent steering the backlog,
-  plus facts about this project (branch, check, team), so the rules need not be copied into
-  CLAUDE.md or AGENTS.md.
-- The terminal dashboard is removed: `tumwater tui` and `tumwater start --tui` no longer exist.
-  Watch and steer the team through the browser dashboard — `tumwater gui`, or
-  `tumwater start --gui` to boot the team and serve it together — and through `tumwater status`
-  and `tumwater logs -f`.
-- The daily session cleanup, which can take over an hour on a host with thousands of expired
-  Codex sessions, now logs `cleanup started` / `cleanup finished` events and writes its progress
-  to `.tumwater/state/maintenance.json`, so a team busy cleaning up no longer looks hung.
+- New `tumwater issues [--show <n>] [--grep <text>] [--json]` lists what the GitHub-issues
+  mirror last saw and what tumwater did about each issue. It reads the ledger only, so it works
+  without `gh`.
+- New `tumwater reviews --requeue-dropped` puts post-merge reviews that were dropped back in the
+  queue, for commits already on main.
+- `tumwater report` adds `Compactions by role` and `Checkpoint compactions by role`, so you can
+  see how often each role's context was rewritten and how many of those rewrites your own
+  checkpoints drove.
+- The dashboard has new warnings: an amber alert when the orchestrator stops polling, a banner
+  with progress and an ETA during session cleanup, and a warning when `gh` can't read the
+  project's issues.
+- The dashboard's 401 response now tells a wrong token (for example, a reopened URL whose token
+  has rotated) apart from a missing one.
+- A few more config errors suggest the value you probably meant (`githubIssues.authors`,
+  tier-map thinking levels, backlog kinds in the GUI).
 
 ## Fixes
 
-- A pi run that stopped at a checkpoint is no longer misread as cut off at the context ceiling
-  (pi announces a compaction before it starts one), which set up a resume into a summary that
-  was never written.
-- A Codex build whose `--version` probe timed out no longer reuses another build's hook-trust
-  verdict from the cache.
-- A `requires … landed` clause is read from every parenthetical group of a backlog heading, and
-  a stray `)` no longer silently drops it, so a prerequisite hold can't vanish.
-- A role recovering after a crash no longer stacks its next commit on its own unmerged change.
-- The budgeted gate always runs the temp-dir policy scan, so a change that adds a raw
-  `mkdtempSync` under the OS temp dir no longer merges and turns main red.
-- Project-root discovery is pinned against a stray `.tumwater` in the OS temp directory.
-- The e2e tier defers on a host near its load bar instead of starting and starving.
-- The `sessionRetentionDays` setting describes everything the cleanup now removes.
-- The dashboard's wake-all and reset-counters actions target the configured roles, as the CLI
-  does, rather than listing every instance id.
+- Session cleanup no longer blocks every role. Deletes run in the background, four at a time.
+  Placeholder and already-gone Codex sessions are skipped, a restarted pass resumes where it
+  stopped, and shutdown stops a pass that is still running.
+- Host sleep is no longer read as a hang: a run's deadline is extended by the time the host
+  slept, and a model-check probe that spans a sleep gets one retry before the pair is failed.
+- The model check's verdicts survive an orchestrator restart, so a failed pair keeps the
+  back-off it earned and its roles are not held for a fresh probe.
+- A post-merge review that timed out while still making progress resumes its session on retry.
+  A restart stops in-flight post-merge reviews before handing off. A dropped review now logs
+  a `review_dropped` event.
+- A reviewer fix that is withheld keeps the review open and keeps its finding.
+- A claimed extra instance is admitted ahead of a free sibling, so a higher backlog entry no
+  longer waits behind a lower one.
+- A full run on main that reaches no verdict leaves the head due for another check after a
+  short backoff. Before, main's head went unchecked until main moved again.
+- Offline `reset-counters` also zeroes the counters of parallel instances.
+- A subscription team whose usage windows haven't arrived yet reads "usage not reported yet",
+  not "Free models".
+- Stage checks ignore `.scratch/`, and a `.js` path counts as present when its `.ts` source is
+  staged.
+- A queued prompt move rolls back if the old queue file can't be removed.
 
 ## Build and tests
 
-- Small cleanups: one home for the team-hold backoff ladder, the run-start→model pairing rule,
-  and the default instance count.
-- New tests pin the session ledger's kind guard, the merge-claim shape guard, the post-merge
-  review backoff, the session-cleanup progress and event wording, and the release-version
-  stamp.
+- A staging self-check flags a comment block that a change copied verbatim next to its
+  original.
+- Small cleanups: shared file-read helpers replace hand-rolled absent-file and readdir reads,
+  some modules moved (config reload, run commit messages, build-check poll), GitHub mirror reads
+  are cached per branch tip, and terminal-dashboard wording is gone from comments, tests and
+  docs.
+- New tests pin `tumwater land`'s command body and dry runs, session-prune slot release,
+  compaction counting, and per-command flag rejection.
 
-267 files changed, +5402 / −26613 over 69 commits since v0.8.2
+405 files changed, +13280 / −2987 over 194 commits since v0.9.0
