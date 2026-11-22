@@ -4353,6 +4353,35 @@ Only git's own answer, a missing object or a conflict no settler resolves, drops
 reporting a diff that no longer applies" and "a revision whose re-apply git could not start keeps
 the revision and its ref for the next run".
 
+### INV-BH6: a red check's reasons name the finding, never the checking machinery, and only in the verified branch
+
+**Guarantee.** `checkFailureReasons`' verified branch returns the headline plus only the clipped-tail
+lines that describe the finding: `checkingMachinery` drops the runner's framing lines (any `at …`
+frame, node:test's `ℹ` counters, its `✖ failing tests:` header and `test at <file>:<line>` marker),
+node:assert's mechanics keys (`generatedMessage: true,`, `code: 'ERR_ASSERTION',`, `operator: '…',`,
+`diff: '…'`) with the bare `{`/`}` bracketing its dump, and scripts/lint-changed.mjs's no-finding
+status lines (`lint: clean`, `lint: N changed file(s)`, `lint: the whole tree`, `lint: no changed
+file to lint`). An assertion's `actual:`/`expected:` diff, a compiler error, eslint's own report
+lines and its `lint: failed` status all survive, as does a compared object whose own field happens
+to be named `code` or `diff`. The unverified branch filters nothing: its lines are the report of
+the check itself. The guarantee exists because those lines become the author's numbered objections
+(INV-BH4's persistence counts included): one failing `deepStrictEqual` under `test:gate` printed 11
+objections, 8 of them machinery no diff could change, and the chain ended on them (BUGS.md
+2026-11-22). `clipBuildTail`'s tail, which the red-main heal note prints whole, is untouched — the
+filter is on the reasons, not the recorded output.
+
+**Binds.** `src/build/build-check-report.ts` (`checkFailureReasons`, `checkingMachinery`,
+`FRAMING_LINE`, `ASSERTION_MECHANICS_KEY`, `LINT_STATUS_LINE`), `src/review/review-precheck.ts`,
+`scripts/lint-changed.mjs` (its status wording).
+
+**Pinned by.** `test/build-check-report.test.ts` — "a red check's reasons name the finding, not
+node:assert's dump, the runner's frames or the lint status", "a red check's reasons keep eslint's
+failure status and a diff line that reuses its key words", "a red check's unverified reasons keep
+the machinery lines that carry the diagnosis", "a red check's reasons lead with the headline and
+drop the framing lines with it" and "a tail that is all framing still names its first line as the
+headline"; `test/review-precheck-verdict.test.ts` — "gate pre-check names the failing assertion,
+not the stack frame the tail opens on".
+
 ## Staging self-check: each git-level finding stops at its cap, and a check that cannot run adds nothing
 
 ### INV-BK1: a finding names at most ten paths, files or hits, and a change emits at most ten stale-reference findings

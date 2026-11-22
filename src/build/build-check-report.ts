@@ -201,6 +201,42 @@ const FRAMING_LINE = /^(?:at\s|ℹ\s|✖ failing tests:|test at \S+:\d+:\d+)/;
  * A ⚠ todo marker (`# TODO` suffix, no `:1:1` location) does not match: it is not a failure. */
 const FILE_LEVEL_MARKER = /^⚠ \S+ \(\S+:1:1\)$/;
 
+/** node:assert's (and Node's own error-inspection dump's) mechanics keys, printed the same way
+ * for every assertion failure whatever was compared: `generatedMessage: true,`,
+ * `code: 'ERR_ASSERTION',`, `operator: 'deepStrictEqual',`, `diff: 'simple'`. They say HOW the
+ * check compared values, never what differed — that is `actual:`/`expected:`, which are NOT
+ * matched here. A quoted-or-word value is required, so a real diff line carrying the same word as
+ * a field of the compared data (`code: 500,`, `diff: null,`) is kept. */
+const ASSERTION_MECHANICS_KEY =
+  /^(?:generatedMessage: (?:true|false),?|code: '[A-Z0-9_]+',?|operator: '[^']*',?|diff: '[A-Za-z]+',?)$/;
+
+/** scripts/lint-changed.mjs's own no-finding status lines, the gate lint's last words in a red
+ * check's output (`lint: clean`, `lint: 3 changed file(s)`, `lint: the whole tree`, `lint: no
+ * changed file to lint`). `lint: failed (eslint's report above)` is deliberately NOT matched: it
+ * names a real failure, and when eslint's own report lines are cut out of the tail window that
+ * line is the only lint signal left. eslint's report lines name a file and a rule and match
+ * nothing here. */
+const LINT_STATUS_LINE = /^lint: (?:clean|the whole tree|no changed file to lint|\d+ changed file)/;
+
+/** Whether a clipped-tail line describes the checking machinery rather than the finding: a
+ * framing line (FRAMING_LINE — any `at …` stack frame, node:test's `ℹ` counters, its `✖ failing
+ * tests:` header and `test at <file>:<line>` marker), node:assert's mechanics keys
+ * (ASSERTION_MECHANICS_KEY) with the bare `{`/`}` that bracket its dump, or the gate lint's
+ * status lines (LINT_STATUS_LINE). Each reads the same in every failure of its kind, so a
+ * rejection that numbers one asks the author to answer a line no diff can change — 11 numbered
+ * objections for one failing test, 8 of them machinery (BUGS.md 2026-11-22) — and a machinery
+ * line restated in the next revision ends the reject→revise chain on nothing. An assertion's
+ * diff (`actual:`/`expected:`), a compiler error and eslint's report lines are not machinery. */
+function checkingMachinery(line: string): boolean {
+  return (
+    FRAMING_LINE.test(line) ||
+    ASSERTION_MECHANICS_KEY.test(line) ||
+    line === "{" ||
+    line === "}" ||
+    LINT_STATUS_LINE.test(line)
+  );
+}
+
 /** The one-line headline for a red check's clipped tail (clipBuildTail's output): the first
  * line that is neither framing (FRAMING_LINE) nor a failed test's name, prefixed with the
  * test's name (its duration dropped, so one flake's warnings cluster as one) when the tail
@@ -242,7 +278,10 @@ export function redCheckHeadline(check: BuildCheck, tail: readonly string[] | un
  * change: the gate's pre-check (the batch and single-merge in-lock checks that shared it are gone).
  * In the verified branch, tail lines the headline already carries are dropped: the headline
  * itself, the test-name or marker line (duration removed) it opens with, and the message line it
- * ends with. */
+ * ends with — and so are the checking-machinery lines (checkingMachinery): a red check's numbered
+ * objections are the finding, not the runner's frames, node:assert's dump or the lint runner's
+ * status. The unverified branch passes its tail through verbatim, machinery and all: those lines
+ * ARE what happened there, and dropping any of them would hide a starved-host diagnosis. */
 export function checkFailureReasons(check: BuildCheck, outcome: BuildCheckOutcome): string[] {
   const tail = outcome.outputTail ?? [];
   // An unverified rejection already says what happened — the check never finished, the tree is
@@ -256,7 +295,10 @@ export function checkFailureReasons(check: BuildCheck, outcome: BuildCheckOutcom
   const headline = failureHeadline(tail);
   const what = describeCheck(check);
   return headline !== undefined
-    ? [`check failed (${what}): ${headline}`, ...tail.filter((l) => !headlineCarries(headline, l))]
+    ? [
+        `check failed (${what}): ${headline}`,
+        ...tail.filter((l) => !headlineCarries(headline, l) && !checkingMachinery(l)),
+      ]
     : [`check failed (${what})`];
 }
 

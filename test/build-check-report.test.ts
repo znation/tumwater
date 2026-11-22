@@ -27,7 +27,7 @@ function outcome(overrides: Partial<BuildCheckOutcome>): BuildCheckOutcome {
   return { status: "failed", script: "test", ...overrides };
 }
 
-test("a red check's reasons lead with the headline and drop it from the tail", () => {
+test("a red check's reasons lead with the headline and drop the framing lines with it", () => {
   const tail = [
     "at process.processTicksAndRejections (node:internal/process/task_queues:95:5)",
     "AssertionError [ERR_ASSERTION]: expected 1 to equal 2",
@@ -37,7 +37,7 @@ test("a red check's reasons lead with the headline and drop it from the tail", (
   const reasons = checkFailureReasons(NPM_CHECK, outcome({ outputTail: tail }));
   assert.deepEqual(reasons, [
     "check failed (`npm run test`): AssertionError [ERR_ASSERTION]: expected 1 to equal 2",
-    "at process.processTicksAndRejections (node:internal/process/task_queues:95:5)",
+    // The stack frame describes the runner, not the finding — no diff can answer it.
     "actual: 1,",
     "expected: 2,",
   ]);
@@ -74,9 +74,7 @@ test("a red check with no output tail falls back to a bare build-check-failed re
 test("a tail that is all framing still names its first line as the headline", () => {
   const tail = ["✖ failing tests:", "test at dist/test/some.test.js:12:3"];
   const reasons = checkFailureReasons(NPM_CHECK, outcome({ outputTail: tail }));
-  assert.equal(reasons.length, 2, "the dedup keeps the non-headline framing line");
-  assert.equal(reasons[0], "check failed (`npm run test`): ✖ failing tests:");
-  assert.deepEqual(reasons.slice(1), ["test at dist/test/some.test.js:12:3"]);
+  assert.deepEqual(reasons, ["check failed (`npm run test`): ✖ failing tests:"], "the headline names something; the rest is framing");
 });
 
 test("an unverified red with an empty tail still says why the tree is unverified", () => {
@@ -370,6 +368,84 @@ test("clipBuildTail keeps an all-internal output rather than returning nothing",
     "at node:internal/process/task_queues:95:5",
   ];
   assert.deepEqual(clipBuildTail(lines.join("\n")), lines);
+});
+
+test("a red check's unverified reasons keep the machinery lines that carry the diagnosis", () => {
+  // The unverified branch is not a red's diagnosis but a report of the check itself: its lines
+  // (a timeout sentence, a host-load line) ARE what happened, so nothing is filtered there.
+  const tail = [
+    "merge check timed out after 30s; the tree is unverified (host load average 61 on 18 cores)",
+    "lint: clean",
+  ];
+  const reasons = checkFailureReasons(NPM_CHECK, outcome({ unverified: true, outputTail: tail }));
+  assert.deepEqual(reasons, tail, "passed through verbatim, lint status line included");
+});
+
+test("a red check's reasons name the finding, not node:assert's dump, the runner's frames or the lint status", () => {
+  // One failing `deepStrictEqual` in one test file, run under `npm run test:gate` (real node 26
+  // spec-reporter output, then lint-changed's own status line last, as the gate prints it). The
+  // clipped tail is 12 lines, so the author was handed 11 numbered objections of which only the
+  // headline, `actual:` and `expected:` could be answered with a diff — six revision rounds on
+  // the TUI removal and 2.3 h on a doc-command fix bought nothing but `Objection 4: done — same
+  // failure's stack frame` (BUGS.md 2026-11-22).
+  const output = [
+    "✖ docs quote every command tumwater help lists (0.809833ms)",
+    "ℹ tests 1",
+    "ℹ pass 0",
+    "ℹ fail 1",
+    "ℹ duration_ms 85.851583",
+    "",
+    "✖ failing tests:",
+    "",
+    "test at dist/test/docs-help.test.js:3:1",
+    "✖ docs quote every command tumwater help lists (0.809833ms)",
+    "  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+    "  + actual - expected",
+    "  ",
+    "  + [",
+    "  +   'docs/invariants.md:5598 run'",
+    "  + ]",
+    "  - []",
+    "  ",
+    "      at TestContext.<anonymous> (file:///worktrees/_slot-1/dist/test/docs-help.test.js:4:10)",
+    "      at Test.runInAsyncScope (node:async_hooks:226:14)",
+    "      at Test.run (node:internal/test_runner/test:1402:25)",
+    "      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {",
+    "    generatedMessage: true,",
+    "    code: 'ERR_ASSERTION',",
+    "    actual: [ 'docs/invariants.md:5598 run' ],",
+    "    expected: [],",
+    "    operator: 'deepStrictEqual',",
+    "    diff: 'simple'",
+    "  }",
+    "lint: clean",
+  ].join("\n");
+  const reasons = checkFailureReasons(NPM_CHECK, outcome({ outputTail: clipBuildTail(output) }));
+  assert.deepEqual(reasons, [
+    "check failed (`npm run test`): ✖ docs quote every command tumwater help lists — AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+    "actual: [ 'docs/invariants.md:5598 run' ],",
+    "expected: [],",
+  ]);
+});
+
+test("a red check's reasons keep eslint's failure status and a diff line that reuses its key words", () => {
+  // `lint: failed` is the only lint signal left when eslint's report is cut out of the tail
+  // window, and a compared object's own `code:`/`diff:` fields are the assertion's content —
+  // neither is node:assert's mechanics, so neither may drop out.
+  const reasons = checkFailureReasons(NPM_CHECK, outcome({
+    outputTail: [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+      "actual: { code: 500, diff: 'unified' },",
+      "expected: { code: 200, diff: 'simple' },",
+      "lint: failed (eslint's report above)",
+    ],
+  }));
+  assert.deepEqual(reasons, [
+    "check failed (`npm run test`): AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+    "actual: { code: 500, diff: 'unified' },",
+    "expected: { code: 200, diff: 'simple' },",
+    "lint: failed (eslint's report above)",
+  ]);
 });
 
 test("a red check's reasons do not repeat the test name or message the headline carries", () => {

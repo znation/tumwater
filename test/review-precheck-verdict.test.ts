@@ -120,7 +120,7 @@ test("gate pre-check names the failing assertion, not the stack frame the tail o
     assert.ok(!fs.existsSync(marker), "no pi run before the reject");
     const reasons = state.lastReview?.reasons ?? [];
     assert.equal(reasons[0], "check failed (`npm run test`): AssertionError [ERR_ASSERTION]: 1 == 2");
-    assert.ok(reasons.some((r) => r.startsWith("at ")), "the rest of the clipped tail still follows");
+    assert.ok(!reasons.some((r) => r.startsWith("at ")), "the runner's frames are no numbered objection");
     assert.ok(reasons.includes("actual: 1,"), "real diff content is not skipped as noise");
   });
 });
