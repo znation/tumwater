@@ -211,6 +211,63 @@ test("collectReport clamps a cache read to the same event's prompt total and fol
   assert.deepEqual(today?.cacheReadTokensByRole, { feature: 10 }, "the over-budget cache read clamps to the prompt total");
 });
 
+test("collectReport narrows a day's compactionsByRole to the scoped base role, folded across instances", () => {
+  // The scoped day path derives the day from the fold's per-role map (applyRoleDay), not the
+  // team map: only the named base role's entry survives, its instance siblings fold into it, a
+  // role that compacted gets no key at all, and the render's Compactions-by-role line for the
+  // same scoped report says only that role — the caller branches on this day's map.
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, compactions: 2 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "feature-2", type: "run_end", run: 2, result: "changed", tokens: 5, compactions: 1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "clean", type: "run_end", run: 3, result: "changed", tokens: 5, compactions: 4 }), // retired-name-ok: legacy event field in a fixture
+  ]);
+
+  // Team scope keeps every role id, instances included, unsummed per base.
+  const teamToday = collectReport(root, 2).series.at(-1);
+  assert.deepEqual(teamToday?.compactionsByRole, { feature: 2, "feature-2": 1, clean: 4 });
+
+  // Role scope: feature's own 2 plus feature-2's 1 fold to the base; clean never appears, and
+  // no zero entry is invented for a role that compacted nothing.
+  const scoped = collectReport(root, 2, "feature");
+  assert.deepEqual(scoped.series.at(-1)?.compactionsByRole, { feature: 3 }, "the scoped day folds instances to the base role only");
+  const scopedMd = renderReportMarkdown(scoped);
+  assert.match(scopedMd, /\*\*Compactions by role:\*\* feature — 3/, "the scoped render's line carries the folded base total");
+  assert.ok(!scopedMd.includes("clean —"), "a scoped report never names another role on the line");
+
+  // A scoped window whose named role ran but never compacted omits the key (zero-means-absent),
+  // exactly as the team report omits it for a compaction-free day.
+  const root2 = tmpdir();
+  writeEvents(root2, [
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "clean", type: "run_end", run: 2, result: "changed", tokens: 5, compactions: 1 }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  for (const d of collectReport(root2, 2, "feature").series) {
+    assert.ok(!("compactionsByRole" in (d as object)), "a compaction-free scoped day carries no key");
+  }
+});
+
+test("collectReport folds a negative, non-finite or non-number compactions reading as absent", () => {
+  // The fold heals ev.compactions through nonNegativeNumber — the same policy as the prompt
+  // counters — so a torn or hand-edited log line can never put NaN or a negative in the map.
+  // Expected shape from that contract, not from output: only the one well-formed reading counts.
+  const root = tmpdir();
+  writeEvents(root, [
+    // A negative count would run the tally backwards (and rank below a real role's total).
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, compactions: -3 }), // retired-name-ok: legacy event field in a fixture
+    // 1e999 JSON-parses to Infinity: non-finite is unusable, not a huge count.
+    `{"ts":${todayTs()},"loop":"bugfix","type":"run_end","run":2,"result":"changed","tokens":5,"compactions":1e999}`,
+    // A wire string is not a count, even a numeric-looking one.
+    JSON.stringify({ ts: todayTs(), loop: "clean", type: "run_end", run: 3, result: "changed", tokens: 5, compactions: "2" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "qa", type: "run_end", run: 4, result: "changed", tokens: 5, compactions: 2 }), // retired-name-ok: legacy event field in a fixture
+  ]);
+
+  const today = collectReport(root, 2).series.at(-1);
+  assert.deepEqual(today?.compactionsByRole, { qa: 2 }, "only the finite non-negative number counts");
+  const md = renderReportMarkdown(collectReport(root, 2));
+  assert.match(md, /\*\*Compactions by role:\*\* qa — 2/, "the healed map renders one role, no NaN and no negative");
+});
+
 test("collectReport splits merged events by base role and by work/maintenance tier", () => {
   const root = tmpdir();
   writeEvents(root, [
