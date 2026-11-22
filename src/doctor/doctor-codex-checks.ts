@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { childEnv } from "../process/process.js";
-import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./doctor-probe.js";
+import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "../process/bounded-probe.js";
 import { codexBackend, CODEX_MIN_VERSION } from "../agent/codex/codex-backend.js";
 import { codexEffort, EFFORT_BY_THINKING } from "../agent/codex/codex-args.js";
 import { codexEnv } from "../agent/codex/codex-env.js";
@@ -35,7 +35,7 @@ import {
  * pi-only team shows no codex row and spawns nothing and reads nothing. The shared
  * report contract (CheckOutcome) and the seam/model framework (loadConfigForCheck,
  * codexSeamsInUse, seamPairs) come from doctor-model-checks.ts, the AUTH_CHECK_* probe budgets
- * from doctor-probe.ts, and the shared report contract (CheckOutcome) from
+ * from process/bounded-probe.ts, and the shared report contract (CheckOutcome) from
  * doctor-outcome.ts, as the other doctor-* modules share them. */
 
 /** The config and codex home a codex readiness row reads, or the warn outcome a broken

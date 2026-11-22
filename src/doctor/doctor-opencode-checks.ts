@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { childEnv } from "../process/process.js";
-import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./doctor-probe.js";
+import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "../process/bounded-probe.js";
 import { opencodeBackend, opencodeSpillDir } from "../agent/opencode/opencode-backend.js";
 import { opencodeModelFree, opencodeModelKey, readOpencodeCache, type OpencodeCatalogCache } from "../agent/opencode/opencode-catalog.js";
 import { formatDate } from "../text/datetime.js";
@@ -26,7 +26,7 @@ import {
  * filesystem/git checks beside it, kept together so a change to how doctor reads opencode does
  * not touch the other model checks. The shared report contract (CheckOutcome) and the
  * seam/model framework (loadConfigForCheck, opencodeSeamsInUse, seamPairs) come from
- * doctor-model-checks.ts, the AUTH_CHECK_* probe budgets from doctor-probe.ts, and the
+ * doctor-model-checks.ts, the AUTH_CHECK_* probe budgets from process/bounded-probe.ts, and the
  * shared report contract (CheckOutcome) from doctor-outcome.ts, as the other doctor-*
  * modules do. */
 

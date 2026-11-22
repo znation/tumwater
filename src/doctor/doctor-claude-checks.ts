@@ -1,6 +1,6 @@
 import os from "node:os";
 import { childEnv } from "../process/process.js";
-import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./doctor-probe.js";
+import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "../process/bounded-probe.js";
 import { claudeBackend, claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { claudeEnv } from "../agent/claude/claude-env.js";
 import { claudeAuthUsesSubscription, parseClaudeAuthStatus, type ClaudeAuthStatus } from "../agent/claude/claude-account.js";
@@ -26,7 +26,7 @@ import {
  * spawns or scrubs claude does not touch the other model checks. The shared report contract
  * (CheckOutcome) and the seam/model framework (loadConfigForCheck, claudeSeamsInUse,
  * seamPairs) come from doctor-model-checks.ts, and the AUTH_CHECK_* probe budgets
- * from doctor-probe.ts, with the shared report contract (CheckOutcome) from
+ * from process/bounded-probe.ts, with the shared report contract (CheckOutcome) from
  * doctor-outcome.ts, exactly as the other doctor-* modules share them. */
 
 /** The config a claude readiness row reads, or the warn outcome a broken `tumwater.json`

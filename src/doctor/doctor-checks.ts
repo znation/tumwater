@@ -40,7 +40,7 @@ import { plural } from "../text/phrases.js";
 import { backendsInUse, unregisteredBackendInUse } from "../gates/startup-gates.js";
 import { claudeSeamsInUse, loadConfigForCheck, minVersionOutcome, opencodeSeamsInUse, seamStandDown, versionFromProbe, piSeamsInUse } from "./doctor-model-checks.js";
 import { claudeConfigDir } from "../agent/claude/claude-backend.js";
-import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./doctor-probe.js";
+import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "../process/bounded-probe.js";
 import { childEnv } from "../process/process.js";
 import { opencodeBackend, OPENCODE_MIN_VERSION } from "../agent/opencode/opencode-backend.js";
 import { failOutcome, noConfigOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";

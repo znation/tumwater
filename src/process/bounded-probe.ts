@@ -1,10 +1,19 @@
 import { spawn } from "node:child_process";
-import { captureCappedOutput, releaseChildHandles, signalTree } from "../process/process.js";
+import { captureCappedOutput, releaseChildHandles, signalTree } from "./process.js";
 
-/** How long a backend credential/version probe may take before it counts as unknown — a doctor
- * run is a pre-flight, not a place to wait out a hung backend. Shared by the pi, claude, opencode
- * and codex credential probes (doctor-pi-checks.ts, doctor-claude-checks.ts,
- * doctor-opencode-checks.ts, doctor-codex-checks.ts). */
+/** One bounded probe of a short-lived CLI: spawn it, capture capped stdout, and settle with its
+ * exit code and stdout, or with null when the probe could not be trusted. It belongs to the
+ * process layer because every surface that asks "can this installed binary answer at all?" needs
+ * it: the doctor's pi, claude, opencode and codex credential/version checks, and the `gh` probe
+ * in github/gh.ts that backs the doctor's `github issues` row, the status/dashboard mirror
+ * banner and the issues scan. Before it moved here it sat in src/doctor/, which forced the
+ * GitHub-facing modules to import the diagnostics layer that in turn reads GitHub — a two-way
+ * directory dependency for one generic spawn. */
+
+/** How long a credential/version probe may take before it counts as unknown — a pre-flight is not
+ * a place to wait out a hung binary. Shared by the pi, claude, opencode and codex credential
+ * probes (doctor-pi-checks.ts, doctor-claude-checks.ts, doctor-opencode-checks.ts,
+ * doctor-codex-checks.ts) and by the `gh` readiness probe. */
 export const AUTH_CHECK_TIMEOUT_MS = 15_000;
 
 /** Cap on a credential probe's captured stdout. The auth reply is a tiny JSON object; a binary
@@ -23,10 +32,10 @@ export const AUTH_CHECK_MAX_OUTPUT_BYTES = 1024 * 1024;
  * spawn closes for git). stderr is ignored rather than piped, since nothing reads it and a
  * full stderr pipe would block the child. `timeoutMs` and `maxOutputBytes` are test seams;
  * production callers pass their own named constants. One home of the shape, shared by the
- * model checks' credential/version probes, and the tier-model probes —
+ * model checks' credential/version probes, the tier-model probes, and the `gh` runner —
  * before the split each doctor module carried its own byte-for-byte copy. The credential probes'
  * named budgets (AUTH_CHECK_TIMEOUT_MS, AUTH_CHECK_MAX_OUTPUT_BYTES) live beside it here, so the
- * backend check modules share them without importing them from one another. */
+ * callers share them without importing them from one another. */
 export function boundedProbe(
   bin: string,
   args: string[],

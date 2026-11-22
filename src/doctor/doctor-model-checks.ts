@@ -1,5 +1,5 @@
 import { ghReadiness, ghRunner, type GhRunner } from "../github/gh.js";
-import { AUTH_CHECK_TIMEOUT_MS } from "./doctor-probe.js";
+import { AUTH_CHECK_TIMEOUT_MS } from "../process/bounded-probe.js";
 import { defaultConfig, loadConfigSafe } from "../config/config.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { cacheReadUnpriced, piModelsPath, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
@@ -38,8 +38,8 @@ const PHRASE_CANNOT_READ_MODELS = "cannot check — could not read pi's model de
  * modules do. The claude, opencode, codex and pi provider checks live in their own per-backend
  * modules (doctor-claude-checks.ts, doctor-opencode-checks.ts, doctor-codex-checks.ts,
  * doctor-pi-checks.ts), each importing this file's shared seam framework and the AUTH_CHECK_*
- * probe budgets from doctor-probe.ts rather than duplicating them. The shared report contract
- * (CheckOutcome) is imported from doctor-outcome.ts, exactly as the other doctor-*
+ * probe budgets from process/bounded-probe.ts rather than duplicating them. The shared report
+ * contract (CheckOutcome) is imported from doctor-outcome.ts, exactly as the other doctor-*
  * modules do. Together
  * these are the doctor's only checks that read pi's model definitions and, for the probes, spawn
  * an agent binary — a distinct concern from the filesystem/git checks, kept together so a change

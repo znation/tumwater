@@ -402,7 +402,8 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   and the serialized file queue.
 - `src/init/`: `tumwater init` and its bundled template catalog.
 - `src/process/`: process spawning and supervision — the supervisor, process groups, the
-  process table, and the macOS LaunchServices guard.
+  process table, the bounded one-shot binary probe any surface that asks whether an installed
+  binary can answer (`bounded-probe.ts`), and the macOS LaunchServices guard.
 - `src/prompt/`: the prompt dialect, principles, and the merge's pi-run prompt text
   (`prompt.ts`, `prompt-followup.ts`, `gate-prompts.ts`, `gate-notes.ts`) a run's prefill is assembled from.
 - `src/roles/`: the role catalog, its role ids, per-role guidance, the per-role views the

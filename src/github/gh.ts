@@ -4,7 +4,7 @@
  * reaches GitHub (PRINCIPLES.md). `ghReadiness` answers the one question every GitHub-facing
  * surface asks before it reads: is `gh` installed, and is it logged in to github.com? */
 
-import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "../doctor/doctor-probe.js";
+import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "../process/bounded-probe.js";
 import { childEnv } from "../process/process.js";
 
 /** Runs `gh <args>` and answers its exit code and stdout, or null when the probe could not
@@ -12,8 +12,8 @@ import { childEnv } from "../process/process.js";
  * boundedProbe returns, so the default runner is boundedProbe itself. */
 export type GhRunner = (args: string[]) => Promise<{ code: number | null; stdout: string } | null>;
 
-/** The default runner: `gh` resolved on the operator's PATH, bounded by the doctor's probe
- * budgets (doctor-probe.ts), with the environment inherited apart from PATH. */
+/** The default runner: `gh` resolved on the operator's PATH, bounded by the shared probe
+ * budgets (process/bounded-probe.ts), with the environment inherited apart from PATH. */
 export function ghRunner(pathEnv: string): GhRunner {
   return (args) =>
     boundedProbe("gh", args, childEnv({ PATH: pathEnv }), AUTH_CHECK_TIMEOUT_MS, AUTH_CHECK_MAX_OUTPUT_BYTES);
