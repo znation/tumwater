@@ -96,7 +96,7 @@ The fields of a `roles.<id>` entry:
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `enabled` | `true` (`false` for selfcheck and feedback) | Whether the role runs. `feedback` and `selfcheck` are alternatives: selfcheck files tumwater bugs into the local BUGS.md on the tumwater repo itself (dogfood), while `feedback` files them as GitHub issues on znation/tumwater from any other install that opts in; nothing leaves the machine until `roles.feedback.enabled` is true. |
+| `enabled` | `true` (`false` for selfcheck and feedback) | Whether the role runs. `feedback` and `selfcheck` are alternatives: selfcheck files tumwater bugs into the local BUGS.md on the tumwater repo itself (dogfood), while `feedback` files them as GitHub issues on znation/tumwater from any other install that opts in; that role files nothing upstream until `roles.feedback.enabled` is true (the GitHub-issues mirror is separate — it is on by default under `githubIssues`). |
 | `instructions` | none | Extra instructions appended to this role's prompt. The director's entry is honored like any role's (its notes stay unset, the `role` command's `--clear-notes` refusal). |
 | `provider` | none | A provider override for this role; unset uses the top-level value. |
 | `model` | none | A model override for this role: a selector, or a tier name from the top-level `model` map; a value one or two letters off a tier name (in any case) is rejected as a misspelled tier; unset uses the role's catalog tier. |

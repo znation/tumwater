@@ -34,7 +34,8 @@ In the order they are worth doing, most first:
 2. In a second terminal, open your own agent in the same repo and tell it to run `tumwater guide`
    before it does anything else.
 3. Have it orient first: `tumwater status`, `tumwater history --result problems`,
-   `tumwater plan --list`, `tumwater bug --list`, `tumwater questions`, `tumwater doctor`.
+   `tumwater plan --list`, `tumwater bug --list`, `tumwater questions`, `tumwater doctor`, and
+   `tumwater issues` on a repo whose GitHub issues the mirror reads.
 4. Ask it to investigate what you care about, then to file, sharpen, reorder, or retire entries —
    one entry at a time with `tumwater plan` and `tumwater bug`, or by editing the backlog files and
    putting the commit on main with `tumwater land`.
@@ -50,6 +51,21 @@ run to confirm each claim (Acceptance criteria), and where each test's expected 
 Work too big for one run becomes a numbered series whose parts name the part they wait on. An entry
 that reads as a wish ("make the CLI friendlier") gets reworked into something checkable before a run
 can take it; that reworking is your agent's job, and `tumwater guide` carries the full rules.
+
+## Naming the GitHub issue an entry answers
+
+With a GitHub remote and `gh` logged in, the mirror reads the repo's open issues on its own clock
+(`githubIssues.scanIntervalMinutes`) and offers the trusted ones to the director, one at a time. By
+default an issue is trusted when its author is the repo's owner, a member, or a listed
+collaborator, or it carries the configured `githubIssues.mirrorLabel`. An entry that answers such
+an issue names it in its `### ` heading with `mirrors GitHub issue #4`, or `mirrors GitHub issues
+#4, #9` when one entry answers several. Only a `### ` heading counts, so the same phrase in an
+entry's body mirrors nothing, and every entry that answers the issue carries the phrase, so the
+link survives a split into a series. Then leave the issue itself alone: while
+`githubIssues.close` is on (the default) tumwater closes it, citing the fix commits, once they are
+on GitHub's copy of the base branch and every entry mirroring it sits in a `## Done`, `## Fixed` or
+`## Verified` section, and closes nothing whose mirroring entries were all retired. `tumwater
+issues -f` watches that happen; `tumwater guide` carries the same rules for your agent.
 
 ## Getting your own edit onto main
 
