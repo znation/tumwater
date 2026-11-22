@@ -188,6 +188,62 @@ test("fixSymbols keeps whitespace-free backticked spans, drops prose and call pa
   ]);
 });
 
+// Regression coverage for the 2026-11-21 false-fix-guard record (BUGS.md): the reader narrowed
+// to a Fix paragraph only for the exact string `**Fix:**`, so the 140 of BUGS-FIXED.md's 543
+// entries that label their fix `**Fix.**`, `**Fix (bugfix 2026-11-21).**`, `**Fixed.**`,
+// `**Fixed 2026-11-19.**`, … were scanned WHOLE: a lock-file md5 quoted in one entry's Symptom
+// (`fa69a208`/`ed710f21`) read as a missing commit and the main watch warned on a healthy tip.
+// `**Fix sketch:**` and `**Fix direction:**` stay excluded: they plan a fix rather than claim
+// one landed, so narrowing to them would check names no code was ever meant to hold.
+test("fixSymbols recognizes every Fix-label shape the team writes, not only **Fix:**", () => {
+  const body =
+    "**Symptom.** against main tip `fa69a208` (lock md5 `ed710f21`), one test failed.\n\n" +
+    "**Fix (bugfix 2026-11-21).** `realFix` re-samples the host.\n";
+  assert.deepEqual(fixSymbols(body), ["realFix"], "the Symptom's hex values are not fix claims");
+  assert.deepEqual(
+    fixSymbols("**Fix.** `a` does it.\n\n**Fixed.** `b` does it.\n\n**Fixed 2026-11-19.** `c` does it.\n"),
+    ["a", "b", "c"],
+  );
+  // A label is matched at its `**` boundary and case-sensitively: prose and a shorter word
+  // never read as one, so an unlabelled body keeps the whole-body fallback that catches a
+  // phantom written without a label.
+  assert.deepEqual(fixSymbols("the `ghostA` fixup landed in `ghostB`."), ["ghostA", "ghostB"]);
+  assert.deepEqual(fixSymbols("**Fixes.** `ghostA` now runs."), ["ghostA"]);
+  assert.deepEqual(fixSymbols("**Fix sketch:** `ghostA` would do."), ["ghostA"]);
+  assert.deepEqual(fixSymbols("**Fix direction:** keep `ghostA`."), ["ghostA"]);
+});
+
+test("falseFixReason does not flag a moved entry whose Symptom quotes a non-commit hex value", async () => {
+  // The 879ff4d3 case: the entry's Fix paragraph names only code the tree holds, and the hex
+  // values it does not hold sit in its Symptom — a lock-file md5, not a commit.
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "wait.ts"), "export function realFix() {}\n");
+  fs.writeFileSync(path.join(root, "BUGS.md"), "## Open\n\n### A flake (found 2026-11-20)\n\n**Symptom.** x.\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed bugs");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Fixed\n\n### A flake (found 2026-11-20) — fixed 2026-11-21 by the bugfix role\n\n" +
+      "**Symptom.** against main tip `fa69a208` (lock md5 `ed710f21`), one test failed.\n\n" +
+      "**Fix (bugfix 2026-11-21).** `realFix` re-samples the host.\n\n" +
+      "**Validation gap:** no-repro — a shared host.\n",
+  );
+  assert.equal(await falseFixReason(root, "main", ["BUGS.md"]), undefined);
+  // The hex values are still claims when they sit in the Fix paragraph: an invented one there
+  // is a phantom commit and keeps its rejection.
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Fixed\n\n### A flake (found 2026-11-20) — fixed 2026-11-21 by the bugfix role\n\n" +
+      "**Symptom.** x.\n\n" +
+      "**Fix (bugfix 2026-11-21).** reviewed `0123456789abcdef0123456789abcdef01234567`.\n",
+  );
+  assert.match(
+    (await falseFixReason(root, "main", ["BUGS.md"]))!,
+    /nowhere on this tree: 0123456789abcdef0123456789abcdef01234567 —/,
+  );
+});
+
 // Regression coverage for the 2026-10-08 false-fix-guard record (BUGS.md): a Fixed body can
 // hold more than one `**Fix:**` paragraph — a headingless record absorbed into the entry above
 // it, or a narrative describing two changes. Reading only the first paragraph (Array.find) let

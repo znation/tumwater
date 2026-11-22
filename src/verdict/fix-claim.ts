@@ -165,9 +165,24 @@ export function bugEntryBody(doc: string, heading: string): string {
   return fixedEntries(doc).find((entry) => entry.title === heading)?.body ?? "";
 }
 
-/** The backticked, whitespace-free spans of EVERY `**Fix:**` paragraph in an entry's body
- * (the whole body when the entry carries no explicit Fix line), each with a trailing `()`
- * stripped so a call mention matches the identifier it names. Every claim must be read, not
+/** A fix claim's label, in every shape the team actually writes one (BUGS.md 2026-11-21): the
+ * exact `**Fix:**` was the only form recognised, while BUGS-FIXED.md holds `**Fix.**` ×27,
+ * `**Fixed.**` ×8, `**Fixed 2026-11-19.**`, `**Fix (bugfix 2026-11-21).**` and more — 140 of its
+ * 543 entries carry a Fix paragraph none of them recognised, so those entries were scanned
+ * whole and a lock-file md5 quoted in their Symptom read as a missing commit.
+ *
+ * The label is matched at a `**` boundary and case-sensitively, so a lowercase "fix" in prose
+ * and `**Fixup.**` never read as one. `**Fix sketch:**` and `**Fix direction:**` (10 of them)
+ * are a plan for a fix, not a claim that one landed, so they are excluded by name: narrowing to
+ * such a paragraph would put proposed names — which no code ever held — through the existence
+ * check, the same false positive this module has closed five times over. */
+const FIX_LABEL_RE = /\*\*Fix(?:ed)?(?![a-z])(?!\s*(?:sketch|direction))[^*\n]*\*\*/;
+
+/** The backticked, whitespace-free spans of EVERY fix-claim paragraph (FIX_LABEL_RE) in an
+ * entry's body (the whole body when the entry carries no such label), each with a trailing `()`
+ * stripped so a call mention matches the identifier it names. The label-free fallback stays:
+ * the compressed one-line records carry no label by construction (isOneLineRecord rejects a
+ * `- **` bullet), and their names must still face the check. Every claim must be read, not
  * just the first: a body can hold a second `**Fix:**` paragraph — a headingless record
  * absorbed into it (BUGS.md 2026-10-08), or a narrative describing two fixes — and picking
  * the first match with `Array.find` let a later paragraph name symbols that exist nowhere on
@@ -175,7 +190,7 @@ export function bugEntryBody(doc: string, heading: string): string {
  * `npm test`, `--days N`, `Ctrl+B` — are not symbols and never counted. A location span
  * claims its file (claimedName). */
 export function fixSymbols(body: string): string[] {
-  const fixes = body.split(/\n\s*\n/).filter((p) => p.includes("**Fix:**"));
+  const fixes = body.split(/\n\s*\n/).filter((p) => FIX_LABEL_RE.test(p));
   const fix = fixes.length > 0 ? fixes.join("\n") : body;
   const symbols: string[] = [];
   for (const span of fix.matchAll(/`([^`\n]+)`/g)) {

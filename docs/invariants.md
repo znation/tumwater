@@ -3514,7 +3514,11 @@ it on main's tip instead.
 **Guarantee.** A new Fixed entry, or an already-Fixed entry whose body the diff rewrites (including
 text after a quoted fence), is reported by the main watch (a false fix claim is repairable by a later
 commit, so since part 3m/3 the pre-merge gate lets it land unrejected) when a name in any of its Fix
-paragraphs is on neither the code haystack nor the tree. An untouched entry is not checked. This
+paragraphs is on neither the code haystack nor the tree. A paragraph counts as a Fix paragraph when
+it carries a fix label in any shape the team writes one (`**Fix:**`, `**Fix.**`, `**Fixed.**`,
+`**Fix (bugfix 2026-11-21).**`, …), excluding `**Fix sketch:**`/`**Fix direction:**`, which plan a
+fix rather than claim one landed; an entry with no such label is scanned whole, which is how the
+label-free one-line records keep their names checked. An untouched entry is not checked. This
 holds for an edit to BUGS.md and for an edit to BUGS-FIXED.md, measured against the diff's
 merge-base.
 
@@ -3526,6 +3530,10 @@ first", "falseFixReason checks an already-Fixed entry whose narrative the diff r
 "falseFixReason leaves an already-Fixed entry with an untouched body alone", "falseFixReason
 measures an Open→Fixed restoration against the merge-base, not main's tip" and "falseFixReason
 checks a Fixed entry whose narrative after its quoted fence the diff rewrites";
+"falseFixReason does not flag a moved entry whose Symptom quotes a non-commit hex value" and
+"fixSymbols recognizes every Fix-label shape the team writes, not only **Fix:**" (the 2026-11-21
+false positive: a lock-file md5 quoted in a Symptom read as a missing commit because the entry's
+variant Fix label went unrecognised and its whole body was scanned);
 `test/fix-claim-archive.test.ts` — "falseFixReason checks a fix claim that reaches the gate as a
 BUGS-FIXED.md edit, and leaves an untouched archive entry alone".
 
