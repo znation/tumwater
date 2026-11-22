@@ -13,6 +13,7 @@ import {
   mergeRefName,
   mergeLockDir,
   mergeWorktreePath,
+  modelChecksPath,
   orchestratorStatePath,
   pausedPath,
   piLogPath,
@@ -50,6 +51,7 @@ test("config lives at the repo root; every other runtime state lives under .tumw
     statePath(ROOT, "qa"),
     orchestratorStatePath(ROOT),
     qaCoveragePath(ROOT),
+    modelChecksPath(ROOT),
     resetRequestPath(ROOT),
     abortRequestPath(ROOT, "qa"),
     pausedPath(ROOT),
@@ -68,6 +70,7 @@ test("pins the full runtime layout", () => {
   assert.equal(statePath(ROOT, "qa"), path.join(S, "state", "qa.json"));
   assert.equal(orchestratorStatePath(ROOT), path.join(S, "state", "orchestrator.json"));
   assert.equal(qaCoveragePath(ROOT), path.join(S, "state", "qa-coverage.json"));
+  assert.equal(modelChecksPath(ROOT), path.join(S, "state", "model-checks.json"));
   assert.equal(resetRequestPath(ROOT), path.join(S, "reset-counters.json"));
   assert.equal(abortRequestPath(ROOT, "qa"), path.join(S, "abort-qa.json"));
   assert.equal(pausedPath(ROOT), path.join(S, "paused.json"));

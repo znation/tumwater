@@ -7,6 +7,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { MODEL_CHECK_MARKER, runModelCheck } from "../src/model-check/model-check-probe.js";
+import { readModelCheckPairs } from "../src/model-check/model-check.js";
+import { readJsonFile } from "../src/files/json-files.js";
+import { modelChecksPath } from "../src/paths.js";
 import { readOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -75,6 +78,85 @@ test("a team holds a role whose pair fails the model check and resumes it once t
   } finally {
     controller.abort();
     await done.catch(() => {});
+    restore();
+  }
+});
+
+test("a restarted team keeps the verdict store's failed pair and its back-off, and re-probes nothing", async () => {
+  // The persisted verdicts (model-check.ts readModelCheckStore / writeModelCheckPairs): the
+  // first team fails the pair on a long back-off and stops; the second team over the same repo
+  // must hold that role without probing at all, because the recorded back-off is still running,
+  // and must publish the stored verdict rather than a fresh `checking` one.
+  const repo = await makeFastRepo("model check restart e2e", ["clean"], "local/flint");
+  const dir = tmpdir("model-check-restart-e2e-");
+  const probeLog = path.join(dir, "probes.log");
+  const salad = "the of the and river of the mills of the";
+  const restore = fakePiNoCheck(
+    [
+      `case "$__pi_prompt" in *"${MODEL_CHECK_MARKER}"*)`,
+      `  echo probe >> '${probeLog}'`,
+      `  printf '%s\\n' '${assistantLine(salad)}'`,
+      `  exit 0;;`,
+      `esac`,
+      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+  );
+  // A back-off longer than the round, so the recorded probeAt is still in the future when the
+  // second team starts, and a suspicion interval long enough that the store counts as fresh.
+  const policy = { retryMs: 60_000, maxRetryMs: 60_000, suspectMinMs: 60_000 };
+  const first = new AbortController();
+  const firstRound = runRepoOrchestrator(repo, {
+    signal: first.signal,
+    pollMs: FAST_POLL_MS,
+    modelCheck: (seam, signal) => runModelCheck(repo, seam, signal),
+    modelCheckPolicy: policy,
+  });
+  const second = new AbortController();
+  let secondRound: Promise<unknown> | null = null;
+  try {
+    await waitFor(
+      () => warningEvents(readEvents(repo)).some((e) => String(e.message).startsWith("model check failed: local/flint")),
+      "the first team's failed check",
+    );
+    await waitFor(
+      () => readModelCheckPairs(repo)["local/flint"] !== undefined,
+      "the failed verdict on disk",
+    );
+    const stored = readModelCheckPairs(repo)["local/flint"];
+    assert.deepEqual([stored?.status, stored?.failures, stored?.retryMs], ["failed", 1, 60_000], "the failed verdict and its back-off are on disk");
+    assert.ok((stored?.probeAt ?? 0) > Date.now(), "the recorded next probe is still ahead");
+    const savedAt = readJsonFile<{ savedAt?: unknown }>(modelChecksPath(repo))?.savedAt;
+    assert.equal(typeof savedAt, "number");
+    const probesAtStop = probes(probeLog);
+    assert.equal(probesAtStop, 1, "one probe, then the back-off holds it");
+
+    first.abort();
+    await firstRound.catch(() => {});
+
+    // The second team over the same repo, with the same salad-answering fake.
+    secondRound = runRepoOrchestrator(repo, {
+      signal: second.signal,
+      pollMs: FAST_POLL_MS,
+      modelCheck: (seam, signal) => runModelCheck(repo, seam, signal),
+      modelCheckPolicy: policy,
+    });
+    // Its first poll republishes the info block with the verdict it read from disk — the
+    // positive sign that it polled and seeded from the store (a poll whose map is unchanged
+    // writes no store file at all, so the file's stamp is not the signal here).
+    await waitFor(
+      () => readOrchestratorInfo(repo)?.modelChecks?.some((c) => c.pair === "local/flint" && c.status === "failed") === true,
+      "the second team's first poll",
+    );
+    assert.equal(probes(probeLog), probesAtStop, "no probe while the stored back-off still runs");
+    const row = readOrchestratorInfo(repo)?.modelChecks?.find((c) => c.pair === "local/flint");
+    assert.deepEqual([row?.status, row?.failures, row?.probeAt], ["failed", 1, stored?.probeAt], "the restarted team publishes the stored verdict");
+    assert.equal(typeof row?.savedAt, "number", "the row carries the store's stamp");
+    assert.equal(loadRunnerState(repo, "clean").skipReason, "model-check", "the role is held on the stored failure");
+    assert.equal(eventsOfType(repo, "run_start").length, 0, "no role ran on the pair while it was held");
+  } finally {
+    first.abort();
+    second.abort();
+    await Promise.all([firstRound.catch(() => {}), secondRound?.catch(() => {})]);
     restore();
   }
 });

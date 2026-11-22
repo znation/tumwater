@@ -127,5 +127,9 @@ each of them in seconds.
 - Merge and review runs report no unanswered wait. A reviewer pair that stops answering is
   re-checked only through the role-run shapes.
 - Probe cost is not charged to any role's daily window. A probe costs a few hundred tokens.
-- Verdicts are in memory only, so every restart (including self-redeploys) re-checks every pair
-  and holds the roles for the probe's few seconds.
+- Verdicts are persisted to `.tumwater/state/model-checks.json` (`modelChecksPath` in
+  `src/paths.ts`, read and written by `readModelCheckPairs`/`writeModelCheckPairs` in
+  `src/model-check/model-check.ts`), so a restart — including a self-redeploy — keeps each pair's
+  verdict and its earned back-off instead of holding every role for a fresh probe. A store whose
+  `savedAt` is missing or older than the policy's `suspectMinMs` is re-opened for probing, so
+  every restart with stale data still re-checks every pair.

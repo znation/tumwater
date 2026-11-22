@@ -34,11 +34,15 @@ import {
   modelCheckFault,
   modelCheckHolds,
   modelCheckVerified,
+  persistableModelChecks,
+  readModelCheckStore,
   recheckModelChecks,
   recordModelCheck,
   rekeyModelChecks,
+  reopenModelChecks,
   startModelCheck,
   suspectModelCheck,
+  writeModelCheckPairs,
   type ModelCheckMap,
   type ModelCheckPolicy,
 } from "./model-check.js";
@@ -93,7 +97,10 @@ function pairsInUse(input: ModelCheckPollInput, runSeams: ReadonlyMap<RoleRunner
 
 /** The model check's live state for one orchestrator run: the per-pair map, the roles the
  * latest poll held (read at permit time by the start gate, so a waiter parked before a pair
- * failed does not start on it), and the probes in flight. */
+ * failed does not start on it), and the probes in flight. The map is seeded from the persisted
+ * store (.tumwater/state/model-checks.json, model-check.ts readModelCheckStore) so a restart
+ * keeps each pair's verdict and its earned back-off, and written back from `poll` whenever its
+ * content changes. */
 export class ModelCheckGate {
   checks: ModelCheckMap = {};
   held: ReadonlySet<string> = new Set();
@@ -105,6 +112,14 @@ export class ModelCheckGate {
    * an answer at or after it means the server was serving the team while the probe waited. */
   private readonly probeStartedAt = new Map<string, number>();
   private reviewPair: string | null = null;
+  /** The JSON body this gate last persisted (null until its first write): `poll` writes only
+   * when what it would write differs from it, the same only-when-changed rule
+   * publishInfoFields applies to the info block, so a steady poll leaves the file untouched. */
+  private lastSavedJson: string | null = null;
+  /** The store's own `savedAt` stamp as it now stands (null when nothing has been stamped):
+   * published onto every info row so observers can tell a verdict read from disk at restart
+   * from one probed in this process. */
+  private savedAt: number | null = null;
   private readonly inFlight = new Set<Promise<void>>();
   private readonly stop = new AbortController();
   private readonly signal: AbortSignal;
@@ -117,6 +132,16 @@ export class ModelCheckGate {
     private readonly now: () => number = Date.now,
   ) {
     this.signal = AbortSignal.any([signal, this.stop.signal]);
+    // Restart seeding: the persisted verdicts (and the back-off they earned) carry over, so a
+    // failed pair stays held and keeps its doubling interval instead of starting the wait from
+    // one retryMs again. A store with no usable stamp, or one older than the policy's
+    // suspicion interval, is re-opened for probing — every entry gets `probeAt: now` — so a
+    // verdict days old is re-tested rather than trusted (that is today's restart behaviour for
+    // stale data; only a store written within the interval keeps its verdicts).
+    const store = readModelCheckStore(root, policy);
+    this.savedAt = store.savedAt;
+    const stale = store.savedAt === null || now() - store.savedAt > policy.suspectMinMs;
+    this.checks = stale ? reopenModelChecks(store.pairs, now()) : store.pairs;
   }
 
   /** One poll: re-key the map to the pairs in use, act on the runs waiting on an unanswered
@@ -143,6 +168,7 @@ export class ModelCheckGate {
     }
     this.held = held;
     this.publish(input.info);
+    this.persist();
     return held;
   }
 
@@ -301,7 +327,20 @@ export class ModelCheckGate {
     }
   }
 
+  /** Write the map to the persisted store when its content differs from the last write
+   * (probing entries excluded on both sides, so a probe in flight is not a change). Not from
+   * `settle` alone: the busy deferral, `recheckNow()` and `suspect()` land in the same map and
+   * are worth keeping, and the next poll writes them. Best-effort inside writeModelCheckPairs. */
+  private persist(): void {
+    const json = JSON.stringify(persistableModelChecks(this.checks));
+    if (json === this.lastSavedJson) return;
+    this.savedAt = this.now();
+    writeModelCheckPairs(this.root, this.checks, this.savedAt);
+    this.lastSavedJson = json;
+  }
+
   private publish(info: OrchestratorInfo): void {
+    const savedAt = this.savedAt;
     const list: ModelCheckInfo[] = Object.values(this.checks).map((e) => ({
       pair: e.pair,
       status: e.status,
@@ -312,6 +351,7 @@ export class ModelCheckGate {
       ...(e.detail !== undefined ? { detail: e.detail } : {}),
       ...(e.status === "failed" && e.probeAt !== null ? { probeAt: e.probeAt } : {}),
       ...(e.checkedAt !== undefined ? { checkedAt: e.checkedAt } : {}),
+      ...(savedAt !== null ? { savedAt } : {}),
     }));
     publishInfoFields(this.root, info, [["modelChecks", list.length > 0 ? list : undefined]]);
   }

@@ -80,6 +80,10 @@ export interface ModelCheckInfo {
   detail?: string;
   probeAt?: number;
   checkedAt?: number;
+  /** The persisted verdict store's own stamp (epoch ms, .tumwater/state/model-checks.json): on
+   * every row so an observer can tell a verdict read from disk at restart from one probed in
+   * this process. */
+  savedAt?: number;
 }
 
 export interface DiskStatus {
@@ -386,6 +390,7 @@ function parseModelCheck(v: unknown): ModelCheckInfo | undefined {
   if (typeof v.detail === "string") out.detail = v.detail;
   if (isFiniteNumber(v.probeAt)) out.probeAt = v.probeAt;
   if (isFiniteNumber(v.checkedAt)) out.checkedAt = v.checkedAt;
+  if (isFiniteNumber(v.savedAt)) out.savedAt = v.savedAt;
   return out;
 }
 

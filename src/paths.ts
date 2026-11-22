@@ -198,6 +198,16 @@ export function githubIssuesPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "github-issues.json");
 }
 
+/** The model check's persisted verdicts (src/model-check/model-check.ts): one entry per
+ * provider/model pair the team has checked, plus the time the file was written, so an
+ * orchestrator restart — including a self-redeploy — keeps each pair's verdict and its earned
+ * back-off instead of holding every role for a fresh probe (plans/model-check.md).
+ * Runtime state under .tumwater/state/, never committed; absent until a build that persists
+ * verdicts has polled. */
+export function modelChecksPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "model-checks.json");
+}
+
 /** The images column `tumwater doctor` last read from `pi --list-models`, keyed provider/model.
  * Runtime state under .tumwater/state/, never committed. */
 export function piListedModelsPath(root: string): string {

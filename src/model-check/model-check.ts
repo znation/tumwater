@@ -9,6 +9,9 @@
  * run on it ended without changes and without declaring nothing-to-do, failed before its model
  * replied, or is waiting on a request left unanswered — the shapes a serving fault takes. */
 
+import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { finiteNumber, isJsonObject } from "../files/json-object.js";
+import { modelChecksPath } from "../paths.js";
 import type { ModelCheckVerdict } from "./model-check-probe.js";
 
 /** `checking` until the first probe of the pair answers; `verified` once one did; `failed`
@@ -37,6 +40,17 @@ interface ModelCheckEntry {
 
 /** Every checked pair, keyed by its pair name (config-views.ts seamPairName). */
 export type ModelCheckMap = Record<string, ModelCheckEntry>;
+
+/** The store `.tumwater/state/model-checks.json` holds (src/paths.ts modelChecksPath): one
+ * entry per checked pair in exactly the shape the transitions above produce — no new verdict
+ * model — plus the time it was written, so a restart can tell a verdict it just wrote from one
+ * days old. `savedAt` is null when the file carried no usable stamp, which the gate reads as
+ * "older than the suspicion interval": its verdicts are not trusted. Internal to this file:
+ * the gate reads `pairs` and `savedAt` off the value `readModelCheckStore` returns. */
+interface ModelCheckStore {
+  pairs: ModelCheckMap;
+  savedAt: number | null;
+}
 
 /** How the check retries. A test seam (the orchestrator's RunOptions accepts an override);
  * production uses MODEL_CHECK_POLICY. */
@@ -173,6 +187,99 @@ export function recheckModelChecks(map: ModelCheckMap, now: number): ModelCheckM
   return next;
 }
 
+/** The map once every pair is re-opened for probing (a restart that found a stale store): each
+ * entry keeps its status and counts but its probe is due at once and no probe is in flight, so
+ * the first poll probes every pair instead of trusting a verdict days old. Distinct from
+ * `recheckModelChecks`, which moves only `failed` entries and leaves a `verified` one with
+ * `probeAt: null` — that would trust a stale verdict forever. */
+export function reopenModelChecks(map: ModelCheckMap, now: number): ModelCheckMap {
+  const next: ModelCheckMap = {};
+  for (const [pair, e] of Object.entries(map)) next[pair] = { ...e, probing: false, probeAt: now };
+  return next;
+}
+
+/** The entries the store keeps: every pair except one whose probe is in flight — that probe
+ * dies with the process, so a restart must not find the pair mid-probe forever (no probe ever
+ * reports and `dueModelChecks` skips a probing entry). Shared by the writer and the gate's
+ * only-when-changed check so the compared string is the file's content. */
+export function persistableModelChecks(map: ModelCheckMap): ModelCheckMap {
+  const next: ModelCheckMap = {};
+  for (const [pair, e] of Object.entries(map)) if (!e.probing) next[pair] = e;
+  return next;
+}
+
+/** One persisted entry, or undefined for any foreign shape — the same hand-editable boundary
+ * every other state file's reader enforces: a non-object and a `probing` entry (dropped by
+ * `persistableModelChecks`, so one on disk means a hand edit or an older build, and a restart
+ * must not leave the pair looking mid-probe forever) are dropped rather than trusted. Every
+ * number is forced finite, so a hand-edited `retryMs: "x"` or `failures: null` cannot poison
+ * the back-off comparisons. An unknown `status` reads as `failed` rather than being dropped or
+ * guessed as `verified`: the roles stay held either way, and `failed` keeps a back-off instead
+ * of letting the pair be probed every poll. For the same reason a `failed` entry's `retryMs` is
+ * floored at the policy's first wait (a corrupt 0 cannot make the check spam a provider) and a
+ * missing `probeAt` reads as overdue (0) — every pair but a verified one always has a probe
+ * scheduled, so a store that lost it is re-probed at once, never held forever. A `verified`
+ * entry keeps its null `probeAt`: nothing is scheduled, and suspicion is what re-probes it. The
+ * entry's `pair` is always the record key: a hand-edited entry naming another pair would publish
+ * a row the poll's rekey cannot match. */
+function parseModelCheckEntry(pair: string, v: unknown, policy: ModelCheckPolicy): ModelCheckEntry | undefined {
+  if (!isJsonObject(v) || v.probing === true) return undefined;
+  const verified = v.status === "verified";
+  const failed = v.status !== "checking" && !verified;
+  const probeAt = finiteNumber(v.probeAt, verified ? null : 0);
+  const retryMs = finiteNumber(v.retryMs, 0);
+  const checkedAt = finiteNumber(v.checkedAt, undefined);
+  const rawFailures = finiteNumber(v.failures, 0);
+  const reason = v.reason === "no reply" || v.reason === "wrong answer" ? v.reason : undefined;
+  const reply = typeof v.reply === "string" ? v.reply : undefined;
+  const detail = typeof v.detail === "string" ? v.detail : undefined;
+  return {
+    pair,
+    status: v.status === "checking" ? "checking" : v.status === "verified" ? "verified" : "failed",
+    failures: rawFailures >= 0 ? rawFailures : 0,
+    probeAt,
+    retryMs: failed ? Math.max(retryMs, policy.retryMs) : retryMs,
+    probing: false,
+    ...(checkedAt !== undefined ? { checkedAt } : {}),
+    ...(reason !== undefined ? { reason } : {}),
+    ...(reply !== undefined ? { reply } : {}),
+    ...(detail !== undefined ? { detail } : {}),
+  };
+}
+
+/** The persisted verdict store (.tumwater/state/model-checks.json), read and normalized: no
+ * file, a torn file and a non-object body all read as an empty store, and a missing or foreign
+ * `savedAt` as null ("not fresh" — the gate re-probes what it cannot date). The gate's restart
+ * path: verdicts and the back-off they earned survive a restart instead of every pair starting
+ * `checking` again (plans/model-check.md follow-ups). */
+export function readModelCheckStore(root: string, policy: ModelCheckPolicy = MODEL_CHECK_POLICY): ModelCheckStore {
+  const rec = readJsonFile<{ pairs?: unknown; savedAt?: unknown }>(modelChecksPath(root));
+  const pairs: ModelCheckMap = {};
+  if (rec !== null && isJsonObject(rec.pairs)) {
+    for (const [pair, v] of Object.entries(rec.pairs)) {
+      const e = parseModelCheckEntry(pair, v, policy);
+      if (e !== undefined) pairs[pair] = e;
+    }
+  }
+  return { pairs, savedAt: rec === null ? null : finiteNumber(rec.savedAt, null) };
+}
+
+/** The persisted verdicts alone, as a map (the store's `savedAt` is the gate's business). */
+export function readModelCheckPairs(root: string, policy: ModelCheckPolicy = MODEL_CHECK_POLICY): ModelCheckMap {
+  return readModelCheckStore(root, policy).pairs;
+}
+
+/** Persist the verdicts, best-effort like the poll heartbeat (`stampHeartbeat`): a read-only
+ * working tree or a full disk must never break the check. Entries whose probe is in flight are
+ * dropped (`persistableModelChecks`) and `savedAt` is stamped here, so a restart can tell a
+ * verdict written now from one a previous process wrote and re-probe what it cannot date. */
+export function writeModelCheckPairs(root: string, map: ModelCheckMap, savedAt: number = Date.now()): void {
+  try {
+    writeJsonAtomic(modelChecksPath(root), { pairs: persistableModelChecks(map), savedAt });
+  } catch {
+    // Best-effort: the in-memory map stays the live source for this process.
+  }
+}
 /** Whether the pair's roles wait: everything but a verified pair holds them. A pair with no
  * entry holds nothing (the check is off, or the pair was never in use). */
 export function modelCheckHolds(e: ModelCheckEntry | undefined): boolean {

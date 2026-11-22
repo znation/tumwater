@@ -456,7 +456,11 @@ the watch's confirming re-run each add the failing tests that passed on the re-r
   The pair is checked again after 1 minute, then at doubling intervals up to 30 minutes. Once it
   answers, its roles run again on their own (`model_check_passed` in the feed). A probe that stays
   silent while the same pair is answering the team's own runs is queueing, not a dead server: the
-  pair keeps its verdict, nothing is held, and the feed reads `model_check_busy`. The check runs
+  pair keeps its verdict, nothing is held, and the feed reads `model_check_busy`. The verdicts and
+  the back-off they earn are kept in `.tumwater/state/model-checks.json`, so a restart — including
+  a self-redeploy — holds a failed pair on the wait it already earned instead of probing it again
+  from the first interval, and a verdict older than the check's suspicion interval is re-probed
+  rather than trusted. The check runs
   for `tumwater start`, not for a `--once` round. The failed pair's dashboard banner offers a
   `Re-check now` button, which asks the running team to probe the failed pairs immediately
   instead of waiting out the back-off.

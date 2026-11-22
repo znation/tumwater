@@ -17,12 +17,14 @@ import {
   dueModelChecks,
   modelCheckFailed,
   modelCheckHolds,
+  readModelCheckPairs,
   recheckModelChecks,
   recordModelCheck,
   rekeyModelChecks,
   startModelCheck,
   suspectModelCheck,
   busyModelCheck,
+  writeModelCheckPairs,
   type ModelCheckPolicy,
 } from "../src/model-check/model-check.js";
 import { ModelCheckGate } from "../src/model-check/model-check-gate.js";
@@ -43,6 +45,8 @@ import { BYTES_PER_GB } from "../src/gates/disk-gates.js";
 import { chainFragments } from "../src/ui/badges.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
+import { modelChecksPath } from "../src/paths.js";
+import { readJsonFile, writeJsonFile } from "../src/files/json-files.js";
 import { readyRepo } from "./fixtures/doctor-fixtures.js";
 import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { eventsOfType, warningEvents } from "./fixtures/log-fixtures.js";
@@ -340,12 +344,15 @@ test("a failed reviewer pair parks only the post-merge review drain, never the r
   assert.equal(gate.reviewHeld(), false);
 
   // With review off the reviewer pair is absent: a failed strong pair holds only the roles on
-  // it (plan and director) and the drain is never held.
+  // it (plan and director) and the drain is never held. Its own repo: a gate over the repo above
+  // would seed from the verdict store that team wrote (model-check.ts readModelCheckStore) and
+  // probe nothing, which is the restart test's ground, not this one's.
+  const rootOff = makeRepo();
   const off = { ...config, review: { ...config.review, enabled: false } };
   const runnersOff = ["feature", "plan", "director"].map((r) => runner(r, off));
   const infoOff: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: runnersOff.map((r) => r.role) };
   const probersOff = manualProber();
-  const gateOff = new ModelCheckGate(root, probersOff.prober, new AbortController().signal, POLICY, () => now);
+  const gateOff = new ModelCheckGate(rootOff, probersOff.prober, new AbortController().signal, POLICY, () => now);
   const pollOff = () => gateOff.poll({ runners: runnersOff, liveConfig: off, roleConfig: off, info: infoOff });
   pollOff();
   probersOff.answer("flintrunner/flint", { ok: true });
@@ -1001,4 +1008,182 @@ test("a failed pair raises one red alert naming it and its reply; a checking pai
 test("a role the check holds reads `waiting: model check` in its row", () => {
   const s = { ...freshRunnerState("feature"), nextRunAt: Date.now() - 1000, skipReason: "model-check" as const };
   assert.equal(rolePhase(s, true), "waiting: model check");
+});
+
+/** The persisted verdict store (.tumwater/state/model-checks.json, src/paths.ts
+ * modelChecksPath) as the test leaves it: `savedAt` plus the pairs exactly as given. */
+function writeStore(root: string, savedAt: number | undefined, pairs: Record<string, unknown>): void {
+  writeJsonFile(modelChecksPath(root), { ...(savedAt === undefined ? {} : { savedAt }), pairs });
+}
+
+/** One `verified` entry as the store holds it: nothing scheduled, suspicion is what re-probes. */
+function verifiedEntry(pair: string, checkedAt: number): Record<string, unknown> {
+  return { pair, status: "verified", failures: 0, probeAt: null, retryMs: 0, probing: false, checkedAt };
+}
+
+test("a restart over the persisted store keeps a failed pair's verdict and its earned back-off", async () => {
+  const root = makeRepo();
+  const config = teamConfig();
+  const runners = ["feature", "plan", "director"].map((r) => runner(r, config));
+  const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: runners.map((r) => r.role) };
+  writeOrchestratorInfo(root, info);
+  let now = 20_000_000;
+  // The store a previous process left, written a minute ago: the default pair has failed three
+  // times and is owed a 3x wait; the strong pair answered.
+  writeStore(root, now - 60_000, {
+    "flintrunner/flint": {
+      pair: "flintrunner/flint", status: "failed", failures: 3, probeAt: now + POLICY.retryMs,
+      retryMs: 3 * POLICY.retryMs, probing: false, checkedAt: now - 60_000, reason: "no reply", reply: "",
+    },
+    "hf/deepseek": verifiedEntry("hf/deepseek", now - 60_000),
+  });
+  const { prober, asked, answer } = manualProber();
+  const gate = new ModelCheckGate(root, prober, new AbortController().signal, POLICY, () => now);
+  const poll = () => gate.poll({ runners, liveConfig: config, roleConfig: config, info });
+
+  // The first poll of the restarted process: the failed pair's role is held with no probe at all,
+  // because the recorded back-off is still running, and its counts survived the restart.
+  assert.deepEqual([...poll()], ["feature"], "the failed pair's role stays held across the restart");
+  assert.deepEqual(asked, [], "no probe while the recorded back-off still runs");
+  assert.deepEqual(
+    [gate.checks["flintrunner/flint"]?.failures, gate.checks["flintrunner/flint"]?.retryMs],
+    [3, 3 * POLICY.retryMs],
+    "the failure count and the earned back-off came off disk",
+  );
+  const published = readOrchestratorInfo(root)?.modelChecks ?? [];
+  assert.equal(published.find((c) => c.pair === "flintrunner/flint")?.savedAt, now - 60_000, "the row carries the store's stamp");
+
+  // Due on the recorded instant: one probe, and its failure is the fourth — the doubling continues
+  // from the stored retryMs rather than restarting at the policy's first wait.
+  now += POLICY.retryMs;
+  poll();
+  assert.deepEqual(asked, ["flintrunner/flint"]);
+  answer("flintrunner/flint", { ok: false, reason: "no reply", reply: "", detail: "connect ECONNREFUSED" });
+  await gate.settled();
+  poll();
+  assert.equal(gate.checks["flintrunner/flint"]?.retryMs, POLICY.maxRetryMs, "the back-off doubles from the stored 3x, capped");
+  assert.deepEqual([...poll()], ["feature"]);
+
+  // A second restart over the file that poll wrote: the fourth failure is there and still held.
+  const prober2 = manualProber();
+  const gate2 = new ModelCheckGate(root, prober2.prober, new AbortController().signal, POLICY, () => now);
+  const poll2 = () => gate2.poll({ runners, liveConfig: config, roleConfig: config, info });
+  assert.deepEqual([...poll2()], ["feature"]);
+  assert.deepEqual(prober2.asked, [], "the second restart does not re-probe the back-off it just read");
+  assert.equal(gate2.checks["flintrunner/flint"]?.failures, 4, "the failures counted in the previous process carried over");
+
+  // And the store keeps a recovery: once the pair answers, that is what a reader reports.
+  now += POLICY.maxRetryMs;
+  poll2();
+  assert.deepEqual(prober2.asked, ["flintrunner/flint"]);
+  prober2.answer("flintrunner/flint", { ok: true });
+  await gate2.settled();
+  poll2();
+  assert.equal(readModelCheckPairs(root)["flintrunner/flint"]?.status, "verified");
+  const prober3 = manualProber();
+  const gate3 = new ModelCheckGate(root, prober3.prober, new AbortController().signal, POLICY, () => now);
+  assert.deepEqual([...gate3.poll({ runners, liveConfig: config, roleConfig: config, info })], []);
+  assert.deepEqual(prober3.asked, [], "the third restart runs the roles at once on the stored verdict");
+
+  // The store is not an observer source: the doctor reads the info block only, so a host with a
+  // store file and no running team still reports the not-checked row.
+  assert.deepEqual(checkModelChecks(false, null), {
+    level: "ok",
+    detail: "not checked — a running team checks each model pair before running on it",
+  });
+});
+
+test("a store whose entry is corrupt is re-probed on the first poll, not held forever", async () => {
+  const root = makeRepo();
+  const config = teamConfig();
+  config.model = { default: "local/flint", strong: "local/flint" }; // one pair for every seam
+  const runners = ["feature"].map((r) => runner(r, config));
+  const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: ["feature"] };
+  writeOrchestratorInfo(root, info);
+  let now = 30_000_000;
+  // A hand-edited entry: an unknown status, a string back-off, and no scheduled probe — the
+  // worst shape a failed pair could have, since no scheduled probe means nothing would re-check.
+  writeStore(root, now - 60_000, { "local/flint": { status: "nope", retryMs: "x", probeAt: null } });
+  const { prober, asked, answer } = manualProber();
+  const gate = new ModelCheckGate(root, prober, new AbortController().signal, POLICY, () => now);
+  const poll = () => gate.poll({ runners, liveConfig: config, roleConfig: config, info });
+  assert.deepEqual([...poll()], ["feature"]);
+  assert.deepEqual(asked, ["local/flint"], "the corrupt entry's pair is probed at once");
+  answer("local/flint", { ok: false, reason: "no reply", reply: "" });
+  await gate.settled();
+  poll();
+  const body = readJsonFile<{ pairs: Record<string, { retryMs?: unknown; status?: unknown }>; savedAt?: unknown }>(
+    modelChecksPath(root),
+  );
+  assert.equal(body?.pairs["local/flint"]?.status, "failed");
+  assert.ok(
+    typeof body?.pairs["local/flint"]?.retryMs === "number" && body.pairs["local/flint"]!.retryMs! >= POLICY.retryMs,
+    `the rewritten retryMs is a finite number at least the first wait, got ${JSON.stringify(body?.pairs["local/flint"]?.retryMs)}`,
+  );
+});
+
+test("a stale store re-probes every pair, a fresh one keeps verdicts and a far-off back-off", () => {
+  const root = makeRepo();
+  const config = teamConfig();
+  const runners = ["feature", "plan", "director"].map((r) => runner(r, config));
+  const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: [] };
+  const now = 40_000_000;
+  const pollOnce = (savedAt: number, flint: Record<string, unknown>): { asked: string[]; held: readonly string[]; gate: ModelCheckGate } => {
+    writeStore(root, savedAt, { "flintrunner/flint": flint, "hf/deepseek": verifiedEntry("hf/deepseek", savedAt) });
+    const { prober, asked } = manualProber();
+    const gate = new ModelCheckGate(root, prober, new AbortController().signal, POLICY, () => now);
+    const held = gate.poll({ runners, liveConfig: config, roleConfig: config, info });
+    return { asked, held: [...held], gate };
+  };
+  const stale = now - POLICY.suspectMinMs - 1;
+  const fresh = now - 60_000;
+  // A verdict older than the suspicion interval is re-tested, not trusted: the stale store's
+  // verified pair is probed on the first poll instead of letting its roles run on it.
+  assert.deepEqual(
+    pollOnce(stale, verifiedEntry("flintrunner/flint", stale)).asked.sort(),
+    ["flintrunner/flint", "hf/deepseek"],
+    "every pair of a stale store is probed on the first poll",
+  );
+  // A store with no stamp at all is treated the same way: it cannot be dated, so it is not trusted.
+  writeStore(root, undefined, { "flintrunner/flint": verifiedEntry("flintrunner/flint", now) });
+  const unstamp = manualProber();
+  const gateUnstamp = new ModelCheckGate(root, unstamp.prober, new AbortController().signal, POLICY, () => now);
+  gateUnstamp.poll({ runners, liveConfig: config, roleConfig: config, info });
+  assert.deepEqual(unstamp.asked.sort(), ["flintrunner/flint", "hf/deepseek"], "an undated store is re-probed");
+  // The same store one minute old starts no probe and holds nothing.
+  const kept = pollOnce(fresh, verifiedEntry("flintrunner/flint", fresh));
+  assert.deepEqual(kept.asked, [], "a fresh store's verdicts are kept");
+  assert.deepEqual(kept.held, []);
+  // A failed pair a day from its next probe stays held when the store is fresh...
+  const far = fresh + 24 * 60 * 60_000;
+  const heldPair = {
+    pair: "flintrunner/flint", status: "failed", failures: 5, probeAt: far, retryMs: POLICY.maxRetryMs,
+    probing: false, checkedAt: fresh, reason: "no reply", reply: "",
+  };
+  const waited = pollOnce(fresh, heldPair);
+  assert.deepEqual(waited.asked, [], "the recorded back-off is respected, not restarted");
+  assert.deepEqual(waited.held, ["feature"]);
+  // ...and is re-probed at once when the store is stale, keeping its failure count.
+  const reopened = pollOnce(stale, heldPair);
+  assert.deepEqual(reopened.asked, ["flintrunner/flint", "hf/deepseek"]);
+  assert.deepEqual(
+    [reopened.gate.checks["flintrunner/flint"]?.failures, reopened.gate.checks["flintrunner/flint"]?.probeAt],
+    [5, now],
+    "the stale sweep re-arms the probe without losing the history",
+  );
+});
+
+test("the persisted store never keeps a pair whose probe was in flight", () => {
+  const root = tmpdir("model-check-store-");
+  const map = {
+    "a/one": { pair: "a/one", status: "failed" as const, failures: 1, probeAt: 500, retryMs: POLICY.retryMs, probing: false },
+    "a/two": { pair: "a/two", status: "checking" as const, failures: 0, probeAt: 500, retryMs: 0, probing: true },
+  };
+  writeModelCheckPairs(root, map, 12_345);
+  assert.deepEqual(Object.keys(readModelCheckPairs(root)), ["a/one"], "an in-flight probe dies with the process");
+  const body = readJsonFile<{ savedAt?: unknown }>(modelChecksPath(root));
+  assert.equal(body?.savedAt, 12_345, "the writer stamps the time it wrote");
+  // A store with no stamp at all reads as "not fresh", which is what makes the gate re-probe.
+  writeJsonFile(modelChecksPath(root), { pairs: { "a/one": map["a/one"] } });
+  assert.deepEqual(Object.keys(readModelCheckPairs(root)), ["a/one"]);
 });
