@@ -32,15 +32,32 @@ export interface ActionableEntryRange {
  * `### ` line inside a fenced code block is body content, never a boundary, through
  * backlog-md.ts's shared fenceTracker. */
 export function actionableEntryRanges(md: string, sectionTitle: string): ActionableEntryRange[] {
+  return actionableEntryRangesBySections(md, [sectionTitle]).get(sectionTitle) ?? [];
+}
+
+/** The same walk for several `## ` sections at once, keyed by section title: a reader that asks
+ * for the entries of every backlog section of one file (the GitHub issues mirror, which reads
+ * the open lists and the finished archives together) pays for one split and one walk of that
+ * file instead of one per section — the archives are multi-megabyte, so the per-section walk
+ * is the cost. A section with no entry has no key; a section that appears twice keeps its
+ * entries in file order under one key. */
+export function actionableEntryRangesBySections(
+  md: string,
+  sectionTitles: readonly string[],
+): Map<string, ActionableEntryRange[]> {
+  const wanted = new Set(sectionTitles);
+  const bySection = new Map<string, ActionableEntryRange[]>();
   const lines = md.split("\n");
   const fenced = fenceTracker();
-  const entries: ActionableEntryRange[] = [];
-  let inSection = false;
-  let open: { title: string; start: number } | null = null;
+  let inSection: string | null = null;
+  let open: { title: string; start: number; section: string } | null = null;
   // `end` is the 1-based number of the entry's last body line, i.e. the 0-based index of the
   // next heading; at EOF it is the line count (the last 1-based line number).
   const close = (end: number): void => {
-    if (open !== null) entries.push({ title: open.title, start: open.start, end });
+    if (open === null) return;
+    const ranges = bySection.get(open.section) ?? [];
+    ranges.push({ title: open.title, start: open.start, end });
+    bySection.set(open.section, ranges);
     open = null;
   };
   for (let i = 0; i < lines.length; i++) {
@@ -48,16 +65,17 @@ export function actionableEntryRanges(md: string, sectionTitle: string): Actiona
     if (fenced.inside(line)) continue;
     if (line.startsWith("## ")) {
       close(i);
-      inSection = headingTitle(line, "## ") === sectionTitle;
-    } else if (inSection && line.startsWith("### ")) {
+      const title = headingTitle(line, "## ");
+      inSection = wanted.has(title) ? title : null;
+    } else if (inSection !== null && line.startsWith("### ")) {
       close(i);
-      open = { title: headingTitle(line, "### "), start: i + 1 };
+      open = { title: headingTitle(line, "### "), start: i + 1, section: inSection };
     }
   }
   // A document ending in a newline splits to a trailing "" element; the last real line is one
   // less, so an entry running to EOF ends there instead of at the phantom line.
   close(md.endsWith("\n") ? lines.length - 1 : lines.length);
-  return entries;
+  return bySection;
 }
 
 /** Per-file cache of a section's actionable ranges (actionableEntryRangesFor). */

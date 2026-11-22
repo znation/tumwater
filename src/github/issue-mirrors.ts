@@ -5,7 +5,7 @@
  * so the scan never queues it again. */
 
 import { isRetiredTitle } from "../backlog/backlog.js";
-import { actionableEntryRanges } from "../backlog/backlog-index-data.js";
+import { actionableEntryRangesBySections } from "../backlog/backlog-index-data.js";
 import { branchHead, fileContentAt } from "../git/git.js";
 
 /** The `## ` sections a mirror can sit in, open lists and finished archives alike. */
@@ -48,13 +48,17 @@ export function mirroredIssueNumbers(markdown: string): Set<number> {
 
 /** Every mirroring entry in the given backlog files, keyed by issue number. `files` maps a file
  * name (BUGS.md, PLANS.md, BUGS-FIXED.md, PLANS-DONE.md) to its text; the scan reads each at the
- * base branch's tip. Entries are located by actionableEntryRanges, the same walk the backlog
- * index uses, so a heading inside a fenced block is never a mirror. */
+ * base branch's tip. Entries are located by actionableEntryRangesBySections, the same walk the
+ * backlog index uses, so a heading inside a fenced block is never a mirror. One walk per file
+ * harvests every mirror section at once — the finished archives run to megabytes, so walking
+ * each file once per section (the old loop) read the same lines five times. Sections are still
+ * visited in MIRROR_SECTIONS order, so an issue's entries keep the order the close pass reads. */
 export function mirrorStates(files: Readonly<Record<string, string>>): Map<number, MirrorEntry[]> {
   const byIssue = new Map<number, MirrorEntry[]>();
   for (const [file, markdown] of Object.entries(files)) {
+    const ranges = actionableEntryRangesBySections(markdown, MIRROR_SECTIONS);
     for (const section of MIRROR_SECTIONS) {
-      for (const entry of actionableEntryRanges(markdown, section)) {
+      for (const entry of ranges.get(section) ?? []) {
         for (const n of mirroredNumbersOf(entry.title)) {
           const found = byIssue.get(n) ?? [];
           found.push({ file, section, heading: entry.title, retired: isRetiredTitle(entry.title) });
@@ -102,9 +106,13 @@ export async function mirrorsAtTip(root: string, branch: string): Promise<Map<nu
   return new Map(states);
 }
 
-/** The four backlog files as they stand at the branch tip, missing files as empty strings. */
+/** The four backlog files as they stand at the branch tip, missing files as empty strings. The
+ * four `git show` reads run concurrently: each is independent, and serially they cost the whole
+ * poll step (~55 ms measured on this repo's backlog), while overlapping them costs the slowest. */
 async function mirrorFiles(root: string, branch: string): Promise<Record<string, string>> {
-  const files: Record<string, string> = {};
-  for (const file of MIRROR_FILES) files[file] = await fileContentAt(root, branch, file);
-  return files;
+  const read = async (file: string): Promise<[string, string]> => [
+    file,
+    await fileContentAt(root, branch, file),
+  ];
+  return Object.fromEntries(await Promise.all(MIRROR_FILES.map(read)));
 }

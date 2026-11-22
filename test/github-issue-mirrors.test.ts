@@ -64,6 +64,33 @@ test("a heading inside a fenced block is not a mirror", () => {
   assert.equal(states.size, 0);
 });
 
+test("one file mirroring an issue in two sections lists the sections in the mirror's own order", () => {
+  // The single walk harvests every section in file order, but the reader still visits them in
+  // MIRROR_SECTIONS order, so an issue's entry list keeps the shape the per-section loop gave:
+  // the Open entry before the Fixed one even though ## Fixed comes first in the file.
+  const states = mirrorStates({
+    "BUGS.md":
+      "## Fixed\n\n### Old (mirrors GitHub issue #4; fixed 2026-11-01)\n\n## Open\n\n### Live (mirrors GitHub issue #4)\n",
+  });
+  assert.deepEqual(
+    states.get(4)?.map((e) => e.section),
+    ["Open", "Fixed"],
+  );
+});
+
+test("every mirror section is read from its file, not just the first match", () => {
+  const states = mirrorStates({
+    "BUGS.md": "## Open\n\n### A (mirrors GitHub issue #1)\n",
+    "PLANS.md": "## Planned\n\n### B (mirrors GitHub issue #2)\n",
+    "BUGS-FIXED.md": "## Fixed\n\n### C (mirrors GitHub issue #3)\n",
+    "PLANS-DONE.md": "## Done\n\n### D (mirrors GitHub issue #4)\n",
+  });
+  assert.deepEqual(
+    [...states.entries()].sort(([a], [b]) => a - b).map(([n, es]) => `${n}:${es[0]?.section}`),
+    ["1:Open", "2:Planned", "3:Fixed", "4:Done"],
+  );
+});
+
 /** How many `git show` a logging-git log names. */
 function showCount(logFile: string): number {
   if (!fs.existsSync(logFile)) return 0;
@@ -88,6 +115,7 @@ test("mirrorsAtTip reads the backlog once per branch tip: a repeat call at the s
     assert.equal(first.get(5)?.[0]?.heading, "Crash (mirrors GitHub issue #5)");
     const readsAfterFirst = showCount(logFile);
     assert.ok(readsAfterFirst > 0, "the first read goes to git");
+    assert.equal(readsAfterFirst, 4, "one cold read shows each of the four backlog files once");
 
     // The same tip: the states come from the cache, so no new `git show` runs.
     const again = await mirrorsAtTip(repo, "main");

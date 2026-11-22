@@ -18,6 +18,7 @@ import {
 } from "../src/backlog/backlog-structure.js";
 import {
   actionableEntryRanges,
+  actionableEntryRangesBySections,
   groupBlockedSeries,
 } from "../src/backlog/backlog-index-data.js";
 import { renderBacklogIndexBlock } from "../src/backlog/backlog-index.js";
@@ -819,6 +820,56 @@ test("actionableEntryRanges ignores ### headings inside fenced code and ends at 
   // lines: 1 ## Open, 2 blank, 3 ### Real, 4 ```md, 5 ### quoted, 6 ```, 7 body
   const md = "## Open\n\n### Real\n```md\n### quoted\n```\nbody\n";
   assert.deepEqual(actionableEntryRanges(md, "Open"), [{ title: "Real", start: 3, end: 7 }]);
+});
+
+test("actionableEntryRangesBySections gives every section the ranges actionableEntryRanges gives it", () => {
+  // One walk, keyed by section: the same fence-aware entry ranges the per-section walk returns,
+  // with a section that holds no live entry left out entirely (the mirror reader's `?? []`).
+  const md = [
+    "# Bugs", // 1
+    "", // 2
+    "## Open", // 3
+    "", // 4
+    "### First bug", // 5
+    "body line", // 6
+    "", // 7
+    "### Second bug", // 8
+    "more", // 9
+    "", // 10
+    "## Fixed", // 11
+    "", // 12
+    "### Old bug", // 13
+    "old body", // 14
+  ].join("\n");
+  const grouped = actionableEntryRangesBySections(md, ["Open", "Fixed", "Verified"]);
+  assert.deepEqual(grouped.get("Open"), actionableEntryRanges(md, "Open"));
+  assert.deepEqual(grouped.get("Fixed"), actionableEntryRanges(md, "Fixed"));
+  assert.equal(grouped.has("Verified"), false, "a section the file does not have gets no key");
+  assert.deepEqual(
+    grouped.get("Open"),
+    [
+      { title: "First bug", start: 5, end: 7 },
+      { title: "Second bug", start: 8, end: 10 },
+    ],
+    "the grouped ranges match the 1-based boundaries the index promises",
+  );
+});
+
+test("actionableEntryRangesBySections keeps fenced headings out of every section and keeps a repeated section in file order", () => {
+  // lines: 1 ## Open, 2 ### Real, 3 ```md, 4 ### quoted, 5 ```, 6 ## Fixed, 7 ### Fixed one
+  const md = "## Open\n### Real\n```md\n### quoted\n```\n## Fixed\n### Fixed one\n";
+  const grouped = actionableEntryRangesBySections(md, ["Open", "Fixed"]);
+  assert.deepEqual(grouped.get("Open"), [{ title: "Real", start: 2, end: 5 }]);
+  assert.deepEqual(grouped.get("Fixed"), [{ title: "Fixed one", start: 7, end: 7 }]);
+  const twice = "## Open\n### A\n## Done\n### D\n## Open\n### B\n";
+  assert.deepEqual(
+    actionableEntryRangesBySections(twice, ["Open"]).get("Open"),
+    [
+      { title: "A", start: 2, end: 2 },
+      { title: "B", start: 6, end: 6 },
+    ],
+    "a section that appears twice keeps its entries under one key, in file order",
+  );
 });
 
 test("renderBacklogIndexBlock lists actionable entries with ranges and strips stamp suffixes", () => {
