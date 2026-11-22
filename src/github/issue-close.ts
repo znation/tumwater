@@ -57,8 +57,12 @@ export function closeCandidates(
 
 /** The commits on `branch` that wrote an entry for issue `n` into a finished archive, newest first,
  * made after `since` (epoch ms) when given. One `git log -S` over the archives, so a commit that
- * only files a live entry never counts as a fix. Served from a cache while the branch tip is
- * unchanged (the same tip-SHA keying as `mirrorsAtTip`): the walk is `--pickaxe-regex`, which diffs
+ * only files a live entry never counts as a fix. The pickaxe pattern is anchored to a `### `
+ * heading, because that is where the mirror phrase lives (issue-mirrors.ts: only headings count) —
+ * an unanchored phrase also matched a commit that merely QUOTES such a heading in prose, citing a
+ * docs commit as the fix and, since `closeOne` insists every cited sha is on GitHub, holding the
+ * issue in `waitingPush` forever. The walk is served from a cache while the branch tip is
+ * unchanged (the same tip-SHA keying as `mirrorsAtTip`): it runs `--pickaxe-regex`, which diffs
  * every commit's change to the archives — 2m03s measured on this repo's 11.3 MB of finished
  * archives as of 2026-11-15, against 0.03s for the same walk without the pickaxe. The close pass
  * runs it for every candidate after every scan, and an issue whose fix is still unpushed
@@ -103,7 +107,7 @@ function newerThan(commits: FixCommit[], since?: number): FixCommit[] {
 /** The uncached walk: the commits on `branch` touching an entry for issue `n` in a finished
  * archive, unfiltered by date. */
 async function pickaxeFixCommits(root: string, branch: string, n: number): Promise<FixCommit[]> {
-  const phrase = `mirrors GitHub issues? [^[:cntrl:]]*#${n}([^0-9]|$)`;
+  const phrase = `^### [^[:cntrl:]]*mirrors GitHub issues? [^[:cntrl:]]*#${n}([^0-9]|$)`;
   const out = await gitTry(root, "log", "--format=%H%x00%ct%x00%s", "--pickaxe-regex", `-S${phrase}`, branch, "--", ...FIX_ARCHIVES);
   return gitLines(out).map((line) => {
     const [sha = "", seconds = "", subject = ""] = line.split("\0");

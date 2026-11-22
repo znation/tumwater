@@ -254,6 +254,38 @@ function sixtyTwoIssueRepo(): { dir: string; config: TumwaterConfig; fix: string
   }
 }
 
+test("a commit that only quotes the mirror phrase in prose is not the fix commit", async () => {
+  // The mirror's rule (src/github/issue-mirrors.ts): the phrase lives in an entry's `### `
+  // heading, so only a heading counts. A commit whose body QUOTES such a heading is not the
+  // fix: the close comment would cite a docs commit as the fix, and one such commit that
+  // GitHub's copy lacks holds the issue in waitingPush forever.
+  const repo = githubRepo();
+  try {
+    commitFiles(repo.dir, repo.git, { "BUGS.md": `## Open\n\n${MIRROR_HEADING}\n\nBody.\n`, "BUGS-FIXED.md": "## Fixed\n\n" }, "init");
+    const quote = commitFiles(
+      repo.dir,
+      repo.git,
+      { "BUGS-FIXED.md": `## Fixed\n\nThe entry "${MIRROR_HEADING}" is the mirror line.\n` },
+      "tumwater(readme): Quote the mirror entry in the archive",
+    );
+    const fix = commitFiles(
+      repo.dir,
+      repo.git,
+      { "BUGS.md": "## Open\n\n", "BUGS-FIXED.md": `## Fixed\n\nThe entry "${MIRROR_HEADING}" is the mirror line.\n\n${MIRROR_HEADING}\n\nBody.\n` },
+      FIX_SUBJECT,
+    );
+    const gh = fakeGh({ issues: [[issue(1)]], compare: { [fix]: "ahead", [quote]: "ahead" } });
+    await pollGithubIssues(repo.dir, repo.config, { nextAt: 0 }, () => {}, gh.probe, NOW);
+    const closes = gh.calls.filter((args) => args[0] === "issue");
+    assert.equal(closes.length, 1);
+    const comment = String(closes[0]?.[8] ?? "");
+    assert.ok(comment.includes(`${fix.slice(0, 8)} ("${FIX_SUBJECT}")`), comment);
+    assert.ok(!comment.includes(quote.slice(0, 8)), `the close cites a prose quote as the fix commit: ${comment}`);
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test("a close keeps the closed issue's row, and the next pass never closes that issue again", async () => {
   const repo = githubRepo();
   try {

@@ -5,6 +5,54 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### The mirror's fix-commit pickaxe is unanchored, so a commit that only quotes a mirror heading in archive prose is cited as the fix, and one such commit parks its issue in waitingPush forever (found by the bugfix role 2026-11-22) — fixed 2026-11-22 by the bugfix role
+
+**Symptom.** The close comment tumwater writes on GitHub cites a documentation commit as the fix:
+running the close over a repo whose archive received the mirror heading in a second commit, with a
+first commit that only QUOTES that heading in archive prose, produced
+`Fixed on main in … ("tumwater(bugfix): Cap the history read") and … ("tumwater(readme): Quote the
+mirror entry in the archive")`. That is cosmetic in the comment but not only cosmetic:
+`closeOne` (src/github/issue-close.ts) edits an issue only when EVERY sha it found is GitHub's copy
+of the branch, so one quoted commit that GitHub's copy lacks — a docs commit the operator left
+local, or one later rewritten by a rebase — holds the issue in `waitingPush` and it is never closed.
+The mirror also read a false fix commit in this repo's own history: for issue #1, `git log -S` with
+the shipped pattern named two commits and neither moved a heading into an archive.
+
+**Reproduce.** Offline, deterministic, no real `gh`. In test/github-issue-close.test.ts: a
+`githubRepo()` whose BUGS.md holds the mirror heading
+`### Heap OOM after the GUI starts (mirrors GitHub issue #1)`; one commit whose BUGS-FIXED.md body
+quotes that heading inside a sentence; then the commit that moves the heading from BUGS.md to
+BUGS-FIXED.md (subject tumwater(bugfix): Cap the history read). Drive the close with
+`pollGithubIssues` and `fakeGh({ issues: [[issue(1)]], compare: { [fix]: "ahead", [quote]: "ahead" } })`.
+Before the fix the close comment contains both shas, so the assertion on the quote fails; after it,
+only the fix sha. The same shape is visible by hand in a scratch repo: `git log --pickaxe-regex
+-S'mirrors GitHub issues? [^[:cntrl:]]*#7([^0-9]|$)'` reports a commit whose only matching line sits
+in prose, while the anchored pattern reports nothing for it and still reports the commit that adds
+the heading.
+
+**Cause.** `fixCommits` (src/github/issue-close.ts) asked `git log -S` for any line matching the
+mirror phrase, unanchored, over the two finished archives. `git log -S` reports every commit that
+adds or removes a matching line, and archive prose quoting a heading is such a line. The mirror's
+own rule is the opposite — mirroredIssueNumbers (src/github/issue-mirrors.ts) counts a phrase only
+inside a `### ` heading ("Only headings count, so a body that quotes the phrase mirrors nothing"),
+and plans/github-issues.md decision 7 defines the fix commit as the commit that moved the mirror
+into a finished archive — so the pickaxe read was wider than the rule it was supposed to find. The
+plan's quoted command had the same hole (`-S'mirrors GitHub issues? [^\n]*#<n>\b'`).
+
+**Fix.** The pickaxe phrase is anchored to a heading: `^### ` before the text, so a commit counts as
+a fix exactly when it added or removed the mirror heading — the added `^### ` also keeps a prose
+line starting mid-paragraph out, while the `([^0-9]|$)` tail still keeps #1 from matching #12. A
+steward compression commit that replaces a full entry with its one-line record deletes the heading,
+so it still counts, which the scratch check confirmed both ways. The guarantee is now written down
+as INV-DE5 (docs/invariants.md, the GitHub issues mirror section), decision 7's quoted command in
+plans/github-issues.md matches the shipped pattern, and the new test
+"a commit that only quotes the mirror phrase in prose is not the fix commit" pins it.
+
+**Validation gap:** unclear-invariant — nothing in the suite or the plan stated which commits the
+close may cite, so confirming the bug meant reconstructing the rule from issue-mirrors.ts and
+decision 7 (only a commit that moved a `### ` heading is a fix commit); that invariant is now
+INV-DE5, so a later bug in this area starts from it instead of rebuilding it.
+
 ### `tumwater init` writes a brief that mentions the prompt markers verbatim, so the brief is silently cut at the stray end marker and the rest lands outside the block every role reads (found by the qa role 2026-11-22) — fixed 2026-11-22 by the bugfix role
 
 - **Symptom:** a brief whose own text carries the literal string `<!-- tumwater:prompt:end -->`

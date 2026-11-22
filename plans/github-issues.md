@@ -101,8 +101,10 @@ this: no probe, no alert, no doctor warning (the doctor row reads "skipped: no G
 7. **The fix commit is the commit that moved the mirror into a finished archive.**
    archiveNewFinishedEntries (src/backlog/backlog-archive.ts) moves a role's finished entry into
    BUGS-FIXED.md / PLANS-DONE.md in the same commit as the fix. So
-   `git log --format=%H --pickaxe-regex -S'mirrors GitHub issues? [^\n]*#<n>\b' <base> --
-   BUGS-FIXED.md PLANS-DONE.md` finds the fix commit for each finished part, newest first. A hand
+   `git log --format=%H --pickaxe-regex -S'^### [^\n]*mirrors GitHub issues? [^\n]*#<n>([^0-9]|$)'
+   <base> -- BUGS-FIXED.md PLANS-DONE.md` finds the fix commit for each finished part, newest
+   first — anchored to a `### ` heading, because the phrase lives only in a heading, so a commit
+   that merely quotes one in prose is not a fix (INV-DE5). A hand
    move (the operator closes the entry in a later commit) cites that later commit, which is
    still a commit on main that records the fix. The director can also report an issue as
    already fixed (part 4's `ISSUE: #<n> — fixed in <sha>`). That sha is cited when it is an
