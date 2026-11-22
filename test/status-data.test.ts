@@ -403,3 +403,43 @@ test("a foreign-shaped GitHub issues ledger raises no githubIssues field and nev
   writeJsonFile(githubIssuesPath(repo), { repo: "acme/widgets", checkedAt: 1000, gh: "ok", open: "nope" });
   assert.equal((await snapshot(repo)).githubIssues, undefined);
 });
+
+test("the snapshot counts only the well-formed rows of a ledger holding a malformed one", async () => {
+  // The row-level half of the same guard: `open.filter((issue) => issue.trusted …)` reads a field
+  // of every entry, so a hand-edited ledger holding null or a half-written row in its `open` list
+  // must count the rows that are there, not throw out of the fold — readGithubIssues drops the
+  // entries that are not declared rows.
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  writeJsonFile(githubIssuesPath(repo), {
+    repo: "acme/widgets",
+    branch: "main",
+    checkedAt: 1000,
+    gh: "ok",
+    open: [
+      {
+        number: 1,
+        title: "one",
+        url: "https://github.com/acme/widgets/issues/1",
+        author: "someone",
+        trusted: true,
+        mirrored: false,
+        labels: [],
+        updatedAt: "2026-11-21T00:00:00Z",
+      },
+      null,
+      "not a row",
+      { number: 2, title: "half a row" },
+      { number: 3, title: "bad labels", url: "u", author: "a", trusted: true, mirrored: false, labels: [7], updatedAt: "t" },
+    ],
+  });
+  assert.deepEqual((await snapshot(repo)).githubIssues, {
+    repo: "acme/widgets",
+    gh: "ok",
+    checkedAt: 1000,
+    unmirrored: 1,
+    untrusted: 0,
+    waitingPush: 0,
+    mirrorLabel: "tumwater",
+  });
+});

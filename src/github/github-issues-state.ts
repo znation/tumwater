@@ -103,9 +103,42 @@ export function isReopened(ledger: GithubIssuesLedger, row: GithubIssueRow): boo
   return closedAt !== undefined && Date.parse(row.updatedAt) > closedAt;
 }
 
-/** The ledger on disk, or null when no scan has written one yet (or the file is unreadable). */
+/** Whether `value` carries the declared `GithubIssueRow` fields with the declared types — the
+ * optional ones checked only when present. `readJsonFile` only checks "a plain object", so a
+ * hand-edited or foreign-generation ledger can hold `null`, a string, or a half-written object in
+ * its `open` list, and every reader below indexes the row (`row.trusted`, `row.number`,
+ * `row.labels.join`) straight out of that list. */
+function isGithubIssueRow(value: unknown): value is GithubIssueRow {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return (
+    typeof row.number === "number" &&
+    Number.isFinite(row.number) &&
+    typeof row.title === "string" &&
+    typeof row.url === "string" &&
+    typeof row.author === "string" &&
+    typeof row.trusted === "boolean" &&
+    typeof row.mirrored === "boolean" &&
+    typeof row.updatedAt === "string" &&
+    Array.isArray(row.labels) &&
+    row.labels.every((label) => typeof label === "string") &&
+    (row.authorAssociation === undefined || typeof row.authorAssociation === "string") &&
+    (row.bodyExcerpt === undefined || typeof row.bodyExcerpt === "string")
+  );
+}
+
+/** The ledger on disk, or null when no scan has written one yet (or the file is unreadable). An
+ * `open` list holding a row the declared shape rejects has that row dropped here, at the one read
+ * every reader shares, so a hand-edited or foreign-generation entry costs the mirror one issue
+ * instead of throwing a `TypeError` out of `tumwater status`, `tumwater issues`, the dashboard and
+ * the queue/close polls. A ledger holding no `open` list at all is returned as read: its reader
+ * decides (`isFoldableLedger` reads it as no data, `issueRows` as an empty mirror). */
 export function readGithubIssues(root: string): GithubIssuesLedger | null {
-  return readJsonFile<GithubIssuesLedger>(githubIssuesPath(root));
+  const ledger = readJsonFile<GithubIssuesLedger>(githubIssuesPath(root));
+  if (ledger === null || !Array.isArray(ledger.open)) return ledger;
+  const open = (ledger.open as unknown[]).filter(isGithubIssueRow);
+  if (open.length === ledger.open.length) return ledger;
+  return { ...ledger, open };
 }
 
 /** The GitHub figures the status surfaces show: how many fixes wait for a push to GitHub and how

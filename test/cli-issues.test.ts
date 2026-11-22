@@ -315,6 +315,39 @@ test("issues run from a role worktree refuses the way quarantine does", async ()
   }
 });
 
+test("issues drops a malformed row out of a hand-edited ledger instead of failing", async () => {
+  // `readJsonFile` only checks "a plain object", so a hand-edited ledger can hold `null`, a
+  // string, a half-written row or a row with a non-string label in its `open` list. Every reader
+  // indexes the row straight out of that list, so the read boundary (readGithubIssues) drops what
+  // is not a declared row: the mirror keeps the issues it can state.
+  const repo = await issuesRepo("issues malformed rows test");
+  writeLedger(repo, {
+    ...REPO_LEDGER,
+    open: [
+      issueRow(3, "Report totals drift"),
+      null,
+      "not a row",
+      { number: 9, title: "half a row" },
+      { ...issueRow(12, "A quiet request"), labels: ["ok", 7] },
+    ],
+  });
+  const r = await cli(repo, "issues");
+  assert.equal(r.code, 0, r.stderr);
+  const lines = r.stdout.trimEnd().split("\n");
+  assert.equal(lines.length, 2, "the header plus only the well-formed row");
+  assert.match(lines[0]!, /: 1 open, checked \d+[smhd] ago$/);
+  assert.match(lines[1]!, /^1\. #3 — Report totals drift/, "positions count only kept rows");
+  const shown = await cli(repo, "issues", "--show", "1");
+  assert.equal(shown.code, 0, shown.stderr);
+  assert.ok(shown.stdout.includes("#3 — Report totals drift"), shown.stdout);
+  const past = await cli(repo, "issues", "--show", "2");
+  assert.equal(past.code, 1);
+  assert.ok(
+    past.stderr.includes("github issues mirror holds 1 open issues) — valid: 1-1"),
+    past.stderr,
+  );
+});
+
 test("issues reads a ledger whose open list is missing as an empty mirror", async () => {
   const repo = await issuesRepo("issues malformed test");
   writeLedger(repo, { repo: "znation/proj", branch: "main", checkedAt: REPO_LEDGER.checkedAt, gh: "ok" });
