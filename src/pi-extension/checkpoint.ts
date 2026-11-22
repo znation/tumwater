@@ -1,9 +1,16 @@
-// The `checkpoint` tool and the `session_before_compact` summary handler that together let a pi
-// run compact its own context at a step boundary it chooses (Run checkpoints, part 2/2;
+// The `checkpoint` tool and the two compaction handlers that together let a pi run compact its
+// own context at a step boundary it chooses (Run checkpoints, part 2/2;
 // plans/run-checkpoints.md §5-6). A long run can cross the same 256k window several times, so
 // pi's own compaction at the fixed thresholds runs out for it (part 1/2 kept the prompt verbatim
 // across each compaction; this adds the run's own choice of *when* to compact, at a step
 // boundary rather than mid-exploration).
+//
+// The accepted checkpoint writes its compaction entry itself, as a `turn_end` boundary draft:
+// pi's `compact()` aborts the turn still running the tool call and print mode exits once that
+// aborted turn settles, so the compaction it starts never reaches its end and the run loses its
+// turn for nothing (BUGS.md 2026-11-19). A boundary draft is the first-class way to append one:
+// `emitBoundary` reads `entries` off the handler result, `appendCompaction` commits the entry,
+// and the projection retains the range from its `firstKeptEntryId`.
 //
 // The self-suppression half borrows the idea from Self-Compacting Language Model Agents
 // (the plan's sources): a weak model would otherwise compact every few turns and throw away a
@@ -57,6 +64,11 @@ const CHECKPOINT_WINDOW_FRACTION = 0.25;
 // A checkpoint is refused while fewer turns have passed since the last one, so a weak model
 // cannot compact every few turns.
 export const CHECKPOINT_MIN_TURNS = 6;
+
+// How much recent context a checkpoint's compaction entry keeps: the same target pi's own
+// cut point aims at (its `compaction.keepRecentTokens` default), so a checkpoint rewrites the
+// older context into the summary and leaves the working recent range untouched.
+export const CHECKPOINT_KEEP_RECENT_TOKENS = 20_000;
 
 // The git block is capped so a busy worktree cannot flood the summary; the whole block stays
 // at or under this many lines.
@@ -172,9 +184,21 @@ export const CHECKPOINT_RUBRIC = `Call \`checkpoint\` right after you finish a s
 
 interface CompactCtx {
   cwd?: string;
+  /** pi's own compaction request. Declared so a test can hand the tool a throwing one and pin
+   * that it is never called: `compact()` aborts the turn that is running the tool call, which
+   * is exactly what lost an author run its turn on every accepted checkpoint (BUGS.md
+   * 2026-11-19). The compaction now rides the `turn_end` boundary draft instead. */
   compact?: (options?: { customInstructions?: string }) => void;
   getContextUsage?: () => Usage | undefined;
   exec?: (command: string, args: string[], options?: { cwd?: string }) => Promise<{ stdout: string }>;
+}
+
+/** One projected entry of the boundary context pi hands a `turn_end` handler: the session entry
+ * (whose `id` the kept range names) plus the messages that entry contributes to the next
+ * prompt. Structural, like every pi shape in this module. */
+interface ProjectedEntry {
+  sourceEntry?: { id?: unknown; type?: unknown };
+  messages?: unknown;
 }
 
 interface ToolLike {
@@ -202,6 +226,118 @@ const CHECKPOINT_PARAMS = {
   required: ["done"],
   additionalProperties: false,
 } as const;
+
+/** One message's character count, pi's own heuristic: text and thinking blocks count their
+ * characters, a tool call its name plus its serialized arguments, and an image a fixed
+ * stand-in count. Unknown shapes contribute nothing rather than throwing. */
+const ESTIMATED_IMAGE_CHARS = 4800;
+function messageChars(message: unknown): number {
+  if (!message || typeof message !== "object") return 0;
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") return content.length;
+  if (!Array.isArray(content)) return 0;
+  let chars = 0;
+  for (const raw of content) {
+    if (!raw || typeof raw !== "object") continue;
+    const block = raw as {
+      type?: unknown;
+      text?: unknown;
+      thinking?: unknown;
+      name?: unknown;
+      arguments?: unknown;
+    };
+    if (block.type === "text" && typeof block.text === "string") chars += block.text.length;
+    else if (block.type === "thinking" && typeof block.thinking === "string") chars += block.thinking.length;
+    else if (block.type === "image") chars += ESTIMATED_IMAGE_CHARS;
+    else if (block.type === "toolCall") {
+      if (typeof block.name === "string") chars += block.name.length;
+      try {
+        chars += JSON.stringify(block.arguments ?? {}).length;
+      } catch {
+        // A cyclic argument object is not something pi sends; the count is an estimate.
+      }
+    }
+  }
+  return chars;
+}
+
+/** One projected entry's estimated tokens, pi's chars/4 heuristic per message (pi's own
+ * `estimateTokens` counts the same fields and rounds the same way). */
+function estimateEntryTokens(entry: unknown): number {
+  const messages = (entry as ProjectedEntry | undefined)?.messages;
+  if (!Array.isArray(messages)) return 0;
+  let tokens = 0;
+  for (const message of messages) tokens += Math.ceil(messageChars(message) / 4);
+  return tokens;
+}
+
+/** Whether an entry can start the kept range: it carries a user- or assistant-role message.
+ * A bare tool-result entry never can — keeping one first would send pi an orphan tool result. */
+function isCutPointEntry(entry: unknown): boolean {
+  const messages = (entry as ProjectedEntry | undefined)?.messages;
+  if (!Array.isArray(messages)) return false;
+  return messages.some(
+    (m) => (m as { role?: unknown })?.role === "user" || (m as { role?: unknown })?.role === "assistant",
+  );
+}
+
+/** The id of the entry a checkpoint's compaction keeps from: walk the projected entries
+ * backward accumulating estimated tokens until `keepRecentTokens` is reached, then cut at the
+ * first entry at or after that point that may start a kept range. Under the budget the cut
+ * lands on the first such entry, so the checkpoint rewrites nothing it did not have to. The id
+ * must name a real entry — pi defaults a missing `firstKeptEntryId` to the compaction's own id,
+ * which would keep nothing before the summary — so a cut that names nothing returns null and the
+ * caller writes no draft. Exported for the tests. */
+export function checkpointKeptEntryId(entries: unknown, keepRecentTokens: number): string | null {
+  if (!Array.isArray(entries)) return null;
+  const cutPoints: number[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    if (isCutPointEntry(entries[i])) cutPoints.push(i);
+  }
+  if (cutPoints.length === 0) return null;
+  let cutIndex = cutPoints[0]!;
+  let accumulated = 0;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    accumulated += estimateEntryTokens(entries[i]);
+    if (accumulated >= keepRecentTokens) {
+      cutIndex = cutPoints.find((c) => c >= i) ?? cutPoints[cutPoints.length - 1]!;
+      break;
+    }
+  }
+  const id = (entries[cutIndex] as ProjectedEntry | undefined)?.sourceEntry?.id;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+/** The file ops of a checkpoint's summarised range: at a turn boundary that range is the whole
+ * projected context (pi's own `preparation.fileOps` covers only the range it would summarize,
+ * and the checkpoint path never reaches that preparation), so read the paths the projected
+ * read/write/edit tool calls name. Returns undefined for a context that is not a list, so the
+ * summary renders no files block rather than an empty one. Exported for the tests. */
+export function checkpointFileOps(entries: unknown): FileOps | undefined {
+  if (!Array.isArray(entries)) return undefined;
+  const read = new Set<string>();
+  const written = new Set<string>();
+  const edited = new Set<string>();
+  for (const entry of entries) {
+    const messages = (entry as ProjectedEntry | undefined)?.messages;
+    if (!Array.isArray(messages)) continue;
+    for (const message of messages) {
+      const content = (message as { content?: unknown })?.content;
+      if (!Array.isArray(content)) continue;
+      for (const raw of content) {
+        if (!raw || typeof raw !== "object") continue;
+        const block = raw as { type?: unknown; name?: unknown; arguments?: unknown };
+        if (block.type !== "toolCall" || typeof block.name !== "string") continue;
+        const args = block.arguments as { path?: unknown } | undefined;
+        if (!args || typeof args.path !== "string" || args.path.length === 0) continue;
+        if (block.name === "read") read.add(args.path);
+        else if (block.name === "write") written.add(args.path);
+        else if (block.name === "edit") edited.add(args.path);
+      }
+    }
+  }
+  return { read, written, edited };
+}
 
 /** Run a git command, returning its stdout, or null when the spawn fails — a failed read
  * degrades to an omitted summary line rather than an error. At most two of these per compaction
@@ -245,13 +381,11 @@ export function buildCheckpointTool(
       state.requested = true;
       state.fields = params;
       state.accepted += 1;
-      let compacted = false;
-      try {
-        ctx?.compact?.();
-        compacted = true;
-      } catch {
-        compacted = false;
-      }
+      // No `ctx.compact()` here, on purpose: pi's `compact()` aborts the turn still running this
+      // tool call, waits for the run to go idle behind that abort, and print mode exits once the
+      // aborted turn settles — so the compaction it starts never reaches its end and the run
+      // loses its turn for nothing (BUGS.md 2026-11-19). The compaction entry itself is written
+      // by the `turn_end` boundary handler below, at the next turn boundary, with the run alive.
       const echoed = [
         params.done ? `done: ${params.done}` : "",
         params.state ? `state: ${params.state}` : "",
@@ -259,7 +393,7 @@ export function buildCheckpointTool(
       ]
         .filter((l) => l.length > 0)
         .join("\n");
-      const text = `Checkpoint recorded${compacted ? "; the context is being compacted" : ""}.${
+      const text = `Checkpoint recorded; the context will be compacted at the next turn boundary.${
         echoed ? `\n${echoed}` : ""
       }`;
       return { content: [{ type: "text", text }] };
@@ -267,11 +401,13 @@ export function buildCheckpointTool(
   };
 }
 
-/** The bundled extension: register the `checkpoint` tool and the `session_before_compact`
- * summary handler over one shared state. The handler writes its summary only for a compaction
- * this extension requested (`state.requested`); compactions pi triggered itself (threshold,
- * overflow) are left to pi. Never throws into pi: every handler body is guarded, and a context
- * with no `compact` at all (a non-session pi) degrades to the tool alone. */
+/** The bundled extension: register the `checkpoint` tool and the two compaction handlers over
+ * one shared state. The `turn_end` handler writes the accepted checkpoint's compaction entry
+ * itself, as a boundary draft, at the next turn boundary; the `session_before_compact` handler
+ * stays as the guard that writes a summary only for a compaction this extension requested —
+ * pi's own threshold/overflow compactions are left to pi. Never throws into pi: every handler
+ * body is guarded, and a context with no compaction support at all (a non-session pi) degrades
+ * to the tool alone. */
 export default function (
   pi: {
     registerTool(tool: ToolLike): void;
@@ -284,6 +420,7 @@ export default function (
         event: {
           turnIndex?: number;
           preparation?: BeforeCompactPreparation;
+          context?: { contextEntries?: unknown };
         },
         ctx?: CompactCtx,
       ) => object | Promise<object> | undefined,
@@ -299,9 +436,49 @@ export default function (
   };
   let turn = -1;
   try {
-    pi.on("turn_end", () => {
+    // The turn counter and the checkpoint's compaction draft share one `turn_end` handler: pi's
+    // boundary contract reads `entries` off the result (`extensions/runner.js` `emitBoundary`)
+    // and appends them through `appendCompaction`, so the run stays alive and pi fills
+    // `tokensBefore` and `usage` itself off the draft's projection. Returning no `continue` is
+    // deliberate: the only turn-end exit pi sees is the one the run would have chosen anyway.
+    pi.on("turn_end", async (event, ctx) => {
       turn += 1;
-      return undefined;
+      try {
+        if (!state.requested || !state.fields) return undefined;
+        const entries = event.context?.contextEntries;
+        // pi defaults a missing firstKeptEntryId to the compaction's own id, which would drop
+        // everything before the summary, so a cut that names no entry writes no draft: the
+        // request stays queued for a boundary that carries a context.
+        const firstKeptEntryId = checkpointKeptEntryId(entries, CHECKPOINT_KEEP_RECENT_TOKENS);
+        if (firstKeptEntryId === null) return undefined;
+        const cwd = typeof ctx?.cwd === "string" ? ctx.cwd : process.cwd();
+        // Two git spawns at most (the design's budget): the worktree's status and diff-stat.
+        const gitStatus = await gitReading(pi.exec, ["status", "--short"], cwd);
+        const diffStat = parseShortstat(await gitReading(pi.exec, ["diff", "--shortstat"], cwd));
+        // At a turn boundary the checkpoint's summarised range is the whole projected context,
+        // so the file ops come off the projection, not pi's `preparation.fileOps`.
+        const summary = buildCheckpointSummary(
+          state.fields,
+          checkpointFileOps(entries),
+          gitStatus,
+          diffStat,
+        );
+        state.requested = false;
+        state.fields = null;
+        // `details` records the call counts the design's audit and A/B read off the entry.
+        return {
+          entries: [
+            {
+              type: "compaction",
+              summary: summary ?? "",
+              firstKeptEntryId,
+              details: { kind: "checkpoint", accepted: state.accepted, declined: state.declined },
+            },
+          ],
+        };
+      } catch {
+        return undefined;
+      }
     });
     pi.registerTool(buildCheckpointTool(state, () => turn));
   } catch {

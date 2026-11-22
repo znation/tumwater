@@ -308,6 +308,35 @@ test("parser ignores a compaction_end that aborted or failed", () => {
   }
 });
 
+test("a boundary-draft compaction entry_appended marks the session compacted", () => {
+  // A checkpoint writes its compaction entry as a turn-boundary draft, so the session holds it
+  // the moment pi appends it — the entry already exists when `entry_appended` fires, which meets
+  // the same completion bar a completed `compaction_end` does.
+  const parser = new PiStreamParser();
+  parser.feed(
+    JSON.stringify({
+      type: "entry_appended",
+      entry: { type: "compaction", id: "c1", summary: "s", firstKeptEntryId: "e4", details: { kind: "checkpoint" } },
+    }) + "\n",
+  );
+  assert.ok(parser.compacted, "an appended compaction entry is a written compaction");
+});
+
+test("an entry_appended of any other entry type is not compaction evidence", () => {
+  // context_edit is the neighbour that proves the type guard: pi appends one through the same
+  // boundary-draft path (context-shake), and it rewrites nothing.
+  for (const entry of [
+    { type: "context_edit", id: "x1", targetId: "m1", replacement: null },
+    { type: "message", id: "m2", message: { role: "assistant", content: [] } },
+    { id: "m3" },
+    "not-an-object",
+  ]) {
+    const parser = new PiStreamParser();
+    parser.feed(JSON.stringify({ type: "entry_appended", entry }) + "\n");
+    assert.equal(parser.compacted, false, JSON.stringify(entry));
+  }
+});
+
 test("parser counts a compaction that never completed as forward progress", () => {
   // The progress count keeps the hang watchdog off a run that is mid-compaction, so the
   // stricter `compacted` rule must not stop the start event from counting.

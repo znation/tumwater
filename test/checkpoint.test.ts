@@ -4,13 +4,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  CHECKPOINT_KEEP_RECENT_TOKENS,
   CHECKPOINT_MIN_TOKENS,
   CHECKPOINT_MIN_TURNS,
   CHECKPOINT_RUBRIC,
   buildCheckpointSummary,
   buildCheckpointTool,
   checkpointDecision,
+  checkpointFileOps,
   checkpointFloor,
+  checkpointKeptEntryId,
   default as checkpoint,
   parseShortstat,
 } from "../src/pi-extension/checkpoint.js";
@@ -122,23 +125,27 @@ test("the tool description is the rubric, word for word", () => {
 test("the tool refuses a too-fresh call and says why, and accepts a ready one", async () => {
   // Turn 6, last checkpoint at turn 5: only 1 turn since the last one -> refused on the turn floor.
   const fresh = { lastCheckpointTurn: 5, requested: false, fields: null } as never;
-  let compacted = false;
   const refused = await buildCheckpointTool(fresh, () => 6).execute("t", { done: "x" }, undefined, undefined, {
     getContextUsage: () => ({ tokens: 200_000, contextWindow: 200_000, percent: 100 }),
-    compact: () => { compacted = true; },
+    compact: () => { throw new Error("must not be called"); },
   });
   assert.match(refused.content[0]!.text, /refused/);
   assert.match(refused.content[0]!.text, /turn/);
-  assert.equal(compacted, false, "a refused call never compacts");
-  // Turn 3, last checkpoint at turn -3: 6 turns since, context high -> accepted and compacts.
+  // Turn 3, last checkpoint at turn -3: 6 turns since, context high -> accepted.
+  // The accept arm must never call `compact`: pi's compact() aborts the turn that is running the
+  // tool call, and that abort is what lost an author run its turn on every accepted checkpoint
+  // (BUGS.md 2026-11-19). A throwing `compact` therefore proves the call by failing the test.
   const ready = { lastCheckpointTurn: -3, requested: false, fields: null } as never;
   const accepted = await buildCheckpointTool(ready, () => 3).execute("t", { done: "x" }, undefined, undefined, {
     getContextUsage: () => ({ tokens: 200_000, contextWindow: 200_000, percent: 100 }),
-    compact: () => { compacted = true; },
+    compact: () => { throw new Error("must not be called"); },
   });
   assert.match(accepted.content[0]!.text, /recorded/);
   assert.match(accepted.content[0]!.text, /done: x/);
-  assert.equal(compacted, true, "an accepted call triggers pi's compaction");
+  // The wording promises the boundary write, not a compaction already under way: the accept arm
+  // starts nothing, so any "is being compacted" claim here would be false.
+  assert.match(accepted.content[0]!.text, /will be compacted at the next turn boundary/);
+  assert.ok(!accepted.content[0]!.text.includes("being compacted"), "nothing is compacting yet");
 });
 
 // A structural fake of pi's extension API: it records the registrations so the adapter's
@@ -161,6 +168,138 @@ function fakePi() {
     }),
   };
 }
+
+test("the documented keep-recent target is pi's own 20k-token cut", () => {
+  // The checkpoint's boundary draft keeps the same recent range pi's own `findProjectedCutPoint`
+  // targets (its `compaction.keepRecentTokens` default, 20000 in pi 1.5.2), so a checkpoint
+  // rewrites the older context and leaves the working recent range untouched.
+  assert.equal(CHECKPOINT_KEEP_RECENT_TOKENS, 20_000);
+});
+
+// A projected entry as the turn-end boundary hands it: the session entry (whose id names the
+// kept range) plus the messages that entry contributes to the next prompt.
+function projected(id: string | undefined, messages: unknown[]) {
+  return { sourceEntry: id === undefined ? { type: "message" } : { id, type: "message" }, messages };
+}
+/** A user message of `chars` characters: pi's chars/4 estimate makes it chars/4 tokens. */
+function userChars(chars: number) {
+  return { role: "user", content: "u".repeat(chars) };
+}
+
+test("checkpointKeptEntryId cuts where the recent budget is reached, not one entry earlier", () => {
+  // Three 1000-token entries; a 2000-token budget is reached AT the middle entry, so the cut
+  // keeps the last two. A `>` instead of `>=` in the accumulation test would walk on and cut at
+  // e1, keeping all three — the summary would then rewrite nothing.
+  const entries = [projected("e1", [userChars(4000)]), projected("e2", [userChars(4000)]), projected("e3", [userChars(4000)])];
+  assert.equal(checkpointKeptEntryId(entries, 2000), "e2");
+  assert.equal(checkpointKeptEntryId(entries, 500), "e3", "a budget inside the newest entry keeps only it");
+  assert.equal(checkpointKeptEntryId(entries, 100_000), "e1", "under budget the cut is the first entry");
+});
+
+test("checkpointKeptEntryId never cuts at an entry that cannot start a kept range", () => {
+  // A bare tool-result entry first: keeping it first would send pi an orphan tool result, so the
+  // cut moves to the first user/assistant entry (e2) whatever the budget.
+  const entries = [
+    projected("e1", [{ role: "toolResult", content: "output" }]),
+    projected("e2", [userChars(4000)]),
+    projected("e3", [userChars(4000)]),
+  ];
+  assert.equal(checkpointKeptEntryId(entries, 100_000), "e2");
+  // A budget reached inside the newest entry cuts there: 1000 tokens of it cover 1000.
+  assert.equal(checkpointKeptEntryId(entries, 1000), "e3");
+});
+
+test("checkpointKeptEntryId names nothing for a context it cannot cut", () => {
+  // No usable entry: the caller writes no draft, because pi defaults a missing firstKeptEntryId
+  // to the compaction's own id, which would drop everything before the summary.
+  assert.equal(checkpointKeptEntryId(undefined, 20_000), null);
+  assert.equal(checkpointKeptEntryId([], 20_000), null);
+  assert.equal(checkpointKeptEntryId([projected(undefined, [userChars(40)])], 20_000), null, "an id-less entry cannot be named");
+  assert.equal(checkpointKeptEntryId([projected("", [userChars(40)])], 20_000), null, "an empty id is no id");
+});
+
+test("checkpointFileOps reads the paths the projected read/write/edit calls name", () => {
+  const call = (name: string, path: unknown) => ({
+    role: "assistant",
+    content: [{ type: "toolCall", name, arguments: { path } }],
+  });
+  const entries = [
+    projected("e1", [call("read", "b.ts"), call("read", "a.ts")]),
+    projected("e2", [call("edit", "c.ts"), call("write", "d.ts"), call("bash", undefined)]),
+  ];
+  const ops = checkpointFileOps(entries)!;
+  assert.deepEqual([...ops.read].sort(), ["a.ts", "b.ts"]);
+  // Distinct paths per tool: swapping the write and edit arms would land d.ts in `edited`.
+  assert.deepEqual([...ops.edited], ["c.ts"]);
+  assert.deepEqual([...ops.written], ["d.ts"]);
+  // A context that is not a list contributes no file block at all (undefined, not empty sets).
+  assert.equal(checkpointFileOps(undefined), undefined);
+});
+
+test("a requested checkpoint is written as the turn_end boundary draft, once", async () => {
+  const fake = fakePi();
+  checkpoint(fake as never);
+  // An unrequested boundary writes nothing: pi's own threshold/overflow compactions stay pi's.
+  const quiet = (await fake.handlers.turn_end!({ context: { contextEntries: [projected("e1", [userChars(40)])] } }, { cwd: "/w" })) as unknown;
+  assert.equal(quiet, undefined, "a boundary with no queued checkpoint drafts nothing");
+  // Advance the shared turn counter past the 6-turn floor, then accept a checkpoint.
+  for (let i = 0; i < 10; i++) await fake.handlers.turn_end!({});
+  const tool = fake.tool as {
+    execute: (id: string, p: { done: string; state: string; next: string }) => Promise<unknown>;
+  };
+  await tool.execute("t", { done: "landed the parser", state: "tests green", next: "docs" });
+  // The next boundary carries the projection pi would send: one entry with a `read` tool call
+  // (so the files block renders from the projection) and a big user entry.
+  const readCall = { role: "assistant", content: [{ type: "toolCall", name: "read", arguments: { path: "src/a.ts" } }] };
+  const entries = [projected("e1", [readCall]), projected("e2", [userChars(40)])];
+  const drafted = (await fake.handlers.turn_end!({ context: { contextEntries: entries } }, { cwd: "/w" })) as {
+    entries: Array<{
+      type: string;
+      summary: string;
+      firstKeptEntryId: string;
+      details: { kind: string; accepted: number; declined: number };
+    }>;
+  };
+  assert.equal(drafted.entries.length, 1, "one boundary draft");
+  const draft = drafted.entries[0]!;
+  assert.equal(draft.type, "compaction", "pi's appendCompaction is what commits it");
+  assert.equal(draft.firstKeptEntryId, "e1", "the cut names the first entry the projection keeps");
+  assert.match(draft.summary, /done:\nlanded the parser/, "the model's prose leads the summary");
+  assert.match(draft.summary, /next:\ndocs/);
+  assert.match(draft.summary, /read: src\/a\.ts/, "the file ops come off the projected context");
+  assert.match(draft.summary, /git status/, "the git block rides the api's exec");
+  assert.equal(draft.details.kind, "checkpoint");
+  assert.equal(draft.details.accepted, 1);
+  assert.equal(draft.details.declined, 0);
+  // The boundary must not claim a continuation: pi reads `continue` off the handler result, and
+  // a checkpoint that asked for one would change the turn's exit. A draft of `entries` only
+  // leaves the run alive on the path it was already on, so the tool result and the next
+  // assistant message both reach the stream.
+  assert.ok(!("continue" in drafted), "the draft never requests continuation");
+  // The request is consumed: the boundary after it drafts nothing, so a checkpoint writes one
+  // compaction entry, not one per turn.
+  const again = (await fake.handlers.turn_end!({ context: { contextEntries: entries } }, { cwd: "/w" })) as unknown;
+  assert.equal(again, undefined, "the queued request is cleared after it is written");
+});
+
+test("a boundary whose context offers no cut point drafts nothing and keeps the request", async () => {
+  const fake = fakePi();
+  checkpoint(fake as never);
+  for (let i = 0; i < 10; i++) await fake.handlers.turn_end!({});
+  const tool = fake.tool as { execute: (id: string, p: { done: string }) => Promise<unknown> };
+  await tool.execute("t", { done: "d" });
+  // A context with no entry pi could keep (no id): drafting here would let pi default
+  // firstKeptEntryId to the compaction's own id and drop everything before the summary.
+  const bad = (await fake.handlers.turn_end!({ context: { contextEntries: [projected(undefined, [userChars(40)])] } }, { cwd: "/w" })) as unknown;
+  assert.equal(bad, undefined, "no cut point, no draft");
+  const noContext = (await fake.handlers.turn_end!({}, { cwd: "/w" })) as unknown;
+  assert.equal(noContext, undefined, "a boundary with no context drafts nothing");
+  // The request is still queued, so a later boundary that does carry a cut writes it.
+  const ok = (await fake.handlers.turn_end!({ context: { contextEntries: [projected("e9", [userChars(40)])] } }, { cwd: "/w" })) as
+    | { entries: Array<{ firstKeptEntryId: string }> }
+    | undefined;
+  assert.equal(ok?.entries[0]?.firstKeptEntryId, "e9", "the queued checkpoint is written at the next usable boundary");
+});
 
 test("the adapter registers the tool and serves only a compaction the run requested", async () => {
   const fake = fakePi();

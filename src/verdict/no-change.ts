@@ -36,8 +36,9 @@ interface NoChangeDiagnosis {
  * pi auto-compacted the session. */
 export function diagnoseNoChange(pi: PiRunResult): NoChangeDiagnosis {
   // A checkpoint abort (BUGS.md 2026-11-16) ends the turn contentless with stopReason
-  // "aborted" and writes no compaction (pi 1.5.2's fire-and-forget compact() aborts the turn
-  // still running it). Its contentless final is NOT a context-ceiling cut-off: a ceiling
+  // "aborted" and writes no compaction — what pi 1.5.2's fire-and-forget compact() did to the
+  // turn still running it, before the checkpoint moved to the `turn_end` boundary draft. Its
+  // contentless final is NOT a context-ceiling cut-off: a ceiling
   // cut-off stops normally and pi compacts it. Distinguish the two by the abort plus the
   // missing compaction, and name the real cause.
   const checkpointAborted =

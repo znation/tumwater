@@ -86,10 +86,12 @@ export function piArgs(opts: PiArgOptions): string[] {
     args.push("--no-extensions");
     for (const builtin of PI_KEPT_BUILTINS) args.push("-e", `builtin:${builtin}`);
     for (const ext of bundledExtensionPaths()) {
-      // The `checkpoint` tool's self-compact calls pi's fire-and-forget `compact()`, which
-      // aborts the turn still running it; a gate (review/merge) run has no resume, so an
-      // accepted checkpoint would cost it its verdict outright (BUGS.md 2026-11-15). Gate
-      // runs drop the extension; author runs keep it, where the abort is resumable.
+      // A gate (review/merge) run has no resume, so a checkpoint that lost its turn would cost
+      // it its verdict outright (BUGS.md 2026-11-15): the tool used to call pi's fire-and-forget
+      // `compact()`, which aborted the turn still running it. It no longer does — the compaction
+      // rides the `turn_end` boundary draft (src/pi-extension/checkpoint.ts) — but a gate run
+      // still has nothing to gain from rewriting its own context mid-review, so gate runs keep
+      // dropping the extension and author runs keep it.
       if (opts.kind === "gate" && path.basename(ext) === "checkpoint.js") continue;
       args.push("-e", ext);
     }

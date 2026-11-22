@@ -5482,16 +5482,23 @@ quietly, not with an EPIPE crash".
 ### INV-DD1: `compacted` records a compaction the session holds, so a run that only saw a `compaction_start` is never treated as compacted
 
 **Guarantee.** `PiStreamParser` sets `compacted` from a `compaction_end` event that carries a
-result object and is not `aborted: true`; a `compaction_start` on its own never sets it, and
-neither does an end whose `result` is absent (pi's failed and cancelled arms). The flag is
-monotonic: one completed compaction stands. The reason is what real pi 1.5.2 does at a
-checkpoint: its fire-and-forget `compact()` emits `compaction_start` and pi then exits once the
-aborted turn settles, so a start-only stream proves nothing was written. Reading the start as
+result object and is not `aborted: true`, or from an `entry_appended` event whose `entry` is
+itself a `compaction` entry; a `compaction_start` on its own never sets it, neither does an end
+whose `result` is absent (pi's failed and cancelled arms), nor an `entry_appended` of any other
+entry type (a `context_edit`, a message). The flag is
+monotonic: one completed compaction stands. The reason is what real pi 1.5.2 did at a
+checkpoint: its fire-and-forget `compact()` emitted `compaction_start` and pi then exited once the
+aborted turn settled, so a start-only stream proved nothing was written. Reading the start as
 compaction made every checkpoint abort look like a context-ceiling cut-off — the no-change
 warning blamed the ceiling, and the resume bridge promised a summary that does not exist
 (BUGS.md 2026-11-18). The flag feeds `diagnoseNoChange`'s `checkpointAborted` arm and the
 cut-off resume decision, so the evidence rule is what keeps an uncompacted session from being
-resumed as compacted. A compaction event still counts as forward progress for the hang
+resumed as compacted. The second arm is what a checkpoint produces now: the extension writes its
+compaction entry as a `turn_end` boundary draft (`src/pi-extension/checkpoint.ts`), and pi
+appends that entry and emits `entry_appended` for it (`_commitBoundaryDrafts`), so the entry is
+already in the session when the event fires — the same completion bar a completed `compaction_end`
+meets, and no `compaction_end` ever reaches a print-mode run's stream for it. A compaction event
+still counts as forward progress for the hang
 watchdog whether or not it completes — the two rules are decided separately. The claude
 translator, whose `system/compact_boundary` marker appears only after claude has rewritten the
 context, therefore emits the completed pair rather than a bare start.
@@ -5500,8 +5507,10 @@ context, therefore emits the completed pair rather than a bare start.
 `src/agent/claude/claude-stream.ts` (`compact_boundary`), `src/verdict/no-change.ts`
 (`checkpointAborted`), `src/agent/agent-settle.ts` (`resultFromParser`).
 
-**Pinned by.** `test/pi-parser.test.ts` — "parser records that pi auto-compacted the session"
-and "parser ignores a compaction_end that aborted or failed"; `test/runner-interrupted.test.ts`
+**Pinned by.** `test/pi-parser.test.ts` — "parser records that pi auto-compacted the session",
+"parser ignores a compaction_end that aborted or failed", "a boundary-draft compaction
+entry_appended marks the session compacted" and "an entry_appended of any other entry type is
+not compaction evidence"; `test/runner-interrupted.test.ts`
 — "a checkpoint abort whose compaction never completed is not a cut-off and arms no resume" and
 "a run cut off at the context ceiling warns, skips backoff, and resumes";
 `test/claude-stream.test.ts` — "retries and compaction translate to the canonical events the

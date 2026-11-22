@@ -127,6 +127,10 @@ interface PiStreamEvent {
   /** compaction_end events only: pi's own flag that the compaction was aborted
    * (BUGS.md 2026-11-18). */
   aborted?: unknown;
+  /** entry_appended events only: the session entry pi just wrote. A checkpoint's compaction
+   * reaches the stream this way — as the `entry_appended` for a boundary-draft compaction entry
+   * — not as a `compaction_end` (see `applyCompaction`). */
+  entry?: unknown;
 }
 
 /** One content block's fields, each unknown until the consumer guards what it reads. */
@@ -316,7 +320,8 @@ export class PiStreamParser {
    * from finalMessageContentless, which describes only the LAST message. */
   producedAssistantContent = false;
   /** True when a compaction the session actually holds was written during the run — set on a
-   * completed `compaction_end`, never on a `compaction_start` alone (see `applyCompaction`). */
+   * completed `compaction_end` or on an `entry_appended` that appends a `compaction` entry, never
+   * on a `compaction_start` alone (see `applyCompaction`). */
   compacted = false;
   /** Incremented for every parsed event that represents real forward progress — message,
    * turn, and tool boundaries, retries, session events, and content-bearing updates
@@ -627,13 +632,21 @@ export class PiStreamParser {
   // `compacted` is evidence the session was rewritten, so it comes from pi's `compaction_end`
   // carrying a result object, not from `compaction_start`: pi emits the start before it has
   // summarized anything and, when the compaction never runs to completion, exits without ever
-  // emitting the end (BUGS.md 2026-11-18 — a checkpoint's fire-and-forget `compact()` emits
-  // `compaction_start` {reason: "manual"} and pi then dies, writing no compaction entry, while
-  // the aborted turn looked like a context-ceiling cut-off). A failed or aborted end carries
-  // `result: undefined`, which is no more evidence than no end at all. The flag is monotonic:
-  // one written compaction stands, since a later failed compaction cannot un-write it.
+  // emitting the end (BUGS.md 2026-11-18 — a checkpoint used to call pi's fire-and-forget
+  // `compact()`, which emitted `compaction_start` {reason: "manual"} while pi died before any
+  // end, and the aborted turn looked like a context-ceiling cut-off). A failed or aborted end
+  // carries `result: undefined`, which is no more evidence than no end at all. The same evidence
+  // arrives a second way now that a checkpoint writes its compaction entry as a turn-boundary
+  // draft: pi appends that entry and emits `entry_appended` carrying it, so an entry whose own
+  // `type` is `compaction` marks the session compacted exactly as a completed end does — the
+  // entry is already written when that event fires, so it meets the same completion bar. An
+  // entry of any other type (a `context_edit`, a message) is not compaction evidence. The flag
+  // is monotonic: one written compaction stands, since a later failed compaction cannot un-write
+  // it.
   private applyCompaction(event: PiStreamEvent): void {
     if (event.type === "compaction_end" && event.aborted !== true && isJsonObject(event.result))
+      this.compacted = true;
+    if (event.type === "entry_appended" && isJsonObject(event.entry) && event.entry.type === "compaction")
       this.compacted = true;
   }
 
