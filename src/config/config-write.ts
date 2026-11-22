@@ -133,8 +133,8 @@ type SetConfigKeyResult =
 // key families instead of inline OR chains over `parsed`.
 /** The integer-bound keys: the top-level run-concurrency knobs (see
  * PLAIN_INTEGER_TOP_LEVEL_KEYS), the per-role `instances` count and the
- * `bootstrap.untilPlansDone` section field. For these, an exponent spelling is refused
- * with the "plain integer" message. */
+ * `bootstrap.untilPlansDone` and `githubIssues.scanIntervalMinutes` section fields. For
+ * these, an exponent spelling is refused with the "plain integer" message. */
 function isPlainIntegerKey(
   parsed: ReturnType<typeof parseConfigKey>,
   key: string,
@@ -142,7 +142,10 @@ function isPlainIntegerKey(
   return (
     (parsed.kind === "top" && PLAIN_INTEGER_TOP_LEVEL_KEYS.has(key)) ||
     (parsed.kind === "role" && parsed.field === "instances") ||
-    (parsed.kind === "section" && parsed.section === "bootstrap" && parsed.field === "untilPlansDone")
+    (parsed.kind === "section" && parsed.section === "bootstrap" && parsed.field === "untilPlansDone") ||
+    // A whole number of minutes like the team knobs — the dotted form became addressable with
+    // the mirror section, and its exponent misread (`6e1` → 60) is the same silent one.
+    (parsed.kind === "section" && parsed.section === "githubIssues" && parsed.field === "scanIntervalMinutes")
   );
 }
 

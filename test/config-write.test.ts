@@ -14,8 +14,10 @@ import { readJson } from "./helpers/json-read.js";
 import { spawnLockHolder, stopChild } from "./helpers/child-process.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { setConfigKey, unsetConfigKey, setDailyBudgetUsd, setRoleModelFields, replaceConfigText } from "../src/config/config-write.js";
+import { completionConfigKeys, configValueWords } from "../src/cli/cli-completion.js";
 import { parseConfigKey } from "../src/config/config-keys.js";
 import { helpTopic } from "../src/cli/cli-help.js";
+import { ghUnreadableSentence } from "../src/github/gh.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 
 // setConfigKey — `tumwater config set`'s engine: one top-level key, the value JSON-parsed
@@ -777,6 +779,74 @@ test("section keys set, unset and parse one field of a fixed-shape section", () 
   assert.ok(typo.kind === "error" && typo.error.startsWith('unknown review field "modle"') && typo.error.endsWith("did you mean `model`?"), JSON.stringify(typo));
   const head = parseConfigKey("bootstarp.untilPlansDone");
   assert.ok(head.kind === "error" && head.error.endsWith("did you mean `bootstrap`?"), JSON.stringify(head));
+});
+
+// The GitHub mirror's section is a fixed-shape section like review and bootstrap, so a dotted
+// key names one of its fields. The status banner and the `github issues` doctor row both tell
+// the operator to `set githubIssues.enabled to false`; that sentence's own command had to work
+// (BUGS.md 2026-11-22), and the sentence is a third surface over the same key list.
+test("githubIssues keys set, unset, parse and complete one field of the mirror section", () => {
+  const dir = tmpdir();
+  saveConfig(dir, defaultConfig());
+  const file = path.join(dir, "tumwater.json");
+  const rawFile = () => readJson(file) as Record<string, Record<string, unknown>>;
+
+  // A sub-key write merges one field into the section: the sibling the section row documents
+  // survives, and the value lands with its type (the string "false" is not the boolean).
+  let r = setConfigKey(dir, "githubIssues.enabled", "false");
+  assert.ok(r.ok && r.value === false, JSON.stringify(r));
+  assert.equal(rawFile().githubIssues?.enabled, false);
+  assert.equal(rawFile().githubIssues?.close, true, "the section's other fields keep their values");
+  assert.equal(loadConfig(dir).githubIssues!.enabled, false, "the written flag survives load");
+
+  // The other sub-keys the docs/config.md row documents write the same way, each validated:
+  // a too-short scan interval and a bad authors value fail with validateConfig's own message,
+  // byte-identical.
+  r = setConfigKey(dir, "githubIssues.scanIntervalMinutes", "30");
+  assert.ok(r.ok && r.value === 30, JSON.stringify(r));
+  const untouched = fs.readFileSync(file, "utf8");
+  r = setConfigKey(dir, "githubIssues.scanIntervalMinutes", "5");
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /githubIssues\.scanIntervalMinutes must be a whole number of minutes, at least 15 \(got 5\)/);
+  r = setConfigKey(dir, "githubIssues.authors", "everyone");
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /githubIssues\.authors must be "collaborators" or "anyone" \(got "everyone"\)/);
+  assert.equal(fs.readFileSync(file, "utf8"), untouched, "a rejected mirror value changes nothing");
+
+  // Unset is the inverse: one field leaves the file, the section keeps the rest.
+  const ur = unsetConfigKey(dir, "githubIssues.enabled");
+  assert.ok(ur.ok && ur.oldValue === false, JSON.stringify(ur));
+  assert.ok(!("enabled" in (rawFile().githubIssues ?? {})), "only the named field is removed");
+  assert.equal(rawFile().githubIssues?.scanIntervalMinutes, 30, "the other fields survive");
+  assert.equal(loadConfig(dir).githubIssues!.enabled, true, "the default applies again");
+
+  // parseConfigKey takes the head now, so a typo'd field names the valid ones and a typo'd
+  // head suggests the real head instead of the generic dotted-shape lecture. (The positive
+  // parse is read off JSON so the assertion holds its shape across the section-name union.)
+  const parsed = parseConfigKey("githubIssues.enabled") as { kind: string; section?: string; field?: string };
+  assert.deepEqual([parsed.kind, parsed.section, parsed.field], ["section", "githubIssues", "enabled"], JSON.stringify(parsed));
+  const typo = parseConfigKey("githubIssues.enabledd");
+  assert.ok(typo.kind === "error" && typo.error.startsWith('unknown githubIssues field "enabledd"') && typo.error.includes("valid fields: enabled, close, scanIntervalMinutes, authors, mirrorLabel") && typo.error.endsWith("did you mean `enabled`?"), JSON.stringify(typo));
+  const head = parseConfigKey("githubIssue.enabled");
+  assert.ok(head.kind === "error" && head.error.endsWith("did you mean `githubIssues`?"), JSON.stringify(head));
+
+  // Completion is derived from the same list, so the sentence's command is also TAB-able and
+  // its `.enabled` completes the boolean vocabulary.
+  const keys = completionConfigKeys(dir);
+  for (const k of ["githubIssues.enabled", "githubIssues.close", "githubIssues.scanIntervalMinutes", "githubIssues.authors", "githubIssues.mirrorLabel"])
+    assert.ok(keys.includes(k), k);
+  assert.deepEqual(configValueWords("githubIssues.enabled"), ["true", "false"]);
+});
+
+// The cross-surface half of the same fact: the mirror's remedy sentence is advice about a
+// config key, so every dotted key it names must be one parseConfigKey accepts. A sentence
+// naming a key the parser refuses tells the operator to do a thing the CLI refuses to do.
+test("the gh-unreadable sentence names a config key the key parser accepts", () => {
+  const sentence = ghUnreadableSentence("missing", "acme/widgets");
+  assert.ok(sentence.includes("githubIssues.enabled"), sentence);
+  // URLs are not config keys, so the doc link is out of the scan before the dotted shapes are.
+  for (const match of sentence.replace(/https?:\/\/\S+/g, "").matchAll(/\b([A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)+)\b/g))
+    assert.notEqual(parseConfigKey(match[1]!).kind, "error", `the sentence names ${match[1]}, which parseConfigKey refuses`);
 });
 
 // Fast merge "Defaults" (parts 6/14, 14/14): the mergeCommand default — fall back to the gate

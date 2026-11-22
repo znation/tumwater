@@ -184,6 +184,29 @@ reply waited across a host sleep warns on its awake wait only", "an open tool ca
 across a host sleep is warned on its awake silence only" and "a sleep sampler that reads no sleep
 clock keeps the wall-clock quiet kill".
 
+### INV-A10: a surface's remedy sentence names a config key the key parser accepts
+
+**Guarantee.** A dotted config key is valid only under a head `parseConfigKey` claims — a
+per-role map in `DOTTED_MAP_KEYS`, the `roles.`/`model.`/`backends` heads, or a section listed
+in `DOTTED_SECTION_FIELDS` with its schema's field list. The GitHub mirror's section is in that
+last group, so every field its schema lists (`GITHUB_ISSUES_KEYS`) is addressable by
+`config get/set/unset` and by shell completion. Because the gh-unreadable remedy sentence names
+`githubIssues.enabled`, the sentence and the parser cannot drift: a sentence that told the
+operator to set a key the parser refuses is not a remedy. A dotted key that joins an existing
+numeric family joins that family's shape screen too: `githubIssues.scanIntervalMinutes` is
+refused on an exponent spelling, like every other plain-integer key, so the newly addressable
+form cannot land the silent `6e1` → 60 misread.
+
+**Binds.** `src/config/config-keys.ts` (`DOTTED_SECTION_FIELDS`, `DOTTED_KEY_HEADS`,
+`parseConfigKey`), `src/cli/cli-completion.ts` (`completionConfigKeys`, `configValueWords`),
+`src/github/gh.ts` (`ghUnreadableSentence`).
+
+**Pinned by.** `test/config-write.test.ts` — "githubIssues keys set, unset, parse and complete
+one field of the mirror section" and "the gh-unreadable sentence names a config key the key
+parser accepts"; `test/completion.test.ts` — "completion --config-keys prints parseable keys for
+this repo's roles, or the catalog on a broken config"; `test/cli-config-commands.test.ts` — "set
+of an exponent spelling of a plain-integer key fails without writing".
+
 ## Reader and writer over a persisted or appended file
 
 A file that one process appends to or persists and another reads has two ends to agree on: the

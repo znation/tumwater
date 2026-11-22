@@ -9,7 +9,7 @@
  * the director's staged request in src/config/config-request.ts);
  * the per-key validators and key-shape parsing here are the one home of the wording both the
  * writers and the read side show. */
-import { BACKEND_KEYS, BACKOFF_KEYS, BOOTSTRAP_KEYS, CHECK_KEYS, CLAUDE_AGENT_KEYS, CODEX_BACKEND_KEYS, REVIEW_KEYS, ROLE_ENTRY_KEYS, TIER_MAP_KEYS, TOP_LEVEL_KEYS, type ModelTier } from "./config-schema.js";
+import { BACKEND_KEYS, BACKOFF_KEYS, BOOTSTRAP_KEYS, CHECK_KEYS, CLAUDE_AGENT_KEYS, CODEX_BACKEND_KEYS, GITHUB_ISSUES_KEYS, REVIEW_KEYS, ROLE_ENTRY_KEYS, TIER_MAP_KEYS, TOP_LEVEL_KEYS, type ModelTier } from "./config-schema.js";
 import { typoSuffix } from "../text/suggest.js";
 import { MAX_DURATION_SECONDS, show } from "./config-field-checks.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
@@ -86,6 +86,11 @@ export const DOTTED_SECTION_FIELDS = {
   check: CHECK_KEYS,
   idleBackoff: BACKOFF_KEYS,
   bootstrap: BOOTSTRAP_KEYS,
+  // The GitHub issues mirror is a fixed-shape section like the four above, and its fields are
+  // named as dotted keys on the operator's face: the gh-unreadable sentence (gh.ts) that the
+  // status banner and the `github issues` doctor row both print ends `… or set
+  // githubIssues.enabled to false`, so that command has to parse too (BUGS.md 2026-11-22).
+  githubIssues: GITHUB_ISSUES_KEYS,
 } as const;
 
 /** The valid first segments of a dotted config key — the per-role maps plus the `roles.` and
@@ -171,7 +176,8 @@ function parseModelTier(parts: string[]): ParsedConfigKey | undefined {
 }
 
 /** `<section>.<field>` names one field of a fixed-shape section (review, check, idleBackoff,
- * bootstrap); the field must be one the schema lists, or the write would be a dead key. */
+ * bootstrap, githubIssues); the field must be one the schema lists, or the write would be a
+ * dead key. */
 function parseSectionField(parts: string[]): ParsedConfigKey | undefined {
   const first = parts[0] ?? "";
   const second = parts.length > 1 ? parts[1] ?? "" : undefined;

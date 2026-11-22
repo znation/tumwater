@@ -102,6 +102,7 @@ test("set of an exponent spelling of a plain-integer key fails without writing",
     ["maxConcurrentChecks", "1e2"],
     ["roles.feature.instances", "2e1"],
     ["bootstrap.untilPlansDone", "4e1"],
+    ["githubIssues.scanIntervalMinutes", "6e1"],
   ] as const) {
     const out = await attemptAsync(() => cmdConfig(root, ["set", key, val]));
     assert.ok(out.exited && out.code === 1, `${key}: an exponent spelling is refused`);
