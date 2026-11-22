@@ -27,6 +27,7 @@ interface IssueRowFixture {
   updatedAt?: string;
   authorAssociation?: string;
   bodyExcerpt?: string;
+  closedAt?: number;
 }
 
 function issueRow(n: number, title: string, extra: Partial<IssueRowFixture> = {}): IssueRowFixture {
@@ -549,4 +550,67 @@ test("issues reads a ledger whose open list is missing as an empty mirror", asyn
   assert.match(r.stdout.trimEnd(), /^github issues — znation\/proj \(main\): 0 open, checked \d+[smhd] ago$/);
   const e = await cli(repo, "issues", "--show", "1");
   assert.equal(e.code, 1, "a mirror holding nothing has no position 1");
+});
+
+test("issues lists issues GitHub closed upstream last, under a header counting them", async () => {
+  // open #7, closedRows #9, upstreamClosed #8 and #10: the lost issues come after both other
+  // lists, numbered 3 and 4, and their age segment reads `last seen open <ago>`, never
+  // `closed <ago>` — tumwater closed nothing here. The ages come out of the fixture's instants
+  // relative to the real clock, so they are asserted as a span, not a fixed unit.
+  const repo = await issuesRepo("issues upstream closed test");
+  const seenAt = Date.parse("2026-11-17T12:00:00.000Z");
+  writeLedger(repo, {
+    ...REPO_LEDGER,
+    open: [issueRow(7, "Reclaim leaves a stale lock")],
+    closedRows: [issueRow(9, "A closed request", { updatedAt: new Date(seenAt).toISOString() })],
+    closed: { "9": { at: seenAt, shas: ["abc1234"] } },
+    upstreamClosed: [
+      issueRow(8, "A lost request", { updatedAt: new Date(seenAt).toISOString(), closedAt: seenAt }),
+      issueRow(10, "Another lost request", { updatedAt: new Date(seenAt).toISOString(), closedAt: seenAt }),
+    ],
+  } as unknown as Record<string, unknown>);
+  const r = await cli(repo, "issues");
+  assert.equal(r.code, 0, r.stderr);
+  const lines = r.stdout.trimEnd().split("\n");
+  assert.equal(lines.length, 5, "header plus four rows");
+  assert.match(
+    lines[0]!,
+    /^github issues — znation\/proj \(main\): 1 open, 1 closed by tumwater, 2 closed upstream, checked \d+[smhd] ago$/,
+  );
+  assert.match(lines[3]!, /^3\. #8 — A lost request — untrusted, not mirrored, last seen open \d+[smhd] ago$/);
+  assert.match(lines[4]!, /^4\. #10 — Another lost request — untrusted, not mirrored, last seen open \d+[smhd] ago$/);
+
+  const shown = await cli(repo, "issues", "--show", "3");
+  assert.equal(shown.code, 0, shown.stderr);
+  assert.ok(shown.stdout.includes("issue 3: #8 — A lost request"), shown.stdout);
+  assert.match(shown.stdout, /closed upstream — last seen open \d+[smhd] ago/);
+  assert.ok(!/^  closed \d/m.test(shown.stdout), "a lost issue prints no close line of its own");
+
+  const json = await cli(repo, "issues", "--json");
+  assert.equal(json.code, 0, json.stderr);
+  const doc = JSON.parse(json.stdout) as {
+    issues: { position: number; number: number; wasClosed?: boolean; upstreamClosed?: boolean }[];
+  };
+  const lost = doc.issues.find((i) => i.number === 8)!;
+  assert.equal(lost.position, 3, "the lost row keeps its whole-list position");
+  assert.equal(lost.upstreamClosed, true);
+  assert.ok(!("wasClosed" in lost), "and carries no closed-by-tumwater flag");
+  assert.ok(doc.issues.some((i) => i.number === 7 && !("upstreamClosed" in i)), "an open row carries neither flag");
+});
+
+test("issues degrades a hand-edited upstreamClosed holding a non-row to no upstream rows", async () => {
+  // The one read every reader shares runs the row guard over this list too, exactly as over
+  // `open` and `closedRows`: a foreign entry costs the mirror a record, not the command.
+  const repo = await issuesRepo("issues upstream malformed test");
+  writeLedger(repo, {
+    ...REPO_LEDGER,
+    open: [issueRow(7, "Reclaim leaves a stale lock")],
+    upstreamClosed: [404, issueRow(8, "A lost request", { closedAt: REPO_LEDGER.checkedAt })],
+  } as unknown as Record<string, unknown>);
+  const r = await cli(repo, "issues");
+  assert.equal(r.code, 0, r.stderr);
+  const lines = r.stdout.trimEnd().split("\n");
+  assert.equal(lines.length, 3, "header plus the open row and the one valid upstream row");
+  assert.match(lines[0]!, /1 closed upstream/);
+  assert.match(lines[2]!, /^2\. #8 — A lost request — untrusted, not mirrored, last seen open \d+[smhd] ago$/);
 });

@@ -5753,6 +5753,48 @@ decline stamped with a foreign updatedAt never holds"; `test/team-alert-status.t
 "two unmirrored and three untrusted issues name the configured label in one blue alert" and
 "a zero count drops its clause from the blue alert".
 
+## The GitHub issues mirror: an issue GitHub closed upstream has one record
+
+### INV-DG1: a lost issue has one record, and no capped listing writes one
+
+**Guarantee.** The mirror only ever asks GitHub for open issues, so an issue someone closes (or
+ deletes, or converts to a pull request) upstream simply stops appearing in the listing. The ledger's
+ `upstreamClosed` list is the one place that loss is recorded: `scanGithubIssues` fills it through
+ one helper, `recordUpstreamCloses`, with the last full row of each issue its previous scan listed
+ open that the fresh listing omits, stamped `closedAt` with that scan's instant. The helper runs only
+ for a listing known to be complete — `listOpenIssues` reports `capped` when the walk stopped at
+ `MAX_ISSUE_PAGES` with a full page in hand, and a capped or failed listing, and a scan that made no
+ listing at all, record nothing, so the ledger never claims a loss the scan has no evidence for. A
+ number the fresh listing reports open again is dropped from the list, and an issue already held in
+ `closedRows` is never recorded, so the two lists stay disjoint and a reopened issue leaves no record
+ behind. The list is capped at `UPSTREAM_CLOSED_MAX` records, trimmed to the newest `closedAt` and
+ stored ascending by number, the rule `retainClosedRow` keeps for closed rows. Nothing else in the
+ ledger is touched by a loss: `waitingPush`, `closed`, `queued` and `declined` records stay owed, and
+ because the queue and the close pass iterate `open`, a lost issue is neither offered nor closed. The
+ read treats the row as neither open nor tumwater-closed: `issueRows` appends the list after
+ `closedRows` and flags it `upstreamClosed`, `issuesHeader` counts it separately, `issueAge` answers
+ `last seen open <ago>` never `closed <ago>`, and the detail states
+ `closed upstream — last seen open <ago>` with no fix sha.
+
+**Binds.** `src/github/issue-scan.ts` (`listOpenIssues`, `recordUpstreamCloses`,
+`scanGithubIssues`), `src/github/github-issues-state.ts` (`GithubIssueRow.closedAt`,
+`GithubIssuesLedger.upstreamClosed`, `readGithubIssues`), `src/github/github-issues-render.ts`
+(`issueRows`, `issuesHeader`, `issueAge`, `issueStateLines`).
+
+**Pinned by.** `test/github-issue-scan.test.ts` — "an issue the next listing stops reporting is
+recorded as closed upstream, not lost", "a listing that stopped at MAX_ISSUE_PAGES records no
+upstream closes", "an upstream close skips an issue tumwater closed, and a reopen clears its
+record", "an upstream-close record whose issue the ledger still lists open is never queued or
+closed again", "the upstream-close list keeps the 50 newest records, stored ascending", and "a gh
+outage or a failed listing records no upstream close and keeps the records it holds";
+`test/github-issues-render.test.ts` — "issueRows appends the upstream rows last, positioned past
+the closed ones, and flags them", "the header counts the upstream rows above zero only, and a
+foreign upstreamClosed counts none", "a lost issue reads as last seen open, never as closed, and
+says so when the instant is foreign", and "the detail of a lost issue names the loss and its
+last-seen instant, with no close line"; `test/cli-issues.test.ts` — "issues lists issues GitHub
+closed upstream last, under a header counting them" and "issues degrades a hand-edited
+upstreamClosed holding a non-row to no upstream rows".
+
 ## Once rounds: every starting hold settles its runner, so a held team still exits
 
 A `tumwater start --once` round ends when `OnceRound.exitReady` sees a settle (a run or a skip

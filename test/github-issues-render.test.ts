@@ -229,3 +229,86 @@ test("renderIssueDetail names only the states the ledger holds and prints the ex
   assert.ok(!detail.includes("queued"), "no line for a state the ledger lacks");
   assert.ok(!detail.includes("closed"), "no close line for an issue the ledger never closed");
 });
+
+test("issueRows appends the upstream rows last, positioned past the closed ones, and flags them", () => {
+  // Three lists, one numbering: open first ascending, then the issues tumwater closed, then the
+  // issues GitHub stopped listing. `upstreamClosed` is what marks the last group — never
+  // `wasClosed`, which means tumwater closed it and prints `closed <ago>`.
+  const closedAt = NOW - 3 * DAY_MS;
+  const base = ledger().open[0]!;
+  const l = ledger({
+    open: [base],
+    closedRows: [{ ...base, number: 9, title: "Closed nine", updatedAt: new Date(closedAt).toISOString() }],
+    upstreamClosed: [
+      { ...base, number: 8, title: "Lost eight", updatedAt: new Date(closedAt).toISOString(), closedAt },
+      { ...base, number: 10, title: "Ten", updatedAt: new Date(closedAt).toISOString(), closedAt },
+    ],
+  });
+  const rows = issueRows(l);
+  assert.deepEqual(
+    rows.map((r) => [r.position, r.number]),
+    [
+      [1, 10],
+      [2, 9],
+      [3, 8],
+      [4, 10],
+    ],
+    "each list stays ascending and the positions run across all three",
+  );
+  assert.equal(rows[2]!.upstreamClosed, true);
+  assert.equal(rows[2]!.wasClosed, undefined, "a lost issue is not marked as one tumwater closed");
+  assert.equal(rows[1]!.upstreamClosed, undefined, "and a closed row is not marked as lost");
+  assert.equal(rows[2]!.closedAt, closedAt, "the row keeps the scan instant the ledger recorded");
+});
+
+test("the header counts the upstream rows above zero only, and a foreign upstreamClosed counts none", () => {
+  const closedAt = NOW - DAY_MS;
+  const base = ledger().open[0]!;
+  const l = ledger({
+    upstreamClosed: [
+      { ...base, number: 8, closedAt },
+      { ...base, number: 10, title: "Ten", closedAt },
+    ],
+  });
+  assert.equal(issuesHeader(l).upstreamClosedCount, 2);
+  assert.equal(issuesHeader(ledger()).upstreamClosedCount, 0, "a ledger with no such key holds none");
+  const foreign = { ...ledger(), upstreamClosed: "nope" } as unknown as GithubIssuesLedger;
+  assert.equal(issuesHeader(foreign).upstreamClosedCount, 0);
+  const text = renderIssues(issueRows(l), issuesHeader(l), NOW);
+  assert.match(
+    text,
+    /^github issues — znation\/proj \(main\): 2 open, 2 closed upstream, checked 0s ago$/m,
+    "the header names the upstream segment and no closed-by-tumwater segment",
+  );
+});
+
+test("a lost issue reads as last seen open, never as closed, and says so when the instant is foreign", () => {
+  const closedAt = NOW - 3 * DAY_MS;
+  const base = ledger().open[0]!;
+  const l = ledger({
+    open: [],
+    upstreamClosed: [
+      { ...base, number: 8, title: "Lost eight", updatedAt: new Date(closedAt).toISOString(), closedAt },
+      { ...base, number: 9, title: "Lost nine", updatedAt: "not-a-date" },
+    ],
+  });
+  const text = renderIssues(issueRows(l), issuesHeader(l), NOW);
+  assert.match(text, /^1\. #8 — Lost eight — trusted, not mirrored, last seen open 3d ago$/m);
+  assert.match(text, /^2\. #9 — Lost nine — trusted, not mirrored, last seen unknown$/m);
+  assert.ok(!/, closed \d/m.test(text), "no age segment claims a close tumwater cannot back");
+});
+
+test("the detail of a lost issue names the loss and its last-seen instant, with no close line", () => {
+  const closedAt = NOW - 3 * DAY_MS;
+  const base = ledger().open[0]!;
+  const l = ledger({
+    open: [],
+    upstreamClosed: [{ ...base, number: 8, title: "Lost eight", updatedAt: new Date(closedAt).toISOString(), closedAt }],
+  });
+  const row = issueRowAt(l, 1)!;
+  const detail = renderIssueDetail(row, 1, NOW);
+  assert.ok(detail.startsWith("issue 1: #8 — Lost eight\n"), detail);
+  assert.ok(detail.includes("  closed upstream — last seen open 3d ago"), detail);
+  assert.ok(!/^  closed \d/m.test(detail), "a lost issue states no close tumwater cannot back");
+  assert.ok(!detail.includes("queued") && !detail.includes("waiting for a push"), "and no other state line");
+});

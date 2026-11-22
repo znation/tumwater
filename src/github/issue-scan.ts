@@ -120,14 +120,19 @@ function asIssue(value: unknown): RawIssue | null {
   return typeof raw.number === "number" ? raw : null;
 }
 
-type ListResult = { ok: true; issues: RawIssue[] } | { ok: false; reason: string };
+type ListResult = { ok: true; issues: RawIssue[]; capped: boolean } | { ok: false; reason: string };
 
 /** Every open issue of the repo, one request per page of ISSUES_PER_PAGE, up to MAX_ISSUE_PAGES.
  * One page at a time, since `gh api --paginate` has no page cap and prints each page as its own
  * JSON array. The listing includes pull requests, which the scan drops. A failed or malformed
- * page fails the whole listing, so a partial read is never recorded as the full set. */
+ * page fails the whole listing, so a partial read is never recorded as the full set.
+ * `capped` says the walk ran out of pages with a full page still in hand — the listing was cut
+ * short, so open issues exist that this scan never saw. That flag is what keeps an upstream-close
+ * record honest: the scan records an open issue it no longer sees as closed upstream only when the
+ * listing that failed to see it is known to be complete (INV-DG1). */
 async function listOpenIssues(run: GhRunner, repo: string): Promise<ListResult> {
   const issues: RawIssue[] = [];
+  let capped = true;
   for (let page = 1; page <= MAX_ISSUE_PAGES; page++) {
     const reply = await run([
       "api",
@@ -145,9 +150,12 @@ async function listOpenIssues(run: GhRunner, repo: string): Promise<ListResult> 
       const raw = asIssue(value);
       if (raw && raw.pull_request === undefined) issues.push(raw);
     }
-    if (batch.length < ISSUES_PER_PAGE) break;
+    if (batch.length < ISSUES_PER_PAGE) {
+      capped = false;
+      break;
+    }
   }
-  return { ok: true, issues };
+  return { ok: true, issues, capped };
 }
 
 /** One ledger row from one raw issue. */
@@ -176,6 +184,46 @@ function toRow(
   return row;
 }
 
+/** How many upstream-close records the ledger keeps — the same cap `retainClosedRow` puts on the
+ * closed rows beside its own `CLOSED_ROWS_MAX` (src/github/issue-close.ts), so no ledger list in
+ * this subsystem grows unbounded. */
+const UPSTREAM_CLOSED_MAX = 50;
+
+/** Record the issues GitHub stopped listing, and keep the records the previous scan carried.
+ * One record per row of `previous.open` whose number appears in neither the fresh listing nor the
+ * ledger's `closedRows` — so an issue tumwater closed, an issue that merely reopened, and the first
+ * scan of a repo (no `previous`) record nothing. A record is that issue's last full row with
+ * `closedAt` set to this scan's instant and GitHub's own `updatedAt` kept, so the read can age it
+ * both ways. Carried records whose number the listing reports open again are dropped, the same
+ * rule the reopen filter above applies to `closedRows`. The trim keeps the `UPSTREAM_CLOSED_MAX`
+ * newest `closedAt` (a tie breaking toward the higher number, as `retainClosedRow` does) and stores
+ * the list back in ascending number order, the order the read prints. Only a listing known to be
+ * complete may call this: a walk cut short at `MAX_ISSUE_PAGES` never saw the issue, so it cannot
+ * have missed it. Mutates the ledger; nothing else in it changes — `waitingPush`, `closed`,
+ * `queued` and `declined` records stay owed even though GitHub no longer lists the issue. */
+function recordUpstreamCloses(
+  ledger: GithubIssuesLedger,
+  previous: GithubIssuesLedger | null,
+  now: number,
+): void {
+  const openNumbers = new Set(ledger.open.map((row) => row.number));
+  const closedNumbers = new Set((ledger.closedRows ?? []).map((row) => row.number));
+  const lost = (previous?.open ?? [])
+    .filter((row) => !openNumbers.has(row.number) && !closedNumbers.has(row.number))
+    .map((row) => ({ ...row, closedAt: now }));
+  const rows = [...(previous?.upstreamClosed ?? []).filter((row) => !openNumbers.has(row.number)), ...lost];
+  // Nothing to say: the list is dropped rather than left as whatever the spread carried over, so a
+  // lost issue that came back leaves no record behind.
+  if (rows.length === 0) {
+    delete ledger.upstreamClosed;
+    return;
+  }
+  ledger.upstreamClosed = rows
+    .sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0) || b.number - a.number)
+    .slice(0, UPSTREAM_CLOSED_MAX)
+    .sort((a, b) => a.number - b.number);
+}
+
 /** One scan: when enabled and the project has a GitHub remote, probe `gh`, list the open issues,
  * and rewrite the ledger. A scan whose `gh` cannot read the issues keeps the previous open list
  * and records why. The record of an outage is one `github_issues_unavailable` event, logged when
@@ -195,6 +243,10 @@ export async function scanGithubIssues(
   let gh: GhState = readiness;
   let reason: string | undefined;
   let open = previous?.open ?? [];
+  // Whether this scan's listing is known to be complete. null when it made no listing at all (gh
+  // unusable, or the listing failed): then nothing upstream is recorded and the spread below keeps
+  // whatever the previous scan wrote.
+  let capped: boolean | null = null;
   if (readiness === "missing") {
     reason = "gh is not installed or cannot run";
   } else if (readiness === "unauthenticated") {
@@ -206,6 +258,7 @@ export async function scanGithubIssues(
       const mirrorLabel = config.githubIssues?.mirrorLabel ?? "tumwater";
       const mirrored = new Set((await mirrorsAtTip(root, target.branch)).keys());
       open = listed.issues.map((raw) => toRow(raw, authors, mirrorLabel, mirrored));
+      capped = listed.capped;
     } else {
       gh = "error";
       reason = listed.reason;
@@ -228,6 +281,9 @@ export async function scanGithubIssues(
     const openNumbers = new Set(open.map((row) => row.number));
     ledger.closedRows = previous.closedRows.filter((row) => !openNumbers.has(row.number));
   }
+  // An issue the ledger held open that a complete listing came back without is closed upstream (or
+  // deleted, or turned into a PR — the listing cannot tell); record it so the loss leaves a trace.
+  if (capped === false) recordUpstreamCloses(ledger, previous, now);
   if (gh !== "ok" && (previous === null || previous.gh === "ok")) {
     logEventBestEffort(root, {
       source: TUMWATER_SOURCE,

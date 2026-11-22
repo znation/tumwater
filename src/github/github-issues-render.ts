@@ -43,6 +43,11 @@ export interface IssueRow extends GithubIssueRow {
    * listed as closed. An open issue that still carries a stale `closed` marker after a reopen has
    * no such flag, which is what tells the two apart, and what `issueAge` reads. */
   wasClosed?: boolean;
+  /** The row came from the ledger's `upstreamClosed` list — GitHub stopped listing this issue while
+   * the ledger held it open, so tumwater lost it (closed upstream, deleted, or converted to a PR;
+   * the listing cannot tell). Never set with `wasClosed`: the two lists are disjoint, and this row
+   * has no close sha to print, only a last-seen-open instant. */
+  upstreamClosed?: boolean;
 }
 
 /** The header's facts, taken straight from the ledger. */
@@ -56,16 +61,20 @@ export interface IssuesHeader {
   openCount: number;
   /** How many issues tumwater closed the ledger keeps rows for (`closedRows`). */
   closedCount: number;
+  /** How many issues the ledger records as closed upstream (`upstreamClosed`) — lost from GitHub's
+   * open listing without tumwater closing them. 0 for a ledger with no such list. */
+  upstreamClosedCount: number;
 }
 
 /** The ledger's issues as positioned rows: its `open` list sorted by issue number ascending,
  * numbered 1..N, each with the state the ledger's optional maps hold for its number — `queued`,
  * `declined` (with its reason), `fixedIn` (with its sha), `closed` (with its time and shas),
  * `waitingPush` (with its shas) and membership in `retiredOnly` — followed by the ledger's
- * `closedRows` in the same ascending order, each also carrying `wasClosed: true`. So positions run
- * across both lists, the closed issues last however low their numbers, and `issueRowAt`, `--grep`
- * and the detail view read this one function and can never disagree on which issue position N
- * denotes. */
+ * `closedRows` in the same ascending order, each also carrying `wasClosed: true`, followed by the
+ * ledger's `upstreamClosed` list in the same ascending order, each carrying `upstreamClosed: true`.
+ * So positions run across all three lists, the closed issues last however low their numbers, and
+ * `issueRowAt`, `--grep` and the detail view read this one function and can never disagree on which
+ * issue position N denotes. */
 export function issueRows(ledger: GithubIssuesLedger): IssueRow[] {
   // A hand-edited or foreign-generation ledger can hold no `open` list at all; the command then
   // reads an empty mirror rather than throwing out of the CLI, the way loadQuarantine reads a
@@ -74,12 +83,17 @@ export function issueRows(ledger: GithubIssuesLedger): IssueRow[] {
     [...rows].sort((a, b) => a.number - b.number);
   const open = byNumber(Array.isArray(ledger.open) ? ledger.open : []);
   const closed = byNumber(Array.isArray(ledger.closedRows) ? ledger.closedRows : []);
+  const upstream = byNumber(Array.isArray(ledger.upstreamClosed) ? ledger.upstreamClosed : []);
   const openRows = open.map((row, i) => foldIssueState(row, i + 1, ledger));
   const closedRows = closed.map((row, i) => ({
     ...foldIssueState(row, openRows.length + i + 1, ledger),
     wasClosed: true,
   }));
-  return [...openRows, ...closedRows];
+  const upstreamRows = upstream.map((row, i) => ({
+    ...foldIssueState(row, openRows.length + closedRows.length + i + 1, ledger),
+    upstreamClosed: true,
+  }));
+  return [...openRows, ...closedRows, ...upstreamRows];
 }
 
 function foldIssueState(row: GithubIssueRow, position: number, ledger: GithubIssuesLedger): IssueRow {
@@ -142,17 +156,20 @@ export function issuesHeader(ledger: GithubIssuesLedger): IssuesHeader {
     gh: ledger.gh,
     openCount: (Array.isArray(ledger.open) ? ledger.open : []).length,
     closedCount: (Array.isArray(ledger.closedRows) ? ledger.closedRows : []).length,
+    upstreamClosedCount: (Array.isArray(ledger.upstreamClosed) ? ledger.upstreamClosed : []).length,
     ...(ledger.gh !== "ok" && ledger.reason ? { reason: ledger.reason } : {}),
   };
 }
 
 /** The ledger as the `tumwater issues` list: a header naming the repo, branch, open count, how
- * many issues tumwater closed the ledger keeps a row for, and how long ago the scan ran, then one
- * line per issue — every open issue numbered first, then the closed ones — naming its number,
+ * many issues tumwater closed the ledger keeps a row for, how many issues the ledger records as
+ * closed upstream, and how long ago the scan ran, then one line per issue — every open issue
+ * numbered first, then the ones tumwater closed, then the ones lost upstream — naming its number,
  * squashed title, trusted/untrusted, mirrored/not mirrored and its age (`updated <ago>` for an
- * open issue, `closed <ago>` for a closed one). A ledger whose `gh` probe was not ok adds one line
- * naming that state (and its reason when present), since that is why a scan found nothing when
- * GitHub was unreachable — the read itself never depends on a working `gh`. */
+ * open issue, `closed <ago>` for a closed one, `last seen open <ago>` for one lost upstream). A
+ * ledger whose `gh` probe was not ok adds one line naming that state (and its reason when present),
+ * since that is why a scan found nothing when GitHub was unreachable — the read itself never
+ * depends on a working `gh`. */
 export function renderIssues(rows: readonly IssueRow[], header: IssuesHeader, now: number): string {
   // Both counts come from the ledger, never from `rows`: `--grep` hands this function its kept
   // rows while `-f/--follow` repaints over a fresh read each frame, so a frame that kept one of
@@ -166,6 +183,9 @@ export function renderIssues(rows: readonly IssueRow[], header: IssuesHeader, no
       // marker would land on the noun the header leaves implicit ("3 open issues").
       plural(header.openCount, "open", "open") +
       (header.closedCount > 0 ? `, ${plural(header.closedCount, "closed by tumwater", "closed by tumwater")}` : "") +
+      (header.upstreamClosedCount > 0
+        ? `, ${plural(header.upstreamClosedCount, "closed upstream", "closed upstream")}`
+        : "") +
       `, checked ${humanAgo(header.checkedAt, now)}`,
   ];
   if (header.gh !== "ok") lines.push(`gh ${header.gh}${header.reason ? `: ${squash(header.reason, ISSUE_TITLE_WIDTH)}` : ""}`);
@@ -181,11 +201,15 @@ export function renderIssues(rows: readonly IssueRow[], header: IssuesHeader, no
 
 /** The issue's own age. For an open row, the `updatedAt` GitHub reported; for a row from
  * `closedRows`, whose `updatedAt` the closer set to the close instant, `closed <ago>` — so the list
- * never shows a closed issue as if it were live. A ledger row whose timestamp GitHub did not supply
- * (or a hand-edited one that is not a date) has no age to name, so the row says so rather than
- * printing `NaN`. */
+ * never shows a closed issue as if it were live. For a row from `upstreamClosed`, never a close the
+ * ledger can date — GitHub reported no close and tumwater made none — `last seen open <ago>`, the
+ * instant the last listing that saw it ran; a lost issue is never printed with `closed <ago>`,
+ * would claim a close tumwater cannot back. A ledger row whose timestamp GitHub did not supply (or
+ * a hand-edited one that is not a date) has no age to name, so the row says so rather than printing
+ * `NaN`. */
 function issueAge(row: IssueRow, now: number): string {
   const at = Date.parse(row.updatedAt);
+  if (row.upstreamClosed === true) return Number.isNaN(at) ? "last seen unknown" : `last seen open ${humanAgo(at, now)}`;
   if (row.wasClosed === true) return Number.isNaN(at) ? "closed unknown" : `closed ${humanAgo(at, now)}`;
   return Number.isNaN(at) ? "updated unknown" : `updated ${humanAgo(at, now)}`;
 }
@@ -216,6 +240,15 @@ export function renderIssueDetail(row: IssueRow, position: number, now: number):
 function issueStateLines(row: IssueRow, now: number): string[] {
   const lines: string[] = [];
   if (row.closed) lines.push(`closed ${humanAgo(row.closed.at, now)}${row.closed.shas.length > 0 ? `: ${row.closed.shas.join(", ")}` : ""}`);
+  // The loss the ledger holds no close for: said in its own words, from the instant the last
+  // listing saw the issue open, and never mixed with the `closed <ago>: <shas>` line above —
+  // tumwater did not close it and has no sha to cite.
+  if (row.upstreamClosed === true)
+    lines.push(
+      typeof row.closedAt === "number" && !Number.isNaN(row.closedAt)
+        ? `closed upstream — last seen open ${humanAgo(row.closedAt, now)}`
+        : "closed upstream — last seen unknown",
+    );
   if (row.fixedIn) lines.push(`fixed by ${row.fixedIn}`);
   if (row.waitingPush) lines.push(`waiting for a push of ${row.waitingPush.join(", ")}`);
   if (row.queuedAt !== undefined) lines.push(`queued ${humanAgo(row.queuedAt, now)}`);

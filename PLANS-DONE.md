@@ -5,6 +5,107 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The mirror's upstream-close record, part 1/2: the ledger and `tumwater issues` name an issue GitHub closed upstream, so a lost issue leaves a trace (planned 2026-11-22 by the plan role; sibling of part 2/2, which logs the loss as an event; independent in files of the unmerged `--open`/`--closed` entry — that one is src/cli/cli-flag-specs.ts, src/cli/cli-query-commands.ts, src/cli/cli-help-text.ts and its render half is a new `stateIssueRows`, never `issueRows`; touches src/github/github-issues-state.ts src/github/issue-scan.ts src/github/github-issues-render.ts docs/cli.md docs/invariants.md test/github-issue-scan.test.ts test/github-issues-render.test.ts test/cli-issues.test.ts) — done 2026-11-22 by the feature role
+
+**Problem.** The mirror only ever asks GitHub for open issues: `listOpenIssues` (src/github/issue-scan.ts)
+requests `repos/<repo>/issues?state=open&per_page=100&page=<n>`. An issue closed on GitHub therefore
+simply stops appearing: its row leaves `open` on the next scan with no record that it existed, and the
+ledger's `closedRows` list — the one list the read prints as closed — holds only issues *tumwater*
+closed (`retainClosedRow`, called from `closeOne` in src/github/issue-close.ts). So `tumwater issues`
+cannot tell an operator that #12 the team read an hour ago was closed by someone on GitHub: after the
+next scan it is absent from the list and from every count, and nothing in the project says why.
+`grep -rn "upstreamClosed|closedUpstream|closed upstream" src test docs plans PLANS.md PLANS-DONE.md
+BUGS.md` matches only plans/github-issues.md's own **Not in scope** line ("A follow-up could note
+\"closed upstream\" on it"), which is about editing the *mirror entry* — untouched here — and the
+capability itself exists nowhere.
+
+**Approach.** A third ledger list, filled by the scan, and a third row state in the read.
+
+- `src/github/github-issues-state.ts`: `GithubIssuesLedger` gains
+  `upstreamClosed?: GithubIssueRow[]` — issues the last successful listing no longer reports, with the
+  row GitHub last gave for them plus `closedAt` (the epoch milliseconds of the scan that first missed
+  them); extend `GithubIssueRow` with the optional `closedAt?: number` the closer never writes.
+  `readGithubIssues` runs its `isGithubIssueRow` guard over `upstreamClosed` exactly as it already does
+  over `open` and `closedRows`, so a hand-edited list degrades to no rows. `isFoldableLedger`,
+  `readGithubIssuesForPoll`, `githubIssuesSummary` and `githubScanStalled` stay as they are: the status
+  fold, the doctor's `github issues` row and both alert surfaces raise nothing for this list.
+- `src/github/issue-scan.ts`: `listOpenIssues`'s success arm reports whether the pages ran out or the
+  loop stopped at `MAX_ISSUE_PAGES` with a full page (`ListResult` gains a `capped: boolean`), and
+  `scanGithubIssues` calls one new local helper `recordUpstreamCloses(ledger, previous, now)` only when
+  `listed.ok` and not `listed.capped`. The helper reads `previous?.open` for rows whose number is in
+  neither the fresh `open` numbers nor `ledger.closedRows` — so an issue tumwater closed, an issue that
+  merely reopened, and the first scan of a repo (no `previous`) record nothing — appends them with
+  `closedAt: now` and GitHub's own `updatedAt` kept, and trims to `UPSTREAM_CLOSED_MAX = 50` newest
+  `closedAt` first, then back to ascending number, the rule `retainClosedRow` keeps beside its own
+  `CLOSED_ROWS_MAX` in src/github/issue-close.ts. The existing reopen filter (`openNumbers`) then drops
+  a number from `upstreamClosed` as it already drops it from `closedRows`, so a reopened issue reads
+  open again. Nothing else in the ledger is touched: `waitingPush[<n>]`, `closed[<n>]`, `queued[<n>]` and
+  `declined[<n>]` survive an upstream close on purpose, since the push and the records are still owed
+  even though GitHub no longer lists the issue; `nextIssuePrompt` (src/github/issue-queue.ts) and
+  `closeFixedIssues` iterate `ledger.open`, so a lost issue is never queued or closed again.
+- `src/github/github-issues-render.ts`: `IssueRow` gains `upstreamClosed?: boolean` (never `wasClosed`:
+  that flag means tumwater closed it and prints `closed <ago>`); `issueRows` appends the
+  `upstreamClosed` rows after the `closedRows`, ascending by number, positions running 1..N across all
+  three lists, so `issueRowAt`, `grepIssueRows` and `--show <n>` address them with no further change;
+  `IssuesHeader` gains `upstreamClosedCount: number` (0 for a ledger with no such list, 0 for a
+  `closedRows`-shaped foreign value); `renderIssues` adds the header segment
+  `, ${plural(header.upstreamClosedCount, "closed upstream", "closed upstream")}` after the existing
+  `closed by tumwater` segment and only above 0, and still counts a row as open only when neither
+  `wasClosed` nor `upstreamClosed` is set; `issueAge` answers an upstream row with
+  `last seen open <ago>` (`last seen unknown` when `updatedAt` does not parse), never `closed <ago>`;
+  `issueStateLines` adds `closed upstream — last seen open <ago>`, from `closedAt`, beside the existing
+  `closed <ago>: <shas>` line; `issuesJson` gains no key — the row object carries
+  `upstreamClosed: true`, the way a tumwater close carries `wasClosed: true`.
+- `docs/cli.md`: the `Read the GitHub-issues mirror` row's prose names the new header segment, the
+  trailing upstream rows and their `last seen open <ago>` age, and `--show`'s `closed upstream` line.
+- `docs/invariants.md`: one new entry `INV-DG1` under a new `## The GitHub issues mirror: an issue
+  GitHub closed upstream has one record` section — not under the existing mirror section, whose prefix
+  is `DE` and which a second prefix would make mixed (`test/invariants-doc.test.ts` "a section that
+  mixes two prefixes is reported", "a wrapped line starting with ## inside an entry is reported as a
+  stray section"), and two sections of one prefix each pass it; `DG` is the next unused prefix
+  (`grep -c "INV-DG" docs/invariants.md` prints 0, and the register's newest ids are `INV-DE1`,
+  `INV-DE2`, `INV-DF1`). It guarantees that the ledger's
+  `upstreamClosed` list written by `scanGithubIssues`'s fold is the only record of an issue GitHub
+  stopped listing, that a listing which stopped at `MAX_ISSUE_PAGES` records none, and that the read
+  never counts such a row as open nor queues it; cite the new tests below by exact name
+  (`test/invariants-doc.test.ts` "this repo's docs/invariants.md is honest" enforces the format).
+
+**Files touched.** `src/github/github-issues-state.ts`, `src/github/issue-scan.ts`,
+`src/github/github-issues-render.ts`, `docs/cli.md`, `docs/invariants.md`,
+`test/github-issue-scan.test.ts`, `test/github-issues-render.test.ts`, `test/cli-issues.test.ts`.
+`src/cli/cli-query-commands.ts` needs no edit: `cmdIssues`'s `readIssues` → `renderIssuesFrame` and
+`cmdIssuesShow`'s `issueRowAt` path take the rows from `issueRows`/`issuesHeader` unchanged, and
+`-f/--follow` re-reads the ledger per frame, so a scan's new rows show in the next repaint.
+
+**Acceptance criteria.**
+
+- A scan over the fake `gh` (`fakeGh({ issues: [...] })` in test/fakes/fake-gh.ts) whose first listing
+  reports #7 and #8 and whose second reports only #7 leaves `#8` in the written ledger's
+  `upstreamClosed` with `closedAt` equal to that scan's `now` and its `updatedAt` as GitHub reported,
+  and #8 is absent from `open`; the same scan leaves `closedRows` untouched.
+- A listing that stops at `MAX_ISSUE_PAGES` with a full last page (the fixture the existing
+  "the listing stops at five pages, so a repo with 600 issues yields 500" case already builds) records
+  no `upstreamClosed` rows at all, and that case keeps its 500-issue assertion.
+- A ledger that already holds `closedRows` for #9 and loses #9 upstream records no upstream row for it;
+  a ledger holding an `upstreamClosed` row for #8 whose next listing reports #8 open again moves #8 back
+  to `open`, drops that upstream row, and keeps `closed`/`queued` records for it.
+- With `open` holding #7, `closedRows` holding #9 and `upstreamClosed` holding #8 and #10, and both
+  upstream rows 3 days old against the printed `now`, `tumwater issues` prints the header
+  `github issues — znation/proj (main): 1 open, 1 closed by tumwater, 2 closed upstream, checked <ago>`,
+  then rows `1. #7 … updated <ago>`, `2. #9 … closed <ago>`, `3. #8 … last seen open 3d ago`,
+  `4. #10 … last seen open 3d ago`; `tumwater issues --show 3` prints `issue 3: #8 — …` with a
+  `closed upstream — last seen open 3d ago` line and no `closed <ago>: <sha>` line; `--json` serves the
+  #8 object with `position: 3` and `upstreamClosed: true` and no `wasClosed` key; a ledger with no
+  `upstreamClosed` key prints its header exactly as test/cli-issues.test.ts
+  "issues lists the issues tumwater closed after the open ones, under a header counting them" asserts it
+  today, with no `, closed upstream` segment.
+- A hand-edited ledger whose `upstreamClosed` holds a non-row (a bare number) reads as no upstream rows
+  and exits 0, the rule test/cli-issues.test.ts "issues drops a malformed row out of a hand-edited
+  ledger instead of failing" keeps for `open` and `closedRows`.
+
+Verify: `npm run build`, then
+`node scripts/check-permit.mjs node dist/test/test-runner.js github-issue-scan github-issues-render cli-issues cli-issues-follow github-issue-close github-issue-queue github-issue-outcome doctor-checks status-data team-alert-status invariants-doc backlog-structure plans-citations plan-citations backlog-pending backlog-eligibility vocabulary cli-doc help completion`.
+
 ### The mirror's standing banner counts only issues it will still mirror, so a director-declined issue stops holding it (planned 2026-11-22 by the plan role; touches src/github/github-issues-state.ts src/github/issue-queue.ts docs/invariants.md docs/how-it-works.md test/status-data.test.ts test/github-issue-queue.test.ts) — done 2026-11-22 by the feature role
 
 **Problem.** `githubIssuesSummary` (src/github/github-issues-state.ts) folds the snapshot's

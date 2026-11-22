@@ -334,6 +334,203 @@ test("a scan whose gh cannot list keeps the closed rows it already holds", async
   }
 });
 
+test("an issue the next listing stops reporting is recorded as closed upstream, not lost", async () => {
+  // The mirror only ever asks GitHub for open issues, so an issue someone closes on GitHub simply
+  // stops appearing. The scan must keep a trace: the last full row, stamped with the instant of the
+  // scan that first missed it, and GitHub's own updatedAt kept.
+  const { dir, config, cleanup } = githubRepo({});
+  try {
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7), issue(8)]] }).probe, 1_000);
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7)]] }).probe, 2_000);
+    const ledger = readGithubIssues(dir)!;
+    assert.deepEqual(ledger.open.map((r) => r.number), [7], "#8 left the open list");
+    assert.deepEqual(
+      ledger.upstreamClosed?.map((r) => [r.number, r.closedAt, r.updatedAt, r.title, r.url, r.author]),
+      [[8, 2_000, "2026-11-20T00:00:00Z", "Issue 8", "https://github.com/o/r/issues/8", "someone"]],
+      "the record is the last full row plus this scan's instant",
+    );
+    assert.equal(ledger.closedRows, undefined, "an upstream close writes no closed row — tumwater closed nothing");
+    assert.deepEqual(readLedgerFile(dir).upstreamClosed, ledger.upstreamClosed, "the record is on disk");
+  } finally {
+    cleanup();
+  }
+});
+
+test("a listing that stopped at MAX_ISSUE_PAGES records no upstream closes", async () => {
+  // A walk out of pages never saw the issue, so it cannot have missed it: recording one would
+  // claim a close the scan has no evidence for.
+  const { dir, config, cleanup } = githubRepo({});
+  try {
+    const pages = Array.from({ length: 6 }, (_, p) =>
+      Array.from({ length: 100 }, (_, i) => issue(p * 100 + i + 1)),
+    );
+    await scanGithubIssues(dir, config, fakeGh({ issues: pages }).probe, 1_000);
+    assert.equal(readLedgerFile(dir).upstreamClosed, undefined, "the first capped scan records nothing");
+    // A capped scan that misses #500 from its pages — five full pages again, one renumbered — still
+    // records nothing: it never saw the issue, so it has no evidence of a loss.
+    const shrunk = pages.map((page, p) => page.map((_, i) => issue(p * 100 + i + 1 === 500 ? 501 : p * 100 + i + 1)));
+    await scanGithubIssues(dir, config, fakeGh({ issues: shrunk }).probe, 2_000);
+    const ledger = readGithubIssues(dir)!;
+    assert.equal(ledger.open.length, 500, "the capped listing is still five pages");
+    assert.equal(ledger.open.some((r) => r.number === 500), false, "#500 is missing from it");
+    assert.equal(ledger.upstreamClosed, undefined, "a capped listing records no upstream close");
+  } finally {
+    cleanup();
+  }
+});
+
+test("an upstream close skips an issue tumwater closed, and a reopen clears its record", async () => {
+  // Two arms of one helper. First: #7 sits in `closedRows` as well as in the previous `open` (a
+  // hand-edited or transient ledger) — the ledger already records why it left, so no upstream
+  // row is written for it, and with nothing else lost the ledger keeps no upstream list at all.
+  // Then: #8 is
+  // recorded upstream and the next listing reports it open again — it moves back to `open`, its
+  // record is dropped, and its `closed`/`queued` records survive so it still reads as a reopen.
+  const { dir, config, cleanup } = githubRepo({});
+  try {
+    fs.mkdirSync(path.dirname(githubIssuesPath(dir)), { recursive: true });
+    fs.writeFileSync(
+      githubIssuesPath(dir),
+      JSON.stringify({
+        repo: "o/r",
+        branch: "main",
+        checkedAt: 1_000,
+        gh: "ok",
+        open: [row7(1_000), row8(1_000)],
+        closedRows: [row7(5_000)],
+        closed: { "7": { at: 5_000, shas: ["abc1234"] } },
+      }),
+    );
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(8)]] }).probe, 6_000);
+    let ledger = readGithubIssues(dir)!;
+    assert.deepEqual(ledger.open.map((r) => r.number), [8], "#7 stays out of open: it is a closed row");
+    assert.deepEqual(ledger.closedRows?.map((r) => r.number), [7], "the closed row is kept as it was");
+    assert.equal(ledger.upstreamClosed, undefined, "a closed issue leaves no upstream record");
+
+    writeGithubIssues(dir, { ...ledger, open: [], upstreamClosed: [row8(7_000)] });
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(8)]] }).probe, 8_000);
+    ledger = readGithubIssues(dir)!;
+    assert.deepEqual(ledger.open.map((r) => r.number), [8], "#8 is listed open again");
+    assert.equal(ledger.upstreamClosed, undefined, "so its upstream record is dropped");
+    assert.deepEqual(ledger.closed?.["7"], { at: 5_000, shas: ["abc1234"] }, "the close marker survives");
+    assert.equal(
+      isReopened(ledger, ledger.open.find((r) => r.number === 8)!),
+      false,
+      "#8 was never closed, so it reads as a plain open issue",
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test("a reopen of an issue tumwater closed keeps its records and offers it again", async () => {
+  // The upstream record must not interfere with the reopen hold: a closed row whose number the
+  // listing reports open again moves back to `open`, keeps `closed[<n>]`, and is offered with the
+  // reopened preamble — the rule the closedRows reopen filter already keeps.
+  const { dir, config, cleanup } = githubRepo({});
+  try {
+    fs.mkdirSync(path.dirname(githubIssuesPath(dir)), { recursive: true });
+    fs.writeFileSync(
+      githubIssuesPath(dir),
+      JSON.stringify({
+        repo: "o/r",
+        branch: "main",
+        checkedAt: 1_000,
+        gh: "ok",
+        open: [],
+        closedRows: [row8(5_000)],
+        upstreamClosed: [row7(5_000)],
+        closed: { "8": { at: 5_000, shas: ["def5678"] } },
+        queued: { "8": { at: 1_600, updatedAt: "2026-11-20T00:00:00Z" } },
+      }),
+    );
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(8, { author_association: "OWNER" })]] }).probe, 9_000);
+    const ledger = readGithubIssues(dir)!;
+    assert.deepEqual(ledger.open.map((r) => r.number), [8], "the reopened issue is listed open");
+    assert.equal(ledger.closedRows?.some((r) => r.number === 8), false, "its closed row is gone");
+    assert.deepEqual(
+      ledger.upstreamClosed?.map((r) => r.number),
+      [7],
+      "and an unrelated upstream record is kept",
+    );
+    assert.deepEqual(ledger.queued?.["8"], { at: 1_600, updatedAt: "2026-11-20T00:00:00Z" }, "the 24 h hold survives");
+    const picked = nextIssuePrompt(ledger, new Set<number>(), [], 5_000_000_000);
+    assert.equal(picked?.issue, 8, "past the hold it is offered again");
+    assert.match(picked!.text, /it was reopened after tumwater closed it citing def5678\./);
+  } finally {
+    cleanup();
+  }
+});
+
+test("an upstream-close record whose issue the ledger still lists open is never queued or closed again", async () => {
+  // The record exists only so the read can name the loss. The queue and the close pass iterate
+  // `open`, so a lost issue is neither offered nor closed, and its waitingPush stays owed.
+  const { dir, config, cleanup } = githubRepo({});
+  try {
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(8, { labels: [{ name: "tumwater" }] })]] }).probe, 1_000);
+    writeGithubIssues(dir, {
+      ...(readGithubIssues(dir) as GithubIssuesLedger),
+      open: [],
+      upstreamClosed: [row8(2_000)],
+      waitingPush: { "8": ["abc1234"] },
+    });
+    const ledger = readGithubIssues(dir)!;
+    assert.equal(nextIssuePrompt(ledger, new Set<number>(), [], 3_000), null, "a lost issue is not offered");
+    assert.deepEqual(ledger.upstreamClosed?.map((r) => r.number), [8], "and the record survives the read");
+  } finally {
+    cleanup();
+  }
+});
+
+test("the upstream-close list keeps the 50 newest records, stored ascending", async () => {
+  // The same cap the closer puts on closed rows, so no ledger list grows unbounded. All 51 losses
+  // share one scan instant, and a tie breaks toward the higher number, so #1 is the oldest cut.
+  const { dir, config, cleanup } = githubRepo({});
+  try {
+    const numbers = Array.from({ length: 51 }, (_, i) => i + 1);
+    await scanGithubIssues(dir, config, fakeGh({ issues: [numbers.map((n) => issue(n))] }).probe, 1_000);
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[]] }).probe, 2_000);
+    const ledger = readGithubIssues(dir)!;
+    assert.deepEqual(ledger.upstreamClosed?.map((r) => r.number), numbers.slice(1));
+    assert.equal(ledger.upstreamClosed?.[0]?.closedAt, 2_000);
+  } finally {
+    cleanup();
+  }
+});
+
+test("a gh outage or a failed listing records no upstream close and keeps the records it holds", async () => {
+  // No listing at all means no evidence of a loss: the previous scan's records survive and
+  // nothing new is written, exactly as a failed listing keeps `open` and `closedRows`.
+  const { dir, config, cleanup } = githubRepo({});
+  try {
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7), issue(8)]] }).probe, 1_000);
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7)]] }).probe, 2_000);
+    const held = readGithubIssues(dir)!.upstreamClosed;
+    await scanGithubIssues(dir, config, fakeGh({ auth: false }).probe, 3_000);
+    const ledger = readGithubIssues(dir)!;
+    assert.equal(ledger.gh, "unauthenticated");
+    assert.deepEqual(ledger.upstreamClosed, held, "an outage keeps the records");
+    await scanGithubIssues(dir, config, fakeGh({ apiFail: true }).probe, 4_000);
+    assert.deepEqual(readGithubIssues(dir)!.upstreamClosed, held, "and so does a failed listing");
+  } finally {
+    cleanup();
+  }
+});
+
+/** An open row as the scan writes it, for the ledger fixtures the scan tests hand-write. */
+function row8(checkedAt: number): GithubIssueRow {
+  return {
+    number: 8,
+    title: "Issue 8",
+    url: "https://github.com/o/r/issues/8",
+    author: "someone",
+    trusted: false,
+    mirrored: false,
+    labels: [],
+    updatedAt: new Date(checkedAt).toISOString(),
+  };
+}
+
 /** A closed row as the closer writes it, for the scan's own tests. */
 function row7(at: number): GithubIssueRow {
   return {

@@ -34,6 +34,11 @@ export interface GithubIssueRow {
   labels: string[];
   updatedAt: string;
   bodyExcerpt?: string;
+  /** The instant (epoch ms) the last listing that still saw this issue open observed it — the
+   * clock on `tumwater issues`' "last seen open" phrase for a row in the ledger's
+   * `upstreamClosed` list. Absent on every other list's rows: only an issue GitHub closed
+   * upstream while the ledger held it open has a last-seen-open instant to show. */
+  closedAt?: number;
 }
 
 export interface GithubIssuesLedger {
@@ -55,6 +60,14 @@ export interface GithubIssuesLedger {
    * and trims it to the newest closes there. Optional: a ledger written before it existed simply
    * has no closed rows to list. */
   closedRows?: GithubIssueRow[];
+  /** Rows the ledger held open that a listing came back without: issues GitHub closed upstream,
+   * or that dropped out of the listing for any other reason, so a lost issue leaves a trace in
+   * the ledger instead of vanishing from it silently. Each record is the last listing's full row
+   * — title, url, author, trusted, mirrored, labels and body excerpt — plus the `closedAt`
+   * instant of the listing that last saw it open. tumwater never re-opens such an issue and
+   * never closes it on GitHub: the record exists only so the mirror read can say the issue is
+   * gone. The scan writes it (src/github/issue-scan.ts `recordUpstreamCloses`). */
+  upstreamClosed?: GithubIssueRow[];
   /** Issues whose fix is on main but not yet on GitHub's base branch, with the shas waiting. */
   waitingPush?: Record<string, string[]>;
   /** Director-reported fixes (part 4/5), each with the sha that fixed it. */
@@ -155,7 +168,10 @@ function isGithubIssueRow(value: unknown): value is GithubIssueRow {
     Array.isArray(row.labels) &&
     row.labels.every((label) => typeof label === "string") &&
     (row.authorAssociation === undefined || typeof row.authorAssociation === "string") &&
-    (row.bodyExcerpt === undefined || typeof row.bodyExcerpt === "string")
+    (row.bodyExcerpt === undefined || typeof row.bodyExcerpt === "string") &&
+    // A last-seen-open instant only means anything as a finite number; a hand-edited one drops
+    // the row, so a broken upstream-close record costs the read a record, not a bogus age.
+    (row.closedAt === undefined || (typeof row.closedAt === "number" && Number.isFinite(row.closedAt)))
   );
 }
 
@@ -178,6 +194,12 @@ export function readGithubIssues(root: string): GithubIssuesLedger | null {
   if (Array.isArray(ledger.closedRows)) {
     const closedRows = (ledger.closedRows as unknown[]).filter(isGithubIssueRow);
     if (closedRows.length !== ledger.closedRows.length) (cleaned ??= { ...ledger }).closedRows = closedRows;
+  }
+  // Upstream-close records are rows too, so a hand-edited one costs the read a record, not a throw.
+  if (Array.isArray(ledger.upstreamClosed)) {
+    const upstreamClosed = (ledger.upstreamClosed as unknown[]).filter(isGithubIssueRow);
+    if (upstreamClosed.length !== ledger.upstreamClosed.length)
+      (cleaned ??= { ...ledger }).upstreamClosed = upstreamClosed;
   }
   return cleaned ?? ledger;
 }
