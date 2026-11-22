@@ -32,9 +32,10 @@ principles positively.
 
 The steward's standing measure of where the codebase stands, measured from the repo, not vibes — refresh with `wc -l` and `find` when touched.
 
-- **Code size**: 540 src / ~134,000 lines; 674 test / ~202,000 lines. Grows with every merge; the
-  split-large-function family is the standing driver of per-function (not per-file) growth.
-- **Module-size ceiling**: 25 src files exceed 600 lines, 10 exceed 700, 4 exceed 800; the largest
+- **Code size**: 497 src / ~127,000 lines; 655 test / ~194,000 lines. Grows with every merge; the
+  split-large-function family is the standing driver of per-function (not per-file) growth. The
+  figure fell on 2026-11-20 when the ink TUI was removed (~25,500 lines across 131 files).
+- **Module-size ceiling**: 27 src files exceed 600 lines, 10 exceed 700, 4 exceed 800; the largest
   is src/roles/role-view.ts at 924. The ceiling holds because complexity is extracted into named
   helpers, not by shrinking files — a file may stay large while its functions stay small; do not
   re-split an already-small function to chase a line count.
@@ -47,4 +48,5 @@ The steward's standing measure of where the codebase stands, measured from the r
   answered better by a name; a complexity-N number alone is not the reason. This keeps the family
   finite, not a bottomless re-split.
 
-_Last measured 2026-11-17 by the steward role; dependencies re-measured 2026-11-21 from main's package.json._
+_Last measured 2026-11-21 by the steward role from main's tip (code size, module-size ceiling and
+split count); dependencies re-measured the same day from main's package.json._
