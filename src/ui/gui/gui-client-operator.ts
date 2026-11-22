@@ -46,6 +46,26 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   // an error leaves the control showing what the server last reported, a success toasts the
   // ok message, closes any open popover, and repaints from the next status poll) does that
   // work; these handlers only build the body and message.
+
+  // The cap field both cap editors read: the team budget input and the per-role cap input in
+  // the drawer. A type=number input reports "" both for a field cleared on purpose (no cap)
+  // and for text the browser rejected ("$25"); validity.badInput tells them apart, so a typo
+  // is an error instead of silently removing the cap. A refused edit flashes its reason and
+  // returns undefined, so the caller's only question is whether to POST. 0 is a legitimate
+  // value (it means no cap), which is why callers test the result with === undefined rather
+  // than falsiness.
+  function capFieldValue(input) {
+    if (input.validity && input.validity.badInput) {
+      showFlash("error: the cap must be a number of 0 or more — leave it empty for no cap");
+      return undefined;
+    }
+    const parsed = parseBudgetField(input.value);
+    if (!parsed.ok) {
+      showFlash("error: " + parsed.error);
+      return undefined;
+    }
+    return parsed.value;
+  }
   // shared-operator:end
 
   // budget-edit:start
@@ -232,19 +252,9 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   async function saveBudget() {
     const input = $("budgetinput");
     if (!input) return;
-    // A type=number input reports "" both for a field cleared on purpose (no cap) and for text
-    // the browser rejected ("$25"); validity.badInput tells them apart, so a typo is an error
-    // instead of silently removing the cap.
-    if (input.validity && input.validity.badInput) {
-      showFlash("error: the cap must be a number of 0 or more — leave it empty for no cap");
-      return;
-    }
-    const parsed = parseBudgetField(input.value);
-    if (!parsed.ok) {
-      showFlash("error: " + parsed.error);
-      return;
-    }
-    const value = parsed.value;
+    // The guard is the drawer cap editor's too: one parse, one flash per bad edit.
+    const value = capFieldValue(input);
+    if (value === undefined) return;
     // A failure leaves the editor open so the value can be fixed.
     await postAction("/api/budget", { maxDailyCostUsd: value }, (d) => {
       if (d && d.unchanged) {

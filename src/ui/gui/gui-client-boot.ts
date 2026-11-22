@@ -149,8 +149,8 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   // means here — so each arm maps badInput to one message and a disallowed shape to another,
   // then reads the trimmed raw value. Returns undefined after flashing, so the save must
   // stop; the caller turns the empty raw value into its own null (clear-the-override) and
-  // Number() otherwise. The team cap save does not use this — parseBudgetField owns that
-  // field's own 0-or-more bound and empty→0 policy (see parseBudgetField).
+  // Number() otherwise. The two cap fields do not use this — capFieldValue owns their
+  // 0-or-more bound and empty→0 policy.
   function typedNumberValue(input, badInputMsg, shapeMsg) {
     if (input.validity && input.validity.badInput) { showFlash("error: " + badInputMsg); return undefined; }
     const raw = input.value.trim();
@@ -320,20 +320,10 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     } else if (act === "cap-save") {
       const input = $("capeditinput");
       if (!input) return;
-      // A type=number input reports "" both for a field cleared on purpose (no cap) and for
-      // text the browser rejected ("$2"); validity.badInput tells them apart, so a typo is an
-      // error instead of silently removing the cap — the team editor's guard, in scope from
-      // the operator blob concatenated earlier.
-      if (input.validity && input.validity.badInput) {
-        showFlash("error: the cap must be a number of 0 or more — leave it empty for no cap");
-        return;
-      }
-      const parsed = parseBudgetField(input.value);
-      if (!parsed.ok) {
-        showFlash("error: " + parsed.error);
-        return;
-      }
-      const value = parsed.value;
+      // The same guard the team budget editor runs, from the operator blob concatenated
+      // earlier: one parse, one flash per bad edit.
+      const value = capFieldValue(input);
+      if (value === undefined) return;
       postAction("/api/role-cap", { role: arg, maxDailyCostUsd: value }, (d) => {
         capEditing = null;
         loadDrawerRole(arg);

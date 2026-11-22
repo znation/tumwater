@@ -476,11 +476,16 @@ test("cap-edit opens the cap editor, cap-save posts the parsed cap, cap-discard 
       stopCapEdit: () => events.push("stop"),
       capEditing: capState,
       showFlash: (m: string) => flashes.push(m),
-      parseBudgetField: (raw: string) => {
-        const t = String(raw).trim();
-        const n = Number(t);
-        if (t === "" || !Number.isFinite(n) || n < 0) return { ok: false, error: "the cap must be a number of 0 or more" };
-        return { ok: true, value: n };
+      // The cap guard lives in the operator blob (shared-operator region), which this scope
+      // does not load, so it stands in for it: a marker flash on a refused field, the number
+      // otherwise. The guard's own wording is pinned where the real one runs
+      // (test/gui-client.test.ts, capFieldValue).
+      capFieldValue: (input: { value: string; validity: { badInput: boolean } }) => {
+        if (input.validity.badInput || !/^[\d.]+$/.test(input.value)) {
+          flashes.push("guard");
+          return undefined;
+        }
+        return Number(input.value);
       },
       fmtCap: (n: number) => "$" + n.toFixed(2).replace(/\.00$/, ""),
       loadDrawerRole: (r: string) => events.push(`load ${r}`),
@@ -512,13 +517,13 @@ test("cap-edit opens the cap editor, cap-save posts the parsed cap, cap-discard 
   assert.equal(flashes[2], "Daily cap unchanged");
   reply = {};
   flashes.length = 2;
-  // A non-numeric field flashes the parse error and posts nothing.
+  // A field the guard refuses posts nothing and reports only the guard's marker.
   flashes.length = 0;
   posts.length = 0;
   field.value = "abc";
   scope.runAct("cap-save", "clean");
   assert.deepEqual(posts, []);
-  assert.deepEqual(flashes, ["error: the cap must be a number of 0 or more"]);
+  assert.deepEqual(flashes, ["guard"]);
   // cap-discard closes the editor.
   events.length = 0;
   scope.runAct("cap-discard", "clean");

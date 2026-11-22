@@ -479,11 +479,12 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
     windowLinesHtml(blocks: object[], only?: boolean): string;
     renderBudgetBadge(d: object): void;
     parseBudgetField(raw: string): { ok: true; value: number } | { ok: false; error: string };
+    capFieldValue(input: { value: string; validity: { badInput: boolean } }): number | undefined;
     saveBudget(): Promise<void>;
     pauseControlHtml(d: object): string;
     setTeamPause(paused: boolean, forSeconds?: number, reason?: string): Promise<void>;
     stopControlHtml(d: object | null): string;
-  }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control", "stop-control"], ["budgetCardHtml", "parseBudgetField", "saveBudget", "pauseControlHtml", "setTeamPause", "windowLinesHtml", "renderBudgetBadge", "stopControlHtml"], {
+  }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control", "stop-control"], ["budgetCardHtml", "parseBudgetField", "capFieldValue", "saveBudget", "pauseControlHtml", "setTeamPause", "windowLinesHtml", "renderBudgetBadge", "stopControlHtml"], {
     document: { addEventListener: () => {}, createElement: () => ({ setAttribute() {}, remove() {} }) },
     $: (id: string) => els[id] ?? null,
     paintPanel: (id: string, html: string) => { panels[id] = html; return true; },
@@ -693,6 +694,22 @@ test("the cap editor says when the cap it saved is the one already set", async (
   input.value = "";
   await scope.saveBudget();
   assert.equal(flashes.shift(), "Daily cap is already removed — nothing saved");
+});
+
+// capFieldValue is the guard both cap editors share (the team budget input and the drawer's
+// per-role cap input): it owns the refusal wording, so this is where the flash text is pinned.
+// 0 is a legitimate value (it means no cap), so a refusal must be told apart by undefined,
+// not falsiness. Each expectation is worked from the two rules: the browser's badInput flag
+// for text it rejected, and parseBudgetField's plain-decimal verdict for the rest.
+test("capFieldValue refuses a bad field with its own flash and returns the number otherwise", () => {
+  const { scope, flashes } = operatorScope();
+  assert.equal(scope.capFieldValue({ value: "", validity: { badInput: true } }), undefined);
+  assert.equal(flashes.shift(), "error: the cap must be a number of 0 or more — leave it empty for no cap");
+  assert.equal(scope.capFieldValue({ value: "1e2", validity: { badInput: false } }), undefined);
+  assert.match(flashes.shift() ?? "", /^error: the cap must be a plain dollar amount/);
+  assert.equal(scope.capFieldValue({ value: "25", validity: { badInput: false } }), 25);
+  assert.equal(scope.capFieldValue({ value: "", validity: { badInput: false } }), 0, "a cleared field is no cap, not a refusal");
+  assert.equal(flashes.length, 0, "an accepted field flashes nothing");
 });
 
 // One rule for both cap editors: the dashboard's parseBudgetField must admit and refuse exactly
