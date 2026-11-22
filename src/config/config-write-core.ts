@@ -29,6 +29,12 @@ import type { TumwaterConfig } from "./config-schema.js";
  * acquired within the budget throws rather than writing unlocked — a silently lost config edit
  * is worse than a write that reports an error. */
 const CONFIG_LOCK_TIMEOUT_MS = 10_000;
+/** Run `fn` while holding the config lock, releasing it on the way out however `fn` ends —
+ * the one entry point for a config write, so every writer (dashboard PUT, `config set`, the
+ * role-request write, edit-merge, append-role, replace-text) shares one critical section.
+ * Serializes the read-modify-write across processes: `tumwater config set` runs as its own
+ * process while the orchestrator holds the live config. Waits up to CONFIG_LOCK_TIMEOUT_MS for
+ * a contended lock, then throws rather than clobbering the other writer's file. */
 export function withConfigLock<T>(root: string, fn: () => T): T {
   // withStateLock creates the state dir the lock sits in (a CLI write may run before any state
   // file).

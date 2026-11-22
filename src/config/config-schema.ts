@@ -530,6 +530,9 @@ export const TOP_LEVEL_KEYS = [
   "roles",
 ];
 
+/** The keys tumwater.json's `idleBackoff` section may hold — the growth ladder a role waits
+ * on while it has nothing to do. A key outside it is reported as unknown by that section's
+ * rule in config-validation.ts. */
 export const BACKOFF_KEYS = ["initialSeconds", "factor", "maxSeconds"];
 
 /** One agent backend's tumwater.json entry (plans/agent-backends.md "Config"): the binary
@@ -571,6 +574,9 @@ export const BOOTSTRAP_KEYS = ["untilPlansDone"];
 /** The keys tumwater.json's `githubIssues` section may hold. */
 export const GITHUB_ISSUES_KEYS = ["enabled", "close", "scanIntervalMinutes", "authors", "mirrorLabel"];
 
+/** The keys a `roles.<id>` entry may hold — every field of RoleConfig above. A key outside it
+ * is reported as unknown by the role-section rule in config-validation-roles.ts, and by
+ * config-keys.ts for a dotted `config set` key. */
 export const ROLE_ENTRY_KEYS = [
   "enabled",
   "instructions",
@@ -583,6 +589,8 @@ export const ROLE_ENTRY_KEYS = [
   "remote",
 ];
 
+/** The keys tumwater.json's `review` section may hold — every field of ReviewConfig above. A
+ * key outside it is reported as unknown by that section's rule in config-validation.ts. */
 export const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "backend", "thinking", "timeoutSeconds"];
 
 /** The `check` section's keys (plans/portability.md §6/7): the project's own verification
@@ -625,6 +633,8 @@ export const HARNESS_PI_FLAGS = new Map<string, string>([
   ["--no-extensions", "tumwater skips pi's discovered extensions itself"],
 ]);
 
+/** The keys a `customRoles` entry may hold — the operator's own role definition. A key
+ * outside it is reported as unknown by the custom-role rule in config-validation-roles.ts. */
 export const CUSTOM_ROLE_KEYS = ["name", "task"];
 
 /** A custom role's name becomes a worktree dir and a git ref, so it is validated strictly:

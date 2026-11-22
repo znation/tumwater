@@ -103,7 +103,11 @@ export interface NumberRule {
   what: string;
 }
 
+/** The plain ≥ 0 shape: any number of 0 or more, with no special meaning attached to 0. */
 export const NON_NEGATIVE: NumberRule = { ok: (n) => n >= 0, what: "a number of 0 or more" };
+/** A number of 0 or more that reads `<= 0` as "feature off": validation accepts either, and
+ * the readers branch on it — retention.ts skips the prune, team-reclaim.ts skips the idle
+ * pass, the disk gate skips the hold and reclaim, and a 0 spend cap means uncapped. */
 export const NON_NEGATIVE_OR_DISABLED: NumberRule = {
   ok: (n) => n >= 0,
   what: "a number of 0 or more (0 disables)",
@@ -112,19 +116,25 @@ export const NON_NEGATIVE_OR_DISABLED: NumberRule = {
  * checkDailyBudgetUsd applies (BUGS.md 2026-10-02) — a finite-but-unrepresentable cap
  * ("9"×25 → 1e24) is an effectively uncapped budget, so `config set` and the GUI's
  * /api/config-set are refused at the same boundary checkDailyBudgetUsd enforces. */
+/** A USD amount of 0 or more, where 0 disables the daily spend cap outright. */
 export const DOLLAR_CAP: NumberRule = {
   ok: (n) => n >= 0 && n <= Number.MAX_SAFE_INTEGER,
   what: `a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER} (0 disables)`,
 };
+/** A number greater than 0, fractions allowed — for a size or threshold that has no 0 form. */
 export const POSITIVE: NumberRule = { ok: (n) => n > 0, what: "a number greater than 0" };
+/** A whole count of 1 or more: the slots and batch sizes that cannot be 0 or fractional. */
 export const POSITIVE_INTEGER: NumberRule = {
   ok: (n) => Number.isInteger(n) && n >= 1,
   what: "an integer of at least 1",
 };
+/** A whole number of 0 or more — 0 is a real value here (a full interval of 0 means the
+ * interval-only cadence), unlike the `*_OR_DISABLED` rules where 0 switches the feature off. */
 export const NON_NEGATIVE_INTEGER: NumberRule = {
   ok: (n) => Number.isInteger(n) && n >= 0,
   what: "a whole number of 0 or more",
 };
+/** A multiplier of at least 1: a growth factor may stay flat but never shrink a wait. */
 export const AT_LEAST_ONE: NumberRule = { ok: (n) => n >= 1, what: "a number of at least 1" };
 
 /** The upper bound every seconds field that feeds a ×1000 duration shares: 2147483 s
@@ -140,14 +150,20 @@ export const MAX_DURATION_SECONDS = 2147483;
  * inside node's signed-32-bit range. One home for the family, so the whole-gate section
  * (config-validation.ts) and the per-role section (config-validation-roles.ts) name the same
  * rules instead of each declaring DURATION_NON_NEGATIVE for itself. */
+/** A seconds duration greater than 0, bounded by MAX_DURATION_SECONDS (see there). */
 export const DURATION_POSITIVE: NumberRule = {
   ok: (n) => n > 0 && n <= MAX_DURATION_SECONDS,
   what: `a number greater than 0, at most ${MAX_DURATION_SECONDS}`,
 };
+/** A seconds interval of 0 or more — 0 is a real value (no wait), bounded by
+ * MAX_DURATION_SECONDS (see there). */
 export const DURATION_NON_NEGATIVE: NumberRule = {
   ok: (n) => n >= 0 && n <= MAX_DURATION_SECONDS,
   what: `a number of 0 or more, at most ${MAX_DURATION_SECONDS}`,
 };
+/** A seconds duration greater than 0 where 0 switches the timeout off. The readers branch on
+ * that 0: runner-request-timeouts.ts substitutes the follow-up's own quiet cap, and
+ * progress-data.ts treats 0 as no stall warning. */
 export const DURATION_OR_DISABLED: NumberRule = {
   ok: (n) => n >= 0 && n <= MAX_DURATION_SECONDS,
   what: `a number of 0 or more, at most ${MAX_DURATION_SECONDS} (0 disables)`,
