@@ -13,12 +13,12 @@ import {
   maintenanceQuotaForPoll,
   ciParityForPoll,
   remoteCiForPoll,
-  buildCheckForPoll,
   slotsForPoll,
   type CiParityStatus,
   type RemoteCiStatus,
 } from "./status-polls.js";
 import { mainCheckForPoll, type MainCheckStatus } from "./status-main-check.js";
+import { buildCheckForPoll } from "../build/build-check-poll.js";
 import { quietHoursStatus, roleQuietHeldRoles } from "../scheduling/quiet-hours.js";
 import { scheduledStopAt, scheduledWakes, standingRolePause, standingTeamPause } from "../team/team-state.js";
 import {
@@ -47,8 +47,8 @@ import { readJsonFile } from "../files/json-files.js";
  * status`, GUI). Rendering lives in status-render.ts; the per-poll cached readers
  * snapshot() reads through live in status/status-polls.ts and status/status-main-check.ts — the
  * main-check scan, the last-known-good config, the runner-state stat cache, the pooled slots, the
- * declared check, the ci and remote-CI ledgers, the merge-in-flight marker and the maintenance
- * allowance. snapshot() composes the per-domain collectors in
+ * ci and remote-CI ledgers, the merge-in-flight marker and the maintenance allowance; the declared
+ * check is read through build/build-check-poll.ts. snapshot() composes the per-domain collectors in
  * status-roles.ts, status-inbox.ts and status-budget.ts and keeps the one-off fields here. */
 
 export interface StatusSnapshot {

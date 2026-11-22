@@ -1499,7 +1499,8 @@ predates the cutoff" and "a missing or empty log reads as no rows over a covered
 
 `tumwater status`, `tumwater doctor` and the GUI read the cached readers
 in `src/status/status-polls.ts` (the main-check reader, `src/status/status-main-check.ts`, was
-split out of it) every second, in a process separate from the orchestrator. Every
+split out of it, and the throttled declared-check reader sits in
+`src/build/build-check-poll.ts`) every second, in a process separate from the orchestrator. Every
 reader must therefore tolerate a torn, foreign or stale file, and show only what is still true.
 
 ### INV-T1: main's badge is the newest merge-scope check, and an unproven check shows nothing

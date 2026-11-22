@@ -5,7 +5,7 @@ import { submitPrompt } from "../inbox/inbox-submit.js";
 import { hasUnmergedPin } from "../runner/runner-leftover.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { checkDeclarationStatePath } from "../paths.js";
-import { buildCheckForPoll } from "../status/status-polls.js";
+import { buildCheckForPoll } from "../build/build-check-poll.js";
 
 /** The first line of every automatic check-declaration prompt the orchestrator queues the
  * director. `requestCheckDeclaration` matches a queued prompt against this prefix to keep one
