@@ -9,7 +9,8 @@ import { MODEL_CHECK_MARKER, runModelCheck, type ModelCheckVerdict } from "../sr
 import { defaultConfig } from "../src/config/config.js";
 import { configForRole } from "../src/config/config-views.js";
 import { MODEL_CHECK_RUN_NAME, piLogPath, sessionsRootDir } from "../src/paths.js";
-import type { SleepSample, SleepSampler } from "../src/build/host-sleep.js";
+import type { SleepSample } from "../src/build/host-sleep.js";
+import { scriptedSampler } from "./helpers/sleep-clock.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { claudeAssistant, claudeInit, claudeResult, claudeText } from "./fixtures/claude-events.js";
@@ -99,17 +100,6 @@ test("an aborted probe is no evidence", async () => {
   }
 });
 
-/** A sleep sampler that replays `samples` in order and fails on a call past the script, so a
- * probe that samples more often than the test expects fails loudly. */
-function scriptedSleep(...samples: SleepSample[]): SleepSampler {
-  const queue = [...samples];
-  return async () => {
-    const next = queue.shift();
-    assert.ok(next !== undefined, "the sleep sampler was called more often than scripted");
-    return next;
-  };
-}
-
 /** Two samples whose monotonic clock did not advance while the boot clock moved `ms` — the
  * shape a host asleep for `ms` reads as (sleptMsBetween reports `ms`). */
 function sleepWindow(ms: number): [SleepSample, SleepSample] {
@@ -127,7 +117,7 @@ test("a no-reply probe across a host sleep is probed again, and the second answe
   const root = makeRepo();
   const restore = fakePiNoCheck(noReplyThenAnswer(prompts, flag));
   try {
-    const verdict = await runModelCheck(root, piSeam(), new AbortController().signal, scriptedSleep(...sleepWindow(600_000)));
+    const verdict = await runModelCheck(root, piSeam(), new AbortController().signal, scriptedSampler(sleepWindow(600_000)));
     assert.deepEqual(verdict, { ok: true });
     assert.equal(readRunBlocks(prompts).length, 2, "the sleep-spanning no-reply probe was retried once");
   } finally {
@@ -141,7 +131,7 @@ test("a no-reply probe with no measured sleep is not retried", async () => {
   const restore = fakePiNoCheck(logPromptsTo(prompts));
   try {
     const verdict = failure(
-      await runModelCheck(root, piSeam(), new AbortController().signal, scriptedSleep(...sleepWindow(0))),
+      await runModelCheck(root, piSeam(), new AbortController().signal, scriptedSampler(sleepWindow(0))),
     );
     assert.equal(verdict.reason, "no reply");
     assert.equal(readRunBlocks(prompts).length, 1, "the probe ran once");
@@ -156,7 +146,7 @@ test("a wrong answer inside a host sleep is not retried", async () => {
   const restore = fakePiNoCheck(`${logPromptsTo(prompts)}\nprintf '%s\\n' '${assistantLine("Ostry")}'`);
   try {
     const verdict = failure(
-      await runModelCheck(root, piSeam(), new AbortController().signal, scriptedSleep(...sleepWindow(600_000))),
+      await runModelCheck(root, piSeam(), new AbortController().signal, scriptedSampler(sleepWindow(600_000))),
     );
     assert.deepEqual([verdict.reason, verdict.reply], ["wrong answer", "Ostry"]);
     assert.equal(readRunBlocks(prompts).length, 1, "the wrong answer was not probed again");
@@ -175,7 +165,7 @@ test("two no-reply probes in a row, both across sleeps, yield no reply after exa
         root,
         piSeam(),
         new AbortController().signal,
-        scriptedSleep(...sleepWindow(600_000)),
+        scriptedSampler(sleepWindow(600_000)),
       ),
     );
     assert.equal(verdict.reason, "no reply");
