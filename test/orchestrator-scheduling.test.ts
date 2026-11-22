@@ -806,6 +806,45 @@ test("the maintenance quota holds a maintenance role; a fresh wake admits one ru
   assert.equal(woken.has(clean), true, "a fresh wake admits one run while the quota holds");
 });
 
+test("once-mode settles each starting hold with its own label, so a held role never reads as paused", async () => {
+  // The --once report's reason is what an operator (and a --json consumer branching on
+  // `reason === "paused"`) reads as the whole answer. One bare word for four different holds
+  // sent the operator to `resume`, which answers `not_paused` on a bootstrap-held role. Each
+  // hold now settles with the words the status payload already uses for it; only the pauses
+  // `tumwater resume` actually lifts keep plain `paused`.
+  const cases: { name: string; hold: (ctx: SchedulingPassCtx, runner: RoleRunner) => void; want: string }[] = [
+    {
+      name: "pause marker",
+      hold: (ctx, r) => (ctx.pausedRoles = new Set([r.role])),
+      want: "paused", // the one hold `resume --role <id>` answers
+    },
+    { name: "team pause", hold: (ctx) => (ctx.userPaused = true), want: "paused" },
+    { name: "daily cap", hold: (ctx, r) => (ctx.capPaused = new Set([r.role])), want: "cap paused" },
+    {
+      name: "maintenance allowance",
+      hold: (ctx) => (ctx.maintenanceQuota = { allowance: 12, used: 13, held: true }),
+      want: "held: maintenance quota 13/12",
+    },
+    { name: "bootstrap", hold: (ctx, r) => (ctx.bootstrapHeld = new Set([r.role])), want: "held: bootstrap" },
+    { name: "budget pause", hold: (ctx, r) => (ctx.budgetPausedRoles = new Set([r.role])), want: "budget paused" },
+    { name: "quiet hours", hold: (ctx) => (ctx.quietNow = true), want: "held: quiet hours" },
+    {
+      name: "model check",
+      hold: (ctx, r) => (ctx.modelCheckHeld = new Set([r.role])),
+      want: "waiting: model check",
+    },
+  ];
+  for (const { name, hold, want } of cases) {
+    const root = tmpdir(`tumwater-scheduling-once-label-${name.replace(/ /g, "-")}-`);
+    const clean = fakeRunner("clean", defaultConfig());
+    const ctx = { ...schedulingCtx(root, [clean], new Map([["clean", undefined]])), once: new OnceRound([clean], true) };
+    hold(ctx, clean);
+    await pollRunnerReasons(ctx);
+    assert.equal(ctx.once.reasons.get("clean"), want, `${name}: the settle label names the hold`);
+    assert.equal(ctx.once.reasons.get("clean") === "paused", want === "paused", `${name}: only a pause reads bare`);
+  }
+});
+
 test("the allowance's in-flight headroom starts at most one of two due maintenance roles per poll", async () => {
   const root = tmpdir("tumwater-scheduling-quota-race-");
   const runners = [fakeRunner("clean", defaultConfig()), fakeRunner("dedupe", defaultConfig())];

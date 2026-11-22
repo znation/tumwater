@@ -17,6 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
+import { loadConfig, saveConfig } from "../src/config/config.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { slotForDir, writeSlotsState } from "../src/git/slots-state.js";
 import { slotWorktreePath } from "../src/paths.js";
@@ -114,6 +115,29 @@ test("once: a per-role-paused role settles as paused and gets no run", async () 
     assert.equal(exit.runsDone?.get("clean"), 0, "the paused role got no run");
     assert.equal(loadRunnerState(repo, "clean").runs, 0, "nothing ran past the fresh state");
     assert.deepEqual(eventsOfType(repo, "run_start"), [], "no run started behind the pause");
+  });
+});
+
+test("once: a bootstrap-held role settles as held: bootstrap and gets no run", async () => {
+  // The fresh-project case (INV-Q6 seeds bootstrap.untilPlansDone on `tumwater init`): the role
+  // is held by the bootstrap gate, never paused, yet the round used to answer `paused` — the
+  // operator followed it to `resume`, which replied `not_paused`. The label names the gate the
+  // status payload names, and `wake --role` is the lever it hides.
+  const repo = await makeFastRepo("once bootstrap settle test", ["clean"]);
+  const config = loadConfig(repo);
+  config.bootstrap = { untilPlansDone: 5 };
+  saveConfig(repo, config);
+  await withIdlePi(async () => {
+    const exit = await onceRound(repo);
+    assert.equal(exit.restart, false);
+    assert.equal(
+      exit.settled?.get("clean"),
+      "held: bootstrap",
+      "bootstrap is the role's round answer — not a pause resume could lift",
+    );
+    assert.equal(exit.runsDone?.get("clean"), 0, "the bootstrap-held role got no run");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "nothing ran past the fresh state");
+    assert.deepEqual(eventsOfType(repo, "run_start"), [], "no run started behind the bootstrap hold");
   });
 });
 

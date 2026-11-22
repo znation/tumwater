@@ -87,26 +87,46 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
  * silently (a once round has to end even when a pause marker is left over; a later resume
  * within the same round cannot un-settle it, which is the at-most-one-run contract). */
 function settleOncePaused(scope: SchedulingScope, runner: RoleRunner, demand: boolean): void {
+  const { once } = scope;
+  if (once.active && !once.isSettled(runner) && !runner.state.running) {
+    const label = onceHoldLabel(scope, runner, demand);
+    if (label !== undefined) once.settle(runner.role, label);
+  }
+}
+
+/** The once-mode settle label naming WHICH starting hold declined this round, or undefined when
+ * no starting hold does. Each label reuses the name the status side gives that gate
+ * (`capPaused` → `cap paused`, bootstrap → `held: bootstrap`, the maintenance allowance →
+ * `held: maintenance quota <used>/<allowance>`, the budget tier's pause → `budget paused`), so a
+ * `--json` consumer sees the same distinction the payload carries; plain `paused` stays only for
+ * the holds `tumwater resume` answers (the per-role pause marker and the team pause marker), and
+ * the scheduled quiet window — which `resume` does not lift — is named as its own hold. The order
+ * mirrors heldFromStarting, so the label names the hold that declines the run first. */
+function onceHoldLabel(scope: SchedulingScope, runner: RoleRunner, demand: boolean): string | undefined {
   const {
-    once,
     pausedRoles,
     capPaused,
-    maintenanceQuotaOverLine,
-    bootstrapHeldNow,
+    maintenanceQuota,
+    budgetHolds,
     operatorPauseBlocks,
+    bootstrapHeldNow,
+    maintenanceQuotaOverLine,
   } = scope;
-  if (
-    once.active &&
-    !once.isSettled(runner) &&
-    !runner.state.running &&
-    (runnerPaused(pausedRoles, runner.role) ||
-      capPaused.has(runner.role) ||
-      maintenanceQuotaOverLine(runner, demand) ||
-      bootstrapHeldNow(runner, demand) ||
-      operatorPauseBlocks(runner.role))
-  ) {
-    once.settle(runner.role, "paused");
+  if (runnerPaused(pausedRoles, runner.role)) return "paused"; // `resume --role <id>` answers this one
+  if (capPaused.has(runner.role)) return "cap paused"; // lifted by a live config edit or local midnight
+  if (maintenanceQuotaOverLine(runner, demand))
+    return `held: maintenance quota ${maintenanceQuota.used}/${maintenanceQuota.allowance}`;
+  if (bootstrapHeldNow(runner, demand)) return "held: bootstrap"; // lifted by the plan target, or `wake --role`
+  if (operatorPauseBlocks(runner.role)) {
+    // The three non-pause disjuncts of the team gate first, each named by its own verdict
+    // (status-data.ts `budget paused`; the scheduled quiet window the header's quiet badge
+    // reports): only the pause markers keep plain `paused`, because `tumwater resume` is their
+    // lever — a quiet window lifts when it ends or `config set quietHours` changes it.
+    if (budgetHolds(runner.role)) return "budget paused";
+    if (scope.quietNow || scope.roleQuietHeld.has(runner.role)) return "held: quiet hours";
+    return "paused";
   }
+  return undefined;
 }
 
 /** The run of starting holds, in today's order — a restart or low disk, the per-role pause,
@@ -182,7 +202,8 @@ function admissionHolds(scope: SchedulingScope, runner: RoleRunner): boolean {
   // why. Placed after the due check so only a role that would otherwise run carries the reason;
   // the check's re-probe lifts the hold by itself, no operator step.
   if (modelCheckHeld.has(runner.role)) {
-    if (once.active && !runner.state.running) once.settle(runner.role, "paused");
+    // Named as the check's own hold, not a pause: no `resume` lifts it — the check's re-probe does.
+    if (once.active && !runner.state.running) once.settle(runner.role, "waiting: model check");
     noteSkip(root, runner, "model-check");
     return true;
   }
