@@ -81,6 +81,36 @@ test("gui rejects a cross-origin POST with 403 while same-origin and Origin-less
   }
 });
 
+test("gui serves the dashboard with frame-blocking headers so it cannot be framed cross-site", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui framing test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // The cross-origin gate trusts a POST whose Origin is this server's own host. A framed
+    // dashboard would carry that Origin, so any page that could embed the dashboard could
+    // submit its forms from a click the visitor never aimed at it. Both frame-blocking
+    // spellings are pinned: CSP frame-ancestors is the modern one, X-Frame-Options covers
+    // browsers that ignore CSP.
+    const page = await fetch(base + "/");
+    assert.equal(page.status, 200);
+    assert.equal(page.headers.get("x-frame-options"), "DENY");
+    assert.equal(page.headers.get("content-security-policy"), "frame-ancestors 'none'");
+    assert.match(await page.text(), /<title>tumwater<\/title>/, "the page itself still serves");
+
+    // The same headers on the page's other spelling, so neither route is an embeddable door.
+    const alt = await fetch(base + "/index.html");
+    assert.equal(alt.headers.get("x-frame-options"), "DENY");
+    assert.equal(alt.headers.get("content-security-policy"), "frame-ancestors 'none'");
+
+    // The APIs answer with JSON, which no browser frames or embeds as a document; the page
+    // route is the only framing surface, so an API response keeps its own shape.
+    const status = await fetch(base + "/api/status");
+    assert.match(status.headers.get("content-type") ?? "", /^application\/json/);
+  } finally {
+    server.close();
+  }
+});
+
 test("gui refuses a POST whose Origin header does not parse as a URL", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui malformed origin test");

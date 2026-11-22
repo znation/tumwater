@@ -357,7 +357,17 @@ export function startGui(
   // order carries no meaning. A handler that needs the query reads the one parsed target
   // (parseRequestTarget) — routing matched its exact pathname, so the target is non-null.
   const servePage = (_req: http.IncomingMessage, res: http.ServerResponse): void => {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    // Frame-blocking on the one HTML document this server hands out: the cross-origin gate
+    // admits a POST whose Origin is this server's own host, so a dashboard embedded in some
+    // other site's page would post with that trusted Origin and a visitor's click there would
+    // drive the team. frame-ancestors 'none' is the modern spelling; X-Frame-Options: DENY
+    // covers a browser that ignores CSP. Both are page-only — a JSON API response is never
+    // framed as a document, so the /api routes keep their own headers.
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "content-security-policy": "frame-ancestors 'none'",
+      "x-frame-options": "DENY",
+    });
     res.end(GUI_PAGE);
   };
   const guiRoutes: Record<string, RouteHandler> = {
