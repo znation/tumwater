@@ -431,8 +431,8 @@ export function daysAgoMs(days: number): number {
  *
  * A subdirectory that cannot be listed — without read permission, or removed by a concurrent
  * pass between the parent's readdir and this one — is skipped, the same vanish-tolerant policy
- * the per-file stat/delete below applies. This cleanup runs inside the orchestrator's poll loop
- * (RetentionPruner.poll), so a readdir throw escaping here would end the whole team; one
+ * the per-file stat/delete below applies. This cleanup runs in the session prune's background
+ * pass (RetentionPruner.prune), so a readdir throw escaping here would fail that whole pass; one
  * unreadable session directory must cost at most its own contents' retention pass.
  *
  * After a subdirectory is walked, an empty one whose own mtime is past the cutoff is removed:

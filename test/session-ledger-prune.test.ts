@@ -17,7 +17,7 @@ import { readCapture } from "./helpers/read-capture.js";
 import { record } from "./fakes/session-record.js";
 import { writeScript } from "./fakes/fake-commands.js";
 
-// The retention trim runs in the orchestrator's poll loop, where a throw ends the team: these
+// The retention trim runs in the prune's background pass, where a throw fails that pass: these
 // tests pin that a ledger it cannot rewrite is left as it was, plus the edges of the trim, the
 // resume check and the OpenCode purge that test/session-ledger.test.ts does not reach.
 

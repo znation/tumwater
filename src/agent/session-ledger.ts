@@ -185,7 +185,7 @@ export function sessionResumable(
  * its lines is what actually bounds it, under the same window the session files prune by.
  * Returns the number of lines removed; a missing root or unreadable dir reads as nothing to do.
  * A ledger that cannot be rewritten (a full disk, a read-only dir) is left as it was and not
- * counted, because this pass runs in the orchestrator's poll loop, where a throw ends the team. */
+ * counted, because a throw here would fail the whole background prune pass. */
 export function pruneSessionLedgers(sessionsRoot: string, days: number): number {
   const cutoff = daysAgoMs(days);
   let pruned = 0;
