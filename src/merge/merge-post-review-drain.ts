@@ -362,7 +362,24 @@ async function precheckReviewerFix(ctx: MergePipelineContext, entry: PostReview,
       // remains reachable for a reader.
       recordReview(state, "reject", [...finding, ...reasons], fix);
       saveRunnerStateBestEffort(ctx.root, state);
-      logEventBestEffort(ctx.root, { source: entry.role, type: "review_rejected", head: fix, reasons, afterMerge: true });
+      // The withholding is not a verdict on the author's commit, so the event must not read as
+      // one: `head` stays the reviewed commit (the one on main a reader can act on), the withheld
+      // sha rides as `withheldFix` — the discriminator every observer reads (event-read.ts
+      // eventWithheldFix) — and the reviewer's `finding` rides beside the pre-check's
+      // `reasons`, so
+      // the digest can name what the reviewer found instead of only the lint line that held its
+      // repair back. Counted as an author rejection, this event made the digest print its never-
+      // re-reviewed footer over a review that is still open and re-runs (INV-BT8), and spent the
+      // doctor's post-merge churn warn on lint in reviewer-authored bytes (BUGS.md 2026-11-22).
+      logEventBestEffort(ctx.root, {
+        source: entry.role,
+        type: "review_rejected",
+        head: entry.commit,
+        reasons,
+        ...(finding.length > 0 ? { finding } : {}),
+        withheldFix: fix,
+        afterMerge: true,
+      });
       warnEventBestEffort(ctx.root, entry.role, `the post-merge fix of ${shortSha(entry.commit)} failed its pre-check and was withheld: ${firstReason(reasons)}`);
       await settleWithheldReviewerFix(ctx, entry, finding, reasons);
       return { decision: "rejected" as const, detail: firstReason(reasons) };

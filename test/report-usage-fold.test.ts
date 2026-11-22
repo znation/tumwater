@@ -121,7 +121,11 @@ test("review_rejected: one rejection per role, the post-merge subset, a duration
   const f = fresh();
   foldUsageEvent(f, ev("review_rejected", { source: "feature", afterMerge: true, durationMs: 800 }));
   foldUsageEvent(f, ev("review_rejected", { source: "bugfix" }));
-  assert.deepEqual(f.rejectionsByRole, { feature: 1, bugfix: 1 });
+  // A reviewer fix its own pre-check withheld is still a rejection of the author's run, but not a
+  // post-merge rejection of the author: the review stays open and re-runs, and the reasons name
+  // the reviewer's own bytes (BUGS.md 2026-11-22).
+  foldUsageEvent(f, ev("review_rejected", { source: "perf", afterMerge: true, withheldFix: "f".repeat(40), finding: ["breaks the contract"], reasons: ["check failed"] }));
+  assert.deepEqual(f.rejectionsByRole, { feature: 1, bugfix: 1, perf: 1 });
   assert.deepEqual(f.postMergeRejectionsByRole, { feature: 1 });
   // Only the rejection that carried a positive duration joins the median.
   assert.deepEqual(f.reviewDurationsMs, [800]);

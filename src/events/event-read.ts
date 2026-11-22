@@ -50,6 +50,17 @@ export function eventRole(ev: HarnessEvent): string {
   return typeof ev.source === "string" && ev.source !== "" ? ev.source : "?";
 }
 
+/** Whether a `review_rejected` event records a REVIEWER fix that its own pre-check withheld, not
+ * a verdict on the author's commit. Such an event carries `withheldFix: <fix sha>` beside
+ * `afterMerge: true` (merge-post-review-drain.ts's precheckReviewerFix): the fix never landed, so
+ * the review is still open and will be re-run (INV-BT8). One home for the discriminator so every
+ * observer — the failure digest, the doctor's post-merge churn row, and the usage report's
+ * post-merge subset — settle the same way on what counts as a post-merge rejection of the
+ * author. A non-string value (a torn or hand-edited line) is not a withholding. */
+export function eventWithheldFix(ev: HarnessEvent): boolean {
+  return typeof ev.withheldFix === "string" && ev.withheldFix !== "";
+}
+
 /** The run number an event names, or 0 when it is absent or non-finite. The one guard every
  * display surface applies to the loosened `run` field: an event log is read without a shape
  * filter, so a torn or hand-edited line can carry no run (String(undefined) printed "#undefined"

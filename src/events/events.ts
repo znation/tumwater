@@ -66,7 +66,7 @@ export interface HarnessEvent {
     | "resume" // the interrupted run's session is picked back up; carries cause (restart|cut-off|hung-tool|timeout|budget-resumed|handoff|model-check)
     | "review_start" // carries head; model when one is configured — the reviewer's selector string; revision (round) when the merge is a revision (plans/revise-rejected.md part 2/2); afterMerge true on a review of an already merged commit
     | "review_verdict" // approved; carries durationMs of the reviewer run; afterMerge true when the commit was already merged
-    | "review_rejected" // build pre-check or reviewer said no; durationMs when a reviewer ran; afterMerge true when the commit was already merged
+    | "review_rejected" // build pre-check or reviewer said no; durationMs when a reviewer ran; afterMerge true when the commit was already merged; withheldFix <fix sha> when a post-merge review's own repair was withheld by its pre-check — head is then the reviewed commit and finding carries the reviewer's objections
     | "review_dropped" // a post-merge review dropped at POST_REVIEW_FAILURE_LIMIT; carries commit (the full SHA), summary, and reason (the last failure's detail); the commit stays on main unreviewed
     | "review_failed" // a reviewer run or its verdict failed; carries head, message, durationMs, and attempt (1-based: the reviewer run within the verify — a failed run is retried in place twice before the attempt ends review_error)
     | "revision" // a rejected change's revision round: action applied|conflict|dropped|exhausted, with round and sha (plans/revise-rejected.md)

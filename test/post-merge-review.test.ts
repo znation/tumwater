@@ -1093,10 +1093,17 @@ test("a reviewer's fix that fails its pre-check is withheld from main (BUGS.md 2
   const rejected = eventsOfType(root, "review_rejected");
   assert.deepEqual(
     rejected.map((e) => e.head),
-    [commit, sh(root, "git", "rev-parse", reviewFixRef(commit)).trim()],
-    "the reviewer's own verdict on the reviewed commit stays logged, and the fix commit is the second rejection",
+    [commit, commit],
+    "the reviewer's own verdict on the reviewed commit stays logged, and the withholding names the SAME reviewed commit — not the reviewer's own fix sha — so no observer reads it as a verdict on a commit the author can revise (BUGS.md 2026-11-22)",
   );
   assert.deepEqual(rejected[0]!.reasons, ["breaks the contract"], "the reviewer's finding is recorded against the reviewed commit");
+  // The withholding event carries its own discriminator and the finding, so the digest and the
+  // doctor can tell a reviewer fix held back from a post-merge rejection of the author, and can
+  // name what the reviewer found instead of only the lint line its repair tripped on.
+  const withheld = rejected[1]!;
+  assert.equal(withheld.withheldFix, sh(root, "git", "rev-parse", reviewFixRef(commit)).trim(), "the withheld fix sha rides on the event");
+  assert.deepEqual(withheld.finding, ["breaks the contract"], "the event carries the reviewer's finding, not only the pre-check's reasons");
+  assert.ok((withheld.reasons as string[]).length > 0 && !(withheld.reasons as string[]).includes("breaks the contract"), "the event's reasons stay the pre-check's own lines");
   // The author's own rejection record (the one its next run's prompt reads) must name the finding,
   // not only the lint line the fix tripped on — a role cannot revise the withheld fix commit.
   const lastReview = (fixer as unknown as { state: { lastReview?: { verdict: string; reasons: string[] } } }).state.lastReview;

@@ -29,6 +29,14 @@ export function reviewEventMessage(e: HarnessEvent): string {
       return `review approved ${shortSha(e.head)}${afterMergeSuffix(e)}${e.reason ? ` — ${textOr(e.reason)}` : ""}${elapsed(e.durationMs)}`;
     case "review_rejected": {
       const reasons = stringList(e.reasons);
+      // A reviewer fix its own pre-check withheld is not a verdict on the author's commit: the
+      // line names the reviewer's finding (what is worth acting on), the withheld sha, and that
+      // the review stays open. `reasons` here are the check's lines on reviewer-authored bytes.
+      if (typeof e.withheldFix === "string" && e.withheldFix !== "") {
+        const finding = stringList(e.finding);
+        const named = finding.length > 0 ? firstReason(finding) : firstReason(reasons);
+        return `reviewer fix ${shortSha(e.withheldFix)} withheld from main — ${named} (the review of ${shortSha(e.head)} stays open)`;
+      }
       // Only the first reason renders; when more exist, say so instead of letting the
       // one-liner read as the complete verdict — the full list rides in state.lastReview
       // into the author's next run prompt, and this line is the operator's pointer to it.

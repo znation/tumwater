@@ -378,7 +378,9 @@ never has to wait a parked check out.
   records a finding it cannot repair, the commit stays on main with the reviewer's reasons read as
   that recorded finding. A review that ends three times with no verdict is dropped with a warning.
   Two or more post-merge rejections in a day raise `tumwater doctor`'s `post-merge churn` row
-  naming each role — the reviewer-fix signal to raise the authoring bar.
+  naming each role — the reviewer-fix signal to raise the authoring bar. A reviewer fix its own
+  pre-check withheld is not one of those rejections: its reasons name the reviewer's bytes, and the
+  review stays open and re-runs.
   While the reviewer's provider stands under a failure hold, or its strong tier is unresolvable
   under the review gate, the hold parks only the post-merge review queue: no role start, verify
   or landing waits on the reviewer. Every role keeps authoring and its queued changes

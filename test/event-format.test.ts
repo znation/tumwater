@@ -380,6 +380,20 @@ test("formatEvent names the after-merge tier on the review lines", () => {
   );
   assert.match(rejected, /review rejected 01234567 after merge — adds a runtime dep$/);
 
+  // A reviewer fix its own pre-check withheld is not a rejection of the author's commit: the feed
+  // line names the reviewer's finding and the withheld sha, and says the review stays open, so an
+  // operator reading the feed is not told the review ended (BUGS.md 2026-11-22).
+  const withheld = formatEvent(
+    { ts: 0, source: "feature", type: "review_rejected", head, afterMerge: true, withheldFix: "8".repeat(40), reasons: ["check failed: comment width"], finding: ["breaks the contract"] } as never,
+  );
+  assert.match(withheld, /reviewer fix 88888888 withheld from main — breaks the contract \(the review of 01234567 stays open\)$/);
+  assert.ok(!withheld.includes("review rejected"), `not rendered as an author rejection: ${withheld}`);
+  // A withholding whose event carried no finding still renders, naming the pre-check line.
+  const withheldBare = formatEvent(
+    { ts: 0, source: "feature", type: "review_rejected", head, afterMerge: true, withheldFix: "8".repeat(40), reasons: ["check failed: comment width"] } as never,
+  );
+  assert.match(withheldBare, /reviewer fix 88888888 withheld from main — check failed: comment width/);
+
   // Without the flag the lines keep today's pre-merge shapes: no fabricated tier suffix.
   const startNoFlag = formatEvent({ ts: 0, source: "feature", type: "review_start", head } as never);
   assert.match(startNoFlag, /reviewing 01234567 before merge$/);

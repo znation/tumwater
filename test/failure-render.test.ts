@@ -130,6 +130,27 @@ test("error strings differing only in volatile parts cluster; exit codes stay di
   assert.ok(data.errors.clusters.some((c) => c.key === "pi exited null"));
 });
 
+test("a withheld reviewer fix is not counted as a post-merge rejection of the author", () => {
+  // BUGS.md 2026-11-22: the withholding `review_rejected` an author's own post-merge review
+  // writes when the reviewer's repair fails its pre-check was counted as a post-merge rejection
+  // of the author, so the footer claimed a review that in fact stays open and re-runs (INV-BT8)
+  // and the cluster line named only the lint line the REVIEWER's bytes tripped on.
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "bugfix", type: "review_rejected", head: "a".repeat(40), reasons: ["check failed: ✖ comment width"] , finding: ["breaks the contract"], withheldFix: "f".repeat(40), afterMerge: true }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "bugfix", type: "review_rejected", head: "b".repeat(40), reasons: ["half done"], afterMerge: true }, // a real post-merge rejection // retired-name-ok: legacy event field in a fixture
+  ]);
+  const data = collectFailureReport(root, 1);
+  assert.equal(data.postMergeRejections, 1, "only the real post-merge rejection counts");
+  const withheld = data.rejections.clusters.find((c) => c.example.startsWith("reviewer fix withheld:"));
+  assert.ok(withheld, `the withholding names itself: ${JSON.stringify(data.rejections.clusters.map((c) => c.example))}`);
+  assert.match(withheld!.example, /breaks the contract/, "the cluster names the reviewer's finding");
+  assert.match(withheld!.example, /comment width/, "and the pre-check line that held the fix back");
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /1 post-merge rejection —/, "the footer counts only the settled rejection");
+  assert.ok(!md.includes("2 post-merge rejections"), md);
+});
+
 test("review rejections cluster on (role, reasons[0]), not role alone", () => {
   const root = tmpdir();
   writeEvents(root, [

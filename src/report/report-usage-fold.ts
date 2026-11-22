@@ -8,7 +8,7 @@
  * only. */
 import { addTo } from "../collections.js";
 import { isPassingFullCheck, isRedFullCheck } from "../build/build-check-events.js";
-import { eventRole, eventUsage, runStartModel } from "../events/event-read.js";
+import { eventRole, eventUsage, eventWithheldFix, runStartModel } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { finiteNumber, nonNegativeNumber } from "../files/json-object.js";
 import { OUTCOME_CLASS } from "../failure/failure-time-spend.js";
@@ -420,8 +420,13 @@ function foldReviewRejected(target: UsageFold, ev: HarnessEvent): void {
   addTo(target.rejectionsByRole, eventRole(ev), 1);
   // A rejection that carried afterMerge: true is a post-merge one — the commit had already
   // landed, so the reviewer's turn-back reaches the revert path off main. Kept as its own
-  // subset of rejectionsByRole because it is a different, costlier kind of rejection.
-  if (ev.afterMerge === true) addTo(target.postMergeRejectionsByRole, eventRole(ev), 1);
+  // subset of rejectionsByRole because it is a different, costlier kind of rejection. A
+  // withheld reviewer fix (`withheldFix`, event-read.ts eventWithheldFix) stays out: no repair
+  // landed, the review is still open and re-runs (INV-BT8), and the reasons are the check's
+  // complaint about reviewer-authored bytes — charging it to the author as a post-merge
+  // rejection was the 2026-11-22 bug. Same exclusion the churn row applies
+  // (post-merge-review.ts postMergeRejectionCounts), so the report and the row sum alike.
+  if (ev.afterMerge === true && !eventWithheldFix(ev)) addTo(target.postMergeRejectionsByRole, eventRole(ev), 1);
   // A rejection that carried a positive durationMs means a reviewer actually ran the gate
   // and reached a verdict (post-merge rejections do; the build pre-check contributes no
   // duration), so it joins the review-duration median beside approvals. durationMs: 0 and

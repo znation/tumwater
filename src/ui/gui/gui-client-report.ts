@@ -163,8 +163,9 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
   const REJECTIONS_TIP = "Changes sent back to the role that made them. Before a merge this happens when the change fails the project's check, edits a protected file or the brief, or leaks a secret: the change is dropped and the role sees the reasons on its next run. This chart also counts every post-merge rejection.";
   // "Post-merge rejections by role": a commit already on main that the reviewer then objected to;
   // the commit stays on main and the reviewer's reasons are recorded (a reviewer fix held back
-  // because it failed the check counts here too) (post-merge-review.ts logReviewVerdict).
-  const POST_MERGE_REJECTIONS_TIP = "Commits that had already merged and that the reviewer then objected to, by the role that made them. The commit stays on main, and the reviewer's reasons are recorded (the reviewer may also land a fix). A reviewer fix held back because it failed the check counts here too.";
+  // because it failed the check does NOT — that review stays open) (post-merge-review.ts
+  // logReviewVerdict; the exclusion is event-read.ts eventWithheldFix).
+  const POST_MERGE_REJECTIONS_TIP = "Commits that had already merged and that the reviewer then objected to, by the role that made them. The commit stays on main, and the reviewer's reasons are recorded (the reviewer may also land a fix). A reviewer fix held back because it failed the check does NOT count here: that review is still open and will run again.";
   // report-card:end
 
   // view-scaffold:start

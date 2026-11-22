@@ -4929,15 +4929,35 @@ deleted so a withheld commit pins nothing forever. The author's rejection record
 alongside the pre-check reason, so a role is never handed a rejection naming only a lint line on a
 commit it cannot revise.
 
+The withholding's **event** reads the same way as its entry: the `review_rejected` it logs carries
+`head` = the *reviewed* commit (not the reviewer's own fix sha), the reviewer's `finding`, and
+`withheldFix: <fix sha>` as its discriminator (read only through `eventWithheldFix`), while its
+`reasons` stay the pre-check's own lines. Every observer of the post-merge-rejection class excludes
+such an event — the digest's `postMergeRejections` count and its never-re-reviewed footer, the
+doctor's `post-merge churn` row (`postMergeRejectionCounts`), and the usage report's
+`postMergeRejectionsByRole` — because the review is still open and re-runs, and the reasons name
+REVIEWER-authored bytes, so counting the event charged the author with the reviewer's own lint slip
+and reported a failing-but-open review as a settled one (BUGS.md 2026-11-22). The digest clusters
+the withholding under its own `reviewer fix withheld:` line naming the finding, and the event feed
+renders it as a withheld fix whose review stays open, never as `review rejected`.
+
 **Binds.** `src/merge/merge-post-review-drain.ts` (`precheckReviewerFix`'s reject callback and
 `settleWithheldReviewerFix`), `src/review/post-merge-review.ts` (`PostReview.finding`,
-`parsePostReview`), `src/review/post-merge-review-render.ts`.
+`parsePostReview`, `postMergeRejectionCounts`), `src/review/post-merge-review-render.ts`,
+`src/events/event-read.ts` (`eventWithheldFix`), `src/events/event-format-review.ts`,
+`src/failure/failure-data.ts` (`rejectionSection` / `rejectionClusterMessage`),
+`src/report/report-usage-fold.ts` (`foldReviewRejected`).
 
 **Pinned by.** `test/post-merge-review.test.ts` — "a reviewer's fix that fails its pre-check is
 withheld from main (BUGS.md 2026-11-04)", "a withheld fix at the failure limit files both the
 reviewer's finding and the pre-check's reason"; `test/post-merge-review-render.test.ts` —
 "postReviewMatchesGrep finds the text in every searched field, case-insensitively",
-"renderPostReviewDetail adds each optional block only when its field is present".
+"renderPostReviewDetail adds each optional block only when its field is present"; the same event
+shape's readers — `test/failure-render.test.ts` — "a withheld reviewer fix is not counted as a
+post-merge rejection of the author"; `test/doctor-checks.test.ts` — "checkPostMergeChurn warns on a
+day's post-merge rejection burst and stays quiet below the bar"; `test/report-usage-fold.test.ts` —
+"review_rejected: one rejection per role, the post-merge subset, a duration when one ran";
+`test/event-format.test.ts` — "formatEvent names the after-merge tier on the review lines".
 
 ### INV-BT9: an aborted post-merge review keeps its entry queued with its session marked for resume
 

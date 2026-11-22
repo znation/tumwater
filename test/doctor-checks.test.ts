@@ -1867,6 +1867,15 @@ test("checkPostMergeChurn warns on a day's post-merge rejection burst and stays 
   const single = readyRepo();
   writeEvents(single, [{ ts: Date.now() - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true }]);
   assert.deepEqual(checkPostMergeChurn(single), { level: "ok", detail: "no post-merge rejection burst in the last day" });
+
+  // BUGS.md 2026-11-22: two withheld reviewer fixes are two lint slips in REVIEWER-authored
+  // bytes, not an author whose landed changes keep coming back — the row stays quiet.
+  const withheld = readyRepo();
+  writeEvents(withheld, [
+    { ts: Date.now() - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true, withheldFix: "f".repeat(40), reasons: ["check failed: ✖ comment width"], finding: ["breaks the contract"] },
+    { ts: Date.now() - 60_000, source: "feature", type: "review_rejected", afterMerge: true, withheldFix: "e".repeat(40), reasons: ["check failed: ✖ comment width"] },
+  ]);
+  assert.deepEqual(checkPostMergeChurn(withheld), { level: "ok", detail: "no post-merge rejection burst in the last day" });
 });
 
 test("checkDroppedPostMergeReviews warns on a day's dropped post-merge reviews and names the commit", () => {

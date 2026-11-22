@@ -22,7 +22,7 @@ import { DAY_MS } from "../text/datetime.js";
 import { errorMessage } from "../text/text.js";
 import { revisionRoundOf } from "../run/commit-message.js";
 import { REVISION_BACKSTOP } from "../runner/runner-revision.js";
-import { eventRole } from "../events/event-read.js";
+import { eventRole, eventWithheldFix } from "../events/event-read.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { fixLine } from "../verdict/reply-contract.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -116,12 +116,15 @@ export const POST_MERGE_REJECT_WINDOW_MS = DAY_MS;
  * report cannot disagree on which rejections are post-merge. The key is the event's base role
  * (`baseRoleOf(eventRole(ev))`), not the raw source: an event's `source` is the runner id
  * (`bugfix-2`), and both the row's remedy and the scoped report are keyed by base role, so
- * one base role's churn must read as one row. Pre-merge
- * rejections and other event types contribute nothing. */
+ * one base role's churn must read as one row. A withheld reviewer fix (`withheldFix`,
+ * event-read.ts eventWithheldFix) is excluded: its reasons are the pre-check's lint line on
+ * REVIEWER-authored bytes and the review stays open (INV-BT8), so counting it blamed the author
+ * for the reviewer's own slip and fired the row on withholdings alone (BUGS.md 2026-11-22).
+ * Pre-merge rejections and other event types contribute nothing. */
 export function postMergeRejectionCounts(events: readonly HarnessEvent[]): PostMergeRejection[] {
   const byRole = new Map<string, number>();
   for (const ev of events) {
-    if (ev.type === "review_rejected" && ev.afterMerge === true) {
+    if (ev.type === "review_rejected" && ev.afterMerge === true && !eventWithheldFix(ev)) {
       const role = baseRoleOf(eventRole(ev));
       increment(byRole, role);
     }

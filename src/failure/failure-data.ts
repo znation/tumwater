@@ -10,7 +10,7 @@
  */
 import type { RunResult } from "../run/run-outcome.js";
 import { assertReportSinceMs, eventWindowCovers, readWindowEvents, sinceWindowTiming, type EventLogState } from "../events/event-window.js";
-import { eventDayKey, eventRole, runStartModel, runStartModelMap } from "../events/event-read.js";
+import { eventDayKey, eventRole, eventWithheldFix, runStartModel, runStartModelMap } from "../events/event-read.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { scopeBases } from "../report/report-fold.js";
 import { OUTCOME_CLASS, timeAndSpend, type LossCause, type TimeSpendRow } from "./failure-time-spend.js";
@@ -22,7 +22,7 @@ import { clusterMessages, errorTextOrPlaceholder, truncateExample, type Cluster 
 import { addTo, distinctOrdered, getOrCreate, memoSetLru, rankByCount } from "../collections.js";
 import { firstReason } from "../text/phrases.js";
 import { sameStatIdentity, statIdentityOrZero, statOrNull } from "../files/files.js";
-import { nonNegativeNumber } from "../files/json-object.js";
+import { nonNegativeNumber, stringList } from "../files/json-object.js";
 import { eventsLogPath } from "../paths.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
@@ -140,7 +140,7 @@ export interface FailureReportData {
   warnings: ClusterSection;
   reviewFailures: ClusterSection;
   rejections: ClusterSection;
-  postMergeRejections: number; // the window's `review_rejected` events with `afterMerge: true`, counted before any cluster filter, so it equals the subset `tumwater report`'s `postMergeRejectionsByRole` sums
+  postMergeRejections: number; // the window's `review_rejected` events with `afterMerge: true` that are NOT a withheld reviewer fix (`withheldFix`), counted before any cluster filter, so it equals the subset `tumwater report`'s `postMergeRejectionsByRole` sums
   mergeFailures: ClusterSection; // blocked or conflicted merge_failed clusters (top MERGE_FAILURE_TOP), by result and role, with the role's nearest preceding warning as the reason
   merged: MergedCommit[];
   mergedTotal: number; // all merges in the window, before the newest-MERGED_TOP cut
@@ -639,28 +639,52 @@ function warningSection(current: HarnessEvent[]): ClusterSection {
 /** Rejections cluster on (role, reasons[0]) — the field the event feed renders — so two
  * different rejection reasons from the same role stay separate rows, and an already-landed
  * one (ev.afterMerge === true) splits apart from a same-reason pre-merge one so the row names
- * the post-merge class whose rejection stands recorded on main. The section's total counts
- * every `review_rejected` in the window, reasons or not, so it equals the Deltas column and
- * the render's remainder line cross-checks against it. The post-merge count rides along. */
+ * the post-merge class whose rejection stands recorded on main. A withheld reviewer fix
+ * (`withheldFix`, event-read.ts eventWithheldFix) clusters under its own prefix naming the
+ * REVIEWER's finding, not the author's verdict: its head is the reviewed commit, its reasons are
+ * the check's lint line on reviewer-authored bytes, and the review is still open (INV-BT8), so
+ * labelling it a post-merge rejection claimed a settled review that is in fact re-run
+ * (BUGS.md 2026-11-22). The section's total counts every `review_rejected` in the window,
+ * reasons or not, so it equals the Deltas column and the render's remainder line cross-checks
+ * against it. The post-merge count rides along and EXCLUDES withholdings, so it equals the
+ * subset `tumwater report`'s `postMergeRejectionsByRole` sums and the render's footer describes
+ * only rejections that really do stand on main. */
 function rejectionSection(current: HarnessEvent[]): { rejections: ClusterSection; postMergeRejections: number } {
   const rejectedEvents = current.filter((ev) => ev.type === "review_rejected");
-  const postMergeRejections = rejectedEvents.filter((ev) => ev.afterMerge === true).length;
+  const postMergeRejections = rejectedEvents.filter((ev) => ev.afterMerge === true && !eventWithheldFix(ev)).length;
   return {
     rejections: section(
       clusterMessages(
         rejectedEvents
           .filter((ev) => Array.isArray(ev.reasons))
-          .map((ev) => {
-            const reasons = ev.reasons as unknown[];
-            const message = ev.afterMerge === true ? `post-merge rejection: ${firstReason(reasons)}` : firstReason(reasons);
-            return { message, role: eventRole(ev), ts: ev.ts, keyPrefix: `${eventRole(ev)}\u0000` };
-          }),
+          .map((ev) => ({
+            message: rejectionClusterMessage(ev),
+            role: eventRole(ev),
+            ts: ev.ts,
+            keyPrefix: `${eventRole(ev)}\u0000`,
+          })),
         REJECTION_TOP,
       ),
       rejectedEvents.length,
     ),
     postMergeRejections,
   };
+}
+
+/** One rejection's cluster message: the withheld-fix line names the reviewer's finding (what is
+ * worth acting on) and then the pre-check line the REVIEWER's own bytes tripped on, and says the
+ * fix was withheld rather than the author's commit rejected; a plain post-merge one keeps its
+ * `post-merge rejection:` prefix; anything else is its first reason. The finding list falls back
+ * to `reasons` when the event carried none, so the row is never message-less. */
+function rejectionClusterMessage(ev: HarnessEvent): string {
+  const reasons = stringList(ev.reasons);
+  if (eventWithheldFix(ev)) {
+    const finding = stringList(ev.finding);
+    const named = finding.length > 0 ? firstReason(finding) : firstReason(reasons);
+    const cause = finding.length > 0 ? ` (its fix failed: ${firstReason(reasons)})` : "";
+    return `reviewer fix withheld: ${named}${cause}`;
+  }
+  return ev.afterMerge === true ? `post-merge rejection: ${firstReason(reasons)}` : firstReason(reasons);
 }
 
 /** Merge review failures: a reviewer that could not return a parseable verdict (a dead

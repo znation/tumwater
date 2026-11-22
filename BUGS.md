@@ -63,62 +63,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
   above exits 1 with the marker refusal and leaves no repo and no README.md behind; the identical
   brief re-seeded after the marker is reworded round-trips `init` → `brief --json` unchanged.
 
-### A withheld reviewer fix is logged as a post-merge rejection of the author, so the digest counts a re-reviewing entry as a commit kept rejected and the doctor blames the author for the reviewer's lint line (found by the selfcheck role 2026-11-22)
-
-- **Symptom:** the selfcheck digest's `## Top rejection clusters` keys every withheld-fix rejection
-  under the *author's* runner (`bugfix-2 · check failed (npm run test:gate): ✖ every comment line in
-  src/ and test/ fits in 100 columns …` — 2× on 11-21) and its footer reads `_8 post-merge
-  rejections — the commit already reached main, so it stays there with the reviewer's recorded
-  reasons (never re-reviewed — Forward, never back)_`. Both are false for those events: the head in
-  the event is the reviewer's own fix commit, and since `d67bc92b` (2026-11-21) the entry behind them
-  is **not** kept — it stays open and is re-reviewed. The digest thus reports a failing-but-open
-  review as a settled one, hides the reviewer's actual finding from its own rejection line, and
-  spends the doctor's `post-merge churn` warn ("author changes that pass the pre-merge check keep
-  getting rejected after merge — raise the authoring bar") on lint errors in reviewer-authored
-  bytes, pointing at an author who can do nothing about them.
-- **Reproduce.** Offline, one fixture. In `test/post-merge-review.test.ts`, take "a reviewer's fix
-  that fails its pre-check is withheld from main (BUGS.md 2026-11-04)" and assert the events it
-  writes: the `review_rejected` record carries `source: <author role>`, `head: <fix sha>`,
-  `afterMerge: true`, and `reasons` holding ONLY the pre-check lines — the reviewer's `finding` is
-  absent from the event, while the state entry (`settleWithheldReviewerFix`) keeps `finding` and
-  `failures` and no `rejected`. Feed that event shape to `renderFailureMarkdown`
-  (src/failure/failure-render.ts), which `test/failure-render.test.ts` already drives from a
-  hand-built `FailureReportData` fixture — `postMergeRejections` and the rejection clusters are what
-  `collectFailureReport` (src/failure/failure-data.ts) derives from the event log. The rendered
-  footer says `1 post-merge rejection … (never re-reviewed — Forward, never back)` and the cluster
-  line names the author's role id. Live shape: `log/events.jsonl` on 2026-11-21, each
-  `the post-merge fix of <sha> failed its pre-check and was withheld` warning preceded by a
-  `review_rejected` for the fix sha (the four cases BUGS-FIXED.md 2026-11-21 names: `0acfd4ee`,
-  `e21b30a3`, `e63b9c49`, `03f27a3a`, all comment-width lint) — all four sit inside a digest window
-  that then prints the never-re-reviewed footer.
-- **Cause.** `precheckReviewerFix`'s reject callback (src/merge/merge-post-review-drain.ts:348-369)
-  splits the information three ways and the observers read only one of them: the event
-  (`review_rejected`, `head: fix`, `reasons` = the pre-check reasons, `afterMerge: true`,
-  `source: entry.role` = the author), the state entry (open, `finding` + `failures`, INV-BT8), and
-  the author's rejection record (`recordReview(state, "reject", [...finding, ...reasons], fix)`,
-  which DOES carry the finding). Every consumer keys off the event:
-  `rejectionSection` (src/failure/failure-data.ts:645-667) counts `afterMerge === true` into
-  `postMergeRejections` and clusters each event's `reasons` under `eventRole(ev)` — the event's
-  `source`, the author role; `failure-render.ts:382`
-  prints the fixed footer asserting the commit is never re-reviewed; the dashboard's per-role
-  rejection chart (`postMergeRejectionsByRole`, whose tooltip at `src/ui/gui/gui-client-report.ts:167`
-  reads "A reviewer fix held back because it failed the check counts here too") and the doctor
-  `post-merge churn` row (`checkPostMergeChurn`, src/doctor/doctor-project-checks.ts:330-343, over
-  `POST_MERGE_REJECT_WARN` = 2 in src/review/post-merge-review.ts:107) attribute the same event to
-  the author. `d67bc92b` changed the entry's settle but not this event, so the event's meaning
-  and the observers' wording went stale under it.
-- **Fix direction.** Log the withholding as what it is, not as a rejection verdict on the author's
-  commit: a distinct event type (or an `afterMerge` event with a `withheldFix: <sha>`/`reviewEntry`
-  discriminator) carrying the reviewed commit as head, the reviewer's `finding` in its reasons, and
-  the pre-check failure as a separate field. Then teach the three observers the new shape: the
-  digest footer must not claim a withheld-fix review is never re-reviewed (INV-BT8 re-reviews it up
-  to `POST_REVIEW_FAILURE_LIMIT`), the cluster line should name the reviewer and the lint line as
-  the reviewer's own failure, and the doctor `post-merge churn` count plus
-  `postMergeRejectionsByRole` should count landed-fix rejections of an author's commit, not
-  reviewer-lint withholdings. Acceptance: a withheld-fix fixture produces a digest that names the
-  reviewer's finding and does not print the never-re-reviewed claim for that event; the churn row's
-  warn does not fire on withholdings alone.
-
 ## Fixed
 
 ## Verified
