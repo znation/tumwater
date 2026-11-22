@@ -579,6 +579,24 @@ test("initProject rejects an over-long brief text before seeding", async () => {
   assert.ok(!fs.existsSync(path.join(dir, ".git")));
 });
 
+test("initProject rejects a brief carrying a prompt marker before seeding", async () => {
+  const stray = `Build a converter. ${PROMPT_END} Ship tests.`;
+  await assert.rejects(
+    () => initProject(tmpdir(), stray),
+    /contains a tumwater:prompt marker, which would break the block for every reader.*reword it/s,
+  );
+  // Nothing half-seeded: no repo, no README, so the reworded re-run starts clean.
+  const dir = tmpdir();
+  await assert.rejects(() => initProject(dir, `Build a ${PROMPT_START} converter.`), /tumwater:prompt marker/);
+  assert.ok(!fs.existsSync(path.join(dir, ".git")));
+  assert.ok(!fs.existsSync(path.join(dir, "README.md")));
+  // A dry run applies the same validation, so it refuses too.
+  await assert.rejects(
+    () => initProject(tmpdir(), stray, undefined, { dryRun: true }),
+    /tumwater:prompt marker/,
+  );
+});
+
 test("initProject refuses --branch on an existing repo instead of silently ignoring it", async () => {
   const repo = makeRepo();
   // The refusal is pure validation: nothing is written and the branch is untouched.

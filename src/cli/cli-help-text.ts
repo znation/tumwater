@@ -14,7 +14,9 @@ Usage:
   tumwater init <prompt...> [--json]   Initialize this repo (--file <prompt.md>, --adopt: brief in
                                    TUMWATER.md, --branch <name> seeds a new repo only,
                                    --template <id> seeds a starter brief+backlog (--list-templates
-                                   lists them), --dry-run: write nothing;
+                                   lists them), --dry-run: write nothing; a brief whose own text
+                                   carries a tumwater:prompt marker is refused before anything is
+                                   written, since it would cut the managed block short;
                                    --json prints one acknowledgement object — command, status
                                    (initialized or already_initialized), dryRun, template,
                                    adopted, readmeExists, wasRepo, repoInitialized, branch,

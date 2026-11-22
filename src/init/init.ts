@@ -18,7 +18,7 @@ import { INVALID_BRANCH_NAME_RULES, teamWorkspaceMessage } from "../gates/readin
 import { CONFIG_BASENAME, STATE_DIR, configPath, owningTeamRoot } from "../paths.js";
 import { projectName } from "../project-name.js";
 import { tooLongMessage } from "../text/text.js";
-import { PREFILL_REASON } from "../text/phrases.js";
+import { PREFILL_REASON, BRIEF_MARKER_REFUSAL } from "../text/phrases.js";
 import {
   getTemplate,
   BUGS_TEMPLATE,
@@ -187,6 +187,23 @@ function combineInitBrief(
   return combinedPrompt;
 }
 
+/** The single job this helper owns: refuse a brief whose own text carries a managed prompt
+ * marker (INV-Q1: before any side effect). */
+function refuseBriefMarker(combinedPrompt: string): void {
+  // init is about to wrap this text between PROMPT_START and PROMPT_END, and every reader takes
+  // the FIRST end marker after the start — so a marker inside the brief cuts the managed block
+  // short there and everything after it lands outside the block, unseen by every role, while
+  // `brief` and doctor still report the truncated head as ok (BUGS.md 2026-11-22).
+  // editBriefText already refuses the same text for `tumwater brief --file`; the two writers of
+  // one block must not disagree, so they share BRIEF_MARKER_REFUSAL's wording. The combined text
+  // is checked, so a template preamble carrying one is refused too.
+  if (combinedPrompt.includes(PROMPT_START) || combinedPrompt.includes(PROMPT_END)) {
+    throw new Error(
+      `the brief ${BRIEF_MARKER_REFUSAL} — reword it so neither marker appears in the text`,
+    );
+  }
+}
+
 /** The single job this helper owns: refuse when `git` is missing from PATH (INV-Q1: before any
  * side effect). */
 function requireGitOnPath(): void {
@@ -329,12 +346,14 @@ async function resolveInitPreferredBranch(
 
 /** Validate an init request and resolve everything it needs, in the existing order, with no
  * write, no `git init`, no `created`/`leftAlone` allocation and no commit — every refusal
- * an over-long brief, `--branch` on an existing repo, an invalid branch name or a team
+ * an over-long brief, a brief carrying a prompt marker, `--branch` on an existing repo, an
+ * invalid branch name or a team
  * workspace (INV-Q1) throws here, ahead of any side effect, dry run included. The new-repo
  * branch is validated last (only when a repo will be seeded) so the invalid-branch refusal
  * still precedes any write. The body composes the named validation jobs in their invocation
- * order (the template resolve, the brief cap, the git check, the team-workspace refusal, the
- * missing-brief refusal, the `--branch`-on-an-existing-repo refusal, the adoption resolve,
+ * order (the template resolve, the brief cap, the brief-marker refusal, the git check, the
+ * team-workspace refusal, the missing-brief refusal, the `--branch`-on-an-existing-repo refusal,
+ * the adoption resolve,
  * the changed-brief refusal and the preferred-branch resolve), so each job is found by name;
  * every refusal still throws before any side effect (INV-Q1). Returns the resolved plan for
  * `seedProject` to act on. */
@@ -347,6 +366,7 @@ async function resolveInitPlan(
   const dryRun = opts.dryRun === true;
   const tpl = resolveInitTemplate(opts.template);
   const combinedPrompt = combineInitBrief(tpl, briefText);
+  refuseBriefMarker(combinedPrompt);
   requireGitOnPath();
   refuseTeamWorkspace(root);
   const prompt = briefText.trim();

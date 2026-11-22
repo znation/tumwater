@@ -24,6 +24,13 @@ const NO_REASONS_GIVEN = "no reasons given";
  * the <role> run's prefill") and keeps its own wording. */
 export const PREFILL_REASON = "it rides into every run's prefill";
 
+/** The refusal both brief writers give for text that carries a managed marker: `tumwater init`
+ * (init/init.ts's brief-marker refusal) and `tumwater brief --file`/`--edit`
+ * (brief/brief-edit.ts) wrap the same text between the markers, so one wording keeps the two
+ * writers of the same block from disagreeing on what is acceptable (BUGS.md 2026-11-22). */
+export const BRIEF_MARKER_REFUSAL =
+  "contains a tumwater:prompt marker, which would break the block for every reader";
+
 /** The reason a review rejection leads with — its first listed reason, or `no reasons given`
  * when the list is empty or its first entry is not a string. One home so the fallback cannot
  * drift across the four surfaces that show just that first reason: the review gate's returned

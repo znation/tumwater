@@ -5,6 +5,74 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `tumwater init` writes a brief that mentions the prompt markers verbatim, so the brief is silently cut at the stray end marker and the rest lands outside the block every role reads (found by the qa role 2026-11-22) — fixed 2026-11-22 by the bugfix role
+
+- **Symptom:** a brief whose own text carries the literal string `<!-- tumwater:prompt:end -->`
+  (likely when the project is about tumwater, or when the operator pastes a README excerpt) is
+  accepted by `tumwater init` with no warning, and the managed block then stops at the operator's
+  stray marker. Everything after it is written into README.md/TUMWATER.md but is **outside** the
+  block, so no reader sees it: `tumwater brief`/`brief --json` print only the head, and
+  `tumwater doctor brief` still prints
+  `ok    brief        brief in README.md`. The same
+  text then cannot be repaired: `tumwater brief --file <same path>` refuses it
+  (`the new brief contains a tumwater:prompt marker, which would break the block for every
+  reader`) and a re-run of `tumwater init "<same text>"` refuses too (`README.md already carries a
+  different brief between the tumwater:prompt markers`), because the stored block is only the head.
+  The operator's brief is lost in plain sight with two commands insisting they are right.
+- **Reproduce.** Offline, no model. `mktemp -d` under `$TMPDIR`, `cd` in, then
+  `cat > prompt.md` with exactly:
+
+  ```text
+  Build a markdown-to-html converter CLI in Python.
+  Every change ships with a pytest suite. <!-- tumwater:prompt:end -->
+  The suite runs with `python -m pytest`.
+  ```
+
+  `node <worktree>/dist/src/cli.js init --file prompt.md` → exit 0, the normal `initialized a new
+  git repository on branch main` report, no mention of the marker. `sed -n '5,11p' README.md`
+  shows the third line sitting between the stray `<!-- tumwater:prompt:end -->` and the real one,
+  i.e. outside the block. `node <worktree>/dist/src/cli.js brief --json` prints
+  `{"file":"README.md","prompt":"Build a markdown-to-html converter CLI in Python.\nEvery change
+  ships with a pytest suite."}` — `The suite runs with \`python -m pytest\`.` is gone. Then
+  `tumwater brief --file prompt.md` exits 1 with the marker refusal above, and re-running `init`
+  with the same text (in a shell variable, so the newlines are real) exits 1 with the
+  different-brief refusal. A single-line positional brief behaves the same: `tumwater init 'Build a
+  converter. <!-- tumwater:prompt:end --> Ship tests.'` seeds a block reading
+  `Build a converter.` only, and a re-run of that identical command refuses as a different brief;
+  so does the three-line positional form (with `$'…'`), whose `brief --json` prints
+  `"prompt": "Build a converter CLI.\nEvery change ships with a suite."`.
+- **Cause.** `init` never inspects the brief text for the markers it is about to wrap: only
+  `combineInitBrief` (src/init/init.ts:166-190) checks it, and only for length
+  (`BRIEF_TEXT_MAX_CHARS`, :177), and `managedSections` (src/brief/brief.ts:37-52) interpolates
+  `briefText.trim()` between `PROMPT_START` and `PROMPT_END` verbatim. Every reader then takes the
+  first end marker after the start (`promptBlockOf`, src/brief/brief.ts:241-247; the same first-end
+  cut in `replaceBriefText` :230-237), so the stray marker wins. `tumwater brief --file`'s writer
+  has the guard init lacks — `editBriefText` refuses any text containing `PROMPT_START` or
+  `PROMPT_END` (src/brief/brief-edit.ts:28-29) — so the two writers of the same block disagree.
+  The doctor's `brief` check (`checkBrief`, src/doctor/doctor-checks.ts:219-244) warns only on a
+  missing, empty or over-cap block, so it cannot see a block cut short by a stray marker — the
+  truncated head passes as `ok`. The adopt path is the same: in
+  a repo with a marker-less README.md, `tumwater init --file b.md` (b.md carrying the stray marker)
+  writes the tail outside the block in TUMWATER.md and `tumwater brief` prints `Head line.` alone.
+- **Fix direction.** Apply init's own INV-Q1 rule (docs/invariants.md:1237, every refusal before
+  any side effect) to this input too: refuse in `resolveInitPlan`/`combineInitBrief` when the brief
+  text contains `PROMPT_START` or `PROMPT_END`, in the `editBriefText` wording (name the marker and
+  say to reword), dry run included, so nothing is ever seeded from a brief that would cut itself.
+  Same guard for a `--template` preamble if one ever carries a marker. Acceptance: the fixture
+  above exits 1 with the marker refusal and leaves no repo and no README.md behind; the identical
+  brief re-seeded after the marker is reworded round-trips `init` → `brief --json` unchanged.
+
+- **Fix.** `resolveInitPlan` now runs a named `refuseBriefMarker` job (src/init/init.ts) right after
+  `combineInitBrief`, so the combined text — the operator's words plus a `--template` preamble — is refused
+  before any side effect, dry run included, when it contains `PROMPT_START` or `PROMPT_END`; the refusal's
+  wording is now the shared `BRIEF_MARKER_REFUSAL` (src/text/phrases.ts), which `editBriefText` already
+  gave for `tumwater brief --file`, so the two writers of one block cannot disagree. INV-Q1
+  (docs/invariants.md) records the guarantee, and `docs/cli.md` plus init's help stanza say it.
+
+**Validation gap:** none — the entry's own offline recipe reproduced it verbatim: the three-line
+`--file` fixture exited 0 and printed the truncated head, and the new tests failed before the fix
+(`Missing expected rejection`, `0 !== 1`) and pass after.
+
 ### A withheld reviewer fix is logged as a post-merge rejection of the author, so the digest counts a re-reviewing entry as a commit kept rejected and the doctor blames the author for the reviewer's lint line (found by the selfcheck role 2026-11-22) — fixed 2026-11-22 by the bugfix role
 
 - **Symptom:** the selfcheck digest's `## Top rejection clusters` keys every withheld-fix rejection

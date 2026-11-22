@@ -5,7 +5,7 @@ import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 import { writeTextAtomic } from "../files/files.js";
 import { stampedSubject } from "../run/commit-message.js";
-import { PREFILL_REASON } from "../text/phrases.js";
+import { BRIEF_MARKER_REFUSAL, PREFILL_REASON } from "../text/phrases.js";
 import { tooLongMessage } from "../text/text.js";
 
 /** The outcome of replacing the brief text: a refusal's message, or the brief file's
@@ -26,7 +26,7 @@ export async function editBriefText(root: string, text: string): Promise<BriefEd
   if (prompt.length > BRIEF_TEXT_MAX_CHARS)
     return { ok: false, error: tooLongMessage("the new brief", prompt.length, BRIEF_TEXT_MAX_CHARS, PREFILL_REASON) };
   if (prompt.includes(PROMPT_START) || prompt.includes(PROMPT_END))
-    return { ok: false, error: "the new brief contains a tumwater:prompt marker, which would break the block for every reader" };
+    return { ok: false, error: `the new brief ${BRIEF_MARKER_REFUSAL}` };
   const file = briefPath(root);
   if (file === null) return { ok: false, error: NO_BRIEF };
   const name = path.basename(file);

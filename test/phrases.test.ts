@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   PAUSE_EXPIRED_SUFFIX,
   PREFILL_REASON,
+  BRIEF_MARKER_REFUSAL,
   agree,
   backendKindPhrase,
   budgetPhrase,
@@ -265,4 +266,13 @@ test("moreSuffix is empty at zero and appends the parenthesized remainder past i
 
 test("PREFILL_REASON is the shared over-long-prompt/prefill note", () => {
   assert.equal(PREFILL_REASON, "it rides into every run's prefill");
+});
+
+// --- BRIEF_MARKER_REFUSAL (the marker-bearing brief's refusal, shared by both brief writers) ---
+
+test("BRIEF_MARKER_REFUSAL is the shared brief-marker refusal init and brief --file give", () => {
+  assert.equal(
+    BRIEF_MARKER_REFUSAL,
+    "contains a tumwater:prompt marker, which would break the block for every reader",
+  );
 });

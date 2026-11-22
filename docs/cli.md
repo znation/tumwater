@@ -18,6 +18,8 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
                             # prints the catalog
                             # add --branch <name> to name the branch a new repository starts on (it seeds a new repo only)
                             # add --file <path> to read the brief from a file
+                            # (a brief whose own text carries a tumwater:prompt marker is refused,
+                            #  before anything is written — it would cut the managed block short)
                             # add --adopt to adopt an existing repo as-is
                             # add --json to print one acknowledgement object (command, status
                             # initialized or already_initialized, dryRun, template, adopted,

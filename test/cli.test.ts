@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { readBriefText } from "../src/brief/brief.js";
+import { PROMPT_END, readBriefText } from "../src/brief/brief.js";
 import { defaultConfig } from "../src/config/config.js";
 import { INIT_NEXT_LINE } from "../src/cli/cli-init.js";
 import { assertClean, initializedRepo, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
@@ -538,6 +538,42 @@ test("init --file reads the prompt from a file and rejects a missing path", asyn
   r = await cli(bare, "init", "--file");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--file needs a path/);
+});
+
+test("init refuses a brief carrying a stray prompt marker and leaves nothing behind", async () => {
+  // The fixture from BUGS.md 2026-11-22: a brief that names the end marker in its own text
+  // would seed a block cut at the stray marker, hiding everything after it from every reader.
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "prompt.md"),
+    "Build a markdown-to-html converter CLI in Python.\n" +
+      `Every change ships with a pytest suite. ${PROMPT_END}\n` +
+      "The suite runs with `python -m pytest`.\n",
+  );
+  const r = await cli(dir, "init", "--file", "prompt.md");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /contains a tumwater:prompt marker, which would break the block for every reader/);
+  assert.match(r.stderr, /reword it/);
+  // Nothing half-seeded: no repo, no README, no harness files.
+  assert.ok(!fs.existsSync(path.join(dir, ".git")), "no repository from a refused brief");
+  assert.ok(!fs.existsSync(path.join(dir, "README.md")), "no README from a refused brief");
+  // A reworded brief of the same words seeds and round-trips through brief --json unchanged.
+  fs.writeFileSync(
+    path.join(dir, "prompt.md"),
+    "Build a markdown-to-html converter CLI in Python.\n" +
+      "Every change ships with a pytest suite.\n" +
+      "The suite runs with `python -m pytest`.\n",
+  );
+  const again = await cli(dir, "init", "--file", "prompt.md", "--json");
+  assert.equal(again.code, 0);
+  const shown = await cli(dir, "brief", "--json");
+  assert.equal(shown.code, 0);
+  assert.deepEqual(
+    (JSON.parse(shown.stdout) as { prompt: string }).prompt,
+    "Build a markdown-to-html converter CLI in Python.\n" +
+      "Every change ships with a pytest suite.\n" +
+      "The suite runs with `python -m pytest`.",
+  );
 });
 
 test("init rejects unknown flags and stray positionals instead of baking them into the prompt", async () => {

@@ -1236,16 +1236,22 @@ same steps and writes nothing.
 
 ### INV-Q1: every refusal comes before any side effect
 
-**Guarantee.** An unknown template, an over-long brief (a template preamble included), an empty
-prompt with no brief to read, an invalid branch name, `--branch` on an existing repo, and a team
-workspace are each refused before any write, `git init` or commit, in a dry run too.
+**Guarantee.** An unknown template, an over-long brief (a template preamble included), a brief
+carrying a `tumwater:prompt` marker in its own text (which would cut the managed block short and
+hide its tail from every reader), an empty prompt with no brief to read, an invalid branch name,
+`--branch` on an existing repo, and a team workspace are each refused before any write, `git init`
+or commit, in a dry run too. The marker refusal's wording is the one `tumwater brief --file` gives
+(`BRIEF_MARKER_REFUSAL`), so the two writers of one block cannot disagree.
 
-**Binds.** `src/init/init.ts` (`resolveInitPlan`), `src/paths.ts` (`owningTeamRoot`).
+**Binds.** `src/init/init.ts` (`resolveInitPlan`, `refuseBriefMarker`), `src/paths.ts`
+(`owningTeamRoot`), `src/text/phrases.ts` (`BRIEF_MARKER_REFUSAL`).
 
 **Pinned by.** `test/init.test.ts` — "initProject validates before seeding: a bad prompt leaves no
-repo behind", "initProject rejects an over-long brief text before seeding", "initProject
+repo behind", "initProject rejects an over-long brief text before seeding", "initProject rejects a
+brief carrying a prompt marker before seeding", "initProject
 refuses --branch on an existing repo instead of silently ignoring it" and "initProject refuses
-inside a team workspace and writes nothing"; `test/init-templates.test.ts` — "an unknown template
+inside a team workspace and writes nothing"; `test/cli.test.ts` — "init refuses a brief carrying a
+stray prompt marker and leaves nothing behind"; `test/init-templates.test.ts` — "an unknown template
 id and an overflowing preamble fail before any side effect".
 
 ### INV-Q2: init creates only what is absent, so a re-run is idempotent
