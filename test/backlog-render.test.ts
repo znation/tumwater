@@ -401,7 +401,7 @@ test("tumwater backlog --ready hides held entries and counts them", async () => 
   assert.match(ok.out, /### Ready plan/);
   assert.match(ok.out, /### Real bug/);
   assert.doesNotMatch(ok.out, /Refused plan/);
-  assert.ok(ok.out.trimEnd().endsWith("_(1 held entries hidden; run `tumwater backlog` to see them)_"));
+  assert.ok(ok.out.trimEnd().endsWith("_(1 held entry hidden; run `tumwater backlog` to see them)_"));
   const json = JSON.parse((await runCli(root, "backlog", "--ready", "--json")).out);
   assert.equal(json.plans.length, 1);
   // The kept ready plan keeps its unfiltered position (the held first plan took 1); a payload
@@ -463,7 +463,7 @@ test("tumwater backlog --grep keeps only matching entries and composes with --re
   assert.equal(ready.code, 0);
   assert.match(ready.out, /### Ready widget/);
   assert.doesNotMatch(ready.out, /Refused widget/);
-  assert.ok(ready.out.trimEnd().endsWith("_(1 held entries hidden; run `tumwater backlog` to see them)_"));
+  assert.ok(ready.out.trimEnd().endsWith("_(1 held entry hidden; run `tumwater backlog` to see them)_"));
   // No value, a repeat, and an unknown flag each fail; the unknown names --grep in the list.
   const noValue = await runCli(root, "backlog", "--grep");
   assert.equal(noValue.code, 1);

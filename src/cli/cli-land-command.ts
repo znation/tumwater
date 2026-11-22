@@ -7,6 +7,7 @@
 
 import { fail, say, sayJson } from "../terminal.js";
 import { shortSha } from "../text/format.js";
+import { plural } from "../text/phrases.js";
 import { previewSteer, steerToMain } from "../operator/operator-land.js";
 
 /** The narrowed ok-payloads, so the renderers can name them without exporting the private union. */
@@ -35,9 +36,9 @@ function saySteerPreview(p: SteerPreviewOk, json: boolean): void {
     sayJson({ dryRun: true, commits: p.commits.map(({ sha, subject }) => ({ sha, subject })), paths: p.paths, replay: p.replay, applies: p.applies });
     return;
   }
-  say(`would land ${p.commits.length} commit(s) on main (${p.replay ? "main has moved, so it would replay them onto a fresh main" : "a plain fast-forward"}):`);
+  say(`would land ${plural(p.commits.length, "commit")} on main (${p.replay ? "main has moved, so it would replay them onto a fresh main" : "a plain fast-forward"}):`);
   for (const { sha, subject } of p.commits) say(`  ${shortSha(sha)} ${subject}`);
-  say(`  touches ${p.paths.length} file(s)${p.paths.length > 0 ? `: ${p.paths.join(", ")}` : ""}`);
+  say(`  touches ${plural(p.paths.length, "file")}${p.paths.length > 0 ? `: ${p.paths.join(", ")}` : ""}`);
   say(p.applies ? "applies cleanly; nothing was written" : "would conflict; nothing was written");
   if (!p.applies) process.exitCode = 1;
 }
@@ -49,7 +50,7 @@ function saySteerOutcome(o: SteerOutcomeOk, json: boolean): void {
     sayJson({ dryRun: false, steered: true, beforeSha: o.beforeSha, headSha: o.headSha, replayed: o.replayed, commits: o.commits.map(({ sha, subject }) => ({ sha, subject })), refNote: o.refNote });
     return;
   }
-  say(`main is now ${shortSha(o.headSha)}${o.replayed ? ` (replayed ${o.commits.length} commit(s) onto a moved main)` : ` (fast-forwarded ${o.commits.length} commit(s))`}`);
+  say(`main is now ${shortSha(o.headSha)}${o.replayed ? ` (replayed ${plural(o.commits.length, "commit")} onto a moved main)` : ` (fast-forwarded ${plural(o.commits.length, "commit")})`}`);
   say(o.refNote);
 }
 

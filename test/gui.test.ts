@@ -607,6 +607,9 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
     assert.match(ansRange.error, /\(answered has 2 entries\)$/);
     const doneRange = await getJson<{ error: string }>(base, "/api/backlog?file=done&index=2");
     assert.match(doneRange.error, /\(done has 2 entries\)$/);
+    // questions holds exactly one open entry, so the same rejection reads it in the singular.
+    const oneEntry = await getJson<{ error: string }>(base, "/api/backlog?file=questions&index=1");
+    assert.match(oneEntry.error, /\(questions has 1 entry\)$/);
 
     // Validation: unknown/missing file, missing or bad index, and out-of-range → 400 with a
     // JSON error body (the page's fetch treats any non-2xx as a failed poll).

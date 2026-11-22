@@ -13,7 +13,7 @@ import { scopeSnapshotToRoles, snapshot, snapshotForStatus } from "../status/sta
 import { statusPayload } from "../ui/status-payload.js";
 import { renderStatus } from "../ui/status-render.js";
 import { gotSuffix } from "../text/text.js";
-import { validPositionRange } from "../text/phrases.js";
+import { agree, plural, validPositionRange } from "../text/phrases.js";
 import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
 import { readyBacklog, heldBacklog, grepBacklog, positionBacklog, renderBacklogMarkdown, type BacklogView, type PositionedEntry } from "../backlog/backlog-render.js";
@@ -199,7 +199,7 @@ export async function cmdBacklog(root: string, args: string[], seams: FollowView
   };
   const renderBacklogText = (r: { view: BacklogView<PositionedEntry>; hidden: number }): string =>
     renderBacklogMarkdown(r.view) + (r.hidden > 0
-      ? `\n\n_(${r.hidden} ${held ? "unheld" : "held"} entries hidden; run \`tumwater backlog\` to see them)_` : "");
+      ? `\n\n_(${r.hidden} ${held ? "unheld" : "held"} ${agree(r.hidden, "entry", "entries")} hidden; run \`tumwater backlog\` to see them)_` : "");
   if (follow) {
     await followView(() => renderBacklogText(readBacklog()), seams);
     return;
@@ -286,7 +286,7 @@ async function cmdQuarantineShow(root: string, args: string[]): Promise<void> {
   const entry = quarantineEntryAt(entries, position);
   if (entry === null) {
     const range = validPositionRange(entries.length);
-    fail(`no quarantined test at position ${position} (flake quarantine holds ${entries.length} tests)${range}`);
+    fail(`no quarantined test at position ${position} (flake quarantine holds ${plural(entries.length, "test")})${range}`);
   }
   if (json) {
     sayJson({
@@ -318,7 +318,7 @@ async function cmdQuarantineRelease(root: string, args: string[]): Promise<void>
   const rows = quarantineRows(loadQuarantine(root));
   if (position < 1 || position > rows.length) {
     const range = validPositionRange(rows.length);
-    fail(`no quarantined test at position ${position} (flake quarantine holds ${rows.length} tests)${range}`);
+    fail(`no quarantined test at position ${position} (flake quarantine holds ${plural(rows.length, "test")})${range}`);
   }
   const test = rows[position - 1]!.test;
   if (!releaseQuarantinedTest(root, test)) {
@@ -423,7 +423,7 @@ async function cmdIssuesShow(root: string, args: string[]): Promise<void> {
   const row = ledger === null ? null : issueRowAt(ledger, position);
   if (row === null) {
     const range = validPositionRange(rows.length);
-    fail(`no GitHub issue at position ${position} (github issues mirror holds ${rows.length} open issues)${range}`);
+    fail(`no GitHub issue at position ${position} (github issues mirror holds ${plural(rows.length, "open issue")})${range}`);
   }
   // The row already carries its position (issueRows numbers it), so --json serves it as-is.
   if (json) sayJson({ ...row });

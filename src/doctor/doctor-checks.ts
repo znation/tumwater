@@ -169,7 +169,8 @@ export async function checkRepo(root: string, config?: TumwaterConfig): Promise<
  * (plans/portability.md §4a/7): when the tracked tumwater.example.json sets keys the local file
  * lacks, the check warns naming them — a warn never touches the exit code — with a remedy that
  * actually works (init skips an existing config, so reseeding means deleting it first), and the
- * no-drift detail stays the pinned "N roles enabled". A template that cannot serve as one —
+ * no-drift detail stays the pinned "N roles enabled" ("1 role enabled" for one). A template
+ * that cannot serve as one —
  * unparseable or invalid — warns too: seedConfig silently seeds the bare defaults from it and
  * exampleDrift reports no drift, so without this the operator's template intent fails with no
  * signal anywhere (a broken template only bites fresh checkouts, which is exactly when nobody
@@ -192,7 +193,7 @@ export function checkInit(root: string): CheckOutcome {
           " — copy them in, or delete tumwater.json and re-run `tumwater init` to reseed from the " +
           "template (it omits machine keys like provider/model, so re-add those after reseeding)");
     }
-    return okOutcome(`${enabledRoleIds(config).length} roles enabled`);
+    return okOutcome(`${plural(enabledRoleIds(config).length, "role")} enabled`);
   } catch (err) {
     return failOutcome(errorMessage(err));
   }

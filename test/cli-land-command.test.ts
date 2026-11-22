@@ -50,7 +50,7 @@ test("land --dry-run reports a replay when main has moved past the ref's base", 
 
   const r = await cli(repo, "land", "feat", "--dry-run");
   assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, /would land 1 commit\(s\) on main \(main has moved, so it would replay them onto a fresh main\)/);
+  assert.match(r.stdout, /would land 1 commit on main \(main has moved, so it would replay them onto a fresh main\)/);
   assert.match(r.stdout, /applies cleanly; nothing was written/);
   assert.equal(sh(repo, "git", "rev-parse", "main"), mainBefore);
 });
@@ -76,7 +76,7 @@ test("land fast-forwards main to the ref and prints the new head and commit coun
 
   const r = await cli(repo, "land", "feat");
   assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, /^main is now [0-9a-f]{8} \(fast-forwarded 1 commit\(s\)\)$/m);
+  assert.match(r.stdout, /^main is now [0-9a-f]{8} \(fast-forwarded 1 commit\)$/m);
   assert.equal(sh(repo, "git", "rev-parse", "main"), featSha, "main is now the landed commit");
   assert.equal(sh(repo, "git", "status", "--porcelain"), "", "the tree is clean");
 });
@@ -106,7 +106,7 @@ test("land replays the ref's commits onto a moved main and says so", async () =>
 
   const r = await cli(repo, "land", "feat");
   assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, /^main is now [0-9a-f]{8} \(replayed 1 commit\(s\) onto a moved main\)$/m);
+  assert.match(r.stdout, /^main is now [0-9a-f]{8} \(replayed 1 commit onto a moved main\)$/m);
   assert.equal(sh(repo, "git", "show", "main:feat.txt"), "feat", "the replayed commit landed");
   assert.equal(sh(repo, "git", "show", "main:main.txt"), "main", "main's own commit survived");
   assert.notEqual(headSha(repo), sh(repo, "git", "rev-parse", "feat"), "the replay made a new commit");
@@ -118,7 +118,7 @@ test("land --dry-run on a commit that touches no files says so without an empty 
 
   const r = await cli(repo, "land", "feat", "--dry-run");
   assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, /^  touches 0 file\(s\)$/m);
+  assert.match(r.stdout, /^  touches 0 files$/m);
   assert.match(r.stdout, /^applies cleanly; nothing was written$/m);
 });
 

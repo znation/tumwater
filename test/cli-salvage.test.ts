@@ -411,7 +411,7 @@ test("salvage --apply past the list fails with the shared out-of-range wording",
   const { repo, patch, patchBytes } = applyFixture();
   const r = await cli(repo, "salvage", "--apply", "9");
   assert.equal(r.code, 1);
-  assert.ok(r.stderr.includes("no salvaged workspace patch at position 9 (salvage holds 1 patches) — valid: 1-1"));
+  assert.ok(r.stderr.includes("no salvaged workspace patch at position 9 (salvage holds 1 patch) — valid: 1-1"));
   assert.equal(fs.readFileSync(path.join(repo, "f"), "utf8"), "old\n", "an out-of-range apply writes nothing");
   assert.equal(fs.readFileSync(patch, "utf8"), patchBytes);
 });

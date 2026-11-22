@@ -497,6 +497,6 @@ test("buildSalvageRestoreNote caps what it quotes and points at the patch for th
     "/r/p.patch",
   )!;
   assert.match(note, /… \(cut; the rest is in the patch below\)/);
-  assert.match(note, /\(\d+ more file\(s\) not shown: they are in the patch below\.\)/);
+  assert.match(note, /\(\d+ more files? not shown: they are in the patch below\.\)/);
   assert.ok(note.length < 20_000, `the note stays bounded (${note.length} chars)`);
 });

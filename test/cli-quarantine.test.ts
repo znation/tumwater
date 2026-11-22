@@ -227,7 +227,7 @@ test("quarantine --release <n> refuses an out-of-range position naming the depth
   const before = fs.readFileSync(quarantinePath(repo), "utf8");
   const r = await cli(repo, "quarantine", "--release", "2");
   assert.equal(r.code, 1);
-  assert.ok(r.stderr.includes("no quarantined test at position 2 (flake quarantine holds 1 tests) — valid: 1-1"));
+  assert.ok(r.stderr.includes("no quarantined test at position 2 (flake quarantine holds 1 test) — valid: 1-1"));
   assert.equal(fs.readFileSync(quarantinePath(repo), "utf8"), before, "the file is byte-unchanged");
 });
 
@@ -332,7 +332,7 @@ test("quarantine --show <n> fails past the depth naming it, and on an empty list
   const before = fs.readFileSync(quarantinePath(repo), "utf8");
   const r = await cli(repo, "quarantine", "--show", "2");
   assert.equal(r.code, 1);
-  assert.ok(r.stderr.includes("no quarantined test at position 2 (flake quarantine holds 1 tests) — valid: 1-1"));
+  assert.ok(r.stderr.includes("no quarantined test at position 2 (flake quarantine holds 1 test) — valid: 1-1"));
   assert.equal(fs.readFileSync(quarantinePath(repo), "utf8"), before, "the file is byte-unchanged");
   const empty = makeRepo();
   await initProject(empty, "quarantine show empty test");

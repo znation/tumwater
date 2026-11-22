@@ -47,7 +47,12 @@ export function firstReason(reasons: readonly unknown[] | undefined): string {
  * src/failure/failure-state-change.ts — the singular/plural wording their tests pin, once
  * "N commit(s)" with the old literal, now "N commits"/"1 commit"), and the stage self-check
  * and dropped-attachment notes
- * (src/run/run-stage.ts, inbox/inbox-attachments.ts) all rendered inline before. `many` accepts a
+ * (src/run/run-stage.ts, inbox/inbox-attachments.ts) all rendered inline before. Its
+ * count-noun sites now include the operator position rejections (status/status-salvage.ts,
+ * cli/cli-query-commands.ts), the dashboard's backlog index rejection
+ * (gui/gui-backlog-endpoints.ts), the doctor's enabled-role count
+ * (doctor/doctor-checks.ts) and `tumwater land`'s commit/path counts
+ * (cli/cli-land-command.ts). `many` accepts a
  * whole replacement form (`plural(n, "role is", "roles are")`) so verb-agreement titles share the
  * helper; the plural-by-`s` default covers regular nouns. (The GUI keeps its own JS copy in
  * gui-client.ts: a separate runtime that cannot import TypeScript.) */

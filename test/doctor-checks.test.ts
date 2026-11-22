@@ -363,7 +363,7 @@ test("checkInit fails when uninitialized and reports the enabled role count for 
   const roles: Record<string, { enabled: boolean }> = {};
   for (const id of allRoleIds()) roles[id] = { enabled: id === "feature" };
   writeConfig(oneEnabled, { roles });
-  assert.deepEqual(checkInit(oneEnabled), { level: "ok", detail: "1 roles enabled" });
+  assert.deepEqual(checkInit(oneEnabled), { level: "ok", detail: "1 role enabled" });
 });
 
 test("checkFeedbackFiling omits its row when feedback is disabled, ok when gh is present and authenticated", async () => {

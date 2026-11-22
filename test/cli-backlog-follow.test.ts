@@ -70,7 +70,7 @@ test("backlog -f --ready keeps only ready entries and names the hidden count", a
   const out = await runFollow(t, repo, ["--ready", "-f"], followSeams(() => parent.value), 2, (o) => (o.match(/### Ready plan/g) ?? []).length, () => (parent.value = 1));
   assert.match(out, /### Ready plan/);
   assert.doesNotMatch(out, /Refused plan/, "a --ready follow never shows held entries");
-  assert.match(out, /_\((\d+) held entries hidden; run `tumwater backlog` to see them\)_/);
+  assert.match(out, /_\(\d+ held entry hidden; run `tumwater backlog` to see them\)_/);
 });
 
 test("backlog -f --held keeps only held entries and names the unheld count", async (t) => {

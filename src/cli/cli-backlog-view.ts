@@ -4,7 +4,7 @@
  * wakes a role. cli.ts reaches them through listAndAnnounce and showAndAnnounce. */
 
 import { fail, say, sayJson } from "../terminal.js";
-import { validPositionRange } from "../text/phrases.js";
+import { agree, validPositionRange } from "../text/phrases.js";
 import { failFollowJsonRival, parseCountFlag, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { FOLLOW_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "../follow.js";
@@ -296,7 +296,7 @@ function activeListEmptyLine(view: ActiveListView, command: string): string | nu
  * plan list's `groupBlockedSeries` rows, each with the hidden-filter notice when `hidden > 0`. */
 function activeListProse(view: ActiveListView, fileName: string, command: string, bugSection: boolean): string {
   const { kept, entryHolds, entryRunners, hidden, noun, held } = view;
-  const hiddenNote = `(${hidden} ${held ? "unheld" : "held"} entries hidden; run \`tumwater ${command} --list\` to see them)`;
+  const hiddenNote = `(${hidden} ${held ? "unheld" : "held"} ${agree(hidden, "entry", "entries")} hidden; run \`tumwater ${command} --list\` to see them)`;
   const line = (entry: { title: string }, i: number): string =>
     `${entry.title}${holdMark(entryHolds[i] ?? null)}${inProgressMark(entryRunners[i] ?? null)}${entryAgeSuffix(entry.title)}`;
   if (bugSection) {

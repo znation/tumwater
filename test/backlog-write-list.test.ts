@@ -71,12 +71,12 @@ test("plan|bug --list --ready keeps the claimable entries under their unfiltered
   assert.equal(r.code, 0);
   assert.equal(
     r.stdout,
-    `planned features in PLANS.md:\n1. ${p1}${entryAgeSuffix(p1)}\n(1 held entries hidden; run \`tumwater plan --list\` to see them)\n`,
+    `planned features in PLANS.md:\n1. ${p1}${entryAgeSuffix(p1)}\n(1 held entry hidden; run \`tumwater plan --list\` to see them)\n`,
   );
   r = await cli(repo, "bug", "--list", "--ready");
   assert.equal(
     r.stdout,
-    `open bugs in BUGS.md:\n2. ${b2}${entryAgeSuffix(b2)}\n(1 held entries hidden; run \`tumwater bug --list\` to see them)\n`,
+    `open bugs in BUGS.md:\n2. ${b2}${entryAgeSuffix(b2)}\n(1 held entry hidden; run \`tumwater bug --list\` to see them)\n`,
   );
   r = await cli(repo, "bug", "--list", "--ready", "--json");
   const parsed = JSON.parse(r.stdout) as { entries: { position: number; hold: unknown }[] };
@@ -97,13 +97,13 @@ test("plan|bug --list --held keeps the held entries under their unfiltered numbe
   assert.equal(r.code, 0);
   assert.equal(
     r.stdout,
-    `planned features in PLANS.md:\n2. ${p2} [blocked: requires Export series 1/2]${entryAgeSuffix(p2)}\n(1 unheld entries hidden; run \`tumwater plan --list\` to see them)\n`,
+    `planned features in PLANS.md:\n2. ${p2} [blocked: requires Export series 1/2]${entryAgeSuffix(p2)}\n(1 unheld entry hidden; run \`tumwater plan --list\` to see them)\n`,
   );
   r = await cli(repo, "bug", "--list", "--held");
   assert.equal(r.code, 0);
   assert.equal(
     r.stdout,
-    `open bugs in BUGS.md:\n1. ${b1} [blocked: refused]${entryAgeSuffix(b1)}\n(1 unheld entries hidden; run \`tumwater bug --list\` to see them)\n`,
+    `open bugs in BUGS.md:\n1. ${b1} [blocked: refused]${entryAgeSuffix(b1)}\n(1 unheld entry hidden; run \`tumwater bug --list\` to see them)\n`,
   );
   // --held --json lists only the held entries with their holds and original positions.
   r = await cli(repo, "bug", "--list", "--held", "--json");
@@ -141,7 +141,7 @@ test("plan|bug --list --held composes with --grep, prints the empty-held line, a
       "open bugs in BUGS.md:",
       `1. ${b1} [blocked: refused]${entryAgeSuffix(b1)}`,
       `2. ${b2} [blocked: waiting for a recurrence]${entryAgeSuffix(b2)}`,
-      "(1 unheld entries hidden; run `tumwater bug --list` to see them)",
+      "(1 unheld entry hidden; run `tumwater bug --list` to see them)",
       "",
     ].join("\n"),
   );

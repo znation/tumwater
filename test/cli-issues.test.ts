@@ -343,7 +343,7 @@ test("issues drops a malformed row out of a hand-edited ledger instead of failin
   const past = await cli(repo, "issues", "--show", "2");
   assert.equal(past.code, 1);
   assert.ok(
-    past.stderr.includes("github issues mirror holds 1 open issues) — valid: 1-1"),
+    past.stderr.includes("github issues mirror holds 1 open issue) — valid: 1-1"),
     past.stderr,
   );
 });

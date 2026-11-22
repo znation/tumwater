@@ -3,7 +3,7 @@ import path from "node:path";
 import { salvageDir } from "../paths.js";
 import { dirEntryNames } from "../files/files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { validPositionRange } from "../text/phrases.js";
+import { plural, validPositionRange } from "../text/phrases.js";
 
 /** One operator-kept workspace patch: its position (1-based, oldest first — the number the
  * doctor `salvage patches` row and `tumwater salvage` print, which `salvage --show <n>` and
@@ -105,7 +105,7 @@ export function salvagePatchAt(
     // The valid-range tail (no patches: no range) comes from the shared validPositionRange —
     // the same tail the sibling position rejections (backlog, inbox, questions) append.
     const range = validPositionRange(patches.length);
-    return { message: `no salvaged workspace patch at position ${position} (salvage holds ${patches.length} patches)${range}` };
+    return { message: `no salvaged workspace patch at position ${position} (salvage holds ${plural(patches.length, "patch", "patches")})${range}` };
   }
   return { patch: patches[position - 1]! };
 }

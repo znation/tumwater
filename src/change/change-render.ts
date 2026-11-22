@@ -9,7 +9,7 @@ import type { ChangeOverlapsView, TeamChangeView, RoleChangeView, RoleChangesVie
 
 /** The work-summary phrase both change views open their work lines with — `N commits ahead
  * of <main>` plus `, K commits behind` when the branch lags main, plus `, M uncommitted
- * file(s)` when the worktree is dirty (each count through plural, so the singular/plural
+ * files` when the worktree is dirty (each count through plural, so the singular/plural
  * wording the tests pin cannot drift between the team roster and the per-role header).
  * Exactly two call sites: renderTeamChange's per-role line and renderRoleChange's header line. */
 function workSummary(

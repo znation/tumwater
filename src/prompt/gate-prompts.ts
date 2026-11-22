@@ -1,4 +1,5 @@
 import { shortSha } from "../text/format.js";
+import { plural } from "../text/phrases.js";
 import { KILL_BY_PID_RULE, OLDER_NAMES_SENTENCE, TEST_RUNNER_RULE, dateLine } from "./prompt.js";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
@@ -492,7 +493,7 @@ ${conflicted.map(conflictedFileLine).join("\n")}${readHint}`,
     parts.push(
       `These saved hunks could not be placed at all. Apply what still makes sense by hand, and leave
 out what the branch already does:
-${quoted.join("\n")}${cut > 0 ? `\n(${cut} more file(s) not shown: they are in the patch below.)` : ""}`,
+${quoted.join("\n")}${cut > 0 ? `\n(${plural(cut, "more file")} not shown: they are in the patch below.)` : ""}`,
     );
   }
   parts.push(`The whole saved patch is at ${patchPath}; read it only if you need more than the above.`);

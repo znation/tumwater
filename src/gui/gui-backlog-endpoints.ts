@@ -11,6 +11,7 @@ import { answeredQuestionEntries, entryMatches, donePlanEntries, fixedBugEntries
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, normalizeDiffPath } from "../change/change-data.js";
 import { listWideScope, queuedListRows } from "../inbox/inbox.js";
 import { intQuery, rejectBadRole, roleListQuery } from "./gui-args.js";
+import { plural } from "../text/phrases.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import { gotSuffix } from "../text/text.js";
@@ -58,7 +59,7 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
   if (index === null) return;
   const entry = entries[index];
   if (!entry) {
-    badRequest(res, `index ${index} out of range (${file} has ${entries.length} entries)`);
+    badRequest(res, `index ${index} out of range (${file} has ${plural(entries.length, "entry", "entries")})`);
     return;
   }
   sendJson(res, 200, {
