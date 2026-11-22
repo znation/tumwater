@@ -102,6 +102,11 @@ function opencodeBillingEventMessage(e: HarnessEvent): string {
   }
 }
 
+/** The budget-family lines: `budget_warning`, `budget_paused`, `budget_fallback`,
+ * `budget_resumed`, `budget_handback`, `fallback_switched` and `opencode_free_model_billed` —
+ * the types event-format.ts's EVENT_MESSAGE_FAMILY table routes here. The cap lines name the
+ * spend against the cap; the handback and switch lines name the roles and pairs they moved.
+ * A type routed here but not switched on renders as its own name. */
 export function budgetEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "budget_warning":

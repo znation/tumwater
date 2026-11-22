@@ -10,6 +10,11 @@ function afterMergeSuffix(e: HarnessEvent): string {
   return e.afterMerge === true ? " after merge" : "";
 }
 
+/** The review-family lines: `review_start`, `review_verdict`, `review_rejected`,
+ * `review_dropped`, `review_failed` and `revision` — the types event-format.ts's
+ * EVENT_MESSAGE_FAMILY table routes here. The `afterMerge` flag marks a post-merge review, so
+ * the verdict and rejected lines ride the " after merge" suffix. A type routed here but not
+ * switched on renders as its own name. */
 export function reviewEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "review_start": {

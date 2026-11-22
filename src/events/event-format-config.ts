@@ -4,6 +4,13 @@ import { shortSha } from "../text/format.js";
 import { textOr } from "../text/text.js";
 import { stringList } from "../files/json-object.js";
 
+/** The config-family lines: `max_concurrent_changed`, `retention_changed`,
+ * `github_issues_unavailable`, the three `github_issue_*` actions, `config_changed`,
+ * `model_changed`, `backend_binary`, `state_migrated`, `orchestrator_start` and
+ * `orchestrator_stop` — the types event-format.ts's EVENT_MESSAGE_FAMILY table routes here.
+ * The state changes and the GitHub-issue actions are routine, like counters_reset — only a
+ * newly routed backend whose binary is missing writes the warning into its own text. A type
+ * routed here but not switched on renders as its own name. */
 export function configEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "max_concurrent_changed": {

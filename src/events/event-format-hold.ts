@@ -97,6 +97,12 @@ function maintenanceProgressEventMessage(e: HarnessEvent): string {
   }
 }
 
+/** The hold-family lines: `team_paused`/`team_resumed`, `role_paused`/`role_resumed`,
+ * `role_streak_paused`, the per-role cap triple, `maintenance_quota_hold`/`_resumed`,
+ * `bootstrap_complete`, and the `maintenance_start`/`maintenance_done` pair — the types
+ * event-format.ts's EVENT_MESSAGE_FAMILY table routes here. None of these lines carries a
+ * warning prefix: the pauses, holds and lifts are the harness steering itself. A type routed
+ * here but not switched on renders as its own name. */
 export function holdEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "team_paused":

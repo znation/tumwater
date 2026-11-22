@@ -45,6 +45,12 @@ function mainCulpritMessage(e: HarnessEvent): string {
   const by = typeof e.runner === "string" && e.runner !== "" ? ` (merged by ${e.runner})` : "";
   return `main turned red at ${shortSha(e.commit)}${by}`;
 }
+/** The merge-family lines: `merged`, `merge_queued`, `merge_cancelled`, `merge_topped`,
+ * `merge_done`, `merge_failed`, `conflict_handback`, `operator_revert`, `main_check`,
+ * `main_culprit` and `main_red_hold` — the types event-format.ts's EVENT_MESSAGE_FAMILY table
+ * routes here. Cancelling and re-ordering a waiting merge are routine operations, not
+ * warnings; `main_red_hold` prints the event's own message. A type routed here but not
+ * switched on renders as its own name. */
 export function mergeEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "merged":

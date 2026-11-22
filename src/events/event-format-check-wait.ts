@@ -4,6 +4,11 @@ import { textOr } from "../text/text.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
 import { elapsed, waitedSpan, outcomeText } from "./event-format-fragments.js";
 
+/** The check/wait-family lines: `build_check`, `dep_install`, `slot_wait`, `provider_wait`
+ * and `check_wait` — the types event-format.ts's EVENT_MESSAGE_FAMILY table routes here. The
+ * three waits are routine-with-explanation, like rate_limit_hold — the cap or pool working as
+ * designed — so none carries a warning prefix, and each names the wait and what it waited on.
+ * A type routed here but not switched on renders as its own name. */
 export function checkWaitEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "build_check":

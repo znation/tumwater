@@ -6,6 +6,11 @@ import { textOr } from "../text/text.js";
 import { finiteNumber } from "../files/json-object.js";
 import { usagePhrase, outcomeText, deferredReasonText } from "./event-format-fragments.js";
 
+/** The run-family lines: `run_start`, `run_end`, `run_deferred`, `run_aborted`, `resume`,
+ * `wake`, `counters_reset`, `claim` and `permit_reserve` — the types event-format.ts's
+ * EVENT_MESSAGE_FAMILY table routes here. A deferral, an abort and a permit reserve are
+ * routine state changes, so their lines carry no warning prefix. A type routed here but not
+ * switched on renders as its own name. */
 export function runEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "run_start":

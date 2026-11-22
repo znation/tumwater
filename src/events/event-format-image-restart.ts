@@ -5,6 +5,11 @@ import { textOr } from "../text/text.js";
 import { finiteNumber } from "../files/json-object.js";
 import { minutes } from "./event-format-fragments.js";
 
+/** The image/restart-family lines: `image_blind`, `image_reroute`, `build_stale`,
+ * `restart_pending`, `restart`, `restart_refused`, `restart_blocked`, `restart_forced` and
+ * `supervisor_exit` — the types event-format.ts's EVENT_MESSAGE_FAMILY table routes here.
+ * The lines state what happened without a warning prefix; a refusal or block is signalled by
+ * the event type itself. A type routed here but not switched on renders as its own name. */
 export function imageRestartEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "image_blind":

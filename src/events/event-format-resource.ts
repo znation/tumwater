@@ -114,6 +114,11 @@ function modelCheckBusyMessage(e: HarnessEvent): string {
   return `model check deferred: ${textOr(e.pair)} answered the team's own runs while its probe waited — the probe is not a failure`;
 }
 
+/** The resource-family lines: the disk-floor triple, the quiet-hours pair, the rate-limit
+ * pair, the subscription-window pair, and the `model_check_passed`/`model_check_busy` pair —
+ * the types event-format.ts's EVENT_MESSAGE_FAMILY table routes here. A hold or a wait is
+ * routine-with-explanation, so no line carries a warning prefix. A type routed here but not
+ * switched on renders as its own name. */
 export function resourceEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "disk_low":

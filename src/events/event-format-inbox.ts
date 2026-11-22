@@ -4,6 +4,11 @@ import { shortSha } from "../text/format.js";
 import { textOr, truncate } from "../text/text.js";
 import { stringList } from "../files/json-object.js";
 
+/** The inbox-family lines: `prompt_enqueued`, `prompt_cancelled`, `prompt_edited`,
+ * `prompt_topped`, `prompt_taken`, `question_posted`, `entry_refused`, `issue_filed` and
+ * `remote_ci_failed` — the types event-format.ts's EVENT_MESSAGE_FAMILY table routes here.
+ * The prompt-queue actions, a posted question, a refusal note and a filed issue are routine
+ * operations, not warnings. A type routed here but not switched on renders as its own name. */
 export function inboxEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "prompt_enqueued":

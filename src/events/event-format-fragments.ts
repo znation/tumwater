@@ -6,6 +6,12 @@ import { isNonBlankString, textOr } from "../text/text.js";
 import { formatClock } from "../text/datetime.js";
 import { finiteNumber, isJsonObject } from "../files/json-object.js";
 
+/** The ` (most by <role> $1.23, …)` suffix on the budget lines: the event's `topRoles` array
+ * (budget.ts's topDailySpenders, written onto the event by budget-gates.ts) rendered in the
+ * order it was written. Entries that are not an object with a string `role` and a finite
+ * `spentUsd` are dropped, so a torn or hand-edited event contributes only its clean entries;
+ * an empty or absent array (an older event, or no role had spend today) contributes
+ * nothing. */
 export function mostByPhrase(value: unknown): string {
   const top = Array.isArray(value)
     ? value.flatMap((r: unknown) =>
