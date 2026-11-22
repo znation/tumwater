@@ -14,7 +14,7 @@ import {
   type GithubIssuesLedger,
   type GithubIssueRow,
 } from "../src/github/github-issues-state.js";
-import type { MirrorEntry } from "../src/github/issue-mirrors.js";
+import { mirrorStates, type MirrorEntry } from "../src/github/issue-mirrors.js";
 import { pollGithubIssues } from "../src/github/issue-scan.js";
 import { fakeGh } from "./fakes/fake-gh.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -56,6 +56,35 @@ test("an issue whose only entries were retired is listed as retired-only, never 
   const ledger = ledgerWith([row(3)]);
   const mirrors = new Map([[3, [entry("Done", true)]]]);
   assert.deepEqual(closeCandidates(ledger, mirrors), { close: [], retiredOnly: [3] });
+});
+
+test("a Verified-section entry counts as finished: it closes the issue on its own", () => {
+  // The close read's promise (docs/steering.md): an issue closes once every entry mirroring it
+  // sits in a `## Done`, `## Fixed` or `## Verified` section. The entries here come from the real
+  // backlog read, so the section the reader records is the one the verdict branches on.
+  const ledger = ledgerWith([row(9)]);
+  const mirrors = mirrorStates({
+    "BUGS.md": "## Open\n\n## Fixed\n\n## Verified\n\n### Crash (mirrors GitHub issue #9)\n",
+  });
+  assert.deepEqual(closeCandidates(ledger, mirrors), { close: [9], retiredOnly: [] });
+});
+
+test("a retired Verified entry keeps the issue out of the close list, as retired-only", () => {
+  const ledger = ledgerWith([row(10)]);
+  const mirrors = mirrorStates({
+    "BUGS.md": "## Verified\n\n### Crash (mirrors GitHub issue #10; retired 2026-11-02)\n",
+  });
+  assert.deepEqual(closeCandidates(ledger, mirrors), { close: [], retiredOnly: [10] });
+});
+
+test("a Verified entry does not close an issue another entry still answers", () => {
+  // One entry verified, its sibling part still live in `## Planned`: not every entry is finished.
+  const ledger = ledgerWith([row(11)]);
+  const mirrors = mirrorStates({
+    "BUGS.md": "## Verified\n\n### Fix (mirrors GitHub issue #11)\n",
+    "PLANS.md": "## Planned\n\n### Part 2 (mirrors GitHub issue #11)\n\n## Done\n",
+  });
+  assert.deepEqual(closeCandidates(ledger, mirrors), { close: [], retiredOnly: [] });
 });
 
 test("two parts of one plan: the issue stays open until every part is finished", () => {

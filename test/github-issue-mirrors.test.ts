@@ -48,6 +48,20 @@ test("an entry with a retired stamp in PLANS-DONE.md is recorded as retired", ()
   assert.equal(states.get(6)?.[0]?.section, "Done");
 });
 
+test("a mirror heading in the live Verified section of BUGS.md is recorded as finished", () => {
+  // The steering guide names `## Verified` as a finished mirror home a closed issue may sit in
+  // (docs/steering.md), so a heading there must reach the close read as finished, not be skipped
+  // as an unknown section. A phrase in that section's body stays unread: only a heading mirrors.
+  const states = mirrorStates({
+    "BUGS.md":
+      "## Open\n\n### Live (mirrors GitHub issue #4)\n\n## Fixed\n\n## Verified\n\n### Crash (mirrors GitHub issue #9)\n\n- the sentence mirrors GitHub issue #11 is only quoted here\n",
+  });
+  assert.deepEqual(states.get(9), [
+    { file: "BUGS.md", section: "Verified", heading: "Crash (mirrors GitHub issue #9)", retired: false },
+  ]);
+  assert.equal(states.has(11), false, "a body line under Verified mirrors nothing");
+});
+
 test("a mirror heading in an open section of BUGS.md is recorded with its section", () => {
   const states = mirrorStates({
     "BUGS.md": "## Open\n\n### Open one (mirrors GitHub issues #3, #8)\n\n## Fixed\n\n",
