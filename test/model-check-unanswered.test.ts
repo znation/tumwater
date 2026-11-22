@@ -3,7 +3,9 @@
 // deepinfra hang (HTTP 200, then only SSE pings, for hours). A real runner runs a fake pi that
 // sends one request and never hears back; on the logical watchdog clock the request passes
 // toolCallStallSeconds, the model check re-checks the pair, and once the pair fails the run is
-// handed back resumably and resumes on the model-check bridge.
+// handed back resumably and resumes on the model-check bridge. Its answered twin — the reply edge
+// the busy-vs-dead distinction reads (PLANS.md busy part 1/2) — is pinned at the end of this file,
+// where the same fake-pi-on-a-real-runner setup reaches RoleRunner.lastAnsweredAt.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -26,6 +28,12 @@ import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 const REQUEST_START = JSON.stringify({
   type: "message_start",
   message: { role: "assistant", content: [], provider: "local", model: "flint", stopReason: "pending" },
+});
+
+/** pi's line for a content-bearing delta on that open request — the reply edge itself. */
+const REPLY_UPDATE = JSON.stringify({
+  type: "message_update",
+  assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "working" },
 });
 
 /** A team of one `clean` role on local/flint, with a 2 s stall threshold and a quiet window long
@@ -141,4 +149,46 @@ test("a run that fails before any model reply carries RunOutcome.unanswered; one
     assert.equal(outcome.result, "no_change");
     assert.equal(outcome.unanswered, undefined);
   });
+});
+
+test("a run whose request is answered records lastAnsweredAt on its pair; one whose request is never answered records nothing", async () => {
+  // PLANS.md "Busy model check, part 1/2": the answer edge, not the wait toggle — the runner
+  // keeps the latest answer time per pair so part 2/2 can read a busy server as queueing rather
+  // than a dead pair. Pinning it through a real runner over a fake pi covers the whole chain the
+  // parser test cannot: PiStreamParser's callback → PiRunOptions.onModelAnswered →
+  // RunnerPi's author-only replyAnswered → RoleRunner.lastAnsweredAt.
+  const repo = await initializedRepo();
+  const config = flintConfig();
+  const startedBefore = Date.now();
+  const runner = makeRoleRunner(repo, "clean", config);
+  assert.equal(runner.lastAnsweredAt("local/flint"), null, "nothing is answered before the run starts");
+  await withPi(
+    [TOUCH_SESSION, `printf '%s\\n' '${REQUEST_START}'`, `printf '%s\\n' '${REPLY_UPDATE}'`].join("\n") +
+      `; printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    async () => {
+      const outcome = await runner.run();
+      assert.equal(outcome.result, "no_change");
+      assert.equal(outcome.unanswered, undefined, "the scripted reply reached the run");
+    },
+  );
+  // Readable after the run ended, and stamped inside it: a run that was answered and then ended
+  // inside a probe's window is still the evidence part 2/2 needs.
+  const answered = runner.lastAnsweredAt("local/flint");
+  assert.ok(answered !== null, "the run's answer outlives the run");
+  assert.ok(answered >= startedBefore && answered <= Date.now(), "the answer time falls inside the run");
+  assert.equal(runner.lastAnsweredAt("other/model"), null, "a pair the run never used has no answer");
+
+  // The dead half: a request that goes out and is never answered leaves no answer recorded, so
+  // part 2/2 sees silence on both sides and keeps its failed verdict.
+  const deadRepo = await initializedRepo();
+  await withPi(
+    [TOUCH_SESSION, `printf '%s\\n' '${REQUEST_START}'`, `printf '%s\\n' '${errorLine("upstream reset")}'`, "exit 1"].join("\n"),
+    async () => {
+      const dead = makeRoleRunner(deadRepo, "clean", config);
+      const outcome = await dead.run();
+      assert.equal(outcome.result, "error");
+      assert.equal(outcome.unanswered, true, "the request went out and got no reply");
+      assert.equal(dead.lastAnsweredAt("local/flint"), null, "an unanswered request answers nothing");
+    },
+  );
 });
