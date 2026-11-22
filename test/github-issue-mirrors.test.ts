@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mirrorStates, mirroredIssueNumbers } from "../src/github/issue-mirrors.js";
+import fs from "node:fs";
+import path from "node:path";
+import { mirrorStates, mirroredIssueNumbers, mirrorsAtTip } from "../src/github/issue-mirrors.js";
+import { loggingGit, makeRepo, seedCommit, tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("a heading that mirrors one issue names that issue number", () => {
   const found = mirroredIssueNumbers("### Heap OOM (mirrors GitHub issue #1; filed 2026-11-21 by director)\n");
@@ -59,4 +62,53 @@ test("a heading inside a fenced block is not a mirror", () => {
     "PLANS.md": "## Planned\n\n```\n### Example (mirrors GitHub issue #9)\n```\n",
   });
   assert.equal(states.size, 0);
+});
+
+/** How many `git show` a logging-git log names. */
+function showCount(logFile: string): number {
+  if (!fs.existsSync(logFile)) return 0;
+  return fs
+    .readFileSync(logFile, "utf8")
+    .split("\n")
+    .filter((line) => line.startsWith("show ")).length;
+}
+
+test("mirrorsAtTip reads the backlog once per branch tip: a repeat call at the same tip spawns no git show, and a new commit is seen", async () => {
+  const repo = makeRepo(tmpdir("mirrors-cache-"));
+  seedCommit(
+    repo,
+    "BUGS.md",
+    "## Open\n\n### Crash (mirrors GitHub issue #5)\n\nbody\n",
+    "add a mirrored bug",
+  );
+  const logFile = path.join(tmpdir("mirrors-cache-log-"), "git.log");
+  const restore = loggingGit(logFile);
+  try {
+    const first = await mirrorsAtTip(repo, "main");
+    assert.equal(first.get(5)?.[0]?.heading, "Crash (mirrors GitHub issue #5)");
+    const readsAfterFirst = showCount(logFile);
+    assert.ok(readsAfterFirst > 0, "the first read goes to git");
+
+    // The same tip: the states come from the cache, so no new `git show` runs.
+    const again = await mirrorsAtTip(repo, "main");
+    assert.equal(showCount(logFile), readsAfterFirst, "a repeat call at the same tip spawns no git show");
+    assert.deepEqual(
+      again.get(5),
+      [{ file: "BUGS.md", section: "Open", heading: "Crash (mirrors GitHub issue #5)", retired: false }],
+    );
+
+    // A moved tip invalidates it: the mirror added by the new commit is seen.
+    seedCommit(
+      repo,
+      "PLANS.md",
+      "## Planned\n\n### Feature (mirrors GitHub issue #7)\n",
+      "add a mirrored plan",
+    );
+    const afterCommit = await mirrorsAtTip(repo, "main");
+    assert.ok(showCount(logFile) > readsAfterFirst, "a moved tip re-reads the backlog");
+    assert.equal(afterCommit.get(7)?.[0]?.file, "PLANS.md");
+    assert.equal(afterCommit.get(5)?.[0]?.section, "Open");
+  } finally {
+    restore();
+  }
 });

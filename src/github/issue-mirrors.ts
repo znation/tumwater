@@ -6,7 +6,7 @@
 
 import { isRetiredTitle } from "../backlog/backlog.js";
 import { actionableEntryRanges } from "../backlog/backlog-index-data.js";
-import { fileContentAt } from "../git/git.js";
+import { branchHead, fileContentAt } from "../git/git.js";
 
 /** The `## ` sections a mirror can sit in, open lists and finished archives alike. */
 const MIRROR_SECTIONS = ["Planned", "Open", "Done", "Fixed", "Verified"];
@@ -66,9 +66,45 @@ export function mirrorStates(files: Readonly<Record<string, string>>): Map<numbe
   return byIssue;
 }
 
-/** The mirror entries of the backlog at the base branch's tip, keyed by issue number. */
+/** How many (root, branch) mirror reads the cache holds: the orchestrator polls one or two
+ * projects, so any list this long is stale entries from other roots, and clearing it wholesale
+ * keeps the cache from growing for the life of the process. */
+const MIRROR_CACHE_MAX = 32;
+
+/** One branch tip's mirror read: the tip SHA the states were built at, and the states. */
+interface MirrorCacheEntry {
+  head: string;
+  states: Map<number, MirrorEntry[]>;
+}
+
+/** The mirror read of each (root, branch) at the tip it was last read at. The orchestrator's
+ * queue step (`queueOneIssue`) asks this on every poll — every 2 s — and the read is four
+ * `git show` of the backlog files, whose finished archives grow with every merge (11 MB, 51 k
+ * lines on this repo as of 2026-11-21). Keyed on the tip SHA, a poll that changes nothing costs
+ * one ref read. The entries are never mutated by callers, so a hit hands out a shallow Map copy
+ * over the same entry arrays. */
+const mirrorCache = new Map<string, MirrorCacheEntry>();
+
+/** The mirror entries of the backlog at the base branch's tip, keyed by issue number. Served from
+ * the cache while the branch tip is unchanged: the tip is resolved file-first (`branchHead`), and
+ * only a tip this process has not already read pays for the four `git show` reads. When the tip
+ * cannot be resolved at all the read runs uncached, exactly as before, so a branch git cannot name
+ * still reads empty files rather than a cached answer. */
 export async function mirrorsAtTip(root: string, branch: string): Promise<Map<number, MirrorEntry[]>> {
+  const head = await branchHead(root, branch);
+  if (head === null) return mirrorStates(await mirrorFiles(root, branch));
+  const key = `${root}\u0000${branch}`;
+  const cached = mirrorCache.get(key);
+  if (cached?.head === head) return new Map(cached.states);
+  const states = mirrorStates(await mirrorFiles(root, branch));
+  if (mirrorCache.size >= MIRROR_CACHE_MAX) mirrorCache.clear();
+  mirrorCache.set(key, { head, states });
+  return new Map(states);
+}
+
+/** The four backlog files as they stand at the branch tip, missing files as empty strings. */
+async function mirrorFiles(root: string, branch: string): Promise<Record<string, string>> {
   const files: Record<string, string> = {};
   for (const file of MIRROR_FILES) files[file] = await fileContentAt(root, branch, file);
-  return mirrorStates(files);
+  return files;
 }
