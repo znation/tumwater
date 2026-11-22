@@ -288,9 +288,10 @@ const tails = new Map<string, TailState<TranscriptValue>>();
  * its state by file only: one shared map would let a prompts reader and a plain reader overwrite
  * each other's renderer. */
 const promptTails = new Map<string, TailState<TranscriptValue>>();
-/** How many rendered entries to keep per file. Hot callers ask for at most ~50 (the GUI
- * panel polls with n=50), so the cap bounds memory while
- * keeping any such request exact; a caller asking for more gets the newest MAX_ENTRIES. */
+/** How many rendered entries to keep per file. The one hot caller asks for at most 200 (the
+ * GUI panel polls /api/transcript with n=200; the endpoint's own default when n is absent is
+ * 50), so the cap bounds memory while keeping any such request exact; a caller asking for
+ * more gets the newest MAX_ENTRIES. */
 const MAX_ENTRIES = 200;
 
 /** Fold one raw log line into a transcript's accumulated value. */
