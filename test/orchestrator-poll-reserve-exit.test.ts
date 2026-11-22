@@ -4,13 +4,13 @@
  * pins — a `git for-each-ref` spawn per poll — would be spent to be discarded. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import path from "node:path";
 import { pollReserveAndExit } from "../src/orchestrator/orchestrator-poll.js";
 import { newPollState } from "../src/orchestrator/orchestrator-poll.js";
 import type { PollContext } from "../src/orchestrator/orchestrator-poll.js";
 import { OnceRound } from "../src/scheduling/once-round.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
+import { readCapture } from "./helpers/read-capture.js";
 import { flushImmediate } from "./helpers/wait.js";
 import { defaultConfig } from "../src/config/config.js";
 import { mergeRefName } from "../src/paths.js";
@@ -35,7 +35,7 @@ function ctx(root: string, active: boolean, semaphore = new Semaphore(1)): PollC
  * listing (a `for-each-ref` under the merge prefix) and, per resolved pin, a `cat-file -e`.
  * The pin's `git log` rides along but is not the signal under test. */
 function spawnCount(logFile: string): { list: number; catFile: number } {
-  const lines = fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8").trimEnd().split("\n") : [];
+  const lines = readCapture(logFile).trimEnd().split("\n").filter((l) => l !== "");
   let list = 0;
   let catFile = 0;
   for (const line of lines) {

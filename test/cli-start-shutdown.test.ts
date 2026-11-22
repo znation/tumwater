@@ -11,6 +11,7 @@ import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, withPi } from "./fakes/fake-pi.js";
 import { cli, exitCode } from "./helpers/cli-harness.js";
+import { readCapture } from "./helpers/read-capture.js";
 import { sleep } from "./helpers/wait.js";
 import { onlyCleanRole, withRunningTeam } from "./helpers/start-live-harness.js";
 
@@ -54,7 +55,7 @@ test("a team that goes down unasked runs the notify hook once", async () => {
   await withPi("exit 0", async () => {
     const r = await cli(repo, "run");
     assert.equal(r.code, 1);
-    const lines = () => (fs.existsSync(out) ? fs.readFileSync(out, "utf8").split("\n").filter((l) => l !== "") : []);
+    const lines = () => readCapture(out).split("\n").filter((l) => l !== "");
     const deadline = Date.now() + 10_000;
     while (lines().length < 1 && Date.now() < deadline) await sleep(50);
     await sleep(200);
