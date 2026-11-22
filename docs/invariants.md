@@ -5592,3 +5592,31 @@ automatic rewrite"; `test/run-usage.test.ts` —
 "a run cut off at the context ceiling warns, skips backoff, and resumes";
 `test/claude-stream.test.ts` — "retries and compaction translate to the canonical events the
 transcript renders".
+
+## The GitHub issues mirror: one predicate decides when its scan has gone quiet
+
+### INV-DE1: githubScanStalled is the one home of the issues-scan stall decision
+
+**Guarantee.** `githubScanStalled` (src/github/github-issues-state.ts) is the single predicate
+deciding when the GitHub issues mirror's hourly scan has gone quiet, read by the doctor
+`github issues` row (`checkGithubIssues`), so the row and the ledger cannot disagree on when a
+quiet mirror is a problem. It is true only for a ledger whose `checkedAt` is a number and whose age
+past `GITHUB_ISSUES_STALE_MS` is strictly greater than the window (three days — the same span
+`ciParityStalled` and `remoteCiStalled` read); a null ledger (never scanned, or an unreadable file)
+and a `checkedAt` that is not a number (a hand-edited file) are both false and the call never
+throws, the empty-ledger rule `qaCoverageStalled` and `ciParityStalled` keep. `checkGithubIssues` is
+the decision's only consumer, and it applies the predicate after the `gh` readiness gate — a broken
+`gh` still warns with its own sentence, and a stalled mirror never outranks it. The row's presence
+conditions (no GitHub remote, or `githubIssues.enabled` false, omits the row with no `gh` call) are
+unchanged, and a not-stalled ledger — including no ledger at all — keeps the ok detail byte-identical
+to the readiness-only row.
+
+**Binds.** `src/github/github-issues-state.ts` (`githubScanStalled`, `GITHUB_ISSUES_STALE_MS`),
+`src/doctor/doctor-project-checks.ts` (`checkGithubIssues`).
+
+**Pinned by.** `test/github-issue-scan.test.ts` — "githubScanStalled is true only past the window,
+and false for no ledger or a foreign checkedAt"; `test/doctor-checks.test.ts` —
+"checkGithubIssues warns when the mirror's last scan is past the stall window",
+"checkGithubIssues stays ok at the window boundary and with no ledger file at all",
+"a stalled ledger never outranks an unreadable gh" and
+"the github issues row and githubScanStalled agree on one ledger".

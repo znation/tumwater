@@ -7,6 +7,7 @@ import { ensureParentDir } from "../files/files.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { githubIssuesPath } from "../paths.js";
+import { DAY_MS } from "../text/datetime.js";
 
 /** What the last scan learned from `gh`: `ok` when it read the issues, `missing` or
  * `unauthenticated` from the readiness probe, `error` when the listing itself failed. */
@@ -139,6 +140,27 @@ export function readGithubIssues(root: string): GithubIssuesLedger | null {
   const open = (ledger.open as unknown[]).filter(isGithubIssueRow);
   if (open.length === ledger.open.length) return ledger;
   return { ...ledger, open };
+}
+
+/** The window past which the issues mirror's scan counts as stalled — three days, the same span
+ * `CI_PARITY_STALE_MS` and `remoteCiStalled` read (they spell it `3 * DAY_MS` too), so no two rows
+ * of the stall-predicate family mean a different span by "stale". The scan rewrites `checkedAt` on
+ * every attempt even when `gh` fails, so an old `checkedAt` means the scan itself stopped running
+ * — the fact the doctor's `github issues` row names. */
+export const GITHUB_ISSUES_STALE_MS = 3 * DAY_MS;
+
+/** True only for a ledger whose `checkedAt` is a number older than the stall window
+ * (`now - checkedAt > GITHUB_ISSUES_STALE_MS`). A null ledger — never scanned, or an unreadable
+ * file — and a ledger whose `checkedAt` is not a number (a hand-edited file) are both false, the
+ * empty-ledger rule `qaCoverageStalled` and `ciParityStalled` keep: a ledger this predicate cannot
+ * read is never a stall, and the call never throws. The doctor's `github issues` row
+ * (`checkGithubIssues`) is the decision's only consumer. */
+export function githubScanStalled(ledger: GithubIssuesLedger | null, now: number): boolean {
+  return (
+    ledger !== null &&
+    typeof ledger.checkedAt === "number" &&
+    now - ledger.checkedAt > GITHUB_ISSUES_STALE_MS
+  );
 }
 
 /** The GitHub figures the status surfaces show: how many fixes wait for a push to GitHub and how

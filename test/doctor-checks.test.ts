@@ -68,11 +68,13 @@ import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
 import { CI_PARITY_STALE_MS, recordParity } from "../src/observer/ci-parity.js";
 import { recordRemoteCi } from "../src/observer/remote-ci.js";
 import { QA_COVERAGE_STALE_MS, recordFlow } from "../src/observer/qa-coverage.js";
+import { DAY_MS } from "../src/text/datetime.js";
 import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
 import { checkRoleNotes } from "../src/doctor/doctor-role-notes.js";
 import { checkSalvagePatches } from "../src/doctor/doctor-salvage.js";
 import { ROLE_NOTES_MAX_BYTES, ROLE_LESSONS_MAX_COUNT } from "../src/roles/role-notes-write.js";
-import { roleNotesPath, roleLessonsPath, salvageDir, salvagePendingDir } from "../src/paths.js";
+import { githubIssuesPath, roleNotesPath, roleLessonsPath, salvageDir, salvagePendingDir } from "../src/paths.js";
+import { GITHUB_ISSUES_STALE_MS, githubScanStalled, readGithubIssues } from "../src/github/github-issues-state.js";
 import { writeOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { BRIEF_TEXT_MAX_CHARS } from "../src/brief/brief.js";
 import { fakeGh } from "./fakes/fake-gh.js";
@@ -446,6 +448,74 @@ test("checkGithubIssues is ok naming the repo when gh is present and logged in",
   const outcome = await checkGithubIssues(repo, githubConfig(), envPath(), gh.probe);
   assert.deepEqual(outcome, { level: "ok", detail: "gh ready — tumwater mirrors znation/tumwater's open issues" });
   assert.deepEqual(gh.calls, [["--version"], ["auth", "status", "--hostname", "github.com"]]);
+});
+
+/** Write the mirror's ledger into a fixture with the given `checkedAt`, the shape the hourly scan
+ * leaves behind (empty `open`, `gh` ok). The stall half reads only `checkedAt`. */
+function writeIssuesLedger(repo: string, checkedAt: number): void {
+  writeFileDeep(githubIssuesPath(repo), JSON.stringify({
+    repo: "znation/tumwater",
+    branch: "main",
+    checkedAt,
+    gh: "ok",
+    open: [],
+  }));
+}
+
+test("checkGithubIssues warns when the mirror's last scan is past the stall window", async () => {
+  const now = 1_764_000_000_000;
+  const repo = githubRepoFixture();
+  writeIssuesLedger(repo, now - 4 * DAY_MS);
+  const gh = fakeGh();
+  const outcome = await checkGithubIssues(repo, githubConfig(), envPath(), gh.probe, now);
+  assert.deepEqual(outcome, {
+    level: "warn",
+    detail:
+      "gh ready — but the last scan checked znation/tumwater 4d ago, over 3 days ago, so tumwater is not mirroring its open issues",
+  });
+  // The stall half is a read of .tumwater/, not a gh call: the probe count is the readiness pair.
+  assert.deepEqual(gh.calls, [["--version"], ["auth", "status", "--hostname", "github.com"]]);
+});
+
+test("checkGithubIssues stays ok at the window boundary and with no ledger file at all", async () => {
+  const now = 1_764_000_000_000;
+  const ok = { level: "ok", detail: "gh ready — tumwater mirrors znation/tumwater's open issues" };
+
+  // Exactly the window old is not a stall (the predicate's boundary is exclusive).
+  const boundary = githubRepoFixture();
+  writeIssuesLedger(boundary, now - GITHUB_ISSUES_STALE_MS);
+  assert.deepEqual(await checkGithubIssues(boundary, githubConfig(), envPath(), fakeGh().probe, now), ok);
+
+  // A fresh ledger reads the same detail as no ledger at all — no age, no extra clause.
+  const fresh = githubRepoFixture();
+  writeIssuesLedger(fresh, now - 60 * 60 * 1000);
+  assert.deepEqual(await checkGithubIssues(fresh, githubConfig(), envPath(), fakeGh().probe, now), ok);
+
+  // No ledger file: the pre-stall row, unchanged.
+  const never = githubRepoFixture();
+  assert.equal(fs.existsSync(githubIssuesPath(never)), false);
+  assert.deepEqual(await checkGithubIssues(never, githubConfig(), envPath(), fakeGh().probe, now), ok);
+});
+
+test("a stalled ledger never outranks an unreadable gh", async () => {
+  const now = 1_764_000_000_000;
+  const repo = githubRepoFixture();
+  writeIssuesLedger(repo, now - 4 * DAY_MS);
+  const missing = fakeGh({ version: false });
+  const outcome = await checkGithubIssues(repo, githubConfig(), envPath(), missing.probe, now);
+  assert.equal(outcome?.level, "warn");
+  assert.match(outcome!.detail, /^gh is missing — install GitHub CLI/);
+  assert.deepEqual(missing.calls, [["--version"]]);
+});
+
+test("the github issues row and githubScanStalled agree on one ledger", async () => {
+  const now = 1_764_000_000_000;
+  for (const checkedAt of [now - 4 * DAY_MS, now - GITHUB_ISSUES_STALE_MS, now - 60 * 60 * 1000]) {
+    const repo = githubRepoFixture();
+    writeIssuesLedger(repo, checkedAt);
+    const outcome = await checkGithubIssues(repo, githubConfig(), envPath(), fakeGh().probe, now);
+    assert.equal(outcome?.level === "warn", githubScanStalled(readGithubIssues(repo), now));
+  }
 });
 
 test("checkInit carries the config error verbatim — invalid JSON and validation problems alike", () => {

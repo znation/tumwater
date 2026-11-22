@@ -12,6 +12,7 @@ import { checkLaunchServicesPorts } from "./doctor-launch-services.js";
 import { plural } from "../text/phrases.js";
 import { buildLabel } from "../build/build-info.js";
 import { failOutcome, type CheckOutcome } from "./doctor-outcome.js";
+import { ghRunner } from "../github/gh.js";
 import { errorMessage } from "../text/text.js";
 import type { DoctorCheckName } from "./doctor-check-names.js";
 import {
@@ -235,7 +236,9 @@ function doctorSteps(
     { name: "remote CI", run: () => checkRemoteCi(root, config) },
     // The GitHub issues mirror's read check (plans/github-issues.md, part 1/5): null omits the
     // row when the project has no GitHub remote or githubIssues is disabled, and no gh runs then.
-    { name: "github issues", run: () => checkGithubIssues(root, config, pathEnv) },
+    // The row also reads the mirror's ledger for its stall half, so the runner and clock are
+    // explicit like every other ledger-backed row's.
+    { name: "github issues", run: () => checkGithubIssues(root, config, pathEnv, ghRunner(pathEnv), Date.now()) },
     { name: "qa coverage", run: () => checkQaCoverage(root, Date.now()) },
     // The role-notes read gap (plans/role-notes): every operator surface reads a role's notes
     // file whole while the run prompt truncates it at ROLE_NOTES_MAX_BYTES; this row surfaces the

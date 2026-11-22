@@ -6,6 +6,12 @@ import { spawnSync } from "node:child_process";
 import { loadConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { readEvents } from "../src/events/event-read.js";
+import { DAY_MS } from "../src/text/datetime.js";
+import {
+  GITHUB_ISSUES_STALE_MS,
+  githubScanStalled,
+} from "../src/github/github-issues-state.js";
+import type { GithubIssuesLedger } from "../src/github/github-issues-state.js";
 import {
   BODY_EXCERPT_MAX_CHARS,
   dueForIssueScan,
@@ -255,4 +261,30 @@ test("the poll scans once when due, then waits a full interval", async () => {
   } finally {
     cleanup();
   }
+});
+
+/** A minimal ledger for the stall predicate, which reads only `checkedAt`. */
+function ledgerAt(checkedAt: unknown): GithubIssuesLedger {
+  return {
+    repo: "o/r",
+    branch: "main",
+    checkedAt,
+    gh: "ok",
+    open: [],
+  } as unknown as GithubIssuesLedger;
+}
+
+test("githubScanStalled is true only past the window, and false for no ledger or a foreign checkedAt", () => {
+  const now = 1_764_000_000_000;
+  // The boundary is exclusive: exactly the window old is not stalled, one millisecond past is.
+  assert.equal(githubScanStalled(ledgerAt(now - GITHUB_ISSUES_STALE_MS), now), false);
+  assert.equal(githubScanStalled(ledgerAt(now - GITHUB_ISSUES_STALE_MS + 1), now), false);
+  assert.equal(githubScanStalled(ledgerAt(now - GITHUB_ISSUES_STALE_MS - 1), now), true);
+  assert.equal(githubScanStalled(ledgerAt(now - 4 * DAY_MS), now), true);
+  // Never scanned (or an unreadable file) is not a stall, the way qaCoverageStalled reads an
+  // empty ledger.
+  assert.equal(githubScanStalled(null, now), false);
+  // A hand-edited file's checkedAt reads "not stalled" and never throws.
+  assert.equal(githubScanStalled(ledgerAt("1764000000000"), now), false);
+  assert.equal(githubScanStalled(ledgerAt(undefined), now), false);
 });

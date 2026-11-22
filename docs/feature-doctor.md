@@ -66,7 +66,8 @@ example rather than enumerated — the full list is `tumwater doctor --list-chec
   `check contention` (src/doctor/doctor-contention-checks.ts).
 - **Main and the build** — `main's check`, `check` (`checkBuildCheck`,
   src/doctor/doctor-project-checks.ts), `ci parity`, `remote CI`, `github issues` (src/doctor/doctor-project-checks.ts; `gh` readiness
-  for the GitHub issues mirror), `qa coverage`, `update`.
+  for the GitHub issues mirror, plus a warn when the mirror's last scan is older than the
+  three-day stall window `GITHUB_ISSUES_STALE_MS`), `qa coverage`, `update`.
 - **Backlog health** — `plans stuck in Planned`, `backlog headings`, `refusals`,
   `stalled entries`, `plan dependencies`, `stale questions`, `stale bugs`, `held bugs`,
   `regressed fixes`, `flaky checks`, `uncommitted backlog` (the backlog rows live in

@@ -39,6 +39,7 @@ import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { readCiParity, currentCiParityState, parityIsCurrent, ciParityStalled, CI_PARITY_STALE_MS } from "../observer/ci-parity.js";
 import { githubTarget, readRemoteCi, type RemoteCiEntry, remoteCiStalled, remoteCiTarget } from "../observer/remote-ci.js";
 import { ghReadiness, ghRunner, ghUnreadableSentence, type GhRunner } from "../github/gh.js";
+import { GITHUB_ISSUES_STALE_MS, githubScanStalled, readGithubIssues } from "../github/github-issues-state.js";
 import { newestExercise, readQaCoverage, qaCoverageStalled, QA_COVERAGE_STALE_MS } from "../observer/qa-coverage.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
@@ -534,22 +535,37 @@ export async function checkRemoteCi(
 }
 
 /** The doctor's `github issues` row (plans/github-issues.md, part 1/5): can the operator's `gh`
- * read the project's GitHub repo, the read the issues mirror makes on its clock? Omitted (null)
+ * read the project's GitHub repo, and has the issues mirror's scan kept running? Omitted (null)
  * when the project pushes to no GitHub repo (githubTarget is null) or `githubIssues.enabled` is
  * false — the way the remote CI row omits itself — and no gh call is made then. A missing or
  * logged-out gh is a warn naming the fix, or turning the mirror off; otherwise ok naming the
- * repo. Reads only the local gh install and its login (ghReadiness): no GitHub API call. */
+ * repo. The `gh` half keeps precedence: both unreadable-`gh` warns come before any read of the
+ * ledger. The stall half then reads the mirror's ledger (src/github/github-issues-state.ts) through
+ * `githubScanStalled` — the one home of that decision — and warns when the last scan is older than
+ * `GITHUB_ISSUES_STALE_MS` (the scan rewrites `checkedAt` on every attempt even when `gh` fails, so
+ * an old stamp means the scan itself stopped). Not stalled — including no ledger at all — keeps the
+ * ok detail byte-identical to the readiness-only row. Read-only against .tumwater/ and the local gh
+ * install and its login (ghReadiness): no GitHub API call. */
 export async function checkGithubIssues(
   root: string,
   config: TumwaterConfig | undefined,
   pathEnv: string = envPath(),
   run: GhRunner = ghRunner(pathEnv),
+  now: number = Date.now(),
 ): Promise<CheckOutcome | null> {
   if (!config || config.githubIssues?.enabled === false) return null;
   const target = await githubTarget(root, config);
   if (target === null) return null;
   const readiness = await ghReadiness(run);
   if (readiness !== "ok") return warnOutcome(ghUnreadableSentence(readiness, target.repo));
+  const ledger = readGithubIssues(root);
+  // The null guard is this row's own, not the predicate's (a null ledger reads as not stalled);
+  // it lets the warn read `checkedAt` without an assertion.
+  if (ledger !== null && githubScanStalled(ledger, now)) {
+    return warnOutcome(
+      `gh ready — but the last scan checked ${target.repo} ${humanAgo(ledger.checkedAt, now)}, over ${GITHUB_ISSUES_STALE_MS / DAY_MS} days ago, so tumwater is not mirroring its open issues`,
+    );
+  }
   return okOutcome(`gh ready — tumwater mirrors ${target.repo}'s open issues`);
 }
 
