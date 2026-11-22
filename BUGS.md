@@ -6,7 +6,21 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-_None yet._
+### The mirror's own remedy sentence names a `config set` form the config key parser refuses (found by the qa role 2026-11-22)
+
+**Symptom.** When `gh` cannot read the repo, `tumwater status` raises the amber banner whose sentence ends `… or set githubIssues.enabled to false`, and the `github issues` doctor warn row says the same. Typing exactly that sentence's command fails: `tumwater config set githubIssues.enabled false` exits 1 with `unknown config key "githubIssues.enabled" — dotted keys name one entry of a per-role map or one field of a role entry (e.g. `maxDailyCostUsdPerRole.feature 1.5`, `roles.qa.model x`, `review.model x`); a bare key names a whole top-level value`. The alert tells the operator to do a thing the CLI refuses to do, and its own hint does not name the working form. `githubIssues.close` and `githubIssues.scanIntervalMinutes` are refused the same way, and `tumwater config unset githubIssues.enabled` too — while docs/config.md's `githubIssues` row documents `enabled`, `close` and `scanIntervalMinutes` as sub-keys of one section and says `enabled` "turns it and its `github issues` doctor row off", and `tumwater completion --config-keys` lists only the bare `githubIssues`.
+
+**Reproduce.** Deterministic and offline, no real `gh` call needed. In a scratch repo (`mktemp -d`, `git init`, `node <dist>/src/cli.js init "x"`, `git remote add origin https://github.com/o/r.git`), hand-write `.tumwater/state/github-issues.json` with `{"repo":"o/r","branch":"main","checkedAt":<now ms>,"gh":"missing","reason":"gh not installed","open":[],"closed":{},"closedRows":[]}`. `tumwater status` then prints:
+
+```
+! Can't read GitHub issues for o/r — gh is missing — install GitHub CLI (https://cli.github.com) so tumwater can read o/r's issues, or set githubIssues.enabled to false
+```
+
+and `tumwater config set githubIssues.enabled false` exits 1 with the `unknown config key` error above (observed 2026-11-22 on main's tip, dist built from 30fde732). The documented whole-value form does work — `tumwater config set githubIssues '{"enabled":false}'` prints `set githubIssues to {"enabled":false}`, `tumwater config get githubIssues` then shows the parts merged (`{"enabled":false,"close":true,…}`), and the banner is gone from `tumwater status` — but it names the whole section, not the sub-key the sentence names, and a first-time operator reading "set githubIssues.enabled to false" types the refused form.
+
+**Cause.** `src/config/config-keys.ts` admits dotted sub-key access only for the heads in `DOTTED_SECTION_FIELDS` (`review`, `check`, `idleBackoff`, `bootstrap`) plus `DOTTED_MAP_KEYS` (`maxDailyCostUsdPerRole`, `quietHoursPerRole`) and the `roles.`/`model.`/`backends` heads; `githubIssues` is in none of them, so `parseConfigKey` falls through to the generic dotted-shape error and `DOTTED_KEY_HEADS` cannot even offer a did-you-mean. Meanwhile the sentence comes from one predicate, `ghUnreadableSentence` (src/github/gh.ts:38-39), reused by the doctor `github issues` row and the status/dashboard banners — so the un-actionable remedy lands wherever `gh` cannot read the repo. Fix direction: add `githubIssues` to `DOTTED_SECTION_FIELDS` with its field list (the natural companion of the existing four), or reword the sentence to the `config set githubIssues '{"enabled":false}'` form that works; the former keeps the sentence the docs and tests already promise.
+
+**Notes for the fixer.** `githubIssues.enabled: false` is already understood on the read side everywhere else (docs/invariants.md:5642, test/doctor-checks.test.ts:421, test/status-data.test.ts:502), so only the write path is missing it. The same sentence is reused in three places from one predicate — `src/github/gh.ts:38-39` (`ghUnreadableSentence`), called by the doctor row (src/doctor/doctor-project-checks.ts:560) and the status/dashboard banner (src/ui/team-alert-status.ts:260) — and the offline repro with `PATH` stripped of `gh` makes the doctor row itself print it: `warn  github issues gh is missing — install GitHub CLI (https://cli.github.com) so tumwater can read o/r's issues, or set githubIssues.enabled to false`.
 
 ## Fixed
 
