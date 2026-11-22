@@ -408,7 +408,7 @@ export function configClearedNoopFlash(subject: string): string {
  * bytes, shared by the CLI (cli/cli-config-commands.ts's `config set`,
  * cli/cli-role-command.ts's per-role write), and the dashboard (gui/gui-config-commands.ts's
  * min-run-interval and instances role writes); `value` renders through string interpolation,
- * so a number and the text spelling of it read identically. The three `…unchanged, so
+ * so a number and the text spelling of it read identically. The two `…unchanged, so
  * tumwater.json was not written` sites (no value token) are a different sentence and stay
  * with their callers. `<subject>` is what was named to the operator; the tests pin the
  * sentence byte-for-byte. */

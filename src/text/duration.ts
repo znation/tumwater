@@ -68,7 +68,7 @@ export function durationLabel(ms: number): string {
 }
 
 /** The human phrase for a two-ended time window — `between 2h and 1h ago` — the shape
- * `--since/--until` windows share with `history`'s header and bounded empties.
+ * `--since/--until` windows share with `history`'s and `logs`' bounded empties.
  * Unbounded windows keep their own "last …"/"in …" phrasing; only the two-ended form is
  * folded here so the sites cannot drift. The two bounds are labeled in caller order (older
  * before newer at every current site), and each is run through durationLabel, so a phrase
