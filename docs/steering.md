@@ -67,6 +67,13 @@ on GitHub's copy of the base branch and every entry mirroring it sits in a `## D
 `## Verified` section, and closes nothing whose mirroring entries were all retired. `tumwater
 issues -f` watches that happen; `tumwater guide` carries the same rules for your agent.
 
+An issue can also leave GitHub on its own — closed upstream, deleted, or converted to a PR. The next
+complete scan notices it is gone and keeps a record of it in the mirror's ledger, so a lost issue
+leaves a trace instead of vanishing: `tumwater issues` lists those rows last, under a `closed
+upstream` count in the header, and ages them by when the mirror last saw them open rather than by a
+close date tumwater cannot have. Such a row is never mirrored and never counted as unmirrored, so it
+holds nothing up — it is the mirror's own record, not a request.
+
 ## Getting your own edit onto main
 
 Edits to one entry at a time go through the write commands — `tumwater plan`, `tumwater bug`,
