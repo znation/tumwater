@@ -54,7 +54,13 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { extname, join } from "node:path";
-import { readRegularTextOrEmpty, readTextOrNull, statOrNull, walkFiles } from "../files/files.js";
+import {
+  readDirTextOrEmpty,
+  readRegularTextOrEmpty,
+  readTextOrNull,
+  statOrNull,
+  walkFiles,
+} from "../files/files.js";
 import {
   fenceTracker,
   finishedArchiveOf,
@@ -120,8 +126,8 @@ const BUGS_ARCHIVE = finishedArchiveOf("BUGS.md").archive;
  * BUGS.md's own section (normally empty), then BUGS-FIXED.md's. `bugsMd` is BUGS.md's text when
  * the caller has already read it. Doctor's newest-Fixed checks read through this. */
 export function fixedEntriesAt(root: string, bugsMd?: string): BacklogEntry[] {
-  const live = bugsMd ?? readTextOrNull(join(root, "BUGS.md")) ?? "";
-  return [...fixedEntries(live), ...fixedEntries(readTextOrNull(join(root, BUGS_ARCHIVE)) ?? "")];
+  const live = bugsMd ?? readDirTextOrEmpty(root, "BUGS.md");
+  return [...fixedEntries(live), ...fixedEntries(readDirTextOrEmpty(root, BUGS_ARCHIVE))];
 }
 
 /** The `## Fixed` section split the way the false-fix check reads it: each `### ` entry with
