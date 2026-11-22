@@ -1,8 +1,8 @@
 /** The Codex run's reserved flags and config keys plus the effort mapping — the pure,
  * build-agnostic half of the codex invocation (plans/codex-backend.md "Config and routing" §2
- * and "The invocation" §3). Part 4/9 owns these constants so config validation and the traits
- * layer can screen a `backends.codex.args` passthrough before the adapter registered; part 5/9
- * adds the `codexArgs` argv builder beside them, and 6/9 the stream translator. Pure — imports
+ * and "The invocation" §3). Parts 4/9 and 5/9 landed these constants and the `codexArgs` argv
+ * builder beside them, so config validation and the traits layer can screen a
+ * `backends.codex.args` passthrough without the adapter registered. Pure — imports
  * no runtime registry, config or subprocess — so config-validation.ts can import it without
  * dragging the adapter in.
  *

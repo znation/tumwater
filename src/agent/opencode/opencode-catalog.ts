@@ -28,9 +28,9 @@ const CATALOG_FETCH_TIMEOUT_MS = 30_000;
 const CATALOG_CACHE_TTL_MS = DAY_MS;
 
 /** One model the config routes through OpenCode: whether it is free (input and output cost both
- * 0 in the catalog) plus the fields later parts read (per-M prices for doctor, the context
- * window, image input and the effort levels for part 6d/7). `billedAt`, set by part 6c/7 when a
- * run reports a nonzero cost on a catalog-free model, demotes a free model to priced and is the
+ * 0 in the catalog) plus the fields its surfaces read (per-M prices for the doctor's OpenCode
+ * rows, the context window, image input and the effort levels). `billedAt`, set when a run
+ * reports a nonzero cost on a catalog-free model, demotes a free model to priced and is the
  * only field that must survive a cache refresh. */
 interface OpencodeCatalogModel {
   /** Input and output cost are both 0 in the catalog. */

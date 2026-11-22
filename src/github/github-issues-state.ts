@@ -1,7 +1,8 @@
 /** The GitHub issues ledger (plans/github-issues.md, State): the one file the hourly scan writes
  * and the GUI and `tumwater status` read. The scan owns repo, branch, checkedAt, gh, reason and
- * open. The queue, decline, fix and close records that later parts add stay in the file, so a
- * rewrite by the scan never drops them. */
+ * open. The `queued`, `declined`, `fixedIn`, `closed`, `waitingPush` and `retiredOnly` records the
+ * queue, outcome and close steps write stay in the file, so a rewrite by the scan never drops
+ * them. */
 
 import { ensureParentDir } from "../files/files.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
@@ -72,7 +73,8 @@ export interface GithubIssuesSummary {
   unmirrored: number;
   /** Open issues from outside the maintainers that no backlog entry mirrors. */
   untrusted: number;
-  /** Trusted issues queued for a mirror push. Stays 0 until part 5 writes it. */
+  /** Always 0 in this fold: the push-waiting count the surfaces show comes from the snapshot's
+   * `githubClose` field (githubCloseForStatus below), not from the summary. */
   waitingPush: number;
   /** The label that lets an outside issue in, named by the alerts. */
   mirrorLabel: string;
