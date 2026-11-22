@@ -490,6 +490,32 @@ test("a handed-back run is promised another pair when its tier borrows another t
   assert.match(String(handedBack[0]?.message), / — the run resumes on a pair that answers$/);
 });
 
+test("a handed-back run is not promised another pair when the only answering fallback is a chain its tier never borrows", async () => {
+  const root = makeRepo();
+  const config = teamConfig();
+  // Only small declares a fallback, and strong never borrows it
+  // (BORROW_ORDER.strong = strong → default).
+  config.fallback = { small: "omlx/qwen" };
+  const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: [] };
+  let now = 7_000_000;
+  const { prober, answer } = manualProber();
+  const gate = new ModelCheckGate(root, prober, new AbortController().signal, POLICY, () => now);
+  const hung = runner("plan", config, "hf/deepseek"); // plan sits at the strong tier
+  const poll = () => gate.poll({ runners: [hung], liveConfig: config, roleConfig: config, info });
+  poll();
+  for (const pair of ["hf/deepseek", "omlx/qwen"]) answer(pair, { ok: true });
+  await gate.settled();
+  now += POLICY.suspectMinMs;
+  poll();
+  answer("hf/deepseek", { ok: false, reason: "no reply", reply: "", detail: "no answer within 300s" });
+  await gate.settled();
+  poll();
+  assert.deepEqual(hung.handBacks, ["model-check"]);
+  const handedBack = warningEvents(readEvents(root)).filter((e) => String(e.message).startsWith("run handed back"));
+  assert.equal(handedBack.length, 1);
+  assert.match(String(handedBack[0]?.message), / — the run resumes on this pair once it answers again$/);
+});
+
 test("endedBeforeAnyReply: a failure with no reply counts; a reply, a 429, a refused request, a cap or an abort does not", () => {
   const failed = { ok: false, producedAssistantContent: false, contextExceeded: false, transientRateLimit: false };
   assert.equal(endedBeforeAnyReply(result({ ...failed, errorMessage: "connect ECONNREFUSED" })), true);
