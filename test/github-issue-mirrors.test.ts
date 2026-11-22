@@ -112,3 +112,62 @@ test("mirrorsAtTip reads the backlog once per branch tip: a repeat call at the s
     restore();
   }
 });
+
+test("mirrorsAtTip hands the caller its own Map, so mutating a poll's result cannot poison the next poll at the same tip", async () => {
+  // The cache comment promises a shallow Map copy over the same entry arrays: the caller may
+  // add and delete keys freely (the orchestrator's queue step filters the map it is handed),
+  // and the cached answer the next poll reads is untouched.
+  const repo = makeRepo(tmpdir("mirrors-copy-"));
+  seedCommit(repo, "BUGS.md", "## Open\n\n### Crash (mirrors GitHub issue #5)\n\nbody\n", "seed");
+  const logFile = path.join(tmpdir("mirrors-copy-log-"), "git.log");
+  const restore = loggingGit(logFile);
+  try {
+    const first = await mirrorsAtTip(repo, "main");
+    const reads = showCount(logFile);
+    assert.ok(reads > 0, "the first read goes to git");
+
+    first.delete(5);
+    first.set(99, [{ file: "BUGS.md", section: "Open", heading: "Injected (mirrors GitHub issue #99)", retired: false }]);
+    assert.equal(first.get(5), undefined, "the caller's own map reflects its deletion");
+
+    const again = await mirrorsAtTip(repo, "main");
+    assert.equal(showCount(logFile), reads, "the mutated poll is still a cache hit at the same tip");
+    assert.deepEqual(
+      again.get(5),
+      [{ file: "BUGS.md", section: "Open", heading: "Crash (mirrors GitHub issue #5)", retired: false }],
+      "the cached states survive the previous caller's deletion",
+    );
+    assert.equal(again.has(99), false, "the caller's injected key is not in the next poll");
+  } finally {
+    restore();
+  }
+});
+
+test("mirrorsAtTip runs uncached when the branch cannot be resolved: every poll re-reads the backlog and mirrors nothing", async () => {
+  // The tip is resolved before the cache is consulted, so a branch git cannot name never puts an
+  // answer under a key: a missing branch reads empty files every time rather than a cached answer
+  // (and never poisons the real branch's entry, which is keyed by its own name).
+  const repo = makeRepo(tmpdir("mirrors-notip-"));
+  seedCommit(repo, "BUGS.md", "## Open\n\n### Crash (mirrors GitHub issue #5)\n\nbody\n", "seed");
+  const logFile = path.join(tmpdir("mirrors-notip-log-"), "git.log");
+  const restore = loggingGit(logFile);
+  try {
+    const first = await mirrorsAtTip(repo, "no-such-branch");
+    assert.equal(first.size, 0, "a branch git cannot name mirrors nothing");
+    const readsAfterFirst = showCount(logFile);
+    assert.ok(readsAfterFirst > 0, "the unresolvable tip still pays for the backlog reads");
+
+    const again = await mirrorsAtTip(repo, "no-such-branch");
+    assert.equal(again.size, 0, "the second poll also mirrors nothing");
+    assert.ok(
+      showCount(logFile) > readsAfterFirst,
+      "an unresolvable tip is not cached, so a repeat poll re-reads the backlog",
+    );
+
+    // The real branch is unaffected by the unkeyed failed reads.
+    const real = await mirrorsAtTip(repo, "main");
+    assert.equal(real.get(5)?.[0]?.heading, "Crash (mirrors GitHub issue #5)");
+  } finally {
+    restore();
+  }
+});
