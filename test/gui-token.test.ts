@@ -30,15 +30,37 @@ test("the token gate returns 401 JSON for missing, wrong, and empty credentials"
     for (const route of ["/", "/api/status", "/api/prompt"]) {
       const missing = await fetch(base + route);
       assert.equal(missing.status, 401, `${route}: no credential`);
-      assert.deepEqual(await missing.json(), { error: "token required" });
+      const missingBody = (await missing.json()) as { error: string };
+      assert.match(
+        missingBody.error,
+        /^token required/,
+        `${route}: a request with no credential must be told a token is required`,
+      );
 
       const wrong = await fetch(base + route, { headers: { authorization: "Bearer nope" } });
       assert.equal(wrong.status, 401, `${route}: wrong credential`);
-      assert.deepEqual(await wrong.json(), { error: "token required" });
+      const wrongBody = (await wrong.json()) as { error: string };
+      // A caller that DID send a credential must not be told to supply one: it is told the
+      // one it sent does not match, and where to get a current one.
+      assert.match(
+        wrongBody.error,
+        /does not match/,
+        `${route}: a wrong credential must be named a mismatch, not a missing token`,
+      );
+      assert.notEqual(
+        wrongBody.error,
+        missingBody.error,
+        `${route}: the wrong-token and no-token bodies must differ`,
+      );
 
       const empty = await fetch(base + route, { headers: { authorization: "Bearer " } });
       assert.equal(empty.status, 401, `${route}: empty credential`);
-      assert.deepEqual(await empty.json(), { error: "token required" });
+      // An empty credential is no credential: it takes the missing arm, not the mismatch arm.
+      assert.match(
+        (await empty.json() as { error: string }).error,
+        /^token required/,
+        `${route}: an empty credential is treated as no credential`,
+      );
     }
   } finally {
     server.close();

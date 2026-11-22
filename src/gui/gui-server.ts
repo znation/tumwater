@@ -232,13 +232,21 @@ function refuseGuiRequest(
   // /api endpoints require it as `Authorization: Bearer <token>` or `?token=`; anything
   // else — including `GET /` — gets the same JSON 401 every handler uses, deliberately
   // no HTML login form: the CLI prints the token-bearing URL, and a bare 401 body is the
-  // honest signal that the URL needs `?token=`.
+  // honest signal that the URL needs `?token=`. The body splits on whether a credential
+  // arrived at all: an operator reopening a stale printed URL HAS a token, so telling
+  // them a token is required sends them to the CLI instead of to the mismatch. Neither
+  // arm says anything about the token itself — the caller already knows whether it sent
+  // one, and no length or prefix is revealed either way.
   if (token) {
     const auth = req.headers.authorization ?? "";
     const bearer = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
     const provided = bearer || target?.searchParams.get("token") || "";
     if (!tokenMatches(token, provided)) {
-      sendJson(res, 401, { error: "token required" });
+      sendJson(res, 401, {
+        error: provided
+          ? "the token this dashboard was given does not match this server's — open the URL `tumwater gui` prints"
+          : "token required — open the URL `tumwater gui` prints, which carries ?token=, or send Authorization: Bearer <token>",
+      });
       return true;
     }
   }

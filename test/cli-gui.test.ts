@@ -247,7 +247,8 @@ test("gui --token serves behind the gate and prints the token-bearing URL", asyn
     // The gate is live from the first response: without the token, even the page is 401.
     const bare = await fetch(`http://127.0.0.1:${port}/`);
     assert.equal(bare.status, 401);
-    assert.deepEqual(await bare.json(), { error: "token required" });
+    // No credential at all: the missing-token arm, which names the fix the banner already gave.
+    assert.match((await bare.json() as { error: string }).error, /^token required/);
   } finally {
     gui.kill();
   }
