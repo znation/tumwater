@@ -350,6 +350,11 @@ function computeBacklogHolds(root: string): BacklogHolds {
   };
 }
 
+/** This root's entry holds — the planned plans and open bugs, each with the hold decision (why an
+ * entry is not eligible) its readers act on: backlogMarks below, the `--show`/`--release` CLI
+ * reads and the plan series slots. Cached per root on the backlog files' stats (holdsStatKey), so
+ * a poll of unchanged files re-reads nothing; each caller gets a clone, so a surface cannot
+ * mutate the cached verdict. */
 export function backlogHolds(root: string): BacklogHolds {
   const key = holdsStatKey(root);
   const hit = holdsCache.get(key);

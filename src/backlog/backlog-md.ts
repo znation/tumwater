@@ -271,6 +271,10 @@ export function validationGapTag(body: string): string | null {
   return null;
 }
 
+/** Every `### ` entry under `sectionTitle`, with its full body text — the read behind the entry
+ * listings and the stage and verdict checks that compare one entry across two revisions. A heading
+ * inside a fenced block is quoted content, not a boundary, and prose before the first heading is
+ * never a body. */
 export function parseEntryDetails(md: string, sectionTitle: string): BacklogEntry[] {
   const entries: BacklogEntry[] = [];
   let title: string | null = null; // The open entry's heading (null = no entry open yet).

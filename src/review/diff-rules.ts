@@ -32,6 +32,13 @@ import { secretLeakReason } from "./secret-leaks.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 
+/** The reasons a change's diff fails the review's diff rules, first finding first, [] when it
+ * passes them. Both scopes reject a brief-block edit, a protected edit and a leaked credential; the
+ * watch scope adds a conflict marker and a broken backlog structure, and runs the false-fix rule
+ * only for an exempt diff (`exempt` says the diff touches only config.review.exemptPaths). A
+ * protected edit needs a known role, so a watch pass that cannot name the tip's merging role
+ * (role "") skips that one rule. Shared by the review gate and the main watch, which is why it
+ * lives apart from review-precheck.ts. */
 export async function diffRuleReasons(
   wt: string,
   baseRev: string,

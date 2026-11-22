@@ -31,10 +31,10 @@ interface PluginContext {
   permission: { hook(name: "evaluate", callback: (event: EvaluateEvent) => void): unknown };
 }
 
-/** Deny an `edit` or `write` decision whose resources include a stray path from a run in
- * `runDir`, naming the first such path's refusal. Every other decision is left as it is. Exported
- * for tests. */
+/** The OpenCode permission actions that write a file to disk — the ones the guard inspects. */
 const FILE_WRITE_ACTIONS = new Set(["edit", "write"]);
+/** Deny an `edit` or `write` decision whose resources include a path outside `runDir`, naming the
+ * first such path's refusal on the event; every other decision is left untouched. */
 export function guardEvaluate(event: EvaluateEvent, runDir: string): void {
   if (!FILE_WRITE_ACTIONS.has(event.action as string) || !Array.isArray(event.resources)) return;
   for (const resource of event.resources) {

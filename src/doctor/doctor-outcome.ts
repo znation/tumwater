@@ -26,10 +26,14 @@ export function noConfigOutcome(): CheckOutcome {
   return okOutcome("no readable tumwater.json — nothing to verify");
 }
 
+/** A warn outcome — the finding the operator should read and act on, without failing a scripted
+ * pre-flight (only failOutcome sets the exit code). */
 export function warnOutcome(detail: string): CheckOutcome {
   return { level: "warn", detail };
 }
 
+/** A fail outcome — the only level that fails `tumwater doctor`'s exit code
+ * (cli-doctor-command.ts sets 1 when any check reports it). */
 export function failOutcome(detail: string): CheckOutcome {
   return { level: "fail", detail };
 }

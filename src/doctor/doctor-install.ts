@@ -1,6 +1,5 @@
-/** The doctor's `root install` row: whether the root checkout's node_modules still matches
- * package-lock.json's direct pins. A failed post-merge re-sync (syncRootInstall) leaves the root
- * behind, and every check then installs into its own tree until a later merge retries. */
+/** The doctor's `root install` row, in its own module so the check that reads the install drift
+ * stays apart from the environment and repo-file checks in doctor-checks.ts. */
 import fs from "node:fs";
 import path from "node:path";
 import { installDrift } from "../build/dep-install.js";
@@ -13,6 +12,11 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./doctor-outcome.js";
 /** How far back a failed `dep_install` event may sit and still explain the drift. */
 const DEP_INSTALL_CHECK_WINDOW_MS = DAY_MS;
 
+/** Whether the root checkout's node_modules still matches package-lock.json's direct pins. A failed
+ * post-merge re-sync (syncRootInstall) leaves the root behind, and every check then installs into
+ * its own tree until a later merge retries, so the warn names the last failed `dep_install` event
+ * inside DEP_INSTALL_CHECK_WINDOW_MS when one explains the drift. ok when nothing is pinned or
+ * nothing drifts; warn otherwise — never a fail. */
 export function checkRootInstall(root: string, now = Date.now()): CheckOutcome {
   if (!fs.existsSync(path.join(root, "package-lock.json")))
     return okOutcome("no package-lock.json — nothing pinned");

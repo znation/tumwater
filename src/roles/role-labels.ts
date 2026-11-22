@@ -8,6 +8,9 @@ import { baseRoleOf, instanceIndex } from "./runner-ids.js";
  * renders as "CI"; every other id — a bare role, a custom role, an instance — renders as its id. */
 export const ROLE_LABELS: Readonly<Record<string, string>> = { ci: "CI" };
 
+/** How a role id shows in words: the ROLE_LABELS entry for its base role (ci → "CI"), with the
+ * instance suffix restored (`feature #2`), and any other id — bare, custom or instance — shown as
+ * its own base. Pure, so core modules and the UI share one answer. */
 export function roleLabel(runnerId: string): string {
   const base = baseRoleOf(runnerId);
   const label = Object.prototype.hasOwnProperty.call(ROLE_LABELS, base) ? ROLE_LABELS[base]! : base;

@@ -94,6 +94,9 @@ export function piModelImageInput(
   return Array.isArray(def.input) ? def.input.includes("image") : false;
 }
 
+/** The provider catalog from pi's models file — provider name to its model definitions — read once
+ * per path and served from a stat-keyed cache with a copied result, so callers may treat it as
+ * their own. null when the file is missing, torn, or has no usable providers object. */
 export function readPiProviders(modelsPath: string): Map<string, PiModelDef[]> | null {
   return cachedByStat(
     providersCache,

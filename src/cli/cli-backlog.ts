@@ -38,6 +38,9 @@ import { shortSha } from "../text/format.js";
 export function bugTitleOf(positionals: string[]): string {
   return collapseWhitespace(positionals.join(" "));
 }
+/** A `plan` command's title from its positionals: the first one, whitespace-collapsed — exactly the
+ * derivation filePlan applies when the CLI case hands it positionals[0], so fileAndAnnounce's
+ * preflight judges the text the write will carry. */
 export function planTitleOf(positionals: string[]): string {
   return collapseWhitespace(positionals[0] ?? "");
 }

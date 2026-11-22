@@ -514,6 +514,10 @@ function addBackendNotional(usage: MergeUsage, agent: string | undefined, amount
   usage.notionalByBackend[backend] = (usage.notionalByBackend[backend] ?? 0) + amount;
 }
 
+/** The merge's usage accumulator plus the fold one of its runs adds to it: `usage` starts empty,
+ * `foldUsage` folds a finished review/resolver run's tokens, cost, per-provider cost and
+ * subscription notional into it (and pushes that run's billing/window readings to the account file
+ * immediately), so the merge event reports the whole merge's spend, not one run's. */
 export function mergeUsage(author: RoleRunner, root: string): {
   usage: MergeUsage;
   foldUsage: (run: PiRunResult) => void;

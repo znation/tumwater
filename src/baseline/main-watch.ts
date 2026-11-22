@@ -57,6 +57,10 @@ interface MainWatch {
   idle(): Promise<void>;
 }
 
+/** One main watch for a root: the poll entry point the orchestrator calls each cycle, over the
+ * shared state newMainWatchState builds (main-watch-state.ts) and the three concern modules the
+ * passes live in. `onCulprit` receives each fresh red's bisected opener; `now` is the clock the
+ * full check's due decision reads. */
 export function createMainWatch(
   root: string,
   mainBranch: string,

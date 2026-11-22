@@ -104,6 +104,8 @@ const BACKEND_FAILURE_KINDS: readonly BackendFailureKind[] = [
   "stream-severed",
 ];
 
+/** Whether `value` is one of the BackendFailureKind names — the guard for a kind read back from
+ * JSON or an event field, where an unrecognized string must not enter the ladder. */
 export function isBackendFailureKind(value: unknown): value is BackendFailureKind {
   return typeof value === "string" && (BACKEND_FAILURE_KINDS as readonly string[]).includes(value);
 }

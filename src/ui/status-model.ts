@@ -55,6 +55,20 @@ export function idleClaimText(s: { claim?: RunnerState["claim"]; role: string },
   return s.claim ? s.claim.title : null;
 }
 
+/** One role's failure-streak tell: an error streak at the warning threshold, or a quiet-kill
+ * streak at the give-up threshold (run-apply.ts's ERROR_STREAK_WARN and QUIET_KILL_RESUME_LIMIT) —
+ * the exact condition heldPhase renders as "failing". Split out so the team alert
+ * (team-alert-status.ts) and both dashboards key their red "failing run after run" banner on the
+ * streak itself rather than on the rendered phase: an in-flight run hides the streak behind a
+ * `working`/`merge` label, but the alert must stay up while the role's next run is in flight and
+ * clear only when the streak resets (BUGS.md 2026-10-14). */
+export function onErrorStreak(s: Pick<RunnerState, "consecutiveErrors" | "lastResult" | "quietKillStreak">): boolean {
+  return (
+    errorStreakAtWarn(s) ||
+    (s.lastResult === "quiet_killed" && (s.quietKillStreak ?? 0) >= QUIET_KILL_RESUME_LIMIT)
+  );
+}
+
 /** The role's state label — the one precedence ladder shared by the status table and both
  * dashboards (renderStatus, statusPayload). First match wins: a stopped harness; an in-flight
  * merge (the role's run already ended "queued" while its change merges, so the marker
@@ -86,20 +100,6 @@ export function idleClaimText(s: { claim?: RunnerState["claim"]; role: string },
  * newest run is typically a finished one (the author's, a previous review) whose turns are
  * stale and whose silence would read as a false stall; a record with no stage (an older
  * writer mid-upgrade) keeps the bare elapsed label. */
-export function onErrorStreak(s: Pick<RunnerState, "consecutiveErrors" | "lastResult" | "quietKillStreak">): boolean {
-  // An error streak at or past the warning threshold (run-apply.ts's ERROR_STREAK_WARN), or
-  // a quiet-kill streak at the give-up threshold (BUGS.md 2026-09-18): the exact condition
-  // that makes rolePhase read "failing", split out so the team alert (team-alert-status.ts) can
-  // key its red "failing run after run" banner on the streak rather than on the rendered
-  // phase — an in-flight run hides the streak behind a `working`/`merge` label (rolePhase
-  // ranks running work above failing), but the alert must stay up while the role's next
-  // run is in flight and clear only when the streak resets (BUGS.md 2026-10-14).
-  return (
-    errorStreakAtWarn(s) ||
-    (s.lastResult === "quiet_killed" && (s.quietKillStreak ?? 0) >= QUIET_KILL_RESUME_LIMIT)
-  );
-}
-
 export function rolePhase(
   s: RunnerState,
   orchestratorRunning: boolean,

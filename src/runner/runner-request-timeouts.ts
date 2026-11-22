@@ -5,6 +5,9 @@
  * passes its own per-turn cap constants. */
 import type { TumwaterConfig } from "../config/config-schema.js";
 
+/** The config's timeouts as a follow-up turn must run them: the configured run budget clamped to
+ * `runCapS`, and the quiet timeout clamped to `quietCapS` — forced to that cap when the config
+ * leaves it unset (0). Returns just the two fields, so the caller spreads them over its config. */
 export function cappedRequestTimeouts(
   cfg: TumwaterConfig,
   runCapS: number,

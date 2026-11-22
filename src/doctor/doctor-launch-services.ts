@@ -1,12 +1,7 @@
-/** Doctor's `mach ports` line: a warning at or past launchservicesd's port threshold, a warning
- * when the count cannot be read on macOS, ok otherwise. Never a failure — the team runs fine on
- * a leaking Mac; it is the Mac that does not. Split from process/launch-services.ts (2026-10-07,
- * organize) so the doctor's environment checks live together (doctor-orphans.ts reads the process
- * table the same way) and the process layer no longer imports the doctor's report contract. The
- * launchservicesd facts this reads — the thresholds and the warning text — stay in
- * src/process/launch-services.ts, shared with the running team's watch. `platform` is a
- * parameter so the macOS branches are testable on any host. */
-
+/** Doctor's checks for the macOS launchservicesd leak, in their own module so the doctor's
+ * environment checks live together (doctor-orphans.ts reads the process table the same way) and the
+ * process layer never imports the doctor's report contract (split from
+ * src/process/launch-services.ts, 2026-10-07 organize). */
 import { type CheckOutcome, okOutcome, warnOutcome } from "./doctor-outcome.js";
 import { type ProcessProbe, systemProcessProbe } from "../process/process-table.js";
 import {
@@ -16,6 +11,12 @@ import {
 } from "../process/launch-services.js";
 import { compactTokens } from "../text/format.js";
 
+/** Doctor's `mach ports` row: a warning at or past launchservicesd's port threshold, a warning when
+ * the count cannot be read on macOS, ok otherwise — never a failure, since the team runs fine on a
+ * leaking Mac; it is the Mac that does not. ok on any non-macOS host. The launchservicesd facts
+ * this reads — the thresholds and the warning text — stay in src/process/launch-services.ts, shared
+ * with the running team's watch. `probe` and `platform` are parameters so the macOS branches are
+ * testable on any host. */
 export async function checkLaunchServicesPorts(
   probe: ProcessProbe = systemProcessProbe,
   platform: NodeJS.Platform = process.platform,

@@ -76,6 +76,8 @@ function andJoin(names: readonly string[]): string {
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
 }
 
+/** The held/alerted roles as one sentence — each one's display label (roleLabel), joined by
+ * andJoin — so the role-row and held-id banners phrase the same list the same way. */
 export function listRoles(roles: readonly AlertRole[]): string {
   return andJoin(roles.map((l) => roleLabel(l.role)));
 }

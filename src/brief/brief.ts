@@ -175,6 +175,12 @@ export function briefBlockOverCap(root: string): boolean {
 const BRIEF_STATUS_CACHE_MAX = 8;
 const briefStatusCache = new Map<string, { missing: boolean; overCap: boolean }>();
 
+/** The brief's two degraded flags in one read: `missing` (a candidate exists but no usable prompt
+ * block resolves — see briefBlockMissing) and `overCap` (the resolved block exceeds
+ * BRIEF_TEXT_MAX_CHARS — see briefBlockOverCap). A repo with no candidate at all reports neither.
+ * Cached per root on the candidates' stat identity, so a steady-state poll costs one stat per
+ * candidate and no re-read; the all-missing verdict is returned fresh, since there is no file to
+ * key it on. status-data.ts takes both flags from this single scan. */
 export function briefStatus(root: string): { missing: boolean; overCap: boolean } {
   const candidates = briefCandidates(root);
   // Stat each candidate once: these same stats serve both the all-missing check and the key,

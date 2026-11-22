@@ -78,6 +78,9 @@ export function opencodeQualifiedModel(model: string): string {
   return model.includes("/") ? model : `opencode/${model}`;
 }
 
+/** The argv and stdin for one `opencode run`: the harness's own flags first (model qualified by
+ * opencodeQualifiedModel, plus the variant), then the caller's passthrough args stripped of any
+ * harness flag they would override. The prompt travels on stdin, never in argv. */
 export function opencodeArgs(opts: OpencodeArgOptions): { args: string[]; stdin: string } {
   const model = opencodeQualifiedModel(opts.model) + (opts.variant !== undefined ? `#${opts.variant}` : "");
   const args = ["run", "--standalone", "--format", "json", "--auto", "--model", model, "--session", opts.sessionId, "--title", opts.title];

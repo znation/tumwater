@@ -55,6 +55,10 @@ export interface AppendLog {
  * file), so the count tells openAppendLog when a path is still held. */
 const openAppendLogs = new Map<string, number>();
 
+/** Open an append-only log for writing, rotating it aside first when it exceeds `maxBytes`
+ * and repairing a torn last line left by a killed run. Counts this process's open writers so a
+ * rotation cannot move the file out from under a live run; the returned handle's `close` must
+ * be called when the run's output ends. */
 export function openAppendLog(file: string, maxBytes: number): AppendLog {
   ensureParentDir(file);
   // Skip the rename while another run in this process still writes the file (its descriptor

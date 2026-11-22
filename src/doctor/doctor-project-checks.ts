@@ -597,13 +597,6 @@ const MAIN_RULE_FAILURE_WINDOW_MS = DAY_MS;
 /** The exact substring src/baseline/main-watch-rules.ts's `rulesPass` logs in its warning, so
  * this check matches a real rule failure and cannot drift from the wording the watch writes. */
 const MAIN_RULE_FAILURE_MARKER = "fails the diff rules";
-/** The doctor's `main diff rules` row: a `warning` the main watch logged when the review gate's
- * diff rules rejected main's tip in the trailing day. The gate judges one change; the watch
- * judges each first-parent commit's own diff, so a conflict marker, a protected edit, a leaked
- * secret, a phantom fix claim or a broken backlog structure that reached main through a gate
- * blind spot sits on main with only this event log to say so. Reads only the `warning` event
- * the watch already writes, so the row cannot drift from the watch's wording; the most recent
- * hit names the tip and the rule. ok/warn only — it never fails a scripted pre-flight. */
 
 /** The `warning` events whose message contains `marker` — the read both marker-driven
  * project rows (checkMainDiffRules and checkDroppedPostMergeReviews) ask for, so their
@@ -616,6 +609,13 @@ function warningEventsWithMarker(events: readonly HarnessEvent[], marker: string
   return events.filter((e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(marker));
 }
 
+/** The doctor's `main diff rules` row: a `warning` the main watch logged when the review gate's
+ * diff rules rejected main's tip in the trailing day. The gate judges one change; the watch
+ * judges each first-parent commit's own diff, so a conflict marker, a protected edit, a leaked
+ * secret, a phantom fix claim or a broken backlog structure that reached main through a gate
+ * blind spot sits on main with only this event log to say so. Reads only the `warning` event
+ * the watch already writes, so the row cannot drift from the watch's wording; the most recent
+ * hit names the tip and the rule. ok/warn only — it never fails a scripted pre-flight. */
 export function checkMainDiffRules(root: string): CheckOutcome {
   const { events } = readEventsSince(root, MAIN_RULE_FAILURE_WINDOW_MS);
   const hits = warningEventsWithMarker(events, MAIN_RULE_FAILURE_MARKER);

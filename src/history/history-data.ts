@@ -226,6 +226,9 @@ export interface RunRowCells {
   usage: string;
 }
 
+/** One run row's rendered cells — the label each column shows, including the `(cut off)` suffix on
+ * a cut-off result, the em dash for a run with no duration, and the preformatted usage. The one
+ * home of those renderings; history-render.ts's row writers lay the cells out. */
 export function runRowCells(row: RunRow): RunRowCells {
   return {
     role: roleLabel(row.role),

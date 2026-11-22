@@ -204,6 +204,8 @@ export function expandHomeTilde(dir: string, homeDir: string): string {
   return dir;
 }
 
+/** The `PATH` value this process was started with — the one read the doctor's binary-existence
+ * checks search, so they ask the same question the shell that launched tumwater would. */
 export function envPath(): string {
   return process.env.PATH ?? "";
 }

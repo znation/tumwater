@@ -85,6 +85,10 @@ function usageWords(firstLine: string, command: string): string[] {
   return usageWordsIn(usagePortion(firstLine, command));
 }
 
+/** The completion data parsed out of the help text: every command, each command's subcommands (the
+ * usage words after its name) and its flags (every `--flag` in its stanzas, plus `--help`). The one
+ * read all three shell scripts are generated from, so a new command completes without a hand-kept
+ * list drifting. */
 export function completionSpec(help: string = HELP): CompletionSpec {
   const stanzas = helpStanzas(help);
   const commands = distinctOrdered(stanzas.map((s) => s.command));
@@ -409,6 +413,8 @@ function fishScript(help: string): string {
   return lines.join("\n");
 }
 
+/** The completion script for `shell`: bash's, zsh's under bashcompinit, or fish's — all generated
+ * from the same completionSpec of the help text. */
 export function completionScript(shell: CompletionShell, help: string = HELP): string {
   if (shell === "fish") return fishScript(help);
   const bash = bashScript(help);

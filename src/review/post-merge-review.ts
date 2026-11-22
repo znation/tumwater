@@ -184,6 +184,10 @@ function parsePostReview(raw: unknown): PostReview | null {
   if (resume === true) entry.resume = true;
   return entry;
 }
+/** The post-merge review queue as it stands on disk: each pending review, with its attempt counters
+ * and any recorded fix, normalized so a stale or hand-edited entry cannot carry an invalid field.
+ * Empty when the file is missing or malformed. Cached on the file's stats, so a poll of an
+ * unchanged queue re-reads nothing. */
 export function readPostReviews(root: string): PostReview[] {
   const file = postReviewPath(root);
   return (

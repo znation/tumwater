@@ -125,6 +125,8 @@ export interface PollState {
   githubScan: IssueScanClock;
 }
 
+/** A fresh PollState — every poll-derived counter at its starting value, so the first poll reaps
+ * orphans immediately and holds no restart or disk state. */
 export function newPollState(): PollState {
   return {
     restart: false,

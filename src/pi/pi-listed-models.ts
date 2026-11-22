@@ -64,6 +64,8 @@ function readPiListedModelsUncached(root: string): PiListedModels | null {
   return { checkedAt: typeof saved?.checkedAt === "number" ? saved.checkedAt : 0, images };
 }
 
+/** Save pi's listed image-input map for a root (the file readPiListedModels reads back), stamped
+ * with `now` as its checkedAt. Atomic, so a concurrent reader never sees a torn file. */
 export function writePiListedModels(root: string, images: Record<string, boolean>, now: number = Date.now()): void {
   writeJsonAtomic(piListedModelsPath(root), { checkedAt: now, images });
 }

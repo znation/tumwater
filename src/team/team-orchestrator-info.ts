@@ -224,6 +224,9 @@ export function publishInfoFields(
 // consumer.
 const infoCache = new Map<string, StatKeyedValue<OrchestratorInfo>>();
 
+/** The orchestrator's state file as a live record — its pid, start time, role list and the gate and
+ * pool state it publishes — or null when no orchestrator has written one or the file is unreadable.
+ * Cached on the file's stats (infoCache), so a status poll of an unchanged file does no I/O. */
 export function readOrchestratorInfo(root: string): OrchestratorInfo | null {
   const file = orchestratorStatePath(root);
   return (

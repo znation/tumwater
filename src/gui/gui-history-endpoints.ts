@@ -139,6 +139,9 @@ function windowOrCount(q: URLSearchParams, res: http.ServerResponse):
   return { kind: "count" };
 }
 
+/** Serve `GET /api/history`: one row per run for the role/grep/class/model filters, in either the
+ * window shape (`sinceMs`/`untilMs`) or the count shape (`n`), plus the summary when asked. A
+ * rejected query shape answers 4xx and serves nothing (historyRequest). */
 export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const req = historyRequest(q, res);
   if (req === null) return;

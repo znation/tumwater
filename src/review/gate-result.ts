@@ -9,6 +9,9 @@
  * late kill never waits a parked check out. */
 import type { GateResult } from "./review.js";
 
+/** The gate's verdict when its own signal has aborted: failed, with `aborted` set so the caller
+ * reports the run aborted rather than the change rejected. Both review.ts and review-precheck.ts
+ * settle every consumed abort on this one shape. */
 export function abortedGateResult(): GateResult {
   return { decision: "failed", aborted: true };
 }
