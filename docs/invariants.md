@@ -5557,11 +5557,17 @@ watchdog whether or not it completes — the two rules are decided separately. T
 compactions (`compactions`) follows the same evidence rule as the flag, read as a number: each
 completed `compaction_end` and each `entry_appended` of a `compaction` entry adds one, and a start,
 an aborted or failed end, or any other entry type adds none, so the flag and the count can never
-disagree about what counts. The claude
+disagree about what counts. Each completed compaction is also classified by its payload's
+`details.kind`: only `"checkpoint"` — the shape `src/pi-extension/checkpoint.ts` writes on the entry
+it drafts — counts as checkpoint-driven (`checkpointCompactions`); a payload carrying no `kind`
+(pi's own `compact()` details, or none at all, as the claude translator emits) counts toward the
+total only, so `compactions` never shows fewer than `checkpointCompactions` and `tumwater report`
+can never rank more checkpoint compactions than compactions for a role. The claude
 translator, whose `system/compact_boundary` marker appears only after claude has rewritten the
 context, therefore emits the completed pair rather than a bare start.
 
-**Binds.** `src/pi/pi-stream.ts` (`applyCompaction`, `countProgress`, `compacted`, `compactions`),
+**Binds.** `src/pi/pi-stream.ts` (`applyCompaction`, `isCheckpointOrigin`, `countProgress`,
+`compacted`, `compactions`, `checkpointCompactions`),
 `src/agent/claude/claude-stream.ts` (`compact_boundary`), `src/verdict/no-change.ts`
 (`checkpointAborted`), `src/agent/agent-settle.ts` (`resultFromParser`).
 
@@ -5569,8 +5575,11 @@ context, therefore emits the completed pair rather than a bare start.
 "parser counts a completed compaction from either arm, never more than one per event",
 "parser ignores a compaction_end that aborted or failed", "a boundary-draft compaction
 entry_appended marks the session compacted" and "an entry_appended of any other entry type is
-not compaction evidence"; `test/run-usage.test.ts` —
-"fold counts compactions from every run and reset clears the window"; `test/runner-interrupted.test.ts`
+not compaction evidence", "the parser splits the compaction count by origin: only a checkpoint's
+details kind counts" and "the origin split sums across a mixed run: one checkpoint-driven and one
+automatic rewrite"; `test/run-usage.test.ts` —
+"fold counts compactions from every run and reset clears the window" and
+"fold splits the compaction window by origin, and reset clears both counters"; `test/runner-interrupted.test.ts`
 — "a checkpoint abort whose compaction never completed is not a cut-off and arms no resume" and
 "a run cut off at the context ceiling warns, skips backoff, and resumes";
 `test/claude-stream.test.ts` — "retries and compaction translate to the canonical events the

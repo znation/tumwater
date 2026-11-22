@@ -69,6 +69,12 @@ export class RunUsage {
    * re-compacted too, and each compaction is a rewrite of the context the operator paid for.
    * Its only consumer is the run_end event, which fires before the next run resets it. */
   compactions = 0;
+  /** How many of those completed compactions the operator's own checkpoints drove, folded under
+   * the same rule as `compactions`: every pi run of the run contributes. Pi-backend-only — a
+   * claude run reports no origin, so it contributes to the total and nothing here, which is
+   * what keeps this counter from ever exceeding `compactions`. Its only consumer is the run_end
+   * event, which fires before the next run resets it. */
+  checkpointCompactions = 0;
   /** Prompt tokens folded before the run's first edit: authoring runs only, frozen once an
    * authoring run reports an edit (plans/per-run-prompt-telemetry). Merge, review and
    * conflict-resolution runs are excluded — their context is the gate's, not the authoring
@@ -118,6 +124,7 @@ export class RunUsage {
     this.promptTokens = 0;
     this.cacheReadTokens = 0;
     this.compactions = 0;
+    this.checkpointCompactions = 0;
     this.preEditPromptTokens = 0;
     this.editSeen = false;
     this.endedUnanswered = false;
@@ -137,6 +144,7 @@ export class RunUsage {
     // Compactions count every pi run of the run — authoring, retry, review and merge alike —
     // since every one of them can have its session rewritten.
     this.compactions += run.compactions;
+    this.checkpointCompactions += run.checkpointCompactions;
     this.foldEpisodes(run, provider, pair);
     if (authoring) this.endedUnanswered = endedBeforeAnyReply(run);
   }

@@ -71,6 +71,7 @@ export function setupFailureResult(agent: string, message: string): PiRunResult 
     producedAssistantContent: false,
     compacted: false,
     compactions: 0,
+    checkpointCompactions: 0,
   };
 }
 
@@ -119,6 +120,7 @@ function resultFromParser(
     producedAssistantContent: parser.producedAssistantContent,
     compacted: parser.compacted,
     compactions: parser.compactions,
+    checkpointCompactions: parser.checkpointCompactions,
     budgetCapped: parser.budgetCapped,
     resumeMissing: parser.resumeMissing,
     billing: parser.billing,

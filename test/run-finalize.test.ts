@@ -151,6 +151,31 @@ test("finalizeRun rides a run's compaction count on run_end and omits it when ze
   assert.equal(end.compactions, undefined, "a compaction-free run carries no key at all");
 });
 
+test("finalizeRun rides the checkpoint-driven compaction share on run_end, omitted when zero", async () => {
+  // The split travels beside the total and obeys the same omit-when-zero rule, so a run whose
+  // compactions were all pi's own — and every run_end written before this field existed — renders
+  // byte-identically. Omitting only the total while the split survived a zero would put a stray
+  // `checkpointCompactions: 0` on every older-shaped event.
+  const root = await initializedRepo();
+  const s = freshRunnerState("organize");
+  const usage = new RunUsage();
+  usage.compactions = 3;
+  usage.checkpointCompactions = 2;
+  await run(root, "organize", s, { result: "no_change" }, { usage });
+  const end = eventsOfType(root, "run_end")[0]!;
+  assert.equal(end.compactions, 3, "the total keeps its field");
+  assert.equal(end.checkpointCompactions, 2, "and the split rides beside it");
+
+  const automatic = await initializedRepo();
+  const s2 = freshRunnerState("organize");
+  const usage2 = new RunUsage();
+  usage2.compactions = 1;
+  await run(automatic, "organize", s2, { result: "no_change" }, { usage: usage2 });
+  const automaticEnd = eventsOfType(automatic, "run_end")[0]!;
+  assert.equal(automaticEnd.compactions, 1, "an automatic-only run still logs its total");
+  assert.equal(automaticEnd.checkpointCompactions, undefined, "and no split key at all");
+});
+
 test("finalizeRun rides a nonzero peak context on run_end", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");

@@ -280,6 +280,12 @@ test("retries and compaction translate to the canonical events the transcript re
   ]);
   assert.deepEqual(types(canonical), ["auto_retry_start", "compaction_start", "compaction_end"]);
   assert.equal(parser.compacted, true);
+  assert.equal(parser.compactions, 1, "a claude compact_boundary counts as one completed compaction");
+  assert.equal(
+    parser.checkpointCompactions,
+    0,
+    "and none of them checkpoint-driven: the translator emits no details, so a claude run keeps its exact shape beside the split",
+  );
 });
 
 test("an unmapped native type is reported once and does not fail the run", () => {

@@ -206,6 +206,18 @@ const TRANSIENT_RATE_LIMIT = /\b429\b|too many requests|rate limit/i;
  * "retry after 30s"). Module-private: only PiStreamParser.feedLine matches it. */
 const RETRY_AFTER = /retry[- ]after:?\s*(\d{1,4})/i;
 
+/** True when a completed compaction's payload names the origin this harness asked for: the
+ * checkpoint extension stamps `details: { kind: "checkpoint", accepted, declined }` on the
+ * compaction entry it drafts (`src/pi-extension/checkpoint.ts`), and pi 1.5.2 carries that
+ * `details` through unchanged on the `entry_appended` event and, for a compaction pi ran on
+ * the extension's behalf, on the `compaction_end` result. pi's own automatic compaction gets
+ * its `details` from `compact()` (`{ readFiles, modifiedFiles }`, no `kind`), and a claude
+ * `compact_boundary` has none, so a missing or foreign `details` reads as automatic —
+ * counted in the total, absent from the split. */
+function isCheckpointOrigin(details: unknown): boolean {
+  return isJsonObject(details) && details.kind === "checkpoint";
+}
+
 /** Accumulates pi's JSON event stream into a PiRunResult. Exported for tests. */
 export class PiStreamParser {
   finalText = "";
@@ -331,6 +343,17 @@ export class PiStreamParser {
    * times and one rewritten once carry the same `compacted`, and the difference is what an
    * operator reads. */
   compactions = 0;
+  /** How many of this run's completed compactions the operator's own checkpoints drove — the
+   * same two arms counted by `compactions`, split by the payload's origin: only a compaction
+   * entry this harness's checkpoint extension drafted carries `details.kind === "checkpoint"`
+   * (`src/pi-extension/checkpoint.ts`), while pi's automatic threshold/overflow compaction
+   * carries its own `details` (`compact()` returns `{ readFiles, modifiedFiles }`) or none at
+   * all, and a claude `compact_boundary` carries none. So the split is pi-backend-only: a
+   * payload with no `kind` counts toward the total and nothing here, which is why this counter
+   * can never exceed `compactions`. Beside the total on purpose: an operator watching the
+   * report wants to know whether the keep-alive compactions are landing or pi is still
+   * force-compacting on its own. */
+  checkpointCompactions = 0;
   /** Incremented for every parsed event that represents real forward progress — message,
    * turn, and tool boundaries, retries, session events, and content-bearing updates
    * (message_update deltas and tool_execution_updates alike). A content-free keepalive never
@@ -660,10 +683,12 @@ export class PiStreamParser {
     if (event.type === "compaction_end" && event.aborted !== true && isJsonObject(event.result)) {
       this.compacted = true;
       this.compactions += 1;
+      if (isCheckpointOrigin(event.result.details)) this.checkpointCompactions += 1;
     }
     if (event.type === "entry_appended" && isJsonObject(event.entry) && event.entry.type === "compaction") {
       this.compacted = true;
       this.compactions += 1;
+      if (isCheckpointOrigin(event.entry.details)) this.checkpointCompactions += 1;
     }
   }
 

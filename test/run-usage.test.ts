@@ -73,6 +73,23 @@ test("fold counts compactions from every run and reset clears the window", () =>
   assert.equal(u.compactions, 0, "the window is per-run, cleared at run start like promptTokens");
 });
 
+test("fold splits the compaction window by origin, and reset clears both counters", () => {
+  // The checkpoint-driven share folds under the same rule as the total: every pi run of the run
+  // contributes, authoring or not. A claude run reports 0 for it, so it grows the total alone —
+  // the arithmetic behind INV-DD1's split-never-exceeds-the-total rule.
+  const s: RunnerState = freshRunnerState("coverage");
+  const u = new RunUsage();
+
+  u.fold(s, run({ compactions: 3, checkpointCompactions: 2 }));
+  u.fold(s, run({ compactions: 1, checkpointCompactions: 0 }), false);
+
+  assert.equal(u.compactions, 4, "the total keeps folding every run's compactions");
+  assert.equal(u.checkpointCompactions, 2, "and the split folds the checkpoint-driven share");
+  u.reset();
+  assert.equal(u.compactions, 0, "the total window clears at run start");
+  assert.equal(u.checkpointCompactions, 0, "and the split clears with it — its only consumer is the run_end that fires before the next run");
+});
+
 test("reset clears the prompt-token windows too", () => {
   const s: RunnerState = freshRunnerState("coverage");
   const u = new RunUsage();
@@ -84,6 +101,7 @@ test("reset clears the prompt-token windows too", () => {
   assert.equal(u.cacheReadTokens, 0);
   assert.equal(u.preEditPromptTokens, 0);
   assert.equal(u.compactions, 0, "the compaction window resets with them");
+  assert.equal(u.checkpointCompactions, 0, "and the origin split with them");
   // A later run in the next run is pre-edit again — the freeze does not survive a reset.
   u.fold(s, run({ promptTokens: 10, preEditPromptTokens: 10 }));
   assert.equal(u.preEditPromptTokens, 10);

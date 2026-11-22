@@ -281,6 +281,7 @@ export function piRunResult(over: Partial<PiRunResult> = {}): PiRunResult {
     producedAssistantContent: false,
     compacted: false,
     compactions: 0,
+    checkpointCompactions: 0,
     ...over,
   };
 }

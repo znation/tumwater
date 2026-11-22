@@ -419,6 +419,12 @@ function pushReportFrictionLines(lines: string[], data: ReportData): void {
   // Zero-means-absent — no line at all when nothing compacted, not a "-" — so a window whose
   // events were all written before this field existed prints exactly what it printed before.
   pushPresentRankedLine(lines, "Compactions by role", rankedBy(data.series, "compactionsByRole"));
+  // The checkpoint-driven share of the line above: how many of those rewrites the operator's own
+  // checkpoints drove, from each run_end's `checkpointCompactions` field (pi backend only — a
+  // claude run names no origin, so it stays in the total and out of here). Printed directly after
+  // the total and zero-means-absent like it, so a day whose compactions were all pi's own — and
+  // every older log — prints exactly what it printed before.
+  pushPresentRankedLine(lines, "Checkpoint compactions by role", rankedBy(data.series, "checkpointCompactionsByRole"));
   // The same breakdown for outright failures: error-class run_ends per role under the
   // digest's OUTCOME_CLASS — runs that burned agent time and merged nothing without going
   // through review, which rejections/revisions would miss entirely. Zero-means-absent, so a

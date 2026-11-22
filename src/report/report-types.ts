@@ -84,6 +84,10 @@ export interface ReportDay {
   /** run_end `compactions` summed per role id — how many times that day each role's session was
    * rewritten mid-run; absent when the day has none (zero means absent). */
   compactionsByRole?: Record<string, number>;
+  /** run_end `checkpointCompactions` summed per role id — the checkpoint-driven share of the
+   * compactions above (pi backend only); absent when the day has none (zero means absent, so a
+   * day whose compactions were all pi's own, and every older day, keeps its exact shape). */
+  checkpointCompactionsByRole?: Record<string, number>;
   commits: number;
   commitsByRole?: Record<string, number>; // merged commits by base role (Work ratio 4/4)
   workCommits?: number; // of those, feature/bugfix/director
@@ -247,6 +251,10 @@ export interface SinceReport {
    * over the window; empty when the window has none, so the render prints `-` like the refusals
    * line above it. */
   compactionsByRole: Record<string, number>;
+  /** run_end `checkpointCompactions` summed per role id — how many of each role's compactions
+   * the operator's own checkpoints drove over the window (pi backend only); empty when the
+   * window has none, and never larger than the map above. */
+  checkpointCompactionsByRole: Record<string, number>;
   /** Output tokens per role id, so the --since render can break the window's token spend
    * down by role the way the day report does. */
   tokensByRole: Record<string, number>;

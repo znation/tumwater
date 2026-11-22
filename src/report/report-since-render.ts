@@ -153,6 +153,10 @@ function pushSinceFrictionLines(lines: string[], data: SinceReport): void {
   // several days is visible there too. Zero-means-absent like the day line: a window with no
   // compaction prints no line, so an older log's --since output is unchanged.
   pushPresentRankedLine(lines, "Compactions by role", rankedRoleMap(data.compactionsByRole));
+  // The checkpoint-driven share of that total, from each run_end's `checkpointCompactions`
+  // field — the --since twin of the day render's line. Pi backend only, and zero-means-absent
+  // like the line above it, so an automatic-only window prints exactly what it printed before.
+  pushPresentRankedLine(lines, "Checkpoint compactions by role", rankedRoleMap(data.checkpointCompactionsByRole));
   // The same breakdown for outright failures: error-class run_ends per role under the
   // digest's OUTCOME_CLASS — the runs that burned agent time and merged nothing without
   // going through review, which rejections/revisions would miss entirely. A window with

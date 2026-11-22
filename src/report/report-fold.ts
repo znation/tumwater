@@ -67,6 +67,9 @@ interface DayFold {
   /** run_end `compactions` summed per role id — how many times each role's session was
    * rewritten out from under it that day. */
   compactionsByRole: Record<string, number>;
+  /** run_end `checkpointCompactions` summed per role id — the checkpoint-driven share of the
+   * compactions above, pi backend only. */
+  checkpointCompactionsByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   promptTokensByRole: Record<string, number>;
   cacheReadTokensByRole: Record<string, number>;

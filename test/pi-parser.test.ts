@@ -313,6 +313,94 @@ test("parser counts a completed compaction from either arm, never more than one 
   assert.equal(parser.compacted, true, "the flag keeps its exact meaning beside the count");
 });
 
+test("the parser splits the compaction count by origin: only a checkpoint's details kind counts", () => {
+  // The split lives on the payload's `details`: our checkpoint extension stamps
+  // `{ kind: "checkpoint", accepted, declined }` on the compaction entry it drafts
+  // (src/pi-extension/checkpoint.ts) and pi 1.5.2 carries that details through on both arms, while
+  // pi's own automatic compaction gets its details from compact() (`{ readFiles, modifiedFiles }`,
+  // no kind) or reports none at all. So an origin the harness never asked for stays in the
+  // total and out of the split — the rule that keeps the split from ever exceeding the count.
+  const checkpointDetails = { kind: "checkpoint", accepted: ["one"], declined: [] };
+  const automaticDetails = { readFiles: ["src/a.ts"], modifiedFiles: [] };
+  const cases: { name: string; lines: Record<string, unknown>[]; compactions: number; checkpoint: number }[] = [
+    {
+      name: "compaction_end carrying the checkpoint details",
+      lines: [{ type: "compaction_end", reason: "manual", result: { summary: "s", details: checkpointDetails }, aborted: false }],
+      compactions: 1,
+      checkpoint: 1,
+    },
+    {
+      name: "compaction_end carrying compact()'s own details",
+      lines: [{ type: "compaction_end", reason: "threshold", result: { summary: "s", details: automaticDetails }, aborted: false }],
+      compactions: 1,
+      checkpoint: 0,
+    },
+    {
+      name: "compaction_end with no details at all (a claude compact_boundary translated here)",
+      lines: [{ type: "compaction_end", reason: "threshold", result: { summary: "s" }, aborted: false }],
+      compactions: 1,
+      checkpoint: 0,
+    },
+    {
+      name: "an appended compaction entry with the checkpoint details",
+      lines: [{ type: "entry_appended", entry: { type: "compaction", id: "c1", summary: "s", firstKeptEntryId: "e4", details: checkpointDetails } }],
+      compactions: 1,
+      checkpoint: 1,
+    },
+    {
+      name: "an appended compaction entry with empty details",
+      lines: [{ type: "entry_appended", entry: { type: "compaction", id: "c1", summary: "s", firstKeptEntryId: "e4", details: {} } }],
+      compactions: 1,
+      checkpoint: 0,
+    },
+    {
+      name: "an appended compaction entry with no details",
+      lines: [{ type: "entry_appended", entry: { type: "compaction", id: "c1", summary: "s", firstKeptEntryId: "e4" } }],
+      compactions: 1,
+      checkpoint: 0,
+    },
+    {
+      name: "a details-bearing end that aborted counts on neither arm",
+      lines: [{ type: "compaction_end", reason: "manual", result: { summary: "s", details: checkpointDetails }, aborted: true }],
+      compactions: 0,
+      checkpoint: 0,
+    },
+    {
+      name: "a non-compaction entry carrying checkpoint details counts on neither arm",
+      lines: [{ type: "entry_appended", entry: { type: "context_edit", id: "x1", targetId: "m1", replacement: null, details: checkpointDetails } }],
+      compactions: 0,
+      checkpoint: 0,
+    },
+  ];
+  for (const c of cases) {
+    const parser = new PiStreamParser();
+    for (const l of c.lines) parser.feed(JSON.stringify(l) + "\n");
+    assert.equal(parser.compactions, c.compactions, `${c.name}: the total`);
+    assert.equal(parser.checkpointCompactions, c.checkpoint, `${c.name}: the checkpoint-driven share`);
+    assert.ok(parser.checkpointCompactions <= parser.compactions, `${c.name}: the split never exceeds the total`);
+  }
+});
+
+test("the origin split sums across a mixed run: one checkpoint-driven and one automatic rewrite", () => {
+  // The live ledger's shape (BUGS.md 2026-11-19): one run rewritten several times, some by the
+  // operator's checkpoints and some by pi's own threshold — the case the collapsed boolean and
+  // the single total both hid. The checkpoint arm arrives as the boundary draft's entry_appended
+  // and the automatic one as pi's compaction_end carrying compact()'s details.
+  const parser = new PiStreamParser();
+  const line = (event: Record<string, unknown>) => JSON.stringify(event) + "\n";
+  parser.feed(line({ type: "entry_appended", entry: { type: "compaction", id: "c1", summary: "s", firstKeptEntryId: "e4", details: { kind: "checkpoint", accepted: [], declined: [] } } }));
+  parser.feed(line({ type: "compaction_end", reason: "threshold", result: { summary: "a", details: { readFiles: [], modifiedFiles: [] } }, aborted: false }));
+  assert.equal(parser.compactions, 2, "both rewrites count in the total");
+  assert.equal(parser.checkpointCompactions, 1, "and only the operator's checkpoint counts in the split");
+
+  // A bare compaction_end result — an older pi build, or a payload with no details at all — stays
+  // in the total alone.
+  const bare = new PiStreamParser();
+  bare.feed(line({ type: "compaction_end", reason: "threshold", result: {}, aborted: false }));
+  assert.equal(bare.compactions, 1, "a bare result still counts as one compaction");
+  assert.equal(bare.checkpointCompactions, 0, "and names no origin");
+});
+
 test("parser ignores a compaction_end that aborted or failed", () => {
   // pi's failure arms emit the end with no result: `result: undefined` with `aborted: true`
   // when it was cancelled, and with an `errorMessage` when the summary call itself failed.

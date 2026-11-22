@@ -250,6 +250,11 @@ function logRunEnd(
     // review, merge). Omitted when zero like the prompt-token fields beside it, so a run that
     // rewrote nothing — and every run_end written by an older build — renders byte-identically.
     ...(usage.compactions > 0 ? { compactions: usage.compactions } : {}),
+    // How many of those compactions the operator's own checkpoints drove (pi backend only: a
+    // claude run names no origin). Omitted when zero under the same rule as the field above, so
+    // a run whose compactions were all pi's own — and every run_end written by an older build —
+    // renders byte-identically.
+    ...(usage.checkpointCompactions > 0 ? { checkpointCompactions: usage.checkpointCompactions } : {}),
     // The run's peak single-request context: how hot the run's largest model call ran
     // against the model's declared window (runner-state.ts's peakContextTokens, reset at
     // run start). Omitted when zero like the prompt-token fields, so a run that reported

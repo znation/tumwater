@@ -123,6 +123,10 @@ export interface PiRunResult {
    * records, so a run the session was rewritten five times is distinguishable from one rewritten
    * once. 0 when the run wrote none (INV-DD1). */
   compactions: number;
+  /** How many of this run's completed compactions the operator's own checkpoints drove — the
+   * parser's split of `compactions` by the payload's `details.kind` (INV-DD1). Never larger
+   * than `compactions`, and 0 on a backend that reports no such origin (claude). */
+  checkpointCompactions: number;
   /** True when a backend translator classified the run as hitting a per-run budget cap
    * (claude's `error_max_budget_usd`, plans/agent-backends.md part 7). Undefined on backends
    * that report no such signal. */

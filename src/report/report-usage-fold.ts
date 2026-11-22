@@ -86,6 +86,12 @@ export interface UsageFold {
    * entry). A parallel tally, never subtracted from runsByRole: a role that compacted twice
    * in one run still counts as one run. */
   compactionsByRole: Record<string, number>;
+  /** run_end `checkpointCompactions` summed per role id — how many of each role's compactions
+   * the operator's own checkpoints drove (pi backend only: a claude run names no origin). A
+   * parallel tally of the map above, never larger than it: an event that carries no
+   * `checkpointCompactions` — every run_end an older build wrote and every automatic-only run —
+   * contributes nothing. */
+  checkpointCompactionsByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   /** Prompt tokens per role id — the input side of the bill `tokensByRole` (output tokens)
    * hides, so the same report that says who burned output tokens also says whose prompts a
@@ -236,6 +242,7 @@ export function zeroUsageFold(): Omit<
     failedRunsByRole: {},
     imageReroutesByRole: {},
     compactionsByRole: {},
+    checkpointCompactionsByRole: {},
     tokensByRole: {},
     promptTokensByRole: {},
     cacheReadTokensByRole: {},
@@ -324,6 +331,14 @@ function foldRunUsage(target: UsageFold, ev: HarnessEvent): void {
   // older, compaction-less event and a compaction-free run contributing nothing.
   const compactions = nonNegativeNumber(ev.compactions, 0);
   if (compactions > 0) addTo(target.compactionsByRole, role, compactions);
+  // The checkpoint-driven share of that same count (run-finalize.ts omits it when zero): the
+  // same finite non-negative heal, so a torn log line can never put NaN or a negative in the
+  // map, and zero-means-absent keeps an older event and an automatic-only run contributing
+  // nothing. A hand-edited log can still claim more checkpoints than compactions; the render
+  // prints both maps side by side and INV-DD1's never-more rule holds of the writer, not of a
+  // hand-edited file.
+  const checkpointCompactions = nonNegativeNumber(ev.checkpointCompactions, 0);
+  if (checkpointCompactions > 0) addTo(target.checkpointCompactionsByRole, role, checkpointCompactions);
   target.tokensOut += tokens;
 }
 
