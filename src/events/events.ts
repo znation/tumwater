@@ -118,6 +118,7 @@ export interface HarnessEvent {
     | "github_issue_closed" // tumwater closed a mirrored GitHub issue once its fix was on GitHub's base branch (plans/github-issues.md part 5/5); carries repo, issue and the fix shas cited
     | "github_issue_declined" // a director run declined an open GitHub issue in its ISSUE line (plans/github-issues.md part 4b/5); carries repo, issue and the reason
     | "github_issue_queued" // a poll queued one unmirrored issue's director prompt (plans/github-issues.md part 4c/5); carries repo and issue
+    | "github_issue_upstream_closed" // a complete GitHub issues listing stopped reporting an issue the ledger held open — someone closed (or deleted) it upstream, so tumwater never saw the act (PLANS.md "The mirror's upstream-close record" part 2/2); carries repo, issue and that row's `updatedAt` (the last instant GitHub said anything about it) — one per lost issue, only for a listing that read to its end
     | "config_changed" // a live tumwater.json edit changed other settings (keys)
     | "model_changed" // a live tumwater.json edit changed the team's model wiring; carries from/to (teamModelLabel of the previous/next config) and roles (the per-role selector diffs) when a roles.<id> model override changed
     | "backend_binary" // a live tumwater.json edit newly routed a seam to a backend the previous config did not use; carries agent and found (the resolved binary was present) — the binary check's verdict, logged so a newly added backend is verified like startup would

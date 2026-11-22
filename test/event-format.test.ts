@@ -1279,3 +1279,28 @@ test("formatEvent renders maintenance_start and maintenance_done with task, back
   assert.match(tornDone, /cleanup finished — \? \(\?\): \? sessions handled$/);
   assert.doesNotMatch(tornDone, /undefined|\(in\s*\)/);
 });
+
+// The upstream-close record's log line (PLANS.md "The mirror's upstream-close record" part 2/2):
+// the ledger already holds the lost row (part 1/2), but `tumwater logs` said nothing at all about
+// the one mirror outcome nobody in tumwater caused. The `updatedAt` is GitHub's own last word about
+// the issue, printed as recorded — not aged — because the log line keeps every field verbatim.
+test("formatEvent renders github_issue_upstream_closed naming the issue, the repo, and the last sighting", () => {
+  const lost = formatEvent({
+    ts: 0,
+    source: "tumwater",
+    type: "github_issue_upstream_closed",
+    repo: "znation/proj",
+    issue: 8,
+    updatedAt: "2026-11-10T12:00:00.000Z",
+  } as never);
+  assert.match(lost, /tumwater\s+GitHub closed issue #8 on znation\/proj, last seen open 2026-11-10T12:00:00\.000Z$/);
+  // A routine outcome like its github_issue_closed twin — no warning prefix: tumwater caused
+  // nothing.
+  assert.ok(!lost.includes("warning"), `the upstream close is routine, not a warning: ${lost}`);
+
+  // A torn or hand-edited line renders the "?" placeholders, never "undefined", never the bare
+  // code.
+  const torn = eventMessage({ ts: 0, source: "tumwater", type: "github_issue_upstream_closed" } as never);
+  assert.equal(torn, "GitHub closed issue #? on ?, last seen open ?");
+  assert.doesNotMatch(torn, /undefined/);
+});

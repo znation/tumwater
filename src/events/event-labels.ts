@@ -88,6 +88,7 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   github_issue_closed: "github issue closed",
   github_issue_declined: "github issue declined",
   github_issue_queued: "github issue queued",
+  github_issue_upstream_closed: "github issue closed upstream",
   config_changed: "settings changed",
   model_changed: "model changed",
   backend_binary: "backend checked",

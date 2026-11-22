@@ -5771,6 +5771,10 @@ decline stamped with a foreign updatedAt never holds"; `test/team-alert-status.t
  stored ascending by number, the rule `retainClosedRow` keeps for closed rows. Nothing else in the
  ledger is touched by a loss: `waitingPush`, `closed`, `queued` and `declined` records stay owed, and
  because the queue and the close pass iterate `open`, a lost issue is neither offered nor closed. The
+ same fold logs one `github_issue_upstream_closed` event per newly recorded loss — repo, issue and
+ that row's `updatedAt` — so the operator's log names what the ledger alone only shows as a row; a
+ row already carried in `upstreamClosed` logs nothing, so a loss is announced once and not once per
+ scan, and a capped, failed or absent listing logs none. The
  read treats the row as neither open nor tumwater-closed: `issueRows` appends the list after
  `closedRows` and flags it `upstreamClosed`, `issuesHeader` counts it separately, `issueAge` answers
  `last seen open <ago>` never `closed <ago>`, and the detail states
@@ -5779,14 +5783,22 @@ decline stamped with a foreign updatedAt never holds"; `test/team-alert-status.t
 **Binds.** `src/github/issue-scan.ts` (`listOpenIssues`, `recordUpstreamCloses`,
 `scanGithubIssues`), `src/github/github-issues-state.ts` (`GithubIssueRow.closedAt`,
 `GithubIssuesLedger.upstreamClosed`, `readGithubIssues`), `src/github/github-issues-render.ts`
-(`issueRows`, `issuesHeader`, `issueAge`, `issueStateLines`).
+(`issueRows`, `issuesHeader`, `issueAge`, `issueStateLines`), the event sites that give the type its
+line (`src/events/events.ts`, `src/events/event-labels.ts`, `src/events/event-format-config.ts`,
+`src/events/event-format.ts`), and `src/failure/failure-state-change.ts`
+(`STATE_CHANGE_EXCLUDED_TYPES`).
 
 **Pinned by.** `test/github-issue-scan.test.ts` — "an issue the next listing stops reporting is
 recorded as closed upstream, not lost", "a listing that stopped at MAX_ISSUE_PAGES records no
 upstream closes", "an upstream close skips an issue tumwater closed, and a reopen clears its
 record", "an upstream-close record whose issue the ledger still lists open is never queued or
-closed again", "the upstream-close list keeps the 50 newest records, stored ascending", and "a gh
-outage or a failed listing records no upstream close and keeps the records it holds";
+closed again", "the upstream-close list keeps the 50 newest records, stored ascending", "a gh
+outage or a failed listing records no upstream close and keeps the records it holds", and "losing an
+issue upstream logs one github_issue_upstream_closed event, and a re-scan logs none";
+`test/event-format.test.ts` — "formatEvent renders github_issue_upstream_closed naming the issue,
+the repo, and the last sighting" and "eventMessage gives every event type its own line, never the
+bare code"; `test/failure-state-change.test.ts` — "every event type is replayed or explicitly
+excluded";
 `test/github-issues-render.test.ts` — "issueRows appends the upstream rows last, positioned past
 the closed ones, and flags them", "the header counts the upstream rows above zero only, and a
 foreign upstreamClosed counts none", "a lost issue reads as last seen open, never as closed, and

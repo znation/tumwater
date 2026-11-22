@@ -5,7 +5,7 @@ import { textOr } from "../text/text.js";
 import { stringList } from "../files/json-object.js";
 
 /** The config-family lines: `max_concurrent_changed`, `retention_changed`,
- * `github_issues_unavailable`, the three `github_issue_*` actions, `config_changed`,
+ * `github_issues_unavailable`, the four `github_issue_*` actions, `config_changed`,
  * `model_changed`, `backend_binary`, `state_migrated`, `orchestrator_start` and
  * `orchestrator_stop` — the types event-format.ts's EVENT_MESSAGE_FAMILY table routes here.
  * The state changes and the GitHub-issue actions are routine, like counters_reset — only a
@@ -35,6 +35,13 @@ export function configEventMessage(e: HarnessEvent): string {
     case "github_issue_queued": {
       // A poll sent an unmirrored issue to the director: a routine outcome, so no warning prefix.
       return `queued GitHub issue #${textOr(e.issue)} on ${textOr(e.repo)} for the director`;
+    }
+    case "github_issue_upstream_closed": {
+      // GitHub stopped listing an issue the ledger held open — someone closed it upstream, so
+      // tumwater never caused it and has no fix to cite: a routine outcome, no warning prefix.
+      // `updatedAt` is GitHub's own last word about the issue, printed as it was recorded; every
+      // field is read through textOr so a torn line still renders.
+      return `GitHub closed issue #${textOr(e.issue)} on ${textOr(e.repo)}, last seen open ${textOr(e.updatedAt)}`;
     }
     case "retention_changed": {
       // Routine state change, like its maxConcurrent sibling — no warning prefix.

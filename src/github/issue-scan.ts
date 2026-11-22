@@ -200,8 +200,13 @@ const UPSTREAM_CLOSED_MAX = 50;
  * the list back in ascending number order, the order the read prints. Only a listing known to be
  * complete may call this: a walk cut short at `MAX_ISSUE_PAGES` never saw the issue, so it cannot
  * have missed it. Mutates the ledger; nothing else in it changes — `waitingPush`, `closed`,
- * `queued` and `declined` records stay owed even though GitHub no longer lists the issue. */
+ * `queued` and `declined` records stay owed even though GitHub no longer lists the issue.
+ * Each newly recorded loss also logs one `github_issue_upstream_closed` event naming the repo, the
+ * issue and GitHub's last word on it, so the operator's log says what the ledger-only record
+ * cannot: a row already sitting in `upstreamClosed` logs nothing, so a loss is logged once, not
+ * once per scan. */
 function recordUpstreamCloses(
+  root: string,
   ledger: GithubIssuesLedger,
   previous: GithubIssuesLedger | null,
   now: number,
@@ -211,6 +216,15 @@ function recordUpstreamCloses(
   const lost = (previous?.open ?? [])
     .filter((row) => !openNumbers.has(row.number) && !closedNumbers.has(row.number))
     .map((row) => ({ ...row, closedAt: now }));
+  for (const row of lost) {
+    logEventBestEffort(root, {
+      source: TUMWATER_SOURCE,
+      type: "github_issue_upstream_closed",
+      repo: ledger.repo,
+      issue: row.number,
+      updatedAt: row.updatedAt,
+    });
+  }
   const rows = [...(previous?.upstreamClosed ?? []).filter((row) => !openNumbers.has(row.number)), ...lost];
   // Nothing to say: the list is dropped rather than left as whatever the spread carried over, so a
   // lost issue that came back leaves no record behind.
@@ -283,7 +297,7 @@ export async function scanGithubIssues(
   }
   // An issue the ledger held open that a complete listing came back without is closed upstream (or
   // deleted, or turned into a PR — the listing cannot tell); record it so the loss leaves a trace.
-  if (capped === false) recordUpstreamCloses(ledger, previous, now);
+  if (capped === false) recordUpstreamCloses(root, ledger, previous, now);
   if (gh !== "ok" && (previous === null || previous.gh === "ok")) {
     logEventBestEffort(root, {
       source: TUMWATER_SOURCE,

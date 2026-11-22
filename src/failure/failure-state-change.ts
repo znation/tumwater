@@ -126,6 +126,7 @@ export const STATE_CHANGE_EXCLUDED_TYPES = new Set<string>([
   "github_issue_closed",
   "github_issue_declined",
   "github_issue_queued",
+  "github_issue_upstream_closed",
   "entry_refused",
   "prompt_enqueued",
   "prompt_cancelled",

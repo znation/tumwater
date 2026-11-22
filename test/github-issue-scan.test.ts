@@ -356,6 +356,38 @@ test("an issue the next listing stops reporting is recorded as closed upstream, 
   }
 });
 
+test("losing an issue upstream logs one github_issue_upstream_closed event, and a re-scan logs none", async () => {
+  // The ledger record of part 1/2 is only readable through `tumwater issues`; the operator watching
+  // `tumwater logs` saw the mirror lose an issue as nothing at all. One event per lost issue — and
+  // a row already carried in `upstreamClosed` logs nothing, the way the outage pair logs one event
+  // per outage rather than one per scan.
+  const { dir, config, cleanup } = githubRepo({});
+  try {
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7), issue(8)]] }).probe, 1_000);
+    assert.equal(
+      readEvents(dir).filter((e) => e.type === "github_issue_upstream_closed").length,
+      0,
+      "a first scan loses nothing, so it logs nothing",
+    );
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7)]] }).probe, 2_000);
+    const events = readEvents(dir).filter((e) => e.type === "github_issue_upstream_closed");
+    assert.equal(events.length, 1, "one event for #8");
+    assert.equal(events[0]?.repo, "o/r", "the scanned repo");
+    assert.equal(events[0]?.issue, 8, "the lost issue");
+    assert.equal(events[0]?.updatedAt, "2026-11-20T00:00:00Z", "GitHub's last word on it, as recorded");
+    // The same listing again: #8 already sits in `upstreamClosed`, so the same loss is not
+    // announced a second time.
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7)]] }).probe, 3_000);
+    assert.equal(
+      readEvents(dir).filter((e) => e.type === "github_issue_upstream_closed").length,
+      1,
+      "a carried record logs nothing",
+    );
+  } finally {
+    cleanup();
+  }
+});
+
 test("a listing that stopped at MAX_ISSUE_PAGES records no upstream closes", async () => {
   // A walk out of pages never saw the issue, so it cannot have missed it: recording one would
   // claim a close the scan has no evidence for.
@@ -374,6 +406,11 @@ test("a listing that stopped at MAX_ISSUE_PAGES records no upstream closes", asy
     assert.equal(ledger.open.length, 500, "the capped listing is still five pages");
     assert.equal(ledger.open.some((r) => r.number === 500), false, "#500 is missing from it");
     assert.equal(ledger.upstreamClosed, undefined, "a capped listing records no upstream close");
+    assert.equal(
+      readEvents(dir).filter((e) => e.type === "github_issue_upstream_closed").length,
+      0,
+      "and it logs no upstream close either",
+    );
   } finally {
     cleanup();
   }
@@ -506,12 +543,18 @@ test("a gh outage or a failed listing records no upstream close and keeps the re
     await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7), issue(8)]] }).probe, 1_000);
     await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7)]] }).probe, 2_000);
     const held = readGithubIssues(dir)!.upstreamClosed;
+    const logged = readEvents(dir).filter((e) => e.type === "github_issue_upstream_closed").length;
     await scanGithubIssues(dir, config, fakeGh({ auth: false }).probe, 3_000);
     const ledger = readGithubIssues(dir)!;
     assert.equal(ledger.gh, "unauthenticated");
     assert.deepEqual(ledger.upstreamClosed, held, "an outage keeps the records");
     await scanGithubIssues(dir, config, fakeGh({ apiFail: true }).probe, 4_000);
     assert.deepEqual(readGithubIssues(dir)!.upstreamClosed, held, "and so does a failed listing");
+    assert.equal(
+      readEvents(dir).filter((e) => e.type === "github_issue_upstream_closed").length,
+      logged,
+      "neither logs an upstream close it has no evidence for",
+    );
   } finally {
     cleanup();
   }

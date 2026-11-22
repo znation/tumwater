@@ -5,6 +5,75 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The mirror's upstream-close record, part 2/2: one `github_issue_upstream_closed` event names each issue GitHub closed upstream in the log the operator reads (planned 2026-11-22 by the plan role; requires part 1/2 landed; sibling of part 1/2, which writes the ledger list this event reports; touches src/events/events.ts src/events/event-labels.ts src/events/event-format-config.ts src/events/event-format.ts src/failure/failure-state-change.ts src/github/issue-scan.ts test/event-format.test.ts test/github-issue-scan.test.ts) — done 2026-11-22 by the feature role
+
+**Problem.** Part 1/2 records an upstream close in the ledger, which only `tumwater issues` reads. The
+other mirror outcomes each name themselves in the events log the operator watches —
+`github_issues_unavailable`, `github_issue_closed`, `github_issue_declined`, `github_issue_queued` in
+src/events/events.ts, each with a label in src/events/event-labels.ts, a line in `configEventMessage`
+(src/events/event-format-config.ts) and a slot in `EVENT_MESSAGE_FAMILY`'s config row
+(src/events/event-format.ts), and each listed in `STATE_CHANGE_EXCLUDED_TYPES`
+(src/failure/failure-state-change.ts), which test/failure-state-change.test.ts
+"every event type is replayed or explicitly excluded" requires to partition `EVENT_TYPE_LABELS`' keys.
+An issue GitHub closed upstream — the one mirror outcome nobody in tumwater caused — is the only one
+with no log line, so `tumwater logs` shows the mirror losing an issue as nothing at all.
+
+**Approach.** One event type in the same family, written by the same fold that writes the ledger list.
+
+- `src/events/events.ts`: add `"github_issue_upstream_closed"` to the `type` union beside its
+  `github_issue_queued` sibling, with a comment naming what it carries: `repo`, `issue`, and the lost
+  row's `updatedAt` (the last time GitHub said anything about it).
+- `src/events/event-labels.ts`: `github_issue_upstream_closed: "github issue closed upstream"` beside
+  the other `github_issue_*` labels.
+- `src/events/event-format-config.ts`: a `case "github_issue_upstream_closed"` in `configEventMessage`,
+  a routine outcome with no warning prefix, rendering
+  `GitHub closed issue #<issue> on <repo>, last seen open <updatedAt>` through `textOr` like its
+  `github_issue_closed` twin — every field read defensively so a torn line still renders.
+- `src/events/event-format.ts`: add the type to the `configEventMessage` row of `EVENT_MESSAGE_FAMILY`.
+- `src/failure/failure-state-change.ts`: add it to `STATE_CHANGE_EXCLUDED_TYPES` beside the other
+  `github_issue_*` entries — the digest does not replay it.
+- `src/github/issue-scan.ts`: inside `recordUpstreamCloses`, for each row the fold newly records, call
+  `logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "github_issue_upstream_closed", repo,
+  issue, updatedAt })` — one event per issue, only for a listing that read to the end, and none for a
+  row already sitting in `upstreamClosed` (a loss is logged once, not once per scan).
+
+**Files touched.** The five event/failure sites above, `src/github/issue-scan.ts`,
+`test/event-format.test.ts`, `test/github-issue-scan.test.ts` — plus `docs/invariants.md`, whose
+INV-DG1 the landed guarantee now extends (the fold logs one event per newly recorded loss) and whose
+**Binds.**/**Pinned by.** fields the honesty test enforces, so the new sites and the new test names
+are recorded there.
+
+**Acceptance criteria.**
+
+- `eventMessage` for `{ type: "github_issue_upstream_closed", repo: "znation/proj", issue: 8,
+  updatedAt: "2026-11-10T12:00:00.000Z" }` reads
+  `GitHub closed issue #8 on znation/proj, last seen open 2026-11-10T12:00:00.000Z`, and for that type
+  with no other fields renders a line that is not the bare code — the rule test/event-format.test.ts
+  "eventMessage gives every event type its own line, never the bare code" enforces over every
+  `EVENT_TYPE_LABELS` key, which the new label alone now satisfies.
+- A scan that loses #8 upstream appends exactly one `github_issue_upstream_closed` event to the project's
+  events log naming `#8`, and the same scan re-run with the same listings appends none, the way
+  test/github-issue-scan.test.ts "two consecutive outages log one github_issues_unavailable event" pins
+  the once-per-occurrence rule for the outage pair.
+- `test/failure-state-change.test.ts` passes unedited: the new type lands in exactly one of
+  `STATE_CHANGE_TYPES` and `STATE_CHANGE_EXCLUDED_TYPES`.
+
+Verify: `npm run build`, then
+`node scripts/check-permit.mjs node dist/test/test-runner.js event-format event-labels event-format-team failure-state-change github-issue-scan backlog-structure plans-citations plan-citations backlog-pending backlog-eligibility vocabulary`.
+
+**Not covered (follow-ups).** Nothing notes the upstream close on the mirrored BUGS.md/PLANS.md entry —
+plans/github-issues.md's **Not in scope** bullet keeps that open, and the entry stays open. The status
+snapshot, the dashboard banners and the doctor's `github issues` row raise nothing for a lost issue, and
+`waitingPush[<n>]` keeps counting an issue GitHub closed upstream as still waiting for a push. The
+unmerged `tumwater issues --open`/`--closed` entry partitions rows by `wasClosed` only, so on an
+`upstreamClosed` row its `--open` filter keeps the row and `--closed` hides it; a later entry should
+decide which state an upstream close belongs to (and may add a third spelling) once both land.
+
+Done note: `recordUpstreamCloses` takes the scan's `root` as its first argument so it can log the
+event beside the record it writes, and the line prints GitHub's `updatedAt` verbatim (`textOr`), not
+aged — a log line keeps every field as recorded, the way its `github_issue_closed` twin prints the
+shas.
+
 ### The dashboard's salvage card offers a per-patch View, so an operator reads a kept patch in the
 browser without leaving for `tumwater salvage --show`
 (planned 2026-11-22 by the plan role) — done 2026-11-22 by the feature role
