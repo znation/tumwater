@@ -295,8 +295,8 @@ function seamOverrides(s: { provider?: string; model?: string; backend?: string;
 
 /** The tier a role's model resolves at: a tier-name `roles.<id>.model` names it directly, and
  * every other role rides the model catalog's assignment. Exported for the per-tier budget gate's
- * pause set (src/budget/budget-wiring.ts, part 5c/8) and the dashboards' per-role budget pause
- * (src/status/status-data.ts), which must resolve the SAME tier the seams resolve — the hold an
+ * pause set (src/budget/budget-wiring.ts, part 5c/8) and the dashboards' budget pause set
+ * (src/status/status-budget.ts), which must resolve the SAME tier the seams resolve — the hold an
  * operator sees is the hold the scheduler enforces. */
 export function roleSeamTier(config: TumwaterConfig, role: string): ModelTier {
   const m = config.roles[baseRoleOf(role)]?.model;

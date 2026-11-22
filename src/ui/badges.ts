@@ -1,7 +1,7 @@
 import type { TestCounts } from "../build/build-check-counts.js";
 import { buildStampPhrase } from "../build/build-info.js";
 import { utilizationPct, windowLabel, type SubscriptionWindowBlock } from "../agent/subscription-account.js";
-import type { StatusSnapshot } from "../status/status-data.js";
+import type { StatusSnapshot } from "../status/status-types.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
 import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";

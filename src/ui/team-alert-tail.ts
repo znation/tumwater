@@ -2,7 +2,7 @@
  * src/ui/team-alerts.ts; the shared types and wording helpers live in team-alert-shared.ts. */
 
 import type { TeamAlert } from "./team-alert-shared.js";
-import type { StatusSnapshot } from "../status/status-data.js";
+import type { StatusSnapshot } from "../status/status-types.js";
 import type { OrphanAlert } from "./status-payload.js";
 import { plural } from "../text/phrases.js";
 

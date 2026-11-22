@@ -6,7 +6,8 @@
 import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { snapshot, type StatusSnapshot } from "../src/status/status-data.js";
+import { snapshot } from "../src/status/status-data.js";
+import type { StatusSnapshot } from "../src/status/status-types.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init/init.js";
 import { mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";

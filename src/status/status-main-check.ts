@@ -3,9 +3,9 @@
  * stat-cached event-tail scan (mainCheckScanFor, with its grown-full memo in mainCheckGrewFull)
  * and the branch/sha fallbacks are read per call, so a checkout or a config edit is observed on
  * the next poll even while events.jsonl sits still. It keeps its own module-level cache state,
- * as the other per-poll readers in status-polls.ts do, so status-data.ts's snapshot() — which
- * keeps the StatusSnapshot contract and the assembly — carries none of its own. Pure data
- * collection, no presentation concern (the badge and the status payload render it). */
+ * as the other per-poll readers in status-polls.ts do, so status-data.ts's snapshot() — the
+ * assembly, with the StatusSnapshot contract in status-types.ts — carries none of its own. Pure
+ * data collection, no presentation concern (the badge and the status payload render it). */
 
 import { asTestCounts, type TestCounts } from "../build/build-check-counts.js";
 import { isFullCheckScope } from "../build/build-check-events.js";

@@ -19,7 +19,7 @@
  * machine-readable `--json` keys; the alert is the rendered half the docs name. */
 
 import type { TeamAlert } from "./team-alert-shared.js";
-import type { StatusSnapshot } from "../status/status-data.js";
+import type { StatusSnapshot } from "../status/status-types.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { CheckOutcome } from "../doctor/doctor-outcome.js";
 import { checkBuildCheck } from "../doctor/doctor-project-checks.js";

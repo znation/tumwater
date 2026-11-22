@@ -368,7 +368,7 @@ export function seamFree(
  * models.json prices it at zero, and an opencode pair is free when the catalog prices it at
  * zero (part 6b/7). Any other backend namespace, or an unresolvable pair, is refused — the badge
  * must not read n/a while a backend whose billing it cannot see runs. Exported so the budget
- * gate (src/gates/budget-gates.ts), the status pause set (src/status/status-data.ts) and the
+ * gate (src/gates/budget-gates.ts), the status pause set (src/status/status-budget.ts) and the
  * free-ness view judge fallback pairs with the same predicate — neither may engage a backend
  * their own badge would not call free. `catalog` is the opencode cache, threaded like the
  * `accounts` lookup; absent, an opencode pair reads NOT free. */

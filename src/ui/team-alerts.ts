@@ -16,7 +16,7 @@
  * stopped team, or a listed set the sweep has kept past two full sweeps — never for a leak a
  * running team is on the case for, whose own poll sweep reaps it. */
 
-import type { StatusSnapshot } from "../status/status-data.js";
+import type { StatusSnapshot } from "../status/status-types.js";
 import type { OrphanAlert } from "./status-payload.js";
 import type { RefusedEntry } from "../backlog/backlog-eligibility.js";
 import type { TumwaterConfig } from "../config/config-schema.js";

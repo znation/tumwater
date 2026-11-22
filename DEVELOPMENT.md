@@ -176,7 +176,8 @@ suite, for a change whose point is that the dashboards should look identical:
 - `scripts/diff-check.mjs` renders one fixture through the baseline build and the working
   build at three widths (default, 120, 60) and compares the `tumwater status` table and the
   GUI `/api/status` payloads exactly — the safety net for a refactor of
-  `src/status/status-data.ts`, `src/ui/status-render.ts`, or the status payload. Stage the
+  `src/status/status-data.ts` (and its `status-types.ts` contract), `src/ui/status-render.ts`,
+  or the status payload. Stage the
   baseline once from a clean main checkout, then rebuild the worktree after your change:
 
       TW=$(node -pe "require('node:os').tmpdir()")   # the host's real scratch root ($TMPDIR, or /tmp)
@@ -339,8 +340,17 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   in `src/backlog/`.
 - `src/status/`: the `status` collector behind the status table and dashboard
   (`status-data.ts` — a thin composer over the per-domain collectors `status-roles.ts`,
-  `status-inbox.ts` and `status-budget.ts`) and its per-poll cached readers; rendering lives
-  in `src/ui/status-render.ts`.
+  `status-inbox.ts` and `status-budget.ts`), the snapshot's shape as its own contract file
+  (`status-types.ts`, the way `src/report/report-types.ts` sits beside `report-data.ts`, so
+  `src/ui/` and the CLI read the shapes without importing the collection code), and its
+  per-poll cached readers; rendering lives in `src/ui/status-render.ts`.
+- `src/github/`: the GitHub-issues mirror — `gh.ts` (the operator's `gh` CLI as tumwater's one
+  GitHub probe; tumwater holds no token), `issue-scan.ts` (the hourly read of the project's open
+  issues), `github-issues-state.ts` (the ledger file the scan writes and `tumwater status`, the
+  dashboard and `tumwater issues` read), `issue-queue.ts` (picking the next issue for the
+  director), `issue-outcome.ts` (recording a director's `ISSUE:` verdict), `issue-close.ts`
+  (closing an issue once its fix is on GitHub), `issue-mirrors.ts` (which backlog entries mirror
+  which issues) and `github-issues-render.ts` (the `tumwater issues` terminal read).
 - `src/gates/`: the scheduler's admission gates — daily budget, disk floor, quiet hours,
   pause, startup/readiness, per-role caps, the maintenance quota, error streaks, and the team
   failure hold (`gate-polls.ts` polls them).

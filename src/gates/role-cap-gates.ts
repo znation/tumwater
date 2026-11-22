@@ -43,7 +43,7 @@ interface CapObservation {
 /** The stateless verdict: is this role over its own per-role cap as of `now`? True iff a cap
  * is configured, it is a finite number above zero (0 disables that role's cap, like the team
  * cap), and today's spend has reached it. The role→cap lookup stays with the caller
- * (`caps?.[role]`), so part 2/2's observers (src/status/status-data.ts) share this single
+ * (`caps?.[role]`), so part 2/2's observers (src/status/status-budget.ts) share this single
  * definition with the scheduler. */
 export function roleCapPaused(
   state: Pick<RunnerState, "dayStamp" | "dayCostUsd">,
@@ -63,7 +63,7 @@ interface RoleCapVerdict {
 }
 
 /** The grouped, stateless per-role cap verdict — the single definition the scheduler's gate
- * (`pollRoleCapGate`) and the snapshot's `capPaused` observer (src/status/status-data.ts) both
+ * (`pollRoleCapGate`) and the snapshot's `capPaused` observer (src/status/status-budget.ts) both
  * fold, so the hold an operator sees cannot diverge from the one the scheduler enforces.
  * Instance role ids share their base role's cap and its SUMMED spend (`feature` and `feature-2`
  * at $0.60 each cross a `maxDailyCostUsdPerRole.feature` cap of $1 together), and the director
@@ -171,7 +171,7 @@ export function pollRoleCapGate(
   now: number,
 ): ReadonlySet<string> {
   // Grouping and the verdict itself live in roleCapVerdicts, shared with the snapshot's
-  // `capPaused` observer (src/status/status-data.ts) so the two cannot diverge. The returned
+  // `capPaused` observer (src/status/status-budget.ts) so the two cannot diverge. The returned
   // set holds the paused role ids so the scheduler can keep checking `capPaused.has(runner.role)`
   // unchanged.
   const verdicts = roleCapVerdicts(runners, caps, now);

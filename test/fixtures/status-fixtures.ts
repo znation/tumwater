@@ -5,7 +5,7 @@
  * suite moved to its own file, so the two halves cannot drift (one fixture, two surfaces). */
 import assert from "node:assert/strict";
 import path from "node:path";
-import type { StatusSnapshot } from "../../src/status/status-data.js";
+import type { StatusSnapshot } from "../../src/status/status-types.js";
 import { freshRunnerState } from "../../src/runner/runner-state.js";
 import { applyRunOutcome } from "../../src/run/run-apply.js";
 import { defaultConfig } from "../../src/config/config.js";

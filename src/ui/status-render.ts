@@ -1,5 +1,5 @@
 import type { RunnerState } from "../runner/runner-state.js";
-import type { StatusSnapshot } from "../status/status-data.js";
+import type { StatusSnapshot } from "../status/status-types.js";
 import type { SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import { dailyCost } from "../budget/budget.js";
 import type { LiveProgress } from "./progress-data.js";
@@ -220,7 +220,7 @@ interface StatusRoleRow {
 }
 
 /** The per-role snapshot row one render reads — RunnerState plus the display extras the
- * snapshot layer adds (model/tier/custom/image fields, status-data.ts). */
+ * snapshot layer adds (model/tier/custom/image fields, status-roles.ts's StatusRoleRow). */
 type SnapshotRole = StatusSnapshot["roles"][number];
 
 /** One role's metric inputs for its status row, captured once per render so the header

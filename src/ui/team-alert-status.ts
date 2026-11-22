@@ -3,7 +3,8 @@
  * run or stuck. One of the per-domain builders split out of
  * src/ui/team-alerts.ts; the shared types and wording helpers live in team-alert-shared.ts. */
 
-import { POLL_STALL_MS, type StatusSnapshot } from "../status/status-data.js";
+import { POLL_STALL_MS } from "../status/status-data.js";
+import type { StatusSnapshot } from "../status/status-types.js";
 import type { GithubIssuesSummary } from "../github/github-issues-state.js";
 import { ghUnreadableSentence } from "../github/gh.js";
 import {

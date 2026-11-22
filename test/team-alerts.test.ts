@@ -14,7 +14,7 @@ import { renderStatus } from "../src/ui/status-render.js";
 import { checkBuildCheck } from "../src/doctor/doctor-project-checks.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { snapshotWith } from "./fixtures/status-fixtures.js";
-import type { StatusSnapshot } from "../src/status/status-data.js";
+import type { StatusSnapshot } from "../src/status/status-types.js";
 
 type StandingFlags = Pick<
   StatusSnapshot,

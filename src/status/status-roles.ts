@@ -24,9 +24,9 @@ import { seamContextWindowForRole } from "../pi/pi-models.js";
 
 /** One status-table row: the persisted runner state plus the display-only fields the dashboard
  * computes at the source (`custom`, the resolved selector, the active fallback, the pooled
- * slot, the base-role instance). The structural mirror of `StatusSnapshot["roles"]`, kept
- * here so the roles collector owns its row type; status-data.ts composes the array into the
- * snapshot and TypeScript checks the two shapes agree. */
+ * slot, the base-role instance). status-types.ts spells the snapshot's `roles` field as
+ * `StatusRoleRow[]`, so this is the one home of the row shape: the roles collector owns it and
+ * the snapshot contract names it. */
 export type StatusRoleRow = RunnerState & {
   custom: boolean;
   modelTier?: ModelTier;

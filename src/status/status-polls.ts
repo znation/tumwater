@@ -24,9 +24,9 @@ import { readRemoteCi, type RemoteCiEntry } from "../observer/remote-ci.js";
  * the maintenance allowance. The main-check reader (a stat-cached event-tail scan with its
  * grown-full memo) lives in status-main-check.ts; the throttled declared-check reader lives
  * in build/build-check-poll.ts, beside the detection it caches. All were split out of
- * status/status-data.ts —
- * which keeps the StatusSnapshot contract and the snapshot assembly — so the contract file
- * carries no module-level cache state of its own. Pure data collection, no presentation concern. */
+ * status/status-data.ts — which keeps the snapshot assembly, while the StatusSnapshot contract
+ * itself lives in status-types.ts — so neither file carries module-level cache state of its
+ * own. Pure data collection, no presentation concern. */
 
 /** The ciParity field's shape (StatusSnapshot's contract): the `ci` ledger's glance verdict
  * beside the fast main check. `state` is the doctor's own `current`/`stale`/`failed` reading
