@@ -32,6 +32,30 @@ const base: Snap = {
   budgetPausedRoles: [],
 };
 
+test("the gh banner rides the actionable alerts and the scan banners follow the backlog ones", () => {
+  // teamAlerts wires the two GitHub builders: the amber `github-gh` banner sits with the other
+  // actionable status alerts, and the gray/blue scan banners (buildGithubScanAlerts, which reads
+  // the `now` argument the callers now pass) land after the backlog alerts, before the tail.
+  const gh = {
+    repo: "acme/widgets",
+    gh: "unauthenticated" as const,
+    checkedAt: Date.UTC(2026, 10, 21, 10, 0, 0),
+    unmirrored: 2,
+    untrusted: 3,
+    waitingPush: 0,
+    mirrorLabel: "tumwater",
+  };
+  const alerts = teamAlerts({ ...base, githubIssues: gh }, ["which repo?"], [], Date.UTC(2026, 10, 21, 10, 5, 0));
+  const keys = alerts.map((a) => a.key);
+  assert.deepEqual(keys, ["github-gh", "questions", "github-mirror"], "gh, then the question, then the mirror banner");
+  assert.equal(alerts[0]?.tone, "amber");
+  assert.equal(alerts[2]?.tone, "blue");
+  // A failed scan for another reason raises the gray banner instead, with the age read off `now`.
+  const failed = teamAlerts({ ...base, githubIssues: { ...gh, gh: "error", reason: "gh api failed", unmirrored: 0, untrusted: 0 } }, [], [], Date.UTC(2026, 10, 21, 10, 5, 0));
+  assert.deepEqual(failed.map((a) => [a.key, a.tone]), [["github-error", "gray"]]);
+  assert.equal(failed[0]?.detail, "gh api failed · checked 5m ago");
+});
+
 test("a red doctor orphan scan raises the standing amber orphans alert naming the count", () => {
   // The alert-feed half (refreshOrphanAlert) supplies the doctor-row sentence; here we pin that
   // teamAlerts renders it as a standing amber banner, so a red `orphans` row is never silent on

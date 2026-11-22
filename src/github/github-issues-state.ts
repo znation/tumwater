@@ -5,6 +5,7 @@
 
 import { ensureParentDir } from "../files/files.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { githubIssuesPath } from "../paths.js";
 
 /** What the last scan learned from `gh`: `ok` when it read the issues, `missing` or
@@ -108,16 +109,58 @@ export function readGithubIssues(root: string): GithubIssuesLedger | null {
 }
 
 /** The GitHub figures the status surfaces show: how many fixes wait for a push to GitHub and how
- * many open issues had only retired entries. Undefined when neither holds, or no ledger exists. */
+ * many open issues had only retired entries. Undefined when neither holds, no ledger exists, or
+ * the ledger's shape is foreign. Reads through readGithubIssuesForPoll: the snapshot calls this on
+ * every poll, so the ledger is stat-cached like every other poll reader (INV-T5). */
 export function githubCloseForStatus(
   root: string,
 ): { repo: string; waitingPush: number; retiredOnly: number } | undefined {
-  const ledger = readGithubIssues(root);
+  const ledger = readGithubIssuesForPoll(root);
   if (!ledger) return undefined;
   const waitingPush = Object.keys(ledger.waitingPush ?? {}).length;
   const retiredOnly = ledger.retiredOnly?.length ?? 0;
   if (waitingPush === 0 && retiredOnly === 0) return undefined;
   return { repo: ledger.repo, waitingPush, retiredOnly };
+}
+
+// Stat-keyed cache (stat-cache.cachedByStat) for the ledger, keyed by its path: the status
+// snapshot's githubIssuesForPoll polls it every second while the hourly scan rewrites it, so an
+// unchanged file costs one stat per poll instead of re-reading and re-parsing the whole open-issue
+// list — body excerpts and all — to fold it to five counts. The same contract the remote-CI and
+// parity ledgers' poll readers keep (INV-T5). writeGithubIssues is atomic (tmp + rename), so any
+// write invalidates via dev/ino/mtime/size; bounded inside cachedByStat.
+const ledgerCache = new Map<string, StatKeyedValue<GithubIssuesLedger>>();
+
+/** Does this read carry what the fold reads? `readJsonFile` only checks "a plain object", so a
+ * hand-edited or foreign-generation ledger can lack `open` (or hold a non-list), and the fold's
+ * `open.filter` would throw out of the snapshot into the dashboard's 500. A ledger that fails the
+ * shape reads as no data — the same policy as `isRemoteCiEntry`/`isParityEntry`. */
+function isFoldableLedger(value: GithubIssuesLedger | null): value is GithubIssuesLedger {
+  return (
+    value !== null &&
+    typeof value.repo === "string" &&
+    typeof value.checkedAt === "number" &&
+    Array.isArray(value.open)
+  );
+}
+
+/** The ledger as an observer may read it: stat-cached per poll, and null for a file whose shape the
+ * fold cannot consume, so a broken ledger costs the dashboard a field, never the whole payload.
+ * `readGithubIssues` itself stays uncached — the scan's own `previous` read must see the record as
+ * it stands before its write, in this same process. */
+export function readGithubIssuesForPoll(root: string): GithubIssuesLedger | null {
+  const file = githubIssuesPath(root);
+  return cachedByStat(
+    ledgerCache,
+    file,
+    file,
+    () => {
+      const ledger = readGithubIssues(root);
+      return isFoldableLedger(ledger) ? ledger : null;
+    },
+    // A copy: callers may treat the result as their own (the fold counts over `open`).
+    (ledger) => ({ ...ledger, open: [...ledger.open] }),
+  );
 }
 
 /** Rewrite the ledger atomically. */

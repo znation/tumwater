@@ -40,7 +40,7 @@ import { principlesBlockOverCap } from "../prompt/principles.js";
 import type { MaintenanceMarker } from "../orchestrator/retention.js";
 import { githubCloseForStatus } from "../github/github-issues-state.js";
 import { heartbeatPath, maintenancePath } from "../paths.js";
-import { type GithubIssuesSummary, githubIssuesSummary, readGithubIssues } from "../github/github-issues-state.js";
+import { type GithubIssuesSummary, githubIssuesSummary, readGithubIssuesForPoll } from "../github/github-issues-state.js";
 import { readJsonFile } from "../files/json-files.js";
 
 /** Status data collection: one fresh snapshot of the team for observers (`tumwater
@@ -642,11 +642,13 @@ function snapshotHealthFields(
   };
 }
 
-/** The GitHub issues ledger as the snapshot's `githubIssues` field (part 3/5): read fresh from
- * the scan's ledger, never from `gh`, and absent when the feature is off or no ledger exists. */
+/** The GitHub issues ledger as the snapshot's `githubIssues` field (part 3/5): read from the
+ * scan's ledger through its stat-keyed per-poll cache (github-issues-state.ts's
+ * readGithubIssuesForPoll), never from `gh`, and absent when the feature is off, no ledger exists,
+ * or the ledger's shape is foreign. */
 function githubIssuesForPoll(root: string, cfg: ReturnType<typeof configForStatus>): Pick<StatusSnapshot, "githubIssues"> {
   if (cfg.githubIssues?.enabled === false) return {};
-  const ledger = readGithubIssues(root);
+  const ledger = readGithubIssuesForPoll(root);
   if (ledger === null) return {};
   return { githubIssues: githubIssuesSummary(ledger, cfg.githubIssues?.mirrorLabel ?? "tumwater") };
 }

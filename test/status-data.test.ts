@@ -10,8 +10,9 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { maintenanceForPoll, pollStallForPoll, snapshot } from "../src/status/status-data.js";
-import { heartbeatPath, maintenancePath } from "../src/paths.js";
+import { githubIssuesPath, heartbeatPath, maintenancePath } from "../src/paths.js";
 import { writeGithubIssues, type GithubIssueRow } from "../src/github/github-issues-state.js";
+import { writeJsonFile } from "../src/files/json-files.js";
 import { runnerStateForPoll } from "../src/status/status-polls.js";
 import { quietHoursStatus } from "../src/scheduling/quiet-hours.js";
 import { statusPayload } from "../src/ui/status-payload.js";
@@ -348,5 +349,57 @@ test("snapshot folds the GitHub issues ledger to its counts and omits it when ab
   });
 
   writeConfig(repo, { githubIssues: { enabled: false } });
+  assert.equal((await snapshot(repo)).githubIssues, undefined);
+});
+
+test("the snapshot serves the GitHub issues ledger from the stat-keyed cache without re-reading", async () => {
+  // The ledger changes at the hourly scan, but both dashboards poll snapshot() every second, so
+  // an unchanged file must cost one stat, not a re-read and re-parse of the whole open-issue list
+  // (body excerpts and all) to fold it to five counts — the contract every other ledger's poll
+  // reader already keeps (INV-T5).
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  writeGithubIssues(repo, {
+    repo: "acme/widgets",
+    branch: "main",
+    checkedAt: 1000,
+    gh: "ok",
+    open: [{
+      number: 1,
+      title: "a broken thing",
+      url: "https://github.com/acme/widgets/issues/1",
+      author: "someone",
+      trusted: true,
+      mirrored: false,
+      labels: [],
+      updatedAt: "2026-11-21T00:00:00Z",
+      bodyExcerpt: "x".repeat(4000),
+    }],
+  });
+  assert.equal((await snapshot(repo)).githubIssues?.unmirrored, 1); // populates the cache
+
+  await withCountedReads(
+    async (reads) => {
+      const snap = await snapshot(repo);
+      assert.equal(snap.githubIssues?.unmirrored, 1); // unchanged — served from cache
+      assert.equal(reads(), 0, "no re-read of the ledger file at all");
+      // Each poll owns its data: the fold counts over the ledger's `open` list.
+      assert.equal((await snapshot(repo)).githubIssues?.unmirrored, 1);
+    },
+    (file) => typeof file === "string" && file.endsWith(`${path.sep}state${path.sep}github-issues.json`),
+  );
+});
+
+test("a foreign-shaped GitHub issues ledger raises no githubIssues field and never throws", async () => {
+  // readJsonFile only checks "a plain object", so a hand-edited or foreign-generation ledger with
+  // no `open` list must read as no data — otherwise the fold's `open.filter` throws out of the
+  // snapshot and takes the whole dashboard payload down with it (the same policy as the remote-CI
+  // and ci-parity ledgers' shape guards).
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  writeJsonFile(githubIssuesPath(repo), { repo: "acme/widgets", checkedAt: 1000, gh: "ok" });
+  assert.equal((await snapshot(repo)).githubIssues, undefined);
+
+  writeJsonFile(githubIssuesPath(repo), { repo: "acme/widgets", checkedAt: 1000, gh: "ok", open: "nope" });
   assert.equal((await snapshot(repo)).githubIssues, undefined);
 });
