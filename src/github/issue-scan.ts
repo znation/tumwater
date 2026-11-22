@@ -51,6 +51,44 @@ export function dueForIssueScan(nextAt: number, now: number): boolean {
   return now >= nextAt;
 }
 
+/** How long a resolved GitHub target is reused by the queue step. The target is the base
+ * branch's remote URL (`owner/name`) and branch — it changes only when the operator rewires the
+ * checkout's remote, so the orchestrator's 2 s poll does not need a fresh read: `githubTarget`
+ * spawns two `git config --get` subprocesses (measured ~10 ms per call on this repo), which at
+ * one poll per 2 s is ~60 spawns a minute for an answer that is effectively static. Throttled by
+ * time rather than keyed on a file, as in status/status-install.ts: the answer comes from git
+ * config, not a file whose stat we can watch. */
+const TARGET_POLL_THROTTLE_MS = 60_000;
+
+/** Safety cap, as in files/stat-cache.ts: many short-lived roots (tests) cannot grow the map
+ * unbounded. */
+const MAX_TARGET_ROOTS = 64;
+
+const targetCache = new Map<string, { at: number; target: { repo: string; branch: string } | null }>();
+
+/** `githubTarget` for the per-poll queue step: the answer is recomputed at most once per
+ * TARGET_POLL_THROTTLE_MS per root. A null answer (no GitHub remote) is cached too, so a repo
+ * with no mirror target costs no spawns per poll either; it re-reads after the window. The
+ * caller owns the returned object. The hourly scan and close paths keep the fresh
+ * `githubTarget` read. */
+export async function githubTargetForPoll(
+  root: string,
+  config: TumwaterConfig,
+  now: number = Date.now(),
+): Promise<{ repo: string; branch: string } | null> {
+  const hit = targetCache.get(root);
+  if (hit && now - hit.at < TARGET_POLL_THROTTLE_MS) return hit.target ? { ...hit.target } : null;
+  const target = await githubTarget(root, config);
+  if (targetCache.size >= MAX_TARGET_ROOTS) targetCache.clear();
+  targetCache.set(root, { at: now, target });
+  return target ? { ...target } : null;
+}
+
+/** Forget every cached target (tests). */
+export function resetGithubTargetCache(): void {
+  targetCache.clear();
+}
+
 /** Whether an open issue is one a maintainer stands behind (decision 4): its author association
  * is OWNER, MEMBER or COLLABORATOR, it carries the mirror label, or every issue counts. */
 export function isTrustedIssue(
@@ -207,7 +245,7 @@ export async function queueOneIssue(
   now: number = Date.now(),
 ): Promise<QueuedIssue | null> {
   const ledger = readGithubIssues(root);
-  const target = await githubTarget(root, config);
+  const target = await githubTargetForPoll(root, config, now);
   if (ledger?.gh !== "ok" || !target) return null;
   const mirrors = await mirrorsAtTip(root, target.branch);
   const picked = nextIssuePrompt(

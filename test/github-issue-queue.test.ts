@@ -7,11 +7,11 @@ import { loadConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { readEvents } from "../src/events/event-read.js";
 import { nextIssuePrompt } from "../src/github/issue-queue.js";
-import { queueOneIssue, scanGithubIssues } from "../src/github/issue-scan.js";
+import { queueOneIssue, resetGithubTargetCache, scanGithubIssues } from "../src/github/issue-scan.js";
 import { readGithubIssues, type GithubIssuesLedger, type GithubIssueRow } from "../src/github/github-issues-state.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { fakeGh } from "./fakes/fake-gh.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { loggingGit, tmpdir } from "./fixtures/repo-fixtures.js";
 
 const NOW = Date.parse("2026-11-21T12:00:00Z");
 const HOUR = 60 * 60 * 1000;
@@ -136,6 +136,61 @@ test("queueOneIssue scans once, then queues one issue and records it; the next a
     assert.equal(await queueOneIssue(repo.dir, repo.config, NOW + HOUR), null);
     assert.equal(readEvents(repo.dir).filter((e) => e.type === "github_issue_queued").length, 1);
   } finally {
+    repo.cleanup();
+  }
+});
+
+/** How many `git config --get` a logging-git log names. */
+function configReads(logFile: string): number {
+  if (!fs.existsSync(logFile)) return 0;
+  return fs
+    .readFileSync(logFile, "utf8")
+    .split("\n")
+    .filter((line) => line.includes("config --get")).length;
+}
+
+test("the queue's GitHub target is resolved once per throttle window: a repeat call in the window spawns no git config, and a later call re-reads it", async () => {
+  const repo = githubRepo();
+  resetGithubTargetCache();
+  const logFile = path.join(tmpdir("gh-target-log-"), "git.log");
+  const restore = loggingGit(logFile);
+  try {
+    const first = await queueOneIssue(repo.dir, repo.config, NOW);
+    assert.equal(first, null, "an empty ledger queues nothing");
+    const readsAfterFirst = configReads(logFile);
+    assert.ok(readsAfterFirst > 0, "the first queue step reads the target from git config");
+
+    // A later poll inside the window: same answer, no new git config spawns.
+    const second = await queueOneIssue(repo.dir, repo.config, NOW + 30_000);
+    assert.equal(second, null);
+    assert.equal(configReads(logFile), readsAfterFirst, "a poll inside the window spawns no git config");
+
+    // Past the window the target is re-read from git.
+    await queueOneIssue(repo.dir, repo.config, NOW + 61_000);
+    assert.ok(configReads(logFile) > readsAfterFirst, "past the window the target is re-read");
+  } finally {
+    restore();
+    resetGithubTargetCache();
+    repo.cleanup();
+  }
+});
+
+test("the queue's cached target is handed out as a copy, so mutating a poll's answer cannot poison the next", async () => {
+  const repo = githubRepo();
+  resetGithubTargetCache();
+  try {
+    const { githubTargetForPoll } = await import("../src/github/issue-scan.js");
+    const first = await githubTargetForPoll(repo.dir, repo.config, NOW);
+    assert.deepEqual(first, { repo: "o/r", branch: "main" });
+    first!.repo = "someone-else/repo";
+    first!.branch = "feature";
+    assert.deepEqual(
+      await githubTargetForPoll(repo.dir, repo.config, NOW + 1_000),
+      { repo: "o/r", branch: "main" },
+      "the cached answer is untouched by the caller's edit",
+    );
+  } finally {
+    resetGithubTargetCache();
     repo.cleanup();
   }
 });
