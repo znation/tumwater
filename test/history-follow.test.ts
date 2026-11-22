@@ -83,6 +83,34 @@ test("history -f applies --role and --result to followed rows", async () => {
   assert.match(byResult, /#7/);
 });
 
+// The live follow's event buffer is capped at HISTORY_FOLLOW_BUFFER_EVENTS (2000) by trimToLast
+// after every appended event. Seed past the cap so the drain is actually running during the
+// follow, then end one more run: that row is looked up as the newest `run_end` in the capped
+// buffer, so a drain that dropped from the back (or stopped being called) loses it. The seed
+// read stays bounded at HISTORY_DEFAULT_RUNS (20) rows, so the filler's older runs never print.
+test("history -f reports the last-ended run's row when the follow buffer overflows its cap", async () => {
+  const fillerRuns = 1001; // 2 events per run: 2002 seed events, past the 2000-event cap
+  const filler = Array.from(
+    { length: fillerRuns },
+    (_, i) => start("clean", i + 1, (i + 1) * 2 - 1) + end("clean", i + 1, (i + 1) * 2, "changed"),
+  ).join("");
+  const appended = fillerRuns + 1;
+  const out = await follow(
+    ["-f"],
+    filler,
+    [start("feature", appended, appended * 2 - 1), end("feature", appended, appended * 2, "changed")],
+  );
+  const lines = out.trim().split("\n");
+  const last = lines[lines.length - 1]!;
+  assert.match(last, new RegExp(`feature\\s+#${appended}`), "the last-ended run's row prints");
+  assert.match(last, /merged/);
+  // 20 seed rows (the newest 20 completed runs, oldest first: runs 982..1001) plus the followed
+  // row — the cap kept the buffer reading the tail and the seed read stayed bounded.
+  assert.equal(lines.length, 21);
+  assert.match(lines[0]!, /clean\s+#982/);
+  assert.match(lines[19]!, /clean\s+#1001/);
+});
+
 test("history -f fails with its rival shapes", async () => {
   const repo = makeRepo();
   const err = await expectFailAsync(() => cmdHistory(repo, ["-f", "--since", "1h"]));

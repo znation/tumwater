@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { addTo, compareCodeUnits, distinctOrdered, filterKeepPositions, getOrCreate, groupBy, lowerMedian, memoSetLru, rankCountEntries, sortByValueDesc, topAndHidden } from "../src/collections.js";
+import { addTo, compareCodeUnits, distinctOrdered, filterKeepPositions, getOrCreate, groupBy, lowerMedian, memoSetLru, rankCountEntries, sortByValueDesc, topAndHidden, trimToLast } from "../src/collections.js";
 
 // Unit seam for collections.ts's get-or-create step, the shape factored out of the failure
 // digest, the team hold, and the error-storm reducer. Those paths already cover it end to
@@ -346,4 +346,47 @@ test("lowerMedian takes the single middle (odd) or the lower middle (even)", () 
   const input = [4, 1, 3, 2];
   assert.equal(lowerMedian(input), 2);
   assert.deepEqual(input, [4, 1, 3, 2]);
+});
+
+// trimToLast is the single home of the "keep the newest capped buffer" discipline two live
+// callers share: src/ui/transcript.ts's feedEntries (MAX_ENTRIES) and src/history/history.ts's
+// `logs --follow` event buffer (HISTORY_FOLLOW_BUFFER_EVENTS). Both append in batches, so an
+// overflow can be many entries wide; these pins hold the three facts the drain owes the callers
+// — the newest `max` survive in order, the excess leaves from the front, and the drain happens
+// through the caller's own array. A one-element shift, a trim that ran before the append, or a
+// trim that assigned a replacement array would each break one of these while the two call
+// sites kept passing their own tests.
+test("trimToLast drops a many-wide overflow from the front, keeping the newest in order", () => {
+  const arr = [1, 2, 3, 4, 5]; // 3 over a cap of 2: a batch append, not a single push
+  trimToLast(arr, 2);
+  assert.deepEqual(arr, [4, 5]);
+});
+
+test("trimToLast mutates the caller's own array rather than replacing it", () => {
+  const arr = ["a", "b", "c"];
+  trimToLast(arr, 2);
+  // The callers hold a long-lived reference (the transcript ring, the follow buffer) and read
+  // it after the call, so the trim must edit that array in place.
+  assert.deepEqual(arr, ["b", "c"]);
+  arr.push("d");
+  trimToLast(arr, 2);
+  assert.deepEqual(arr, ["c", "d"]);
+});
+
+test("trimToLast leaves an array at or under the cap untouched", () => {
+  const at = [1, 2];
+  trimToLast(at, 2);
+  assert.deepEqual(at, [1, 2]);
+  const under = [1];
+  trimToLast(under, 2);
+  assert.deepEqual(under, [1]);
+  const empty: number[] = [];
+  trimToLast(empty, 2);
+  assert.deepEqual(empty, []);
+});
+
+test("trimToLast with max 0 empties the buffer", () => {
+  const arr = [1, 2, 3];
+  trimToLast(arr, 0);
+  assert.deepEqual(arr, []);
 });

@@ -5,6 +5,41 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The two live over-cap buffers drain through one pinned trim, so a growing transcript or follow session cannot keep memory unbounded or drop the newest entry (planned 2026-11-21 by the plan role) — done 2026-11-21 by the feature role
+
+A follow-mode transcript and the `logs --follow` event buffer both cap themselves by calling
+`trimToLast` after each append (src/ui/transcript.ts `feedEntries` with `MAX_ENTRIES` = 200;
+src/history/history.ts with `HISTORY_FOLLOW_BUFFER_EVENTS` = 2000). Nothing pins the trim itself:
+`trimToLast` (src/collections.ts) has no test — grep `trimToLast` under test/ returns 0 hits — and
+no test shows a buffer that overflows by more than one entry keeping the newest entries and
+dropping only the oldest, so a refactor back to a one-element shift, or a trim that runs before
+rather than after a batch append, would pass the suite while silently growing an unbounded buffer
+or cutting the entry the caller just appended.
+
+**Approach.** Pin the contract at the helper and at both live sites, in one change. In
+test/collections.test.ts, add `trimToLast` to the existing `../src/collections.js` import and pin
+the helper directly: an array longer than `max` keeps exactly its last `max` elements in order; the
+excess is dropped from the front in one step, so an array that overflows by many at once (e.g. 5
+elements at `max` 2) keeps the newest 2; an array at or under `max` is left identical, element for
+element; `max` 0 empties it; the mutation is visible through the caller's own reference (same array,
+not a replacement). In test/transcript.test.ts, extend the retention test that already feeds 250
+runs past the 200-entry cap to assert the exact boundary rather than only that an old entry is gone:
+the rendered tail for a request of 250 is exactly 200 entries, its newest entry is the last one fed,
+and its oldest is the 51st — never 201 entries and never the newest one missing. In
+test/history-follow.test.ts, keep the scripted event count above `HISTORY_FOLLOW_BUFFER_EVENTS` and
+assert the follow session still reports the run row for the run that ended last, which fails if the
+drain drops from the back or stops running. No behaviour change is expected; if a site turns out to
+mis-drain, fix that site in the same commit and say so in the commit message.
+
+**Files touched.** test/collections.test.ts, test/transcript.test.ts, test/history-follow.test.ts;
+src/ui/transcript.ts and src/history/history.ts only if a pinned behaviour turns out wrong.
+
+**Acceptance criteria.**
+- test/collections.test.ts: feeding `trimToLast` 5 elements with `max` 2 leaves the array holding exactly the last 2, in order, through the caller's original reference; an array at or under `max` is unchanged element for element; `max` 0 leaves it empty.
+- test/transcript.test.ts: after more than `MAX_ENTRIES` entries are fed for one role, a tail request larger than the cap renders exactly `MAX_ENTRIES` entries — the newest fed entry is present, and the entry count is never one over the cap.
+- test/history-follow.test.ts: a follow session whose scripted events exceed `HISTORY_FOLLOW_BUFFER_EVENTS` still prints the row for the most recently ended run.
+- The suite passes with no change under src/ unless a real mis-drain is found; a reviewer can see from the diff which case each new assertion pins.
+
 ### Busy model check, part 1/2: the runner records when a team run's model request on a pair was last answered, so the model check can tell a busy server from a dead one (planned 2026-11-21 by the plan role, split from the BUGS.md entry "The model check fails a pair on queue position…" found by the bugfix role 2026-11-21) — done 2026-11-21 by the feature role
 
 Sibling: BUGS.md "Busy model check, part 2/2: a probe that gets no reply while the team's runs on the same pair are being answered…" uses this signal and is held until this part lands. **Direction picked 2026-11-21 by the plan role:** a verdict-level rule (part 2/2), not reserving a concurrency slot. On 11-17 the server kept starting the team's cache-hit follow-ups ahead of the probe's uncached request under memory pressure. One fewer team run does not change that admission order, and the team's runner count is not the server's `--max-concurrent`.

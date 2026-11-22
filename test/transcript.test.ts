@@ -381,6 +381,17 @@ test("readTranscript keeps only the newest entries past the retention cap", () =
   assert.ok(out.includes(`── run @ ${expectedTimestamp(FIXED_TS + 250 * 60_000)} ──`)); // newest
   assert.ok(out.includes("  turn 201")); // oldest visible: runs 201..250
   assert.ok(!out.includes("  turn 200")); // evicted past the cap
+
+  // The exact boundary the trim owes the ring: feedEntries trims after every batch append, so
+  // a tail request wider than MAX_ENTRIES renders exactly the cap — the newest 200 of the 250
+  // fed entries — never 201 (an off-by-one cap) and never without the newest entry (a trim
+  // that ran before the append, or dropped from the back).
+  const tail = readTranscript(root, "feature", 250);
+  assert.equal(tail.filter((l) => l.startsWith("── run")).length, 200);
+  assert.ok(tail.includes(`── run @ ${expectedTimestamp(FIXED_TS + 250 * 60_000)} ──`), "newest entry kept");
+  assert.ok(tail.includes("  turn 250"), "newest entry kept");
+  assert.ok(tail.includes("  turn 51"), "oldest visible entry: runs 51..250");
+  assert.ok(!tail.includes("  turn 50"), "one entry older is evicted");
 });
 
 // Run labels: a harness-written tumwater_run marker before an agent_start labels that run's
