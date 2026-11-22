@@ -33,6 +33,9 @@ interface SettingsFns {
   salvageViewClick(position: string): Promise<void>;
   paintSalvage(): void;
   renderRetirable(d: unknown, armed: (role: string) => boolean): string;
+  renderIssues(d: unknown): string;
+  fetchIssues(): Promise<void>;
+  paintIssues(): void;
   fetchRetirable(): Promise<void>;
   enableRole(role: string): Promise<void>;
   confirmRetire(role: string): Promise<void>;
@@ -51,7 +54,7 @@ interface SettingsFns {
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "err-message", "settings-view", "format"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderSalvage", "fetchSalvage", "salvageApplyClick", "salvageDropClick", "salvageViewClick", "paintSalvage", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderSalvage", "fetchSalvage", "salvageApplyClick", "salvageDropClick", "salvageViewClick", "paintSalvage", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "renderIssues", "fetchIssues", "paintIssues", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -303,7 +306,7 @@ test("the settings region is spliced into the served script, and the boot routes
   assert.equal(GUI_CLIENT_JS.includes(clientRegion("settings-view")), true);
   // …and the boot's view table and switchView must fetch it.
   assert.match(GUI_CLIENT_BOOT_JS, /settings: "settings-view"/);
-  assert.match(GUI_CLIENT_BOOT_JS, /if \(v === "settings"\) \{ fetchSettings\(\); fetchDoctor\(\); fetchSalvage\(\); fetchRetirable\(\); fetchBrief\(\); \}/);
+  assert.match(GUI_CLIENT_BOOT_JS, /if \(v === "settings"\) \{ fetchSettings\(\); fetchDoctor\(\); fetchSalvage\(\); fetchRetirable\(\); fetchBrief\(\); fetchIssues\(\); \}/);
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='retire'\]/);
   // The salvage card's per-patch buttons are delegated like the retire ones.
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='salvage-apply'\]/);
@@ -1013,3 +1016,144 @@ test("resyncInstallClick posts /api/doctor-resync-install, flashes the re-sync l
   assert.equal(doctorFetches, 1);
 });
 
+
+// The GitHub issues card (the fifth Settings card): the mirror read the dashboard serves at
+// GET /api/issues, painted here. The expectations are worked out from the document the endpoint
+// is pinned to answer by test/gui-issues.test.ts — positions, counts and the age inputs — never
+// read back out of renderIssues, so a wrong count source or a swapped age segment fails.
+
+const ISSUES_DOC = (now: number) => ({
+  read: true,
+  empty: false,
+  repo: "znation/proj",
+  branch: "main",
+  checkedAt: now - 3 * 3_600_000,
+  gh: "ok",
+  openCount: 2,
+  closedCount: 1,
+  upstreamClosedCount: 0,
+  issues: [
+    {
+      position: 1, number: 4, title: "Fourth & <b>bold</b>",
+      url: "https://github.com/znation/proj/issues/4",
+      author: "zach", trusted: true, mirrored: true, labels: [],
+      updatedAt: new Date(now - 3 * 3_600_000).toISOString(),
+    },
+    {
+      position: 2, number: 7, title: "Seventh", url: "",
+      author: "bot", trusted: false, mirrored: false, labels: [],
+      updatedAt: new Date(now - 2 * 86_400_000).toISOString(),
+    },
+    {
+      position: 3, number: 2, title: "Second",
+      url: "https://github.com/znation/proj/issues/2",
+      author: "zach", trusted: true, mirrored: true, labels: [], wasClosed: true,
+      updatedAt: new Date(now - 30 * 60_000).toISOString(),
+    },
+  ],
+});
+
+test("renderIssues states the mirror's counts in tumwater issues' words and numbers every row", () => {
+  const now = Date.now();
+  const { renderIssues } = settingsScope();
+  const html = renderIssues(ISSUES_DOC(now));
+  // The card's own header row, in the CLI's counting words over the whole mirror: two open, one
+  // closed by tumwater, no upstream clause while that count is 0.
+  assert.match(html, /^<div class='settings-row'><strong>GitHub issues<\/strong><span>znation\/proj \(main\): 2 open, 1 closed by tumwater, checked 3h ago<\/span><\/div>/);
+  assert.equal(html.match(/closed upstream/g), null, "a zero upstream-close count keeps its clause out");
+  // Each row: its whole-list position and issue number, the title linked to GitHub and escaped.
+  assert.match(html, /<strong>1\. #4 <a rel='noopener' target='_blank' href='https:\/\/github\.com\/znation\/proj\/issues\/4'>Fourth &amp; &lt;b&gt;bold&lt;\/b&gt;<\/a><\/strong>/);
+  // A row with no url paints plain escaped text, no anchor.
+  assert.match(html, /<strong>2\. #7 Seventh<\/strong>/);
+  // The mirror state and the trust marker, in tumwater issues' words.
+  assert.match(html, /<span>mirrored<\/span><span>trusted<\/span>/);
+  assert.match(html, /<span>not mirrored<\/span><span class='pill t-amber'>untrusted<\/span>/);
+  // The age segment: `updated <ago>` for a live row, `closed <ago>` for the row tumwater closed.
+  assert.match(html, /<span>updated 3h ago<\/span><\/div>/);
+  assert.match(html, /<span>updated 2d ago<\/span><\/div>/);
+  assert.match(html, /<span>closed 30m ago<\/span><\/div>/);
+  // An ok gate state paints no gate line.
+  assert.doesNotMatch(html, /gh /);
+});
+
+test("renderIssues keeps the header counts at the whole mirror whatever rows arrived, and says an empty mirror in words", () => {
+  const { renderIssues } = settingsScope();
+  const now = Date.now();
+  // A mirror with nothing on record but a scan: read, empty lists, no rows.
+  const read = renderIssues({ ...ISSUES_DOC(now), openCount: 0, closedCount: 0, issues: [] });
+  assert.match(read, /<div class='empty'>no issues to show<\/div>/);
+  assert.match(read, /: 0 open, checked 3h ago<\/span><\/div>/);
+  // No ledger at all: the card says the state in words and names no repo and no counts, so a
+  // never-read mirror never reads as an empty mirror.
+  const unread = renderIssues({ read: false, empty: true, openCount: 0, closedCount: 0, upstreamClosedCount: 0, issues: [] });
+  assert.match(unread, /<div class='empty'>the GitHub issues mirror has not been read yet<\/div>/);
+  assert.match(unread, /<strong>GitHub issues<\/strong><span><\/span><\/div>/);
+  assert.doesNotMatch(unread, /znation/, "an unread mirror names no repo");
+  assert.doesNotMatch(unread, /open/, "an unread mirror names no counts");
+  // A filtered frame that keeps nothing still states the whole mirror's counts (INV-DE3).
+  const filtered = renderIssues({ ...ISSUES_DOC(now), issues: [], state: "closed" });
+  assert.match(filtered, /: 2 open, 1 closed by tumwater, checked 3h ago<\/span>/);
+  assert.match(filtered, /<div class='empty'>no issues to show<\/div>/);
+});
+
+test("renderIssues prints a not-ok gh gate line with the ledger's reason, and the CLI's unknown-age words", () => {
+  const { renderIssues } = settingsScope();
+  const now = Date.now();
+  const gated = renderIssues({ ...ISSUES_DOC(now), gh: "unauthenticated", reason: "gh auth status failed", issues: [] });
+  assert.match(gated, /^<div class='settings-row'>.*<\/div><p class='empty'>gh unauthenticated: gh auth status failed<\/p>/);
+  // A ledger row with no usable timestamp has no age to name, so the card says so rather than
+  // printing NaN — the CLI's issueAge rule.
+  const undated = renderIssues({
+    ...ISSUES_DOC(now),
+    issues: [
+      { position: 1, number: 4, title: "Fourth", url: "", author: "zach", trusted: true, mirrored: true, labels: [], updatedAt: "not a date" },
+      { position: 2, number: 2, title: "Second", url: "", author: "zach", trusted: true, mirrored: true, labels: [], wasClosed: true, updatedAt: "not a date" },
+      { position: 3, number: 9, title: "Lost", url: "", author: "zach", trusted: true, mirrored: false, labels: [], upstreamClosed: true, updatedAt: "not a date" },
+    ],
+  });
+  assert.match(undated, /<span>updated unknown<\/span>/);
+  assert.match(undated, /<span>closed unknown<\/span>/);
+  // An issue GitHub lost is never phrased as a close tumwater made.
+  assert.match(undated, /<span>last seen unknown<\/span>/);
+  const lost = renderIssues({
+    ...ISSUES_DOC(now),
+    upstreamClosedCount: 1,
+    issues: [{ position: 1, number: 9, title: "Lost", url: "", author: "zach", trusted: true, mirrored: false, labels: [], upstreamClosed: true, updatedAt: new Date(now - 2 * 86_400_000).toISOString() }],
+  });
+  assert.match(lost, /: 2 open, 1 closed by tumwater, 1 closed upstream, checked 3h ago<\/span>/);
+  assert.match(lost, /<span>last seen open 2d ago<\/span>/);
+  assert.doesNotMatch(lost, /closed 2d ago/, "a lost issue is never printed as closed by tumwater");
+});
+
+test("fetchIssues builds the card and fills it from GET /api/issues; a failed fetch is the error panel", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard", "retirecard", "briefcard", "issuescard"]) els[id] = { innerHTML: "", dataset: {} };
+  const now = Date.now();
+  const fetched: string[] = [];
+  const { fetchIssues } = settingsScope({
+    $: (id: string) => els[id],
+    errorPanel: (title: string, err: { message: string }) => "<div>" + title + " " + err.message + "</div>",
+    getJson: async (path: string) => {
+      fetched.push(path);
+      return ISSUES_DOC(now);
+    },
+  });
+  await fetchIssues();
+  assert.deepEqual(fetched, ["/api/issues"], "the card reads the mirror endpoint once, read-only");
+  // The card exists in the built panel, so the boot's scroll and the card's own id are real.
+  assert.match(els["settings-view"]!.innerHTML, /id='issuescard'/);
+  const card = els.issuescard!.innerHTML;
+  assert.match(card, /<strong>GitHub issues<\/strong>/);
+  assert.match(card, /<strong>3\. #2 <a rel='noopener' target='_blank'/);
+  assert.match(card, /<span>closed 30m ago<\/span>/);
+  // A failed fetch: the named error panel with the message, never a bare code or a blank card.
+  const { fetchIssues: fetchFail } = settingsScope({
+    $: (id: string) => els[id],
+    errorPanel: (title: string, err: { message: string }) => "<div>" + title + " " + err.message + "</div>",
+    getJson: async () => {
+      throw new Error("/api/issues failed: HTTP 500 — broken ledger");
+    },
+  });
+  await fetchFail();
+  assert.equal(els.issuescard!.innerHTML, "<div>GitHub issues could not load /api/issues failed: HTTP 500 — broken ledger</div>");
+});

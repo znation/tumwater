@@ -1,5 +1,7 @@
 /** The GitHub issues ledger (plans/github-issues.md, State): the one file the hourly scan writes
- * and the GUI and `tumwater status` read. The scan owns repo, branch, checkedAt, gh, reason and
+ * and the GUI (`tumwater issues` and the dashboard's `GET /api/issues`, through
+ * src/gui/gui-issues-commands.ts `handleIssuesList`) and `tumwater status` read. The scan owns
+ * repo, branch, checkedAt, gh, reason and
  * open. The `queued`, `declined`, `fixedIn`, `closed`, `waitingPush` and `retiredOnly` records the
  * queue, outcome and close steps write stay in the file, so a rewrite by the scan never drops
  * them. */
@@ -178,7 +180,8 @@ function isGithubIssueRow(value: unknown): value is GithubIssueRow {
 /** The ledger on disk, or null when no scan has written one yet (or the file is unreadable). An
  * `open` list holding a row the declared shape rejects has that row dropped here, at the one read
  * every reader shares, so a hand-edited or foreign-generation entry costs the mirror one issue
- * instead of throwing a `TypeError` out of `tumwater status`, `tumwater issues`, the dashboard and
+ * instead of throwing a `TypeError` out of `tumwater status`, `tumwater issues`, the dashboard's
+ * `GET /api/issues` and
  * the queue/close polls. A ledger holding no `open` list at all is returned as read: its reader
  * decides (`isFoldableLedger` reads it as no data, `issueRows` as an empty mirror). */
 export function readGithubIssues(root: string): GithubIssuesLedger | null {

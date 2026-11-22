@@ -747,7 +747,10 @@ stale settings.
   also lists disabled roles that still keep a worktree, branch, merge ref, or
   paused marker, each with what `tumwater retire` would remove and a two-click Retire button; a
   role the safety rails object to shows the objections and the `--force` command instead,
-  because the dashboard never forces.
+  because the dashboard never forces. Its `GitHub issues` card reads the mirror's ledger file
+  through `GET /api/issues` — the browser twin of `tumwater issues`, the same read and the same
+  numbering — naming the mirror's counts and each issue's number, title, trust, mirror state and
+  age; it never calls `gh`, since the hourly scan and the doctor's check are `gh`'s only callers.
 - Review runs show as `── review @ <ts> ──` in role transcripts.
 - Runtime state lives in `.tumwater/` (gitignored). Durable state lives in tracked markdown and
   `tumwater.json`.

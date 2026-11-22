@@ -5775,6 +5775,43 @@ replaces a full entry with its one-line record deletes the heading, so it still 
 prose is not the fix commit" and "a fix on main closes the mirrored issue once GitHub has it,
 citing the fix commit once".
 
+### INV-DE6: the mirror has two read front ends over one numbering, one count source and one state filter, and the dashboard never calls `gh`
+
+**Guarantee.** `tumwater issues` (src/cli/cli-query-commands.ts `cmdIssues`) and the dashboard's
+`GET /api/issues` (src/gui/gui-issues-commands.ts `handleIssuesList`) answer from the same render
+module: `issueRows` is the only numbering either front end uses, so the issue at position N is the
+same issue on both surfaces and a kept row keeps its whole-list position; `issuesHeader` is the only
+source of the header's counts, so a filtered endpoint reply still states the whole mirror's
+`openCount`, `closedCount` and `upstreamClosedCount` exactly as INV-DE3 pins for the terminal frame —
+the endpoint takes them from the header, never from its kept rows; and `stateIssueRows` is the only
+state filter, so `?state=open|closed` divides the rows exactly as `--open`/`--closed` does and any
+other value is a 400 (`state must be open or closed (got "…")`) rather than a list. `q` runs through
+`grepIssueRows`, the `--grep` predicate. The endpoint reads strictly the ledger file
+(`readGithubIssues`) and never `gh` — plans/github-issues.md invariant 2 keeps `gh` inside the scan
+and the doctor's check — and it writes nothing: with no ledger it answers `read: false,
+empty: true` with zero counts and no `repo`/`branch` (resolving a remote is the CLI's
+`issuesTarget`, not the endpoint's) and creates no file, so the card's
+`the GitHub issues mirror has not been read yet` can never be reached by an empty mirror and the
+two states cannot be conflated.
+
+**Binds.** `src/gui/gui-issues-commands.ts` (`handleIssuesList`, `noLedgerBody`),
+`src/gui/gui-server.ts` (the `GET /api/issues` route), `src/gui/gui-endpoint-commands.ts` (its
+re-export), `src/github/github-issues-render.ts` (`issueRows`, `issuesHeader`, `stateIssueRows`,
+`grepIssueRows`, `issuesJson`), `src/ui/gui/gui-client-settings.ts` (`renderIssues`, `paintIssues`,
+`fetchIssues`), `src/ui/gui/gui-client-boot.ts` (the Settings-open fetch sequence).
+
+**Pinned by.** `test/gui-issues.test.ts` — "GET /api/issues answers the whole mirror with its ledger
+counts and ascending positions", "GET /api/issues with no ledger answers read:false and creates
+nothing", "GET /api/issues?state=closed keeps only the closed row and echoes the state, counts
+unchanged", "GET /api/issues?state=open drops the closed row and keeps the whole-mirror counts",
+"GET /api/issues?state=<other> answers 400 with the got-clause and no issues list",
+"GET /api/issues?q= keeps the matching rows at their whole-list positions", "GET /api/issues?q= and
+state= together narrow the list and echo the state" and "the live server routes GET /api/issues to
+the mirror read and refuses POST"; `test/gui-client-settings.test.ts` — "renderIssues states the
+mirror's counts in tumwater issues' words and numbers every row", "renderIssues keeps the header
+counts at the whole mirror whatever rows arrived, and says an empty mirror in words" and
+"fetchIssues builds the card and fills it from GET /api/issues; a failed fetch is the error panel".
+
 ## The GitHub issues mirror: an issue GitHub closed upstream has one record
 
 ### INV-DG1: a lost issue has one record, and no capped listing writes one

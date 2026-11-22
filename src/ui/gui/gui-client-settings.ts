@@ -22,7 +22,10 @@
  * `tumwater salvage --drop <n>`); a
  * fourth, "Disabled roles", lists every disabled role (GET /api/retire), each with an Enable
  * button (POST /api/role-enable) and — for a role that still keeps worktree/branch leftovers — a
- * two-click Retire button (POST /api/retire). */
+ * two-click Retire button (POST /api/retire); a fifth, "GitHub issues", lists the GitHub-issues
+ * mirror (GET /api/issues, the same read `tumwater issues` prints) — never a `gh` call, only the
+ * ledger the hourly scan wrote — with the mirror's counts, each issue's trust and mirror state and
+ * its age, and no action. */
 export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // One home for turning a thrown value into the message a flash shows: the fetch/parse/post
   // helpers throw the server's JSON-decoded value, which for the server's own errors is an
@@ -90,7 +93,8 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>" +
       "<div class='card' id='salvagecard'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='retirecard'><div class='empty'>Loading…</div></div>" +
-      "<div class='card' id='briefcard'><div class='empty'>Loading…</div></div>");
+      "<div class='card' id='briefcard'><div class='empty'>Loading…</div></div>" +
+      "<div class='card' id='issuescard'><div class='empty'>Loading…</div></div>");
   }
   // The Health check card's body: header, one row per check (level badge, name, detail), the
   // verdict — everything esc'd. The pill is built inline (gui-client.ts's pill sits outside
@@ -483,6 +487,72 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       showFlash((d.passed ? "" : "error: ") + d.message);
     } catch (err) {
       showFlash("error: " + clientErrorMessage(err));
+    }
+  }
+  // The GitHub issues card: the mirror ledger the hourly scan wrote, through GET /api/issues —
+  // the browser twin of tumwater issues, and read-only: it calls no gh (plans/github-issues.md
+  // invariant 2 keeps gh inside the scan and the doctor's check) and posts nothing. The header
+  // span states the mirror's counts in tumwater issues' own words (plural, "closed by tumwater",
+  // "closed upstream") over the whole mirror, never over the rows the endpoint happened to keep —
+  // the rule INV-DE3 pins — and each issue is one settings-row: its whole-list position and number,
+  // its title linked to GitHub, its trust, its mirror state, and its age in the CLI's three
+  // spellings (closed <ago> for a row tumwater closed, last seen open <ago> for one GitHub lost
+  // upstream, updated <ago> for a live one). A gh that is not ok gets its own gate line, the same
+  // reading the CLI prints. No clock of its own: checkedAt and each row's updatedAt are the only
+  // times, and the ages ride the client's fmtAgo like the salvage card's "saved <ago>".
+  let lastIssues = null;
+  function issuesHeaderSpan(d) {
+    if (!d.read) return "";
+    const closed = d.closedCount || 0;
+    const upstream = d.upstreamClosedCount || 0;
+    return esc(d.repo) + (d.branch ? " (" + esc(d.branch) + ")" : "") + ": " +
+      plural(d.openCount || 0, "open", "open") +
+      (closed > 0 ? ", " + plural(closed, "closed by tumwater", "closed by tumwater") : "") +
+      (upstream > 0 ? ", " + plural(upstream, "closed upstream", "closed upstream") : "") +
+      ", checked " + fmtAgo(d.checkedAt);
+  }
+  function issueAgeSpan(r) {
+    // The CLI's issueAge spellings, one for each list a row can come from, so the card's age
+    // segment reads like the terminal row's. A ledger row whose timestamp GitHub did not supply
+    // (or a hand-edited one that is not a date) has no age to name and says so.
+    const at = Date.parse(r.updatedAt);
+    if (Number.isNaN(at)) {
+      if (r.upstreamClosed === true) return "last seen unknown";
+      return r.wasClosed === true ? "closed unknown" : "updated unknown";
+    }
+    if (r.upstreamClosed === true) return "last seen open " + fmtAgo(at);
+    if (r.wasClosed === true) return "closed " + fmtAgo(at);
+    return "updated " + fmtAgo(at);
+  }
+  function renderIssues(d) {
+    const rows = (d.issues || []).map((r) =>
+      "<div class='settings-row'><strong>" + r.position + ". #" + r.number + " " +
+      (r.url ? "<a rel='noopener' target='_blank' href='" + esc(r.url) + "'>" + esc(r.title) + "</a>"
+        : esc(r.title)) + "</strong>" +
+      "<span>" + (r.mirrored ? "mirrored" : "not mirrored") + "</span>" +
+      (r.trusted ? "<span>trusted</span>" : "<span class='pill t-amber'>untrusted</span>") +
+      "<span>" + issueAgeSpan(r) + "</span></div>").join("");
+    // The gh gate line, in the CLI's reading of the stored state: "gh <state>" plus the ledger's
+    // reason when it carries one. The card keeps this copy because renderIssues writes terminal
+    // text and ghUnreadableSentence (src/github/gh.ts) is not reachable from the bundle.
+    const gate = d.read && d.gh && d.gh !== "ok"
+      ? "<p class='empty'>gh " + esc(d.gh) + (d.reason ? ": " + esc(d.reason) : "") + "</p>" : "";
+    let body;
+    if (d.empty) body = "<div class='empty'>the GitHub issues mirror has not been read yet</div>";
+    else body = rows || "<div class='empty'>no issues to show</div>";
+    return "<div class='settings-row'><strong>GitHub issues</strong><span>" + issuesHeaderSpan(d) +
+      "</span></div>" + gate + body;
+  }
+  function paintIssues() {
+    if (lastIssues) $("issuescard").innerHTML = renderIssues(lastIssues);
+  }
+  async function fetchIssues() {
+    buildSettingsView();
+    try {
+      lastIssues = await getJson("/api/issues");
+      paintIssues();
+    } catch (err) {
+      $("issuescard").innerHTML = errorPanel("GitHub issues could not load", err, "empty");
     }
   }
   // The Brief card: the brief file's name and the prompt in a textarea, filled from

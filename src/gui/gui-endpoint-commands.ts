@@ -12,7 +12,7 @@
  * and operator lifecycle restart/reclaim/abort/reset-counters/stop-schedule/role-notes/
  * retire/brief-edit (gui/gui-operator-commands), flake-quarantine release
  * (gui/gui-quarantine-commands), salvaged workspace patch list/show/apply/drop
- * (gui/gui-salvage-commands).
+ * (gui/gui-salvage-commands), and the GitHub-issues mirror read (gui/gui-issues-commands).
  */
 export { handlePrompt, handlePromptRole, handlePromptCancel, handlePromptEdit, handlePromptTop } from "./gui-prompt-commands.js";
 export { handleQuestionAnswer, handleBacklogFile, handleBacklogCancel, handleBacklogRetire, handleBacklogRelease, handleBacklogTop, handleBacklogEdit } from "./gui-backlog-commands.js";
@@ -21,3 +21,4 @@ export { handlePause, handlePauseRole, handleWake, handleWakeCancel } from "./gu
 export { handleResetCounters, handleRestart, handleReclaim, handleModelCheck, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleArchiveBacklog, handleAbort, handleAbortAll, handleStopSchedule, handleRoleNotes, handleRoleLessons, handleRetire, handleRevert, handlePostReviewAccept, handleBriefEdit } from "./gui-operator-commands.js";
 export { handleQuarantineRelease } from "./gui-quarantine-commands.js";
 export { handleSalvageList, handleSalvageShow, handleSalvageApply, handleSalvageDrop } from "./gui-salvage-commands.js";
+export { handleIssuesList } from "./gui-issues-commands.js";

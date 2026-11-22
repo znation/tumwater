@@ -86,6 +86,7 @@ import {
   handleSalvageShow,
   handleSalvageApply,
   handleSalvageDrop,
+  handleIssuesList,
   handleWake,
   handleWakeCancel,
 } from "./gui-endpoint-commands.js";
@@ -392,6 +393,7 @@ export function startGui(
     "GET /api/brief": (_req, res) => handleBrief(res, root),
     "GET /api/doctor": (_req, res) => handleDoctor(res, root),
     "GET /api/retire": (_req, res) => handleRetireList(res, root),
+    "GET /api/issues": (_req, res, target) => handleIssuesList(target.searchParams, res, root),
     "POST /api/brief": (req, res) => handleBriefEdit(req, res, root),
     "POST /api/config-set": (req, res) => handleConfigSet(req, res, root),
     "POST /api/config-unset": (req, res) => handleConfigUnset(req, res, root),

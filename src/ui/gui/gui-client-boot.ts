@@ -40,7 +40,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (v === "usage") fetchReport();
     if (v === "failures") fetchFailures();
     if (v === "pending") fetchPending();
-    if (v === "settings") { fetchSettings(); fetchDoctor(); fetchSalvage(); fetchRetirable(); fetchBrief(); }
+    if (v === "settings") { fetchSettings(); fetchDoctor(); fetchSalvage(); fetchRetirable(); fetchBrief(); fetchIssues(); }
     // The band's "Open Health check" control asks for #doctorcard scrolled into view once the
     // Settings pane paints; buildSettingsView ran synchronously inside fetchSettings above, so
     // the card exists now. Only that control sets the flag, so a normal Settings tab never moves.

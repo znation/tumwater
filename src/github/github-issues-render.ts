@@ -1,4 +1,6 @@
-/** The read-only render of the GitHub-issues mirror for the `tumwater issues` command. The
+/** The read-only render of the GitHub-issues mirror for the `tumwater issues` command and for the
+ * dashboard's Settings card (src/gui/gui-issues-commands.ts `handleIssuesList` answers GET
+ * /api/issues from these same functions). The
  * mirror ledger (.tumwater/state/github-issues.json, written by the post-merge scan in
  * src/github/issue-scan.ts and the closer in src/github/issue-close.ts) records what the last
  * scan saw on GitHub and what tumwater did about each issue; this module turns it into terminal
@@ -74,7 +76,9 @@ export interface IssuesHeader {
  * ledger's `upstreamClosed` list in the same ascending order, each carrying `upstreamClosed: true`.
  * So positions run across all three lists, the closed issues last however low their numbers, and
  * `issueRowAt`, `--grep` and the detail view read this one function and can never disagree on which
- * issue position N denotes. */
+ * issue position N denotes. Two front ends number their lists through it: `tumwater issues`
+ * (src/cli/cli-query-commands.ts `cmdIssues`) and the dashboard's `GET /api/issues`
+ * (src/gui/gui-issues-commands.ts `handleIssuesList`). */
 export function issueRows(ledger: GithubIssuesLedger): IssueRow[] {
   // A hand-edited or foreign-generation ledger can hold no `open` list at all; the command then
   // reads an empty mirror rather than throwing out of the CLI, the way loadQuarantine reads a
@@ -118,7 +122,8 @@ function foldIssueState(row: GithubIssueRow, position: number, ledger: GithubIss
 /** The rows with only the issues whose number or title contains `pattern` (case-insensitively; a
  * numeric pattern also matches the number exactly), each kept row keeping its whole-list
  * `position` — the same rule `grepQuarantineRows` keeps for `quarantine --show`, so `--grep`
- * narrows what an operator reads without shifting the numbers `--show` addresses. */
+ * narrows what an operator reads without shifting the numbers `--show` addresses. The dashboard's
+ * `GET /api/issues?q=` filter runs through this one function too. */
 export function grepIssueRows(rows: readonly IssueRow[], pattern: string): IssueRow[] {
   const needle = pattern.toLowerCase();
   return rows.filter((r) => String(r.number).includes(pattern) || r.title.toLowerCase().includes(needle));
@@ -131,7 +136,9 @@ export type IssueState = "open" | "closed";
  * ledger's `closedRows` list), `"open"` keeps every row that is not. The one place the state
  * filter runs, applied to already-positioned rows, so each kept row keeps its whole-list
  * `position` — the rule `grepIssueRows` keeps, and why `--closed --show <n>` addresses the same
- * issue the unfiltered list does. A row is told open from closed by `wasClosed`, not by its
+ * issue the unfiltered list does. The dashboard's `GET /api/issues?state=` filter runs here too, so
+ * the two front ends cannot divide open from closed differently. A row is told open from closed by
+ * `wasClosed`, not by its
  * `closed` marker: an issue reopened after tumwater closed it still carries the marker. */
 export function stateIssueRows(rows: readonly IssueRow[], state: IssueState): IssueRow[] {
   return rows.filter((r) => (state === "closed" ? r.wasClosed === true : r.wasClosed !== true));
@@ -147,7 +154,8 @@ export function issueRowAt(ledger: GithubIssuesLedger, position: number): IssueR
 /** The header a command prints for a ledger: its repo, branch, scan time and `gh` gate state, its
  * two row-list counts, and the probe's reason only when the probe was not ok (a ledger that
  * carries a reason while `gh` is ok names nothing extra). The counts are the ledger's own, so a
- * `--grep` frame and a follow's frame restate the same numbers as the unfiltered list. */
+ * `--grep` frame, a follow's frame and the dashboard's filtered `GET /api/issues` reply restate the
+ * same numbers as the unfiltered list. */
 export function issuesHeader(ledger: GithubIssuesLedger): IssuesHeader {
   return {
     repo: ledger.repo,
@@ -257,7 +265,8 @@ function issueStateLines(row: IssueRow, now: number): string[] {
   return lines;
 }
 
-/** The structured JSON document `tumwater issues --json` serves: the ledger's facts a script reads
+/** The structured JSON document `tumwater issues --json` serves and `handleIssuesList` answers
+ * GET /api/issues with: the ledger's facts a script reads
  * instead of parsing text — the repo, branch, scan time and `gh` gate state (with its reason when
  * the probe was not ok), and the positioned rows with their folded state. */
 export function issuesJson(rows: readonly IssueRow[], header: IssuesHeader): Record<string, unknown> {
