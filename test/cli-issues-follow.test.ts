@@ -196,6 +196,39 @@ test("issues -f --grep keeps the whole-list numbering and repaints its no-match 
   });
 });
 
+test("issues -f --closed repaints the closed subset at its whole-list position", async () => {
+  // The follow reads the ledger each frame, so the state filter has to hold across repaints: the
+  // closed row under position 3, never the open issues, and never renumbered to 1.
+  const seed = (repo: string) => {
+    writeFileDeep(
+      githubIssuesPath(repo),
+      JSON.stringify({
+        repo: "znation/proj",
+        branch: "main",
+        checkedAt: Date.now() - 40_000,
+        gh: "ok",
+        open: [issueRow(7, "Reclaim leaves a stale lock"), issueRow(8, "A newer request")],
+        closedRows: [issueRow(9, "A closed request")],
+      }),
+    );
+  };
+  await withIssuesFollow(seed, ["-f", "--closed"], 5, false, async ({ cap, stop }) => {
+    await sleep(60);
+    const frames = cap.out();
+    assert.ok((frames.match(/3\. #9 — A closed request/g) ?? []).length >= 2, "the closed row repaints every frame");
+    assert.doesNotMatch(frames, /#7|#8/, "the open issues never appear behind --closed");
+    assert.match(frames, /github issues — znation\/proj \(main\): 2 open, 1 closed by tumwater/, "the header keeps the mirror's own counts");
+    stop();
+  });
+  await withIssuesFollow(seed, ["-f", "--open"], 5, false, async ({ cap, stop }) => {
+    await sleep(60);
+    const frames = cap.out();
+    assert.ok((frames.match(/1\. #7 — Reclaim leaves a stale lock/g) ?? []).length >= 2, "the open rows repaint");
+    assert.doesNotMatch(frames, /#9/, "the closed issue never appears behind --open");
+    stop();
+  });
+});
+
 test("issues -f prints the not-read frame until a ledger appears, then the list", async () => {
   await withIssuesFollow(() => {}, ["-f"], 5, false, async ({ cap, repo, stop }) => {
     await sleep(40);

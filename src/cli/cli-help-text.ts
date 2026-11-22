@@ -359,7 +359,7 @@ Usage:
                                    {released: {position, test}} in place of the prose
                                    acknowledgement; --show <n> --json prints that entry's
                                    object
-  tumwater issues [-f/--follow] [--show <n>] [--grep <text>] [--json]
+  tumwater issues [-f/--follow] [--open|--closed] [--show <n>] [--grep <text>] [--json]
                                    List what the GitHub-issues mirror last saw — the open issues
                                    of the project's GitHub remote and what tumwater did about
                                    each, read from its ledger (.tumwater/state/github-issues.json)
@@ -377,7 +377,14 @@ Usage:
                                    the issues whose number or title contains the text,
                                    case-insensitively, each under its whole-list number, so --show
                                    addresses the same issue, and no match in a non-empty mirror
-                                   prints "no GitHub issues match <text>"; --show <n> prints the
+                                   prints "no GitHub issues match <text>"; --open and --closed
+                                   each keep one state of the mirror — --closed the issues
+                                   tumwater closed, listed last, --open the issues still open —
+                                   each kept row under its whole-list number, and spelling both
+                                   is refused as mutually exclusive: each keeps the issues the
+                                   other hides; a state filter finding nothing in a non-empty
+                                   mirror prints "no open GitHub issues" or "no closed GitHub
+                                   issues", and composes with --grep, whose no-match line wins; --show <n> prints the
                                    Nth issue as the list numbers it, in full — the whole title,
                                    url, author and its association, labels, the update time,
                                    tumwater's state for it (queued, declined with its reason, fixed

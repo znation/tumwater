@@ -7,7 +7,7 @@
 import { fail, say, sayJson, sayJsonOrRender } from "../terminal.js";
 import { followView, type FollowViewSeams } from "../follow.js";
 import { failFollowJsonRival, flagValue, parseGrepFlag, parseRoleListScope, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
-import { DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, HELD_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, modeNamed, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
+import { CLOSED_FLAG, DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, HELD_FLAG, JSON_FLAG, OPEN_FLAG, READY_FLAG, grepFlagSpec, modeNamed, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { scopeSnapshotToRoles, snapshot, snapshotForStatus } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
@@ -30,8 +30,9 @@ import {
   issuesJson,
   renderIssueDetail,
   renderIssues,
+  stateIssueRows,
 } from "../github/github-issues-render.js";
-import type { IssueRow, IssuesHeader } from "../github/github-issues-render.js";
+import type { IssueRow, IssueState, IssuesHeader } from "../github/github-issues-render.js";
 import { githubTarget } from "../observer/remote-ci.js";
 import { loadConfigSafe } from "../config/config.js";
 
@@ -332,8 +333,9 @@ async function cmdQuarantineRelease(root: string, args: string[]): Promise<void>
 }
 
 
-/** `tumwater issues [-f/--follow] [--show <n>] [--grep <text>] [--json]`: the GitHub-issues
- * mirror read from its ledger file alone. The mirror series (plans/github-issues.md) scans GitHub
+/** `tumwater issues [-f/--follow] [--open|--closed] [--show <n>] [--grep <text>] [--json]`:
+ * the GitHub-issues mirror read from its ledger file alone. The mirror series
+ * (plans/github-issues.md) scans GitHub
  * after each merge and records what it saw and what tumwater did about each issue in
  * .tumwater/state/github-issues.json; until this command the only views of that record were the
  * doctor's one `github issues` row and the status snapshot's counts. The read goes through
@@ -342,7 +344,9 @@ async function cmdQuarantineRelease(root: string, args: string[]): Promise<void>
  * and on any branch. `--show <n>`, `--grep <text>` and `--json` follow the shape `cmdQuarantine`
  * established for the same three views. `-f/--follow` repaints this read on the shared follow
  * interval, re-reading the ledger each frame, so an operator can watch a merge's scan and its
- * closes land without rerunning the command. */
+ * closes land without rerunning the command. `--open`/`--closed` narrow the rows to one state at
+ * the same place `--grep` does, so both filters keep whole-list positions and the header keeps
+ * naming the mirror's own counts. */
 export async function cmdIssues(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   // `--show <n>` is routed before the flag gate exactly as cmdQuarantine routes its own detail
   // mode, so the detail branch owns its flag gate and refuses a `--grep` beside it by name. A
@@ -355,33 +359,50 @@ export async function cmdIssues(root: string, args: string[], seams: FollowViewS
   // each kept row still numbered as the full list numbers it, so `--show` addresses the same
   // issue. The missing-value wording is shared by this parser and the flag gate.
   const ISSUES_GREP_VALUE_ERROR = "issues --grep needs text (usage: tumwater issues --grep <text>)";
-  rejectUnknownArgs("issues", args, [JSON_FLAG, FOLLOW_FLAG, grepFlagSpec(ISSUES_GREP_VALUE_ERROR)]);
+  rejectUnknownArgs("issues", args, [JSON_FLAG, FOLLOW_FLAG, grepFlagSpec(ISSUES_GREP_VALUE_ERROR), OPEN_FLAG, CLOSED_FLAG]);
   refuseTeamWorkspace(root);
   // -f/--follow and --json scan over `rest` (the pattern token removed), so a flag-shaped
   // pattern like `--grep --json` is the text "--json", not the rival flag. --json is a rival of
   // the follow exactly as it is for `quarantine -f`: the follow is the human's view.
   const { rest, pattern } = parseGrepFlag(args, ISSUES_GREP_VALUE_ERROR);
+  // The state filter, read off `rest` for the same reason --json is: `--grep --closed` takes
+  // "--closed" as the pattern, so that token is filter text, not the flag. Each flag keeps the
+  // rows the other hides, so spelling both is a contradiction, worded as `backlog --ready
+  // --held` words its own pair. A repeat of one spelling is stopped earlier, by the flag gate's
+  // "may only be given once" rule.
+  if (rest.includes("--open") && rest.includes("--closed")) {
+    fail("--open and --closed are mutually exclusive: each keeps the issues the other hides");
+  }
+  const state: IssueState | null = rest.includes("--closed") ? "closed" : rest.includes("--open") ? "open" : null;
   const follow = hasFollowFlag(rest);
   if (follow && rest.includes("--json")) failFollowJsonRival("issues --json");
   // Each frame re-reads the ledger file, so a scan that lands while the follow runs shows in the
   // next repaint — the same per-frame read `quarantine -f` uses, and why the follow needs no
   // interval of its own: one frame is one file read, so it cannot straddle a scan the way a
-  // poller's own cadence would. The --grep filter applies inside the read, so a filtered frame
-  // still numbers its kept rows by their whole-list positions.
+  // poller's own cadence would. The --grep filter and the state filter both apply inside the
+  // read, so a filtered frame still numbers its kept rows by their whole-list positions. `full`
+  // stays the whole list so the frame can tell an empty mirror from a filter that kept nothing.
   const readIssues = (): { ledger: GithubIssuesLedger | null; full: IssueRow[]; kept: IssueRow[] } => {
     const ledger = readGithubIssues(root);
     const full = ledger === null ? [] : issueRows(ledger);
-    return { ledger, full, kept: pattern === null ? full : grepIssueRows(full, pattern) };
+    let kept = full;
+    if (pattern !== null) kept = grepIssueRows(kept, pattern);
+    if (state !== null) kept = stateIssueRows(kept, state);
+    return { ledger, full, kept };
   };
   // The text the read answers with, for a frame or a one-shot print alike. A mirror that has
   // never been read is a state, not an empty list, so it is said in words (the same reason the
   // quarantine list says its empty line) and --json carries it as read:false. The no-match prose
   // is a filter's line (the mirror holds issues but none match); a mirror with nothing on record
-  // keeps the header's `0 open` line.
+  // keeps the header's `0 open` line. A pattern owns that line even beside a state filter — the
+  // pattern is the narrower question — while a state filter alone names the state it found empty.
   const renderIssuesFrame = (): string => {
     const { ledger, full, kept } = readIssues();
     if (ledger === null) return "the GitHub issues mirror has not been read yet";
-    if (pattern !== null && kept.length === 0 && full.length > 0) return `no GitHub issues match "${pattern}"`;
+    if (kept.length === 0 && full.length > 0) {
+      if (pattern !== null) return `no GitHub issues match "${pattern}"`;
+      return state === "closed" ? "no closed GitHub issues" : "no open GitHub issues";
+    }
     const header: IssuesHeader = issuesHeader(ledger);
     return renderIssues(kept, header, Date.now());
   };

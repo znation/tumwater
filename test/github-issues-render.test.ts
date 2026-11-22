@@ -7,6 +7,7 @@ import {
   issuesHeader,
   renderIssueDetail,
   renderIssues,
+  stateIssueRows,
 } from "../src/github/github-issues-render.js";
 import type { GithubIssuesLedger } from "../src/github/github-issues-state.js";
 
@@ -188,6 +189,28 @@ test("grepIssueRows keeps whole-list positions and issueRowAt addresses the unfi
   assert.equal(issueRowAt(ledger(), 1)!.number, 2);
   assert.equal(issueRowAt(ledger(), 3), null, "past the end");
   assert.equal(issueRowAt(ledger(), 0), null, "below 1");
+});
+
+test("stateIssueRows splits on wasClosed, not on a stale closed marker, keeping positions", () => {
+  // #2 sits in closedRows and #10 is open but still carries the `closed` marker a reopen leaves
+  // behind. Filtering on that marker instead of `wasClosed` would drop #10 from "open" and put it
+  // in "closed"; the positions come from the whole list, so `--closed --show 3` names #2.
+  const closedAt = NOW - 3 * DAY_MS;
+  const l = ledger({
+    open: [ledger().open[0]!],
+    closed: { "10": { at: closedAt, shas: ["abc1234"] } },
+    closedRows: [ledger().open[1]!],
+  });
+  const rows = issueRows(l);
+  assert.deepEqual(
+    stateIssueRows(rows, "closed").map((r) => [r.position, r.number]),
+    [[2, 2]],
+    "the closed subset keeps the whole-list position",
+  );
+  const openRows = stateIssueRows(rows, "open");
+  assert.deepEqual(openRows.map((r) => r.number), [10], "a reopened issue stays in the open subset despite its closed marker");
+  assert.deepEqual(stateIssueRows(openRows, "closed"), [], "the subsets do not overlap");
+  assert.equal(openRows.length + stateIssueRows(rows, "closed").length, rows.length, "and together they are the list");
 });
 
 test("renderIssueDetail names only the states the ledger holds and prints the excerpt verbatim", () => {

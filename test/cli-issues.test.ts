@@ -376,6 +376,117 @@ test("issues reads a ledger with no closedRows key, and one whose closedRows hol
   assert.equal(r.stdout, before.stdout, "junk closed rows cost the read nothing but themselves");
 });
 
+test("issues --open and --closed each keep one state, under whole-list positions", async () => {
+  // The same ledger the closed-rows test writes: #7 and #8 open, #9 closed. The closed row keeps
+  // position 3, so `--closed --show 3` still addresses it; the header keeps naming the ledger's
+  // own counts, not the kept rows.
+  const repo = await issuesRepo("issues state filter test");
+  const closedAt = Date.parse("2026-11-10T12:00:00.000Z");
+  writeLedger(repo, {
+    ...REPO_LEDGER,
+    open: [issueRow(7, "Reclaim leaves a stale lock"), issueRow(8, "A newer request")],
+    closedRows: [issueRow(9, "A closed request", { updatedAt: new Date(closedAt).toISOString() })],
+    closed: { "9": { at: closedAt, shas: ["abc1234"] } },
+  });
+  const closed = await cli(repo, "issues", "--closed");
+  assert.equal(closed.code, 0, closed.stderr);
+  const closedLines = closed.stdout.trimEnd().split("\n");
+  assert.equal(closedLines.length, 2, "header plus the one closed row");
+  assert.match(
+    closedLines[0]!,
+    /^github issues — znation\/proj \(main\): 2 open, 1 closed by tumwater, checked \d+[smhd] ago$/,
+    "the header names the ledger's counts, not the kept rows",
+  );
+  assert.match(closedLines[1]!, /^3\. #9 — A closed request — untrusted, not mirrored, closed \d+[smhd] ago$/, "not renumbered to 1");
+
+  const open = await cli(repo, "issues", "--open");
+  assert.equal(open.code, 0, open.stderr);
+  const openLines = open.stdout.trimEnd().split("\n");
+  assert.equal(openLines.length, 3, "header plus the two open rows");
+  assert.match(openLines[1]!, /^1\. #7 —/);
+  assert.match(openLines[2]!, /^2\. #8 —/);
+  assert.ok(!open.stdout.includes("#9"), "no closed row in the open subset");
+
+  // --json narrows to the kept rows and carries no new key.
+  const json = await cli(repo, "issues", "--closed", "--json");
+  assert.equal(json.code, 0, json.stderr);
+  const doc = JSON.parse(json.stdout) as { read: boolean; issues: { position: number; number: number; wasClosed?: boolean }[] };
+  assert.equal(doc.read, true);
+  assert.deepEqual(
+    doc.issues.map((i) => [i.position, i.number, i.wasClosed === true]),
+    [[3, 9, true]],
+    "the closed subset only, at its whole-list position",
+  );
+
+  // A state flag never shifts what --show addresses, and beside --show it is refused — the detail
+  // branch's gate takes no flags at all, so it names the state flag and exits 1 either way it is
+  // spelled, exactly as it already refuses --grep there.
+  const shown = await cli(repo, "issues", "--show", "3");
+  assert.equal(shown.code, 0, shown.stderr);
+  assert.ok(shown.stdout.includes("issue 3: #9 — A closed request"), shown.stdout);
+  for (const flags of [["--closed", "--show", "3"], ["--show", "1", "--closed"]]) {
+    const refused = await cli(repo, "issues", ...flags);
+    assert.equal(refused.code, 1, refused.stderr);
+    assert.ok(refused.stderr.includes('takes no arguments (got "--closed")'), refused.stderr);
+  }
+
+  const both = await cli(repo, "issues", "--open", "--closed");
+  assert.equal(both.code, 1, both.stdout);
+  assert.ok(
+    both.stderr.includes("--open and --closed are mutually exclusive: each keeps the issues the other hides"),
+    both.stderr,
+  );
+
+  // --grep composes with the state filter: the pattern decides what the kept subset matches, so
+  // a pattern that only the hidden state satisfies takes the no-match line.
+  const hit = await cli(repo, "issues", "--closed", "--grep", "9");
+  assert.equal(hit.code, 0, hit.stderr);
+  assert.match(hit.stdout, /^3\. #9 — A closed request/m);
+  const miss = await cli(repo, "issues", "--closed", "--grep", "7");
+  assert.equal(miss.stdout.trim(), 'no GitHub issues match "7"');
+  // `--grep --closed` greps for the text, it does not ask for the closed subset — the same rule
+  // that keeps `--grep --json` from reading as --json.
+  const asText = await cli(repo, "issues", "--grep", "--closed");
+  assert.equal(asText.code, 0, asText.stderr);
+  assert.equal(asText.stdout.trim(), 'no GitHub issues match "--closed"');
+});
+
+test("issues --open/--closed name an empty state in words, and an empty mirror in its header", async () => {
+  // Three empties, three answers: a ledger with no closedRows key, a ledger with no open issues,
+  // and a ledger with neither list. Only the first two are filter results; the third mirror has
+  // nothing on record and keeps its header alone, exactly as the unfiltered read does.
+  const noClosed = await issuesRepo("issues closed empty test");
+  writeLedger(noClosed, REPO_LEDGER);
+  const r = await cli(noClosed, "issues", "--closed");
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(r.stdout.trim(), "no closed GitHub issues");
+
+  const noOpen = await issuesRepo("issues open empty test");
+  writeLedger(noOpen, {
+    repo: "znation/proj",
+    branch: "main",
+    checkedAt: REPO_LEDGER.checkedAt,
+    gh: "ok",
+    open: [],
+    closedRows: [issueRow(9, "A closed request")],
+  });
+  const o = await cli(noOpen, "issues", "--open");
+  assert.equal(o.code, 0, o.stderr);
+  assert.equal(o.stdout.trim(), "no open GitHub issues");
+
+  const bare = await issuesRepo("issues both empty test");
+  writeLedger(bare, { repo: "znation/proj", branch: "main", checkedAt: REPO_LEDGER.checkedAt, gh: "ok", open: [] });
+  for (const flag of ["--open", "--closed"]) {
+    const b = await cli(bare, "issues", flag);
+    assert.equal(b.code, 0, b.stderr);
+    assert.match(
+      b.stdout.trim(),
+      /^github issues — znation\/proj \(main\): 0 open, checked \d+[smhd] ago$/,
+      `${flag} on an empty mirror prints its header line alone, with no closed-count segment`,
+    );
+  }
+});
+
 test("issues refuses an unknown flag naming the command and its valid flags", async () => {
   const repo = await issuesRepo("issues unknown flag test");
   writeLedger(repo, REPO_LEDGER);
@@ -383,6 +494,9 @@ test("issues refuses an unknown flag naming the command and its valid flags", as
   assert.equal(r.code, 1);
   assert.ok(r.stderr.includes("unknown argument: --bogus (valid flags for tumwater issues:"), r.stderr);
   assert.ok(r.stderr.includes("--json") && r.stderr.includes("--grep"), "the valid-flag list names what it takes");
+  const repeat = await cli(repo, "issues", "--open", "--open");
+  assert.equal(repeat.code, 1, repeat.stdout);
+  assert.ok(repeat.stderr.includes("--open may only be given once"), repeat.stderr);
 });
 
 test("issues run from a role worktree refuses the way quarantine does", async () => {

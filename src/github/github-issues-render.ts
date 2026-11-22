@@ -110,6 +110,19 @@ export function grepIssueRows(rows: readonly IssueRow[], pattern: string): Issue
   return rows.filter((r) => String(r.number).includes(pattern) || r.title.toLowerCase().includes(needle));
 }
 
+/** The state `tumwater issues --open`/`--closed` narrow the read to. */
+export type IssueState = "open" | "closed";
+
+/** The rows of one state only: `"closed"` keeps the rows `issueRows` marked `wasClosed` (the
+ * ledger's `closedRows` list), `"open"` keeps every row that is not. The one place the state
+ * filter runs, applied to already-positioned rows, so each kept row keeps its whole-list
+ * `position` — the rule `grepIssueRows` keeps, and why `--closed --show <n>` addresses the same
+ * issue the unfiltered list does. A row is told open from closed by `wasClosed`, not by its
+ * `closed` marker: an issue reopened after tumwater closed it still carries the marker. */
+export function stateIssueRows(rows: readonly IssueRow[], state: IssueState): IssueRow[] {
+  return rows.filter((r) => (state === "closed" ? r.wasClosed === true : r.wasClosed !== true));
+}
+
 /** Resolve what position N names in the ledger, by the same issue-number order `issueRows` uses.
  * Returns null below 1 and past the end of the list. */
 export function issueRowAt(ledger: GithubIssuesLedger, position: number): IssueRow | null {

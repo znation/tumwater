@@ -478,6 +478,17 @@ export function resultFlagSpec(missingValue: string): FlagSpec {
   return { names: ["--result"], value: true, valueName: "<class>", missingValue };
 }
 
+/** The `--open` filter flag of `issues`, beside CLOSED_FLAG: one definition of the flag's
+ * spelling, so the gate's accepted vocabulary cannot drift from the read's own filter.
+ * `issues` reads its state from the flag's position in the gate's argv, not from the gate's
+ * result — a boolean flag leaves no value to carry — so the pair lives as a const pair. */
+export const OPEN_FLAG: FlagSpec = { names: ["--open"] };
+
+/** The `--closed` filter flag of `issues`, twin of OPEN_FLAG: it admits the closed rows the
+ * ledger keeps, which the unfiltered read drops (the ledger stores open and closed in separate
+ * keys, and githubIssuesLedgerViews reads only the open one). */
+export const CLOSED_FLAG: FlagSpec = { names: ["--closed"] };
+
 /** The `--status <state>` flag spec of `reviews`' state filter, beside resultFlagSpec: one
  * definition of the flag's spelling and value shape, so the gate's accepted vocabulary cannot
  * drift. The missing-value wording names the command, so the spec is a factory taking it — the
