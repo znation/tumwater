@@ -48,10 +48,10 @@ export async function runMarkerCommand(root: string, command: MarkerCommand, arg
   // or the wake rows with --list); `reclaim` alone accepts `--dry-run` (list the
   // candidates, clean nothing) and `--json` (one acknowledgement object on either form — the
   // dry-run candidates, or the requested/reclaimed/nothing outcome of the real pass);
-  // `abort`, `restart`, and `reset-counters` accept `--json` alone (one acknowledgement
-  // object each, reset-counters adding `--role`); the other marker commands keep the plain
-  // --role vocabulary, so a stray --for, --reason, --in, --cancel, or --dry-run fails fast
-  // instead of being silently ignored.
+  // `abort` takes `--role <id>[,<id>...]` or `--all`, plus `--json`; `restart` takes `--json`
+  // alone; `reset-counters` and `resume` take `--role` and `--json`. So a stray --for,
+  // --reason, --in, --cancel, --all, or --dry-run fails fast on any command whose row does
+  // not list it, instead of being silently ignored (cli-arg-strictness.test.ts pins rows).
   const perCommandFlags: Record<MarkerCommand, FlagSpec[]> = {
     "reset-counters": [ROLE_FLAG, JSON_FLAG],
     wake: [ROLE_FLAG, WAKE_IN_FLAG, WAKE_CANCEL_FLAG, WAKE_LIST_FLAG, JSON_FLAG],
