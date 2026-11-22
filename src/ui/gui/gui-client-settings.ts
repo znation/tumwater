@@ -16,7 +16,8 @@
  * /api/doctor-archive-backlog instead, the same archiveFinishedOnMain `tumwater archive` runs); a
  * third, "Salvaged patches", lists every workspace patch kept for the operator under
  * `.tumwater/salvage/` (GET /api/salvage, the same collectSalvagePatches the CLI's list prints),
- * each with a two-click Apply (POST /api/salvage-apply, the same operation as
+ * each with a View (GET /api/salvage-show, the same read as `tumwater salvage --show <n>`), a
+ * two-click Apply (POST /api/salvage-apply, the same operation as
  * `tumwater salvage --apply <n>`) and Drop (POST /api/salvage-drop, the same operation as
  * `tumwater salvage --drop <n>`); a
  * fourth, "Disabled roles", lists every disabled role (GET /api/retire), each with an Enable
@@ -132,29 +133,40 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   }
   // The Salvaged patches card: every workspace patch kept for the operator under
   // .tumwater/salvage/ (GET /api/salvage, the same collectSalvagePatches the CLI list prints)
-  // as a settings-row each with a two-click Apply (POST /api/salvage-apply) and Drop (POST
-  // /api/salvage-drop) — the same operations as tumwater salvage --apply <n> / --drop <n>, so
-  // an operator watching the dashboard can act on a patch without a shell. The single slot is
-  // keyed "apply:<n>"/"drop:<n>" per row, so one row's arm never fires another row's button.
+  // as a settings-row each with a View (GET /api/salvage-show, the same read as
+  // tumwater salvage --show <n>) and a two-click Apply (POST /api/salvage-apply) and Drop (POST
+  // /api/salvage-drop) — the same operations as tumwater salvage --show <n> / --apply <n> /
+  // --drop <n>, so an operator watching the dashboard can read and act on a patch without a
+  // shell. The single slot is keyed "apply:<n>"/"drop:<n>" per row, so one row's arm never
+  // fires another row's button. A read opens in place: salvageOpen holds the one open row's
+  // position and its already-built body, and renderSalvage splices that body into the row whose
+  // position and file still match it, so the paint stays a pure function of the fetched list
+  // plus that one slot.
   let lastSalvage = null;
+  let salvageOpen = null;
   const salvageSlot = confirmSlot(paintSalvage);
-  function renderSalvage(d, armed) {
+  function renderSalvage(d, armed, open) {
     const rows = (d.patches || []).map((p) => {
       const applyArmed = armed("apply:" + p.position);
       const dropArmed = armed("drop:" + p.position);
+      const isOpen = open !== null && open !== undefined && open.position === p.position &&
+        (open.file === null || open.file === p.file);
       return "<div class='settings-row'>" +
         "<strong>" + p.position + ". " + esc(p.file) + "</strong>" +
         "<span>saved " + fmtAgo(p.savedAt) + ", " + esc(p.size) + "</span>" +
+        "<button type='button' class='btn btn-sm' data-action='salvage-view' data-position='" + p.position + "'>" +
+        (isOpen ? "Hide" : "View") + "</button>" +
         "<button type='button' class='btn btn-sm' data-action='salvage-apply' data-position='" + p.position + "'>" +
         (applyArmed ? "Confirm apply" : "Apply") + "</button>" +
         "<button type='button' class='btn btn-sm' data-action='salvage-drop' data-position='" + p.position + "'>" +
-        (dropArmed ? "Confirm drop" : "Drop") + "</button></div>";
+        (dropArmed ? "Confirm drop" : "Drop") + "</button>" +
+        (isOpen ? salvageViewHtml(open.body) : "") + "</div>";
     }).join("");
-    return "<div class='settings-row'><strong>Salvaged patches</strong><span>Workspace patches kept for you under <code>.tumwater/salvage/</code> — apply or drop the same way <code>tumwater salvage</code> does; applying never commits and never deletes the patch.</span></div>" +
+    return "<div class='settings-row'><strong>Salvaged patches</strong><span>Workspace patches kept for you under <code>.tumwater/salvage/</code> — view, apply or drop the same way <code>tumwater salvage</code> does; applying never commits and never deletes the patch.</span></div>" +
       (rows || "<div class='empty'>no salvaged workspace patches are kept for you</div>");
   }
   function paintSalvage() {
-    if (lastSalvage) $("salvagecard").innerHTML = renderSalvage(lastSalvage, salvageSlot.armed);
+    if (lastSalvage) $("salvagecard").innerHTML = renderSalvage(lastSalvage, salvageSlot.armed, salvageOpen);
   }
   async function fetchSalvage() {
     buildSettingsView();
@@ -187,6 +199,52 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // The row's Drop button: POST /api/salvage-drop.
   async function salvageDropClick(position) {
     return salvageClick("drop", position);
+  }
+  // The open row's body, built once when the read comes back and spliced in by renderSalvage:
+  // the row's own header line ("<n>. <file>", "saved <ago>, <size>") in the card's existing
+  // fmtAgo/size wording, the git apply --stat block only when the patch is a real diff, and
+  // the patch text itself in the shared <pre class='mono diff'> the log drawer already uses for
+  // a body — everything esc'd, so a patch containing markup reaches the DOM as text. A read the
+  // server refused (off-list position, vanished file) is the server's own sentence in an empty
+  // panel, not a half-built header.
+  function salvageViewHtml(body) {
+    if (body.error) return "<div class='empty'>" + esc(body.error) + "</div>";
+    return "<div class='sub'>" + body.position + ". " + esc(body.file) + " — saved " +
+      fmtAgo(body.savedAt) + ", " + esc(body.size) + "</div>" +
+      (body.stat ? "<pre class='mono'>" + esc(body.stat) + "</pre>" : "") +
+      "<pre class='mono diff'>" + esc(body.patch) + "</pre>";
+  }
+  // The row's View button: the browser twin of tumwater salvage --show <n> — a read-only GET
+  // /api/salvage-show?position=<n> whose reply fills that row's slot. One row is open at a time
+  // (opening another closes the open one, and a second click on the open row collapses it
+  // without refetching), and the fetched body is kept, so a repaint of the card (an arm, a
+  // refetch after an action) does not refetch the patch. A failed read keeps the row open with
+  // the server's message, and the row's Apply and Drop buttons are untouched — reading a patch
+  // never arms or posts an action.
+  async function salvageViewClick(position) {
+    const n = Number(position);
+    if (salvageOpen !== null && salvageOpen.position === n) {
+      salvageOpen = null;
+      paintSalvage();
+      return;
+    }
+    try {
+      const d = await getJson("/api/salvage-show?position=" + encodeURIComponent(String(n)));
+      // A read the endpoint refused (an off-list position, a vanished file) answers 200
+      // { ok: false, message } — the same shape apply and drop answer for that case — so its
+      // sentence reaches the slot as the error line; a transport failure lands in the catch.
+      // The endpoint answers an off-list position or a vanished file 200 { ok: false, message },
+      // the shape apply and drop answer for the same case, so that sentence goes in the slot;
+      // clientErrorMessage is the one read every message gets here, so the wording cannot drift.
+      // The file name travels with the body so a refetch that renumbers the rows (a drop) can
+      // never slide one patch's body under another patch's row.
+      salvageOpen = d && d.ok === false
+        ? { position: n, file: null, body: { error: clientErrorMessage(d) } }
+        : { position: n, file: d.file, body: d };
+    } catch (err) {
+      salvageOpen = { position: n, file: null, body: { error: clientErrorMessage(err) } };
+    }
+    paintSalvage();
   }
   // The Disabled roles card: every role set to enabled: false (GET /api/retire), each with an
   // Enable button (POST /api/role-enable) and — for a role that still keeps a worktree, branch,

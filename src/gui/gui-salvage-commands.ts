@@ -1,25 +1,27 @@
 /**
  * The dashboard's salvaged workspace patch endpoints (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts):
- * GET /api/salvage lists every kept patch and POST /api/salvage-apply and
- * POST /api/salvage-drop act on one by its list position — the browser twins of
- * `tumwater salvage`'s list, `--apply <n>` and `--drop <n>`. The dashboard's Settings
- * "Salvaged patches" card renders the list and posts the two actions per row, so an
- * operator can apply or drop a patch from the dashboard without a shell. Every handler
- * runs the same domain functions the CLI runs (collectSalvagePatches,
- * applySalvagePatchForOperator, dropSalvagePatch), so the positions, wording and
- * safety rules cannot drift between the two surfaces. The apply and drop handlers take
+ * GET /api/salvage lists every kept patch, GET /api/salvage-show reads one back for reading,
+ * and POST /api/salvage-apply and POST /api/salvage-drop act on one by its list position — the
+ * browser twins of `tumwater salvage`'s list, `--show <n>`, `--apply <n>` and `--drop <n>`. The
+ * dashboard's Settings "Salvaged patches" card renders the list and posts the actions per row,
+ * so an operator can read, apply or drop a patch from the dashboard without a shell. Every
+ * handler runs the same domain functions the CLI runs (collectSalvagePatches, readSalvagePatch,
+ * salvagePatchStat, applySalvagePatchForOperator, dropSalvagePatch), so the positions, wording
+ * and safety rules cannot drift between the two surfaces. The apply and drop handlers take
  * an injectable operation function (omitted by the production routes) so a test need
  * not apply a real patch into a checkout or delete a real patch file.
  */
 import { isGitRepo } from "../git/git.js";
-import { applySalvagePatchForOperator } from "../git/slot-salvage.js";
+import { applySalvagePatchForOperator, salvagePatchStat } from "../git/slot-salvage.js";
 import {
   collectSalvagePatches,
   dropSalvagePatch,
+  readSalvagePatch,
   salvagePatchAt,
 } from "../status/status-salvage.js";
 import { formatBytes } from "../text/format.js";
+import { intQuery } from "./gui-args.js";
 import { readPostBody } from "./gui-endpoint-common.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
 import type http from "node:http";
@@ -54,6 +56,47 @@ export function handleSalvageList(res: http.ServerResponse, root: string): void 
     size: formatBytes(p.bytes),
   }));
   sendJson(res, 200, { patches });
+}
+
+/** Handle GET /api/salvage-show?position=<n>: read one kept patch back for the operator to look
+ * at, with the same fields `tumwater salvage --show <n> --json` prints plus the card's display
+ * size — `position`, `file`, `savedAt`, `bytes`, `size` (formatBytes, exactly what
+ * handleSalvageList answers for that row), the `git apply --stat` summary (`stat`, null when the
+ * file is not a diff git can parse) and the raw diff `patch`. Read-only: it writes nothing and
+ * touches no workspace, so opening a patch never risks a file. The position is the list
+ * position, parsed by the dashboard's shared positive-integer query rule (missing or malformed
+ * → 400); a position the list does not hold, and a file that vanished between the scan and the
+ * read, answer the same `{ ok: false, message }` shape handleSalvageApply/handleSalvageDrop
+ * answer for an off-list position, with the domain's own sentence — the CLI's out-of-range
+ * wording and its `could not read salvaged patch <file>` wording — so all three handlers state
+ * one rule and the card shows that sentence rather than an empty panel. */
+export async function handleSalvageShow(
+  q: URLSearchParams,
+  res: http.ServerResponse,
+  root: string,
+): Promise<void> {
+  const position = intQuery(q, res, "position", "positive");
+  if (position === null) return;
+  const at = salvagePatchAt(collectSalvagePatches(root), position);
+  if ("message" in at) {
+    sendJson(res, 200, { ok: false, message: at.message });
+    return;
+  }
+  const patch = at.patch;
+  const text = readSalvagePatch(root, patch.file);
+  if (text === null) {
+    sendJson(res, 200, { ok: false, message: `could not read salvaged patch ${patch.file}` });
+    return;
+  }
+  sendJson(res, 200, {
+    position: patch.position,
+    file: patch.file,
+    savedAt: patch.savedAt,
+    bytes: patch.bytes,
+    size: formatBytes(patch.bytes),
+    stat: await salvagePatchStat(root, patch.file),
+    patch: text,
+  });
 }
 
 /** Handle POST /api/salvage-apply: apply the Nth kept patch to the dashboard's checkout

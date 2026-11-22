@@ -26,10 +26,11 @@ interface SettingsFns {
   testNotify(): Promise<void>;
   fetchBrief(): Promise<void>;
   saveBrief(form: { querySelector(sel: string): { value: string } }): Promise<void>;
-  renderSalvage(d: unknown, armed: (key: string) => boolean): string;
+  renderSalvage(d: unknown, armed: (key: string) => boolean, open: unknown): string;
   fetchSalvage(): Promise<void>;
   salvageApplyClick(position: string): Promise<void>;
   salvageDropClick(position: string): Promise<void>;
+  salvageViewClick(position: string): Promise<void>;
   paintSalvage(): void;
   renderRetirable(d: unknown, armed: (role: string) => boolean): string;
   fetchRetirable(): Promise<void>;
@@ -50,7 +51,7 @@ interface SettingsFns {
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "err-message", "settings-view", "format"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderSalvage", "fetchSalvage", "salvageApplyClick", "salvageDropClick", "paintSalvage", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderSalvage", "fetchSalvage", "salvageApplyClick", "salvageDropClick", "salvageViewClick", "paintSalvage", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -307,6 +308,8 @@ test("the settings region is spliced into the served script, and the boot routes
   // The salvage card's per-patch buttons are delegated like the retire ones.
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='salvage-apply'\]/);
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='salvage-drop'\]/);
+  assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='salvage-view'\]/);
+  assert.match(GUI_CLIENT_BOOT_JS, /salvageViewClick\(salView\.dataset\.position\)/);
   assert.match(GUI_CLIENT_BOOT_JS, /data-action='doctor-rerun'/);
   // …and the boot carries the Clear click selector beside the Save submit wiring.
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='unset'\]/);
@@ -444,31 +447,35 @@ test("a submit on form.brief-form routes to saveBrief, and the settings listener
   assert.doesNotMatch(clientRegion("settings-view").slice(clientRegion("settings-view").indexOf("async function fetchBrief")), /settings-row/);
 });
 
-test("renderSalvage renders one row per patch with Apply and Drop, the empty sentence, and the confirm labels", () => {
+test("renderSalvage renders one row per patch with View, Apply and Drop, the empty sentence, and the confirm labels", () => {
   const { renderSalvage } = settingsScope();
   // An empty list is the CLI's empty sentence, no rows.
-  assert.match(renderSalvage({ patches: [] }, () => false), /no salvaged workspace patches are kept for you/);
-  assert.doesNotMatch(renderSalvage({ patches: [] }, () => false), /data-action='salvage-apply'/);
+  assert.match(renderSalvage({ patches: [] }, () => false, null), /no salvaged workspace patches are kept for you/);
+  assert.doesNotMatch(renderSalvage({ patches: [] }, () => false, null), /data-action='salvage-apply'/);
   // Two patches: each row carries its position, file, saved-ago, size and both buttons.
   const now = Date.now();
   const d = { patches: [
     { position: 1, file: "a.patch", savedAt: now - 3 * 3600_000, bytes: 38, size: "38 B" },
     { position: 2, file: "b.patch", savedAt: now - 1000, bytes: 17, size: "17 B" },
   ] };
-  const html = renderSalvage(d, () => false);
+  const html = renderSalvage(d, () => false, null);
   assert.match(html, /<strong>1\. a\.patch<\/strong>/);
   assert.match(html, /saved 3h ago, 38 B/);
+  assert.match(html, /data-action='salvage-view' data-position='1'>View<\/button>/);
   assert.match(html, /data-action='salvage-apply' data-position='1'>Apply<\/button>/);
   assert.match(html, /data-action='salvage-drop' data-position='1'>Drop<\/button>/);
   assert.match(html, /data-action='salvage-apply' data-position='2'>Apply<\/button>/);
   // A file with HTML is esc'd.
-  const bad = renderSalvage({ patches: [{ position: 1, file: "<x>.patch", savedAt: now, bytes: 5, size: "5 B" }] }, () => false);
+  const bad = renderSalvage({ patches: [{ position: 1, file: "<x>.patch", savedAt: now, bytes: 5, size: "5 B" }] }, () => false, null);
   assert.match(bad, /&lt;x&gt;\.patch/);
   // The armed apply key repaints only its own Apply button as a confirm; the same position's
   // Drop button stays un-armed.
-  assert.match(renderSalvage(d, (k) => k === "apply:1"), /data-action='salvage-apply' data-position='1'>Confirm apply<\/button>/);
-  assert.doesNotMatch(renderSalvage(d, (k) => k === "apply:1"), /data-position='1'>Confirm drop<\/button>/);
-  assert.match(renderSalvage(d, (k) => k === "drop:2"), /data-action='salvage-drop' data-position='2'>Confirm drop<\/button>/);
+  assert.match(renderSalvage(d, (k) => k === "apply:1", null), /data-action='salvage-apply' data-position='1'>Confirm apply<\/button>/);
+  assert.doesNotMatch(renderSalvage(d, (k) => k === "apply:1", null), /data-position='1'>Confirm drop<\/button>/);
+  assert.match(renderSalvage(d, (k) => k === "drop:2", null), /data-action='salvage-drop' data-position='2'>Confirm drop<\/button>/);
+  // No open slot means no row paints a body, and every View button reads "View".
+  assert.doesNotMatch(html, /<pre class='mono/);
+  assert.doesNotMatch(html, /Hide<\/button>/);
 });
 
 test("fetchSalvage loads GET /api/salvage and paints the card; a failure renders the error panel", async () => {
@@ -563,6 +570,134 @@ test("salvageApplyClick flashes the server's error and still refetches when the 
   await salvageApplyClick("1");
   assert.equal(flashes[flashes.length - 1]!, "error: salvage --apply needs a git checkout");
   assert.equal(refetched, 1, "a failed apply still refetches the card");
+});
+
+test("salvageViewClick fetches the row's patch once, opens only that row, and a second click closes it without refetching", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard", "retirecard", "briefcard"]) els[id] = { innerHTML: "", dataset: {} };
+  const now = Date.now();
+  const fetched: string[] = [];
+  const { fetchSalvage, salvageViewClick } = settingsScope({
+    $: (id: string) => els[id],
+    getJson: async (path: string) => {
+      fetched.push(path);
+      if (path === "/api/salvage") {
+        return { patches: [
+          { position: 1, file: "a.patch", savedAt: now - 3 * 3600_000, bytes: 38, size: "38 B" },
+          { position: 2, file: "b.patch", savedAt: now - 1000, bytes: 17, size: "17 B" },
+        ] };
+      }
+      // The show endpoint's reply for the position asked for, built from the seeded files: the
+      // position in the query decides which patch comes back, so a swapped field would land the
+      // wrong text under the row.
+      const n = Number(new URL("http://x" + path).searchParams.get("position"));
+      return n === 2
+        ? { position: 2, file: "b.patch", savedAt: now - 1000, bytes: 17, size: "17 B", stat: null, patch: "+second\n" }
+        : { position: 1, file: "a.patch", savedAt: now - 3 * 3600_000, bytes: 38, size: "38 B",
+            stat: " f | 2 +-\n1 file changed",
+            patch: "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n<script>gone</script>\n" };
+    },
+  });
+  await fetchSalvage();
+  // Row 2's View: the read is a read-only GET on that position, and the text reaches the card
+  // escaped — the <script> in patch 1's text must stay text when row 1 is opened below.
+  await salvageViewClick("2");
+  assert.deepEqual(fetched.slice(1), ["/api/salvage-show?position=2"]);
+  assert.match(els["salvagecard"]!.innerHTML, /<pre class='mono diff'>\+second\n<\/pre>/);
+  assert.match(els["salvagecard"]!.innerHTML, /<div class='sub'>2\. b\.patch — saved just now, 17 B<\/div>/);
+  // A stat-less patch paints no stat block.
+  assert.equal(els["salvagecard"]!.innerHTML.match(/<pre class='mono'>/g), null, "a null stat paints no stat block");
+  // The open row's View button is a collapse; the other row's is still View.
+  assert.match(els["salvagecard"]!.innerHTML, /data-action='salvage-view' data-position='2'>Hide<\/button>/);
+  assert.match(els["salvagecard"]!.innerHTML, /data-action='salvage-view' data-position='1'>View<\/button>/);
+  // A second click on the open row collapses it, asking the server nothing.
+  await salvageViewClick("2");
+  assert.deepEqual(fetched.slice(1), ["/api/salvage-show?position=2"], "collapsing never refetches");
+  assert.doesNotMatch(els["salvagecard"]!.innerHTML, /<pre class='mono diff'>/);
+  // Opening row 1 closes row 2 and paints its own header, stat block and escaped text.
+  await salvageViewClick("1");
+  assert.deepEqual(fetched.slice(1), ["/api/salvage-show?position=2", "/api/salvage-show?position=1"]);
+  const card = els["salvagecard"]!.innerHTML;
+  assert.equal(card.match(/<pre class='mono diff'>/g)!.length, 1, "one row is open at a time");
+  assert.match(card, /<pre class='mono'> f \| 2 \+-<\/pre>|<pre class='mono'> f \| 2 \+-/);
+  assert.match(card, /1 file changed<\/pre>/);
+  assert.match(card, /&lt;script&gt;gone&lt;\/script&gt;/);
+  assert.doesNotMatch(card, /<script>/, "the patch text never reaches the DOM as markup");
+  assert.match(card, /<div class='sub'>1\. a\.patch — saved 3h ago, 38 B<\/div>/);
+  assert.doesNotMatch(card, /<div class='sub'>2\. b\.patch/);
+});
+
+test("a salvage View read that fails shows the server's sentence in that row and leaves Apply and Drop working", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard", "retirecard", "briefcard"]) els[id] = { innerHTML: "", dataset: {} };
+  const now = Date.now();
+  const posts: Array<{ path: string; body: unknown }> = [];
+  let armedKey: string | null = null;
+  const scope = settingsScope({
+    confirmSlot: () => ({ armed: (k: string) => armedKey === k, arm: (k: string) => { armedKey = k; }, disarm: () => { armedKey = null; } }),
+    $: (id: string) => els[id],
+    getJson: async (path: string) => {
+      if (path === "/api/salvage") {
+        return { patches: [{ position: 1, file: "a.patch", savedAt: now, bytes: 38, size: "38 B" }] };
+      }
+      // The endpoint answers an off-list position 200 { ok: false, message }.
+      return { ok: false, message: "no salvaged workspace patch at position 7 (salvage holds 1 patch) — valid: 1-1" };
+    },
+    postJson: async (path: string, body: unknown) => {
+      posts.push({ path, body });
+      return { ok: true, message: "applied salvaged workspace patch 1: a.patch" };
+    },
+    showFlash: () => {},
+  });
+  await scope.fetchSalvage();
+  await scope.salvageViewClick("1");
+  // The row holds the server's sentence, no patch body, and its buttons intact.
+  const card = els["salvagecard"]!.innerHTML;
+  assert.doesNotMatch(card, /<pre class='mono diff'>/);
+  assert.match(card, /<div class='empty'>no salvaged workspace patch at position 7 \(salvage holds 1 patch\) — valid: 1-1<\/div>/);
+  assert.match(card, /data-action='salvage-apply' data-position='1'>Apply<\/button>/);
+  // Apply still arms and posts the same { position } body after a failed read.
+  await scope.salvageApplyClick("1");
+  assert.deepEqual(posts, [], "the first click only arms");
+  await scope.salvageApplyClick("1");
+  assert.deepEqual(posts, [{ path: "/api/salvage-apply", body: { position: 1 } }]);
+});
+
+test("salvageViewClick shows the transport error in the row when the read rejects", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard", "retirecard", "briefcard"]) els[id] = { innerHTML: "", dataset: {} };
+  const { fetchSalvage, salvageViewClick } = settingsScope({
+    $: (id: string) => els[id],
+    getJson: async (path: string) => {
+      if (path === "/api/salvage") return { patches: [{ position: 1, file: "a.patch", savedAt: Date.now(), bytes: 38, size: "38 B" }] };
+      throw { message: "could not read salvaged patch a.patch" };
+    },
+  });
+  await fetchSalvage();
+  await salvageViewClick("1");
+  assert.match(els["salvagecard"]!.innerHTML, /<div class='empty'>could not read salvaged patch a\.patch<\/div>/);
+});
+
+test("renderSalvage splices the open body only into the row its file still matches", () => {
+  const { renderSalvage } = settingsScope();
+  const now = Date.now();
+  // A refetch after a drop renumbers the list: the kept patch is now position 1, and the body
+  // fetched for it must land under that row, never under another patch's row.
+  const d = { patches: [
+    { position: 1, file: "b.patch", savedAt: now - 1000, bytes: 17, size: "17 B" },
+    { position: 2, file: "c.patch", savedAt: now - 1000, bytes: 5, size: "5 B" },
+  ] };
+  const open = { position: 1, file: "b.patch", body: { position: 1, file: "b.patch", savedAt: now - 1000, size: "17 B", stat: null, patch: "+kept\n" } };
+  const html = renderSalvage(d, () => false, open);
+  // The patch text reaches the pre verbatim, its trailing newline intact.
+  assert.match(html, /<pre class='mono diff'>\+kept\n<\/pre>/);
+  // The body sits inside the b.patch row, not the c.patch row.
+  const bRow = html.slice(html.indexOf("b.patch"), html.indexOf("c.patch"));
+  assert.match(bRow, /<pre class='mono diff'>\+kept\n<\/pre>/);
+  assert.doesNotMatch(html.slice(html.indexOf("c.patch")), /<pre class='mono diff'>/);
+  // A body whose file no longer matches any listed row is dropped: a patch read never appears
+  // under a different patch's header.
+  assert.doesNotMatch(renderSalvage(d, () => false, { position: 1, file: "gone.patch", body: open.body }), /<pre class='mono diff'>/);
 });
 
 test("renderRetirable renders an Enable button for every row, a Retire button only for the leftover row, and esc's ids", () => {

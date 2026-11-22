@@ -112,6 +112,8 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (salApply) { ev.preventDefault(); salvageApplyClick(salApply.dataset.position); }
     const salDrop = clickClosest(ev, "button[data-action='salvage-drop']");
     if (salDrop) { ev.preventDefault(); salvageDropClick(salDrop.dataset.position); }
+    const salView = clickClosest(ev, "button[data-action='salvage-view']");
+    if (salView) { ev.preventDefault(); salvageViewClick(salView.dataset.position); }
   });
   // The Health card's Problems only checkbox: repaint the cached report with only its warn
   // and fail rows (toggleDoctorProblems, gui-client-settings), without rerunning the checks.

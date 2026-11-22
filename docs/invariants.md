@@ -5819,3 +5819,61 @@ idle-polls until the deferral cap — or never, on a full volume.
 
 **Pinned by.** `test/orchestrator-scheduling.test.ts` — "once-mode settles each starting hold with
 its own label, so a held role never reads as paused".
+
+## Salvaged patches for the operator: the list, the read and the two actions state one position on every surface
+
+The kept patches under `.tumwater/salvage/` are reached from three surfaces — `tumwater salvage`,
+the status/doctor alert rows, and the dashboard's Settings `Salvaged patches` card — and each
+position a surface prints must address the same patch on the others.
+
+### INV-SV1: GET /api/salvage-show reads the Nth kept patch back verbatim at the list position apply and drop take, writes nothing, and answers a bad position with the shared sentence
+
+**Guarantee.** `handleSalvageShow` resolves its `position` query with the dashboard's shared
+positive-integer rule — absent is `position required` and a non-decimal, zero or exponent spelling
+is the `position must be a positive integer (got …)` 400 — and otherwise addresses the whole
+unfiltered oldest-first list through `salvagePatchAt(collectSalvagePatches(root))`, the same
+address `--apply <n>` and `--drop <n>` take, so a pending patch under `salvage/<role>/` is
+addressable at no position. It answers `{ position, file, savedAt, bytes, size, stat, patch }`
+where `file`/`savedAt`/`bytes`/`size` are exactly what `handleSalvageList` answers for that row,
+`patch` is `readSalvagePatch`'s verbatim text with nothing added or trimmed, and `stat` is
+`salvagePatchStat`'s `git apply --stat` summary — `null` when the body is not a diff git can
+parse. A position off the list, and a file that cannot be read, answer the same
+`{ ok: false, message }` shape apply and drop answer for an off-list position, carrying the
+domain's own sentence (the CLI's out-of-range wording, or `could not read salvaged patch <file>`).
+The read creates no directory, changes no file and applies nothing.
+
+**Binds.** `src/gui/gui-salvage-commands.ts` (`handleSalvageShow`, beside
+`handleSalvageList`/`handleSalvageApply`/`handleSalvageDrop`), `src/gui/gui-server.ts` (the
+`GET /api/salvage-show` route), `src/gui/gui-args.ts` (`intQuery`), and
+`src/status/status-salvage.ts` (`collectSalvagePatches`, `salvagePatchAt`, `readSalvagePatch`).
+
+**Pinned by.** `test/gui-salvage.test.ts` — "GET /api/salvage-show reads a kept patch back with
+the CLI's --show fields, addressing the list position", "GET /api/salvage-show answers stat null
+for a patch that is not a diff, and a non-null stat for one that is", "GET /api/salvage-show with
+no salvage dir creates nothing and answers the off-list sentence", "GET /api/salvage-show with an
+absent or malformed position is a 400 with the shared query wording", "GET /api/salvage-show with
+a position off the list answers the sentence --drop <n> prints" and "GET /api/salvage-show of an
+unreadable patch answers the CLI's could-not-read sentence".
+
+### INV-SV2: the salvage card's View paints the read escaped inside the row it belongs to, one row at a time, and a failed read leaves that patch's Apply and Drop working
+
+**Guarantee.** `salvageViewClick` fetches `GET /api/salvage-show?position=<n>` through the card's
+own `getJson` and keeps the body; `renderSalvage` takes that open slot as its third argument
+beside the confirm slot's `armed` callback and splices the body into the row whose position and
+file both still match it — so a refetch that renumbers the list never slides one patch's body
+under another patch's header. The body is the row's own header line, the `stat` block only when
+the reply carries one, and the patch text in the shared escaped `<pre class='mono diff'>`, so
+markup inside a patch reaches the DOM as text. Only one row is open, a second click on the open
+row collapses it without another request, and a read the endpoint refused or whose transport
+failed paints the server's sentence in that row while that row's two-click Apply and Drop keep
+posting their `{ position }` bodies.
+
+**Binds.** `src/ui/gui/gui-client-settings.ts` (`renderSalvage`, `salvageViewHtml`,
+`salvageViewClick`, `paintSalvage`) and `src/ui/gui/gui-client-boot.ts` (the one delegated click
+handler routing `button[data-action='salvage-view']`).
+
+**Pinned by.** `test/gui-client-settings.test.ts` — "salvageViewClick fetches the row's patch
+once, opens only that row, and a second click closes it without refetching", "a salvage View read
+that fails shows the server's sentence in that row and leaves Apply and Drop working",
+"salvageViewClick shows the transport error in the row when the read rejects" and
+"renderSalvage splices the open body only into the row its file still matches".

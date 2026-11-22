@@ -4,17 +4,18 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   handleSalvageList,
+  handleSalvageShow,
   handleSalvageApply,
   handleSalvageDrop,
 } from "../src/gui/gui-endpoint-commands.js";
 import { salvageDir, salvagePendingDir } from "../src/paths.js";
-import { makeRepo, sh, headSha, tmpdir } from "./fixtures/repo-fixtures.js";
+import { makeRepo, sh, headSha, tmpdir, runningAsRoot } from "./fixtures/repo-fixtures.js";
 import { captureJson, fakeReq } from "./fakes/fake-res.js";
 
 // The dashboard's salvaged workspace patch endpoints (src/gui/gui-salvage-commands.ts): the
-// browser twins of `tumwater salvage`'s list, `--apply <n>` and `--drop <n>`, driven the way
-// test/gui-retire.test.ts drives the retire handlers — the real domain functions against a
-// temp repo, captured through the shared fake request/response, no socket.
+// browser twins of `tumwater salvage`'s list, `--show <n>`, `--apply <n>` and `--drop <n>`,
+// driven the way test/gui-retire.test.ts drives the retire handlers — the real domain functions
+// against a temp repo, captured through the shared fake request/response, no socket.
 //
 // The expected positions are derived from the write order (an older patch, then a newer one),
 // not read back from the handler's output: the test asserts the handler sorts by savedAt and
@@ -64,6 +65,120 @@ test("GET /api/salvage with no salvage dir answers the empty list, creating noth
   assert.equal(captured.status, 200);
   assert.deepEqual(data, { patches: [] });
   assert.equal(fs.existsSync(salvageDir(repo)), false, "the list never creates the salvage dir");
+});
+
+test("GET /api/salvage-show reads a kept patch back with the CLI's --show fields, addressing the list position", async () => {
+  const repo = makeRepo();
+  const { older, newer } = seedSalvage(repo);
+  // The list's own rows first: the show reply's file/savedAt/bytes/size must equal them.
+  const listed = (await captureJson((res) => handleSalvageList(res, repo))).data as {
+    patches: Array<{ position: number; file: string; savedAt: number; bytes: number; size: string }>;
+  };
+  const before = fs.readdirSync(salvageDir(repo)).sort();
+  const olderRow = listed.patches[0]!;
+  const { captured, data } = await captureJson((res) =>
+    handleSalvageShow(new URLSearchParams({ position: "1" }), res, repo),
+  );
+  assert.equal(captured.status, 200);
+  const d = data as { position: number; file: string; savedAt: number; bytes: number; size: string; stat: string | null; patch: string };
+  assert.equal(d.position, 1);
+  assert.equal(d.file, olderRow.file);
+  assert.equal(d.savedAt, olderRow.savedAt);
+  assert.equal(d.bytes, olderRow.bytes);
+  assert.equal(d.size, olderRow.size);
+  // The patch text verbatim — exactly the file's bytes, nothing added or trimmed.
+  assert.equal(d.patch, fs.readFileSync(older, "utf8"));
+  assert.equal(d.patch, OLDER_TEXT);
+  // git apply --stat read without applying: the one changed file and its totals.
+  assert.ok(d.stat !== null, "a valid diff gets a diffstat");
+  assert.ok(d.stat.includes("1 file changed"), `stat names the changed file (got ${d.stat})`);
+  // The newer patch at the next position.
+  const newerRow = await captureJson((res) =>
+    handleSalvageShow(new URLSearchParams({ position: "2" }), res, repo),
+  );
+  assert.equal((newerRow.data as { file: string; patch: string }).file, listed.patches[1]!.file);
+  assert.equal((newerRow.data as { patch: string }).patch, fs.readFileSync(newer, "utf8"));
+  // A pending patch is not addressable at any position: the list holds two, so 3 is off-list.
+  const pending = await captureJson((res) =>
+    handleSalvageShow(new URLSearchParams({ position: "3" }), res, repo),
+  );
+  assert.equal((pending.data as { ok: boolean; message: string }).ok, false);
+  assert.ok((pending.data as { message: string }).message.includes("salvage holds 2 patches"));
+  // The read is read-only: the salvage dir holds exactly what it held before.
+  assert.deepEqual(fs.readdirSync(salvageDir(repo)).sort(), before, "the read creates nothing in the salvage dir");
+});
+
+test("GET /api/salvage-show answers stat null for a patch that is not a diff, and a non-null stat for one that is", async () => {
+  const repo = makeRepo();
+  fs.mkdirSync(salvageDir(repo), { recursive: true });
+  // A truncated `From <sha>` scratch file — what an aborted review lands leaves behind.
+  const scratch = "From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001 +0000\nSubject: [PATCH] half a diff\n\n";
+  fs.writeFileSync(path.join(salvageDir(repo), "scratch.patch"), scratch);
+  fs.utimesSync(path.join(salvageDir(repo), "scratch.patch"), new Date(1), new Date(1));
+  const { captured, data } = await captureJson((res) =>
+    handleSalvageShow(new URLSearchParams({ position: "1" }), res, repo),
+  );
+  assert.equal(captured.status, 200);
+  const d = data as { stat: string | null; patch: string };
+  assert.equal(d.stat, null, "a non-diff body has no diffstat");
+  assert.equal(d.patch, scratch, "the text comes back unchanged");
+});
+
+test("GET /api/salvage-show with no salvage dir creates nothing and answers the off-list sentence", async () => {
+  const repo = makeRepo();
+  const { captured, data } = await captureJson((res) =>
+    handleSalvageShow(new URLSearchParams({ position: "1" }), res, repo),
+  );
+  assert.equal(captured.status, 200);
+  const d = data as { ok: boolean; message: string };
+  assert.equal(d.ok, false);
+  assert.equal(d.message, "no salvaged workspace patch at position 1 (salvage holds 0 patches)");
+  assert.equal(fs.existsSync(salvageDir(repo)), false, "the read never creates the salvage dir");
+});
+
+test("GET /api/salvage-show with an absent or malformed position is a 400 with the shared query wording", async () => {
+  const repo = makeRepo();
+  seedSalvage(repo);
+  const absent = await captureJson((res) => handleSalvageShow(new URLSearchParams(), res, repo));
+  assert.equal(absent.captured.status, 400);
+  assert.deepEqual(absent.data, { error: "position required" });
+  for (const value of ["abc", "0", "1e2"]) {
+    const bad = await captureJson((res) => handleSalvageShow(new URLSearchParams({ position: value }), res, repo));
+    assert.equal(bad.captured.status, 400);
+    assert.match((bad.data as { error: string }).error, /position must be a positive integer/);
+  }
+});
+
+test("GET /api/salvage-show with a position off the list answers the sentence --drop <n> prints", async () => {
+  const repo = makeRepo();
+  const { older } = seedSalvage(repo);
+  const { captured, data } = await captureJson((res) =>
+    handleSalvageShow(new URLSearchParams({ position: "7" }), res, repo),
+  );
+  assert.equal(captured.status, 200);
+  const d = data as { ok: boolean; message: string };
+  assert.equal(d.ok, false);
+  assert.equal(d.message, "no salvaged workspace patch at position 7 (salvage holds 2 patches) — valid: 1-2");
+  assert.equal(fs.readFileSync(older, "utf8"), OLDER_TEXT, "an off-list read changes nothing");
+});
+
+test("GET /api/salvage-show of an unreadable patch answers the CLI's could-not-read sentence", { skip: runningAsRoot() }, async () => {
+  const repo = makeRepo();
+  fs.mkdirSync(salvageDir(repo), { recursive: true });
+  const unreadable = path.join(salvageDir(repo), "sealed.patch");
+  fs.writeFileSync(unreadable, OLDER_TEXT);
+  fs.chmodSync(unreadable, 0o000);
+  try {
+    const { captured, data } = await captureJson((res) =>
+      handleSalvageShow(new URLSearchParams({ position: "1" }), res, repo),
+    );
+    assert.equal(captured.status, 200);
+    const d = data as { ok: boolean; message: string };
+    assert.equal(d.ok, false);
+    assert.equal(d.message, "could not read salvaged patch sealed.patch");
+  } finally {
+    fs.chmodSync(unreadable, 0o600);
+  }
 });
 
 test("POST /api/salvage-apply applies the Nth patch as unstaged edits, committing nothing and keeping it", async () => {
