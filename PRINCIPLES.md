@@ -32,11 +32,11 @@ principles positively.
 
 The steward's standing measure of where the codebase stands, measured from the repo, not vibes — refresh with `wc -l` and `find` when touched.
 
-- **Code size**: 500 src / ~128,400 lines; 657 test / ~195,900 lines. Grows with every merge; the
+- **Code size**: 500 src / ~129,100 lines; 658 test / ~197,600 lines. Grows with every merge; the
   split-large-function family is the standing driver of per-function (not per-file) growth. The
   figure fell on 2026-11-20 when the ink TUI was removed (~25,500 lines across 131 files).
-- **Module-size ceiling**: 26 src files exceed 600 lines, 9 exceed 700, 4 exceed 800; the largest
-  is src/cli/cli-help-text.ts at 928, with src/roles/role-view.ts at 924. The ceiling holds because
+- **Module-size ceiling**: 30 src files exceed 600 lines, 9 exceed 700, 4 exceed 800; the largest
+  is src/cli/cli-help-text.ts at 941, with src/roles/role-view.ts at 924. The ceiling holds because
   complexity is extracted into named helpers, not by shrinking files — a file may stay large while
   its functions stay small; do not re-split an already-small function to chase a line count.
 - **Dependencies**: 0 runtime and 5 dev, all dev-time (typescript + its `typescript-native`
