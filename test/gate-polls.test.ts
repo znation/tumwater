@@ -25,6 +25,9 @@ import { eventTypes } from "./fixtures/log-fixtures.js";
 import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
 import type { OrchestratorInfo } from "../src/team/team-orchestrator-info.js";
+import { ERROR_STREAK_BREAKER } from "../src/run/run-apply.js";
+import { runnerPaused } from "../src/roles/runner-ids.js";
+import { pausedRoles as pausedRoleMarkers } from "../src/team/team-state.js";
 
 test("pollTeamGates: a breaker trip logs role_streak_paused once — no duplicate role_paused on the next poll", () => {
   const root = tmpdir("gate-polls-");
@@ -63,6 +66,51 @@ test("pollTeamGates: a breaker trip logs role_streak_paused once — no duplicat
     1,
     "exactly one breaker event for one trip",
   );
+  assert.equal(
+    events.filter((e) => e.type === "role_paused").length,
+    0,
+    "the breaker's pause must not surface again as an operator pause",
+  );
+});
+
+// The breaker's pause KEY for an instance role is the wiring's, not the gate's: pollTeamGates
+// hands pollStreakGate `instancePauseKey(liveConfig, role)` (src/gates/gate-polls.ts), so on a
+// config at the default instance count instance 1 of feature must pause under the `feature-1`
+// marker key — pausing under the bare `feature` instead would stop all six of its runners on one
+// role's error streak. test/streak-gates.test.ts pins the gate with a hand-written key lambda;
+// this pins that the real selector reaches the real gate through the real wiring.
+test("pollTeamGates: a breaker trip pauses instance 1 under its feature-1 key, not the whole role", () => {
+  const root = tmpdir("gate-polls-instance-");
+  const config = defaultConfig();
+  const feature = new RoleRunner(root, "feature", config, "main");
+  feature.state.consecutiveErrors = ERROR_STREAK_BREAKER;
+  feature.state.lastError = "boom";
+  const sibling = new RoleRunner(root, "feature-2", config, "main");
+
+  const states = newTeamGateStates(config);
+  const ctx = {
+    root,
+    runners: [feature, sibling],
+    liveConfig: config,
+    modelsPath: path.join(root, "models.json"),
+    now: Date.now(),
+    info: { pid: process.pid, startedAt: 0, roles: ["feature", "feature-2"] },
+    sampleFree: () => 100 * BYTES_PER_GB,
+  };
+
+  const first = pollTeamGates(states, ctx);
+  assert.ok(first.pausedRoles.has("feature-1"), "instance 1 pauses under its own key");
+  assert.ok(!first.pausedRoles.has("feature"), "the bare role id is not paused: its siblings run");
+  assert.deepEqual(pausedRoleMarkers(root), ["feature-1"], "the marker file names the pause key");
+  assert.ok(runnerPaused(first.pausedRoles, "feature"), "instance 1 is blocked by that marker");
+  assert.ok(!runnerPaused(first.pausedRoles, "feature-2"), "a sibling instance is not blocked");
+
+  // Poll 2: the marker stands, and the fold keeps it the breaker's own announcement.
+  pollTeamGates(states, ctx);
+  const events = readEvents(root, 100);
+  const trips = events.filter((e) => e.type === "role_streak_paused");
+  assert.equal(trips.length, 1, "exactly one breaker event for one trip");
+  assert.equal(trips[0]!.role, "feature-1", "the event names the pause key, not the base role");
   assert.equal(
     events.filter((e) => e.type === "role_paused").length,
     0,
