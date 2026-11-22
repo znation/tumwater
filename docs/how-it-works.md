@@ -454,7 +454,9 @@ the watch's confirming re-run each add the failing tests that passed on the re-r
   `model check` row; the `over-cap model` row then says whether the fallback answered instead of
   "serving not verified". At the cap, a fallback step that failed is skipped like a demoted one.
   The pair is checked again after 1 minute, then at doubling intervals up to 30 minutes. Once it
-  answers, its roles run again on their own (`model_check_passed` in the feed). The check runs
+  answers, its roles run again on their own (`model_check_passed` in the feed). A probe that stays
+  silent while the same pair is answering the team's own runs is queueing, not a dead server: the
+  pair keeps its verdict, nothing is held, and the feed reads `model_check_busy`. The check runs
   for `tumwater start`, not for a `--once` round. The failed pair's dashboard banner offers a
   `Re-check now` button, which asks the running team to probe the failed pairs immediately
   instead of waiting out the back-off.

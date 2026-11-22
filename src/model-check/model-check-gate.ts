@@ -28,6 +28,7 @@ import { errorMessage, joinWithMore, squash } from "../text/text.js";
 import { REPLY_EXCERPT_CHARS, type ModelCheckVerdict } from "./model-check-probe.js";
 import {
   MODEL_CHECK_POLICY,
+  busyModelCheck,
   dueModelChecks,
   modelCheckFailed,
   modelCheckFault,
@@ -97,6 +98,12 @@ export class ModelCheckGate {
   checks: ModelCheckMap = {};
   held: ReadonlySet<string> = new Set();
   private uses = new Map<string, PairUse>();
+  /** The runners the latest poll saw: `settle` reads their `lastAnsweredAt` to tell a pair whose
+   * server is answering the team from one that answers nothing (busy model check 2/2). */
+  private lastRunners: readonly RoleRunner[] = [];
+  /** When each pair's in-flight probe started (epoch ms), set by `launch` and read by `settle`:
+   * an answer at or after it means the server was serving the team while the probe waited. */
+  private readonly probeStartedAt = new Map<string, number>();
   private reviewPair: string | null = null;
   private readonly inFlight = new Set<Promise<void>>();
   private readonly stop = new AbortController();
@@ -125,6 +132,7 @@ export class ModelCheckGate {
     const runSeams = new Map<RoleRunner, ResolvedModelConfig>();
     for (const r of input.runners) if (runnerEnabled(r.config, r.role)) runSeams.set(r, r.runConfig());
     this.uses = pairsInUse(input, runSeams);
+    this.lastRunners = input.runners;
     this.checks = rekeyModelChecks(this.checks, [...this.uses.keys()], now);
     this.unansweredRuns(input.runners);
     if (!this.signal.aborted) for (const pair of dueModelChecks(this.checks, now)) this.launch(pair);
@@ -230,6 +238,7 @@ export class ModelCheckGate {
     const use = this.uses.get(pair);
     if (use === undefined) return;
     this.checks = startModelCheck(this.checks, pair);
+    this.probeStartedAt.set(pair, this.now());
     const task = this.prober(use.seam, this.signal)
       .catch((err: unknown): ModelCheckVerdict => ({
         ok: false,
@@ -242,13 +251,41 @@ export class ModelCheckGate {
     void task.finally(() => this.inFlight.delete(task));
   }
 
+  /** Whether a runner's own runs on `pair` were answered while its probe waited: the busy-vs-dead
+   * signal part 1/2 put on the runner (`lastAnsweredAt`, recorded by the stream parser's answered
+   * hook). `startedAt` is the probe's start, absent when the probe was never launched here. */
+  private teamAnsweredSince(pair: string, startedAt: number | null): boolean {
+    if (startedAt === null) return false;
+    return this.lastRunners.some((r) => {
+      const answered = r.lastAnsweredAt(pair);
+      return answered !== null && answered >= startedAt;
+    });
+  }
+
   /** Fold a probe's verdict in, logging the edges: one warning when a pair enters `failed`
    * (from checking or verified — a later failed re-check stays quiet, the published block and
    * the doctor row carry its latest reply), and one model_check_passed when a failed pair
-   * answers again. A pair the team stopped using meanwhile is dropped, its verdict with it. */
+   * answers again. A pair the team stopped using meanwhile is dropped, its verdict with it.
+   * A `no reply` probe that waited while the pair answered the team's own runs fails nothing
+   * (busy model check 2/2): the server was queueing the probe, not dead, so `busyModelCheck`
+   * defers it and one informational `model_check_busy` event says so instead of a warning. */
   private settle(pair: string, verdict: ModelCheckVerdict): void {
     const prev = this.checks[pair];
     if (prev === undefined) return;
+    if (
+      verdict.ok === false &&
+      verdict.reason === "no reply" &&
+      prev.status !== "failed" &&
+      this.teamAnsweredSince(pair, this.probeStartedAt.get(pair) ?? null)
+    ) {
+      this.checks = busyModelCheck(this.checks, pair, this.now(), this.policy);
+      logEventBestEffort(this.root, {
+        source: TUMWATER_SOURCE,
+        type: "model_check_busy",
+        pair,
+      });
+      return;
+    }
     this.checks = recordModelCheck(this.checks, pair, verdict, this.now(), this.policy);
     const seams = this.uses.get(pair)?.seams ?? [];
     if (verdict.ok === false && prev.status !== "failed") {

@@ -119,6 +119,28 @@ export function recordModelCheck(
   });
 }
 
+/** Fold a `no reply` probe verdict in WITHOUT failing the pair, because the team's own runs on
+ * that pair were answered while the probe waited: a server that answers the team and leaves the
+ * probe silent is queueing the probe, not dead (BUGS.md busy model check 2/2). A verified pair
+ * stays verified with the probe slot cleared and `checkedAt: now`, so `suspectModelCheck`'s
+ * `suspectMinMs` rate limit is what spaces the next suspicion probe — the deferred probe does
+ * not re-fire every poll. A `checking` pair stays checking with its next probe due
+ * `policy.retryMs` later and its `failures` and `retryMs` untouched: a deferred verdict is not
+ * a failed probe, so it neither starts nor grows a back-off. Every other entry — a failed pair,
+ * which keeps its own doubled back-off — is returned as it was. */
+export function busyModelCheck(
+  map: ModelCheckMap,
+  pair: string,
+  now: number,
+  policy: ModelCheckPolicy = MODEL_CHECK_POLICY,
+): ModelCheckMap {
+  return withEntry(map, pair, (e) => {
+    if (e.status === "verified") return { ...e, status: "verified", probeAt: null, probing: false, checkedAt: now };
+    if (e.status === "checking") return { ...e, probeAt: now + policy.retryMs, probing: false };
+    return e;
+  });
+}
+
 /** A run on a verified pair ended, or is waiting, the way a serving fault does: schedule a
  * re-check now, unless one is already due or in flight, or the pair was checked within the
  * policy's suspectMinMs. The pair stays verified (its roles keep running) until the re-check

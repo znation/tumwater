@@ -140,6 +140,7 @@ export const STATE_CHANGE_EXCLUDED_TYPES = new Set<string>([
   "check_wait",
   // Observations and actions.
   "disk_reclaim",
+  "model_check_busy",
   "maintenance_start",
   "maintenance_done",
   "image_blind",

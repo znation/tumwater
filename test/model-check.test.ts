@@ -22,6 +22,7 @@ import {
   rekeyModelChecks,
   startModelCheck,
   suspectModelCheck,
+  busyModelCheck,
   type ModelCheckPolicy,
 } from "../src/model-check/model-check.js";
 import { ModelCheckGate } from "../src/model-check/model-check-gate.js";
@@ -152,11 +153,43 @@ test("recheckModelChecks clears every failed pair's back-off and leaves everythi
   assert.equal(map["f/x"]?.probeAt, 9_000_000);
 });
 
-/** A runner as the gate reads it: id, config, state, the config its next run uses, and the
- * in-flight run's unanswered request (`waitingOn`), with the hand-backs it took (`handBacks`). */
+test("busyModelCheck defers a silent probe: verified stays verified, checking waits a retryMs, failed is untouched", () => {
+  const verified = { pair: "v/x", status: "verified" as const, failures: 0, probeAt: null, retryMs: 0, probing: true, checkedAt: 1_000 };
+  const checking = { pair: "c/x", status: "checking" as const, failures: 0, probeAt: 2_000, retryMs: 0, probing: true };
+  const failed = { pair: "f/x", status: "failed" as const, failures: 2, probeAt: 9_000_000, retryMs: 120_000, probing: true, checkedAt: 8_000_000, reason: "no reply" as const, reply: "" };
+  // A verified pair whose probe went silent over an answering pair: the slot is freed, nothing is
+  // scheduled, and checkedAt moves to now — so suspectMinMs is what spaces the next probe.
+  const deferred = busyModelCheck({ "v/x": verified }, "v/x", 300_000, POLICY);
+  assert.deepEqual(
+    [deferred["v/x"]?.status, deferred["v/x"]?.probeAt, deferred["v/x"]?.probing, deferred["v/x"]?.checkedAt, deferred["v/x"]?.failures],
+    ["verified", null, false, 300_000, 0],
+    "the pair stays verified with no probe scheduled and the check stamped at the deferral",
+  );
+  assert.deepEqual(dueModelChecks(deferred, 300_000), [], "the deferred probe does not re-fire at once");
+  assert.equal(suspectModelCheck(deferred, "v/x", 300_000 + POLICY.suspectMinMs - 1, POLICY)["v/x"]?.probeAt, null, "the deferral re-arms the suspicion rate limit");
+  assert.equal(suspectModelCheck(deferred, "v/x", 300_000 + POLICY.suspectMinMs, POLICY)["v/x"]?.probeAt, 300_000 + POLICY.suspectMinMs);
+  // A checking pair waits the policy's first retry: a deferred verdict is not a failed probe, so
+  // it neither starts nor grows a back-off.
+  const deferredChecking = busyModelCheck({ "c/x": checking }, "c/x", 300_000, POLICY);
+  assert.deepEqual(
+    [deferredChecking["c/x"]?.status, deferredChecking["c/x"]?.probeAt, deferredChecking["c/x"]?.failures, deferredChecking["c/x"]?.retryMs],
+    ["checking", 300_000 + POLICY.retryMs, 0, 0],
+    "the checking pair stays checking with its next probe exactly one first retry away",
+  );
+  assert.deepEqual(dueModelChecks(deferredChecking, 300_000 + POLICY.retryMs - 1), [], "not due before that retry");
+  assert.deepEqual(dueModelChecks(deferredChecking, 300_000 + POLICY.retryMs), ["c/x"]);
+  // A failed pair keeps its own doubled back-off untouched.
+  assert.equal(busyModelCheck({ "f/x": failed }, "f/x", 300_000, POLICY)["f/x"], failed, "a failed pair's entry is returned as it was");
+});
+
+/** A runner as the gate reads it: id, config, state, the config its next run uses, the
+ * in-flight run's unanswered request (`waitingOn`), the hand-backs it took (`handBacks`), and the
+ * pair/time a run had a model request answered (`setAnswered`, part 2/2's busy signal). */
 function runner(role: string, config: TumwaterConfig, waitingOn: string | null = null) {
   const handBacks: string[] = [];
   let handed = false;
+  let answeredPair: string | null = null;
+  let answeredAt: number | null = null;
   return Object.assign(
     {
       role,
@@ -164,6 +197,7 @@ function runner(role: string, config: TumwaterConfig, waitingOn: string | null =
       state: freshRunnerState(role),
       runConfig: () => configForRole(config, role),
       unansweredRunPair: () => waitingOn,
+      lastAnsweredAt: (pair: string) => (pair === answeredPair ? answeredAt : null),
       handBackRun: (cause: string) => {
         if (handed) return false;
         handed = true;
@@ -171,7 +205,13 @@ function runner(role: string, config: TumwaterConfig, waitingOn: string | null =
         return true;
       },
     } as unknown as RoleRunner,
-    { handBacks },
+    {
+      handBacks,
+      setAnswered: (pair: string, at: number): void => {
+        answeredPair = pair;
+        answeredAt = at;
+      },
+    },
   );
 }
 
@@ -390,6 +430,76 @@ test("the gate re-checks now: a re-check request re-probes a failed pair before 
   answer("flintrunner/flint", { ok: true });
   await gate.settled();
   assert.deepEqual([...poll()], [], "the role runs again once the pair answers");
+});
+
+test("a probe that stays silent while the pair answers the team's own runs defers instead of failing (busy 2/2)", async () => {
+  const root = makeRepo();
+  const config = teamConfig();
+  const feature = runner("feature", config);
+  const runners = [feature, runner("plan", config)];
+  const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: [] };
+  let now = 9_000_000;
+  const { prober, asked, answer } = manualProber();
+  const gate = new ModelCheckGate(root, prober, new AbortController().signal, POLICY, () => now);
+  const poll = () => gate.poll({ runners, liveConfig: config, roleConfig: config, info });
+  poll();
+  answer("flintrunner/flint", { ok: true });
+  answer("hf/deepseek", { ok: true });
+  await gate.settled();
+  assert.deepEqual([...poll()], []);
+
+  // The pair is suspected (a run ended the way a serving fault does) and probed. While that probe
+  // waits, feature's own run on flintrunner/flint has a model request answered at a later clock
+  // time — the server is serving the team, it is just queueing the probe.
+  now += POLICY.suspectMinMs;
+  feature.setAnswered("flintrunner/flint", now + 1_000);
+  gate.suspect("flintrunner/flint");
+  poll();
+  assert.deepEqual(asked.slice(2), ["flintrunner/flint"]);
+  answer("flintrunner/flint", { ok: false, reason: "no reply", reply: "", detail: "no answer within 300s" });
+  await gate.settled();
+
+  // Nothing failed: the pair stays verified, the role runs, no warning is logged, and the next
+  // poll at the same clock starts no probe.
+  const flint = gate.checks["flintrunner/flint"]!;
+  assert.equal(flint.status, "verified", "a busy pair is not failed");
+  assert.equal(flint.failures, 0, "a deferred probe is not a failure");
+  assert.deepEqual([...poll()], [], "the role is not held and no probe re-fires at the same clock");
+  assert.deepEqual([...gate.held], []);
+  assert.deepEqual(warningEvents(readEvents(root)).map((e) => String(e.message)), [], "deferring logs no warning");
+  assert.deepEqual(eventsOfType(root, "model_check_busy").map((e) => e.pair), ["flintrunner/flint"], "one informational event names the pair");
+  assert.equal(eventsOfType(root, "model_check_passed").length, 0, "a deferred probe is not a pass either");
+
+  // The discriminator: an answer that predates the probe is no evidence of life — a silent probe
+  // then fails the pair and holds the role, as before.
+  now += POLICY.suspectMinMs * 2;
+  feature.setAnswered("flintrunner/flint", now - 1_000);
+  gate.suspect("flintrunner/flint");
+  poll();
+  assert.deepEqual(asked.slice(3), ["flintrunner/flint"]);
+  answer("flintrunner/flint", { ok: false, reason: "no reply", reply: "", detail: "no answer within 300s" });
+  await gate.settled();
+  assert.equal(gate.checks["flintrunner/flint"]?.status, "failed", "an answer before the probe started fails the pair as today");
+  assert.deepEqual([...poll()], ["feature"], "the role is held on it");
+  assert.equal(warningEvents(readEvents(root)).length, 1, "and the failure warns once");
+
+  // A wrong answer is a fault whatever the pair was doing for the team: it fails the pair.
+  now += POLICY.retryMs;
+  feature.setAnswered("flintrunner/flint", now + 1_000);
+  gate.recheckNow();
+  poll();
+  assert.deepEqual(asked.slice(4), ["flintrunner/flint"]);
+  answer("flintrunner/flint", { ok: false, reason: "wrong answer", reply: "salad" });
+  await gate.settled();
+  assert.equal(gate.checks["flintrunner/flint"]?.status, "failed", "a wrong answer fails the pair even while it answers the team");
+  // A pair already failed keeps its own doubled back-off: a busy probe does not clear it.
+  const retryBefore = gate.checks["flintrunner/flint"]?.retryMs;
+  now += POLICY.retryMs * 2;
+  gate.recheckNow();
+  poll();
+  answer("flintrunner/flint", { ok: false, reason: "no reply", reply: "" });
+  await gate.settled();
+  assert.equal(gate.checks["flintrunner/flint"]?.retryMs, 2 * retryBefore, "the failed pair's back-off doubles as today");
 });
 
 test("a run waiting on an unanswered request re-checks its pair at the suspicion rate and is handed back once it fails", async () => {

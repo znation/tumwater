@@ -107,6 +107,13 @@ function modelCheckPassedMessage(e: HarnessEvent): string {
   return `model check passed: ${textOr(e.pair)} answers again${modelCheckFailuresSuffix(e.failures)} — its roles run again`;
 }
 
+function modelCheckBusyMessage(e: HarnessEvent): string {
+  // Not a fault and not a hold (BUGS.md busy model check 2/2): the pair answered the team while
+  // its probe waited, so the probe is deferred. No warning prefix — nothing waits and nothing
+  // broke, so the line reads as information about the server, not as a problem.
+  return `model check deferred: ${textOr(e.pair)} answered the team's own runs while its probe waited — the probe is not a failure`;
+}
+
 export function resourceEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "disk_low":
@@ -129,6 +136,8 @@ export function resourceEventMessage(e: HarnessEvent): string {
       return subscriptionWindowEventMessage(e);
     case "model_check_passed":
       return modelCheckPassedMessage(e);
+    case "model_check_busy":
+      return modelCheckBusyMessage(e);
     default: return textOr(e.type);
   }
 }

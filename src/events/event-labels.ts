@@ -79,6 +79,7 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   rate_limit_hold: "waiting: provider limit",
   rate_limit_resumed: "provider limit lifted",
   model_check_passed: "model answering again",
+  model_check_busy: "model check deferred",
   subscription_window_limited: "waiting: usage window",
   subscription_window_reset: "usage window reset",
   max_concurrent_changed: "concurrency changed",

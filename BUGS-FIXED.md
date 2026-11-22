@@ -5,6 +5,33 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Busy model check, part 2/2: a probe that gets no reply while the team's runs on the same pair are being answered fails the pair and holds every role (requires Busy model check part 1/2 landed) (found by the bugfix role 2026-11-21, split 2026-11-21 by the plan role) — fixed 2026-11-21 by the bugfix role
+
+**Lifted 2026-11-21 by the plan role:** the note's premise is false on current main — part 1/2's signal is there (`lastAnsweredAt` in src/runner/runner.ts, the `replyAnswered` host hook in src/runner/runner-pi.ts and src/runner/runner.ts, `onModelAnswered` in src/agent/agent-run.ts, and `PiStreamParser`'s answered callback pinned by test/pi-parser.test.ts "parser fires onAnswered once per open request that is answered (busy-vs-dead signal)"; the commit that added them, `01a51f4ce`, is an ancestor of main). Part 1/2 landed as PLANS-DONE.md "Busy model check, part 1/2…", so this part's precondition is met.
+
+Evidence, reproduction and the chosen direction are in PLANS.md "Busy model check, part 1/2…". With part 1/2's `RoleRunner.lastAnsweredAt(pair)`, the gate can see that the server answered the team while the probe waited. It should then treat the probe's silence as queueing, not as a dead pair.
+
+**Cause.** `ModelCheckGate.settle` (src/model-check/model-check-gate.ts) passes every `{ ok: false, reason: "no reply" }` verdict to `recordModelCheck` (src/model-check/model-check.ts). That marks the pair `failed`, so `modelCheckHolds` holds every role on it, and `unansweredRuns` hands back the waiting runs.
+
+**Fix.**
+- `launch` records the probe's start time per pair.
+- `settle` checks whether any runner's `lastAnsweredAt(pair)` is at or after that start time. This needs the runners from the latest `poll`, kept on the gate. If so, and the verdict is `no reply` on a pair whose previous status is `verified` or `checking`, it does not fail the pair. It records a new pure transition in model-check.ts, `busyModelCheck(map, pair, now, policy)`, instead:
+  - a `verified` pair stays `verified`, with `probeAt: null`, `probing: false` and `checkedAt: now`. `suspectModelCheck`'s `suspectMinMs` rate limit then spaces the next suspicion re-check, so the probe does not re-fire every poll.
+  - a `checking` pair stays `checking`, with `probeAt: now + policy.retryMs`, `probing: false`, and `failures` and `retryMs` unchanged.
+- It logs one informational event (not a warning) naming the pair and saying its runs were answered while the probe waited.
+- A pair already `failed`, a `wrong answer` verdict, and a `no reply` with no answer since the probe started all behave as today.
+
+**Acceptance criteria** (test/model-check.test.ts for the transition, test/model-check-unanswered.test.ts (which builds a `ModelCheckGate` with fake runners) for the rest, with a fake prober and fake runners exposing `lastAnsweredAt`):
+- On a verified pair, a `no reply` probe while a runner on the pair reports an answer after the probe started leaves the pair verified. `held` stays empty for its roles, no `model check failed` warning is logged, and no due probe exists on the next poll at the same clock.
+- The same input with the runner's last answer before the probe started fails the pair as today: the roles are held and the warning is logged.
+- On a `checking` pair with an answer inside the window, the pair stays `checking` and its next probe is due exactly `policy.retryMs` later, not at once.
+- A `wrong answer` verdict with an answer inside the window still fails the pair.
+- An already `failed` pair with an answer inside the window keeps today's doubled back-off.
+
+Landed as above; every acceptance criterion is pinned in test/model-check.test.ts — "busyModelCheck defers a silent probe: verified stays verified, checking waits a retryMs, failed is untouched" for the pure transition, and "a probe that stays silent while the pair answers the team's own runs defers instead of failing (busy 2/2)" for the gate (its fake runners expose `lastAnsweredAt`, set with `setAnswered`). The gate-level criteria live in that file rather than model-check-unanswered.test.ts, which drives a real runner through fake pi and has no seam to answer a model request on demand.
+
+**Validation gap:** no-fake — the model-check gate test's runner fake exposed only `unansweredRunPair`, so the busy-vs-dead signal could not reach the gate offline until the fake carried part 1/2's `lastAnsweredAt`; nothing else was missing once it did.
+
 ### An accepted checkpoint still leaves the session uncompacted: pi’s fire-and-forget `compact()` never reaches its `compaction_end` (found by the bugfix role 2026-11-19) — fixed 2026-11-21 by the bugfix role
 
 **Resolved 2026-11-21 by the plan role:** the Needs-review note (2026-11-21 by feature, too large for one run) is lifted; its open fork — keep the run alive until `compaction_end`, or write the compaction entry directly — is closed in PLANS.md "An accepted checkpoint compacts the session by writing the compaction entry directly at the next turn boundary…" (direct write), where the verified how lives. The keep-alive fork was ruled out by reading pi 1.5.2's installed `dist/core/agent-session.js` and `dist/modes/print-mode.js`: `compact()` awaits `abort()` first, `abort()` awaits `waitForIdle()`, which resolves only after the `agent_settled` extension handlers return, so holding the run open from an extension deadlocks against the very settle that would resolve `compact()`'s abort — and print-mode exits once the aborted turn settles, so the background `compact()` never gets past `compaction_start`.
