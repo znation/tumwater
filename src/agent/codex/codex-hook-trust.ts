@@ -14,7 +14,7 @@
 import { spawn } from "node:child_process";
 import { codexHookArg } from "./codex-write-guard.js";
 import { readJsonFile, writeJsonAtomic } from "../../files/json-files.js";
-import { releaseChildHandles, signalTree } from "../../process/process.js";
+import { captureCappedOutput, releaseChildHandles, signalTree } from "../../process/process.js";
 import { codexHookTrustPath } from "../../paths.js";
 import { PACKAGE_JSON, packageVersion } from "../../version.js";
 
@@ -119,14 +119,26 @@ function describeError(error: unknown): string {
   return JSON.stringify(error);
 }
 
+/** Cap on the stdout one trust probe may capture. Both probes expect a tiny reply — a version
+ * line and a `hooks/list` result — so 1 MiB is orders of magnitude past any real answer (the
+ * same bar src/process/bounded-probe.ts's AUTH_CHECK_MAX_OUTPUT_BYTES sets for the credential
+ * probes). Without it, a binary whose stdout is a runaway log — or a pipe held open with no EOF
+ * by a grandchild — grows the probe's capture buffer until the deadline kills the child, so the
+ * `--version` probe would key the trust cache on megabytes of log text and the lookup would hold
+ * that buffer for its whole budget. Past the cap the version probe reads as "no answer" (it
+ * proves nothing about the build, so nothing may be keyed on it — the existing probe-less rule),
+ * and the lookup rejects naming the cap rather than waiting out its deadline. */
+export const TRUST_PROBE_MAX_OUTPUT_BYTES = 1024 * 1024;
+
 /** Ask codex for the guard hook's trust. Spawns `<bin> -c <codexHookArg(definition)>
  * app-server` in `cwd` under `env`, in its own process group, sends the JSON-RPC sequence
  * above over stdio, and resolves with the trust from the first matching `hooks/list` hook.
  *
  * It rejects on a timeout (`timeoutMs`), on the child exiting before the reply, on a JSON-RPC
- * `error`, and on codex listing no session-flag PreToolUse hook with this command. The child's
- * process group is SIGKILLed whether the lookup settles by success, failure, or timeout, so no
- * `app-server` outlives the call. */
+ * `error`, on stdout passing `TRUST_PROBE_MAX_OUTPUT_BYTES` before the reply, and on codex
+ * listing no session-flag PreToolUse hook with this command. The child's process group is
+ * SIGKILLed whether the lookup settles by success, failure, or timeout, so no `app-server`
+ * outlives the call. */
 export function lookupCodexHookTrust(opts: CodexHookLookupOptions): Promise<CodexHookTrust> {
   const timeoutMs = opts.timeoutMs ?? 15_000;
   return new Promise<CodexHookTrust>((resolve, reject) => {
@@ -170,7 +182,19 @@ export function lookupCodexHookTrust(opts: CodexHookLookupOptions): Promise<Code
       else finish(new Error("codex listed no session-flag PreToolUse hook with this command"));
     };
     child.stdout?.setEncoding("utf8");
+    let stdoutBytes = 0;
     child.stdout?.on("data", (chunk: string) => {
+      // The cap is counted in BYTES (what a pipe delivers), not code units, and checked before
+      // the chunk joins `buffer`, so the unbounded growth it prevents is never paid for.
+      stdoutBytes += Buffer.byteLength(chunk);
+      if (stdoutBytes > TRUST_PROBE_MAX_OUTPUT_BYTES) {
+        finish(
+          new Error(
+            `codex app-server wrote more than ${TRUST_PROBE_MAX_OUTPUT_BYTES} bytes before answering hooks/list`,
+          ),
+        );
+        return;
+      }
       buffer += chunk;
       let nl = buffer.indexOf("\n");
       while (nl >= 0) {
@@ -202,7 +226,9 @@ export function lookupCodexHookTrust(opts: CodexHookLookupOptions): Promise<Code
  * keys the trust cache, so a codex upgrade re-looks-up the guard's trust for the new build.
  * Async (spawn, not spawnSync): a hung binary's probe must not block the event loop — every
  * run's `prepare` awaits this, and a blocking probe would freeze the whole agent while waiting
- * out its deadline. The child's group is killed whether it succeeds or times out. */
+ * out its deadline. The child's group is killed whether it succeeds or times out, or whether its
+ * output passes TRUST_PROBE_MAX_OUTPUT_BYTES — a flooded probe reports "" like a failed one, so
+ * the lookup runs honestly and nothing is cached under a key built from the flood. */
 function codexVersion(bin: string, env: NodeJS.ProcessEnv, cwd: string, timeoutMs: number): Promise<string> {
   return new Promise((resolve) => {
     const child = spawn(bin, ["--version"], {
@@ -210,7 +236,6 @@ function codexVersion(bin: string, env: NodeJS.ProcessEnv, cwd: string, timeoutM
       cwd,
       stdio: ["ignore", "pipe", "ignore"],
     });
-    let out = "";
     let done = false;
     const finish = (value: string) => {
       if (done) return;
@@ -223,11 +248,13 @@ function codexVersion(bin: string, env: NodeJS.ProcessEnv, cwd: string, timeoutM
     const timer = setTimeout(() => finish(""), timeoutMs);
     timer.unref?.();
     child.stdout?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk: string) => {
-      out += chunk;
-    });
+    // captureCappedOutput attaches before the child can emit and counts bytes per stream; the
+    // version probe never reads stderr (spawned "ignore"), so only stdout can overflow. An
+    // overflow settles "" — the same "this probe proves nothing" fallback as a timeout or a
+    // failed spawn — instead of letting megabytes of log text become the cache key.
+    const captured = captureCappedOutput(child, TRUST_PROBE_MAX_OUTPUT_BYTES, () => finish(""));
     child.on("error", () => finish(""));
-    child.on("close", () => finish(out.trim()));
+    child.on("close", () => finish(captured.stdout.trim()));
   });
 }
 

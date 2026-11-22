@@ -64,8 +64,15 @@ function appServerJs(opts: {
    * malformed shape (data not an array, a hook that is not an object). */
   resultData?: unknown;
   versionHang?: boolean;
+  /** When set, the `--version` probe prints this many bytes of log-like noise before its
+   * version line and exit — past the harness's capture cap, so the probe must read as "no
+   * answer" rather than keying the trust cache on the flood. */
+  versionFloodBytes?: number;
+  /** When set, the `app-server` writes this many bytes of noise to stdout at start and then
+   * answers nothing — a runaway stream a bounded probe must cut off by the cap, not wait out. */
+  floodBytes?: number;
 }): string {
-  const { callsFile, pidFile, version, mismatch, hang, errorReply, noise, exitEarly, versionHang, resultData } = opts;
+  const { callsFile, pidFile, version, mismatch, hang, errorReply, noise, exitEarly, versionHang, resultData, versionFloodBytes, floodBytes } = opts;
   const source = mismatch ? "user" : "sessionFlags";
   return [
     'const fs = require("node:fs");',
@@ -79,16 +86,20 @@ function appServerJs(opts: {
     `const NOISE = ${noise === true};`,
     `const EXIT_EARLY = ${exitEarly === true};`,
     `const VERSION_HANG = ${versionHang === true};`,
+    `const VERSION_FLOOD = ${versionFloodBytes ?? 0};`,
+    `const FLOOD = ${floodBytes ?? 0};`,
     `const RESULT_DATA = ${JSON.stringify(resultData ?? null)};`,
     "const args = process.argv.slice(2);",
     'if (args[0] === "--version") {',
     "  if (VERSION_HANG) { setTimeout(function () {}, 60000); return; }",
+    "  if (VERSION_FLOOD) { for (let i = 0; i < VERSION_FLOOD; i += 4096) fs.writeSync(1, 'x'.repeat(Math.min(4096, VERSION_FLOOD - i))); }",
     '  process.stdout.write(VERSION + "\\n");',
     "  process.exit(0);",
     "}",
     'fs.appendFileSync(CALLS, "start\\n");',
     "fs.writeFileSync(PID, String(process.pid));",
     'if (NOISE) process.stdout.write("codex: hello from codex\\n");',
+    "if (FLOOD) { for (let i = 0; i < FLOOD; i += 4096) fs.writeSync(1, 'y'.repeat(Math.min(4096, FLOOD - i))); setTimeout(function () {}, 60000); }",
     "if (HANG) { setTimeout(function () {}, 60000); }",
     'const toml = args[1] ?? "";',
     "const command = parseCommand(toml);",
@@ -99,6 +110,7 @@ function appServerJs(opts: {
     'let buf = "";',
     'process.stdin.on("data", function (chunk) {',
     "    if (HANG) return; // Hang mode answers nothing, so the lookup times out and kills us.",
+    "    if (FLOOD) return; // Flood mode answers nothing: the cap must cut it off, not a reply.",
     "  buf += chunk;",
     '  let nl = buf.indexOf("\\n");',
     "  while (nl >= 0) {",
@@ -276,6 +288,12 @@ interface FakeCodexServerOptions {
   /** The `--version` probe hangs (never prints, never exits), for the test that the whole
    * lookup — version probe plus app-server — settles within the one deadline. */
   versionHang?: boolean;
+  /** The `--version` probe prints this many bytes of noise before its version line — past the
+   * harness's capture cap — for the test that a flooded probe keys nothing. */
+  versionFloodBytes?: number;
+  /** The `app-server` writes this many bytes of noise to stdout at start and answers nothing,
+   * for the test that a flooded reply is cut off by the cap inside the deadline. */
+  floodBytes?: number;
   /** When set, hooks/list answers with exactly this `result` value instead of the default one
    * matching hook — a crafted multi-group list (to exercise findTrust's traversal) or a
    * malformed shape (data not an array, a hook that is not an object). */
@@ -298,7 +316,7 @@ export function fakeCodexAppServer(opts: FakeCodexServerOptions = {}): FakeCodex
   const identityFile = path.join(dir, "server.identity");
   const version = opts.version ?? "0.170.0";
   const script = path.join(dir, "app-server.js");
-  fs.writeFileSync(script, appServerJs({ callsFile, pidFile, version, mismatch: opts.mismatch === true, hang: opts.hang === true, errorReply: opts.errorReply, noise: opts.noise, exitEarly: opts.exitEarly, versionHang: opts.versionHang, resultData: opts.resultData }));
+  fs.writeFileSync(script, appServerJs({ callsFile, pidFile, version, mismatch: opts.mismatch === true, hang: opts.hang === true, errorReply: opts.errorReply, noise: opts.noise, exitEarly: opts.exitEarly, versionHang: opts.versionHang, resultData: opts.resultData, versionFloodBytes: opts.versionFloodBytes, floodBytes: opts.floodBytes }));
   // The pid is stamped by the shell BEFORE node starts, so the timeout test can read it the
   // moment the lookup settles, however slowly node itself cold-starts under parallel load. The
   // app-server's identity (pid + kernel start) is stamped the same way, only for the `-c`

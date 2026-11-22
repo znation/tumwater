@@ -8,7 +8,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { codexHookTrust, lookupCodexHookTrust } from "../src/agent/codex/codex-hook-trust.js";
+import {
+  TRUST_PROBE_MAX_OUTPUT_BYTES,
+  codexHookTrust,
+  lookupCodexHookTrust,
+} from "../src/agent/codex/codex-hook-trust.js";
 import { codexWriteGuardDefinition } from "../src/agent/codex/codex-write-guard.js";
 import { identityAlive } from "../src/process/process.js";
 import { fakeCodexAppServer } from "./fakes/fake-codex.js";
@@ -401,6 +405,48 @@ test("root undefined looks up and writes no file", async () => {
     // A hand run with no .tumwater root must never mint a .tumwater directory anywhere.
     assert.equal(fs.existsSync(path.join(home, ".tumwater")), false);
     assert.equal(fs.existsSync(path.join(cwd, ".tumwater")), false);
+  } finally {
+    fake.restore();
+  }
+});
+
+test("a --version probe whose output floods the capture cap keys nothing and caches nothing", async () => {
+  const root = tmpdir();
+  const cwd = tmpdir();
+  // A `--version` that prints a runaway log before its version line (a wrapper script that
+  // echoes build noise, a binary chatty on stdout): uncapped, the whole flood would become the
+  // version half of the trust-cache key, so every later run would re-look-up (the key never
+  // matches a clean probe) and the cache file would hold a megabyte-sized key.
+  const fake = fakeCodexAppServer({ versionFloodBytes: TRUST_PROBE_MAX_OUTPUT_BYTES + 4096 });
+  try {
+    const def = definition();
+    const file = codexHookTrustPath(root);
+    const trust = await codexHookTrust(root, { bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 30_000 });
+    // The lookup still answers honestly from hooks/list.
+    assert.equal(trust.hash, `sha256:${createHash("sha256").update(def.command).digest("hex")}`);
+    assert.equal(starts(fake.callsFile), 1, "the lookup ran once");
+    // A flooded probe proves nothing about the build, so it takes the same path as a probe that
+    // timed out (BUGS.md 2026-11-19): nothing cached under a flood-built key.
+    assert.equal(fs.existsSync(file), false, "a probe-less lookup wrote no cache entry");
+  } finally {
+    fake.restore();
+  }
+});
+
+test("an app-server that floods stdout is cut off by the cap, not waited out to the deadline", async () => {
+  const cwd = tmpdir();
+  // A `hooks/list` stream that never answers but keeps writing: uncapped, the line buffer
+  // grows for the whole deadline and the rejection names a timeout, hiding what happened.
+  const fake = fakeCodexAppServer({ floodBytes: TRUST_PROBE_MAX_OUTPUT_BYTES + 4096 });
+  try {
+    const def = definition();
+    const started = Date.now();
+    await assert.rejects(
+      lookupCodexHookTrust({ bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 30_000 }),
+      /wrote more than \d+ bytes before answering hooks\/list/,
+    );
+    // The cap settles the lookup long before the 30 s deadline it would otherwise wait out.
+    assert.ok(Date.now() - started < 15_000, "a flooded stream was cut off by the cap, not the deadline");
   } finally {
     fake.restore();
   }

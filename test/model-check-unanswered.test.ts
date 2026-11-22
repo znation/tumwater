@@ -4,8 +4,8 @@
 // sends one request and never hears back; on the logical watchdog clock the request passes
 // toolCallStallSeconds, the model check re-checks the pair, and once the pair fails the run is
 // handed back resumably and resumes on the model-check bridge. Its answered twin — the reply edge
-// the busy-vs-dead distinction reads (PLANS.md busy part 1/2) — is pinned at the end of this file,
-// where the same fake-pi-on-a-real-runner setup reaches RoleRunner.lastAnsweredAt.
+// the busy-vs-dead distinction reads (PLANS.md "Busy model check, part 1/2") — is pinned at the
+// end of this file, where the same setup reaches RoleRunner.lastAnsweredAt.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
