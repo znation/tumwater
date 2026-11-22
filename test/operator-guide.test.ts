@@ -15,12 +15,13 @@ import { gitInit, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixt
  * fixtures whose base branch, check command and running-team state the test itself wrote, so no
  * expectation is read back out of the code under test. */
 
-/** The seven sections the planned entry names, in the order the guide must print them. */
+/** The eight sections the guide must print, in the order it prints them. */
 const SECTIONS = [
   "What you are doing",
   "Orient first",
   "Writing a plan",
   "Writing a bug",
+  "Mirroring a GitHub issue",
   "Rules",
   "Getting edits onto main",
   "Other steering",
@@ -30,7 +31,7 @@ function sectionsOf(text: string): string[] {
   return text.split("\n").filter((l) => l.startsWith("## ")).map((l) => l.slice(3));
 }
 
-test("the static guide body carries the seven sections, in order, and no project section", () => {
+test("the static guide body carries the eight sections, in order, and no project section", () => {
   assert.deepEqual(sectionsOf(guideText()), [...SECTIONS]);
   assert.ok(!guideText().includes("## This project"));
 });
@@ -52,6 +53,24 @@ test("the guide names only commands `tumwater help` lists", () => {
   const quoted = [...guideText().matchAll(/`tumwater ([a-z][\w-]*)/g)].map((m) => m[1] as string);
   assert.ok(quoted.length >= 10, `the guide quotes only ${quoted.length} commands`);
   assert.deepEqual(quoted.filter((c) => !listed.has(c)), []);
+});
+
+test("the guide teaches the GitHub-issues mirror phrase and points at tumwater issues", () => {
+  // The mirror contract is a literal phrase the scan reads out of a `### ` heading
+  // (issue-mirrors.ts), so a paraphrase — "mirrors issue #<n>" — breaks it silently. The
+  // expected strings are written out here, never read back out of the guide.
+  const body = guideText();
+  // The section's claims are checked on a whitespace-normalized copy, so a rewrap of the body
+  // never fails them; only the literal phrases above are checked against the printed lines.
+  const prose = body.replace(/\s+/g, " ");
+  assert.ok(body.includes("mirrors GitHub issue #<n>"), "the singular mirror phrase");
+  assert.ok(body.includes("mirrors GitHub issues #4, #9"), "the plural mirror example");
+  assert.match(body, /^- `tumwater issues` — /m);
+  // The section teaches placement, not just the phrase: heading parenthetical, `### ` only.
+  assert.match(prose, /heading's trailing parenthetical/);
+  assert.match(prose, /Only a `### ` heading counts/);
+  assert.match(prose, /`## Done`, `## Fixed` or `## Verified`/);
+  assert.match(prose, /mirroring entries are all `retired`/);
 });
 
 test("the guide lists the validation-gap tags from role-guidance's closed vocabulary", () => {

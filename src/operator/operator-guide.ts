@@ -7,8 +7,8 @@
  * backends load those files into every role run (src/agent/claude/claude-args.ts,
  * src/agent/codex/codex-args.ts, src/agent/opencode/opencode-config.ts), and this text speaks to
  * the agent steering the backlog, not to a role on the team. The body keeps to the plain-terms
- * vocabulary (plans/terminology.md), so the one backlog-syntax phrase it must quote verbatim sits
- * on its own exempted line below, interpolated like the vocabulary guard instructs.
+ * vocabulary (plans/terminology.md), so the backlog-syntax phrases it must quote verbatim sit on
+ * their own lines below, interpolated like the vocabulary guard instructs.
  *
  * The body names commands in the `tumwater <command>` form test/operator-guide.test.ts extracts
  * and checks against the help listing, so a renamed command cannot leave this text stale. */
@@ -26,6 +26,12 @@ import { say } from "../terminal.js";
  * word as the backlog syntax it is. */
 const REQUIRES_CLAUSE = "requires … landed"; // vocabulary-ok: the PLANS.md heading syntax the guide quotes
 
+/** The heading phrase that ties a backlog entry to a GitHub issue, quoted verbatim because the
+ * mirror scan reads it out of a `### ` heading (issue-mirrors.ts's mirroredNumbersOf) and closes
+ * the issue only once every entry carrying it is finished (issue-close.ts). It sits on its own
+ * line like REQUIRES_CLAUSE; the phrase carries no retired word, so it needs no exemption. */
+const MIRROR_CLAUSE = "mirrors GitHub issue #<n>";
+
 /** The validation-gap tags a Fixed record names — the same closed vocabulary role-guidance.ts
  * defines once and the doctor's `validation gaps` row checks a record's tag against. */
 const GAP_TAGS = VALIDATION_GAP_TAGS;
@@ -39,7 +45,7 @@ interface GuideProject {
   teamRunning: boolean;
 }
 
-/** The static body: seven sections, markdown, wrapped at 100 columns. */
+/** The static body: eight sections, markdown, wrapped at 100 columns. */
 const GUIDE_BODY = `# Steering tumwater from your own agent
 
 ## What you are doing
@@ -60,6 +66,9 @@ Read the state before you write anything:
   later command numbers them, each marked \`[working on it: …]\`, \`[blocked: …]\`, or held.
 - \`tumwater questions\` — what the roles asked that nobody has answered.
 - \`tumwater doctor\` — whether the repo is ready and its safety gates are running.
+- \`tumwater issues\` — what the GitHub-issues mirror last saw: the open issues its scan found and
+  what tumwater did about each, read straight from its ledger file, so an empty read means the
+  mirror is off or has nothing open.
 
 ## Writing a plan
 
@@ -84,6 +93,17 @@ or an explicit note that you have not found it). A record that moves to \`## Fix
 **Validation gap:** line naming what made the bug hard to confirm, tagged:
 ${GAP_TAGS.slice(0, 4).map((t) => `\`${t}\``).join(", ")},
 ${GAP_TAGS.slice(4).map((t) => `\`${t}\``).join(", ")}.
+
+## Mirroring a GitHub issue
+
+An entry that answers a GitHub issue names it in its heading's trailing parenthetical with the
+phrase \`${MIRROR_CLAUSE}\` — plural \`mirrors GitHub issues #4, #9\` when one entry answers
+several. Only a \`### \` heading counts, so the same phrase in an entry's body mirrors nothing.
+Every entry that answers the issue carries it: a series part and the surviving half of a duplicate
+each name it, so the link survives a split or a merge. Then leave the issue itself alone —
+tumwater closes it once every entry mirroring it sits in a \`## Done\`, \`## Fixed\` or
+\`## Verified\` section, and never closes one whose mirroring entries are all \`retired\`. Never
+close or comment on the issue from the backlog side.
 
 ## Rules
 
