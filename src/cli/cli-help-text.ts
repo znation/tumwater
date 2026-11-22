@@ -359,6 +359,31 @@ Usage:
                                    {released: {position, test}} in place of the prose
                                    acknowledgement; --show <n> --json prints that entry's
                                    object
+  tumwater issues [--show <n>] [--grep <text>] [--json]
+                                   List what the GitHub-issues mirror last saw — the open issues
+                                   of the project's GitHub remote and what tumwater did about
+                                   each, read from its ledger (.tumwater/state/github-issues.json)
+                                   and never by calling gh, so the command works with gh nowhere
+                                   on PATH; a header names the repo, branch, open count and how
+                                   long ago the scan ran, then each open issue numbered 1..N by
+                                   issue number, naming its title, trusted or untrusted, mirrored
+                                   or not mirrored, and its age; a mirror with no ledger prints
+                                   "the GitHub issues mirror has not been read yet"; --json prints
+                                   { read, repo, branch, checkedAt, gh, issues: [...] }, each issue
+                                   with its position, number, title, url, author, trusted,
+                                   mirrored, labels and updatedAt plus the mirror's own state; a
+                                   ledger whose gh probe was not ok lists its issues and adds one
+                                   line naming that state and its reason; --grep <text> keeps only
+                                   the issues whose number or title contains the text,
+                                   case-insensitively, each under its whole-list number, so --show
+                                   addresses the same issue, and no match in a non-empty mirror
+                                   prints "no GitHub issues match <text>"; --show <n> prints the
+                                   Nth issue as the list numbers it, in full — the whole title,
+                                   url, author and its association, labels, the update time,
+                                   tumwater's state for it (queued, declined with its reason, fixed
+                                   by a sha, closed, waiting for a push, or every mirroring entry
+                                   retired) and the body excerpt when the ledger holds one;
+                                   read-only, needing no ready repo and no gh
   tumwater salvage [-f/--follow] [--grep <text>] [--show <n>] [--drop <n>] [--apply <n> [--dry-run]] [--json]
                                    List the workspace patches kept for you under
                                    .tumwater/salvage/ — a settled run's discarded edits or a

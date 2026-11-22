@@ -18,6 +18,7 @@ const ALL_COMMANDS = [
   "reviews",
   "backlog",
   "quarantine",
+  "issues",
   "salvage",
   "archive",
   "bug",
@@ -161,6 +162,15 @@ test("reviews help names the --accept --json payload", () => {
 test("quarantine help names the --release --json payload", () => {
   const topic = helpTopic("quarantine")!;
   assert.match(topic, /released: \{position, test\}/);
+});
+
+// The issues read is read-only and never calls gh (plans/github-issues.md invariant 2), so its
+// topic has to say both: the gh-free guarantee is what makes it safe to run anywhere.
+test("issues help names its --json payload and that the read never calls gh", () => {
+  const topic = helpTopic("issues")!;
+  assert.match(topic, /^  tumwater issues \[--show <n>\] \[--grep <text>\] \[--json\]\n/);
+  assert.match(topic, /\{ read, repo, branch, checkedAt, gh, issues: \[\.\.\.\] \}/);
+  assert.match(topic, /never by calling gh/);
 });
 
 // The notes, instructions and enable/disable role writes take --json (the hold writes did so

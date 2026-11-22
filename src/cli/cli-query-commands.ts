@@ -21,6 +21,19 @@ import { loadQuarantine, releaseQuarantinedTest } from "../review/known-flakes.j
 import { grepQuarantineRows, quarantineEntryAt, quarantineRows, renderQuarantine, renderQuarantineDetail, type QuarantineRow } from "../review/quarantine-render.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, collectRoleChanges, normalizeDiffPath } from "../change/change-data.js";
 import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
+import { readGithubIssues } from "../github/github-issues-state.js";
+import {
+  grepIssueRows,
+  issueRowAt,
+  issueRows,
+  issuesHeader,
+  issuesJson,
+  renderIssueDetail,
+  renderIssues,
+} from "../github/github-issues-render.js";
+import type { IssueRow, IssuesHeader } from "../github/github-issues-render.js";
+import { githubTarget } from "../observer/remote-ci.js";
+import { loadConfigSafe } from "../config/config.js";
 
 /** `tumwater status [-f/--follow]`: the team snapshot as rendered text or as the JSON
  * document GET /api/status serves. `-f/--follow` repaints the table every couple of seconds
@@ -318,3 +331,85 @@ async function cmdQuarantineRelease(root: string, args: string[]): Promise<void>
   }
 }
 
+
+/** `tumwater issues [--show <n>] [--grep <text>] [--json]`: the GitHub-issues mirror read from
+ * its ledger file alone. The mirror series (plans/github-issues.md) scans GitHub after each merge
+ * and records what it saw and what tumwater did about each issue in
+ * .tumwater/state/github-issues.json; until this command the only views of that record were the
+ * doctor's one `github issues` row and the status snapshot's counts. The read goes through
+ * `readGithubIssues` and never shells out to `gh` — invariant 2 of that plan keeps `gh` calls in
+ * the orchestrator's scan and the doctor's check, so the command works with `gh` nowhere on PATH
+ * and on any branch. `--show <n>`, `--grep <text>` and `--json` follow the shape `cmdQuarantine`
+ * established for the same three views. */
+export async function cmdIssues(root: string, args: string[]): Promise<void> {
+  // `--show <n>` is routed before the flag gate exactly as cmdQuarantine routes its own detail
+  // mode, so the detail branch owns its flag gate and refuses a `--grep` beside it by name. A
+  // `--show` token in --grep's value slot is the pattern, not the mode (modeNamed skips that slot).
+  if (modeNamed(args, "--show")) {
+    await cmdIssuesShow(root, args);
+    return;
+  }
+  // --grep keeps only the issues whose number or title contains the text (case-insensitively),
+  // each kept row still numbered as the full list numbers it, so `--show` addresses the same
+  // issue. The missing-value wording is shared by this parser and the flag gate.
+  const ISSUES_GREP_VALUE_ERROR = "issues --grep needs text (usage: tumwater issues --grep <text>)";
+  rejectUnknownArgs("issues", args, [JSON_FLAG, grepFlagSpec(ISSUES_GREP_VALUE_ERROR)]);
+  refuseTeamWorkspace(root);
+  const { rest, pattern } = parseGrepFlag(args, ISSUES_GREP_VALUE_ERROR);
+  const ledger = readGithubIssues(root);
+  if (ledger === null) {
+    // No scan has written a ledger yet (or the file is unreadable): an empty answer, not an
+    // error, the way the quarantine command answers an absent quarantine file. --json names the
+    // resolved target so a script can tell which remote the mirror would read.
+    if (rest.includes("--json")) sayJson({ read: false, ...(await issuesTarget(root)) });
+    else say("the GitHub issues mirror has not been read yet");
+    return;
+  }
+  const rows: IssueRow[] = issueRows(ledger);
+  const kept = pattern === null ? rows : grepIssueRows(rows, pattern);
+  const header: IssuesHeader = issuesHeader(ledger);
+  if (rest.includes("--json")) {
+    sayJson(issuesJson(kept, header));
+    return;
+  }
+  // The no-match prose is a filter's line (the mirror holds issues but none match); a mirror
+  // with nothing on record keeps the header's `0 open` line.
+  say(pattern !== null && kept.length === 0 && rows.length > 0 ? `no GitHub issues match "${pattern}"` : renderIssues(kept, header, Date.now()));
+}
+
+/** The `tumwater issues --show <n>` branch: print the Nth issue the list prints, in full — the
+ * whole title, url, author and its association, labels, the ISO update time, tumwater's own state
+ * for that issue (queued, declined with its reason, fixed by a sha, closed, waiting for a push, or
+ * every mirroring entry retired), and the body excerpt when the ledger holds one — so an operator
+ * can read why an issue was left alone without opening the ledger. It shares the quarantine
+ * detail view's position parse (`scanPositionArgs`) and out-of-range wording, and stays on
+ * `refuseTeamWorkspace`: reading a ledger needs no ready repo and no `gh`. */
+async function cmdIssuesShow(root: string, args: string[]): Promise<void> {
+  const { json, position, rest } = scanPositionArgs(args, "--show", "--show 2");
+  rejectUnknownArgs("issues", rest, []);
+  if (position === null) fail("--show needs a position (usage: tumwater issues --show <n>)");
+  refuseTeamWorkspace(root);
+  const ledger = readGithubIssues(root);
+  // A project with no ledger answers the same way the quarantine detail view answers an absent
+  // quarantine file: the position is past the end of a mirror holding 0 open issues.
+  const rows = ledger === null ? [] : issueRows(ledger);
+  const row = ledger === null ? null : issueRowAt(ledger, position);
+  if (row === null) {
+    const range = validPositionRange(rows.length);
+    fail(`no GitHub issue at position ${position} (github issues mirror holds ${rows.length} open issues)${range}`);
+  }
+  // The row already carries its position (issueRows numbers it), so --json serves it as-is.
+  if (json) sayJson({ ...row });
+  else say(renderIssueDetail(row, position, Date.now()));
+}
+
+/** The repo and branch the mirror reads, for the no-ledger `--json` document: the same
+ * `githubTarget` resolution the scan and the doctor's `github issues` check use (a read-only
+ * `git config` lookup, no network). Both fields are null when the project pushes to no GitHub
+ * remote, which is exactly when the mirror never runs. */
+async function issuesTarget(root: string): Promise<{ repo: string | null; branch: string | null }> {
+  const loaded = loadConfigSafe(root);
+  if (!loaded.config) return { repo: null, branch: null }; // a broken tumwater.json names no target
+  const target = await githubTarget(root, loaded.config);
+  return { repo: target?.repo ?? null, branch: target?.branch ?? null };
+}
