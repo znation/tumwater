@@ -6,7 +6,7 @@
 
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { gitLines, subjectOfCommit } from "../git/git.js";
+import { branchHead, gitLines, subjectOfCommit } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { githubTarget } from "../observer/remote-ci.js";
 import type { GhRunner } from "./gh.js";
@@ -57,15 +57,58 @@ export function closeCandidates(
 
 /** The commits on `branch` that wrote an entry for issue `n` into a finished archive, newest first,
  * made after `since` (epoch ms) when given. One `git log -S` over the archives, so a commit that
- * only files a live entry never counts as a fix. */
+ * only files a live entry never counts as a fix. Served from a cache while the branch tip is
+ * unchanged (the same tip-SHA keying as `mirrorsAtTip`): the walk is `--pickaxe-regex`, which diffs
+ * every commit's change to the archives — 2m03s measured on this repo's 11.3 MB of finished
+ * archives as of 2026-11-15, against 0.03s for the same walk without the pickaxe. The close pass
+ * runs it for every candidate after every scan, and an issue whose fix is still unpushed
+ * (`waitingPush`) retries the identical walk on the next poll at an unchanged tip. A hit hands
+ * back a fresh array, so a caller's filter or prepend never touches the cached list. */
 async function fixCommits(root: string, branch: string, n: number, since?: number): Promise<FixCommit[]> {
+  const head = await branchHead(root, branch);
+  if (head === null) return newerThan(await pickaxeFixCommits(root, branch, n), since);
+  const key = `${root}\u0000${branch}`;
+  let entry = fixCache.get(key);
+  if (entry?.head !== head) {
+    if (fixCache.size >= FIX_CACHE_MAX) fixCache.clear();
+    entry = { head, commits: new Map() };
+    fixCache.set(key, entry);
+  }
+  let found = entry.commits.get(n);
+  if (found === undefined) {
+    found = await pickaxeFixCommits(root, branch, n);
+    entry.commits.set(n, found);
+  }
+  return newerThan(found, since);
+}
+
+/** How many (root, branch) fix walks the cache holds: the orchestrator closes on one or two
+ * projects, so any list this long is stale entries from other roots, and clearing it wholesale
+ * keeps the cache from growing for the life of the process. */
+const FIX_CACHE_MAX = 32;
+
+/** One branch tip's fix walks: the tip SHA they ran at, and the unfiltered commits per issue. */
+interface FixCacheEntry {
+  head: string;
+  commits: Map<number, FixCommit[]>;
+}
+
+const fixCache = new Map<string, FixCacheEntry>();
+
+/** The cached list as a new array holding only commits made after `since` (epoch ms). */
+function newerThan(commits: FixCommit[], since?: number): FixCommit[] {
+  return since === undefined ? [...commits] : commits.filter((commit) => commit.at > since);
+}
+
+/** The uncached walk: the commits on `branch` touching an entry for issue `n` in a finished
+ * archive, unfiltered by date. */
+async function pickaxeFixCommits(root: string, branch: string, n: number): Promise<FixCommit[]> {
   const phrase = `mirrors GitHub issues? [^[:cntrl:]]*#${n}([^0-9]|$)`;
   const out = await gitTry(root, "log", "--format=%H%x00%ct%x00%s", "--pickaxe-regex", `-S${phrase}`, branch, "--", ...FIX_ARCHIVES);
-  const commits = gitLines(out).map((line) => {
+  return gitLines(out).map((line) => {
     const [sha = "", seconds = "", subject = ""] = line.split("\0");
     return { sha, subject, at: Number(seconds) * 1000 };
   });
-  return commits.filter((commit) => since === undefined || commit.at > since);
 }
 
 /** The comment that cites the fix commits and the backlog entry that mirrored the issue. */

@@ -17,7 +17,7 @@ import {
 import { mirrorStates, type MirrorEntry } from "../src/github/issue-mirrors.js";
 import { pollGithubIssues } from "../src/github/issue-scan.js";
 import { fakeGh } from "./fakes/fake-gh.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { tmpdir, loggingGit } from "./fixtures/repo-fixtures.js";
 
 const NOW = Date.parse("2026-11-21T12:00:00Z");
 
@@ -332,6 +332,89 @@ test("githubIssues.close false makes no issue close call", async () => {
     const config = { ...repo.config, githubIssues: { close: false } };
     await pollGithubIssues(repo.dir, config, { nextAt: 0 }, () => {}, gh.probe, NOW);
     assert.equal(gh.calls.filter((args) => args[0] === "issue").length, 0);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+/** How many `git log --pickaxe-regex` a logging-git log names: the fix-finding archive walk. */
+function pickaxeCount(logFile: string): number {
+  if (!fs.existsSync(logFile)) return 0;
+  return fs
+    .readFileSync(logFile, "utf8")
+    .split("\n")
+    .filter((line) => line.includes("--pickaxe-regex")).length;
+}
+
+test("the fix walk runs once per branch tip: passes at an unchanged tip re-walk nothing and still cite the fix", async () => {
+  const repo = githubRepo();
+  try {
+    commitFiles(repo.dir, repo.git, { "BUGS.md": `## Open\n\n${MIRROR_HEADING}\n\nBody.\n`, "BUGS-FIXED.md": "## Fixed\n\n" }, "init");
+    const fix = commitFiles(
+      repo.dir,
+      repo.git,
+      { "BUGS.md": "## Open\n\n", "BUGS-FIXED.md": `## Fixed\n\n${MIRROR_HEADING}\n\nBody.\n` },
+      FIX_SUBJECT,
+    );
+    // The fix is unpushed for the first two passes, so the same walk would otherwise run again.
+    const compare: Record<string, string> = {};
+    const gh = fakeGh({ issues: [[issue(1)]], compare });
+    const logFile = path.join(tmpdir("gh-close-walk-log-"), "git.log");
+    const restore = loggingGit(logFile);
+    try {
+      await pollGithubIssues(repo.dir, repo.config, { nextAt: 0 }, () => {}, gh.probe, NOW);
+      assert.equal(pickaxeCount(logFile), 1, "the first pass walks the archives once");
+      assert.deepEqual(readGithubIssues(repo.dir)?.waitingPush, { "1": [fix] }, "the fix waits for a push");
+
+      // Same tip, second pass: the walk is cached, so nothing is re-diffed.
+      await pollGithubIssues(repo.dir, repo.config, { nextAt: 0 }, () => {}, gh.probe, NOW + 3_600_000);
+      assert.equal(pickaxeCount(logFile), 1, "a pass at an unchanged tip spawns no second walk");
+      assert.equal(gh.calls.filter((args) => args[0] === "issue").length, 0, "still unpushed, still no close");
+
+      // Pushed: the cached walk's commits are cited, byte-for-byte as the uncached walk's would be.
+      compare[fix] = "ahead";
+      await pollGithubIssues(repo.dir, repo.config, { nextAt: 0 }, () => {}, gh.probe, NOW + 7_200_000);
+      assert.equal(pickaxeCount(logFile), 1, "the close pass adds no walk either");
+      const closes = gh.calls.filter((args) => args[0] === "issue");
+      assert.equal(closes.length, 1, "the issue closes once the fix is on GitHub");
+      const comment = closes[0]?.[8] ?? "";
+      assert.ok(comment.includes(`${fix.slice(0, 8)} ("${FIX_SUBJECT}")`), String(comment));
+    } finally {
+      restore();
+    }
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test("a moved tip re-walks: a fix commit the cached tip never saw is found and cited", async () => {
+  const repo = githubRepo();
+  try {
+    commitFiles(repo.dir, repo.git, {
+      "BUGS.md": `## Open\n\n${MIRROR_HEADING}\n\nBody.\n\n### Second bug (mirrors GitHub issue #2)\n\nBody.\n`,
+      "BUGS-FIXED.md": "## Fixed\n\n",
+    }, "init");
+    const fix1 = commitFiles(
+      repo.dir,
+      repo.git,
+      { "BUGS.md": "## Open\n\n### Second bug (mirrors GitHub issue #2)\n\nBody.\n", "BUGS-FIXED.md": `## Fixed\n\n${MIRROR_HEADING}\n\nBody.\n` },
+      "tumwater(bugfix): Fix the first bug",
+    );
+    const gh = fakeGh({ issues: [[issue(1), issue(2)]], compare: { [fix1]: "ahead" } });
+    await pollGithubIssues(repo.dir, repo.config, { nextAt: 0 }, () => {}, gh.probe, NOW);
+    assert.deepEqual(gh.calls.filter((args) => args[0] === "issue").map((args) => args[2]), ["1"], "only the fixed issue closes");
+
+    const fix2 = commitFiles(
+      repo.dir,
+      repo.git,
+      { "BUGS.md": "## Open\n\n", "BUGS-FIXED.md": `## Fixed\n\n${MIRROR_HEADING}\n\nBody.\n\n### Second bug (mirrors GitHub issue #2)\n\nBody.\n` },
+      "tumwater(bugfix): Fix the second bug",
+    );
+    const gh2 = fakeGh({ issues: [[issue(1), issue(2)]], compare: { [fix1]: "ahead", [fix2]: "ahead" } });
+    await pollGithubIssues(repo.dir, repo.config, { nextAt: 0 }, () => {}, gh2.probe, NOW + 3_600_000);
+    const closes = gh2.calls.filter((args) => args[0] === "issue");
+    assert.deepEqual(closes.map((args) => args[2]), ["2"], "the new tip's fix commit is found after the tip moved");
+    assert.ok((closes[0]?.[8] ?? "").includes(`${fix2.slice(0, 8)} ("tumwater(bugfix): Fix the second bug")`), String(closes[0]?.[8]));
   } finally {
     repo.cleanup();
   }
