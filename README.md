@@ -29,8 +29,11 @@ steer it: mainly by curating the backlog in `PLANS.md` and `BUGS.md` with a stro
 own interactive harness (`claude`, `codex`, or `omp`) — see [docs/steering.md](docs/steering.md).
 Each role owns one concern, merges one change per run,
 sleeps when it has nothing to do, and wakes when main moves. All project state lives in the
-local git repo, and no remote is ever touched. The words used here (team, role, run, merge) are
-defined in [docs/glossary.md](docs/glossary.md).
+local git repo, and tumwater's git operations never contact a remote. Anything tumwater does
+against GitHub runs your own `gh` login, never a token tumwater holds — including the issues
+mirror, which reads the repo's open issues hourly and closes the ones a finished entry fixed (the
+`githubIssues` row in [docs/config.md](docs/config.md)). The words used here (team, role, run,
+merge) are defined in [docs/glossary.md](docs/glossary.md).
 
 ## Install
 
@@ -78,11 +81,11 @@ your own hand-made commit on main with `tumwater land`.
 ## Status
 
 <!-- tumwater:status:start -->
-**v0.10.0**: working tumwater. The director and 15 of the 17 roles are enabled by default; `selfcheck`,
+**v0.10.1**: working tumwater. The director and 15 of the 17 roles are enabled by default; `selfcheck`,
 which files tumwater bugs from tumwater's own event log, and `feedback`, which files them as GitHub
 issues on znation/tumwater, are opt-in (`roles.selfcheck.enabled`, `roles.feedback.enabled`).
 `feature` and `bugfix` each run 3 parallel work instances unless `tumwater.json` sets
-`roles.<id>.instances` lower.
+`roles.<id>.instances` lower, and the GitHub-issues mirror is on by default.
 
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 [QUESTIONS.md](QUESTIONS.md) (open questions).
@@ -111,8 +114,10 @@ and `tumwater logs -f` check it, `tumwater brief --file <path>` replaces the bri
 `tumwater prompt "<text>"` sends a message to the director's inbox, `tumwater plan` and
 `tumwater bug` file backlog entries, `tumwater land` puts your own hand-made commit on main
 under the team's merge lock, `tumwater revert <sha>` undoes one merged change on main,
-and `tumwater pause`, `resume`, `wake`, and `stop` control the roles. `tumwater doctor` audits the team and `tumwater report` shows usage and cost. `gui
---all-interfaces` exposes the dashboard, and with it the director prompt, to your whole network,
+and `tumwater pause`, `resume`, `wake`, and `stop` control the roles. `tumwater doctor` audits the
+team, `tumwater report` shows usage and cost, and `tumwater issues` shows what the GitHub-issues
+mirror last saw and what tumwater did about each issue. `gui --all-interfaces` exposes the
+dashboard, and with it the director prompt, to your whole network,
 so pair it with `--token <secret>`.
 
 `tumwater prompt --attach <image>` gives a role an image to read at its next run. When a role's
