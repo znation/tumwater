@@ -9,9 +9,10 @@ import { mergeTasks, newMergePipeline, type MergePipelineContext } from "../src/
 import { addPostReview, readPostReviews, settlePostReview } from "../src/review/post-merge-review.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
+import { piRunResult } from "./fakes/fake-pi.js";
 import { headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { sleep } from "./helpers/wait.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 
 // The post-merge review waits for a team permit the way a pre-merge verification does: parked
 // at VERIFY_TIER, ahead of every queued role run. On 2026-11-03 the poll only peeked for a free
@@ -109,6 +110,41 @@ test("a parked post-merge review whose start gate closes hands its permit back a
   await p.postReview!.promise;
   assert.equal(eventsOfType(root, "review_start").length, 1, "the gate's next opening reviews the commit");
   assert.equal(readPostReviews(root).length, 0);
+});
+
+test("a restart's abort of a running post-merge review keeps its entry and marks its session for resume", async () => {
+  // The 2026-11-21 waste: a restart aborted a review 38 minutes into it and the next generation
+  // opened a fresh session 3 seconds later, so 44 minutes of review work were thrown away. The
+  // aborted run's entry stays queued AND records that its session is kept, the way a progressing
+  // timeout's does, so the next attempt continues it.
+  const { root, commit, roleRuns, shutdown, ctx } = await saturated(1);
+  let abortSeen = false;
+  const runner = (ctx as unknown as { runners: RoleRunner[] }).runners[0]!;
+  (runner as { runGatePi: RoleRunner["runGatePi"] }).runGatePi = async (opts) => {
+    // The fake stands in for a reviewer run still working when the restart fires its abort.
+    await new Promise<void>((resolve) => {
+      if (opts.signal?.aborted) {
+        abortSeen = true;
+        return resolve();
+      }
+      opts.signal?.addEventListener("abort", () => {
+        abortSeen = true;
+        resolve();
+      });
+    });
+    return piRunResult({ ok: false, aborted: true });
+  };
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  roleRuns[0]!.release(); // the review's permit, so the review actually starts
+  await waitFor(() => eventsOfType(root, "review_start").length === 1, "the reviewer run to be in flight");
+  shutdown.abort(); // the restart's stop reaches the review task's controller
+  await p.postReview!.promise;
+  const kept = readPostReviews(root)[0];
+  assert.equal(abortSeen, true, "the reviewer run saw the abort");
+  assert.equal(kept?.commit, commit, "the entry stays queued for the next generation");
+  assert.equal(kept?.resume, true, "the aborted run's session is kept for the next attempt");
+  assert.equal(kept?.failures, undefined, "an aborted review counts no failed run");
 });
 
 test("a parked post-merge review whose entry settles meanwhile runs nothing", async () => {

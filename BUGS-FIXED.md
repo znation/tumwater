@@ -5,6 +5,22 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A restart waits its full hand-off window on a post-merge review, then aborts it, and the review starts over in a fresh session (found by an operator session 2026-11-21) — fixed 2026-11-21 by the bugfix role
+
+**Symptom.** At 2026-11-21 17:39:20 the `restart` event fired, followed by `restart waiting on the merge in progress for feature-4 (deadline 360s)`. That "merge" was feature-4's post-merge review of `2c4b1ddb`, which had started at 17:01:37 (`review_start`, `afterMerge: true`) and was 38 minutes in. At 17:45:20 the feed read `restart: the merge for feature-4 outlived its 360s deadline — aborted`. The new orchestrator then began the same review from scratch at 17:45:23 and reached its verdict at 18:55:22. Two costs follow:
+- Every such restart is delayed by the full 360 s for a review that cannot finish in that time on the local model.
+- About 44 minutes of review work were thrown away.
+
+The same 360 s wait-then-abort followed the restarts at 11-18 02:17, 11-19 21:00, 11-20 01:09 and 11-20 05:23. Those warnings named no role, a defect since fixed in BUGS-FIXED.md "A shutdown or restart that waits on a post-merge review names no role". The wait and the lost work are not fixed.
+
+**Reproduce.** `ls .tumwater/sessions/_review/feature-4/post-2c4b1ddb/` shows two session files: `2026-11-22T01-01-37-695Z_…` and `2026-11-22T01-45-23-596Z_…`. The second is a new session, not a continuation. In `.tumwater/log/events.jsonl`, pair each `restart` event with the `restart waiting on the merge in progress` and `outlived its 360s deadline` warnings and the next `review_start` for the same head.
+
+**Cause.** `drainInFlightWork` (src/run/run-timing.ts) puts post-merge review tasks in the same in-flight merge set as gate-then-merge tasks. `awaitMergeForHandoff` gives that set one bounded window, then aborts it. On abort, `settlePostReviewOutcome` (src/merge/merge-post-review-drain.ts, `if (aborted) return;`) keeps the entry but never sets `resume`. Only a run that timed out while making progress sets `resume`. So the next generation's `reviewMergedCommit` opens a new session.
+
+**Fix:** A restart now stops its in-flight post-merge reviews before it arms the hand-off window: `drainInFlightWork` (src/run/run-timing.ts) splits the tasks by the new `review` stamp on `InFlightMerge` (src/merge/merge-pipeline.ts) and calls `stopReviewsForHandoff`, which fires each review task's own controller — never the caller's internal stop, which killed the merge 13 ms into its window on 2026-09-30 — announces it, and awaits its settle to `MERGE_ABORT_SETTLE_FLOOR_MS`. The gate-then-merge tasks keep the full hand-off window. On the abort path `settlePostReviewOutcome` (src/merge/merge-post-review-drain.ts) rewrites the still-unreviewed entry with `resume: true`, so the next generation's review runs with `continueSession` on the same session dir instead of a fresh one, and still counts no failed run. An entry settled during the run stays settled.
+
+**Validation gap:** real-run-needed — nothing offline showed the waste; the evidence was two session dirs under `.tumwater/sessions/_review/feature-4/post-2c4b1ddb/` beside the `restart waiting on the merge in progress` / `outlived its 360s deadline` pair in events.jsonl, and the fix was then pinned offline by new drain and drain-abort tests.
+
 ### A reviewer's post-merge fix withheld on a lint failure settles the reviewed commit as rejected for good, and the reviewer's finding is lost (found by an operator session 2026-11-21) — fixed 2026-11-21 by the bugfix role
 
 **Symptom.** On 2026-11-21 the post-merge fix was withheld four times, at 11:54 (`0acfd4ee`), 12:36 (`e21b30a3`), 16:46 (`e63b9c49`) and 21:06 (`03f27a3a`). Every one failed only `every comment line in src/ and test/ fits in 100 columns`: the reviewer's fix commit carried an overlong comment line. In each case the `post-review.json` entry for the reviewed commit was settled with `rejected` set to the comment-width assertion's stack trace, and nothing else. The reviewer's actual objection appears nowhere. On `03f27a3a` the verdict found an inline comment saying `review_dropped` is "not yet" written. The entry was settled rejected, and that stale comment is still on main (src/review/post-merge-review-requeue.ts:40).

@@ -4410,21 +4410,27 @@ before a restart hold is turned away at its permit, which it hands on unused".
 ### INV-BL2: a restart's hand-off waits on every merge task for at most two windows
 
 **Guarantee.** An operator stop waits for the runs and every merge task without a bound and never
-aborts. A restart folds every merge task into one hand-off that names all of their roles. The
-hand-off gets one window, then an abort, then one more window. After that it clears the merge
-marker and hands off without waiting on the reserved runs.
+aborts. A restart folds every gate-then-merge task into one hand-off that names all of their
+roles, and stops every in-flight post-merge review at once instead: a review lands nothing until
+its verdict, so it gets no hand-off window — only its own controller fires, never the caller's
+internal stop, and its settle is awaited to `MERGE_ABORT_SETTLE_FLOOR_MS` (a run wedged past that
+is left behind as a crash leaves it). The merge hand-off gets one window, then an abort, then one
+more window. After that it clears the merge marker and hands off without waiting on the reserved
+runs.
 
-**Binds.** `src/run/run-timing.ts` (`drainInFlightWork`, `awaitMergeForHandoff`,
-`HANDOFF_MERGE_WINDOW_MS`).
+**Binds.** `src/run/run-timing.ts` (`drainInFlightWork`, `stopReviewsForHandoff`,
+`awaitMergeForHandoff`, `HANDOFF_MERGE_WINDOW_MS`).
 
 **Pinned by.** `test/run-timing-edges.test.ts` — "a restart's hand-off waits for every merge task
-and names all their roles"; `test/run-timing.test.ts` — "drainInFlightWork on an operator stop waits
-out runs and merges, announcing the merge", "drainInFlightWork on a restart with a merge inside its
-window waits out the runs too" and "drainInFlightWork hands off without a wedged merge and without
-waiting on reserved runs"; `test/orchestrator-seams.test.ts` — "awaitMergeForHandoff announces the
-wait and lets a merge that finishes in time complete", "awaitMergeForHandoff aborts a merge past its
-window and waits for it to stop" and "awaitMergeForHandoff hands off without a merge still running
-after the abort, clearing its marker".
+and names all their roles", "a restart stops an in-flight post-merge review at once and keeps its
+hand-off window for the merge" and "a restart hands off without waiting on a review run wedged
+past its abort-settle floor"; `test/run-timing.test.ts` — "drainInFlightWork on an operator stop
+waits out runs and merges, announcing the merge", "drainInFlightWork on a restart with a merge
+inside its window waits out the runs too" and "drainInFlightWork hands off without a wedged merge
+and without waiting on reserved runs"; `test/orchestrator-seams.test.ts` — "awaitMergeForHandoff
+announces the wait and lets a merge that finishes in time complete", "awaitMergeForHandoff aborts a
+merge past its window and waits for it to stop" and "awaitMergeForHandoff hands off without a
+merge still running after the abort, clearing its marker".
 
 ### INV-BL3: an events feed that cannot be written never shortens the shutdown drain or makes it reject
 
@@ -4922,6 +4928,26 @@ withheld from main (BUGS.md 2026-11-04)", "a withheld fix at the failure limit f
 reviewer's finding and the pre-check's reason"; `test/post-merge-review-render.test.ts` —
 "postReviewMatchesGrep finds the text in every searched field, case-insensitively",
 "renderPostReviewDetail adds each optional block only when its field is present".
+
+### INV-BT9: an aborted post-merge review keeps its entry queued with its session marked for resume
+
+**Guarantee.** When a post-merge review's task ends on an abort — an operator stop, a restart's
+stop, or `tumwater abort --role` — `settlePostReviewOutcome` settles nothing about the verdict, but
+it does rewrite the still-unreviewed entry with `resume: true`, so the next attempt continues the
+aborted run's session (`continueSession`) instead of starting a fresh one. The entry stays queued
+and counts no failed run, exactly as before. An entry settled during the run (`tumwater
+review --accept`, INV-BT4) is left settled: the resume write only touches an entry that is still
+unreviewed. Without the kept session, every restart threw away the review's whole progress: the
+2026-11-21 review of `2c4b1ddb` was aborted 38 minutes in and its next attempt opened a fresh
+session 3 seconds later (BUGS.md 2026-11-21).
+
+**Binds.** `src/merge/merge-post-review-drain.ts` (`settlePostReviewOutcome`'s abort arm,
+`startPostReview`'s `review: true` task stamp), consumed by
+`src/review/post-merge-review.ts` (`reviewMergedCommit`'s `continueSession`).
+
+**Pinned by.** `test/post-merge-review-permit.test.ts` — "a restart's abort of a running
+post-merge review keeps its entry and marks its session for resume" and "a shutdown settles a
+parked post-merge review at once, keeping its entry".
 
 ## Observer run ledgers: a failed ledger write never fails a run
 

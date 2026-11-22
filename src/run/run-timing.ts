@@ -227,6 +227,12 @@ export async function awaitMergeForHandoff(
  * hand-off's window, aborted) together under the roles of them all. A queued change still parked
  * for its gate permit has started nothing (a shutdown settles it at once; a restart's closed start
  * gate at its grant): all of them keep their entries and pins for the next start.
+ *
+ * A post-merge review is not waited on for a window: it lands nothing until its verdict, so a
+ * restart stops it at once (stopReviewsForHandoff) and its entry stays queued with its session
+ * kept for the next attempt (merge-post-review-drain.ts). The 2026-11-21 review of 2c4b1ddb sat
+ * out the full 360 s, was aborted, and started over in a fresh session 3 seconds later — 44
+ * minutes of review work and the whole window thrown away.
  */
 export async function drainInFlightWork(
   root: string,
@@ -239,20 +245,29 @@ export async function drainInFlightWork(
   after: AfterDelay = realAfterDelay,
 ): Promise<void> {
   const runs = Promise.allSettled([...roleInFlight, ...directorInFlight]);
+  // A restart stops its post-merge reviews at once; an operator stop keeps them inside the one
+  // merge wait it announces, since the harness signal has already aborted them and the process
+  // is not swapping builds.
+  const reviews = restart ? inFlight.filter((t) => t.review === true) : [];
+  const merging = restart ? inFlight.filter((t) => t.review !== true) : inFlight;
   const merge =
-    inFlight.length === 0
+    merging.length === 0
       ? null
       : {
-          promise: Promise.allSettled(inFlight.map((t) => t.promise)).then(() => {}),
-          roles: inFlight.flatMap((t) => t.roles),
+          promise: Promise.allSettled(merging.map((t) => t.promise)).then(() => {}),
+          roles: merging.flatMap((t) => t.roles),
         };
-  if (merge && restart) {
+  const reviewStop = reviews.length === 0 ? null : stopReviewsForHandoff(root, reviews, after);
+  if (restart) {
     // The abort is the caller's internal stop, not just the merge's own controller: each task
     // wires the harness signal to its controller, and a conflict-resolution run watches the
     // harness signal alone (runMergePi). Nothing else it reaches can start work here — the
     // director has finished, permit holders were aborted at the restart, and a parked waiter
     // meets the closed start gate (runStartHeld) whenever it is granted a permit.
-    const outcome = await awaitMergeForHandoff(root, merge, handoffWindowMs, abort, after);
+    const outcome = merge ? await awaitMergeForHandoff(root, merge, handoffWindowMs, abort, after) : "finished";
+    // The reviews were stopped before the merge's window was armed, so this await costs nothing
+    // beside it; it still has to finish before the process exits, so the kept session is on disk.
+    if (reviewStop) await reviewStop;
     // An abandoned merge still holds its permit, so a waiter parked behind it would never be
     // granted one and never settle. The runs have had both windows beside the hand-off, so
     // whatever is still reserved then started nothing (or is wedged like the merge): the
@@ -262,6 +277,25 @@ export async function drainInFlightWork(
     if (merge) {
       warnEventBestEffort(root, TUMWATER_SOURCE, `shutdown waiting on the merge in progress for ${merge.roles.join(", ")}`);
     }
-    await Promise.allSettled([runs, merge?.promise]);
+    await Promise.allSettled([runs, merge?.promise, reviewStop]);
   }
+}
+
+/** Stop every in-flight post-merge review at once for a restart's hand-off. Each task's OWN
+ * controller fires, never the caller's internal stop: that one would also abort the merge task
+ * before the hand-off waited the window it announces (BUGS.md 2026-09-30, the 13 ms merge). The
+ * aborted review settles its entry as queued with the session kept, so the next generation's
+ * review continues it instead of starting over (BUGS.md 2026-11-21). Its settle is awaited, but
+ * only to the abort-settle floor: a reviewer run wedged past that is left behind exactly as a
+ * crash leaves it — its entry stays queued, uncounted, for the next drain. */
+function stopReviewsForHandoff(root: string, reviews: readonly InFlightMerge[], after: AfterDelay): Promise<void> {
+  const roles = reviews.flatMap((t) => t.roles).join(", ");
+  for (const task of reviews) task.controller.abort();
+  warnEventBestEffort(
+    root,
+    TUMWATER_SOURCE,
+    `restart: the post-merge review for ${roles} lands nothing, so it stops at once; its entry and session stay for the next generation`,
+  );
+  const settled = Promise.allSettled(reviews.map((t) => t.promise)).then(() => {});
+  return settlesWithin(settled, MERGE_ABORT_SETTLE_FLOOR_MS, after).then(() => {});
 }

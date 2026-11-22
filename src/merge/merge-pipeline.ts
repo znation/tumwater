@@ -28,6 +28,11 @@ export interface InFlightMerge {
    * nothing, so it is not in flight (mergeTasks) and not abortable, and no marker record is
    * open for it. */
   parked?: boolean;
+  /** True for a post-merge review task, false (undefined) for a gate-then-merge task. A restart
+   * aborts a review at once instead of waiting its hand-off window: a review lands nothing, so
+   * the wait buys only a longer hand-off, and its session is kept for the next generation to
+   * continue (BUGS.md 2026-11-21). */
+  review?: boolean;
 }
 
 /** The per-poll state the pipeline reads from the scheduler, resolved once by the poll loop.

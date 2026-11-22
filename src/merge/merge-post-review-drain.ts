@@ -136,7 +136,17 @@ async function settlePostReviewOutcome(
   author: RoleRunner,
   aborted: boolean,
 ): Promise<void> {
-  if (aborted) return; // a shutdown: the entry stays for the next generation
+  // A shutdown or a restart's abort: the entry stays queued for the next generation, and its
+  // review session is kept so the next attempt continues it (as a progressing timeout's does)
+  // instead of throwing away every turn the aborted run had read (BUGS.md 2026-11-21). Only an
+  // entry still awaiting its review is rewritten: one `tumwater review --accept` settled during
+  // the run stays settled (INV-BT4).
+  if (aborted) {
+    if (readPostReviews(root).some((e) => e.commit === entry.commit && unreviewed(e))) {
+      settlePostReview(root, entry.commit, { ...entry, resume: true });
+    }
+    return;
+  }
   if (outcome.kind === "approve") settlePostReview(root, entry.commit, null);
   else if (outcome.kind === "reject") settlePostReview(root, entry.commit, { ...entry, rejected: outcome.reasons, resume: undefined });
   else if (outcome.kind === "fixed") await mergeReviewerFix(ctx, entry, outcome.fix, outcome.reasons, author.state);
@@ -194,7 +204,7 @@ function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: Pos
   const { root, semaphore } = ctx;
   // The review names its commit's author role, so the restart and shutdown wording says what it
   // waits on and `tumwater abort --role <author>` reaches it (BUGS.md 2026-11-19).
-  const task: InFlightMerge = { promise: Promise.resolve(), controller: new AbortController(), roles: [entry.role], userAborted: false, parked: true };
+  const task: InFlightMerge = { promise: Promise.resolve(), controller: new AbortController(), roles: [entry.role], userAborted: false, parked: true, review: true };
   p.postReview = task;
   const detach = abortOnShutdown(ctx.signal, task.controller);
   const author = resolveAuthor(ctx, entry.role);

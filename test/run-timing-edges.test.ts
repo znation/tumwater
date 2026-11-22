@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { drainInFlightWork } from "../src/run/run-timing.js";
+import { drainInFlightWork, MERGE_ABORT_SETTLE_FLOOR_MS } from "../src/run/run-timing.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { flushImmediate, scriptedTimers } from "./helpers/wait.js";
@@ -41,6 +41,50 @@ test("a restart's hand-off waits for every merge task and names all their roles"
   const w = warningMessages(root);
   assert.equal(w.length, 1);
   assert.match(w[0]!, /^restart waiting on the merge in progress for clean, dedupe \(deadline 5s\)$/);
+});
+
+test("a restart stops an in-flight post-merge review at once and keeps its hand-off window for the merge", async () => {
+  // The 2026-11-21 waste: a post-merge review — which lands nothing until its verdict — sat out
+  // the whole hand-off window, was aborted, and started over in a fresh session. The hand-off
+  // stops it at its own controller instead of waiting, and arms no hand-off window for it.
+  const root = tmpdir();
+  let resolveReview!: () => void;
+  let resolveMerge!: () => void;
+  const review = { ...standInMerge(new Promise<void>((r) => (resolveReview = r)), ["improve"]), review: true };
+  const mergeTask = standInMerge(new Promise<void>((r) => (resolveMerge = r)), ["clean"]);
+  const timers = scriptedTimers();
+  let aborts = 0;
+  const drain = drainInFlightWork(root, new Set(), new Set(), [review, mergeTask], true, 5_000, () => void aborts++, timers.after);
+  assert.deepEqual(
+    timers.delays,
+    [MERGE_ABORT_SETTLE_FLOOR_MS, 5_000],
+    "the review is armed only its abort-settle floor; the merge keeps the hand-off window",
+  );
+  assert.equal(review.controller.signal.aborted, true, "the review is stopped as the hand-off begins");
+  assert.equal(mergeTask.controller.signal.aborted, false, "the merge is not aborted before its window");
+  assert.equal(aborts, 0, "the review's stop fires its own controller, never the caller's internal stop");
+  resolveReview();
+  resolveMerge();
+  await drain;
+  assert.equal(timers.pending(), 0, "both windows were cleared on settle");
+  const w = warningMessages(root);
+  assert.equal(w.length, 2, "the review stop is announced alongside the merge wait");
+  assert.match(w[0]!, /^restart: the post-merge review for improve lands nothing, so it stops at once/);
+  assert.match(w[1]!, /^restart waiting on the merge in progress for clean \(deadline 5s\)$/);
+});
+
+test("a restart hands off without waiting on a review run wedged past its abort-settle floor", async () => {
+  // A reviewer run that ignores its abort cannot hold the hand-off open: the review is left
+  // behind exactly as a crash leaves it — its entry stays queued, uncounted, for the next drain.
+  const root = tmpdir();
+  const review = { ...standInMerge(new Promise<void>(() => {}), ["feature"]), review: true };
+  const timers = scriptedTimers();
+  const drain = drainInFlightWork(root, new Set(), new Set(), [review], true, 5_000, () => {}, timers.after);
+  assert.deepEqual(timers.delays, [MERGE_ABORT_SETTLE_FLOOR_MS], "the wedged review gets the settle floor, not a hand-off window");
+  assert.equal(review.controller.signal.aborted, true);
+  timers.fire(); // the floor lapses with the run still wedged
+  await drain;
+  assert.equal(timers.pending(), 0, "the hand-off armed nothing else behind the wedged review");
 });
 
 /** Make every append to an events feed fail with ENOSPC; returns the undo. */
