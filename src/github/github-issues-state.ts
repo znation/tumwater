@@ -58,8 +58,14 @@ export interface GithubIssuesLedger {
   declined?: Record<string, { at: number; updatedAt: string; reason: string }>;
   /** Issues whose director prompt was queued (part 4c/5), by issue number: when it was queued, and
    * the issue's `updatedAt` then. The queue offers the issue again once this record is 24 h old
-   * (decision 5). */
-  queued?: Record<string, { at: number; updatedAt: string }>;
+   * (decision 5), or once its hold is shortened — see `recheckAfterMs`.
+   * An optional third field, `recheckAfterMs`, shortens that hold: `releaseQueuedIssueRetry`
+   * writes it when the director run the queue started ended without settling the issue (no
+   * `ISSUE:` line recorded), so a run that died on a checkpoint abort does not cost the issue a
+   * full day. An absent field means the full 24 h; so does any value that is not a finite
+   * non-negative number (a hand-edited ledger), which falls back to the timed hold rather than
+   * offering the issue every poll. */
+  queued?: Record<string, { at: number; updatedAt: string; recheckAfterMs?: number }>;
 }
 
 /** The ledger folded to the counts the status snapshot and its alerts read (plans/github-issues.md,
@@ -163,6 +169,26 @@ export function githubScanStalled(ledger: GithubIssuesLedger | null, now: number
     typeof ledger.checkedAt === "number" &&
     now - ledger.checkedAt > GITHUB_ISSUES_STALE_MS
   );
+}
+
+/** The shortest hold one issue's `queued` record may impose: one scan interval. A director run
+ * that left its issue unsettled gets this instead of the queue's 24 h, so the next poll retries
+ * it (BUGS.md 2026-11-22); it never drops to 0, which would offer the issue on every poll and
+ * burn a director run per poll. The queue cannot read the outcome itself: the prompt it composes
+ * is deleted from the queue as soon as the run dequeues it, and a run that dies before it replies
+ * records no verdict, so the ledger record carries the shortened span instead — see
+ * `releaseQueuedIssueRetry` (src/github/issue-outcome.ts). */
+export const ISSUE_RETRY_HOLD_MS = 60 * 60 * 1000;
+
+/** How long an issue's `queued` record holds the queue from offering it again: the record's own
+ * `recheckAfterMs` when it carries a finite non-negative number (a shortened retry hold),
+ * otherwise the queue's default. `issue-queue.ts` supplies that default (24 h, decision 5) as
+ * `defaultMs`, and a value that is not a finite non-negative number falls back to it, so a
+ * hand-edited ledger cannot turn the hold into a per-poll retry loop. Pure, like the mirror's
+ * other ledger predicates. */
+export function issueQueueHoldMs(queued: { recheckAfterMs?: number }, defaultMs: number): number {
+  const held = queued.recheckAfterMs;
+  return typeof held === "number" && Number.isFinite(held) && held >= 0 ? held : defaultMs;
 }
 
 /** The GitHub figures the status surfaces show: how many fixes wait for a push to GitHub and how

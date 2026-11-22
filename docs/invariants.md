@@ -5593,7 +5593,7 @@ automatic rewrite"; `test/run-usage.test.ts` —
 `test/claude-stream.test.ts` — "retries and compaction translate to the canonical events the
 transcript renders".
 
-## The GitHub issues mirror: one predicate decides when its scan has gone quiet
+## The GitHub issues mirror: its scan-stall and re-offer holds each have one home
 
 ### INV-DE1: githubScanStalled is the one home of the issues-scan stall decision
 
@@ -5620,6 +5620,48 @@ and false for no ledger or a foreign checkedAt"; `test/doctor-checks.test.ts` �
 "checkGithubIssues stays ok at the window boundary and with no ledger file at all",
 "a stalled ledger never outranks an unreadable gh" and
 "the github issues row and githubScanStalled agree on one ledger".
+
+### INV-DE2: an unsettled director run returns its issue prompt and shortens the mirror's hold to one retry interval
+
+**Guarantee.** A director run that dequeued a mirror-composed issue prompt and recorded no verdict
+— a checkpoint abort, an error, an abort — is unfulfilled on both sides of the mirror. Its prompt
+must go back to the inbox: `noChangeArm` re-queues on `cutOff` *or* `checkpointAborted`
+(`src/run/run-verdict.ts`), and a director's re-queue always routes to the fresh-rerun path
+(`requeueForResume` → `requeueUnfulfilled`), never a resume — a checkpoint abort is deliberately
+not a cut-off, because the session was never compacted (INV-DD1), so `resumePending` stays unset.
+And the ledger's `queued` record must not keep the issue out of the next offer: the record's 24 h
+hold is the default only, and `issueQueueHoldMs` (src/github/github-issues-state.ts) is the one
+place that reads a record's own `recheckAfterMs`, falling back to the default for anything that is
+not a finite non-negative number so a hand-edited ledger cannot turn the hold into a per-poll retry
+loop. `releaseIssueRetryHold` (src/github/issue-outcome.ts) writes that shortened span
+(`ISSUE_RETRY_HOLD_MS`, one scan interval — never 0) for a director run that recorded no verdict
+and left no pinned change (`DIRECTOR_PINNED_RESULTS` in src/runner/runner-run.ts: a run that
+committed its mirroring entry keeps the timed hold, because that entry reaches the mirror's
+`mirrors` set when the merge lands and a re-offer in between would mirror the issue twice),
+and only for a prompt opening `GitHub issue #<n>` (`queuedIssueNumber` in src/github/issue-queue.ts
+reads the number from the same phrase that blocks the queue, so a prompt merely mentioning an issue
+names nothing). A recorded decline or fix already holds the issue by its own record, so that run
+shortens nothing; a `queued` record `queueOneIssue` rewrites fresh, so a shortened hold never
+outlives the next queue.
+
+**Binds.** `src/run/run-verdict.ts` (`noChangeArm`), `src/verdict/no-change.ts`
+(`checkpointAborted`), `src/inbox/pending-prompt.ts` (`requeueForResume`, `requeueUnfulfilled`),
+`src/github/github-issues-state.ts` (`issueQueueHoldMs`, `ISSUE_RETRY_HOLD_MS`, `queued`),
+`src/github/issue-queue.ts` (`nextIssuePrompt`, `queuedIssueNumber`),
+`src/github/issue-outcome.ts` (`releaseIssueRetryHold`), `src/runner/runner-run.ts`
+(`DIRECTOR_SUCCESS_RESULTS`, `DIRECTOR_PINNED_RESULTS`).
+
+**Pinned by.** `test/run-verdict.test.ts` — "a checkpoint-abort director run puts its issue prompt
+back in the queue and arms no resume" and "a checkpoint-abort no_change is not a cut-off and its
+warning names the real cause"; `test/runner-interrupted.test.ts` — "a checkpoint-aborted director
+run on an issue prompt returns it and shortens the mirror's hold", "a director run that commits
+without an ISSUE line keeps the mirror's timed hold" and "a checkpoint abort whose compaction
+never completed is not a cut-off and arms no resume"; `test/github-issue-queue.test.ts`
+— "an unsettled run's shortened hold re-offers the issue next interval, and a broken value falls
+back to 24 h" and "a queued issue is not re-offered within 24 h, then is offered again; a declined
+issue waits for its updatedAt; a fixed issue is never offered"; `test/github-issue-outcome.test.ts`
+— "an unsettled director run releases the 24 h hold to one retry interval, and the queue
+re-offers" and "a non-issue prompt, a missing record, and no ledger all release nothing".
 
 ## Once rounds: every starting hold settles its runner, so a held team still exits
 

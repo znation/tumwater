@@ -11,6 +11,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
+import { nextIssuePrompt } from "../src/github/issue-queue.js";
+import { ISSUE_RETRY_HOLD_MS, readGithubIssues, writeGithubIssues } from "../src/github/github-issues-state.js";
 import { piLogPath, rejectedRefName, sessionDir, mergeRefName } from "../src/paths.js";
 import { recordSession } from "../src/agent/session-ledger.js";
 import { setRef } from "../src/git/git.js";
@@ -158,6 +160,106 @@ test("a checkpoint abort whose compaction never completed is not a cut-off and a
       assert.ok(!runner.state.resumePending, "a session that was never compacted is not resumed");
     },
   );
+});
+
+test("a checkpoint-aborted director run on an issue prompt returns it and shortens the mirror's hold", async () => {
+  const repo = await initializedRepo();
+  // BUGS.md 2026-11-22, both halves. The mirror queued this issue prompt and recorded the
+  // issue in the ledger; the run dequeued it and died on a checkpoint abort with no reply.
+  // Before the fix the prompt was gone (no re-queue on the checkpoint-abort path) and the
+  // ledger's 24 h `queued` record held the issue out of the next offer for a full day.
+  const prompt = "GitHub issue #12 on o/r is open and no backlog entry mirrors it";
+  const now = Date.now();
+  writeGithubIssues(repo, {
+    repo: "o/r",
+    branch: "main",
+    checkedAt: now,
+    gh: "ok",
+    open: [
+      {
+        number: 12,
+        title: "Crash on start",
+        url: "https://github.com/o/r/issues/12",
+        author: "maintainer",
+        trusted: true,
+        mirrored: false,
+        labels: [],
+        updatedAt: "2026-11-20T00:00:00Z",
+      },
+    ],
+    queued: { "12": { at: now - 3 * 60 * 60 * 1000, updatedAt: "2026-11-20T00:00:00Z" } },
+  });
+  const abortedTurn = JSON.stringify({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "thinking", thinking: "checkpoint recorded" }],
+      usage: { totalTokens: 40000, output: 8, cost: { total: 0 } },
+      stopReason: "aborted",
+    },
+  });
+  await withPi(
+    `printf '%s\n' '${abortedTurn}'\n` +
+      `printf '%s\n' '${JSON.stringify({ type: "compaction_start", reason: "manual" })}'`,
+    async () => {
+      enqueuePrompt(repo, prompt);
+      const runner = makeRoleRunner(repo, "director");
+      assert.equal((await runner.run()).result, "no_change");
+      assert.equal(inboxSize(repo), 1, "the unfulfilled issue prompt is back in the inbox");
+      assert.equal(dequeuePrompt(repo), prompt, "and it is the same prompt, rerun fresh");
+      assert.ok(!runner.state.resumePending, "an uncompacted session is never resumed");
+      // The mirror's own hold: the queue offers issue 12 again now instead of after 24 h.
+      assert.equal(readGithubIssues(repo)?.queued?.["12"]?.recheckAfterMs, ISSUE_RETRY_HOLD_MS);
+      assert.equal(
+        nextIssuePrompt(readGithubIssues(repo)!, new Set(), [], Date.now())?.issue,
+        12,
+        "the next poll can re-offer the issue",
+      );
+    },
+  );
+});
+
+test("a director run that commits without an ISSUE line keeps the mirror's timed hold", async () => {
+  const repo = await initializedRepo();
+  // The other arm of the same release: a director run that committed its mirroring entry but
+  // wrote no `ISSUE:` line must NOT be re-offered while that change is still waiting to merge,
+  // or the same issue gets mirrored twice. Its pinned result keeps the record's timed hold.
+  const now = Date.now();
+  writeGithubIssues(repo, {
+    repo: "o/r",
+    branch: "main",
+    checkedAt: now,
+    gh: "ok",
+    open: [
+      {
+        number: 12,
+        title: "Crash on start",
+        url: "https://github.com/o/r/issues/12",
+        author: "maintainer",
+        trusted: true,
+        mirrored: false,
+        labels: [],
+        updatedAt: "2026-11-20T00:00:00Z",
+      },
+    ],
+    queued: { "12": { at: now - 3 * 60 * 60 * 1000, updatedAt: "2026-11-20T00:00:00Z" } },
+  });
+  const script = [
+    APPROVE_PI,
+    `printf '%s\n' '${assistantLine("ok\nSUMMARY: mirror the issue")}'`,
+    `echo entry > entry.txt`,
+  ].join("\n");
+  await withPi(script, async () => {
+    enqueuePrompt(repo, "GitHub issue #12 on o/r is open and no backlog entry mirrors it");
+    const runner = makeRoleRunner(repo, "director");
+    assert.equal((await runner.run()).result, "queued", "the run pinned a change");
+    assert.equal(readGithubIssues(repo)?.queued?.["12"]?.recheckAfterMs, undefined, "no retry hold");
+    assert.equal(
+      nextIssuePrompt(readGithubIssues(repo)!, new Set(), [], Date.now()),
+      null,
+      "and the issue is still held by its 24 h record",
+    );
+  });
 });
 
 test("a cut-off director run re-queues the user prompt instead of resuming", async () => {

@@ -52,7 +52,7 @@ import {
   type IssueOutcome,
   type RemoteResult,
 } from "../verdict/reply-contract.js";
-import { recordIssueOutcome } from "../github/issue-outcome.js";
+import { recordIssueOutcome, releaseIssueRetryHold } from "../github/issue-outcome.js";
 import { remoteCiTarget } from "../observer/remote-ci.js";
 import { recoverLeftoversForRun } from "./runner-leftover-recovery.js";
 import { applyConflictHandback, applyRevisionOrReject, resendHandoffNote } from "./runner-apply.js";
@@ -509,6 +509,12 @@ async function runWithWorktreePhase(
     } catch (err) {
       ctx.warn(`GitHub issue verdict not recorded: ${errorMessage(err)}`);
     }
+  } else if (ctx.baseRole === DIRECTOR_ROLE && !DIRECTOR_PINNED_RESULTS.has(outcome.result)) {
+    // The mirror's 24 h hold on a queued issue was written for a prompt still waiting in the
+    // inbox. This run took that prompt and recorded no verdict, so hold the issue only for one
+    // scan interval (BUGS.md 2026-11-22: five checkpoint-aborted director runs left five issues
+    // a day each, and the dashboard alert could not clear).
+    releaseIssueRetryHold(ctx.root, plan.userPrompt);
   }
   return outcome;
 }
@@ -516,6 +522,14 @@ async function runWithWorktreePhase(
 /** The run results a director's ISSUE line may be recorded under: the work was done (changed,
  * queued for merge) or there was nothing to do. A refusal, error or abort records nothing. */
 const DIRECTOR_SUCCESS_RESULTS = new Set<RunResult>(["changed", "queued", "no_change"]);
+
+/** The run results that leave a pinned change for the mirror to read. A director run on an issue
+ * prompt that ended this way without an `ISSUE:` line probably wrote its `mirrors GitHub issue
+ * #<n>` entry, and that entry reaches the mirror's `mirrors` set as soon as the merge lands — so
+ * its timed hold stays, because re-offering the issue while the change is still waiting to merge
+ * could mirror it twice. Every other result leaves nothing on main, so the issue is due again.
+ * A refusal belongs there: its objection note merges but mirrors nothing. */
+const DIRECTOR_PINNED_RESULTS = new Set<RunResult>(["changed", "queued"]);
 
 /** How does the run's pi session author? Run the authoring session over the prepared worktree
  * and prompt, fold any commit the agent made into the run's one commit (INV-H1), warn about a

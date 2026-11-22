@@ -7,7 +7,12 @@
 
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../inbox/inbox-submit.js";
 import { cutSplitsSurrogatePair } from "../text/text.js";
-import { isReopened, type GithubIssuesLedger, type GithubIssueRow } from "./github-issues-state.js";
+import {
+  isReopened,
+  issueQueueHoldMs,
+  type GithubIssuesLedger,
+  type GithubIssueRow,
+} from "./github-issues-state.js";
 
 /** How long a queued-issue record holds: a poll does not re-queue the same issue for a day, so
  * an issue sits in the director's queue (and survives a cancel) without being offered again
@@ -64,13 +69,29 @@ export function nextIssuePrompt(
     const key = String(row.number);
     if (mirrors.has(row.number) && !isReopened(ledger, row)) continue;
     const queued = ledger.queued?.[key];
-    if (queued !== undefined && now - queued.at < QUEUED_RECHECK_MS) continue;
+    // The hold is the record's own when one was written (a director run that left the issue
+    // unsettled shortened it to a retry hold — BUGS.md 2026-11-22), and the 24 h default
+    // otherwise.
+    if (queued !== undefined && now - queued.at < issueQueueHoldMs(queued, QUEUED_RECHECK_MS)) {
+      continue;
+    }
     const declinedAt = ledger.declined?.[key]?.updatedAt;
     if (declinedAt !== undefined && declinedAt === row.updatedAt) continue;
     if (ledger.fixedIn?.[key]) continue;
     return { issue: row.number, text: composePrompt(ledger, row) };
   }
   return null;
+}
+
+/** The issue number a queued director prompt names, or null when the prompt is not an issue
+ * prompt. Only the opening phrase counts — the same one `QUEUE_BLOCKED_OPENING` matches, read
+ * from it so the phrase has one home — so a prompt that merely mentions an issue in its body is
+ * never mistaken for one the mirror queued. */
+export function queuedIssueNumber(prompt: string): number | null {
+  const opened = prompt.trimStart();
+  if (!opened.startsWith(QUEUE_BLOCKED_OPENING)) return null;
+  const digits = /^(\d+)/.exec(opened.slice(QUEUE_BLOCKED_OPENING.length))?.[1];
+  return digits === undefined ? null : Number(digits);
 }
 
 /** Compose the director prompt for one selected issue: the fixed preamble (with the reopened

@@ -269,6 +269,30 @@ test("a checkpoint-abort no_change is not a cut-off and its warning names the re
   assert.doesNotMatch(warns[0]!, /likely cut off/, "...and does not blame the context ceiling");
 });
 
+test("a checkpoint-abort director run puts its issue prompt back in the queue and arms no resume", async () => {
+  const { root, wt } = await initializedWorktree(DIRECTOR_ROLE);
+  // BUGS.md 2026-11-22: the issues mirror queued this prompt, the run dequeued it, and a
+  // checkpoint abort ended the run with no reply. A checkpoint abort is not a cut-off, so
+  // noChangeArm used to re-queue nothing and the prompt was simply gone — the mirror then held
+  // the issue out of its next offer. The prompt must come back, and it must come back for a
+  // FRESH rerun: the session was never compacted, so no resume may be armed.
+  const pi: PiRunResult = piRunResult({
+    nothingToDo: false,
+    finalText: "",
+    finalMessageContentless: true,
+    stopReason: "aborted",
+  });
+  const prompt = "GitHub issue #7 on o/r is open and no backlog entry mirrors it";
+  const { ctx, state } = makeCtx(root, wt, DIRECTOR_ROLE, { pi, userPrompt: prompt });
+  const outcome = await resolveRunVerdict(ctx);
+
+  assert.equal(outcome?.result, "no_change");
+  assert.equal(outcome?.cutOff, undefined, "still not classified as a context-ceiling cut-off");
+  assert.deepEqual(queuedRolePrompts(root, DIRECTOR_ROLE), [prompt], "the prompt is back in the inbox");
+  assert.ok(!state.resumePending, "an uncompacted session is never resumed");
+  assert.equal(state.resumePromptFile, undefined, "and no resume prompt is recorded");
+});
+
 test("a context-ceiling cut-off no_change arms a cut-off resume and blames the ceiling", async () => {
   const { root, wt } = await initializedWorktree("improve");
   // The opposite arm of the same fix: a ceiling cut-off ALSO ends contentless, but stops

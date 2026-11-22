@@ -7,7 +7,12 @@
 import { logEventBestEffort } from "../events/events.js";
 import { isMergedInto } from "../git/git.js";
 import type { IssueOutcome } from "../verdict/reply-contract.js";
-import { readGithubIssues, writeGithubIssues } from "./github-issues-state.js";
+import { queuedIssueNumber } from "./issue-queue.js";
+import {
+  ISSUE_RETRY_HOLD_MS,
+  readGithubIssues,
+  writeGithubIssues,
+} from "./github-issues-state.js";
 
 /** Record one director verdict in the ledger. Nothing is written when there is no ledger or the
  * issue is not in its `open` list. A decline logs one `github_issue_declined` event; a fix is
@@ -41,4 +46,29 @@ export async function recordIssueOutcome(
   if (!(await isMergedInto(root, outcome.fixedIn, mainBranch))) return;
   ledger.fixedIn = { ...ledger.fixedIn, [key]: { sha: outcome.fixedIn, at: now } };
   writeGithubIssues(root, ledger);
+}
+
+/** Give an issue back to the mirror's queue early when the director run the queue started never
+ * settled it (BUGS.md 2026-11-22). The queue's `queued` record holds an issue out of the offer
+ * for 24 h, a rule written for a prompt that is still sitting in the director's inbox; a run that
+ * dequeued the prompt and died without recording a verdict (a checkpoint abort, an error, an
+ * abort) leaves the issue neither mirrored nor declined and waits the full day for its next
+ * offer, one issue at a time. This shortens that record's hold to `ISSUE_RETRY_HOLD_MS` so the
+ * next scan interval can re-offer it. `userPrompt` is the prompt the run ran (null for a role
+ * runner); only a prompt the mirror composed — one opening `GitHub issue #<n>` — names an issue,
+ * so a director run on any other request changes nothing. The caller calls this only for a run
+ * that recorded no verdict — a recorded decline or fix already holds the issue by its own record.
+ * Nothing is written when there is no ledger, or when the issue has no `queued` record — a record
+ * `queueOneIssue` rewrites fresh on the next queue, so a shortened hold never outlives the
+ * re-queue. Returns whether a record was shortened. */
+export function releaseIssueRetryHold(root: string, userPrompt: string | null): boolean {
+  const issue = queuedIssueNumber(userPrompt ?? "");
+  if (issue === null) return false;
+  const ledger = readGithubIssues(root);
+  const key = String(issue);
+  const queued = ledger?.queued?.[key];
+  if (!ledger || queued === undefined) return false;
+  ledger.queued = { ...ledger.queued, [key]: { ...queued, recheckAfterMs: ISSUE_RETRY_HOLD_MS } };
+  writeGithubIssues(root, ledger);
+  return true;
 }

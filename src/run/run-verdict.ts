@@ -505,7 +505,14 @@ function noChangeArm(ctx: RunVerdictContext, changed: boolean): RunOutcome | und
     // A cut-off run did real work and was NOT fulfilled: a director prompt goes back
     // to the inbox to rerun fresh; a role runner resumes the just-compacted session
     // next run (see the cutOff handling in run()).
-    if (diagnosis.cutOff) ctx.pending.requeueForResume(s, ctx.userPrompt);
+    // A checkpoint abort is unfulfilled work too: it arms no resume — the session was never
+    // compacted, so `cutOff` stays false and `resumePending` is never set — but its prompt
+    // still has to come back, or a director run that ended this way discarded the request it
+    // dequeued and the issues mirror waited its full 24 h to offer the issue again
+    // (BUGS.md 2026-11-22). requeueForResume routes the director to the fresh-rerun path, and
+    // a role run has no `userPrompt` to re-queue, so this changes nothing for a runner.
+    if (diagnosis.cutOff || diagnosis.checkpointAborted)
+      ctx.pending.requeueForResume(s, ctx.userPrompt);
     recordNoChangeBookkeeping(ctx, pi, diagnosis.cutOff);
     return {
       result: "no_change",

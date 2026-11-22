@@ -61,6 +61,33 @@ test("a queued issue is not re-offered within 24 h, then is offered again; a dec
   assert.equal(nextIssuePrompt({ ...base, fixedIn: { "7": { sha: "aaaa", at: NOW } } }, new Set(), [], NOW), null);
 });
 
+test("an unsettled run's shortened hold re-offers the issue next interval, and a broken value falls back to 24 h", () => {
+  const base = ledgerWith([row(7)]);
+  // The hold a director run leaves behind when it never settled the issue: one scan interval.
+  // Queued 2 h ago under that hold: offered again, not held to the day.
+  const retry = nextIssuePrompt(
+    { ...base, queued: { "7": { at: NOW - 2 * HOUR, updatedAt: "t", recheckAfterMs: HOUR } } },
+    new Set(),
+    [],
+    NOW,
+  );
+  assert.equal(retry?.issue, 7);
+  // The same record 5 minutes old is still held: the shortened span is a span, not a free pass.
+  assert.equal(
+    nextIssuePrompt({ ...base, queued: { "7": { at: NOW - 5 * 60 * 1000, updatedAt: "t", recheckAfterMs: HOUR } } }, new Set(), [], NOW),
+    null,
+  );
+  // A hand-edited record whose span is not a usable number keeps the full 24 h rather than
+  // offering the issue on every poll.
+  for (const bad of [-1, Number.NaN, "3600000"] as unknown as number[]) {
+    assert.equal(
+      nextIssuePrompt({ ...base, queued: { "7": { at: NOW - 2 * HOUR, updatedAt: "t", recheckAfterMs: bad } } }, new Set(), [], NOW),
+      null,
+      `a ${JSON.stringify(bad)} span must not shorten the hold`,
+    );
+  }
+});
+
 test("an untrusted issue's text is never offered", () => {
   const ledger = ledgerWith([row(9, { trusted: false })]);
   assert.equal(nextIssuePrompt(ledger, new Set(), [], NOW), null);
